@@ -21,7 +21,7 @@
  *  - marker-key lockstep with the LOCAL lane's content-addressed key shape.
  */
 
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { createHash } from "node:crypto";
 
 process.env.DATABASE_URL ||= "pglite://memory";
@@ -537,6 +537,33 @@ describe("processPendingPiiScrubJobs — retry and failure classification", () =
     expect(healthy.calls.sort()).toEqual(["b-1", "b-2"]);
     row = await jobRow(job.id);
     expect(row?.status).toBe("completed");
+  });
+
+  test("a lost drain-budget CAS is not reported as requeued", async () => {
+    const job = await svc.enqueuePiiScrubBatch({
+      organizationId: ORG_A,
+      userId: USER,
+      rulesetVersion: RULESET,
+      items: items(["cas-1"]),
+    });
+    const requeue = spyOn(jobsRepo, "retryLaterWithoutIncrementingAttempts").mockResolvedValue(
+      undefined,
+    );
+    try {
+      const run = await svc.processPendingPiiScrubJobs({
+        executor: countingExecutor().executor,
+        budgetMs: 0,
+      });
+      expect(run).toMatchObject({ claimed: 1, requeued: 0, failed: 0 });
+      expect(requeue).toHaveBeenCalledWith(
+        expect.objectContaining({ id: job.id, status: "in_progress" }),
+        "Drain budget exhausted mid-batch; resuming from done-markers next tick",
+        expect.any(Number),
+      );
+      expect(await jobRow(job.id)).toMatchObject({ status: "in_progress", attempts: 0 });
+    } finally {
+      requeue.mockRestore();
+    }
   });
 
   test("a completed job is never re-swept by stale recovery", async () => {

@@ -416,8 +416,21 @@ export interface BridgeResponse {
   error?: { code: number; message: string };
 }
 
+type AgentRuntimeStartupPayload = {
+  phase?: unknown;
+  attempt?: unknown;
+  lastError?: unknown;
+};
+
+type AgentRuntimeStatusPayload = {
+  state?: unknown;
+  canRespond?: unknown;
+  startup?: AgentRuntimeStartupPayload | null;
+};
+
 type AgentRuntimeHealthPayload = {
   ready?: unknown;
+  canRespond?: unknown;
   runtime?: unknown;
   database?: unknown;
   databaseLiveness?: {
@@ -426,9 +439,9 @@ type AgentRuntimeHealthPayload = {
     terminal?: unknown;
     message?: unknown;
   } | null;
-  plugins?: { failed?: unknown } | null;
+  plugins?: { loaded?: unknown; failed?: unknown } | null;
   agentState?: unknown;
-  startup?: { lastError?: unknown } | null;
+  startup?: AgentRuntimeStartupPayload | null;
 };
 
 type BridgeHealthProbeResult =
@@ -543,6 +556,7 @@ interface AdminCanaryImageExecutionPolicy {
       newDigest: string;
     },
   ) => Promise<void>;
+  onConvergedInTx: (tx: DbTransaction) => Promise<void>;
 }
 
 interface ImageSwapResult {
@@ -591,6 +605,23 @@ type ReplacementCleanupExpectation = {
   nodeId: string | null;
   containerName: string | null;
 };
+
+export interface AdminCanaryCleanupExpectation {
+  targetOwnerUserId: string;
+  targetImage: string;
+  targetDigest: string;
+  newNodeId: string;
+  newContainerName: string;
+  oldNodeId: string;
+  oldContainerName: string;
+}
+
+export class AdminCanaryCleanupExpectationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AdminCanaryCleanupExpectationError";
+  }
+}
 
 function digestPinnedImageRef(imageRef: string, digest: string): string {
   if (imageRef.includes("@sha256:")) return imageRef;
@@ -6403,13 +6434,15 @@ export class ElizaSandboxService {
     return { outcome: "repaired", headscaleIp: currentIp, bridgeUrl };
   }
 
-  private async verifyUpgradeRuntimeHealth(args: {
+  private async verifyReplacementRuntimeHealth(args: {
     agent: Pick<AgentSandbox, "id" | "environment_vars">;
     bridgeUrl: string;
   }): Promise<{ success: true } | { success: false; error: string }> {
-    let endpoint: string;
+    let statusEndpoint: string;
+    let healthEndpoint: string;
     try {
-      endpoint = new URL("/api/health", args.bridgeUrl).toString();
+      statusEndpoint = new URL("/api/status", args.bridgeUrl).toString();
+      healthEndpoint = new URL("/api/health", args.bridgeUrl).toString();
     } catch (error) {
       return {
         success: false,
@@ -6417,66 +6450,162 @@ export class ElizaSandboxService {
       };
     }
 
-    try {
-      const res = await withTimeout(
-        fetch(endpoint, {
-          method: "GET",
-          headers: {
-            ...this.getAgentJsonHeaders(args.agent),
-            Accept: "application/json",
-          },
-          signal: AbortSignal.timeout(UPGRADE_RUNTIME_HEALTH_GATE_TIMEOUT_MS),
-        }),
-        UPGRADE_RUNTIME_HEALTH_GATE_TIMEOUT_MS + 1_000,
-        "blue runtime health gate",
-      );
-      if (!res.ok) {
+    const headers = this.getAgentJsonHeaders(args.agent);
+    if (!headers.Authorization) {
+      return {
+        success: false,
+        error: "agent API token is unavailable for authenticated /api/status",
+      };
+    }
+
+    const fetchRuntimeJson = async (
+      endpoint: string,
+      route: "/api/status" | "/api/health",
+    ): Promise<
+      { success: true; body: Record<string, unknown> } | { success: false; error: string }
+    > => {
+      try {
+        const res = await withTimeout(
+          fetch(endpoint, {
+            method: "GET",
+            headers: {
+              ...headers,
+              Accept: "application/json",
+            },
+            signal: AbortSignal.timeout(UPGRADE_RUNTIME_HEALTH_GATE_TIMEOUT_MS),
+          }),
+          UPGRADE_RUNTIME_HEALTH_GATE_TIMEOUT_MS + 1_000,
+          `blue runtime ${route === "/api/status" ? "status" : "health"} gate`,
+        );
+        if (!res.ok) {
+          return {
+            success: false,
+            error: `${route} returned HTTP ${res.status}`,
+          };
+        }
+
+        let body: unknown;
+        try {
+          body = await res.json();
+        } catch {
+          // error-policy:J3 A malformed readiness document is an explicit
+          // failed signal; it must never become an empty healthy object.
+          return {
+            success: false,
+            error: `${route} returned malformed JSON`,
+          };
+        }
+        if (!body || typeof body !== "object" || Array.isArray(body)) {
+          return {
+            success: false,
+            error: `${route} returned a non-object payload`,
+          };
+        }
+        return {
+          success: true,
+          body: body as Record<string, unknown>,
+        };
+      } catch (error) {
+        // error-policy:J1 The image-replacement boundary converts transport
+        // failure into a fail-closed readiness result before traffic moves.
         return {
           success: false,
-          error: `/api/health returned HTTP ${res.status}`,
+          error: error instanceof Error ? error.message : String(error),
         };
       }
+    };
 
-      const health = (await res.json()) as AgentRuntimeHealthPayload;
-      const failures: string[] = [];
-      if (health.ready !== true) {
-        failures.push(`ready=${String(health.ready)}`);
+    const appendStartupFailures = (
+      failures: string[],
+      startup: AgentRuntimeStartupPayload | null | undefined,
+    ): void => {
+      if (!startup || typeof startup !== "object" || Array.isArray(startup)) {
+        failures.push("startup=missing");
+        return;
       }
-      if (health.runtime !== "ok") {
-        failures.push(`runtime=${String(health.runtime)}`);
+      if (startup.phase !== "running") {
+        failures.push(`startup.phase=${String(startup.phase)}`);
       }
-      if (health.database !== "ok") {
-        failures.push(`database=${String(health.database)}`);
+      if (
+        typeof startup.attempt !== "number" ||
+        !Number.isInteger(startup.attempt) ||
+        startup.attempt < 0
+      ) {
+        failures.push(`startup.attempt=${String(startup.attempt)}`);
       }
-      const rawFailedPlugins = health.plugins?.failed ?? 0;
-      const failedPlugins =
-        typeof rawFailedPlugins === "number" ? rawFailedPlugins : Number(rawFailedPlugins);
-      if (!Number.isFinite(failedPlugins)) {
-        failures.push(`plugins.failed=${String(rawFailedPlugins)}`);
+      if (startup.lastError !== undefined && typeof startup.lastError !== "string") {
+        failures.push(`startup.lastError=${String(startup.lastError)}`);
+      } else if (typeof startup.lastError === "string" && startup.lastError.trim()) {
+        failures.push(`startup.lastError=${startup.lastError.trim()}`);
+      }
+    };
+
+    const statusResponse = await fetchRuntimeJson(statusEndpoint, "/api/status");
+    if (!statusResponse.success) return statusResponse;
+    const status = statusResponse.body as AgentRuntimeStatusPayload;
+    const statusFailures: string[] = [];
+    if (status.state !== "running") {
+      statusFailures.push(`state=${String(status.state)}`);
+    }
+    if (status.canRespond !== true) {
+      statusFailures.push(`canRespond=${String(status.canRespond)}`);
+    }
+    appendStartupFailures(statusFailures, status.startup);
+    if (statusFailures.length > 0) {
+      return {
+        success: false,
+        error: `/api/status not ready (${statusFailures.join(", ")})`,
+      };
+    }
+
+    const healthResponse = await fetchRuntimeJson(healthEndpoint, "/api/health");
+    if (!healthResponse.success) return healthResponse;
+    const health = healthResponse.body as AgentRuntimeHealthPayload;
+    const failures: string[] = [];
+    if (health.ready !== true) {
+      failures.push(`ready=${String(health.ready)}`);
+    }
+    if (health.canRespond !== true) {
+      failures.push(`canRespond=${String(health.canRespond)}`);
+    }
+    if (health.runtime !== "ok") {
+      failures.push(`runtime=${String(health.runtime)}`);
+    }
+    if (health.database !== "ok") {
+      failures.push(`database=${String(health.database)}`);
+    }
+
+    if (!health.plugins || typeof health.plugins !== "object" || Array.isArray(health.plugins)) {
+      failures.push("plugins=missing");
+    } else {
+      const loadedPlugins = health.plugins.loaded;
+      if (
+        typeof loadedPlugins !== "number" ||
+        !Number.isInteger(loadedPlugins) ||
+        loadedPlugins <= 0
+      ) {
+        failures.push(`plugins.loaded=${String(loadedPlugins)}`);
+      }
+      const failedPlugins = health.plugins.failed;
+      if (
+        typeof failedPlugins !== "number" ||
+        !Number.isInteger(failedPlugins) ||
+        failedPlugins < 0
+      ) {
+        failures.push(`plugins.failed=${String(failedPlugins)}`);
       } else if (failedPlugins > 0) {
         failures.push(`plugins.failed=${failedPlugins}`);
       }
-      const startupError =
-        typeof health.startup?.lastError === "string" && health.startup.lastError.trim()
-          ? health.startup.lastError.trim()
-          : null;
-      if (startupError) {
-        failures.push(`startup.lastError=${startupError}`);
-      }
+    }
 
-      if (failures.length > 0) {
-        return {
-          success: false,
-          error: `/api/health not ready (${failures.join(", ")})`,
-        };
-      }
-      return { success: true };
-    } catch (error) {
+    appendStartupFailures(failures, health.startup);
+    if (failures.length > 0) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : String(error),
+        error: `/api/health not ready (${failures.join(", ")})`,
       };
     }
+    return { success: true };
   }
 
   /**
@@ -7277,6 +7406,7 @@ export class ElizaSandboxService {
     targetImage: string;
     targetDigest: string;
     onCutoverInTx: AdminCanaryImageExecutionPolicy["onCutoverInTx"];
+    onConvergedInTx: AdminCanaryImageExecutionPolicy["onConvergedInTx"];
   }): Promise<ImageSwapResult> {
     assertCanonicalSourceImage(params.sourceImage, "sourceImage");
     assertSha256Digest(params.sourceDigest, "sourceDigest");
@@ -7298,6 +7428,7 @@ export class ElizaSandboxService {
         targetImage: params.targetImage,
         targetDigest: params.targetDigest,
         onCutoverInTx: params.onCutoverInTx,
+        onConvergedInTx: params.onConvergedInTx,
       },
     );
   }
@@ -7548,7 +7679,7 @@ export class ElizaSandboxService {
       );
     }
 
-    const runtimeHealth = await this.verifyUpgradeRuntimeHealth({
+    const runtimeHealth = await this.verifyReplacementRuntimeHealth({
       agent,
       bridgeUrl: blueHandle.bridgeUrl,
     });
@@ -7700,7 +7831,22 @@ export class ElizaSandboxService {
     }
 
     try {
-      await this.retirePersistedReplacementCleanup(agentId, orgId);
+      await this.retirePersistedReplacementCleanup(
+        agentId,
+        orgId,
+        adminCanary
+          ? {
+              targetOwnerUserId: adminCanary.targetOwnerUserId,
+              targetImage: adminCanary.targetImage,
+              targetDigest: adminCanary.targetDigest,
+              newNodeId: blueMeta.nodeId,
+              newContainerName: blueMeta.containerName,
+              oldNodeId,
+              oldContainerName,
+            }
+          : undefined,
+        adminCanary?.onConvergedInTx,
+      );
     } catch (err) {
       logger.warn("[agent-sandbox] Old container cleanup remains pending after upgrade cutover", {
         agentId,
@@ -7766,6 +7912,7 @@ export class ElizaSandboxService {
     targetImage: string;
     targetDigest: string;
     onCutoverInTx: AdminCanaryImageExecutionPolicy["onCutoverInTx"];
+    onConvergedInTx: AdminCanaryImageExecutionPolicy["onConvergedInTx"];
   }): Promise<ImageSwapResult> {
     assertDemoSourceImage(params.sourceImage, "sourceImage");
     const source = parseAdminCanaryDemoImage(params.sourceImage);
@@ -7787,6 +7934,7 @@ export class ElizaSandboxService {
         targetImage: params.targetImage,
         targetDigest: params.targetDigest,
         onCutoverInTx: params.onCutoverInTx,
+        onConvergedInTx: params.onConvergedInTx,
       },
     );
   }
@@ -8018,6 +8166,16 @@ export class ElizaSandboxService {
       );
     }
 
+    const preRestoreRuntimeHealth = await this.verifyReplacementRuntimeHealth({
+      agent,
+      bridgeUrl: blueHandle.bridgeUrl,
+    });
+    if (!preRestoreRuntimeHealth.success) {
+      return await failBeforeRollbackCutover(
+        `Blue runtime readiness gate failed before state restore: ${preRestoreRuntimeHealth.error}`,
+      );
+    }
+
     // Restore the pre-upgrade state onto blue BEFORE cutover. A rollback that
     // cannot replay the verified restore point is not a rollback, so fail
     // loudly and leave the current image serving traffic.
@@ -8047,6 +8205,16 @@ export class ElizaSandboxService {
     } else {
       return await failBeforeRollbackCutover(
         "No pre-upgrade snapshot found; refusing rollback without restore point",
+      );
+    }
+
+    const runtimeHealth = await this.verifyReplacementRuntimeHealth({
+      agent,
+      bridgeUrl: blueHandle.bridgeUrl,
+    });
+    if (!runtimeHealth.success) {
+      return await failBeforeRollbackCutover(
+        `Blue runtime readiness gate failed after state restore: ${runtimeHealth.error}`,
       );
     }
 
@@ -8174,7 +8342,22 @@ export class ElizaSandboxService {
     }
 
     try {
-      await this.retirePersistedReplacementCleanup(agentId, orgId);
+      await this.retirePersistedReplacementCleanup(
+        agentId,
+        orgId,
+        adminCanary
+          ? {
+              targetOwnerUserId: adminCanary.targetOwnerUserId,
+              targetImage: adminCanary.targetImage,
+              targetDigest: adminCanary.targetDigest,
+              newNodeId: blueMeta.nodeId,
+              newContainerName: blueMeta.containerName,
+              oldNodeId,
+              oldContainerName,
+            }
+          : undefined,
+        adminCanary?.onConvergedInTx,
+      );
     } catch (err) {
       logger.warn("[agent-sandbox] Old container cleanup remains pending after rollback cutover", {
         agentId,
@@ -8763,23 +8946,62 @@ export class ElizaSandboxService {
    * release its node allocation and fence. A changed identity invalidates the
    * remote proof, so retries cannot decrement another live agent's slot.
    */
+  private assertAdminCanaryCleanupExpectation(
+    current: AgentSandbox,
+    locator: ReplacementCleanupLocator | null,
+    expectation: AdminCanaryCleanupExpectation,
+  ): void {
+    if (
+      current.status !== "running" ||
+      current.deleted_at !== null ||
+      current.user_id !== expectation.targetOwnerUserId ||
+      current.docker_image !== expectation.targetImage ||
+      current.image_digest !== expectation.targetDigest ||
+      current.node_id !== expectation.newNodeId ||
+      current.container_name !== expectation.newContainerName
+    ) {
+      throw new AdminCanaryCleanupExpectationError(
+        "Admin canary serving generation changed before cleanup convergence",
+      );
+    }
+    if (
+      locator &&
+      (locator.nodeId !== expectation.oldNodeId ||
+        locator.containerName !== expectation.oldContainerName)
+    ) {
+      throw new AdminCanaryCleanupExpectationError(
+        "Admin canary cleanup locator does not match the committed audit",
+      );
+    }
+  }
+
   private async retirePersistedReplacementCleanup(
     agentId: string,
     orgId: string,
-  ): Promise<boolean> {
+    expectation?: AdminCanaryCleanupExpectation,
+    onConvergedInTx?: (tx: DbTransaction) => Promise<void>,
+  ): Promise<"missing" | "clean" | "retired"> {
+    const snapshot = await dbWrite.transaction(async (tx) => {
+      await this.lockLifecycle(tx, agentId, orgId);
+      const current = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
+      if (!current) return { state: "missing" as const };
+      const locator = this.getReplacementCleanupLocator(current);
+      if (expectation) {
+        this.assertAdminCanaryCleanupExpectation(current, locator, expectation);
+      }
+      if (locator) return { state: "pending" as const, locator };
+      if (onConvergedInTx) await onConvergedInTx(tx);
+      return { state: "clean" as const };
+    });
+    if (snapshot.state !== "pending") return snapshot.state;
+
     const provider = await this.getProvider();
     if (!provider.stopOnSpecificNodeForReplacement) {
       throw new Error("Sandbox provider cannot prove a persisted replacement absent");
     }
     const stopOnSpecificNodeForReplacement =
       provider.stopOnSpecificNodeForReplacement.bind(provider);
-    const locator = await dbWrite.transaction(async (tx) => {
-      await this.lockLifecycle(tx, agentId, orgId);
-      const current = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
-      if (!current) return null;
-      return this.getReplacementCleanupLocator(current);
-    });
-    if (!locator) return false;
+    const { locator } = snapshot;
 
     await stopOnSpecificNodeForReplacement(
       locator.nodeId,
@@ -8798,8 +9020,17 @@ export class ElizaSandboxService {
     return dbWrite.transaction(async (tx) => {
       await this.lockLifecycle(tx, agentId, orgId);
       const current = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
-      if (!current) return false;
+      if (!current) {
+        throw expectation
+          ? new AdminCanaryCleanupExpectationError(
+              "Admin canary serving generation disappeared after cleanup proof",
+            )
+          : new Error("Agent disappeared after replacement cleanup proof");
+      }
       const currentLocator = this.getReplacementCleanupLocator(current);
+      if (expectation) {
+        this.assertAdminCanaryCleanupExpectation(current, currentLocator, expectation);
+      }
       if (!currentLocator || !this.replacementCleanupLocatorsEqual(currentLocator, locator)) {
         throw new Error("Replacement cleanup fence changed after remote absence proof");
       }
@@ -8850,7 +9081,8 @@ export class ElizaSandboxService {
           throw new Error(`Replacement cleanup node ${locator.nodeId} disappeared before release`);
         }
       }
-      return true;
+      if (onConvergedInTx) await onConvergedInTx(tx);
+      return "retired" as const;
     });
   }
 
@@ -8875,7 +9107,9 @@ export class ElizaSandboxService {
     let failed = 0;
     for (const row of pending.rows) {
       try {
-        if (await this.retirePersistedReplacementCleanup(row.id, row.organization_id)) {
+        if (
+          (await this.retirePersistedReplacementCleanup(row.id, row.organization_id)) === "retired"
+        ) {
           retired += 1;
         }
       } catch (error) {
@@ -8897,11 +9131,25 @@ export class ElizaSandboxService {
    * this after a cutover audit was committed but the old placement could not be
    * proven absent during the original worker execution.
    */
-  async convergeReplacementCleanupFence(agentId: string, orgId: string): Promise<void> {
-    const current = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
-    if (!current) throw new Error("Agent not found while converging replacement cleanup");
-    if (!this.getReplacementCleanupLocator(current)) return;
-    await this.retirePersistedReplacementCleanup(agentId, orgId);
+  async convergeReplacementCleanupFence(
+    agentId: string,
+    orgId: string,
+    expectation?: AdminCanaryCleanupExpectation,
+    onConvergedInTx?: (tx: DbTransaction) => Promise<void>,
+  ): Promise<void> {
+    const outcome = await this.retirePersistedReplacementCleanup(
+      agentId,
+      orgId,
+      expectation,
+      onConvergedInTx,
+    );
+    if (outcome === "missing") {
+      throw expectation
+        ? new AdminCanaryCleanupExpectationError(
+            "Admin canary serving generation is missing during cleanup convergence",
+          )
+        : new Error("Agent not found while converging replacement cleanup");
+    }
   }
 
   private async lockLifecycle(tx: LifecycleTx, agentId: string, orgId: string): Promise<void> {

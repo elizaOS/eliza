@@ -30,7 +30,10 @@ import { userCharacters } from "../../db/schemas/user-characters";
 import { users } from "../../db/schemas/users";
 import { ApiError } from "../api/cloud-worker-errors";
 import { adminAgentImageRolloutService } from "./admin-agent-image-rollout";
-import { type AdminCanaryTargetExpectation } from "./admin-canary-image";
+import {
+  type AdminCanaryImageJobData,
+  type AdminCanaryTargetExpectation,
+} from "./admin-canary-image";
 import { apiKeysService } from "./api-keys";
 import { type DockerSandboxMetadata, DockerSandboxProvider } from "./docker-sandbox-provider";
 import {
@@ -190,6 +193,43 @@ async function completeUpgradeJob(job: Job): Promise<void> {
       previous_image_digest: data.sourceDigest,
     })
     .where(eq(agentSandboxes.id, data.agentId));
+}
+
+function pendingCutoverAuditFor(
+  job: Job,
+  data: AdminCanaryImageJobData,
+  params: {
+    startedAt: Date;
+    cutoverAt: Date;
+    oldNodeId?: string;
+    oldContainerName?: string;
+    newNodeId?: string;
+    newContainerName?: string;
+  },
+) {
+  return {
+    success: false,
+    cleanupPending: true,
+    cutoverAt: params.cutoverAt.toISOString(),
+    jobId: job.id,
+    operation: data.operation,
+    rolloutId: data.rolloutId,
+    actorUserId: data.actorUserId,
+    decisionAt: data.decisionAt,
+    agentId: data.agentId,
+    organizationId: data.organizationId,
+    targetOwnerUserId: data.targetOwnerUserId,
+    sourceImage: data.sourceImage,
+    sourceDigest: data.sourceDigest,
+    targetImage: data.targetImage,
+    targetDigest: data.targetDigest,
+    startedAt: params.startedAt.toISOString(),
+    finishedAt: params.cutoverAt.toISOString(),
+    oldNodeId: params.oldNodeId ?? "node-1",
+    oldContainerName: params.oldContainerName ?? "agent-1",
+    newNodeId: params.newNodeId ?? "node-blue",
+    newContainerName: params.newContainerName ?? "agent-blue",
+  };
 }
 
 beforeAll(async () => {
@@ -620,6 +660,99 @@ describe("admin agent image rollout on primary PGlite", () => {
     ).toBe(2);
   });
 
+  test("admin canary safe-clean rejects a stale owner before its completion callback", async () => {
+    const seeded = await seedAgents(1);
+    const agentId = seeded.targets[0]!.agentId;
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        node_id: "node-blue",
+        container_name: "agent-blue",
+        docker_image: TARGET_IMAGE,
+        image_digest: TARGET_DIGEST,
+      })
+      .where(eq(agentSandboxes.id, agentId));
+
+    let completed = false;
+    const service = new ElizaSandboxService(new DockerSandboxProvider() as SandboxProvider);
+    await expect(
+      service.convergeReplacementCleanupFence(
+        agentId,
+        seeded.organizationId,
+        {
+          targetOwnerUserId: "00000000-0000-4000-8000-000000000099",
+          targetImage: TARGET_IMAGE,
+          targetDigest: TARGET_DIGEST,
+          newNodeId: "node-blue",
+          newContainerName: "agent-blue",
+          oldNodeId: "node-1",
+          oldContainerName: "agent-1",
+        },
+        async () => {
+          completed = true;
+        },
+      ),
+    ).rejects.toThrow("serving generation changed");
+    expect(completed).toBe(false);
+  });
+
+  test("admin canary cleanup rejects a locator from a later replacement generation", async () => {
+    const seeded = await seedAgents(1);
+    const agentId = seeded.targets[0]!.agentId;
+    await dbWrite.insert(dockerNodes).values({
+      node_id: "node-later",
+      hostname: "node-later.internal",
+      status: "healthy",
+      enabled: true,
+      capacity: 8,
+      allocated_count: 1,
+    });
+    await dbWrite
+      .update(agentSandboxes)
+      .set({
+        node_id: "node-blue",
+        container_name: "agent-blue",
+        docker_image: TARGET_IMAGE,
+        image_digest: TARGET_DIGEST,
+        replacement_cleanup_sandbox_id: "sandbox-later",
+        replacement_cleanup_node_id: "node-later",
+        replacement_cleanup_container_name: "agent-later",
+        replacement_cleanup_attempt_id: REPLACEMENT_ATTEMPT_ID,
+        replacement_cleanup_container_id: "sha256:container-later",
+        replacement_cleanup_allocation_counted: true,
+        replacement_cleanup_created_at: new Date("2026-07-23T13:00:00.000Z"),
+      })
+      .where(eq(agentSandboxes.id, agentId));
+
+    const provider = new DockerSandboxProvider();
+    const remoteCleanup = spyOn(provider, "stopOnSpecificNodeForReplacement").mockResolvedValue(
+      undefined,
+    );
+    const service = new ElizaSandboxService(provider as unknown as SandboxProvider);
+    await expect(
+      service.convergeReplacementCleanupFence(agentId, seeded.organizationId, {
+        targetOwnerUserId: seeded.actorUserId,
+        targetImage: TARGET_IMAGE,
+        targetDigest: TARGET_DIGEST,
+        newNodeId: "node-blue",
+        newContainerName: "agent-blue",
+        oldNodeId: "node-1",
+        oldContainerName: "agent-1",
+      }),
+    ).rejects.toThrow("locator does not match");
+    expect(remoteCleanup).not.toHaveBeenCalled();
+    expect(
+      await agentSandboxesRepository.findByIdAndOrg(agentId, seeded.organizationId),
+    ).toMatchObject({
+      replacement_cleanup_node_id: "node-later",
+      replacement_cleanup_container_name: "agent-later",
+    });
+    expect(
+      (await dbWrite.select().from(dockerNodes).where(eq(dockerNodes.node_id, "node-later")))[0]
+        ?.allocated_count,
+    ).toBe(1);
+  });
+
   test("blue-green cutover transfers only old-primary identity and retains new capacity", async () => {
     const seeded = await seedAgents(1);
     const agentId = seeded.targets[0]!.agentId;
@@ -628,6 +761,7 @@ describe("admin agent image rollout on primary PGlite", () => {
       .set({
         docker_image: SOURCE_IMAGE,
         image_digest: SOURCE_DIGEST,
+        environment_vars: { ELIZA_API_TOKEN: "agent-token" },
       })
       .where(eq(agentSandboxes.id, agentId));
     await dbWrite.insert(dockerNodes).values([
@@ -691,16 +825,31 @@ describe("admin agent image rollout on primary PGlite", () => {
     const service = new ElizaSandboxService(provider as unknown as SandboxProvider);
     const snapshot = spyOn(service, "snapshot").mockResolvedValue({ success: true });
     const originalFetch = globalThis.fetch;
-    globalThis.fetch = (async () =>
-      new Response(
-        JSON.stringify({
-          ready: true,
-          runtime: "ok",
-          database: "ok",
-          plugins: { failed: 0 },
-        }),
+    const runtimeRequests: Array<{ url: string; headers: Headers }> = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url =
+        typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      runtimeRequests.push({ url, headers: new Headers(init?.headers) });
+      return new Response(
+        JSON.stringify(
+          url.endsWith("/api/status")
+            ? {
+                state: "running",
+                canRespond: true,
+                startup: { phase: "running", attempt: 0 },
+              }
+            : {
+                ready: true,
+                canRespond: true,
+                runtime: "ok",
+                database: "ok",
+                plugins: { loaded: 18, failed: 0 },
+                startup: { phase: "running", attempt: 0 },
+              },
+        ),
         { status: 200, headers: { "content-type": "application/json" } },
-      )) as typeof fetch;
+      );
+    }) as typeof fetch;
     try {
       const result = await service.executeUpgrade(
         agentId,
@@ -717,6 +866,13 @@ describe("admin agent image rollout on primary PGlite", () => {
       expect(create).toHaveBeenCalledTimes(1);
       expect(snapshot).toHaveBeenCalledTimes(1);
       expect(cleanup).toHaveBeenCalledTimes(1);
+      expect(runtimeRequests.map((request) => request.url)).toEqual([
+        "https://agent-new.example/api/status",
+        "https://agent-new.example/api/health",
+      ]);
+      for (const request of runtimeRequests) {
+        expect(request.headers.get("authorization")).toBe("Bearer agent-token");
+      }
       const cutover = await agentSandboxesRepository.findByIdAndOrg(agentId, seeded.organizationId);
       expect(cutover).toMatchObject({
         sandbox_id: "agent-new",
@@ -766,6 +922,7 @@ describe("admin agent image rollout on primary PGlite", () => {
         image_digest: TARGET_DIGEST,
         previous_docker_image: SOURCE_IMAGE,
         previous_image_digest: SOURCE_DIGEST,
+        environment_vars: { ELIZA_API_TOKEN: "agent-token" },
       })
       .where(eq(agentSandboxes.id, agentId));
     await dbWrite.insert(dockerNodes).values([
@@ -848,6 +1005,32 @@ describe("admin agent image rollout on primary PGlite", () => {
       },
       "pushState",
     ).mockResolvedValue(undefined);
+    const originalFetch = globalThis.fetch;
+    const runtimeRequests: Array<{ url: string; headers: Headers }> = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url =
+        typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      runtimeRequests.push({ url, headers: new Headers(init?.headers) });
+      return new Response(
+        JSON.stringify(
+          url.endsWith("/api/status")
+            ? {
+                state: "running",
+                canRespond: true,
+                startup: { phase: "running", attempt: 0 },
+              }
+            : {
+                ready: true,
+                canRespond: true,
+                runtime: "ok",
+                database: "ok",
+                plugins: { loaded: 18, failed: 0 },
+                startup: { phase: "running", attempt: 0 },
+              },
+        ),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }) as typeof fetch;
     try {
       const result = await service.executeDowngrade(
         agentId,
@@ -865,6 +1048,15 @@ describe("admin agent image rollout on primary PGlite", () => {
       expect(create).toHaveBeenCalledTimes(1);
       expect(restoreSpy).toHaveBeenCalledTimes(1);
       expect(cleanup).toHaveBeenCalledTimes(1);
+      expect(runtimeRequests.map((request) => request.url)).toEqual([
+        "https://agent-rollback.example/api/status",
+        "https://agent-rollback.example/api/health",
+        "https://agent-rollback.example/api/status",
+        "https://agent-rollback.example/api/health",
+      ]);
+      for (const request of runtimeRequests) {
+        expect(request.headers.get("authorization")).toBe("Bearer agent-token");
+      }
       expect(
         await agentSandboxesRepository.findByIdAndOrg(agentId, seeded.organizationId),
       ).toMatchObject({
@@ -898,6 +1090,7 @@ describe("admin agent image rollout on primary PGlite", () => {
         "node-rollback": 1,
       });
     } finally {
+      globalThis.fetch = originalFetch;
       backupSpy.mockRestore();
       reconstructSpy.mockRestore();
       restoreSpy.mockRestore();
@@ -1931,6 +2124,615 @@ describe("admin agent image rollout on primary PGlite", () => {
     });
   });
 
+  test("a post-cutover worker restart resumes cleanup, completes the audit, and stays rollback-readable", async () => {
+    const seeded = await seedAgents(1);
+    await dbWrite.insert(dockerNodes).values({
+      node_id: "node-1",
+      hostname: "node-1.internal",
+      status: "healthy",
+      enabled: true,
+      capacity: 8,
+      allocated_count: 1,
+    });
+    await adminAgentImageRolloutService.previewOrEnqueue(
+      {
+        operation: "upgrade",
+        dryRun: false,
+        targetImage: TARGET_IMAGE,
+        targets: seeded.targets,
+      },
+      seeded.actorUserId,
+    );
+    const [claimed] = await jobsRepository.claimPendingJobsWithinSharedRunningLimit({
+      type: JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
+      sharedTypes: [JOB_TYPES.AGENT_UPGRADE, JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE],
+      maxRunning: 3,
+      limit: 1,
+      organizationId: seeded.organizationId,
+    });
+    if (!claimed) throw new Error("expected claimed canary job");
+    const data = readAdminCanaryImageJobData(claimed);
+    const startedAt = new Date("2026-07-23T00:00:00.000Z");
+    const cutoverAt = new Date("2026-07-23T00:01:00.000Z");
+    const pendingCutover = {
+      success: false,
+      cleanupPending: true,
+      cutoverAt: cutoverAt.toISOString(),
+      jobId: claimed.id,
+      operation: data.operation,
+      rolloutId: data.rolloutId,
+      actorUserId: data.actorUserId,
+      decisionAt: data.decisionAt,
+      agentId: data.agentId,
+      organizationId: data.organizationId,
+      targetOwnerUserId: data.targetOwnerUserId,
+      sourceImage: data.sourceImage,
+      sourceDigest: data.sourceDigest,
+      targetImage: data.targetImage,
+      targetDigest: data.targetDigest,
+      startedAt: startedAt.toISOString(),
+      finishedAt: cutoverAt.toISOString(),
+      oldNodeId: "node-1",
+      oldContainerName: "agent-1",
+      newNodeId: "node-blue",
+      newContainerName: "agent-blue",
+    };
+    await dbWrite.transaction(async (tx) => {
+      await tx
+        .update(agentSandboxes)
+        .set({
+          sandbox_id: "sandbox-blue",
+          node_id: "node-blue",
+          container_name: "agent-blue",
+          docker_image: data.targetImage,
+          image_digest: data.targetDigest,
+          previous_docker_image: data.sourceImage,
+          previous_image_digest: data.sourceDigest,
+          replacement_cleanup_sandbox_id: "sandbox-1",
+          replacement_cleanup_node_id: "node-1",
+          replacement_cleanup_container_name: "agent-1",
+          replacement_cleanup_attempt_id: REPLACEMENT_ATTEMPT_ID,
+          replacement_cleanup_container_id: "sha256:container-old",
+          replacement_cleanup_vpn_node_id: "vpn-old",
+          replacement_cleanup_vpn_node_name: "agent-old-vpn",
+          replacement_cleanup_preserved_vpn_node_id: null,
+          replacement_cleanup_vpn_registration_started_at: new Date(REPLACEMENT_STARTED_AT),
+          replacement_cleanup_allocation_counted: true,
+          replacement_cleanup_created_at: cutoverAt,
+        })
+        .where(eq(agentSandboxes.id, data.agentId));
+      await tx
+        .update(jobs)
+        .set({
+          result: pendingCutover,
+          result_storage: "inline",
+          result_key: null,
+          error: null,
+          error_storage: "inline",
+          error_key: null,
+          started_at: startedAt,
+          completed_at: null,
+          updated_at: cutoverAt,
+        })
+        .where(eq(jobs.id, claimed.id));
+    });
+
+    expect(
+      await jobsRepository.recoverInProgressJobsStartedBefore({
+        type: JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
+        organizationId: seeded.organizationId,
+        startedBefore: new Date("2026-07-23T00:02:00.000Z"),
+      }),
+    ).toBe(1);
+    expect(await jobsRepository.findByIdForWrite(claimed.id)).toMatchObject({
+      status: "pending",
+      attempts: 0,
+      result: pendingCutover,
+      error: expect.stringContaining("without consuming a terminal attempt"),
+    });
+
+    const cleanupProvider = new DockerSandboxProvider();
+    const remoteCleanup = spyOn(
+      cleanupProvider,
+      "stopOnSpecificNodeForReplacement",
+    ).mockImplementation(async () => {
+      expect(await jobsRepository.findByIdForWrite(claimed.id)).toMatchObject({
+        status: "in_progress",
+        result: { cleanupPending: true },
+      });
+      expect(
+        await agentSandboxesRepository.findByIdAndOrg(data.agentId, data.organizationId),
+      ).toMatchObject({
+        replacement_cleanup_sandbox_id: "sandbox-1",
+        replacement_cleanup_allocation_counted: true,
+      });
+    });
+    const cleanupService = new ElizaSandboxService(cleanupProvider as unknown as SandboxProvider);
+    const converge = spyOn(
+      elizaSandboxService,
+      "convergeReplacementCleanupFence",
+    ).mockImplementation((agentId, organizationId, expectation, onConvergedInTx) =>
+      cleanupService.convergeReplacementCleanupFence(
+        agentId,
+        organizationId,
+        expectation,
+        onConvergedInTx,
+      ),
+    );
+    const duplicateExecution = spyOn(
+      elizaSandboxService,
+      "executeAdminCanaryUpgrade",
+    ).mockImplementation(async () => {
+      throw new Error("post-cutover recovery must not execute a second image swap");
+    });
+    try {
+      const processed = await provisioningJobService.processPendingJobs(1, {
+        jobTypes: [JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE],
+      });
+      expect(processed).toMatchObject({
+        claimed: 1,
+        succeeded: 1,
+        retried: 0,
+        failed: 0,
+      });
+      expect(converge).toHaveBeenCalledWith(
+        data.agentId,
+        data.organizationId,
+        expect.objectContaining({
+          targetOwnerUserId: data.targetOwnerUserId,
+          targetDigest: data.targetDigest,
+          oldNodeId: "node-1",
+          newNodeId: "node-blue",
+        }),
+        expect.any(Function),
+      );
+      expect(remoteCleanup).toHaveBeenCalledWith(
+        "node-1",
+        "agent-1",
+        "vpn-old",
+        expect.objectContaining({
+          replacementAttemptId: REPLACEMENT_ATTEMPT_ID,
+          containerId: "sha256:container-old",
+          allocationCounted: true,
+        }),
+      );
+      expect(duplicateExecution).not.toHaveBeenCalled();
+      expect(
+        await agentSandboxesRepository.findByIdAndOrg(data.agentId, data.organizationId),
+      ).toMatchObject({
+        replacement_cleanup_sandbox_id: null,
+        replacement_cleanup_node_id: null,
+        replacement_cleanup_container_name: null,
+        replacement_cleanup_attempt_id: null,
+        replacement_cleanup_container_id: null,
+        replacement_cleanup_allocation_counted: null,
+      });
+      expect(
+        (await dbWrite.select().from(dockerNodes).where(eq(dockerNodes.node_id, "node-1")))[0]
+          ?.allocated_count,
+      ).toBe(0);
+      expect(await jobsRepository.findByIdForWrite(claimed.id)).toMatchObject({
+        status: "completed",
+        attempts: 0,
+        error: null,
+        result: {
+          success: true,
+          cleanupPending: false,
+          jobId: claimed.id,
+          operation: "upgrade",
+          rolloutId: data.rolloutId,
+          agentId: data.agentId,
+          sourceImage: SOURCE_IMAGE,
+          sourceDigest: SOURCE_DIGEST,
+          targetImage: TARGET_IMAGE,
+          targetDigest: TARGET_DIGEST,
+        },
+      });
+
+      const rollback = await adminAgentImageRolloutService.previewOrEnqueue(
+        {
+          operation: "rollback",
+          dryRun: true,
+          source: { jobId: claimed.id },
+        },
+        seeded.actorUserId,
+      );
+      expect(rollback.targets).toEqual([
+        expect.objectContaining({
+          operation: "rollback",
+          agentId: data.agentId,
+          sourceImage: TARGET_IMAGE,
+          sourceDigest: TARGET_DIGEST,
+          targetImage: SOURCE_IMAGE,
+          targetDigest: SOURCE_DIGEST,
+          sourceRolloutId: data.rolloutId,
+          sourceJobId: claimed.id,
+        }),
+      ]);
+    } finally {
+      converge.mockRestore();
+      remoteCleanup.mockRestore();
+      duplicateExecution.mockRestore();
+    }
+  });
+
+  test("post-cutover cleanup failure requeues immediately, then a scheduled claim converges exactly once", async () => {
+    const seeded = await seedAgents(1);
+    await dbWrite.insert(dockerNodes).values({
+      node_id: "node-1",
+      hostname: "node-1.internal",
+      status: "healthy",
+      enabled: true,
+      capacity: 8,
+      allocated_count: 1,
+    });
+    await adminAgentImageRolloutService.previewOrEnqueue(
+      {
+        operation: "upgrade",
+        dryRun: false,
+        targetImage: TARGET_IMAGE,
+        targets: seeded.targets,
+      },
+      seeded.actorUserId,
+    );
+
+    const execution = spyOn(elizaSandboxService, "executeAdminCanaryUpgrade").mockImplementation(
+      async (params) => {
+        await dbWrite.transaction(async (tx) => {
+          await tx
+            .update(agentSandboxes)
+            .set({
+              sandbox_id: "sandbox-blue",
+              node_id: "node-blue",
+              container_name: "agent-blue",
+              docker_image: params.targetImage,
+              image_digest: params.targetDigest,
+              previous_docker_image: params.sourceImage,
+              previous_image_digest: params.sourceDigest,
+              replacement_cleanup_sandbox_id: "sandbox-1",
+              replacement_cleanup_node_id: "node-1",
+              replacement_cleanup_container_name: "agent-1",
+              replacement_cleanup_attempt_id: REPLACEMENT_ATTEMPT_ID,
+              replacement_cleanup_container_id: "sha256:container-old",
+              replacement_cleanup_vpn_node_id: "vpn-old",
+              replacement_cleanup_vpn_node_name: "agent-old-vpn",
+              replacement_cleanup_preserved_vpn_node_id: null,
+              replacement_cleanup_vpn_registration_started_at: new Date(REPLACEMENT_STARTED_AT),
+              replacement_cleanup_allocation_counted: true,
+              replacement_cleanup_created_at: new Date(),
+            })
+            .where(eq(agentSandboxes.id, params.agentId));
+          await params.onCutoverInTx(tx, {
+            oldNodeId: "node-1",
+            oldContainerName: "agent-1",
+            newNodeId: "node-blue",
+            newContainerName: "agent-blue",
+            newDigest: params.targetDigest,
+          });
+        });
+        return {
+          success: true,
+          cleanupPending: true,
+          oldNodeId: "node-1",
+          oldContainerName: "agent-1",
+          newNodeId: "node-blue",
+          newContainerName: "agent-blue",
+          newDigest: params.targetDigest,
+          error: "old placement cleanup transport unavailable",
+        };
+      },
+    );
+
+    try {
+      const first = await provisioningJobService.processPendingJobs(1, {
+        jobTypes: [JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE],
+      });
+      expect(first).toMatchObject({ claimed: 1, succeeded: 0, retried: 1, failed: 0 });
+      expect(execution).toHaveBeenCalledTimes(1);
+
+      const [pending] = await dbWrite
+        .select()
+        .from(jobs)
+        .where(eq(jobs.type, JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE));
+      if (!pending) throw new Error("expected requeued canary job");
+      expect(pending).toMatchObject({
+        status: "pending",
+        attempts: 0,
+        result: {
+          success: false,
+          cleanupPending: true,
+          oldNodeId: "node-1",
+          newNodeId: "node-blue",
+        },
+        error: "old placement cleanup transport unavailable",
+      });
+      await dbWrite
+        .update(jobs)
+        .set({ scheduled_for: new Date(0) })
+        .where(eq(jobs.id, pending.id));
+
+      const cleanupProvider = new DockerSandboxProvider();
+      const remoteCleanup = spyOn(
+        cleanupProvider,
+        "stopOnSpecificNodeForReplacement",
+      ).mockResolvedValue(undefined);
+      const cleanupService = new ElizaSandboxService(cleanupProvider as unknown as SandboxProvider);
+      const converge = spyOn(
+        elizaSandboxService,
+        "convergeReplacementCleanupFence",
+      ).mockImplementation((agentId, organizationId, expectation, onConvergedInTx) =>
+        cleanupService.convergeReplacementCleanupFence(
+          agentId,
+          organizationId,
+          expectation,
+          onConvergedInTx,
+        ),
+      );
+      try {
+        const second = await provisioningJobService.processPendingJobs(1, {
+          jobTypes: [JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE],
+        });
+        expect(second).toMatchObject({ claimed: 1, succeeded: 1, retried: 0, failed: 0 });
+        expect(execution).toHaveBeenCalledTimes(1);
+        expect(remoteCleanup).toHaveBeenCalledTimes(1);
+        expect(await jobsRepository.findByIdForWrite(pending.id)).toMatchObject({
+          status: "completed",
+          attempts: 0,
+          error: null,
+          result: {
+            success: true,
+            cleanupPending: false,
+            oldNodeId: "node-1",
+            newNodeId: "node-blue",
+          },
+        });
+        expect(
+          await agentSandboxesRepository.findByIdAndOrg(
+            seeded.targets[0]!.agentId,
+            seeded.organizationId,
+          ),
+        ).toMatchObject({
+          replacement_cleanup_sandbox_id: null,
+          replacement_cleanup_node_id: null,
+          replacement_cleanup_container_name: null,
+        });
+        expect(
+          (await dbWrite.select().from(dockerNodes).where(eq(dockerNodes.node_id, "node-1")))[0]
+            ?.allocated_count,
+        ).toBe(0);
+      } finally {
+        converge.mockRestore();
+        remoteCleanup.mockRestore();
+      }
+    } finally {
+      execution.mockRestore();
+    }
+  });
+
+  test("an already-cleaned cutover completes only while the exact serving generation remains active", async () => {
+    const seeded = await seedAgents(1);
+    await adminAgentImageRolloutService.previewOrEnqueue(
+      {
+        operation: "upgrade",
+        dryRun: false,
+        targetImage: TARGET_IMAGE,
+        targets: seeded.targets,
+      },
+      seeded.actorUserId,
+    );
+    const [claimed] = await jobsRepository.claimPendingJobsWithinSharedRunningLimit({
+      type: JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
+      sharedTypes: [JOB_TYPES.AGENT_UPGRADE, JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE],
+      maxRunning: 3,
+      limit: 1,
+      organizationId: seeded.organizationId,
+    });
+    if (!claimed) throw new Error("expected claimed canary job");
+    const data = readAdminCanaryImageJobData(claimed);
+    const startedAt = new Date("2026-07-23T02:00:00.000Z");
+    const cutoverAt = new Date("2026-07-23T02:01:00.000Z");
+    const pendingCutover = pendingCutoverAuditFor(claimed, data, {
+      startedAt,
+      cutoverAt,
+    });
+    await dbWrite.transaction(async (tx) => {
+      await tx
+        .update(agentSandboxes)
+        .set({
+          sandbox_id: "sandbox-blue",
+          node_id: "node-blue",
+          container_name: "agent-blue",
+          docker_image: data.targetImage,
+          image_digest: data.targetDigest,
+          previous_docker_image: data.sourceImage,
+          previous_image_digest: data.sourceDigest,
+        })
+        .where(eq(agentSandboxes.id, data.agentId));
+      await tx
+        .update(jobs)
+        .set({
+          result: pendingCutover,
+          result_storage: "inline",
+          result_key: null,
+          started_at: startedAt,
+          completed_at: null,
+          updated_at: cutoverAt,
+        })
+        .where(eq(jobs.id, claimed.id));
+    });
+    expect(
+      await jobsRepository.recoverInProgressJobsStartedBefore({
+        type: JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
+        organizationId: seeded.organizationId,
+        startedBefore: new Date("2026-07-23T02:02:00.000Z"),
+      }),
+    ).toBe(1);
+
+    const duplicateExecution = spyOn(
+      elizaSandboxService,
+      "executeAdminCanaryUpgrade",
+    ).mockImplementation(async () => {
+      throw new Error("already-cleaned recovery must not execute a second image swap");
+    });
+    try {
+      expect(
+        await provisioningJobService.processPendingJobs(1, {
+          jobTypes: [JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE],
+        }),
+      ).toMatchObject({ claimed: 1, succeeded: 1, retried: 0, failed: 0 });
+      expect(duplicateExecution).not.toHaveBeenCalled();
+      expect(await jobsRepository.findByIdForWrite(claimed.id)).toMatchObject({
+        status: "completed",
+        attempts: 0,
+        result: {
+          success: true,
+          cleanupPending: false,
+          jobId: claimed.id,
+          targetDigest: TARGET_DIGEST,
+        },
+      });
+    } finally {
+      duplicateExecution.mockRestore();
+    }
+  });
+
+  test("a stale cutover audit cannot retire cleanup or publish success after serving generation changes", async () => {
+    const seeded = await seedAgents(1);
+    await dbWrite.insert(dockerNodes).values({
+      node_id: "node-later",
+      hostname: "node-later.internal",
+      status: "healthy",
+      enabled: true,
+      capacity: 8,
+      allocated_count: 1,
+    });
+    await adminAgentImageRolloutService.previewOrEnqueue(
+      {
+        operation: "upgrade",
+        dryRun: false,
+        targetImage: TARGET_IMAGE,
+        targets: seeded.targets,
+      },
+      seeded.actorUserId,
+    );
+    const [claimed] = await jobsRepository.claimPendingJobsWithinSharedRunningLimit({
+      type: JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
+      sharedTypes: [JOB_TYPES.AGENT_UPGRADE, JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE],
+      maxRunning: 3,
+      limit: 1,
+      organizationId: seeded.organizationId,
+    });
+    if (!claimed) throw new Error("expected claimed canary job");
+    const data = readAdminCanaryImageJobData(claimed);
+    const startedAt = new Date("2026-07-23T03:00:00.000Z");
+    const cutoverAt = new Date("2026-07-23T03:01:00.000Z");
+    const pendingCutover = pendingCutoverAuditFor(claimed, data, {
+      startedAt,
+      cutoverAt,
+    });
+    await dbWrite.transaction(async (tx) => {
+      await tx
+        .update(agentSandboxes)
+        .set({
+          sandbox_id: "sandbox-next",
+          node_id: "node-next",
+          container_name: "agent-next",
+          docker_image: data.sourceImage,
+          image_digest: data.sourceDigest,
+          previous_docker_image: data.sourceImage,
+          previous_image_digest: data.sourceDigest,
+          replacement_cleanup_sandbox_id: "sandbox-later",
+          replacement_cleanup_node_id: "node-later",
+          replacement_cleanup_container_name: "agent-later",
+          replacement_cleanup_attempt_id: REPLACEMENT_ATTEMPT_ID,
+          replacement_cleanup_container_id: "sha256:container-later",
+          replacement_cleanup_vpn_node_id: null,
+          replacement_cleanup_vpn_node_name: null,
+          replacement_cleanup_preserved_vpn_node_id: null,
+          replacement_cleanup_vpn_registration_started_at: null,
+          replacement_cleanup_allocation_counted: true,
+          replacement_cleanup_created_at: cutoverAt,
+        })
+        .where(eq(agentSandboxes.id, data.agentId));
+      await tx
+        .update(jobs)
+        .set({
+          result: pendingCutover,
+          result_storage: "inline",
+          result_key: null,
+          started_at: startedAt,
+          completed_at: null,
+          updated_at: cutoverAt,
+        })
+        .where(eq(jobs.id, claimed.id));
+    });
+    expect(
+      await jobsRepository.recoverInProgressJobsStartedBefore({
+        type: JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
+        organizationId: seeded.organizationId,
+        startedBefore: new Date("2026-07-23T03:02:00.000Z"),
+      }),
+    ).toBe(1);
+
+    const cleanupProvider = new DockerSandboxProvider();
+    const remoteCleanup = spyOn(
+      cleanupProvider,
+      "stopOnSpecificNodeForReplacement",
+    ).mockResolvedValue(undefined);
+    const cleanupService = new ElizaSandboxService(cleanupProvider as unknown as SandboxProvider);
+    const converge = spyOn(
+      elizaSandboxService,
+      "convergeReplacementCleanupFence",
+    ).mockImplementation((agentId, organizationId, expectation, onConvergedInTx) =>
+      cleanupService.convergeReplacementCleanupFence(
+        agentId,
+        organizationId,
+        expectation,
+        onConvergedInTx,
+      ),
+    );
+    const duplicateExecution = spyOn(
+      elizaSandboxService,
+      "executeAdminCanaryUpgrade",
+    ).mockImplementation(async () => {
+      throw new Error("stale recovery must not execute a second image swap");
+    });
+    try {
+      expect(
+        await provisioningJobService.processPendingJobs(1, {
+          jobTypes: [JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE],
+        }),
+      ).toMatchObject({ claimed: 1, succeeded: 0, retried: 0, failed: 1 });
+      expect(remoteCleanup).not.toHaveBeenCalled();
+      expect(duplicateExecution).not.toHaveBeenCalled();
+      expect(
+        await agentSandboxesRepository.findByIdAndOrg(data.agentId, data.organizationId),
+      ).toMatchObject({
+        replacement_cleanup_sandbox_id: "sandbox-later",
+        replacement_cleanup_node_id: "node-later",
+        replacement_cleanup_container_name: "agent-later",
+        replacement_cleanup_allocation_counted: true,
+      });
+      expect(
+        (await dbWrite.select().from(dockerNodes).where(eq(dockerNodes.node_id, "node-later")))[0]
+          ?.allocated_count,
+      ).toBe(1);
+      expect(await jobsRepository.findByIdForWrite(claimed.id)).toMatchObject({
+        status: "failed",
+        attempts: 1,
+        result: {
+          success: false,
+          jobId: claimed.id,
+          error: expect.stringContaining("serving generation changed"),
+        },
+      });
+    } finally {
+      converge.mockRestore();
+      remoteCleanup.mockRestore();
+      duplicateExecution.mockRestore();
+    }
+  });
+
   test("direct canary enqueue rejects empty and duplicate target sets without writes", async () => {
     const seeded = await seedAgents(1);
     const decisionAt = new Date("2026-07-23T00:00:00.000Z").toISOString();
@@ -2062,6 +2864,7 @@ describe("admin agent image rollout on primary PGlite", () => {
           newDigest: params.targetDigest,
         });
       });
+      await dbWrite.transaction(params.onConvergedInTx);
       return {
         success: true,
         oldNodeId: "canary-old-node",
@@ -2177,6 +2980,7 @@ describe("admin agent image rollout on primary PGlite", () => {
           newDigest: params.targetDigest,
         });
       });
+      await dbWrite.transaction(params.onConvergedInTx);
       return {
         success: true,
         oldNodeId: "canary-old-node",
@@ -2277,6 +3081,7 @@ describe("admin agent image rollout on primary PGlite", () => {
           newDigest: params.targetDigest,
         });
       });
+      await dbWrite.transaction(params.onConvergedInTx);
       return {
         success: true,
         oldNodeId: "canary-old-node",
@@ -2358,6 +3163,7 @@ describe("admin agent image rollout on primary PGlite", () => {
           newDigest: params.targetDigest,
         });
       });
+      await dbWrite.transaction(params.onConvergedInTx);
       return {
         success: true,
         oldNodeId: "canary-old-node",
@@ -2473,6 +3279,7 @@ describe("admin agent image rollout on primary PGlite", () => {
             newDigest: params.targetDigest,
           });
         });
+        await dbWrite.transaction(params.onConvergedInTx);
         return {
           success: true,
           oldNodeId: "node-old",
@@ -2763,6 +3570,7 @@ describe("admin agent image rollout on primary PGlite", () => {
             newDigest: params.targetDigest,
           });
         });
+        await dbWrite.transaction(params.onConvergedInTx);
         return {
           success: true,
           oldNodeId: "node-demo",

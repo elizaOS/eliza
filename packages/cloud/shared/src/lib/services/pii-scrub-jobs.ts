@@ -375,7 +375,7 @@ export interface PiiScrubProcessingResult {
 /** Disposition of one claimed job within a drain tick. */
 type JobDisposition =
   | { kind: "completed"; progress: PiiScrubJobProgress }
-  | { kind: "budget-exhausted"; progress: PiiScrubJobProgress };
+  | { kind: "budget-exhausted"; progress: PiiScrubJobProgress; retrySnapshot: Job };
 
 /**
  * Claim and execute pending `pii_scrub` jobs. Safe to run concurrently from
@@ -434,17 +434,24 @@ export async function processPendingPiiScrubJobs(
         // Not a failure: the finished items are already marker-protected, so
         // requeue WITHOUT consuming the retry budget and let the next tick
         // resume from the markers.
-        await jobsRepository.retryLaterWithoutIncrementingAttempts(
-          job.id,
+        const requeued = await jobsRepository.retryLaterWithoutIncrementingAttempts(
+          disposition.retrySnapshot,
           "Drain budget exhausted mid-batch; resuming from done-markers next tick",
           PII_SCRUB_BUDGET_REQUEUE_DELAY_MS,
         );
-        result.requeued++;
-        logger.info(`${LOG} Requeued pii_scrub job on drain budget (no attempt burned)`, {
-          jobId: job.id,
-          orgId: job.organization_id,
-          progress: disposition.progress,
-        });
+        if (requeued) {
+          result.requeued++;
+          logger.info(`${LOG} Requeued pii_scrub job on drain budget (no attempt burned)`, {
+            jobId: job.id,
+            orgId: job.organization_id,
+            progress: disposition.progress,
+          });
+        } else {
+          logger.info(`${LOG} Drain-budget requeue lost its exact job-state claim`, {
+            jobId: job.id,
+            orgId: job.organization_id,
+          });
+        }
         continue;
       }
 
@@ -521,8 +528,8 @@ async function executePiiScrubJob(
 
   for (const item of data.items) {
     if (Date.now() >= deadlineMs) {
-      await writeProgress(job.id, progress);
-      return { kind: "budget-exhausted", progress };
+      const retrySnapshot = await writeProgress(job.id, progress);
+      return { kind: "budget-exhausted", progress, retrySnapshot };
     }
 
     const contentHash = hashPiiScrubContent(item.content);
@@ -599,8 +606,8 @@ async function executePiiScrubJob(
 }
 
 /** Advance the job row's progress record (observability; markers own resume). */
-async function writeProgress(jobId: string, progress: PiiScrubJobProgress): Promise<void> {
-  await jobsRepository.update(jobId, {
+async function writeProgress(jobId: string, progress: PiiScrubJobProgress): Promise<Job> {
+  return await jobsRepository.update(jobId, {
     result: piiScrubProgressToRecord(progress),
   });
 }

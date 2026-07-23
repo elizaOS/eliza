@@ -58,7 +58,11 @@ import {
   elizaAdminCanaryRolloutAdvisoryLockSql,
   elizaProvisionAdvisoryLockSql,
 } from "./eliza-provision-lock";
-import { elizaSandboxService, SNAPSHOT_ENDPOINT_UNSUPPORTED } from "./eliza-sandbox";
+import {
+  AdminCanaryCleanupExpectationError,
+  elizaSandboxService,
+  SNAPSHOT_ENDPOINT_UNSUPPORTED,
+} from "./eliza-sandbox";
 import { JOB_TYPES, type ProvisioningJobType } from "./provisioning-job-types";
 import {
   isWaifuWebhookTargetUrl,
@@ -976,9 +980,19 @@ class RetryableProvisionTransportError extends Error {
 }
 
 class RetryableReplacementCleanupError extends Error {
+  readonly retrySnapshot: Job;
+
+  constructor(message: string, retrySnapshot: Job, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = "RetryableReplacementCleanupError";
+    this.retrySnapshot = retrySnapshot;
+  }
+}
+
+class AdminCanaryCleanupCommitError extends Error {
   constructor(message: string) {
     super(message);
-    this.name = "RetryableReplacementCleanupError";
+    this.name = "AdminCanaryCleanupCommitError";
   }
 }
 
@@ -2580,17 +2594,26 @@ export class ProvisioningJobService {
           err instanceof RetryableProvisionTransportError ||
           err instanceof RetryableReplacementCleanupError
         ) {
-          result.retried++;
-          await jobsRepository.retryLaterWithoutIncrementingAttempts(
-            job.id,
+          const retrySnapshot =
+            err instanceof RetryableReplacementCleanupError ? err.retrySnapshot : job;
+          const requeued = await jobsRepository.retryLaterWithoutIncrementingAttempts(
+            retrySnapshot,
             errorMsg,
             PROVISION_TRANSPORT_RETRY_DELAY_MS,
           );
-          logger.warn("[provisioning-jobs] Requeued retryable provision transport failure", {
-            jobId: job.id,
-            delayMs: PROVISION_TRANSPORT_RETRY_DELAY_MS,
-            error: errorMsg,
-          });
+          if (requeued) {
+            result.retried++;
+            logger.warn("[provisioning-jobs] Requeued retryable provision transport failure", {
+              jobId: job.id,
+              delayMs: PROVISION_TRANSPORT_RETRY_DELAY_MS,
+              error: errorMsg,
+            });
+          } else {
+            logger.info("[provisioning-jobs] Retryable failure lost its exact job-state claim", {
+              jobId: job.id,
+              error: errorMsg,
+            });
+          }
           continue;
         }
 
@@ -3464,46 +3487,181 @@ export class ProvisioningJobService {
     }
     const startedAt = jobAuditTimestamp(job.started_at ?? job.updated_at);
     const priorCutover = isPendingAdminCanaryCutoverAudit(job.result) ? job.result : undefined;
+    const pendingCutoverMatchesSnapshot = (
+      pendingAudit: AdminCanaryImageJobResult,
+      snapshot: Job,
+    ): boolean => {
+      const auditStartedAt =
+        typeof pendingAudit.startedAt === "string"
+          ? Date.parse(pendingAudit.startedAt)
+          : Number.NaN;
+      const cutoverAt =
+        typeof pendingAudit.cutoverAt === "string"
+          ? Date.parse(pendingAudit.cutoverAt)
+          : Number.NaN;
+      const rowStartedAt =
+        snapshot.started_at === null
+          ? Number.NaN
+          : Date.parse(jobAuditTimestamp(snapshot.started_at));
+      const rowUpdatedAt = Date.parse(jobAuditTimestamp(snapshot.updated_at));
+      const directCutoverSnapshot =
+        pendingAudit.startedAt ===
+          (snapshot.started_at === null ? "" : jobAuditTimestamp(snapshot.started_at)) &&
+        pendingAudit.cutoverAt === jobAuditTimestamp(snapshot.updated_at);
+      const resumedCleanupClaim =
+        Number.isFinite(rowStartedAt) &&
+        Number.isFinite(rowUpdatedAt) &&
+        cutoverAt <= rowStartedAt &&
+        rowStartedAt <= rowUpdatedAt;
+      return (
+        Number.isFinite(auditStartedAt) &&
+        Number.isFinite(cutoverAt) &&
+        auditStartedAt <= cutoverAt &&
+        (directCutoverSnapshot || resumedCleanupClaim) &&
+        snapshot.status === "in_progress" &&
+        snapshot.type === JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE &&
+        snapshot.organization_id === data.organizationId &&
+        snapshot.user_id === data.actorUserId &&
+        snapshot.agent_id === data.agentId &&
+        snapshot.data_storage === "inline" &&
+        snapshot.data_key === null &&
+        JSON.stringify(snapshot.data) === JSON.stringify(job.data) &&
+        snapshot.result_storage === "inline" &&
+        snapshot.result_key === null &&
+        snapshot.completed_at === null &&
+        snapshot.started_at !== null &&
+        pendingAudit.finishedAt === pendingAudit.cutoverAt &&
+        pendingAudit.jobId === snapshot.id &&
+        pendingAudit.operation === data.operation &&
+        pendingAudit.rolloutId === data.rolloutId &&
+        pendingAudit.actorUserId === data.actorUserId &&
+        pendingAudit.decisionAt === data.decisionAt &&
+        pendingAudit.agentId === data.agentId &&
+        pendingAudit.organizationId === data.organizationId &&
+        pendingAudit.targetOwnerUserId === data.targetOwnerUserId &&
+        pendingAudit.sourceImage === data.sourceImage &&
+        pendingAudit.sourceDigest === data.sourceDigest &&
+        pendingAudit.targetImage === data.targetImage &&
+        pendingAudit.targetDigest === data.targetDigest &&
+        typeof pendingAudit.oldNodeId === "string" &&
+        pendingAudit.oldNodeId.length > 0 &&
+        typeof pendingAudit.oldContainerName === "string" &&
+        pendingAudit.oldContainerName.length > 0 &&
+        typeof pendingAudit.newNodeId === "string" &&
+        pendingAudit.newNodeId.length > 0 &&
+        typeof pendingAudit.newContainerName === "string" &&
+        pendingAudit.newContainerName.length > 0
+      );
+    };
+    let completedAudit: AdminCanaryImageJobResult | undefined;
+    const completeCutoverInTx = async (
+      tx: DbTransaction,
+      pendingAudit: AdminCanaryImageJobResult,
+      snapshot: Job,
+    ): Promise<void> => {
+      const finishedAt = new Date();
+      const completion: AdminCanaryImageJobResult = {
+        ...pendingAudit,
+        success: true,
+        cleanupPending: false,
+        finishedAt: finishedAt.toISOString(),
+      };
+      const [updated] = await tx
+        .update(jobs)
+        .set({
+          status: "completed",
+          result: adminCanaryImageJobResultToRecord(completion),
+          result_storage: "inline",
+          result_key: null,
+          error: null,
+          error_storage: "inline",
+          error_key: null,
+          completed_at: finishedAt,
+          updated_at: finishedAt,
+        })
+        .where(
+          and(
+            eq(jobs.id, snapshot.id),
+            eq(jobs.type, JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE),
+            eq(jobs.status, "in_progress"),
+            eq(jobs.organization_id, data.organizationId),
+            eq(jobs.agent_id, data.agentId),
+            eq(jobs.user_id, data.actorUserId),
+            eq(jobs.attempts, snapshot.attempts),
+            eq(jobs.max_attempts, snapshot.max_attempts),
+            sql`${jobs.started_at} IS NOT DISTINCT FROM ${
+              snapshot.started_at ? new Date(jobAuditTimestamp(snapshot.started_at)) : null
+            }`,
+            sql`${jobs.completed_at} IS NOT DISTINCT FROM ${
+              snapshot.completed_at ? new Date(jobAuditTimestamp(snapshot.completed_at)) : null
+            }`,
+            sql`${jobs.updated_at} IS NOT DISTINCT FROM ${new Date(
+              jobAuditTimestamp(snapshot.updated_at),
+            )}`,
+            sql`${jobs.data_storage} = 'inline'`,
+            sql`${jobs.data_key} IS NOT DISTINCT FROM ${snapshot.data_key}`,
+            sql`${jobs.data} IS NOT DISTINCT FROM ${JSON.stringify(snapshot.data)}::jsonb`,
+            sql`${jobs.result_storage} = 'inline'`,
+            sql`${jobs.result_key} IS NOT DISTINCT FROM ${snapshot.result_key}`,
+            sql`${jobs.result} IS NOT DISTINCT FROM ${JSON.stringify(pendingAudit)}::jsonb`,
+            sql`${jobs.error_storage} = ${snapshot.error_storage}`,
+            sql`${jobs.error_key} IS NOT DISTINCT FROM ${snapshot.error_key}`,
+            sql`${jobs.error} IS NOT DISTINCT FROM ${snapshot.error ?? null}`,
+          ),
+        )
+        .returning({ id: jobs.id });
+      if (!updated) {
+        throw new AdminCanaryCleanupCommitError(
+          `Admin canary job ${snapshot.id} changed before cleanup completion`,
+        );
+      }
+      completedAudit = completion;
+    };
     if (priorCutover) {
-      if (
-        priorCutover.jobId !== job.id ||
-        priorCutover.operation !== data.operation ||
-        priorCutover.rolloutId !== data.rolloutId ||
-        priorCutover.actorUserId !== data.actorUserId ||
-        priorCutover.agentId !== data.agentId ||
-        priorCutover.organizationId !== data.organizationId ||
-        priorCutover.targetDigest !== data.targetDigest
-      ) {
+      if (!pendingCutoverMatchesSnapshot(priorCutover, job)) {
         throw new Error(`Admin canary pending-cutover audit mismatch for job ${job.id}`);
       }
+      const oldNodeId = priorCutover.oldNodeId as string;
+      const oldContainerName = priorCutover.oldContainerName as string;
+      const newNodeId = priorCutover.newNodeId as string;
+      const newContainerName = priorCutover.newContainerName as string;
       try {
         await elizaSandboxService.convergeReplacementCleanupFence(
           data.agentId,
           data.organizationId,
+          {
+            targetOwnerUserId: data.targetOwnerUserId,
+            targetImage: data.targetImage,
+            targetDigest: data.targetDigest,
+            newNodeId,
+            newContainerName,
+            oldNodeId,
+            oldContainerName,
+          },
+          async (tx) => completeCutoverInTx(tx, priorCutover, job),
         );
       } catch (error) {
+        if (
+          error instanceof AdminCanaryCleanupExpectationError ||
+          error instanceof AdminCanaryCleanupCommitError
+        ) {
+          throw error;
+        }
         // error-policy:J2 context-adding rethrow — the queue needs a typed
         // retryable failure while preserving the cleanup cause.
         throw new RetryableReplacementCleanupError(
           `Admin canary cleanup remains pending: ${
             error instanceof Error ? error.message : String(error)
           }`,
+          job,
+          { cause: error },
         );
       }
-      const finishedAt = new Date();
-      const completedResult: AdminCanaryImageJobResult = {
-        ...priorCutover,
-        success: true,
-        cleanupPending: false,
-        finishedAt: finishedAt.toISOString(),
-      };
-      await jobsRepository.updateStatus(job.id, "completed", {
-        result: adminCanaryImageJobResultToRecord(completedResult),
-        result_storage: "inline",
-        error: null,
-        error_storage: "inline",
-        completed_at: finishedAt,
-      });
+      if (!completedAudit) {
+        throw new AdminCanaryCleanupCommitError(
+          `Admin canary job ${job.id} cleanup converged without a completed audit`,
+        );
+      }
       logger.info("[provisioning-jobs] Admin canary cleanup converged", {
         jobId: job.id,
         rolloutId: data.rolloutId,
@@ -3513,6 +3671,7 @@ export class ProvisioningJobService {
     }
 
     let committedAudit: AdminCanaryImageJobResult | undefined;
+    let committedJobSnapshot: Job | undefined;
     const onCutoverInTx = async (
       tx: DbTransaction,
       cutover: {
@@ -3571,13 +3730,49 @@ export class ProvisioningJobService {
             eq(jobs.organization_id, data.organizationId),
             eq(jobs.agent_id, data.agentId),
             eq(jobs.user_id, data.actorUserId),
+            eq(jobs.attempts, job.attempts),
+            eq(jobs.max_attempts, job.max_attempts),
+            sql`${jobs.started_at} IS NOT DISTINCT FROM ${
+              job.started_at ? new Date(jobAuditTimestamp(job.started_at)) : null
+            }`,
+            sql`${jobs.completed_at} IS NOT DISTINCT FROM ${
+              job.completed_at ? new Date(jobAuditTimestamp(job.completed_at)) : null
+            }`,
+            sql`${jobs.updated_at} IS NOT DISTINCT FROM ${new Date(
+              jobAuditTimestamp(job.updated_at),
+            )}`,
+            sql`${jobs.data_storage} = 'inline'`,
+            sql`${jobs.data_key} IS NOT DISTINCT FROM ${job.data_key}`,
+            sql`${jobs.data} IS NOT DISTINCT FROM ${JSON.stringify(job.data)}::jsonb`,
+            sql`${jobs.result_storage} = ${job.result_storage}`,
+            sql`${jobs.result_key} IS NOT DISTINCT FROM ${job.result_key}`,
+            job.result == null
+              ? sql`${jobs.result} IS NULL`
+              : sql`${jobs.result} IS NOT DISTINCT FROM ${JSON.stringify(job.result)}::jsonb`,
+            sql`${jobs.error_storage} = ${job.error_storage}`,
+            sql`${jobs.error_key} IS NOT DISTINCT FROM ${job.error_key}`,
+            sql`${jobs.error} IS NOT DISTINCT FROM ${job.error ?? null}`,
           ),
         )
-        .returning({ id: jobs.id });
+        .returning();
       if (!updated) {
         throw new Error(`Admin canary job ${job.id} changed before atomic cutover audit`);
       }
       committedAudit = jobResult;
+      committedJobSnapshot = await hydrateJob(updated);
+    };
+    const onConvergedInTx = async (tx: DbTransaction): Promise<void> => {
+      if (!committedAudit || !committedJobSnapshot) {
+        throw new AdminCanaryCleanupCommitError(
+          `Admin canary job ${job.id} cleanup ran without a committed cutover audit`,
+        );
+      }
+      await completeCutoverInTx(tx, committedAudit, committedJobSnapshot);
+    };
+    const readDurablePendingCutover = async (): Promise<Job | undefined> => {
+      const current = await jobsRepository.findByIdForWrite(job.id);
+      if (!current || !isPendingAdminCanaryCutoverAudit(current.result)) return undefined;
+      return pendingCutoverMatchesSnapshot(current.result, current) ? current : undefined;
     };
 
     logger.info("[provisioning-jobs] Executing admin canary image change", {
@@ -3593,33 +3788,54 @@ export class ProvisioningJobService {
       targetDigest: data.targetDigest,
     });
 
-    const result =
-      data.operation === "upgrade"
-        ? await elizaSandboxService.executeAdminCanaryUpgrade({
-            agentId: data.agentId,
-            organizationId: data.organizationId,
-            targetOwnerUserId: data.targetOwnerUserId,
-            sourceImage: data.sourceImage,
-            sourceDigest: data.sourceDigest,
-            targetImage: data.targetImage,
-            targetDigest: data.targetDigest,
-            onCutoverInTx,
-          })
-        : await elizaSandboxService.executeAdminCanaryRollback({
-            agentId: data.agentId,
-            organizationId: data.organizationId,
-            targetOwnerUserId: data.targetOwnerUserId,
-            sourceImage: data.sourceImage,
-            sourceDigest: data.sourceDigest,
-            targetImage: data.targetImage,
-            targetDigest: data.targetDigest,
-            onCutoverInTx,
-          });
+    let result: Awaited<ReturnType<typeof elizaSandboxService.executeAdminCanaryUpgrade>>;
+    try {
+      result =
+        data.operation === "upgrade"
+          ? await elizaSandboxService.executeAdminCanaryUpgrade({
+              agentId: data.agentId,
+              organizationId: data.organizationId,
+              targetOwnerUserId: data.targetOwnerUserId,
+              sourceImage: data.sourceImage,
+              sourceDigest: data.sourceDigest,
+              targetImage: data.targetImage,
+              targetDigest: data.targetDigest,
+              onCutoverInTx,
+              onConvergedInTx,
+            })
+          : await elizaSandboxService.executeAdminCanaryRollback({
+              agentId: data.agentId,
+              organizationId: data.organizationId,
+              targetOwnerUserId: data.targetOwnerUserId,
+              sourceImage: data.sourceImage,
+              sourceDigest: data.sourceDigest,
+              targetImage: data.targetImage,
+              targetDigest: data.targetDigest,
+              onCutoverInTx,
+              onConvergedInTx,
+            });
+    } catch (error) {
+      // error-policy:J2 A post-cutover failure is rethrown with the exact
+      // durable retry snapshot; failures before cutover retain their identity.
+      const retrySnapshot = await readDurablePendingCutover();
+      if (retrySnapshot) {
+        throw new RetryableReplacementCleanupError(
+          `Admin canary post-cutover convergence interrupted: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+          retrySnapshot,
+          { cause: error },
+        );
+      }
+      throw error;
+    }
 
     if (!result.success) {
       if (result.cleanupPending) {
+        const retrySnapshot = (await readDurablePendingCutover()) ?? job;
         throw new RetryableReplacementCleanupError(
           result.error ?? "Admin canary pre-cutover cleanup remains pending",
+          retrySnapshot,
         );
       }
       throw new Error(result.error ?? "Admin canary image change failed");
@@ -3628,25 +3844,20 @@ export class ProvisioningJobService {
       throw new Error(`Admin canary job ${job.id} cut over without a committed audit`);
     }
     if (result.cleanupPending) {
+      const retrySnapshot = await readDurablePendingCutover();
+      if (!retrySnapshot) {
+        throw new Error(`Admin canary job ${job.id} lost its committed cutover audit`);
+      }
       throw new RetryableReplacementCleanupError(
         result.error ?? "Admin canary post-cutover cleanup remains pending",
+        retrySnapshot,
       );
     }
-
-    const finishedAt = new Date();
-    const completedAudit: AdminCanaryImageJobResult = {
-      ...committedAudit,
-      success: true,
-      cleanupPending: false,
-      finishedAt: finishedAt.toISOString(),
-    };
-    await jobsRepository.updateStatus(job.id, "completed", {
-      result: adminCanaryImageJobResultToRecord(completedAudit),
-      result_storage: "inline",
-      error: null,
-      error_storage: "inline",
-      completed_at: finishedAt,
-    });
+    if (!completedAudit) {
+      throw new AdminCanaryCleanupCommitError(
+        `Admin canary job ${job.id} cleanup completed without atomic job completion`,
+      );
+    }
 
     logger.info("[provisioning-jobs] Admin canary image change completed", {
       jobId: job.id,
@@ -3656,7 +3867,7 @@ export class ProvisioningJobService {
       operation: data.operation,
       targetImage: data.targetImage,
       targetDigest: data.targetDigest,
-      durationMs: finishedAt.getTime() - new Date(startedAt).getTime(),
+      durationMs: new Date(completedAudit.finishedAt).getTime() - new Date(startedAt).getTime(),
     });
   }
 
@@ -3866,7 +4077,7 @@ export class ProvisioningJobService {
         agentId: data.agentId,
       });
       await jobsRepository.retryLaterWithoutIncrementingAttempts(
-        job.id,
+        job,
         "agent_snapshot lane disabled (ELIZA_SNAPSHOT_JOBS_ENABLED != true)",
         SNAPSHOT_GATE_RETRY_DELAY_MS,
       );
