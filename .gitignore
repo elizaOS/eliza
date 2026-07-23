@@ -1403,3 +1403,9 @@ packages/ui/src/components/shell/__e2e__/output-home-locale/
 
 # Dataset allowlists above must not re-include macOS resource-fork sidecars.
 **/._*
+
+# Fused local-inference staging dirs (stage-desktop-fused-lib.mjs --out): CI
+# stages into $GITHUB_WORKSPACE/fused-lib and local runs often use .fused-lib;
+# both are build output and must never be committed (#16970 review).
+/fused-lib/
+/.fused-lib/
