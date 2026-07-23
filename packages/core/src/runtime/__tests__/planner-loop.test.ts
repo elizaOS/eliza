@@ -2193,7 +2193,7 @@ describe("v5 planner loop skeleton", () => {
 		expect(evaluate).not.toHaveBeenCalled();
 	});
 
-	it("replans once when a failed tool is finished without a user-visible message", async () => {
+	it("keeps the original failure authoritative when a fallback tool succeeds without a correlated retry", async () => {
 		const runtime = {
 			useModel: vi
 				.fn()
@@ -2266,7 +2266,9 @@ describe("v5 planner loop skeleton", () => {
 			},
 			expect.objectContaining({ iteration: 2 }),
 		);
-		expect(result.finalMessage).toBe("The backup source returned a result.");
+		expect(result.finalMessage).toBe(
+			"I tried to complete that, but the available runtime step failed before it produced a usable result.",
+		);
 	});
 
 	it("does not finish with terminal planner text after tool work when the evaluator asks to continue", async () => {
@@ -2597,7 +2599,7 @@ describe("v5 planner loop skeleton", () => {
 
 		expect(executeToolCall).toHaveBeenCalledTimes(2);
 		expect(result.finalMessage).toBe(
-			"I could not retrieve that from the available sources.",
+			"I tried to complete that, but the available runtime step failed before it produced a usable result.",
 		);
 	});
 
