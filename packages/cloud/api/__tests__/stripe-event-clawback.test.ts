@@ -46,9 +46,12 @@ class TestInsufficientCreditsError extends Error {
 mock.module("@/db/helpers", () => ({
   dbRead: {},
   dbWrite: {},
-  writeTransaction: mock(async (fn: (tx: unknown) => Promise<unknown>) =>
-    fn({}),
-  ),
+  // Named so module linking succeeds for suites in the same bun test batch
+  // that import it (e.g. agent-pairing-tokens); this suite must never reach
+  // a real transaction, so the stub throws instead of faking one.
+  writeTransaction: mock(async () => {
+    throw new Error("writeTransaction must not be called in this suite");
+  }),
 }));
 mock.module("@/db/repositories/organizations", () => ({
   organizationsRepository: {},
