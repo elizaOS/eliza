@@ -104,4 +104,19 @@ describe("firstRunProvider local backup affordance", () => {
     expect(surface.text).toMatch(/defaults or customize/i);
     expect(surface.data?.affordance).not.toHaveProperty("localBackup");
   });
+
+  // A dynamic provider with no routing declaration never composes into the
+  // v5 planner state (composeState skips `dynamic`; planner selection only
+  // adds always-on or context-gated names). Observed live (#16941): the
+  // planner answered a fresh-boot setup ask with "you're all set" because
+  // the pending-first-run line never reached its prompt. The always-on
+  // mechanism itself is pinned in core
+  // (services/message.planner-provider-selection.test.ts); this pins the
+  // declaration so the affordance cannot silently drop out of planner turns.
+  it("declares always-on planner visibility gated to the owner", async () => {
+    const firstRunProvider = await getFirstRunProvider();
+    expect(firstRunProvider.alwaysInResponseState).toBe(true);
+    expect(firstRunProvider.dynamic).toBe(true);
+    expect(firstRunProvider.roleGate).toEqual({ minRole: "OWNER" });
+  });
 });
