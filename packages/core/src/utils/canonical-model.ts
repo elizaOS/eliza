@@ -104,11 +104,15 @@ export function readCanonicalModel(
 	if (slash <= 0) return value;
 
 	const prefix = value.slice(0, slash).trim().toLowerCase();
-	// Native model ids legitimately contain "/" (groq's openai/gpt-oss-120b,
-	// meta-llama/llama-4-*, ollama's hf.co/...). Only a KNOWN family token in
-	// the first segment is a qualification; anything else is part of the id.
-	// To pin a slash-bearing id to a family, prefix it with the family token:
-	// groq/openai/gpt-oss-120b.
+	// Native model ids legitimately contain "/" (meta-llama/llama-4-*, ollama's
+	// hf.co/...). Only a KNOWN family token in the first segment is a
+	// qualification; anything else is part of the id. When a native id's first
+	// segment COLLIDES with a family token (groq's native openai/gpt-oss-120b),
+	// the token wins: the value parses as an `openai` qualification and is
+	// never treated as the slash-bearing groq id. The supported spelling for
+	// such ids is the explicit family-pinned form — groq/openai/gpt-oss-120b —
+	// which strips to the full native id for the pinned family and is rejected
+	// everywhere else (pinned by test).
 	if (!KNOWN_FAMILY_TOKENS.has(prefix)) return value;
 
 	// A qualified value names its family; without a family to check against it

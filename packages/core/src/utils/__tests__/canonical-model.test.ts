@@ -106,6 +106,20 @@ describe("readCanonicalModel", () => {
 		expect(readCanonicalModel(reader({}), "small", "cerebras")).toBeUndefined();
 	});
 
+	it("parses a colliding known-family first token as a qualification, never as a native id", () => {
+		// groq's native id `openai/gpt-oss-120b` starts with a known family
+		// token, so the bare spelling is an OpenAI qualification by contract:
+		// it must NOT reach a groq lane. The explicit family-pinned form
+		// (groq/openai/gpt-oss-120b, covered above) is the supported spelling.
+		process.env.ELIZA_MODEL_SMALL = "openai/gpt-oss-120b";
+		expect(readCanonicalModel(reader({}), "small", "groq")).toBeUndefined();
+		expect(readCanonicalModel(reader({}), "small", "openai")).toBe(
+			"gpt-oss-120b",
+		);
+		// Family-agnostic callers must not leak a qualified value either.
+		expect(readCanonicalModel(reader({}), "small")).toBeUndefined();
+	});
+
 	it("rejects a qualified value with an empty model part", () => {
 		process.env.ELIZA_MODEL_SMALL = "anthropic/ ";
 		expect(

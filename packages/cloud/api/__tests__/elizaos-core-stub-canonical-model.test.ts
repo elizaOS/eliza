@@ -33,37 +33,70 @@ describe("elizaos-core stub readCanonicalModel", () => {
       ELIZA_MODEL_SMALL: "canonical-small",
       ELIZA_MODEL_LARGE: "canonical-large",
     });
-    expect(readCanonicalModel(runtime, "small", "openai")).toBe("canonical-small");
-    expect(readCanonicalModel(runtime, "large", "anthropic")).toBe("canonical-large");
+    expect(readCanonicalModel(runtime, "small", "openai")).toBe(
+      "canonical-small",
+    );
+    expect(readCanonicalModel(runtime, "large", "anthropic")).toBe(
+      "canonical-large",
+    );
     expect(readCanonicalModel(runtime, "large")).toBe("canonical-large");
   });
 
   it("prefers the runtime setting over the env fallback", () => {
     process.env.ELIZA_MODEL_SMALL = "env-small";
-    expect(readCanonicalModel(runtimeWith({ ELIZA_MODEL_SMALL: "runtime-small" }), "small")).toBe(
-      "runtime-small"
-    );
+    expect(
+      readCanonicalModel(
+        runtimeWith({ ELIZA_MODEL_SMALL: "runtime-small" }),
+        "small",
+      ),
+    ).toBe("runtime-small");
     expect(readCanonicalModel(runtimeWith({}), "small")).toBe("env-small");
   });
 
   it("honors qualified values only for the matching family and its aliases", () => {
-    const runtime = runtimeWith({ ELIZA_MODEL_LARGE: "anthropic/claude-opus-4-8" });
-    expect(readCanonicalModel(runtime, "large", "anthropic")).toBe("claude-opus-4-8");
-    expect(readCanonicalModel(runtime, "large", "claude")).toBe("claude-opus-4-8");
+    const runtime = runtimeWith({
+      ELIZA_MODEL_LARGE: "anthropic/claude-opus-4-8",
+    });
+    expect(readCanonicalModel(runtime, "large", "anthropic")).toBe(
+      "claude-opus-4-8",
+    );
+    expect(readCanonicalModel(runtime, "large", "claude")).toBe(
+      "claude-opus-4-8",
+    );
     expect(readCanonicalModel(runtime, "large", "openai")).toBeUndefined();
     // Without a family to check against, a qualified value must not leak.
     expect(readCanonicalModel(runtime, "large")).toBeUndefined();
   });
 
   it("treats unknown-prefix slash values as whole model ids", () => {
-    const runtime = runtimeWith({ ELIZA_MODEL_LARGE: "hf.co/bartowski/Llama-3.2-3B-GGUF" });
+    const runtime = runtimeWith({
+      ELIZA_MODEL_LARGE: "hf.co/bartowski/Llama-3.2-3B-GGUF",
+    });
     expect(readCanonicalModel(runtime, "large", "ollama")).toBe(
-      "hf.co/bartowski/Llama-3.2-3B-GGUF"
+      "hf.co/bartowski/Llama-3.2-3B-GGUF",
     );
   });
 
+  it("parses a colliding known-family first token as a qualification (mirror of core's contract)", () => {
+    // groq's native id `openai/gpt-oss-120b` starts with a known family token,
+    // so the bare spelling is an OpenAI qualification — never the groq id. The
+    // supported spelling is the explicit family-pinned groq/openai/gpt-oss-120b.
+    const runtime = runtimeWith({ ELIZA_MODEL_SMALL: "openai/gpt-oss-120b" });
+    expect(readCanonicalModel(runtime, "small", "groq")).toBeUndefined();
+    expect(readCanonicalModel(runtime, "small", "openai")).toBe("gpt-oss-120b");
+    const pinned = runtimeWith({
+      ELIZA_MODEL_SMALL: "groq/openai/gpt-oss-120b",
+    });
+    expect(readCanonicalModel(pinned, "small", "groq")).toBe(
+      "openai/gpt-oss-120b",
+    );
+    expect(readCanonicalModel(pinned, "small", "cerebras")).toBeUndefined();
+  });
+
   it("treats blank values as unset", () => {
-    expect(readCanonicalModel(runtimeWith({ ELIZA_MODEL_SMALL: "   " }), "small")).toBeUndefined();
+    expect(
+      readCanonicalModel(runtimeWith({ ELIZA_MODEL_SMALL: "   " }), "small"),
+    ).toBeUndefined();
     expect(readCanonicalModel(runtimeWith({}), "small")).toBeUndefined();
   });
 });
