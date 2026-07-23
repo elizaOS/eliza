@@ -247,7 +247,29 @@ for (const id of VISIBLE_SECTIONS) {
 }
 assert(true, "walked every visible desktop section with the rail retained");
 
-// ── 3. Hash deep-link opens a section directly ───────────────────────────────
+// ── 3. Cloud login preserves the desktop page through popup handoff ──────────
+const settingsUrlBeforeLogin = p.url();
+const popupPromise = context.waitForEvent("page");
+await p.getByRole("button", { name: "Connect Cloud" }).click();
+const authPopup = await popupPromise;
+await authPopup.waitForLoadState("domcontentloaded");
+assert(
+  p.url() === settingsUrlBeforeLogin,
+  "desktop Cloud login keeps Settings mounted instead of navigating its document",
+);
+assert(
+  (await p
+    .locator("html")
+    .getAttribute("data-eliza-settings-cloud-login-popup")) === "live",
+  "Settings passes the live pre-opened auth window into handleCloudLogin",
+);
+assert(
+  (await authPopup.evaluate(() => window.name)) === "eliza-cloud-auth",
+  "the auth handoff uses the shared named Cloud popup",
+);
+await authPopup.close();
+
+// ── 4. Hash deep-link opens a section directly ───────────────────────────────
 await p.goto(`${url}#appearance`, { waitUntil: "domcontentloaded" });
 await p.waitForSelector("#appearance");
 assert(
@@ -259,7 +281,7 @@ assert(
 await snap(p, `${String(shotIndex).padStart(2, "0")}-deeplink-appearance`);
 shotIndex += 1;
 
-// ── 4. Mobile viewport ───────────────────────────────────────────────────────
+// ── 5. Mobile viewport ───────────────────────────────────────────────────────
 const mobile = await context.newPage();
 await mobile.setViewportSize({ width: 390, height: 844 });
 await mobile.goto(url, { waitUntil: "domcontentloaded" });

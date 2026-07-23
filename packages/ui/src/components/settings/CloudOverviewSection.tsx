@@ -19,6 +19,7 @@ import {
 import { useCallback } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { useAppSelectorShallow } from "../../state";
+import { preOpenCloudLoginWindow } from "../../state/cloud-login-launch";
 import { Button } from "../ui/button";
 import { CloudAgentsSection } from "./CloudAgentsSection";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
@@ -78,7 +79,7 @@ export function CloudOverviewSection() {
   }));
 
   const handleConnect = useCallback(() => {
-    void handleCloudLogin().catch((error) => {
+    void handleCloudLogin(preOpenCloudLoginWindow()).catch((error) => {
       setActionNotice(
         error instanceof Error ? error.message : "Could not start Cloud login.",
         "error",
