@@ -13,9 +13,16 @@
  * test can import it without pulling in the build graph.
  */
 
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+} from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { assertContainedRegularFile } from "./repository-file-integrity.mjs";
 
 const DEFAULT_REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -209,7 +216,12 @@ export function listWorkspaceDirs(opts) {
   const patterns =
     opts?.patterns ??
     (() => {
-      const rootPackage = readJson(path.join(repoRoot, "package.json"));
+      const rootPackagePath = assertContainedRegularFile(
+        repoRoot,
+        "package.json",
+        "root workspace manifest",
+      ).absolute;
+      const rootPackage = readJson(rootPackagePath);
       if (!Array.isArray(rootPackage.workspaces)) {
         throw new Error(
           `${path.join(repoRoot, "package.json")} must declare a workspaces array`,
@@ -226,10 +238,15 @@ export function listWorkspaceDirs(opts) {
   return expandWorkspaceGlobs(patterns, { repoRoot }).filter((relativeDir) => {
     const manifestPath = path.join(repoRoot, relativeDir, "package.json");
     try {
-      const manifest = statSync(manifestPath);
-      if (!manifest.isFile()) {
+      const manifest = lstatSync(manifestPath);
+      if (!manifest.isFile() || manifest.isSymbolicLink()) {
         throw new Error(`Workspace manifest is not a file: ${manifestPath}`);
       }
+      assertContainedRegularFile(
+        repoRoot,
+        `${relativeDir}/package.json`,
+        `workspace manifest ${relativeDir}/package.json`,
+      );
       return true;
     } catch (error) {
       // error-policy:J3 a matched directory without a manifest is not a package
@@ -250,7 +267,13 @@ export function listPackages(opts) {
     repoRoot,
     patterns: opts?.patterns,
   }).map((dir) => {
-    const packageJson = readJson(path.join(repoRoot, dir, "package.json"));
+    const packageJson = readJson(
+      assertContainedRegularFile(
+        repoRoot,
+        `${dir}/package.json`,
+        `workspace manifest ${dir}/package.json`,
+      ).absolute,
+    );
     return { name: packageJson.name, dir, packageJson };
   });
   const names = new Map();
@@ -282,7 +305,11 @@ export function collectWorkspaceMaps(repoRoot, patterns) {
   const workspaceDirs = workspacePackages.map(({ dir }) =>
     path.join(root, dir),
   );
-  const rootManifestPath = path.join(root, "package.json");
+  const rootManifestPath = assertContainedRegularFile(
+    root,
+    "package.json",
+    "root workspace manifest",
+  ).absolute;
   const rootManifest = readJson(rootManifestPath);
   workspaceDirs.push(root);
   workspaceDirs.sort(compareText);
