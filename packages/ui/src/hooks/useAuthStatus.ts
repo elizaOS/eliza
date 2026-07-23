@@ -205,6 +205,25 @@ async function ensureAuthStatusProbe(): Promise<void> {
 }
 
 /**
+ * Force a fresh `/api/auth/me` probe after a credential change committed
+ * outside the React auth gate (e.g. the cloud-container bootstrap-token
+ * exchange storing the session bearer). `first-run-required` is
+ * shell-paintable, so the gate's activation probe can run BEFORE the
+ * credential exists and settle the shared snapshot on `unauthenticated`;
+ * nothing else re-probes until the 5-minute poll, which would strand the
+ * fresh session on the login wall. Chains behind an in-flight probe so the
+ * new credential is always observed by a probe that started after it.
+ */
+export function refetchAuthStatus(): void {
+  const inFlight = authStatusFetch;
+  if (inFlight) {
+    void inFlight.then(() => fetchAuthStatus());
+    return;
+  }
+  void fetchAuthStatus();
+}
+
+/**
  * True once the app-level auth probe (App.tsx's `useAuthStatus`) has resolved
  * to an authenticated session. Read-only: subscribes to the shared snapshot
  * without starting its own fetch or poll, so gating on it adds zero network

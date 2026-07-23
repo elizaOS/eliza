@@ -11,6 +11,7 @@ import { CONNECT_EVENT } from "../events";
 import { adoptRemoteAgentFirstRun } from "../first-run/adopt-remote-first-run";
 import { ensureStoreBuildWorkspaceFolder } from "../first-run/ensure-store-build-workspace-folder";
 import { persistMobileRuntimeModeForServerTarget } from "../first-run/mobile-runtime-mode";
+import { refetchAuthStatus } from "../hooks/useAuthStatus";
 import { applyLaunchConnection } from "../platform";
 import { confirmDesktopAction } from "../utils/desktop-dialogs";
 import { useAppSelectorShallow } from "./app-store";
@@ -275,6 +276,13 @@ export function useStartupShellController(): StartupShellController {
   const handleBootstrapAdvance = useCallback(() => {
     setShowBootstrap(false);
     setState("firstRunComplete", true);
+    // BootstrapStep just stored the session bearer (client.setToken). The
+    // post-paint auth gate probes /api/auth/me as soon as first-run-required
+    // paints — i.e. before the token exchange — and settles `unauthenticated`,
+    // and nothing re-probes until the 5-minute poll; without this the user
+    // lands on the login wall the moment the coordinator advances. Re-probe
+    // with the fresh bearer so startup resumes authenticated.
+    refetchAuthStatus();
     coordinatorDispatchRef.current({ type: "FIRST_RUN_COMPLETE" });
   }, [setState]);
 
