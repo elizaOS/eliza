@@ -2,6 +2,7 @@
  * Deterministic view-command matcher tests for explicit navigation phrases.
  */
 
+import { DOCUMENTS_NAV_VOCABULARY } from "@elizaos/shared/views/shared-nav-targets";
 import { describe, expect, it } from "vitest";
 import {
 	__matcherData,
@@ -33,8 +34,6 @@ describe("matchViewCommand — explicit user examples", () => {
 		["pull up my documents", "documents"],
 		["open docs", "documents"],
 		["show my files", "documents"],
-		// the registered view's label is "Knowledge" — the on-screen name must
-		// resolve (live QA gap: "open knowledge" fell through to the planner)
 		["open knowledge", "documents"],
 		["open the knowledge base", "documents"],
 		["show my knowledge hub", "documents"],
@@ -91,6 +90,27 @@ describe("matchViewCommand — multilingual", () => {
 	}
 });
 
+describe("matchViewCommand — localized Knowledge labels", () => {
+	const cases = [
+		["en", "Knowledge", "open Knowledge"],
+		["es", "Conocimiento", "abre Conocimiento"],
+		["pt", "Conhecimento", "abra Conhecimento"],
+		["ja", "ナレッジ", "ナレッジを開いて"],
+		["ko", "지식", "지식을 열어"],
+		["vi", "Tri thức", "mở Tri thức"],
+		["zh-CN", "知识", "打开知识"],
+		["tl", "Kaalaman", "buksan ang Kaalaman"],
+	] as const;
+
+	it.each(cases)(
+		"%s visible label %j routes to documents",
+		(locale, label, text) => {
+			expect(DOCUMENTS_NAV_VOCABULARY.localizedLabels[locale]).toBe(label);
+			expect(matchViewCommand(text)).toBe("documents");
+		},
+	);
+});
+
 describe("matchViewCommand — generated verb×view coverage (English)", () => {
 	const verbs = [
 		"open",
@@ -119,6 +139,21 @@ describe("matchViewCommand — precision (must NOT match)", () => {
 		"thanks, that was helpful",
 		"can you summarize this article",
 		"i love using this app",
+		"showcase knowledge",
+		"open knowledgebase",
+		"open knowledgeable",
+		"el conocimiento es poder",
+		"abre conocimientos avanzados",
+		"conhecimento é importante",
+		"abra conhecimentos gerais",
+		"ナレッジについて教えて",
+		"ナレッジワーカーを開いて",
+		"지식에 대해 설명해줘",
+		"지식인을 열어",
+		"tri thức rất quan trọng",
+		"知识就是力量",
+		"打开知识产权",
+		"mahalaga ang kaalaman",
 		"remind me to call mom", // a task, not a view command
 		"how are you doing today",
 		"",

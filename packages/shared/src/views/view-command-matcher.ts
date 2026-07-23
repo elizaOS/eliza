@@ -31,6 +31,8 @@
  * possessives/view-words to the shared lists — the regexes recompile from data.
  */
 
+import { DOCUMENTS_NAV_VOCABULARY } from "./shared-nav-targets.js";
+
 // Navigation verbs across languages (lower-cased; CJK has no case).
 const NAV_VERBS = [
   // en
@@ -563,12 +565,8 @@ const VIEW_NOUNS: Record<string, readonly string[]> = {
   documents: [
     "documents",
     "document",
-    // The registered view's user-facing label is "Knowledge" (the multimedia
-    // knowledge hub), so the label itself must be a first-class noun — users
-    // say "open knowledge" because that is the name on the tab.
-    "knowledge",
-    "knowledge base",
-    "knowledge hub",
+    ...Object.values(DOCUMENTS_NAV_VOCABULARY.localizedLabels),
+    ...DOCUMENTS_NAV_VOCABULARY.aliases,
     "files",
     "file",
     "docs",
@@ -831,13 +829,95 @@ function esc(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-// Sort alternation members longest-first so multiword phrases match before
-// their prefixes ("show me" before "show", "go to" before "go").
-function alt(items: readonly string[]): string {
+const LATIN_SCRIPT = /\p{Script=Latin}/u;
+const CJK_SCRIPT =
+  /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
+
+function isLatinPhrase(phrase: string): boolean {
+  return LATIN_SCRIPT.test(phrase) && !CJK_SCRIPT.test(phrase);
+}
+
+function rawAlt(items: readonly string[]): string {
   return [...new Set(items)]
     .sort((a, b) => b.length - a.length)
     .map(esc)
     .join("|");
+}
+
+// Sort alternation members longest-first so multiword phrases match before
+// their prefixes. Latin-script boundaries keep labels and nav verbs from
+// matching inside unrelated words while CJK remains compatible with particles.
+function alt(items: readonly string[]): string {
+  const sorted = [...new Set(items)].sort((a, b) => b.length - a.length);
+  const latin = sorted.filter(isLatinPhrase);
+  const unbounded = sorted.filter((phrase) => !isLatinPhrase(phrase));
+  const groups = [
+    latin.length
+      ? `(?<![\\p{L}\\p{N}])(?:${rawAlt(latin)})(?![\\p{L}\\p{N}])`
+      : "",
+    unbounded.length ? `(?:${rawAlt(unbounded)})` : "",
+  ].filter(Boolean);
+  return groups.length === 1 ? groups[0] : `(?:${groups.join("|")})`;
+}
+
+const CJK_NOUN_BOUNDARIES = [
+  {
+    script: "Han",
+    endsWith: /\p{Script=Han}$/u,
+    startsWith: /^\p{Script=Han}/u,
+    particles: [],
+  },
+  {
+    script: "Hiragana",
+    endsWith: /\p{Script=Hiragana}$/u,
+    startsWith: /^\p{Script=Hiragana}/u,
+    particles: ["から", "まで", "を", "へ", "に", "の", "は", "が"],
+  },
+  {
+    script: "Katakana",
+    endsWith: /\p{Script=Katakana}$/u,
+    startsWith: /^\p{Script=Katakana}/u,
+    particles: [],
+  },
+  {
+    script: "Hangul",
+    endsWith: /\p{Script=Hangul}$/u,
+    startsWith: /^\p{Script=Hangul}/u,
+    particles: ["으로", "은", "는", "이", "가", "을", "를", "로"],
+  },
+] as const;
+
+function nounAlt(items: readonly string[]): string {
+  const remaining = new Set(items);
+  const groups: string[] = [];
+  const latin = [...remaining].filter(isLatinPhrase);
+  for (const phrase of latin) remaining.delete(phrase);
+  if (latin.length) {
+    groups.push(`(?<![\\p{L}\\p{N}])(?:${rawAlt(latin)})(?![\\p{L}\\p{N}])`);
+  }
+
+  for (const boundary of CJK_NOUN_BOUNDARIES) {
+    const phrases = [...remaining].filter((phrase) =>
+      boundary.endsWith.test(phrase),
+    );
+    for (const phrase of phrases) remaining.delete(phrase);
+    if (!phrases.length) continue;
+    const viewWords = VIEW_WORDS.filter((word) =>
+      boundary.startsWith.test(word),
+    );
+    const terminal = [
+      ...(viewWords.length ? [`(?:${rawAlt(viewWords)})`] : []),
+      `[^\\p{Script=${boundary.script}}]`,
+      "$",
+    ].join("|");
+    const particles = boundary.particles.length
+      ? `(?:${rawAlt(boundary.particles)})?`
+      : "";
+    groups.push(`(?:${rawAlt(phrases)})(?=${particles}(?:${terminal}))`);
+  }
+
+  if (remaining.size) groups.push(`(?:${rawAlt([...remaining])})`);
+  return groups.length === 1 ? groups[0] : `(?:${groups.join("|")})`;
 }
 
 const VERB_ALT = alt(NAV_VERBS);
@@ -879,7 +959,7 @@ interface CompiledView {
 // staying tight enough to avoid cross-clause false positives.
 const COMPILED: CompiledView[] = VIEW_PRIORITY.filter((v) => VIEW_NOUNS[v]).map(
   (viewId) => {
-    const N = alt(VIEW_NOUNS[viewId]);
+    const N = nounAlt(VIEW_NOUNS[viewId]);
     const pattern = [
       `(?:${VERB_ALT})[\\s\\S]{0,16}?(?:${N})`,
       `(?:${N})[\\s\\S]{0,8}?(?:${VERB_ALT})`,
