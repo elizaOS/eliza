@@ -401,7 +401,10 @@ export class AppEarningsRepository {
                     ? "redeemable transaction user differs"
                     : !committedPlatformDelta.isFinite()
                       ? "redeemable platform revenue is non-finite"
-                      : !params.redeemableDeduplicated &&
+                      : creatorDelta.isPositive() !==
+                          committedPlatformDelta.isPositive()
+                        ? "redeemable platform revenue direction differs"
+                        : !params.redeemableDeduplicated &&
                           !creatorDelta.equals(expectedCreatorAmountRounded)
                         ? `redeemable amount ${creatorDelta.toFixed()} differs from requested creator movement ${expectedCreatorAmountRounded.toFixed()}`
                         : !params.redeemableDeduplicated &&

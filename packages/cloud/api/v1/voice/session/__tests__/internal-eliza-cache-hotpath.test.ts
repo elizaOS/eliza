@@ -64,6 +64,7 @@ test("real cache + canonical coordinator dispatch performs no response-path DB w
     },
   };
   const env = {
+    CACHE_ENABLED: "true",
     DATABASE_URL: "postgresql://must-not-connect.invalid/eliza",
     VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer voice-service",
     SHARED_RUNTIME_CONVERSATIONS: namespace,

@@ -9,7 +9,6 @@ import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
 import * as realAgentSandboxes from "@/db/repositories/agent-sandboxes";
 import { InsufficientCreditsError } from "@/lib/api/errors";
-import { cache } from "@/lib/cache/client";
 import { CacheKeys } from "@/lib/cache/keys";
 // Keep the real modules so afterAll can restore them — bun's `mock.module` is
 // process-global, so a blanket `mock.restore()` here would strand sibling test
@@ -46,7 +45,11 @@ mock.module("@/lib/services/eliza-sandbox", () => ({
   },
 }));
 
+process.env.MOCK_REDIS = "1";
+process.env.CACHE_ENABLED = "true";
+
 // Imported after the mocks so the route binds to our stubs.
+const { cache } = await import("@/lib/cache/client");
 const streamRoute = (
   await import(
     "../v1/eliza/agents/[agentId]/api/conversations/[conversationId]/messages/stream/route"
@@ -70,8 +73,6 @@ afterAll(() => {
     () => realResolveSharedAgent,
   );
 });
-
-process.env.MOCK_REDIS = "1";
 
 const AGENT = "de42b5ff-72d3-4a1a-8a16-19aee293bfea";
 const ORG = "org-1";
@@ -154,6 +155,7 @@ function requestVoiceServiceRoute(init: RequestInit) {
     `/api/v1/eliza/agents/${AGENT}/api/conversations/${VOICE_CONVERSATION}/messages/stream`,
     init,
     {
+      CACHE_ENABLED: "true",
       VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer voice-service",
       SHARED_RUNTIME_CONVERSATIONS: {
         getByName: () => ({ fetch: coordinatorFetch }),
@@ -420,6 +422,7 @@ describe("shared agent messages/stream", () => {
     await seedVoiceScope();
     const runtime = voiceWorkerRuntime("late callback ok");
     const env = {
+      CACHE_ENABLED: "true",
       DATABASE_URL: "postgresql://captured.example/eliza",
       VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer voice-service",
       SHARED_RUNTIME_CONVERSATIONS: runtime.namespace,
@@ -480,6 +483,7 @@ describe("shared agent messages/stream", () => {
   test("cache miss returns warming without joining in-flight DB hydration", async () => {
     const runtime = voiceWorkerRuntime("hydrated ok");
     const env = {
+      CACHE_ENABLED: "true",
       DATABASE_URL: "postgresql://captured.example/eliza",
       VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer voice-service",
       SHARED_RUNTIME_CONVERSATIONS: runtime.namespace,
@@ -550,6 +554,7 @@ describe("shared agent messages/stream", () => {
 
     const fetchImpl = createInternalElizaConversationFetch(
       {
+        CACHE_ENABLED: "true",
         VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer voice-service",
       } as Parameters<typeof createInternalElizaConversationFetch>[0],
       {

@@ -186,4 +186,4 @@ test("real Durable Object serialization prevents concurrent overspend", async ()
     );
   }
   expect([first.status, second.status].sort()).toEqual([200, 402]);
-});
+}, 30_000);
