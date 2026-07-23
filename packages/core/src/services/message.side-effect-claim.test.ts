@@ -1,13 +1,18 @@
 /**
- * Stage-1 fabricated side-effect guard: `replyClaimsCompletedSideEffect` shape
- * detection plus the `core.simple_completed_side_effect_claim` response-handler
- * evaluator's reroute-to-planner patch. Runs against a REAL AgentRuntime
- * (PGLite-backed, no mocks) so the backstop-rule registry and evaluator wiring
- * are exercised on the production architecture; no live model.
+ * Stage-1 fabricated state-claim guards: `replyClaimsCompletedSideEffect` /
+ * `replyClaimsEmptyTrackedWorkState` shape detection, the
+ * `core.simple_completed_side_effect_claim` and
+ * `core.simple_empty_tracked_state_claim` response-handler evaluators'
+ * reroute-to-planner patches, and the planned-reply egress guard
+ * (`evaluatePlannedReplyEgress`) that bounces a bare planner REPLY carrying an
+ * ungrounded claim. Runs against a REAL AgentRuntime (PGLite-backed, no mocks)
+ * so the backstop-rule registry and evaluator wiring are exercised on the
+ * production architecture; no live model.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { stringToUuid } from "../index";
 import { registerCandidateActionBackstopRule } from "../runtime/candidate-action-backstop";
+import { getDefaultContextDefinitions } from "../runtime/default-contexts";
 import type {
 	ResponseHandlerEvaluatorContext,
 	ResponseHandlerPatch,
@@ -16,15 +21,26 @@ import {
 	createTestRuntime,
 	type TestRuntimeResult,
 } from "../testing/pglite-runtime";
-import type { MessageHandlerResult } from "../types/components";
+import type { ActionResult, MessageHandlerResult } from "../types/components";
 import type { Memory } from "../types/memory";
 import type { State } from "../types/state";
 import {
 	BUILTIN_RESPONSE_HANDLER_EVALUATORS,
+	evaluatePlannedReplyEgress,
+	formatAvailableContextsForPrompt,
+	plannedReplyHasGroundingActionResult,
+	registeredTrackedWorkContexts,
 	replyClaimsCompletedSideEffect,
+	replyClaimsEmptyTrackedWorkState,
 } from "./message";
 
 const CLAIM_EVALUATOR_NAME = "core.simple_completed_side_effect_claim";
+const EMPTY_CLAIM_EVALUATOR_NAME = "core.simple_empty_tracked_state_claim";
+
+// The byte-exact fabricated empty-day reply from #17058 run 729acaf2: a recap
+// ask routed contexts=["simple"] and invented an absent day with no read tool.
+const FABRICATED_EMPTY_DAY_REPLY =
+	"I don't have today's log in front of me — no notes, tasks, or messages from earlier today.";
 
 let testRuntime: TestRuntimeResult;
 
@@ -56,14 +72,21 @@ function simpleReplyHandler(reply: string): MessageHandlerResult {
 
 function makeContext(
 	messageHandler: MessageHandlerResult,
+	options?: {
+		runtime?: ResponseHandlerEvaluatorContext["runtime"];
+		userText?: string;
+	},
 ): ResponseHandlerEvaluatorContext {
-	const runtime = testRuntime.runtime;
+	const runtime = options?.runtime ?? testRuntime.runtime;
 	const message: Memory = {
 		id: stringToUuid("side-effect-claim-test-message"),
 		entityId: stringToUuid("side-effect-claim-test-entity"),
 		agentId: runtime.agentId,
 		roomId: stringToUuid("side-effect-claim-test-room"),
-		content: { text: "help me not forget the bill", source: "test" },
+		content: {
+			text: options?.userText ?? "help me not forget the bill",
+			source: "test",
+		},
 		createdAt: Date.now(),
 	};
 	const state: State = { values: {}, data: {}, text: "" };
@@ -331,5 +354,286 @@ describe("setup-completion claims (#16941)", () => {
 				"Setup hasn't run yet. Want defaults, or a quick customize?",
 			),
 		).toBe(false);
+	});
+});
+
+describe("replyClaimsEmptyTrackedWorkState", () => {
+	it("matches the live #17058 fabricated empty-day reply", () => {
+		expect(replyClaimsEmptyTrackedWorkState(FABRICATED_EMPTY_DAY_REPLY)).toBe(
+			true,
+		);
+	});
+
+	it("matches empty-list / empty-day assertions", () => {
+		expect(
+			replyClaimsEmptyTrackedWorkState("Your task list is empty right now."),
+		).toBe(true);
+		expect(
+			replyClaimsEmptyTrackedWorkState(
+				"No tasks logged today — you had a quiet one.",
+			),
+		).toBe(true);
+		expect(
+			replyClaimsEmptyTrackedWorkState("I don't have today's log, sorry."),
+		).toBe(true);
+		expect(
+			replyClaimsEmptyTrackedWorkState(
+				"Nothing was recorded this morning, so there is nothing to recap.",
+			),
+		).toBe(true);
+		expect(
+			replyClaimsEmptyTrackedWorkState("There's nothing on your list."),
+		).toBe(true);
+		expect(
+			replyClaimsEmptyTrackedWorkState("Your day is wide open tomorrow."),
+		).toBe(true);
+	});
+
+	it("passes questions and conditionals through", () => {
+		expect(
+			replyClaimsEmptyTrackedWorkState("Is your task list empty right now?"),
+		).toBe(false);
+		expect(
+			replyClaimsEmptyTrackedWorkState(
+				"If your task list is empty, we could plan tomorrow instead.",
+			),
+		).toBe(false);
+	});
+
+	it("passes ordinary non-task chat through", () => {
+		expect(
+			replyClaimsEmptyTrackedWorkState(
+				"No word from Bob today — his last message was yesterday.",
+			),
+		).toBe(false);
+		expect(
+			replyClaimsEmptyTrackedWorkState("The capital of France is Paris."),
+		).toBe(false);
+		// Honest process talk about the assistant's own limits, not the user's day.
+		expect(
+			replyClaimsEmptyTrackedWorkState(
+				"I wasn't able to check your tracked tasks and notes just now, so I can't give you an accurate picture of the day. Want me to try again?",
+			),
+		).toBe(false);
+	});
+});
+
+describe(EMPTY_CLAIM_EVALUATOR_NAME, () => {
+	function getEmptyClaimEvaluator() {
+		const evaluator = BUILTIN_RESPONSE_HANDLER_EVALUATORS.find(
+			(candidate) => candidate.name === EMPTY_CLAIM_EVALUATOR_NAME,
+		);
+		if (!evaluator) {
+			throw new Error(`${EMPTY_CLAIM_EVALUATOR_NAME} is not registered`);
+		}
+		return evaluator;
+	}
+
+	// A runtime with no tasks-class surface genuinely cannot look the answer
+	// up, so the reply is an honest capability statement there and must pass
+	// through. The default runtime already ships a tracked-work action (core
+	// TASKS declares the "tasks" context), so the empty-surface case is
+	// exercised by removing those actions for the duration of the assertion.
+	it("does not fire when no tracked-work action is registered", async () => {
+		const runtime = testRuntime.runtime;
+		expect(registeredTrackedWorkContexts(runtime).length).toBeGreaterThan(0);
+		const original = [...runtime.actions];
+		const untracked = original.filter(
+			(action) =>
+				registeredTrackedWorkContexts({ actions: [action] }).length === 0,
+		);
+		runtime.actions.length = 0;
+		runtime.actions.push(...untracked);
+		try {
+			expect(registeredTrackedWorkContexts(runtime)).toEqual([]);
+			expect(
+				await getEmptyClaimEvaluator().shouldRun(
+					makeContext(simpleReplyHandler(FABRICATED_EMPTY_DAY_REPLY), {
+						userText: "Recap my day — what did I get done today?",
+					}),
+				),
+			).toBe(false);
+		} finally {
+			runtime.actions.length = 0;
+			runtime.actions.push(...original);
+		}
+	});
+
+	it("fires on a simple-path empty-day claim once tracked-work actions exist, and reroutes with tracked contexts + backstop candidates", async () => {
+		const runtime = testRuntime.runtime;
+		runtime.registerAction({
+			name: "SCHEDULED_TASKS",
+			description: "tracked-work test action",
+			contexts: ["tasks", "productivity"],
+			validate: async () => true,
+			handler: async () => ({ success: true, text: "" }),
+		});
+		registerCandidateActionBackstopRule(runtime, {
+			actionNames: ["SCHEDULED_TASKS", "SCHEDULED_TASKS_LIST"],
+			matches: (text) => /\b(?:recap|tasks?)\b/i.test(text),
+		});
+		const evaluator = getEmptyClaimEvaluator();
+		const context = makeContext(
+			simpleReplyHandler(FABRICATED_EMPTY_DAY_REPLY),
+			{ userText: "Recap my day — what did I get done today?" },
+		);
+		expect(await evaluator.shouldRun(context)).toBe(true);
+		const patch = (await evaluator.evaluate(context)) as ResponseHandlerPatch;
+		expect(patch.requiresTool).toBe(true);
+		// Reroute contexts: up to two tracked-work ids the registered actions
+		// declare (registration order decides which two), then "general".
+		expect(patch.addContexts?.at(-1)).toBe("general");
+		expect(patch.addContexts).toContain("tasks");
+		expect(patch.addContexts?.length).toBeLessThanOrEqual(3);
+		expect(patch.addCandidateActions).toEqual([
+			"SCHEDULED_TASKS",
+			"SCHEDULED_TASKS_LIST",
+		]);
+		// The fabricated empty day must never ship — replaced by a plain ack the
+		// planner path then supersedes with a tool-grounded recap.
+		expect(patch.reply).toBe("On it.");
+	});
+
+	it("does not fire on non-task chat or on already-planning turns", async () => {
+		const evaluator = getEmptyClaimEvaluator();
+		expect(
+			await evaluator.shouldRun(
+				makeContext(
+					simpleReplyHandler(
+						"No word from Bob today — his last message was yesterday.",
+					),
+				),
+			),
+		).toBe(false);
+		// A non-simple routed turn grounds through the planner; the egress guard
+		// below owns that path, not the Stage-1 evaluator.
+		const planning = simpleReplyHandler(FABRICATED_EMPTY_DAY_REPLY);
+		planning.plan.contexts = ["simple", "tasks"];
+		expect(await evaluator.shouldRun(makeContext(planning))).toBe(false);
+	});
+});
+
+describe("evaluatePlannedReplyEgress", () => {
+	const FABRICATED_ALL_SET_REPLY =
+		"You're all set — I've seeded your first reminder for tomorrow at 9am.";
+
+	it("bounces a bare planner REPLY that claims completed work with zero executed actions", () => {
+		const decision = evaluatePlannedReplyEgress({
+			reply: FABRICATED_ALL_SET_REPLY,
+			hasGroundingActionResult: false,
+			trackedWorkContexts: ["tasks"],
+		});
+		expect(decision.verdict).toBe("bounce");
+		if (decision.verdict !== "bounce") throw new Error("expected bounce");
+		expect(decision.kind).toBe("completed_side_effect");
+		// The corrective instruction quotes the rejected claim so the re-run
+		// knows exactly what was refused.
+		expect(decision.correctiveInstruction).toContain("all set");
+		// The honest fallback must not itself trip either claim detector.
+		expect(replyClaimsCompletedSideEffect(decision.fallbackReply)).toBe(false);
+		expect(replyClaimsEmptyTrackedWorkState(decision.fallbackReply)).toBe(
+			false,
+		);
+	});
+
+	it("allows the same claim when a successful non-control tool grounded it", () => {
+		expect(
+			evaluatePlannedReplyEgress({
+				reply: FABRICATED_ALL_SET_REPLY,
+				hasGroundingActionResult: true,
+				trackedWorkContexts: ["tasks"],
+			}),
+		).toEqual({ verdict: "allow" });
+	});
+
+	it("bounces an ungrounded empty-day claim only when a tracked-work surface exists", () => {
+		const bounced = evaluatePlannedReplyEgress({
+			reply: FABRICATED_EMPTY_DAY_REPLY,
+			hasGroundingActionResult: false,
+			trackedWorkContexts: ["tasks"],
+		});
+		expect(bounced.verdict).toBe("bounce");
+		if (bounced.verdict !== "bounce") throw new Error("expected bounce");
+		expect(bounced.kind).toBe("empty_tracked_state");
+		expect(replyClaimsEmptyTrackedWorkState(bounced.fallbackReply)).toBe(false);
+		// No tasks surface registered: "I don't have your list" is an honest
+		// capability statement, not a skipped read.
+		expect(
+			evaluatePlannedReplyEgress({
+				reply: FABRICATED_EMPTY_DAY_REPLY,
+				hasGroundingActionResult: false,
+				trackedWorkContexts: [],
+			}),
+		).toEqual({ verdict: "allow" });
+	});
+
+	it("allows a genuinely-empty grounded read and plain answers", () => {
+		expect(
+			evaluatePlannedReplyEgress({
+				reply: "Nothing was recorded this morning — your list is clear.",
+				hasGroundingActionResult: true,
+				trackedWorkContexts: ["tasks"],
+			}),
+		).toEqual({ verdict: "allow" });
+		expect(
+			evaluatePlannedReplyEgress({
+				reply: "I haven't set the reminder yet — want me to?",
+				hasGroundingActionResult: false,
+				trackedWorkContexts: ["tasks"],
+			}),
+		).toEqual({ verdict: "allow" });
+	});
+
+	it("counts only successful non-control tool results as grounding", () => {
+		const successfulTool: ActionResult = {
+			success: true,
+			data: { actionName: "OWNER_REMINDERS" },
+		};
+		const failedTool: ActionResult = {
+			success: false,
+			data: { actionName: "OWNER_REMINDERS" },
+		};
+		const executedReply: ActionResult = {
+			success: true,
+			data: { actionName: "REPLY" },
+		};
+		expect(plannedReplyHasGroundingActionResult([successfulTool])).toBe(true);
+		expect(plannedReplyHasGroundingActionResult([failedTool])).toBe(false);
+		// An executed REPLY re-composes prose; it performs no side effect and
+		// reads no state, so it cannot ground a completion or empty-state claim.
+		expect(plannedReplyHasGroundingActionResult([executedReply])).toBe(false);
+		expect(plannedReplyHasGroundingActionResult([])).toBe(false);
+	});
+});
+
+describe("tasks context recap/status routing vocabulary", () => {
+	// #17059 variant B root cause: the compact DM Stage-1 catalog renders
+	// descriptionCompressed ONLY, and the old compressed tasks line carried no
+	// recap/status vocabulary — a "recap my day" ask had nothing to route on
+	// and fell to contexts=["simple"].
+	it("keeps recap/status/summary vocabulary in the COMPRESSED tasks line the DM catalog renders", () => {
+		const compact = formatAvailableContextsForPrompt(
+			getDefaultContextDefinitions(),
+			{ compact: true },
+		);
+		const tasksLine = compact
+			.split("\n")
+			.find((line) => line.startsWith("- tasks"));
+		expect(tasksLine).toBeDefined();
+		expect(tasksLine).toMatch(/recap\/status\/summary/i);
+		expect(tasksLine).toMatch(/recap my day/i);
+		expect(tasksLine).toMatch(/what's left today/i);
+	});
+
+	it("keeps recap examples in the full tasks description", () => {
+		const full = formatAvailableContextsForPrompt(
+			getDefaultContextDefinitions(),
+		);
+		const tasksLine = full
+			.split("\n")
+			.find((line) => line.startsWith("- tasks"));
+		expect(tasksLine).toBeDefined();
+		expect(tasksLine).toMatch(/recap my day/i);
+		expect(tasksLine).toMatch(/what did I get done today/i);
 	});
 });

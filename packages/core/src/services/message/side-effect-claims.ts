@@ -1,16 +1,17 @@
 /**
- * Detector for replies that assert an already-completed scheduling/save side
- * effect ("I've set…", "Done — your reminders are set"). Lives in a leaf
- * module because both the Stage-1 response-handler evaluator
- * (`core.simple_completed_side_effect_claim`, services/message.ts) and the
+ * Detectors for replies that assert ungrounded state: an already-completed
+ * scheduling/save side effect ("I've set…", "Done — your reminders are set")
+ * and the read-side twin — an empty/absent tracked-work state ("your task
+ * list is empty", "I don't have today's log"). Lives in a leaf module because
+ * the Stage-1 response-handler evaluators (services/message.ts), the
  * planner-path REPLY action guard (features/basic-capabilities/actions/
- * reply.ts) consume it — importing the full message service from an action
- * would create an import cycle.
+ * reply.ts), and the planned-reply egress guard all consume it — importing
+ * the full message service from an action would create an import cycle.
  *
- * Detection is split by grammatical certainty so that only ASSERTIONS of
- * finished work fire; consent-seeking offers, questions, and conditionals
- * must pass through untouched (a rewritten offer forces an unwanted planner
- * run — the user asked a question and got an action).
+ * Detection is split by grammatical certainty so that only ASSERTIONS
+ * fire; consent-seeking offers, questions, and conditionals must pass
+ * through untouched (a rewritten offer forces an unwanted planner run — the
+ * user asked a question and got an action).
  */
 
 // Perfective first-person claims ("I've set…", "I have scheduled…", "I just
@@ -93,6 +94,58 @@ export function replyClaimsCompletedSideEffect(reply: string): boolean {
 		if (NON_ASSERTIVE_SIDE_EFFECT_LEAD_PATTERN.test(prefix)) continue;
 		if (sideEffectClaimSentenceIsQuestion(text, match.index)) continue;
 		return true;
+	}
+	return false;
+}
+
+// Read-side twin of the completed-side-effect patterns above: assertions that
+// the user's TRACKED WORK is empty/absent ("your task list is empty", "no
+// notes, tasks, or messages from earlier today", "I don't have today's log").
+// On a path where no read tool ran, such a reply conflates "not loaded" with
+// "zero" — the exact conflation the error doctrine bans on data paths. Each
+// branch is anchored to tracked-work nouns so ordinary chat ("no messages from
+// Bob in this thread") passes through; chat-recall stays owned by the
+// visible-context-recall exception.
+const EMPTY_TRACKED_STATE_CLAIM_PATTERNS: readonly RegExp[] = [
+	// "your task list is empty", "the todo list looks clear"
+	/\b(?:task|todo|to[- ]do|reminder|goal|habit)s?\s+list\s+(?:is|looks|seems|appears)\s+(?:empty|clear|blank)\b/gi,
+	// "no notes, tasks, or messages from earlier today", "no tasks logged"
+	/\b(?:no|zero)\s+(?:new\s+)?(?:notes?|tasks?|todos?|to[- ]dos?|reminders?|habits?|goals?|entries)\b[^.!?\n]*\b(?:today|tonight|this\s+morning|this\s+afternoon|this\s+evening|so\s+far|earlier|logged|recorded|saved|tracked|on\s+file)\b/gi,
+	// "I don't have today's log (in front of me)", "I don't have your task list"
+	/\bi\s+don['’]t\s+have\s+(?:today['’]s|your)\s+(?:log|notes?|list|tasks?|todos?)\b/gi,
+	// "nothing logged today", "nothing was recorded this morning"
+	/\bnothing\s+(?:is\s+|was\s+|got\s+)?(?:logged|recorded|written\s+down|saved|tracked)\b[^.!?\n]*\b(?:today|tonight|yesterday|this\s+(?:morning|afternoon|evening|week)|so\s+far)\b/gi,
+	// "nothing on your list/schedule/plate"
+	/\bnothing\s+(?:is\s+)?on\s+(?:your|the)\s+(?:list|schedule|plate|docket)\b/gi,
+	// "your day is wide open", "your schedule looks clear"
+	/\byour\s+(?:day|schedule|slate)\s+(?:is|looks|seems|appears)\s+(?:empty|clear|blank|free|wide\s+open)\b/gi,
+];
+
+// A subordinator opening the clause turns the match into a hypothetical ("If
+// your task list is empty, we could…"), not a report of looked-up state.
+const CONDITIONAL_EMPTY_CLAIM_LEAD_PATTERN =
+	/\b(?:if|unless|when|whenever|once|whether|in\s+case)\b[^.!?\n]*$/i;
+
+/**
+ * True when a reply ASSERTS that the user's tracked work (tasks, todos,
+ * reminders, habits, goals, notes, day log) is empty or unavailable. On a path
+ * where no read tool ran, that assertion fabricates an empty day — "not loaded
+ * must never read as zero" applied to READS (#17059; observed live: a recap ask
+ * routed contexts=["simple"] and answered "I don't have today's log in front of
+ * me — no notes, tasks, or messages from earlier today", run 729acaf2).
+ * Questions and conditionals pass through: asking the user whether their list
+ * is empty is not a claim about looked-up state.
+ */
+export function replyClaimsEmptyTrackedWorkState(reply: string): boolean {
+	const text = reply.trim();
+	if (!text) return false;
+	for (const pattern of EMPTY_TRACKED_STATE_CLAIM_PATTERNS) {
+		for (const match of text.matchAll(pattern)) {
+			const prefix = text.slice(0, match.index);
+			if (CONDITIONAL_EMPTY_CLAIM_LEAD_PATTERN.test(prefix)) continue;
+			if (sideEffectClaimSentenceIsQuestion(text, match.index)) continue;
+			return true;
+		}
 	}
 	return false;
 }

@@ -2868,7 +2868,7 @@ async function createV5MessageContextObject(args: {
 		source: "message-service",
 		stable: false,
 		content:
-			"current_turn_boundary: The prior_message blocks above are context only. If a reply_reference block follows, it is the platform message that the final message:user is replying to; use it only to resolve references such as this/that/it. Execute and answer only the final message:user below. Do not merge separate prior requests into the current task unless the final message explicitly references them. Exception for visible-context recall: when the final message asks a recall question about what was said in this conversation (who mentioned X, did anyone bring up Y, what did I say about Z, what was the last message, did you yourself say W), you may scan the prior_message blocks above and answer from what is literally visible there." +
+			'current_turn_boundary: The prior_message blocks above are context only. If a reply_reference block follows, it is the platform message that the final message:user is replying to; use it only to resolve references such as this/that/it. Execute and answer only the final message:user below. Do not merge separate prior requests into the current task unless the final message explicitly references them. Exception for visible-context recall: when the final message asks a recall question about what was said in this conversation (who mentioned X, did anyone bring up Y, what did I say about Z, what was the last message, did you yourself say W), you may scan the prior_message blocks above and answer from what is literally visible there. This recall exception covers only what was literally SAID in the visible chat. It does NOT cover the user\'s tracked work: a recap, status, or what-did-I-get-done ask about their todos, tasks, reminders, habits, goals, notes, or day ("recap my day", "what\'s left today", "did I finish everything", "how did I do this week") is a live tasks lookup, not chat recall — route it to the tasks tools and answer from what they return; never report an empty or missing day from the visible window alone.' +
 			// Only the chat-recall context renders the agent's own prior turns;
 			// the tool-planner context deliberately omits them (stale-answer
 			// hazard), so this grounding sentence would be false there.
@@ -3024,11 +3024,142 @@ function filterSelectedContextsForRole(
 	return selected;
 }
 
-// Shared with the planner-path REPLY guard; the detector lives in a leaf
-// module so the action can import it without pulling in this service.
-import { replyClaimsCompletedSideEffect } from "./message/side-effect-claims.ts";
+// Shared with the planner-path REPLY guard and the planned-reply egress
+// guard; the detectors live in a leaf module so the action can import them
+// without pulling in this service.
+import {
+	replyClaimsCompletedSideEffect,
+	replyClaimsEmptyTrackedWorkState,
+} from "./message/side-effect-claims.ts";
 
-export { replyClaimsCompletedSideEffect };
+export { replyClaimsCompletedSideEffect, replyClaimsEmptyTrackedWorkState };
+
+// Context ids that mark an action as owning the user's tracked work. The
+// empty-claim guard fires only when at least one registered action declares
+// one of these — a runtime with no tasks surface genuinely cannot look the
+// answer up, so "I don't have your list" is an honest capability statement
+// there, not a skipped read.
+const TRACKED_WORK_CONTEXT_IDS: readonly string[] = [
+	"tasks",
+	"todos",
+	"goals",
+	"reminders",
+	"followups",
+	"productivity",
+];
+
+/**
+ * Tracked-work context ids declared by registered actions, in declaration
+ * order. Non-empty means the runtime has a real tasks-class surface the
+ * planner can read from; the ids double as the reroute's context hints so the
+ * promoted turn exposes the actions that can actually answer.
+ */
+export function registeredTrackedWorkContexts(runtime: {
+	actions?: readonly { name: string; contexts?: readonly string[] }[];
+}): string[] {
+	const found: string[] = [];
+	for (const action of runtime.actions ?? []) {
+		for (const context of action.contexts ?? []) {
+			const normalized = String(context).toLowerCase();
+			if (
+				TRACKED_WORK_CONTEXT_IDS.includes(normalized) &&
+				!found.includes(normalized)
+			) {
+				found.push(normalized);
+			}
+		}
+	}
+	return found;
+}
+
+/**
+ * True when this turn's executed action results contain at least one
+ * SUCCESSFUL non-control tool run — the "grounded by a successful tool"
+ * exemption for the planned-reply egress guard. Control actions
+ * (REPLY/IGNORE/STOP) never ground a state claim: an executed REPLY only
+ * re-composes prose, it performs no side effect and reads no state.
+ */
+export function plannedReplyHasGroundingActionResult(
+	results: readonly ActionResult[],
+): boolean {
+	return results.some(
+		(result) =>
+			result.success !== false &&
+			canonicalPlannerControlActionName(
+				String(
+					(result.data as { actionName?: unknown } | undefined)?.actionName ??
+						"",
+				),
+			) === null,
+	);
+}
+
+/** Egress decision for a planner-composed final reply (see below). */
+export type PlannedReplyEgressDecision =
+	| { verdict: "allow" }
+	| {
+			verdict: "bounce";
+			kind: "completed_side_effect" | "empty_tracked_state";
+			correctiveInstruction: string;
+			fallbackReply: string;
+	  };
+
+/**
+ * Egress guard for the planned_reply chokepoint (`createV5ReplyStrategyResult`
+ * — the single reply-egress chokepoint, same one the PII swap restores at). A
+ * bare planner REPLY is a CONTROL action: its text ships as `finalMessage`
+ * without executing the REPLY action, so a fabricated "you're all set" bypasses
+ * both the REPLY action's grounded re-compose and the Stage-1 simple-path
+ * evaluators (#17059 Audit C — first-run fast-start shipped exactly that
+ * claim with zero executed actions). This guard re-applies both claim
+ * detectors at egress: a completed-side-effect or empty-tracked-state claim
+ * with NO successful non-control tool result this turn is fabricated by
+ * construction. Grounded-by-successful-tool replies are exempt — a claim made
+ * after a real tool ran is the tool-result relay this path exists for.
+ *
+ * The caller bounces by re-running the planner loop once with the corrective
+ * instruction and a forced non-terminal tool call; if that still fabricates,
+ * `fallbackReply` (an honest not-done / could-not-check statement) ships
+ * instead of the claim.
+ */
+export function evaluatePlannedReplyEgress(args: {
+	reply: string;
+	hasGroundingActionResult: boolean;
+	trackedWorkContexts: readonly string[];
+}): PlannedReplyEgressDecision {
+	const reply = args.reply.trim();
+	if (!reply || args.hasGroundingActionResult) return { verdict: "allow" };
+	const quotedClaim = JSON.stringify(
+		reply.length > 200 ? `${reply.slice(0, 200)}…` : reply,
+	);
+	if (replyClaimsCompletedSideEffect(reply)) {
+		return {
+			verdict: "bounce",
+			kind: "completed_side_effect",
+			correctiveInstruction:
+				`Rejected before delivery: your previous reply for this turn (${quotedClaim}) claimed already-completed work, but NO tool executed this turn, so the claim is fabricated. ` +
+				"Call the real tool that performs the request and confirm from its result, or reply honestly that the work has not been done yet. " +
+				"Never restate a completed-work claim without a successful tool result behind it.",
+			fallbackReply:
+				"I haven't actually done that yet — no tool ran on my side this turn, so nothing is set up. Want me to do it for real now?",
+		};
+	}
+	if (
+		args.trackedWorkContexts.length > 0 &&
+		replyClaimsEmptyTrackedWorkState(reply)
+	) {
+		return {
+			verdict: "bounce",
+			kind: "empty_tracked_state",
+			correctiveInstruction:
+				`Rejected before delivery: your previous reply for this turn (${quotedClaim}) asserted the user's tracked tasks/notes/day are empty or unavailable, but NO read tool executed this turn, so that is a fabricated empty day. ` +
+				"Call the tool that lists the user's tracked work and answer from its result. An empty answer is only allowed when a read tool actually returned empty.",
+			fallbackReply:
+				"I wasn't able to check your tracked tasks and notes just now, so I can't give you an accurate picture of the day. Want me to try again?",
+		};
+	}
+	return { verdict: "allow" };
+}
 
 export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvaluator[] =
 	[
@@ -3214,6 +3345,64 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 					reply: "On it.",
 					debug: [
 						`simple reply claimed a completed side effect with no tool run; rerouting to the planner (candidates: ${candidateActions.join(", ") || "none"})`,
+					],
+				};
+			},
+		},
+		{
+			// Read-side twin of the guard above: a simple-path turn runs NO tools,
+			// so a reply asserting the user's tracked work is empty/absent ("your
+			// task list is empty", "no notes, tasks, or messages from earlier
+			// today") fabricates an empty day by construction. Fires only when a
+			// registered action declares a tracked-work context — then the real
+			// list IS readable and the honest move is to read it, not to guess
+			// zero. Candidate hints come from the plugin-registered backstop rules
+			// matched against the user's ask plus the fabricated claim, and the
+			// reroute carries the tracked-work context ids the matched actions
+			// declare so the planner exposes the actions that can answer.
+			name: "core.simple_empty_tracked_state_claim",
+			description:
+				"Blocks simple-path replies that assert the user's tracked tasks/notes/day are empty when no read tool ran; reroutes the turn to the planner.",
+			priority: 30,
+			shouldRun: ({ messageHandler, runtime }) => {
+				if (messageHandler.processMessage !== "RESPOND") return false;
+				if (messageHandler.plan.requiresTool === true) return false;
+				const nonSimpleContexts = (messageHandler.plan.contexts ?? []).filter(
+					(context) => context !== SIMPLE_CONTEXT_ID,
+				);
+				if (nonSimpleContexts.length > 0) return false;
+				const reply =
+					typeof messageHandler.plan.reply === "string"
+						? messageHandler.plan.reply
+						: "";
+				if (!replyClaimsEmptyTrackedWorkState(reply)) return false;
+				return registeredTrackedWorkContexts(runtime).length > 0;
+			},
+			evaluate: ({ message, messageHandler, runtime }) => {
+				const reply =
+					typeof messageHandler.plan.reply === "string"
+						? messageHandler.plan.reply
+						: "";
+				const matchText = [getUserMessageText(message) ?? "", reply]
+					.filter(Boolean)
+					.join("\n");
+				const candidateActions = [
+					...new Set(
+						getCandidateActionBackstopRules(runtime)
+							.filter((rule) => rule.matches(matchText))
+							.flatMap((rule) => [...rule.actionNames]),
+					),
+				];
+				const trackedContexts = registeredTrackedWorkContexts(runtime);
+				return {
+					requiresTool: true,
+					addContexts: [...trackedContexts.slice(0, 2), "general"],
+					...(candidateActions.length > 0
+						? { addCandidateActions: candidateActions }
+						: {}),
+					reply: "On it.",
+					debug: [
+						`simple reply asserted empty tracked-work state with no read tool run; rerouting to the planner (contexts: ${trackedContexts.join(", ") || "none"}; candidates: ${candidateActions.join(", ") || "none"})`,
 					],
 				};
 			},
@@ -7585,15 +7774,24 @@ export async function runV5MessageRuntimeStage1(args: {
 			? async (content, ...rest) => args.callback?.(content, ...rest) ?? []
 			: undefined;
 
-		let plannerResult: PlannerLoopResult;
-		try {
-			plannerResult = await timeInferenceSpan("message:planner", () =>
+		// Single assembly point for the planner-loop invocation so the planned-
+		// reply egress bounce below can re-run the loop with a corrective
+		// instruction and a forced non-terminal tool call without duplicating the
+		// wiring. `loopContext` flows to both the loop and tool execution so the
+		// corrective instruction is visible to every stage of the re-run.
+		const invokePlannerLoop = (
+			loopContext: typeof plannerContextAfterEarlyReply,
+			options?: { forceNonTerminalToolCall?: boolean },
+		) =>
+			timeInferenceSpan("message:planner", () =>
 				runPlannerLoop({
 					runtime: plannerRuntime,
-					context: plannerContextAfterEarlyReply,
+					context: loopContext,
 					config: args.plannerLoopConfig,
 					tools: plannerTools.length > 0 ? plannerTools : undefined,
-					requireNonTerminalToolCall,
+					requireNonTerminalToolCall:
+						options?.forceNonTerminalToolCall === true ||
+						requireNonTerminalToolCall,
 					// Fallback honesty for required-tool exhaustion: Stage 1's own
 					// replyText (when answer-shaped) is surfaced instead of the
 					// generic transient-failure apology. Duplicate delivery is safe —
@@ -7641,7 +7839,7 @@ export async function runV5MessageRuntimeStage1(args: {
 								executeV5PlannedToolCall({
 									runtime: args.runtime,
 									toolCall,
-									plannerContext: plannerContextAfterEarlyReply,
+									plannerContext: loopContext,
 									executorCtx: buildV5ExecutorContext({
 										message: args.message,
 										state: plannerState,
@@ -7677,6 +7875,10 @@ export async function runV5MessageRuntimeStage1(args: {
 						),
 				}),
 			);
+
+		let plannerResult: PlannerLoopResult;
+		try {
+			plannerResult = await invokePlannerLoop(plannerContextAfterEarlyReply);
 		} catch (error) {
 			const fallbackResult = await runDeterministicPlannerFallback({
 				runtime: args.runtime,
@@ -7728,6 +7930,85 @@ export async function runV5MessageRuntimeStage1(args: {
 				}
 			} else {
 				plannerResult = fallbackResult;
+			}
+		}
+
+		// Planned-reply egress guard (#17059 Audit C): a bare planner REPLY is a
+		// control action — its text ships as finalMessage WITHOUT executing the
+		// REPLY action, so a fabricated "you're all set" / "your day is empty"
+		// claim bypasses both the REPLY action's grounded re-compose and the
+		// Stage-1 simple-path claim evaluators. Re-apply both claim detectors
+		// here, at the single reply-egress chokepoint. A successful non-control
+		// tool result exempts the reply (that is the tool-result relay this path
+		// exists for). On a bounce: ONE corrective planner re-run with a forced
+		// non-terminal tool call; if that still fabricates (or no tools are
+		// exposed / the re-run fails), the honest fallback statement ships
+		// instead of the claim — a fabricated confirmation must never reach the
+		// user.
+		const plannedReplyEgressDecision = evaluatePlannedReplyEgress({
+			reply: String(plannerResult.finalMessage ?? ""),
+			hasGroundingActionResult: plannedReplyHasGroundingActionResult(
+				collectPreviousActionResults(
+					plannerResult.trajectory,
+					exposedPlannerActions,
+				),
+			),
+			trackedWorkContexts: registeredTrackedWorkContexts(args.runtime),
+		});
+		if (plannedReplyEgressDecision.verdict === "bounce") {
+			args.runtime.logger?.warn?.(
+				{
+					src: "service:message",
+					agentId: args.runtime.agentId,
+					kind: plannedReplyEgressDecision.kind,
+				},
+				"[message] planned reply asserted ungrounded state with no executed tool; bouncing for a regrounded re-run",
+			);
+			let regrounded: PlannerLoopResult | undefined;
+			if (plannerTools.length > 0) {
+				try {
+					regrounded = await invokePlannerLoop(
+						appendContextEvent(plannerContextAfterEarlyReply, {
+							id: `planned-reply-bounce:${Date.now()}`,
+							type: "instruction",
+							source: "message-service",
+							createdAt: Date.now(),
+							content: plannedReplyEgressDecision.correctiveInstruction,
+						}),
+						{ forceNonTerminalToolCall: true },
+					);
+				} catch (error) {
+					// error-policy:J4 explicit user-facing degrade — the corrective
+					// re-run failing must not kill the turn; the honest fallbackReply
+					// below is the designed degrade and the failure is surfaced via
+					// reportError (RECENT_ERRORS / owner escalation).
+					args.runtime.reportError(
+						"MessageService.plannedReplyReground",
+						error,
+						{ kind: plannedReplyEgressDecision.kind },
+					);
+				}
+			}
+			if (regrounded) {
+				const regroundedDecision = evaluatePlannedReplyEgress({
+					reply: String(regrounded.finalMessage ?? ""),
+					hasGroundingActionResult: plannedReplyHasGroundingActionResult(
+						collectPreviousActionResults(
+							regrounded.trajectory,
+							exposedPlannerActions,
+						),
+					),
+					trackedWorkContexts: registeredTrackedWorkContexts(args.runtime),
+				});
+				plannerResult =
+					regroundedDecision.verdict === "bounce"
+						? { ...regrounded, finalMessage: regroundedDecision.fallbackReply }
+						: regrounded;
+			} else {
+				plannerResult = {
+					...plannerResult,
+					finalMessage: plannedReplyEgressDecision.fallbackReply,
+				};
 			}
 		}
 
