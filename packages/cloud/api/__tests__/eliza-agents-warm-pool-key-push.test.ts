@@ -201,7 +201,7 @@ function claimedRow() {
     bridge_url: "http://100.64.0.11:3000",
     health_url: "http://100.64.0.11:3000/api",
     sandbox_id: `agent-${AGENT_ID}`,
-    claimedPoolSandboxId: "pool-row-1",
+    warm_pool_row_id: "pool-row-1",
     // Pool-org cloud key baked at boot — the bug under repair.
     environment_vars: {
       ELIZA_API_TOKEN: "agent_pool_live",

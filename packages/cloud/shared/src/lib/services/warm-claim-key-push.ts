@@ -35,8 +35,9 @@
  *   - the pool-org key the container BOOTED with is named for the DELETED
  *     pool row (`agent-sandbox:<poolRowId>`), so the claim-time mint cannot
  *     touch it; `pushClaimedWarmContainerInferenceKey` revokes it by
- *     `warm_pool_row_id` after a successful push, so no usable sentinel-org
- *     credential survives a completed re-key.
+ *     `warm_pool_row_id` BEFORE the live push, so no usable sentinel-org
+ *     credential survives the handoff — a failed push recovers by container
+ *     restart from the claimed row's already-persisted env.
  */
 
 export const WARM_CLAIM_KEY_PUSH_TIMEOUT_MS = 10_000;
@@ -58,9 +59,9 @@ export interface WarmClaimKeyPushBody {
 
 /**
  * Build the `POST /api/cloud/login/persist` request body for a warm-claim
- * re-credential. Returns null when there is no usable key/org to push (caller
- * skips the push — the claim still succeeds and the key applies on the next
- * container boot from the row's env).
+ * re-credential. Returns null when there is no usable key/org to push; the
+ * warm-claim service treats that as a failed handoff (fail closed), never as
+ * a ready claim.
  */
 export function buildWarmClaimKeyPushBody(params: {
   apiKey: string | null | undefined;

@@ -42,6 +42,19 @@ paths = [
   '''test-results/evidence/10469-live-model/.*''',
 ]
 
+# The warm-pool claim-time key-push tests once embedded plain `eliza_`-prefixed
+# synthetic fixtures; current files assemble them by concatenation, so no
+# token-shaped literal remains for the scanner to match. These two historical
+# commits still carry the plain shapes in their diffs — allowlist the exact
+# commits (never a path or regex), so every current and future line stays
+# scanned.
+[[allowlists]]
+description = "historical warm-pool synthetic key fixtures (#17066/#17078) — literals since removed from the tree"
+commits = [
+  "7cd6e85aeba85a7da858cfb6ed70bf74d8a876a6",
+  "82694fe2b91e9ca63635d5d74e0ab67401c0143e",
+]
+
 # The inference-auth controlled-probe test uses a fixed discriminator with a
 # 32-character lowercase-hex suffix so the trusted bypass path is exercised
 # without accepting a production credential. Scope both the file and exact
