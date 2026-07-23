@@ -10943,10 +10943,17 @@ export class DefaultMessageService implements IMessageService {
 			if (responseContent) {
 				const deliverableResponseContent = responseContent;
 				if (mode === "simple") {
-					// Keep content hooks and DB write before delivery so the wire
-					// response and stored memory match. Do not put MESSAGE_SENT
-					// handlers or post-turn evaluators before the callback; they are
-					// side effects and must not stall user-visible streaming.
+					// Keep content hooks before delivery so the wire response carries
+					// their edits. The response-memory DB write runs AFTER the
+					// callback: it is the largest post-LLM cost on this path
+					// (~250-440ms measured via the message:delivery:persistence
+					// InferenceTiming span) and the user must not wait on it. The
+					// persist is still awaited before this turn proceeds, so
+					// everything downstream (MESSAGE_SENT, post-turn evaluators,
+					// followUp, and the next turn's RECENT_MESSAGES read) observes
+					// the stored reply. Do not put MESSAGE_SENT handlers or
+					// post-turn evaluators before the callback; they are side
+					// effects and must not stall user-visible streaming.
 					await timeInferenceSpan("message:delivery:hooks", () =>
 						runtime.applyPipelineHooks(
 							"outgoing_before_deliver",
@@ -10960,44 +10967,76 @@ export class DefaultMessageService implements IMessageService {
 							}),
 						),
 					);
-					if (responseMessages.length > 0) {
-						for (const responseMemory of responseMessages) {
-							if (
-								responseMemory.id &&
-								persistedEarlyReplyIds.has(responseMemory.id)
-							) {
-								continue;
-							}
-							responseMemory.content = deliverableResponseContent;
-							if (shouldSkipResponseMemoryPersistence(responseMemory)) {
-								runtime.logger.debug(
-									{ src: "service:message", memoryId: responseMemory.id },
-									"Skipping transient response memory persistence",
-								);
-								continue;
-							}
-							runtime.logger.debug(
-								{ src: "service:message", memoryId: responseMemory.id },
-								"Saving response to memory",
+					let deliveryFailure: { error: unknown } | null = null;
+					if (callback) {
+						try {
+							await timeInferenceSpan("message:delivery:callback", () =>
+								callback(deliverableResponseContent),
 							);
-							await timeInferenceSpan("message:delivery:persistence", () =>
-								runtime.createMemory(responseMemory, "messages"),
-							);
-
-							detachPostDeliverySideEffect(runtime, "MESSAGE_SENT", () =>
-								this.emitMessageSent(
-									runtime,
-									responseMemory,
-									message.content.source ?? "messageHandler",
-								),
-							);
+							markInference(INFERENCE_MARKS.replyDelivered);
+						} catch (error) {
+							// error-policy:J2 ordering rethrow — delivery now precedes
+							// the response-memory persist, so a connector failure here
+							// must not skip that persist. Held and rethrown UNCHANGED
+							// (no cause-wrapping: callers classify the raw connector
+							// error) after the persist below settles.
+							deliveryFailure = { error };
 						}
 					}
-					if (callback) {
-						await timeInferenceSpan("message:delivery:callback", () =>
-							callback(deliverableResponseContent),
-						);
-						markInference(INFERENCE_MARKS.replyDelivered);
+					try {
+						if (responseMessages.length > 0) {
+							for (const responseMemory of responseMessages) {
+								if (
+									responseMemory.id &&
+									persistedEarlyReplyIds.has(responseMemory.id)
+								) {
+									continue;
+								}
+								responseMemory.content = deliverableResponseContent;
+								if (shouldSkipResponseMemoryPersistence(responseMemory)) {
+									runtime.logger.debug(
+										{ src: "service:message", memoryId: responseMemory.id },
+										"Skipping transient response memory persistence",
+									);
+									continue;
+								}
+								runtime.logger.debug(
+									{ src: "service:message", memoryId: responseMemory.id },
+									"Saving response to memory",
+								);
+								await timeInferenceSpan("message:delivery:persistence", () =>
+									runtime.createMemory(responseMemory, "messages"),
+								);
+
+								detachPostDeliverySideEffect(runtime, "MESSAGE_SENT", () =>
+									this.emitMessageSent(
+										runtime,
+										responseMemory,
+										message.content.source ?? "messageHandler",
+									),
+								);
+							}
+						}
+					} catch (persistError) {
+						// error-policy:J2 both-failures-observable rethrow — the
+						// persist failure propagates unchanged to the handleMessage
+						// boundary exactly as before the reorder; the held delivery
+						// failure (if any) would otherwise be silently superseded,
+						// so report it here first.
+						if (deliveryFailure) {
+							runtime.reportError(
+								"MessageService.simpleDeliveryCallback",
+								deliveryFailure.error,
+								{
+									agentId: runtime.agentId,
+									roomId: message.roomId,
+								},
+							);
+						}
+						throw persistError;
+					}
+					if (deliveryFailure) {
+						throw deliveryFailure.error;
 					}
 				}
 			}

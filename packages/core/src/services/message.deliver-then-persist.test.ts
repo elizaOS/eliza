@@ -1,0 +1,274 @@
+/**
+ * Reply-delivery ordering on the simple fast path (deliver-then-save): the
+ * connector callback fires BEFORE the response-memory DB write — moving the
+ * `message:delivery:persistence` span (~250-440ms live) off time-to-reply —
+ * while the persist still completes before handleMessage resolves, a callback
+ * failure never loses the memory, a persist failure still reaches the
+ * handleMessage boundary, and an immediate follow-up read sees the stored
+ * reply. Real AgentRuntime + InMemoryDatabaseAdapter end to end; only the
+ * Stage-1 model surface is a deterministic registered handler (no live model,
+ * no network). The adapter wrapper below observes/faults the storage boundary
+ * but always delegates real writes to the real adapter.
+ */
+
+import { v4 } from "uuid";
+import { afterEach, describe, expect, it } from "vitest";
+import { createCharacter } from "../character";
+import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
+import { inferenceTimingRegistry } from "../inference-timing";
+import { AgentRuntime } from "../runtime";
+import type { Content, Memory } from "../types";
+import { ModelType } from "../types/model";
+import { asUUID, ChannelType, type UUID } from "../types/primitives";
+import { DefaultMessageService } from "./message";
+
+/** The Stage-1 HANDLE_RESPONSE tool-call envelope a live model emits. */
+function stage1DirectReply(replyText: string) {
+	return {
+		text: "",
+		toolCalls: [
+			{
+				id: "handle-response-1",
+				name: "HANDLE_RESPONSE",
+				arguments: {
+					shouldRespond: "RESPOND",
+					thought: "Direct answer.",
+					contexts: ["simple"],
+					intents: [],
+					candidateActionNames: [],
+					replyText,
+					facts: [],
+					relationships: [],
+					addressedTo: [],
+				},
+			},
+		],
+		finishReason: "tool_calls",
+	};
+}
+
+const activeRuntimes: AgentRuntime[] = [];
+
+afterEach(async () => {
+	await Promise.all(
+		activeRuntimes.splice(0).map(async (runtime) => {
+			await runtime.stop();
+			await runtime.close();
+		}),
+	);
+});
+
+interface HarnessOptions {
+	/** Artificial latency injected on the agent-reply row write only. */
+	persistDelayMs?: number;
+	/** Fail the agent-reply row write only (incoming-message write succeeds). */
+	failReplyPersist?: boolean;
+}
+
+async function createHarness(opts: HarnessOptions = {}) {
+	const replyText = `the build finished clean, all green. probe-${v4()}`;
+	const adapter = new InMemoryDatabaseAdapter();
+	const runtime = new AgentRuntime({
+		character: createCharacter({
+			name: `DeliverThenPersist${v4().slice(0, 8)}`,
+		}),
+		adapter,
+		logLevel: "fatal",
+		enableAutonomy: false,
+	});
+	activeRuntimes.push(runtime);
+	await runtime.initialize();
+	runtime.registerModel(
+		ModelType.RESPONSE_HANDLER,
+		async () => stage1DirectReply(replyText),
+		"deterministic-test",
+	);
+
+	const roomId = asUUID(v4());
+	const entityId = asUUID(v4());
+	await runtime.ensureConnection({
+		entityId,
+		roomId,
+		worldId: asUUID(v4()),
+		userName: "tester",
+		name: "tester",
+		source: "test",
+		type: ChannelType.DM,
+	});
+
+	// Observation-only storage seam: records when the agent-reply row write
+	// COMPLETES relative to the delivery callback, and optionally injects
+	// latency or a fault for the failure-path tests. Real writes always reach
+	// the real in-memory adapter.
+	const order: string[] = [];
+	const realCreateMemories = adapter.createMemories.bind(adapter);
+	adapter.createMemories = (async (
+		memories: Array<{ memory: Memory; tableName: string; unique?: boolean }>,
+	): Promise<UUID[]> => {
+		const isReplyWrite = memories.some(
+			({ memory, tableName }) =>
+				tableName === "messages" &&
+				memory.entityId === runtime.agentId &&
+				memory.content?.text === replyText,
+		);
+		if (isReplyWrite && opts.persistDelayMs) {
+			await new Promise((resolve) => setTimeout(resolve, opts.persistDelayMs));
+		}
+		if (isReplyWrite && opts.failReplyPersist) {
+			throw new Error("injected reply-persist failure");
+		}
+		const ids = await realCreateMemories(memories);
+		if (isReplyWrite) {
+			order.push("persist:reply");
+		}
+		return ids;
+	}) as InMemoryDatabaseAdapter["createMemories"];
+
+	const makeMessage = (): Memory => ({
+		id: asUUID(v4()),
+		entityId,
+		agentId: runtime.agentId,
+		roomId,
+		content: {
+			text: "how did the build go?",
+			source: "test",
+			channelType: ChannelType.DM,
+		},
+		createdAt: Date.now(),
+	});
+
+	const storedReplies = async (): Promise<Memory[]> => {
+		const memories = await runtime.getMemories({
+			roomId,
+			tableName: "messages",
+			count: 100,
+		});
+		return memories.filter(
+			(m) => m.entityId === runtime.agentId && m.content.text === replyText,
+		);
+	};
+
+	const service = new DefaultMessageService();
+	return {
+		runtime,
+		service,
+		roomId,
+		replyText,
+		order,
+		makeMessage,
+		storedReplies,
+	};
+}
+
+describe("simple-path deliver-then-persist ordering", () => {
+	it("fires the delivery callback before the reply persist completes, then still persists it", async () => {
+		const h = await createHarness();
+		let repliesVisibleAtDelivery = -1;
+
+		const result = await h.service.handleMessage(
+			h.runtime,
+			h.makeMessage(),
+			async () => {
+				h.order.push("callback");
+				// Direct proof delivery precedes persistence: at delivery time the
+				// reply row is not yet readable from the real adapter.
+				repliesVisibleAtDelivery = (await h.storedReplies()).length;
+				return [];
+			},
+		);
+
+		expect(result.didRespond).toBe(true);
+		expect(result.mode).toBe("simple");
+		expect(result.responseContent?.text).toBe(h.replyText);
+		expect(repliesVisibleAtDelivery).toBe(0);
+		expect(h.order).toEqual(["callback", "persist:reply"]);
+
+		// The persist completed before handleMessage resolved: an immediate
+		// next-turn-style read sees exactly one stored reply — no drop, no
+		// double-persist.
+		const replies = await h.storedReplies();
+		expect(replies).toHaveLength(1);
+		expect(replies[0].content.text).toBe(h.replyText);
+	});
+
+	it("still persists the reply when the delivery callback throws, then rethrows that exact error", async () => {
+		const h = await createHarness();
+		const boom = new Error("connector send failed");
+
+		await expect(
+			h.service.handleMessage(h.runtime, h.makeMessage(), async () => {
+				h.order.push("callback-throw");
+				throw boom;
+			}),
+		).rejects.toBe(boom);
+
+		// The memory was persisted despite the delivery failure, and the error
+		// surfaced identity-preserved at the handleMessage boundary.
+		expect(h.order).toEqual(["callback-throw", "persist:reply"]);
+		expect(await h.storedReplies()).toHaveLength(1);
+	});
+
+	it("propagates a reply-persist failure to the handleMessage boundary after the user got the reply", async () => {
+		const h = await createHarness({ failReplyPersist: true });
+		const delivered: Content[] = [];
+
+		await expect(
+			h.service.handleMessage(h.runtime, h.makeMessage(), async (content) => {
+				delivered.push(content);
+				return [];
+			}),
+		).rejects.toThrow("injected reply-persist failure");
+
+		// Delivery happened first; the persist failure was NOT swallowed.
+		expect(delivered).toHaveLength(1);
+		expect(delivered[0].text).toBe(h.replyText);
+	});
+
+	it("keeps both failures observable when the callback AND the persist fail", async () => {
+		const h = await createHarness({ failReplyPersist: true });
+		const reported: unknown[] = [];
+		const realReportError = h.runtime.reportError.bind(h.runtime);
+		h.runtime.reportError = ((scope, error, context) => {
+			if (scope === "MessageService.simpleDeliveryCallback") {
+				reported.push(error);
+			}
+			return realReportError(scope, error, context);
+		}) as AgentRuntime["reportError"];
+		const boom = new Error("connector send failed");
+
+		// The persist failure propagates (data loss outranks delivery failure);
+		// the held delivery failure is reported, never silently superseded.
+		await expect(
+			h.service.handleMessage(h.runtime, h.makeMessage(), async () => {
+				throw boom;
+			}),
+		).rejects.toThrow("injected reply-persist failure");
+		expect(reported).toEqual([boom]);
+	});
+
+	it("records a time-to-reply that excludes the persistence span", async () => {
+		const h = await createHarness({ persistDelayMs: 150 });
+
+		await h.service.handleMessage(h.runtime, h.makeMessage(), async () => []);
+
+		const turn = inferenceTimingRegistry.recentTurns(1)[0];
+		expect(turn).toBeDefined();
+		const callbackSpan = turn.spans.find(
+			(s) => s.name === "message:delivery:callback",
+		);
+		const persistSpan = turn.spans.find(
+			(s) => s.name === "message:delivery:persistence",
+		);
+		expect(callbackSpan).toBeDefined();
+		expect(persistSpan).toBeDefined();
+		if (!callbackSpan || !persistSpan) return;
+
+		// Delivery fully completes before the persist opens, and the derived
+		// time-to-reply lands before the (artificially slow, >=150ms) persist
+		// closes — the DB write is off the reply critical path.
+		expect(persistSpan.startMs).toBeGreaterThanOrEqual(callbackSpan.endMs);
+		expect(persistSpan.durationMs).toBeGreaterThanOrEqual(140);
+		expect(turn.timeToReplyMs).not.toBeNull();
+		expect(turn.timeToReplyMs as number).toBeLessThan(persistSpan.endMs);
+	});
+});
