@@ -2,7 +2,7 @@
  * Live-model acceptance for the consolidated SETTINGS action (#14364, PR #14461).
  *
  * Drives the REAL message pipeline (Stage-1 classify + Stage-2 planner) against a
- * LIVE model — Cerebras gpt-oss-120b when CEREBRAS_API_KEY is set — with the
+ * LIVE model — Cerebras gemma-4-31b when CEREBRAS_API_KEY is set — with the
  * worktree `@elizaos/plugin-app-control` source (vitest aliases it to src). A
  * natural "disable shell access" / "turn off shell permissions" request must
  * SELECT the SETTINGS action and drive the permissions route
@@ -51,9 +51,9 @@ describe("SETTINGS live-model selection (#14364)", () => {
 	beforeAll(async () => {
 		if (!canRun) return;
 		writeFileSync(OUT, "");
-		// Match the acceptance bar's model: Cerebras gpt-oss-120b.
-		process.env.OPENAI_SMALL_MODEL ??= "gpt-oss-120b";
-		process.env.OPENAI_LARGE_MODEL ??= "gpt-oss-120b";
+		// Match the acceptance bar's model: Cerebras gemma-4-31b.
+		process.env.OPENAI_SMALL_MODEL ??= "gemma-4-31b";
+		process.env.OPENAI_LARGE_MODEL ??= "gemma-4-31b";
 		process.env.LOG_LEVEL = process.env.ELIZA_E2E_LOG_LEVEL ?? "error";
 		process.env.ELIZA_DISABLE_TRAJECTORY_LOGGING = "1";
 		process.env.ELIZA_DISABLE_PROACTIVE_AGENT = "1";

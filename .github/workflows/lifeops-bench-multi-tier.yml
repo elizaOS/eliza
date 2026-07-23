@@ -5,7 +5,7 @@
 # four-tier model registry (small / mid / large / frontier).
 #
 # Default PR cells: `--suite smoke --tiers large,frontier` (Cerebras
-# gpt-oss-120b + Anthropic Opus 4.7). Nightly runs the `core` suite over the
+# gemma-4-31b + Anthropic Opus 4.7). Nightly runs the `core` suite over the
 # same two tiers.
 #
 # All cells are skip-not-fail: missing API keys or missing local binaries

@@ -39,7 +39,7 @@
   },
   agents: {
     defaults: {
-      model: { primary: "cerebras/gpt-oss-120b" },
+      model: { primary: "cerebras/gemma-4-31b" },
     },
   },
 }

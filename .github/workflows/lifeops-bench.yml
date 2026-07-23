@@ -1,7 +1,7 @@
 # LifeOps Multi-Agent Benchmark Gate
 #
 # Runs the `lifeops-bench` runner per agent (eliza, hermes, openclaw) on
-# every PR that touches the lifeops surface area. Cerebras gpt-oss-120b is
+# every PR that touches the lifeops surface area. Cerebras gemma-4-31b is
 # used by the model-backed agents.
 #
 # Local equivalent (run before pushing):
