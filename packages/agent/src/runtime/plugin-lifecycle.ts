@@ -387,11 +387,13 @@ function snapshotPluginServiceClasses(
 ): Map<ServiceTypeName, Set<RuntimeServiceClass>> {
   const privateState = getRuntimePrivateState(runtime);
   const snapshot = new Map<ServiceTypeName, Set<RuntimeServiceClass>>();
-  for (const serviceClass of plugin.services ?? []) {
+  if (!plugin.services) return snapshot;
+  for (const serviceClass of plugin.services) {
     const serviceType = serviceClass.serviceType as ServiceTypeName;
+    // `new Set(undefined)` is an empty set, so no `?? []` fallback is needed.
     snapshot.set(
       serviceType,
-      new Set(privateState.serviceTypes.get(serviceType) ?? []),
+      new Set(privateState.serviceTypes.get(serviceType)),
     );
   }
   return snapshot;
@@ -403,7 +405,8 @@ function trackPluginServiceClasses(
   before: Map<ServiceTypeName, Set<RuntimeServiceClass>>,
 ): void {
   const privateState = getRuntimePrivateState(runtime);
-  for (const serviceClass of ownership.plugin.services ?? []) {
+  if (!ownership.plugin.services) return;
+  for (const serviceClass of ownership.plugin.services) {
     const serviceType = serviceClass.serviceType as ServiceTypeName;
     const previousClasses = before.get(serviceType);
     if (
