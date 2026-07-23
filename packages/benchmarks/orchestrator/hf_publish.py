@@ -66,6 +66,7 @@ REPO_ROOT_PLACEHOLDER = "<eliza-repo>"
 # set and the secret scrub — the unsafe direction of a set mismatch.
 HF_UPLOAD_IGNORE_PATTERNS: tuple[str, ...] = (
     ".git/**",
+    "**/.git/**",
     "*.sqlite-wal",
     "**/*.sqlite-wal",
     "*.sqlite-shm",

@@ -12,6 +12,7 @@ Run::
 
 from __future__ import annotations
 
+import fnmatch
 import json
 import subprocess
 from pathlib import Path
@@ -31,6 +32,7 @@ from benchmarks.orchestrator.hf_publish import (
     HF_UPLOAD_IGNORE_PATTERNS,
     MANIFEST_RELPATH,
     PublishRefusedError,
+    _is_ignored,
     auto_commit_run_groups,
     publish_to_hf,
 )
@@ -450,6 +452,10 @@ def test_ignore_patterns_exclude_live_db_wal_and_locks(tmp_path, monkeypatch):
     (output_root / ".locks" / "campaign.lock").write_text("", encoding="utf-8")
     (output_root / "tmp").mkdir()
     (output_root / "tmp" / "scratch.txt").write_text("scratch", encoding="utf-8")
+    # A nested git repo (e.g. a benchmark workspace checkout) inside a run dir.
+    nested_git = output_root / RUN_GROUP_ID / "bfcl__bfcl" / RUN_ID / "workspace" / ".git"
+    nested_git.mkdir(parents=True)
+    (nested_git / "config").write_text("[core]\n", encoding="utf-8")
 
     with patch("huggingface_hub.HfApi"):
         report = _publish(workspace_root, dry_run=True)
@@ -463,9 +469,33 @@ def test_ignore_patterns_exclude_live_db_wal_and_locks(tmp_path, monkeypatch):
     # The publication lock taken by publish-hf itself is excluded too.
     assert not any(rel.endswith(".lock") for rel in rels)
     assert not any(rel.startswith(".git/") for rel in rels)
+    assert not any("/.git/" in rel for rel in rels)
     # The consistent snapshot IS published even though the live DB never is.
     assert report.db_snapshot in rels
     assert report.db_snapshot.startswith("db_snapshots/orchestrator-")
+
+
+def test_nested_git_excluded_by_both_local_walker_and_hub_filter():
+    """Exclusion parity for nested git metadata (PR #16954 review follow-up).
+
+    The local walker's directory-pattern branch matches ".git/**" at any depth,
+    but HfApi.upload_folder's filter_repo_objects fnmatches the full relative
+    path only — so without the "**/.git/**" twin a nested repo's metadata would
+    be uploaded while absent from the printed upload set and the secret scrub
+    (the unsafe direction of a set mismatch).
+    """
+    excluded = ("runs/group-x/workspace/.git/config", ".git/config")
+    kept = "runs/group-x/workspace/output/report.json"
+
+    for rel in excluded:
+        assert _is_ignored(rel, HF_UPLOAD_IGNORE_PATTERNS), rel
+        # fnmatch simulation of huggingface_hub's filter_repo_objects.
+        assert any(
+            fnmatch.fnmatch(rel, pattern) for pattern in HF_UPLOAD_IGNORE_PATTERNS
+        ), rel
+
+    assert not _is_ignored(kept, HF_UPLOAD_IGNORE_PATTERNS)
+    assert not any(fnmatch.fnmatch(kept, pattern) for pattern in HF_UPLOAD_IGNORE_PATTERNS)
 
 
 def test_size_cap_skips_large_files_and_lists_them(tmp_path, monkeypatch):
