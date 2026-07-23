@@ -103,7 +103,6 @@ function makePipelineRuntime(
 			error: vi.fn(),
 			trace: vi.fn(),
 		} as unknown as IAgentRuntime["logger"],
-		reportError: vi.fn(),
 		getSetting: vi.fn(() => undefined),
 		getService: vi.fn(() => null),
 		// hasTextGenerationHandler only checks registration; actual calls go
