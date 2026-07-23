@@ -2905,6 +2905,11 @@ ElizaClient.prototype.cloudLoginDirect = async function (
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId }),
+        // The staged sign-out→sign-in can navigate through the cloud auth return
+        // route while this POST is settling. Keep the session-create request out
+        // of the document lifecycle so a successful server-side session is not
+        // reported as an AbortError and abandoned by the polling path.
+        keepalive: true,
       },
     );
     if (!res.ok) {

@@ -93,6 +93,7 @@ describe("ElizaClient direct Cloud auth served from a cloud web host", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: expect.stringContaining("sessionId"),
+        keepalive: true,
       }),
     );
     expect(result).toEqual(
@@ -194,7 +195,7 @@ describe("ElizaClient direct Cloud auth served from localhost dev (port-shift)",
     // agent API, whose default-deny gate 401s the unlisted /api/auth/* path.
     expect(fetchSpy).toHaveBeenCalledWith(
       "https://api-staging.elizacloud.ai/api/auth/cli-session",
-      expect.objectContaining({ method: "POST" }),
+      expect.objectContaining({ method: "POST", keepalive: true }),
     );
     expect(fetchSpy).not.toHaveBeenCalledWith(
       "/api/auth/cli-session",
