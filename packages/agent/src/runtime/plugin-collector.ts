@@ -12,7 +12,10 @@
  */
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { lifeOpsPassiveConnectorsEnabled } from "@elizaos/core";
+import {
+  isTruthyEnvValue,
+  lifeOpsPassiveConnectorsEnabled,
+} from "@elizaos/core";
 import channelPluginMap from "@elizaos/registry/first-party/channel-plugin-map.json" with {
   type: "json",
 };
@@ -154,6 +157,11 @@ function birdclawRequested(config: ElizaConfig): boolean {
   const userHome = process.env.HOME?.trim();
   if (userHome && existsSync(path.join(userHome, ".birdclaw"))) return true;
   return birdclawBinaryOnPath();
+}
+
+// The QA workbench must never enter a normal runtime through discovery alone.
+function simpleViewsRequested(): boolean {
+  return isTruthyEnvValue(process.env.ELIZA_SIMPLE_VIEWS);
 }
 
 /**
@@ -559,6 +567,17 @@ export function collectPluginNames(
       "birdclaw (auto-on when the birdclaw CLI/data root is present; gate ELIZA_BIRDCLAW)",
     );
   }
+  if (
+    !onMobile &&
+    deploymentTarget.runtime === "local" &&
+    simpleViewsRequested()
+  ) {
+    pluginsToLoad.add("@elizaos/plugin-simple-views");
+    track(
+      "@elizaos/plugin-simple-views",
+      "developer Notes + Simple Calendar workbench (gate ELIZA_SIMPLE_VIEWS)",
+    );
+  }
   // Opt-in standalone Telegram polling bot. Loaded only when passive connectors
   // are disabled and ELIZA_TELEGRAM_STANDALONE_BOT is set; its service owns the
   // Telegraf long-poll lifecycle (previously inlined in the app-core boot tail).
@@ -759,6 +778,16 @@ export function collectPluginNames(
     for (const pluginName of STORE_BUILD_LOCAL_EXECUTION_PLUGINS) {
       pluginsToLoad.delete(pluginName);
     }
+  }
+  // This QA workbench carries local state and must not be reintroduced by an
+  // additive allow-list, installed-plugin record, or feature gate in a remote
+  // controller/cloud runtime.
+  if (
+    onMobile ||
+    deploymentTarget.runtime !== "local" ||
+    !simpleViewsRequested()
+  ) {
+    pluginsToLoad.delete("@elizaos/plugin-simple-views");
   }
 
   for (const pluginName of Array.from(pluginsToLoad)) {
