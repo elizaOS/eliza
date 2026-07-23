@@ -18,7 +18,7 @@
  */
 
 import { InsufficientCreditsError } from "../../api/errors";
-import type { BridgeRequest } from "../eliza-sandbox";
+import type { BridgeExecutionContext, BridgeRequest } from "../eliza-sandbox";
 // Namespace import (resolved at call-time, not captured at module-eval) so the
 // adapter always reads the *current* eliza-sandbox export. Under bun's
 // process-global `mock.module`, a sibling test file can import this module
@@ -361,6 +361,7 @@ export async function sharedRestMessageSend(
   conversationId: string,
   text: string,
   agentName: string,
+  executionCtx?: BridgeExecutionContext,
 ): Promise<{ text: string; agentName: string }> {
   const rpc: BridgeRequest = {
     jsonrpc: "2.0",
@@ -368,7 +369,9 @@ export async function sharedRestMessageSend(
     method: "message.send",
     params: { text, roomId: conversationId },
   };
-  const response = await elizaSandbox.elizaSandboxService.bridge(agentId, orgId, rpc);
+  // executionCtx (Workers only) lets the bridge defer the post-reply billing
+  // tail off the response path; without it the turn settles inline as before.
+  const response = await elizaSandbox.elizaSandboxService.bridge(agentId, orgId, rpc, executionCtx);
   if (response.error) {
     // A credit-reserve rejection is a permanent add-credits condition, not a
     // transient bridge failure — surface it typed so the route boundary can
