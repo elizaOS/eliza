@@ -153,6 +153,23 @@ describe("DefaultMessageService structured failure replies", () => {
 		expect(runtime.reportError).toHaveBeenCalledTimes(1);
 	});
 
+	it("rejects a control record inside a JSON array and advances", async () => {
+		const service =
+			new DefaultMessageService() as unknown as FailureReplyService;
+		const runtime = makeRuntimeReturning([
+			'[{"status":"queued"},{"action":"BROWSER","parameters":{"url":"https://example.com"}}]',
+			"I could not complete that. Please try again.",
+		]);
+
+		await expect(
+			service.generateFailureReplyText(runtime, "recent messages", "test"),
+		).resolves.toEqual({
+			kind: "text",
+			value: "I could not complete that. Please try again.",
+		});
+		expect(runtime.reportError).toHaveBeenCalledTimes(1);
+	});
+
 	it("does not mistake genuine JSON for a control envelope", async () => {
 		const service =
 			new DefaultMessageService() as unknown as FailureReplyService;

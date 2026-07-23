@@ -380,6 +380,41 @@ describe("runV5MessageRuntimeStage1", () => {
 		});
 	});
 
+	it("blocks a Stage-1 array containing a control record", async () => {
+		const actionBatch =
+			'[{"status":"queued"},{"action":"BROWSER","parameters":{"url":"https://example.com"}}]';
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: actionBatch,
+			}),
+		]);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "Open example.com" }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"I'm not sure how to answer that.",
+			);
+			expect(result.result.responseContent?.text).not.toContain("BROWSER");
+		}
+		const reported = reportErrorCalls(runtime)[0]?.[1] as {
+			code?: string;
+			context?: Record<string, unknown>;
+		};
+		expect(reported.code).toBe("STAGE1_INVALID_USER_VISIBLE_OUTPUT");
+		expect(reported.context).toMatchObject({
+			classification: "action",
+			fieldPath: [],
+		});
+	});
+
 	it("preserves genuine lower-case action JSON in a Stage-1 direct reply", async () => {
 		const domainJson =
 			'{"action":"proceed","parameters":{"step":1},"status":"done"}';
