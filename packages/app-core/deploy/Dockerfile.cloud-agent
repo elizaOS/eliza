@@ -11,8 +11,10 @@ ARG TAILSCALE_VERSION=1.90.8
 # Builder: precompile the standalone TS entrypoint to a single JS bundle so the
 # runtime image starts with plain `node entrypoint.js` — no `tsx` transpile on
 # the container cold-start path (issue #8812 F6). cloud-agent-shared.ts is
-# inlined; the dynamic `@elizaos/*` imports stay external and resolve from
-# /app/node_modules at runtime exactly as before.
+# inlined; every bare package import (`@elizaos/*`, `drizzle-orm`, node
+# builtins) stays external via --packages=external and resolves from
+# /app/node_modules at runtime, so adding a dependency to the entrypoint can
+# never break this precompile step.
 # ─────────────────────────────────────────────────────────────────────────────
 FROM node:24-bookworm-slim AS entrypoint-build
 WORKDIR /build
@@ -24,7 +26,7 @@ COPY eliza/packages/app-core/deploy/cloud-agent-shared.ts ./cloud-agent-shared.t
 COPY eliza/packages/shared/src/restart-exit-code.json /shared/src/restart-exit-code.json
 RUN npx --yes esbuild@0.28.1 cloud-agent-entrypoint.ts \
       --bundle --platform=node --format=esm --target=node24 \
-      --external:@elizaos/* --external:node:* --external:drizzle-orm \
+      --packages=external \
       --outfile=entrypoint.js
 
 FROM node:24-bookworm-slim
