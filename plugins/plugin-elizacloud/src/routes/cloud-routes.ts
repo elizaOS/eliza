@@ -176,32 +176,25 @@ async function fetchCloudLoginStatus(
  * "control plane believed, process didn't"). Resolution goes through
  * `runtime.getSetting` first — the same precedence chain inference uses, so a
  * stale key shadowing via character secrets is DETECTED, not papered over —
- * with `process.env` as the pre-boot fallback. Derivation mirrors
+ * with `process.env` used only when no runtime exists. A missing or throwing
+ * runtime resolution fails the request rather than fabricating attestation.
+ * Derivation mirrors
  * `warmClaimKeyFingerprint` in cloud/shared `warm-claim-key-push.ts` (kept
  * duplicated so the agent bundle never imports the cloud DB layer); only a
  * digest prefix crosses the wire, never key material.
  */
 export async function resolveAppliedCloudKeyFingerprint(state: {
   runtime: unknown;
-}): Promise<string | undefined> {
+}): Promise<string> {
   const runtime = state.runtime as RuntimeCloudLike | null;
-  let resolved: unknown;
-  try {
-    resolved =
-      typeof runtime?.getSetting === "function"
-        ? runtime.getSetting("ELIZAOS_CLOUD_API_KEY")
-        : undefined;
-  } catch {
-    // error-policy:J6 best-effort — the persist itself succeeded; a probe
-    // failure downgrades the response to "unverified" (field omitted), it
-    // must not turn a completed persist into a 500.
-    resolved = undefined;
-  }
-  const key =
-    typeof resolved === "string" && resolved.trim()
-      ? resolved.trim()
+  const resolved =
+    typeof runtime?.getSetting === "function"
+      ? runtime.getSetting("ELIZAOS_CLOUD_API_KEY")
       : process.env.ELIZAOS_CLOUD_API_KEY;
-  if (!key) return undefined;
+  const key = typeof resolved === "string" ? resolved.trim() : "";
+  if (!key) {
+    throw new Error("Running runtime does not resolve a cloud credential");
+  }
   const digest = await crypto.subtle.digest(
     "SHA-256",
     new TextEncoder().encode(key),
@@ -261,7 +254,7 @@ async function persistCloudLoginStatus(args: {
    * normal interactive login path is byte-identical.
    */
   forceInferenceEnabled?: boolean;
-}): Promise<void> {
+}): Promise<string | null> {
   if (
     args.epochAtPollStart !== undefined &&
     args.epochAtPollStart !== cloudDisconnectEpoch
@@ -269,7 +262,7 @@ async function persistCloudLoginStatus(args: {
     logger.warn(
       "[cloud-login] Skipping login persist: a disconnect occurred while the login poll was in-flight",
     );
-    return;
+    return null;
   }
 
   migrateLegacyRuntimeConfig(args.state.config as Record<string, unknown>);
@@ -365,7 +358,11 @@ async function persistCloudLoginStatus(args: {
   }
 
   if (!runtime || typeof runtime.updateAgent !== "function") {
-    return;
+    const resolvedKey = process.env.ELIZAOS_CLOUD_API_KEY?.trim();
+    if (resolvedKey !== args.apiKey) {
+      throw new Error("Cloud credential swap did not reach process state");
+    }
+    return resolvedKey;
   }
 
   try {
@@ -394,6 +391,7 @@ async function persistCloudLoginStatus(args: {
     }
     runtime.character.secrets = nextSecrets;
     if (typeof runtime.setSetting === "function") {
+      runtime.setSetting("ELIZAOS_CLOUD_API_KEY", args.apiKey);
       runtime.setSetting("ELIZA_CLOUD_USER_ID", args.userId ?? null);
       runtime.setSetting("ELIZAOS_CLOUD_USER_ID", args.userId ?? null);
       runtime.setSetting(
@@ -415,6 +413,15 @@ async function persistCloudLoginStatus(args: {
       )}`,
     );
   }
+
+  const resolvedKey = readRuntimeSetting(
+    runtime as AgentRuntime,
+    "ELIZAOS_CLOUD_API_KEY",
+  );
+  if (resolvedKey !== args.apiKey) {
+    throw new Error("Cloud credential swap did not reach the running runtime");
+  }
+  return resolvedKey;
 }
 
 function getCloudRouteServices(state: CloudRouteState): CloudRouteServices {
@@ -569,7 +576,7 @@ export async function handleCloudRoute(
         sendJson(res, { ok: false, error: "apiKey is required" }, 400);
         return true;
       }
-      await persistCloudLoginStatus({
+      const resolvedApiKey = await persistCloudLoginStatus({
         apiKey: body.apiKey.trim(),
         organizationId:
           typeof body.organizationId === "string"
@@ -586,16 +593,15 @@ export async function handleCloudRoute(
         // path omits it and keeps config-derived behavior.
         forceInferenceEnabled: body.forceInferenceEnabled === true,
       });
-      // Echo what the runtime NOW resolves so the pusher can verify the swap
-      // took (fingerprint prefix only — never key material). Omitted when no
-      // key resolves; callers treat absence as pushed-but-unverified.
-      const appliedKeyFingerprint = await resolveAppliedCloudKeyFingerprint({
-        runtime: state.runtime,
+      if (!resolvedApiKey) {
+        throw new Error("Cloud credential persistence was not applied");
+      }
+      sendJson(res, {
+        ok: true,
+        appliedKeyFingerprint: await resolveAppliedCloudKeyFingerprint({
+          runtime: state.runtime,
+        }),
       });
-      sendJson(
-        res,
-        appliedKeyFingerprint ? { ok: true, appliedKeyFingerprint } : { ok: true },
-      );
     } catch (err) {
       // error-policy:J1 boundary translation — a persistence failure surfaces as
       // a 500 with the message; the route never reports success it did not do.
@@ -716,7 +722,7 @@ export async function handleCloudRoute(
     loginPollSpan.success({ statusCode: pollRes.status });
 
     if (data.status === "authenticated" && typeof data.apiKey === "string") {
-      await persistCloudLoginStatus({
+      const resolvedApiKey = await persistCloudLoginStatus({
         apiKey: data.apiKey,
         organizationId:
           typeof data.organizationId === "string"
@@ -727,6 +733,10 @@ export async function handleCloudRoute(
         epochAtPollStart: epochBeforePoll,
         userId: typeof data.userId === "string" ? data.userId : undefined,
       });
+      if (!resolvedApiKey) {
+        sendJson(res, { status: "disconnected" });
+        return true;
+      }
       sendJson(res, {
         status: "authenticated",
         keyPrefix:

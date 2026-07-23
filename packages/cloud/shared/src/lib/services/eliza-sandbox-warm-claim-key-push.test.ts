@@ -9,11 +9,8 @@
  *      revokes only the claimed row's OWN prior key name — the pool boot key
  *      lives under the deleted pool row's name and is untouchable here);
  *   2. persists it onto the row env (ELIZAOS_CLOUD_API_KEY) for restart safety;
- *   3. pushes it onto the LIVE container via its authenticated
- *      POST /api/cloud/login/persist route with forceInferenceEnabled, and
- *      verifies the echoed appliedKeyFingerprint when present;
- *   4. after a successful push, revokes the pool-org BOOT key by the
- *      warm_pool_row_id the claim carried out of its transaction.
+ *   3. revokes the pool-org boot key by the source pool row id;
+ *   4. pushes it onto the live container and requires fingerprint attestation.
  *
  * These pins:
  *   - the mint is scoped to the CLAIMED row's user org (never the pool org);
@@ -21,14 +18,11 @@
  *   - the persist request carries the NEW key + org + forceInferenceEnabled,
  *     over the authed transport, and the SECRET NEVER appears in a log;
  *   - the row env is updated so a restart boots re-credentialed;
- *   - a matching fingerprint echo yields verified:true; a MISMATCH throws
- *     (stale key shadowing the swap) and skips the pool revoke; a legacy
- *     response without the field is pushed-but-unverified;
- *   - the pool boot key is revoked ONLY after a successful push (never on the
- *     failure branch), by pool row id, best-effort with a stable event;
+ *   - a matching fingerprint is mandatory; mismatch or absence throws;
+ *   - the pool boot key is revoked before live adoption so a failed push
+ *     recovers only from the durable claimed-row environment;
  *   - a non-2xx persist response throws (bounded) so the caller can log the
  *     stable failure event; the claim itself survives (caller contract).
- * [sol-warmpool-keypush]
  */
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
@@ -166,8 +160,6 @@ describe("pushClaimedWarmContainerInferenceKey", () => {
     const result = await svc().pushClaimedWarmContainerInferenceKey(claimedRow());
 
     expect(result.pushed).toBe(true);
-    // The container echoed the fingerprint of the minted key — process-verified.
-    expect(result.verified).toBe(true);
     expect(result.keyPrefix).toBe(`${MINTED_KEY.slice(0, 12)}…`);
 
     // 1. Mint scoped to the CLAIMED row's user org — NEVER the pool org.
@@ -243,60 +235,42 @@ describe("pushClaimedWarmContainerInferenceKey", () => {
     // The key was still minted + env persisted (idempotent on retry / restart).
     expect(createForAgent).toHaveBeenCalledTimes(1);
     expect(update).toHaveBeenCalledTimes(1);
-    // The pool boot key is deliberately NOT revoked on the push-failure
-    // branch — the container may still be signing with it (e.g. the gateway
-    // relay); it dies with the next restart's re-credential instead.
-    expect(revokeForAgent).not.toHaveBeenCalled();
+    expect(revokeForAgent).toHaveBeenCalledWith(POOL_ROW_ID);
   });
 
-  test("a fingerprint MISMATCH throws (stale key shadowing the swap) and skips the pool revoke", async () => {
+  test("a fingerprint mismatch throws after the pool credential is revoked", async () => {
     globalThis.fetch = mock(async () =>
       Response.json({ ok: true, appliedKeyFingerprint: "deadbeefdeadbeef" }),
     ) as unknown as typeof fetch;
 
     await expect(svc().pushClaimedWarmContainerInferenceKey(claimedRow())).rejects.toThrow(
-      /fingerprint mismatch/i,
+      /not attested/i,
     );
-
-    // The swap did not verifiably take: leave the pool boot key alone so the
-    // container is never stripped of the only credential it may still hold.
-    expect(revokeForAgent).not.toHaveBeenCalled();
-  });
-
-  test("a legacy container response without a fingerprint is pushed-but-unverified; revoke still runs", async () => {
-    globalThis.fetch = mock(async () => Response.json({ ok: true })) as unknown as typeof fetch;
-
-    const result = await svc().pushClaimedWarmContainerInferenceKey(claimedRow());
-
-    expect(result.pushed).toBe(true);
-    expect(result.verified).toBe(false);
-    // Transport accepted the push (HTTP 200): the boot key revoke proceeds.
-    expect(revokeForAgent).toHaveBeenCalledTimes(1);
     expect(revokeForAgent).toHaveBeenCalledWith(POOL_ROW_ID);
   });
 
-  test("a pool-key revoke failure is best-effort: push still reports success with the stable event", async () => {
-    revokeForAgent.mockRejectedValueOnce(new Error("db down"));
+  test("a legacy response without a fingerprint enters restart recovery", async () => {
+    globalThis.fetch = mock(async () => Response.json({ ok: true })) as unknown as typeof fetch;
 
-    const result = await svc().pushClaimedWarmContainerInferenceKey(claimedRow());
-
-    expect(result.pushed).toBe(true);
-    expect(result.verified).toBe(true);
-    const revokeEvents = loggerWarn.mock.calls.filter(
-      (c) =>
-        (c[1] as Record<string, unknown> | undefined)?.event === "warm_pool.pool_key_revoke_failed",
+    await expect(svc().pushClaimedWarmContainerInferenceKey(claimedRow())).rejects.toThrow(
+      /not attested/i,
     );
-    expect(revokeEvents).toHaveLength(1);
-    expect((revokeEvents[0]?.[1] as Record<string, unknown>)?.poolRowId).toBe(POOL_ROW_ID);
+    expect(revokeForAgent).toHaveBeenCalledWith(POOL_ROW_ID);
   });
 
-  test("a claimed row without warm_pool_row_id skips the revoke (nothing to revoke by)", async () => {
+  test("a pool-key revoke failure aborts the live handoff", async () => {
+    revokeForAgent.mockRejectedValueOnce(new Error("db down"));
+
+    await expect(svc().pushClaimedWarmContainerInferenceKey(claimedRow())).rejects.toThrow(
+      "db down",
+    );
+    expect(capturedRequests).toHaveLength(0);
+  });
+
+  test("requires the source pool row id", async () => {
     const rec = claimedRow() as Record<string, unknown>;
     delete rec.warm_pool_row_id;
 
-    const result = await svc().pushClaimedWarmContainerInferenceKey(rec);
-
-    expect(result.pushed).toBe(true);
-    expect(revokeForAgent).not.toHaveBeenCalled();
+    await expect(svc().pushClaimedWarmContainerInferenceKey(rec)).rejects.toThrow(/agent-sandbox/i);
   });
 });

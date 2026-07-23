@@ -221,9 +221,8 @@ async function __hono_POST(
           // Post-claim inference re-key (F0): mint a user-org-scoped inference
           // key and push it onto the live container so it can infer against the
           // claiming org (the pool container booted with a pool-org key).
-          // Bounded + NON-FATAL, mirror of the character push; on failure the
-          // claim stands and the container re-credentials from the row env on
-          // next restart. Never log the key (safe prefix only).
+          // The live runtime must attest the replacement. Failure enters
+          // restart recovery from row env instead of reporting a ready agent.
           try {
             const keyPush =
               await elizaSandboxService.pushClaimedWarmContainerInferenceKey(
@@ -234,21 +233,54 @@ async function __hono_POST(
                 agentId,
                 orgId: user.organization_id,
                 keyPrefix: keyPush.keyPrefix,
-                // false = the container image predates the fingerprint echo;
-                // the push stands but the swap was not process-verified.
-                verified: keyPush.verified === true,
               });
             }
           } catch (keyErr) {
+            const recovery =
+              await provisioningJobService.enqueueAgentRestartOnce({
+                agentId,
+                organizationId: user.organization_id,
+                userId: user.id,
+              });
+            await agentSandboxesRepository.update(claimed.id, {
+              status: "provisioning",
+              error_message:
+                "Warm-pool credential handoff requires restart recovery",
+            });
+            if (recovery.created) {
+              void provisioningJobService
+                .triggerImmediate(ctx?.env)
+                .catch(() => {
+                  // error-policy:J5 the persisted restart job is observed by
+                  // the provisioning worker poll after a failed nudge.
+                });
+            }
             logger.warn(
-              "[agent-api] Warm pool inference key push failed; claim kept (re-credentials on next restart)",
+              "[agent-api] Warm pool inference key push failed; restart recovery enqueued",
               {
                 event: "warm_pool.key_push_failed",
                 agentId,
                 orgId: user.organization_id,
+                recoveryJobId: recovery.job.id,
+                recoveryJobCreated: recovery.created,
                 error:
                   keyErr instanceof Error ? keyErr.message : String(keyErr),
               },
+            );
+            return applyCorsHeaders(
+              Response.json(
+                {
+                  success: true,
+                  source: "warm_pool_recovery",
+                  data: {
+                    id: claimed.id,
+                    agentName: claimed.agent_name,
+                    status: "provisioning",
+                  },
+                },
+                { status: 202 },
+              ),
+              CORS_METHODS,
             );
           }
           return applyCorsHeaders(

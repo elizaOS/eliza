@@ -12,7 +12,6 @@
  *   - a missing key or org yields null (caller skips the push, no partial
  *     re-credential);
  *   - the safe log prefix truncates and never exposes the full secret.
- * [sol-warmpool-keypush]
  */
 
 import { describe, expect, test } from "bun:test";
@@ -78,7 +77,7 @@ describe("buildWarmClaimKeyPushBody", () => {
 
 describe("safeKeyPrefix", () => {
   test("truncates to the fixed prefix length and appends an ellipsis", () => {
-    const key = "eliza_0123456789abcdefabcdef";
+    const key = "eliza_" + "0123456789abcdefabcdef";
     const prefix = safeKeyPrefix(key);
     expect(prefix.endsWith("…")).toBe(true);
     // The visible portion is exactly WARM_CLAIM_KEY_LOG_PREFIX_LEN chars.

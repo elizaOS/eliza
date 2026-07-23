@@ -39,6 +39,10 @@ const pushClaimedWarmContainerCharacter = mock(
       agentName?: string;
     },
 );
+const pushClaimedWarmContainerInferenceKey = mock(async () => ({
+  pushed: true,
+  keyPrefix: "key-prefix",
+}));
 
 const enqueueAgentProvision = mock(async () => ({
   id: "job-1",
@@ -70,12 +74,14 @@ const loggerError = mock((_msg: string, _meta?: LoggerMeta) => undefined);
 const claimWarmContainer = mock(async (): Promise<unknown> => null);
 const listByOrganization = mock(async () => []);
 const countReadyPoolEntriesForImage = mock(async () => 0);
+const updateSandbox = mock(async () => undefined);
 
 mock.module("@/db/repositories/agent-sandboxes", () => ({
   agentSandboxesRepository: {
     claimWarmContainer,
     listByOrganization,
     countReadyPoolEntriesForImage,
+    update: updateSandbox,
   },
 }));
 
@@ -99,6 +105,7 @@ mock.module("@/lib/services/eliza-sandbox", () => ({
     updateAgentEnvironment,
     listAgents,
     pushClaimedWarmContainerCharacter,
+    pushClaimedWarmContainerInferenceKey,
   },
   AgentQuotaExceededError,
   AgentImageNotAllowedError,
@@ -178,6 +185,7 @@ function claimedRow() {
     health_url: "http://100.64.0.11:3000/api",
     sandbox_id: `agent-${AGENT_ID}`,
     environment_vars: { ELIZA_API_TOKEN: "agent_pool_live" },
+    claimedPoolSandboxId: "pool-row-1",
   };
 }
 

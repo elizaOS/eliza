@@ -9,15 +9,12 @@
  *   - resolution goes through `runtime.getSetting` FIRST (the inference
  *     precedence chain) so a stale key shadowing the swap is DETECTED — the
  *     fingerprint reflects the shadowing value, not the pushed one;
- *   - `process.env.ELIZAOS_CLOUD_API_KEY` is the fallback when the runtime is
- *     absent or offers no value;
+ *   - `process.env.ELIZAOS_CLOUD_API_KEY` is used only before a runtime exists;
  *   - the output is a 16-hex-char sha-256 prefix and never key material;
- *   - no key anywhere -> undefined (callers omit the field: unverified);
- *   - a throwing getSetting degrades to the env fallback, never a crash.
- * [sol-warmpool-keypush]
+ *   - missing or unreadable runtime state fails attestation.
  */
 
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "vitest";
 import { resolveAppliedCloudKeyFingerprint } from "../../src/routes/cloud-routes";
 
 async function sha256Prefix(value: string): Promise<string> {
@@ -56,32 +53,35 @@ describe("resolveAppliedCloudKeyFingerprint", () => {
     expect(fp).not.toBe(await sha256Prefix("eliza_pushed_key"));
   });
 
-  test("falls back to process.env when the runtime is absent or empty-handed", async () => {
+  test("falls back to process.env only when the runtime is absent", async () => {
     process.env.ELIZAOS_CLOUD_API_KEY = "eliza_env_key";
     expect(await resolveAppliedCloudKeyFingerprint({ runtime: null })).toBe(
       await sha256Prefix("eliza_env_key")
     );
-    expect(
-      await resolveAppliedCloudKeyFingerprint({
+    await expect(
+      resolveAppliedCloudKeyFingerprint({
         runtime: { getSetting: () => undefined },
       })
-    ).toBe(await sha256Prefix("eliza_env_key"));
+    ).rejects.toThrow(/does not resolve/i);
   });
 
-  test("returns undefined when no key resolves anywhere", async () => {
+  test("throws when no key resolves anywhere", async () => {
     delete process.env.ELIZAOS_CLOUD_API_KEY;
-    expect(await resolveAppliedCloudKeyFingerprint({ runtime: null })).toBeUndefined();
+    await expect(resolveAppliedCloudKeyFingerprint({ runtime: null })).rejects.toThrow(
+      /does not resolve/i
+    );
   });
 
-  test("a throwing getSetting degrades to the env fallback", async () => {
+  test("a throwing getSetting fails attestation", async () => {
     process.env.ELIZAOS_CLOUD_API_KEY = "eliza_env_key";
-    const fp = await resolveAppliedCloudKeyFingerprint({
-      runtime: {
-        getSetting: () => {
-          throw new Error("runtime not ready");
+    await expect(
+      resolveAppliedCloudKeyFingerprint({
+        runtime: {
+          getSetting: () => {
+            throw new Error("runtime not ready");
+          },
         },
-      },
-    });
-    expect(fp).toBe(await sha256Prefix("eliza_env_key"));
+      })
+    ).rejects.toThrow("runtime not ready");
   });
 });
