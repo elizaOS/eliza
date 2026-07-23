@@ -7,9 +7,13 @@
  * deterministic.
  */
 import { describe, expect, it, vi } from "vitest";
+import { projectActionResultForClipboard } from "../runtime/execute-planned-tool-call.ts";
+import { actionResultToPlannerToolResult } from "../runtime/planner-loop.ts";
 import {
+	resolveActionResultTranscriptVisibility,
 	stripReplyWhenActionOwnsTurn,
 	subPlannerResultToPlannerToolResult,
+	wrapSingleTurnVisibleCallback,
 } from "../services/message.ts";
 import type { IAgentRuntime } from "../types/runtime";
 
@@ -60,6 +64,62 @@ describe("stripReplyWhenActionOwnsTurn", () => {
 });
 
 describe("subPlannerResultToPlannerToolResult", () => {
+	it("preserves internal transcript visibility from the terminal sub-action", () => {
+		const inventory = "available_views:\nviews[0]:";
+		const result = subPlannerResultToPlannerToolResult({
+			status: "finished",
+			finalMessage: inventory,
+			trajectory: {
+				steps: [
+					{
+						iteration: 1,
+						toolCall: { name: "VIEWS" },
+						result: {
+							success: true,
+							text: inventory,
+							transcriptVisibility: "internal",
+						},
+					},
+				],
+			},
+		} as unknown as SubResult);
+		expect(result.transcriptVisibility).toBe("internal");
+		expect(result.text).toBe(`OK VIEWS: ${inventory}`);
+		expect(result.userFacingText).toBeUndefined();
+		expect(result.data?.subSteps).toEqual([
+			expect.objectContaining({
+				action: "VIEWS",
+				internalTranscriptText: inventory,
+			}),
+		]);
+	});
+
+	it("keeps a distinct synthesized summary visible after an internal sub-action", () => {
+		const inventory = "available_views:\nviews[0]:";
+		const summary = "There are no apps available yet.";
+		const result = subPlannerResultToPlannerToolResult({
+			status: "finished",
+			finalMessage: summary,
+			trajectory: {
+				steps: [
+					{
+						iteration: 1,
+						toolCall: { name: "VIEWS" },
+						result: {
+							success: true,
+							text: inventory,
+							transcriptVisibility: "internal",
+						},
+					},
+				],
+			},
+		} as unknown as SubResult);
+
+		expect(result.transcriptVisibility).toBe("internal");
+		expect(result.text).toBe(`OK VIEWS: ${inventory}`);
+		expect(result.userFacingText).toBe(summary);
+	});
+
 	it("propagates continueChain:false from the terminal sub-action", () => {
 		// A fire-and-forget sub-action (e.g. TASKS_SPAWN_AGENT) returns
 		// continueChain:false. Without propagating it through the umbrella
@@ -142,5 +202,111 @@ describe("subPlannerResultToPlannerToolResult", () => {
 			throw new Error("Expected structured sub-step diagnostics");
 		}
 		expect(subSteps.length).toBe(3);
+	});
+});
+
+describe("action-result transcript visibility", () => {
+	it("binds the marker to exact diagnostic text, never distinct visible prose", () => {
+		const inventory = "available_views:\nviews[0]:";
+		const actionResults = [
+			{
+				success: true,
+				text: inventory,
+				transcriptVisibility: "internal" as const,
+				userFacingText: "There are no apps available yet.",
+			},
+		];
+
+		expect(
+			resolveActionResultTranscriptVisibility(inventory, actionResults),
+		).toBe("internal");
+		expect(
+			resolveActionResultTranscriptVisibility(
+				"There are no apps available yet.",
+				actionResults,
+			),
+		).toBeUndefined();
+	});
+
+	it("binds an internal sub-planner terminal payload without hiding its distinct summary", () => {
+		const inventory = "available_views:\nviews[0]:";
+		const summary = "There are no apps available yet.";
+		const actionResults = [
+			{
+				success: true,
+				text: `OK VIEWS: ${inventory}`,
+				transcriptVisibility: "internal" as const,
+				userFacingText: summary,
+				data: {
+					subSteps: [
+						{
+							action: "VIEWS",
+							success: true,
+							summary: inventory,
+							internalTranscriptText: inventory,
+						},
+					],
+				},
+			},
+		];
+
+		expect(
+			resolveActionResultTranscriptVisibility(inventory, actionResults),
+		).toBe("internal");
+		expect(
+			resolveActionResultTranscriptVisibility(summary, actionResults),
+		).toBeUndefined();
+	});
+
+	it("drops internal content before voice rewriting or connector delivery", async () => {
+		const callback = vi.fn(async () => []);
+		const useModel = vi.fn(async () => "must not run");
+		const wrapped = wrapSingleTurnVisibleCallback(
+			{ ...runtime(), agentId: "agent" as never, useModel },
+			{
+				id: "message" as never,
+				roomId: "room" as never,
+				entityId: "entity" as never,
+			},
+			callback,
+		);
+
+		expect(wrapped).toBeDefined();
+		await wrapped?.({
+			text: "available_views:\n  type: gui\n  count: 0",
+			transcriptVisibility: "internal",
+		});
+
+		expect(useModel).not.toHaveBeenCalled();
+		expect(callback).not.toHaveBeenCalled();
+	});
+
+	it("survives the canonical planner projection without removing diagnostics", () => {
+		const result = actionResultToPlannerToolResult({
+			success: true,
+			text: "available_views:\nviews[0]:",
+			transcriptVisibility: "internal",
+			data: { views: [] },
+		});
+
+		expect(result.transcriptVisibility).toBe("internal");
+		expect(result.text).toContain("available_views:");
+		expect(result.data).toEqual({ views: [] });
+	});
+
+	it("survives sensitive clipboard projection while structured data is removed", () => {
+		const result = projectActionResultForClipboard(
+			{ name: "VIEWS", suppressActionResultClipboard: true },
+			{
+				success: true,
+				text: "available_views:\nviews[0]:",
+				transcriptVisibility: "internal",
+				data: { views: [{ id: "notes" }] },
+			},
+		);
+
+		expect(result.transcriptVisibility).toBe("internal");
+		expect(result.text).toContain("available_views:");
+		expect(result.data).toEqual({ actionName: "VIEWS" });
 	});
 });

@@ -4643,6 +4643,7 @@ export function actionResultToPlannerToolResult(
 	const plannerResult: PlannerToolResult = {
 		success: result.success,
 		text: result.text,
+		transcriptVisibility: result.transcriptVisibility,
 		userFacingText: result.userFacingText,
 		verifiedUserFacing: result.verifiedUserFacing,
 		data: Object.keys(data).length > 0 ? data : undefined,

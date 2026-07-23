@@ -244,6 +244,162 @@ describe("generateChatResponse usage reporting", () => {
     expect(result.actionCallbackHistory).toBeUndefined();
   });
 
+  it("keeps an exact internal action inventory out of chat while retaining diagnostics", async () => {
+    const inventory = "available_views:\nviews[1]{id,label}: notes,Notes";
+    const onChunk = vi.fn();
+    const runtime = createRuntime({
+      messageService: {
+        handleMessage: vi.fn(async (_runtime, _message, callback) => {
+          await callback?.({
+            text: inventory,
+            transcriptVisibility: "internal",
+          });
+          return {
+            didRespond: true,
+            responseContent: {
+              text: inventory,
+              transcriptVisibility: "internal",
+            },
+            responseMessages: [],
+            actionResults: [
+              {
+                success: true,
+                text: inventory,
+                transcriptVisibility: "internal",
+                data: { views: [{ id: "notes" }] },
+              },
+            ],
+          };
+        }),
+      } as NonNullable<AgentRuntime["messageService"]>,
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("what apps are available?"),
+      "Chat Agent",
+      { timeoutDuration: 5_000, onChunk },
+    );
+
+    expect(result.text).toBe(inventory);
+    expect(result.transcriptVisibility).toBe("internal");
+    expect(result.responseContent).toMatchObject({
+      text: inventory,
+      transcriptVisibility: "internal",
+    });
+    expect(onChunk).not.toHaveBeenCalled();
+    expect(result.usedActionCallbacks).toBeUndefined();
+  });
+
+  it("does not hide a distinct assistant summary after an internal inventory", async () => {
+    const inventory = "available_views:\nviews[1]{id,label}: notes,Notes";
+    const summary = "Notes is available. I can open it for you.";
+    const onChunk = vi.fn();
+    const runtime = createRuntime({
+      messageService: {
+        handleMessage: vi.fn(async () => ({
+          didRespond: true,
+          responseContent: { text: summary },
+          responseMessages: [],
+          actionResults: [
+            {
+              success: true,
+              text: inventory,
+              transcriptVisibility: "internal",
+              data: { views: [{ id: "notes" }] },
+            },
+          ],
+        })),
+      } as NonNullable<AgentRuntime["messageService"]>,
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("what apps are available?"),
+      "Chat Agent",
+      { timeoutDuration: 5_000, onChunk },
+    );
+
+    expect(result.text).toBe(summary);
+    expect(result.transcriptVisibility).toBeUndefined();
+    expect(onChunk).toHaveBeenCalledWith(summary);
+  });
+
+  it("honors an internal response-content tag when action diagnostics are absent", async () => {
+    const inventory = "available_views:\nviews[1]{id,label}: notes,Notes";
+    const onChunk = vi.fn();
+    const runtime = createRuntime({
+      messageService: {
+        handleMessage: vi.fn(async () => ({
+          didRespond: true,
+          responseContent: {
+            text: inventory,
+            transcriptVisibility: "internal",
+          },
+          responseMessages: [],
+        })),
+      } as NonNullable<AgentRuntime["messageService"]>,
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("what apps are available?"),
+      "Chat Agent",
+      { timeoutDuration: 5_000, onChunk },
+    );
+
+    expect(result.transcriptVisibility).toBe("internal");
+    expect(onChunk).not.toHaveBeenCalled();
+  });
+
+  it("keeps sub-planner user-facing inventory internal when diagnostics differ", async () => {
+    const inventory = "available_views:\nviews[1]{id,label}: notes,Notes";
+    const onChunk = vi.fn();
+    const runtime = createRuntime({
+      messageService: {
+        handleMessage: vi.fn(async () => ({
+          didRespond: true,
+          responseContent: {
+            text: inventory,
+            transcriptVisibility: "internal",
+          },
+          responseMessages: [],
+          actionResults: [
+            {
+              success: true,
+              text: `OK VIEWS: ${inventory}`,
+              transcriptVisibility: "internal",
+              data: {
+                subSteps: [
+                  {
+                    action: "VIEWS",
+                    success: true,
+                    summary: inventory,
+                  },
+                ],
+              },
+            },
+          ],
+        })),
+      } as NonNullable<AgentRuntime["messageService"]>,
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("what apps are available?"),
+      "Chat Agent",
+      { timeoutDuration: 5_000, onChunk },
+    );
+
+    expect(result.text).toBe(inventory);
+    expect(result.transcriptVisibility).toBe("internal");
+    expect(result.responseContent).toMatchObject({
+      text: inventory,
+      transcriptVisibility: "internal",
+    });
+    expect(onChunk).not.toHaveBeenCalled();
+  });
+
   it("fails closed when a model returns an unexecuted action payload", async () => {
     const runtime = createRuntime({
       actions: [{ name: "SENSITIVE_ACTION" }],

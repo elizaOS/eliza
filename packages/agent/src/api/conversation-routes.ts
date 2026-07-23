@@ -978,7 +978,10 @@ export function buildPersistedAssistantContent(
   result:
     | Pick<
         ChatGenerationResult,
-        "actionCallbackHistory" | "responseContent" | "responseMessages"
+        | "actionCallbackHistory"
+        | "responseContent"
+        | "responseMessages"
+        | "transcriptVisibility"
       >
     | null
     | undefined,
@@ -1000,18 +1003,64 @@ export function buildPersistedAssistantContent(
   const actionCallbackHistory = normalizeActionCallbackHistory(
     result?.actionCallbackHistory,
   );
+  const transcriptVisibility =
+    result?.transcriptVisibility === "internal"
+      ? ("internal" as const)
+      : undefined;
+  const persistedResponseMessageContent = responseMessageContent
+    ? { ...responseMessageContent }
+    : {};
+  const persistedResponseContent = responseContent
+    ? { ...responseContent }
+    : {};
+  delete persistedResponseMessageContent.transcriptVisibility;
+  delete persistedResponseContent.transcriptVisibility;
 
   return responseContent || responseMessageContent
     ? {
-        ...(responseMessageContent ?? {}),
-        ...(responseContent ?? {}),
+        ...persistedResponseMessageContent,
+        ...persistedResponseContent,
         text,
+        ...(transcriptVisibility ? { transcriptVisibility } : {}),
         ...(actionCallbackHistory.length > 0 ? { actionCallbackHistory } : {}),
       }
     : {
         text,
+        ...(transcriptVisibility ? { transcriptVisibility } : {}),
         ...(actionCallbackHistory.length > 0 ? { actionCallbackHistory } : {}),
       };
+}
+
+function resolvePersistedResponseMessageId(
+  result: ChatGenerationResult,
+  resolvedText: string,
+): UUID | null {
+  const expectedText = resolvedText.trim();
+  if (!expectedText) {
+    return null;
+  }
+  const expectsInternal = result.transcriptVisibility === "internal";
+
+  for (
+    let index = (result.responseMessages?.length ?? 0) - 1;
+    index >= 0;
+    index -= 1
+  ) {
+    const responseMessage = result.responseMessages?.[index];
+    const messageId = validateUuid(responseMessage?.id);
+    const content = responseMessage?.content;
+    if (
+      !messageId ||
+      (content?.transcriptVisibility === "internal") !== expectsInternal ||
+      typeof content?.text !== "string" ||
+      content.text.trim() !== expectedText
+    ) {
+      continue;
+    }
+    return messageId;
+  }
+
+  return null;
 }
 
 export async function persistRecentAssistantActionCallbackHistory(
@@ -1261,6 +1310,7 @@ type ConversationRouteMessageRecord = {
   role: "assistant" | "user";
   text: string;
   timestamp: number;
+  transcriptVisibility?: "internal";
   attachments?: SerializedMessageAttachment[];
   source?: string;
   actionName?: string;
@@ -1685,7 +1735,11 @@ export async function handleConversationRoutes(
           ? conversationsByRoomId.get(roomId)
           : undefined;
         if (!roomId || !conversation) return [];
-        const text = (memory.content as { text?: unknown } | undefined)?.text;
+        const content = memory.content as
+          | { text?: unknown; transcriptVisibility?: unknown }
+          | undefined;
+        if (content?.transcriptVisibility === "internal") return [];
+        const text = content?.text;
         if (typeof text !== "string") return [];
         const rawText = text.trim();
         if (!rawText || !memory.id) return [];
@@ -1986,6 +2040,10 @@ export async function handleConversationRoutes(
           const actionCallbackHistory = normalizeActionCallbackHistory(
             content.actionCallbackHistory,
           );
+          const transcriptVisibility =
+            content.transcriptVisibility === "internal"
+              ? ("internal" as const)
+              : undefined;
           // The failed assistant turn carries its classification on the live
           // result (`content.failureKind`) or, for synthetic fallbacks, on
           // `metadata.chatFailureKind` (markSyntheticChatFailureContent). Round
@@ -2017,9 +2075,11 @@ export async function handleConversationRoutes(
             actionCallbackHistory,
           );
           const text =
-            role === "assistant"
-              ? normalizeChatResponseText(rawText, state.logBuffer, runtime)
-              : rawText;
+            transcriptVisibility === "internal"
+              ? ""
+              : role === "assistant"
+                ? normalizeChatResponseText(rawText, state.logBuffer, runtime)
+                : rawText;
           const attachments = selectAttachmentsForViewer(
             m,
             viewerAccessContext,
@@ -2036,6 +2096,7 @@ export async function handleConversationRoutes(
             role,
             text,
             timestamp: m.createdAt ?? 0,
+            ...(transcriptVisibility ? { transcriptVisibility } : {}),
             ...(attachments ? { attachments } : {}),
             ...(topics && topics.length > 0 ? { topics } : {}),
             source: normalizedSource,
@@ -2792,7 +2853,11 @@ export async function handleConversationRoutes(
             state.logBuffer,
             runtime,
           );
-          if (!streamedText && resolvedText) {
+          if (
+            !streamedText &&
+            resolvedText &&
+            result.transcriptVisibility !== "internal"
+          ) {
             for (const chunk of chunkVisibleTextForSse(resolvedText)) {
               if (disconnectTracker.isAborted()) break;
               streamedText += chunk;
@@ -2800,43 +2865,31 @@ export async function handleConversationRoutes(
               await new Promise((resolve) => setTimeout(resolve, 60));
             }
           }
-          // Resolve the durable assistant-memory id BEFORE emitting `done` so
-          // the client can swap its optimistic temp-resp-* bubble to the
-          // persisted id, and the proactive-message WS echo then reconciles by
-          // id instead of appending a duplicate bubble. Two topologies:
-          //  - action-callback turns may have ALREADY persisted (and WS-echoed)
-          //    the reply via the client_chat send handler — reuse that memory's
-          //    id and skip the route's own persist (same suppression
-          //    shouldPersistFinalAssistantTurn provided, but id-carrying);
-          //  - otherwise pre-mint the id here and defer only the DB insert.
-          let persistedAssistantId: UUID | null = null;
-          let shouldPersistAssistantTurn = false;
-          if (result.usedActionCallbacks) {
-            const existingAssistantTurn =
-              await getRecentVisibleAssistantMemorySince(
-                runtime,
-                conv.roomId,
-                turnStartedAt,
-              );
-            if (existingAssistantTurn) {
-              persistedAssistantId = existingAssistantTurn.id;
-            } else {
-              persistedAssistantId = crypto.randomUUID() as UUID;
-              shouldPersistAssistantTurn = true;
-            }
-          } else {
-            persistedAssistantId = crypto.randomUUID() as UUID;
-            shouldPersistAssistantTurn = true;
-          }
-          // Emit `done` before the DB insert so user-perceived end-of-turn
-          // latency excludes the memory write, but include the pre-minted
-          // persisted id so the client can reconcile its streamed temp bubble.
+          // Emit `done` BEFORE persistence so user-perceived end-of-turn
+          // latency excludes the ~100-500ms memory write. Persistence runs
+          // after res.end() in the `finally` block as a detached promise.
+          const visibleResolvedText =
+            result.transcriptVisibility === "internal" ? "" : resolvedText;
+          // A response memory returned by this exact turn is authoritative.
+          // When no exact visible response matches, mint the route's own id
+          // instead of guessing from the latest room memory: another
+          // concurrent or proactive reply may have landed in the same window.
+          const existingResponseMessageId = resolvePersistedResponseMessageId(
+            result,
+            resolvedText,
+          );
+          const persistedAssistantId =
+            existingResponseMessageId ?? (crypto.randomUUID() as UUID);
+          const shouldPersistAssistantTurn = existingResponseMessageId === null;
           writeSseJson(res, {
             type: "done",
-            fullText: resolvedText,
+            fullText: visibleResolvedText,
             agentName: result.agentName,
             ...(persistedAssistantId
               ? { messageId: persistedAssistantId }
+              : {}),
+            ...(result.transcriptVisibility
+              ? { transcriptVisibility: result.transcriptVisibility }
               : {}),
             ...(result.thought ? { thought: result.thought } : {}),
             ...(result.usage ? { usage: result.usage } : {}),
@@ -3192,8 +3245,11 @@ export async function handleConversationRoutes(
           );
         }
         json(res, {
-          text: resolvedText,
+          text: result.transcriptVisibility === "internal" ? "" : resolvedText,
           agentName: result.agentName,
+          ...(result.transcriptVisibility
+            ? { transcriptVisibility: result.transcriptVisibility }
+            : {}),
           ...(result.actionResults?.length
             ? { actionResults: result.actionResults }
             : {}),

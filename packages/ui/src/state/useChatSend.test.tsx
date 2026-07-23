@@ -1636,6 +1636,142 @@ describe("useChatSend retry re-runs the turn in place (no duplicate)", () => {
   });
 });
 
+describe("useChatSend internal transcript reconciliation", () => {
+  const inventory = "available_views:\nviews[1]{id}: notes";
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.client.getBaseUrl.mockReturnValue("");
+    mocks.client.renameConversation.mockResolvedValue(undefined);
+    mocks.client.truncateConversationMessages.mockResolvedValue(undefined);
+    mocks.client.sendConversationMessageStream.mockImplementation(
+      async (
+        _id: string,
+        _text: string,
+        onToken: (token: string, accumulatedText?: string) => void,
+      ) => {
+        onToken(inventory, inventory);
+        return {
+          text: inventory,
+          completed: false,
+          transcriptVisibility: "internal",
+          messageId: "persisted-internal-diagnostic",
+        };
+      },
+    );
+  });
+
+  it("drops a streamed internal terminal result from an ordinary send", async () => {
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("what views are available?", {
+        conversationId: "conv-1",
+      });
+    });
+
+    expect(
+      deps.conversationMessagesRef.current.some(
+        (message) => message.role === "assistant",
+      ),
+    ).toBe(false);
+  });
+
+  it("drops a streamed internal terminal result from retry replay", async () => {
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    deps.conversationMessagesRef.current = [
+      { id: "u1", role: "user", text: "list views", timestamp: 1 },
+      {
+        id: "a1",
+        role: "assistant",
+        text: "retry me",
+        timestamp: 2,
+        failureKind: "provider_issue",
+      },
+    ];
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.handleChatRetry("a1");
+    });
+
+    expect(
+      deps.conversationMessagesRef.current.some(
+        (message) => message.role === "assistant",
+      ),
+    ).toBe(false);
+  });
+
+  it("drops a streamed internal terminal result from action send", async () => {
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendActionMessage("list views");
+    });
+
+    expect(
+      deps.conversationMessagesRef.current.some(
+        (message) => message.role === "assistant",
+      ),
+    ).toBe(false);
+  });
+});
+
+describe("useChatSend persisted message identity", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.client.getBaseUrl.mockReturnValue("");
+    mocks.client.sendConversationMessageStream.mockImplementation(
+      async (
+        _id: string,
+        _text: string,
+        onToken: (token: string, accumulatedText?: string) => void,
+      ) => {
+        onToken("Ready.", "Ready.");
+        return {
+          text: "Ready.",
+          completed: true,
+          messageId: "persisted-assistant-id",
+        };
+      },
+    );
+  });
+
+  it("replaces only the active optimistic assistant id with the persisted id", async () => {
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("show me", {
+        conversationId: "conv-1",
+      });
+    });
+
+    const assistantMessages = deps.conversationMessagesRef.current.filter(
+      (message) => message.role === "assistant",
+    );
+    expect(assistantMessages).toHaveLength(1);
+    expect(assistantMessages[0]).toMatchObject({
+      id: "persisted-assistant-id",
+      text: "Ready.",
+    });
+  });
+});
+
 describe("useChatSend empty-reply failure surfacing (#10231)", () => {
   beforeEach(() => {
     vi.clearAllMocks();

@@ -44,6 +44,7 @@ interface SeedRow {
   roomId: UUID;
   text: string;
   author: "user" | "assistant";
+  transcriptVisibility?: "internal";
   attachments?: Array<{ title?: string; url?: string }>;
   createdAt: number;
 }
@@ -120,6 +121,9 @@ function modelSearch(
       roomId: row.roomId,
       content: {
         text: row.text,
+        ...(row.transcriptVisibility
+          ? { transcriptVisibility: row.transcriptVisibility }
+          : {}),
         ...(row.attachments ? { attachments: row.attachments } : {}),
       },
       createdAt: row.createdAt,
@@ -137,6 +141,7 @@ function seed(
   text: string,
   author: "user" | "assistant",
   attachments?: Array<{ title?: string; url?: string }>,
+  transcriptVisibility?: "internal",
 ): UUID {
   const id = randomUUID() as UUID;
   rows.push({
@@ -145,6 +150,7 @@ function seed(
     text,
     author,
     attachments,
+    transcriptVisibility,
     createdAt: 1_000 + seq++,
   });
   return id;
@@ -178,6 +184,13 @@ const deletedMessageId = seed(
   "assistant",
 );
 seed(roomA, "the oldest xyzzy needle is buried here", "user");
+seed(
+  roomA,
+  "available_views internal-only-search-marker",
+  "assistant",
+  undefined,
+  "internal",
+);
 for (let i = 0; i < 120; i++)
   seed(roomA, `filler chatter number ${i} nothing special`, "user");
 seed(roomB, "roomB also mentions platypus separately", "user");
@@ -349,6 +362,13 @@ describe("GET /api/conversations/messages/search (route boundary)", () => {
     const r = await runSearch("q=platypus");
     expect(texts(r)).toEqual(["roomB also mentions platypus separately"]);
     expect(r.body.results.every((x) => x.conversationId === "c-b")).toBe(true);
+  });
+
+  it("never exposes internal diagnostic rows or snippets", async () => {
+    const r = await runSearch("q=internal-only-search-marker");
+    expect(r.status).toBe(200);
+    expect(r.body.count).toBe(0);
+    expect(texts(r)).toEqual([]);
   });
 
   it("corpus-wide recall — the oldest 'xyzzy' hit survives 120 newer rows", async () => {

@@ -815,6 +815,8 @@ export interface AccountConnectRequest {
 export interface ChatGenerationResult {
   text: string;
   agentName: string;
+  /** Machine-only final text that must not render as assistant prose. */
+  transcriptVisibility?: "internal";
   /** The agent's internal reasoning for this turn, when the model emitted one. */
   thought?: string;
   noResponseReason?: "ignored";
@@ -1075,6 +1077,9 @@ function getLatestVisibleResponseMessageText(
 
   for (let index = responseMessages.length - 1; index >= 0; index -= 1) {
     const content = responseMessages[index]?.content;
+    if (content?.transcriptVisibility === "internal") {
+      continue;
+    }
     const text =
       typeof extractCompatTextContent(content) === "string"
         ? extractCompatTextContent(content).trim()
@@ -1540,6 +1545,25 @@ function summarizeRuntimeActionResults(
     .map(summarizeActionResultForClient)
     .filter((entry): entry is ChatActionResultSummary => Boolean(entry))
     .slice(-8);
+}
+
+function resolveFinalTranscriptVisibility(
+  finalText: string,
+  actionResults: readonly ActionResult[] | undefined,
+  contents: readonly (Content | null | undefined)[] = [],
+): "internal" | undefined {
+  if (!finalText) return undefined;
+  return contents.some(
+    (content) =>
+      content?.transcriptVisibility === "internal" &&
+      extractCompatTextContent(content) === finalText,
+  ) ||
+    actionResults?.some(
+      (result) =>
+        result.transcriptVisibility === "internal" && result.text === finalText,
+    )
+    ? "internal"
+    : undefined;
 }
 
 function pickInsufficientCreditsChatReply(): string {
@@ -2137,10 +2161,15 @@ export async function getRecentVisibleAssistantMemorySince(
 
     const persistedAssistantTurn = recent
       .filter((memory) => {
-        const contentText = (memory.content as { text?: string })?.text?.trim();
+        const content = memory.content as {
+          text?: string;
+          transcriptVisibility?: "internal";
+        };
+        const contentText = content.text?.trim();
         const createdAt = memory.createdAt ?? 0;
         return (
           memory.entityId === runtime.agentId &&
+          content.transcriptVisibility !== "internal" &&
           Boolean(contentText) &&
           createdAt >= sinceMs - slackMs
         );
@@ -2888,6 +2917,9 @@ async function generateChatResponseWithTiming(
                         generationTimeoutMs,
                       );
                     }
+                    if (content.transcriptVisibility === "internal") {
+                      return [];
+                    }
 
                     const chunk = extractCompatTextContent(content);
                     const visibleChunk = isInternalStructuredStreamText(chunk)
@@ -3142,13 +3174,22 @@ async function generateChatResponseWithTiming(
     const responseMessageText = getLatestVisibleResponseMessageText(
       result?.responseMessages,
     );
+    const resultContentCandidates = [
+      result?.responseContent,
+      ...(result?.responseMessages ?? []).map((entry) => entry.content),
+    ];
     const resultText =
       responseMessageText ||
       extractCompatTextContent(result?.responseContent) ||
       "";
+    const resultTextVisibility = resolveFinalTranscriptVisibility(
+      resultText,
+      result?.actionResults,
+      resultContentCandidates,
+    );
 
     // Fallback: if callbacks weren't used for text, stream + return final text.
-    if (!responseText && resultText) {
+    if (!responseText && resultText && resultTextVisibility !== "internal") {
       if (opts?.onSnapshot) {
         emitSnapshot(resultText);
       } else {
@@ -3157,6 +3198,7 @@ async function generateChatResponseWithTiming(
     } else if (
       actionCallbacksSeen === 0 &&
       resultText &&
+      resultTextVisibility !== "internal" &&
       resultText !== responseText &&
       resultText.startsWith(responseText)
     ) {
@@ -3164,6 +3206,7 @@ async function generateChatResponseWithTiming(
     } else if (
       actionCallbacksSeen === 0 &&
       resultText &&
+      resultTextVisibility !== "internal" &&
       resultText !== responseText &&
       !forcedWalletExecutionText &&
       !blockedUnexecutedActionPayload
@@ -3208,6 +3251,11 @@ async function generateChatResponseWithTiming(
         ? (noResponseFallback ??
           (normalizedResponseText || responseText || "(no response)"))
         : normalizedResponseText;
+    const transcriptVisibility = resolveFinalTranscriptVisibility(
+      finalText,
+      result?.actionResults,
+      resultContentCandidates,
+    );
 
     const responseMessages = Array.isArray(result?.responseMessages)
       ? result.responseMessages.map((entry) => ({
@@ -3215,14 +3263,24 @@ async function generateChatResponseWithTiming(
           ...(entry.content ? { content: entry.content } : {}),
         }))
       : [];
-    const responseContent =
+    const responseContent: Content | null =
       result?.responseContent && typeof result.responseContent === "object"
-        ? ({
-            ...result.responseContent,
-            text: finalText,
-          } satisfies Content)
+        ? (() => {
+            const content = {
+              ...result.responseContent,
+              text: finalText,
+            } satisfies Content;
+            delete content.transcriptVisibility;
+            if (transcriptVisibility) {
+              content.transcriptVisibility = transcriptVisibility;
+            }
+            return content;
+          })()
         : finalText
-          ? ({ text: finalText } satisfies Content)
+          ? ({
+              text: finalText,
+              ...(transcriptVisibility ? { transcriptVisibility } : {}),
+            } satisfies Content)
           : null;
     const responseRecord = responseContent as
       | (Record<string, unknown> & {
@@ -3268,6 +3326,7 @@ async function generateChatResponseWithTiming(
     return {
       text: finalText,
       agentName,
+      ...(transcriptVisibility ? { transcriptVisibility } : {}),
       ...(thought ? { thought } : {}),
       ...(intentionalNoResponse
         ? { noResponseReason: "ignored" as const }
@@ -3717,6 +3776,7 @@ export async function handleChatRoutes(
         sendChunk({ role: "assistant" }, null);
 
         let fullText = "";
+        let transcriptVisibility: "internal" | undefined;
 
         {
           const runtime = state.runtime;
@@ -3756,9 +3816,13 @@ export async function handleChatRoutes(
                 resolveNoResponseFallback(state.logBuffer, runtime),
             },
           );
+          transcriptVisibility = result.transcriptVisibility;
           if (result.localInference && !fullText) {
-            fullText = result.text;
-            sendChunk({ content: result.text }, null);
+            fullText =
+              result.transcriptVisibility === "internal" ? "" : result.text;
+            if (fullText) {
+              sendChunk({ content: fullText }, null);
+            }
           }
           syncRuntimeCharacterToChatStateConfig(state);
         }
@@ -3770,7 +3834,8 @@ export async function handleChatRoutes(
         );
         if (
           (fullText.trim().length === 0 || isNoResponsePlaceholder(fullText)) &&
-          resolved.trim()
+          resolved.trim() &&
+          transcriptVisibility !== "internal"
         ) {
           sendChunk({ content: resolved }, null);
         }
@@ -3831,6 +3896,7 @@ export async function handleChatRoutes(
       let responseText: string;
       let localInference: LocalInferenceChatMetadata | undefined;
       let failureKind: ChatFailureKind | undefined;
+      let transcriptVisibility: "internal" | undefined;
 
       {
         if (!state.runtime) {
@@ -3875,7 +3941,9 @@ export async function handleChatRoutes(
           },
         );
         syncRuntimeCharacterToChatStateConfig(state);
-        responseText = result.text;
+        transcriptVisibility = result.transcriptVisibility;
+        responseText =
+          result.transcriptVisibility === "internal" ? "" : result.text;
         localInference = result.localInference;
         failureKind = result.failureKind;
       }
@@ -3895,11 +3963,14 @@ export async function handleChatRoutes(
         return true;
       }
 
-      const resolvedText = normalizeChatResponseText(
-        responseText,
-        state.logBuffer,
-        state.runtime,
-      );
+      const resolvedText =
+        transcriptVisibility === "internal"
+          ? ""
+          : normalizeChatResponseText(
+              responseText,
+              state.logBuffer,
+              state.runtime,
+            );
       json(res, {
         id,
         object: "chat.completion",
@@ -4067,6 +4138,7 @@ export async function handleChatRoutes(
 
         let fullText = "";
         let outputTokens = 0;
+        let transcriptVisibility: "internal" | undefined;
 
         const onDelta = (chunk: string) => {
           if (!chunk) return;
@@ -4116,6 +4188,7 @@ export async function handleChatRoutes(
                 resolveNoResponseFallback(state.logBuffer, runtime),
             },
           );
+          transcriptVisibility = generation.transcriptVisibility;
           outputTokens = generation.usage?.completionTokens ?? outputTokens;
           syncRuntimeCharacterToChatStateConfig(state);
         }
@@ -4127,7 +4200,8 @@ export async function handleChatRoutes(
         );
         if (
           (fullText.trim().length === 0 || isNoResponsePlaceholder(fullText)) &&
-          resolved.trim()
+          resolved.trim() &&
+          transcriptVisibility !== "internal"
         ) {
           onDelta(resolved);
         }
@@ -4187,6 +4261,7 @@ export async function handleChatRoutes(
       let responseText: string;
       let inputTokens = estimateTokenCount(prompt);
       let outputTokens = 0;
+      let transcriptVisibility: "internal" | undefined;
 
       {
         if (!state.runtime) {
@@ -4231,18 +4306,23 @@ export async function handleChatRoutes(
           },
         );
         syncRuntimeCharacterToChatStateConfig(state);
-        responseText = result.text;
+        transcriptVisibility = result.transcriptVisibility;
+        responseText =
+          result.transcriptVisibility === "internal" ? "" : result.text;
         if (result.usage) {
           inputTokens = result.usage.promptTokens;
           outputTokens = result.usage.completionTokens;
         }
       }
 
-      const resolvedText = normalizeChatResponseText(
-        responseText,
-        state.logBuffer,
-        state.runtime,
-      );
+      const resolvedText =
+        transcriptVisibility === "internal"
+          ? ""
+          : normalizeChatResponseText(
+              responseText,
+              state.logBuffer,
+              state.runtime,
+            );
       json(res, {
         id,
         type: "message",
@@ -4375,11 +4455,14 @@ export async function handleChatRoutes(
       );
       syncRuntimeCharacterToChatStateConfig(state);
 
-      const resolvedText = normalizeChatResponseText(
-        result.text,
-        state.logBuffer,
-        state.runtime,
-      );
+      const resolvedText =
+        result.transcriptVisibility === "internal"
+          ? ""
+          : normalizeChatResponseText(
+              result.text,
+              state.logBuffer,
+              state.runtime,
+            );
 
       json(res, {
         response: resolvedText,

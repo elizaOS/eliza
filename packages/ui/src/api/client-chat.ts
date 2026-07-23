@@ -480,6 +480,7 @@ declare module "./client-base" {
     ): Promise<{
       text: string;
       agentName: string;
+      transcriptVisibility?: "internal";
       blocks?: ContentBlock[];
       noResponseReason?: "ignored";
       /**
@@ -513,6 +514,7 @@ declare module "./client-base" {
       text: string;
       agentName: string;
       completed: boolean;
+      transcriptVisibility?: "internal";
       /** Agent reasoning/thought for this turn, when the model emitted one. */
       reasoning?: string;
       /**
@@ -1276,6 +1278,7 @@ ElizaClient.prototype.sendConversationMessage = async function (
   const response = await this.fetch<{
     text: string;
     agentName: string;
+    transcriptVisibility?: "internal";
     blocks?: ContentBlock[];
     noResponseReason?: "ignored";
     failureKind?: ChatFailureKind;
