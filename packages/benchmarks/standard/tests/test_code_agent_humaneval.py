@@ -84,7 +84,7 @@ def test_run_agent_humaneval_scores_completion_and_writes_trajectory(tmp_path: P
     assert outcome["wrong"] == 0
 
 
-def test_code_agent_humaneval_expanded_mock_count(tmp_path: Path) -> None:
+def test_code_agent_humaneval_authored_mock_count(tmp_path: Path) -> None:
     env = os.environ.copy()
     env["PYTHONPATH"] = "packages"
     completed = subprocess.run(
@@ -97,7 +97,6 @@ def test_code_agent_humaneval_expanded_mock_count(tmp_path: Path) -> None:
             "--max-tasks",
             "1",
             "--mock",
-            "--expand-scenarios",
             "--json",
         ],
         cwd=Path(__file__).resolve().parents[3],
@@ -110,6 +109,5 @@ def test_code_agent_humaneval_expanded_mock_count(tmp_path: Path) -> None:
 
     assert completed.returncode == 0, completed.stderr
     payload = json.loads(completed.stdout)
-    assert payload["dataset_version"].endswith("+edge-v1")
-    assert payload["summary"]["total_instances"] == 11
-    assert payload["summary"]["resolved"] == 11
+    assert payload["summary"]["total_instances"] == 1
+    assert payload["summary"]["resolved"] == 1

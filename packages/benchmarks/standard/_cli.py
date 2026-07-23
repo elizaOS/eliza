@@ -63,7 +63,6 @@ def build_parser(*, prog: str, description: str) -> argparse.ArgumentParser:
         action="store_true",
         help="Run with a deterministic mock client (no network).",
     )
-    parser.add_argument("--expand-scenarios", action="store_true")
     parser.add_argument("--count-scenarios", action="store_true")
     parser.add_argument("--validate-scenarios", action="store_true")
     parser.add_argument(

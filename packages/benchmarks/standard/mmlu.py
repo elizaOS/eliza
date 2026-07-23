@@ -30,9 +30,11 @@ from ._base import (
     GenerationConfig,
     OpenAICompatibleClient,
     RunStats,
+    generate_or_empty,
+    is_systemic_generation_failure,
 )
 from ._cli import RunnerFactory, cli_dispatch
-from .scenarios import count_dict_examples, expand_dict_examples, validate_dict_examples
+from .scenarios import count_dict_examples, validate_dict_examples
 
 log = logging.getLogger("benchmarks.standard.mmlu")
 
@@ -40,7 +42,6 @@ BENCHMARK_ID = "mmlu"
 DATASET_NAME = "cais/mmlu"
 DATASET_REVISION = "c30699e8356da336a370243923dbaf21066bb9fe"
 DATASET_VERSION = f"{DATASET_NAME}@{DATASET_REVISION}"
-EXPANDED_DATASET_VERSION = f"{DATASET_VERSION}+edge-v1"
 EXPECTED_TEST_EXAMPLES = 14_042
 # Reasoning models (gpt-oss, o-series, …) spend completion tokens on hidden
 # reasoning before emitting the visible answer. At the old 256-token default they
@@ -152,11 +153,9 @@ class MMLURunner:
         *,
         examples: Iterable[dict[str, object]] | None = None,
         max_tokens: int = DEFAULT_MAX_TOKENS,
-        include_edge_scenarios: bool = False,
     ) -> None:
         self._examples = list(examples) if examples is not None else None
         self._max_tokens = max_tokens
-        self._include_edge_scenarios = include_edge_scenarios
 
     def _selected_examples(
         self, limit: int | None
@@ -168,17 +167,12 @@ class MMLURunner:
         )
         if self._examples is not None and limit is not None:
             base = base[:limit]
-        examples = (
-            expand_mmlu_examples(base) if self._include_edge_scenarios else list(base)
-        )
-        validate_mmlu_examples(examples)
-        return base, examples
+        validate_mmlu_examples(base)
+        return base, base
 
     def scenario_counts(self, *, limit: int | None) -> dict[str, int]:
-        base, examples = self._selected_examples(limit)
-        counts = count_dict_examples(base, examples)
-        counts["edge_multiplier"] = 10
-        return counts
+        _, examples = self._selected_examples(limit)
+        return count_dict_examples(examples)
 
     def run(
         self,
@@ -200,10 +194,11 @@ class MMLURunner:
 
         correct = 0
         empty_outputs = 0
+        generation_errors = 0
         per_subject: dict[str, list[int]] = {}
         failures: list[dict[str, object]] = []
 
-        for i, item in enumerate(examples):
+        for item in examples:
             subject = str(item.get("subject") or "unknown")
             expected_idx = int(item["answer_index"])  # type: ignore[arg-type]
             expected_letter = _LETTER_OPTIONS[expected_idx]
@@ -211,12 +206,12 @@ class MMLURunner:
                 ChatMessage(role="system", content=SYSTEM_PROMPT),
                 ChatMessage(role="user", content=_format_question(item)),
             ]
-            try:
-                gen = client.generate(messages, config)
-            except Exception as exc:  # noqa: BLE001
-                raise RuntimeError(
-                    f"MMLU generation failed for example {i + 1}/{len(examples)}"
-                ) from exc
+            # A single failed generation scores that item wrong and the run
+            # continues; a systemic majority of failures aborts (guarded below).
+            outcome = generate_or_empty(client, messages, config)
+            gen = outcome.result
+            if outcome.error is not None:
+                generation_errors += 1
             empty_output = not gen.text.strip()
             if empty_output:
                 empty_outputs += 1
@@ -240,6 +235,8 @@ class MMLURunner:
                         if empty_output
                         else predicted or gen.text[:120],
                         "empty_visible_output": empty_output,
+                        "generation_failed": outcome.error is not None,
+                        "error": outcome.error,
                     }
                 )
 
@@ -247,6 +244,12 @@ class MMLURunner:
         if n != len(examples):
             raise RuntimeError(
                 f"MMLU evaluated {n}/{len(examples)} examples; refusing a partial score"
+            )
+        if is_systemic_generation_failure(generation_errors, n):
+            raise RuntimeError(
+                f"MMLU: {generation_errors}/{n} generations raised a "
+                "transport-level error (more than half the dataset); treating "
+                "this as a harness/endpoint failure rather than accuracy"
             )
         if empty_outputs == n:
             raise RuntimeError(
@@ -281,9 +284,7 @@ class MMLURunner:
             benchmark=BENCHMARK_ID,
             model=model,
             endpoint=endpoint,
-            dataset_version=EXPANDED_DATASET_VERSION
-            if self._include_edge_scenarios
-            else DATASET_VERSION,
+            dataset_version=DATASET_VERSION,
             n=n,
             metrics={
                 "score": round(accuracy, 4),
@@ -295,6 +296,7 @@ class MMLURunner:
                 "subject_accuracy": subject_accuracy,
                 "empty_outputs": empty_outputs,
                 "empty_output_rate": empty_output_rate,
+                "generation_errors": generation_errors,
             },
             failures=failures,
             elapsed_s=stats.elapsed(),
@@ -316,34 +318,23 @@ class _MMLUFactory(RunnerFactory):
     def build(
         self, args: argparse.Namespace
     ) -> tuple[MMLURunner, Sequence[str] | None]:
-        runner = MMLURunner(
-            max_tokens=args.max_tokens, include_edge_scenarios=args.expand_scenarios
-        )
+        runner = MMLURunner(max_tokens=args.max_tokens)
         mock_responses: Sequence[str] | None = None
         if args.mock:
             base = list(SMOKE_FIXTURES)
             if args.limit is not None:
                 base = base[: args.limit]
-            examples = expand_mmlu_examples(base) if args.expand_scenarios else base
             # Drive the runner against the built-in fixture deterministically.
             runner = MMLURunner(
                 examples=base,
                 max_tokens=args.max_tokens,
-                include_edge_scenarios=args.expand_scenarios,
             )
             # Echo the correct letter so a mock smoke run scores 100%.
             mock_responses = [
                 _LETTER_OPTIONS[int(item["answer_index"])]  # type: ignore[arg-type]
-                for item in examples
+                for item in base
             ]
         return runner, mock_responses
-
-
-def expand_mmlu_examples(examples: list[dict[str, object]]) -> list[dict[str, object]]:
-    def mutate(item: dict[str, object], instruction: str) -> None:
-        item["question"] = f"{instruction}\n\n{item['question']}"
-
-    return expand_dict_examples(examples, id_key="scenario_id", mutator=mutate)
 
 
 def validate_mmlu_examples(examples: list[dict[str, object]]) -> None:

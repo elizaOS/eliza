@@ -43,15 +43,16 @@ from ._base import (
     GenerationConfig,
     OpenAICompatibleClient,
     RunStats,
+    generate_or_empty,
+    is_systemic_generation_failure,
 )
 from ._cli import RunnerFactory, cli_dispatch
-from .scenarios import count_dict_examples, expand_dict_examples, validate_dict_examples
+from .scenarios import count_dict_examples, validate_dict_examples
 
 BENCHMARK_ID = "humaneval"
 DATASET_NAME = "openai_humaneval"
 DATASET_REVISION = "7dce6050a7d6d172f3cc5c32aa97f52fa1a2e544"
 DATASET_VERSION = f"{DATASET_NAME}@{DATASET_REVISION}"
-EXPANDED_DATASET_VERSION = f"{DATASET_VERSION}+edge-v1"
 EXPECTED_TEST_EXAMPLES = 164
 DEFAULT_MAX_TOKENS = 2048
 
@@ -301,12 +302,10 @@ class HumanEvalRunner:
         examples: Iterable[dict[str, object]] | None = None,
         max_tokens: int = DEFAULT_MAX_TOKENS,
         timeout_s: float = 10.0,
-        include_edge_scenarios: bool = False,
     ) -> None:
         self._examples = list(examples) if examples is not None else None
         self._max_tokens = max_tokens
         self._timeout_s = timeout_s
-        self._include_edge_scenarios = include_edge_scenarios
 
     def _selected_examples(
         self, limit: int | None
@@ -318,19 +317,12 @@ class HumanEvalRunner:
         )
         if self._examples is not None and limit is not None:
             base = base[:limit]
-        examples = (
-            expand_humaneval_examples(base)
-            if self._include_edge_scenarios
-            else list(base)
-        )
-        validate_humaneval_examples(examples)
-        return base, examples
+        validate_humaneval_examples(base)
+        return base, base
 
     def scenario_counts(self, *, limit: int | None) -> dict[str, int]:
-        base, examples = self._selected_examples(limit)
-        counts = count_dict_examples(base, examples)
-        counts["edge_multiplier"] = 10
-        return counts
+        _, examples = self._selected_examples(limit)
+        return count_dict_examples(examples)
 
     def run(
         self,
@@ -355,9 +347,10 @@ class HumanEvalRunner:
         passed = 0
         n = 0
         empty_outputs = 0
+        generation_errors = 0
         failures: list[dict[str, object]] = []
 
-        for i, item in enumerate(examples):
+        for item in examples:
             prompt = str(item["prompt"])
             test = str(item["test"])
             entry = str(item["entry_point"])
@@ -365,26 +358,29 @@ class HumanEvalRunner:
                 ChatMessage(role="system", content=SYSTEM_PROMPT),
                 ChatMessage(role="user", content=prompt),
             ]
-            try:
-                gen = client.generate(messages, config)
-            except Exception as exc:  # noqa: BLE001
-                raise RuntimeError(
-                    f"HumanEval generation failed for example {i + 1}/{len(examples)}"
-                ) from exc
+            # A single failed generation (per-example timeout, transient 5xx, a
+            # subprocess harness dying on one hard problem) scores that example as
+            # not-passed and the run continues; only a systemic majority of
+            # failures aborts (guarded below). See _base.generate_or_empty.
+            outcome = generate_or_empty(client, messages, config)
+            gen = outcome.result
+            gen_error = outcome.error
             if not gen.text.strip():
+                # Existing empty-output retry: re-ask once with a stricter prompt.
+                # A retry that raises leaves the example empty-and-failed rather
+                # than aborting the whole dataset.
                 retry_messages = [
                     ChatMessage(role="system", content=EMPTY_RETRY_SYSTEM_PROMPT),
                     ChatMessage(role="user", content=prompt),
                 ]
-                try:
-                    retry_gen = client.generate(retry_messages, config)
-                except Exception as exc:  # noqa: BLE001
-                    raise RuntimeError(
-                        "HumanEval empty-output retry failed for example "
-                        f"{i + 1}/{len(examples)}"
-                    ) from exc
-                if retry_gen.text.strip():
-                    gen = retry_gen
+                retry = generate_or_empty(client, retry_messages, config)
+                if retry.result.text.strip():
+                    gen = retry.result
+                    gen_error = None
+                elif gen_error is None:
+                    gen_error = retry.error
+            if gen_error is not None:
+                generation_errors += 1
             empty_output = not gen.text.strip()
             if empty_output:
                 empty_outputs += 1
@@ -398,8 +394,9 @@ class HumanEvalRunner:
                     {
                         "task_id": item.get("task_id"),
                         "completion": gen.text[:400],
-                        "error": err,
+                        "error": gen_error or err,
                         "empty_visible_output": empty_output,
+                        "generation_failed": gen_error is not None,
                     }
                 )
 
@@ -407,6 +404,12 @@ class HumanEvalRunner:
             raise RuntimeError(
                 "HumanEval evaluated "
                 f"{n}/{len(examples)} examples; refusing a partial score"
+            )
+        if is_systemic_generation_failure(generation_errors, n):
+            raise RuntimeError(
+                f"HumanEval: {generation_errors}/{n} generations raised a "
+                "transport-level error (more than half the dataset); treating "
+                "this as a harness/endpoint failure rather than pass@1"
             )
         if empty_outputs == n:
             raise RuntimeError(
@@ -418,9 +421,7 @@ class HumanEvalRunner:
             benchmark=BENCHMARK_ID,
             model=model,
             endpoint=endpoint,
-            dataset_version=EXPANDED_DATASET_VERSION
-            if self._include_edge_scenarios
-            else DATASET_VERSION,
+            dataset_version=DATASET_VERSION,
             n=n,
             metrics={
                 "score": round(pass_at_1, 4),
@@ -428,7 +429,11 @@ class HumanEvalRunner:
                 "passed": float(passed),
                 "n": float(n),
             },
-            raw_json={"timeout_s": self._timeout_s, "empty_outputs": empty_outputs},
+            raw_json={
+                "timeout_s": self._timeout_s,
+                "empty_outputs": empty_outputs,
+                "generation_errors": generation_errors,
+            },
             failures=failures,
             elapsed_s=stats.elapsed(),
         )
@@ -460,38 +465,20 @@ class _HumanEvalFactory(RunnerFactory):
         runner = HumanEvalRunner(
             max_tokens=args.max_tokens,
             timeout_s=args.timeout_s,
-            include_edge_scenarios=args.expand_scenarios,
         )
         mock_responses: Sequence[str] | None = None
         if args.mock:
             base = list(SMOKE_FIXTURES)
             if args.limit is not None:
                 base = base[: args.limit]
-            examples = (
-                expand_humaneval_examples(base) if args.expand_scenarios else base
-            )
             runner = HumanEvalRunner(
                 examples=base,
                 max_tokens=args.max_tokens,
                 timeout_s=args.timeout_s,
-                include_edge_scenarios=args.expand_scenarios,
             )
             # Echo canonical solutions for the smoke fixture.
-            mock_responses = [str(item["canonical_solution"]) for item in examples]
+            mock_responses = [str(item["canonical_solution"]) for item in base]
         return runner, mock_responses
-
-
-def expand_humaneval_examples(
-    examples: list[dict[str, object]],
-) -> list[dict[str, object]]:
-    def mutate(item: dict[str, object], instruction: str) -> None:
-        item["prompt"] = (
-            f"# Edge instruction: {instruction}\n"
-            f"# Return only the function body below.\n"
-            f"{item['prompt']}"
-        )
-
-    return expand_dict_examples(examples, id_key="task_id", mutator=mutate)
 
 
 def validate_humaneval_examples(examples: list[dict[str, object]]) -> None:

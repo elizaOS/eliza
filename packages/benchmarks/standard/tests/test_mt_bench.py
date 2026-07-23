@@ -19,6 +19,7 @@ from benchmarks.standard._base import (
 from benchmarks.standard._cli import main_entry
 from benchmarks.standard.mt_bench import (
     BENCHMARK_ID,
+    DATASET_VERSION,
     DEFAULT_JUDGE_MAX_TOKENS,
     DEFAULT_MAX_TOKENS,
     SMOKE_QUESTIONS,
@@ -226,7 +227,11 @@ def test_mt_bench_runner_raises_when_all_candidate_outputs_empty(tmp_path: Path)
         )
 
 
-def test_mt_bench_runner_aborts_when_candidate_turn_fails(tmp_path: Path) -> None:
+def test_mt_bench_runner_scores_when_one_candidate_turn_fails(tmp_path: Path) -> None:
+    """New contract: a single failed candidate generation degrades to an empty
+    answer (the judge scores it) and the run completes over the whole set rather
+    than aborting. Regression for the live per-example generation abort."""
+
     class FailsOnSecondCall(MockClient):
         def generate(self, messages, config):  # type: ignore[no-untyped-def]
             if self._idx == 1:
@@ -239,9 +244,40 @@ def test_mt_bench_runner_aborts_when_candidate_turn_fails(tmp_path: Path) -> Non
         questions=list(SMOKE_QUESTIONS[:1]),
     )
 
-    with pytest.raises(RuntimeError, match="turn 2"):
+    result = runner.run(
+        client=FailsOnSecondCall(["answer"]),
+        model="cand",
+        endpoint="http://mock",
+        output_dir=tmp_path,
+        limit=None,
+    )
+
+    assert result.n == 2
+    assert result.raw_json["candidate_generation_errors"] == 1
+    assert any(f.get("generation_failed") for f in result.failures)
+
+
+def test_mt_bench_runner_raises_when_majority_candidate_generations_fail(
+    tmp_path: Path,
+) -> None:
+    """More than half the candidate turns throwing is a broken endpoint, not a
+    real judge-scored result — the systemic guard aborts."""
+
+    class FailsAfterFirstCall(MockClient):
+        def generate(self, messages, config):  # type: ignore[no-untyped-def]
+            if self._idx >= 1:
+                raise OSError("transport unavailable")
+            return super().generate(messages, config)
+
+    runner = MTBenchRunner(
+        judge=MockClient(["Rating: [[8]]"]),
+        judge_model="judge",
+        questions=list(SMOKE_QUESTIONS),
+    )
+
+    with pytest.raises(RuntimeError, match="transport-level error"):
         runner.run(
-            client=FailsOnSecondCall(["answer"]),
+            client=FailsAfterFirstCall(["answer"]),
             model="cand",
             endpoint="http://mock",
             output_dir=tmp_path,
@@ -335,7 +371,7 @@ def test_mt_bench_cli_end_to_end(tmp_path: Path) -> None:
     assert data["benchmark"] == BENCHMARK_ID
 
 
-def test_mt_bench_expanded_count_and_mock_run(tmp_path: Path, capsys) -> None:
+def test_mt_bench_authored_count_and_mock_run(tmp_path: Path, capsys) -> None:
     out_dir = tmp_path / "out"
     rc = main_entry(
         _MTBenchFactory(),
@@ -346,7 +382,6 @@ def test_mt_bench_expanded_count_and_mock_run(tmp_path: Path, capsys) -> None:
             str(out_dir),
             "--limit",
             "1",
-            "--expand-scenarios",
             "--count-scenarios",
             "--validate-scenarios",
             "--judge-api-key-env",
@@ -354,7 +389,7 @@ def test_mt_bench_expanded_count_and_mock_run(tmp_path: Path, capsys) -> None:
         ],
     )
     assert rc == 0
-    assert '"base": 1' in capsys.readouterr().out
+    assert '"total": 1' in capsys.readouterr().out
 
     rc = main_entry(
         _MTBenchFactory(),
@@ -365,15 +400,14 @@ def test_mt_bench_expanded_count_and_mock_run(tmp_path: Path, capsys) -> None:
             str(out_dir),
             "--limit",
             "1",
-            "--expand-scenarios",
             "--judge-api-key-env",
             "DOES_NOT_EXIST",
         ],
     )
     assert rc == 0
     data = json.loads((out_dir / "mt-bench-results.json").read_text("utf-8"))
-    assert data["dataset_version"].endswith("+edge-v1")
-    assert data["n"] == 22
+    assert data["dataset_version"] == DATASET_VERSION
+    assert data["n"] == 2
     assert data["metrics"]["score"] == 0.8
 
 
@@ -391,7 +425,6 @@ def _factory_args(**overrides: object) -> argparse.Namespace:
         "max_tokens": DEFAULT_MAX_TOKENS,
         "judge_max_tokens": DEFAULT_JUDGE_MAX_TOKENS,
         "temperature": 0.7,
-        "expand_scenarios": False,
     }
     base.update(overrides)
     return argparse.Namespace(**base)

@@ -29,16 +29,17 @@ from ._base import (
     GenerationConfig,
     OpenAICompatibleClient,
     RunStats,
+    generate_or_empty,
+    is_systemic_generation_failure,
 )
 from ._cli import RunnerFactory, cli_dispatch
-from .scenarios import count_dict_examples, expand_dict_examples, validate_dict_examples
+from .scenarios import count_dict_examples, validate_dict_examples
 
 BENCHMARK_ID = "gsm8k"
 DATASET_NAME = "openai/gsm8k"
 DATASET_CONFIG = "main"
 DATASET_REVISION = "740312add88f781978c0658806c59bc2815b9866"
 DATASET_VERSION = f"{DATASET_NAME}@{DATASET_REVISION}"
-EXPANDED_DATASET_VERSION = f"{DATASET_VERSION}+edge-v1"
 EXPECTED_TEST_EXAMPLES = 1_319
 
 SYSTEM_PROMPT = (
@@ -154,11 +155,9 @@ class GSM8KRunner:
         # `#### <int>` line (gpt-oss-120b: 25 GSM8K items 0.72 -> 1.0 once given
         # room). Non-reasoning models stop early and are unaffected.
         max_tokens: int = 2048,
-        include_edge_scenarios: bool = False,
     ) -> None:
         self._examples = list(examples) if examples is not None else None
         self._max_tokens = max_tokens
-        self._include_edge_scenarios = include_edge_scenarios
 
     def _selected_examples(
         self, limit: int | None
@@ -170,17 +169,12 @@ class GSM8KRunner:
         )
         if self._examples is not None and limit is not None:
             base = base[:limit]
-        expanded = (
-            expand_gsm8k_examples(base) if self._include_edge_scenarios else list(base)
-        )
-        validate_gsm8k_examples(expanded)
-        return base, expanded
+        validate_gsm8k_examples(base)
+        return base, base
 
     def scenario_counts(self, *, limit: int | None) -> dict[str, int]:
-        base, examples = self._selected_examples(limit)
-        counts = count_dict_examples(base, examples)
-        counts["edge_multiplier"] = 10
-        return counts
+        _, examples = self._selected_examples(limit)
+        return count_dict_examples(examples)
 
     def run(
         self,
@@ -203,21 +197,22 @@ class GSM8KRunner:
         correct = 0
         n = 0
         format_ok = 0
+        generation_errors = 0
         failures: list[dict[str, object]] = []
 
-        for i, item in enumerate(examples):
+        for item in examples:
             expected = int(item["final"])  # type: ignore[arg-type]
             question = str(item["question"])
             messages = [
                 ChatMessage(role="system", content=SYSTEM_PROMPT),
                 ChatMessage(role="user", content=question),
             ]
-            try:
-                gen = client.generate(messages, config)
-            except Exception as exc:  # noqa: BLE001
-                raise RuntimeError(
-                    f"GSM8K generation failed for example {i + 1}/{len(examples)}"
-                ) from exc
+            # A single failed generation scores that item wrong and the run
+            # continues; a systemic majority of failures aborts (guarded below).
+            outcome = generate_or_empty(client, messages, config)
+            gen = outcome.result
+            if outcome.error is not None:
+                generation_errors += 1
             n += 1
             has_marker = "####" in gen.text
             if has_marker:
@@ -233,6 +228,8 @@ class GSM8KRunner:
                         "expected": expected,
                         "predicted": predicted,
                         "completion": gen.text[:600],
+                        "error": outcome.error,
+                        "generation_failed": outcome.error is not None,
                     }
                 )
 
@@ -240,14 +237,18 @@ class GSM8KRunner:
             raise RuntimeError(
                 f"GSM8K evaluated {n}/{len(examples)} examples; refusing a partial score"
             )
+        if is_systemic_generation_failure(generation_errors, n):
+            raise RuntimeError(
+                f"GSM8K: {generation_errors}/{n} generations raised a "
+                "transport-level error (more than half the dataset); treating "
+                "this as a harness/endpoint failure rather than accuracy"
+            )
         accuracy = correct / n
         return BenchmarkResult(
             benchmark=BENCHMARK_ID,
             model=model,
             endpoint=endpoint,
-            dataset_version=EXPANDED_DATASET_VERSION
-            if self._include_edge_scenarios
-            else DATASET_VERSION,
+            dataset_version=DATASET_VERSION,
             n=n,
             metrics={
                 "score": round(accuracy, 4),
@@ -256,7 +257,7 @@ class GSM8KRunner:
                 "correct": float(correct),
                 "n": float(n),
             },
-            raw_json={"format_ok_n": format_ok},
+            raw_json={"format_ok_n": format_ok, "generation_errors": generation_errors},
             failures=failures,
             elapsed_s=stats.elapsed(),
         )
@@ -277,30 +278,18 @@ class _GSM8KFactory(RunnerFactory):
     def build(
         self, args: argparse.Namespace
     ) -> tuple[GSM8KRunner, Sequence[str] | None]:
-        runner = GSM8KRunner(
-            max_tokens=args.max_tokens,
-            include_edge_scenarios=args.expand_scenarios,
-        )
+        runner = GSM8KRunner(max_tokens=args.max_tokens)
         mock_responses: Sequence[str] | None = None
         if args.mock:
             base = list(SMOKE_FIXTURES)
             if args.limit is not None:
                 base = base[: args.limit]
-            examples = expand_gsm8k_examples(base) if args.expand_scenarios else base
             runner = GSM8KRunner(
                 examples=base,
                 max_tokens=args.max_tokens,
-                include_edge_scenarios=args.expand_scenarios,
             )
-            mock_responses = [str(item["answer"]) for item in examples]
+            mock_responses = [str(item["answer"]) for item in base]
         return runner, mock_responses
-
-
-def expand_gsm8k_examples(examples: list[dict[str, object]]) -> list[dict[str, object]]:
-    def mutate(item: dict[str, object], instruction: str) -> None:
-        item["question"] = f"{instruction}\n\n{item['question']}"
-
-    return expand_dict_examples(examples, id_key="scenario_id", mutator=mutate)
 
 
 def validate_gsm8k_examples(examples: list[dict[str, object]]) -> None:

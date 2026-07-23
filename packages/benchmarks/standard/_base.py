@@ -100,6 +100,68 @@ class OpenAICompatibleClient(Protocol):
     ) -> GenerationResult: ...
 
 
+@dataclass(frozen=True)
+class GenerationOutcome:
+    """Resilience-wrapped result of a single ``client.generate`` call.
+
+    ``error`` is ``None`` on success and a ``"<Type>: <message>"`` string when
+    the underlying call raised (a per-example timeout, transient 429/5xx, or a
+    subprocess-harness failure). A caught failure carries an empty-text
+    ``GenerationResult`` so the adapter scores that example as wrong/abstain and
+    keeps going — the repo doctrine's "fail fast on SYSTEMIC failure" is honored
+    by ``is_systemic_generation_failure`` (a majority of examples throwing is a
+    broken pipeline and still aborts), while a handful of failures is a scoreable
+    per-example outcome, not a whole-run crash.
+    """
+
+    result: GenerationResult
+    error: str | None
+
+
+def _empty_generation(error: str) -> GenerationResult:
+    return GenerationResult(
+        text="",
+        prompt_tokens=0,
+        completion_tokens=0,
+        raw={"generation_error": error},
+    )
+
+
+def generate_or_empty(
+    client: OpenAICompatibleClient,
+    messages: Sequence[ChatMessage],
+    config: GenerationConfig,
+) -> GenerationOutcome:
+    """Call ``client.generate`` and convert any failure into an empty result.
+
+    Shared by every standard adapter's run loop so a single failed generation
+    is recorded and scored (not-passed / wrong / abstain) rather than aborting
+    the whole dataset. Callers count ``error is not None`` outcomes and pass the
+    total to ``is_systemic_generation_failure`` to preserve the fail-fast guard.
+    """
+
+    try:
+        return GenerationOutcome(result=client.generate(messages, config), error=None)
+    except Exception as exc:  # noqa: BLE001  # error-policy:J4 per-example generation failure degrades to an empty (scored-wrong) result; systemic failure is re-raised by is_systemic_generation_failure
+        error = f"{type(exc).__name__}: {exc}"
+        return GenerationOutcome(result=_empty_generation(error), error=error)
+
+
+# Above this fraction of per-example generation failures the run is a broken
+# pipeline (endpoint down, auth wrong, harness misconfigured), not an unlucky
+# scattering of timeouts — the score would be dominated by transport errors, so
+# the adapters re-raise instead of publishing it.
+SYSTEMIC_GENERATION_FAILURE_RATIO = 0.5
+
+
+def is_systemic_generation_failure(generation_errors: int, n_total: int) -> bool:
+    """True when caught generation failures exceed the systemic threshold."""
+
+    if n_total <= 0:
+        return False
+    return generation_errors > SYSTEMIC_GENERATION_FAILURE_RATIO * n_total
+
+
 class HTTPOpenAICompatibleClient:
     """Real OpenAI-compatible HTTP client backed by ``openai`` SDK.
 

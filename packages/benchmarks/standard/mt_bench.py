@@ -38,18 +38,19 @@ from ._base import (
     HTTPOpenAICompatibleClient,
     OpenAICompatibleClient,
     RunStats,
+    generate_or_empty,
+    is_systemic_generation_failure,
     make_client,
     resolve_api_key,
     resolve_endpoint,
 )
 from ._cli import RunnerFactory, cli_dispatch
-from .scenarios import count_dict_examples, expand_dict_examples, validate_dict_examples
+from .scenarios import count_dict_examples, validate_dict_examples
 
 BENCHMARK_ID = "mt_bench"
 DATASET_NAME = "lmsys/mt_bench_human_judgments"
 DATASET_REVISION = "f7d2896d2cc5d80f8b55c2bbc722613555233c25"
 DATASET_VERSION = f"{DATASET_NAME}@{DATASET_REVISION}"
-EXPANDED_DATASET_VERSION = f"{DATASET_VERSION}+edge-v1"
 EXPECTED_QUESTIONS = 80
 DEFAULT_MAX_TOKENS = 4096
 DEFAULT_JUDGE_MAX_TOKENS = 1024
@@ -241,7 +242,6 @@ class MTBenchRunner:
         max_tokens: int = DEFAULT_MAX_TOKENS,
         judge_max_tokens: int = DEFAULT_JUDGE_MAX_TOKENS,
         temperature: float = 0.7,
-        include_edge_scenarios: bool = False,
     ) -> None:
         self._judge = judge
         self._judge_model = judge_model
@@ -249,7 +249,6 @@ class MTBenchRunner:
         self._max_tokens = max_tokens
         self._judge_max_tokens = judge_max_tokens
         self._temperature = temperature
-        self._include_edge_scenarios = include_edge_scenarios
 
     def _selected_questions(
         self, limit: int | None
@@ -261,19 +260,12 @@ class MTBenchRunner:
         )
         if self._questions is not None and limit is not None:
             base = base[:limit]
-        questions = (
-            expand_mt_bench_questions(base)
-            if self._include_edge_scenarios
-            else list(base)
-        )
-        validate_mt_bench_questions(questions)
-        return base, questions
+        validate_mt_bench_questions(base)
+        return base, base
 
     def scenario_counts(self, *, limit: int | None) -> dict[str, int]:
-        base, questions = self._selected_questions(limit)
-        counts = count_dict_examples(base, questions)
-        counts["edge_multiplier"] = 10
-        return counts
+        _, questions = self._selected_questions(limit)
+        return count_dict_examples(questions)
 
     def run(
         self,
@@ -305,6 +297,7 @@ class MTBenchRunner:
         per_turn: dict[str, list[float]] = {"turn_1": [], "turn_2": []}
         candidate_generations = 0
         empty_candidate_generations = 0
+        candidate_generation_errors = 0
         failures: list[dict[str, object]] = []
 
         for item in questions:
@@ -315,20 +308,29 @@ class MTBenchRunner:
                 )
             turn_1, turn_2 = str(turns_obj[0]), str(turns_obj[1])
             category = str(item.get("category") or "unknown")
+            question_id = item.get("question_id")
 
-            # Turn 1.
+            # Turn 1. A single failed candidate generation degrades to an empty
+            # answer (the judge then scores it low) and the run continues; a
+            # systemic majority of candidate failures aborts (guarded below).
             history = [
                 ChatMessage(role="system", content=CANDIDATE_SYSTEM_PROMPT),
                 ChatMessage(role="user", content=turn_1),
             ]
-            try:
-                gen_1 = client.generate(history, cand_cfg)
-            except Exception as exc:  # noqa: BLE001
-                raise RuntimeError(
-                    f"MT-Bench candidate generation failed for question "
-                    f"{item.get('question_id')} turn 1"
-                ) from exc
+            out_1 = generate_or_empty(client, history, cand_cfg)
+            gen_1 = out_1.result
             candidate_generations += 1
+            if out_1.error is not None:
+                candidate_generation_errors += 1
+                if len(failures) < 8:
+                    failures.append(
+                        {
+                            "question_id": question_id,
+                            "turn": 1,
+                            "error": out_1.error,
+                            "generation_failed": True,
+                        }
+                    )
             empty_1 = not gen_1.text.strip()
             if empty_1:
                 empty_candidate_generations += 1
@@ -340,14 +342,20 @@ class MTBenchRunner:
                 ChatMessage(role="assistant", content=gen_1.text),
                 ChatMessage(role="user", content=turn_2),
             ]
-            try:
-                gen_2 = client.generate(history_t2, cand_cfg)
-            except Exception as exc:  # noqa: BLE001
-                raise RuntimeError(
-                    f"MT-Bench candidate generation failed for question "
-                    f"{item.get('question_id')} turn 2"
-                ) from exc
+            out_2 = generate_or_empty(client, history_t2, cand_cfg)
+            gen_2 = out_2.result
             candidate_generations += 1
+            if out_2.error is not None:
+                candidate_generation_errors += 1
+                if len(failures) < 8:
+                    failures.append(
+                        {
+                            "question_id": question_id,
+                            "turn": 2,
+                            "error": out_2.error,
+                            "generation_failed": True,
+                        }
+                    )
             empty_2 = not gen_2.text.strip()
             if empty_2:
                 empty_candidate_generations += 1
@@ -362,6 +370,15 @@ class MTBenchRunner:
                 per_category.setdefault(category, []).append(r)
 
         n = len(ratings)
+        if is_systemic_generation_failure(
+            candidate_generation_errors, candidate_generations
+        ):
+            raise RuntimeError(
+                f"MT-Bench: {candidate_generation_errors}/{candidate_generations} "
+                "candidate generations raised a transport-level error (more than "
+                "half the turns); treating this as a harness/endpoint failure "
+                "rather than a judge-scored result"
+            )
         if (
             candidate_generations > 0
             and empty_candidate_generations == candidate_generations
@@ -388,9 +405,7 @@ class MTBenchRunner:
             benchmark=BENCHMARK_ID,
             model=model,
             endpoint=endpoint,
-            dataset_version=EXPANDED_DATASET_VERSION
-            if self._include_edge_scenarios
-            else DATASET_VERSION,
+            dataset_version=DATASET_VERSION,
             n=n,
             metrics={
                 "score": round(score, 4),
@@ -402,6 +417,7 @@ class MTBenchRunner:
             raw_json={
                 "judge_model": self._judge_model,
                 "empty_candidate_generations": empty_candidate_generations,
+                "candidate_generation_errors": candidate_generation_errors,
                 "candidate_generations": candidate_generations,
                 "category_mean": {
                     cat: round(sum(xs) / len(xs), 4) for cat, xs in per_category.items()
@@ -550,7 +566,6 @@ class _MTBenchFactory(RunnerFactory):
                 max_tokens=args.max_tokens,
                 judge_max_tokens=args.judge_max_tokens,
                 temperature=args.temperature,
-                include_edge_scenarios=args.expand_scenarios,
             )
             return runner, mock_responses
 
@@ -563,28 +578,8 @@ class _MTBenchFactory(RunnerFactory):
             max_tokens=args.max_tokens,
             judge_max_tokens=args.judge_max_tokens,
             temperature=args.temperature,
-            include_edge_scenarios=args.expand_scenarios,
         )
         return runner, None
-
-
-def expand_mt_bench_questions(
-    examples: list[dict[str, object]],
-) -> list[dict[str, object]]:
-    def mutate(item: dict[str, object], instruction: str) -> None:
-        turns = item.get("turns")
-        if isinstance(turns, tuple):
-            item["turns"] = (
-                f"{instruction}\n\n{turns[0]}",
-                f"{instruction}\n\n{turns[1]}",
-            )
-        elif isinstance(turns, list) and len(turns) >= 2:
-            item["turns"] = [
-                f"{instruction}\n\n{turns[0]}",
-                f"{instruction}\n\n{turns[1]}",
-            ]
-
-    return expand_dict_examples(examples, id_key="question_id", mutator=mutate)
 
 
 def validate_mt_bench_questions(examples: list[dict[str, object]]) -> None:

@@ -11,11 +11,13 @@ from benchmarks.standard._base import MockClient
 from benchmarks.standard._cli import main_entry
 from benchmarks.standard.mmlu import (
     BENCHMARK_ID,
+    DATASET_VERSION,
     DEFAULT_MAX_TOKENS,
     SMOKE_FIXTURES,
     MMLURunner,
     _extract_letter,
     _format_question,
+    _LETTER_OPTIONS,
     _MMLUFactory,
 )
 
@@ -144,25 +146,27 @@ def test_mmlu_runner_partial_empty_outputs_surface_truncation_signal(
     ), "a partial-empty run must emit the truncation warning"
 
 
-def test_mmlu_runner_aborts_instead_of_publishing_partial_score(
+def test_mmlu_runner_scores_wrong_when_one_generation_fails(
     tmp_path: Path,
 ) -> None:
-    class FailsOnSecondCall(MockClient):
-        def generate(self, messages, config):  # type: ignore[no-untyped-def]
-            if self._idx == 1:
-                raise OSError("transport unavailable")
-            return super().generate(messages, config)
+    """New contract (was: aborts on the first failure): a single failed
+    generation is scored as a miss and the run finishes over the whole dataset
+    instead of aborting the remaining examples."""
 
     runner = MMLURunner(examples=list(SMOKE_FIXTURES))
+    result = runner.run(
+        client=_FailsOnCalls(_mmlu_correct_letters(), fail_at={1}),
+        model="mock-model",
+        endpoint="http://mock",
+        output_dir=tmp_path,
+        limit=None,
+    )
 
-    with pytest.raises(RuntimeError, match="example 2/3"):
-        runner.run(
-            client=FailsOnSecondCall(["C"]),
-            model="mock-model",
-            endpoint="http://mock",
-            output_dir=tmp_path,
-            limit=None,
-        )
+    assert result.n == len(SMOKE_FIXTURES)
+    # Two of three answered correctly; the failed generation is a miss.
+    assert result.metrics["correct"] == 2.0
+    assert result.raw_json["generation_errors"] == 1
+    assert any(f.get("generation_failed") for f in result.failures)
 
 
 def test_mmlu_runner_writes_results_file(tmp_path: Path) -> None:
@@ -219,7 +223,9 @@ def test_mmlu_cli_end_to_end(tmp_path: Path, capsys: pytest.CaptureFixture[str])
     assert data["metrics"]["score"] == 1.0
 
 
-def test_mmlu_expanded_count_and_mock_run(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_mmlu_authored_count_and_mock_run(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     out_dir = tmp_path / "out"
     rc = main_entry(
         _MMLUFactory(),
@@ -230,21 +236,70 @@ def test_mmlu_expanded_count_and_mock_run(tmp_path: Path, capsys: pytest.Capture
             str(out_dir),
             "--limit",
             "1",
-            "--expand-scenarios",
             "--count-scenarios",
             "--validate-scenarios",
         ],
     )
     assert rc == 0
-    assert '"total": 11' in capsys.readouterr().out
+    assert '"total": 1' in capsys.readouterr().out
 
     rc = main_entry(
         _MMLUFactory(),
         output_filename="mmlu-results.json",
-        argv=["--mock", "--output", str(out_dir), "--limit", "1", "--expand-scenarios"],
+        argv=["--mock", "--output", str(out_dir), "--limit", "1"],
     )
     assert rc == 0
     data = json.loads((out_dir / "mmlu-results.json").read_text("utf-8"))
-    assert data["dataset_version"].endswith("+edge-v1")
-    assert data["n"] == 11
+    assert data["dataset_version"] == DATASET_VERSION
+    assert data["n"] == 1
     assert data["metrics"]["score"] == 1.0
+
+
+class _FailsOnCalls(MockClient):
+    """Mock client that raises on a chosen set of call indices.
+
+    ``_idx`` still advances on a failed call so the remaining responses stay
+    aligned with example order (MMLU issues exactly one generation per item).
+    """
+
+    def __init__(self, responses, fail_at):  # type: ignore[no-untyped-def]
+        super().__init__(responses)
+        self._fail_at = set(fail_at)
+
+    def generate(self, messages, config):  # type: ignore[no-untyped-def]
+        if self._idx in self._fail_at:
+            self._idx += 1
+            raise OSError("transport unavailable")
+        return super().generate(messages, config)
+
+
+def _mmlu_correct_letters() -> list[str]:
+    return [_LETTER_OPTIONS[int(item["answer_index"])] for item in SMOKE_FIXTURES]
+
+
+def test_mmlu_raises_when_majority_generations_fail(tmp_path: Path) -> None:
+    runner = MMLURunner(examples=list(SMOKE_FIXTURES))
+    with pytest.raises(RuntimeError, match="transport-level error"):
+        runner.run(
+            client=_FailsOnCalls(_mmlu_correct_letters(), fail_at={1, 2}),
+            model="m",
+            endpoint="http://mock",
+            output_dir=tmp_path,
+            limit=None,
+        )
+
+
+def test_mmlu_raises_when_all_generations_fail(tmp_path: Path) -> None:
+    class AlwaysFails(MockClient):
+        def generate(self, messages, config):  # type: ignore[no-untyped-def]
+            raise OSError("endpoint down")
+
+    runner = MMLURunner(examples=list(SMOKE_FIXTURES))
+    with pytest.raises(RuntimeError, match="transport-level error"):
+        runner.run(
+            client=AlwaysFails(["unused"]),
+            model="m",
+            endpoint="http://mock",
+            output_dir=tmp_path,
+            limit=None,
+        )

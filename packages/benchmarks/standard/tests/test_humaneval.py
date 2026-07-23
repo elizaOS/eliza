@@ -11,6 +11,7 @@ from benchmarks.standard._base import MockClient
 from benchmarks.standard._cli import main_entry
 from benchmarks.standard.humaneval import (
     BENCHMARK_ID,
+    DATASET_VERSION,
     DEFAULT_MAX_TOKENS,
     SMOKE_FIXTURES,
     HumanEvalRunner,
@@ -209,22 +210,91 @@ def test_humaneval_runner_retries_empty_visible_output(tmp_path: Path) -> None:
     assert result.raw_json["empty_outputs"] == 0
 
 
-def test_humaneval_runner_aborts_instead_of_publishing_partial_score(
+def _humaneval_add_examples(count: int) -> list[dict[str, object]]:
+    """``count`` copies of the ``add`` smoke fixture with distinct task ids.
+
+    Used to build multi-example resilience runs where a subset of generations
+    fail — the copies score identically to the canonical fixture on success.
+    """
+
+    base = dict(SMOKE_FIXTURES[0])
+    return [dict(base, task_id=f"HumanEval/add_{i}") for i in range(count)]
+
+
+def test_humaneval_runner_completes_when_one_example_generation_fails(
     tmp_path: Path,
 ) -> None:
-    class FailsOnSecondCall(MockClient):
+    """New contract: a single failed generation (per-example timeout / transient
+    5xx / a subprocess harness dying on one hard problem) is scored as
+    not-passed and the run finishes over the whole dataset — it never aborts the
+    other examples. Regression for the live humaneval openclaw abort at 26/164.
+    """
+
+    class FailsAfterFirstCall(MockClient):
         def generate(self, messages, config):  # type: ignore[no-untyped-def]
-            if self._idx == 1:
+            if self._idx >= 1:
                 raise OSError("transport unavailable")
             return super().generate(messages, config)
 
     runner = HumanEvalRunner(examples=list(SMOKE_FIXTURES), timeout_s=10.0)
+    result = runner.run(
+        client=FailsAfterFirstCall([str(SMOKE_FIXTURES[0]["canonical_solution"])]),
+        model="m",
+        endpoint="http://mock",
+        output_dir=tmp_path,
+        limit=None,
+    )
 
-    with pytest.raises(RuntimeError, match="example 2/2"):
+    # First example passes (canonical add); the second's generation failed and
+    # is scored wrong. The whole dataset is still evaluated.
+    assert result.n == 2
+    assert result.metrics["passed"] == 1.0
+    assert result.metrics["pass@1"] == 0.5
+    assert result.raw_json["generation_errors"] == 1
+    assert any(f.get("generation_failed") for f in result.failures)
+
+
+def test_humaneval_runner_scores_example_whose_empty_retry_fails(
+    tmp_path: Path,
+) -> None:
+    """An empty visible output whose stricter retry then raises scores that one
+    example wrong (not a fabricated pass, not a whole-run abort)."""
+
+    class EmptyThenRetryFails(MockClient):
+        def generate(self, messages, config):  # type: ignore[no-untyped-def]
+            # call 0 -> example 1 canonical; call 1 -> example 2 empty;
+            # call 2 -> example 2 retry raises.
+            if self._idx == 2:
+                raise OSError("retry transport unavailable")
+            return super().generate(messages, config)
+
+    runner = HumanEvalRunner(examples=list(SMOKE_FIXTURES), timeout_s=10.0)
+    result = runner.run(
+        client=EmptyThenRetryFails([str(SMOKE_FIXTURES[0]["canonical_solution"]), ""]),
+        model="m",
+        endpoint="http://mock",
+        output_dir=tmp_path,
+        limit=None,
+    )
+
+    assert result.n == 2
+    assert result.metrics["passed"] == 1.0
+    assert result.metrics["pass@1"] == 0.5
+    assert result.raw_json["generation_errors"] == 1
+
+
+def test_humaneval_runner_raises_when_all_generations_fail(tmp_path: Path) -> None:
+    """Every generation throwing is a broken endpoint, not a real pass@1=0 — the
+    systemic guard still aborts rather than publishing a transport-error score."""
+
+    class AlwaysFails(MockClient):
+        def generate(self, messages, config):  # type: ignore[no-untyped-def]
+            raise OSError("endpoint down")
+
+    runner = HumanEvalRunner(examples=list(SMOKE_FIXTURES), timeout_s=10.0)
+    with pytest.raises(RuntimeError, match="transport-level error"):
         runner.run(
-            client=FailsOnSecondCall(
-                [str(SMOKE_FIXTURES[0]["canonical_solution"])]
-            ),
+            client=AlwaysFails(["unused"]),
             model="m",
             endpoint="http://mock",
             output_dir=tmp_path,
@@ -232,20 +302,22 @@ def test_humaneval_runner_aborts_instead_of_publishing_partial_score(
         )
 
 
-def test_humaneval_runner_aborts_when_empty_output_retry_fails(
+def test_humaneval_runner_raises_when_majority_generations_fail(
     tmp_path: Path,
 ) -> None:
-    class RetryFailureClient(MockClient):
+    """More than half the dataset throwing crosses the systemic threshold and
+    aborts, even though a minority succeeded."""
+
+    class FailsAfterFirstCall(MockClient):
         def generate(self, messages, config):  # type: ignore[no-untyped-def]
-            if self._idx == 1:
-                raise OSError("retry transport unavailable")
+            if self._idx >= 1:
+                raise OSError("transport unavailable")
             return super().generate(messages, config)
 
-    runner = HumanEvalRunner(examples=list(SMOKE_FIXTURES[:1]), timeout_s=10.0)
-
-    with pytest.raises(RuntimeError, match="empty-output retry failed"):
+    runner = HumanEvalRunner(examples=_humaneval_add_examples(3), timeout_s=10.0)
+    with pytest.raises(RuntimeError, match="transport-level error"):
         runner.run(
-            client=RetryFailureClient([""]),
+            client=FailsAfterFirstCall([str(SMOKE_FIXTURES[0]["canonical_solution"])]),
             model="m",
             endpoint="http://mock",
             output_dir=tmp_path,
@@ -281,7 +353,7 @@ def test_humaneval_cli_end_to_end(tmp_path: Path) -> None:
     assert data["metrics"]["score"] == 1.0
 
 
-def test_humaneval_expanded_count_and_mock_run(tmp_path: Path, capsys) -> None:
+def test_humaneval_authored_count_and_mock_run(tmp_path: Path, capsys) -> None:
     out_dir = tmp_path / "out"
     rc = main_entry(
         _HumanEvalFactory(),
@@ -292,7 +364,6 @@ def test_humaneval_expanded_count_and_mock_run(tmp_path: Path, capsys) -> None:
             str(out_dir),
             "--limit",
             "1",
-            "--expand-scenarios",
             "--count-scenarios",
             "--validate-scenarios",
             "--timeout-s",
@@ -300,7 +371,7 @@ def test_humaneval_expanded_count_and_mock_run(tmp_path: Path, capsys) -> None:
         ],
     )
     assert rc == 0
-    assert '"edge": 10' in capsys.readouterr().out
+    assert '"total": 1' in capsys.readouterr().out
 
     rc = main_entry(
         _HumanEvalFactory(),
@@ -311,13 +382,12 @@ def test_humaneval_expanded_count_and_mock_run(tmp_path: Path, capsys) -> None:
             str(out_dir),
             "--limit",
             "1",
-            "--expand-scenarios",
             "--timeout-s",
             "10",
         ],
     )
     assert rc == 0
     data = json.loads((out_dir / "humaneval-results.json").read_text("utf-8"))
-    assert data["dataset_version"].endswith("+edge-v1")
-    assert data["n"] == 11
+    assert data["dataset_version"] == DATASET_VERSION
+    assert data["n"] == 1
     assert data["metrics"]["score"] == 1.0
