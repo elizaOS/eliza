@@ -27,7 +27,7 @@ name: LifeOpsBench (Python)
 
 on:
   pull_request:
-    branches: [main]
+    branches: [develop]
     paths:
       - "packages/benchmarks/lifeops-bench/**"
       - "packages/benchmarks/eliza-adapter/eliza_adapter/lifeops_bench.py"
@@ -70,7 +70,7 @@ on:
 
 concurrency:
   group: lifeops-bench-python-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read

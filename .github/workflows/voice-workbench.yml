@@ -19,6 +19,7 @@ name: Voice Workbench
 
 on:
   push:
+    branches: [main]
     paths:
       - "plugins/plugin-local-inference/src/services/voice/voice-scenario.ts"
       - "plugins/plugin-local-inference/src/services/voice/e2e-harness.ts"
@@ -39,7 +40,7 @@ on:
       - "packages/shared/src/voice/owner-inference.ts"
       - ".github/workflows/voice-workbench.yml"
   pull_request:
-    branches: [main]
+    branches: [develop]
     paths:
       - "plugins/plugin-local-inference/src/services/voice/voice-scenario.ts"
       - "plugins/plugin-local-inference/src/services/voice/e2e-harness.ts"
@@ -66,7 +67,7 @@ on:
 
 concurrency:
   group: voice-workbench-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read

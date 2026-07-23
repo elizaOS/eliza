@@ -22,7 +22,7 @@ name: lifeops-quality-bench
 
 on:
   pull_request:
-    branches: [main]
+    branches: [develop]
     paths:
       - "packages/benchmarks/lifeops-quality/**"
       - "plugins/plugin-inbox/src/inbox/**"
@@ -38,7 +38,7 @@ on:
 
 concurrency:
   group: lifeops-quality-bench-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   BUN_VERSION: "canary"

@@ -16,7 +16,7 @@ name: view-bundle-size
 
 on:
   pull_request:
-    branches: [main]
+    branches: [develop]
     paths:
       # Plugin source (where view components live) + the view-bundle build/config
       # + the gate itself. Scheduled runs below are the catch-all for drift.
@@ -34,7 +34,7 @@ on:
 
 concurrency:
   group: view-bundle-size-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   size-gate:

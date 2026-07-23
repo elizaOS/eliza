@@ -10,7 +10,7 @@ on:
         type: string
         default: standalone
   pull_request:
-    branches: [main]
+    branches: [develop]
     types: [opened, synchronize, reopened, ready_for_review, labeled]
   workflow_dispatch:
     inputs:

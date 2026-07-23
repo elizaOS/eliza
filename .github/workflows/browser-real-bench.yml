@@ -18,7 +18,7 @@ on:
     - cron: "0 10 * * *"
   workflow_dispatch: {}
   pull_request:
-    branches: [main]
+    branches: [develop]
     paths:
       - "plugins/plugin-browser/src/benchmark/**"
       - "plugins/plugin-browser/vitest.real.config.ts"
@@ -29,7 +29,7 @@ on:
 
 concurrency:
   group: browser-real-bench-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read

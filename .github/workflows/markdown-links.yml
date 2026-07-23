@@ -2,7 +2,7 @@ name: Markdown Links
 
 on:
   pull_request:
-    branches: [main, develop]
+    branches: [develop]
     paths:
       - "**/*.md"
       - "scripts/check-markdown-links.mjs"

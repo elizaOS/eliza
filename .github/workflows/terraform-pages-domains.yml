@@ -2,7 +2,7 @@ name: Terraform — Cloudflare Pages Domains
 
 on:
   pull_request:
-    branches: [develop, main]
+    branches: [develop]
     paths:
       - "packages/cloud/infra/cloud/terraform/cloudflare/pages-domains/**"
       - "packages/cloud/infra/tests/terraform-static.test.ts"

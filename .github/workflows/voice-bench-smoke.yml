@@ -14,6 +14,7 @@ name: Voice Benchmark Smoke
 
 on:
   push:
+    branches: [main]
     paths:
       - "packages/benchmarks/voicebench/**"
       - "packages/benchmarks/voicebench-quality/**"
@@ -22,7 +23,7 @@ on:
       - "scripts/bench-voice.mjs"
       - ".github/workflows/voice-bench-smoke.yml"
   pull_request:
-    branches: [main]
+    branches: [develop]
     paths:
       - "packages/benchmarks/voicebench/**"
       - "packages/benchmarks/voicebench-quality/**"
@@ -39,7 +40,7 @@ on:
 
 concurrency:
   group: voice-bench-smoke-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Default to least privilege. Override per-job where needed.
 permissions:

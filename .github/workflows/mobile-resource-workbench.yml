@@ -25,7 +25,7 @@ on:
     # 05:30 UTC — after the nightly publish window, like local-inference-bench.
     - cron: "30 5 * * *"
   pull_request:
-    branches: [main]
+    branches: [develop]
     paths:
       - "packages/benchmarks/mobile-resource/**"
       - ".github/workflows/mobile-resource-workbench.yml"
@@ -50,7 +50,7 @@ on:
 
 concurrency:
   group: mobile-resource-workbench-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   harness-smoke:

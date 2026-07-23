@@ -18,7 +18,7 @@ name: recall-bench
 
 on:
   pull_request:
-    branches: [main]
+    branches: [develop]
     paths:
       - "packages/benchmarks/recall-bench/**"
       - "packages/benchmarks/registry/**"
@@ -34,7 +34,7 @@ on:
 
 concurrency:
   group: recall-bench-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   recall-gate:

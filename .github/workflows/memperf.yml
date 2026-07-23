@@ -13,7 +13,7 @@ name: memperf
 
 on:
   pull_request:
-    branches: [main]
+    branches: [develop]
     paths:
       - "packages/benchmarks/memperf/**"
       - "plugins/plugin-local-inference/src/services/memory-arbiter.ts"
@@ -26,7 +26,7 @@ on:
 
 concurrency:
   group: memperf-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   harness-gate:

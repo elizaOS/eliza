@@ -35,7 +35,7 @@ on:
         type: boolean
         default: false
   pull_request:
-    branches: [main]
+    branches: [develop]
     paths:
       - "packages/app-core/src/services/local-inference/**"
       - "packages/scripts/local-inference-ablation.mjs"
@@ -46,7 +46,7 @@ on:
 
 concurrency:
   group: local-inference-matrix-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
