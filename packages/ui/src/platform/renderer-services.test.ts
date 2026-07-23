@@ -152,6 +152,32 @@ describe("teardown", () => {
     expect(getRendererServiceStates().hostShell).toBeNull();
   });
 
+  it("disposes on a real pagehide but survives a bfcache round trip", async () => {
+    const svc = makeService("a.bfcache");
+    registerRendererService(svc.definition);
+    startRendererServiceHost({ shell: "main" });
+    await settleRendererServices();
+
+    // bfcache entry: persisted=true (iOS Safari back-nav) — the page can come
+    // back via pageshow, so the host must keep every service alive.
+    const persisted = new Event("pagehide") as Event & { persisted: boolean };
+    Object.defineProperty(persisted, "persisted", { value: true });
+    window.dispatchEvent(persisted);
+    expect(svc.cleanup).not.toHaveBeenCalled();
+    expect(stateOf("a.bfcache")).toBe("running");
+    expect(getRendererServiceStates().hostShell).toBe("main");
+
+    // Restore from bfcache, then a real teardown: persisted=false disposes.
+    const pageshow = new Event("pageshow") as Event & { persisted: boolean };
+    Object.defineProperty(pageshow, "persisted", { value: true });
+    window.dispatchEvent(pageshow);
+    expect(stateOf("a.bfcache")).toBe("running");
+
+    window.dispatchEvent(new Event("pagehide"));
+    expect(svc.cleanup).toHaveBeenCalledTimes(1);
+    expect(getRendererServiceStates().hostShell).toBeNull();
+  });
+
   it("stops the previous host's instances on host replacement", async () => {
     const svc = makeService("a.replaced-host");
     registerRendererService(svc.definition);

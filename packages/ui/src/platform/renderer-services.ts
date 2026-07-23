@@ -114,7 +114,19 @@ interface RendererServiceStore {
   host: HostState | null;
 }
 
-// Symbol.for so every copy of this module resolves the same store.
+// Why a `globalThis` store and not a module-local one, given the #12091
+// "kill globalThis bridges" doctrine: this registry's single invariant is that
+// exactly one copy owns the running instances, but the renderer cannot
+// guarantee single evaluation of this module — dev HMR re-evaluates it, and a
+// plugin registration chunk and the app shell chunk can each bundle their own
+// copy (mixed chunk graphs). A module-local store forks per evaluation, which
+// is precisely the double-ownership bug this exists to prevent. Routing
+// through the app's loader-identity cache instead was rejected because it
+// inverts the dependency direction (#12091: packages/ui must not reach into
+// packages/app machinery) and would leave non-app hosts (tests, storybook-like
+// harnesses) without a registry. Symbol.for gives every copy the same key
+// without exporting a mutable global surface; `resetRendererServicesForTest`
+// is the only sanctioned reset path.
 const STORE_KEY = Symbol.for("elizaos.renderer-services.store");
 
 function getStore(): RendererServiceStore {
@@ -260,8 +272,9 @@ export function registerRendererService(
  * Install the per-window service host. The app shell calls this once per
  * renderer window with the window's resolved shell kind; every already
  * registered eligible definition starts, later registrations start on arrival,
- * and `pagehide` (page teardown, including mobile app kill) disposes
- * everything. Calling again replaces the previous host — its instances are
+ * and a non-bfcache `pagehide` (real page teardown, including mobile app
+ * kill) disposes everything — a bfcache round trip keeps services alive.
+ * Calling again replaces the previous host — its instances are
  * stopped first — which keeps repeated boots (tests, HMR of the shell) from
  * stacking duplicate instances.
  */
@@ -282,7 +295,16 @@ export function startRendererServiceHost(options: {
   store.host = host;
 
   if (typeof window !== "undefined") {
-    const onPagehide = () => disposeHost(host);
+    // Real page teardown disposes everything; a bfcache round trip
+    // (persisted=true — iOS Safari back-nav is the common case) must NOT: the
+    // page can come back via `pageshow`, and a dispose here would permanently
+    // kill every renderer service until a hard reload. While the page sits in
+    // bfcache no JS runs, so keeping instances alive is safe — their timers
+    // and listeners freeze with the page and resume on restore, which is why
+    // no `pageshow` revival hook is needed.
+    const onPagehide = (event: PageTransitionEvent) => {
+      if (!event.persisted) disposeHost(host);
+    };
     window.addEventListener("pagehide", onPagehide);
     host.detachPagehide = () =>
       window.removeEventListener("pagehide", onPagehide);

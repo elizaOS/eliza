@@ -3,7 +3,12 @@
  * and lets the owner configure and start/stop app blocking. Rendered in the
  * assistant settings surface; exported via the plugin's ui module.
  */
-import { Button, client, Input } from "@elizaos/ui";
+// Leaf @elizaos/ui subpaths, not the root barrel: this card rides the PA
+// renderer facade, and a barrel import would drag router/marketplace chunks
+// into every shell that boots the facade.
+import { client } from "@elizaos/ui/api";
+import { Button } from "@elizaos/ui/components/ui/button";
+import { Input } from "@elizaos/ui/components/ui/input";
 import { useAppSelector } from "@elizaos/ui/state";
 import {
   CheckCircle2,

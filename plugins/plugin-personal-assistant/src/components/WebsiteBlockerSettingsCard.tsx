@@ -4,7 +4,8 @@
  * (SelfControl) blocking. Exported via the plugin's ui module.
  */
 import type { PermissionStatus } from "@elizaos/shared";
-import { Button } from "@elizaos/ui";
+// Leaf subpath, not the root barrel — see AppBlockerSettingsCard.
+import { Button } from "@elizaos/ui/components/ui/button";
 import { useAppSelector } from "@elizaos/ui/state";
 import { CheckCircle2, Monitor, Settings, ShieldBan } from "lucide-react";
 import type { WebsiteBlockerSettingsCardProps } from "../types/website-blocker-settings-card";
