@@ -100,6 +100,7 @@ app.get("/", async (c) => {
         webUiPort: agentSandboxes.web_ui_port,
         headscaleIp: agentSandboxes.headscale_ip,
         dockerImage: agentSandboxes.docker_image,
+        imageDigest: agentSandboxes.image_digest,
         bridgeUrl: agentSandboxes.bridge_url,
         healthUrl: agentSandboxes.health_url,
         lastHeartbeatAt: agentSandboxes.last_heartbeat_at,
