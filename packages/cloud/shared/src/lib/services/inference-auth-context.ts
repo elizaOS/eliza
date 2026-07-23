@@ -8,9 +8,11 @@
  * still await the same operation inline for deterministic tools and tests.
  *
  * API keys are keyed by their full hash and Steward sessions by a hash of the
- * verified subject; lifecycle mutations invalidate both forms exactly. Wallet
- * signatures remain on the general non-Worker path because their timestamped
- * proof cannot be replayed as asynchronous cache hydration.
+ * verified subject. The cache-backed mode is independently default-off:
+ * lifecycle invalidation of an eventually consistent cache is not a strong
+ * revocation boundary. Wallet signatures remain on the general non-Worker path
+ * because their timestamped proof cannot be replayed as asynchronous cache
+ * hydration.
  *
  * Safety invariants:
  *   - A positive IAC entry is written ONLY for a fully-authorized credential.
@@ -38,6 +40,7 @@ import {
   writeInferenceApiKeyAuthRejection,
   writeInferenceAuthContext,
 } from "./inference-auth-cache";
+import { isInferenceAuthCacheEnabled } from "./inference-hot-path-caches";
 import { resolveInferenceSessionAuthContext } from "./inference-session-auth-context";
 
 export type {
@@ -352,12 +355,14 @@ export async function resolveInferenceAuthContext(
   };
 
   try {
+    const authCacheEnabled = isInferenceAuthCacheEnabled();
     const extractStartedAt = performance.now();
     const credential = extractApiKeyCredentialWithSource(req);
     trace.timings.extractMs = durationSince(extractStartedAt);
     if (!credential) {
       const session = await resolveInferenceSessionAuthContext(req, {
-        cacheOnly: options.cacheOnly,
+        cacheOnly: authCacheEnabled && options.cacheOnly,
+        useAuthCache: authCacheEnabled,
         executionCtx: options.executionCtx,
       });
       if (session.kind === "not_session") {
@@ -399,7 +404,7 @@ export async function resolveInferenceAuthContext(
     trace.cacheBackend = cache.getBackendKind();
 
     const keyHash = hashApiKey(credential.rawKey);
-    if (cacheAvailable) {
+    if (authCacheEnabled && cacheAvailable) {
       const cacheReadStartedAt = performance.now();
       const cached = await readInferenceAuthContextWithOutcome(
         keyHash,
@@ -434,7 +439,7 @@ export async function resolveInferenceAuthContext(
       trace.cacheRead = "unavailable";
     }
 
-    if (options.cacheOnly) {
+    if (authCacheEnabled && options.cacheOnly) {
       trace.authoritative = "not_run";
       trace.result = "warming";
       if (cacheAvailable && options.executionCtx) {
@@ -491,6 +496,9 @@ export async function resolveInferenceAuthContext(
     trace.authoritative = "authorized";
     trace.result = "authorized_origin";
     const cacheWriteStartedAt = performance.now();
+    if (!authCacheEnabled) {
+      return { kind: "authorized", ctx, source: "origin" };
+    }
     const cacheWrite = writeInferenceAuthContext(ctx);
     if (cacheAvailable && typeof options.executionCtx?.waitUntil === "function") {
       trace.cacheWrite = "deferred";

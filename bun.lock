@@ -633,6 +633,7 @@
         "@types/ws": "^8.18.1",
         "@typescript/native": "npm:typescript@^7.0.2",
         "dotenv": "^17.4.2",
+        "miniflare": "4.20260611.0",
         "pg": "^8.20.0",
         "typescript": "^6.0.3",
         "ws": "^8.21.0",

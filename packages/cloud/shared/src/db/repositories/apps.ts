@@ -89,7 +89,7 @@ export class AppsRepository {
     id: string,
     organizationId: string,
   ): Promise<App | undefined> {
-    if (!UUID_PATTERN.test(id)) {
+    if (!UUID_PATTERN.test(id) || !UUID_PATTERN.test(organizationId)) {
       return undefined;
     }
     return await dbWrite.query.apps.findFirst({

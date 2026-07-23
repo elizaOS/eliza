@@ -23,6 +23,7 @@ import * as languageModelActual from "@/lib/providers/language-model";
 import * as aiBillingActual from "@/lib/services/ai-billing";
 import * as contentModerationActual from "@/lib/services/content-moderation";
 import * as inferenceAuthContextActual from "@/lib/services/inference-auth-context";
+import * as organizationAdmissionActual from "@/lib/services/organization-inference-admission";
 import * as creditReservationActual from "@/lib/utils/credit-reservation";
 
 process.env.NODE_ENV ||= "test";
@@ -106,6 +107,16 @@ mock.module("@/lib/services/ai-billing", () => ({
   }),
 }));
 
+mock.module("@/lib/services/organization-inference-admission", () => ({
+  ...organizationAdmissionActual,
+  admitOrganizationInference: async () => ({
+    reservation: null,
+    settle: async () => null,
+    settleUnknown: async () => null,
+    markProviderDispatched: async () => undefined,
+  }),
+}));
+
 mock.module("@/lib/utils/credit-reservation", () => ({
   ...creditReservationActual,
   createCreditReservationSettler: () => async () => null,
@@ -131,6 +142,10 @@ afterAll(() => {
     () => contentModerationActual,
   );
   mock.module("@/lib/services/ai-billing", () => aiBillingActual);
+  mock.module(
+    "@/lib/services/organization-inference-admission",
+    () => organizationAdmissionActual,
+  );
   mock.module("@/lib/utils/credit-reservation", () => creditReservationActual);
 });
 

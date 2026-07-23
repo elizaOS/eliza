@@ -85,6 +85,7 @@ beforeAll(async () => {
       `CREATE TABLE IF NOT EXISTS organizations (
         id uuid PRIMARY KEY,
         credit_balance numeric(20,6) NOT NULL DEFAULT '0',
+        balance_revision bigint NOT NULL DEFAULT 0,
         updated_at timestamp NOT NULL DEFAULT now()
       )`,
       `CREATE TABLE IF NOT EXISTS credit_transactions (

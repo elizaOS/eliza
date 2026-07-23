@@ -8,6 +8,7 @@
 
 process.env.MOCK_REDIS = "1";
 process.env.CACHE_ENABLED = "true";
+process.env.INFERENCE_AUTH_CACHE_ENABLED = "true";
 
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { redactLogArgs } from "@elizaos/core";
@@ -354,6 +355,26 @@ describe("resolveInferenceAuthContext", () => {
     expect(res.source).toBe("cache");
     expect(chainCalls).toBe(0); // zero auth/moderation DB work on warm hit
     expect(incrementUsageCalls).toContain("key-1"); // usage tracking preserved
+  });
+
+  test("default-off auth-cache gate ignores a populated positive entry", async () => {
+    await resolveInferenceAuthContext(reqWithApiKey());
+    let chainCalls = 0;
+    authImpl = async () => {
+      chainCalls++;
+      return { user: { id: "user-1", organization_id: "org-1" }, apiKey: { id: "key-1" } };
+    };
+    process.env.INFERENCE_AUTH_CACHE_ENABLED = "false";
+    try {
+      const result = await resolveInferenceAuthContext(reqWithApiKey(), {
+        cacheOnly: true,
+        executionCtx: { waitUntil: () => undefined },
+      });
+      expect(result).toMatchObject({ kind: "authorized", source: "origin" });
+      expect(chainCalls).toBe(1);
+    } finally {
+      process.env.INFERENCE_AUTH_CACHE_ENABLED = "true";
+    }
   });
 
   test("authenticated probe bypasses lower caches only after an actual IAC miss", async () => {

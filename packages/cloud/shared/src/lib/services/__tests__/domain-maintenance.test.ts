@@ -130,7 +130,8 @@ beforeAll(async () => {
     const ddl = [
       `CREATE TABLE IF NOT EXISTS organizations (
         id uuid PRIMARY KEY, name text NOT NULL, slug text NOT NULL,
-        credit_balance numeric(12,6) NOT NULL DEFAULT '0', settings jsonb DEFAULT '{}',
+        credit_balance numeric(12,6) NOT NULL DEFAULT '0',
+        balance_revision bigint NOT NULL DEFAULT 0, settings jsonb DEFAULT '{}',
         stripe_customer_id text, billing_email text, stripe_payment_method_id text,
         stripe_default_payment_method text, auto_top_up_enabled boolean DEFAULT false,
         auto_top_up_threshold numeric(10,2), auto_top_up_amount numeric(10,2),

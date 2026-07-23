@@ -7,8 +7,9 @@
  * creating an import cycle with the resolver in `inference-auth-context.ts`.
  *
  * Inference auth-context entries collapse auth + org + moderation into a
- * single cache read for API-key or Steward-session inference. Two hard rules
- * make them safe (see `packages/cloud/api/docs/inference-hot-path.md`):
+ * single cache read for API-key or Steward-session inference. The feature is
+ * default-off until a strongly consistent revocation boundary exists (see
+ * `packages/cloud/api/docs/inference-hot-path.md`). Its data-shape rules are:
  *   1. A positive entry is ONLY ever written for a FULLY-authorized credential
  *      (active user + active org + not suspended + org present). Explicit
  *      negative entries contain only a bounded 401/403 decision, never identity
