@@ -57,10 +57,10 @@ function eliza1MobileManifest(modelId = "eliza-1-2b"): Record<string, unknown> {
   // bundle ships the 128k GGUF (run at a 64k context on mobile via load args).
   const textPath =
     modelId === "eliza-1-4b"
-      ? "text/eliza-1-4b-128k.gguf"
-      : "text/eliza-1-2b-128k.gguf";
+      ? "text/eliza-1-e4b-128k.gguf"
+      : "text/eliza-1-e2b-128k.gguf";
   const drafterPath =
-    modelId === "eliza-1-4b" ? "mtp/drafter-4b.gguf" : "mtp/drafter-2b.gguf";
+    modelId === "eliza-1-4b" ? "mtp/drafter-e4b.gguf" : "mtp/drafter-e2b.gguf";
 
   return {
     id: modelId,
@@ -264,7 +264,7 @@ async function loadKernel(options: MockOptions = {}): Promise<KernelModule> {
       // manifest, matching the shipped mobile default.
       const url = String(input);
       const modelId =
-        url.includes("eliza-1-2b") || url.includes("/2b/")
+        url.includes("eliza-1-2b") || url.includes("/e2b/")
           ? "eliza-1-2b"
           : "eliza-1-4b";
       return Response.json(eliza1MobileManifest(modelId), {
@@ -365,12 +365,12 @@ describe("iOS local-agent local inference flow", () => {
     await eventually(() => {
       const filenames = downloadModel.mock.calls.map((call) => call[1]);
       expect(filenames).toContain("eliza-1-4b.manifest.json");
-      expect(filenames).toContain("eliza-1-4b-128k.gguf");
+      expect(filenames).toContain("eliza-1-e4b-128k.gguf");
       expect(mockState.hashFile).toHaveBeenCalledWith(
         "/models/eliza-1-4b.manifest.json",
       );
       expect(mockState.hashFile).toHaveBeenCalledWith(
-        "/models/eliza-1-4b-128k.gguf",
+        "/models/eliza-1-e4b-128k.gguf",
       );
     });
   }, 30_000);

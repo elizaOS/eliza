@@ -134,6 +134,8 @@ function statefulAcp() {
     cancelSession: vi.fn(async () => undefined),
     getSession: vi.fn(async (sid: string) => sessions.get(sid)),
     getChangedPaths: vi.fn(() => []),
+    // Residuals gate: these one-shot sessions scaffold no owned artifacts.
+    getOrchestratorOwnedArtifacts: vi.fn(() => []),
     listSessions: vi.fn(async () => [...sessions.values()]),
     onSessionEvent: vi.fn(
       (handler: (sessionId: string, event: string, data: unknown) => void) => {
@@ -324,7 +326,13 @@ describe("TASKS:create attaches spawned sessions to the minted task thread", () 
     const acp = statefulAcp();
     const store = new OrchestratorTaskStore({ backend: "memory" });
     const taskService = new OrchestratorTaskService(
-      { getService: () => acp, logger: console } as never,
+      {
+        getService: () => acp,
+        logger: console,
+        // The completion pipeline reads verification settings through
+        // runtime.getSetting; a bare fake without it dies mid-validation.
+        getSetting: () => undefined,
+      } as never,
       { store },
     );
     await taskService.start();
@@ -357,9 +365,15 @@ describe("TASKS:create attaches spawned sessions to the minted task thread", () 
     expect(typeof taskId).toBe("string");
     expect(taskId.length).toBeGreaterThan(0);
 
-    await vi.waitFor(async () => {
-      expect((await taskService.getTask(taskId))?.status).toBe("validating");
-    });
+    // The task_complete bridge does real work (change-set capture via git
+    // subprocesses, completion-evidence assembly) before promoting to
+    // `validating`; the default 1s waitFor bound flakes on loaded runners.
+    await vi.waitFor(
+      async () => {
+        expect((await taskService.getTask(taskId))?.status).toBe("validating");
+      },
+      { timeout: 15_000, interval: 250 },
+    );
     const detail = await taskService.getTask(taskId);
     expect(detail?.sessionCount).toBe(1);
     // The finished single-turn session is indexed for history/attribution but

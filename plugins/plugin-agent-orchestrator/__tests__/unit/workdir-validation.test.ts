@@ -48,12 +48,18 @@ describe("ensureTaskWorkdir / resolveAllowedWorkdir", () => {
     );
   });
 
-  it("accepts a dir inside the current working directory", async () => {
+  it("rejects a cwd-nested dir when cwd is the runtime's own checkout", async () => {
+    // cwd-nested dirs are generally allowed, but the runtime's OWN git
+    // checkout is never a valid sub-agent workdir (#16777): a sub-agent
+    // handed the running code's repo can fetch/checkout/reset under the live
+    // process. This test process always runs from inside the repo, so the
+    // checkout guard must win over the cwd allowance.
     const dir = path.join(process.cwd(), `.workdir-test-${process.pid}`);
     await mkdir(dir, { recursive: true });
     created.push(dir);
-    const resolved = await resolveAllowedWorkdir(dir);
-    expect(resolved.endsWith(path.basename(dir))).toBe(true);
+    await expect(resolveAllowedWorkdir(dir)).rejects.toThrow(
+      /runtime's own checkout/,
+    );
   });
 
   it("accepts a dir inside a configured workspace root (ELIZA_WORKSPACE_DIR)", async () => {

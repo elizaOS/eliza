@@ -36,17 +36,33 @@ function makeInstalledModel(
   };
 }
 
+// Published bundle contract after the Gemma-4 cutover: tier suffix →
+// architecture bundle slug used in per-tier GGUF filenames (mirrors
+// ELIZA_1_BUNDLE_SLUGS in @elizaos/shared/local-inference/catalog).
+const TIER_BUNDLE_SLUGS: Readonly<Record<string, string>> = {
+  "2b": "e2b",
+  "4b": "e4b",
+  "9b": "12b",
+  "27b": "31b",
+  "27b-256k": "31b-256k",
+};
+
+function bundleSlug(tier: string): string {
+  return TIER_BUNDLE_SLUGS[tier] ?? tier;
+}
+
 function makeTempElizaBundle(
   tier: string,
   options: { hasMtp?: boolean } = {},
 ): { bundleRoot: string; textPath: string; drafterPath: string } {
+  const slug = bundleSlug(tier);
   const bundleRoot = mkdtempSync(pathJoin(tmpdir(), "eliza-ui-mtp-"));
   mkdirSync(pathJoin(bundleRoot, "text"), { recursive: true });
-  const textPath = pathJoin(bundleRoot, "text", `eliza-1-${tier}-32k.gguf`);
+  const textPath = pathJoin(bundleRoot, "text", `eliza-1-${slug}-32k.gguf`);
   // Shape a separate-drafter MTP file. The resolver wires it only for tiers
   // whose drafter is hosted in the shared catalog (ELIZA_1_HOSTED_MTP_TIER_IDS)
   // and ignores stray on-disk drafters for every other tier.
-  const drafterPath = pathJoin(bundleRoot, "mtp", `drafter-${tier}.gguf`);
+  const drafterPath = pathJoin(bundleRoot, "mtp", `drafter-${slug}.gguf`);
   writeFileSync(textPath, "fake-text-gguf");
   if (options.hasMtp !== false) {
     mkdirSync(pathJoin(bundleRoot, "mtp"), { recursive: true });

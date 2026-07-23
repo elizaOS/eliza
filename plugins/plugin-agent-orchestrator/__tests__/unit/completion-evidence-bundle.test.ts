@@ -180,7 +180,9 @@ describe("classifyToolOutput", () => {
 describe("completion-evidence bundle assembly + trajectory persistence", () => {
   const prevFlag = process.env.ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY;
   const prevIndependent = process.env.ELIZA_ORCHESTRATOR_INDEPENDENT_VERIFY;
+  const prevStateDir = process.env.ELIZA_STATE_DIR;
   let workdir: string;
+  let stateDir: string;
 
   beforeEach(async () => {
     process.env.ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY = "1";
@@ -189,6 +191,11 @@ describe("completion-evidence bundle assembly + trajectory persistence", () => {
     // here so these assertions exercise the evidence bundle the judge sees.
     process.env.ELIZA_ORCHESTRATOR_INDEPENDENT_VERIFY = "0";
     workdir = await mkdtemp(join(tmpdir(), "evidence-bundle-"));
+    // The trajectory artifact lives under the STATE dir (never the workspace,
+    // so evidence writes can't mask dirty-tree residuals); pin it to a temp
+    // dir so the test owns and inspects the real write location.
+    stateDir = await mkdtemp(join(tmpdir(), "evidence-state-"));
+    process.env.ELIZA_STATE_DIR = stateDir;
   });
   afterEach(() => {
     if (prevFlag === undefined) {
@@ -200,6 +207,11 @@ describe("completion-evidence bundle assembly + trajectory persistence", () => {
       delete process.env.ELIZA_ORCHESTRATOR_INDEPENDENT_VERIFY;
     } else {
       process.env.ELIZA_ORCHESTRATOR_INDEPENDENT_VERIFY = prevIndependent;
+    }
+    if (prevStateDir === undefined) {
+      delete process.env.ELIZA_STATE_DIR;
+    } else {
+      process.env.ELIZA_STATE_DIR = prevStateDir;
     }
   });
 
@@ -327,10 +339,12 @@ describe("completion-evidence bundle assembly + trajectory persistence", () => {
       response: "Done and tested.",
     });
 
+    // The artifact is appended under the state dir per task (never the
+    // workspace) so evidence writes cannot mask dirty-tree residuals.
     const trajectoryPath = join(
-      workdir,
-      ".eliza",
+      stateDir,
       "trajectories",
+      task.id,
       "completion-evidence.jsonl",
     );
     // The write is fire-and-forget (real mkdir + appendFile + addEvent); wait
