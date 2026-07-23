@@ -1,8 +1,11 @@
 /**
  * Unit coverage for the Cerebras schema/function-name compatibility shims
- * (`normalizeSchemaForCerebras`, `sanitizeFunctionNameForCerebras`): stripping
- * empty object schemas, recursion into nested properties and array items, and
- * identifier rewriting. Pure functions, deterministic.
+ * (`normalizeSchemaForCerebras`, `sanitizeFunctionNameForCerebras`): closing
+ * empty object schemas (explicit empty `properties` + `additionalProperties:
+ * false` — Cerebras rejects a bare `{type:"object"}` with `Object fields
+ * require at least one of: 'properties' or 'anyOf'`), recursion into nested
+ * properties and array items, and identifier rewriting. Pure functions,
+ * deterministic.
  */
 import { describe, expect, it } from "vitest";
 import {
@@ -11,7 +14,7 @@ import {
 } from "../schema-compat";
 
 describe("normalizeSchemaForCerebras", () => {
-	it("strips empty-properties + additionalProperties:false on object schemas", () => {
+	it("closes empty-properties object schemas (keeps properties:{} + additionalProperties:false)", () => {
 		const result = normalizeSchemaForCerebras({
 			type: "object",
 			properties: {},
@@ -19,17 +22,44 @@ describe("normalizeSchemaForCerebras", () => {
 			required: [],
 		}) as Record<string, unknown>;
 		expect(result.type).toBe("object");
-		expect(result.properties).toBeUndefined();
-		expect(result.additionalProperties).toBeUndefined();
+		expect(result.properties).toEqual({});
+		expect(result.additionalProperties).toBe(false);
 		expect(result.required).toBeUndefined();
 	});
 
-	it("strips properties on bare object schema", () => {
+	it("closes a bare object schema (adds properties:{} + additionalProperties:false)", () => {
+		// A bare `{type:"object"}` is request-fatal on Cerebras: the grammar
+		// compiler 400s the ENTIRE chat completion (`Object fields require at
+		// least one of: 'properties' or 'anyOf'`). Regression guard for the
+		// no-arg terminal tools (IGNORE / STOP) whose schema is exactly this
+		// shape — the earlier strip-the-keys behavior produced it.
 		const result = normalizeSchemaForCerebras({
 			type: "object",
 		}) as Record<string, unknown>;
 		expect(result.type).toBe("object");
-		expect(result.properties).toBeUndefined();
+		expect(result.properties).toEqual({});
+		expect(result.additionalProperties).toBe(false);
+	});
+
+	it("closes an open empty object (additionalProperties:true becomes false)", () => {
+		const result = normalizeSchemaForCerebras({
+			type: "object",
+			additionalProperties: true,
+		}) as Record<string, unknown>;
+		expect(result.properties).toEqual({});
+		expect(result.additionalProperties).toBe(false);
+	});
+
+	it("returns a closed empty object schema for a non-object root", () => {
+		const result = normalizeSchemaForCerebras(undefined, true) as Record<
+			string,
+			unknown
+		>;
+		expect(result).toEqual({
+			type: "object",
+			properties: {},
+			additionalProperties: false,
+		});
 	});
 
 	it("preserves populated object schemas", () => {
@@ -52,8 +82,25 @@ describe("normalizeSchemaForCerebras", () => {
 		}) as Record<string, unknown>;
 		const inner = (result.properties as Record<string, Record<string, unknown>>)
 			.inner;
-		expect(inner.properties).toBeUndefined();
-		expect(inner.additionalProperties).toBeUndefined();
+		expect(inner.properties).toEqual({});
+		expect(inner.additionalProperties).toBe(false);
+	});
+
+	it("closes a bare nested object property", () => {
+		// e.g. PAGE_DELEGATE's free-form `parameters` arg: nested
+		// `{type:"object"}` without properties is rejected by Cerebras exactly
+		// like the root shape.
+		const result = normalizeSchemaForCerebras({
+			type: "object",
+			properties: { params: { type: "object", description: "freeform" } },
+			required: ["params"],
+		}) as Record<string, unknown>;
+		const params = (
+			result.properties as Record<string, Record<string, unknown>>
+		).params;
+		expect(params.properties).toEqual({});
+		expect(params.additionalProperties).toBe(false);
+		expect(params.description).toBe("freeform");
 	});
 
 	it("recurses into array items", () => {
@@ -62,8 +109,8 @@ describe("normalizeSchemaForCerebras", () => {
 			items: { type: "object", properties: {}, additionalProperties: false },
 		}) as Record<string, unknown>;
 		const items = result.items as Record<string, unknown>;
-		expect(items.properties).toBeUndefined();
-		expect(items.additionalProperties).toBeUndefined();
+		expect(items.properties).toEqual({});
+		expect(items.additionalProperties).toBe(false);
 	});
 
 	it("preserves objects that have anyOf/oneOf even with empty properties", () => {

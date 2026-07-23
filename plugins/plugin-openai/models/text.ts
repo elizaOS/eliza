@@ -1205,9 +1205,12 @@ function sanitizeJsonSchema(
   transforms?: RecordArgTransform[]
 ): JSONSchema7 {
   if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
-    // Permissive fallback: no `properties: {}`/`additionalProperties: false`
-    // pair, which strict-grammar providers reject. See `normalizeSchemaForCerebras`
-    // in @elizaos/core for the rationale.
+    // Bare-object fallback. In Cerebras mode `normalizeSchemaForCerebras`
+    // closes this afterwards (explicit empty `properties` +
+    // `additionalProperties: false`) — Cerebras's grammar compiler rejects a
+    // bare `{type: "object"}` with a request-fatal 400. See
+    // `normalizeSchemaForCerebras` in @elizaos/core for the live-bisected
+    // provider rules.
     return { type: "object" };
   }
 
