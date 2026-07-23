@@ -290,6 +290,65 @@ describe("BRIEF umbrella action — Daily Operations", () => {
     });
   });
 
+  describe("compose_evening — completed-today wins (#16935)", () => {
+    it("aggregates completedToday and feeds it to the narrative prompt", async () => {
+      const useModel = vi.fn(async () => "evening narrative");
+      const runtime = makeRuntime({ useModel });
+      const loadCompletedToday = vi.fn(async () => [
+        {
+          id: "occ-done-1",
+          kind: "todo" as const,
+          title: "Sorted receipts",
+          dueAt: null,
+        },
+      ]);
+      setBriefComposers({
+        loadLife: async () => [
+          {
+            id: "todo-open-1",
+            kind: "todo" as const,
+            title: "File the invoice",
+            dueAt: null,
+          },
+        ],
+        loadCompletedToday,
+      });
+
+      const result = await callBrief(runtime, makeMessage(), {
+        subaction: "compose_evening",
+      });
+      expect(result.success).toBe(true);
+      const data = result.data as {
+        briefing: { sections: Record<string, unknown[]> };
+      };
+      expect(data.briefing.sections.completedToday).toEqual([
+        expect.objectContaining({ title: "Sorted receipts" }),
+      ]);
+      // The narrative model sees the wins alongside the open items, and the
+      // baseline instructions demand wins-first ordering for evening briefs.
+      const [, args] = useModel.mock.calls[0] as [string, { prompt: string }];
+      expect(args.prompt).toContain("Sorted receipts");
+      expect(args.prompt).toContain("completedToday");
+      expect(args.prompt).toContain("LEAD with those finished");
+    });
+
+    it("keeps morning briefs forward-looking (no completedToday load)", async () => {
+      const useModel = vi.fn(async () => "morning narrative");
+      const runtime = makeRuntime({ useModel });
+      const loadCompletedToday = vi.fn(async () => []);
+      setBriefComposers({ loadCompletedToday });
+      const result = await callBrief(runtime, makeMessage(), {
+        subaction: "compose_morning",
+      });
+      expect(result.success).toBe(true);
+      expect(loadCompletedToday).not.toHaveBeenCalled();
+      const data = result.data as {
+        briefing: { sections: Record<string, unknown[]> };
+      };
+      expect(data.briefing.sections.completedToday).toBeUndefined();
+    });
+  });
+
   describe("narrative compose pass", () => {
     it("degrades to a narrative-less structured briefing when the model call throws", async () => {
       const useModel = vi.fn(async (): Promise<string> => {
