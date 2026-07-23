@@ -4646,6 +4646,26 @@ export class AgentRuntime implements IAgentRuntime {
 						coalesced: providerCoalesced,
 					});
 					this.reportError("AgentRuntime.composeState.provider", error);
+					if (outcome === "deadline_exceeded") {
+						// error-policy:J4 a budget overrun degrades to an empty
+						// contribution instead of failing the turn: the per-provider
+						// deadline exists to defend interactive latency, and a reply
+						// missing one provider's section is strictly better than no
+						// reply. The overrun stays observable via the span outcome and
+						// reportError above; genuine provider errors below keep the
+						// fail-fast composition contract.
+						return {
+							text: "",
+							values: {},
+							data: {},
+							providerName: provider.name,
+							providerStartedAt: execution.startedAt,
+							providerEndedAt: endedAt,
+							providerDurationMs: duration,
+							providerOutcome: outcome,
+							providerCoalesced,
+						};
+					}
 					return {
 						providerName: provider.name,
 						providerStartedAt: execution.startedAt,
