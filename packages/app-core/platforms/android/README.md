@@ -127,6 +127,11 @@ initializer retries automatically when MainActivity resumes, where Android
 permits the user-visible foreground-service start. If notification permission
 was not pre-granted, that initializer requests it only after the build, LP3,
 opt-in, and `WRITE_SECURE_SETTINGS` gates pass, then retries after consent.
+The guard also requires notifications to remain enabled for the app and for the
+`lp3_color_policy` channel. Android reports either block through protected
+system broadcasts: the service cancels pending repairs and stops immediately,
+then the process initializer retries after the operator unblocks notifications.
+A channel/app block never triggers another `POST_NOTIFICATIONS` prompt.
 Never treat the preference write alone as proof that the guard is running.
 
 Verify the service, repair result, and final SettingsProvider state before
@@ -136,7 +141,7 @@ calling the device durable:
 adb logcat -d -s ElizaLp3Color:I '*:S'
 adb shell dumpsys activity services ai.elizaos.app | grep Lp3ColorPolicyService
 adb shell dumpsys package ai.elizaos.app | grep -A2 POST_NOTIFICATIONS
-adb shell dumpsys notification --noredact | grep lp3_color_policy
+adb shell dumpsys notification --noredact | grep -A8 -B4 lp3_color_policy
 adb shell settings get secure accessibility_display_daltonizer_enabled
 adb shell settings get secure accessibility_display_daltonizer
 ```
@@ -144,8 +149,13 @@ adb shell settings get secure accessibility_display_daltonizer
 The final two values must be `0` and `-1`. Reboot the device and repeat those
 checks; the boot receiver plus observer are what prove persistence beyond the
 one-time repair. The package dump must show `POST_NOTIFICATIONS: granted=true`,
-and the notification dump must contain the ongoing `lp3_color_policy` channel;
-otherwise the service is not allowed to claim a durable, user-visible guard.
+the app notification state must be enabled, and the `lp3_color_policy` channel
+must have nonzero importance. The notification drawer must also show the
+ongoing “Eliza display color” notification; otherwise the service is not
+allowed to claim a durable, user-visible guard. Exercise app-level block,
+channel-level block, and unblock before release: both block paths must stop the
+service without changing either daltonizer value, while unblock plus returning
+to Eliza must restore the visible service without a permission-prompt loop.
 
 To disable it cleanly, send the matching same-UID command:
 
@@ -170,7 +180,9 @@ force-stopped Android app cannot receive boot broadcasts until the user
 launches it again, by platform design. The unexported process initializer closes
 that gap on the first normal relaunch and performs the same device, opt-in,
 secure-settings, and notification-permission checks before restarting the
-guard.
+guard. App-level and channel-level notification disclosure are separate gates;
+the service rechecks them immediately after first creating its channel so a
+restored user-blocked channel can never leave an invisible guard running.
 
 ## `build:android` — sideload-only debug
 

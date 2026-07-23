@@ -1,8 +1,9 @@
 /**
  * Decides whether the direct-distribution Light Phone III color guard may run
  * and repairs only Android's two daltonizer settings. Android lifecycle and
- * SettingsProvider adapters live in the service so this policy remains a
- * deterministic JVM-testable boundary.
+ * SettingsProvider adapters live in the service so eligibility, notification
+ * disclosure, and listener lifecycle remain deterministic JVM-testable
+ * boundaries.
  */
 package ai.elizaos.app;
 
@@ -17,6 +18,11 @@ final class Lp3ColorPolicy {
     static final String ACTION_ENABLE = "ai.elizaos.app.action.ENABLE_LP3_COLOR_POLICY";
     static final String ACTION_DISABLE = "ai.elizaos.app.action.DISABLE_LP3_COLOR_POLICY";
     static final String ACTION_SYNC = "ai.elizaos.app.action.SYNC_LP3_COLOR_POLICY";
+    static final String ACTION_APP_NOTIFICATION_BLOCK_STATE_CHANGED =
+        "android.app.action.APP_BLOCK_STATE_CHANGED";
+    static final String ACTION_NOTIFICATION_CHANNEL_BLOCK_STATE_CHANGED =
+        "android.app.action.NOTIFICATION_CHANNEL_BLOCK_STATE_CHANGED";
+    static final String NOTIFICATION_CHANNEL_ID = "lp3_color_policy";
 
     enum Decision {
         BUILD_DISABLED,
@@ -24,6 +30,7 @@ final class Lp3ColorPolicy {
         OPTED_OUT,
         MISSING_PERMISSION,
         MISSING_NOTIFICATION_PERMISSION,
+        MISSING_NOTIFICATION_DISCLOSURE,
         ELIGIBLE
     }
 
@@ -33,6 +40,7 @@ final class Lp3ColorPolicy {
         OPTED_OUT,
         MISSING_PERMISSION,
         MISSING_NOTIFICATION_PERMISSION,
+        MISSING_NOTIFICATION_DISCLOSURE,
         ALREADY_CORRECT,
         REPAIRED
     }
@@ -57,6 +65,8 @@ final class Lp3ColorPolicy {
 
         boolean hasPostNotificationsPermission();
 
+        boolean hasVisibleNotificationDisclosure();
+
         int colorCorrectionEnabled();
 
         int colorCorrectionMode();
@@ -74,6 +84,31 @@ final class Lp3ColorPolicy {
 
     interface OptInWriter {
         boolean commit(boolean enabled);
+    }
+
+    interface RegistrationHooks {
+        void register();
+
+        void unregister();
+    }
+
+    static final class LifecycleRegistration {
+        private boolean registered;
+
+        void update(boolean shouldRegister, RegistrationHooks hooks) {
+            if (shouldRegister == registered) return;
+            if (shouldRegister) {
+                hooks.register();
+                registered = true;
+            } else {
+                hooks.unregister();
+                registered = false;
+            }
+        }
+
+        boolean isRegistered() {
+            return registered;
+        }
     }
 
     static final class Debouncer {
@@ -123,7 +158,8 @@ final class Lp3ColorPolicy {
             String model,
             boolean optedIn,
             boolean hasWriteSecureSettings,
-            boolean hasPostNotificationsPermission) {
+            boolean hasPostNotificationsPermission,
+            boolean hasVisibleNotificationDisclosure) {
         if (!buildEnabled) return Decision.BUILD_DISABLED;
         if (!isTargetDevice(manufacturer, model)) return Decision.WRONG_DEVICE;
         if (!optedIn) return Decision.OPTED_OUT;
@@ -131,7 +167,35 @@ final class Lp3ColorPolicy {
         if (!hasPostNotificationsPermission) {
             return Decision.MISSING_NOTIFICATION_PERMISSION;
         }
+        if (!hasVisibleNotificationDisclosure) {
+            return Decision.MISSING_NOTIFICATION_DISCLOSURE;
+        }
         return Decision.ELIGIBLE;
+    }
+
+    static boolean hasVisibleNotificationDisclosure(
+            boolean appNotificationsEnabled,
+            boolean channelExists,
+            boolean channelBlocked) {
+        return appNotificationsEnabled && (!channelExists || !channelBlocked);
+    }
+
+    static boolean acceptsNotificationStateChange(String action, String channelId) {
+        if (ACTION_APP_NOTIFICATION_BLOCK_STATE_CHANGED.equals(action)) return true;
+        return ACTION_NOTIFICATION_CHANNEL_BLOCK_STATE_CHANGED.equals(action)
+            && NOTIFICATION_CHANNEL_ID.equals(channelId);
+    }
+
+    static boolean canRecoverThroughNotificationState(Decision decision) {
+        return decision == Decision.ELIGIBLE
+            || decision == Decision.MISSING_NOTIFICATION_PERMISSION
+            || decision == Decision.MISSING_NOTIFICATION_DISCLOSURE;
+    }
+
+    static boolean shouldRequestPostNotifications(
+            Decision decision,
+            boolean alreadyRequested) {
+        return decision == Decision.MISSING_NOTIFICATION_PERMISSION && !alreadyRequested;
     }
 
     static boolean isTargetDevice(String manufacturer, String model) {
@@ -171,7 +235,8 @@ final class Lp3ColorPolicy {
             state.model(),
             state.optedIn(),
             state.hasWriteSecureSettings(),
-            state.hasPostNotificationsPermission()
+            state.hasPostNotificationsPermission(),
+            state.hasVisibleNotificationDisclosure()
         );
         if (decision != Decision.ELIGIBLE) return Outcome.valueOf(decision.name());
 

@@ -328,6 +328,12 @@ describe("LP3 direct Cloud build flag", () => {
     expect(initializerBlock).toContain('android:initOrder="100"');
     expect(manifest).toContain("android.intent.action.BOOT_COMPLETED");
     expect(manifest).toContain("android.intent.action.MY_PACKAGE_REPLACED");
+    expect(manifest).not.toContain(
+      "android.app.action.APP_BLOCK_STATE_CHANGED",
+    );
+    expect(manifest).not.toContain(
+      "android.app.action.NOTIFICATION_CHANNEL_BLOCK_STATE_CHANGED",
+    );
     expect(manifest).toContain("ai.elizaos.app.action.ENABLE_LP3_COLOR_POLICY");
     expect(manifest).toContain(
       "ai.elizaos.app.action.DISABLE_LP3_COLOR_POLICY",
@@ -360,7 +366,25 @@ describe("LP3 direct Cloud build flag", () => {
     expect(service).toContain("if (!initialized)");
     expect(service).toContain("return START_NOT_STICKY");
     expect(service).toContain("MISSING_NOTIFICATION_PERMISSION");
+    expect(service).toContain("MISSING_NOTIFICATION_DISCLOSURE");
     expect(service).toContain("Manifest.permission.POST_NOTIFICATIONS");
+    expect(service).toContain("manager.areNotificationsEnabled()");
+    expect(service).toContain("NotificationManager.IMPORTANCE_NONE");
+    expect(service).toContain(
+      "NotificationManager.ACTION_APP_BLOCK_STATE_CHANGED",
+    );
+    expect(service).toContain(
+      "NotificationManager.ACTION_NOTIFICATION_CHANNEL_BLOCK_STATE_CHANGED",
+    );
+    expect(service).toContain("Context.RECEIVER_NOT_EXPORTED");
+    expect(service).toContain(
+      "NotificationManager.EXTRA_NOTIFICATION_CHANNEL_ID",
+    );
+    expect(service).toContain("unregisterReceiver(registeredReceiver)");
+    expect(service).toContain(
+      "currentDecision(this);\n            if (decision",
+    );
+    expect(service).toContain('"service-create-post-channel"');
     expect(initializer).toContain("extends ContentProvider");
     expect(initializer).toContain(
       'Lp3ColorPolicyService.sync(appContext, "process-start")',
@@ -369,6 +393,9 @@ describe("LP3 direct Cloud build flag", () => {
       'Lp3ColorPolicyService.sync(activity, "activity-resumed")',
     );
     expect(initializer).toContain("activity.requestPermissions");
+    expect(initializer).toContain("shouldRequestPostNotifications");
+    expect(initializer).toContain("acceptsNotificationStateChange");
+    expect(initializer).toContain("app.unregisterReceiver(registeredReceiver)");
     expect(initializer).toContain("Manifest.permission.POST_NOTIFICATIONS");
     expect(readme).toContain("adb shell run-as ai.elizaos.app am broadcast");
     expect(readme).toContain(
@@ -376,6 +403,8 @@ describe("LP3 direct Cloud build flag", () => {
     );
     expect(readme).toContain("ai.elizaos.app.action.ENABLE_LP3_COLOR_POLICY");
     expect(readme).toContain("ai.elizaos.app.action.DISABLE_LP3_COLOR_POLICY");
+    expect(readme).toContain("channel-level block");
+    expect(readme).toContain("permission-prompt loop");
   });
 
   it("does not grant the direct-only permission to generic AOSP builds", () => {
