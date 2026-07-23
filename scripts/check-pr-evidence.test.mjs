@@ -210,6 +210,19 @@ describe("check-pr-evidence parser", () => {
     assert.equal(ok, false);
     assert.ok(findings.every((finding) => finding.status === "missing"));
   });
+
+  it("reports a prose-only body (template markers deleted) as all-missing", () => {
+    // The #16925/#16913 failure shape: an agent-authored body that talks about
+    // evidence in prose but carries none of the template's HTML markers. The
+    // gate cannot match prose — every required row is missing, and the CLI
+    // keys its "re-add the markers" hint off this exact all-missing shape.
+    const { ok, findings } = evaluatePrEvidence(
+      "Evidence rows: UI/video/frontend `N/A - cloud backend latency`. Backend: 51-test run above.",
+    );
+    assert.equal(ok, false);
+    assert.equal(findings.length, REQUIRED_EVIDENCE_ROWS.length);
+    assert.ok(findings.every((finding) => finding.status === "missing"));
+  });
 });
 
 describe("check-pr-evidence row primitives", () => {
