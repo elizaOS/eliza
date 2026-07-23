@@ -75,7 +75,6 @@ CI_LANE_BY_BENCHMARK: dict[str, str] = {
     "webshop": "smoke",
     "woobench": "smoke",
     "trajectory_replay": "smoke",
-    "social_alpha": "smoke",
     "trust": "smoke",
     # Public orchestrator adapters that are not registry entries.
     "adhdbench": "smoke",

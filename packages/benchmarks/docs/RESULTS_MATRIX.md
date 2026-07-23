@@ -100,7 +100,6 @@ or `gated`.
 | recall_bench | smoke | not-run | not-run | not-run | gated |
 | rlm_bench | smoke | not-run | not-run | not-run | gated |
 | scambench | smoke | 1.00 | 1.00 | 1.00 | 1.00 |
-| social_alpha | smoke | not-run | not-run | not-run | gated |
 | solana | manual | gated | gated | gated | gated |
 | swe_bench | manual | gated | gated | gated | gated |
 | swe_bench_orchestrated | manual | gated | gated | gated | gated |

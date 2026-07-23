@@ -103,6 +103,16 @@ export default defineConfig({
           "../../shared/src/steward-session-client/index.ts",
         ),
       },
+      // The source-aliased UI region helper consumes only the shared package's
+      // dependency-free language primitives. Keeping this exact bare-package
+      // alias avoids requiring a prebuilt shared/dist during release validation.
+      {
+        find: /^@elizaos\/shared$/,
+        replacement: path.resolve(
+          packageDir,
+          "../../shared/src/i18n/language.ts",
+        ),
+      },
       {
         find: /^@elizaos\/ui\/button$/,
         replacement: path.resolve(

@@ -1,8 +1,8 @@
 // Browser coverage for the slash-command surface — the real web chat composer
-// (ContinuousChatOverlay) fetching GET /api/commands, rendering the slash menu,
+// (ChatOverlay) fetching GET /api/commands, rendering the slash menu,
 // and dispatching each target kind through useSlashCommandController. The
 // component-level dispatch wiring is asserted in
-// packages/ui/src/components/shell/ContinuousChatOverlay.slash.test.tsx; this
+// packages/ui/src/components/shell/ChatOverlay.slash.test.tsx; this
 // proves the same path end to end in a real browser over a real catalog fetch.
 //
 // The default smoke stub serves an EMPTY command catalog (a fresh agent), so

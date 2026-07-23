@@ -314,10 +314,10 @@ describe("AutomationsFeed", () => {
     const scrollRegion = screen.getByTestId("automations-scroll-region");
     expect(scrollRegion.className).toContain("overflow-y-auto");
     expect(scrollRegion.className).toContain(
-      "pb-[var(--eliza-continuous-chat-clearance,5.25rem)]",
+      "pb-[var(--eliza-chat-clearance,5.25rem)]",
     );
     expect(scrollRegion.className).toContain(
-      "pe-[var(--eliza-continuous-chat-side-clearance,0px)]",
+      "pe-[var(--eliza-chat-side-clearance,0px)]",
     );
     expect(screen.getByTestId("automations-empty-state").className).toContain(
       "[@media(orientation:landscape)_and_(max-height:520px)]:py-3",

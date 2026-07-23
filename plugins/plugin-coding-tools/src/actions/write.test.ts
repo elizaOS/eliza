@@ -197,14 +197,8 @@ describe("WRITE", () => {
   });
 
   it("resolves relative paths against the session cwd", async () => {
-    const cwdRuntime = {
-      ...env.runtime,
-      getService: <T>(serviceType: string): T | null =>
-        serviceType === "CODING_TOOLS_SESSION_CWD"
-          ? ({ getCwd: () => env.tmpDir } as T)
-          : env.runtime.getService<T>(serviceType),
-    } as typeof env.runtime;
-    const result = await writeFileHandler(cwdRuntime, env.message, undefined, {
+    env.sessionCwd.setCwd("test-room", env.tmpDir);
+    const result = await writeFileHandler(env.runtime, env.message, undefined, {
       parameters: { file_path: "rel/path.txt", content: "x" },
     });
     expect(result.success).toBe(true);

@@ -46,7 +46,7 @@ bun run --cwd packages/ui build-storybook  # static build
    these. (This is the `useApp` services graph, **not** the `@elizaos/core`
    value-import path, which is resolved — see (3).) The purely-presentational
    majority of the catalog (primitives, most composites, icons, layouts, the
-   continuous-chat overlay + glass-composer) renders today — verified serially
+   chat overlay + glass-composer) renders today — verified serially
    via Playwright. NOTE: a story rendering "empty" can also be correct by
    design — e.g. `Composites/OwnerBadge` `NotOwner` is intentionally hidden for
    non-owners (the `Default`/owner story renders).
@@ -85,7 +85,7 @@ bun run --cwd packages/ui build-storybook  # static build
 
 ## Tracked test follow-ups (not ignored)
 
-- **`ContinuousChatOverlay`** — covered by `ContinuousChatOverlay.test.tsx` (pure
+- **`ChatOverlay`** — covered by `ChatOverlay.test.tsx` (pure
   component, mock controller).
 - **Header-less shell** (`hideComposer`, no mounted `Header`, no primary nav bar,
   gating) — covered at the source-invariant level in `App.cloud-shell.test.tsx`.

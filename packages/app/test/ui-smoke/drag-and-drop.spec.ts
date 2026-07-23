@@ -484,7 +484,7 @@ test.describe("chat overlay — real DataTransfer file drop", () => {
     const conversations = await installChatConversationMock(page);
 
     await openAppPath(page, "/chat");
-    await expect(page.getByTestId("continuous-chat-overlay")).toBeVisible({
+    await expect(page.getByTestId("chat-overlay")).toBeVisible({
       timeout: 60_000,
     });
     const chatContent = page.getByTestId("chat-content");

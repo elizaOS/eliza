@@ -456,6 +456,13 @@ export function createVoiceSessionClient(
         break;
       case "stt_final":
         mark("stt_final", event.traceId);
+        // An empty final never dispatches the LLM leg server-side, so no
+        // speaking_end will follow — the machine parked at 'complete' and the
+        // loop must happen HERE or the turn never returns to listening
+        // (#16662). Nothing was queued for playback, so there is no drain to
+        // wait for. The reducer owns the emptiness predicate (trim-aligned
+        // with the server's dispatch gate); this checks only its verdict.
+        if (state.phase === "complete") setState(loopToListening(state));
         break;
       case "llm_first_text":
         mark("llm_first_text", event.traceId);

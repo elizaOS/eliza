@@ -23,6 +23,7 @@ import {
 	type ViewSummary,
 	type ViewsClient,
 } from "./views-client.js";
+import { createViewsRequestHeaders } from "./views-request-auth.js";
 
 export interface ScoredView {
 	view: ViewSummary;
@@ -85,6 +86,7 @@ async function fetchSemanticSearch(
 		if (viewType) url.searchParams.set("viewType", viewType);
 
 		const resp = await fetch(url.toString(), {
+			headers: createViewsRequestHeaders(),
 			signal: AbortSignal.timeout(5_000),
 		});
 		if (!resp.ok) return null;

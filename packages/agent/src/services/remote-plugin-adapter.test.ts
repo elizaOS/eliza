@@ -31,6 +31,7 @@ import {
   type ElizaCapabilityRouter,
   type EventPayload,
   type IAgentRuntime,
+  type IDatabaseAdapter,
   type Plugin,
   type PluginCallAppBridgeResult,
   type PluginOwnership,
@@ -2422,6 +2423,44 @@ describe("remote plugin adapter", () => {
       message:
         'Remote plugin "remote-demo" route "POST /remote/demo" would collide with an existing runtime route.',
     });
+  });
+
+  it("migrates a remote plugin schema before publishing its runtime surface", async () => {
+    let runtime: IAgentRuntime;
+    const runPluginMigrations = vi.fn(
+      async (
+        plugins: Parameters<
+          NonNullable<IDatabaseAdapter["runPluginMigrations"]>
+        >[0],
+      ) => {
+        expect(
+          runtime.plugins.some((plugin) => plugin.name === "@remote/demo"),
+        ).toBe(false);
+        expect(plugins).toEqual([
+          {
+            name: "@remote/demo",
+            schema: remoteModule.schema,
+          },
+        ]);
+      },
+    );
+    runtime = makeLifecycleRuntime(
+      makeRouter({ callLifecycle: async () => ({ ok: true }) }),
+      runPluginMigrations,
+    );
+
+    await expect(
+      syncRemoteCapabilityPlugins(runtime, { modules: [remoteModule] }),
+    ).resolves.toMatchObject({
+      registered: [expect.objectContaining({ name: "@remote/demo" })],
+      skipped: [],
+    });
+
+    expect(runPluginMigrations).toHaveBeenCalledOnce();
+    expect(runtime.plugins.map((plugin) => plugin.name)).toEqual([
+      "@remote/demo",
+    ]);
+    await runtime.unloadPlugin("@remote/demo");
   });
 
   it("unloads remote plugins missing from the next manifest", async () => {
@@ -5155,7 +5194,10 @@ function makeExecutableRuntime(router: ElizaCapabilityRouter): IAgentRuntime {
   return runtime;
 }
 
-function makeLifecycleRuntime(router: ElizaCapabilityRouter): IAgentRuntime {
+function makeLifecycleRuntime(
+  router: ElizaCapabilityRouter,
+  runPluginMigrations?: NonNullable<IDatabaseAdapter["runPluginMigrations"]>,
+): IAgentRuntime {
   const runtime = makeRuntime(router, {
     plugins: [],
     actions: [],
@@ -5179,6 +5221,14 @@ function makeLifecycleRuntime(router: ElizaCapabilityRouter): IAgentRuntime {
       error: vi.fn(),
       info: vi.fn(),
     },
+    ...(runPluginMigrations
+      ? {
+          adapter: {
+            isReady: async () => true,
+            runPluginMigrations,
+          },
+        }
+      : {}),
   } as never);
   runtime.registerAction = (action) => {
     runtime.actions.push(action);

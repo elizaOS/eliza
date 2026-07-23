@@ -93,7 +93,7 @@ test("Reset Everything wipes the agent and returns to first-run onboarding", asy
   await resetRequest;
 
   // ...and the renderer returns to pre-agent in-chat first-run.
-  const chatOverlay = page.getByTestId("continuous-chat-overlay");
+  const chatOverlay = page.getByTestId("chat-overlay");
   await expect(chatOverlay).toBeVisible({ timeout: 20_000 });
   await expect(page.getByTestId("first-run-runtime-chooser")).toHaveCount(0);
   await expect(

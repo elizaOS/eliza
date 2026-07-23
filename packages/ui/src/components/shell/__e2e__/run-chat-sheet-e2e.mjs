@@ -1,5 +1,5 @@
 /**
- * Real-browser e2e for the iOS-style three-detent continuous-chat sheet — no app
+ * Real-browser e2e for the iOS-style three-detent chat sheet — no app
  * server. Bundles chat-sheet-fixture.tsx with esbuild, loads it in headless
  * chromium/webkit via Playwright, and drives the sheet with REAL pointer
  * gestures.
@@ -233,7 +233,7 @@ async function assertDarkChatSurface(p, label) {
   const rgb = tone.parsed;
   // The INSET sheet is deliberately frosted glass — a translucent (~68%) dark
   // warm fill over a backdrop blur (product direction; see the surface layer's
-  // backgroundColor note in ContinuousChatOverlay). Full-bleed is opaque. Both
+  // backgroundColor note in ChatOverlay). Full-bleed is opaque. Both
   // must stay DARK and locally themed, never the orange app theme.
   assert(
     Boolean(
@@ -1964,13 +1964,15 @@ try {
   }
 
   if (!ONLY_AUTOSCROLL) {
-  // ===== GRABBER horizontal flick → launcher intent, REAL touch (#9943) =====
-  // The collapsed grabber's horizontal swipe pages home → launcher through the
-  // shell-surface store (goLauncher). Android's on-device spec drives this with
-  // a real finger; drive it here through Chromium's REAL touch pipeline
-  // (Input.dispatchTouchEvent, hit-test + touch-action + implicit capture), and
-  // ALSO under a janked main thread (fire-and-forget dispatch → the renderer
-  // coalesces the moves), the failure shape of the Davey!-janked WebView.
+  // ===== GRABBER horizontal flick is a consumed NO-OP, REAL touch (#9943) =====
+  // The unified home/apps surface owns horizontal paging (the launcher rail);
+  // the collapsed grabber's horizontal swipe navigates NOWHERE and must not
+  // open/close the sheet — but it must still be classified + consumed so a
+  // coalesced release can't masquerade as a tap (which WOULD open the chat).
+  // Drive it through Chromium's REAL touch pipeline (Input.dispatchTouchEvent,
+  // hit-test + touch-action + implicit capture), ALSO under a janked main
+  // thread (fire-and-forget dispatch → the renderer coalesces the moves), the
+  // failure shape of the Davey!-janked WebView.
   {
     const surfacePage = (p) =>
       p.evaluate(
@@ -2007,10 +2009,15 @@ try {
     await touchSwipe(p, grabberSel, -150, -6, { steps: 14, stepDelayMs: 20 });
     await p.waitForTimeout(400);
     assert(
-      (await surfacePage(p)) === "launcher",
-      "[grabber-swipe] REAL-touch left flick on the grabber commits goLauncher (#9943)",
+      (await surfacePage(p)) === "home",
+      "[grabber-swipe] REAL-touch left flick on the collapsed grabber does NOT navigate (rail owns paging)",
     );
-    await snap(p, "grabber-real-touch-launcher");
+    assert(
+      (await p.getByTestId("chat-sheet").getAttribute("data-variant")) ===
+        "closed",
+      "[grabber-swipe] REAL-touch left flick is consumed — the sheet stays closed (no tap-open)",
+    );
+    await snap(p, "grabber-real-touch-noop");
 
     // 2. Real-touch flick with the main thread JANKED: dispatch the whole
     // sequence fire-and-forget so the renderer coalesces the moves (this is
@@ -2057,8 +2064,10 @@ try {
     await busy;
     await p.waitForTimeout(600);
     assert(
-      (await surfacePage(p)) === "launcher",
-      "[grabber-swipe] real-touch flick still commits with the main thread janked / moves coalesced (#9943)",
+      (await surfacePage(p)) === "home" &&
+        (await p.getByTestId("chat-sheet").getAttribute("data-variant")) ===
+          "closed",
+      "[grabber-swipe] janked/coalesced real-touch flick is still a consumed no-op (no nav, sheet closed) (#9943)",
     );
     await cdp.detach().catch(() => {});
 
@@ -2088,8 +2097,10 @@ try {
     }, grabberSel);
     await p.waitForTimeout(400);
     assert(
-      (await surfacePage(p)) === "launcher",
-      "[grabber-swipe] synthetic PointerEvent flick still commits (parity)",
+      (await surfacePage(p)) === "home" &&
+        (await p.getByTestId("chat-sheet").getAttribute("data-variant")) ===
+          "closed",
+      "[grabber-swipe] synthetic PointerEvent flick is a consumed no-op too (parity)",
     );
     await p.close();
   }
@@ -2648,7 +2659,7 @@ try {
     const metrics = () =>
       p.evaluate(() => {
         const overlay = document.querySelector(
-          '[data-testid="continuous-chat-overlay"]',
+          '[data-testid="chat-overlay"]',
         );
         const panel = document.querySelector('[data-testid="chat-sheet"]');
         const r = panel.getBoundingClientRect();
@@ -3543,7 +3554,7 @@ try {
     );
     // Sign-in-first onboarding (#15339 supersedes the #12178 unlocked design):
     // the composer is locked until the user signs in, matching the sign-in
-    // placeholder above and ContinuousChatOverlay.firstrun.test.tsx.
+    // placeholder above and ChatOverlay.firstrun.test.tsx.
     assert(
       (await p
         .getByTestId("chat-composer-textarea")

@@ -75,6 +75,11 @@ function toPublicTrajectoryProviderAccess(
     trajectoryId,
     providerName: toText(access.providerName, "unknown"),
     purpose: toText(access.purpose, "provider"),
+    startedAt: typeof access.startedAt === "number" ? access.startedAt : null,
+    endedAt: typeof access.endedAt === "number" ? access.endedAt : null,
+    durationMs:
+      typeof access.durationMs === "number" ? access.durationMs : null,
+    overlapsWith: Array.isArray(access.overlapsWith) ? access.overlapsWith : [],
     data: access.data && typeof access.data === "object" ? access.data : {},
     timestamp: toNumber(access.timestamp, Date.now()),
     ...(access.createdAt

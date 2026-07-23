@@ -27,7 +27,7 @@ test("chat, apps, and settings routes render through the real shell", async ({
     "chat shell",
     [
       {
-        selector: '[data-testid="continuous-chat-overlay"]',
+        selector: '[data-testid="chat-overlay"]',
       },
       {
         selector:

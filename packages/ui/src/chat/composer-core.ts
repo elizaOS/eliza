@@ -8,7 +8,7 @@
  *
  * Together with `useChatComposerOrLocal` (draft state,
  * state/ChatComposerContext.hooks.ts) and `usePushToTalk` (mic hold machine,
- * hooks/usePushToTalk.ts) this is the composer core: ContinuousChatOverlay,
+ * hooks/usePushToTalk.ts) this is the composer core: ChatOverlay,
  * ChatComposer (ChatView), and ChatSurface are thin chrome over these hooks.
  * Before the core existed each surface hand-rolled its own keydown/paste and
  * the behavior drifted — the IME guard shipped only on the overlay, so a CJK

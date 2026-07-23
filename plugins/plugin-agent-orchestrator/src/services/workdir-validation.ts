@@ -44,6 +44,23 @@ const WORKSPACE_ROOT_ENV_KEYS = [
   "ELIZA_CODING_DIRECTORY",
 ] as const;
 
+/**
+ * Walk up from `start` to the first directory containing a `.git` entry — the
+ * toplevel of the repo the runtime itself runs from. Null when not in a repo.
+ */
+async function findGitToplevel(start: string): Promise<string | null> {
+  let current = start;
+  for (let i = 0; i < 40; i++) {
+    // error-policy:J3 existence probe; absence just walks up.
+    const hasGit = await realpath(path.join(current, ".git")).catch(() => null);
+    if (hasGit) return current;
+    const parent = path.dirname(current);
+    if (parent === current) return null;
+    current = parent;
+  }
+  return null;
+}
+
 export async function resolveAllowedWorkdir(
   rawWorkdir: string,
 ): Promise<string> {
@@ -86,6 +103,24 @@ export async function resolveAllowedWorkdir(
   const allowedPrefixes = [workspaceBaseDirReal, cwdReal, ...configuredRoots];
   if (!allowedPrefixes.some((prefix) => isInside(prefix, resolvedReal))) {
     throw new Error("workdir must be within workspace base directory or cwd");
+  }
+
+  // The runtime's OWN checkout is never a valid sub-agent workdir: a repo-task
+  // agent handed the running code's repo will fetch/checkout/reset under the
+  // live process (observed: a sub-agent checked out develop beneath the
+  // running bot, and dev-mode hot-reload then bounced the runtime onto it).
+  // The workspace base dir stays allowed even if nested inside the repo.
+  // Operator-configured env roots inside the checkout are still refused on
+  // purpose: no configuration may hand a sub-agent the running code's repo.
+  const runtimeRepoRoot = await findGitToplevel(cwdReal);
+  if (
+    runtimeRepoRoot &&
+    isInside(runtimeRepoRoot, resolvedReal) &&
+    !isInside(workspaceBaseDirReal, resolvedReal)
+  ) {
+    throw new Error(
+      `workdir must not be inside the runtime's own checkout (${runtimeRepoRoot}); use an isolated task workspace`,
+    );
   }
 
   return resolvedReal;

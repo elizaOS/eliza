@@ -393,11 +393,6 @@
           "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages"
         },
         {
-          "id": "social_alpha",
-          "dir": "social-alpha",
-          "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages/benchmarks/social-alpha"
-        },
-        {
           "id": "solana",
           "dir": "solana",
           "cwd": "/Users/shawwalters/eliza-workspace/milady/eliza/.claude/worktrees/gpt55-training-pipeline/packages"

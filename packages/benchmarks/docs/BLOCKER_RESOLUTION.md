@@ -55,7 +55,7 @@ as default. openclaw runs (`OpenClaw 2026.5.27`).
 - **Real audio assets / multimodal runtime**: `voicebench`×3, `voiceagentbench`,
   `vision_language` gate on local audio + a VLM runtime.
 - **eliza-native, eliza-only by design**: experience, trust, adhdbench,
-  personality_bench, social_alpha, eliza_1, eliza_replay measure elizaOS runtime
+  personality_bench, eliza_1, eliza_replay measure elizaOS runtime
   subsystems and have no model-harness swap; they post on `eliza` only.
 
 ## Cosmetic-harness benchmarks (configbench, interrupt-bench)

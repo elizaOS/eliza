@@ -36,7 +36,7 @@ const WINDOW_SHELL_TS = readFileSync(
   "utf8",
 );
 const OVERLAY_TSX = readFileSync(
-  resolve(__dirname, "./components/shell/ContinuousChatOverlay.tsx"),
+  resolve(__dirname, "./components/shell/ChatOverlay.tsx"),
   "utf8",
 );
 const CHATVIEW_TSX = readFileSync(
@@ -45,14 +45,14 @@ const CHATVIEW_TSX = readFileSync(
 );
 
 describe("App standalone chat-overlay wiring", () => {
-  it("mounts the continuous chat overlay outside the full chat tab", () => {
+  it("mounts the chat overlay outside the full chat tab", () => {
     expect(APP_TSX).toContain('shellMode === "chat-overlay"');
     expect(APP_TSX).toContain("<ShellFoundationMount />");
     expect(APP_TSX).toContain("pointer-events-none fixed inset-0");
     // The floating glass chat remains available in the main shell, including
     // the ambient /chat route.
-    expect(APP_TSX).toContain("Continuous chat overlay");
-    expect(APP_TSX).toContain("<ContinuousChatOverlayMount />");
+    expect(APP_TSX).toContain("Chat overlay");
+    expect(APP_TSX).toContain("<ChatOverlayMount />");
   });
 
   it("seeds in-chat onboarding in the chat-overlay branch (the default desktop bottom-bar surface)", () => {
@@ -101,7 +101,7 @@ describe("App standalone chat-overlay wiring", () => {
     // ChatView still supports hidden-composer embedding, but /chat now uses the
     // persistent ambient overlay as its composer.
     expect(CHATVIEW_TSX).toContain("hideComposer");
-    expect(APP_TSX).toContain("<ContinuousChatOverlayMount />");
+    expect(APP_TSX).toContain("<ChatOverlayMount />");
     expect(APP_TSX).toContain("floats over EVERY view, including the /chat");
     // The composer swaps mic→send once there's a draft (one trailing control).
     expect(OVERLAY_TSX).toContain("hasDraft");

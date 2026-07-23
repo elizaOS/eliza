@@ -1,7 +1,7 @@
 /**
  * The single source of truth for how an inline chat-reply widget drives the
  * chat surface. Both message surfaces, the full `MessageContent` (ChatView)
- * and the lightweight `InlineWidgetText` (ContinuousChatOverlay), build their
+ * and the lightweight `InlineWidgetText` (ChatOverlay), build their
  * `InlineWidgetContext` from THIS hook, so a CHOICE pick, a FOLLOWUPS chip, and
  * a FORM submit behave identically no matter where the reply is rendered.
  *

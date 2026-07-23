@@ -17,6 +17,7 @@ import {
   completeOtherProviderSettingsHandoff,
   connectRemoteFirstRunToHome,
   expectChatFirstOnboarding,
+  expectInlineLauncher,
   injectCloudAuthToken,
   injectFullCapabilityHost,
   installCloudRoutes,
@@ -24,7 +25,6 @@ import {
   makeScreenshotter,
   type OnboardingRouteState,
   settleHomeEntrance,
-  swipeLeftToLauncher,
 } from "./onboarding-to-home.shared";
 
 // CRITICAL FLOW (#9952) — onboarding is now PART OF THE CHAT. A fresh profile
@@ -35,7 +35,7 @@ import {
 //
 // These specs boot a fresh device (no first-run-complete) and drive the in-chat
 // flow in the REAL shell to completion, then assert the post-onboarding landing
-// is the HOME (the ContinuousChatOverlay composer over the home widgets) and that
+// is the HOME (the ChatOverlay composer over the home widgets) and that
 // POST /api/first-run fired exactly once. Covered paths: chat-first + gate-absent
 // assertion, Local/on-device, Cloud (OAuth card mocked at the network boundary +
 // cloud-agent pick), tutorial-or-skip (both branches), and POST-once.
@@ -67,7 +67,7 @@ test.describe("in-chat onboarding → home → launcher", () => {
     ]);
   });
 
-  test("Local onboarding lands on the home and swipe-left opens the launcher", async ({
+  test("Local onboarding lands on the home with the launcher tiles inline", async ({
     page,
   }) => {
     await rm(SCREENSHOT_DIR, { force: true, recursive: true });
@@ -90,7 +90,7 @@ test.describe("in-chat onboarding → home → launcher", () => {
     // NEGATIVE, restated at the spec level: mid-onboarding the sheet cannot be
     // dismissed — the old Escape-collapse-to-reach-the-launcher step is gone.
     await page.keyboard.press("Escape");
-    await expect(page.getByTestId("continuous-chat-overlay")).toHaveAttribute(
+    await expect(page.getByTestId("chat-overlay")).toHaveAttribute(
       "data-open",
       "true",
     );
@@ -102,14 +102,14 @@ test.describe("in-chat onboarding → home → launcher", () => {
     });
 
     // Completion settled the sheet from the pinned FULL detent down to the HALF
-    // detent (#15339 / ContinuousChatOverlay.firstrun.test): the sheet stays
+    // detent (#15339 / ChatOverlay.firstrun.test): the sheet stays
     // OPEN with the home revealed behind its top half, and the composer unlocks.
-    // swipeLeftToLauncher collapses the open sheet before the flick.
+    // expectInlineLauncher collapses the open sheet before asserting the grid.
     await expect(page.getByTestId("chat-sheet")).toHaveAttribute(
       "data-detent",
       "half",
     );
-    await expect(page.getByTestId("continuous-chat-overlay")).toHaveAttribute(
+    await expect(page.getByTestId("chat-overlay")).toHaveAttribute(
       "data-open",
       "true",
     );
@@ -117,15 +117,15 @@ test.describe("in-chat onboarding → home → launcher", () => {
 
     // Post-login permission priming (#12331) can open over the home on the
     // completion edge; completeOnboardingToHome already drove its "Skip for now"
-    // dismissal (dismissPermissionPrimingIfShown), and swipeLeftToLauncher clears
-    // any residual before the flick — so no separate dismissal step is needed
-    // here (a second one races the helper's and flakes).
+    // dismissal (dismissPermissionPrimingIfShown), and expectInlineLauncher
+    // clears any residual first — so no separate dismissal step is needed here
+    // (a second one races the helper's and flakes).
 
     // Capture the populated home.
     await settleHomeEntrance(page);
     await screenshot(page, "home");
 
-    await swipeLeftToLauncher(page, surface, { input: "mouse" });
+    await expectInlineLauncher(page, surface);
     await screenshot(page, "launcher");
   });
 

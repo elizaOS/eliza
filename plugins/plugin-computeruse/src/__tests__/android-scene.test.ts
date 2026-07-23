@@ -131,7 +131,8 @@ describe("parseAndroidAxTree", () => {
 describe("androidAxIdToSceneId + sceneAxToAndroidAxNode round-trip", () => {
   it("round-trips through normalize + inverse", () => {
     const original = JSON.parse(KOTLIN_AX_JSON)[1];
-    const normalized = normalizeAndroidAxNode(original, 0)!;
+    const normalized = normalizeAndroidAxNode(original, 0);
+    if (!normalized) throw new Error("expected the fixture node to normalize");
     const inverted = sceneAxToAndroidAxNode(normalized);
     expect(inverted.id).toBe(original.id);
     expect(inverted.role).toBe(original.role);

@@ -3,6 +3,7 @@
  * Deterministic unit test with a stubbed runtime; no live model.
  */
 import * as os from "node:os";
+import { promoteSubactionsToActions } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 // CREATE_AGENT_TASK is `TASKS { action: "create" }` (the default action).
 import { createTaskAction } from "../../src/actions/tasks.js";
@@ -16,6 +17,40 @@ import {
 } from "../../src/test-utils/action-test-utils.js";
 
 describe("TASKS:create", () => {
+  it("rejects a history operation alias on the promoted create tool", async () => {
+    const create = promoteSubactionsToActions(createTaskAction).find(
+      (action) => action.name === "TASKS_CREATE",
+    );
+    if (!create) throw new Error("TASKS_CREATE was not promoted");
+    const svc = serviceMock();
+
+    const result = await create.handler(
+      runtimeWith(svc),
+      memory({ task: "show task history" }),
+      state,
+      { parameters: { operation: "history", task: "show task history" } },
+      callback(),
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      text: expect.stringContaining("Call TASKS_HISTORY"),
+    });
+    expect(svc.spawnSession).not.toHaveBeenCalled();
+  });
+
+  it("exposes create plus capability-based issue and scheduling routes", () => {
+    const actions = createTaskAction.parameters?.find(
+      (parameter) => parameter.name === "action",
+    )?.schema.enum;
+    expect(actions).toContain("create");
+    expect(createTaskAction.routingHint).toContain("TASKS_MANAGE_ISSUES");
+    expect(createTaskAction.routingHint).toContain("TRIGGER_CREATE");
+    expect(createTaskAction.routingHint).toContain(
+      "whichever is exposed this turn",
+    );
+  });
+
   it("keeps the coding TASKS parent out of generic owner task context", () => {
     expect(createTaskAction.contexts).toContain("code");
     expect(createTaskAction.contexts).toContain("automation");

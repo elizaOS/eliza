@@ -49,7 +49,7 @@ jobs:
         run: |
           set -euxo pipefail
           df -h /
-          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache/CodeQL || true
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android || true
           docker system prune -af || true
           df -h /
 

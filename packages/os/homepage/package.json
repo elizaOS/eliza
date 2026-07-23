@@ -10,6 +10,7 @@
     "preview": "bun --bun vite preview --port 4455",
     "typecheck": "tsc -b",
     "test": "node --test tests/smoke.node.test.mjs",
+    "test:unit": "vitest run --config ./vitest.config.ts",
     "test:e2e": "../../../node_modules/.bin/playwright test",
     "screenshots": "node scripts/capture-screenshots.mjs",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
@@ -35,6 +36,7 @@
     "@elizaos/shared": "workspace:*"
   },
   "devDependencies": {
+    "@testing-library/react": "^16.3.2",
     "@biomejs/biome": "2.5.5",
     "@types/node": "^24.0.0",
     "@types/react": "^19",
@@ -42,8 +44,10 @@
     "playwright": "^1.59.1",
     "rollup-plugin-visualizer": "^7.0.1",
     "sharp": "^0.35.3",
+    "jsdom": "^29.0.0",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
+    "vitest": "^4.0.18",
     "viem": "^2.48.8"
   }
 }

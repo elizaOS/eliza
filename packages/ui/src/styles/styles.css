@@ -43,10 +43,7 @@ electrobun-wgpu {
   .memory-feed-empty {
     min-height: 6.5rem;
     padding-block: 0.5rem;
-    padding-inline-end: max(
-      1rem,
-      var(--eliza-continuous-chat-side-clearance, 0px)
-    );
+    padding-inline-end: max(1rem, var(--eliza-chat-side-clearance, 0px));
   }
 
   .memory-feed-empty > div {
@@ -517,13 +514,9 @@ kbd {
    * not essential status indicators — so re-enable the small rotational loaders.
    * Keep this list tight: only genuinely functional in-place loaders belong here.
    */
-  /* biome-ignore lint/style/noDescendingSpecificity: must re-win over the universal reset above. */
   .animate-spin,
-  /* biome-ignore lint/style/noDescendingSpecificity: match Tailwind's arbitrary-variant spin utility too. */
   [class~="animate-spin"],
-  /* biome-ignore lint/style/noDescendingSpecificity: native + ARIA progress indicators. */
   [role="progressbar"],
-  /* biome-ignore lint/style/noDescendingSpecificity: sonner toast loading bar. */
   .sonner-loading-bar {
     /* biome-ignore lint/complexity/noImportantStyles: must override the universal reduced-motion reset. */
     animation-duration: 1s !important;
