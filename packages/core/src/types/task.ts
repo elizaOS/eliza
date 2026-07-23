@@ -88,6 +88,8 @@ export interface TaskMetadata {
 	notAfter?: number;
 	/** Optional. If true, the scheduler skips this task. WHY: operators pause/resume via API without deleting the task. */
 	paused?: boolean;
+	/** Optional. Set by the scheduler when IT paused a repeat task because no worker was registered (orphan self-heal). Distinguishes scheduler pauses (auto-resumed when the worker re-registers) from operator pauses (never auto-resumed). */
+	orphanedNoWorker?: boolean;
 	/** Optional. Consecutive failure count; reset to 0 on success. WHY: drive backoff and auto-pause after maxFailures. */
 	failureCount?: number;
 	/** Optional. Auto-pause after this many consecutive failures. undefined = 5. Any value <= 0 (use 0 or -1, not Infinity; JSON loses it) = never auto-pause — for critical heartbeats that must survive failure storms. WHY: prevent infinite retry storms; operators can resume after fixing. */
