@@ -1,18 +1,10 @@
-// app/api/v1/chat/completions/route.ts
-import { Hono } from "hono";
-import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import type { AppEnv } from "@/types/cloud-worker-env";
-
 /**
- * OpenAI-compatible chat completions endpoint.
- *
- * Uses AI SDK with AI Gateway for all LLM calls.
- * Real-time usage data from SDK responses for accurate billing.
- * Includes 20% platform markup on all costs.
- *
- * IMPORTANT: Do NOT call provider APIs directly. Always use AI SDK.
+ * OpenAI-compatible Cloud chat inference boundary for authenticated requests,
+ * streaming translation, usage metering, and billing settlement. Provider
+ * access stays behind the AI SDK and AI Gateway so routing and accounting share
+ * one observable path.
  */
-
+import { ElizaError } from "@elizaos/core";
 import {
   APICallError,
   generateText,
@@ -23,6 +15,8 @@ import {
   streamText,
   type ToolSet,
 } from "ai";
+import { Hono } from "hono";
+import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { getErrorStatusCode } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { createPreflightResponse } from "@/lib/middleware/cors-apps";
@@ -127,6 +121,7 @@ import { createCreditReservationSettler } from "@/lib/utils/credit-reservation";
 import { logger } from "@/lib/utils/logger";
 import { getRouteTimeoutMs } from "@/lib/utils/request-timeout";
 import { settleOffResponsePath } from "@/lib/utils/settle-off-response-path";
+import type { AppEnv } from "@/types/cloud-worker-env";
 
 const ROUTE_MAX_DURATION = 800;
 
@@ -595,6 +590,93 @@ function toOpenAIArguments(input: unknown): string {
   } catch {
     return "{}";
   }
+}
+
+const TOOL_CALL_STREAM_ERROR_CODE = "CHAT_TOOL_CALL_STREAM_INVALID";
+
+type StreamedToolCallState = {
+  index: number;
+  toolName: string;
+  argumentsText: string;
+  inputEnded: boolean;
+  completed: boolean;
+};
+
+function invalidToolCallStream(reason: string, cause?: unknown): ElizaError {
+  return new ElizaError("Provider returned an invalid streamed tool call", {
+    code: TOOL_CALL_STREAM_ERROR_CODE,
+    context: { reason },
+    cause,
+    severity: "ephemeral",
+  });
+}
+
+function parseCompleteToolCallArguments(value: string): unknown {
+  try {
+    return JSON.parse(value) as unknown;
+  } catch (cause) {
+    // error-policy:J2 preserve the provider parse failure under a stable protocol classification.
+    throw invalidToolCallStream(
+      "arguments are not one complete JSON value",
+      cause,
+    );
+  }
+}
+
+function validatedOpenAIToolArguments(input: unknown): {
+  serialized: string;
+  value: unknown;
+} {
+  let serialized: string | undefined;
+  if (typeof input === "string") {
+    serialized = input;
+  } else {
+    try {
+      serialized = JSON.stringify(input);
+    } catch (cause) {
+      // error-policy:J2 preserve serialization failures without fabricating empty arguments.
+      throw invalidToolCallStream(
+        "consolidated arguments are not JSON serializable",
+        cause,
+      );
+    }
+  }
+  if (serialized === undefined) {
+    throw invalidToolCallStream(
+      "consolidated arguments are not JSON serializable",
+    );
+  }
+  return {
+    serialized,
+    value: parseCompleteToolCallArguments(serialized),
+  };
+}
+
+function jsonValuesEqual(left: unknown, right: unknown): boolean {
+  if (left === right) return true;
+  if (left === null || right === null) return false;
+  if (typeof left !== "object" || typeof right !== "object") return false;
+
+  if (Array.isArray(left) || Array.isArray(right)) {
+    if (!Array.isArray(left) || !Array.isArray(right)) return false;
+    return (
+      left.length === right.length &&
+      left.every((value, index) => jsonValuesEqual(value, right[index]))
+    );
+  }
+
+  const leftRecord = left as Record<string, unknown>;
+  const rightRecord = right as Record<string, unknown>;
+  const leftKeys = Object.keys(leftRecord);
+  const rightKeys = Object.keys(rightRecord);
+  return (
+    leftKeys.length === rightKeys.length &&
+    leftKeys.every(
+      (key) =>
+        Object.hasOwn(rightRecord, key) &&
+        jsonValuesEqual(leftRecord[key], rightRecord[key]),
+    )
+  );
 }
 
 function toModelContentParts(
@@ -2936,20 +3018,36 @@ async function handleStreamingRequest(
   const openAIStream = new ReadableStream({
     async start(controller) {
       const responseId = `chatcmpl-${Date.now()}`;
-      const toolCallIndexes = new Map<string, number>();
-      // Argument chars already delivered per tool call id via
-      // `tool-input-delta` fragments. OpenAI streaming clients concatenate
-      // every `function.arguments` fragment for an index, so the consolidated
-      // `tool-call` part must not re-emit arguments that were already
-      // streamed — doing so produced doubled, unparseable argument JSON
-      // downstream (hermes/openclaw agents hard-fail the tool call).
-      const toolCallArgsDelivered = new Map<string, number>();
+      const toolCalls = new Map<string, StreamedToolCallState>();
       let nextToolCallIndex = 0;
+      let sawFinish = false;
       let finishReason = "stop";
       let finishUsage: unknown;
 
       try {
         for await (const part of result.fullStream) {
+          if (part.type === "finish") {
+            if (sawFinish) {
+              throw invalidToolCallStream(
+                "the provider emitted finish more than once",
+              );
+            }
+            sawFinish = true;
+            finishReason =
+              finishReason === "tool_calls" ||
+              part.finishReason === "tool-calls"
+                ? "tool_calls"
+                : part.finishReason;
+            finishUsage = part.totalUsage;
+            continue;
+          }
+
+          if (sawFinish) {
+            throw invalidToolCallStream(
+              "the provider emitted an event after finish",
+            );
+          }
+
           if (part.type === "text-delta") {
             const chunk = {
               id: responseId,
@@ -2973,9 +3071,19 @@ async function handleStreamingRequest(
           }
 
           if (part.type === "tool-input-start") {
+            if (toolCalls.has(part.id)) {
+              throw invalidToolCallStream(
+                "a tool-call id was started more than once",
+              );
+            }
             const index = nextToolCallIndex++;
-            toolCallIndexes.set(part.id, index);
-            toolCallArgsDelivered.set(part.id, 0);
+            toolCalls.set(part.id, {
+              index,
+              toolName: part.toolName,
+              argumentsText: "",
+              inputEnded: false,
+              completed: false,
+            });
             controller.enqueue(
               encoder.encode(
                 `data: ${JSON.stringify({
@@ -3007,11 +3115,23 @@ async function handleStreamingRequest(
           }
 
           if (part.type === "tool-input-delta") {
-            const index = toolCallIndexes.get(part.id) ?? 0;
-            toolCallArgsDelivered.set(
-              part.id,
-              (toolCallArgsDelivered.get(part.id) ?? 0) + part.delta.length,
-            );
+            const state = toolCalls.get(part.id);
+            if (!state) {
+              throw invalidToolCallStream(
+                "an argument delta arrived before tool-input-start",
+              );
+            }
+            if (state.completed) {
+              throw invalidToolCallStream(
+                "an argument delta arrived after the call completed",
+              );
+            }
+            if (state.inputEnded) {
+              throw invalidToolCallStream(
+                "an argument delta arrived after tool-input-end",
+              );
+            }
+            state.argumentsText += part.delta;
             controller.enqueue(
               encoder.encode(
                 `data: ${JSON.stringify({
@@ -3026,7 +3146,7 @@ async function handleStreamingRequest(
                       delta: {
                         tool_calls: [
                           {
-                            index,
+                            index: state.index,
                             function: { arguments: part.delta },
                           },
                         ],
@@ -3040,20 +3160,64 @@ async function handleStreamingRequest(
             continue;
           }
 
+          if (part.type === "tool-input-end") {
+            const state = toolCalls.get(part.id);
+            if (!state) {
+              throw invalidToolCallStream(
+                "tool-input-end arrived before tool-input-start",
+              );
+            }
+            if (state.completed) {
+              throw invalidToolCallStream(
+                "tool-input-end arrived after the call completed",
+              );
+            }
+            if (state.inputEnded) {
+              throw invalidToolCallStream(
+                "tool-input-end arrived more than once",
+              );
+            }
+            state.inputEnded = true;
+            continue;
+          }
+
           if (part.type === "tool-call") {
-            const index =
-              toolCallIndexes.get(part.toolCallId) ?? nextToolCallIndex++;
-            toolCallIndexes.set(part.toolCallId, index);
-            // Arguments already went out incrementally for this id; the
-            // consolidated part is only the SDK's summary event. Re-emitting
-            // the full serialized input here would append a second copy of
-            // the arguments on the client. Providers that never stream input
-            // fragments (no start/delta for this id, or an empty delta
-            // stream) still need the full emission below.
-            if ((toolCallArgsDelivered.get(part.toolCallId) ?? 0) > 0) {
+            let state = toolCalls.get(part.toolCallId);
+            if (state?.completed) {
+              throw invalidToolCallStream(
+                "a tool-call id completed more than once",
+              );
+            }
+            if (!state) {
+              state = {
+                index: nextToolCallIndex++,
+                toolName: part.toolName,
+                argumentsText: "",
+                inputEnded: false,
+                completed: false,
+              };
+              toolCalls.set(part.toolCallId, state);
+            } else if (state.toolName !== part.toolName) {
+              throw invalidToolCallStream(
+                "the tool name changed before the call completed",
+              );
+            }
+
+            const consolidated = validatedOpenAIToolArguments(part.input);
+            if (state.argumentsText.length > 0) {
+              const streamed = parseCompleteToolCallArguments(
+                state.argumentsText,
+              );
+              if (!jsonValuesEqual(streamed, consolidated.value)) {
+                throw invalidToolCallStream(
+                  "fragmented arguments do not match the consolidated input",
+                );
+              }
+              state.completed = true;
               finishReason = "tool_calls";
               continue;
             }
+
             controller.enqueue(
               encoder.encode(
                 `data: ${JSON.stringify({
@@ -3068,12 +3232,12 @@ async function handleStreamingRequest(
                       delta: {
                         tool_calls: [
                           {
-                            index,
+                            index: state.index,
                             id: part.toolCallId,
                             type: "function",
                             function: {
                               name: part.toolName,
-                              arguments: toOpenAIArguments(part.input),
+                              arguments: consolidated.serialized,
                             },
                           },
                         ],
@@ -3084,21 +3248,25 @@ async function handleStreamingRequest(
                 })}\n\n`,
               ),
             );
+            state.completed = true;
             finishReason = "tool_calls";
             continue;
-          }
-
-          if (part.type === "finish") {
-            finishReason =
-              part.finishReason === "tool-calls"
-                ? "tool_calls"
-                : part.finishReason;
-            finishUsage = part.totalUsage;
           }
 
           if (part.type === "error") {
             throw part.error;
           }
+        }
+
+        if (toolCalls.size > 0 && !sawFinish) {
+          throw invalidToolCallStream(
+            "the provider stream ended without finish",
+          );
+        }
+        if ([...toolCalls.values()].some((state) => !state.completed)) {
+          throw invalidToolCallStream(
+            "the provider stream ended before every tool call completed",
+          );
         }
 
         // A low explicit max_tokens can be consumed entirely by hidden
@@ -3157,6 +3325,7 @@ async function handleStreamingRequest(
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
         controller.close();
       } catch (error) {
+        // error-policy:J1 translate provider and protocol failures into a terminal SSE error.
         // Finding #11: a provider error mid-stream (e.g. the cerebras 429/5xx
         // surfaced as a `fullStream` error part) would otherwise leave the
         // already-sent 200 SSE body silently truncated — an OpenAI-compatible
@@ -3184,6 +3353,9 @@ async function handleStreamingRequest(
         // caller the clean model-not-available form. onError does not always
         // fire before this catch, so the log here is the guaranteed record.
         const isConfigError = isProviderConfigurationError(error);
+        const isToolCallProtocolError =
+          error instanceof ElizaError &&
+          error.code === TOOL_CALL_STREAM_ERROR_CODE;
         if (isConfigError) {
           logger.error(
             "[Chat Completions] Provider configuration error during stream",
@@ -3196,26 +3368,36 @@ async function handleStreamingRequest(
             },
           );
         }
+        if (isToolCallProtocolError) {
+          logger.error("[Chat Completions] Invalid provider tool-call stream", {
+            model,
+            reason: error.context?.reason,
+          });
+        }
         const status = isConfigError
           ? 400
-          : (getRecoverableProviderErrorStatus(error) ??
-            getErrorStatusCode(error));
+          : isToolCallProtocolError
+            ? 503
+            : (getRecoverableProviderErrorStatus(error) ??
+              getErrorStatusCode(error));
         try {
           const errorChunk = {
             error: {
               message: isConfigError
                 ? modelNotAvailableMessage(model)
-                : redactPromptCacheKey(
-                    error instanceof Error ? error.message : String(error),
-                    promptCacheKey,
-                  ),
+                : isToolCallProtocolError
+                  ? error.message
+                  : redactPromptCacheKey(
+                      error instanceof Error ? error.message : String(error),
+                      promptCacheKey,
+                    ),
               // Same status→type mapping as the non-streaming path — a
               // hardcoded "rate_limit_error" here mislabeled every mid-stream
               // provider failure (schema 400s, upstream 5xx) as rate limiting,
               // steering OpenAI-compatible clients into pointless back-off
               // retries.
               type: openAiErrorTypeForStatus(status),
-              code: status,
+              code: isToolCallProtocolError ? error.code : status,
             },
           };
           controller.enqueue(
