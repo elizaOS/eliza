@@ -84,7 +84,8 @@ export async function editFileHandler(
       message: "file_path, old_string, and new_string are required",
     });
   }
-  const resolvedInput = resolveInputPath(runtime, conversationId, filePath);
+  const inputPath = resolveInputPath(runtime, conversationId, filePath);
+  if (!inputPath.ok) return failureToActionResult(inputPath.failure);
   if (oldStr === newStr) {
     return failureToActionResult({
       reason: "invalid_param",
@@ -105,7 +106,7 @@ export async function editFileHandler(
     });
   }
 
-  const validated = await sandbox.validatePath(conversationId, resolvedInput);
+  const validated = await sandbox.validatePath(conversationId, inputPath.value);
   if (validated.ok === false) {
     const reason =
       validated.reason === "blocked" ? "path_blocked" : "invalid_param";
