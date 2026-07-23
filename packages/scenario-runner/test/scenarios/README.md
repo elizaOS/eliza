@@ -13,6 +13,15 @@ catalog with `SCENARIO_USE_LLM_PROXY=1` and
   named-color and hex color set, programmable GLSL shader presets (natural
   phrasing + explicit `preset` param), a live-shader uniform tweak, undo, redo,
   and reset — asserting the exact ordered `background:apply` broadcast ledger.
+- `deterministic-settings-voice-actions` covers the real `SETTINGS` voice
+  section: continuous-chat on/off, silence window, RMS threshold, and the
+  invalid-mode / out-of-range rejections — asserting the exact ordered
+  `PUT /api/config` persisted-prefs ledger and matching `voice-settings:apply`
+  broadcast ledger, including the #14910 twin-default seeding.
+- `deterministic-document-actions` covers the real core `DOCUMENT` handler and
+  DocumentService DB state: list, an owner-only mutation-wall refusal for a
+  USER-granted non-owner, the owner delete (document actually gone), and the
+  not-found / missing-id rejections.
 - `deterministic-generated-app-routes` covers a generated app loaded through the
   real AppRegistryService and app-manager routes: registry persistence,
   catalog tile data, generated hero SVG, `/api/apps/:slug/*` package routing,
