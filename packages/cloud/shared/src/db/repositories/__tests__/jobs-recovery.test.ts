@@ -1,13 +1,12 @@
 /**
- * Real-DB coverage for stale job recovery respecting each row's max_attempts.
- *
- * The provisioning daemon enqueues some non-idempotent jobs with max_attempts=1.
- * If a worker dies while such a row is in_progress, stale recovery must fail it
- * instead of re-queueing it under a generic service-level retry budget.
+ * Exercises stale and startup job recovery against real PGlite state.
+ * Single-attempt jobs fail closed before cutover, while a durable canary
+ * cutover resumes idempotent cleanup without spending its terminal attempt.
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
-import { jobs } from "../../schemas/jobs";
+import { eq, type SQL } from "drizzle-orm";
+import { type Job, jobs } from "../../schemas/jobs";
 
 process.env.DATABASE_URL ||= "pglite://memory";
 process.env.NODE_ENV ||= "test";
@@ -15,6 +14,13 @@ process.env.MOCK_REDIS ||= "1";
 
 const PGLITE_TIMEOUT = 60_000;
 const ORG_ID = "00000000-0000-4000-8000-000000001854";
+const ACTOR_ID = "00000000-0000-4000-8000-000000001855";
+const AGENT_ID = "00000000-0000-4000-8000-000000001856";
+const ROLLOUT_ID = "00000000-0000-4000-8000-000000001857";
+const SOURCE_DIGEST = `sha256:${"a".repeat(64)}`;
+const TARGET_DIGEST = `sha256:${"b".repeat(64)}`;
+const JOB_STARTED_AT = new Date("2020-01-01T00:00:00.000Z");
+const JOB_UPDATED_AT = new Date("2020-01-01T00:01:00.000Z");
 
 let dbWrite: typeof import("../../client").dbWrite;
 let closeDb: typeof import("../../client").closeDatabaseConnectionsForTests | undefined;
@@ -25,35 +31,78 @@ async function seedJob(params: {
   id: string;
   maxAttempts: number;
   attempts?: number;
+  type?: string;
+  data?: Record<string, unknown>;
+  dataStorage?: string;
+  result?: Record<string, unknown>;
+  resultStorage?: string;
+  organizationId?: string;
+  userId?: string;
+  agentId?: string;
 }): Promise<void> {
-  await dbWrite.execute(
-    `INSERT INTO jobs (
-			id,
-			type,
-			status,
-			data,
-			attempts,
-			max_attempts,
-			organization_id,
-			scheduled_for,
-			started_at,
-			created_at,
-			updated_at
-		)
-		VALUES (
-			'${params.id}',
-			'agent_message',
-			'in_progress',
-			'{}'::jsonb,
-			${params.attempts ?? 0},
-			${params.maxAttempts},
-			'${ORG_ID}',
-			NOW() - INTERVAL '10 minutes',
-			NOW() - INTERVAL '10 minutes',
-			NOW() - INTERVAL '10 minutes',
-			NOW() - INTERVAL '10 minutes'
-		);`,
-  );
+  const old = JOB_STARTED_AT;
+  await dbWrite.insert(jobs).values({
+    id: params.id,
+    type: params.type ?? "agent_message",
+    status: "in_progress",
+    data: params.data ?? {},
+    data_storage: params.dataStorage ?? "inline",
+    result: params.result,
+    result_storage: params.resultStorage ?? "inline",
+    attempts: params.attempts ?? 0,
+    max_attempts: params.maxAttempts,
+    organization_id: params.organizationId ?? ORG_ID,
+    user_id: params.userId ?? ACTOR_ID,
+    agent_id: params.agentId ?? AGENT_ID,
+    scheduled_for: old,
+    started_at: old,
+    created_at: old,
+    updated_at: JOB_UPDATED_AT,
+  });
+}
+
+function canaryJobData(decisionAt: string): Record<string, unknown> {
+  return {
+    operation: "upgrade",
+    rolloutId: ROLLOUT_ID,
+    actorUserId: ACTOR_ID,
+    userId: ACTOR_ID,
+    decisionAt,
+    agentId: AGENT_ID,
+    organizationId: ORG_ID,
+    targetOwnerUserId: ACTOR_ID,
+    sourceImage: "ghcr.io/elizaos/eliza:production",
+    sourceDigest: SOURCE_DIGEST,
+    targetImage: `ghcr.io/elizaos/eliza-demo@${TARGET_DIGEST}`,
+    targetDigest: TARGET_DIGEST,
+  };
+}
+
+function pendingCutoverAudit(jobId: string): Record<string, unknown> {
+  const cutoverAt = JOB_UPDATED_AT.toISOString();
+  return {
+    success: false,
+    cleanupPending: true,
+    cutoverAt,
+    jobId,
+    operation: "upgrade",
+    rolloutId: ROLLOUT_ID,
+    actorUserId: ACTOR_ID,
+    decisionAt: cutoverAt,
+    agentId: AGENT_ID,
+    organizationId: ORG_ID,
+    targetOwnerUserId: ACTOR_ID,
+    sourceImage: "ghcr.io/elizaos/eliza:production",
+    sourceDigest: SOURCE_DIGEST,
+    targetImage: `ghcr.io/elizaos/eliza-demo@${TARGET_DIGEST}`,
+    targetDigest: TARGET_DIGEST,
+    startedAt: JOB_STARTED_AT.toISOString(),
+    finishedAt: cutoverAt,
+    oldNodeId: "node-old",
+    oldContainerName: "agent-old",
+    newNodeId: "node-new",
+    newContainerName: "agent-new",
+  };
 }
 
 beforeAll(async () => {
@@ -146,6 +195,45 @@ describe("jobsRepository.recoverStaleJobs", () => {
     });
   });
 
+  test("stale recovery resumes a committed canary cutover without spending its terminal attempt", async () => {
+    expect(pgliteReady).toBe(true);
+    const committedJobId = "00000000-0000-4000-8000-000000070854";
+    const preCutoverJobId = "00000000-0000-4000-8000-000000080854";
+    const audit = pendingCutoverAudit(committedJobId);
+    await seedJob({
+      id: committedJobId,
+      type: "agent_admin_canary_image",
+      maxAttempts: 1,
+      data: canaryJobData(audit.decisionAt as string),
+      result: audit,
+    });
+    await seedJob({
+      id: preCutoverJobId,
+      type: "agent_admin_canary_image",
+      maxAttempts: 1,
+    });
+
+    const recovered = await repo.recoverStaleJobs({
+      type: "agent_admin_canary_image",
+      staleThresholdMs: 5 * 60 * 1000,
+    });
+
+    expect(recovered).toBe(1);
+    const rows = await dbWrite.select().from(jobs).orderBy(jobs.id);
+    expect(rows.find((row) => row.id === committedJobId)).toMatchObject({
+      status: "pending",
+      attempts: 0,
+      result: audit,
+      error: expect.stringContaining("without consuming a terminal attempt"),
+    });
+    expect(rows.find((row) => row.id === preCutoverJobId)).toMatchObject({
+      status: "failed",
+      attempts: 1,
+      result: null,
+      error: expect.stringContaining("max attempts reached"),
+    });
+  });
+
   test("recovers in-progress rows claimed before a replacement worker started", async () => {
     expect(pgliteReady).toBe(true);
     const interruptedJobId = "00000000-0000-4000-8000-000000030854";
@@ -185,6 +273,269 @@ describe("jobsRepository.recoverStaleJobs", () => {
     expect(current).toMatchObject({
       status: "in_progress",
       attempts: 0,
+      error: null,
+    });
+  });
+
+  test("startup recovery resumes a committed canary cutover without spending its terminal attempt", async () => {
+    expect(pgliteReady).toBe(true);
+    const committedJobId = "00000000-0000-4000-8000-000000090854";
+    const preCutoverJobId = "00000000-0000-4000-8000-000000100854";
+    const audit = pendingCutoverAudit(committedJobId);
+    await seedJob({
+      id: committedJobId,
+      type: "agent_admin_canary_image",
+      maxAttempts: 1,
+      data: canaryJobData(audit.decisionAt as string),
+      result: audit,
+    });
+    await seedJob({
+      id: preCutoverJobId,
+      type: "agent_admin_canary_image",
+      maxAttempts: 1,
+    });
+
+    const recovered = await repo.recoverInProgressJobsStartedBefore({
+      type: "agent_admin_canary_image",
+      startedBefore: new Date(),
+    });
+
+    expect(recovered).toBe(1);
+    const rows = await dbWrite.select().from(jobs).orderBy(jobs.id);
+    expect(rows.find((row) => row.id === committedJobId)).toMatchObject({
+      status: "pending",
+      attempts: 0,
+      result: audit,
+      error: expect.stringContaining("without consuming a terminal attempt"),
+    });
+    expect(rows.find((row) => row.id === preCutoverJobId)).toMatchObject({
+      status: "failed",
+      attempts: 1,
+      result: null,
+      error: expect.stringContaining("max attempts reached"),
+    });
+  });
+
+  test("mismatched canary audit, data, storage, and row identities consume the ordinary terminal attempt", async () => {
+    expect(pgliteReady).toBe(true);
+    const otherActorId = "00000000-0000-4000-8000-000000001899";
+    const cases: Array<{
+      id: string;
+      data?: Record<string, unknown>;
+      dataStorage?: string;
+      result: Record<string, unknown>;
+      userId?: string;
+    }> = [];
+
+    const resultMismatchId = "00000000-0000-4000-8000-000000110854";
+    const resultMismatch = pendingCutoverAudit(resultMismatchId);
+    cases.push({
+      id: resultMismatchId,
+      data: canaryJobData(resultMismatch.decisionAt as string),
+      result: { ...resultMismatch, targetOwnerUserId: otherActorId },
+    });
+
+    const rowMismatchId = "00000000-0000-4000-8000-000000120854";
+    const rowMismatch = pendingCutoverAudit(rowMismatchId);
+    cases.push({
+      id: rowMismatchId,
+      data: canaryJobData(rowMismatch.decisionAt as string),
+      result: rowMismatch,
+      userId: otherActorId,
+    });
+
+    const invalidDataId = "00000000-0000-4000-8000-000000130854";
+    const invalidDataAudit = pendingCutoverAudit(invalidDataId);
+    cases.push({
+      id: invalidDataId,
+      data: {
+        ...canaryJobData(invalidDataAudit.decisionAt as string),
+        targetDigest: `sha256:${"c".repeat(64)}`,
+      },
+      result: invalidDataAudit,
+    });
+
+    const invalidTimestampId = "00000000-0000-4000-8000-000000140854";
+    const invalidTimestampAudit = pendingCutoverAudit(invalidTimestampId);
+    cases.push({
+      id: invalidTimestampId,
+      data: canaryJobData(invalidTimestampAudit.decisionAt as string),
+      result: { ...invalidTimestampAudit, finishedAt: "not-a-timestamp" },
+    });
+
+    const startedAtMismatchId = "00000000-0000-4000-8000-000000141854";
+    const startedAtMismatchAudit = pendingCutoverAudit(startedAtMismatchId);
+    cases.push({
+      id: startedAtMismatchId,
+      data: canaryJobData(startedAtMismatchAudit.decisionAt as string),
+      result: {
+        ...startedAtMismatchAudit,
+        startedAt: new Date(JOB_STARTED_AT.getTime() + 1_000).toISOString(),
+      },
+    });
+
+    const updatedAtMismatchId = "00000000-0000-4000-8000-000000142854";
+    const updatedAtMismatchAudit = pendingCutoverAudit(updatedAtMismatchId);
+    const forgedCutoverAt = new Date(JOB_UPDATED_AT.getTime() + 1_000).toISOString();
+    cases.push({
+      id: updatedAtMismatchId,
+      data: canaryJobData(updatedAtMismatchAudit.decisionAt as string),
+      result: {
+        ...updatedAtMismatchAudit,
+        cutoverAt: forgedCutoverAt,
+        finishedAt: forgedCutoverAt,
+      },
+    });
+
+    const offloadedDataId = "00000000-0000-4000-8000-000000150854";
+    const offloadedDataAudit = pendingCutoverAudit(offloadedDataId);
+    cases.push({
+      id: offloadedDataId,
+      data: canaryJobData(offloadedDataAudit.decisionAt as string),
+      dataStorage: "r2",
+      result: offloadedDataAudit,
+    });
+
+    for (const candidate of cases) {
+      await seedJob({
+        ...candidate,
+        type: "agent_admin_canary_image",
+        maxAttempts: 1,
+      });
+    }
+
+    expect(
+      await repo.recoverStaleJobs({
+        type: "agent_admin_canary_image",
+        staleThresholdMs: 5 * 60 * 1000,
+      }),
+    ).toBe(0);
+
+    const rows = await dbWrite
+      .select({
+        id: jobs.id,
+        status: jobs.status,
+        attempts: jobs.attempts,
+        error: jobs.error,
+      })
+      .from(jobs)
+      .orderBy(jobs.id);
+    expect(rows).toHaveLength(cases.length);
+    for (const row of rows) {
+      expect(row).toMatchObject({
+        status: "failed",
+        attempts: 1,
+        error: expect.stringContaining("max attempts reached"),
+      });
+    }
+  });
+
+  test("committed-cutover recovery loses its CAS after concurrent timestamp or error mutation", async () => {
+    expect(pgliteReady).toBe(true);
+    const timestampJobId = "00000000-0000-4000-8000-000000151854";
+    const errorJobId = "00000000-0000-4000-8000-000000152854";
+    for (const id of [timestampJobId, errorJobId]) {
+      const audit = pendingCutoverAudit(id);
+      await seedJob({
+        id,
+        type: "agent_admin_canary_image",
+        maxAttempts: 1,
+        data: canaryJobData(audit.decisionAt as string),
+        result: audit,
+      });
+    }
+
+    type RecoveryParams = {
+      job: Job;
+      startedBefore: Date;
+      isFailed: boolean;
+      newAttempts: number;
+      error: string;
+      recoveryFence: SQL;
+    };
+    const recoveryRepo = repo as unknown as {
+      recoverJobFromSnapshot: (params: RecoveryParams) => Promise<boolean>;
+    };
+    const originalRecover = recoveryRepo.recoverJobFromSnapshot.bind(recoveryRepo);
+    const interpose = spyOn(recoveryRepo, "recoverJobFromSnapshot").mockImplementation(
+      async (params) => {
+        if (params.job.id === timestampJobId) {
+          await dbWrite
+            .update(jobs)
+            .set({ updated_at: new Date(JOB_UPDATED_AT.getTime() + 5_000) })
+            .where(eq(jobs.id, params.job.id));
+        } else {
+          await dbWrite
+            .update(jobs)
+            .set({
+              error: "concurrent worker owns this recovery",
+              error_storage: "inline",
+              error_key: null,
+            })
+            .where(eq(jobs.id, params.job.id));
+        }
+        return await originalRecover(params);
+      },
+    );
+
+    try {
+      expect(
+        await repo.recoverStaleJobs({
+          type: "agent_admin_canary_image",
+          staleThresholdMs: 5 * 60 * 1000,
+        }),
+      ).toBe(0);
+    } finally {
+      interpose.mockRestore();
+    }
+
+    const rows = await dbWrite.select().from(jobs).orderBy(jobs.id);
+    expect(rows.find((row) => row.id === timestampJobId)).toMatchObject({
+      status: "in_progress",
+      attempts: 0,
+      error: null,
+    });
+    expect(rows.find((row) => row.id === errorJobId)).toMatchObject({
+      status: "in_progress",
+      attempts: 0,
+      error: "concurrent worker owns this recovery",
+    });
+  });
+
+  test("retry without attempt increment cannot overwrite a concurrent completion", async () => {
+    expect(pgliteReady).toBe(true);
+    const jobId = "00000000-0000-4000-8000-000000160854";
+    await seedJob({ id: jobId, maxAttempts: 3 });
+    const claimed = await repo.findByIdForWrite(jobId);
+    if (!claimed) throw new Error("expected claimed job");
+
+    const originalFind = repo.findByIdForWrite.bind(repo);
+    const primarySpy = spyOn(repo, "findByIdForWrite").mockImplementationOnce(async (id) => {
+      const snapshot = await originalFind(id);
+      await dbWrite
+        .update(jobs)
+        .set({
+          status: "completed",
+          result: { success: true, owner: "other-worker" },
+          completed_at: new Date("2026-07-23T01:00:00.000Z"),
+          updated_at: new Date("2026-07-23T01:00:00.000Z"),
+        })
+        .where(eq(jobs.id, id));
+      return snapshot;
+    });
+
+    try {
+      expect(
+        await repo.retryLaterWithoutIncrementingAttempts(claimed, "late retryable failure", 30_000),
+      ).toBeUndefined();
+    } finally {
+      primarySpy.mockRestore();
+    }
+
+    expect(await repo.findByIdForWrite(jobId)).toMatchObject({
+      status: "completed",
+      attempts: 0,
+      result: { success: true, owner: "other-worker" },
       error: null,
     });
   });

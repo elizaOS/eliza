@@ -131,7 +131,7 @@ function harness(job: Job) {
   const retryLaterSpy = spyOn(
     jobsRepository,
     "retryLaterWithoutIncrementingAttempts",
-  ).mockResolvedValue(undefined);
+  ).mockResolvedValue(job);
   return { job, claimSpy, recoverSpy, updateStatusSpy, updateSpy, incrementSpy, retryLaterSpy };
 }
 
@@ -329,7 +329,7 @@ describe("executeJob dispatch — success path per job type marks the job comple
     test(`${arm.name}: transport success → completed with a result record, no attempt burned`, async () => {
       const ctx = harness(makeJob(arm.type, arm.data));
       const disarmGate = armSnapshotGateFor(arm.type);
-      let atomicAuditUpdates: Record<string, unknown> | undefined;
+      const atomicAuditWrites: Array<Record<string, unknown>> = [];
       if (arm.type === JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE) {
         const canarySpy = spyOn(
           elizaSandboxService,
@@ -338,10 +338,14 @@ describe("executeJob dispatch — success path per job type marks the job comple
           const tx = {
             update: () => ({
               set: (updates: Record<string, unknown>) => {
-                atomicAuditUpdates = updates;
+                const prior =
+                  atomicAuditWrites.length === 0
+                    ? ctx.job
+                    : { ...ctx.job, ...atomicAuditWrites.at(-1) };
+                atomicAuditWrites.push(updates);
                 return {
                   where: () => ({
-                    returning: async () => [{ id: ctx.job.id }],
+                    returning: async () => [{ ...prior, ...updates }],
                   }),
                 };
               },
@@ -354,6 +358,7 @@ describe("executeJob dispatch — success path per job type marks the job comple
             newContainerName: "c-new",
             newDigest: params.targetDigest,
           });
+          await params.onConvergedInTx(tx as never);
           return arm.success as never;
         });
         serviceSpies.push(canarySpy);
@@ -368,21 +373,27 @@ describe("executeJob dispatch — success path per job type marks the job comple
         expect(res.retried).toBe(0);
         const completed = completedCall(ctx);
         if (arm.type === JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE) {
-          expect(completed).toBeDefined();
-          expect(completed?.[2]?.result).toMatchObject({
-            success: true,
-            cleanupPending: false,
-          });
-          expect(atomicAuditUpdates).toMatchObject({
+          expect(completed).toBeUndefined();
+          expect(atomicAuditWrites).toHaveLength(2);
+          expect(atomicAuditWrites[0]).toMatchObject({
             result_storage: "inline",
             error: null,
             completed_at: null,
           });
-          expect(atomicAuditUpdates?.result).toMatchObject({
+          expect(atomicAuditWrites[0]?.result).toMatchObject({
             success: false,
             cleanupPending: true,
           });
-          expect(atomicAuditUpdates).not.toHaveProperty("status");
+          expect(atomicAuditWrites[0]).not.toHaveProperty("status");
+          expect(atomicAuditWrites[1]).toMatchObject({
+            status: "completed",
+            result_storage: "inline",
+            error: null,
+          });
+          expect(atomicAuditWrites[1]?.result).toMatchObject({
+            success: true,
+            cleanupPending: false,
+          });
         } else {
           expect(completed).toBeDefined();
           expect(completed?.[2]?.result).toBeTruthy();
@@ -408,15 +419,20 @@ describe("executeJob dispatch — success path per job type marks the job comple
     if (!arm) throw new Error("admin canary dispatch arm missing");
     const first = harness(makeJob(arm.type, arm.data));
     let pendingAudit: Record<string, unknown> | undefined;
+    let pendingSnapshot: Job | undefined;
+    const findByIdSpy = spyOn(jobsRepository, "findByIdForWrite").mockImplementation(async () => {
+      return pendingSnapshot;
+    });
     const canarySpy = spyOn(elizaSandboxService, "executeAdminCanaryUpgrade").mockImplementation(
       async (params) => {
         const tx = {
           update: () => ({
             set: (updates: Record<string, unknown>) => {
               pendingAudit = updates.result as Record<string, unknown>;
+              pendingSnapshot = { ...first.job, ...updates } as Job;
               return {
                 where: () => ({
-                  returning: async () => [{ id: first.job.id }],
+                  returning: async () => [pendingSnapshot],
                 }),
               };
             },
@@ -453,26 +469,55 @@ describe("executeJob dispatch — success path per job type marks the job comple
       first.updateSpy.mockRestore();
       first.incrementSpy.mockRestore();
       first.retryLaterSpy.mockRestore();
+      findByIdSpy.mockRestore();
     }
 
     if (!pendingAudit) throw new Error("pending cutover audit was not captured");
+    if (typeof pendingAudit.cutoverAt !== "string") {
+      throw new Error("pending cutover audit has no cutover timestamp");
+    }
+    const retryStartedAt = new Date(Date.parse(pendingAudit.cutoverAt) + 1_000);
     const retry = harness(
       makeJob(arm.type, arm.data, {
         result: pendingAudit,
         status: "in_progress",
+        started_at: retryStartedAt,
+        updated_at: retryStartedAt,
       }),
     );
+    let cleanupCompletion: Record<string, unknown> | undefined;
     const convergeSpy = spyOn(
       elizaSandboxService,
       "convergeReplacementCleanupFence",
-    ).mockResolvedValue(undefined);
+    ).mockImplementation(async (_agentId, _organizationId, _expectation, onConvergedInTx) => {
+      await onConvergedInTx?.({
+        update: () => ({
+          set: (updates: Record<string, unknown>) => {
+            cleanupCompletion = updates.result as Record<string, unknown>;
+            return {
+              where: () => ({
+                returning: async () => [{ id: retry.job.id }],
+              }),
+            };
+          },
+        }),
+      } as never);
+    });
     serviceSpies.push(convergeSpy);
     try {
       const converged = await run(arm.type);
       expect(converged).toMatchObject({ succeeded: 1, retried: 0, failed: 0 });
-      expect(convergeSpy).toHaveBeenCalledWith(AGENT, ORG);
+      expect(convergeSpy).toHaveBeenCalledWith(
+        AGENT,
+        ORG,
+        expect.objectContaining({
+          targetOwnerUserId: USER,
+          targetDigest: arm.data.targetDigest,
+        }),
+        expect.any(Function),
+      );
       expect(canarySpy).toHaveBeenCalledTimes(1);
-      expect(completedCall(retry)?.[2]?.result).toMatchObject({
+      expect(cleanupCompletion).toMatchObject({
         success: true,
         cleanupPending: false,
       });
@@ -581,6 +626,34 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
       expect(res.failed).toBe(0);
       expect(ctx.retryLaterSpy).toHaveBeenCalledTimes(1);
       expect(ctx.retryLaterSpy.mock.calls[0]?.[1]).toBe("readiness probe transport_unresolved");
+      expect(ctx.incrementSpy).not.toHaveBeenCalled();
+    } finally {
+      ctx.claimSpy.mockRestore();
+      ctx.recoverSpy.mockRestore();
+      ctx.updateStatusSpy.mockRestore();
+      ctx.updateSpy.mockRestore();
+      ctx.incrementSpy.mockRestore();
+      ctx.retryLaterSpy.mockRestore();
+    }
+  });
+
+  test("retryable transport lost to another worker is not reported as requeued", async () => {
+    const ctx = harness(makeJob(JOB_TYPES.AGENT_PROVISION));
+    ctx.retryLaterSpy.mockResolvedValue(undefined);
+    stub("provision", {
+      success: false,
+      retryable: true,
+      error: "readiness probe transport_unresolved",
+      sandboxRecord: { id: AGENT, organization_id: ORG, user_id: USER, status: "provisioning" },
+    });
+    try {
+      const res = await run(JOB_TYPES.AGENT_PROVISION);
+      expect(res).toMatchObject({ claimed: 1, retried: 0, failed: 0 });
+      expect(ctx.retryLaterSpy).toHaveBeenCalledWith(
+        ctx.job,
+        "readiness probe transport_unresolved",
+        expect.any(Number),
+      );
       expect(ctx.incrementSpy).not.toHaveBeenCalled();
     } finally {
       ctx.claimSpy.mockRestore();

@@ -13,6 +13,7 @@ import {
   spyOn,
   test,
 } from "bun:test";
+import { readFileSync } from "node:fs";
 import { KeyNotFoundError, KmsError, orgKey } from "@elizaos/security/kms";
 import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
@@ -5765,6 +5766,43 @@ describe("isPermanentlyLostSnapshot (prune-vs-preserve gating)", () => {
   });
 });
 
+describe("replacement runtime authentication contract", () => {
+  test("keeps /api/status protected while only GET /api/health bypasses authentication", () => {
+    const agentApiDirectory = new URL("../../../../../agent/src/api/", import.meta.url);
+    const routeClassifierSource = readFileSync(
+      new URL("static-file-server.ts", agentApiDirectory),
+      "utf8",
+    );
+    const serverSource = readFileSync(new URL("server.ts", agentApiDirectory), "utf8");
+
+    // Both endpoints enter the normal protected /api namespace. The agent
+    // server then exempts only the public liveness probe; rollout identity and
+    // startup checks deliberately use /api/status so a missing or rejected
+    // agent token fails before the public readiness probe can pass.
+    expect(routeClassifierSource).toMatch(
+      /export function isAuthProtectedRoute\(pathname: string\): boolean \{[\s\S]*pathname\.startsWith\("\/api\/"\)/,
+    );
+    expect(serverSource).toContain(
+      'const isHealthEndpoint = method === "GET" && pathname === "/api/health";',
+    );
+
+    const authGateStart = serverSource.indexOf(
+      'method !== "OPTIONS" &&\n    isAuthProtectedPath &&',
+    );
+    const authGateEnd = serverSource.indexOf(
+      'json(res, { error: "Unauthorized" }, 401);',
+      authGateStart,
+    );
+    expect(authGateStart).toBeGreaterThan(-1);
+    expect(authGateEnd).toBeGreaterThan(authGateStart);
+
+    const authGate = serverSource.slice(authGateStart, authGateEnd);
+    expect(authGate).toContain("!isHealthEndpoint");
+    expect(authGate).not.toContain('"/api/status"');
+    expect(authGate).not.toContain("isStatusEndpoint");
+  });
+});
+
 // LARP H3 — executeUpgrade() blue/green rollback, digest-mismatch, and the
 // compare-and-swap race guard that protects a LIVE billed agent row.
 // The provider MUST be a real DockerSandboxProvider instance (the method bails
@@ -5782,12 +5820,28 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
   const FROM_DIGEST = "sha256:0000000000000000000000000000000000000000000000000000000000000aaa";
   const TO_DIGEST = "sha256:1111111111111111111111111111111111111111111111111111111111111bbb";
 
+  function runtimeStatusResponse(
+    body: Record<string, unknown> = {
+      state: "running",
+      canRespond: true,
+      startup: { phase: "running", attempt: 0 },
+    },
+    status = 200,
+  ): Response {
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { "content-type": "application/json" },
+    });
+  }
+
   function runtimeHealthResponse(
     body: Record<string, unknown> = {
       ready: true,
+      canRespond: true,
       runtime: "ok",
       database: "ok",
-      plugins: { failed: 0 },
+      plugins: { loaded: 18, failed: 0 },
+      startup: { phase: "running", attempt: 0 },
     },
     status = 200,
   ): Response {
@@ -5874,13 +5928,17 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
       stopOnSpecificNodeForReplacement: stopOnSpecificNode,
     });
     replacementAwareProvider(provider as unknown as SandboxProvider);
-    globalThis.fetch = mock(async () => runtimeHealthResponse()) as unknown as typeof fetch;
+    const runtimeFetch = mock(async (input: RequestInfo | URL, _init?: RequestInit) =>
+      fetchUrl(input).endsWith("/api/status") ? runtimeStatusResponse() : runtimeHealthResponse(),
+    );
+    globalThis.fetch = runtimeFetch as unknown as typeof fetch;
     return {
       provider: provider as unknown as SandboxProvider,
       create,
       checkHealth,
       stop,
       stopOnSpecificNode,
+      runtimeFetch,
     };
   }
 
@@ -6025,17 +6083,20 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
       create: async () => blueHandle(TO_DIGEST),
       checkHealth: async () => true,
     });
-    const healthFetch = mock(async () =>
-      runtimeHealthResponse({
-        ready: false,
-        runtime: "ok",
-        database: "ok",
-        plugins: { failed: 1 },
-        agentState: "starting",
-        startup: { lastError: "migration failed" },
-      }),
+    const runtimeFetch = mock(async (input: RequestInfo | URL) =>
+      fetchUrl(input).endsWith("/api/status")
+        ? runtimeStatusResponse()
+        : runtimeHealthResponse({
+            ready: false,
+            canRespond: false,
+            runtime: "ok",
+            database: "ok",
+            plugins: { loaded: 17, failed: 1 },
+            agentState: "starting",
+            startup: { phase: "error", attempt: 1, lastError: "migration failed" },
+          }),
     );
-    globalThis.fetch = healthFetch as unknown as typeof fetch;
+    globalThis.fetch = runtimeFetch as unknown as typeof fetch;
     const svc = new ElizaSandboxService(provider);
     const snapshotSpy = spyOn(
       svc as unknown as {
@@ -6053,9 +6114,13 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
       expect(res.success).toBe(false);
       expect(res.error).toContain("Blue runtime readiness gate failed");
       expect(res.error).toContain("ready=false");
+      expect(res.error).toContain("canRespond=false");
       expect(res.error).toContain("plugins.failed=1");
       expect(res.error).toContain("migration failed");
-      expect(healthFetch).toHaveBeenCalledTimes(1);
+      expect(runtimeFetch.mock.calls.map((call) => fetchUrl(call[0]))).toEqual([
+        "https://new-bridge.example/api/status",
+        "https://new-bridge.example/api/health",
+      ]);
       expect(snapshotSpy).not.toHaveBeenCalled();
       expect(transactionCalled).toBe(false);
       expect(stopOnSpecificNode).toHaveBeenCalledTimes(1);
@@ -6078,15 +6143,80 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
     }
   }, 20_000);
 
+  for (const missing of ["plugins", "startup"] as const) {
+    test(`upgrade runtime readiness fails closed when ${missing} structure is missing`, async () => {
+      const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+      const agent = liveAgentRow();
+      const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(agent);
+      const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(oldNode());
+      const { provider, stop, stopOnSpecificNode } = await makeDockerProvider({
+        create: async () => blueHandle(TO_DIGEST),
+        checkHealth: async () => true,
+      });
+      const runtimeFetch = mock(async (input: RequestInfo | URL) =>
+        fetchUrl(input).endsWith("/api/status")
+          ? runtimeStatusResponse()
+          : runtimeHealthResponse({
+              ready: true,
+              runtime: "ok",
+              database: "ok",
+              ...(missing === "plugins" ? {} : { plugins: { loaded: 18, failed: 0 } }),
+              ...(missing === "startup" ? {} : { startup: { phase: "running", attempt: 0 } }),
+            }),
+      );
+      globalThis.fetch = runtimeFetch as unknown as typeof fetch;
+      const svc = new ElizaSandboxService(provider);
+      const snapshotSpy = spyOn(
+        svc as unknown as {
+          snapshot: (...a: unknown[]) => Promise<{ success: boolean }>;
+        },
+        "snapshot",
+      ).mockResolvedValue({ success: true });
+      let transactionCalled = false;
+      upgradeTransactionImpl = async () => {
+        transactionCalled = true;
+        return false as never;
+      };
+      try {
+        const result = await svc.executeUpgrade(AGENT, ORG, TO_DIGEST, DOCKER_IMAGE, FROM_DIGEST);
+        expect(result.success).toBe(false);
+        expect(result.error).toContain(`Blue runtime readiness gate failed`);
+        expect(result.error).toContain(`${missing}=missing`);
+        expect(runtimeFetch.mock.calls.map((call) => fetchUrl(call[0]))).toEqual([
+          "https://new-bridge.example/api/status",
+          "https://new-bridge.example/api/health",
+        ]);
+        expect(snapshotSpy).not.toHaveBeenCalled();
+        expect(transactionCalled).toBe(false);
+        expect(stopOnSpecificNode).toHaveBeenCalledTimes(1);
+        expect(stopOnSpecificNode).toHaveBeenCalledWith(
+          "node-new",
+          "agent-new-1",
+          null,
+          expect.objectContaining({
+            replacementAttemptId: expect.any(String),
+            containerId: "container-sandbox-new-1",
+          }),
+        );
+        expect(stop).not.toHaveBeenCalled();
+      } finally {
+        findSpy.mockRestore();
+        nodeSpy.mockRestore();
+        snapshotSpy.mockRestore();
+      }
+    });
+  }
+
   test("(c) happy path → atomic swap writes blue's node/container/bridge + image_digest=toDigest", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const agent = liveAgentRow();
     const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(agent);
     const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(oldNode());
-    const { provider, create, checkHealth, stop, stopOnSpecificNode } = await makeDockerProvider({
-      create: async () => blueHandle(TO_DIGEST),
-      checkHealth: async () => true,
-    });
+    const { provider, create, checkHealth, stop, stopOnSpecificNode, runtimeFetch } =
+      await makeDockerProvider({
+        create: async () => blueHandle(TO_DIGEST),
+        checkHealth: async () => true,
+      });
     const svc = new ElizaSandboxService(provider);
     // Pin the lifecycle lock + the FOR-UPDATE read to a no-op / unchanged row so
     // the CAS guard passes and control reaches the UPDATE.
@@ -6150,6 +6280,13 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
       expect(stop).not.toHaveBeenCalled();
       expect(create).toHaveBeenCalledTimes(1);
       expect(checkHealth).toHaveBeenCalledTimes(1);
+      expect(runtimeFetch.mock.calls.map((call) => fetchUrl(call[0]))).toEqual([
+        "https://new-bridge.example/api/status",
+        "https://new-bridge.example/api/health",
+      ]);
+      for (const call of runtimeFetch.mock.calls) {
+        expect(new Headers(call[1]?.headers).get("authorization")).toBe("Bearer agent-token");
+      }
     } finally {
       findSpy.mockRestore();
       nodeSpy.mockRestore();
@@ -6515,6 +6652,7 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
         targetImage: TARGET_IMAGE,
         targetDigest: TO_DIGEST,
         onCutoverInTx: async () => {},
+        onConvergedInTx: async () => {},
       });
       expect(result.success).toBe(false);
       expect(result.error).toContain("got missing");
@@ -6564,6 +6702,7 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
         targetImage: TARGET_IMAGE,
         targetDigest: TO_DIGEST,
         onCutoverInTx: async () => {},
+        onConvergedInTx: async () => {},
       });
       expect(result.success).toBe(false);
       expect(result.error).toContain("audited canary source image pair");
@@ -6621,6 +6760,7 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
         targetImage: TARGET_IMAGE,
         targetDigest: TO_DIGEST,
         onCutoverInTx: async () => {},
+        onConvergedInTx: async () => {},
       });
       expect(result.success).toBe(true);
       const params = sqlBoundParams(executedSql);
@@ -6685,6 +6825,7 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
         targetImage: TARGET_IMAGE,
         targetDigest: TO_DIGEST,
         onCutoverInTx: audit,
+        onConvergedInTx: async () => {},
       });
       expect(result.success).toBe(false);
       expect(result.error).toContain("durable audit write failed");
@@ -6756,6 +6897,7 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
         targetImage: TARGET_IMAGE,
         targetDigest: TO_DIGEST,
         onCutoverInTx: audit,
+        onConvergedInTx: async () => {},
       });
       expect(result.success).toBe(true);
       expect(result.cleanupPending).toBe(true);
@@ -6851,9 +6993,42 @@ describe("ElizaSandboxService.executeDowngrade rollback onto previous_image_dige
     };
   }
 
+  function runtimeStatusResponse(
+    body: Record<string, unknown> = {
+      state: "running",
+      canRespond: true,
+      startup: { phase: "running", attempt: 0 },
+    },
+    status = 200,
+  ): Response {
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { "content-type": "application/json" },
+    });
+  }
+
+  function runtimeHealthResponse(
+    body: Record<string, unknown> = {
+      ready: true,
+      canRespond: true,
+      runtime: "ok",
+      database: "ok",
+      plugins: { loaded: 18, failed: 0 },
+      startup: { phase: "running", attempt: 0 },
+    },
+    status = 200,
+  ): Response {
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { "content-type": "application/json" },
+    });
+  }
+
   async function makeDockerProvider(overrides: {
     create: () => Promise<unknown>;
     checkHealth: () => Promise<boolean>;
+    runtimeStatus?: (input: RequestInfo | URL, init?: RequestInit) => Response | Promise<Response>;
+    runtimeHealth?: (input: RequestInfo | URL, init?: RequestInit) => Response | Promise<Response>;
   }) {
     const { DockerSandboxProvider } = await import("./docker-sandbox-provider");
     const provider = new DockerSandboxProvider();
@@ -6868,12 +7043,19 @@ describe("ElizaSandboxService.executeDowngrade rollback onto previous_image_dige
       stopOnSpecificNodeForReplacement: stopOnSpecificNode,
     });
     replacementAwareProvider(provider as unknown as SandboxProvider);
+    const runtimeFetch = mock(async (input: RequestInfo | URL, init?: RequestInit) =>
+      fetchUrl(input).endsWith("/api/status")
+        ? await (overrides.runtimeStatus?.(input, init) ?? runtimeStatusResponse())
+        : await (overrides.runtimeHealth?.(input, init) ?? runtimeHealthResponse()),
+    );
+    globalThis.fetch = runtimeFetch as unknown as typeof fetch;
     return {
       provider: provider as unknown as SandboxProvider,
       create,
       checkHealth,
       stop,
       stopOnSpecificNode,
+      runtimeFetch,
     };
   }
 
@@ -6884,6 +7066,9 @@ describe("ElizaSandboxService.executeDowngrade rollback onto previous_image_dige
   async function runAdminCanaryRollback(options: {
     onCutoverInTx: () => Promise<void>;
     failPostCutoverCleanup?: boolean;
+    runtimeStatus?: (input: RequestInfo | URL, init?: RequestInit) => Response | Promise<Response>;
+    runtimeHealth?: (input: RequestInfo | URL, init?: RequestInit) => Response | Promise<Response>;
+    environmentVars?: Record<string, string>;
   }) {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const SOURCE_IMAGE = `ghcr.io/elizaos/eliza-demo@${CURRENT_DIGEST}`;
@@ -6892,6 +7077,7 @@ describe("ElizaSandboxService.executeDowngrade rollback onto previous_image_dige
       ...upgradedAgentRow(),
       docker_image: SOURCE_IMAGE,
       previous_docker_image: TARGET_IMAGE,
+      ...(options.environmentVars ? { environment_vars: options.environmentVars } : {}),
     };
     const primarySpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
       agent,
@@ -6909,10 +7095,23 @@ describe("ElizaSandboxService.executeDowngrade rollback onto previous_image_dige
       agentSandboxesRepository,
       "getReconstructedBackupState",
     ).mockResolvedValue({ memories: [], config: {}, workspaceFiles: {} });
-    const { provider, stop, stopOnSpecificNode } = await makeDockerProvider({
+    const lifecycleEvents: string[] = [];
+    const { provider, stop, stopOnSpecificNode, runtimeFetch } = await makeDockerProvider({
       create: async () =>
         blueHandle(PREV_DIGEST, options.failPostCutoverCleanup ? "vpn-old-rollback" : undefined),
       checkHealth: async () => true,
+      runtimeStatus: async (input, init) => {
+        lifecycleEvents.push("status");
+        return options.runtimeStatus
+          ? await options.runtimeStatus(input, init)
+          : runtimeStatusResponse();
+      },
+      runtimeHealth: async (input, init) => {
+        lifecycleEvents.push("health");
+        return options.runtimeHealth
+          ? await options.runtimeHealth(input, init)
+          : runtimeHealthResponse();
+      },
     });
     if (options.failPostCutoverCleanup) {
       stopOnSpecificNode.mockImplementation(async () => {
@@ -6923,7 +7122,9 @@ describe("ElizaSandboxService.executeDowngrade rollback onto previous_image_dige
     const pushSpy = spyOn(
       svc as unknown as { pushState: (...a: unknown[]) => Promise<void> },
       "pushState",
-    ).mockResolvedValue(undefined);
+    ).mockImplementation(async () => {
+      lifecycleEvents.push("restore");
+    });
     const lockSpy = spyOn(
       svc as unknown as { lockLifecycle: (...a: unknown[]) => Promise<void> },
       "lockLifecycle",
@@ -6934,7 +7135,10 @@ describe("ElizaSandboxService.executeDowngrade rollback onto previous_image_dige
       },
       "getAgentForLifecycleMutation",
     ).mockResolvedValue(agent);
+    let transactionCalled = false;
     upgradeTransactionImpl = async (fn) => {
+      transactionCalled = true;
+      lifecycleEvents.push("swap");
       const tx: UpgradeTx = {
         execute: async () => ({ rows: [{ id: AGENT }] }),
       };
@@ -6950,11 +7154,16 @@ describe("ElizaSandboxService.executeDowngrade rollback onto previous_image_dige
         targetImage: TARGET_IMAGE,
         targetDigest: PREV_DIGEST,
         onCutoverInTx: options.onCutoverInTx,
+        onConvergedInTx: async () => {},
       });
       return {
         result,
         stop,
         stopOnSpecificNode,
+        runtimeFetch,
+        lifecycleEvents,
+        transactionCalled,
+        pushCalls: pushSpy.mock.calls.length,
       };
     } finally {
       primarySpy.mockRestore();
@@ -6990,6 +7199,377 @@ describe("ElizaSandboxService.executeDowngrade rollback onto previous_image_dige
       findSpy.mockRestore();
     }
   });
+
+  const rollbackRuntimeHealthFailures: Array<{
+    name: string;
+    response: () => Response;
+    expectedError: string;
+  }> = [
+    {
+      name: "rejects a 503",
+      response: () => runtimeHealthResponse({ error: "Unavailable" }, 503),
+      expectedError: "/api/health returned HTTP 503",
+    },
+    {
+      name: "rejects malformed JSON",
+      response: () =>
+        new Response("{", {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      expectedError: "/api/health returned malformed JSON",
+    },
+    {
+      name: "rejects a runtime that cannot respond",
+      response: () =>
+        runtimeHealthResponse({
+          ready: true,
+          canRespond: false,
+          runtime: "ok",
+          database: "ok",
+          plugins: { loaded: 18, failed: 0 },
+          startup: { phase: "running", attempt: 0 },
+        }),
+      expectedError: "canRespond=false",
+    },
+    {
+      name: "rejects a missing plugins structure",
+      response: () =>
+        runtimeHealthResponse({
+          ready: true,
+          runtime: "ok",
+          database: "ok",
+          startup: { phase: "running", attempt: 0 },
+        }),
+      expectedError: "plugins=missing",
+    },
+    {
+      name: "rejects a missing startup structure",
+      response: () =>
+        runtimeHealthResponse({
+          ready: true,
+          runtime: "ok",
+          database: "ok",
+          plugins: { loaded: 18, failed: 0 },
+        }),
+      expectedError: "startup=missing",
+    },
+    {
+      name: "rejects malformed plugin counters",
+      response: () =>
+        runtimeHealthResponse({
+          ready: true,
+          runtime: "ok",
+          database: "ok",
+          plugins: { loaded: "18", failed: "0" },
+          startup: { phase: "running", attempt: 0 },
+        }),
+      expectedError: "plugins.loaded=18",
+    },
+    {
+      name: "rejects a runtime with no loaded plugins",
+      response: () =>
+        runtimeHealthResponse({
+          ready: true,
+          runtime: "ok",
+          database: "ok",
+          plugins: { loaded: 0, failed: 0 },
+          startup: { phase: "running", attempt: 0 },
+        }),
+      expectedError: "plugins.loaded=0",
+    },
+    {
+      name: "rejects plugin load failures",
+      response: () =>
+        runtimeHealthResponse({
+          ready: true,
+          runtime: "ok",
+          database: "ok",
+          plugins: { loaded: 17, failed: 1 },
+          startup: { phase: "running", attempt: 0 },
+        }),
+      expectedError: "plugins.failed=1",
+    },
+    {
+      name: "rejects database failures",
+      response: () =>
+        runtimeHealthResponse({
+          ready: true,
+          runtime: "ok",
+          database: "terminal_error",
+          plugins: { loaded: 18, failed: 0 },
+          startup: { phase: "running", attempt: 0 },
+        }),
+      expectedError: "database=terminal_error",
+    },
+    {
+      name: "rejects startup failures",
+      response: () =>
+        runtimeHealthResponse({
+          ready: true,
+          runtime: "ok",
+          database: "ok",
+          plugins: { loaded: 18, failed: 0 },
+          startup: { phase: "error", attempt: 1, lastError: "migration failed" },
+        }),
+      expectedError: "startup.phase=error",
+    },
+  ];
+
+  const rollbackRuntimeStatusFailures: Array<{
+    name: string;
+    response: () => Response;
+    expectedError: string;
+  }> = [
+    {
+      name: "rejects malformed JSON",
+      response: () =>
+        new Response("{", {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      expectedError: "/api/status returned malformed JSON",
+    },
+    {
+      name: "rejects a non-running runtime",
+      response: () =>
+        runtimeStatusResponse({
+          state: "starting",
+          canRespond: true,
+          startup: { phase: "starting", attempt: 1 },
+        }),
+      expectedError: "state=starting",
+    },
+    {
+      name: "rejects a runtime that cannot respond",
+      response: () =>
+        runtimeStatusResponse({
+          state: "running",
+          canRespond: false,
+          startup: { phase: "running", attempt: 0 },
+        }),
+      expectedError: "canRespond=false",
+    },
+    {
+      name: "rejects missing startup state",
+      response: () => runtimeStatusResponse({ state: "running" }),
+      expectedError: "startup=missing",
+    },
+  ];
+
+  for (const scenario of rollbackRuntimeStatusFailures) {
+    test(`pre-restore protected status gate ${scenario.name} before public health`, async () => {
+      const audit = mock(() => Promise.resolve());
+      const {
+        result,
+        stop,
+        stopOnSpecificNode,
+        runtimeFetch,
+        lifecycleEvents,
+        transactionCalled,
+        pushCalls,
+      } = await runAdminCanaryRollback({
+        onCutoverInTx: audit,
+        runtimeStatus: async () => scenario.response(),
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("Blue runtime readiness gate failed before state restore");
+      expect(result.error).toContain(scenario.expectedError);
+      expect(pushCalls).toBe(0);
+      expect(runtimeFetch.mock.calls.map((call) => fetchUrl(call[0]))).toEqual([
+        "https://rb-bridge.example/api/status",
+      ]);
+      expect(lifecycleEvents).toEqual(["status"]);
+      expect(transactionCalled).toBe(false);
+      expect(audit).not.toHaveBeenCalled();
+      expect(stopOnSpecificNode).toHaveBeenCalledTimes(1);
+      expect(stop).not.toHaveBeenCalled();
+    });
+  }
+
+  test("pre-restore protected status gate rejects 401 before public health or state mutation", async () => {
+    const audit = mock(() => Promise.resolve());
+    const {
+      result,
+      stop,
+      stopOnSpecificNode,
+      runtimeFetch,
+      lifecycleEvents,
+      transactionCalled,
+      pushCalls,
+    } = await runAdminCanaryRollback({
+      onCutoverInTx: audit,
+      runtimeStatus: async () => runtimeStatusResponse({ error: "Unauthorized" }, 401),
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Blue runtime readiness gate failed before state restore");
+    expect(result.error).toContain("/api/status returned HTTP 401");
+    expect(result.oldNodeId).toBe("node-cur");
+    expect(result.oldContainerName).toBe("agent-cur-1");
+    expect(pushCalls).toBe(0);
+    expect(runtimeFetch).toHaveBeenCalledTimes(1);
+    expect(fetchUrl(runtimeFetch.mock.calls[0]![0])).toBe("https://rb-bridge.example/api/status");
+    expect(new Headers(runtimeFetch.mock.calls[0]![1]?.headers).get("authorization")).toBe(
+      "Bearer agent-token",
+    );
+    expect(lifecycleEvents).toEqual(["status"]);
+    expect(transactionCalled).toBe(false);
+    expect(audit).not.toHaveBeenCalled();
+    expect(stopOnSpecificNode).toHaveBeenCalledTimes(1);
+    expect(stopOnSpecificNode).toHaveBeenCalledWith(
+      "node-rb",
+      "agent-rb-1",
+      null,
+      expect.objectContaining({
+        replacementAttemptId: expect.any(String),
+        containerId: "container-sandbox-rb-1",
+      }),
+    );
+    expect(stop).not.toHaveBeenCalled();
+  });
+
+  test("pre-restore runtime gate refuses an unauthenticated request when the API token is absent", async () => {
+    const audit = mock(() => Promise.resolve());
+    const {
+      result,
+      stop,
+      stopOnSpecificNode,
+      runtimeFetch,
+      lifecycleEvents,
+      transactionCalled,
+      pushCalls,
+    } = await runAdminCanaryRollback({
+      onCutoverInTx: audit,
+      environmentVars: {},
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("agent API token is unavailable");
+    expect(pushCalls).toBe(0);
+    expect(runtimeFetch).not.toHaveBeenCalled();
+    expect(lifecycleEvents).toEqual([]);
+    expect(transactionCalled).toBe(false);
+    expect(audit).not.toHaveBeenCalled();
+    expect(stopOnSpecificNode).toHaveBeenCalledTimes(1);
+    expect(stopOnSpecificNode).toHaveBeenCalledWith(
+      "node-rb",
+      "agent-rb-1",
+      null,
+      expect.objectContaining({
+        replacementAttemptId: expect.any(String),
+        containerId: "container-sandbox-rb-1",
+      }),
+    );
+    expect(stop).not.toHaveBeenCalled();
+  });
+
+  test("post-restore protected status gate rejects a lost authorization before public health or swap", async () => {
+    const audit = mock(() => Promise.resolve());
+    let statusAttempt = 0;
+    const {
+      result,
+      stop,
+      stopOnSpecificNode,
+      runtimeFetch,
+      lifecycleEvents,
+      transactionCalled,
+      pushCalls,
+    } = await runAdminCanaryRollback({
+      onCutoverInTx: audit,
+      runtimeStatus: async () => {
+        statusAttempt += 1;
+        return statusAttempt === 1
+          ? runtimeStatusResponse()
+          : runtimeStatusResponse({ error: "Unauthorized" }, 401);
+      },
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Blue runtime readiness gate failed after state restore");
+    expect(result.error).toContain("/api/status returned HTTP 401");
+    expect(result.oldNodeId).toBe("node-cur");
+    expect(result.oldContainerName).toBe("agent-cur-1");
+    expect(pushCalls).toBe(1);
+    expect(runtimeFetch.mock.calls.map((call) => fetchUrl(call[0]))).toEqual([
+      "https://rb-bridge.example/api/status",
+      "https://rb-bridge.example/api/health",
+      "https://rb-bridge.example/api/status",
+    ]);
+    for (const call of runtimeFetch.mock.calls) {
+      expect(new Headers(call[1]?.headers).get("authorization")).toBe("Bearer agent-token");
+    }
+    expect(lifecycleEvents).toEqual(["status", "health", "restore", "status"]);
+    expect(transactionCalled).toBe(false);
+    expect(audit).not.toHaveBeenCalled();
+    expect(stopOnSpecificNode).toHaveBeenCalledTimes(1);
+    expect(stopOnSpecificNode).toHaveBeenCalledWith(
+      "node-rb",
+      "agent-rb-1",
+      null,
+      expect.objectContaining({
+        replacementAttemptId: expect.any(String),
+        containerId: "container-sandbox-rb-1",
+      }),
+    );
+    expect(stop).not.toHaveBeenCalled();
+  });
+
+  for (const scenario of rollbackRuntimeHealthFailures) {
+    test(`post-restore runtime gate ${scenario.name}, preserves current primary, and retires blue`, async () => {
+      const audit = mock(() => Promise.resolve());
+      let healthAttempt = 0;
+      const {
+        result,
+        stop,
+        stopOnSpecificNode,
+        runtimeFetch,
+        lifecycleEvents,
+        transactionCalled,
+        pushCalls,
+      } = await runAdminCanaryRollback({
+        onCutoverInTx: audit,
+        runtimeHealth: async () => {
+          healthAttempt += 1;
+          return healthAttempt === 1 ? runtimeHealthResponse() : scenario.response();
+        },
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("Blue runtime readiness gate failed after state restore");
+      expect(result.error).toContain(scenario.expectedError);
+      expect(result.oldNodeId).toBe("node-cur");
+      expect(result.oldContainerName).toBe("agent-cur-1");
+      expect(pushCalls).toBe(1);
+      expect(runtimeFetch.mock.calls.map((call) => fetchUrl(call[0]))).toEqual([
+        "https://rb-bridge.example/api/status",
+        "https://rb-bridge.example/api/health",
+        "https://rb-bridge.example/api/status",
+        "https://rb-bridge.example/api/health",
+      ]);
+      for (const call of runtimeFetch.mock.calls) {
+        const healthHeaders = new Headers((call[1] as RequestInit | undefined)?.headers);
+        expect(healthHeaders.get("authorization")).toBe("Bearer agent-token");
+        expect(healthHeaders.get("x-api-key")).toBe("agent-token");
+        expect(healthHeaders.get("x-eliza-token")).toBe("agent-token");
+      }
+      expect(lifecycleEvents).toEqual(["status", "health", "restore", "status", "health"]);
+      expect(transactionCalled).toBe(false);
+      expect(audit).not.toHaveBeenCalled();
+      expect(stopOnSpecificNode).toHaveBeenCalledTimes(1);
+      expect(stopOnSpecificNode).toHaveBeenCalledWith(
+        "node-rb",
+        "agent-rb-1",
+        null,
+        expect.objectContaining({
+          replacementAttemptId: expect.any(String),
+          containerId: "container-sandbox-rb-1",
+        }),
+      );
+      expect(stop).not.toHaveBeenCalled();
+    });
+  }
 
   test("happy path with empty persisted image ref → restores pre-upgrade snapshot then swaps back onto PREV_DIGEST", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
@@ -7142,6 +7722,7 @@ describe("ElizaSandboxService.executeDowngrade rollback onto previous_image_dige
         targetImage: TARGET_IMAGE,
         targetDigest: PREV_DIGEST,
         onCutoverInTx: async () => {},
+        onConvergedInTx: async () => {},
       });
       expect(result.success).toBe(true);
       expect(primarySpy).toHaveBeenCalledTimes(1);
@@ -7190,12 +7771,29 @@ describe("ElizaSandboxService.executeDowngrade rollback onto previous_image_dige
 
   test("admin canary rollback remains successful when post-cutover cleanup fails", async () => {
     const audit = mock(() => Promise.resolve());
-    const { result, stop, stopOnSpecificNode } = await runAdminCanaryRollback({
+    const {
+      result,
+      stop,
+      stopOnSpecificNode,
+      runtimeFetch,
+      lifecycleEvents,
+      transactionCalled,
+      pushCalls,
+    } = await runAdminCanaryRollback({
       onCutoverInTx: audit,
       failPostCutoverCleanup: true,
     });
     expect(result.success).toBe(true);
     expect(result.cleanupPending).toBe(true);
+    expect(pushCalls).toBe(1);
+    expect(runtimeFetch.mock.calls.map((call) => fetchUrl(call[0]))).toEqual([
+      "https://rb-bridge.example/api/status",
+      "https://rb-bridge.example/api/health",
+      "https://rb-bridge.example/api/status",
+      "https://rb-bridge.example/api/health",
+    ]);
+    expect(lifecycleEvents).toEqual(["status", "health", "restore", "status", "health", "swap"]);
+    expect(transactionCalled).toBe(true);
     expect(audit).toHaveBeenCalledTimes(1);
     expect(stopOnSpecificNode).toHaveBeenCalledTimes(1);
     expect(stopOnSpecificNode).toHaveBeenCalledWith(

@@ -15,13 +15,55 @@
  * error path (incrementAttempt). Pure spy-based, no DB.
  */
 
-import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  spyOn,
+  test,
+} from "bun:test";
 
+import * as realHelpersNs from "../../db/helpers";
 import { jobsRepository } from "../../db/repositories/jobs";
 import type { Job } from "../../db/schemas/jobs";
 import { elizaSandboxService, SNAPSHOT_ENDPOINT_UNSUPPORTED } from "./eliza-sandbox";
 import { JOB_TYPES, type ProvisioningJobType } from "./provisioning-job-types";
-import { provisioningJobService } from "./provisioning-jobs";
+
+const realHelpers = { ...realHelpersNs };
+const conflictQueryTx = {
+  execute: async () => ({ rows: [] }),
+  select: () => ({
+    from: () => ({
+      where: () => ({
+        orderBy: () => ({
+          limit: async () => [],
+        }),
+      }),
+    }),
+  }),
+};
+const lifecycleDbWrite = {
+  ...(realHelpers.dbWrite as unknown as Record<string, unknown>),
+  transaction: async <T>(fn: (tx: typeof conflictQueryTx) => Promise<T>): Promise<T> =>
+    fn(conflictQueryTx),
+};
+let provisioningJobService: typeof import("./provisioning-jobs").provisioningJobService;
+
+beforeAll(async () => {
+  mock.module("../../db/helpers", () => ({
+    ...realHelpers,
+    dbWrite: lifecycleDbWrite,
+  }));
+  ({ provisioningJobService } = await import("./provisioning-jobs.ts?delete-lifecycle-harness"));
+});
+
+afterAll(() => {
+  mock.module("../../db/helpers", () => realHelpers);
+});
 
 const ORG = "22222222-2222-4222-8222-222222222222";
 const AGENT = "e06bb509-6c52-4c33-a9f7-66addc43e8c8";
@@ -83,7 +125,7 @@ function withClaimedJob(type: ProvisioningJobType, extraData: Record<string, unk
   const retryLaterSpy = spyOn(
     jobsRepository,
     "retryLaterWithoutIncrementingAttempts",
-  ).mockResolvedValue(undefined);
+  ).mockResolvedValue(job);
   return {
     job,
     claimSpy,
@@ -145,6 +187,7 @@ describe("ProvisioningJobService — Agent-not-found is a terminal no-op", () =>
       try {
         const res = await provisioningJobService.processPendingJobs(1, { jobTypes: [c.type] });
         expect(res.claimed).toBe(1);
+        expect(res.errors).toEqual([]);
         expect(res.succeeded).toBe(1);
         expect(res.failed).toBe(0);
         // Marked completed as a no-op…
@@ -197,7 +240,7 @@ describe("ProvisioningJobService — retryable readiness transport does not burn
         }),
       );
       expect(ctx.retryLaterSpy).toHaveBeenCalledTimes(1);
-      expect(ctx.retryLaterSpy.mock.calls[0]?.[0]).toBe(ctx.job.id);
+      expect(ctx.retryLaterSpy.mock.calls[0]?.[0]).toBe(ctx.job);
       expect(ctx.retryLaterSpy.mock.calls[0]?.[1]).toBe("readiness probe transport_unresolved");
       expect(ctx.incrementSpy).not.toHaveBeenCalled();
       expect(ctx.updateStatusSpy).not.toHaveBeenCalledWith(
