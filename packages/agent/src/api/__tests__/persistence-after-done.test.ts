@@ -229,8 +229,20 @@ function createState(): ConversationRouteState {
     logger,
     ensureConnection: vi.fn(async () => undefined),
     updateWorld: vi.fn(async () => undefined),
-    getWorld: vi.fn(async () => null),
-    getRoom: vi.fn(async () => null),
+    // The readiness reconciliation (#17119) verifies the world/room actually
+    // exist after ensureConnection; a null here now (correctly) fails the
+    // stream before generation, so the fake store must return minimal rows.
+    getWorld: vi.fn(async (worldId: UUID) => ({
+      id: worldId,
+      agentId: stringToUuid("agent-1"),
+      name: "Test World",
+      metadata: {},
+    })),
+    getRoom: vi.fn(async (reqRoomId: UUID) => ({
+      id: reqRoomId,
+      source: "client_chat",
+      type: "DM",
+    })),
     adapter: {},
   };
   return {
