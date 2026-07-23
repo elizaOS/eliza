@@ -9,7 +9,12 @@ import cloudApiWorker, {
   isCanonicalInferencePath,
   isThinInferenceEnabled,
   redirectFrontendHost,
+  SharedRuntimeConversation,
 } from "./index";
+
+test("exports the shared-runtime conversation Durable Object", () => {
+  expect(typeof SharedRuntimeConversation).toBe("function");
+});
 
 describe("thin inference entry dispatch", () => {
   const executionCtx = {

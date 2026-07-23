@@ -138,8 +138,11 @@ describe("shared agent messages/stream — real global middleware chain", () => 
   beforeEach(() => {
     resolveSharedAgent.mockReset();
     bridgeStream.mockReset();
+    // The resolved agent row must carry id/organization_id like a real
+    // resolve: the conversation coordinator sources bridgeStream args from the
+    // agent row, not the resolve envelope.
     resolveSharedAgent.mockResolvedValue({
-      agent: { execution_tier: "shared" },
+      agent: { id: AGENT, organization_id: ORG, execution_tier: "shared" },
       agentId: AGENT,
       orgId: ORG,
       agentName: "Eliza",

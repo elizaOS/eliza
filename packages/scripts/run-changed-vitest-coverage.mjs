@@ -184,13 +184,6 @@ export function runChangedVitestCoverage(repoRoot, testFiles) {
         CHANGED_COVERAGE_CONFIG,
         "--coverage",
         "--coverage.reporter=lcov",
-        // Package configs carry whole-suite global thresholds. This lane runs
-        // only changed files and applies its stricter changed-source floor in
-        // coverage-gate.awk after merging the per-package LCOV reports.
-        "--coverage.thresholds.lines=0",
-        "--coverage.thresholds.functions=0",
-        "--coverage.thresholds.statements=0",
-        "--coverage.thresholds.branches=0",
         // Cross-package suites (the PGLite runtime harness) execute workspace
         // sources OUTSIDE the package root via source aliases; without this
         // flag that real execution is invisible to the changed-file gate.

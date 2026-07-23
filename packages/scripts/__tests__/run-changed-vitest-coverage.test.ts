@@ -248,9 +248,8 @@ describe("changed Vitest coverage grouping", () => {
   });
 
   test("union-merges per-group LCOV reports so any-group coverage counts once per file", () => {
-    // The gate latches a failure on EVERY below-threshold occurrence of a
-    // changed file; a group that merely LOADED a file must not mask the group
-    // that exercised it.
+    // A group that merely loaded a file must not erase the execution observed
+    // by the group that exercised it.
     const root = fixture();
     const reportA = path.join(root, "coverage", "vitest", "a");
     const reportB = path.join(root, "coverage", "vitest", "b");
@@ -320,6 +319,14 @@ describe("changed Vitest coverage grouping", () => {
         "\n",
       ),
     );
+  });
+
+  test("does not inject percentage thresholds into changed Vitest runs", () => {
+    const runner = readFileSync(
+      path.join(repoRoot, "packages/scripts/run-changed-vitest-coverage.mjs"),
+      "utf8",
+    );
+    expect(runner).not.toContain("coverage.thresholds");
   });
 
   test("normalizes package-relative LCOV source paths to repository paths", () => {

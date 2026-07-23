@@ -100,7 +100,7 @@ app.get("/", async (c) => {
       // buildSharedRuntimeCharacter via the service).
       return json(
         c,
-        await sharedRestCharacter(r.agentId, r.orgId, r.agentName),
+        await sharedRestCharacter(r.agentId, r.orgId, r.agentName, r.agent),
       );
     default:
       // Genuinely-unknown shell endpoint — don't mask it with a default.

@@ -164,6 +164,16 @@ try {
     "packages/demo/src/public.d.ts",
     "export interface PublicType { id: string }\n",
   );
+  write(
+    dir,
+    "packages/demo/src/public.d.mts",
+    "export declare const publicValue: string;\n",
+  );
+  write(
+    dir,
+    "packages/demo/src/public.d.cts",
+    "export declare const commonValue: string;\n",
+  );
   write(dir, "packages/demo/src/runtime.mjs", "export const mjs = 1;\n");
   write(dir, "packages/demo/src/runtime.cjs", "exports.cjs = 1;\n");
   write(
@@ -430,6 +440,8 @@ try {
     () => {
       assert.ok(!out.files.includes("packages/demo/src/deleted.ts"));
       assert.ok(!out.files.includes("packages/demo/src/public.d.ts"));
+      assert.ok(!out.files.includes("packages/demo/src/public.d.mts"));
+      assert.ok(!out.files.includes("packages/demo/src/public.d.cts"));
       assert.ok(!out.files.includes("packages/demo/src/types.ts"));
     },
   );

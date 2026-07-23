@@ -397,18 +397,11 @@ vitest run tests/actions/weather.test.ts
 vitest watch
 ```
 
-### Coverage Thresholds
+### Coverage Reports
 
-The monorepo enforces minimum coverage in `vitest.config.ts`:
-
-| Metric | Minimum |
-|--------|---------|
-| Lines | 25% |
-| Functions | 25% |
-| Statements | 25% |
-| Branches | 15% |
-
-For standalone published plugins, aim for **80% coverage** — this is the recommended bar for quality.
+The monorepo reports line, function, statement, and branch coverage for
+visibility. It does not enforce percentage thresholds; tests should instead
+exercise the plugin's meaningful behavior, boundaries, and failure modes.
 
 ---
 

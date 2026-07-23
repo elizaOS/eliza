@@ -1,5 +1,6 @@
 /**
  * Hot-path orchestration test for POST /api/v1/chat/completions.
+ * Requests drive the real authorization and credit-admission boundary.
  *
  * The route has several independent reads between auth and credit reservation:
  * app monetization, pooled credential selection, reasoning-catalog lookup, and

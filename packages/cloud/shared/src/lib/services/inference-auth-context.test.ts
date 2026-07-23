@@ -177,6 +177,33 @@ describe("resolveInferenceAuthContext", () => {
     expect(serialized).not.toContain("org-1");
   });
 
+  test("cache-only miss returns warming and hydrates authoritatively off path", async () => {
+    let chainCalls = 0;
+    authImpl = async () => {
+      chainCalls++;
+      return {
+        user: { id: "user-1", organization_id: "org-1" },
+        apiKey: { id: "key-1" },
+      };
+    };
+    const waited: Promise<unknown>[] = [];
+    const result = await resolveInferenceAuthContext(reqWithApiKey(), {
+      cacheOnly: true,
+      executionCtx: { waitUntil: (promise) => waited.push(promise) },
+    });
+    expect(result).toEqual({ kind: "warming" });
+    expect(waited.length).toBeGreaterThan(0);
+    await waited[0];
+    await Promise.all(waited);
+    expect(chainCalls).toBe(1);
+
+    const retry = await resolveInferenceAuthContext(reqWithApiKey(), {
+      cacheOnly: true,
+    });
+    expect(retry.kind).toBe("authorized");
+    if (retry.kind === "authorized") expect(retry.source).toBe("cache");
+  });
+
   test("Worker execution context defers positive cache population and observes its outcome", async () => {
     let finishWrite = (): void => {};
     const writeSpy = spyOn(cache, "setWithOutcome").mockImplementation(

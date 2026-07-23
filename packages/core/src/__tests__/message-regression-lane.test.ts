@@ -8,11 +8,11 @@
  *
  * Added for #16230 (scoping the visible chat stream to the top-level reply):
  * `message.shortcut-gate.test` exercises the shortcut path's streaming-
- * suppression wrap; the surrounding turn/voice suites supply the rest of the
- * line coverage the gate's per-file floor requires. Only suites that share one
- * process cleanly are composed here — suites that write trajectory to disk or
- * install leaky module-level mocks (stress-compaction, credit-exhaustion,
- * attachment SSRF) stay in their own isolated files.
+ * suppression wrap; the surrounding turn/voice suites preserve the broader
+ * behavioral regression matrix. Only suites that share one process cleanly are
+ * composed here — suites that write trajectory to disk or install leaky
+ * module-level mocks (stress-compaction, credit-exhaustion, attachment SSRF)
+ * stay in their own isolated files.
  */
 import "../services/message.mute-drop.test";
 import "../services/message.shortcut-gate.test";

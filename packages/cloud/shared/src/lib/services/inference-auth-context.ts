@@ -22,7 +22,9 @@
  */
 
 import { createHash, timingSafeEqual } from "node:crypto";
+import { ApiError } from "../api/errors";
 import { type CacheBackendKind, cache } from "../cache/client";
+import { CacheKeys, CacheTTL } from "../cache/keys";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
 import { adminService } from "./admin";
@@ -65,6 +67,7 @@ export type InferenceAuthCacheWrite =
 export type InferenceAuthResult =
   | "authorized_cache"
   | "authorized_origin"
+  | "warming"
   | "suspended"
   | "slow_path"
   | "rejected"
@@ -111,6 +114,8 @@ export interface ResolveInferenceAuthOptions {
   onTelemetry?(telemetry: InferenceAuthTelemetry): void;
   executionCtx?: { waitUntil(promise: Promise<unknown>): void };
   onCacheWriteTelemetry?(telemetry: InferenceAuthCacheWriteTelemetry): void;
+  /** Never join a Postgres hydration to the inference response promise. */
+  cacheOnly?: boolean;
 }
 
 interface MutableInferenceAuthTrace {
@@ -208,6 +213,7 @@ function freezeCacheWriteTrace(
 export type InferenceAuthResolution =
   | { kind: "authorized"; ctx: InferenceAuthContext; source: "cache" | "origin" }
   | { kind: "suspended"; userId: string }
+  | { kind: "warming" }
   | { kind: "slow_path"; reason: "non_api_key" };
 
 /**
@@ -298,12 +304,69 @@ export async function resolveInferenceAuthContext(
       trace.cacheRead = cached.kind;
       trace.cacheBackend = cached.backend;
       if (cached.kind === "hit") {
-        void apiKeysService.incrementUsageDebounced(cached.ctx.apiKeyId);
+        const usageUpdate = apiKeysService
+          .incrementUsageDebounced(cached.ctx.apiKeyId)
+          .catch((error) => {
+            // error-policy:J7 usage telemetry must not add latency or create an
+            // unhandled rejection on an otherwise authorized inference.
+            logger.warn("[InferenceAuth] API-key usage update failed", {
+              apiKeyId: cached.ctx.apiKeyId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
+        if (options.executionCtx) options.executionCtx.waitUntil(usageUpdate);
+        else void usageUpdate;
         trace.result = "authorized_cache";
         return { kind: "authorized", ctx: cached.ctx, source: "cache" };
       }
     } else {
       trace.cacheRead = "unavailable";
+    }
+
+    // Cache-only mode returns the retryable warming state ONLY when that state
+    // can converge: the cache must be reachable (the file invariant says cache
+    // failure authorizes from the database, and no fill could land anyway) and
+    // the credential must not be a known-rejected one (an invalid/revoked key
+    // can never acquire a positive entry, so warming would loop forever — the
+    // authoritative chain below produces the precise 401/403 instead; the
+    // marker never SERVES a rejection, so its staleness is harmless).
+    if (options.cacheOnly && cacheAvailable) {
+      const rejected = await cache
+        .get<{ rejectedAtMs: number }>(CacheKeys.inference.authRejected(keyHash))
+        .catch(() => null);
+      if (!rejected) {
+        trace.authoritative = "not_run";
+        trace.result = "warming";
+        if (options.executionCtx) {
+          const hydration = resolveInferenceAuthContext(req, {
+            traceId: options.traceId,
+            executionCtx: options.executionCtx,
+            cacheOnly: false,
+          })
+            .then(() => undefined)
+            .catch(async (error) => {
+              // error-policy:J7 the cold authoritative fill is deliberately
+              // detached from inference; the retry stays fail-closed on failure.
+              // A definite credential rejection is recorded so the next
+              // cache-only request converges to the authoritative 401/403.
+              if (error instanceof ApiError && error.status < 500) {
+                await cache
+                  .set(
+                    CacheKeys.inference.authRejected(keyHash),
+                    { rejectedAtMs: Date.now() },
+                    CacheTTL.inference.authRejected,
+                  )
+                  .catch(() => undefined);
+              }
+              logger.warn("[InferenceAuth] background hydration failed", {
+                traceId: boundedTraceId(options.traceId),
+                error: error instanceof Error ? error.message : String(error),
+              });
+            });
+          options.executionCtx.waitUntil(hydration);
+        }
+        return { kind: "warming" };
+      }
     }
 
     trace.authoritative = "error";

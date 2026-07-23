@@ -49,6 +49,30 @@ mock.module("@/lib/auth", () => ({
   })),
 }));
 
+// The bridge/stream wrappers now pre-gate through resolveSharedAgent, whose
+// auth seam is workers-hono-auth. Mock the SAME caller identity there so the
+// wrapper resolves against the real PGlite agent rows and the body-guard
+// contract under test stays reachable (an unmocked gate would 401 first).
+import * as realWorkersAuth from "@/lib/auth/workers-hono-auth";
+
+mock.module("@/lib/auth/workers-hono-auth", () => ({
+  ...realWorkersAuth,
+  apiKeyScopeHashPrefix: mock(async () => null),
+  sessionScopeHashPrefix: mock(async () => null),
+  requireUserOrApiKeyWithOrgLookup: mock(
+    async (_c: unknown, lookup: (organizationId: string) => Promise<unknown>) => ({
+      user: {
+        id: USER_A,
+        email: "owner@test.test",
+        organization_id: ORG_A,
+        is_active: true,
+        role: "owner",
+      },
+      orgLookupResult: await lookup(ORG_A),
+    }),
+  ),
+}));
+
 const ENV = { NODE_ENV: "test" } as unknown as AppEnv["Bindings"];
 
 let pgliteReady = true;

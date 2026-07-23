@@ -1,5 +1,6 @@
 /**
  * Route-level coverage for explicit chat-completion output ceilings.
+ * Requests drive the real authorization and credit-admission boundary.
  *
  * The production primitive is `computeEffectiveMaxTokens` inside the real
  * `handleChatCompletionsPOST` path: catalog reasoning metadata may raise an

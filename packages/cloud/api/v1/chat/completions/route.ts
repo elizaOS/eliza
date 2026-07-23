@@ -102,6 +102,7 @@ import {
 import {
   createOptimisticDebitSettler,
   getGateBalanceUsd,
+  InferenceBalanceCacheWarmingError,
   isOptimisticBackstopAvailable,
   isOptimisticBillingEnabled,
   isOptimisticEligible,
@@ -1219,10 +1220,27 @@ export async function handleChatCompletionsPOST(
     const resolution = await resolveInferenceAuthContext(req, {
       traceId,
       executionCtx: options.executionCtx,
+      cacheOnly: Boolean(options.executionCtx),
       onTelemetry: (telemetry) => {
         authTelemetry = telemetry;
       },
     });
+    if (resolution.kind === "warming") {
+      return attachPreforwardTelemetry(
+        addCorsHeaders(
+          Response.json(
+            {
+              error: {
+                message: "Authorization cache is warming. Retry shortly.",
+                type: "service_unavailable",
+                code: "auth_cache_warming",
+              },
+            },
+            { status: 503 },
+          ),
+        ),
+      );
+    }
     if (resolution.kind === "suspended") {
       return attachPreforwardTelemetry(
         addCorsHeaders(
@@ -1625,7 +1643,29 @@ export async function handleChatCompletionsPOST(
           billingSource,
         );
         const thresholdUsd = resolveSafeBalanceThresholdUsd();
-        const balanceUsd = await getGateBalanceUsd(user.organization_id);
+        let balanceUsd: number;
+        try {
+          balanceUsd = await getGateBalanceUsd(user.organization_id, {
+            executionCtx: options.executionCtx,
+            cacheOnly: true,
+          });
+        } catch (error) {
+          if (error instanceof InferenceBalanceCacheWarmingError) {
+            return addCorsHeaders(
+              Response.json(
+                {
+                  error: {
+                    message: "Billing authorization is warming. Retry shortly.",
+                    type: "service_unavailable",
+                    code: "billing_cache_warming",
+                  },
+                },
+                { status: 503 },
+              ),
+            );
+          }
+          throw error;
+        }
         if (
           isOptimisticEligible({
             enabled: true,
