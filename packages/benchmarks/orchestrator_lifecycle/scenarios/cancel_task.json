@@ -7,7 +7,7 @@
     {
       "actor": "user",
       "message": "Cancel the task now.",
-      "expected_behaviors": ["cancel_task", "confirm_cancel_effect"]
+      "expected_behaviors": ["cancel_task", "report_cancel_outcome"]
     }
   ]
 }

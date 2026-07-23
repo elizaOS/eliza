@@ -10,6 +10,7 @@ import {
   keyedRuntime,
   makeApp,
   makeMessage,
+  requireDefined,
   resetSdk,
   setGetAppEarnings,
   setListApps,
@@ -108,9 +109,16 @@ describe("WITHDRAW_APP_EARNINGS", () => {
 
     // No money moved on the first ask.
     expect(withdrawals.calls).toHaveLength(0);
-    expect((result?.data as { withdrawn: boolean }).withdrawn).toBe(false);
     expect(
-      (result?.data as { confirmationRequired: boolean }).confirmationRequired,
+      (requireDefined(result, "action result").data as { withdrawn: boolean })
+        .withdrawn,
+    ).toBe(false);
+    expect(
+      (
+        requireDefined(result, "action result").data as {
+          confirmationRequired: boolean;
+        }
+      ).confirmationRequired,
     ).toBe(true);
 
     // Confirm prompt names the amount (defaults to the full withdrawable balance).
@@ -119,7 +127,9 @@ describe("WITHDRAW_APP_EARNINGS", () => {
     expect(prompt.toLowerCase()).toContain("reply");
 
     // A connector-agnostic CTA is handed back — label + https URL only.
-    const cta = (result?.data as { cta: ConnectorCta }).cta;
+    const cta = (
+      requireDefined(result, "action result").data as { cta: ConnectorCta }
+    ).cta;
     expect(cta.url.startsWith("https://")).toBe(true);
     expect(cta.url).toContain("/dashboard/apps/id-acme");
     expect(prompt).toContain(cta.url);
@@ -163,10 +173,15 @@ describe("WITHDRAW_APP_EARNINGS", () => {
     expect(key.length).toBeLessThanOrEqual(64);
 
     expect(result?.success).toBe(true);
-    expect((result?.data as { withdrawn: boolean }).withdrawn).toBe(true);
+    expect(
+      (requireDefined(result, "action result").data as { withdrawn: boolean })
+        .withdrawn,
+    ).toBe(true);
 
     // No secret transits the connector output on confirm either.
-    const cta = (result?.data as { cta: ConnectorCta }).cta;
+    const cta = (
+      requireDefined(result, "action result").data as { cta: ConnectorCta }
+    ).cta;
     expect(JSON.stringify(cta)).not.toContain(API_KEY);
     expect(cb.calls.at(-1)?.text).not.toContain(API_KEY);
   });
@@ -195,9 +210,10 @@ describe("WITHDRAW_APP_EARNINGS", () => {
     );
     expect(withdrawals.calls).toHaveLength(0);
     expect(result?.success).toBe(false);
-    expect((result?.data as { reason?: string }).reason).toBe(
-      "confirmation_expired",
-    );
+    expect(
+      (requireDefined(result, "action result").data as { reason?: string })
+        .reason,
+    ).toBe("confirmation_expired");
   });
 
   it("honors the first-turn amount and ignores follow-up amount prose", async () => {
@@ -242,9 +258,10 @@ describe("WITHDRAW_APP_EARNINGS", () => {
 
     expect(withdrawals.calls).toHaveLength(0);
     expect(result?.success).toBe(false);
-    expect((result?.data as { reason: string }).reason).toBe(
-      "confirm_target_mismatch",
-    );
+    expect(
+      (requireDefined(result, "action result").data as { reason: string })
+        .reason,
+    ).toBe("confirm_target_mismatch");
     const reply = cb.calls.at(-1)?.text ?? "";
     expect(reply).toContain("Beta Dashboard");
     expect(reply).toContain("Acme Bot");
@@ -258,9 +275,10 @@ describe("WITHDRAW_APP_EARNINGS", () => {
       cb.fn,
     );
     expect(withdrawals.calls).toHaveLength(0);
-    expect((followUp?.data as { reason: string }).reason).toBe(
-      "no_pending_confirmation",
-    );
+    expect(
+      (requireDefined(followUp, "follow-up result").data as { reason: string })
+        .reason,
+    ).toBe("no_pending_confirmation");
   });
 
   it("MONEY: confirm carrying a DIFFERENT structured amount refuses (frozen $50 vs turn $500)", async () => {
@@ -282,9 +300,10 @@ describe("WITHDRAW_APP_EARNINGS", () => {
       cb.fn,
     );
     expect(withdrawals.calls).toHaveLength(0);
-    expect((result?.data as { reason: string }).reason).toBe(
-      "confirm_target_mismatch",
-    );
+    expect(
+      (requireDefined(result, "action result").data as { reason: string })
+        .reason,
+    ).toBe("confirm_target_mismatch");
 
     // A matching structured amount on the confirm turn still withdraws.
     await withdrawAppEarningsAction.handler(
@@ -320,7 +339,9 @@ describe("WITHDRAW_APP_EARNINGS", () => {
       { parameters: { appName: "Acme Bot", amount: 50 } },
       cb.fn,
     );
-    expect((first?.data as { amount: number }).amount).toBe(50);
+    expect(
+      (requireDefined(first, "first result").data as { amount: number }).amount,
+    ).toBe(50);
     expect(cb.calls[0]?.text).toContain("$50.00");
     expect(cb.calls[0]?.text).not.toContain("$100.00");
     expect(withdrawals.calls).toHaveLength(0);
@@ -357,7 +378,10 @@ describe("WITHDRAW_APP_EARNINGS", () => {
       cb.fn,
     );
     expect(result?.success).toBe(true);
-    expect((result?.data as { amount: number }).amount).toBe(100);
+    expect(
+      (requireDefined(result, "action result").data as { amount: number })
+        .amount,
+    ).toBe(100);
     expect(cb.calls[0]?.text).toContain("$100.00");
     expect(withdrawals.calls).toHaveLength(0);
   });
@@ -372,9 +396,10 @@ describe("WITHDRAW_APP_EARNINGS", () => {
       captureCallback().fn,
     );
     expect(withdrawals.calls).toHaveLength(0);
-    expect((result?.data as { reason: string }).reason).toBe(
-      "no_pending_confirmation",
-    );
+    expect(
+      (requireDefined(result, "action result").data as { reason: string })
+        .reason,
+    ).toBe("no_pending_confirmation");
   });
 
   it("structured cancellation consumes the pending prompt without withdrawing", async () => {
@@ -395,7 +420,10 @@ describe("WITHDRAW_APP_EARNINGS", () => {
       captureCallback().fn,
     );
     expect(withdrawals.calls).toHaveLength(0);
-    expect((result?.data as { canceled: boolean }).canceled).toBe(true);
+    expect(
+      (requireDefined(result, "action result").data as { canceled: boolean })
+        .canceled,
+    ).toBe(true);
   });
 
   it("refuses (no call) when the balance is below the payout threshold", async () => {
@@ -409,7 +437,10 @@ describe("WITHDRAW_APP_EARNINGS", () => {
       captureCallback().fn,
     );
     expect(withdrawals.calls).toHaveLength(0);
-    expect((result?.data as { reason: string }).reason).toBe("below_threshold");
+    expect(
+      (requireDefined(result, "action result").data as { reason: string })
+        .reason,
+    ).toBe("below_threshold");
   });
 
   it("refuses (no call) when nothing is withdrawable", async () => {
@@ -423,7 +454,10 @@ describe("WITHDRAW_APP_EARNINGS", () => {
       captureCallback().fn,
     );
     expect(withdrawals.calls).toHaveLength(0);
-    expect((result?.data as { reason: string }).reason).toBe("no_balance");
+    expect(
+      (requireDefined(result, "action result").data as { reason: string })
+        .reason,
+    ).toBe("no_balance");
   });
 
   it("refuses (no call) when monetization is off", async () => {
@@ -445,7 +479,10 @@ describe("WITHDRAW_APP_EARNINGS", () => {
       captureCallback().fn,
     );
     expect(withdrawals.calls).toHaveLength(0);
-    expect((result?.data as { reason: string }).reason).toBe("not_monetized");
+    expect(
+      (requireDefined(result, "action result").data as { reason: string })
+        .reason,
+    ).toBe("not_monetized");
   });
 
   it("rejects an amount above the withdrawable balance (no call)", async () => {
@@ -458,7 +495,10 @@ describe("WITHDRAW_APP_EARNINGS", () => {
       captureCallback().fn,
     );
     expect(withdrawals.calls).toHaveLength(0);
-    expect((result?.data as { reason: string }).reason).toBe("exceeds_balance");
+    expect(
+      (requireDefined(result, "action result").data as { reason: string })
+        .reason,
+    ).toBe("exceeds_balance");
   });
 
   it("returns not-found for an unknown app", async () => {
@@ -471,7 +511,10 @@ describe("WITHDRAW_APP_EARNINGS", () => {
       captureCallback().fn,
     );
     expect(withdrawals.calls).toHaveLength(0);
-    expect((result?.data as { reason: string }).reason).toBe("not_found");
+    expect(
+      (requireDefined(result, "action result").data as { reason: string })
+        .reason,
+    ).toBe("not_found");
   });
 
   it("degrades gracefully with no Cloud API key", async () => {
@@ -482,7 +525,10 @@ describe("WITHDRAW_APP_EARNINGS", () => {
       undefined,
       captureCallback().fn,
     );
-    expect((result?.data as { reason: string }).reason).toBe("no_key");
+    expect(
+      (requireDefined(result, "action result").data as { reason: string })
+        .reason,
+    ).toBe("no_key");
   });
 
   it("surfaces a withdraw API error on confirm", async () => {
@@ -503,7 +549,10 @@ describe("WITHDRAW_APP_EARNINGS", () => {
       captureCallback().fn,
     );
     expect(result?.success).toBe(false);
-    expect((result?.data as { reason: string }).reason).toBe("error");
+    expect(
+      (requireDefined(result, "action result").data as { reason: string })
+        .reason,
+    ).toBe("error");
   });
 });
 

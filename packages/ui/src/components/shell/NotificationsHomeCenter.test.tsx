@@ -1113,6 +1113,31 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
     ).toBe("expanded");
   });
 
+  it("hands focus from a hidden stack opener to Show Less and back", () => {
+    __ingestNotificationForTests(
+      makeNotification({ title: "A", priority: "high" }),
+    );
+    __ingestNotificationForTests(
+      makeNotification({ title: "B", priority: "normal" }),
+    );
+    __ingestNotificationForTests(
+      makeNotification({ title: "C", priority: "urgent" }),
+    );
+    render(<NotificationsHomeCenter />);
+    expandShade();
+
+    const peek = screen.getAllByTestId("notification-stack-peek")[0];
+    peek.focus();
+    fireEvent.click(peek);
+    const showLess = screen.getByTestId("notification-stack-collapse");
+    expect(document.activeElement).toBe(showLess);
+
+    fireEvent.click(showLess);
+    expect(document.activeElement).toBe(peek);
+    expect(peek.getAttribute("aria-hidden")).toBeNull();
+    expect(peek.tabIndex).toBe(0);
+  });
+
   it("fanning an expanded stack keeps the shade open", () => {
     __ingestNotificationForTests(
       makeNotification({ title: "A", priority: "high" }),
@@ -1355,10 +1380,15 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     const list = screen.getByTestId("home-notification-list");
     let countButton = screen.getByTestId("notifications-count-button");
 
+    countButton.focus();
     fireEvent.click(countButton);
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
     expect(countButton.getAttribute("aria-expanded")).toBe("true");
+    expect(document.activeElement).toBe(
+      screen.getByTestId("notifications-collapse"),
+    );
     collapseShade();
+    expect(document.activeElement).toBe(countButton);
 
     countButton = screen.getByTestId("notifications-count-button");
     fireEvent.pointerDown(countButton, {
@@ -1383,6 +1413,30 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     fireEvent.click(countButton);
 
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
+  });
+
+  it("does not restore the notification total over focus moved into chat", () => {
+    seedTriage();
+    render(
+      <>
+        <input aria-label="Chat composer" />
+        <NotificationsHomeCenter />
+      </>,
+    );
+    const countButton = screen.getByTestId("notifications-count-button");
+    countButton.focus();
+    fireEvent.click(countButton);
+    expect(document.activeElement).toBe(
+      screen.getByTestId("notifications-collapse"),
+    );
+
+    const chatComposer = screen.getByRole("textbox", {
+      name: "Chat composer",
+    });
+    chatComposer.focus();
+    collapseShade();
+
+    expect(document.activeElement).toBe(chatComposer);
   });
 
   it("keeps the priority row mounted while an outside tap fades quiet groups", () => {
@@ -2099,7 +2153,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
 // #15080 moved the inbox inline BELOW the chat glass; "interacting is cooked"
 // on device. These tests drive the row's real pointer sequence (not just a
 // synthetic click) so tap-to-open and swipe-to-dismiss fire their handlers, and
-// pin the exemption markers that keep the ContinuousChatOverlay outside-tap
+// pin the exemption markers that keep the ChatOverlay outside-tap
 // collapse-swallower off the notification surface.
 describe("NotificationsHomeCenter (touch interaction, device r8)", () => {
   function pointer(
@@ -2222,7 +2276,7 @@ describe("NotificationsHomeCenter (touch interaction, device r8)", () => {
     __ingestNotificationForTests(makeNotification({ title: "Exempt" }));
     render(<NotificationsHomeCenter />);
     expandShade();
-    // The ContinuousChatOverlay outside-tap collapse-swallower exempts anything
+    // The ChatOverlay outside-tap collapse-swallower exempts anything
     // under [data-testid="home-notification-center"] or [data-notif-row]; both
     // must be present or a row tap gets eaten (the r8 "cooked" bug).
     expect(screen.getByTestId("home-notification-center")).toBeTruthy();

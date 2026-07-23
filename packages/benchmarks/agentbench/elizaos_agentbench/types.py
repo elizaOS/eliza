@@ -382,9 +382,8 @@ class AgentBenchConfig:
     # leaderboard. Per-env counts: see ``upstream_loader``.
     split: BenchmarkSplit = BenchmarkSplit.TEST
 
-    # ``auto`` uses full upstream data when present and compact fixtures
-    # otherwise. ``full`` refuses fixture fallback. ``fixture`` is an
-    # explicit smoke-test mode for offline CI.
+    # ``auto`` and ``full`` require the pinned upstream source. ``fixture``
+    # is an explicit smoke-test mode for offline CI.
     data_mode: AgentBenchDataMode = AgentBenchDataMode.AUTO
 
     # Empty task sets usually mean a broken data setup. These switches are

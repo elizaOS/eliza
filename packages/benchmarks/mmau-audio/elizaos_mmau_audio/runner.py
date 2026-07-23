@@ -16,9 +16,15 @@ from elizaos_mmau_audio.agent import (
     MMAUAgentProtocol,
     OracleMMAUAgent,
 )
-from elizaos_mmau_audio.dataset import MMAUDataset, expand_samples, validate_samples
+from elizaos_mmau_audio.dataset import (
+    MMAUDataset,
+    expand_samples,
+    validate_audio_sources,
+    validate_samples,
+)
 from elizaos_mmau_audio.evaluator import MMAUEvaluator
 from elizaos_mmau_audio.types import (
+    MMAU_CATEGORIES,
     MMAUConfig,
     MMAUPrediction,
     MMAUReport,
@@ -27,6 +33,11 @@ from elizaos_mmau_audio.types import (
 )
 
 logger = logging.getLogger(__name__)
+
+EXPECTED_SPLIT_SAMPLES = {
+    "test-mini": 1_000,
+    "test": 9_000,
+}
 
 
 class MMAURunner:
@@ -57,6 +68,8 @@ class MMAURunner:
         samples = self.dataset.get_samples(self.config.max_samples)
         if not samples:
             raise RuntimeError("MMAU: no samples loaded")
+        validate_samples(samples)
+        self._validate_dataset_completeness(samples)
         if self.config.include_edge_scenarios:
             samples = expand_samples(samples)
             validate_samples(samples)
@@ -67,6 +80,10 @@ class MMAURunner:
         try:
             for sample in samples:
                 result = await self._run_sample(agent, sample)
+                if result.error:
+                    raise RuntimeError(
+                        f"MMAU sample {sample.id} failed; refusing a partial report: {result.error}"
+                    )
                 results.append(result)
                 logger.info(
                     "MMAU %s/%s expected=%s predicted=%s correct=%s",
@@ -82,6 +99,21 @@ class MMAURunner:
         report = self._build_report(results)
         self._save(report)
         return report
+
+    def _validate_dataset_completeness(self, samples: list[MMAUSample]) -> None:
+        if self.config.max_samples is not None:
+            expected = self.config.max_samples
+        elif self.config.use_huggingface and set(self.config.categories) == set(MMAU_CATEGORIES):
+            expected = EXPECTED_SPLIT_SAMPLES[self.config.split.value]
+        else:
+            expected = None
+        if expected is not None and len(samples) != expected:
+            raise RuntimeError(
+                f"MMAU dataset is incomplete: expected {expected} base samples, "
+                f"loaded {len(samples)}"
+            )
+        if self.config.use_huggingface:
+            validate_audio_sources(samples)
 
     def _create_agent(self) -> MMAUAgentProtocol:
         if self._injected_agent is not None:
@@ -162,6 +194,18 @@ class MMAURunner:
                 "stt_model": self.config.stt_model,
                 "categories": [c.value for c in self.config.categories],
                 "include_edge_scenarios": self.config.include_edge_scenarios,
+                "complete": True,
+                "expected_base_samples": (
+                    self.config.max_samples
+                    if self.config.max_samples is not None
+                    else EXPECTED_SPLIT_SAMPLES.get(self.config.split.value)
+                ),
+                "audio_input_mode": (
+                    "cascaded_stt"
+                    if self.config.agent in {"eliza", "hermes", "openclaw"}
+                    else "fixture_or_text"
+                ),
+                "official_mmau_direct_audio": False,
             },
         )
 

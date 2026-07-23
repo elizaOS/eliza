@@ -1,7 +1,7 @@
 /**
- * Behavioral tests for the WEB_SEARCH action: inline-vs-server capability
- * gating, provider fallback (parallel → exa), JSON-RPC and SSE response
- * parsing, error-envelope rejection, and result-length capping. Deterministic —
+ * Behavioral and routing-contract tests for the WEB_SEARCH action:
+ * inline-vs-server capability gating, provider fallback (parallel → exa),
+ * response parsing, result-length capping, and fresh-data handoff to WEB_FETCH.
  * DNS and the pinned fetch to each MCP endpoint are stubbed, so no real network.
  */
 import type {
@@ -100,6 +100,14 @@ describe("WEB_SEARCH action", () => {
     if (originalServer === undefined)
       delete process.env.ELIZA_SERVER_WEB_SEARCH;
     else process.env.ELIZA_SERVER_WEB_SEARCH = originalServer;
+  });
+
+  it("routes constructable live values to WEB_FETCH instead of search snippets", () => {
+    expect(webSearch.routingHint).toContain("live NOW-value");
+    expect(webSearch.routingHint).toContain("WEB_FETCH");
+    expect(webSearch.routingHint).toContain("api.coingecko.com");
+    expect(webSearch.description).toContain("prefer WEB_FETCH");
+    expect(webSearch.description).toContain("search snippets lag live values");
   });
 
   it("is available by default through the inline action surface", async () => {

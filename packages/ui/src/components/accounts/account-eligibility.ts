@@ -103,7 +103,10 @@ export function providerConnectionState(
 ): ProviderConnectionState {
   if (accounts.length === 0) return "disconnected";
   const needsAttention = accounts.some(
-    (a) => a.health === "needs-reauth" || a.health === "invalid",
+    (a) =>
+      a.health === "needs-reauth" ||
+      a.health === "invalid" ||
+      a.health === "expired",
   );
   if (needsAttention) return "connected-attention";
   return "connected-healthy";

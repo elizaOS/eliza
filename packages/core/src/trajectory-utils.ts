@@ -8,10 +8,11 @@
  *
  * `recordLlmCall` is the canonical entry point for raw SDK/fetch generation: it
  * times `fn`, derives the response text, and emits an llm-call entry against the
- * active step. `withStandaloneTrajectory` / `withActionStep` / `withProviderStep`
- * / `withEvaluatorStep` establish the trajectory context those calls attach to;
- * `resolveTrajectoryLogger` picks the best-scoring logger service by capability
- * so this module never depends directly on `@elizaos/agent`.
+ * active step. Opt-in request scopes can also attest a pinned instruction on
+ * those final provider inputs before quota is spent, returning only hashes and
+ * counts. `withStandaloneTrajectory` / `withActionStep` / `withProviderStep` /
+ * `withEvaluatorStep` establish the trajectory context those calls attach to;
+ * `resolveTrajectoryLogger` picks the best-scoring logger service by capability.
  *
  * Also builds the context-object trajectory export (JSON-sanitized, cycle-safe)
  * and holds the process-global registry of trajectory `source` tags excluded
@@ -21,6 +22,7 @@
  */
 import { getAmbientSingleton } from "./ambient-context.js";
 import { isTruthyEnvValue } from "./env-utils.js";
+import { ElizaError } from "./errors";
 import {
 	CONTEXT_OBJECT_TRAJECTORY_VERSION,
 	type ContextObjectTrajectoryExport,
@@ -36,6 +38,7 @@ import {
 import type { ContextEvent, ContextObject } from "./types/context-object";
 import { isTextGenerationModelType } from "./types/model";
 import type { IAgentRuntime } from "./types/runtime";
+import { createHash } from "./utils/crypto-compat";
 
 export type TrajectoryFinalStatus =
 	| "completed"
@@ -100,6 +103,10 @@ export type TrajectoryLlmCallDetails = {
 export type TrajectoryProviderAccessParams = {
 	stepId: string;
 	providerName: string;
+	startedAt?: number;
+	endedAt?: number;
+	durationMs?: number;
+	overlapsWith?: Array<{ providerName: string; overlapMs: number }>;
 	data: Record<string, string | number | boolean | null>;
 	sha256?: string;
 	tokenCount?: number;
@@ -145,6 +152,39 @@ export type RecordLlmCallDetails = Omit<
 	/** Optional override for the recorded response string. */
 	response?: string;
 };
+
+/**
+ * Content-free proof that every final provider input in one request contained
+ * an expected instruction exactly once. The raw instruction exists only in
+ * the request-scoped collector and is never returned in this summary.
+ */
+export interface LlmInputSubstringAttestation {
+	schemaVersion: 1;
+	expectedSha256: string;
+	modelCallCount: number;
+	matchingCallCount: number;
+	totalOccurrences: number;
+	exactOncePerModelCall: boolean;
+	modelTypeCallCounts: Record<string, number>;
+}
+
+interface LlmInputSubstringAttestationStore {
+	expectedText: string;
+	expectedSha256: string;
+	modelCallCount: number;
+	matchingCallCount: number;
+	totalOccurrences: number;
+	modelTypeCallCounts: Map<string, number>;
+	seenLogicalCalls: WeakSet<RecordLlmCallDetails>;
+}
+
+interface LlmInputSubstringAttestationContextManager {
+	run<T>(
+		store: LlmInputSubstringAttestationStore | undefined,
+		fn: () => T | Promise<T>,
+	): T | Promise<T>;
+	active(): LlmInputSubstringAttestationStore | undefined;
+}
 
 /**
  * Trajectory-shaped input for context-object export: either a slice of the
@@ -458,10 +498,262 @@ type TrajectoryLlmGuardContext = {
 };
 
 const RECORD_LLM_CALL_DEPTH_KEY = Symbol.for("elizaos.recordLlmCallDepth");
+const LLM_INPUT_SUBSTRING_ATTESTATION_CONTEXT_MANAGER_KEY = Symbol.for(
+	"elizaos.llmInputSubstringAttestationContextManager",
+);
 
 type TrajectoryContextWithLlmGuard = {
 	[RECORD_LLM_CALL_DEPTH_KEY]?: number;
 };
+
+function isNodeEnvironment(): boolean {
+	return (
+		typeof process !== "undefined" &&
+		typeof process.versions !== "undefined" &&
+		typeof process.versions.node !== "undefined"
+	);
+}
+
+function supportsAsyncLocalStorage(): boolean {
+	return isNodeEnvironment() && typeof process.getBuiltinModule === "function";
+}
+
+function createLlmInputSubstringAttestationContextManager(): LlmInputSubstringAttestationContextManager {
+	if (!supportsAsyncLocalStorage()) {
+		throw new ElizaError(
+			"LLM input attestation requires AsyncLocalStorage isolation",
+			{
+				code: "LLM_INPUT_SUBSTRING_ATTESTATION_UNSUPPORTED_RUNTIME",
+				severity: "fatal",
+			},
+		);
+	}
+	const { AsyncLocalStorage } = process.getBuiltinModule(
+		"node:async_hooks",
+	) as typeof import("node:async_hooks");
+	const storage = new AsyncLocalStorage<
+		LlmInputSubstringAttestationStore | undefined
+	>();
+	return {
+		run<T>(
+			store: LlmInputSubstringAttestationStore | undefined,
+			fn: () => T | Promise<T>,
+		): T | Promise<T> {
+			return storage.run(store, fn);
+		},
+		active(): LlmInputSubstringAttestationStore | undefined {
+			return storage.getStore();
+		},
+	};
+}
+
+function getLlmInputSubstringAttestationContextManager(): LlmInputSubstringAttestationContextManager {
+	return getAmbientSingleton(
+		LLM_INPUT_SUBSTRING_ATTESTATION_CONTEXT_MANAGER_KEY,
+		createLlmInputSubstringAttestationContextManager,
+	);
+}
+
+function sha256Text(value: string): string {
+	return createHash("sha256").update(value).digest("hex");
+}
+
+function countExactSubstring(haystack: string, needle: string): number {
+	let count = 0;
+	let cursor = 0;
+	while (cursor <= haystack.length - needle.length) {
+		const index = haystack.indexOf(needle, cursor);
+		if (index < 0) break;
+		count += 1;
+		cursor = index + 1;
+	}
+	return count;
+}
+
+function collectMessageContentStrings(
+	value: unknown,
+	output: string[],
+	seen = new WeakSet<object>(),
+): void {
+	if (typeof value === "string") {
+		output.push(value);
+		return;
+	}
+	if (!value || typeof value !== "object") return;
+	if (ArrayBuffer.isView(value) || value instanceof ArrayBuffer) return;
+	if (seen.has(value)) return;
+	seen.add(value);
+	if (Array.isArray(value)) {
+		for (const item of value) {
+			collectMessageContentStrings(item, output, seen);
+		}
+		seen.delete(value);
+		return;
+	}
+	for (const nested of Object.values(value as Record<string, unknown>)) {
+		collectMessageContentStrings(nested, output, seen);
+	}
+	seen.delete(value);
+}
+
+function modelInputSurfaces(details: RecordLlmCallDetails): string[] {
+	const surfaces: string[] = [];
+	if (typeof details.systemPrompt === "string") {
+		surfaces.push(details.systemPrompt);
+	}
+	if (Array.isArray(details.messages) && details.messages.length > 0) {
+		for (const message of details.messages) {
+			if (typeof message === "string") {
+				surfaces.push(message);
+				continue;
+			}
+			if (!message || typeof message !== "object" || Array.isArray(message)) {
+				continue;
+			}
+			collectMessageContentStrings(
+				(message as Record<string, unknown>).content,
+				surfaces,
+			);
+		}
+		return surfaces;
+	}
+	// `userPrompt` is a trajectory compatibility alias for the provider's
+	// `prompt`. Prefer the final native prompt so one wire input is counted once.
+	if (typeof details.prompt === "string") {
+		surfaces.push(details.prompt);
+	} else if (typeof details.userPrompt === "string") {
+		surfaces.push(details.userPrompt);
+	}
+	return surfaces;
+}
+
+/**
+ * Verify one final provider attempt against the active request scope.
+ *
+ * Provider retry loops call this before every transport attempt with the same
+ * details object. Every attempt is rechecked, while the returned summary counts
+ * that stable object once so its model-call totals retain logical-call parity
+ * with usage telemetry.
+ */
+export function attestLlmInputSubstring(details: RecordLlmCallDetails): void {
+	// Attestation is an opt-in Node/Bun server capability. Ordinary browser/edge
+	// model calls do not initialize a request-scope manager.
+	if (!supportsAsyncLocalStorage()) return;
+	const store = getLlmInputSubstringAttestationContextManager().active();
+	if (!store) return;
+
+	const occurrences = modelInputSurfaces(details).reduce(
+		(total, surface) =>
+			total + countExactSubstring(surface, store.expectedText),
+		0,
+	);
+	const modelType =
+		typeof details.modelType === "string" && details.modelType.trim()
+			? details.modelType.trim()
+			: "unknown";
+	const isFirstAttempt = !store.seenLogicalCalls.has(details);
+	if (isFirstAttempt) {
+		store.seenLogicalCalls.add(details);
+		store.modelCallCount += 1;
+		store.totalOccurrences += occurrences;
+		store.modelTypeCallCounts.set(
+			modelType,
+			(store.modelTypeCallCounts.get(modelType) ?? 0) + 1,
+		);
+		if (occurrences === 1) {
+			store.matchingCallCount += 1;
+		}
+	}
+	if (occurrences === 1) return;
+
+	throw new ElizaError(
+		"Final LLM input failed request-scoped instruction attestation",
+		{
+			code: "LLM_INPUT_SUBSTRING_ATTESTATION_MISMATCH",
+			context: {
+				expectedSha256: store.expectedSha256,
+				modelCallNumber: store.modelCallCount,
+				modelType,
+				occurrences,
+				retryAttempt: !isFirstAttempt,
+			},
+			severity: "fatal",
+		},
+	);
+}
+
+/**
+ * Run one request under exact final-model-input attestation.
+ *
+ * Each nested {@link recordLlmCall} must carry the expected text exactly once
+ * across its actual wire-bearing system/messages or system/prompt surfaces.
+ * A mismatch throws before the provider callback runs, and a request that
+ * reaches no model boundary fails when the scope closes.
+ */
+export async function runWithLlmInputSubstringAttestation<T>(
+	expectedText: string,
+	fn: () => Promise<T> | T,
+): Promise<{ result: T; attestation: LlmInputSubstringAttestation }> {
+	if (!supportsAsyncLocalStorage()) {
+		throw new ElizaError(
+			"LLM input attestation requires AsyncLocalStorage isolation",
+			{
+				code: "LLM_INPUT_SUBSTRING_ATTESTATION_UNSUPPORTED_RUNTIME",
+				severity: "fatal",
+			},
+		);
+	}
+	if (!expectedText) {
+		throw new ElizaError(
+			"LLM input attestation requires a non-empty expected instruction",
+			{
+				code: "LLM_INPUT_SUBSTRING_ATTESTATION_INVALID",
+				severity: "fatal",
+			},
+		);
+	}
+	const store: LlmInputSubstringAttestationStore = {
+		expectedText,
+		expectedSha256: sha256Text(expectedText),
+		modelCallCount: 0,
+		matchingCallCount: 0,
+		totalOccurrences: 0,
+		modelTypeCallCounts: new Map<string, number>(),
+		seenLogicalCalls: new WeakSet<RecordLlmCallDetails>(),
+	};
+	const result = await getLlmInputSubstringAttestationContextManager().run(
+		store,
+		fn,
+	);
+	if (store.modelCallCount === 0) {
+		throw new ElizaError(
+			"Request completed without reaching an attested LLM input boundary",
+			{
+				code: "LLM_INPUT_SUBSTRING_ATTESTATION_MISSING",
+				context: { expectedSha256: store.expectedSha256 },
+				severity: "fatal",
+			},
+		);
+	}
+	return {
+		result,
+		attestation: {
+			schemaVersion: 1,
+			expectedSha256: store.expectedSha256,
+			modelCallCount: store.modelCallCount,
+			matchingCallCount: store.matchingCallCount,
+			totalOccurrences: store.totalOccurrences,
+			exactOncePerModelCall:
+				store.matchingCallCount === store.modelCallCount &&
+				store.totalOccurrences === store.modelCallCount,
+			modelTypeCallCounts: Object.fromEntries(
+				[...store.modelTypeCallCounts.entries()].sort(([left], [right]) =>
+					left.localeCompare(right),
+				),
+			),
+		},
+	};
+}
 
 function isTrajectoryLoggerCandidate(
 	value: unknown,
@@ -807,6 +1099,9 @@ export async function recordLlmCall<T>(
 		model: details.model,
 		purpose: details.purpose,
 	});
+	// The attestation scope is opt-in and request-local. When active, this is
+	// the last generic boundary before the raw provider callback can spend quota.
+	attestLlmInputSubstring(details);
 
 	const startedAt =
 		typeof performance !== "undefined" && typeof performance.now === "function"

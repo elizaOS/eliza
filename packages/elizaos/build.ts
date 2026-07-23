@@ -36,14 +36,14 @@ function resolveBin(name: string): string {
 const LEGACY_TEMPLATE_SOURCE_DIR = path.resolve(PACKAGE_DIR, "..", "templates");
 const TEMPLATE_DIR = path.join(PACKAGE_DIR, "templates");
 const MANIFEST_PATH = path.join(PACKAGE_DIR, "templates-manifest.json");
-function resolveTemplateSourceDir(): string {
+export function resolveTemplateSourceDir(): string {
   if (fs.existsSync(LEGACY_TEMPLATE_SOURCE_DIR)) {
     return LEGACY_TEMPLATE_SOURCE_DIR;
   }
   return TEMPLATE_DIR;
 }
 
-function loadTemplateDefinitions(sourceDir: string) {
+export function loadTemplateDefinitions(sourceDir: string) {
   const templates = [];
   for (const entry of fs.readdirSync(sourceDir, {
     withFileTypes: true,
@@ -57,7 +57,7 @@ function loadTemplateDefinitions(sourceDir: string) {
   return templates;
 }
 
-function readExistingManifest() {
+export function readExistingManifest() {
   if (!fs.existsSync(MANIFEST_PATH)) return null;
   try {
     return JSON.parse(fs.readFileSync(MANIFEST_PATH, "utf-8"));
@@ -66,7 +66,7 @@ function readExistingManifest() {
   }
 }
 
-function manifestPayloadMatches(
+export function manifestPayloadMatches(
   manifest: unknown,
   payload: { version: string; repoUrl: string; templates: unknown[] },
 ): manifest is { generatedAt?: string } {
@@ -83,7 +83,7 @@ function manifestPayloadMatches(
   );
 }
 
-function prepareTemplates(): void {
+export function prepareTemplates(): void {
   const sourceDir = resolveTemplateSourceDir();
   if (path.resolve(sourceDir) !== path.resolve(TEMPLATE_DIR)) {
     rmRecursive(TEMPLATE_DIR);
@@ -113,7 +113,7 @@ function prepareTemplates(): void {
  * avoids the shell re-interpreting a bin/path that contains spaces or
  * metacharacters (e.g. a Windows "C:\\Users\\Jo Doe\\..." path).
  */
-function runBin(bin: string, args: string[]): void {
+export function runBin(bin: string, args: string[]): void {
   const result = spawnSync(bin, args, {
     cwd: PACKAGE_DIR,
     stdio: "inherit",
@@ -128,7 +128,7 @@ function runBin(bin: string, args: string[]): void {
   }
 }
 
-function rmRecursive(targetPath: string): void {
+export function rmRecursive(targetPath: string): void {
   const result = spawnSync(
     process.execPath,
     [RM_RECURSIVE_SCRIPT, targetPath],
@@ -147,14 +147,14 @@ function rmRecursive(targetPath: string): void {
   }
 }
 
-function buildTypescript(): void {
+export function buildTypescript(): void {
   if (!fs.existsSync(DIST_DIR)) {
     fs.mkdirSync(DIST_DIR, { recursive: true });
   }
-  runBin(resolveBin("tsc"), ["-p", "tsconfig.json", "--noCheck"]);
+  runBin(resolveBin("tsc6"), ["-p", "tsconfig.json", "--noCheck"]);
 }
 
-function ensureCliShebang(): void {
+export function ensureCliShebang(): void {
   const cliPath = path.join(DIST_DIR, "cli.js");
   if (!fs.existsSync(cliPath)) return;
   let content = fs.readFileSync(cliPath, "utf-8");
@@ -165,6 +165,12 @@ function ensureCliShebang(): void {
   fs.chmodSync(cliPath, 0o755);
 }
 
-prepareTemplates();
-buildTypescript();
-ensureCliShebang();
+export function buildElizaosCli(): void {
+  prepareTemplates();
+  buildTypescript();
+  ensureCliShebang();
+}
+
+if (import.meta.main) {
+  buildElizaosCli();
+}

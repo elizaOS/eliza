@@ -18,14 +18,15 @@ interface Workflow {
   jobs?: Record<string, WorkflowJob>;
 }
 
-function readWorkflow(name: string): Workflow {
-  const source = readFileSync(
-    new URL(`.github/workflows/${name}`, repoRoot),
-    "utf8",
-  );
-  return Bun.YAML.parse(source) as Workflow;
+function readWorkflowSource(name: string): string {
+  return readFileSync(new URL(`.github/workflows/${name}`, repoRoot), "utf8");
 }
 
+function readWorkflow(name: string): Workflow {
+  return Bun.YAML.parse(readWorkflowSource(name)) as Workflow;
+}
+
+const canonicalSource = readWorkflowSource("cloud-cf-deploy.yml");
 const canonical = readWorkflow("cloud-cf-deploy.yml");
 const legacy = readWorkflow("cloud-deploy-backend.yml");
 
@@ -40,6 +41,17 @@ describe("Cloud deployment workflow trigger contract", () => {
     expect(push?.paths).toContain("packages/app-core/**");
     expect(pullRequest?.paths).toContain("packages/app/**");
     expect(pullRequest?.paths).toContain("packages/app-core/**");
+  });
+
+  test("publishes Deepgram credentials and the environment-scoped batch STT toggle", () => {
+    expect(canonicalSource).toContain(
+      "DEEPGRAM_API_KEY: $" + "{{ secrets.DEEPGRAM_API_KEY }}",
+    );
+    expect(canonicalSource).toContain(
+      "VOICE_BATCH_STT_PROVIDER: $" + "{{ vars.VOICE_BATCH_STT_PROVIDER }}",
+    );
+    expect(canonicalSource).toContain("            DEEPGRAM_API_KEY \\");
+    expect(canonicalSource).toContain("            VOICE_BATCH_STT_PROVIDER");
   });
 
   test("legacy backend deploys are manual-only and retain migration/VPS controls", () => {

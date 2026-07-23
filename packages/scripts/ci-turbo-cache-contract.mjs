@@ -35,6 +35,7 @@ const DEFAULT_REPO_ROOT = resolve(
 );
 
 const SHIM_PATH = ".github/actions/turbo-cache-github/action.yml";
+const SETUP_WORKSPACE_PATH = ".github/actions/setup-bun-workspace/action.yml";
 const SHIM_USES = "./.github/actions/turbo-cache-github";
 const WORKFLOW_DIR = ".github/workflows";
 
@@ -84,6 +85,34 @@ export function runContract(repoRoot = DEFAULT_REPO_ROOT) {
   assert(
     shimSaas === null,
     `${SHIM_PATH}: the GitHub-native shim must not wire the SaaS remote cache (found ${shimSaas})`,
+  );
+
+  // setup-bun-workspace must invoke actions/cache directly. A second composite
+  // boundary drops actions/cache's post-step inputs, which prevents cold jobs
+  // from saving .turbo. Lane-scoped primary keys also prevent a fast empty
+  // lane from reserving the one immutable key before Build/Type Check save.
+  const workspaceSetup = read(SETUP_WORKSPACE_PATH);
+  assert(
+    !workspaceSetup.includes(`uses: ${SHIM_USES}`),
+    `${SETUP_WORKSPACE_PATH}: must not nest the Turbo cache shim`,
+  );
+  assert(
+    /actions\/cache@[0-9a-f]{40}/.test(workspaceSetup),
+    `${SETUP_WORKSPACE_PATH}: must invoke a pinned actions/cache directly`,
+  );
+  assert(
+    /path:\s*\.turbo/.test(workspaceSetup),
+    `${SETUP_WORKSPACE_PATH}: actions/cache must persist .turbo`,
+  );
+  assert(
+    /key:\s*turbo-.*\$\{\{\s*github\.job\s*\}\}/.test(workspaceSetup),
+    `${SETUP_WORKSPACE_PATH}: primary cache key must be lane-scoped with github.job`,
+  );
+  assert(
+    /restore-keys:[\s\S]*turbo-\$\{\{\s*runner\.os\s*\}\}-\$\{\{\s*steps\.turbo-key\.outputs\.turbo_cache_key\s*\}\}-/.test(
+      workspaceSetup,
+    ),
+    `${SETUP_WORKSPACE_PATH}: must retain the deterministic cross-lane restore prefix`,
   );
 
   // --- Invariant 2: no adopting workflow also wires the SaaS remote cache. ---

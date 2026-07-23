@@ -911,7 +911,7 @@ function DeviceLocationGroup() {
       : permission === "denied"
         ? t("settings.sections.capabilities.locationDenied", {
             defaultValue:
-              "Blocked — allow location for this app in your browser or OS settings",
+              "Blocked. Allow location for this app in your browser or OS settings.",
           })
         : permission === "unsupported"
           ? t("settings.sections.capabilities.locationUnsupported", {
@@ -919,7 +919,7 @@ function DeviceLocationGroup() {
             })
           : t("settings.sections.capabilities.locationOff", {
               defaultValue:
-                "Off — weather uses your approximate (network-based) location",
+                "Off. Weather uses your approximate network location.",
             });
 
   return (

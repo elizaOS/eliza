@@ -28,6 +28,7 @@ function makeTaskRuntime() {
 		agentId: AGENT_ID,
 		serverless: false,
 		logger: { debug: noop, info: noop, warn: noop, error: noop },
+		reportError: vi.fn(),
 		registerTaskWorker: (worker: TaskWorker) => {
 			workers.set(worker.name, worker);
 		},
@@ -232,7 +233,7 @@ describe("TaskService tick re-arm", () => {
 				updateInterval: 1_000,
 				baseInterval: 1_000,
 				updatedAt: T0,
-				maxFailures: 0,
+				maxFailures: -1,
 			},
 		});
 
@@ -323,6 +324,126 @@ describe("TaskService tick re-arm", () => {
 		// Paused task stays paused: no further executions.
 		await vi.advanceTimersByTimeAsync(120_000);
 		expect(execute).toHaveBeenCalledTimes(5);
+	});
+
+	it("runs healthy rows, self-heals orphaned (missing-worker) rows, and rejects on real invalid rows", async () => {
+		const { runtime, tasks, workers } = makeTaskRuntime();
+		const execute = vi.fn(async () => undefined);
+		workers.set("HEALTHY", { name: "HEALTHY", execute });
+		workers.set("BAD_PREFLIGHT", {
+			name: "BAD_PREFLIGHT",
+			shouldRun: async () => "yes" as unknown as boolean,
+			execute: vi.fn(async () => undefined),
+		});
+		tasks.set("healthy", {
+			id: "healthy" as UUID,
+			name: "HEALTHY",
+			agentId: AGENT_ID,
+			tags: ["queue"],
+		});
+		// Orphaned one-shot (no worker): no longer a per-tick failure. It is
+		// self-healed (deleted) so it can't re-spam TASK_WORKER_MISSING every tick
+		// (SHADOW-ACCOUNT-DEBUG). It must NOT appear in the failures list.
+		tasks.set("missing-worker", {
+			id: "missing-worker" as UUID,
+			name: "MISSING",
+			agentId: AGENT_ID,
+			tags: ["queue"],
+		});
+		tasks.set("bad-preflight", {
+			id: "bad-preflight" as UUID,
+			name: "BAD_PREFLIGHT",
+			agentId: AGENT_ID,
+			tags: ["queue"],
+		});
+		(runtime as { serverless: boolean }).serverless = true;
+		service = (await TaskService.start(runtime)) as TaskService;
+
+		// A genuinely invalid row (bad preflight) still rejects the tick; the
+		// orphaned missing-worker row is healed away and absent from the failures.
+		await expect(service.runDueTasks()).rejects.toMatchObject({
+			code: "TASK_TICK_FAILED",
+			context: {
+				failureCodes: ["TASK_PREFLIGHT_INVALID"],
+				failures: [
+					{
+						code: "TASK_PREFLIGHT_INVALID",
+						taskId: "bad-preflight",
+						taskName: "BAD_PREFLIGHT",
+					},
+				],
+			},
+		});
+		expect(execute).toHaveBeenCalledTimes(1);
+		// The orphaned one-shot was deleted, not left to re-fail forever.
+		expect(tasks.has("missing-worker")).toBe(false);
+	});
+
+	it("manual execution rejects after persisting the worker failure", async () => {
+		const { runtime, tasks, workers } = makeTaskRuntime();
+		workers.set("FAIL", {
+			name: "FAIL",
+			execute: async () => {
+				throw new Error("worker exploded");
+			},
+		});
+		tasks.set("repeat", {
+			id: "repeat" as UUID,
+			name: "FAIL",
+			agentId: AGENT_ID,
+			tags: ["queue", "repeat"],
+			metadata: { updateInterval: 1_000, updatedAt: T0 },
+		});
+		(runtime as { serverless: boolean }).serverless = true;
+		service = (await TaskService.start(runtime)) as TaskService;
+
+		await expect(
+			service.executeTaskById("repeat" as UUID),
+		).rejects.toMatchObject({
+			code: "TASK_EXECUTION_FAILED",
+		});
+		expect(tasks.get("repeat")?.metadata).toMatchObject({
+			failureCount: 1,
+			lastError: "worker exploded",
+		});
+	});
+
+	it("preserves bigint dueAt support for adapter-returned tasks", async () => {
+		const { runtime, tasks, workers } = makeTaskRuntime();
+		const execute = vi.fn(async () => undefined);
+		workers.set("BIGINT_DUE", { name: "BIGINT_DUE", execute });
+		tasks.set("bigint", {
+			id: "bigint" as UUID,
+			name: "BIGINT_DUE",
+			agentId: AGENT_ID,
+			tags: ["queue"],
+			dueAt: BigInt(T0 - 1),
+		});
+		(runtime as { serverless: boolean }).serverless = true;
+		service = (await TaskService.start(runtime)) as TaskService;
+
+		await expect(service.runDueTasks()).resolves.toBeUndefined();
+		expect(execute).toHaveBeenCalledTimes(1);
+	});
+
+	it("rejects invalid zero repeat intervals without running a busy loop", async () => {
+		const { runtime, tasks, workers } = makeTaskRuntime();
+		const execute = vi.fn(async () => undefined);
+		workers.set("ZERO", { name: "ZERO", execute });
+		tasks.set("zero", {
+			id: "zero" as UUID,
+			name: "ZERO",
+			agentId: AGENT_ID,
+			tags: ["queue", "repeat"],
+			metadata: { updateInterval: 0, updatedAt: T0 },
+		});
+		(runtime as { serverless: boolean }).serverless = true;
+		service = (await TaskService.start(runtime)) as TaskService;
+
+		await expect(service.runDueTasks()).rejects.toMatchObject({
+			code: "TASK_TICK_FAILED",
+		});
+		expect(execute).not.toHaveBeenCalled();
 	});
 
 	it("does not compound backoff and restores the original cadence when baseInterval was never set", async () => {
@@ -420,5 +541,103 @@ describe("AgentRuntime task mutations mark the local TaskService dirty", () => {
 		(runtime.getService as ReturnType<typeof vi.fn>).mockReturnValue(null);
 		await expect(runtime.createTask({ name: "X" })).resolves.toBeDefined();
 		expect(markDirty).not.toHaveBeenCalled();
+	});
+});
+
+describe("TaskService orphaned-task self-heal (missing worker)", () => {
+	let service: TaskService | null = null;
+
+	beforeEach(() => {
+		vi.useFakeTimers();
+		vi.setSystemTime(T0);
+	});
+
+	afterEach(async () => {
+		if (service) {
+			await service.stop();
+			service = null;
+		}
+		vi.useRealTimers();
+	});
+
+	it("auto-pauses a repeat task whose worker is gone, then stops re-erroring every tick", async () => {
+		const { runtime, tasks } = makeTaskRuntime();
+		// NO worker registered for ORPHAN_REPEAT — simulates a task created by an
+		// older build whose worker name changed / plugin no longer loads.
+		tasks.set("orphan-r", {
+			id: "orphan-r" as UUID,
+			name: "ORPHAN_REPEAT",
+			agentId: AGENT_ID,
+			tags: ["queue", "repeat"],
+			metadata: { updateInterval: 60_000, updatedAt: T0 },
+		});
+
+		service = (await TaskService.start(runtime)) as TaskService;
+
+		// First tick heals it: paused=true, ONE diagnostic (the tick's
+		// TASK_TICK_FAILED does NOT fire because failures[] is empty after heal).
+		await vi.advanceTimersByTimeAsync(1_000);
+		expect(tasks.get("orphan-r")?.metadata?.paused).toBe(true);
+		const reportError = runtime.reportError as ReturnType<typeof vi.fn>;
+		const callsAfterFirst = reportError.mock.calls.length;
+		expect(callsAfterFirst).toBe(0);
+
+		// Many later ticks: paused repeat is skipped in validateTasks, so it never
+		// re-errors. The 1s TASK_WORKER_MISSING -> TASK_TICK_FAILED loop is gone.
+		await vi.advanceTimersByTimeAsync(10_000);
+		expect(reportError.mock.calls.length).toBe(0);
+		// The row survives (operator can inspect / a redeploy can un-pause it).
+		expect(tasks.has("orphan-r")).toBe(true);
+	});
+
+	it("deletes a one-shot task whose worker is gone (can never run)", async () => {
+		const { runtime, tasks } = makeTaskRuntime();
+		tasks.set("orphan-1", {
+			id: "orphan-1" as UUID,
+			name: "ORPHAN_ONESHOT",
+			agentId: AGENT_ID,
+			tags: ["queue"],
+			metadata: { updatedAt: T0 },
+		});
+
+		service = (await TaskService.start(runtime)) as TaskService;
+
+		await vi.advanceTimersByTimeAsync(1_000);
+		// One-shot with no worker is deleted (keeping it = re-fail every tick).
+		expect(tasks.has("orphan-1")).toBe(false);
+		const reportError = runtime.reportError as ReturnType<typeof vi.fn>;
+		expect(reportError.mock.calls.length).toBe(0);
+
+		await vi.advanceTimersByTimeAsync(10_000);
+		expect(reportError.mock.calls.length).toBe(0);
+	});
+
+	it("emits the quarantine-failure diagnostic at most once when the heal write keeps failing", async () => {
+		const { runtime, tasks } = makeTaskRuntime();
+		tasks.set("orphan-r2", {
+			id: "orphan-r2" as UUID,
+			name: "ORPHAN_REPEAT_2",
+			agentId: AGENT_ID,
+			tags: ["queue", "repeat"],
+			metadata: { updateInterval: 60_000, updatedAt: T0 },
+		});
+		// updateTask always fails -> pause never persists, but the id is still
+		// marked quarantined so we don't renarrate every tick.
+		(runtime as { updateTask: IAgentRuntime["updateTask"] }).updateTask =
+			(async () => {
+				throw new Error("db write down");
+			}) as IAgentRuntime["updateTask"];
+
+		service = (await TaskService.start(runtime)) as TaskService;
+
+		await vi.advanceTimersByTimeAsync(1_000);
+		const reportError = runtime.reportError as ReturnType<typeof vi.fn>;
+		const afterFirst = reportError.mock.calls.length;
+		// The heal failure surfaces (once) via the tick's TASK_TICK_FAILED.
+		expect(afterFirst).toBeLessThanOrEqual(1);
+
+		// It must NOT keep re-narrating on every subsequent 1s tick.
+		await vi.advanceTimersByTimeAsync(30_000);
+		expect(reportError.mock.calls.length).toBe(afterFirst);
 	});
 });

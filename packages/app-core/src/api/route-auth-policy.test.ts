@@ -88,12 +88,27 @@ describe("compat route auth policy table", () => {
       resolveCompatRouteAuthPolicy("POST", "/api/cloud/login"),
     ).toMatchObject({ id: "cloud.login", tier: "session" });
     expect(
+      resolveCompatRouteAuthPolicy("GET", "/api/cloud/login/status"),
+    ).toMatchObject({ id: "cloud.login.status", tier: "session" });
+    expect(
       resolveCompatRouteAuthPolicy("POST", "/api/cloud/disconnect"),
     ).toMatchObject({ id: "cloud.disconnect", tier: "session" });
     expect(
       resolveCompatRouteAuthPolicy("POST", "/api/tts/elevenlabs"),
     ).toMatchObject({
       id: "tts.elevenlabs-passthrough",
+      tier: "public",
+    });
+    expect(
+      resolveCompatRouteAuthPolicy("GET", "/api/pool/status"),
+    ).toMatchObject({
+      id: "pool.status",
+      tier: "public",
+    });
+    expect(
+      resolveCompatRouteAuthPolicy("POST", "/api/pool/status"),
+    ).toMatchObject({
+      id: "pool.status",
       tier: "public",
     });
   });
@@ -149,5 +164,23 @@ describe("compat route auth policy table", () => {
       ),
     ).resolves.toBe("allowed");
     expect(res.status()).toBe(200);
+  });
+
+  it("allows public account-pool status methods through to the route handler", async () => {
+    for (const method of ["GET", "POST"]) {
+      const req = fakeReq({ method, pathname: "/api/pool/status" });
+      const res = fakeRes();
+
+      await expect(
+        enforceCompatRouteAuthPolicy(
+          req,
+          res.res,
+          STATE,
+          method,
+          "/api/pool/status",
+        ),
+      ).resolves.toBe("allowed");
+      expect(res.status()).toBe(200);
+    }
   });
 });

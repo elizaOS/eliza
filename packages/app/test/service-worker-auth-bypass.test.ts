@@ -73,18 +73,17 @@ function navigation(pathname: string): FetchEventLike {
 }
 
 describe("service worker auth navigation passthrough", () => {
-  it.each([
-    "/login",
-    "/login?code=one-time",
-    "/chat?token=handoff",
-  ])("takes over %s only for uncached network passthrough", (pathname) => {
-    const worker = loadServiceWorker();
-    const event = navigation(pathname);
+  it.each(["/login", "/login?code=one-time", "/chat?token=handoff"])(
+    "takes over %s only for uncached network passthrough",
+    (pathname) => {
+      const worker = loadServiceWorker();
+      const event = navigation(pathname);
 
-    worker.dispatchFetch(event);
+      worker.dispatchFetch(event);
 
-    expect(event.respondWith).toHaveBeenCalledTimes(1);
-  });
+      expect(event.respondWith).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it("still intercepts ordinary app-shell navigations", () => {
     const worker = loadServiceWorker();

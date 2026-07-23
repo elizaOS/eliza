@@ -1,0 +1,51 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["25877RY2EH.ai.elizaos.app"],
+        "components": [
+          {
+            "/": "/auth/callback"
+          },
+          {
+            "/": "/chat*"
+          },
+          {
+            "/": "/wallet"
+          },
+          {
+            "/": "/inventory"
+          },
+          {
+            "/": "/messages*"
+          },
+          {
+            "/": "/contacts"
+          },
+          {
+            "/": "/phone*"
+          },
+          {
+            "/": "/browser"
+          },
+          {
+            "/": "/settings*"
+          },
+          {
+            "/": "/connect*"
+          },
+          {
+            "/": "/share*"
+          },
+          {
+            "/": "/api/*",
+            "exclude": true
+          }
+        ]
+      }
+    ]
+  },
+  "webcredentials": {
+    "apps": ["25877RY2EH.ai.elizaos.app"]
+  }
+}

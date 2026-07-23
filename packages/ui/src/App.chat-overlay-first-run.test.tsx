@@ -21,13 +21,23 @@
  *    chrome-free, so plain web `?shellMode=chat-overlay` loads are unaffected.
  */
 
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, render, waitFor } from "@testing-library/react";
 import type * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const appState = vi.hoisted(() => ({
+  authPhase: "loading",
   firstRunComplete: false,
   startupPhase: "first-run-required",
+}));
+
+const notificationMock = vi.hoisted(() => ({
+  init: vi.fn(async () => undefined),
+}));
+
+vi.mock("./state/notifications/notification-store", () => ({
+  initNotifications: notificationMock.init,
+  seedDevNotificationsIfEmpty: vi.fn(async () => undefined),
 }));
 
 const conductorMock = vi.hoisted(() => ({
@@ -87,8 +97,10 @@ vi.mock("./hooks/useAvailableViews", () => ({
 }));
 
 vi.mock("./hooks/useAuthStatus", () => ({
+  isAuthenticatedNow: () => false,
+  subscribeAuthStatus: () => () => undefined,
   useAuthStatus: () => ({
-    state: { phase: "loading" },
+    state: { phase: appState.authPhase },
     refetch: vi.fn(),
   }),
 }));
@@ -225,6 +237,10 @@ vi.mock("./components/pages/LauncherSurface", () => ({
   LauncherSurface: () => <div data-testid="launcher-surface" />,
 }));
 
+vi.mock("./widgets/WidgetHost", () => ({
+  WidgetHost: () => <div data-testid="home-widget-host" />,
+}));
+
 vi.mock("./components/settings/SecretsManagerSection", () => ({
   VaultModal: () => null,
 }));
@@ -255,6 +271,7 @@ describe("App chat-overlay first-run composition", () => {
   beforeEach(() => {
     window.history.replaceState(null, "", "/?shellMode=chat-overlay");
     conductorMock.mount.mockClear();
+    notificationMock.init.mockClear();
   });
 
   afterEach(() => {
@@ -274,7 +291,7 @@ describe("App chat-overlay first-run composition", () => {
     // its seed effect (greeting + runtime/provider/tutorial turns) runs.
     expect(conductorMock.mount).toHaveBeenCalled();
     // The conductor mounts inside the shell-controller subtree, mirroring the
-    // full-shell composition at the ContinuousChatOverlay mount site.
+    // full-shell composition at the ChatOverlay mount site.
     expect(
       getByTestId("shell-controller-provider").querySelector(
         '[data-testid="first-run-conductor-mount"]',
@@ -296,6 +313,18 @@ describe("App chat-overlay first-run composition", () => {
     expect(
       container.querySelector('[data-shell-content-region="true"]'),
     ).toBeNull();
+  });
+
+  it("boots WebSocket notification ingress outside startup and auth early returns", async () => {
+    window.history.replaceState(null, "", "/");
+    appState.firstRunComplete = true;
+    appState.startupPhase = "polling-backend";
+    appState.authPhase = "loading";
+
+    const startupGate = render(<App />);
+    expect(startupGate.getByTestId("startup-screen")).toBeTruthy();
+    await waitFor(() => expect(notificationMock.init).toHaveBeenCalledOnce());
+    startupGate.unmount();
   });
 
   it("keeps the conductor mounted but UNGATED by App once first-run completes (hook self-gates)", () => {

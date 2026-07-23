@@ -27,9 +27,9 @@ Per-benchmark scorers:
   exact-match for categorical answers.
 - ScreenSpot — `1` when the predicted click lies inside the target bbox.
   Region predictions fall back to IoU > 0.5.
-- OSWorld — smoke runs use `osworldStepMatch` (action-trace agreement);
-  full runs delegate to `plugins/plugin-computeruse/src/osworld/` and
-  score on success rate.
+- OSWorld — smoke runs use `osworldStepMatch` (action-trace agreement).
+  Full runs fail closed in this package; use the separately registered
+  canonical `packages/benchmarks/OSWorld` harness for VM-state success rate.
 
 Adapter contract (`src/types.ts`):
 
@@ -64,11 +64,13 @@ TEXTVQA_DATA_DIR=/data/textvqa     bun run start -- --tier eliza-1-9b --benchmar
 DOCVQA_DATA_DIR=/data/docvqa       bun run start -- --tier eliza-1-9b --benchmark docvqa     --samples 5349
 CHARTQA_DATA_DIR=/data/chartqa     bun run start -- --tier eliza-1-9b --benchmark chartqa    --samples 2500
 SCREENSPOT_DATA_DIR=/data/screenspot bun run start -- --tier eliza-1-9b --benchmark screenspot --samples 1272
-OSWORLD_DATA_DIR=/data/osworld     bun run start -- --tier eliza-1-9b --benchmark osworld    --samples 369
 ```
 
-The OSWorld full eval also requires the OSWorld VM image
-(see `plugins/plugin-computeruse/src/osworld/README` for setup).
+The four dataset adapters require exactly the requested row count and every
+referenced image; missing splits, images, or prediction errors abort without a
+partial report. Full OSWorld uses `packages/benchmarks/OSWorld` with a real VM
+provider. The `vision-language` OSWorld adapter is smoke-only because a task
+JSON and initial screenshot cannot evaluate final VM state.
 
 ## Code-Agent Harness Labels
 
@@ -122,8 +124,8 @@ The HF model-card pipeline (Task 11) consumes this directory.
 ## Runtime entrypoint
 
 The runner uses `runtime.useModel(IMAGE_DESCRIPTION, ...)` (mediated by
-`plugin-local-inference`) for VQA/Doc/Chart, the same call with a
-grounding prompt for ScreenSpot, and (for OSWorld full runs) the
-action-loop wrapper from `plugins/plugin-computeruse/src/osworld/`.
-When the plugin can't be imported or the GGUF isn't on disk the runner
-falls back to the deterministic stub runtime so harness CI keeps passing.
+`plugin-local-inference`) for VQA/Doc/Chart and the same call with a
+grounding prompt for ScreenSpot. Missing runtimes or GGUF assets fail closed
+for full runs; only explicit `--smoke`/`--stub` runs use the deterministic
+stub. OpenClaw is currently N/A for publishable rows because its isolated
+embedded runtime does not preserve image input.

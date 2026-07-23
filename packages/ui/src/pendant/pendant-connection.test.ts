@@ -29,6 +29,10 @@ const asrControl = vi.hoisted(() => ({
   >,
 }));
 
+const decoderControl = vi.hoisted(() => ({
+  decodeCalls: 0,
+}));
+
 // The pipeline downstream of the transport is exercised elsewhere; here we only
 // need it to not touch real wasm/network. Mock the decoder + ASR + capture.
 vi.mock("./opus-frame-decoder", () => ({
@@ -36,8 +40,10 @@ vi.mock("./opus-frame-decoder", () => ({
     ready: Promise.resolve(),
     // Each frame decodes to 200ms of PCM so word timing normalization has a
     // realistic segment duration to preserve.
-    decodeFrame: (frame: Uint8Array) =>
-      new Float32Array(3_200).fill(frame.length / 255),
+    decodeFrame: (frame: Uint8Array) => {
+      decoderControl.decodeCalls += 1;
+      return new Float32Array(3_200).fill(frame.length / 255);
+    },
     free: vi.fn(),
   })),
 }));
@@ -170,6 +176,7 @@ afterEach(() => {
   asrControl.mode = "immediate";
   asrControl.calls = 0;
   asrControl.resolvers = [];
+  decoderControl.decodeCalls = 0;
   vi.clearAllMocks();
   vi.useRealTimers();
 });
@@ -303,6 +310,44 @@ describe("PendantConnection connect orchestration", () => {
         voiceListener,
       );
     }
+  });
+
+  it("accounts for reassembler loss metrics without packet-level state churn", async () => {
+    const transport = new FakeTransport({});
+    const { onState, states } = collectStates();
+    const conn = new PendantConnection({
+      onState,
+      createTransport: () => transport,
+    });
+    await conn.connect();
+
+    transport.audioListener?.(new Uint8Array([10, 0, 0, 1]));
+    transport.audioListener?.(new Uint8Array([12, 0, 0, 2]));
+
+    expect(conn.getState().droppedPackets).toBe(1);
+    expect(conn.getMetricsSnapshot().missingNotifications).toBe(1);
+    expect(conn.getMetricsSnapshot().droppedFrames).toBe(1);
+    expect(states.filter((state) => state.droppedPackets === 1)).toHaveLength(
+      1,
+    );
+  });
+
+  it("does not decode an ambiguous buffered tail on explicit disconnect", async () => {
+    const transport = new FakeTransport({});
+    const { onState } = collectStates();
+    const conn = new PendantConnection({
+      onState,
+      createTransport: () => transport,
+    });
+    await conn.connect();
+
+    transport.audioListener?.(new Uint8Array([30, 0, 0, 1]));
+    expect(decoderControl.decodeCalls).toBe(0);
+
+    await conn.disconnect();
+
+    expect(decoderControl.decodeCalls).toBe(0);
+    expect(conn.getState().status).toBe("idle");
   });
 
   it("emits each pending segment before waiting behind prior ASR work", async () => {

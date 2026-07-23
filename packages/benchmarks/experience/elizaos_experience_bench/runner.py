@@ -46,16 +46,20 @@ class ExperienceBenchmarkRunner:
         )
         base = 0
         if BenchmarkSuite.RETRIEVAL in self.config.suites:
-            base += len(self.generator.generate_retrieval_queries(
-                experiences,
-                num_queries=self.config.num_retrieval_queries,
-            ))
+            base += len(
+                self.generator.generate_retrieval_queries(
+                    experiences,
+                    num_queries=self.config.num_retrieval_queries,
+                )
+            )
         if BenchmarkSuite.RERANKING in self.config.suites:
             base += 5
         if BenchmarkSuite.LEARNING_CYCLE in self.config.suites:
-            base += len(self.generator.generate_learning_scenarios(
-                num_scenarios=self.config.num_learning_cycles,
-            ))
+            base += len(
+                self.generator.generate_learning_scenarios(
+                    num_scenarios=self.config.num_learning_cycles,
+                )
+            )
         if BenchmarkSuite.HARD_CASES in self.config.suites:
             base += len(get_all_cases())
         return count_expanded(base, include_edge_scenarios=self.config.include_edge_scenarios)
@@ -77,7 +81,9 @@ class ExperienceBenchmarkRunner:
             errors.extend(validate_unique_texts([q.query_text for q in queries], "retrieval"))
             for query in queries:
                 if not query.relevant_indices:
-                    errors.append(f"retrieval query has no relevant indices: {query.query_text[:80]}")
+                    errors.append(
+                        f"retrieval query has no relevant indices: {query.query_text[:80]}"
+                    )
         if BenchmarkSuite.LEARNING_CYCLE in self.config.suites:
             scenarios = self.generator.generate_learning_scenarios(
                 num_scenarios=self.config.num_learning_cycles,
@@ -89,12 +95,18 @@ class ExperienceBenchmarkRunner:
 
     def run(self) -> BenchmarkResult:
         """Run all configured benchmark suites."""
-        print(f"[ExperienceBench] Generating {self.config.num_experiences} synthetic experiences...")
+        print(
+            f"[ExperienceBench] Generating {self.config.num_experiences} synthetic experiences..."
+        )
         experiences = self.generator.generate_experiences(
             count=self.config.num_experiences,
             domains=self.config.domains,
         )
-        print(f"[ExperienceBench] Generated {len(experiences)} experiences across {len(set(e.domain for e in experiences))} domains")
+        domain_count = len({experience.domain for experience in experiences})
+        print(
+            f"[ExperienceBench] Generated {len(experiences)} experiences "
+            f"across {domain_count} domains"
+        )
 
         result = BenchmarkResult(
             config=self.config,
@@ -103,9 +115,10 @@ class ExperienceBenchmarkRunner:
 
         # --- Retrieval benchmark ---
         if BenchmarkSuite.RETRIEVAL in self.config.suites:
-            print(f"\n[ExperienceBench] Running RETRIEVAL benchmark...")
+            print("\n[ExperienceBench] Running RETRIEVAL benchmark...")
             queries = self.generator.generate_retrieval_queries(
-                experiences, num_queries=self.config.num_retrieval_queries,
+                experiences,
+                num_queries=self.config.num_retrieval_queries,
             )
             if self.config.include_edge_scenarios:
                 queries = expand_retrieval_queries(queries)
@@ -126,7 +139,7 @@ class ExperienceBenchmarkRunner:
 
         # --- Reranking benchmark ---
         if BenchmarkSuite.RERANKING in self.config.suites:
-            print(f"\n[ExperienceBench] Running RERANKING benchmark...")
+            print("\n[ExperienceBench] Running RERANKING benchmark...")
             evaluator = RerankingEvaluator(
                 include_edge_scenarios=self.config.include_edge_scenarios
             )
@@ -134,12 +147,16 @@ class ExperienceBenchmarkRunner:
             reranking_results = evaluator.evaluate()
             elapsed = time.time() - t0
 
-            result.reranking = type("RerankingMetrics", (), {
-                "similarity_dominance_rate": reranking_results["similarity_dominance_rate"],
-                "quality_tiebreak_rate": reranking_results["quality_tiebreak_rate"],
-                "noise_rejection_rate": reranking_results["noise_rejection_rate"],
-                "failures": reranking_results["failures"],
-            })()
+            result.reranking = type(
+                "RerankingMetrics",
+                (),
+                {
+                    "similarity_dominance_rate": reranking_results["similarity_dominance_rate"],
+                    "quality_tiebreak_rate": reranking_results["quality_tiebreak_rate"],
+                    "noise_rejection_rate": reranking_results["noise_rejection_rate"],
+                    "failures": reranking_results["failures"],
+                },
+            )()
 
             print(f"  Similarity dominance: {reranking_results['similarity_dominance_rate']:.1%}")
             print(f"  Quality tiebreaking: {reranking_results['quality_tiebreak_rate']:.1%}")
@@ -151,7 +168,7 @@ class ExperienceBenchmarkRunner:
 
         # --- Learning cycle benchmark ---
         if BenchmarkSuite.LEARNING_CYCLE in self.config.suites:
-            print(f"\n[ExperienceBench] Running LEARNING CYCLE benchmark...")
+            print("\n[ExperienceBench] Running LEARNING CYCLE benchmark...")
             # Use a subset of experiences as background noise
             bg_count = min(100, len(experiences))
             bg_experiences = experiences[:bg_count]
@@ -176,14 +193,15 @@ class ExperienceBenchmarkRunner:
             if failures:
                 print(f"  Failed cycles ({len(failures)}):")
                 for f in failures[:5]:
-                    print(f"    - query: {f['query']}, retrieved: {f['retrieved']}, keywords: {f['keywords_in_learned']}")
+                    print(
+                        f"    - query: {f['query']}, retrieved: {f['retrieved']}, "
+                        f"keywords: {f['keywords_in_learned']}"
+                    )
 
         # --- Hard cases benchmark ---
         if BenchmarkSuite.HARD_CASES in self.config.suites:
-            print(f"\n[ExperienceBench] Running HARD CASES benchmark...")
-            evaluator = HardCaseEvaluator(
-                include_edge_scenarios=self.config.include_edge_scenarios
-            )
+            print("\n[ExperienceBench] Running HARD CASES benchmark...")
+            evaluator = HardCaseEvaluator(include_edge_scenarios=self.config.include_edge_scenarios)
             t0 = time.time()
             hard_results = evaluator.evaluate()
             elapsed = time.time() - t0
@@ -210,13 +228,21 @@ class ExperienceBenchmarkRunner:
                 semantic_rate=hard_results.semantic_rate,
             )
 
-            print(f"  JACCARD TIER ({hard_results.jaccard_passed}/{hard_results.jaccard_total} = {hard_results.jaccard_rate:.0%}):")
+            print(
+                f"  JACCARD TIER ({hard_results.jaccard_passed}/"
+                f"{hard_results.jaccard_total} = "
+                f"{hard_results.jaccard_rate:.0%}):"
+            )
             for c in hard_results.categories:
                 if c.tier == "jaccard":
                     tag = ""
                     print(f"    {c.category}: {c.passed}/{c.total} ({c.rate:.0%}){tag}")
 
-            print(f"  SEMANTIC TIER ({hard_results.semantic_passed}/{hard_results.semantic_total} = {hard_results.semantic_rate:.0%}):")
+            print(
+                f"  SEMANTIC TIER ({hard_results.semantic_passed}/"
+                f"{hard_results.semantic_total} = "
+                f"{hard_results.semantic_rate:.0%}):"
+            )
             for c in hard_results.categories:
                 if c.tier == "semantic":
                     tag = "  [requires_embeddings]"
@@ -233,17 +259,20 @@ class ExperienceBenchmarkRunner:
 
         # --- Eliza Agent benchmark (async, requires runtime) ---
         if BenchmarkSuite.ELIZA_AGENT in self.config.suites:
-            print(f"\n[ExperienceBench] ELIZA_AGENT suite is configured.")
-            print(f"  Use run_eliza_agent() or the CLI --mode eliza-agent to run it.")
-            print(f"  (It requires an async runtime and model plugin.)")
+            print("\n[ExperienceBench] ELIZA_AGENT suite is configured.")
+            print("  Use run_eliza_agent() or the CLI --mode eliza-agent to run it.")
+            print("  (It requires an async runtime and model plugin.)")
 
-        print(f"\n[ExperienceBench] Done. Total experiences: {result.total_experiences}, Total queries: {result.total_queries}")
+        print(
+            f"\n[ExperienceBench] Done. Total experiences: {result.total_experiences}, "
+            f"Total queries: {result.total_queries}"
+        )
         return result
 
     async def run_eliza_agent(
         self,
-        model_plugin_factory: "Callable | None" = None,
-        progress_callback: "Callable[[str, int, int], None] | None" = None,
+        model_plugin_factory: Callable | None = None,
+        progress_callback: Callable[[str, int, int], None] | None = None,
     ) -> BenchmarkResult:
         """Run the Eliza agent experience benchmark through the TS bridge.
 
@@ -253,6 +282,7 @@ class ExperienceBenchmarkRunner:
 
         Returns:
             BenchmarkResult with eliza_agent metrics populated.
+
         """
         from eliza_adapter.experience import (
             ElizaBridgeExperienceRunner,
@@ -260,11 +290,12 @@ class ExperienceBenchmarkRunner:
         )
         from eliza_adapter.server_manager import ElizaServerManager
 
-        print(f"\n[ExperienceBench] Running ELIZA AGENT benchmark via TS bridge...")
+        print("\n[ExperienceBench] Running ELIZA AGENT benchmark via TS bridge...")
 
         bridge_config = ElizaExperienceConfig(
             num_learning_scenarios=self.config.num_learning_cycles,
-            num_background_experiences=min(self.config.num_experiences, 200),
+            num_retrieval_queries=self.config.num_retrieval_queries,
+            num_background_experiences=self.config.num_experiences,
             domains=self.config.domains,
             seed=self.config.seed,
             top_k_values=self.config.top_k_values,
@@ -306,10 +337,16 @@ class ExperienceBenchmarkRunner:
 
         if isinstance(direct_data, dict):
             result.retrieval = RetrievalMetrics(
-                precision_at_k=direct_data.get("precision_at_k", {}) if isinstance(direct_data.get("precision_at_k"), dict) else {},
-                recall_at_k=direct_data.get("recall_at_k", {}) if isinstance(direct_data.get("recall_at_k"), dict) else {},
+                precision_at_k=direct_data.get("precision_at_k", {})
+                if isinstance(direct_data.get("precision_at_k"), dict)
+                else {},
+                recall_at_k=direct_data.get("recall_at_k", {})
+                if isinstance(direct_data.get("recall_at_k"), dict)
+                else {},
                 mean_reciprocal_rank=float(direct_data.get("mean_reciprocal_rank", 0.0)),
-                hit_rate_at_k=direct_data.get("hit_rate_at_k", {}) if isinstance(direct_data.get("hit_rate_at_k"), dict) else {},
+                hit_rate_at_k=direct_data.get("hit_rate_at_k", {})
+                if isinstance(direct_data.get("hit_rate_at_k"), dict)
+                else {},
             )
 
         return result

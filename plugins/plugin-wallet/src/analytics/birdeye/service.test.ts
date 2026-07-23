@@ -110,7 +110,11 @@ describe("BirdeyeService market data caching", () => {
       }),
     );
     expect(
-      (service.runtime.setCache.mock.calls[0]?.[1] as { setAt: number }).setAt,
+      (
+        service.runtime.setCache.mock.calls[0]?.[1] as
+          | { setAt: number }
+          | undefined
+      )?.setAt,
     ).toBeGreaterThanOrEqual(startedAt);
   });
 

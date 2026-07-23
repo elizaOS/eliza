@@ -4,7 +4,7 @@ In-process workflow engine: generate and run automation workflows from natural l
 
 ## Purpose / role
 
-Adds workflow automation capabilities to an Eliza agent. Given a natural-language prompt, the plugin runs a RAG pipeline (keyword extraction → node catalog search → LLM generation → validate/repair → deploy) to produce and immediately activate a runnable workflow. Execution happens in-process via the `EmbeddedWorkflowService`; there is no external sidecar. The plugin is **default-enabled** (opt-out with `workflow.enabled: false` in agent config).
+Adds workflow automation capabilities to an Eliza agent. Given a natural-language prompt, the plugin runs a RAG pipeline (keyword extraction → node catalog search → LLM generation → validate/repair → deploy) to produce an inactive draft; activation is a separate, explicit lifecycle operation. Execution happens in-process via the `EmbeddedWorkflowService`; there is no external sidecar. The plugin is **default-enabled** (opt-out with `workflow.enabled: false` in agent config).
 
 ## Plugin surface
 
@@ -56,8 +56,8 @@ Two registration paths, two URL shapes:
 
 ### DB schema
 
-Five Drizzle tables under `src/db/schema.ts`, exported as `workflowSchema`:
-`embeddedWorkflows`, `embeddedExecutions`, `embeddedCredentials`, `embeddedTags`, `credentialMappings`.
+Six Drizzle tables under `src/db/schema.ts`, exported as `workflowSchema`:
+`embeddedWorkflows`, `workflowRevisions`, `embeddedExecutions`, `embeddedCredentials`, `embeddedTags`, `credentialMappings`.
 
 ## Layout
 
@@ -91,7 +91,7 @@ plugins/plugin-workflow/
       workflow-routes.ts      Central route dispatcher
       _helpers.ts             Shared route helper utilities
     db/
-      schema.ts               Drizzle schema (5 tables)
+      schema.ts               Drizzle schema (6 tables)
     types/
       index.ts                WorkflowDefinition, WorkflowExecution, error classes, service-type constants
       workflow-contracts.ts   n8n-style node contract types (INode, INodeProperties, INodeTypeDescription, INodeCredentials, IWorkflowSettings)
@@ -133,10 +133,10 @@ The Smithers execution runtime also reads these optional environment variables (
 
 | Env var | Default | Description |
 |---|---|---|
-| `SMITHERS_DB_PROVIDER` | `sqlite` | Database backend for the Smithers orchestrator (`sqlite` or `postgres`). |
-| `SMITHERS_DB_URL` | — | Connection string when `SMITHERS_DB_PROVIDER=postgres`. |
-| `SMITHERS_DB_DATA_DIR` | — | Data directory for SQLite storage. |
-| `ELIZA_SMITHERS_RUN_PAYLOAD` | `{}` | JSON payload injected into Smithers worker runs. |
+| `SMITHERS_DB_PROVIDER` | `sqlite` | Database backend for the Smithers orchestrator (`sqlite`, `postgres`, or `pglite`). Invalid or unavailable backends fail fast. |
+| `SMITHERS_DB_URL` | — | Required connection string when `SMITHERS_DB_PROVIDER=postgres`. |
+| `SMITHERS_DB_DATA_DIR` | — | Required data directory when `SMITHERS_DB_PROVIDER=pglite`. |
+| `ELIZA_SMITHERS_TIMEOUT_MS` | `300000` | Maximum wall-clock time for one Smithers workflow or durable task run. |
 | `BUN_BIN` | `bun` | Bun executable fallback for Node-hosted dev/test processes; Smithers workers still run under Bun for `bun:sqlite`. |
 
 Workflow generation/repair model calls also read optional primitive settings or env vars:
@@ -184,7 +184,10 @@ Node definitions live in `src/data/defaultNodes.json`. Add new entries and updat
 - **Nested settings read-path.** `runtime.getSetting()` only surfaces primitive values. Nested objects like `character.settings.workflows.credentials` must be read directly from `runtime.character.settings?.workflows`.
 - **`TRIGGER` action is separate.** Trigger CRUD (cron schedules, promoting a task to a workflow) lives in the agent-internal `TRIGGER` action, not here. `WORKFLOW_DISPATCH` service bridges the two: trigger tasks call `runtime.getService("WORKFLOW_DISPATCH").execute(workflowId)`.
 - **Idempotency keys.** `WorkflowDispatchOptions.idempotencyKey` prevents duplicate executions when the same trigger fires concurrently.
-- **Smithers orchestrator.** Workflow node execution delegates to `smithers-orchestrator@0.22.0` (see `src/services/smithers-runtime.ts`). The `effect` and `quickjs-emscripten` packages support the orchestrator's functional pipeline and sandboxed JS evaluation respectively. Failed delegated nodes are echoed before Smithers' wrapper error so execution diagnostics retain the original node error.
+- **One owner scope across UI and chat.** Local workflow routes resolve the runtime's canonical owner entity (the same entity used by client chat), never the runtime agent id or caller-controlled actor headers. Every workflow, execution, and revision read/mutation passes that principal to `WorkflowService`; `/api/automations` uses the same scope.
+- **Seeded-default ownership compatibility.** The canonical local owner may access the untagged `system-device-health-check` row seeded by older installs. This exception is fixed-id and untagged-only: arbitrary untagged workflows stay hidden, and an explicit foreign owner tag remains authoritative.
+- **Save is not activate.** New definitions remain inactive drafts, and updates preserve the current active/paused state. Only an explicit activation request arms schedule tasks; editor write DTOs may omit `activate` safely.
+- **Smithers orchestrator.** Workflow node execution delegates directly to `@smithers-orchestrator/engine@0.29.0` (see `src/services/smithers-runtime.ts`). The umbrella CLI package is intentionally not a runtime dependency because its cloud adapters are not used by embedded workflows. The `effect` and `quickjs-emscripten` packages support the orchestrator's functional pipeline and sandboxed JS evaluation respectively. Definitions and trigger data cross a dedicated pipe rather than the worker environment, runs are time-bounded, and failed delegated nodes are echoed before Smithers' wrapper error so execution diagnostics retain the original node error.
 - **Workflow eval kits.** `WORKFLOW eval_samples` and `/api/workflow/workflows/:id/evaluation-samples` return compact JSONL cases plus Smithers eval, GEPA optimize, observability, and metrics command hints. Keep `jsonl` pure so it can be written directly to the returned `optimizer.caseFile`.
 - **Drizzle ORM.** The plugin manages its own Postgres schema via Drizzle. Tables are exported from `src/db/schema.ts` and registered on the plugin's `schema` field.
 - **validateAndRepair retry loop.** Generation and modification both run up to 3 LLM-retry passes via `validateAndRepair` + `fixWorkflowErrors` to correct typeVersion hallucinations, missing credential blocks, and invalid output references before deploy.

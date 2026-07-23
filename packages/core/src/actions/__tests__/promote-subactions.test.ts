@@ -220,6 +220,119 @@ describe("promoteSubactionsToActions parameter slicing", () => {
 	});
 });
 
+describe("promoteSubactionsToActions virtual dispatch consistency", () => {
+	it("rejects a conflicting canonical discriminator without invoking the parent", async () => {
+		const handler = vi.fn(async () => undefined);
+		const [, ...virtuals] = promoteSubactionsToActions(
+			makeUmbrella({ handler }),
+		);
+		const read = findVirtual(virtuals, "WIDGET_READ");
+
+		const result = await read.handler({} as never, {} as never, undefined, {
+			parameters: { action: "delete" },
+		});
+
+		expect(result).toMatchObject({
+			success: false,
+			text: expect.stringContaining("Call WIDGET_DELETE"),
+		});
+		expect((result as { error?: unknown }).error).toBeInstanceOf(Error);
+		expect(handler).not.toHaveBeenCalled();
+	});
+
+	it("rejects a conflicting declared alias that carries the pinned vocabulary", async () => {
+		const handler = vi.fn(async () => undefined);
+		const umbrella = makeUmbrella({
+			handler,
+			parameters: [
+				...(makeUmbrella().parameters ?? []),
+				{
+					name: "op",
+					description: "Alias for the widget operation.",
+					required: false,
+					schema: { type: "string", enum: ["create", "read", "delete"] },
+				},
+			],
+		});
+		const [, ...virtuals] = promoteSubactionsToActions(umbrella);
+
+		const result = await findVirtual(virtuals, "WIDGET_READ").handler(
+			{} as never,
+			{} as never,
+			undefined,
+			{ parameters: { op: "delete" } },
+		);
+
+		expect(result).toMatchObject({
+			success: false,
+			text: expect.stringContaining("'op: delete' contradicts it"),
+		});
+		expect(handler).not.toHaveBeenCalled();
+	});
+
+	it("accepts a normalized matching alias and delegates with the virtual pin", async () => {
+		const handler = vi.fn(async () => undefined);
+		const umbrella = makeUmbrella({
+			handler,
+			parameters: [
+				...(makeUmbrella().parameters ?? []),
+				{
+					name: "op",
+					description: "Alias for the widget operation.",
+					required: false,
+					schema: { type: "string", enum: ["create", "read", "delete"] },
+				},
+			],
+		});
+		const [, ...virtuals] = promoteSubactionsToActions(umbrella);
+
+		await findVirtual(virtuals, "WIDGET_READ").handler(
+			{} as never,
+			{} as never,
+			undefined,
+			{ parameters: { op: " READ " } },
+		);
+
+		const options = handler.mock.calls[0]?.[3] as HandlerOptions;
+		expect(options.parameters).toMatchObject({
+			action: "read",
+			op: " READ ",
+			subaction: "read",
+		});
+	});
+
+	it("preserves an alias-named nested selector with an independent enum", async () => {
+		const handler = vi.fn(async () => undefined);
+		const umbrella = makeUmbrella({
+			handler,
+			parameters: [
+				...(makeUmbrella().parameters ?? []),
+				{
+					name: "op",
+					description: "Nested operation within a widget read.",
+					required: false,
+					schema: { type: "string", enum: ["start", "stop"] },
+				},
+			],
+		});
+		const [, ...virtuals] = promoteSubactionsToActions(umbrella);
+
+		await findVirtual(virtuals, "WIDGET_READ").handler(
+			{} as never,
+			{} as never,
+			undefined,
+			{ parameters: { op: "stop" } },
+		);
+
+		const options = handler.mock.calls[0]?.[3] as HandlerOptions;
+		expect(options.parameters).toMatchObject({
+			action: "read",
+			op: "stop",
+			subaction: "read",
+		});
+	});
+});
+
 describe("promoteSubactionsToActions description / hint hygiene", () => {
 	it("does not copy routingHint onto virtuals; the parent keeps it", () => {
 		const [parent, ...virtuals] = promoteSubactionsToActions(makeUmbrella());

@@ -90,6 +90,10 @@ export type PersistedProviderAccess = TrajectoryProviderAccess & {
   providerId: string;
   providerName: string;
   timestamp: number;
+  startedAt: number | null;
+  endedAt: number | null;
+  durationMs: number | null;
+  overlapsWith: Array<{ providerName: string; overlapMs: number }>;
   data: Record<string, unknown>;
   purpose: string;
 };

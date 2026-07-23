@@ -8,15 +8,16 @@ The plugin registers three umbrella actions and a set of supporting services:
 
 | Action | Operations | Description |
 |---|---|---|
-| **FILE** | `read`, `write`, `edit`, `grep`, `glob`, `ls` | All file and search operations. Paths must be absolute. Optional `target=device` routes through a device filesystem bridge for mobile. |
-| **SHELL** | `run`, `clear_history`, `view_history` | `run` executes a command via `/bin/bash -c` with a per-call timeout (clamped to `[100, 600000]` ms, default 120000). `view_history`/`clear_history` read or clear per-conversation command history. |
+| **FILE** | `read`, `write`, `edit`, `grep`, `glob`, `ls` | All file and search operations. Relative read/write/edit paths resolve against the conversation's session cwd before sandbox validation. Optional `target=device` routes through a device filesystem bridge for mobile. |
+| **SHELL** | `run`, `start_background`, `poll_background`, `write_background`, `kill_background`, `list_background`, `clear_history`, `view_history` | `run` executes a command via `/bin/bash -c` with a per-call timeout (clamped to `[100, 600000]` ms, default 120000). Background actions return stable per-conversation handles, poll incremental stdout/stderr offsets with truncation markers, write stdin, terminate process groups, and list sessions. `view_history`/`clear_history` read or clear per-conversation command history. |
 | **WORKTREE** | `enter`, `exit` | Creates and tears down git worktrees, updating the agent's session cwd and sandbox roots automatically. |
 
 Supporting services (automatically started):
 
 - **SandboxService** — path policy engine. Blocks user-private and OS-system paths by default; optionally constrains access to configured workspace roots.
 - **FileStateService** — tracks file mtimes per conversation so write/edit operations are rejected if the file was externally modified since the agent last read it.
-- **SessionCwdService** — per-conversation working directory. Defaults to `process.cwd()`; updated by WORKTREE operations.
+- **SessionCwdService** — per-conversation working directory used by relative file operations and default-path tools. Defaults to `process.cwd()`; updated by WORKTREE operations.
+- **BackgroundShellService** — owns per-conversation background shell sessions and reaps all child process groups on plugin teardown.
 - **RipgrepService** — wraps the `@vscode/ripgrep` binary for fast regex search.
 
 ## Enabling the plugin
@@ -48,6 +49,8 @@ All settings are optional. Configure via environment variables or agent settings
 | `CODING_TOOLS_BLOCKED_PATHS` | (built-in) | Comma-separated absolute paths to block — replaces the default blocklist. |
 | `CODING_TOOLS_BLOCKED_PATHS_ADD` | — | Paths to add to the default blocklist. |
 | `CODING_TOOLS_SHELL_TIMEOUT_MS` | `120000` | Default SHELL timeout (ms); per-call `timeout` clamps to `[100, 600000]`. |
+| `CODING_TOOLS_BACKGROUND_SHELL_BUFFER_CHARS` | `64000` | Per-stream retained stdout/stderr ring size for background shell polling. |
+| `CODING_TOOLS_BACKGROUND_SHELL_KILL_GRACE_MS` | `1500` | Grace period between SIGTERM and SIGKILL for background shell termination. |
 | `CODING_TOOLS_MAX_READ_LINES` | `2000` | Max lines returned by FILE action=read. |
 | `CODING_TOOLS_MAX_FILE_SIZE_BYTES` | `262144` | File size cap for reads (bytes). Larger files are rejected. |
 | `CODING_TOOLS_GREP_HEAD_LIMIT` | `250` | Max output lines for GREP. Set to 0 to disable. |
@@ -66,4 +69,3 @@ Override with `CODING_TOOLS_BLOCKED_PATHS` (replace) or `CODING_TOOLS_BLOCKED_PA
 - Node.js runtime only (`eliza.platforms: ["node"]`).
 - FILE and WORKTREE require `roleGate: minRole=ADMIN`; SHELL requires `roleGate: minRole=OWNER`.
 - All actions are restricted to `contexts: ["code", "terminal", "automation"]`.
-

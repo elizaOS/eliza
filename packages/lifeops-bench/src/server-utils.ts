@@ -2,6 +2,7 @@ import {
   type AgentRuntime,
   ChannelType,
   elizaLogger,
+  type LlmInputSubstringAttestation,
   type Memory,
   type Plugin,
   type RoleName,
@@ -167,6 +168,19 @@ export interface BenchmarkToolCall {
 
 export interface BenchmarkTurnMetadata {
   agent_label: "eliza";
+  native_runtime_class: "@elizaos/core.AgentRuntime";
+  native_runtime_api: "messageService.handleMessage" | "useModel";
+  transport: "eliza_benchmark_http";
+  tool_bridge:
+    | "native_action_capture"
+    | "lifecycle_capture_only"
+    | "runtime_model_native_tools"
+    | "runtime_model_text";
+  direct_model_bypass: false;
+  stand_in: boolean;
+  release_evidence: boolean;
+  embedding_mode: "disabled-text-only" | "runtime-provider" | "stand-in";
+  semantic_memory_enabled: boolean;
   benchmark: string;
   task_id: string;
   room_id: UUID;
@@ -182,6 +196,16 @@ export interface BenchmarkTurnMetadata {
   auto_compact: string | null;
   tool_schema_count: number;
   tool_names: string[];
+  lifecycle_task_action_registered: boolean;
+  lifecycle_system_hint_attestation: {
+    schema_version: 1;
+    system_hint_sha256: string;
+    model_boundary_call_count: number;
+    model_boundary_attested_call_count: number;
+    model_boundary_hint_occurrence_count: number;
+    exact_once_per_model_call: boolean;
+    model_type_call_counts: Record<string, number>;
+  } | null;
 }
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
@@ -556,6 +580,13 @@ export function composeBenchmarkPrompt(params: {
     benchmark === "orchestrator_lifecycle" ||
     benchmark === "orchestrator-lifecycle";
 
+  // The lifecycle profile's ELIZA_BENCHMARK provider injects the one shared
+  // neutral hint. Keep the persisted user message byte-for-byte clean so
+  // native room history matches the canonical history supplied externally.
+  if (isOrchestratorLifecycle) {
+    return params.text.trim();
+  }
+
   if (params.context && Object.keys(params.context).length > 0) {
     const contextForPrompt = isLocaBenchmark
       ? compactLocaContextForPrompt(params.context)
@@ -588,17 +619,6 @@ export function composeBenchmarkPrompt(params: {
         "Only use REPLY after the requested output files have been written.",
       ].join(" "),
     );
-  } else if (isOrchestratorLifecycle) {
-    segments.push(
-      [
-        "This is an orchestrator lifecycle benchmark.",
-        "Use your normal task-management and orchestrator actions for lifecycle operations: delegation, task updates, status checks, pause, resume, cancel, and sharing results.",
-        "Use REPLY for user-facing narration only; prose-only lifecycle claims do not satisfy this benchmark.",
-        "For failed approaches, replans, and scope changes, apply the update through the running task and then acknowledge it.",
-        "For status turns, query the active task or subagent registry before reporting progress.",
-        "For underspecified turns, ask a clarifying question and wait before starting work.",
-      ].join(" "),
-    );
   } else {
     segments.push(
       "Respond using normal Eliza action output so actions/params can be executed and evaluated.",
@@ -606,6 +626,17 @@ export function composeBenchmarkPrompt(params: {
   }
 
   return segments.join("\n\n");
+}
+
+/** Configure whether benchmark messages force a non-terminal planner tool. */
+export function configureBenchmarkToolCallPolicy(
+  lifecycleProfile: boolean,
+): void {
+  if (lifecycleProfile) {
+    process.env.ELIZA_BENCH_FORCE_TOOL_CALL = "0";
+    return;
+  }
+  process.env.ELIZA_BENCH_FORCE_TOOL_CALL ??= "1";
 }
 
 /**
@@ -691,6 +722,24 @@ function compactLocaContextForPrompt(
 export function coerceActions(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.filter((entry): entry is string => typeof entry === "string");
+}
+
+/** Return the planner-visible action names registered on a benchmark runtime. */
+export function benchmarkRuntimeActionNames(runtime: {
+  actions?: Array<{ name?: string }>;
+}): string[] {
+  return (runtime.actions ?? [])
+    .map((action) => action.name?.trim().toUpperCase() ?? "")
+    .filter((name) => name.length > 0);
+}
+
+/** Prove the native orchestrator parent or one of its promoted actions exists. */
+export function hasLifecycleTaskAction(runtime: {
+  actions?: Array<{ name?: string }>;
+}): boolean {
+  return benchmarkRuntimeActionNames(runtime).some(
+    (name) => name === "TASKS" || name.startsWith("TASKS_"),
+  );
 }
 
 export function normalizeBenchmarkContext(
@@ -847,6 +896,14 @@ export function benchmarkTurnMetadata(params: {
   step: number;
   context?: Record<string, unknown>;
   nativeTrajectoryStepId?: string | null;
+  nativeRuntimeApi: "messageService.handleMessage" | "useModel";
+  toolBridge:
+    | "native_action_capture"
+    | "lifecycle_capture_only"
+    | "runtime_model_native_tools"
+    | "runtime_model_text";
+  lifecycleTaskActionRegistered?: boolean;
+  lifecycleSystemHintAttestation?: LlmInputSubstringAttestation;
 }): BenchmarkTurnMetadata {
   const rawTools = params.context?.tools;
   const tools = Array.isArray(rawTools)
@@ -855,13 +912,32 @@ export function benchmarkTurnMetadata(params: {
           Boolean(entry) && typeof entry === "object" && !Array.isArray(entry),
       )
     : [];
-  const compactionThreshold = Number(
+  const rawCompactionThreshold =
     process.env.ELIZA_BENCH_COMPACTION_THRESHOLD_TOKENS ??
-      process.env.CONTEXT_COMPACTION_THRESHOLD_TOKENS ??
-      "",
-  );
+    process.env.CONTEXT_COMPACTION_THRESHOLD_TOKENS;
+  const compactionThreshold = rawCompactionThreshold?.trim()
+    ? Number(rawCompactionThreshold)
+    : Number.NaN;
+  const standIn =
+    process.env.ELIZA_BENCH_ALLOW_STUB_EMBEDDING === "1" ||
+    process.env.ELIZA_BENCH_SKIP_EMBEDDING === "1" ||
+    process.env.ELIZA_BENCH_MOCK === "true";
+  const embeddingMode = standIn
+    ? "stand-in"
+    : process.env.ELIZA_BENCH_SUBSCRIPTION_CHAT_ONLY === "1"
+      ? "disabled-text-only"
+      : "runtime-provider";
   return {
     agent_label: "eliza",
+    native_runtime_class: "@elizaos/core.AgentRuntime",
+    native_runtime_api: params.nativeRuntimeApi,
+    transport: "eliza_benchmark_http",
+    tool_bridge: params.toolBridge,
+    direct_model_bypass: false,
+    stand_in: standIn,
+    release_evidence: !standIn,
+    embedding_mode: embeddingMode,
+    semantic_memory_enabled: embeddingMode === "runtime-provider",
     benchmark: params.session.benchmark,
     task_id: params.session.taskId,
     room_id: params.session.roomId,
@@ -890,6 +966,26 @@ export function benchmarkTurnMetadata(params: {
     auto_compact: process.env.ELIZA_BENCH_AUTO_COMPACT ?? null,
     tool_schema_count: tools.length,
     tool_names: tools.map(benchmarkToolName).filter(Boolean),
+    lifecycle_task_action_registered:
+      params.lifecycleTaskActionRegistered === true,
+    lifecycle_system_hint_attestation: params.lifecycleSystemHintAttestation
+      ? {
+          schema_version: params.lifecycleSystemHintAttestation.schemaVersion,
+          system_hint_sha256:
+            params.lifecycleSystemHintAttestation.expectedSha256,
+          model_boundary_call_count:
+            params.lifecycleSystemHintAttestation.modelCallCount,
+          model_boundary_attested_call_count:
+            params.lifecycleSystemHintAttestation.matchingCallCount,
+          model_boundary_hint_occurrence_count:
+            params.lifecycleSystemHintAttestation.totalOccurrences,
+          exact_once_per_model_call:
+            params.lifecycleSystemHintAttestation.exactOncePerModelCall,
+          model_type_call_counts: {
+            ...params.lifecycleSystemHintAttestation.modelTypeCallCounts,
+          },
+        }
+      : null,
   };
 }
 

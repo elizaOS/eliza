@@ -8,6 +8,7 @@ import {
   keyedRuntime,
   makeApp,
   makeMessage,
+  requireDefined,
   resetSdk,
   setListApps,
   setRegenerateAppApiKey,
@@ -68,9 +69,16 @@ describe("REGENERATE_APP_API_KEY", () => {
     );
 
     expect(rotations.count()).toBe(0);
-    expect((result?.data as { rotated: boolean }).rotated).toBe(false);
     expect(
-      (result?.data as { confirmationRequired: boolean }).confirmationRequired,
+      (requireDefined(result, "action result").data as { rotated: boolean })
+        .rotated,
+    ).toBe(false);
+    expect(
+      (
+        requireDefined(result, "action result").data as {
+          confirmationRequired: boolean;
+        }
+      ).confirmationRequired,
     ).toBe(true);
     const prompt = cb.calls[0]?.text ?? "";
     expect(prompt).toContain("Acme Bot");
@@ -100,7 +108,10 @@ describe("REGENERATE_APP_API_KEY", () => {
 
     expect(rotations.count()).toBe(1);
     expect(result?.success).toBe(true);
-    expect((result?.data as { rotated: boolean }).rotated).toBe(true);
+    expect(
+      (requireDefined(result, "action result").data as { rotated: boolean })
+        .rotated,
+    ).toBe(true);
 
     // The key is shown ONCE in the user-facing reply...
     const replies = cb.calls.filter((c) => (c.text ?? "").includes(NEW_KEY));
@@ -110,7 +121,9 @@ describe("REGENERATE_APP_API_KEY", () => {
     );
 
     // ...but never placed in the persisted `data` or summary `text`.
-    expect(JSON.stringify(result?.data)).not.toContain(NEW_KEY);
+    expect(
+      JSON.stringify(requireDefined(result, "action result").data),
+    ).not.toContain(NEW_KEY);
     expect(result?.text ?? "").not.toContain(NEW_KEY);
   });
 
@@ -133,7 +146,10 @@ describe("REGENERATE_APP_API_KEY", () => {
       cb.fn,
     );
     expect(result?.success).toBe(false);
-    expect((result?.data as { reason: string }).reason).toBe("no_key_returned");
+    expect(
+      (requireDefined(result, "action result").data as { reason: string })
+        .reason,
+    ).toBe("no_key_returned");
   });
 
   it("structured confirm without a pending prompt does NOT rotate", async () => {
@@ -146,9 +162,10 @@ describe("REGENERATE_APP_API_KEY", () => {
       captureCallback().fn,
     );
     expect(rotations.count()).toBe(0);
-    expect((result?.data as { reason: string }).reason).toBe(
-      "no_pending_confirmation",
-    );
+    expect(
+      (requireDefined(result, "action result").data as { reason: string })
+        .reason,
+    ).toBe("no_pending_confirmation");
   });
 
   it("structured cancellation consumes the pending prompt without rotating", async () => {
@@ -169,7 +186,10 @@ describe("REGENERATE_APP_API_KEY", () => {
       captureCallback().fn,
     );
     expect(rotations.count()).toBe(0);
-    expect((result?.data as { canceled: boolean }).canceled).toBe(true);
+    expect(
+      (requireDefined(result, "action result").data as { canceled: boolean })
+        .canceled,
+    ).toBe(true);
   });
 
   it("returns not-found for an unknown app (no rotate)", async () => {
@@ -182,7 +202,10 @@ describe("REGENERATE_APP_API_KEY", () => {
       captureCallback().fn,
     );
     expect(rotations.count()).toBe(0);
-    expect((result?.data as { reason: string }).reason).toBe("not_found");
+    expect(
+      (requireDefined(result, "action result").data as { reason: string })
+        .reason,
+    ).toBe("not_found");
   });
 
   it("degrades gracefully with no Cloud API key", async () => {
@@ -193,7 +216,10 @@ describe("REGENERATE_APP_API_KEY", () => {
       undefined,
       captureCallback().fn,
     );
-    expect((result?.data as { reason: string }).reason).toBe("no_key");
+    expect(
+      (requireDefined(result, "action result").data as { reason: string })
+        .reason,
+    ).toBe("no_key");
   });
 
   it("confirm naming a DIFFERENT app refuses, rotates nothing, and clears the pending", async () => {
@@ -217,9 +243,10 @@ describe("REGENERATE_APP_API_KEY", () => {
 
     expect(rotations.count()).toBe(0);
     expect(result?.success).toBe(false);
-    expect((result?.data as { reason: string }).reason).toBe(
-      "confirm_target_mismatch",
-    );
+    expect(
+      (requireDefined(result, "action result").data as { reason: string })
+        .reason,
+    ).toBe("confirm_target_mismatch");
     const reply = cb.calls.at(-1)?.text ?? "";
     expect(reply).toContain("Beta Dashboard");
     expect(reply).toContain("Acme Bot");
@@ -233,9 +260,10 @@ describe("REGENERATE_APP_API_KEY", () => {
       cb.fn,
     );
     expect(rotations.count()).toBe(0);
-    expect((followUp?.data as { reason: string }).reason).toBe(
-      "no_pending_confirmation",
-    );
+    expect(
+      (requireDefined(followUp, "follow-up result").data as { reason: string })
+        .reason,
+    ).toBe("no_pending_confirmation");
   });
 
   it("surfaces a rotate API error", async () => {
@@ -256,6 +284,9 @@ describe("REGENERATE_APP_API_KEY", () => {
       captureCallback().fn,
     );
     expect(result?.success).toBe(false);
-    expect((result?.data as { reason: string }).reason).toBe("error");
+    expect(
+      (requireDefined(result, "action result").data as { reason: string })
+        .reason,
+    ).toBe("error");
   });
 });

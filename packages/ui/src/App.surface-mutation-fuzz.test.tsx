@@ -44,6 +44,7 @@ import { stubOfflineAppFetch } from "../test/offline-app-fetch";
 vi.mock("./utils/with-timeout", () => ({
   withTimeout: <T,>(promise: Promise<T>): Promise<T> => promise,
 }));
+
 import type { BuiltinTab } from "./navigation";
 import type { BackgroundConfig } from "./state/ui-preferences";
 import {
@@ -308,6 +309,9 @@ vi.mock("./components/character/CharacterEditor", () => ({
 }));
 vi.mock("./components/pages/LauncherSurface", () => ({
   LauncherSurface: () => <div data-testid="launcher-surface" />,
+}));
+vi.mock("./widgets/WidgetHost", () => ({
+  WidgetHost: () => <div data-testid="home-widget-host" />,
 }));
 vi.mock("./components/settings/SecretsManagerSection", () => ({
   VaultModal: () => null,

@@ -7,8 +7,12 @@ these assertions exercise the actual concurrency path rather than a mock of it.
 
 from __future__ import annotations
 
+import sys
+import types
+
 import pytest
 
+from multitask_bench import harness as harness_module
 from multitask_bench.metrics import compute_interference, compute_lane_metrics
 from multitask_bench.sample import MULTITASK_SAMPLE
 from multitask_bench.scheduler import partition_waves
@@ -40,6 +44,53 @@ def test_partition_waves_is_deterministic_and_exact() -> None:
 def test_partition_waves_rejects_zero() -> None:
     with pytest.raises(ValueError):
         partition_waves(MULTITASK_SAMPLE, 0)
+
+
+def test_hermes_lane_factory_uses_native_subscription_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeHermesClient:
+        def __init__(self, **kwargs: object) -> None:
+            captured["client_kwargs"] = kwargs
+
+        def wait_until_ready(self, timeout: int) -> None:
+            captured["ready_timeout"] = timeout
+
+    def fake_builder(**kwargs: object) -> str:
+        captured["factory_kwargs"] = kwargs
+        return "native-hermes-agent"
+
+    package = types.ModuleType("hermes_adapter")
+    client_module = types.ModuleType("hermes_adapter.client")
+    factory_module = types.ModuleType("hermes_adapter.lifeops_bench")
+    client_module.HermesClient = FakeHermesClient
+    factory_module.build_lifeops_bench_agent_fn = fake_builder
+    monkeypatch.setitem(sys.modules, "hermes_adapter", package)
+    monkeypatch.setitem(sys.modules, "hermes_adapter.client", client_module)
+    monkeypatch.setitem(sys.modules, "hermes_adapter.lifeops_bench", factory_module)
+    monkeypatch.setattr(
+        harness_module,
+        "ensure_benchmark_adapter_importable",
+        lambda _name: None,
+    )
+    monkeypatch.setenv("BENCHMARK_MODEL_PROVIDER", "claude-subscription")
+    monkeypatch.setenv("BENCHMARK_MODEL_NAME", "claude-opus-4-6")
+
+    factory = harness_module._hermes_factory(model=None)
+    result = factory(object())
+
+    assert result == "native-hermes-agent"
+    assert captured["client_kwargs"] == {
+        "provider": "claude-subscription",
+        "model": "claude-opus-4-6",
+    }
+    assert captured["ready_timeout"] == 60
+    factory_kwargs = captured["factory_kwargs"]
+    assert isinstance(factory_kwargs, dict)
+    assert isinstance(factory_kwargs["client"], FakeHermesClient)
+    assert factory_kwargs["model_name"] == "claude-opus-4-6"
 
 
 def test_perfect_lane_scores_one_with_no_interference(perfect_lanes) -> None:

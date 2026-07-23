@@ -171,9 +171,9 @@ async function loadHfTextVqa(n: number): Promise<Sample<TextVqaPayload>[]> {
       // annotation set until we have the requested number of downloadable rows.
     }
   }
-  if (samples.length === 0) {
+  if (samples.length !== n) {
     throw new Error(
-      "TextVQA HF annotations loaded, but no image URLs were downloadable",
+      `TextVQA HF dataset is incomplete: requested ${n} downloadable rows, loaded ${samples.length}`,
     );
   }
   return samples;

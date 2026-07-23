@@ -21,13 +21,13 @@
  * below). It's a separate slot from the per-capability
  * `serviceRouting[capability].strategy` so the UI can express
  * "always prefer my Pro Anthropic account before falling back to my
- * Max one" without having to know which capability each provider
- * powers.
+ * Max one" without having to know which capability each provider powers.
+ * Per-strategy knobs live beside it in `accountStrategySettings`.
  */
 
 import { execFile } from "node:child_process";
 import nodeCrypto from "node:crypto";
-import { access } from "node:fs/promises";
+import { access, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import {
@@ -61,7 +61,7 @@ import {
   type SubscriptionProvider,
 } from "@elizaos/auth/types";
 import type { AccountPoolBrokerSnapshot } from "@elizaos/core";
-import { ElizaError, logger } from "@elizaos/core";
+import { ElizaError, logger, resolveStateDir } from "@elizaos/core";
 import type { RouteRequestContext } from "@elizaos/shared";
 import {
   isLinkedAccountProviderId,
@@ -91,22 +91,150 @@ async function commandAvailable(command: string): Promise<boolean> {
   return false;
 }
 
-async function ensureSubscriptionCli(
+const SUBSCRIPTION_CLI_INSTALL_TIMEOUT_MS = 2 * 60 * 1000;
+/**
+ * A structurally failed install (no npm, unwritable state dir) is remembered
+ * so every OAuth attempt doesn't re-run a guaranteed-to-fail npm install
+ * (#16518); the cooldown lets a repaired environment recover without a
+ * process restart.
+ */
+const SUBSCRIPTION_CLI_RETRY_COOLDOWN_MS = 5 * 60 * 1000;
+const subscriptionCliInstallFailures = new Map<
+  string,
+  { error: ElizaError; retryAt: number }
+>();
+/** Coalesce simultaneous OAuth starts so only one npm process runs per CLI. */
+const subscriptionCliInstallsInFlight = new Map<string, Promise<void>>();
+
+/** Test hook: forget cached install state between tests. */
+export function __clearSubscriptionCliInstallFailures(): void {
+  subscriptionCliInstallFailures.clear();
+  subscriptionCliInstallsInFlight.clear();
+}
+
+/**
+ * Per-user install prefix for device-login CLIs. Under the eliza state dir so
+ * a non-root service user can always write it — the previous `npm install -g`
+ * hit EACCES on /usr/lib/node_modules for every non-root host (#16518).
+ */
+function subscriptionCliInstallPrefix(): string {
+  return path.join(resolveStateDir(), "tools", "subscription-cli");
+}
+
+/** Idempotently make `dir` visible to this process's PATH resolution. */
+function prependToProcessPath(dir: string): void {
+  const current = process.env.PATH ?? "";
+  if (current.split(path.delimiter).includes(dir)) return;
+  process.env.PATH = current ? `${dir}${path.delimiter}${current}` : dir;
+}
+
+export async function ensureSubscriptionCli(
   providerId: "anthropic-subscription" | "openai-codex",
+  deps: {
+    runInstall?: (args: string[]) => Promise<unknown>;
+    isAvailable?: (command: string) => Promise<boolean>;
+    now?: () => number;
+  } = {},
 ): Promise<void> {
   const command = providerId === "openai-codex" ? "codex" : "claude";
-  if (await commandAvailable(command)) return;
+  const isAvailable = deps.isAvailable ?? commandAvailable;
+  const now = deps.now ?? Date.now;
+
+  // A prior per-user install must stay visible to this check AND to the later
+  // bare `spawn("codex"|"claude")` in the login flows — including after a
+  // process restart, where the parent PATH doesn't carry the tools dir.
+  const binDir = path.join(
+    subscriptionCliInstallPrefix(),
+    "node_modules",
+    ".bin",
+  );
+  prependToProcessPath(binDir);
+  if (await isAvailable(command)) return;
+
+  const cached = subscriptionCliInstallFailures.get(command);
+  if (cached && now() < cached.retryAt) {
+    throw cached.error;
+  }
+
+  const inFlight = subscriptionCliInstallsInFlight.get(command);
+  if (inFlight) return inFlight;
+  let resolveInstall!: () => void;
+  let rejectInstall!: (error: unknown) => void;
+  const install = new Promise<void>((resolve, reject) => {
+    resolveInstall = resolve;
+    rejectInstall = reject;
+  });
+  // error-policy:J5 -- the leader throws this error directly and concurrent
+  // followers observe it through `install`; suppress only an unobserved copy.
+  void install.catch(() => undefined);
+  subscriptionCliInstallsInFlight.set(command, install);
+
   const packageName =
     providerId === "openai-codex"
       ? "@openai/codex"
       : "@anthropic-ai/claude-code";
-  logger.info(`[accounts] Installing missing ${command} CLI for device login`);
-  await execFileAsync("npm", ["install", "-g", packageName], {
-    timeout: 2 * 60 * 1000,
-  });
-  if (!(await commandAvailable(command))) {
-    throw new Error(`${command} CLI installation completed but is not on PATH`);
+  const prefix = subscriptionCliInstallPrefix();
+  logger.info(
+    `[accounts] Installing missing ${command} CLI for device login into ${prefix}`,
+  );
+  const runInstall =
+    deps.runInstall ??
+    ((args: string[]) =>
+      execFileAsync("npm", args, {
+        timeout: SUBSCRIPTION_CLI_INSTALL_TIMEOUT_MS,
+      }));
+  try {
+    await mkdir(prefix, { recursive: true });
+    // A user-prefix install, never `-g`: no writes under /usr/lib/node_modules,
+    // works for any service user that owns the eliza state dir.
+    await runInstall([
+      "install",
+      "--prefix",
+      prefix,
+      "--no-fund",
+      "--no-audit",
+      packageName,
+    ]);
+  } catch (cause) {
+    const error = new ElizaError(
+      `The ${command} CLI required for device login could not be installed`,
+      {
+        code: "SUBSCRIPTION_CLI_INSTALL_FAILED",
+        context: {
+          command,
+          packageName,
+          prefix,
+          cause: cause instanceof Error ? cause.message : String(cause),
+        },
+      },
+    );
+    subscriptionCliInstallFailures.set(command, {
+      error,
+      retryAt: now() + SUBSCRIPTION_CLI_RETRY_COOLDOWN_MS,
+    });
+    subscriptionCliInstallsInFlight.delete(command);
+    rejectInstall(error);
+    throw error;
   }
+  if (!(await isAvailable(command))) {
+    const error = new ElizaError(
+      `${command} CLI installation completed but is not on PATH`,
+      {
+        code: "SUBSCRIPTION_CLI_NOT_ON_PATH",
+        context: { command, packageName, prefix, binDir },
+      },
+    );
+    subscriptionCliInstallFailures.set(command, {
+      error,
+      retryAt: now() + SUBSCRIPTION_CLI_RETRY_COOLDOWN_MS,
+    });
+    subscriptionCliInstallsInFlight.delete(command);
+    rejectInstall(error);
+    throw error;
+  }
+  subscriptionCliInstallFailures.delete(command);
+  subscriptionCliInstallsInFlight.delete(command);
+  resolveInstall();
 }
 
 function requestUsesLocalRoot(req: RouteRequestContext["req"]): boolean {
@@ -144,6 +272,7 @@ interface PoolFacade {
     accessToken: string,
     opts?: { codexAccountId?: string; providerId?: string },
   ): Promise<void>;
+  sweepExpired?(providerId?: string): Promise<number>;
   /**
    * Non-mutating "which account is next + why" dry-run for the accounts API.
    * Older host bridges may not implement it; callers must null-guard.
@@ -347,14 +476,27 @@ const accountPatchSchema = z
     label: z.string().trim().min(1).max(120).optional(),
     enabled: z.boolean().optional(),
     priority: z.number().int().min(0).max(10_000).optional(),
+    subscriptionEndsAt: z
+      .union([z.number().finite().int(), z.null()])
+      .optional()
+      .superRefine((value, ctx) => {
+        if (typeof value === "number" && value <= Date.now()) {
+          ctx.addIssue({
+            code: zod.ZodIssueCode.custom,
+            message: "subscriptionEndsAt must be a future epoch-ms timestamp",
+          });
+        }
+      }),
   })
   .refine(
     (v) =>
       v.label !== undefined ||
       v.enabled !== undefined ||
-      v.priority !== undefined,
+      v.priority !== undefined ||
+      v.subscriptionEndsAt !== undefined,
     {
-      message: "PATCH body must set at least one of: label, enabled, priority",
+      message:
+        "PATCH body must set at least one of: label, enabled, priority, subscriptionEndsAt",
     },
   );
 
@@ -364,6 +506,7 @@ const STRATEGY_VALUES = [
   "least-used",
   "quota-aware",
   "reset-soonest",
+  "drain-soonest-reset",
 ] as const satisfies readonly ServiceRouteAccountStrategy[];
 
 const strategyPatchSchema = z.object({
@@ -393,7 +536,12 @@ function readAccountStrategy(
 ): ServiceRouteAccountStrategy {
   const strategies = (config as ElizaConfig & AccountStrategiesShape)
     .accountStrategies;
-  return strategies?.[providerId] ?? "priority";
+  return (
+    strategies?.[providerId] ??
+    (providerId === "anthropic-subscription"
+      ? "drain-soonest-reset"
+      : "priority")
+  );
 }
 
 function writeAccountStrategy(
@@ -424,6 +572,7 @@ function buildLinkedAccountConfigFromRecord(
     source: record.source,
     enabled: true,
     priority,
+    prioritySource: "generated",
     createdAt: record.createdAt,
     health: "ok",
     ...(record.lastUsedAt !== undefined
@@ -753,6 +902,7 @@ async function handleListAllAccounts(
 ): Promise<boolean> {
   const { res, json } = ctx;
   const pool = await getPool();
+  await pool.sweepExpired?.();
   const broker = brokerSnapshot();
   const providers = SUPPORTED_PROVIDER_IDS.map((providerId) => {
     const linkedConfigs = pool
@@ -929,6 +1079,7 @@ async function handleCreateApiKeyAccount(
         ...buildLinkedAccountConfigFromRecord(record, priority),
         enabled: stableReplacementTarget.enabled,
         priority,
+        prioritySource: stableReplacementTarget.prioritySource,
         createdAt: stableReplacementTarget.createdAt,
         health: "ok" as const,
       }
@@ -1060,6 +1211,7 @@ async function handleOAuthRoutes(
           ...canonical,
           enabled: liveTarget.enabled,
           priority: liveTarget.priority,
+          prioritySource: liveTarget.prioritySource,
           createdAt: liveTarget.createdAt,
           health: "ok",
         });
@@ -1117,6 +1269,17 @@ async function handleOAuthRoutes(
       logger.error(
         `[accounts] Failed to start ${providerId} OAuth flow: ${String(err)}`,
       );
+      // A missing/uninstallable device-login CLI is an actionable prerequisite
+      // failure (#16518), not an opaque 500 — surface the structured message so
+      // the operator sees what to fix (writable state dir, npm present, …).
+      if (
+        err instanceof ElizaError &&
+        typeof err.code === "string" &&
+        err.code.startsWith("SUBSCRIPTION_CLI_")
+      ) {
+        error(res, `${err.message} (${err.code})`, 503);
+        return true;
+      }
       error(res, "Failed to start OAuth flow", 500);
       return true;
     }
@@ -1237,6 +1400,7 @@ async function handlePatchAccount(
     label?: unknown;
     enabled?: unknown;
     priority?: unknown;
+    subscriptionEndsAt?: unknown;
   }>(req, res);
   if (!body) return true;
   const parsed = accountPatchSchema.safeParse(body);
@@ -1257,7 +1421,22 @@ async function handlePatchAccount(
       ? { enabled: parsed.data.enabled }
       : {}),
     ...(parsed.data.priority !== undefined
-      ? { priority: parsed.data.priority }
+      ? { priority: parsed.data.priority, prioritySource: "explicit" as const }
+      : {}),
+    ...(parsed.data.subscriptionEndsAt !== undefined
+      ? parsed.data.subscriptionEndsAt === null
+        ? {
+            subscriptionEndsAt: undefined,
+            ...(existing.health === "expired"
+              ? { health: "ok" as const, healthDetail: undefined }
+              : {}),
+          }
+        : {
+            subscriptionEndsAt: parsed.data.subscriptionEndsAt,
+            ...(existing.health === "expired"
+              ? { health: "ok" as const, healthDetail: undefined }
+              : {}),
+          }
       : {}),
   };
   await pool.upsert(next);

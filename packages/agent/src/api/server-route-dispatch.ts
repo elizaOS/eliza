@@ -14,7 +14,10 @@ import { handleApprovalRoute } from "./approval-routes.ts";
 import { handleChatRoutes } from "./chat-routes.ts";
 import { handleConversationRoutes } from "./conversation-routes.ts";
 import { handleDatabaseRoute } from "./database.ts";
-import { handleInboxRoute } from "./inbox-routes.ts";
+import {
+  handleInboxRoute,
+  type InboxRouteCallerAuthorization,
+} from "./inbox-routes.ts";
 import { handleNotificationRoute } from "./notification-routes.ts";
 import { handlePushTokenRoute } from "./push-token-routes.ts";
 import { tryHandleRuntimePluginRoute } from "./runtime-plugin-routes.ts";
@@ -67,6 +70,7 @@ interface DispatchRouteContext extends DispatchRouteHelpers {
   pathname: string;
   url: URL;
   state: ServerState;
+  inboxCallerAuthorization?: InboxRouteCallerAuthorization;
 }
 
 interface CloudAndCoreRouteContext extends DispatchRouteContext {
@@ -84,6 +88,7 @@ export async function handleInboxAndCloudRelayRouteGroup({
   json,
   error,
   readJsonBody,
+  inboxCallerAuthorization,
 }: DispatchRouteContext): Promise<boolean> {
   // Push-token routes share the /api/notifications namespace but are owned by
   // the push delivery service, so they must be checked BEFORE the notification
@@ -128,7 +133,10 @@ export async function handleInboxAndCloudRelayRouteGroup({
       res,
       pathname,
       method,
-      { runtime: state.runtime ?? null },
+      {
+        runtime: state.runtime ?? null,
+        callerAuthorization: inboxCallerAuthorization,
+      },
       { json, error, readJsonBody },
     );
   }

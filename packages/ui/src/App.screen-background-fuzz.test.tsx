@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+// Companion route-matrix coverage for App's full-shell path. The focused
+// notification ingress assertion lives in App.chat-overlay-first-run.test.tsx.
 
 /**
  * Fuzz test for the screen / background color invariant across view switching.
@@ -46,6 +48,7 @@ import { stubOfflineAppFetch } from "../test/offline-app-fetch";
 vi.mock("./utils/with-timeout", () => ({
   withTimeout: <T,>(promise: Promise<T>): Promise<T> => promise,
 }));
+
 import { getShaderPreset } from "./backgrounds/shader-presets";
 import { BACKGROUND_APPLY_EVENT } from "./backgrounds/useBackgroundApplyChannel";
 import type { BuiltinTab } from "./navigation";
@@ -286,8 +289,8 @@ vi.mock("./components/shell/BugReportModal", () => ({
 vi.mock("./components/shell/ChatSurface", () => ({
   ChatSurface: () => <div data-testid="chat-surface" />,
 }));
-vi.mock("./components/shell/ContinuousChatOverlay", () => ({
-  ContinuousChatOverlay: () => null,
+vi.mock("./components/shell/ChatOverlay", () => ({
+  ChatOverlay: () => null,
 }));
 vi.mock("./components/shell/HomePill", () => ({
   HomePill: () => <button type="button">home pill</button>,
@@ -334,6 +337,9 @@ vi.mock("./components/character/CharacterEditor", () => ({
 }));
 vi.mock("./components/pages/LauncherSurface", () => ({
   LauncherSurface: () => <div data-testid="launcher-surface" />,
+}));
+vi.mock("./widgets/WidgetHost", () => ({
+  WidgetHost: () => <div data-testid="home-widget-host" />,
 }));
 vi.mock("./components/settings/SecretsManagerSection", () => ({
   VaultModal: () => null,

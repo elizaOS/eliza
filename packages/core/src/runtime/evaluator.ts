@@ -139,10 +139,12 @@ export async function runEvaluator(
 		repairFinishedToolTurnWithoutUserMessage(
 			repairMissingEvaluatorMessage(
 				repairMissingEvaluatorSuccess(
-					recoverEvaluatorTextOutput(
-						parseEvaluatorOutput(raw),
-						raw,
-						params.trajectory,
+					rejectEvaluatorInvocationMessage(
+						recoverEvaluatorTextOutput(
+							parseEvaluatorOutput(raw),
+							raw,
+							params.trajectory,
+						),
 					),
 					params.trajectory,
 				),
@@ -557,6 +559,31 @@ function recoverEvaluatorTextOutput(
 	};
 }
 
+function looksLikeLeadingInvocationDsl(text: string): boolean {
+	return /^\s*(?:call|invoke|use|run)\s*:\s*[A-Za-z][A-Za-z0-9_.-]*(?::[A-Za-z][A-Za-z0-9_.-]*)*\s*[({]/i.test(
+		text,
+	);
+}
+
+function rejectEvaluatorInvocationMessage(
+	output: EvaluatorOutput,
+): EvaluatorOutput {
+	if (
+		typeof output.messageToUser !== "string" ||
+		!looksLikeLeadingInvocationDsl(output.messageToUser)
+	) {
+		return output;
+	}
+	return {
+		...output,
+		success: false,
+		decision: "CONTINUE",
+		thought:
+			"Evaluator emitted tool/action syntax instead of a user-facing answer; replanning from recorded tool results.",
+		messageToUser: undefined,
+	};
+}
+
 // When the evaluator model emits user-facing prose followed by the
 // structured envelope (e.g. shell output ... then `{"success":true,
 // "decision":"FINISH","thought":"..."}`) the strict JSON parser
@@ -691,14 +718,11 @@ function looksLikeUserFacingAnswer(text: string): boolean {
 		return false;
 	}
 	// A reply that OPENS with an invocation DSL ("call:WEB_SEARCH{…}",
-	// "invoke: shell(…)") is machine syntax regardless of dialect — the
-	// argument block is rarely valid JSON, so the key-based guard above
-	// cannot see it.
-	if (
-		/^\s*(?:call|invoke|use|run)\s*:\s*[A-Za-z][A-Za-z0-9_.-]*\s*[({]/i.test(
-			text,
-		)
-	) {
+	// "call:automation:GET_WORKFLOW{…}", "invoke: shell(…)") is machine
+	// syntax regardless of dialect. Providers may namespace the action with
+	// additional colon-delimited segments, and the argument block is rarely
+	// valid JSON, so the key-based guard above cannot see it.
+	if (looksLikeLeadingInvocationDsl(text)) {
 		return false;
 	}
 	if (

@@ -30,6 +30,54 @@ export interface RemoteBundleDeclaration {
   componentExport: string;
 }
 
+const TRANSIENT_PAGE_EVALUATION_ERROR =
+  /execution context was destroyed|cannot find context with specified id|because of a navigation/i;
+
+/**
+ * Retries a DOM measurement only when Playwright reports that navigation
+ * replaced its execution context. A successful zero remains zero so genuinely
+ * blank pages still fail the audit; infrastructure errors surface immediately.
+ */
+export async function readReadableCharsWithNavigationRetry(
+  read: () => Promise<number>,
+  wait: (delayMs: number) => Promise<void>,
+  options: {
+    attempts?: number;
+    delayMs?: number;
+    minimumReadableChars?: number;
+  } = {},
+): Promise<number> {
+  const attempts = options.attempts ?? 4;
+  const delayMs = options.delayMs ?? 100;
+  const minimumReadableChars = options.minimumReadableChars ?? 0;
+  if (!Number.isInteger(attempts) || attempts < 1) {
+    throw new Error(
+      "readable-character retry attempts must be a positive integer",
+    );
+  }
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      const readableChars = await read();
+      if (readableChars >= minimumReadableChars || attempt === attempts) {
+        return readableChars;
+      }
+      await wait(delayMs);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (
+        !TRANSIENT_PAGE_EVALUATION_ERROR.test(message) ||
+        attempt === attempts
+      ) {
+        throw error;
+      }
+      await wait(delayMs);
+    }
+  }
+
+  throw new Error("readable-character measurement exhausted its retry budget");
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }

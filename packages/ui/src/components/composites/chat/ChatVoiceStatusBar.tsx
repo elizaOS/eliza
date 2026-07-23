@@ -10,7 +10,14 @@
  * - latency badge (speechEnd → voiceStart) with traffic-light colouring
  */
 
-import { AlertTriangle, Crown, RefreshCw, VolumeX } from "lucide-react";
+import {
+  AlertTriangle,
+  Crown,
+  PauseCircle,
+  Radio,
+  RefreshCw,
+  VolumeX,
+} from "lucide-react";
 import type * as React from "react";
 import type { ContinuousChatLatency } from "../../../hooks/useContinuousChat";
 import { cn } from "../../../lib/utils";
@@ -51,6 +58,34 @@ export interface ChatVoiceStatusBarProps {
    * bar visible so a silent failure is never invisible.
    */
   ttsError?: VoiceTtsError | null;
+  /**
+   * True while a realtime WebSocket voice session is the active mic path (as
+   * opposed to the batch ASR path). Renders a small "Live" pill so the realtime
+   * mode is legible — same status vocabulary, just an extra affordance. Purely
+   * additive: when false the bar is byte-for-byte the existing batch bar.
+   */
+  realtimeActive?: boolean;
+  /**
+   * True while a started realtime session is still connecting (consent, mint,
+   * socket, server ready, mic bring-up). Renders a "Connecting" pill so the
+   * pre-live window is legible instead of masquerading as Live or idle.
+   */
+  realtimeConnecting?: boolean;
+  /** True when realtime is eligible/selected but the socket is not connected yet. */
+  realtimeEligible?: boolean;
+  /**
+   * True when the realtime session is paused by a visibility-hide (a paused
+   * state, NOT a broken one). Renders a "Paused" pill instead of a dead bar.
+   */
+  realtimePaused?: boolean;
+  /**
+   * A realtime error message — actionable (mic blocked, connection dropped) or
+   * not (consent/mint failure). ALWAYS rendered as a danger pill so a failed
+   * realtime session is never silent (UI three-state rule).
+   */
+  realtimeErrorMessage?: string | null;
+  /** Non-blocking notice when this interaction handed the mic to batch voice. */
+  realtimeFallbackReason?: string | null;
   /** Visible only when continuous mode is on AND we have something to show. */
   visible?: boolean;
   className?: string;
@@ -107,6 +142,12 @@ export function ChatVoiceStatusBar({
   onUnlockAudio,
   micReconnected = false,
   ttsError = null,
+  realtimeActive = false,
+  realtimeConnecting = false,
+  realtimeEligible = false,
+  realtimePaused = false,
+  realtimeErrorMessage = null,
+  realtimeFallbackReason = null,
   visible = true,
   className,
   "data-testid": dataTestId,
@@ -150,6 +191,70 @@ export function ChatVoiceStatusBar({
       >
         {STATUS_LABEL[status]}
       </span>
+
+      {realtimeActive ? (
+        realtimePaused ? (
+          <span
+            className="inline-flex items-center gap-1 rounded-sm border border-warn/40 bg-warn/10 px-2 py-0.5 font-medium text-warn"
+            data-testid="chat-voice-realtime-paused"
+          >
+            <PauseCircle className="h-3 w-3" aria-hidden="true" />
+            <span>Paused</span>
+          </span>
+        ) : (
+          <span
+            className="inline-flex items-center gap-1 rounded-sm border border-accent/40 bg-accent/10 px-2 py-0.5 font-medium text-accent"
+            data-testid="chat-voice-realtime-live"
+            title="Realtime voice session"
+          >
+            <Radio className="h-3 w-3" aria-hidden="true" />
+            <span>Live</span>
+          </span>
+        )
+      ) : realtimeConnecting ? (
+        <span
+          className="inline-flex items-center gap-1 rounded-sm border border-accent/30 bg-accent/5 px-2 py-0.5 font-medium text-accent"
+          data-testid="chat-voice-realtime-connecting"
+          title="Realtime voice session connecting"
+        >
+          <Radio className="h-3 w-3 animate-pulse" aria-hidden="true" />
+          <span>Connecting</span>
+        </span>
+      ) : realtimeEligible ? (
+        <span
+          className="inline-flex items-center gap-1 rounded-sm border border-accent/30 bg-accent/5 px-2 py-0.5 font-medium text-accent"
+          data-testid="chat-voice-realtime-armed"
+          title="Realtime voice armed, connecting on mic start"
+        >
+          <Radio className="h-3 w-3" aria-hidden="true" />
+          <span>Realtime armed</span>
+        </span>
+      ) : null}
+
+      {realtimeFallbackReason ? (
+        <span
+          className="inline-flex min-w-0 items-center gap-1 rounded-sm border border-warn/40 bg-warn/10 px-2 py-0.5 font-medium text-warn"
+          data-testid="chat-voice-realtime-fallback"
+          data-reason={realtimeFallbackReason}
+          title={`Realtime fallback reason: ${realtimeFallbackReason}`}
+        >
+          <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden="true" />
+          <span className="truncate">
+            Realtime voice unavailable, using standard voice mode
+          </span>
+        </span>
+      ) : null}
+
+      {realtimeErrorMessage ? (
+        <span
+          className="inline-flex min-w-0 items-center gap-1 rounded-sm border border-danger/40 bg-danger/10 px-2 py-0.5 font-medium text-danger"
+          data-testid="chat-voice-realtime-error"
+          title={realtimeErrorMessage}
+        >
+          <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden="true" />
+          <span className="truncate">{realtimeErrorMessage}</span>
+        </span>
+      ) : null}
 
       {ttsError ? (
         <span

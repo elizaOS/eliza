@@ -58,6 +58,10 @@ import {
 } from "./admission-queue.js";
 import { assignAgentName } from "./agent-name-assignment.js";
 import {
+  extractWriteLedger,
+  verifyClaimedFiles,
+} from "./claimed-file-verification.js";
+import {
   accountMetaFromSessionMetadata,
   assessCodingAccountReadiness,
   type CodingAccountReadiness,
@@ -72,6 +76,7 @@ import {
   summarizeEnvelope,
 } from "./completion-envelope.js";
 import {
+  appendCompletionEvidenceSection,
   buildCompletionEvidenceString,
   type CompletionEvidenceBundle,
   classifyToolOutput,
@@ -90,6 +95,10 @@ import {
   summarizeResiduals,
 } from "./completion-residuals.js";
 import {
+  getCuratedCodingMemoryService,
+  renderInjectedCodingNotes,
+} from "./curated-coding-memory.js";
+import {
   buildAutoVerifyCorrection,
   LLM_GOAL_VERIFIER_NAME,
   MAX_AUTO_VERIFY_ATTEMPTS,
@@ -102,6 +111,15 @@ import {
   coerceGoalCapabilityProfile,
   type GoalFollowUpReason,
 } from "./goal-prompt.js";
+import {
+  type GroundTruthVerdict,
+  groundTruthApplies,
+  groundTruthHardFailEnabled,
+  groundTruthRequiresPullRequest,
+  renderGroundTruthEvidence,
+  shouldIncludeGroundTruthEvidence,
+  verifyGroundTruth,
+} from "./ground-truth-verifier.js";
 import {
   type IndependentVerifierVerdict,
   runIndependentVerification,
@@ -143,7 +161,9 @@ import {
   type OrchestratorTaskStatus,
   type OrchestratorTaskUsage,
   RETRY_BUDGET_EPOCH_METADATA_KEY,
+  RETRY_BUDGET_SESSION_METADATA_KEY,
   readRetryBudgetEpoch,
+  readRetryBudgetFirstSessionId,
   resolveStateLostRespawnCap,
   resolveTaskTransition,
   stateLostRespawnUnderCap,
@@ -168,6 +188,12 @@ import {
 import { extractPullRequestLink } from "./pull-request-link.js";
 import { buildSkillsManifest } from "./skill-manifest.js";
 import {
+  readSmithersDurableRunLink,
+  runDurableTask,
+  type SmithersDurableRunLink,
+  smithersDurableRunMetadata,
+} from "./smithers-task-integration.js";
+import {
   configureSpendLedger,
   createTaskStoreSpendLedger,
 } from "./spend-allowance.js";
@@ -175,14 +201,21 @@ import {
   AdmissionQueueFullError,
   type ApprovalPreset,
   SessionCapError,
+  type SessionInfo,
   type SpawnResult,
   TERMINAL_SESSION_STATUSES,
 } from "./types.js";
+import {
+  WAVE_SUPERVISOR_SERVICE_TYPE,
+  WaveConcurrencyCapError,
+  type WaveSupervisor,
+} from "./wave-supervisor.js";
 import {
   ensureTaskWorkdir,
   resolveAllowedWorkdir,
 } from "./workdir-validation.js";
 import { captureChangeSet, type WorkspaceChangeSet } from "./workspace-diff.js";
+import { getCodingWorkspaceService } from "./workspace-service.js";
 
 /**
  * Recoverable operator-recovery conflict.
@@ -354,6 +387,8 @@ export interface AttachSessionInput {
   providerSource?: string;
   repo?: string;
   goalPrompt?: string;
+  /** Stable Smithers identity persisted before TASKS sends its first prompt. */
+  durableRun?: SmithersDurableRunLink;
 }
 
 export interface AddMessageInput {
@@ -569,19 +604,6 @@ function readLastChangeSet(
   return candidate as WorkspaceChangeSet;
 }
 
-/** Render an event's `data` payload to a bounded scannable string so the
- *  completion-evidence assembler can mine build/test lines out of it. */
-function stringifyEventData(data: Record<string, unknown>): string {
-  if (!data || Object.keys(data).length === 0) return "";
-  try {
-    return truncate(JSON.stringify(data), 1500);
-  } catch {
-    // error-policy:J3 arbitrary event data may be non-serializable (circular);
-    // empty means "no minable text from this event", not a masked failure.
-    return "";
-  }
-}
-
 const EVIDENCE_URL_RE = /https?:\/\/[^\s<>"'`)\]]+/g;
 
 /** Collect distinct http(s) URLs from a set of text bodies, for the verified-
@@ -692,6 +714,26 @@ function priorCleanResidualsSnapshot(
   if (!Array.isArray(raw.residuals)) return undefined;
   if (typeof raw.checkedAt !== "number") return undefined;
   return raw as unknown as CompletionResidualsResult;
+}
+
+function _readGroundTruthVerdict(
+  metadata: Record<string, unknown>,
+): GroundTruthVerdict | undefined {
+  const raw = metadata.groundTruthVerdict;
+  if (!isRecord(raw)) return undefined;
+  if (
+    typeof raw.status !== "string" ||
+    typeof raw.checkedAt !== "string" ||
+    !isRecord(raw.pr) ||
+    !isRecord(raw.checks) ||
+    !isRecord(raw.files) ||
+    typeof raw.hardFail !== "boolean" ||
+    !Array.isArray(raw.hardFailReasons) ||
+    typeof raw.summary !== "string"
+  ) {
+    return undefined;
+  }
+  return raw as unknown as GroundTruthVerdict;
 }
 
 function eventExcerpt(
@@ -933,6 +975,9 @@ export class OrchestratorTaskService extends Service {
   // tick can't both dispatch the same parked task. A promise-chain mutex.
   private admissionDrainLock = Promise.resolve();
   private admissionReconcileTimer: NodeJS.Timeout | undefined;
+  private smithersRecoveryInFlight:
+    | Promise<{ recovered: number; skipped: number }>
+    | undefined;
 
   constructor(
     runtime: IAgentRuntime,
@@ -1007,6 +1052,7 @@ export class OrchestratorTaskService extends Service {
     const acp = this.acp();
     if (acp) {
       this.subscribeToAcp(acp);
+      this.queueSmithersRecovery(acp);
       return;
     }
     // ACP may not be registered yet — service start order during boot isn't
@@ -1037,6 +1083,7 @@ export class OrchestratorTaskService extends Service {
       )) as AcpService;
       if (this.started && !this.unsubscribe) {
         this.subscribeToAcp(acp);
+        this.queueSmithersRecovery(acp);
       }
     } catch (error) {
       // error-policy:J7 background ACP bind; the failure is warned and observable
@@ -1059,6 +1106,323 @@ export class OrchestratorTaskService extends Service {
       this.admissionReconcileTimer = undefined;
     }
     this.started = false;
+  }
+
+  private queueSmithersRecovery(acp: AcpService): void {
+    if (
+      typeof acp.listSessions !== "function" ||
+      typeof acp.prepareSessionForDurableRecovery !== "function" ||
+      typeof acp.updateSessionMetadata !== "function"
+    ) {
+      return;
+    }
+    void this.recoverInterruptedSmithersRuns(acp).catch((err) => {
+      // error-policy:J7 startup recovery is retried on the next boot or an
+      // explicit recovery call; the task remains durably marked running and
+      // the failure is surfaced to the agent instead of blocking service boot.
+      this.runtime.reportError?.(
+        "OrchestratorTask.recoverSmithersRuns",
+        err,
+        {},
+      );
+    });
+  }
+
+  /**
+   * Resume TASKS-owned Smithers graphs left pending/running by a host restart.
+   * The run link is read from both durable stores: ACP metadata reconstructs a
+   * missing task-session row, while the task store reconstructs a missing ACP
+   * session. A replacement ACP transport is attached before Smithers executes,
+   * and the stable graph ids ensure completed turns are never prompted again.
+   */
+  recoverInterruptedSmithersRuns(
+    acpOverride?: AcpService,
+  ): Promise<{ recovered: number; skipped: number }> {
+    if (this.smithersRecoveryInFlight) return this.smithersRecoveryInFlight;
+    const run = this.recoverInterruptedSmithersRunsOnce(acpOverride).finally(
+      () => {
+        if (this.smithersRecoveryInFlight === run) {
+          this.smithersRecoveryInFlight = undefined;
+        }
+      },
+    );
+    this.smithersRecoveryInFlight = run;
+    return run;
+  }
+
+  private async recoverInterruptedSmithersRunsOnce(
+    acpOverride?: AcpService,
+  ): Promise<{ recovered: number; skipped: number }> {
+    const acp = acpOverride ?? this.acp();
+    if (!acp) throw new Error("ACP service unavailable for Smithers recovery");
+
+    const [acpSessions, taskRecords] = await Promise.all([
+      acp.listSessions(),
+      this.store.listTasks({}),
+    ]);
+    const taskDocs = (
+      await Promise.all(taskRecords.map((task) => this.store.getTask(task.id)))
+    ).filter((doc): doc is OrchestratorTaskDocument => doc !== null);
+    const acpById = new Map(
+      acpSessions.map((session) => [session.id, session]),
+    );
+    const taskSessionById = new Map(
+      taskDocs.flatMap((doc) =>
+        doc.sessions.map((session) => [session.sessionId, session] as const),
+      ),
+    );
+
+    type Candidate = {
+      link: SmithersDurableRunLink;
+      acpSession?: SessionInfo;
+      taskSession?: OrchestratorTaskSession;
+    };
+    const candidates = new Map<string, Candidate>();
+    const consider = (candidate: Candidate): void => {
+      if (
+        candidate.link.state === "completed" ||
+        candidate.link.state === "superseded"
+      ) {
+        return;
+      }
+      const key = `${candidate.link.tenantId}\u0000${candidate.link.taskId}\u0000${candidate.link.runId}`;
+      const prior = candidates.get(key);
+      const candidateTime =
+        candidate.acpSession?.createdAt.getTime() ??
+        candidate.taskSession?.spawnedAt ??
+        0;
+      const priorTime =
+        prior?.acpSession?.createdAt.getTime() ??
+        prior?.taskSession?.spawnedAt ??
+        0;
+      if (!prior || candidateTime >= priorTime) candidates.set(key, candidate);
+    };
+
+    for (const session of acpSessions) {
+      const link = readSmithersDurableRunLink(session.metadata);
+      if (!link) continue;
+      consider({
+        link,
+        acpSession: session,
+        taskSession: taskSessionById.get(session.id),
+      });
+    }
+    for (const doc of taskDocs) {
+      for (const session of doc.sessions) {
+        const link = readSmithersDurableRunLink(session.metadata);
+        if (!link) continue;
+        consider({
+          link,
+          taskSession: session,
+          acpSession: acpById.get(session.sessionId),
+        });
+      }
+    }
+
+    let recovered = 0;
+    let skipped = 0;
+    const failures: unknown[] = [];
+    for (const candidate of candidates.values()) {
+      const task = await this.store.getTask(candidate.link.orchestratorTaskId);
+      if (
+        !task ||
+        task.task.paused ||
+        (task.task.status !== "open" &&
+          task.task.status !== "active" &&
+          task.task.status !== "validating")
+      ) {
+        skipped += 1;
+        continue;
+      }
+      try {
+        await this.recoverOneSmithersRun(acp, candidate);
+        recovered += 1;
+      } catch (err) {
+        // error-policy:J1 each candidate is an independent recovery boundary;
+        // retain every failure so healthy runs still recover, then surface one
+        // AggregateError after the complete startup scan.
+        failures.push(err);
+      }
+    }
+    if (recovered > 0 || skipped > 0) {
+      this.log("info", "Smithers restart recovery scan complete", {
+        recovered,
+        skipped,
+      });
+    }
+    if (failures.length > 0) {
+      throw new AggregateError(
+        failures,
+        `${failures.length} Smithers run recovery attempt(s) failed`,
+      );
+    }
+    return { recovered, skipped };
+  }
+
+  private async recoverOneSmithersRun(
+    acp: AcpService,
+    candidate: {
+      link: SmithersDurableRunLink;
+      acpSession?: SessionInfo;
+      taskSession?: OrchestratorTaskSession;
+    },
+  ): Promise<void> {
+    const { link } = candidate;
+    let session = candidate.acpSession;
+    if (!session) {
+      const persisted = candidate.taskSession;
+      if (!persisted) {
+        throw new Error(`Smithers run ${link.runId} has no persisted session`);
+      }
+      const spawned = await acp.spawnSession({
+        agentType: persisted.framework,
+        workdir: persisted.workdir,
+        model: link.model,
+        approvalPreset: link.approvalPreset,
+        metadata: {
+          ...persisted.metadata,
+          taskId: link.orchestratorTaskId,
+          ...smithersDurableRunMetadata(link),
+        },
+      });
+      session = await acp.getSession(spawned.sessionId);
+      if (!session) {
+        throw new Error(
+          `Recovery spawn ${spawned.sessionId} was not persisted by ACP`,
+        );
+      }
+    }
+
+    const prepared = await acp.prepareSessionForDurableRecovery(session.id);
+    const preparedSession = await acp.getSession(prepared.sessionId);
+    if (!preparedSession) {
+      throw new Error(
+        `Recovery session ${prepared.sessionId} was not persisted by ACP`,
+      );
+    }
+    const runningLink: SmithersDurableRunLink = {
+      ...link,
+      state: "running",
+    };
+    const attached = await this.attachSession(link.orchestratorTaskId, {
+      sessionId: prepared.sessionId,
+      agentType: prepared.agentType,
+      workdir: prepared.workdir,
+      status: prepared.status,
+      metadata: prepared.metadata,
+      label:
+        typeof prepared.metadata?.label === "string"
+          ? prepared.metadata.label
+          : candidate.taskSession?.label,
+      originalTask: link.initialPrompt,
+      model: link.model,
+      durableRun: runningLink,
+    });
+    if (!attached) {
+      throw new Error(
+        `Orchestrator task ${link.orchestratorTaskId} disappeared during Smithers recovery`,
+      );
+    }
+    await this.syncSmithersRunCopies(acp, runningLink, prepared.sessionId);
+
+    try {
+      await runDurableTask(acp, prepared, link.initialPrompt, {
+        tenantId: link.tenantId,
+        taskId: link.taskId,
+        runId: link.runId,
+        timeoutMs: link.timeoutMs,
+        model: link.model,
+        maxTurns: link.maxTurns,
+      });
+      const completed: SmithersDurableRunLink = {
+        ...link,
+        state: "completed",
+      };
+      await this.syncSmithersRunCopies(acp, completed, prepared.sessionId);
+      if (!link.keepAliveAfterComplete) {
+        try {
+          await acp.stopSession(prepared.sessionId);
+        } catch (err) {
+          // error-policy:J6 the graph and both durable links are already
+          // completed; transport teardown cannot turn committed work into a
+          // failed recovery, but the leaked session remains observable.
+          this.log("warn", "Smithers recovery session teardown failed", {
+            sessionId: prepared.sessionId,
+            runId: link.runId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+    } catch (err) {
+      // error-policy:J2 the durable graph stays running so the next recovery
+      // resumes its committed nodes; add stable task/run/session context and
+      // preserve the provider or transport failure as the cause.
+      const recoveryError = new ElizaError(
+        `Smithers recovery failed for run ${link.runId}`,
+        {
+          code: "SMITHERS_RECOVERY_FAILED",
+          context: {
+            taskId: link.orchestratorTaskId,
+            runId: link.runId,
+            sessionId: prepared.sessionId,
+          },
+          cause: err,
+          severity: "ephemeral",
+        },
+      );
+      this.runtime.reportError(
+        "OrchestratorTask.recoverSmithersRun",
+        recoveryError,
+        recoveryError.context,
+      );
+      throw recoveryError;
+    }
+  }
+
+  private async syncSmithersRunCopies(
+    acp: AcpService,
+    activeLink: SmithersDurableRunLink,
+    activeSessionId: string,
+  ): Promise<void> {
+    const task = await this.store.getTask(activeLink.orchestratorTaskId);
+    const acpSessions = await acp.listSessions();
+    const acpById = new Map(
+      acpSessions.map((session) => [session.id, session]),
+    );
+    const taskById = new Map(
+      (task?.sessions ?? []).map((session) => [session.sessionId, session]),
+    );
+    const ids = new Set([...acpById.keys(), ...taskById.keys()]);
+    const writes: Promise<unknown>[] = [];
+    for (const sessionId of ids) {
+      const persisted =
+        readSmithersDurableRunLink(acpById.get(sessionId)?.metadata) ??
+        readSmithersDurableRunLink(taskById.get(sessionId)?.metadata);
+      if (
+        !persisted ||
+        persisted.tenantId !== activeLink.tenantId ||
+        persisted.taskId !== activeLink.taskId ||
+        persisted.runId !== activeLink.runId
+      ) {
+        continue;
+      }
+      const next: SmithersDurableRunLink =
+        sessionId === activeSessionId
+          ? activeLink
+          : { ...persisted, state: "superseded" };
+      if (acpById.has(sessionId)) {
+        writes.push(
+          acp.updateSessionMetadata(
+            sessionId,
+            smithersDurableRunMetadata(next),
+          ),
+        );
+      }
+      if (taskById.has(sessionId)) {
+        writes.push(this.updateSmithersDurableRun(sessionId, next));
+      }
+    }
+    await Promise.all(writes);
   }
 
   // ---- live change bus ---------------------------------------------------
@@ -1853,20 +2217,17 @@ export class OrchestratorTaskService extends Service {
       .map((message) => message.content.trim())
       .filter((content) => content.length > 0);
 
-    // Tool-output signals: prefer the structured `toolCall.output` recorded on
-    // `tool_running`/`tool_result` events, labelled by the tool command/title so
-    // the classifier can route the stdout to its test/build/lint bucket. Fall
-    // back to the full event/message bodies so a real run still surfaces even
-    // when the adapter folded its output into the assistant text.
+    // Only worker-originated text may become command evidence. The task event
+    // log also contains verifier verdicts and corrective prompts; mining those
+    // would feed a prior failed verdict back into the next attempt as if it were
+    // fresh failing test output. The final reply is already rendered verbatim by
+    // the bundle, while sub-agent stdout covers adapters that fold tool results
+    // into assistant messages instead of structured tool events.
     const toolSignals: EvidenceSignal[] = [
       ...this.extractToolSignals(sessionEvents),
-      ...sessionEvents.map((event) => ({
-        text: `${event.summary}\n${stringifyEventData(event.data)}`,
-        source: event.eventType,
-      })),
-      ...sessionMessages.map((message) => ({
-        text: message.content,
-        source: message.senderKind,
+      ...subAgentReplies.map((text) => ({
+        text,
+        source: "sub_agent",
       })),
     ];
     const toolOutput = classifyToolOutput(toolSignals);
@@ -1891,12 +2252,31 @@ export class OrchestratorTaskService extends Service {
       (ref) => (ref.artifactType === "screenshot" && ref.ref ? [ref.ref] : []),
     );
 
+    // Same claims-vs-proof split for FILE paths (#16523): the captured change
+    // set records every path a mutating tool call TARGETED — including writes
+    // the tool layer rejected — so each claimed path is cross-checked against
+    // the deterministic write ledger folded from the recorded tool events. A
+    // claim with no successful ledger write surfaces fail-closed as
+    // unverified, never silently as "Created". Sessions with no structured
+    // tool ledger (adapter folded results into messages) contribute nothing —
+    // absence of a ledger is not evidence of a phantom claim.
+    const ledgerVerdict = verifyClaimedFiles(
+      changeSet?.changedFiles ?? [],
+      extractWriteLedger(sessionEvents),
+    );
+
     return {
       summary,
       diffSummary,
       toolOutput,
       verifiedUrls,
       mentionedUrls,
+      ...(ledgerVerdict.ledgerObserved
+        ? {
+            ledgerVerifiedFiles: ledgerVerdict.verifiedClaims,
+            unverifiedClaimedFiles: ledgerVerdict.unverifiedClaims,
+          }
+        : {}),
       screenshots: [...new Set(screenshots)],
     };
   }
@@ -2164,12 +2544,19 @@ export class OrchestratorTaskService extends Service {
     // lineage) must not count, or a restarted task re-fails on its first blip
     // (#14104). Absent epoch → every session counts (pre-restart lifetime).
     const budgetEpoch = readRetryBudgetEpoch(doc.task.metadata);
+    const firstBudgetSessionId = readRetryBudgetFirstSessionId(
+      doc.task.metadata,
+    );
+    const firstBudgetSessionIndex = firstBudgetSessionId
+      ? doc.sessions.findIndex((s) => s.sessionId === firstBudgetSessionId)
+      : -1;
+    const budgetSessions =
+      firstBudgetSessionIndex >= 0
+        ? doc.sessions.slice(firstBudgetSessionIndex)
+        : doc.sessions.filter((s) => s.spawnedAt >= budgetEpoch);
     const erroredSessionIds = new Set(
-      doc.sessions
-        .filter(
-          (s) =>
-            SESSION_ERROR_STATUSES.has(s.status) && s.spawnedAt >= budgetEpoch,
-        )
+      budgetSessions
+        .filter((s) => SESSION_ERROR_STATUSES.has(s.status))
         .map((s) => s.sessionId),
     );
     erroredSessionIds.add(sessionId);
@@ -2869,6 +3256,42 @@ export class OrchestratorTaskService extends Service {
         },
       );
     }
+    const groundTruth =
+      result.passed && !result.humanOverride
+        ? await this.verifyGroundTruthForValidation(doc, evidence)
+        : undefined;
+    if (groundTruth?.hardFail) {
+      await this.store.addEvent({
+        id: randomUUID(),
+        taskId,
+        eventType: "validation_blocked_ground_truth",
+        summary: groundTruth.summary,
+        data: {
+          verifier: "ground-truth-verifier",
+          groundTruth,
+        },
+        timestamp: Date.now(),
+        createdAt: nowIso(),
+      });
+      await this.store.updateTask(taskId, {
+        metadata: {
+          ...(doc.task.metadata ?? {}),
+          groundTruthVerdict: groundTruth,
+        },
+      });
+      this.emitChange(taskId);
+      throw new ElizaError(
+        `Ground-truth verification blocks validation: ${groundTruth.summary}`,
+        {
+          code: "TASK_GROUND_TRUTH_BLOCKED",
+          context: {
+            taskId,
+            status: groundTruth.status,
+            reasons: groundTruth.hardFailReasons,
+          },
+        },
+      );
+    }
     const trigger: TaskLifecycleTrigger = result.humanOverride
       ? result.passed
         ? "human_override_passed"
@@ -2923,7 +3346,107 @@ export class OrchestratorTaskService extends Service {
           }
         : {}),
     });
+    // Curated memory requires a fresh verified GitHub verdict from this exact
+    // validation pass. Human overrides and non-GitHub tasks may still complete,
+    // but must never reuse a stale verdict left in task metadata.
+    if (next === "done" && groundTruth?.status === "verified") {
+      await this.harvestCuratedCodingMemory(taskId);
+    }
     return this.getTask(taskId);
+  }
+
+  private async harvestCuratedCodingMemory(taskId: string): Promise<void> {
+    const memory = getCuratedCodingMemoryService(this.runtime);
+    if (!memory) return;
+    const doc = await this.store.getTask(taskId);
+    if (!doc) return;
+    try {
+      await memory.harvestVerifiedTask(doc);
+    } catch (err) {
+      // error-policy:J7 curated-memory persistence is diagnostic context for
+      // future tasks; a failed write must not roll back a verified completion.
+      this.runtime.reportError?.("OrchestratorTask.curatedCodingMemory", err, {
+        taskId,
+      });
+      this.log("warn", "curated coding memory harvest failed", {
+        taskId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  private async verifyGroundTruthForValidation(
+    doc: OrchestratorTaskDocument,
+    evidence: string,
+  ): Promise<GroundTruthVerdict | undefined> {
+    const workspaceSession = latestWorkspaceSession(doc);
+    const changeSet = workspaceSession
+      ? await this.resolveCompletionChangeSet(workspaceSession.sessionId, doc)
+      : undefined;
+    const claimedFiles = changeSet?.changedFiles ?? [];
+    const metadataPr = str(doc.task.metadata?.prUrl);
+    const completion = [evidence, metadataPr].filter(Boolean).join("\n");
+    const requirePullRequest = groundTruthRequiresPullRequest(
+      (key) => this.runtime.getSetting(key),
+      doc.task.metadata,
+    );
+    if (
+      !groundTruthApplies({
+        completion,
+        claimedFiles,
+        requirePullRequest,
+      })
+    ) {
+      return undefined;
+    }
+
+    // Automatic completion already verifies and stores these exact remote facts
+    // before invoking the model judge. Reuse that verdict when the claimed PR
+    // and file set are unchanged instead of issuing a second GitHub request in
+    // the same validation pass. A manual retry with different evidence or files
+    // misses this identity check and is verified afresh.
+    const recorded = _readGroundTruthVerdict(doc.task.metadata);
+    const claimedPr = extractPullRequestLink(completion)?.url;
+    const normalizedClaimedFiles = [...new Set(claimedFiles)].sort();
+    if (
+      recorded &&
+      recorded.pr.url === claimedPr &&
+      JSON.stringify(recorded.files.claimed) ===
+        JSON.stringify(normalizedClaimedFiles)
+    ) {
+      return recorded;
+    }
+
+    const workspace = getCodingWorkspaceService(this.runtime);
+    const verdict = await verifyGroundTruth(
+      {
+        completion,
+        claimedFiles,
+        requirePullRequest,
+        hardFailEnabled: true,
+      },
+      {
+        fetchPullRequest: async (link) => {
+          if (!workspace) {
+            throw new ElizaError(
+              "Coding workspace GitHub service is unavailable",
+              {
+                code: "GROUND_TRUTH_WORKSPACE_SERVICE_UNAVAILABLE",
+                context: { taskId: doc.task.id, repo: link.repo },
+              },
+            );
+          }
+          return workspace.getPullRequestGroundTruth(link);
+        },
+      },
+    );
+    await this.store.updateTask(doc.task.id, {
+      metadata: {
+        ...doc.task.metadata,
+        groundTruthVerdict: verdict,
+      },
+    });
+    return verdict;
   }
 
   /**
@@ -2931,23 +3454,27 @@ export class OrchestratorTaskService extends Service {
    * promoting it to `done` (issue #8124). One linear pipeline runs inside the
    * re-entrancy guard:
    *
-   * 1. **Structural envelope gate (#8895).** {@link parseCompletionEnvelope} reads
+   * 1. **Remote ground truth.** The claimed GitHub PR, head-SHA check rollup,
+   *    and changed files are verified without a model call. The structured
+   *    verdict is persisted and appended to the existing completion evidence;
+   *    optional hard-fail policy blocks a missing PR or red required checks.
+   * 2. **Structural envelope gate (#8895).** {@link parseCompletionEnvelope} reads
    *    the sub-agent's verbatim final message. A PRESENT-but-malformed envelope is
    *    blocked *before* any model spend and the worker is re-prompted with
    *    {@link envelopeCorrection}. An ABSENT envelope falls through unchanged
    *    (back-compat). A VALID envelope is stamped onto `metadata.completionEnvelope`
    *    and its {@link summarizeEnvelope} is prepended to the judge's evidence so the
    *    judge grills the contract, not prose.
-   * 2. **Independent execution verifier (#8898).** For code-change tasks
+   * 3. **Independent execution verifier (#8898).** For code-change tasks
    *    ({@link shouldRunIndependentVerify}) a SEPARATE read-only ACP session re-runs
    *    the tests/diff and returns an execution-grounded verdict. A failing verdict
    *    BLOCKS (provenance `independent-acp-verifier`); an inconclusive verdict keeps
    *    the task `validating` (never a false promotion on a verifier crash); a
    *    passing/skipped verdict falls through.
-   * 3. **Text judge (fallback).** {@link verifyGoalCompletion} (`ModelType.TEXT_SMALL`)
+   * 4. **Text judge (fallback).** {@link verifyGoalCompletion} (`ModelType.TEXT_SMALL`)
    *    judges the evidence and promotes (→ `done`) or re-prompts.
    *
-   * All three failure paths share one {@link reEngageOrEscalate} helper, one
+   * All failure paths share one {@link reEngageOrEscalate} helper, one
    * `autoVerifyAttempts` counter, and one {@link MAX_AUTO_VERIFY_ATTEMPTS} cap, so a
    * malformed/failing worker is re-prompted a bounded number of times and then
    * parked on `waiting_on_user`.
@@ -3086,14 +3613,86 @@ export class OrchestratorTaskService extends Service {
         }
       }
 
+      // 1. Deterministic remote ground-truth verifier. This uses the PR URL in
+      // the worker's verbatim completion, the captured WorkspaceChangeSet, and
+      // the CodingWorkspaceService's existing authenticated GitHub plumbing.
+      // It always persists a structured verdict when enabled. API failures are
+      // explicitly inconclusive and never become a false hard failure.
+      let evidence = completionEvidence;
+      const includeGroundTruth = shouldIncludeGroundTruthEvidence((key) =>
+        this.runtime.getSetting(key),
+      );
+      const hardFailGroundTruth = groundTruthHardFailEnabled((key) =>
+        this.runtime.getSetting(key),
+      );
+      if (includeGroundTruth || hardFailGroundTruth) {
+        const changeSet = await this.resolveCompletionChangeSet(sessionId, doc);
+        const workspace = getCodingWorkspaceService(this.runtime);
+        const groundTruth = await verifyGroundTruth(
+          {
+            completion: rawCompletion,
+            claimedFiles: changeSet?.changedFiles ?? [],
+            requirePullRequest: groundTruthRequiresPullRequest(
+              (key) => this.runtime.getSetting(key),
+              doc.task.metadata,
+            ),
+            hardFailEnabled: hardFailGroundTruth,
+          },
+          {
+            fetchPullRequest: async (link) => {
+              if (!workspace) {
+                throw new Error(
+                  "Coding workspace GitHub service is unavailable",
+                );
+              }
+              return workspace.getPullRequestGroundTruth(link);
+            },
+          },
+        );
+        await this.store.updateTask(taskId, {
+          metadata: {
+            ...doc.task.metadata,
+            groundTruthVerdict: groundTruth,
+          },
+        });
+        doc = (await this.store.getTask(taskId)) ?? doc;
+        if (includeGroundTruth) {
+          evidence = appendCompletionEvidenceSection(
+            evidence,
+            renderGroundTruthEvidence(groundTruth),
+          );
+        }
+        if (groundTruth.hardFail) {
+          const failureEvidence = renderGroundTruthEvidence(groundTruth);
+          await this.validateTaskLocked(taskId, {
+            passed: false,
+            summary: groundTruth.summary,
+            evidence: failureEvidence,
+            verifier: "ground-truth-verifier",
+          });
+          await this.reEngageOrEscalate({
+            taskId,
+            sessionId,
+            correction: buildAutoVerifyCorrection(
+              groundTruth.hardFailReasons,
+              attempts + 1,
+            ),
+            eventType: "ground_truth_failed",
+            verifier: "ground-truth-verifier",
+            summary: groundTruth.summary,
+            missing: groundTruth.hardFailReasons,
+            attempt: attempts,
+          });
+          return;
+        }
+      }
+
       const acceptanceCriteria = doc.task.acceptanceCriteria;
-      // Criteria-free tasks keep the prior behavior: stay `validating` for a
-      // human/manual caller, no surprise model spend. The residuals gate above
-      // has already run, so "no criteria" no longer implies "no verification".
+      // Criteria-free tasks keep the prior behavior after deterministic gates:
+      // stay `validating` for a human/manual caller, with no model spend.
       if (acceptanceCriteria.length === 0) return;
 
-      // 1. Structural envelope gate (#8895) — BEFORE any model spend.
-      let evidence = completionEvidence;
+      // 2. Structural envelope gate (#8895) — BEFORE any model spend.
       if (parse.present && !parse.ok) {
         // Malformed contract: block the judge and re-prompt for a valid envelope.
         await this.reEngageOrEscalate({
@@ -3109,6 +3708,38 @@ export class OrchestratorTaskService extends Service {
         return;
       }
       if (parse.present && parse.ok) {
+        // Deterministic claimed-file cross-check (#16523): the envelope's
+        // `filesChanged` are CLAIMS; the session's recorded tool events are
+        // the ledger of what was actually written and how each write ended.
+        // Flag-don't-rewrite: the envelope text/fields the worker produced
+        // stay intact, and unverified claims ride the envelope's existing
+        // marker fields (`artifactsVerified` / `missingArtifacts`) fail-closed
+        // — a claim with no matching successful ledger write can never pass
+        // through as "Created". No model spend.
+        const ledgerVerdict = verifyClaimedFiles(
+          parse.envelope.filesChanged,
+          extractWriteLedger(
+            doc.events.filter(
+              (event) =>
+                event.sessionId === sessionId || event.sessionId === undefined,
+            ),
+          ),
+        );
+        const unverifiedPaths = ledgerVerdict.unverifiedClaims.map(
+          (claim) => claim.path,
+        );
+        const ledgerMarkers =
+          ledgerVerdict.ledgerObserved && unverifiedPaths.length > 0
+            ? {
+                artifactsVerified: false,
+                missingArtifacts: [
+                  ...new Set([
+                    ...(parse.envelope.missingArtifacts ?? []),
+                    ...unverifiedPaths,
+                  ]),
+                ],
+              }
+            : {};
         // Valid contract: stamp the structured fields and feed the judge a
         // contract-grounded evidence string instead of raw prose.
         await this.store.updateTask(taskId, {
@@ -3132,13 +3763,32 @@ export class OrchestratorTaskService extends Service {
               testResults: parse.envelope.testResults,
               acceptanceCriteriaStatus: parse.envelope.acceptanceCriteriaStatus,
               residualRisks: parse.envelope.residualRisks,
+              // Last so the deterministic verdict wins over any self-reported
+              // `artifactsVerified: true` covering a rejected write.
+              ...ledgerMarkers,
             },
           },
         });
-        evidence = `${summarizeEnvelope(parse.envelope)}\n\n${completionEvidence}`;
+        evidence = `${summarizeEnvelope(parse.envelope)}\n\n${evidence}`;
+        if (ledgerVerdict.ledgerObserved && unverifiedPaths.length > 0) {
+          evidence = appendCompletionEvidenceSection(
+            evidence,
+            [
+              "## UNVERIFIED FILE CLAIMS (envelope `filesChanged` with no successful write in the tool ledger)",
+              ...ledgerVerdict.unverifiedClaims.map(
+                (claim) =>
+                  `- ${claim.path} (${
+                    claim.reason === "rejected-write"
+                      ? "the tool layer REJECTED this write"
+                      : "no successful write observed"
+                  })`,
+              ),
+            ].join("\n"),
+          );
+        }
       }
 
-      // 2. Independent read-only execution verifier (#8898).
+      // 3. Independent read-only execution verifier (#8898).
       const independent = await this.runIndependentVerify(
         taskId,
         doc,
@@ -3205,7 +3855,7 @@ export class OrchestratorTaskService extends Service {
         }
       }
 
-      // 3. Text judge (fallback for non-code / criteria-light tasks).
+      // 4. Text judge (fallback for non-code / criteria-light tasks).
       const verdict = await verifyGoalCompletion(
         this.runtime,
         {
@@ -3253,8 +3903,8 @@ export class OrchestratorTaskService extends Service {
 
   /**
    * Shared re-prompt / escalation path for every failed completion verdict — the
-   * malformed-envelope gate (#8895), the independent-verify block (#8898), and the
-   * text judge. ONE `autoVerifyAttempts` counter and ONE
+   * remote-ground-truth gate, malformed-envelope gate (#8895), independent-verify
+   * block (#8898), and text judge. ONE `autoVerifyAttempts` counter and ONE
    * {@link MAX_AUTO_VERIFY_ATTEMPTS} cap govern all three: under the cap the
    * kept-alive worker is reactivated and re-prompted with `correction` (and a
    * reflexion post-mortem is recorded for the next respawn, #8899); at the cap, or
@@ -3839,10 +4489,20 @@ export class OrchestratorTaskService extends Service {
         [RETRY_BUDGET_EPOCH_METADATA_KEY]: Date.now(),
       },
     });
-    await this.spawnAgentForTask(taskId, {
+    const restartedDetail = await this.spawnAgentForTask(taskId, {
       ...input.agent,
       task: instruction,
     });
+    const firstRestartedSessionId = restartedDetail?.sessions.at(-1)?.sessionId;
+    if (firstRestartedSessionId) {
+      const afterSpawn = await this.store.getTask(taskId);
+      await this.store.updateTask(taskId, {
+        metadata: {
+          ...afterSpawn?.task.metadata,
+          [RETRY_BUDGET_SESSION_METADATA_KEY]: firstRestartedSessionId,
+        },
+      });
+    }
     if (input.stopActive !== false) await this.stopActiveSessions(doc);
     if (planRevision) {
       await this.store.updateTask(taskId, { currentPlan: planRevision.plan });
@@ -4096,6 +4756,33 @@ export class OrchestratorTaskService extends Service {
     // (#14119). Null for unbound tasks or projects with no Cloud app.
     const cloudAppId =
       resolveBoundProjectCloudAppId(doc.task.projectId) ?? undefined;
+    let curatedCodingMemory = "";
+    const codingMemoryService = getCuratedCodingMemoryService(this.runtime);
+    if (codingMemoryService && workdir) {
+      try {
+        curatedCodingMemory = renderInjectedCodingNotes(
+          await codingMemoryService.retrieveRelevant({
+            text: `${doc.task.goal}\n${opts.task ?? ""}`,
+            repoKey:
+              opts.repo ??
+              doc.task.boundRepo ??
+              _readGroundTruthVerdict(doc.task.metadata)?.pr.repo ??
+              undefined,
+          }),
+        );
+      } catch (err) {
+        // error-policy:J7 durable notes are advisory context. A missing or
+        // corrupt notes file must never prevent a coding worker from spawning.
+        this.runtime.reportError?.(
+          "OrchestratorTask.curatedMemoryInject",
+          err,
+          {
+            taskId,
+            workdir,
+          },
+        );
+      }
+    }
     const goalPrompt = buildGoalPrompt({
       agentName,
       goal: doc.task.goal,
@@ -4108,6 +4795,7 @@ export class OrchestratorTaskService extends Service {
       // Replay prior failed-verification post-mortems so a re-spawn of this task
       // doesn't repeat them (#8899).
       attemptReflections: readAttemptReflections(doc.task.metadata),
+      ...(curatedCodingMemory ? { curatedCodingMemory } : {}),
       ...(capabilityProfile ? { capabilityProfile } : {}),
       brokerWired,
     });
@@ -4149,6 +4837,42 @@ export class OrchestratorTaskService extends Service {
       opts.framework ??
       policy.preferredFramework ??
       configuredDefaultAgentType(this.runtime);
+
+    // W3 wave cap layers on top of the existing global ACP admission queue.
+    // Default-OFF supervisor means this lookup is behavior-neutral. When the
+    // wave is full, top-level work parks in the SAME durable queue rather than
+    // creating a second queue/store; drain replay uses parkOnCap:false and gets
+    // a typed cap error so it can preserve the entry's original seniority.
+    const waveSupervisor = this.runtime.getService<WaveSupervisor>(
+      WAVE_SUPERVISOR_SERVICE_TYPE,
+    );
+    if (
+      waveSupervisor?.enabled() &&
+      !(await waveSupervisor.tryAcquire(taskId))
+    ) {
+      const wave = await waveSupervisor.concurrencyForTask(taskId);
+      if (
+        nestingDepth === 0 &&
+        opts.parkOnCap !== false &&
+        this.admissionQueueEnabled()
+      ) {
+        return this.enqueueAdmission(taskId, doc.task.priority, {
+          framework: opts.framework,
+          model: opts.model ?? policy.model,
+          workdir: opts.workdir,
+          repo: opts.repo,
+          label: opts.label,
+          task: opts.task,
+          approvalPreset: opts.approvalPreset,
+          providerSource: opts.providerSource ?? policy.providerSource,
+        });
+      }
+      throw new WaveConcurrencyCapError(
+        wave?.waveId ?? "unknown",
+        wave?.cap ?? 0,
+      );
+    }
+
     let result: SpawnResult;
     try {
       result = await acp.spawnSession({
@@ -4197,6 +4921,7 @@ export class OrchestratorTaskService extends Service {
         },
       });
     } catch (err) {
+      waveSupervisor?.release(taskId);
       // The worker cap is full. A TOP-LEVEL spawn parks in the admission queue
       // (task stays `open`, admission metadata persisted) and the caller gets a
       // truthful detail with the queued position instead of a hard failure. A
@@ -4308,8 +5033,10 @@ export class OrchestratorTaskService extends Service {
           doc.task.boundWorkdir !== result.workdir,
       });
       await this.advanceTaskStatus(taskId, "session_active");
+      waveSupervisor?.release(taskId);
       return this.getTask(taskId);
     } catch (err) {
+      waveSupervisor?.release(taskId);
       // error-policy:J4 the ACP spawn already succeeded (session is live); a
       // failed durable write degrades to a truthful live-session detail below,
       // never a false 500/404.
@@ -4403,8 +5130,9 @@ export class OrchestratorTaskService extends Service {
    *
    * Idempotent: attaching the same sessionId twice is a no-op (the store's
    * `addSession` also upserts by sessionId). If the task doesn't exist, returns
-   * `false` — callers treat that as a soft failure, same policy as thread-mint
-   * failure in the create action.
+   * `false`; direct-prompt callers may degrade without a widget, while the
+   * Smithers path must abort before graph execution because it requires this
+   * durable recovery owner.
    *
    * Only advances the task status to `active` for a non-terminal session; a
    * session that's already `completed` / `stopped` / `error` on arrival gets
@@ -4465,7 +5193,12 @@ export class OrchestratorTaskService extends Service {
       cacheTokens: 0,
       costUsd: 0,
       usageState: "unavailable",
-      metadata: {},
+      metadata: {
+        ...(input.metadata ?? {}),
+        ...(input.durableRun
+          ? smithersDurableRunMetadata(input.durableRun)
+          : {}),
+      },
       createdAt: ts,
       updatedAt: ts,
     };
@@ -4485,6 +5218,27 @@ export class OrchestratorTaskService extends Service {
     if (!TERMINAL_TASK_SESSION_STATUSES.has(input.status)) {
       await this.advanceTaskStatus(taskId, "session_active");
     }
+    return true;
+  }
+
+  /**
+   * Mirror a durable Smithers run-state transition onto the orchestrator
+   * session row. TASKS writes the same link to AcpService metadata; keeping both
+   * copies lets startup reconstruct linkage even if the host dies between the
+   * two durable writes.
+   */
+  async updateSmithersDurableRun(
+    sessionId: string,
+    link: SmithersDurableRunLink,
+  ): Promise<boolean> {
+    const found = await this.store.findSession(sessionId);
+    if (!found) return false;
+    await this.store.updateSession(sessionId, {
+      metadata: {
+        ...found.session.metadata,
+        ...smithersDurableRunMetadata(link),
+      },
+    });
     return true;
   }
 
@@ -5085,7 +5839,21 @@ export class OrchestratorTaskService extends Service {
         Date.now(),
         this.admissionAgingMs(),
       );
-      const head = ordered[0];
+      const waveSupervisor = this.runtime.getService<WaveSupervisor>(
+        WAVE_SUPERVISOR_SERVICE_TYPE,
+      );
+      let head: QueueEntry | undefined;
+      for (const candidate of ordered) {
+        if (
+          !waveSupervisor?.enabled() ||
+          (await waveSupervisor.tryAcquire(candidate.taskId))
+        ) {
+          head = candidate;
+          break;
+        }
+      }
+      // Global capacity exists, but every queued task belongs to a wave already
+      // at its own cap. Leave their durable order untouched until a lane ends.
       if (!head) break;
       // Drop the head from the in-memory order up front; a re-park below will
       // re-add it. This keeps the loop from re-selecting the same head when the
@@ -5094,15 +5862,27 @@ export class OrchestratorTaskService extends Service {
       if (idx >= 0) this.admissionQueue.splice(idx, 1);
       const doc = await this.store.getTask(head.taskId);
       const admission = doc && OrchestratorTaskService.admissionOf(doc.task);
-      if (!doc || !admission) continue;
+      if (!doc || !admission) {
+        waveSupervisor?.release(head.taskId);
+        continue;
+      }
       if (TERMINAL_TASK_STATUSES.has(doc.task.status)) {
+        waveSupervisor?.release(head.taskId);
         await this.writeAdmission(head.taskId, null);
         continue;
       }
       // A pause that raced this pass: drop the task from the dispatch order but
       // KEEP the durable record — pauseTask retained it so resume can replay
       // the original spawn (clearing it here would make resume a silent no-op).
-      if (doc.task.paused) continue;
+      if (doc.task.paused) {
+        waveSupervisor?.release(head.taskId);
+        continue;
+      }
+      // Selection reserved this candidate only long enough to avoid choosing a
+      // wave-blocked head. Release before replay; spawnAgentForTask performs the
+      // authoritative acquire and re-parks on a race, while every skip/error
+      // path above has now released its provisional reservation.
+      waveSupervisor?.release(head.taskId);
       await this.writeAdmission(head.taskId, null);
       try {
         await this.spawnAgentForTask(head.taskId, {
@@ -5116,13 +5896,24 @@ export class OrchestratorTaskService extends Service {
         });
       } catch (err) {
         if (err instanceof SessionCapError) {
-          // A concurrent spawn took the slot. Re-park at the head and stop —
-          // the next terminal event or reconcile tick drains again.
+          // A concurrent spawn took the global slot. Re-park at the head and
+          // stop; the next terminal event or reconcile tick drains again.
           await this.writeAdmission(head.taskId, admission);
           if (!this.admissionQueue.includes(head.taskId)) {
             this.admissionQueue.unshift(head.taskId);
           }
           break;
+        }
+        if (err instanceof WaveConcurrencyCapError) {
+          // This wave is full, but another wave may still use the free global
+          // slot. Keep the original durable enqueue timestamp (seniority), move
+          // the blocked id behind this pass, and continue within the bounded
+          // queue-length budget so no wave can head-of-line block the queue.
+          await this.writeAdmission(head.taskId, admission);
+          if (!this.admissionQueue.includes(head.taskId)) {
+            this.admissionQueue.push(head.taskId);
+          }
+          continue;
         }
         // error-policy:J7 the dispatch of a parked task failed for a non-cap
         // reason (bad workdir, transport error). Report it so the agent/owner

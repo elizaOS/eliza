@@ -22,6 +22,7 @@ import {
   cliInferencePlugin,
   findHandleResponseTool,
   LARGE_TIER_MODEL_TYPES,
+  parseTurnTimeout,
   resolveCliBackend,
   resolveSdkEffort,
 } from "../index";
@@ -791,38 +792,48 @@ describe("buildModelMetadata (RUNTIME_MODEL_CONTEXT self-report)", () => {
     expect(buildModelMetadata({ ELIZA_CHAT_VIA_CLI: "gemini" })).toBeUndefined();
   });
 
-  it("reports the configured claude models per tier (nubs's live config shape)", () => {
+  it("declares runtime-resolved Claude settings instead of snapshotting host env", () => {
     process.env.ELIZA_PLANNER_NATIVE_TOOLS = "0";
-    process.env.ELIZA_CLI_CLAUDE_MODEL = "claude-sonnet-5";
-    process.env.ELIZA_CLI_CLAUDE_PLANNER_MODEL = "claude-opus-4-8";
+    process.env.ELIZA_CLI_CLAUDE_MODEL = "host-large";
+    process.env.ELIZA_CLI_CLAUDE_PLANNER_MODEL = "host-planner";
     const md = buildModelMetadata({ ELIZA_CHAT_VIA_CLI: "claude-sdk" });
     for (const t of LARGE_TIER_MODEL_TYPES) {
-      expect(md?.[t]).toEqual({ displayModel: "claude-sonnet-5" });
+      expect(md?.[t]).toEqual({
+        displayModelSettings: ["ELIZA_CLI_CLAUDE_MODEL"],
+        displayModelDefault: "claude-opus-4-8",
+      });
     }
-    expect(md?.ACTION_PLANNER).toEqual({ displayModel: "claude-opus-4-8" });
+    expect(md?.ACTION_PLANNER).toEqual({
+      displayModelSettings: ["ELIZA_CLI_CLAUDE_PLANNER_MODEL", "ELIZA_CLI_CLAUDE_MODEL"],
+      displayModelDefault: "claude-opus-4-8",
+    });
   });
 
-  it("planner falls back to the large model when its own key is unset", () => {
+  it("cold planners declare only the large-model chain they actually invoke", () => {
     process.env.ELIZA_PLANNER_NATIVE_TOOLS = "0";
-    process.env.ELIZA_CLI_CLAUDE_MODEL = "claude-opus-4-8";
-    process.env.ELIZA_CLI_CLAUDE_PLANNER_MODEL = "";
-    const md = buildModelMetadata({ ELIZA_CHAT_VIA_CLI: "claude-sdk" });
-    expect(md?.ACTION_PLANNER).toEqual({ displayModel: "claude-opus-4-8" });
+    const claude = buildModelMetadata({ ELIZA_CHAT_VIA_CLI: "claude" });
+    const codex = buildModelMetadata({ ELIZA_CHAT_VIA_CLI: "codex" });
+    expect(claude?.ACTION_PLANNER?.displayModelSettings).toEqual(["ELIZA_CLI_CLAUDE_MODEL"]);
+    expect(codex?.ACTION_PLANNER?.displayModelSettings).toEqual(["ELIZA_CLI_CODEX_MODEL"]);
   });
 
   it("omits ACTION_PLANNER when native-tools planner mode is on (not served here)", () => {
     process.env.ELIZA_PLANNER_NATIVE_TOOLS = "1";
-    process.env.ELIZA_CLI_CLAUDE_MODEL = "claude-opus-4-8";
     const md = buildModelMetadata({ ELIZA_CHAT_VIA_CLI: "claude-sdk" });
     expect(md?.ACTION_PLANNER).toBeUndefined();
-    expect(md?.RESPONSE_HANDLER).toEqual({ displayModel: "claude-opus-4-8" });
+    expect(md?.RESPONSE_HANDLER).toEqual({
+      displayModelSettings: ["ELIZA_CLI_CLAUDE_MODEL"],
+      displayModelDefault: "claude-opus-4-8",
+    });
   });
 
-  it("reports codex models for the codex backend", () => {
+  it("declares the Codex runtime key and provider default", () => {
     process.env.ELIZA_PLANNER_NATIVE_TOOLS = "0";
-    process.env.ELIZA_CLI_CODEX_MODEL = "gpt-5.6-sol";
     const md = buildModelMetadata({ ELIZA_CHAT_VIA_CLI: "codex-sdk" });
-    expect(md?.RESPONSE_HANDLER).toEqual({ displayModel: "gpt-5.6-sol" });
+    expect(md?.RESPONSE_HANDLER).toEqual({
+      displayModelSettings: ["ELIZA_CLI_CODEX_MODEL"],
+      displayModelDefault: "gpt-5.5",
+    });
   });
 });
 
@@ -879,8 +890,12 @@ describe("ALL-TIERS mode (ELIZA_CLI_CLAUDE_ALL_TIERS)", () => {
     process.env.ELIZA_CLI_CLAUDE_MODEL = "claude-sonnet-5";
     delete process.env.ELIZA_CLI_CLAUDE_SMALL_MODEL;
     const md = buildModelMetadata({ ELIZA_CHAT_VIA_CLI: "claude-sdk" });
-    // small tier defaults to the large-tier model (sonnet), NOT the opus planner
-    expect(md?.TEXT_SMALL).toEqual({ displayModel: "claude-sonnet-5" });
+    // Runtime resolution checks the cheap small setting, then the large setting,
+    // and never consults the planner tier.
+    expect(md?.TEXT_SMALL).toEqual({
+      displayModelSettings: ["ELIZA_CLI_CLAUDE_SMALL_MODEL", "ELIZA_CLI_CLAUDE_MODEL"],
+      displayModelDefault: "claude-opus-4-8",
+    });
   });
 });
 
@@ -1183,5 +1198,18 @@ describe("Stage-1 ENVELOPE mode (claude-sdk handle_response tool)", () => {
     expect(body.trimEnd().endsWith("with the completed envelope fields.")).toBe(true);
     // System-less calls still produce a well-formed body.
     expect(buildEnvelopeBody(undefined, "just body")).toContain("just body");
+  });
+});
+
+describe("parseTurnTimeout (#16553)", () => {
+  it('passes an explicit "0" through as the unbounded opt-out', () => {
+    expect(parseTurnTimeout("0")).toBe(0);
+  });
+
+  it("parses a positive budget and rejects junk/negatives to undefined (bounded default applies)", () => {
+    expect(parseTurnTimeout("120000")).toBe(120_000);
+    expect(parseTurnTimeout(undefined)).toBeUndefined();
+    expect(parseTurnTimeout("abc")).toBeUndefined();
+    expect(parseTurnTimeout("-5")).toBeUndefined();
   });
 });

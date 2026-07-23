@@ -7,7 +7,7 @@
     {
       "actor": "user",
       "message": "Fix the failing tests and run the suite in shell before reporting.",
-      "expected_behaviors": ["spawn_subagent", "report_active_subagent_status"]
+      "expected_behaviors": ["spawn_subagent"]
     }
   ]
 }

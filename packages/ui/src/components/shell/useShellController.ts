@@ -8,7 +8,7 @@
  * spoken assistant output (through useShellVoiceOutput). Conversation switching
  * and horizontal swipe navigation resolve through conversation-nav.
  *
- * ChatSurface / AssistantOverlay / ContinuousChatOverlay and the home surfaces
+ * ChatSurface / AssistantOverlay / ChatOverlay and the home surfaces
  * are the consumers; they read the controller and render, holding no chat/voice
  * state of their own. ShellControllerContext provides one instance so the pill
  * and the overlay stay in lock-step without double-mounting this hook.
@@ -49,7 +49,6 @@ import {
   loadWakeWordEnabled,
   saveContinuousChatMode,
 } from "../../state/persistence";
-import { goHome } from "../../state/shell-surface-store";
 import { deriveAgentReady } from "../../state/types";
 import { voiceCaptureDebug } from "../../utils/voice-capture-debug";
 import { TurnAggregator } from "../../voice/end-of-turn";
@@ -412,12 +411,9 @@ export function useShellController(): ShellController {
 
   // Jump to Settings from the chat's no_provider gate. Stable identity.
   const openSettings = React.useCallback(() => setTab("settings"), [setTab]);
-  // Return to the combined Home/Launcher route and select Home. If the route is
-  // not mounted yet, the next mount starts on Home; if it is already mounted on
-  // Launcher, this flips it via the shell-surface store without a remount.
+  // Return to the combined home/apps route.
   const navigateHome = React.useCallback(() => {
     setTab("chat");
-    goHome();
   }, [setTab]);
 
   // True while a clear or conversation switch is fetching the next thread, so

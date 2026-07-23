@@ -1,4 +1,5 @@
 // Coordinates cloud service model catalog behavior behind route handlers.
+import { ElizaError } from "@elizaos/core";
 import { cache } from "../cache/client";
 import { InMemoryLRUCache } from "../cache/in-memory-lru-cache";
 import { CacheKeys, CacheStaleTTL, CacheTTL } from "../cache/keys";
@@ -19,55 +20,70 @@ import { expandBitRouterModelIdCandidates } from "../providers/model-id-translat
 import type { OpenAIModelsResponse } from "../providers/types";
 import { logger } from "../utils/logger";
 import { isHotPathCachesEnabled } from "./inference-hot-path-caches";
+import { ModelCatalogCache, type ModelCatalogRefreshFailure } from "./model-catalog-cache";
 
-interface SWRCachedValue<T> {
-  data: T;
-  cachedAt: number;
-  staleAt: number;
-}
-
-function buildSWRValue<T>(data: T): SWRCachedValue<T> {
-  const cachedAt = Date.now();
-
-  return {
-    data,
-    cachedAt,
-    staleAt: cachedAt + CacheStaleTTL.models.catalog * 1000,
-  };
-}
-
-async function fetchBitRouterModelCatalog(): Promise<CatalogModel[]> {
+async function fetchConfiguredBitRouterModelCatalog(): Promise<CatalogModel[]> {
   try {
-    if (!hasOpenRouterProviderConfigured()) {
-      return [];
-    }
-
     const response = await getOpenRouterProvider().listModels();
     const data = (await response.json()) as OpenAIModelsResponse;
 
     if (!Array.isArray(data.data)) {
-      logger.warn("[Model Catalog] OpenRouter returned an invalid model catalog");
-      return [];
+      const receivedKind = data.data === null ? "null" : typeof data.data;
+      const cause = new TypeError(
+        `Expected OpenRouter response.data to be an array, received ${receivedKind}`,
+      );
+      throw new ElizaError("OpenRouter returned an invalid model catalog", {
+        code: "MODEL_CATALOG_PROVIDER_RESPONSE_INVALID",
+        context: { provider: "openrouter", field: "data", receivedKind },
+        cause,
+        severity: "fatal",
+      });
     }
 
     return data.data;
-  } catch (error) {
-    logger.warn("[Model Catalog] Failed to fetch OpenRouter model catalog", {
-      error,
+  } catch (cause) {
+    if (cause instanceof ElizaError) throw cause;
+    // error-policy:J2 Add provider context while preserving the transport or
+    // response-decoding failure for the route boundary and observability path.
+    throw new ElizaError("Failed to fetch the OpenRouter model catalog", {
+      code: "MODEL_CATALOG_PROVIDER_FETCH_FAILED",
+      context: { provider: "openrouter" },
+      cause,
+      severity: "ephemeral",
     });
-    return [];
   }
 }
 
-export async function getCachedBitRouterModelCatalog(): Promise<CatalogModel[]> {
-  const cached = await cache.getWithSWR<CatalogModel[]>(
-    CacheKeys.models.bitrouterCatalog(),
-    CacheStaleTTL.models.catalog,
-    fetchBitRouterModelCatalog,
-    CacheTTL.models.catalog,
-  );
+function refreshErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  if (error && typeof error === "object" && "error" in error) {
+    const nested = (error as { error?: unknown }).error;
+    if (nested && typeof nested === "object" && "message" in nested) {
+      return String((nested as { message?: unknown }).message);
+    }
+  }
+  return "Unknown upstream error";
+}
 
-  return cached ?? [];
+const bitRouterCatalogCache = new ModelCatalogCache({
+  key: CacheKeys.models.bitrouterCatalog(),
+  store: cache,
+  isProviderConfigured: hasOpenRouterProviderConfigured,
+  fetchModels: fetchConfiguredBitRouterModelCatalog,
+  freshnessSeconds: CacheStaleTTL.models.catalog,
+  retentionSeconds: CacheTTL.models.catalog,
+  onRefreshFailure: (failure: ModelCatalogRefreshFailure) => {
+    logger.warn("[Model Catalog] Refresh failed; retaining the last-good catalog", {
+      error: refreshErrorMessage(failure.error),
+      retryAt: new Date(failure.retryAt).toISOString(),
+      consecutiveFailures: failure.consecutiveFailures,
+    });
+  },
+});
+
+export async function getCachedBitRouterModelCatalog(): Promise<CatalogModel[]> {
+  return await bitRouterCatalogCache.getCached();
 }
 
 export function hasModelCatalogProviderConfigured(): boolean {
@@ -75,15 +91,12 @@ export function hasModelCatalogProviderConfigured(): boolean {
 }
 
 export async function refreshBitRouterModelCatalog(): Promise<CatalogModel[]> {
-  const models = await fetchBitRouterModelCatalog();
+  return await bitRouterCatalogCache.refresh();
+}
 
-  await cache.set(
-    CacheKeys.models.bitrouterCatalog(),
-    buildSWRValue(models),
-    CacheTTL.models.catalog,
-  );
-
-  return models;
+/** Test hook: isolate module-level refresh cooldown state between cases. */
+export function __clearBitRouterCatalogRefreshStateForTests(): void {
+  bitRouterCatalogCache.clearRefreshStateForTests();
 }
 
 export async function getCachedMergedModelCatalog(): Promise<CatalogModel[]> {

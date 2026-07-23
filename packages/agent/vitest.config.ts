@@ -1,4 +1,6 @@
 /** Configures the deterministic Vitest harness for packages/agent tests. */
+import { realpathSync } from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
@@ -13,6 +15,12 @@ const baseAliases = Array.isArray(baseConfig.resolve?.alias)
 const packageRoot = path.dirname(fileURLToPath(import.meta.url));
 const monorepoRoot = path.resolve(packageRoot, "../..");
 const srcRoot = path.join(packageRoot, "src");
+const requireFromOrchestrator = createRequire(
+  path.join(monorepoRoot, "plugins/plugin-agent-orchestrator/package.json"),
+);
+const octokitRestEntry = realpathSync(
+  requireFromOrchestrator.resolve("@octokit/rest"),
+);
 
 export default defineConfig({
   ...baseConfig,
@@ -20,6 +28,12 @@ export default defineConfig({
   resolve: {
     ...baseConfig.resolve,
     alias: [
+      // Resolve Octokit from its physical Bun store path so its own transitive
+      // dependencies remain visible while workspace source aliases preserve symlinks.
+      {
+        find: /^@octokit\/rest$/,
+        replacement: octokitRestEntry,
+      },
       {
         find: /^@elizaos\/agent$/,
         replacement: path.join(srcRoot, "index.ts"),

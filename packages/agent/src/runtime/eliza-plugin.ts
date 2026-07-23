@@ -47,6 +47,7 @@ import {
   registerMediaGcTask,
   registerMediaPipelineHook,
 } from "../api/media-runtime.ts";
+import { pendantSessionRoutes } from "../api/pendant-session-routes.ts";
 import { adminPanelProvider } from "../providers/admin-panel.ts";
 import { adminTrustProvider } from "../providers/admin-trust.ts";
 import { automationTerminalBridgeProvider } from "../providers/automation-terminal-bridge.ts";
@@ -81,15 +82,17 @@ import {
 } from "../services/knowledge-graph/index.ts";
 import { AgentMediaGenerationService } from "../services/media-generation.ts";
 import { OwnerBindingService } from "../services/owner-binding.ts";
+import { pendantSessionSchema } from "../services/pendant-session/index.ts";
 import { PendingPromptsService } from "../services/pending-prompts/index.ts";
 import { PermissionRegistry } from "../services/permissions-registry.ts";
 import { NotificationPushService } from "../services/push/notification-push-service.ts";
 import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";
 import { registerTriggerTaskWorker } from "../triggers/runtime.ts";
 import { migrateWorkbenchScheduleTags } from "../triggers/workbench-migration.ts";
-
 import { setCustomActionsRuntime } from "./custom-actions.ts";
 import { registerErrorEscalation } from "./error-escalation.ts";
+import { LogsRetentionService } from "./logs-retention-service.ts";
+import { MemoryRetentionService } from "./memory-retention-service.ts";
 
 export type ElizaPluginConfig = {
   workspaceDir?: string;
@@ -142,10 +145,12 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
     name: "eliza",
     description: "Eliza workspace context, session keys, and lifecycle actions",
 
-    // Runtime-owned knowledge graph (entity nodes + typed relationship edges)
-    // under the app_lifeops schema. Registered here so the tables exist
-    // whenever the runtime runs and are migrated by the SQL plugin.
-    schema: knowledgeGraphSchema,
+    // Runtime-owned app_lifeops tables. Registered here so the SQL plugin
+    // migrates the runtime data model whenever the agent runs.
+    schema: {
+      ...knowledgeGraphSchema,
+      ...pendantSessionSchema,
+    },
 
     services: [
       AgentEventService as ServiceClass,
@@ -159,6 +164,16 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       PendingPromptsService as ServiceClass,
       GlobalPauseService as ServiceClass,
       HandoffService as ServiceClass,
+      // Bounded retention for the memories/embeddings partitions. Registers
+      // always but stays a no-op unless ELIZA_MEMORY_RETENTION_DAYS or
+      // ELIZA_MEMORY_RETENTION_MAX_ROWS_PER_ROOM is set — the mechanism that
+      // keeps the append-only memory store from filling the disk.
+      MemoryRetentionService as ServiceClass,
+      // Bounded retention for the append-only logs table (empirically the
+      // biggest growth surface). Registers always but stays a no-op unless
+      // ELIZA_LOGS_RETENTION_DAYS or ELIZA_LOGS_RETENTION_MAX_ROWS_PER_ROOM is
+      // set. Independent config + adapter from the memory sweep above.
+      LogsRetentionService as ServiceClass,
       ApprovalService as ServiceClass,
       // OWNER_BIND_VERIFY: backend authority for the connector /eliza-pair
       // commands. Registered here (before connector plugins start) so the
@@ -264,6 +279,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       backgroundGenerateImageRoute,
       backgroundUploadImageRoute,
       ...filesRoutes,
+      ...pendantSessionRoutes,
     ],
 
     actions: [

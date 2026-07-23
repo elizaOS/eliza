@@ -11,7 +11,6 @@ callable matching the duck-typed shape BFCL runners expect.
 
 from __future__ import annotations
 
-import importlib.util
 import json
 import logging
 import os
@@ -19,9 +18,12 @@ import re
 import time
 from copy import deepcopy
 from hashlib import sha1
-from typing import Any, Awaitable, Callable
+from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 from hermes_adapter.client import HermesClient
+
+if TYPE_CHECKING:
+    from benchmarks.bfcl.types import ArgumentValue, BFCLTestCase, FunctionCall
 
 logger = logging.getLogger(__name__)
 
@@ -288,19 +290,9 @@ class HermesBFCLAgent:
     ) -> None:
         self._model_name = _default_model_name(model_name)
         if client is None:
-            requested_mode = os.environ.get("HERMES_ADAPTER_MODE", "").strip()
-            if requested_mode in {"in_process", "subprocess"}:
-                mode = requested_mode
-            else:
-                mode = (
-                    "in_process"
-                    if importlib.util.find_spec("openai")
-                    else "subprocess"
-                )
             self._client = HermesClient(
                 provider=provider or _default_underlying_provider(),
                 model=self._model_name,
-                mode=mode,
             )
         else:
             self._client = client

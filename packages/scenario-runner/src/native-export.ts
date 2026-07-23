@@ -19,7 +19,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type {
   RecordedModelCall,
@@ -27,6 +27,7 @@ import type {
   RecordedTrajectory,
 } from "@elizaos/core";
 import { logger } from "@elizaos/logger";
+import { writeFileAtomic } from "./reporter.js";
 import { toRecord } from "./utils.js";
 
 const NATIVE_FORMAT = "eliza_native_v1" as const;
@@ -1206,7 +1207,7 @@ export function exportScenarioNativeJsonl(
     rows.length === 0
       ? ""
       : `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`;
-  writeFileSync(outPath, body, "utf-8");
+  writeFileAtomic(outPath, body);
   const privacyAttestation = buildScenarioNativePrivacyAttestation({
     jsonlPath: outPath,
     runDir,
@@ -1214,10 +1215,9 @@ export function exportScenarioNativeJsonl(
     rows: rows.length,
     stats: privacyStats,
   });
-  writeFileSync(
+  writeFileAtomic(
     privacyAttestationPath,
     `${JSON.stringify(privacyAttestation, null, 2)}\n`,
-    "utf-8",
   );
   let passedRows = 0;
   let failedRows = 0;
@@ -1262,10 +1262,9 @@ export function exportScenarioNativeJsonl(
       categories: privacyCategories(privacyStats),
     },
   };
-  writeFileSync(
+  writeFileAtomic(
     manifestPath,
     `${JSON.stringify(manifest, null, 2)}\n`,
-    "utf-8",
   );
   logger.info(
     `[scenario-runner] wrote ${rows.length} redacted eliza_native_v1 row(s) from ${files.length} trajectory file(s) → ${outPath} (passed=${passedRows} failed=${failedRows} skipped=${skippedScenarioRows} unknown=${unknownOutcomeRows} redactions=${privacyStats.redactionsTotal} residuals=${privacyStats.residualTotal}) (manifest → ${manifestPath}; privacy attestation → ${privacyAttestationPath})`,

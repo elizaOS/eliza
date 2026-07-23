@@ -133,8 +133,15 @@ export class CacheClient {
   private readonly REVALIDATION_TIMEOUT_MS = 30000;
   private nativeRedisConnectPromise: Promise<void> | null = null;
   private nativeRedisReady = false;
-  private readonly instanceId = randomUUID();
+  // Web Crypto is unavailable during workerd module evaluation. Generate the
+  // lock-owner id on first request use instead of at singleton construction.
+  private instanceId: string | null = null;
   private metricsSampleRate: number | null = null;
+
+  private getInstanceId(): string {
+    this.instanceId ??= randomUUID();
+    return this.instanceId;
+  }
 
   /**
    * Prepends the environment prefix to a cache key or pattern.
@@ -1399,7 +1406,7 @@ export class CacheClient {
     if (!redis) return null;
 
     try {
-      const token = `${this.instanceId}:${randomUUID()}`;
+      const token = `${this.getInstanceId()}:${randomUUID()}`;
       const result = await redis.set(this.pk(lockKey), token, {
         nx: true,
         px: ttlMs,

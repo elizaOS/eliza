@@ -7,6 +7,8 @@ import json
 import time
 from pathlib import Path
 
+import pytest
+
 from elizaos_mmau_audio.agent import (
     CascadedSTTAgent,
     OracleMMAUAgent,
@@ -229,10 +231,9 @@ def test_runner_handles_agent_failures(tmp_path: Path) -> None:
         save_traces=False,
     )
     runner = MMAURunner(config, agent=FailingAgent())
-    report = asyncio.run(runner.run())
-    assert report.total_samples == 2
-    assert report.overall_accuracy == 0.0
-    assert report.error_count == 2
+    with pytest.raises(RuntimeError, match="refusing a partial report"):
+        asyncio.run(runner.run())
+    assert not (tmp_path / "mmau-results.json").exists()
 
 
 def test_runner_handles_timeout(tmp_path: Path) -> None:
@@ -252,8 +253,22 @@ def test_runner_handles_timeout(tmp_path: Path) -> None:
     )
     started = time.time()
     runner = MMAURunner(config, agent=SlowAgent())
-    report = asyncio.run(runner.run())
+    with pytest.raises(RuntimeError, match="refusing a partial report: timeout"):
+        asyncio.run(runner.run())
     elapsed = time.time() - started
     assert elapsed < 1.5
-    assert report.error_count == 1
-    assert report.results[0].error == "timeout"
+    assert not (tmp_path / "mmau-results.json").exists()
+
+
+def test_runner_rejects_short_dataset_for_requested_limit(tmp_path: Path) -> None:
+    config = MMAUConfig(
+        output_dir=str(tmp_path),
+        agent="mock",
+        use_fixture=True,
+        use_huggingface=False,
+        max_samples=100,
+        save_traces=False,
+    )
+
+    with pytest.raises(RuntimeError, match="expected 100 base samples, loaded 8"):
+        asyncio.run(MMAURunner(config).run())

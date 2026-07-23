@@ -20,8 +20,7 @@
  *
  * The repo already carries dozens of pre-existing raw reads; a repo-wide count
  * vs a static baseline cannot work (any unrelated `develop` merge that adds one
- * reds `verify` for everyone who rebases). So enforcement is scoped to the diff,
- * exactly like `error-policy-ratchet.mjs`:
+ * reds `verify` for everyone who rebases). So enforcement is scoped to the diff:
  *
  *   base = git merge-base <base-ref> HEAD        (default base-ref origin/develop)
  *   for each guarded source file the branch touches (base..HEAD):
@@ -344,7 +343,8 @@ function diffScopedRegressions(base, files, guardedKeys) {
     const current = currentFindings.length;
 
     const baseText = baseContent(base, relPath);
-    const base_ = baseText === null ? 0 : countText(baseText, relPath, guardedKeys);
+    const base_ =
+      baseText === null ? 0 : countText(baseText, relPath, guardedKeys);
 
     perFile.push({ file: relPath, current, base: base_ });
     if (current > base_) {
@@ -454,7 +454,11 @@ function runSelfTest() {
     // process.env.ELIZA_PORT in a comment is not a read
     const g = obj.process.env.ELIZA_PORT;             // not the global process
   `;
-  const findings = collectRawAliasReads(sample, "packages/x/src/sample.ts", guardedKeys);
+  const findings = collectRawAliasReads(
+    sample,
+    "packages/x/src/sample.ts",
+    guardedKeys,
+  );
   if (findings.length !== 4) {
     console.error(
       `[alias-read-guard] self-test failed: expected 4 reads, got ${findings.length}: ${JSON.stringify(findings)}`,
@@ -528,7 +532,11 @@ if (!base) {
 }
 
 const files = changedGuardedFiles(base);
-const { perFile, regressions } = diffScopedRegressions(base, files, guardedKeys);
+const { perFile, regressions } = diffScopedRegressions(
+  base,
+  files,
+  guardedKeys,
+);
 const repoWide = REPORT ? repoWideTotal(guardedKeys) : null;
 
 if (JSON_FLAG) {

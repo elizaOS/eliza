@@ -5,7 +5,7 @@
  */
 
 import type { LinkedAccountProviderId } from "@elizaos/shared";
-import { AlertTriangle, Plus, RotateCw } from "lucide-react";
+import { AlertTriangle, ChevronRight, Plus, RotateCw } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import type {
   AccountStrategy,
@@ -321,15 +321,13 @@ export function AccountManagementPanel({
             className="flex w-full items-center gap-1.5 text-left text-[11px] font-medium uppercase tracking-wider text-muted transition-colors hover:text-txt-strong"
             aria-expanded={showAvailable}
           >
-            <span
+            <ChevronRight
               className={cn(
-                "inline-block transition-transform",
+                "h-3.5 w-3.5 shrink-0 transition-transform",
                 showAvailable && "rotate-90",
               )}
               aria-hidden
-            >
-              ›
-            </span>
+            />
             {nothingConnected
               ? t("accounts.available.all", {
                   defaultValue: `All providers (${availableOptions.length})`,

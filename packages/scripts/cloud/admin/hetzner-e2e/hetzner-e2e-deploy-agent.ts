@@ -8,6 +8,7 @@
 
 import { randomBytes } from "node:crypto";
 import { SMOKE_AGENT_PLUGINS } from "../smoke-agent-plugins";
+import { provisionJobId } from "./provision-response";
 import { appendStateAtomic } from "./state-file";
 
 const DEFAULT_BASE_URL = "https://api-staging.elizacloud.ai";
@@ -111,17 +112,13 @@ async function createAgent(): Promise<string> {
   return data.id;
 }
 
-async function provisionAgent(agentId: string): Promise<string> {
-  const { body } = await requestJson(
+async function provisionAgent(agentId: string): Promise<string | null> {
+  const { status, body } = await requestJson(
     `/api/v1/eliza/agents/${agentId}/provision`,
     { method: "POST" },
-    [202],
+    [200, 202],
   );
-  const data = body.data as JsonObject | undefined;
-  if (!data || typeof data.jobId !== "string") {
-    throw new Error("Provision response missing jobId");
-  }
-  return data.jobId;
+  return provisionJobId(status, body);
 }
 
 async function waitForJob(jobId: string): Promise<void> {
@@ -154,7 +151,7 @@ async function main(): Promise<void> {
   console.log(`[hetzner-e2e-deploy-agent] agent created ${agentId}`);
 
   const jobId = await provisionAgent(agentId);
-  await waitForJob(jobId);
+  if (jobId) await waitForJob(jobId);
   console.log(`[hetzner-e2e-deploy-agent] agent running ${agentId}`);
 }
 

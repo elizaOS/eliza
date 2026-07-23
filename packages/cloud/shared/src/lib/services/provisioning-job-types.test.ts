@@ -72,14 +72,12 @@ describe("resolveJobTypesForLanes — fail-open to ALL", () => {
   // key (`constructor`, `__proto__`) reaches the lane gate unchanged, and an
   // `in` check would let it through and then throw on `for (… of JOB_LANES[k])`.
   // A spec made of only such keys must fail open to ALL, never crash the daemon.
-  test.each([
-    "constructor",
-    "__proto__",
-    "valueof,hasownproperty",
-    "tostring",
-  ])("prototype-key-only spec %p → all types (no throw)", (spec) => {
-    expect(resolveJobTypesForLanes(spec)).toEqual(ALL);
-  });
+  test.each(["constructor", "__proto__", "valueof,hasownproperty", "tostring"])(
+    "prototype-key-only spec %p → all types (no throw)",
+    (spec) => {
+      expect(resolveJobTypesForLanes(spec)).toEqual(ALL);
+    },
+  );
 
   // A real lane alongside a prototype key resolves to just the real lane — the
   // prototype key is ignored, not crashed on, not promoted to "all".

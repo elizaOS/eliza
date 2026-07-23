@@ -7,10 +7,10 @@
  * weak-type inventory, so a human can decide what to consolidate, what to share
  * via `@elizaos/core`, and what is legitimately parallel-but-distinct.
  *
- * Companion to `type-safety-ratchet.mjs`: that script gates unsafe casts at a
- * baseline; this one surfaces the structural type duplication the ratchet never
- * looks at. File scope mirrors the ratchet (git ls-files, production `src/`,
- * no `*.d.ts` / tests / build output).
+ * It surfaces structural type duplication alongside a weak-type inventory so
+ * reviewers can distinguish shared concepts from legitimately separate shapes.
+ * File scope is tracked production `src/` code, excluding declarations, tests,
+ * and build output.
  *
  * Candidate classes (each ranked by a confidence score 0..1):
  *   1. same-name, multi-package  — `interface ApiResponse` declared in N packages.
@@ -1141,10 +1141,7 @@ function renderMarkdown(report) {
       "`@elizaos/core`), **`extends`/`Pick`/`Omit`** (subset/superset), or " +
       "**rename** (genuinely distinct concepts that collide by name).",
   );
-  lines.push(
-    "2. Factor high-confidence duplicates by hand — no auto-rewrite. For any " +
-      "removed cast, lower the `type-safety-ratchet` baseline.",
-  );
+  lines.push("2. Factor high-confidence duplicates by hand — no auto-rewrite.");
   lines.push(
     "3. Record reviewed-but-kept-separate findings in " +
       "`packages/scripts/type-duplication-audit.allowlist.json` with a written " +

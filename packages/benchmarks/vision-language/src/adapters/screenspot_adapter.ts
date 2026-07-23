@@ -19,7 +19,7 @@
  * standard ScreenSpot metric), else 0. Predictions that include a bbox
  * (region grounders) fall back to IoU > 0.5.
  */
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { clickHit, iouHit } from "../scorers/index.ts";
@@ -225,10 +225,13 @@ function loadOfficial(n: number): Sample<ScreenSpotPayload>[] {
   const samples: Sample<ScreenSpotPayload>[] = [];
   for (const split of splits) {
     const annPath = path.join(dir, split.file);
-    if (!existsSync(annPath)) continue;
-    const raw = JSON.parse(
-      readFileSync(annPath, "utf8"),
-    ) as OfficialAnnotation[];
+    if (!existsSync(annPath)) {
+      throw new Error(`ScreenSpot split annotation is missing: ${annPath}`);
+    }
+  }
+  for (const split of splits) {
+    const annPath = path.join(dir, split.file);
+    const raw = readOfficialAnnotations(annPath);
     for (const entry of raw) {
       const imgPath = path.join(dir, "screenspot_imgs", entry.img_filename);
       const dims = upstreamImageDims(dir, entry.img_filename);
@@ -243,6 +246,45 @@ function loadOfficial(n: number): Sample<ScreenSpotPayload>[] {
     }
   }
   return samples;
+}
+
+function readOfficialAnnotations(file: string): OfficialAnnotation[] {
+  const parsed = JSON.parse(readFileSync(file, "utf8")) as unknown;
+  if (!Array.isArray(parsed)) {
+    throw new Error(`ScreenSpot annotation is not an array: ${file}`);
+  }
+  return parsed.map((entry, index) => {
+    if (!entry || typeof entry !== "object") {
+      throw new Error(
+        `ScreenSpot annotation ${index} is not an object: ${file}`,
+      );
+    }
+    const row = entry as Record<string, unknown>;
+    const bbox = row.bbox;
+    if (
+      typeof row.img_filename !== "string" ||
+      typeof row.instruction !== "string" ||
+      !Array.isArray(bbox) ||
+      bbox.length !== 4 ||
+      !bbox.every(
+        (value) =>
+          typeof value === "number" &&
+          Number.isFinite(value) &&
+          value >= 0 &&
+          value <= 1,
+      )
+    ) {
+      throw new Error(`ScreenSpot annotation ${index} is malformed: ${file}`);
+    }
+    return {
+      img_filename: row.img_filename,
+      instruction: row.instruction,
+      bbox: [bbox[0], bbox[1], bbox[2], bbox[3]],
+      data_type: typeof row.data_type === "string" ? row.data_type : undefined,
+      data_source:
+        typeof row.data_source === "string" ? row.data_source : undefined,
+    };
+  });
 }
 
 /**
@@ -268,15 +310,20 @@ function upstreamImageDims(
 ): { width: number; height: number } {
   const imgPath = path.join(dir, "screenspot_imgs", filename);
   const buf = readFileSync(imgPath);
-  // PNG: bytes 16..24 = width (BE u32) + height (BE u32). Falls back to
-  // 1280x800 when the file isn't a PNG.
-  if (buf.length >= 24 && buf[0] === 0x89 && buf[1] === 0x50) {
-    const width = buf.readUInt32BE(16);
-    const height = buf.readUInt32BE(20);
-    return { width, height };
+  if (
+    buf.length < 24 ||
+    buf[0] !== 0x89 ||
+    buf[1] !== 0x50 ||
+    buf.toString("ascii", 12, 16) !== "IHDR"
+  ) {
+    throw new Error(
+      `ScreenSpot image is not a supported PNG; cannot derive bbox geometry: ${imgPath}`,
+    );
   }
-  return { width: 1280, height: 800 };
+  const width = buf.readUInt32BE(16);
+  const height = buf.readUInt32BE(20);
+  if (width <= 0 || height <= 0) {
+    throw new Error(`ScreenSpot PNG has invalid dimensions: ${imgPath}`);
+  }
+  return { width, height };
 }
-
-// Avoid unused import warning when the adapter is built standalone.
-void readdirSync;

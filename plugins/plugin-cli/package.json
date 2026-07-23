@@ -33,23 +33,24 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc",
-    "build:watch": "tsc --watch",
-    "dev": "tsc --watch",
+    "build": "tsc6",
+    "build:watch": "tsc6 --watch",
+    "dev": "tsc6 --watch",
     "test": "vitest run",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
-    "typecheck": "tsgo --noEmit"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "commander": "^15.0.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.4",
+    "@biomejs/biome": "2.5.5",
     "strip-literal": "^3.1.0",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "vitest": "^4.0.18"
   },

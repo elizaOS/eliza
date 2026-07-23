@@ -9,7 +9,7 @@
     "url": "https://github.com/elizaos/eliza.git"
   },
   "scripts": {
-    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
@@ -20,7 +20,7 @@
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
     "build:views": "bunx --bun vite build --config vite.config.views.ts",
-    "build:types": "tsc --noCheck -p tsconfig.build.json && node ../../packages/scripts/rewrite-dist-relative-imports-node-esm.mjs"
+    "build:types": "tsc6 --noCheck -p tsconfig.build.json && node ../../packages/scripts/rewrite-dist-relative-imports-node-esm.mjs"
   },
   "exports": {
     "./package.json": "./package.json",
@@ -64,13 +64,14 @@
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.4",
+    "@biomejs/biome": "2.5.5",
     "@types/node": "^25.0.6",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tsup": "^8.5.1",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "vite": "^8.0.0",
     "vitest": "^4.0.17"

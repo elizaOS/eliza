@@ -12,6 +12,8 @@ Registered in the suite registry as `action-calling`.
 python -m benchmarks.action-calling.cli \
     --provider vllm \
     --model eliza-1-9b \
+    --expand-scenarios \
+    --expected-examples 63 \
     --out /tmp/action-calling-out
 
 # Through the suite orchestrator (resolves provider/model, stores results)
@@ -24,7 +26,11 @@ python -m benchmarks.orchestrator run \
 ## Smoke test (no API keys)
 
 The `mock` provider echoes expected tool calls back, scoring 1.0 on all axes.
-Falls back to `fixtures/smoke.jsonl` automatically when the full dataset is absent.
+Only mock runs may fall back to `fixtures/smoke.jsonl` when the full dataset is
+absent. Live harnesses fail closed unless the official corpus exists or the
+operator passes an explicit `--test-file`.
+The pinned full campaign validates all 63 eligible cases from the 11,578-row
+corpus and all 630 derived edge cases; it has no silent maximum-example cap.
 
 ```bash
 python -m benchmarks.action-calling.cli \
@@ -43,14 +49,27 @@ pytest packages/benchmarks/action-calling/tests/ -v
 
 | Path | Role |
 | --- | --- |
-| `cli.py` | CLI entrypoint and scoring logic |
+| `cli.py` | CLI entrypoint, corpus recovery, and report generation |
+| `../action_calling_contract.py` | Shared recursive case scorer used by the runner and publication registry |
 | `fixtures/smoke.jsonl` | Minimal fixture record for mock/offline runs |
 | `tests/test_action_calling_cli.py` | pytest suite for scoring helpers |
 
 ## Notes
 
 - Results write to `<out>/action-calling-results.json` (path controlled by `--out`).
-- Scored by `_score_from_action_calling_json` in `registry/scores.py`.
+- Results record the resolved dataset path, SHA-256, raw row count, loaded base
+  case count, evaluated case count, and pinned base/evaluated/ID manifests.
+- `--expected-examples` validates the base-case count before expansion, so the
+  pinned full run uses `--expected-examples 63 --expand-scenarios` to evaluate
+  693 cases.
+- Every full result contains a 693-row case ledger with the model-visible
+  messages and tools, expected and predicted calls, generation source, and all
+  five per-case outcomes. `_score_from_action_calling_json` in
+  `registry/scores.py` independently validates the manifests and recomputes
+  every outcome, aggregate, and final score from that ledger.
+- `arguments_match` requires exact recursive object keys, array shapes, and
+  JSON scalar types. Only equivalent ISO datetimes and equal non-boolean JSON
+  numbers such as `1` and `1.0` are representation-equivalent.
 - Score = geometric mean of five sub-rates: `native_tool_calls_ok`, `tool_name_match`, `args_parse_ok`, `required_keys_ok`, `arguments_match`.
 - Supports providers: `vllm`, `openai`, `groq`, `openrouter`, `anthropic`, `cerebras`, `eliza`, `hermes`, `openclaw`, `mock`.
 - Harness selection (eliza/hermes/openclaw/smithers) can also be forced via `ELIZA_BENCH_HARNESS` or `BENCHMARK_HARNESS` env vars.

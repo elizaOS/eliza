@@ -16,6 +16,7 @@ import { Readable } from "node:stream";
 import { describe, expect, it, vi } from "vitest";
 import { handleOrchestratorRoutes } from "../../src/api/orchestrator-routes.js";
 import type { RouteContext } from "../../src/api/route-utils.js";
+import { AcpService } from "../../src/services/acp-service.js";
 import { BUILT_APPS_CACHE_KEY } from "../../src/services/built-apps-registry.js";
 import { OrchestratorTaskService } from "../../src/services/orchestrator-task-service.js";
 import { OrchestratorTaskStore } from "../../src/services/orchestrator-task-store.js";
@@ -37,7 +38,9 @@ const acpStub = {
 function makeService(): OrchestratorTaskService {
   return new OrchestratorTaskService(
     {
-      getService: () => acpStub,
+      getService: (type: string) =>
+        type === AcpService.serviceType ? acpStub : null,
+      getSetting: () => undefined,
       logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
     } as never,
     { store: new OrchestratorTaskStore({ backend: "memory" }) },

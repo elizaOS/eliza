@@ -27,6 +27,7 @@ Missing or partial environments
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -93,6 +94,8 @@ _HERE = Path(__file__).resolve().parent
 UPSTREAM_ROOT = _HERE.parent / "upstream"
 UPSTREAM_DATA = UPSTREAM_ROOT / "data"
 AGENTBENCH_REPO_URL = "https://github.com/THUDM/AgentBench.git"
+AGENTBENCH_REPO_REVISION = "d1e4a10db08c87075c78972e48ecc182be03e2d5"
+SOURCE_MANIFEST = UPSTREAM_ROOT / "SOURCE.json"
 
 
 class UpstreamDataMissingError(FileNotFoundError):
@@ -105,7 +108,11 @@ class UpstreamDataVerificationError(RuntimeError):
 
 def is_full_data_available() -> bool:
     """Return whether a full upstream AgentBench data tree is present."""
-    return UPSTREAM_DATA.is_dir()
+    try:
+        verify_upstream_data(UPSTREAM_DATA)
+    except (OSError, ValueError, UpstreamDataVerificationError):
+        return False
+    return True
 
 
 def fetch_upstream_data(
@@ -128,7 +135,19 @@ def fetch_upstream_data(
     with tempfile.TemporaryDirectory(prefix="agentbench_upstream_") as tmp:
         clone_dir = Path(tmp) / "AgentBench"
         subprocess.run(
-            ["git", "clone", "--depth", "1", repo_url, str(clone_dir)],
+            ["git", "clone", "--filter=blob:none", "--no-checkout", repo_url, str(clone_dir)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(clone_dir), "fetch", "--depth", "1", "origin", AGENTBENCH_REPO_REVISION],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(clone_dir), "checkout", "--detach", AGENTBENCH_REPO_REVISION],
             check=True,
             capture_output=True,
             text=True,
@@ -146,26 +165,48 @@ def fetch_upstream_data(
 
 
 def verify_upstream_data(data_dir: Path = UPSTREAM_DATA) -> dict[str, bool]:
-    """Verify required upstream data files for the implemented loaders."""
-    required = {
-        "dbbench/dev.jsonl": data_dir / "dbbench" / "dev.jsonl",
-        "dbbench/standard.jsonl": data_dir / "dbbench" / "standard.jsonl",
-        "knowledgegraph/dev.json": data_dir / "knowledgegraph" / "dev.json",
-        "knowledgegraph/std.json": data_dir / "knowledgegraph" / "std.json",
-        "lateralthinkingpuzzle/dev.xlsx": data_dir / "lateralthinkingpuzzle" / "dev.xlsx",
-        "lateralthinkingpuzzle/standard.xlsx": data_dir / "lateralthinkingpuzzle" / "standard.xlsx",
-        "os_interaction/data/dev.json": data_dir / "os_interaction" / "data" / "dev.json",
-        "alfworld/dev.json": data_dir / "alfworld" / "dev.json",
-        "mind2web/prompt/llm_prompt.json": data_dir / "mind2web" / "prompt" / "llm_prompt.json",
-    }
-    status = {name: path.exists() for name, path in required.items()}
-    missing = [name for name, ok in status.items() if not ok]
-    if missing:
+    """Verify the complete pinned source manifest, including ignored assets."""
+    if not data_dir.is_dir():
+        raise UpstreamDataMissingError(f"Upstream AgentBench data not found at {data_dir}")
+    manifest = json.loads(SOURCE_MANIFEST.read_text(encoding="utf-8"))
+    if not isinstance(manifest, dict):
+        raise UpstreamDataVerificationError(f"Invalid AgentBench source manifest: {SOURCE_MANIFEST}")
+    required = manifest.get("required_files")
+    if not isinstance(required, dict) or not required:
+        raise UpstreamDataVerificationError("AgentBench source manifest has no required_files map")
+    status: dict[str, bool] = {}
+    failures: list[str] = []
+    for name, expected_hash in sorted(required.items()):
+        if not isinstance(name, str) or not isinstance(expected_hash, str):
+            raise UpstreamDataVerificationError(
+                "AgentBench required_files entries must map paths to SHA-256 strings"
+            )
+        path = data_dir / name
+        if not path.is_file():
+            status[name] = False
+            failures.append(f"missing {name}")
+            continue
+        actual_hash = hashlib.sha256(path.read_bytes()).hexdigest()
+        ok = actual_hash == expected_hash
+        status[name] = ok
+        if not ok:
+            failures.append(
+                f"hash mismatch {name} (expected {expected_hash}, got {actual_hash})"
+            )
+    if failures:
         raise UpstreamDataVerificationError(
-            f"Upstream AgentBench data is incomplete under {data_dir}: "
-            f"missing {', '.join(missing)}"
+            f"Upstream AgentBench data failed pinned verification under {data_dir}: "
+            + "; ".join(failures)
         )
     return status
+
+
+def dataset_provenance() -> dict[str, object]:
+    """Return the pinned source metadata embedded in benchmark reports."""
+    manifest = json.loads(SOURCE_MANIFEST.read_text(encoding="utf-8"))
+    if not isinstance(manifest, dict):
+        raise UpstreamDataVerificationError(f"Invalid AgentBench source manifest: {SOURCE_MANIFEST}")
+    return manifest
 
 
 def _normalize_data_mode(data_mode: AgentBenchDataMode | str | None) -> AgentBenchDataMode:
@@ -407,21 +448,21 @@ def load_os_tasks(split: str = "test", limit: int | None = None) -> list[AgentBe
 
     tasks: list[AgentBenchTask] = []
     for jf in files:
-        if not jf.exists():
-            continue
         try:
             raw = json.loads(jf.read_text(encoding="utf-8"))
         except Exception as e:
-            logger.warning(f"[upstream_loader] Failed to parse {jf}: {e}")
-            continue
+            raise UpstreamDataVerificationError(f"Failed to parse OS task data {jf}: {e}") from e
         items = raw if isinstance(raw, list) else [raw]
         for j, entry in enumerate(items):
             if not isinstance(entry, dict) or "description" not in entry:
-                continue
+                raise UpstreamDataVerificationError(
+                    f"OS task data {jf} entry {j} is not a task object with description"
+                )
             evaluation = entry.get("evaluation", {})
+            source_id = jf.relative_to(base).with_suffix("").as_posix().replace("/", "-")
             tasks.append(
                 AgentBenchTask(
-                    id=f"os-{split}-{jf.stem}-{j:03d}",
+                    id=f"os-{split}-{source_id}-{j:03d}",
                     environment=AgentBenchEnvironment.OS,
                     description=entry["description"],
                     initial_state={
@@ -693,6 +734,28 @@ def count_tasks(
     include_edge_scenarios: bool = False,
 ) -> dict[str, int | str]:
     """Return base/edge/total task counts for an environment."""
+    mode = _normalize_data_mode(data_mode)
+    if mode != AgentBenchDataMode.FIXTURE and limit is None:
+        verify_upstream_data(UPSTREAM_DATA)
+        provenance = dataset_provenance()
+        counts_by_split = provenance.get("expected_counts")
+        split_counts = (
+            counts_by_split.get(split) if isinstance(counts_by_split, dict) else None
+        )
+        expected = split_counts.get(env.value) if isinstance(split_counts, dict) else None
+        if not isinstance(expected, int) or expected <= 0:
+            raise UpstreamDataVerificationError(
+                f"No pinned AgentBench count for {env.value} split={split!r}"
+            )
+        edge_count = expected * len(EDGE_VARIANTS) if include_edge_scenarios else 0
+        return {
+            "environment": env.value,
+            "split": split,
+            "base": expected,
+            "edge": edge_count,
+            "total": expected + edge_count,
+        }
+
     base = load_tasks(env, split=split, limit=limit, data_mode=data_mode)
     total = (
         load_tasks(
@@ -902,30 +965,36 @@ def _load_with_data_mode(
         tasks = _fixture_tasks(env, split=split, limit=limit)
         return expand_tasks(tasks) if include_edge_scenarios else tasks
 
+    verify_upstream_data(UPSTREAM_DATA)
+    if limit is not None and limit <= 0:
+        return []
+
     loader = _UPSTREAM_LOADERS.get(env)
     if loader is None:
         raise NotImplementedError(f"No upstream loader registered for {env.value}")
 
-    try:
-        tasks = loader(split=split, limit=limit)
-    except UpstreamDataMissingError:
-        if mode == AgentBenchDataMode.FULL:
-            raise
-        logger.warning(
-            "[upstream_loader] Full upstream data missing for %s; using compact fixture mode",
-            env.value,
+    tasks = loader(split=split, limit=limit)
+    if not tasks:
+        raise UpstreamDataVerificationError(
+            f"Pinned AgentBench source returned zero {env.value} tasks for split={split!r}"
         )
-        tasks = _fixture_tasks(env, split=split, limit=limit)
-        return expand_tasks(tasks) if include_edge_scenarios else tasks
-
-    if tasks or mode == AgentBenchDataMode.FULL:
-        return expand_tasks(tasks) if include_edge_scenarios else tasks
-    logger.warning(
-        "[upstream_loader] Full upstream data returned zero %s tasks; using compact fixture mode",
-        env.value,
-    )
-    tasks = _fixture_tasks(env, split=split, limit=limit)
-    return expand_tasks(tasks) if include_edge_scenarios else tasks
+    if limit is None:
+        provenance = dataset_provenance()
+        counts_by_split = provenance.get("expected_counts")
+        split_counts = counts_by_split.get(split) if isinstance(counts_by_split, dict) else None
+        expected = split_counts.get(env.value) if isinstance(split_counts, dict) else None
+        if not isinstance(expected, int):
+            raise UpstreamDataVerificationError(
+                f"No pinned AgentBench count for {env.value} split={split!r}"
+            )
+        if len(tasks) != expected:
+            raise UpstreamDataVerificationError(
+                f"AgentBench {env.value} split={split!r} loaded {len(tasks)} tasks; "
+                f"pinned source requires {expected}"
+            )
+    result = expand_tasks(tasks) if include_edge_scenarios else tasks
+    validate_tasks(result)
+    return result
 
 
 def load_db_tasks(
@@ -1042,6 +1111,7 @@ __all__ = [
     "UpstreamDataVerificationError",
     "fetch_upstream_data",
     "verify_upstream_data",
+    "dataset_provenance",
     "is_full_data_available",
     "EDGE_VARIANTS",
     "expand_tasks",

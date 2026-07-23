@@ -269,6 +269,21 @@ async function appendProviderAccess(
     ),
     providerName: toText(params.providerName, "unknown"),
     timestamp: now,
+    startedAt: typeof params.startedAt === "number" ? params.startedAt : null,
+    endedAt: typeof params.endedAt === "number" ? params.endedAt : null,
+    durationMs:
+      typeof params.durationMs === "number" ? params.durationMs : null,
+    overlapsWith: Array.isArray(params.overlapsWith)
+      ? params.overlapsWith.flatMap((entry) => {
+          const record = asRecord(entry);
+          if (!record) return [];
+          const providerName = toText(record.providerName, "");
+          const overlapMs = record.overlapMs;
+          return providerName && typeof overlapMs === "number"
+            ? [{ providerName, overlapMs }]
+            : [];
+        })
+      : [],
     data: truncateRecord(asRecord(params.data) ?? {}),
     query: (() => {
       const queryRecord = asRecord(params.query);

@@ -3,6 +3,7 @@ import {
   APP_LOCAL_ORIGIN_RE,
   APP_SCHEME_ORIGIN_RE,
   CORS_ALLOW_HEADERS,
+  CORS_EXPOSE_HEADER_NAMES,
   CORS_MAX_AGE,
 } from "../../cors-constants";
 
@@ -62,6 +63,7 @@ export function getCorsHeaders(methods?: string, origin?: string | null): Record
       "Access-Control-Allow-Methods": methods || "GET, POST, OPTIONS",
       "Access-Control-Allow-Headers": CORS_ALLOW_HEADERS,
       "Access-Control-Allow-Credentials": "true",
+      "Access-Control-Expose-Headers": CORS_EXPOSE_HEADER_NAMES.join(", "),
       "Access-Control-Max-Age": CORS_MAX_AGE,
       // Reflecting the origin makes the response vary by Origin; declare it so a
       // shared cache never serves one origin's ACAO to another.
@@ -72,6 +74,7 @@ export function getCorsHeaders(methods?: string, origin?: string | null): Record
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": methods || "GET, POST, OPTIONS",
     "Access-Control-Allow-Headers": CORS_ALLOW_HEADERS,
+    "Access-Control-Expose-Headers": CORS_EXPOSE_HEADER_NAMES.join(", "),
     "Access-Control-Max-Age": CORS_MAX_AGE,
   };
 }

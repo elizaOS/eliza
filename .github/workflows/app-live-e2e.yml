@@ -63,7 +63,7 @@ jobs:
     env:
       PGLITE_WASM_MODE: node
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: false
 
@@ -71,7 +71,7 @@ jobs:
         run: |
           set -euxo pipefail
           df -h /
-          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache/CodeQL || true
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android || true
           docker system prune -af || true
           df -h /
 
@@ -141,14 +141,14 @@ jobs:
     env:
       PGLITE_WASM_MODE: node
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: false
 
       - name: Free disk space for browser smoke
         run: |
           set -euxo pipefail
-          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache/CodeQL || true
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android || true
           docker system prune -af || true
 
       - name: Setup Node.js
@@ -216,7 +216,7 @@ jobs:
       ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}
       PGLITE_WASM_MODE: node
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: false
 
@@ -235,7 +235,7 @@ jobs:
       - name: Free disk space for browser smoke
         run: |
           set -euxo pipefail
-          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache/CodeQL || true
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android || true
           docker system prune -af || true
 
       - name: Setup Node.js
@@ -292,7 +292,7 @@ jobs:
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: false
 
@@ -351,7 +351,7 @@ jobs:
     env:
       PGLITE_WASM_MODE: node
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: false
 

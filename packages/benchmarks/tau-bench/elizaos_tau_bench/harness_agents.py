@@ -5,12 +5,10 @@ Each agent matches :class:`BaseTauAgent`'s synchronous ``solve(env, task_index,
 max_num_steps)`` signature and mirrors :class:`LiteLLMToolCallingAgent`'s
 control flow exactly. The only difference is *how the model call is made*:
 
-* :class:`HermesTauAgent` — calls Cerebras (or any OpenAI-compatible endpoint)
-  via :class:`hermes_adapter.client.HermesClient` in ``in_process`` mode. No
-  hermes-agent venv required.
-* :class:`OpenClawTauAgent` — calls Cerebras via
-  :class:`openclaw_adapter.client.OpenClawClient` with
-  ``direct_openai_compatible=True``. No openclaw CLI subprocess.
+* :class:`HermesTauAgent` — calls through the pinned hermes-agent
+  :class:`run_agent.AIAgent` in a fresh subprocess.
+* :class:`OpenClawTauAgent` — calls through OpenClaw's isolated embedded
+  runtime and generated native benchmark-tool plugin.
 * :class:`ElizaTauAgent` — calls the elizaOS TS bench server via
   :class:`eliza_adapter.client.ElizaClient`. The bench server forwards through
   the AgentRuntime planner so the harness's full plugin/action chain is
@@ -227,27 +225,20 @@ class _HarnessTauAgentBase(BaseTauAgent):
 
 
 class HermesTauAgent(_HarnessTauAgentBase):
-    """Route each tau-bench step through :class:`HermesClient` in_process mode."""
+    """Route each tau-bench step through native :class:`HermesClient`."""
 
-    def __init__(self, model: str = "gemma-4-31b", temperature: float = 0.0) -> None:
+    def __init__(
+        self,
+        model: str = "gemma-4-31b",
+        provider: str = "cerebras",
+        temperature: float = 0.0,
+    ) -> None:
         super().__init__(model=model, temperature=temperature)
-        import importlib.util
-
         from hermes_adapter.client import HermesClient
 
-        mode_env = os.environ.get("HERMES_ADAPTER_MODE", "").strip()
-        if mode_env in {"in_process", "subprocess"}:
-            mode = mode_env
-        else:
-            mode = (
-                "in_process"
-                if importlib.util.find_spec("openai")
-                else "subprocess"
-            )
         self._client = HermesClient(
-            provider="cerebras",
+            provider=provider,
             model=model,
-            mode=mode,
             temperature=temperature,
             max_tokens=4096,
         )
@@ -279,16 +270,20 @@ class HermesTauAgent(_HarnessTauAgentBase):
 
 
 class OpenClawTauAgent(_HarnessTauAgentBase):
-    """Route each tau-bench step through :class:`OpenClawClient` direct mode."""
+    """Route each tau-bench step through native :class:`OpenClawClient`."""
 
-    def __init__(self, model: str = "gemma-4-31b", temperature: float = 0.0) -> None:
+    def __init__(
+        self,
+        model: str = "gemma-4-31b",
+        provider: str = "cerebras",
+        temperature: float = 0.0,
+    ) -> None:
         super().__init__(model=model, temperature=temperature)
         from openclaw_adapter.client import OpenClawClient
 
         self._client = OpenClawClient(
-            provider="cerebras",
+            provider=provider,
             model=model,
-            direct_openai_compatible=True,
             temperature=temperature,
             max_tokens=4096,
         )
@@ -348,10 +343,7 @@ class ElizaTauAgent(_HarnessTauAgentBase):
         else:
             self._client = ElizaClient()
         self._client.wait_until_ready(timeout=180)
-        try:
-            self._client.reset(task_id="tau_bench", benchmark="tau_bench")
-        except Exception:  # noqa: BLE001 — reset is best-effort
-            pass
+        self._client.reset(task_id="tau_bench", benchmark="tau_bench")
 
     def _chat_step(
         self,

@@ -51,10 +51,14 @@ function parseOutput(stdout) {
   return sections;
 }
 
-function runScript(cwd, base, head) {
+function runScript(cwd, base, head, subprocessManifest) {
   const result = spawnSync("bash", [script, base, head], {
     cwd,
     encoding: "utf8",
+    env: {
+      ...process.env,
+      COVERAGE_SUBPROCESS_SOURCE_MANIFEST: subprocessManifest,
+    },
   });
   assert.equal(result.status, 0, result.stderr || result.stdout);
   return parseOutput(result.stdout);
@@ -72,6 +76,7 @@ function assertCase(name, fn) {
 
 const dir = mkdtempSync(join(tmpdir(), "coverage-changed-"));
 try {
+  const subprocessManifest = join(dir, "coverage-subprocess-sources.txt");
   git(dir, "init", "-q");
   git(dir, "config", "user.email", "test@example.com");
   git(dir, "config", "user.name", "test");
@@ -105,6 +110,11 @@ try {
     "class Example { @field value: string; }\n",
   );
   write(dir, "packages/demo/src/deleted.ts", "export const removed = 1;\n");
+  write(
+    dir,
+    "coverage-subprocess-sources.txt",
+    "packages/demo/src/process-entrypoint.mjs\n",
+  );
   git(dir, "add", "-A");
   git(dir, "commit", "-q", "-m", "base");
   const mergeBase = git(dir, "rev-parse", "HEAD");
@@ -156,6 +166,11 @@ try {
   );
   write(dir, "packages/demo/src/runtime.mjs", "export const mjs = 1;\n");
   write(dir, "packages/demo/src/runtime.cjs", "exports.cjs = 1;\n");
+  write(
+    dir,
+    "packages/demo/src/process-entrypoint.mjs",
+    "process.stdout.write('process entrypoint');\n",
+  );
   write(
     dir,
     "packages/demo/src/_router.generated.ts",
@@ -228,6 +243,11 @@ try {
   );
   write(
     dir,
+    "packages/homepage/tests/e2e/visual.spec.ts",
+    "import { test } from 'playwright/test';\ntest('visual', () => {});\n",
+  );
+  write(
+    dir,
     "packages/demo/src/driver.real.test.ts",
     "import { test } from 'vitest';\ntest('real driver', () => {});\n",
   );
@@ -250,7 +270,7 @@ try {
   git(dir, "commit", "-q", "-m", "feature work");
   const featureTip = git(dir, "rev-parse", "HEAD"); // HEAD
 
-  const out = runScript(dir, developTip, featureTip);
+  const out = runScript(dir, developTip, featureTip, subprocessManifest);
 
   assertCase(
     "three-dot diff excludes develop-side files (issue #15845)",
@@ -290,6 +310,18 @@ try {
       assert.ok(
         !out.vitest_tests.includes("packages/demo/test/e2e/flow.test.ts"),
         `e2e-dir test leaked into vitest lane: ${out.vitest_tests.join(",")}`,
+      );
+      assert.ok(
+        !out.bun_tests.includes(
+          "packages/homepage/tests/e2e/visual.spec.ts",
+        ),
+        `Playwright spec leaked into bun lane: ${out.bun_tests.join(",")}`,
+      );
+      assert.ok(
+        !out.vitest_tests.includes(
+          "packages/homepage/tests/e2e/visual.spec.ts",
+        ),
+        `Playwright spec leaked into vitest lane: ${out.vitest_tests.join(",")}`,
       );
     },
   );
@@ -381,6 +413,15 @@ try {
       assert.ok(
         out.node_tests.includes("scripts/security/coverage-gate.self-test.mjs"),
       );
+    },
+  );
+
+  assertCase(
+    "registered subprocess entrypoints require tests without parent-process LCOV",
+    () => {
+      const entrypoint = "packages/demo/src/process-entrypoint.mjs";
+      assert.ok(!out.files.includes(entrypoint));
+      assert.ok(out.subprocess_files.includes(entrypoint));
     },
   );
 

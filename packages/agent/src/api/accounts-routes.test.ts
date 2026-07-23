@@ -3,6 +3,9 @@
  * health operations while isolating only filesystem and provider clients.
  */
 import { EventEmitter } from "node:events";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const fakes = vi.hoisted(() => ({
@@ -94,6 +97,7 @@ vi.mock("../runtime/host-bridge.ts", () => ({
 }));
 
 import {
+  __clearSubscriptionCliInstallFailures,
   _resetAccountsRoutesPoolCache,
   type AccountsRouteContext,
   handleAccountsRoutes,
@@ -192,13 +196,13 @@ describe("accounts routes", () => {
     const strategy = makeContext(
       "PATCH",
       "/api/providers/openai-api/strategy",
-      { strategy: "reset-soonest" },
+      { strategy: "drain-soonest-reset" },
     );
     await handleAccountsRoutes(strategy.ctx);
     expect(strategy.saveConfig).toHaveBeenCalledOnce();
     expect(strategy.jsonCalls[0]?.body).toEqual({
       providerId: "openai-api",
-      strategy: "reset-soonest",
+      strategy: "drain-soonest-reset",
     });
   });
 
@@ -230,6 +234,66 @@ describe("accounts routes", () => {
         codingAgent: { available: true, credentialPath: "account-pool" },
       },
     });
+  });
+
+  it("sets, surfaces, validates, and clears subscriptionEndsAt through PATCH", async () => {
+    const future = Date.now() + 86_400_000;
+    fakes.poolAccounts = [
+      { ...linkedAccount, health: "expired", healthDetail: { lastChecked: 1 } },
+    ];
+    fakes.accounts = [{ id: "account-1" }];
+
+    const set = makeContext("PATCH", "/api/accounts/openai-api/account-1", {
+      subscriptionEndsAt: future,
+    });
+    await handleAccountsRoutes(set.ctx);
+    expect(set.jsonCalls[0]?.body).toMatchObject({
+      id: "account-1",
+      subscriptionEndsAt: future,
+    });
+
+    const listed = makeContext("GET", "/api/accounts");
+    await handleAccountsRoutes(listed.ctx);
+    const response = listed.jsonCalls[0]?.body as {
+      providers: Array<{ providerId: string; accounts: Array<unknown> }>;
+    };
+    expect(
+      response.providers.find(
+        (provider) => provider.providerId === "openai-api",
+      )?.accounts[0],
+    ).toMatchObject({ subscriptionEndsAt: future });
+
+    for (const bad of ["soon", Number.NaN, Number.POSITIVE_INFINITY]) {
+      const invalid = makeContext(
+        "PATCH",
+        "/api/accounts/openai-api/account-1",
+        {
+          subscriptionEndsAt: bad,
+        },
+      );
+      await handleAccountsRoutes(invalid.ctx);
+      expect(invalid.errorCalls[0]?.status).toBe(400);
+    }
+
+    const past = makeContext("PATCH", "/api/accounts/openai-api/account-1", {
+      subscriptionEndsAt: Date.now() - 1,
+    });
+    await handleAccountsRoutes(past.ctx);
+    expect(past.errorCalls).toEqual([
+      {
+        message: "subscriptionEndsAt must be a future epoch-ms timestamp",
+        status: 400,
+      },
+    ]);
+
+    const cleared = makeContext("PATCH", "/api/accounts/openai-api/account-1", {
+      subscriptionEndsAt: null,
+    });
+    await handleAccountsRoutes(cleared.ctx);
+    const clearedBody = cleared.jsonCalls[0]?.body as Record<string, unknown>;
+    expect(clearedBody).toMatchObject({ id: "account-1", health: "ok" });
+    expect(clearedBody.subscriptionEndsAt).toBeUndefined();
+    expect(clearedBody.healthDetail).toBeUndefined();
   });
 
   it("creates, edits, probes, refreshes, and deletes a direct account", async () => {
@@ -447,6 +511,40 @@ describe("accounts routes", () => {
       },
     ]);
     expect(fakes.startFlow).not.toHaveBeenCalled();
+  });
+
+  it("surfaces an uninstallable device-login CLI as a structured 503, not an opaque 500 (#16518)", async () => {
+    // No PATH → the CLI probe finds nothing and the npm bootstrap can't run
+    // (ENOENT), deterministically exercising the prerequisite-failure path on
+    // any machine. ELIZA_STATE_DIR keeps the install prefix in a temp dir.
+    const prevPath = process.env.PATH;
+    const prevStateDir = process.env.ELIZA_STATE_DIR;
+    const stateDir = mkdtempSync(path.join(tmpdir(), "eliza-state-"));
+    process.env.PATH = "";
+    process.env.ELIZA_STATE_DIR = stateDir;
+    try {
+      const started = makeContext(
+        "POST",
+        "/api/accounts/openai-codex/oauth/start",
+        { label: "Codex", mode: "device" },
+      );
+      await handleAccountsRoutes(started.ctx);
+      expect(started.errorCalls).toHaveLength(1);
+      expect(started.errorCalls[0]?.status).toBe(503);
+      expect(started.errorCalls[0]?.message).toContain(
+        "(SUBSCRIPTION_CLI_INSTALL_FAILED)",
+      );
+      expect(started.errorCalls[0]?.message).not.toContain(
+        "/usr/lib/node_modules",
+      );
+      expect(fakes.startFlow).not.toHaveBeenCalled();
+    } finally {
+      process.env.PATH = prevPath;
+      if (prevStateDir === undefined) delete process.env.ELIZA_STATE_DIR;
+      else process.env.ELIZA_STATE_DIR = prevStateDir;
+      __clearSubscriptionCliInstallFailures();
+      rmSync(stateDir, { recursive: true, force: true });
+    }
   });
 
   it("keeps terminal credential health terminal during usage refresh", async () => {

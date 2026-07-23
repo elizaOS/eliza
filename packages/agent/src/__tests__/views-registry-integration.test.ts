@@ -1166,44 +1166,43 @@ describe("POST /api/views/:id/interact", () => {
     expect(status).toBe(400);
   });
 
-  it.each([
-    "get-text",
-    "click-element",
-    "fill-input",
-  ] as const)("allows standard capability %s on views with declared capabilities", async (capability) => {
-    const viewWithCaps = {
-      ...WALLET_VIEW,
-      surface: { capabilities: ["agent-surface"] as const },
-      capabilities: [{ id: "custom-action", description: "A custom action" }],
-    };
-    await registerPluginViews(
-      {
-        name: "views-integration-wallet",
-        description: "wallet",
-        actions: [],
-        views: [viewWithCaps],
-      },
-      undefined,
-    );
+  it.each(["get-text", "click-element", "fill-input"] as const)(
+    "allows standard capability %s on views with declared capabilities",
+    async (capability) => {
+      const viewWithCaps = {
+        ...WALLET_VIEW,
+        surface: { capabilities: ["agent-surface"] as const },
+        capabilities: [{ id: "custom-action", description: "A custom action" }],
+      };
+      await registerPluginViews(
+        {
+          name: "views-integration-wallet",
+          description: "wallet",
+          actions: [],
+          views: [viewWithCaps],
+        },
+        undefined,
+      );
 
-    const broadcasts: object[] = [];
-    const { ctx } = makeCtx(
-      "POST",
-      "/api/views/wallet.inventory/interact",
-      {},
-      undefined,
-      { capability, timeoutMs: 500 },
-      (payload) => broadcasts.push(payload),
-    );
+      const broadcasts: object[] = [];
+      const { ctx } = makeCtx(
+        "POST",
+        "/api/views/wallet.inventory/interact",
+        {},
+        undefined,
+        { capability, timeoutMs: 500 },
+        (payload) => broadcasts.push(payload),
+      );
 
-    // This will time out (504) since no frontend resolves it — that's fine,
-    // we just want to confirm the broadcast happened (capability was accepted).
-    await handleViewsRoutes(ctx);
-    expect(broadcasts).toHaveLength(1);
-    const broadcast = broadcasts[0] as { type: string; capability: string };
-    expect(broadcast.type).toBe("view:interact");
-    expect(broadcast.capability).toBe(capability);
-  });
+      // This will time out (504) since no frontend resolves it — that's fine,
+      // we just want to confirm the broadcast happened (capability was accepted).
+      await handleViewsRoutes(ctx);
+      expect(broadcasts).toHaveLength(1);
+      const broadcast = broadcasts[0] as { type: string; capability: string };
+      expect(broadcast.type).toBe("view:interact");
+      expect(broadcast.capability).toBe(capability);
+    },
+  );
 });
 
 // ---------------------------------------------------------------------------

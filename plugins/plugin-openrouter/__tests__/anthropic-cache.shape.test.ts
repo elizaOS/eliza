@@ -693,12 +693,14 @@ describe("Anthropic cache injection — tools and trajectory breakpoints", () =>
       anthropic: { cacheControl: { type: "ephemeral" } },
     });
     const messages = call.messages as Array<Record<string, unknown>>;
-    const tail = (messages.at(-1)?.content as Array<Record<string, unknown>>).at(-1);
+    const tail = (messages.at(-1)?.content as Array<Record<string, unknown>> | undefined)?.at(-1);
     expect(tail?.providerOptions).toEqual({
       anthropic: { cacheControl: { type: "ephemeral" } },
     });
-    const leadingUserPart = (messages[1]?.content as Array<Record<string, unknown>>)[0];
-    expect(leadingUserPart.providerOptions).toBeUndefined();
+    const leadingUserPart = (
+      messages[1]?.content as Array<Record<string, unknown>> | undefined
+    )?.[0];
+    expect(leadingUserPart?.providerOptions).toBeUndefined();
   });
 
   it("honors opt-outs, strips local flags, and preserves the runtime TTL", async () => {
@@ -717,7 +719,7 @@ describe("Anthropic cache injection — tools and trajectory breakpoints", () =>
     const tools = call.tools as Record<string, Record<string, unknown>>;
     expect(tools.READ.providerOptions).toBeUndefined();
     const messages = call.messages as Array<Record<string, unknown>>;
-    const tail = (messages.at(-1)?.content as Array<Record<string, unknown>>).at(-1);
+    const tail = (messages.at(-1)?.content as Array<Record<string, unknown>> | undefined)?.at(-1);
     expect(tail?.providerOptions).toBeUndefined();
     expect(JSON.stringify(call.providerOptions ?? {})).not.toContain("cacheTools");
     expect(JSON.stringify(call.providerOptions ?? {})).not.toContain("cacheTrajectory");

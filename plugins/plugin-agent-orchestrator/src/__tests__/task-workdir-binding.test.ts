@@ -635,3 +635,31 @@ describe("project memory-world stamping at bind time (#13776 D3)", () => {
     }
   });
 });
+
+describe("resolveAllowedWorkdir — runtime-checkout guard", () => {
+  // A repo-task sub-agent handed the RUNNING code's own repo will
+  // fetch/checkout under the live process (observed live: a sub-agent checked
+  // out develop beneath the running bot). The validator must refuse any
+  // workdir inside the git toplevel that contains process.cwd().
+  it("refuses a workdir inside the runtime's own git checkout", async () => {
+    const { resolveAllowedWorkdir } = await import(
+      "../services/workdir-validation.js"
+    );
+    const repoRoot = realpathSync(
+      mkdtempSync(path.join(os.tmpdir(), "runtime-repo-")),
+    );
+    mkdirSync(path.join(repoRoot, ".git"), { recursive: true });
+    const inside = path.join(repoRoot, "packages", "core");
+    mkdirSync(inside, { recursive: true });
+    const savedCwd = process.cwd();
+    process.chdir(repoRoot);
+    try {
+      await expect(resolveAllowedWorkdir(inside)).rejects.toThrow(
+        /runtime's own checkout/,
+      );
+    } finally {
+      process.chdir(savedCwd);
+      rmSync(repoRoot, { recursive: true, force: true });
+    }
+  });
+});

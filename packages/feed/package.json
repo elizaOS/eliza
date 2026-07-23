@@ -7,6 +7,7 @@
     "packages/*",
     "packages/examples/*",
     "tools/*",
+    "../cloud/routing",
     "../contracts",
     "../core",
     "../logger",
@@ -138,7 +139,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.4",
+    "@biomejs/biome": "2.5.5",
     "@fal-ai/client": "^1.9.5",
     "@intellectronica/ruler": "0.3.44",
     "@playwright/test": "1.61.1",
@@ -150,15 +151,15 @@
     "concurrently": "^10.0.3",
     "csv-parse": "^7.0.0",
     "diff": "^9.0.0",
-    "hardhat": "3.9.1",
+    "hardhat": "3.11.0",
     "husky": "^9.1.7",
     "knip": "^6.14.1",
     "lint-staged": "^17.0.5",
     "madge": "^8.0.0",
-    "next": "16.2.6",
-    "sharp": "^0.34.5",
+    "next": "16.2.11",
+    "sharp": "^0.35.3",
     "tsx": "^4.21.0",
-    "turbo": "2.10.5",
+    "turbo": "2.10.6",
     "typescript": "^5.9.3"
   },
   "lint-staged": {

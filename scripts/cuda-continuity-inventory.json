@@ -1,0 +1,91 @@
+{
+  "schemaVersion": 1,
+  "authority": {
+    "candidateWorkflow": ".github/workflows/cuda-continuity.yml",
+    "harness": "plugins/plugin-local-inference/native/verify/cuda_runner.sh",
+    "migrationState": "candidate-pending-exact-head-hardware-proof",
+    "retireOnlyAfter": "A successful exact-head cuda-continuity artifact manifest has been downloaded and manually reviewed."
+  },
+  "retiredContexts": [
+    {
+      "id": "gpu-bench-nightly.detect",
+      "previousClaim": "detect host GPU and print an autotune plan",
+      "replacementEvidence": ["exact-head", "cuda-probe", "capabilities"]
+    },
+    {
+      "id": "gpu-bench-nightly.bench",
+      "previousClaim": "voice-bench CUDA all-scenario benchmark",
+      "replacementEvidence": [
+        "cuda-fixtures",
+        "runtime-graph-smoke",
+        "native-log"
+      ]
+    }
+  ],
+  "supportedMatrix": [
+    {
+      "id": "rtx-3090-sm86",
+      "gpuProfile": "packages/shared/src/local-inference-gpu/profiles/rtx-3090.yaml",
+      "runtime": "linux-x64-cuda",
+      "backend": "llama.cpp CUDA local inference",
+      "architecture": "sm_86",
+      "minimumToolkit": "12.6",
+      "models": ["eliza-1-2b", "eliza-1-4b", "eliza-1-9b"]
+    },
+    {
+      "id": "rtx-4090-sm89",
+      "gpuProfile": "packages/shared/src/local-inference-gpu/profiles/rtx-4090.yaml",
+      "runtime": "linux-x64-cuda",
+      "backend": "llama.cpp CUDA local inference",
+      "architecture": "sm_89",
+      "minimumToolkit": "12.6",
+      "models": ["eliza-1-2b", "eliza-1-4b", "eliza-1-9b", "eliza-1-27b"]
+    },
+    {
+      "id": "h200-sm90",
+      "gpuProfile": "packages/shared/src/local-inference-gpu/profiles/h200.yaml",
+      "runtime": "linux-x64-cuda",
+      "backend": "llama.cpp CUDA local inference",
+      "architecture": "sm_90",
+      "minimumToolkit": "12.6",
+      "models": [
+        "eliza-1-2b",
+        "eliza-1-4b",
+        "eliza-1-9b",
+        "eliza-1-27b",
+        "eliza-1-27b-256k"
+      ]
+    },
+    {
+      "id": "rtx-5090-sm120",
+      "gpuProfile": "packages/shared/src/local-inference-gpu/profiles/rtx-5090.yaml",
+      "runtime": "linux-x64-cuda",
+      "backend": "llama.cpp CUDA local inference",
+      "architecture": "sm_120",
+      "minimumToolkit": "12.8",
+      "models": [
+        "eliza-1-2b",
+        "eliza-1-4b",
+        "eliza-1-9b",
+        "eliza-1-27b",
+        "eliza-1-27b-256k"
+      ]
+    }
+  ],
+  "requiredEvidence": [
+    "exact-head",
+    "cuda-probe",
+    "capabilities",
+    "cuda-fixtures",
+    "runtime-graph-smoke",
+    "native-log"
+  ],
+  "requiredKernels": [
+    "turbo3",
+    "turbo4",
+    "turbo3_tcq",
+    "qjl_full",
+    "polarquant",
+    "mtp"
+  ]
+}

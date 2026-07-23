@@ -60,6 +60,13 @@ class TestOSLoader:
         for t in tasks:
             assert "evaluation" in t.metadata
 
+    def test_test_split_ids_are_unique_across_same_named_source_files(self) -> None:
+        tasks = L.load_os_tasks(split="test", data_mode="full")
+        assert len(tasks) == 144
+        assert len({task.id for task in tasks}) == 144
+        assert any("-5-new-" in task.id for task in tasks)
+        assert any("-6-new-" in task.id for task in tasks)
+
 
 class TestLTPLoader:
     def test_dev_split(self) -> None:
@@ -100,8 +107,7 @@ class TestDispatcher:
     def test_load_tasks_dev(self, env: E) -> None:
         tasks = L.load_tasks(env, split="dev", limit=2)
         assert isinstance(tasks, list)
-        # Every env should at least yield a positive number of dev tasks
-        # because we either have real upstream data or fallback sample tasks.
+        # Every env yields pinned upstream tasks; fixtures are explicit-only.
         assert len(tasks) > 0
 
     def test_invalid_split_raises(self) -> None:
@@ -132,3 +138,18 @@ class TestDispatcher:
         monkeypatch.setattr(L, "UPSTREAM_DATA", L.UPSTREAM_ROOT / "definitely-missing-data")
         with pytest.raises(L.UpstreamDataMissingError):
             L.load_tasks(E.DATABASE, split="dev", limit=1, data_mode="full")
+
+    def test_auto_mode_never_falls_back_when_upstream_data_is_missing(
+        self,
+        monkeypatch,
+    ) -> None:
+        monkeypatch.setattr(L, "UPSTREAM_DATA", L.UPSTREAM_ROOT / "definitely-missing-data")
+        with pytest.raises(L.UpstreamDataMissingError):
+            L.load_tasks(E.DATABASE, split="dev", limit=1, data_mode="auto")
+
+    def test_pinned_full_split_counts(self) -> None:
+        expected = L.dataset_provenance()["expected_counts"]
+        for split in ("dev", "test"):
+            for env in E:
+                tasks = L.load_tasks(env, split=split, data_mode="full")
+                assert len(tasks) == expected[split][env.value]

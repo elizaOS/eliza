@@ -543,7 +543,10 @@ describe("INBOX umbrella action — cross-channel inbox", () => {
       // Exactly one classifier call, carrying the full stored body (not just
       // the fetched snippet) for the store-backed message.
       expect(useModel).toHaveBeenCalledTimes(1);
-      const prompt = (useModel.mock.calls[0]?.[1] as { prompt: string }).prompt;
+      const modelCall = useModel.mock.calls[0];
+      expect(modelCall).toBeDefined();
+      if (!modelCall) throw new Error("Expected a priority classifier call");
+      const prompt = (modelCall[1] as { prompt: string }).prompt;
       expect(prompt).toContain("Classify each message");
       expect(prompt).toContain("checkout is returning 500s for every customer");
       expect(prompt).toContain("50% OFF SNEAKERS");
@@ -604,7 +607,10 @@ describe("INBOX umbrella action — cross-channel inbox", () => {
       expect(result.success).toBe(true);
       expect(result.data).toMatchObject({ classified: 1 });
       expect(useModel).toHaveBeenCalledTimes(1);
-      const prompt = (useModel.mock.calls[0]?.[1] as { prompt: string }).prompt;
+      const modelCall = useModel.mock.calls[0];
+      expect(modelCall).toBeDefined();
+      if (!modelCall) throw new Error("Expected a priority classifier call");
+      const prompt = (modelCall[1] as { prompt: string }).prompt;
       expect(prompt).toContain("brand new question about the launch");
       expect(prompt).not.toContain("already triaged");
       expect(
@@ -665,7 +671,10 @@ describe("INBOX umbrella action — cross-channel inbox", () => {
       expect(result.data).toMatchObject({ subaction: "triage", classified: 1 });
       expect(gmailFetcher).toHaveBeenCalledTimes(1);
       expect(useModel).toHaveBeenCalledTimes(1);
-      const prompt = (useModel.mock.calls[0]?.[1] as { prompt: string }).prompt;
+      const modelCall = useModel.mock.calls[0];
+      expect(modelCall).toBeDefined();
+      if (!modelCall) throw new Error("Expected a priority classifier call");
+      const prompt = (modelCall[1] as { prompt: string }).prompt;
       expect(prompt).toContain("production is down and needs urgent review");
       const select = calls.find((call) =>
         call.sql.includes("classification = "),

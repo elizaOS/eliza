@@ -6,7 +6,6 @@
  */
 import { createHash, randomBytes } from "node:crypto";
 import { getAccessToken } from "@elizaos/auth/credentials";
-import { logger } from "@elizaos/core";
 import type {
   AccountPoolBrokerAccountSnapshot,
   AccountPoolBrokerFailoverSnapshot,
@@ -14,6 +13,7 @@ import type {
   AccountPoolBrokerProviderSnapshot,
   AccountPoolBrokerSnapshot,
 } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import type { LinkedAccountUsage } from "@elizaos/shared/contracts/service-routing";
 import { isLinkedAccountProviderId } from "@elizaos/shared/contracts/service-routing";
 import {
@@ -34,8 +34,6 @@ import {
 
 const DEFAULT_LEASE_TTL_MS = 5 * 60_000;
 const MAX_LEASE_TTL_MS = 15 * 60_000;
-const MAX_RETRY_AFTER_MS = 60 * 60_000;
-const DEFAULT_RATE_LIMIT_MS = 60_000;
 const FAILOVER_WINDOW_MS = 60_000;
 const MAX_RECENT_FAILOVERS = 10;
 
@@ -216,15 +214,18 @@ function pendingFailoverKey(
   return `${providerId}:${sessionKeyHash}`;
 }
 
-function retryUntilMs(now: number, retryAfterMs: number | undefined): number {
+function retryUntilMs(
+  now: number,
+  retryAfterMs: number | undefined,
+): number | null {
   if (
     typeof retryAfterMs !== "number" ||
     !Number.isFinite(retryAfterMs) ||
     retryAfterMs <= 0
   ) {
-    return now + DEFAULT_RATE_LIMIT_MS;
+    return null;
   }
-  return now + Math.min(retryAfterMs, MAX_RETRY_AFTER_MS);
+  return now + retryAfterMs;
 }
 
 function reportIsAuthFailure(report: AccountPoolBrokerReportRequest): boolean {
@@ -522,12 +523,21 @@ export class AccountPoolBroker {
     }
 
     if (reportIsRateLimit(report)) {
-      await this.pool.markRateLimited(
-        lease.accountId,
-        retryUntilMs(this.now(), report.retryAfterMs),
-        report.errorCode ?? "rate_limited",
-        { providerId: lease.providerId },
-      );
+      const untilMs = retryUntilMs(this.now(), report.retryAfterMs);
+      if (untilMs === null) {
+        await this.pool.markRateLimitedUnknown(
+          lease.accountId,
+          report.errorCode ?? "rate_limited",
+          { providerId: lease.providerId },
+        );
+      } else {
+        await this.pool.markRateLimited(
+          lease.accountId,
+          untilMs,
+          report.errorCode ?? "rate_limited",
+          { providerId: lease.providerId },
+        );
+      }
       this.deleteLease(lease);
       return { ok: true };
     }

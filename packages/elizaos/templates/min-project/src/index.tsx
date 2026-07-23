@@ -12,8 +12,7 @@ function App() {
     <main style={{ fontFamily: "system-ui, sans-serif", padding: "2rem" }}>
       <h1>Hello from {APP_NAME}</h1>
       <p>
-        This Eliza app was scaffolded from{" "}
-        <code>packages/elizaos/templates/min-project</code>.
+        This Eliza app was scaffolded from <code>packages/elizaos/templates/min-project</code>.
       </p>
     </main>
   );

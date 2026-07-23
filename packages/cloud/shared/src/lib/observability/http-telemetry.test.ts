@@ -90,17 +90,17 @@ describe("HTTP telemetry", () => {
     });
   });
 
-  test.each([
-    Number.NaN,
-    Number.MAX_VALUE,
-  ])("rejects invalid standalone Server-Timing metric %s before writing headers", (invalidDuration) => {
-    const headers = new Headers({ "Server-Timing": "provider;dur=3" });
-    expect(() =>
-      appendServerTiming(headers, [{ name: "cloud_worker", durationMs: invalidDuration }]),
-    ).toThrow("HTTP telemetry duration is invalid");
-    expect(headers.get("Server-Timing")).toBe("provider;dur=3");
-    expect(headers.get("Server-Timing")).not.toContain("Infinity");
-  });
+  test.each([Number.NaN, Number.MAX_VALUE])(
+    "rejects invalid standalone Server-Timing metric %s before writing headers",
+    (invalidDuration) => {
+      const headers = new Headers({ "Server-Timing": "provider;dur=3" });
+      expect(() =>
+        appendServerTiming(headers, [{ name: "cloud_worker", durationMs: invalidDuration }]),
+      ).toThrow("HTTP telemetry duration is invalid");
+      expect(headers.get("Server-Timing")).toBe("provider;dur=3");
+      expect(headers.get("Server-Timing")).not.toContain("Infinity");
+    },
+  );
 
   test("appends inner and outer Server-Timing without overwriting", () => {
     const headers = new Headers({ "Server-Timing": "agent;dur=12" });

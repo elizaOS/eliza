@@ -75,6 +75,7 @@ src/
     background.ts                 BACKGROUND action (set color/shader-preset/image/generate, tweak, undo, redo, reset)
     views.ts                      VIEWS action dispatcher
     views-client.ts               ViewsClient — loopback HTTP to /api/views/*
+    views-request-auth.ts         Alias-aware Bearer headers for authenticated view loopback requests
     views-list.ts                 list sub-handler
     views-show.ts                 show/open sub-handler
     views-search.ts               search sub-handler

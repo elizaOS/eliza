@@ -13,6 +13,7 @@ import {
   __resetVoiceSessionRevocationClientForTests,
   __setVoiceSessionRevocationStoreForTests,
   isVoiceSessionJwtConfigured,
+  isVoiceSessionTokenRevoked,
   mintVoiceSessionToken,
   revokeVoiceSessionToken,
   VoiceSessionTokenError,
@@ -171,9 +172,76 @@ describe("voice-session jwt", () => {
       const minted = await mintVoiceSessionToken(CLAIMS);
       await expect(
         verifyVoiceSessionToken(minted.token, { sessionId: CLAIMS.sessionId }),
-      ).rejects.toMatchObject({ code: "revoked" });
+      ).rejects.toMatchObject({ code: "store_unavailable" });
     } finally {
       __setVoiceSessionRevocationStoreForTests(null);
     }
+  });
+
+  test("a transient revocation read failure does not falsely revoke a fresh token", async () => {
+    let reads = 0;
+    const transient = {
+      async get() {
+        reads += 1;
+        if (reads === 1) throw new Error("stale redis socket");
+        return null;
+      },
+      async set() {
+        return "OK";
+      },
+      async getdel() {
+        return null;
+      },
+      async del() {
+        return 0;
+      },
+    };
+    __setVoiceSessionRevocationStoreForTests(transient as never);
+    try {
+      const minted = await mintVoiceSessionToken(CLAIMS);
+      await expect(
+        verifyVoiceSessionToken(minted.token, { sessionId: CLAIMS.sessionId }),
+      ).resolves.toMatchObject({ jti: minted.jti });
+      expect(reads).toBe(2);
+    } finally {
+      __setVoiceSessionRevocationStoreForTests(null);
+    }
+  });
+
+  test("isVoiceSessionTokenRevoked consults an explicit request-scoped store (#16663)", async () => {
+    const requestScoped = makeFakeRedis();
+    __setVoiceSessionRevocationStoreForTests(requestScoped as never);
+    const minted = await mintVoiceSessionToken(CLAIMS);
+    await revokeVoiceSessionToken(minted.jti, minted.expSeconds);
+    // Swap the module-level store for an EMPTY one: from here on, only the
+    // explicit param can see the revocation, so a `true` answer proves the
+    // 400ms poll's store actually reaches the read.
+    __setVoiceSessionRevocationStoreForTests(makeFakeRedis() as never);
+    try {
+      expect(await isVoiceSessionTokenRevoked(minted.jti)).toBe(false);
+      expect(await isVoiceSessionTokenRevoked(minted.jti, requestScoped as never)).toBe(true);
+    } finally {
+      __setVoiceSessionRevocationStoreForTests(null);
+    }
+  });
+
+  test("isVoiceSessionTokenRevoked fails closed when the explicit store errors", async () => {
+    const erroring = {
+      async get() {
+        throw new Error("redis down");
+      },
+      async set() {
+        return "OK";
+      },
+      async getdel() {
+        return null;
+      },
+      async del() {
+        return 0;
+      },
+    };
+    // The module-level store (beforeEach) is healthy and empty; the erroring
+    // request-scoped store must still drive the fail-closed answer.
+    expect(await isVoiceSessionTokenRevoked("jti-under-outage", erroring as never)).toBe(true);
   });
 });

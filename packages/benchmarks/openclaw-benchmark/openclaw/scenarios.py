@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
@@ -9,6 +11,9 @@ from typing import Any
 import yaml
 
 SCENARIOS_DIR = Path(__file__).parent / "scenarios"
+EXPECTED_BASE_SCENARIOS = frozenset(
+    {"setup", "implementation", "cli_arguments", "error_handling", "testing"}
+)
 
 EDGE_VARIANTS: tuple[dict[str, str], ...] = (
     {
@@ -116,7 +121,10 @@ def load_base_scenarios(scenarios_dir: Path = SCENARIOS_DIR) -> dict[str, dict[s
     scenarios: dict[str, dict[str, Any]] = {}
     for path in sorted(scenarios_dir.glob("*.yaml")):
         with path.open() as handle:
-            scenarios[path.stem] = yaml.safe_load(handle)
+            scenario = yaml.safe_load(handle)
+        if not isinstance(scenario, dict):
+            raise ValueError(f"scenario YAML must contain an object: {path}")
+        scenarios[path.stem] = scenario
     return scenarios
 
 
@@ -129,6 +137,17 @@ def _edge_scenario(base_id: str, scenario: dict[str, Any], variant: dict[str, st
     edge["prompt"] = f"{scenario.get('prompt', '').rstrip()}{variant['prompt']}\n"
     edge["base_scenario"] = base_id
     edge["edge_variant"] = variant["suffix"]
+    prerequisites = scenario.get("prerequisites") or []
+    if not isinstance(prerequisites, list) or not all(
+        isinstance(item, str) and item.strip() for item in prerequisites
+    ):
+        raise ValueError(f"{base_id}: prerequisites must be a list of scenario ids")
+    # Each perturbation is an independent end-to-end chain. Pointing an edge
+    # task at the authored base prerequisite would leak a different cohort's
+    # workspace state into its score.
+    edge["prerequisites"] = [
+        f"{item}--edge-{variant['suffix']}" for item in prerequisites
+    ]
     return edge
 
 
@@ -149,7 +168,43 @@ def count_scenarios(scenarios_dir: Path = SCENARIOS_DIR) -> dict[str, int]:
     return {"existing": existing, "added": added, "total": existing + added}
 
 
+def scenario_provenance(scenarios_dir: Path = SCENARIOS_DIR) -> dict[str, Any]:
+    """Return hashes and exact counts for the authored local corpus."""
+    validate_scenarios(scenarios_dir)
+    manifests = []
+    for path in sorted(scenarios_dir.glob("*.yaml")):
+        manifests.append(
+            {
+                "file": path.name,
+                "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+            }
+        )
+    counts = count_scenarios(scenarios_dir)
+    workload = json.dumps(
+        load_scenarios(scenarios_dir),
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+    return {
+        "source": "packages/benchmarks/openclaw-benchmark/openclaw/scenarios",
+        "authored_scenarios": counts["existing"],
+        "edge_variants_per_scenario": len(EDGE_VARIANTS),
+        "total_scenarios": counts["total"],
+        "workload_sha256": hashlib.sha256(workload).hexdigest(),
+        "manifests": manifests,
+    }
+
+
 def validate_scenarios(scenarios_dir: Path = SCENARIOS_DIR) -> None:
+    base = load_base_scenarios(scenarios_dir)
+    actual_base_ids = frozenset(base)
+    if actual_base_ids != EXPECTED_BASE_SCENARIOS:
+        missing = sorted(EXPECTED_BASE_SCENARIOS - actual_base_ids)
+        extra = sorted(actual_base_ids - EXPECTED_BASE_SCENARIOS)
+        raise ValueError(
+            f"authored scenario corpus mismatch; missing={missing}, extra={extra}"
+        )
     scenarios = load_scenarios(scenarios_dir)
     counts = count_scenarios(scenarios_dir)
     if len(scenarios) != counts["total"]:
@@ -162,7 +217,14 @@ def validate_scenarios(scenarios_dir: Path = SCENARIOS_DIR) -> None:
     ]
     if missing:
         raise ValueError(f"scenarios missing required fields: {', '.join(missing)}")
-
-    duplicate_count = len(scenarios) - len(set(scenarios))
-    if duplicate_count:
-        raise ValueError(f"found {duplicate_count} duplicate scenario ids")
+    for scenario_id, scenario in scenarios.items():
+        prerequisites = scenario.get("prerequisites") or []
+        if not isinstance(prerequisites, list) or not all(
+            isinstance(item, str) and item.strip() for item in prerequisites
+        ):
+            raise ValueError(f"{scenario_id}: prerequisites must be a list of ids")
+        unknown = [item for item in prerequisites if item not in scenarios]
+        if unknown:
+            raise ValueError(
+                f"{scenario_id}: unknown prerequisites: {', '.join(unknown)}"
+            )

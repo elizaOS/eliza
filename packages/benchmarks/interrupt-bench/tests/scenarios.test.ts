@@ -9,6 +9,7 @@
 
 import { describe, expect, it } from "vitest";
 import { runScenario } from "../src/evaluator.ts";
+import type { ScriptedLlmProvider } from "../src/llm-scripted.ts";
 import {
   countInterruptBenchScenarios,
   loadScenarios,
@@ -109,6 +110,105 @@ describe("scenarios", () => {
 
     expect(stage1Calls).toHaveLength(1);
     expect(result.score).toBe(1);
+  });
+
+  it("coalesces by timing and channel instead of scenario id", async () => {
+    const base = mustFindScenario("A1-fragmented-email-draft");
+    const scenario = {
+      ...base,
+      id: "renamed-rapid-fragment-stream",
+      script: base.script.map((step) => ({ ...step })),
+    };
+    let calls = 0;
+    const scripted: ScriptedLlmProvider = () => {
+      calls += 1;
+      return {
+        parsed: {
+          shouldRespond: "IGNORE",
+          contexts: [],
+          intents: [],
+          candidateActionNames: [],
+          replyText: "",
+          facts: [],
+          relationships: [],
+          addressedTo: [],
+          threadOps: [],
+        },
+        latencyMs: 1,
+      };
+    };
+
+    await runScenario(scenario, { mode: "scripted", scripted });
+
+    expect(calls).toBe(1);
+  });
+
+  it("does not coalesce same-channel messages outside the debounce window", async () => {
+    const base = mustFindScenario("A1-fragmented-email-draft");
+    const scenario = {
+      ...base,
+      id: "renamed-slow-followups",
+      script: base.script.map((step, index) => ({
+        ...step,
+        t: index * 2000,
+      })),
+    };
+    let calls = 0;
+    const scripted: ScriptedLlmProvider = () => {
+      calls += 1;
+      return {
+        parsed: {
+          shouldRespond: "IGNORE",
+          contexts: [],
+          intents: [],
+          candidateActionNames: [],
+          replyText: "",
+          facts: [],
+          relationships: [],
+          addressedTo: [],
+          threadOps: [],
+        },
+        latencyMs: 1,
+      };
+    };
+
+    await runScenario(scenario, { mode: "scripted", scripted });
+
+    expect(calls).toBe(scenario.script.length);
+  });
+
+  it("does not coalesce rapid messages from different senders", async () => {
+    const base = mustFindScenario("A1-fragmented-email-draft");
+    const scenario = {
+      ...base,
+      id: "renamed-group-channel-interleave",
+      script: [
+        { ...base.script[0], channel: "group-team" },
+        { ...base.script[1], channel: "group-team", sender: "bob" },
+      ],
+    };
+    let calls = 0;
+    const scripted: ScriptedLlmProvider = () => {
+      calls += 1;
+      return {
+        parsed: {
+          shouldRespond: "IGNORE",
+          contexts: [],
+          intents: [],
+          candidateActionNames: [],
+          replyText: "",
+          facts: [],
+          relationships: [],
+          addressedTo: [],
+          threadOps: [],
+        },
+        latencyMs: 1,
+      };
+    };
+
+    await runScenario(scenario, { mode: "scripted", scripted });
+
+    expect(calls).toBe(2);
   });
 
   it("does not score live harness transport latency as behavior", async () => {

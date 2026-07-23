@@ -47,6 +47,7 @@ import {
   savePersistedFirstRunComplete,
 } from "../state";
 import { runAgentSessionRecovery } from "../state/agent-session-recovery-runner";
+import type { CloudLoginOptions } from "../state/types";
 import { isCloudStatusAuthenticated } from "../utils";
 import { autoDownloadRecommendedLocalModelInBackground } from "./auto-download-recommended";
 import { assertDeviceRamTierAllowsLocalRuntime } from "./device-ram-gate";
@@ -78,7 +79,10 @@ const RUNNING_CLOUD_AGENT_STATUS = "running";
 export interface FirstRunFinishPorts {
   uiLanguage: UiLanguage;
   elizaCloudConnected: boolean;
-  handleCloudLogin: (prePoppedWindow?: Window | null) => Promise<void>;
+  handleCloudLogin: (
+    prePoppedWindow?: Window | null,
+    options?: CloudLoginOptions,
+  ) => Promise<void>;
   /** Pre-opened popup window for the cloud-login redirect (popup-blocker safe). */
   preOpenWindow?: () => Window | null;
   setRuntimeState: (
@@ -574,6 +578,22 @@ export async function bindCloudAgent(
   }
   client.setBaseUrl(cloudAgentApiBase);
   client.setToken(authToken);
+  // Warm the agent base NOW, overlapping everything between here and the
+  // hydrate phase's real conversation fetch (persist, coordinator phase
+  // transitions, the auth gate's /api/auth/me — measured 2.3s cold on
+  // staging, FIRSTLOAD-REAL-2026-07-22). The first request to a cold cloud
+  // container pays connection setup + worker/container wake; issuing a
+  // throwaway list here means the post-ready /api/conversations hits a warm
+  // path instead of serializing the full cold cost behind auth/me.
+  // Fire-and-forget: the result is discarded and failures are irrelevant —
+  // the hydrate call remains the authoritative fetch. Optional-chained so
+  // chat-surface-less client shims (tests, legacy) are a no-op; the
+  // Promise.resolve().then wrapper absorbs a synchronous throw from a
+  // non-conforming shim without an empty catch block.
+  // error-policy:J6 best-effort warm-up — failure is fully degradable.
+  void Promise.resolve()
+    .then(() => client.listConversations?.())
+    .catch(() => undefined);
   const activeServer = createPersistedActiveServer({
     kind: "cloud",
     id: `cloud:${selectedAgent.agentId}`,
@@ -651,6 +671,8 @@ export async function bindCloudAgent(
   //    set) but was bound via the shared adapter by tier preference — minting
   //    another dedicated agent for it would duplicate a billed container
   //    (#15902 run-2 class).
+  // Cloud agent discovery runs from the renderer and therefore needs its own
+  // bearer even when the local server already has a healthy Cloud connection.
   if (
     getBootConfig().preferSharedCloudTier &&
     !selectedAgent.bridgeUrl &&
@@ -756,24 +778,65 @@ export async function listOrAutoProvisionCloudAgent(
     firstRunRuntimeTarget("cloud"),
   );
   ports.setRuntimeState("firstRunProvider", "elizacloud");
+  // One shared list fetch shape: never throws — a rejected lookup collapses to
+  // the same `success:false` the error path below renders (the throw-through
+  // behavior is unchanged for callers via that path).
+  const listAgents = () =>
+    client.getCloudCompatAgents().catch((cause: unknown) => ({
+      success: false as const,
+      data: [] as CloudCompatAgent[],
+      error: cause instanceof Error ? cause.message : undefined,
+    }));
+  let agentsList: Awaited<ReturnType<typeof listAgents>> | null = null;
   let cloudConnectedForFinish = ports.elizaCloudConnected;
   if (!cloudConnectedForFinish) {
-    const cloudStatus = await getCloudStatusIfSupported();
-    cloudConnectedForFinish = isCloudStatusAuthenticated(
-      Boolean(cloudStatus?.connected),
-      cloudStatus?.reason,
-    );
+    if (getCloudAuthToken(client)) {
+      // A stored bearer makes the agents list itself the authoritative
+      // connectivity probe — and the list is the data the bind step needs
+      // anyway. Fetch it NOW instead of serializing a /api/v1/user status
+      // round trip before it: on staging the old user->agents chain was
+      // ~2.6s of the measured post-token first-load stall
+      // (FIRSTLOAD-REAL-2026-07-22). The status probe runs only when the
+      // list fails (stale/revoked token), preserving the legacy login
+      // re-entry semantics on that path.
+      const early = await listAgents();
+      if (early.success) {
+        agentsList = early;
+        cloudConnectedForFinish = true;
+      } else {
+        const cloudStatus = await getCloudStatusIfSupported();
+        cloudConnectedForFinish = isCloudStatusAuthenticated(
+          Boolean(cloudStatus?.connected),
+          cloudStatus?.reason,
+        );
+      }
+    } else {
+      const cloudStatus = await getCloudStatusIfSupported();
+      cloudConnectedForFinish = isCloudStatusAuthenticated(
+        Boolean(cloudStatus?.connected),
+        cloudStatus?.reason,
+      );
+    }
   }
-  if (firstRunNeedsCloudConnect(sourceDraft, cloudConnectedForFinish)) {
+  if (
+    firstRunNeedsCloudConnect(sourceDraft, cloudConnectedForFinish) ||
+    !getCloudAuthToken(client)
+  ) {
     const authWindow = ports.preOpenWindow?.() ?? null;
-    await ports.handleCloudLogin(authWindow);
-    const cloudStatus = await getCloudStatusIfSupported();
-    cloudConnectedForFinish = isCloudStatusAuthenticated(
-      Boolean(cloudStatus?.connected),
-      cloudStatus?.reason,
-    );
-    if (!cloudConnectedForFinish && getCloudAuthToken(client)) {
+    await ports.handleCloudLogin(authWindow, { requireClientAuth: true });
+    // A landed bearer IS the proof every following step runs on — the old
+    // post-login status re-probe's result was overridden by exactly this
+    // token check, so the extra /api/v1/user round trip (~0.8s on staging)
+    // bought nothing. Probe only when no token landed (server-side-key
+    // logins), where the probe result still decides the outcome.
+    if (getCloudAuthToken(client)) {
       cloudConnectedForFinish = true;
+    } else {
+      const cloudStatus = await getCloudStatusIfSupported();
+      cloudConnectedForFinish = isCloudStatusAuthenticated(
+        Boolean(cloudStatus?.connected),
+        cloudStatus?.reason,
+      );
     }
     if (!cloudConnectedForFinish) {
       return { kind: "needs-cloud-login" };
@@ -781,10 +844,13 @@ export async function listOrAutoProvisionCloudAgent(
   }
   const authToken = getCloudAuthToken(client) ?? "";
   if (!authToken) {
-    return { kind: "error", message: "Eliza Cloud authentication required." };
+    return { kind: "needs-cloud-login" };
   }
-  ports.onStatus?.("Finding your agents...", "listing");
-  const list = await client.getCloudCompatAgents();
+  let list = agentsList;
+  if (!list) {
+    ports.onStatus?.("Finding your agents...", "listing");
+    list = await listAgents();
+  }
   if (!list.success) {
     return {
       kind: "error",

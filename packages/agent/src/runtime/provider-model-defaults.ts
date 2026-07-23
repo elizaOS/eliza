@@ -82,19 +82,26 @@ export function applyProviderModelEnvDefaults(): void {
       : "openai/gpt-oss-120b",
   );
 
-  // Default Cerebras model — plugin-openai's Cerebras mode otherwise falls
-  // back to OpenAI-only ids when CEREBRAS_MODEL is unset. CEREBRAS_MODEL is
-  // the FALLBACK for every tier whose explicit OPENAI_*_MODEL var is unset
-  // (response-handler, planner, nano, medium), so it must seed from the
-  // shared SMALL model: seeding it from the large model silently promoted
-  // all of those tiers to the large (reasoning) model — nano/medium triage
-  // calls burned zai-glm-4.7 reasoning budgets, and Stage-1 latency spiked
-  // 1.2s→10s+ on its thinking bursts. Tiers that want the large model keep
-  // it explicitly via OPENAI_LARGE_MODEL / LARGE_MODEL.
-  setEnvIfMissing(
-    "CEREBRAS_MODEL",
+  // Seed independent Cerebras tiers from the matching shared tiers. Keep an
+  // explicit legacy CEREBRAS_MODEL authoritative for every role; operators
+  // using that compatibility alias intentionally selected one provider model.
+  const explicitLegacyCerebrasModel = process.env.CEREBRAS_MODEL;
+  const cerebrasSmallModel =
     currentSharedSmallModel && !isLikelyOpenAiTextModel(currentSharedSmallModel)
       ? currentSharedSmallModel
-      : DEFAULT_CEREBRAS_TEXT_MODEL,
+      : DEFAULT_CEREBRAS_TEXT_MODEL;
+  if (!explicitLegacyCerebrasModel) {
+    setEnvIfMissing("CEREBRAS_SMALL_MODEL", cerebrasSmallModel);
+    setEnvIfMissing(
+      "CEREBRAS_LARGE_MODEL",
+      currentSharedLargeModel &&
+        !isLikelyOpenAiTextModel(currentSharedLargeModel)
+        ? currentSharedLargeModel
+        : cerebrasSmallModel,
+    );
+  }
+  setEnvIfMissing(
+    "CEREBRAS_MODEL",
+    process.env.CEREBRAS_SMALL_MODEL ?? cerebrasSmallModel,
   );
 }

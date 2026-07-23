@@ -21,6 +21,8 @@ All four tests use fake agent_fn / fake clients — no real LLM calls.
 from __future__ import annotations
 
 import asyncio
+import json
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -122,7 +124,7 @@ def _make_turn(*, cost_usd: float = 0.0, content: str = "ok") -> MessageTurn:
 # ---------------------------------------------------------------------------
 
 
-async def test_per_scenario_timeout_aborts() -> None:
+async def test_per_scenario_timeout_aborts(tmp_path: Path) -> None:
     """A long-running agent_fn must be cancelled after ``per_scenario_timeout_s``.
 
     The runner wraps ``run_one`` in ``asyncio.wait_for(timeout=…)``; on
@@ -161,6 +163,50 @@ async def test_per_scenario_timeout_aborts() -> None:
     # The agent_fn started but was cancelled; we don't strictly require
     # invocation count, only that the runner reported timeout.
     assert invoked, "slow agent_fn should have been entered before cancellation"
+    assert result.expected_run_count == 1
+    assert result.completed_run_count == 1
+    assert result.successful_run_count == 0
+    assert result.complete is False
+
+    output_dir = tmp_path / "timeout-results"
+    with pytest.raises(RuntimeError, match="refusing to publish incomplete"):
+        LifeOpsBenchRunner.save_results(result, output_dir=str(output_dir))
+    assert not output_dir.exists()
+
+
+async def test_complete_workload_records_exact_counts_and_provenance(
+    tmp_path: Path,
+) -> None:
+    async def responding_agent(
+        history: list[MessageTurn], tools: list[dict[str, Any]]
+    ) -> MessageTurn:
+        return _make_turn(content="done")
+
+    scenarios = [_make_scenario("completion.alpha"), _make_scenario("completion.beta")]
+    runner = LifeOpsBenchRunner(
+        agent_fn=responding_agent,
+        world_factory=_budget_world_factory,
+        scenarios=scenarios,
+        concurrency=2,
+        seeds=2,
+    )
+
+    result = await runner.run_filtered()
+
+    assert result.expected_run_count == 4
+    assert result.completed_run_count == 4
+    assert result.successful_run_count == 4
+    assert result.complete is True
+    assert len(result.workload_sha256) == 64
+    output_path = Path(
+        LifeOpsBenchRunner.save_results(result, output_dir=str(tmp_path / "results"))
+    )
+    persisted = json.loads(output_path.read_text(encoding="utf-8"))
+    assert persisted["complete"] is True
+    assert persisted["expected_run_count"] == 4
+    assert persisted["completed_run_count"] == 4
+    assert persisted["successful_run_count"] == 4
+    assert persisted["workload_sha256"] == result.workload_sha256
 
 
 # ---------------------------------------------------------------------------

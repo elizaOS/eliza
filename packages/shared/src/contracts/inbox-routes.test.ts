@@ -1,9 +1,8 @@
 /**
  * Contract tests for PostInboxMessageRequestSchema, the schema for injecting
  * an inbound message into a room. Locks in the required roomId/source/text
- * shape, trimming and source lower-casing, required-field and empty-text
- * rejection, treatment of blank replyToMessageId as absent, and strict
- * extra-field rejection. Pure in-process schema parsing — no server or mocks.
+ * shape, account selection, normalization, required-field rejection, and the
+ * strict boundary that keeps client metadata out of routing authority.
  */
 import { describe, expect, it } from "vitest";
 import { PostInboxMessageRequestSchema } from "./inbox-routes.js";
@@ -31,6 +30,22 @@ describe("PostInboxMessageRequestSchema", () => {
       replyToMessageId: "msg-2",
     });
     expect(parsed.replyToMessageId).toBe("msg-2");
+  });
+
+  it("accepts and trims an explicit accountId", () => {
+    expect(
+      PostInboxMessageRequestSchema.parse({
+        accountId: "  discord-owner  ",
+        roomId: "room-1",
+        source: "discord",
+        text: "hello",
+      }),
+    ).toEqual({
+      accountId: "discord-owner",
+      roomId: "room-1",
+      source: "discord",
+      text: "hello",
+    });
   });
 
   it("trims roomId, text, and replyToMessageId", () => {
@@ -115,6 +130,17 @@ describe("PostInboxMessageRequestSchema", () => {
     ).toThrow();
   });
 
+  it("rejects whitespace-only accountId", () => {
+    expect(() =>
+      PostInboxMessageRequestSchema.parse({
+        accountId: "   ",
+        roomId: "r",
+        source: "x",
+        text: "y",
+      }),
+    ).toThrow();
+  });
+
   it("treats whitespace-only replyToMessageId as absent", () => {
     const parsed = PostInboxMessageRequestSchema.parse({
       roomId: "r",
@@ -143,6 +169,33 @@ describe("PostInboxMessageRequestSchema", () => {
         source: "x",
         text: "y",
         attachments: [],
+      }),
+    ).toThrow();
+  });
+
+  it("rejects connectorSendAs metadata", () => {
+    expect(() =>
+      PostInboxMessageRequestSchema.parse({
+        roomId: "r",
+        source: "discord",
+        text: "hello",
+        metadata: {
+          connectorSendAs: {
+            accountId: "forged-account",
+            provider: "discord",
+          },
+        },
+      }),
+    ).toThrow();
+  });
+
+  it("rejects top-level connector routing fields outside accountId", () => {
+    expect(() =>
+      PostInboxMessageRequestSchema.parse({
+        roomId: "r",
+        source: "discord",
+        text: "hello",
+        connectorSendAs: { accountId: "forged-account" },
       }),
     ).toThrow();
   });

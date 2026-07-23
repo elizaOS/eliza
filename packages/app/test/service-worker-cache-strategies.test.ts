@@ -18,6 +18,8 @@ import vm from "node:vm";
 import { describe, expect, it } from "vitest";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+const SHELL_CACHE_NAME = "elizaos-shell-v6-dev";
+const ASSETS_CACHE_NAME = "elizaos-assets-v1-dev";
 
 type RequestLike = {
   method: string;
@@ -202,7 +204,7 @@ describe("service worker navigation preload", () => {
       preexistingCaches: [
         "stale-cache-v0",
         "elizaos-shell-v5",
-        "elizaos-shell-v6",
+        SHELL_CACHE_NAME,
       ],
     });
     const event = makeActivateEvent();
@@ -210,7 +212,7 @@ describe("service worker navigation preload", () => {
     await Promise.all(event._work);
     expect(worker.caches.has("stale-cache-v0")).toBe(false);
     expect(worker.caches.has("elizaos-shell-v5")).toBe(false);
-    expect(worker.caches.has("elizaos-shell-v6")).toBe(true);
+    expect(worker.caches.has(SHELL_CACHE_NAME)).toBe(true);
   });
 
   it("consumes the navigation preload response instead of issuing a second fetch", async () => {
@@ -278,7 +280,7 @@ describe("service worker immutable asset cache", () => {
       // eslint-disable-next-line no-await-in-loop
       await event._responded;
     }
-    const assetsCache = worker.caches.get("elizaos-assets-v1");
+    const assetsCache = worker.caches.get(ASSETS_CACHE_NAME);
     expect(assetsCache).toBeDefined();
     const keys = [...(assetsCache as FakeCache).entries.keys()];
     expect(keys.length).toBe(220);

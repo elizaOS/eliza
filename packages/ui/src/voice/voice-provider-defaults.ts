@@ -190,3 +190,43 @@ export function resolveDefaultTtsProvider(
   // Terminal: the OS SpeechSynthesis voice always exists in a browser renderer.
   return BROWSER_TTS_PROVIDER;
 }
+
+/** The two WAV-recording interactive ASR routes a capture surface can arm. */
+export type WavAsrRoute = "local-inference" | "cloud";
+
+/**
+ * Resolve which WAV ASR route (if any) should serve an interactive capture,
+ * given the effective provider and what the runtime can do right now. This is
+ * the single fallback rule shared by BOTH capture surfaces — `useVoiceChat`'s
+ * `startListening` and `voice-capture-factory`'s backend resolution — so the
+ * two cannot diverge (#16524).
+ *
+ * The rule mirrors {@link resolveDefaultTtsProvider}'s contract: an
+ * unavailable backend is skipped, never selected-then-failed. Concretely:
+ *
+ *   - Explicit `local-inference` stays local while the server reports ready.
+ *   - `local-inference` selected but NOT ready degrades to the cloud WAV route
+ *     (`/api/asr/cloud`) when a cloud session exists — a persisted desktop
+ *     choice replayed against a cloud agent must not strand capture on the
+ *     engine-dependent browser recognizer (absent on Safari/iOS PWA).
+ *   - `eliza-cloud` / `openai` use the cloud WAV route, as before.
+ *   - `null` means no WAV route applies (no capture primitives, `browser`
+ *     forced, or an unready local choice with no cloud to fall back on) — the
+ *     caller proceeds to its own talk-mode/browser cascade.
+ */
+export function resolveWavAsrRoute(input: {
+  provider: AsrProvider | "browser" | undefined;
+  cloudConnected: boolean;
+  captureSupported: boolean;
+  localInferenceReady: boolean;
+}): WavAsrRoute | null {
+  if (!input.captureSupported) return null;
+  if (input.provider === "local-inference") {
+    if (input.localInferenceReady) return "local-inference";
+    return input.cloudConnected ? "cloud" : null;
+  }
+  if (input.provider === "eliza-cloud" || input.provider === "openai") {
+    return "cloud";
+  }
+  return null;
+}

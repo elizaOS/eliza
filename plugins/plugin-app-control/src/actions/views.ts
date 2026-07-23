@@ -37,6 +37,7 @@ import {
 import { runViewsEdit } from "./views-edit.js";
 import { isViewIconRequest, runViewsIcon } from "./views-icon.js";
 import { runViewsList } from "./views-list.js";
+import { createViewsRequestHeaders } from "./views-request-auth.js";
 import { isRollbackRequest, runViewsRollback } from "./views-rollback.js";
 import { runViewsSearch, scoreView } from "./views-search.js";
 import { resolveIntentView, runViewsShow } from "./views-show.js";
@@ -3111,7 +3112,7 @@ async function navigateToPath(
 	try {
 		const resp = await fetch(`${base}/api/views/__view-manager__/navigate`, {
 			method: "POST",
-			headers: { "Content-Type": "application/json" },
+			headers: createViewsRequestHeaders(),
 			body: JSON.stringify({ path: pathStr }),
 			signal: AbortSignal.timeout(5_000),
 		});
@@ -3150,7 +3151,7 @@ async function navigateViewWithShellAction(
 			`${base}/api/views/${encodeURIComponent(viewId)}/navigate${viewType ? `?viewType=${viewType}` : ""}`,
 			{
 				method: "POST",
-				headers: { "Content-Type": "application/json" },
+				headers: createViewsRequestHeaders(),
 				body: JSON.stringify({ action, viewType, alwaysOnTop }),
 				signal: AbortSignal.timeout(5_000),
 			},
@@ -3198,7 +3199,7 @@ async function navigateViewLayout({
 			`${base}/api/views/${encodeURIComponent(viewId)}/navigate${viewType ? `?viewType=${viewType}` : ""}`,
 			{
 				method: "POST",
-				headers: { "Content-Type": "application/json" },
+				headers: createViewsRequestHeaders(),
 				body: JSON.stringify({
 					action,
 					views: viewIds,
@@ -3273,7 +3274,7 @@ async function interactWithView(
 			`${base}/api/views/${encodeURIComponent(viewId)}/interact${viewType ? `?viewType=${viewType}` : ""}`,
 			{
 				method: "POST",
-				headers: { "Content-Type": "application/json" },
+				headers: createViewsRequestHeaders(),
 				body: JSON.stringify({ capability, params, timeoutMs, viewType }),
 				signal: AbortSignal.timeout(timeoutMs + 1_000),
 			},
@@ -3412,7 +3413,7 @@ async function broadcastViewEvent(
 	try {
 		const resp = await fetch(`${base}/api/views/events/broadcast`, {
 			method: "POST",
-			headers: { "Content-Type": "application/json" },
+			headers: createViewsRequestHeaders(),
 			body: JSON.stringify({ type: eventType, payload }),
 			signal: AbortSignal.timeout(5_000),
 		});

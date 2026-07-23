@@ -9,9 +9,10 @@
  * the plain ACP-send fallback for sessions with no durable task survives.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
+import { type IAgentRuntime, promoteSubactionsToActions } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { tasksAction } from "../../src/actions/tasks.js";
+import { AcpService } from "../../src/services/acp-service.js";
 import { OrchestratorTaskService } from "../../src/services/orchestrator-task-service.js";
 import { OrchestratorTaskStore } from "../../src/services/orchestrator-task-store.js";
 import {
@@ -151,10 +152,13 @@ async function harness(): Promise<{
   const acp = new FakeAcp();
   let taskService: OrchestratorTaskService | null = null;
   const runtime = {
-    getService: vi.fn((type: string) =>
-      type === OrchestratorTaskService.serviceType ? taskService : acp,
-    ),
+    getService: vi.fn((type: string) => {
+      if (type === OrchestratorTaskService.serviceType) return taskService;
+      if (type === AcpService.serviceType) return acp;
+      return null;
+    }),
     hasService: vi.fn(() => true),
+    getSetting: vi.fn(() => undefined),
     getRoom: vi.fn(async () => null),
     reportError: vi.fn(),
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -184,6 +188,31 @@ async function control(
     callback(),
   );
 }
+
+describe("TASKS_CONTROL promoted discriminator", () => {
+  it("rejects a history subAction alias before resolving services", async () => {
+    const promotedControl = promoteSubactionsToActions(tasksAction).find(
+      (action) => action.name === "TASKS_CONTROL",
+    );
+    if (!promotedControl) throw new Error("TASKS_CONTROL was not promoted");
+    const getService = vi.fn(() => null);
+    const runtime = { getService } as never as IAgentRuntime;
+
+    const result = await promotedControl.handler(
+      runtime,
+      memory({}),
+      state,
+      opts({ subAction: "history", controlAction: "stop" }),
+      callback(),
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      text: expect.stringContaining("Call TASKS_HISTORY"),
+    });
+    expect(getService).not.toHaveBeenCalled();
+  });
+});
 
 describe("TASKS control pause/resume symmetry (#11216 follow-up)", () => {
   it("pause freezes the task; resume clears paused and unfreezes advanceTaskStatus", async () => {

@@ -19,6 +19,10 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("../api", () => ({ client: mocks.client }));
 
+import {
+  listPendingChatTurns,
+  persistPendingChatTurn,
+} from "./pending-chat-turns";
 import { type DataLoadersDeps, useDataLoaders } from "./useDataLoaders";
 
 function userMsg(id: string): ConversationMessage {
@@ -84,6 +88,7 @@ beforeEach(() => {
   mocks.client.getConversationMessages.mockReset();
   mocks.client.listConversations.mockReset();
   mocks.client.listConversations.mockResolvedValue({ conversations: [] });
+  window.localStorage.clear();
 });
 
 describe("useDataLoaders — conversation message prefetch cache", () => {
@@ -115,6 +120,35 @@ describe("useDataLoaders — conversation message prefetch cache", () => {
     await act(async () => {
       await loadPromise;
     });
+  });
+
+  it("clears a pending reload receipt once server history contains its user turn", async () => {
+    const sentAt = Date.now();
+    persistPendingChatTurn({
+      conversationId: "conv-settled",
+      clientMessageId: "client-settled",
+      text: "survives reload",
+      sentAt,
+    });
+    mocks.client.getConversationMessages.mockResolvedValue({
+      messages: [
+        {
+          ...userMsg("server-user"),
+          text: "survives reload",
+          timestamp: sentAt,
+        },
+      ],
+    });
+    const { deps, activeConversationIdRef } = makeDeps();
+    activeConversationIdRef.current = "conv-settled";
+    const { result } = renderHook(() => useDataLoaders(deps));
+
+    expect(listPendingChatTurns("conv-settled")).toHaveLength(1);
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-settled");
+    });
+
+    expect(listPendingChatTurns("conv-settled")).toHaveLength(0);
   });
 
   it("prefetch skips ids already cached or already in flight", async () => {

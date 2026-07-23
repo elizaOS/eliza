@@ -5,12 +5,12 @@
  * is `eliza-cloud`, a dedicated/on-device agent must NOT relay TTS through its
  * own `/api/tts/cloud` proxy (an extra phone-side download + base64 IPC
  * re-marshal) when a cloud session bearer + configured cloud origin are present:
- * it POSTs straight to the cloud worker's `/api/v1/voice/tts` with a CORS-safe
- * bare fetch (Authorization + Content-Type only, no cookies, no csrf mirror).
+ * it POSTs straight to the cloud worker's `/api/v1/voice/tts` through the canonical platform transport
+ * without CSRF or cookie mutation (Authorization + Content-Type only, no cookies, no csrf mirror).
  * Any direct failure (network reject or non-2xx) degrades to the on-device
  * proxy, which authenticates server-side. With no cloud auth the proxy path is
  * preserved. Drives the real hook + real processQueue against mocked HTTP
- * layers (bare `fetch` for the direct worker, `fetchWithCsrf` for the proxy)
+ * layers (`requestViaAgentTransport` for the direct worker, `fetchWithCsrf` for the proxy)
  * and a fake audio graph.
  */
 
@@ -21,6 +21,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const fetchWithCsrf = vi.fn();
 vi.mock("../api/csrf-client", () => ({
   fetchWithCsrf: (...args: unknown[]) => fetchWithCsrf(...args),
+  requestViaAgentTransport: (url: string, init?: RequestInit) =>
+    directFetch(url, init),
 }));
 
 import {
@@ -234,6 +236,7 @@ describe("useVoiceChat forced-cloud TTS routing (#16116)", () => {
     expect(Object.keys(headers).sort()).toEqual([
       "Authorization",
       "Content-Type",
+      "Idempotency-Key",
     ]);
     // Body carries the same `{ text }` contract as the proxy path (the worker
     // treats an omitted voiceId as "unpinned", matching the proxy default).
@@ -321,6 +324,41 @@ describe("useVoiceChat forced-cloud TTS routing (#16116)", () => {
     // Warned once, naming the real direct target.
     expect(warnSpy).toHaveBeenCalledTimes(1);
     expect(String(warnSpy.mock.calls[0]?.[0])).toContain(DIRECT_TTS_URL);
+  });
+
+  // #16425: the fallback re-POST is the SAME logical utterance — both legs
+  // must carry one identical Idempotency-Key so the cloud route replays the
+  // direct attempt's committed credit reservation instead of charging twice.
+  it("sends the SAME Idempotency-Key on the direct attempt and the proxy fallback", async () => {
+    localStorage.setItem("steward_session_token", CLOUD_JWT);
+    vi.spyOn(logger, "warn").mockImplementation(() => {});
+    const directHeaderKeys: Array<string | undefined> = [];
+    directFetch.mockImplementation(
+      async (_input: unknown, init?: RequestInit) => {
+        directHeaderKeys.push(headersOf(init)["Idempotency-Key"]);
+        throw new TypeError("Failed to fetch");
+      },
+    );
+
+    const { result } = renderForcedCloud();
+    act(() => {
+      result.current.speak("bill me once");
+    });
+
+    await waitFor(() => {
+      expect(proxyUrls.some((url) => url.includes("/api/tts/cloud"))).toBe(
+        true,
+      );
+    });
+
+    const proxyCall = fetchWithCsrf.mock.calls.find(([url]) =>
+      String(url).includes("/api/tts/cloud"),
+    );
+    const proxyKey = headersOf(proxyCall?.[1] as RequestInit | undefined)[
+      "Idempotency-Key"
+    ];
+    expect(directHeaderKeys[0]).toBeTruthy();
+    expect(proxyKey).toBe(directHeaderKeys[0]);
   });
 
   it("falls back to the on-device proxy on a direct non-2xx and warns only once across segments", async () => {

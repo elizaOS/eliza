@@ -35,6 +35,14 @@ function taskServiceMock() {
 const opts = (parameters: Record<string, unknown>) => ({ parameters });
 
 describe("TASKS archive/reopen lifecycle (#11028)", () => {
+  it("keeps archive and reopen planner-visible on the umbrella action", () => {
+    const actions = archiveCodingTaskAction.parameters?.find(
+      (parameter) => parameter.name === "action",
+    )?.schema.enum;
+    expect(actions).toContain("archive");
+    expect(actions).toContain("reopen");
+  });
+
   it("archives a task through the durable service (was UNSUPPORTED_OPERATION)", async () => {
     const svc = taskServiceMock();
     const result = await archiveCodingTaskAction.handler(

@@ -103,7 +103,7 @@ func main() {
 			targetHost, _ := pr.In.Context().Value(targetHostContextKey{}).(string)
 			pr.SetURL(&url.URL{Scheme: "https", Host: targetHost})
 			pr.Out.Host = targetHost
-			pr.Out.Header.Set("X-Forwarded-Host", pr.In.Host)
+			pr.Out.Header.Set("X-Forwarded-Host", forwardedHost(pr.In))
 			pr.Out.Header.Set("X-Forwarded-Proto", forwardedProto(pr.In))
 		},
 		Transport: transport,
@@ -270,6 +270,16 @@ func normalizeHost(host string) string {
 		host = withoutPort
 	}
 	return strings.TrimSuffix(host, ".")
+}
+
+// forwardedHost preserves the original public agent host supplied by the
+// trusted Cloudflare worker. Overwriting it with the tunnel origin host breaks
+// origin-bound pairing tokens after the second proxy hop.
+func forwardedHost(r *http.Request) string {
+	if host := strings.TrimSpace(r.Header.Get("X-Forwarded-Host")); host != "" {
+		return host
+	}
+	return r.Host
 }
 
 func forwardedProto(r *http.Request) string {

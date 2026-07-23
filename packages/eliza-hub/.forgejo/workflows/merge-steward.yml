@@ -1,0 +1,169 @@
+name: Merge Steward
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  validate:
+    name: Check and test
+    runs-on: docker
+    container:
+      image: node:24-alpine3.23
+    steps:
+      - name: Install validation tools
+        run: apk add --no-cache actionlint age bash docker-cli-compose git grep opentofu prometheus rclone ripgrep shellcheck
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Workflow lint
+        run: actionlint -config-file .github/actionlint.yaml .forgejo/workflows/*.yml
+
+      - name: Show Node toolchain
+        working-directory: services/merge-steward
+        run: |
+          node --version
+          npm --version
+
+      - name: Install dependencies
+        working-directory: services/merge-steward
+        run: npm ci
+
+      - name: Syntax check
+        working-directory: services/merge-steward
+        run: npm run check
+
+      - name: Unit tests
+        working-directory: services/merge-steward
+        run: npm test
+
+      - name: Production dependency audit
+        working-directory: services/merge-steward
+        run: npm audit --omit=dev
+
+      - name: Repository privacy scan
+        run: scripts/private-reference-scan.sh
+
+      - name: Docker image builds
+        run: docker build -f services/merge-steward/Dockerfile -t eliza/merge-steward:ci .
+
+      - name: Staging script syntax
+        run: bash -n deployment/hetzner-staging/scripts/*.sh
+
+      - name: Shell script lint
+        run: shellcheck deployment/hetzner-staging/scripts/*.sh scripts/*.sh
+
+      - name: Hetzner and Cloudflare infrastructure validates
+        run: deployment/hetzner-staging/scripts/validate-infrastructure.sh
+
+      - name: Observability config validates
+        working-directory: deployment/hetzner-staging/observability
+        run: |
+          promtool check config --syntax-only prometheus.yml
+          promtool check rules merge-steward-alerts.yml
+
+      - name: Staging compose renders
+        env:
+          FORGEJO_IMAGE: codeberg.org/forgejo/forgejo:15
+          FORGEJO_RUNNER_IMAGE: data.forgejo.org/forgejo/runner:12
+          FORGEJO_DB_PASSWORD: ci-dummy-forgejo-db-password-123456
+          FORGEJO_SECRET_KEY: ci-dummy-forgejo-secret-key-123456789 # gitleaks:allow - synthetic CI value
+          FORGEJO_INTERNAL_TOKEN: ci-dummy-forgejo-internal-token-12345
+          FORGEJO_OAUTH2_JWT_SECRET: ci-dummy-forgejo-oauth2-jwt-secret-123
+          FORGEJO_RECOVERY_ADMIN_PASSWORD: ci-dummy-recovery-admin-password-123
+          FORGEJO_WEBHOOK_SECRET: ci-dummy-webhook-secret-1234567890123
+          FORGEJO_STEWARD_TOKEN: ci-dummy-steward-token-12345678901234
+          MERGE_STEWARD_DATABASE_URL: postgres://forgejo:ci-dummy@postgres:5432/forgejo
+          MERGE_STEWARD_API_TOKEN: ci-dummy-api-token-123456789012345
+        run: |
+          docker compose -f deployment/hetzner-staging/compose.yml --profile steward config >/tmp/eliza-hetzner-compose.yml
+          docker compose -f deployment/hetzner-staging/compose.yml -f deployment/hetzner-staging/compose.actions-runner.yml --profile steward --profile actions-runner config >/tmp/eliza-hetzner-runner-compose.yml
+
+      - name: Runner isolation invariants
+        run: |
+          if grep -q '/var/run/docker.sock' /tmp/eliza-hetzner-runner-compose.yml deployment/hetzner-staging/runner/config.example.yml; then
+            echo 'runner configuration must not mount the host Docker socket' >&2
+            exit 1
+          fi
+          if grep -Eq '^\s*ports:' deployment/hetzner-staging/compose.actions-runner.yml; then
+            echo 'runner compose must not expose host ports' >&2
+            exit 1
+          fi
+          if grep -Eq '^\s*-\s*[A-Za-z0-9_-]+:host\s*$' deployment/hetzner-staging/runner/config.example.yml; then
+            echo 'runner labels must not use host execution' >&2
+            exit 1
+          fi
+
+      - name: Staging release gate
+        run: |
+          cat > /tmp/eliza-hub-ci.env <<'EOF'
+          POSTGRES_IMAGE=postgres:16-alpine
+          FORGEJO_IMAGE=codeberg.org/forgejo/forgejo:15
+          FORGEJO_DOMAIN=git.eliza.test
+          FORGEJO_ROOT_URL=https://git.eliza.test/
+          FORGEJO_SSH_DOMAIN=git.eliza.test
+          FORGEJO_HTTP_BIND=127.0.0.1
+          FORGEJO_SSH_BIND=127.0.0.1
+          FORGEJO_RECOVERY_ADMIN_USERNAME=eliza-admin
+          FORGEJO_RECOVERY_ADMIN_EMAIL=admin@git.eliza.test
+          FORGEJO_RECOVERY_ADMIN_PASSWORD=ci-recovery-admin-password-123456789
+          FORGEJO_DB_PASSWORD=ci-forgejo-database-password-123456
+          FORGEJO_SECRET_KEY=ci-forgejo-secret-key-1234567890123456 # gitleaks:allow - synthetic CI value
+          FORGEJO_INTERNAL_TOKEN=ci-forgejo-internal-token-123456789012
+          FORGEJO_OAUTH2_JWT_SECRET=ci-forgejo-oauth2-jwt-secret-123456789
+          FORGEJO_ACTIONS_ENABLED=true
+          FORGEJO_ACTIONS_URL=https://git.eliza.test/
+          FORGEJO_ACTION_LOG_RETENTION_DAYS=7
+          FORGEJO_ACTION_ARTIFACT_RETENTION_DAYS=7
+          FORGEJO_MAIL_ENABLED=false
+          FORGEJO_REGISTER_EMAIL_CONFIRM=false
+          ELIZA_CLOUD_OIDC_ISSUER_URL=https://cloud.eliza.test/
+          ELIZA_CLOUD_OIDC_DISCOVERY_URL=https://cloud.eliza.test/.well-known/openid-configuration
+          FORGEJO_OIDC_AUTH_NAME=ElizaCloud
+          FORGEJO_OIDC_SCOPES=openid profile email groups
+          FORGEJO_OAUTH2_ENABLE_AUTO_REGISTRATION=true
+          FORGEJO_OAUTH2_REGISTER_EMAIL_CONFIRM=false
+          FORGEJO_OAUTH2_USERNAME=nickname
+          FORGEJO_OAUTH2_ACCOUNT_LINKING=login
+          FORGEJO_OIDC_REQUIRED_CLAIM_NAME=tenant
+          FORGEJO_OIDC_REQUIRED_CLAIM_VALUE=eliza
+          FORGEJO_OIDC_GROUP_CLAIM_NAME=groups
+          FORGEJO_OIDC_ADMIN_GROUP=eliza-admins
+          FORGEJO_OIDC_RESTRICTED_GROUP=eliza-agents
+          ELIZA_CLOUD_FORGEJO_CLIENT_ID=eliza-forgejo-ci
+          ELIZA_CLOUD_FORGEJO_CLIENT_SECRET=ci-eliza-cloud-client-secret-123456
+          FORGEJO_THEMES=forgejo-auto,forgejo-light,forgejo-dark,eliza,eliza-light
+          FORGEJO_DEFAULT_THEME=eliza
+          MERGE_STEWARD_IMAGE=registry.eliza.test/eliza/merge-steward:ci
+          MERGE_STEWARD_DATABASE_URL=postgres://forgejo:ci-db-password@postgres:5432/forgejo
+          FORGEJO_STEWARD_USERNAME=eliza-steward
+          FORGEJO_STEWARD_EMAIL=steward@git.eliza.test
+          FORGEJO_STEWARD_TOKEN=ci-forgejo-steward-token-123456789012
+          FORGEJO_WEBHOOK_SECRET=ci-forgejo-webhook-secret-123456789012
+          MERGE_STEWARD_DEPLOYMENT_MODE=production
+          MERGE_STEWARD_API_AUTH_REQUIRED=true
+          MERGE_STEWARD_API_TOKEN=ci-merge-steward-api-token-123456789
+          MERGE_STEWARD_METRICS_ENABLED=true
+          MERGE_STEWARD_METRICS_AUTH_REQUIRED=true
+          MERGE_STEWARD_WEBHOOK_REQUIRE_DELIVERY_ID=true
+          MERGE_STEWARD_EVENT_GATE_ENABLED=true
+          MERGE_STEWARD_EVENT_GATE_REPOSITORIES=elizaos/eliza
+          MERGE_STEWARD_OIDC_ENABLED=true
+          MERGE_STEWARD_OIDC_REQUIRED_ROLES=steward,maintainer
+          MERGE_STEWARD_OIDC_REQUIRED_GROUPS=eliza-team
+          MERGE_STEWARD_OIDC_ADMIN_ROLES=steward-admin
+          MERGE_STEWARD_OIDC_ADMIN_GROUPS=eliza-admins
+          ELIZA_CLOUD_STEWARD_AUDIENCE=eliza-hub-steward
+          MERGE_STEWARD_INTEGRATION_ENABLED=false
+          MERGE_STEWARD_INTEGRATION_DRY_RUN=true
+          MERGE_STEWARD_WORKER_ENABLED=false
+          FORGEJO_RUNNER_IMAGE=data.forgejo.org/forgejo/runner:12
+          FORGEJO_RUNNER_DIND_IMAGE=docker:28-dind
+          FORGEJO_RUNNER_INSTANCE=https://git.eliza.test/
+          FORGEJO_RUNNER_LABELS=docker:docker://node:24-bookworm,node-24:docker://node:24-bookworm,ubuntu-latest:docker://node:24-bookworm
+          EOF
+          ENV_FILE=/tmp/eliza-hub-ci.env \
+          VALIDATE_RUNNER=true \
+          RUN_TESTS=false \
+          deployment/hetzner-staging/scripts/release-gate.sh

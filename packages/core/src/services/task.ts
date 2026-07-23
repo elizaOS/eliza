@@ -7,6 +7,7 @@
  * via `runtime.getService(ServiceType.TASK)`.
  */
 
+import { ElizaError } from "../errors";
 import type { JsonValue } from "../types";
 import type { UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
@@ -48,6 +49,19 @@ export class TaskService extends Service {
 	private executingTaskPromises = new Set<Promise<void>>();
 	/** When false, checkTasks skips the DB query. Set true by markDirty(); start true so first tick always queries. WHY: avoid redundant getTasks every second when nothing changed. */
 	private tasksDirty = true;
+	/**
+	 * Task IDs already self-healed for a missing worker (#SHADOW-ACCOUNT-DEBUG).
+	 * WHY: an orphaned task — one whose worker is not registered in THIS build
+	 * (e.g. a repeat task created by an older build whose worker name changed, or
+	 * a plugin that no longer loads) — otherwise fails validation every 1s tick
+	 * FOREVER: it never reaches executeTask (the only place that deletes/pauses),
+	 * so it re-emits TASK_WORKER_MISSING → TASK_TICK_FAILED every second. That
+	 * loop is what narrated into Shadow's chat 9× via the RECENT_ERRORS provider
+	 * + repeat-failure escalation. Self-heal (pause repeat / delete non-repeat)
+	 * fixes the source; this set makes the ONE diagnostic per orphan idempotent
+	 * so a transient getTasks/update failure can't re-narrate on the next tick.
+	 */
+	private quarantinedOrphans = new Set<string>();
 	/** Set true in stop(). runTick returns immediately when true (daemon may call runTick after unregister). */
 	private stopped = false;
 	static serviceType = ServiceType.TASK;
@@ -182,14 +196,9 @@ export class TaskService extends Service {
 			}
 			const tick = this.checkTasks()
 				.catch((error) => {
-					this.runtime.logger.error(
-						{
-							src: "plugin:basic-capabilities:service:task",
-							agentId: this.runtime.agentId,
-							error,
-						},
-						"Task timer tick failed",
-					);
+					this.runtime.reportError("TaskService.timer", error, {
+						agentId: this.runtime.agentId,
+					});
 				})
 				.finally(() => {
 					if (this.activeTick === tick) {
@@ -207,30 +216,205 @@ export class TaskService extends Service {
 	 * @param {Task[]} tasks - An array of Task objects to validate.
 	 * @returns {Promise<Task[]>} - A Promise that resolves with an array of validated Task objects.
 	 */
-	private async validateTasks(tasks: Task[]): Promise<Task[]> {
+	private async validateTasks(
+		tasks: Task[],
+	): Promise<{ tasks: Task[]; errors: ElizaError[] }> {
 		const validatedTasks: Task[] = [];
+		const errors: ElizaError[] = [];
 
 		for (const task of tasks) {
+			const context = { taskId: task.id, taskName: task.name };
+			const metadata = task.metadata as TaskMetadata | undefined;
+			if (task.tags?.includes("repeat") && metadata?.paused) continue;
 			if (!task.id) {
+				errors.push(
+					new ElizaError("Scheduled task is missing an id", {
+						code: "TASK_INVALID_ID",
+						context,
+						severity: "fatal",
+					}),
+				);
 				continue;
 			}
 
 			const worker = this.runtime.getTaskWorker(task.name);
 			if (!worker) {
+				// Orphaned task: no worker registered in THIS build. Self-heal instead
+				// of re-erroring every 1s tick (the TASK_WORKER_MISSING → TASK_TICK_FAILED
+				// loop that narrated into chat 9×). Emit the diagnostic ONCE per orphan.
+				if (!this.quarantinedOrphans.has(task.id)) {
+					await this.quarantineOrphanTask(task, errors);
+				}
+				continue;
+			}
+			// Worker is back (e.g. plugin reloaded / build redeployed): drop the
+			// quarantine mark so a future disappearance re-heals + re-diagnoses once.
+			if (this.quarantinedOrphans.has(task.id)) {
+				this.quarantinedOrphans.delete(task.id);
+			}
+
+			const invalidField = this.invalidScheduleField(task);
+			if (invalidField) {
+				errors.push(
+					new ElizaError(`Task ${task.name} has invalid ${invalidField}`, {
+						code: "TASK_SCHEDULE_INVALID",
+						context: { ...context, field: invalidField },
+						severity: "fatal",
+					}),
+				);
 				continue;
 			}
 
 			if (worker.shouldRun) {
-				const shouldRun = await worker.shouldRun(this.runtime, task);
-				if (!shouldRun) {
+				let shouldRun: unknown;
+				try {
+					shouldRun = await worker.shouldRun(this.runtime, task);
+				} catch (cause) {
+					errors.push(
+						new ElizaError(`Task ${task.name} preflight failed`, {
+							code: "TASK_PREFLIGHT_FAILED",
+							context,
+							cause,
+							severity: "ephemeral",
+						}),
+					);
 					continue;
 				}
+				if (typeof shouldRun !== "boolean") {
+					errors.push(
+						new ElizaError(
+							`Task ${task.name} preflight returned a non-boolean`,
+							{
+								code: "TASK_PREFLIGHT_INVALID",
+								context: { ...context, resultType: typeof shouldRun },
+								severity: "fatal",
+							},
+						),
+					);
+					continue;
+				}
+				if (!shouldRun) continue;
 			}
 
 			validatedTasks.push(task);
 		}
 
-		return validatedTasks;
+		return { tasks: validatedTasks, errors };
+	}
+
+	/**
+	 * Self-heal an orphaned task whose worker is not registered in this build.
+	 * Repeat orphans are PAUSED (survive a redeploy that re-registers the worker,
+	 * and can be un-paused/inspected by an operator); non-repeat orphans are
+	 * DELETED (a one-shot with no worker can never run — keeping it would re-fail
+	 * every tick with no backoff). Marks the id quarantined and emits the
+	 * diagnostic ONCE. WHY once: without the mark, every 1s tick re-emitted
+	 * TASK_WORKER_MISSING which the RECENT_ERRORS provider + repeat-escalation
+	 * narrated into the owner's chat repeatedly (the observed 9× slop). A best-
+	 * effort persistence failure is reported (once) but still marks quarantined
+	 * so we don't renarrate on the next tick; the row will simply be re-healed if
+	 * it reappears (idempotent pause/delete).
+	 */
+	private async quarantineOrphanTask(
+		task: Task,
+		errors: ElizaError[],
+	): Promise<void> {
+		if (!task.id) return;
+		const context = { taskId: task.id, taskName: task.name };
+		const isRepeat = task.tags?.includes("repeat") === true;
+		try {
+			if (isRepeat) {
+				if (task.metadata?.paused !== true) {
+					await this.runtime.updateTask(task.id, {
+						metadata: {
+							...task.metadata,
+							paused: true,
+							lastError: `No worker registered for task ${task.name} (orphan auto-paused)`,
+							updatedAt: Date.now(),
+						},
+					});
+				}
+				this.runtime.logger.warn(
+					{
+						src: "plugin:basic-capabilities:service:task",
+						agentId: this.runtime.agentId,
+						...context,
+					},
+					"Orphaned repeat task auto-paused (no worker registered)",
+				);
+			} else {
+				await this.runtime.deleteTask(task.id);
+				this.runtime.logger.warn(
+					{
+						src: "plugin:basic-capabilities:service:task",
+						agentId: this.runtime.agentId,
+						...context,
+					},
+					"Orphaned one-shot task deleted (no worker registered)",
+				);
+			}
+		} catch (cause) {
+			// Persistence failed: still mark quarantined so we don't renarrate every
+			// tick. Surface the heal failure ONCE (severity ephemeral so it can't push
+			// the tick to fatal on its own). Report via the collected errors list so
+			// it flows through the SAME single-diagnostic path, not a per-tick spam.
+			errors.push(
+				new ElizaError(`Failed to quarantine orphaned task ${task.name}`, {
+					code: "TASK_ORPHAN_QUARANTINE_FAILED",
+					context,
+					cause,
+					severity: "ephemeral",
+				}),
+			);
+		}
+		this.quarantinedOrphans.add(task.id);
+	}
+
+	private invalidScheduleField(task: Task): string | undefined {
+		const finite = (value: unknown) =>
+			typeof value === "number" && Number.isFinite(value);
+		const metadata = task.metadata as TaskMetadata | undefined;
+		if (task.dueAt != null) {
+			const validDueAt =
+				finite(task.dueAt) ||
+				(typeof task.dueAt === "bigint" && Number.isFinite(Number(task.dueAt)));
+			if (!validDueAt) return "dueAt";
+		}
+		if (
+			metadata?.scheduledAt != null &&
+			!finite(metadata.scheduledAt) &&
+			Number.isNaN(new Date(String(metadata.scheduledAt)).getTime())
+		) {
+			return "metadata.scheduledAt";
+		}
+		if (!task.tags?.includes("repeat")) return undefined;
+		if (
+			!finite(metadata?.updateInterval) ||
+			(metadata?.updateInterval ?? 0) <= 0
+		)
+			return "metadata.updateInterval";
+		for (const field of ["updatedAt", "notBefore", "notAfter"] as const) {
+			const value = metadata?.[field];
+			if (value != null && (!finite(value) || value < 0))
+				return `metadata.${field}`;
+		}
+		const failureCount = metadata?.failureCount;
+		if (failureCount != null && (!finite(failureCount) || failureCount < 0)) {
+			return "metadata.failureCount";
+		}
+		const baseInterval = metadata?.baseInterval;
+		if (baseInterval != null && (!finite(baseInterval) || baseInterval <= 0)) {
+			return "metadata.baseInterval";
+		}
+		const maxFailures = metadata?.maxFailures;
+		if (
+			maxFailures != null &&
+			maxFailures !== Infinity &&
+			!finite(maxFailures)
+		) {
+			return "metadata.maxFailures";
+		}
+		return undefined;
 	}
 
 	/**
@@ -260,7 +444,12 @@ export class TaskService extends Service {
 			// hiccup would silence every repeat task (incl. the LifeOps heartbeat)
 			// until an unrelated createTask/updateTask happened to call markDirty().
 			this.tasksDirty = true;
-			throw error;
+			throw new ElizaError("Task queue query failed", {
+				code: "TASK_QUERY_FAILED",
+				context: { agentId: this.runtime.agentId },
+				cause: error,
+				severity: "ephemeral",
+			});
 		}
 
 		if (!allTasks || allTasks.length === 0) {
@@ -284,15 +473,28 @@ export class TaskService extends Service {
 	 */
 	async runTick(tasks: Task[]): Promise<void> {
 		if (this.stopped) return;
-		const validated = await this.validateTasks(tasks);
+		const validation = await this.validateTasks(tasks);
+		const failures: ElizaError[] = [...validation.errors];
 		const now = Date.now();
 
-		for (const task of validated) {
+		for (const task of validation.tasks) {
 			// Non-repeat tasks: run when due (or immediately if no dueAt/scheduledAt). WHY: one-shot "run at time X" (e.g. follow-up) uses dueAt or metadata.scheduledAt.
 			if (!task.tags?.includes("repeat")) {
 				const dueMs = resolveDueTime(task);
 				if (dueMs != null && now < dueMs) continue;
-				await this.executeTask(task);
+				try {
+					await this.executeTask(task);
+				} catch (error) {
+					failures.push(
+						error instanceof ElizaError
+							? error
+							: new ElizaError(`Task ${task.name} execution failed`, {
+									code: "TASK_EXECUTION_FAILED",
+									context: { taskId: task.id, taskName: task.name },
+									cause: error,
+								}),
+					);
+				}
 				continue;
 			}
 
@@ -370,7 +572,40 @@ export class TaskService extends Service {
 				},
 				"Executing task - interval elapsed",
 			);
-			await this.executeTask(task);
+			try {
+				await this.executeTask(task);
+			} catch (error) {
+				failures.push(
+					error instanceof ElizaError
+						? error
+						: new ElizaError(`Task ${task.name} execution failed`, {
+								code: "TASK_EXECUTION_FAILED",
+								context: { taskId: task.id, taskName: task.name },
+								cause: error,
+							}),
+				);
+			}
+		}
+		if (failures.length > 0) {
+			throw new ElizaError(`${failures.length} scheduled task failure(s)`, {
+				code: "TASK_TICK_FAILED",
+				context: {
+					failureCodes: failures.map((failure) => failure.code),
+					failures: failures.map((failure) => ({
+						code: failure.code,
+						...(typeof failure.context?.taskId === "string"
+							? { taskId: failure.context.taskId }
+							: {}),
+						...(typeof failure.context?.taskName === "string"
+							? { taskName: failure.context.taskName }
+							: {}),
+					})),
+				},
+				cause: new AggregateError(failures),
+				severity: failures.some((failure) => failure.severity === "fatal")
+					? "fatal"
+					: "ephemeral",
+			});
 		}
 	}
 
@@ -448,6 +683,21 @@ export class TaskService extends Service {
 					"nextInterval" in result
 						? (result as { nextInterval?: number }).nextInterval
 						: undefined;
+				if (
+					nextInterval != null &&
+					(typeof nextInterval !== "number" ||
+						!Number.isFinite(nextInterval) ||
+						nextInterval <= 0)
+				) {
+					throw new ElizaError(
+						`Task ${task.name} returned an invalid nextInterval`,
+						{
+							code: "TASK_ADAPTIVE_INTERVAL_INVALID",
+							context: { taskId: task.id, taskName: task.name, nextInterval },
+							severity: "fatal",
+						},
+					);
+				}
 				if (nextInterval != null) {
 					newMeta.updateInterval = nextInterval;
 					delete newMeta.baseInterval;
@@ -468,67 +718,90 @@ export class TaskService extends Service {
 				);
 			}
 		} catch (error) {
-			if (task.tags?.includes("repeat")) {
-				const latestTask = await this.runtime.getTask(task.id);
-				if (!latestTask) {
-					return;
-				}
-				const meta = latestTask.metadata as TaskMetadata | undefined;
-				const failureCount = (meta?.failureCount ?? 0) + 1;
-				const rawMax = meta?.maxFailures;
-				// maxFailures <= 0 (or Infinity) = never auto-pause. WHY: critical heartbeats (e.g. the
-				// LifeOps scheduler) must survive transient failure storms; a paused heartbeat is a
-				// permanently-dead subsystem until an operator notices. 0/-1 survive JSON round-trips.
-				const neverPause =
-					rawMax === Infinity || (typeof rawMax === "number" && rawMax <= 0);
-				const maxFailures = neverPause ? Infinity : (rawMax ?? 5);
-				const newMeta: TaskMetadata & Record<string, unknown> = {
-					...(meta ?? {}),
-					updatedAt: Date.now(),
-					failureCount,
-					lastError: error instanceof Error ? error.message : String(error),
-				};
-				if (!neverPause && failureCount >= maxFailures) {
-					newMeta.paused = true;
-					this.runtime.logger.warn(
+			let persistenceError: unknown;
+			try {
+				if (task.tags?.includes("repeat")) {
+					const latestTask = await this.runtime.getTask(task.id);
+					if (!latestTask) {
+						return;
+					}
+					const meta = latestTask.metadata as TaskMetadata | undefined;
+					const failureCount = (meta?.failureCount ?? 0) + 1;
+					const rawMax = meta?.maxFailures;
+					// maxFailures <= 0 (or Infinity) = never auto-pause. WHY: critical heartbeats (e.g. the
+					// LifeOps scheduler) must survive transient failure storms; a paused heartbeat is a
+					// permanently-dead subsystem until an operator notices. 0/-1 survive JSON round-trips.
+					const neverPause =
+						rawMax === Infinity || (typeof rawMax === "number" && rawMax <= 0);
+					const maxFailures = neverPause ? Infinity : (rawMax ?? 5);
+					const newMeta: TaskMetadata & Record<string, unknown> = {
+						...(meta ?? {}),
+						updatedAt: Date.now(),
+						failureCount,
+						lastError: error instanceof Error ? error.message : String(error),
+					};
+					if (!neverPause && failureCount >= maxFailures) {
+						newMeta.paused = true;
+						this.runtime.logger.warn(
+							{
+								taskName: task.name,
+								taskId: task.id,
+								failureCount,
+							},
+							"Task auto-paused after max failures",
+						);
+					} else {
+						const baseInterval =
+							meta?.baseInterval ?? meta?.updateInterval ?? 1000;
+						// Persist the resolved base the FIRST time we back off. Without it,
+						// the next failure's fallback reads the already-doubled
+						// updateInterval (the exponential-of-exponential this branch exists
+						// to prevent) and a later success "restores" updateInterval to the
+						// inflated backoff value permanently instead of the original cadence.
+						newMeta.baseInterval = baseInterval;
+						newMeta.updateInterval = Math.min(
+							baseInterval * 2 ** failureCount,
+							300_000,
+						);
+					}
+					await this.runtime.updateTask(task.id, { metadata: newMeta });
+				} else if (task.id) {
+					await this.runtime.deleteTask(task.id);
+					this.runtime.logger.debug(
 						{
+							src: "plugin:basic-capabilities:service:task",
+							agentId: this.runtime.agentId,
 							taskName: task.name,
 							taskId: task.id,
-							failureCount,
 						},
-						"Task auto-paused after max failures",
-					);
-				} else {
-					const baseInterval =
-						meta?.baseInterval ?? meta?.updateInterval ?? 1000;
-					// Persist the resolved base the FIRST time we back off. Without it,
-					// the next failure's fallback reads the already-doubled
-					// updateInterval (the exponential-of-exponential this branch exists
-					// to prevent) and a later success "restores" updateInterval to the
-					// inflated backoff value permanently instead of the original cadence.
-					newMeta.baseInterval = baseInterval;
-					newMeta.updateInterval = Math.min(
-						baseInterval * 2 ** failureCount,
-						300_000,
+						"Deleted non-repeating task after execution failure",
 					);
 				}
-				await this.runtime.updateTask(task.id, { metadata: newMeta });
-			} else if (task.id) {
-				await this.runtime.deleteTask(task.id);
-				this.runtime.logger.debug(
-					{
-						src: "plugin:basic-capabilities:service:task",
-						agentId: this.runtime.agentId,
-						taskName: task.name,
-						taskId: task.id,
-					},
-					"Deleted non-repeating task after execution failure",
-				);
+			} catch (cause) {
+				persistenceError = cause;
 			}
+			const cause = persistenceError
+				? new AggregateError(
+						[error, persistenceError],
+						"Task execution and state transition failed",
+					)
+				: error;
+			const failure =
+				!persistenceError && error instanceof ElizaError
+					? error
+					: new ElizaError(`Task ${task.name} execution failed`, {
+							code: persistenceError
+								? "TASK_EXECUTION_STATE_FAILED"
+								: "TASK_EXECUTION_FAILED",
+							context: { taskName: task.name, taskId: task.id },
+							cause,
+							severity: persistenceError ? "fatal" : "ephemeral",
+						});
 			this.runtime.logger.error(
-				{ taskName: task.name, taskId: task.id, error },
+				{ taskName: task.name, taskId: task.id, error: failure },
 				"Task execution failed",
 			);
+			throw failure;
 		} finally {
 			this.executingTasks.delete(task.id);
 			const durationMs = Date.now() - startTime;

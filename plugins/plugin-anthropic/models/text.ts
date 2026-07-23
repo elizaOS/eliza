@@ -391,12 +391,109 @@ function readToolChoice(value: GenerateTextParams["toolChoice"]): ToolChoice<Too
   return typeof choice.name === "string" ? { type: "tool", toolName: choice.name } : undefined;
 }
 
+/**
+ * Anthropic's server enforces two grammar-compilation caps on STRICT tools per
+ * request (#16499): at most 20 strict tools, and at most 24 optional (non-
+ * required) parameters counted across all strict tool schemas — recursively
+ * through nested objects and array items. The default core action catalog
+ * alone exceeds both (45 tools / 465 optional params; `MESSAGE` compiles to 64
+ * on its own), so an over-budget strict surface hard-400s the whole turn.
+ */
+const ANTHROPIC_MAX_STRICT_TOOLS = 20;
+const ANTHROPIC_MAX_STRICT_TOOL_OPTIONAL_PARAMS = 24;
+
+/** Optional-parameter count the way Anthropic's grammar compiler counts: every
+ * property not listed in `required`, recursing into object properties and
+ * array `items` (nested optionals count toward the same request-wide cap). */
+function countOptionalParams(schema: unknown): number {
+  if (!isRecord(schema)) return 0;
+  let count = 0;
+  const properties = isRecord(schema.properties) ? schema.properties : undefined;
+  if (properties) {
+    const required = new Set(
+      Array.isArray(schema.required) ? (schema.required as unknown[]).map(String) : []
+    );
+    for (const [key, child] of Object.entries(properties)) {
+      if (!required.has(key)) count += 1;
+      count += countOptionalParams(child);
+    }
+  }
+  if (isRecord(schema.items)) count += countOptionalParams(schema.items);
+  return count;
+}
+
+/** Both tool shapes that can carry a strict flag through this seam: a flat
+ * definition (`{ strict, parameters }`) and the OpenAI-style wrapper
+ * (`{ type: "function", function: { strict, parameters } }`). */
+function readToolStrictAndSchema(entry: unknown): { strict: boolean; schema: unknown } {
+  if (!isRecord(entry)) return { strict: false, schema: undefined };
+  const fn = isRecord(entry.function) ? entry.function : undefined;
+  const strict = entry.strict === true || fn?.strict === true;
+  const inputSchema = isRecord(entry.inputSchema)
+    ? ((entry.inputSchema as { jsonSchema?: unknown }).jsonSchema ?? entry.inputSchema)
+    : undefined;
+  const schema =
+    inputSchema ?? entry.parameters ?? entry.input_schema ?? fn?.parameters ?? undefined;
+  return { strict, schema };
+}
+
+function stripToolStrict(entry: unknown): unknown {
+  if (!isRecord(entry)) return entry;
+  const out: Record<string, unknown> = { ...entry };
+  if (out.strict === true) delete out.strict;
+  if (isRecord(out.function) && out.function.strict === true) {
+    const fn = { ...out.function };
+    delete fn.strict;
+    out.function = fn;
+  }
+  return out;
+}
+
+/**
+ * Downgrade an over-budget strict tool surface to non-strict for THIS request
+ * (the count-based Anthropic analog of #11156's OpenAI keyword sanitizer):
+ * looser tool-calling beats a hard 400 that fails the whole turn. Under-budget
+ * surfaces pass through untouched, so providers/models that fit keep strict
+ * grammar guarantees.
+ */
+export function enforceAnthropicStrictToolBudget(tools: ToolSet | undefined): ToolSet | undefined {
+  if (!tools) return tools;
+  const entries = Object.entries(tools as Record<string, unknown>);
+  const strictEntries = entries.filter(([, entry]) => readToolStrictAndSchema(entry).strict);
+  if (strictEntries.length === 0) return tools;
+
+  const optionalParams = strictEntries.reduce(
+    (total, [, entry]) => total + countOptionalParams(readToolStrictAndSchema(entry).schema),
+    0
+  );
+  if (
+    strictEntries.length <= ANTHROPIC_MAX_STRICT_TOOLS &&
+    optionalParams <= ANTHROPIC_MAX_STRICT_TOOL_OPTIONAL_PARAMS
+  ) {
+    return tools;
+  }
+
+  logger.warn(
+    {
+      src: "plugin:anthropic",
+      strictTools: strictEntries.length,
+      maxStrictTools: ANTHROPIC_MAX_STRICT_TOOLS,
+      optionalParams,
+      maxOptionalParams: ANTHROPIC_MAX_STRICT_TOOL_OPTIONAL_PARAMS,
+    },
+    "Strict tool surface exceeds Anthropic's grammar caps; sending tools non-strict for this request (#16499)"
+  );
+  return Object.fromEntries(
+    entries.map(([key, entry]) => [key, stripToolStrict(entry)])
+  ) as ToolSet;
+}
+
 function toAnthropicTextParams(params: GenerateTextParams): GenerateTextParamsWithProviderOptions {
   const { messages, providerOptions, tools, toolChoice, ...rest } = params;
   const normalized: GenerateTextParamsWithProviderOptions = {
     ...rest,
     messages: readModelMessages(messages),
-    tools: readToolSet(tools),
+    tools: enforceAnthropicStrictToolBudget(readToolSet(tools)),
     toolChoice: readToolChoice(toolChoice),
     providerOptions: readProviderOptions(providerOptions),
   };

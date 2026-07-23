@@ -89,6 +89,24 @@ function pickBodyString(
 }
 
 async function readRawRequestBody(req: http.IncomingMessage): Promise<Buffer> {
+  // On the bare agent server (packages/agent/src/bin.ts), the host's
+  // `attachJsonBodyIfPresent` already drains and JSON-parses the stream for an
+  // `application/json` request, stashing `req.rawBody`/`req.body` before the
+  // route runs. Re-streaming here would then read zero bytes and 400 a valid
+  // request (#16348). Honor the pre-read body first, mirroring app-core's
+  // `readCompatJsonBody`. The packaged app path re-streams `req` fresh and
+  // leaves these unset, so it still falls through to the drain below.
+  const preRead = req as http.IncomingMessage & {
+    rawBody?: unknown;
+    body?: unknown;
+  };
+  if (typeof preRead.rawBody === "string") {
+    return Buffer.from(preRead.rawBody, "utf8");
+  }
+  if (preRead.body && typeof preRead.body === "object") {
+    return Buffer.from(JSON.stringify(preRead.body), "utf8");
+  }
+
   const chunks: Buffer[] = [];
   for await (const chunk of req) {
     chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
@@ -215,6 +233,11 @@ export async function handleCloudTtsPreviewRoute(
       if (cloudUrl === undefined) {
         continue;
       }
+      // #16425: forward the client's per-utterance Idempotency-Key so the
+      // cloud route can replay the direct attempt's committed reservation
+      // instead of charging the same utterance a second time through this
+      // fallback transport.
+      const idempotencyKey = req.headers["idempotency-key"];
       const attempt = await fetch(cloudUrl, {
         method: "POST",
         headers: {
@@ -222,6 +245,9 @@ export async function handleCloudTtsPreviewRoute(
           "x-api-key": cloudApiKey,
           "Content-Type": "application/json",
           Accept: "audio/mpeg",
+          ...(typeof idempotencyKey === "string" && idempotencyKey
+            ? { "Idempotency-Key": idempotencyKey }
+            : {}),
         },
         body: JSON.stringify({
           text,

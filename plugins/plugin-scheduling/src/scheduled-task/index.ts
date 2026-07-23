@@ -19,6 +19,12 @@ export {
   registerFallbackAnchors,
 } from "./consolidation-policy.js";
 export {
+  appSchedulingPgSchema,
+  lifeScheduledTaskLog,
+  lifeScheduledTasks,
+  schedulingDbSchema,
+} from "./db-schema.js";
+export {
   buildFallbackDefaultPack,
   FALLBACK_DEFAULT_PACK_ID,
   FALLBACK_DEFAULT_PACK_IDEMPOTENCY_KEYS,
@@ -67,6 +73,13 @@ export {
   registerBuiltInGates,
   type TaskGateRegistry,
 } from "./gate-registry.js";
+export {
+  ensureSchedulingTables,
+  migrateSchedulingTable,
+  migrateSchedulingTables,
+  SCHEDULING_MIGRATION_SERVICE_TYPE,
+  SchedulingMigrationService,
+} from "./migration.js";
 export { computeNextFireAt } from "./next-fire-at.js";
 export {
   ChannelKeyError,
@@ -114,6 +127,12 @@ export {
   type ScheduledTaskLogStore,
   STATE_LOG_DEFAULT_RETENTION_DAYS,
 } from "./state-log.js";
+export {
+  createSchedulingSqlScheduledTaskLogStore,
+  createSchedulingSqlScheduledTaskStore,
+  parseScheduledTaskLogRow,
+  parseScheduledTaskRow,
+} from "./store.js";
 export { OWNER_LOCAL_TZ, resolveTriggerTz } from "./trigger-tz.js";
 export type {
   ActivitySignalBusView,

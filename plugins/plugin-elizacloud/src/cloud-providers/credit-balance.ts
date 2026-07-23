@@ -4,6 +4,7 @@ import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@el
 import { logger } from "@elizaos/core";
 import type { CloudAuthService } from "../services/cloud-auth";
 import type { CreditBalanceResponse } from "../types/cloud";
+import { getCachedAccountSnapshot } from "./cloud-account";
 
 const TOP_UP_URL = "https://www.elizacloud.ai/dashboard/settings?tab=billing";
 const creditCaches = new WeakMap<IAgentRuntime, { value: number; at: number }>();
@@ -25,6 +26,15 @@ export const creditBalanceProvider: Provider = {
   async get(runtime: IAgentRuntime, _message: Memory, _state: State): Promise<ProviderResult> {
     const auth = runtime.getService("CLOUD_AUTH") as CloudAuthService | undefined;
     if (!auth?.isAuthenticated()) return { text: "" };
+
+    // CLOUD_ACCOUNT shares this contextGate and fetches the same balance in
+    // the same compose; reuse its snapshot so the billing endpoint is hit
+    // once per cache window instead of once per provider.
+    const shared = getCachedAccountSnapshot(runtime);
+    if (shared) {
+      const result = format(shared.balance);
+      return { ...result, text: (result.text ?? "").slice(0, MAX_CREDIT_TEXT_CHARS) };
+    }
 
     const cached = creditCaches.get(runtime);
     if (cached && Date.now() - cached.at < TTL) {

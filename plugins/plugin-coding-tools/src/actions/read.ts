@@ -18,12 +18,15 @@ import {
 } from "@elizaos/core";
 
 import {
+  capTranscriptForChat,
   failureToActionResult,
+  fencePreformatted,
   readNumberParam,
   readPositiveIntSetting,
   readStringParam,
   successActionResult,
 } from "../lib/format.js";
+import { resolveInputPath } from "../lib/path-utils.js";
 import type { FileStateService } from "../services/file-state-service.js";
 import type { SandboxService } from "../services/sandbox-service.js";
 import {
@@ -80,7 +83,15 @@ async function finalizeReadResult(params: {
   );
 
   if (params.callback) {
-    await params.callback({ text: formatted, source: "coding-tools" });
+    // Fenced (#16563): line-numbered file content is the richest preformatted
+    // payload of all — unfenced, Discord's markdown pass eats `*`/`_` pairs
+    // and embedded fences break the message layout. Capped: a 2000-line read
+    // otherwise splits into a flood of follow-up messages; the model still
+    // sees the full content via the ActionResult.
+    await params.callback({
+      text: fencePreformatted(capTranscriptForChat(formatted)),
+      source: "coding-tools",
+    });
   }
 
   return successActionResult(formatted, {
@@ -161,6 +172,8 @@ export async function readFileHandler(
       message: "file_path is required",
     });
   }
+  const inputPath = resolveInputPath(runtime, conversationId, filePath);
+  if (!inputPath.ok) return failureToActionResult(inputPath.failure);
 
   const sandbox = runtime.getService(SANDBOX_SERVICE) as InstanceType<
     typeof SandboxService
@@ -175,7 +188,7 @@ export async function readFileHandler(
     });
   }
 
-  const validated = await sandbox.validatePath(conversationId, filePath);
+  const validated = await sandbox.validatePath(conversationId, inputPath.value);
   if (validated.ok === false) {
     const reason =
       validated.reason === "blocked" ? "path_blocked" : "invalid_param";

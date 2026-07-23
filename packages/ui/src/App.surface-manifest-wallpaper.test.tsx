@@ -261,8 +261,8 @@ vi.mock("./components/shell/BugReportModal", () => ({
 vi.mock("./components/shell/ChatSurface", () => ({
   ChatSurface: () => <div data-testid="chat-surface" />,
 }));
-vi.mock("./components/shell/ContinuousChatOverlay", () => ({
-  ContinuousChatOverlay: () => null,
+vi.mock("./components/shell/ChatOverlay", () => ({
+  ChatOverlay: () => null,
 }));
 vi.mock("./components/shell/HomePill", () => ({
   HomePill: () => <button type="button">home pill</button>,
@@ -293,6 +293,9 @@ vi.mock("./components/character/CharacterEditor", () => ({
 }));
 vi.mock("./components/pages/LauncherSurface", () => ({
   LauncherSurface: () => <div data-testid="launcher-surface" />,
+}));
+vi.mock("./widgets/WidgetHost", () => ({
+  WidgetHost: () => <div data-testid="home-widget-host" />,
 }));
 vi.mock("./components/settings/SecretsManagerSection", () => ({
   VaultModal: () => null,

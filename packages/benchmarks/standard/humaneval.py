@@ -30,9 +30,7 @@ import argparse
 import ast
 import contextlib
 import io
-import logging
 import multiprocessing as mp
-import os
 import re
 import signal
 import textwrap
@@ -49,12 +47,12 @@ from ._base import (
 from ._cli import RunnerFactory, cli_dispatch
 from .scenarios import count_dict_examples, expand_dict_examples, validate_dict_examples
 
-log = logging.getLogger("benchmarks.standard.humaneval")
-
 BENCHMARK_ID = "humaneval"
-DATASET_VERSION = "openai_humaneval@1.0"
-EXPANDED_DATASET_VERSION = "openai_humaneval@1.0+edge-v1"
 DATASET_NAME = "openai_humaneval"
+DATASET_REVISION = "7dce6050a7d6d172f3cc5c32aa97f52fa1a2e544"
+DATASET_VERSION = f"{DATASET_NAME}@{DATASET_REVISION}"
+EXPANDED_DATASET_VERSION = f"{DATASET_VERSION}+edge-v1"
+EXPECTED_TEST_EXAMPLES = 164
 DEFAULT_MAX_TOKENS = 2048
 
 SYSTEM_PROMPT = (
@@ -70,12 +68,12 @@ EMPTY_RETRY_SYSTEM_PROMPT = (
     "Indent every non-blank line with 4 spaces."
 )
 
-# Tiny in-repo fixture used for the smoke test. Real runs pull
-# ``openai_humaneval`` via ``datasets``.
+# Tiny in-repo fixture used for explicit mock smoke tests. Real runs load the
+# pinned ``openai_humaneval`` revision and fail if it is unavailable.
 SMOKE_FIXTURES: tuple[dict[str, object], ...] = (
     {
         "task_id": "HumanEval/smoke_add",
-        "prompt": "def add(a: int, b: int) -> int:\n    \"\"\"Return a + b.\"\"\"\n",
+        "prompt": 'def add(a: int, b: int) -> int:\n    """Return a + b."""\n',
         "canonical_solution": "    return a + b\n",
         "test": (
             "def check(candidate):\n"
@@ -87,7 +85,7 @@ SMOKE_FIXTURES: tuple[dict[str, object], ...] = (
     },
     {
         "task_id": "HumanEval/smoke_max",
-        "prompt": "def max_of(xs: list[int]) -> int:\n    \"\"\"Return the largest int in xs.\"\"\"\n",
+        "prompt": 'def max_of(xs: list[int]) -> int:\n    """Return the largest int in xs."""\n',
         "canonical_solution": "    return max(xs)\n",
         "test": (
             "def check(candidate):\n"
@@ -260,25 +258,15 @@ def _execute_program(program: str, timeout_s: float) -> tuple[bool, str]:
 
 
 def _load_dataset_examples(limit: int | None) -> list[dict[str, object]]:
-    if (
-        os.environ.get("BENCHMARK_STANDARD_FULL_DATA", "").strip() != "1"
-        and limit is not None
-        and limit <= len(SMOKE_FIXTURES)
-    ):
-        return list(SMOKE_FIXTURES)[:limit]
-    try:
-        from datasets import load_dataset
-    except ImportError:
-        log.warning("`datasets` not installed — using built-in fixture")
-        items = list(SMOKE_FIXTURES)
-        return items if limit is None else items[:limit]
+    """Load a pinned, complete HumanEval test corpus for non-mock runs."""
+    from datasets import load_dataset
 
-    try:
-        ds = load_dataset(DATASET_NAME, split="test")
-    except Exception as exc:  # noqa: BLE001
-        log.warning("failed to load %s: %s — using fixture", DATASET_NAME, exc)
-        items = list(SMOKE_FIXTURES)
-        return items if limit is None else items[:limit]
+    target_count = (
+        EXPECTED_TEST_EXAMPLES if limit is None else min(limit, EXPECTED_TEST_EXAMPLES)
+    )
+    if target_count <= 0:
+        return []
+    ds = load_dataset(DATASET_NAME, split="test", revision=DATASET_REVISION)
 
     examples: list[dict[str, object]] = []
     for row in ds:
@@ -291,8 +279,13 @@ def _load_dataset_examples(limit: int | None) -> list[dict[str, object]]:
                 "entry_point": row.get("entry_point") or "",
             }
         )
-        if limit is not None and len(examples) >= limit:
+        if len(examples) >= target_count:
             break
+    if len(examples) != target_count:
+        raise RuntimeError(
+            f"HumanEval corpus is incomplete: expected {target_count} test examples, "
+            f"loaded {len(examples)} from revision {DATASET_REVISION}"
+        )
     return examples
 
 
@@ -315,11 +308,21 @@ class HumanEvalRunner:
         self._timeout_s = timeout_s
         self._include_edge_scenarios = include_edge_scenarios
 
-    def _selected_examples(self, limit: int | None) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
-        base = list(self._examples if self._examples is not None else _load_dataset_examples(limit))
+    def _selected_examples(
+        self, limit: int | None
+    ) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+        base = list(
+            self._examples
+            if self._examples is not None
+            else _load_dataset_examples(limit)
+        )
         if self._examples is not None and limit is not None:
             base = base[:limit]
-        examples = expand_humaneval_examples(base) if self._include_edge_scenarios else list(base)
+        examples = (
+            expand_humaneval_examples(base)
+            if self._include_edge_scenarios
+            else list(base)
+        )
         validate_humaneval_examples(examples)
         return base, examples
 
@@ -365,8 +368,9 @@ class HumanEvalRunner:
             try:
                 gen = client.generate(messages, config)
             except Exception as exc:  # noqa: BLE001
-                log.warning("generation failed (idx=%d): %s", i, exc)
-                continue
+                raise RuntimeError(
+                    f"HumanEval generation failed for example {i + 1}/{len(examples)}"
+                ) from exc
             if not gen.text.strip():
                 retry_messages = [
                     ChatMessage(role="system", content=EMPTY_RETRY_SYSTEM_PROMPT),
@@ -375,10 +379,12 @@ class HumanEvalRunner:
                 try:
                     retry_gen = client.generate(retry_messages, config)
                 except Exception as exc:  # noqa: BLE001
-                    log.warning("empty-output retry failed (idx=%d): %s", i, exc)
-                else:
-                    if retry_gen.text.strip():
-                        gen = retry_gen
+                    raise RuntimeError(
+                        "HumanEval empty-output retry failed for example "
+                        f"{i + 1}/{len(examples)}"
+                    ) from exc
+                if retry_gen.text.strip():
+                    gen = retry_gen
             empty_output = not gen.text.strip()
             if empty_output:
                 empty_outputs += 1
@@ -397,8 +403,11 @@ class HumanEvalRunner:
                     }
                 )
 
-        if n == 0:
-            raise RuntimeError("HumanEval evaluated zero examples — model returned no output")
+        if n != len(examples):
+            raise RuntimeError(
+                "HumanEval evaluated "
+                f"{n}/{len(examples)} examples; refusing a partial score"
+            )
         if empty_outputs == n:
             raise RuntimeError(
                 f"HumanEval generated empty visible output for all {n} evaluated examples; "
@@ -409,7 +418,9 @@ class HumanEvalRunner:
             benchmark=BENCHMARK_ID,
             model=model,
             endpoint=endpoint,
-            dataset_version=EXPANDED_DATASET_VERSION if self._include_edge_scenarios else DATASET_VERSION,
+            dataset_version=EXPANDED_DATASET_VERSION
+            if self._include_edge_scenarios
+            else DATASET_VERSION,
             n=n,
             metrics={
                 "score": round(pass_at_1, 4),
@@ -425,7 +436,9 @@ class HumanEvalRunner:
 
 class _HumanEvalFactory(RunnerFactory):
     prog = "benchmarks.standard.humaneval"
-    description = "HumanEval pass@1 (openai_humaneval) over an OpenAI-compatible endpoint."
+    description = (
+        "HumanEval pass@1 (openai_humaneval) over an OpenAI-compatible endpoint."
+    )
 
     def augment_parser(self, parser: argparse.ArgumentParser) -> None:
         parser.add_argument(
@@ -441,7 +454,9 @@ class _HumanEvalFactory(RunnerFactory):
             help="Per-test execution timeout in seconds",
         )
 
-    def build(self, args: argparse.Namespace) -> tuple[HumanEvalRunner, Sequence[str] | None]:
+    def build(
+        self, args: argparse.Namespace
+    ) -> tuple[HumanEvalRunner, Sequence[str] | None]:
         runner = HumanEvalRunner(
             max_tokens=args.max_tokens,
             timeout_s=args.timeout_s,
@@ -452,7 +467,9 @@ class _HumanEvalFactory(RunnerFactory):
             base = list(SMOKE_FIXTURES)
             if args.limit is not None:
                 base = base[: args.limit]
-            examples = expand_humaneval_examples(base) if args.expand_scenarios else base
+            examples = (
+                expand_humaneval_examples(base) if args.expand_scenarios else base
+            )
             runner = HumanEvalRunner(
                 examples=base,
                 max_tokens=args.max_tokens,
@@ -464,7 +481,9 @@ class _HumanEvalFactory(RunnerFactory):
         return runner, mock_responses
 
 
-def expand_humaneval_examples(examples: list[dict[str, object]]) -> list[dict[str, object]]:
+def expand_humaneval_examples(
+    examples: list[dict[str, object]],
+) -> list[dict[str, object]]:
     def mutate(item: dict[str, object], instruction: str) -> None:
         item["prompt"] = (
             f"# Edge instruction: {instruction}\n"
@@ -479,7 +498,13 @@ def validate_humaneval_examples(examples: list[dict[str, object]]) -> None:
     validate_dict_examples(
         examples,
         id_key="task_id",
-        required_keys=("task_id", "prompt", "canonical_solution", "test", "entry_point"),
+        required_keys=(
+            "task_id",
+            "prompt",
+            "canonical_solution",
+            "test",
+            "entry_point",
+        ),
     )
 
 

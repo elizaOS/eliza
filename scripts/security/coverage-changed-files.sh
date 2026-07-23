@@ -21,6 +21,7 @@ BASE=$1
 HEAD=$2
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 NODE_SELF_TEST_MANIFEST="$SCRIPT_DIR/coverage-node-self-tests.txt"
+SUBPROCESS_SOURCE_MANIFEST=${COVERAGE_SUBPROCESS_SOURCE_MANIFEST:-"$SCRIPT_DIR/coverage-subprocess-sources.txt"}
 
 # Fail fast: an empty merge-base means the two commits share no history (bad
 # fetch depth / wrong refs), which would otherwise silently diff the entire tree.
@@ -37,7 +38,7 @@ is_excluded_test() {
   case "$1" in
     *.e2e.test.*|*.live.test.*|*.real.test.*|*.real.e2e.test.*|packages/app/test/android/*.android.spec.*) return 0 ;;
     packages/test/cloud-e2e/tests/*.spec.*) return 0 ;;
-    */test/e2e/*|test/e2e/*|*/e2e/*.test.*|e2e/*.test.*) return 0 ;;
+    */test/e2e/*|test/e2e/*|*/tests/e2e/*|tests/e2e/*|*/e2e/*.test.*|e2e/*.test.*) return 0 ;;
   esac
   return 1
 }
@@ -51,9 +52,20 @@ changed_source() {
     | while IFS= read -r file; do
         [ -f "$file" ] || continue
         grep -Fxq "$file" "$NODE_SELF_TEST_MANIFEST" && continue
+        grep -Fxq "$file" "$SUBPROCESS_SOURCE_MANIFEST" && continue
         echo "$file"
       done \
     | node --no-warnings "$SCRIPT_DIR/coverage-source-classifier.mjs" --base "$MERGE_BASE"
+}
+
+changed_subprocess_sources() {
+  git diff --name-only --diff-filter=ACMRT "$MERGE_BASE" "$HEAD" \
+    | while IFS= read -r file; do
+        [ -f "$file" ] || continue
+        if grep -Fxq "$file" "$SUBPROCESS_SOURCE_MANIFEST"; then
+          echo "$file"
+        fi
+      done
 }
 
 changed_tests() {
@@ -78,6 +90,10 @@ echo 'files<<EOF'
 changed_source
 echo 'EOF'
 
+echo 'subprocess_files<<EOF'
+changed_subprocess_sources
+echo 'EOF'
+
 echo 'node_tests<<EOF'
 changed_node_self_tests
 echo 'EOF'
@@ -89,7 +105,7 @@ changed_tests | while IFS= read -r file; do
   if grep -Eq "from ['\"]vitest['\"]|require\\(['\"]vitest['\"]\\)" "$file"; then
     continue
   fi
-  if grep -Eq "from ['\"]@playwright/test['\"]|require\\(['\"]@playwright/test['\"]\\)" "$file"; then
+  if grep -Eq "from ['\"]@?playwright/test['\"]|require\\(['\"]@?playwright/test['\"]\\)" "$file"; then
     continue
   fi
   echo "$file"
@@ -100,7 +116,7 @@ echo 'vitest_tests<<EOF'
 changed_tests | while IFS= read -r file; do
   [ -f "$file" ] || continue
   is_excluded_test "$file" && continue
-  if grep -Eq "from ['\"]@playwright/test['\"]|require\\(['\"]@playwright/test['\"]\\)" "$file"; then
+  if grep -Eq "from ['\"]@?playwright/test['\"]|require\\(['\"]@?playwright/test['\"]\\)" "$file"; then
     continue
   fi
   if grep -Eq "from ['\"]vitest['\"]|require\\(['\"]vitest['\"]\\)" "$file"; then

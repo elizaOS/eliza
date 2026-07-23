@@ -63,6 +63,7 @@ import {
 import type { LinkedAccountProviderId } from "@elizaos/shared/contracts/service-routing";
 import {
   type AccountPool,
+  configuredAccountStrategyForProvider,
   isAccountSelectableNow,
   type Strategy,
   selectionForProvider,
@@ -77,22 +78,24 @@ const VALID_CODING_STRATEGIES = new Set<Strategy>([
   "round-robin",
   "least-used",
   "quota-aware",
+  "reset-soonest",
+  "drain-soonest-reset",
 ]);
 
-/** Last-resort strategy — the ELIZA_CODING_ACCOUNT_STRATEGY env var, else least-used. */
-function getDefaultCodingStrategy(): Strategy {
+/** Optional coding-only operator override from ELIZA_CODING_ACCOUNT_STRATEGY. */
+function getEnvCodingStrategy(): Strategy | undefined {
   const env =
     typeof process !== "undefined"
       ? process.env.ELIZA_CODING_ACCOUNT_STRATEGY?.trim()
       : undefined;
-  if (!env) return "least-used";
+  if (!env) return undefined;
   if (VALID_CODING_STRATEGIES.has(env as Strategy)) return env as Strategy;
   logger.warn(
     `[coding-account-bridge] ignoring invalid ELIZA_CODING_ACCOUNT_STRATEGY=${JSON.stringify(
       env,
-    )}; using least-used`,
+    )}; using the provider default`,
   );
-  return "least-used";
+  return undefined;
 }
 
 /**
@@ -825,20 +828,24 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
       if (candidates.length === 0) return null;
       for (const providerId of candidates) {
         // Explicit caller override > the app's per-provider
-        // config.accountStrategies (same live selectionForProvider read the
-        // anthropic/subscription bridges use, so the rotation-strategy picker
-        // steers coding spawns too) > ELIZA_CODING_ACCOUNT_STRATEGY env >
-        // least-used. Strategy only — the llmText route's accountIds pin the
-        // chat brain's account, not coding sub-agents.
+        // config.accountStrategies > ELIZA_CODING_ACCOUNT_STRATEGY env > the
+        // provider default (Anthropic drains expiring weekly windows; other
+        // providers fall back to least-used). The configured-only read is
+        // deliberate: otherwise Anthropic's built-in default would make the
+        // coding-only env override unreachable. Strategy only — the llmText
+        // route's accountIds pin the chat brain's account, not coding agents.
         const strategy =
           opts?.strategy ??
+          configuredAccountStrategyForProvider(providerId) ??
+          getEnvCodingStrategy() ??
           selectionForProvider(providerId).strategy ??
-          getDefaultCodingStrategy();
+          "least-used";
         const account = await pool.select({
           providerId,
           strategy,
           ...(opts?.sessionKey ? { sessionKey: opts.sessionKey } : {}),
           ...(opts?.exclude ? { exclude: opts.exclude } : {}),
+          ...(opts?.model ? { model: opts.model } : {}),
           // Follow-up pin: a continuing session restricts the pool to its
           // spawn-time account so an expired session-affinity can't strategy-
           // drift the subprocess onto a sibling (billing/health stay keyed to

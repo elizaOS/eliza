@@ -14,6 +14,11 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 
+import {
+  buildPrShepherdScheduleInput,
+  GITHUB_PR_SHEPHERD_SERVICE_TYPE,
+  ORCHESTRATOR_TASK_SERVICE_TYPE,
+} from "../coding-agent-schedules.js";
 import { ScheduledTaskRunnerService } from "./runner-service.js";
 
 function makeFakeRuntime(): IAgentRuntime {
@@ -99,5 +104,69 @@ describe("ScheduledTaskRunnerService — rebindable tick clock", () => {
     const firedAtMs = Date.parse(fired.state.firedAt ?? "");
     expect(firedAtMs).toBeGreaterThanOrEqual(before);
     expect(firedAtMs).toBeLessThanOrEqual(after);
+  });
+
+  it("wraps the runner dispatcher with coding-agent schedule handling", async () => {
+    const createdTasks: Array<{
+      title: string;
+      metadata?: Record<string, unknown>;
+    }> = [];
+    const runtime = {
+      ...makeFakeRuntime(),
+      getService(type: string) {
+        if (type === GITHUB_PR_SHEPHERD_SERVICE_TYPE) {
+          return {
+            async listAssignedOpenPullRequests() {
+              return [
+                {
+                  owner: "elizaOS",
+                  repo: "eliza",
+                  number: 16455,
+                  title: "Needs PR shepherd",
+                  url: "https://github.com/elizaOS/eliza/pull/16455",
+                  reviewDecision: "CHANGES_REQUESTED",
+                  behindBase: false,
+                  checksConclusion: "success",
+                },
+              ];
+            },
+          };
+        }
+        if (type === ORCHESTRATOR_TASK_SERVICE_TYPE) {
+          return {
+            async createTask(input: {
+              title: string;
+              metadata?: Record<string, unknown>;
+            }) {
+              createdTasks.push(input);
+              return { id: "coding-task-1", metadata: input.metadata };
+            },
+            async listTasks() {
+              return [];
+            },
+          };
+        }
+        return null;
+      },
+    } as unknown as IAgentRuntime;
+    const service = await ScheduledTaskRunnerService.start(runtime);
+    const runner = service.getRunner({
+      agentId: runtime.agentId,
+      now: () => new Date("2026-07-17T12:00:00.000Z"),
+    });
+    const schedule = await runner.schedule(
+      buildPrShepherdScheduleInput({
+        agentId: runtime.agentId,
+        trigger: { kind: "manual" },
+        projectId: "project-a",
+      }),
+    );
+
+    const result = await runner.fireWithResult(schedule.taskId);
+
+    expect(result.kind).toBe("fired");
+    expect(createdTasks).toHaveLength(1);
+    expect(createdTasks[0]?.title).toBe("PR shepherd: elizaOS/eliza#16455");
+    expect(createdTasks[0]?.metadata?.mergeDisabled).toBe(true);
   });
 });

@@ -13,8 +13,10 @@ import type {
 } from "@elizaos/core";
 import {
   assertActiveTrajectoryForLlmCall,
+  attestLlmInputSubstring,
   buildCanonicalSystemPrompt,
   dropDuplicateLeadingSystemMessage,
+  ElizaError,
   logActiveTrajectoryLlmCall,
   logger,
   ModelType,
@@ -144,6 +146,15 @@ interface RecordArgTransform {
   path: string;
   entriesKey: string;
   valueMode: RecordArgValueMode;
+}
+
+interface ResponseSchemaTransform {
+  restoreText(text: string): string;
+}
+
+interface PreparedStructuredOutput {
+  output: NativeOutput;
+  transform?: ResponseSchemaTransform;
 }
 
 interface NormalizedNativeToolsResult {
@@ -423,26 +434,200 @@ function resolveProviderOptions(
   return Object.keys(providerOptions).length > 0 ? providerOptions : undefined;
 }
 
-function buildStructuredOutput(responseSchema: unknown): NativeOutput {
+function buildStructuredOutput(
+  responseSchema: unknown,
+  modelType: ModelTypeName
+): PreparedStructuredOutput {
   if (
     responseSchema &&
     typeof responseSchema === "object" &&
     "responseFormat" in responseSchema &&
     "parseCompleteOutput" in responseSchema
   ) {
-    return responseSchema as NativeOutput;
+    return { output: responseSchema as NativeOutput };
   }
 
   const schemaOptions =
     responseSchema && typeof responseSchema === "object" && "schema" in responseSchema
       ? (responseSchema as { schema: unknown; name?: string; description?: string })
       : { schema: responseSchema };
+  const preparedSchema = prepareResponseFormatSchema(schemaOptions.schema, modelType);
 
-  return Output.object({
-    schema: jsonSchema(sanitizeJsonSchema(schemaOptions.schema, true)),
-    ...(schemaOptions.name ? { name: schemaOptions.name } : {}),
-    ...(schemaOptions.description ? { description: schemaOptions.description } : {}),
-  }) as NativeOutput;
+  return {
+    output: Output.object({
+      schema: jsonSchema(sanitizeJsonSchema(preparedSchema.schema, true)),
+      ...(schemaOptions.name ? { name: schemaOptions.name } : {}),
+      ...(schemaOptions.description ? { description: schemaOptions.description } : {}),
+    }) as NativeOutput,
+    ...(preparedSchema.transform ? { transform: preparedSchema.transform } : {}),
+  };
+}
+
+const STRICT_SAFE_PLANNER_ARGS_ENTRIES_KEY = "__eliza_planner_arg_entries";
+
+function prepareResponseFormatSchema(
+  schema: unknown,
+  modelType: ModelTypeName
+): {
+  schema: unknown;
+  transform?: ResponseSchemaTransform;
+} {
+  if (modelType !== ACTION_PLANNER_MODEL_TYPE || !isPlannerResponseSchema(schema)) {
+    return { schema };
+  }
+
+  const root = schema as Record<string, unknown>;
+  const rootProperties = asRecord(root.properties);
+  const toolCalls = asRecord(rootProperties.toolCalls);
+  const toolCallItems = asRecord(toolCalls.items);
+  const toolCallProperties = asRecord(toolCallItems.properties);
+
+  return {
+    schema: {
+      ...root,
+      properties: {
+        ...rootProperties,
+        toolCalls: {
+          ...toolCalls,
+          items: {
+            ...toolCallItems,
+            properties: {
+              ...toolCallProperties,
+              args: strictSafePlannerArgsSchema(),
+            },
+          },
+        },
+      },
+    },
+    transform: { restoreText: restorePlannerArgsResponseText },
+  };
+}
+
+function isPlannerResponseSchema(schema: unknown): boolean {
+  const root = asOptionalRecord(schema);
+  const rootProperties = asOptionalRecord(root?.properties);
+  const toolCalls = asOptionalRecord(rootProperties?.toolCalls);
+  const toolCallItems = asOptionalRecord(toolCalls?.items);
+  const toolCallProperties = asOptionalRecord(toolCallItems?.properties);
+  const args = asOptionalRecord(toolCallProperties?.args);
+
+  return (
+    root?.type === "object" &&
+    toolCalls?.type === "array" &&
+    toolCallItems?.type === "object" &&
+    args?.type === "object" &&
+    args.additionalProperties !== false &&
+    Array.isArray(root?.required) &&
+    root.required.includes("toolCalls")
+  );
+}
+
+function strictSafePlannerArgsSchema(): JSONSchema7 {
+  return {
+    type: "object",
+    description:
+      "Arbitrary planner tool arguments. Put every original args property in __eliza_planner_arg_entries as {key,valueJson}; valueJson must be JSON.stringify(value), so strings include JSON quotes and objects, arrays, numbers, booleans, and null round-trip exactly.",
+    properties: {
+      [STRICT_SAFE_PLANNER_ARGS_ENTRIES_KEY]: {
+        type: "array",
+        description:
+          "Key/value entries restored to the original planner args object before runtime tool validation.",
+        items: {
+          type: "object",
+          properties: {
+            key: { type: "string" },
+            valueJson: {
+              type: "string",
+              description: "JSON.stringify(value) for this argument key.",
+            },
+          },
+          required: ["key", "valueJson"],
+          additionalProperties: false,
+        },
+      },
+    },
+    required: [STRICT_SAFE_PLANNER_ARGS_ENTRIES_KEY],
+    additionalProperties: false,
+  };
+}
+
+function restorePlannerArgsResponseText(text: string): string {
+  const parsed = JSON.parse(text) as unknown;
+  return JSON.stringify(restorePlannerArgsEnvelope(parsed));
+}
+
+function restorePlannerArgsEnvelope(value: unknown): unknown {
+  const envelope = asOptionalRecord(value);
+  if (!envelope || !Array.isArray(envelope.toolCalls)) {
+    return value;
+  }
+
+  return {
+    ...envelope,
+    toolCalls: envelope.toolCalls.map((toolCall) => {
+      const call = asOptionalRecord(toolCall);
+      if (!call || !("args" in call)) {
+        return toolCall;
+      }
+      return {
+        ...call,
+        args: restoreStrictSafePlannerArgs(call.args),
+      };
+    }),
+  };
+}
+
+function restoreStrictSafePlannerArgs(value: unknown): unknown {
+  const record = asOptionalRecord(value);
+  if (!record) return value;
+  if (!Object.hasOwn(record, STRICT_SAFE_PLANNER_ARGS_ENTRIES_KEY)) return value;
+  const entries = record[STRICT_SAFE_PLANNER_ARGS_ENTRIES_KEY];
+  if (!Array.isArray(entries)) {
+    throw new Error("Malformed strict-safe planner args: entries must be an array.");
+  }
+
+  const restored: Record<string, unknown> = Object.create(null);
+  const seenKeys = new Set<string>();
+  for (const entry of entries) {
+    const row = asOptionalRecord(entry);
+    if (!row) {
+      throw new Error("Malformed strict-safe planner args: entry must be an object.");
+    }
+    const rowKeys = Object.keys(row);
+    if (rowKeys.length !== 2 || !rowKeys.includes("key") || !rowKeys.includes("valueJson")) {
+      throw new Error(
+        "Malformed strict-safe planner args: entry must contain only key and valueJson."
+      );
+    }
+    const key = typeof row.key === "string" ? row.key : undefined;
+    if (key === undefined || typeof row.valueJson !== "string") {
+      throw new Error(
+        "Malformed strict-safe planner args: entry requires string key and valueJson."
+      );
+    }
+    if (seenKeys.has(key)) {
+      throw new Error(`Malformed strict-safe planner args: duplicate key ${JSON.stringify(key)}.`);
+    }
+    seenKeys.add(key);
+    let parsedValue: unknown;
+    try {
+      parsedValue = JSON.parse(row.valueJson) as unknown;
+    } catch (error) {
+      throw new Error(
+        `Malformed strict-safe planner args: invalid JSON for key ${JSON.stringify(key)}.`,
+        {
+          cause: error,
+        }
+      );
+    }
+    Object.defineProperty(restored, key, {
+      value: parsedValue,
+      enumerable: true,
+      configurable: true,
+      writable: true,
+    });
+  }
+  return restored;
 }
 
 /**
@@ -489,8 +674,26 @@ function normalizeNativeToolsForCall(
     // 'anyOf' with a list of possible properties`.
     const rawSchema =
       tool.parameters ?? functionTool.parameters ?? ({ type: "object" } satisfies JSONSchema7);
+    const strict =
+      typeof tool.strict === "boolean"
+        ? tool.strict
+        : typeof functionTool.strict === "boolean"
+          ? functionTool.strict
+          : undefined;
     const recordArgTransforms: RecordArgTransform[] = [];
-    let inputSchema = sanitizeJsonSchema(rawSchema, true, "$", recordArgTransforms);
+    let inputSchema: JSONSchema7;
+    if (strict === false) {
+      if (!rawSchema || typeof rawSchema !== "object" || Array.isArray(rawSchema)) {
+        throw new ElizaError("[OpenAI] Non-strict native tool schema must be a JSON object.", {
+          code: "OPENAI_INVALID_NON_STRICT_TOOL_SCHEMA",
+          context: { toolName: name },
+          severity: "ephemeral",
+        });
+      }
+      inputSchema = rawSchema as JSONSchema7;
+    } else {
+      inputSchema = sanitizeJsonSchema(rawSchema, true, "$", recordArgTransforms);
+    }
     if (options.cerebrasMode) {
       // User-supplied schemas may still contain empty-properties subobjects
       // even after sanitizeJsonSchema. Apply Cerebras-specific normalization
@@ -514,6 +717,7 @@ function normalizeNativeToolsForCall(
     toolSet[registeredName] = {
       ...(description ? { description } : {}),
       inputSchema: jsonSchema(inputSchema as JSONSchema7),
+      ...(strict === undefined ? {} : { strict }),
     };
   }
 
@@ -1413,11 +1617,13 @@ function isTransientProviderError(error: unknown): boolean {
  */
 async function generateTextWithTransientRetry(
   generateParams: NativeGenerateTextParams,
-  maxRetries = 3
+  maxRetries = 3,
+  beforeAttempt?: () => void
 ): Promise<Awaited<ReturnType<typeof generateText<ToolSet>>>> {
   let attempt = 0;
   for (;;) {
     try {
+      beforeAttempt?.();
       return (await generateText(
         generateParams as Parameters<typeof generateText>[0]
         // biome-ignore lint/suspicious/noExplicitAny: see above.
@@ -1461,7 +1667,8 @@ interface BufferedStreamResult {
 async function consumeStreamWithTransientRetry(
   generateParams: NativeGenerateTextParams,
   onChunk: ((chunk: string) => void) | undefined,
-  maxRetries = 5
+  maxRetries = 5,
+  beforeAttempt?: () => void
 ): Promise<BufferedStreamResult> {
   let attempt = 0;
   for (;;) {
@@ -1472,6 +1679,7 @@ async function consumeStreamWithTransientRetry(
       // and rethrow after consumption so the retry below can act on it. (This
       // is the same reason opencode attaches an onError to its streamText.)
       let capturedError: unknown;
+      beforeAttempt?.();
       const result = streamText({
         ...(generateParams as Parameters<typeof streamText>[0]),
         onError: ({ error }: { error: unknown }) => {
@@ -1577,12 +1785,14 @@ async function generateTextByModelType(
           "type" in callerResponseFormat
         ? (callerResponseFormat as { type: string }).type
         : undefined;
-  const requestedOutput: NativeOutput | undefined =
+  const preparedOutput =
     paramsWithAttachments.responseSchema && !cerebrasMode
-      ? buildStructuredOutput(paramsWithAttachments.responseSchema)
-      : responseFormatType === "json_object"
-        ? Output.json()
-        : undefined;
+      ? buildStructuredOutput(paramsWithAttachments.responseSchema, modelType)
+      : undefined;
+  const requestedOutput: NativeOutput | undefined =
+    preparedOutput?.output ?? (responseFormatType === "json_object" ? Output.json() : undefined);
+  const restoreResponseText = (text: string): string =>
+    preparedOutput?.transform?.restoreText(text) ?? text;
 
   const generateParams: NativeTextParams = {
     model,
@@ -1609,12 +1819,13 @@ async function generateTextByModelType(
     // consumeStreamWithTransientRetry). Token streaming isn't user-visible for
     // coding. Regular chat falls through to the live-streaming path below.
     const fullActionSurface = process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE?.trim().toLowerCase();
-    if (
+    const shouldBufferStream =
+      preparedOutput?.transform !== undefined ||
       fullActionSurface === "1" ||
       fullActionSurface === "true" ||
       fullActionSurface === "yes" ||
-      fullActionSurface === "on"
-    ) {
+      fullActionSurface === "on";
+    if (shouldBufferStream) {
       const details = createLlmCallDetails(
         modelName,
         params,
@@ -1625,14 +1836,21 @@ async function generateTextByModelType(
         generateParams
       );
       details.response = "";
+      const hasResponseTransform = preparedOutput?.transform !== undefined;
       const buffered = await recordLlmCall(runtime, details, () =>
-        consumeStreamWithTransientRetry(generateParams, params.onStreamChunk)
+        consumeStreamWithTransientRetry(
+          generateParams,
+          hasResponseTransform ? undefined : params.onStreamChunk,
+          5,
+          () => attestLlmInputSubstring(details)
+        )
       );
+      const restoredText = restoreResponseText(buffered.text);
       const restoredToolCalls = restoreRecordArgToolCalls(
         buffered.toolCalls,
         normalizedToolResult.recordArgTransformsByTool
       );
-      details.response = buffered.text;
+      details.response = restoredText;
       details.toolCalls = restoredToolCalls;
       details.finishReason = buffered.finishReason;
       if (buffered.usage) {
@@ -1641,9 +1859,14 @@ async function generateTextByModelType(
       }
       return {
         textStream: (async function* replayBufferedStream() {
-          if (buffered.text) yield buffered.text;
+          if (restoredText) {
+            if (hasResponseTransform) {
+              params.onStreamChunk?.(restoredText);
+            }
+            yield restoredText;
+          }
         })(),
-        text: Promise.resolve(buffered.text),
+        text: Promise.resolve(restoredText),
         ...(shouldReturnNativeResult ? { toolCalls: Promise.resolve(restoredToolCalls) } : {}),
         usage: Promise.resolve(convertUsage(buffered.usage)),
         finishReason: Promise.resolve(buffered.finishReason),
@@ -1687,6 +1910,7 @@ async function generateTextByModelType(
     let firstItem: IteratorResult<unknown> | undefined;
     for (let attempt = 0; ; attempt++) {
       capturedStreamError = undefined;
+      attestLlmInputSubstring(details);
       result = await streamText({
         ...generateParams,
         onError: ({ error }: { error: unknown }) => {
@@ -1748,10 +1972,13 @@ async function generateTextByModelType(
         rejectStructuredText(error);
         return;
       }
-      resolveStructuredText(responseChunks.join(""));
+      resolveStructuredText(restoreResponseText(responseChunks.join("")));
     };
     const sdkTextPromise = handledPromise(result.text);
-    const textPromise = params.streamStructured === true ? structuredTextPromise : sdkTextPromise;
+    const textPromise =
+      params.streamStructured === true
+        ? structuredTextPromise
+        : handledMappedPromise(sdkTextPromise, restoreResponseText);
     const rawUsagePromise = handledPromise(result.usage);
     const rawFinishReasonPromise = handledPromise(result.finishReason);
     const rawToolCallsPromise = handledPromise(result.toolCalls);
@@ -1774,7 +2001,7 @@ async function generateTextByModelType(
         restoredToolCallsPromise,
       ]);
 
-      details.response = responseChunks.join("");
+      details.response = restoreResponseText(responseChunks.join(""));
       if (usageResult.status === "fulfilled" && usageResult.value) {
         applyUsageToDetails(details, usageResult.value);
         emitModelUsageEvent(runtime, modelType, params.prompt ?? "", usageResult.value);
@@ -1877,18 +2104,21 @@ async function generateTextByModelType(
     generateParams
   );
   const result = await recordLlmCall(runtime, details, async () => {
-    const result = await generateTextWithTransientRetry(generateParams);
+    const result = await generateTextWithTransientRetry(generateParams, 3, () =>
+      attestLlmInputSubstring(details)
+    );
+    const restoredText = restoreResponseText(result.text);
     const restoredToolCalls = restoreRecordArgToolCalls(
       result.toolCalls,
       normalizedToolResult.recordArgTransformsByTool
     );
-    details.response = result.text;
+    details.response = restoredText;
     details.toolCalls = restoredToolCalls;
     details.finishReason = result.finishReason as string | undefined;
     details.providerMetadata = result.providerMetadata;
     applyUsageToDetails(details, result.usage);
     return {
-      text: result.text,
+      text: restoredText,
       toolCalls: restoredToolCalls as typeof result.toolCalls,
       finishReason: result.finishReason,
       usage: result.usage,

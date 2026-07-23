@@ -28,7 +28,7 @@ function scenario(id: string): Scenario {
 }
 
 describe("runBenchmark", () => {
-  it("records thrown scenario runs as failed outcomes and still tears down", async () => {
+  it("fails closed on thrown scenario runs and still tears down", async () => {
     let teardownCalled = false;
     const throwingHandler: Handler = {
       name: "ThrowingHandler",
@@ -40,15 +40,39 @@ describe("runBenchmark", () => {
       },
     };
 
-    const results = await runBenchmark(
-      throwingHandler ? [throwingHandler] : [],
-      [scenario("s1")],
-    );
-    const scored = results.handlers[0]?.scenarios[0];
+    await expect(
+      runBenchmark(throwingHandler ? [throwingHandler] : [], [scenario("s1")]),
+    ).rejects.toThrow("scenario exploded");
 
     expect(teardownCalled).toBe(true);
-    expect(scored?.passed).toBe(false);
-    expect(scored?.traces[0]).toContain("scenario exploded");
+  });
+
+  it("fails closed on a teardown error", async () => {
+    const handler: Handler = {
+      name: "TeardownFailure",
+      async run(input) {
+        return {
+          scenarioId: input.id,
+          agentResponses: ["ok"],
+          secretsInStorage: {},
+          pluginsLoaded: [],
+          secretLeakedInResponse: false,
+          leakedValues: [],
+          refusedInPublic: false,
+          pluginActivated: null,
+          pluginDeactivated: null,
+          latencyMs: 1,
+          traces: [],
+        };
+      },
+      async teardown() {
+        throw new Error("teardown exploded");
+      },
+    };
+
+    await expect(
+      runBenchmark([handler], [scenario("s1")]),
+    ).rejects.toThrow("teardown exploded");
   });
 
   it("excludes setup-incompatible handlers from scored results", async () => {

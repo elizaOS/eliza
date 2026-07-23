@@ -22,6 +22,7 @@ Output:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import logging
 import os
@@ -35,6 +36,9 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 log = logging.getLogger("abliteration-robustness")
 
 PACKAGES_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_DATASET = "mlabonne/harmless_alpaca"
+DEFAULT_DATASET_REVISION = "02c6a92cfcf11bb0c387334f8146d149d65b587f"
+EXPECTED_TEST_PROMPTS = 6_265
 HARNESS_NAMES = {"eliza", "hermes", "openclaw", "smithers"}
 OPENAI_COMPAT_DEFAULT_BASE_URLS: dict[str, str] = {
     "openai": "https://api.openai.com/v1",
@@ -106,38 +110,64 @@ def _is_refusal(text: str) -> bool:
     return any(p.search(lower) for p in REFUSAL_PATTERNS)
 
 
-def _load_prompts_from_jsonl(path: Path, limit: int) -> list[str]:
+def _load_prompts_from_jsonl(
+    path: Path, limit: int | None
+) -> tuple[list[str], dict[str, Any]]:
+    if not path.exists():
+        raise FileNotFoundError(f"Abliteration prompt corpus does not exist: {path}")
     out: list[str] = []
+    raw_rows = 0
     with path.open("r", encoding="utf-8") as f:
-        for line in f:
+        for line_number, line in enumerate(f, start=1):
             line = line.strip()
             if not line:
                 continue
+            raw_rows += 1
             try:
                 rec = json.loads(line)
-            except json.JSONDecodeError:
-                continue
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"Invalid prompt JSON in {path}:{line_number}") from exc
             text = rec.get("prompt") or rec.get("instruction") or rec.get("text")
-            if isinstance(text, str) and text.strip():
+            if not isinstance(text, str) or not text.strip():
+                raise ValueError(f"Prompt record {path}:{line_number} has no prompt text")
+            if limit is None or len(out) < limit:
                 out.append(text.strip())
-            if len(out) >= limit:
-                break
-    return out
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    return out, {
+        "kind": "local_jsonl",
+        "path": str(path.resolve()),
+        "sha256": digest,
+        "raw_rows": raw_rows,
+        "loaded_rows": len(out),
+    }
 
 
-def _load_prompts_from_hf(dataset: str, limit: int) -> list[str]:
+def _load_prompts_from_hf(
+    dataset: str,
+    revision: str,
+    split: str,
+    limit: int | None,
+) -> tuple[list[str], dict[str, Any]]:
     from datasets import load_dataset  # noqa: WPS433
 
-    log.info("loading HF dataset %s", dataset)
-    ds = load_dataset(dataset, split="train")
+    log.info("loading HF dataset %s at %s (%s)", dataset, revision, split)
+    ds = load_dataset(dataset, split=split, revision=revision)
     out: list[str] = []
-    for row in ds:
+    for row_number, row in enumerate(ds, start=1):
         text = row.get("text") or row.get("prompt") or row.get("instruction")
-        if isinstance(text, str) and text.strip():
+        if not isinstance(text, str) or not text.strip():
+            raise ValueError(f"HuggingFace prompt row {row_number} has no prompt text")
+        if limit is None or len(out) < limit:
             out.append(text.strip())
-        if len(out) >= limit:
-            break
-    return out
+    return out, {
+        "kind": "huggingface",
+        "dataset": dataset,
+        "revision": revision,
+        "split": split,
+        "raw_rows": len(ds),
+        "loaded_rows": len(out),
+        "fingerprint": str(getattr(ds, "_fingerprint", "")),
+    }
 
 
 def _fallback_prompts(limit: int) -> list[str]:
@@ -200,11 +230,14 @@ def _build_argparser() -> argparse.ArgumentParser:
     p.add_argument("--model", required=True)
     p.add_argument("--base-url", default=None)
     p.add_argument("--api-key-env", default="OPENAI_API_KEY")
-    p.add_argument("--dataset", default="mlabonne/harmless_alpaca",
+    p.add_argument("--dataset", default=DEFAULT_DATASET,
                    help="HuggingFace dataset id (default: mlabonne/harmless_alpaca)")
+    p.add_argument("--dataset-revision", default=DEFAULT_DATASET_REVISION)
+    p.add_argument("--split", default="test")
     p.add_argument("--dataset-path", default=None,
                    help="Optional local JSONL with one prompt per line (key: prompt|instruction|text)")
-    p.add_argument("--max-examples", type=int, default=100)
+    p.add_argument("--max-examples", type=int, default=None)
+    p.add_argument("--expected-examples", type=int, default=None)
     p.add_argument("--max-new-tokens", type=int, default=384)
     p.add_argument("--temperature", type=float, default=0.0)
     p.add_argument(
@@ -277,8 +310,6 @@ def _make_harness_client(harness: str, args: argparse.Namespace):
             or os.environ.get("OPENAI_BASE_URL")
             or os.environ.get("CEREBRAS_BASE_URL")
             or None,
-            mode=(os.environ.get("HERMES_MODE") or "in_process").strip()
-            or "in_process",
             timeout_s=float(os.environ.get("HERMES_TIMEOUT_S", "120")),
             reasoning_effort=os.environ.get("BENCHMARK_REASONING_EFFORT")
             or os.environ.get("CEREBRAS_REASONING_EFFORT")
@@ -302,7 +333,6 @@ def _make_harness_client(harness: str, args: argparse.Namespace):
             reasoning_effort=os.environ.get("BENCHMARK_REASONING_EFFORT")
             or os.environ.get("CEREBRAS_REASONING_EFFORT")
             or None,
-            direct_openai_compatible=True,
         )
         client.wait_until_ready(timeout=120)
         return client
@@ -392,26 +422,45 @@ def _generate(client, model: str, prompt: str, max_tokens: int, temperature: flo
 
 def main() -> int:
     args = _build_argparser().parse_args()
+    if args.max_examples is not None and args.max_examples <= 0:
+        raise ValueError("--max-examples must be positive")
+    if args.expected_examples is not None and args.expected_examples <= 0:
+        raise ValueError("--expected-examples must be positive")
 
     if args.dataset_path:
-        prompts = _load_prompts_from_jsonl(Path(args.dataset_path), args.max_examples)
+        prompts, data_provenance = _load_prompts_from_jsonl(
+            Path(args.dataset_path), args.max_examples
+        )
     elif args.provider == "mock":
-        prompts = _fallback_prompts(args.max_examples)
+        prompts = _fallback_prompts(args.max_examples or 3)
+        data_provenance = {
+            "kind": "embedded_mock_fixture",
+            "raw_rows": len(_fallback_prompts(3)),
+            "loaded_rows": len(prompts),
+        }
     else:
-        try:
-            prompts = _load_prompts_from_hf(args.dataset, args.max_examples)
-        except Exception as exc:  # noqa: BLE001
-            log.warning(
-                "could not load HF dataset %s (%s); using embedded smoke prompts",
-                args.dataset,
-                exc,
-            )
-            prompts = _fallback_prompts(args.max_examples)
+        prompts, data_provenance = _load_prompts_from_hf(
+            args.dataset,
+            args.dataset_revision,
+            args.split,
+            args.max_examples,
+        )
     if not prompts:
         raise SystemExit("no prompts loaded")
+    if args.expected_examples is not None and len(prompts) != args.expected_examples:
+        raise RuntimeError(
+            "Abliteration prompt count mismatch: "
+            f"expected {args.expected_examples}, loaded {len(prompts)}"
+        )
     base_count = len(prompts)
     if args.expand_scenarios:
         prompts = _expand_prompts(prompts)
+    validation_errors = _validate_prompts(prompts)
+    if validation_errors:
+        raise RuntimeError(
+            "Abliteration prompt validation failed: " + "; ".join(validation_errors[:5])
+        )
+    scenario_counts = _count_prompts(prompts)
     if args.count_scenarios:
         payload = _count_prompts(prompts)
         payload["base"] = base_count
@@ -420,19 +469,15 @@ def main() -> int:
         print(json.dumps(payload, indent=2))
         return 0
     if args.validate_scenarios:
-        errors = _validate_prompts(prompts)
         payload = {
-            "ok": not errors,
+            "ok": True,
             "base": base_count,
             "edge": len(prompts) - base_count,
             "total": len(prompts),
             "edge_multiplier": len(EDGE_VARIANTS),
         }
-        if errors:
-            payload["errors"] = errors[:50]
-            payload["error_count"] = len(errors)
         print(json.dumps(payload, indent=2))
-        return 0 if not errors else 1
+        return 0
     if not args.out:
         raise SystemExit("--out is required unless --count-scenarios or --validate-scenarios is used")
     out_dir = Path(args.out)
@@ -449,16 +494,12 @@ def main() -> int:
         if args.provider == "mock":
             reply = "Here is a concise, helpful response for the harmless request."
         else:
-            try:
-                if _selected_harness(args.provider) and hasattr(client, "reset"):
-                    client.reset(
-                        task_id=f"abliteration-robustness-{os.getpid()}-{i}",
-                        benchmark="abliteration-robustness",
-                    )
-                reply = _generate(client, args.model, prompt, args.max_new_tokens, args.temperature)
-            except Exception as exc:  # noqa: BLE001
-                log.warning("generation failed: %s", exc)
-                continue
+            if _selected_harness(args.provider) and hasattr(client, "reset"):
+                client.reset(
+                    task_id=f"abliteration-robustness-{os.getpid()}-{i}",
+                    benchmark="abliteration-robustness",
+                )
+            reply = _generate(client, args.model, prompt, args.max_new_tokens, args.temperature)
         n += 1
         if _is_refusal(reply):
             n_refused += 1
@@ -480,6 +521,8 @@ def main() -> int:
         "model": args.model,
         "provider": args.provider,
         "dataset": args.dataset_path or args.dataset,
+        "data_provenance": data_provenance,
+        "scenario_counts": scenario_counts,
         "elapsed_s": round(time.perf_counter() - t0, 2),
         "metrics": {
             "score": score,

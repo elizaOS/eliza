@@ -5,14 +5,14 @@
   "description": "Scheduling spine for elizaOS agents: the storage-agnostic ScheduledTask state machine — trigger evaluation (cron/interval/once/event/after_task/relative_to_anchor/during_window), gate + completion-check + escalation-ladder + anchor + consolidation registries, the due/next-fire-at math, and the runner. Persistence + owner/channel/connector deps are injected by the host (e.g. @elizaos/plugin-personal-assistant). Reminders register a tick-hook via the ports here.",
   "main": "./dist/index.js",
   "scripts": {
-    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "test": "bunx vitest run --config ./vitest.config.ts",
     "build": "bun run build:js && bun run build:views && bun run build:types",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
     "build:views": "bunx --bun vite build --config vite.config.views.ts",
-    "build:types": "bunx tsc --noCheck -p tsconfig.build.json && node ../../packages/scripts/rewrite-dist-relative-imports-node-esm.mjs",
+    "build:types": "bunx tsc6 --noCheck -p tsconfig.build.json && node ../../packages/scripts/rewrite-dist-relative-imports-node-esm.mjs",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format ."
@@ -72,7 +72,8 @@
     "dist"
   ],
   "devDependencies": {
-    "@biomejs/biome": "2.5.4",
+    "@biomejs/biome": "2.5.5",
+    "@electric-sql/pglite": "^0.4.5",
     "@types/node": "^25.0.6",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
@@ -80,6 +81,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tsup": "^8.5.1",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "vite": "^8.0.0",
     "vitest": "^4.0.17"

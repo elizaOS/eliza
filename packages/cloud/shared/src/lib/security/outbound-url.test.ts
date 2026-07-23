@@ -58,13 +58,12 @@ describe("outbound URL SSRF validation", () => {
     expect(isForbiddenIpAddress(address)).toBe(true);
   });
 
-  test.each([
-    "8.8.8.8",
-    "1.1.1.1",
-    "2606:4700:4700::1111",
-  ])("classifies %s as public", (address) => {
-    expect(isForbiddenIpAddress(address)).toBe(false);
-  });
+  test.each(["8.8.8.8", "1.1.1.1", "2606:4700:4700::1111"])(
+    "classifies %s as public",
+    (address) => {
+      expect(isForbiddenIpAddress(address)).toBe(false);
+    },
+  );
 
   test.each([
     "ftp://example.com/file",

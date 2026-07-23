@@ -34,6 +34,16 @@ import type { DrizzleDatabase } from "./types";
 export const FTS_CONFIG = "english";
 export const MESSAGE_SEARCH_TABLE_TYPE = "messages";
 
+/**
+ * Quotes, leading-minus terms, and standalone ORs carry structural meaning in
+ * `websearch_to_tsquery`. Literal and trigram fallbacks cannot preserve that
+ * structure, so they must not be OR-ed into those queries. Interior hyphens
+ * remain ordinary text for attachment names, ticket IDs, and similar tokens.
+ */
+export function usesWebsearchSyntax(value: string): boolean {
+  return value.includes('"') || /(^|\s)-(?=\S)/.test(value) || /(^|\s)or(?=\s|$)/i.test(value);
+}
+
 // Accent-folding map: each accented Latin letter → its ASCII base. `from` and
 // `to` are equal length; the three trailing chars in `from` (straight/curly
 // apostrophe, backtick) have no `to` counterpart and are therefore deleted by

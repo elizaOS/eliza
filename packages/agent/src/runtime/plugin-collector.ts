@@ -75,6 +75,14 @@ function orchestratorCompatPluginRequested(config: ElizaConfig): boolean {
   if (raw === "1" || raw === "true" || raw === "yes") {
     return true;
   }
+  // Dedicated cloud containers default the orchestrator ON: each agent owns a
+  // hardened single-tenant VM, so its coding/orchestration surface should
+  // match a local desktop agent instead of requiring a per-container env
+  // opt-in. Explicit config/env opt-outs above still win, and lean-chat
+  // containers force-drop it via LEAN_CHAT_EXCLUDED_PLUGINS regardless.
+  if (readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1") {
+    return true;
+  }
   return [
     "ELIZA_DEFAULT_AGENT_TYPE",
     "ELIZA_ACP_DEFAULT_AGENT",
@@ -281,8 +289,6 @@ function removeAllModelProviderSurfaces(pluginsToLoad: Set<string>): void {
  * into that entry's `shortIds` and delete the row here.
  */
 const LEGACY_HOST_OWNED_SHORT_ID_MAP: Readonly<Record<string, string>> = {
-  // plugin-personal-assistant (no registry-entry.json yet).
-  selfcontrol: "@elizaos/plugin-personal-assistant",
   // plugin-obsidian (no registry-entry.json yet).
   obsidian: "@elizaos/plugin-obsidian",
   // plugin-repoprompt (no registry-entry.json yet).
@@ -503,6 +509,37 @@ export function collectPluginNames(
       "agent-orchestrator",
       "agent-orchestrator (@elizaos/plugin-agent-orchestrator)",
     );
+  }
+  // Dedicated cloud containers get the local-desktop operator surface by
+  // default: the web terminal's PTY service and the BYO-subscription CLI
+  // inference lane. Both are dormant until used — plugin-pty registers
+  // PTY_SERVICE and waits for a terminal to connect; plugin-cli-inference's
+  // model map is inert unless ELIZA_CHAT_VIA_CLI selects a backend. lean-chat
+  // containers stay lean: these are in LEAN_CHAT_EXCLUDED_PLUGINS.
+  if (
+    !onMobile &&
+    !leanChat &&
+    readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1"
+  ) {
+    pluginsToLoad.add("@elizaos/plugin-pty");
+    track(
+      "@elizaos/plugin-pty",
+      "cloud container default (web terminal PTY service)",
+    );
+    pluginsToLoad.add("@elizaos/plugin-cli-inference");
+    track(
+      "@elizaos/plugin-cli-inference",
+      "cloud container default (inert unless ELIZA_CHAT_VIA_CLI selects a backend)",
+    );
+    // Cloud containers drop local inference unless the on-device signal is
+    // explicitly set: they have no GPU, the on-device gte-small embedder runs
+    // 1.5–98s per batch on contended container CPU, and its 384-dim vectors
+    // mismatch the cloud's 1536-dim TEXT_EMBEDDING — dropping every memory
+    // insert (see LEAN_CHAT_EXCLUDED_PLUGINS, which already encodes this for
+    // lean chat). The cloud embedding handler serves TEXT_EMBEDDING instead.
+    if (process.env.ELIZA_LOCAL_LLAMA?.trim() !== "1") {
+      pluginsToLoad.delete("@elizaos/plugin-local-inference");
+    }
   }
   if (!onMobile && gitpathologistRequested(config)) {
     pluginsToLoad.add("@elizaos/plugin-gitpathologist");
@@ -755,7 +792,42 @@ export function collectPluginNames(
   // gitpathologist .git auto-detect, config allow-list) added them, so a
   // lean-chat agent is guaranteed minimal. (#8434)
   if (leanChat) {
+    // OPT-IN local-primary embeddings for lean-chat cloud agents.
+    //
+    // #8762 excluded @elizaos/plugin-local-inference from lean-chat entirely
+    // because on a cloud container the on-device gte-small GGUF (a) ran
+    // 1.5-98s/batch on the contended CPU and (b) emitted 384-dim vectors into
+    // a 1536-dim column, dropping every insert. That was the right default at
+    // the time. But local gte-small is now measured at 17-48ms/embed on the
+    // live VPS, 10-20x faster than the cloud OpenAI round-trip (~250ms), so
+    // for a cloud agent whose store is re-provisioned at gte-small's 384-dim
+    // width, local-primary is a strict win on the always-on recall hot path.
+    //
+    // Gated behind ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS (default OFF): a hot flip
+    // for EXISTING 1536-dim agents would degrade recall until re-embedded
+    // (#9911 failure class), so this stays opt-in and rolls out per-agent with
+    // a backfill. When the flag is set, keep plugin-local-inference loaded so
+    // it can win the TEXT_EMBEDDING registration, and signal the cloud plugin
+    // to yield the slot (ELIZAOS_CLOUD_USE_EMBEDDINGS=false unless the operator
+    // explicitly pinned it true) so the two providers don't both register.
+    const localEmbeddingsOptIn =
+      readAliasedEnv("ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS") === "1" &&
+      process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS?.trim().toLowerCase() !== "true";
     for (const name of LEAN_CHAT_EXCLUDED_PLUGINS) {
+      if (localEmbeddingsOptIn && name === "@elizaos/plugin-local-inference") {
+        // Keep the local embedder; ensure it wins TEXT_EMBEDDING over cloud.
+        pluginsToLoad.add(name);
+        track(
+          name,
+          "lean-chat local-primary embeddings (ELIZA_LEAN_CHAT_LOCAL_EMBEDDINGS=1)",
+        );
+        // Yield the cloud embedding slot so plugin-elizacloud does not also
+        // register TEXT_EMBEDDING (registerCloudEmbeddingModels checks this).
+        if (!process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS) {
+          process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS = "false";
+        }
+        continue;
+      }
       pluginsToLoad.delete(name);
     }
   }

@@ -201,7 +201,7 @@ describe("isShellPaintable", () => {
   });
 
   it("paints the live shell during first-run so onboarding runs in the chat", () => {
-    // Onboarding is now seeded into the live ContinuousChatOverlay (homescreen +
+    // Onboarding is now seeded into the live ChatOverlay (homescreen +
     // auto-opened chat) by the headless first-run conductor, not a full-screen
     // gate — so first-run-required is shell-paintable.
     expect(isShellPaintable("first-run-required")).toBe(true);

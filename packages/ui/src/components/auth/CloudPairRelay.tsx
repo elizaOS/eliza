@@ -3,6 +3,7 @@ import { getBootConfig, setBootConfig } from "../../config/boot-config";
 import { setElizaApiToken } from "../../utils/eliza-globals";
 
 export const CLOUD_PAIR_SESSION_STORAGE_KEY = "eliza:cloud-pair:api-token";
+export const CLOUD_PAIR_LOCAL_STORAGE_KEY = CLOUD_PAIR_SESSION_STORAGE_KEY;
 
 interface PairExchangeResponse {
   apiKey?: unknown;
@@ -98,13 +99,17 @@ export async function exchangeCloudPairToken(
   return body.apiKey.trim();
 }
 
-function tryPersistCloudPairSessionToken(apiToken: string): boolean {
+function tryPersistBrowserStorage(
+  storage: Storage | undefined,
+  apiToken: string,
+): boolean {
+  if (!storage) return false;
   try {
-    window.sessionStorage.setItem(CLOUD_PAIR_SESSION_STORAGE_KEY, apiToken);
+    storage.setItem(CLOUD_PAIR_SESSION_STORAGE_KEY, apiToken);
     return true;
   } catch (_storageError) {
-    // Session storage can be disabled by hardened browsers. Boot config still
-    // carries the token for this page load, so the redirect can continue.
+    // Browser storage can be disabled by hardened settings. Boot config still
+    // carries the token for this page load when at least one channel fails.
     return false;
   }
 }
@@ -113,7 +118,14 @@ export function persistCloudPairApiToken(apiToken: string): void {
   const token = apiToken.trim();
   if (!token) throw new Error("Missing cloud pair API token.");
 
-  tryPersistCloudPairSessionToken(token);
+  const persistedInSession = tryPersistBrowserStorage(
+    typeof window === "undefined" ? undefined : window.sessionStorage,
+    token,
+  );
+  const persistedDurably = tryPersistBrowserStorage(
+    typeof window === "undefined" ? undefined : window.localStorage,
+    token,
+  );
 
   const nextConfig = { ...getBootConfig(), apiToken: token };
   setBootConfig(nextConfig);
@@ -124,6 +136,41 @@ export function persistCloudPairApiToken(apiToken: string): void {
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent("steward-token-sync"));
   }
+
+  if (!(persistedInSession || persistedDurably)) {
+    throw new Error(
+      "Cloud pair API token could not be stored in this browser.",
+    );
+  }
+}
+
+export function resolveCloudHostedAgentUrl(
+  locationLike: Pick<Location, "hostname"> | null = typeof window ===
+  "undefined"
+    ? null
+    : window.location,
+): string {
+  const hostname = locationLike?.hostname.trim().toLowerCase() ?? "";
+  const staging =
+    hostname === "staging.elizacloud.ai" ||
+    hostname === "app-staging.elizacloud.ai" ||
+    hostname.endsWith(".staging.elizacloud.ai");
+  const base = staging
+    ? "https://staging.elizacloud.ai"
+    : "https://elizacloud.ai";
+  const agentId = hostname.endsWith(".staging.elizacloud.ai")
+    ? hostname.slice(0, -".staging.elizacloud.ai".length)
+    : hostname.endsWith(".elizacloud.ai")
+      ? hostname.slice(0, -".elizacloud.ai".length)
+      : "";
+  const agentPath =
+    agentId &&
+    !["www", "app", "app-staging", "api", "api-staging", "staging"].includes(
+      agentId,
+    )
+      ? `/${encodeURIComponent(agentId)}`
+      : "";
+  return `${base}/dashboard/agents${agentPath}`;
 }
 
 type CloudPairStatus =
@@ -173,6 +220,7 @@ function describePairFailure(error: unknown): Exclude<
 }
 
 export function CloudHostedAgentAuthNotice() {
+  const reopenUrl = resolveCloudHostedAgentUrl();
   return (
     <main className="flex min-h-[100dvh] flex-col items-center overflow-y-auto bg-[#08090b] px-6 text-center font-body text-white">
       <div className="my-auto w-full max-w-[25rem]">
@@ -185,6 +233,14 @@ export function CloudHostedAgentAuthNotice() {
           This Cloud agent uses your Eliza Cloud session. Open it from Eliza
           Cloud again to create a fresh secure sign-in link.
         </p>
+        <a
+          className="mt-7 inline-flex min-h-11 items-center justify-center rounded-md bg-[#f3a51f] px-5 text-sm font-semibold text-[#101010] transition hover:bg-[#c97710]"
+          href={reopenUrl}
+          rel="noopener"
+          target="_top"
+        >
+          Re-open from Eliza Cloud
+        </a>
       </div>
     </main>
   );
