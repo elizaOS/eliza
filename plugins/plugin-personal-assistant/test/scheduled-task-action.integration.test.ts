@@ -193,4 +193,92 @@ describe("SCHEDULED_TASK action", () => {
       "NOT_FOUND",
     );
   });
+
+  // Recap turns ask for history without naming a task; that call used to hard
+  // fail MISSING_TASK_ID and derail the whole read-then-summarize turn
+  // (#16935). Id-less history now spans all scheduled items.
+  it("history without a taskId returns recent entries across all scheduled items", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+
+    const taskIds: string[] = [];
+    for (const instructions of ["sort the receipts", "reply to Jordan"]) {
+      const created = await scheduledTaskAction.handler?.(
+        runtime,
+        ownerMessage(runtime.agentId, `remind me to ${instructions}`),
+        undefined,
+        {
+          parameters: {
+            subaction: "create",
+            kind: "reminder",
+            promptInstructions: instructions,
+            trigger: { kind: "manual" },
+            priority: "medium",
+          },
+        },
+        undefined,
+        [],
+      );
+      expect(created?.success).toBe(true);
+      const task = (created?.data as { task?: ScheduledTask } | undefined)
+        ?.task;
+      if (!task) throw new Error("create did not return a task");
+      taskIds.push(task.taskId);
+    }
+    const completed = await scheduledTaskAction.handler?.(
+      runtime,
+      ownerMessage(runtime.agentId, "done sorting"),
+      undefined,
+      {
+        parameters: {
+          subaction: "complete",
+          taskId: taskIds[0],
+          reason: "done this morning",
+        },
+      },
+      undefined,
+      [],
+    );
+    expect(completed?.success).toBe(true);
+
+    const history = await scheduledTaskAction.handler?.(
+      runtime,
+      ownerMessage(runtime.agentId, "what happened with my reminders today?"),
+      undefined,
+      { parameters: { subaction: "history" } },
+      undefined,
+      [],
+    );
+    expect(history?.success).toBe(true);
+    const entries = (
+      history?.data as
+        | { entries?: Array<{ taskId: string; eventType?: string }> }
+        | undefined
+    )?.entries;
+    if (!entries) throw new Error("history did not return entries");
+    // Entries from BOTH tasks are present — the read spans the whole ledger.
+    const seenTaskIds = new Set(entries.map((entry) => entry.taskId));
+    expect(seenTaskIds.has(taskIds[0])).toBe(true);
+    expect(seenTaskIds.has(taskIds[1])).toBe(true);
+
+    // Single-task reads keep their narrowing contract.
+    const scoped = await scheduledTaskAction.handler?.(
+      runtime,
+      ownerMessage(runtime.agentId, "history for the receipts reminder"),
+      undefined,
+      { parameters: { subaction: "history", taskId: taskIds[0] } },
+      undefined,
+      [],
+    );
+    expect(scoped?.success).toBe(true);
+    const scopedEntries = (
+      scoped?.data as { entries?: Array<{ taskId: string }> } | undefined
+    )?.entries;
+    if (!scopedEntries)
+      throw new Error("scoped history did not return entries");
+    expect(scopedEntries.length).toBeGreaterThan(0);
+    expect(scopedEntries.every((entry) => entry.taskId === taskIds[0])).toBe(
+      true,
+    );
+  });
 });

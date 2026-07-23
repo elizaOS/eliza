@@ -12,7 +12,7 @@ pytest tests/ -v
 
 | File | What it tests |
 |------|---------------|
-| `test_acceptance_gate.py` | `scripts/acceptance_gate.py` — precheck, Cerebras smoke, lift-over-random gate, trajectory normalization step, and CLI exit codes. Network and subprocess calls are fully mocked. |
+| `test_acceptance_gate.py` | `scripts/acceptance_gate.py` — precheck, provider smoke, provider-forwarder routing (remote vs loopback endpoints), sanity-run max-tasks clamping to the harness smoke limit, the designed `incompatible` random-baseline outcome, lift-over-random gate, trajectory normalization step, and CLI exit codes. Benchmark subprocesses are mocked; the forwarder tests run the real loopback relay against a local upstream stub standing in for the remote cloud proxy. |
 | `test_agent_install.py` | `lib/agent_install.py` — openclaw npm install/idempotency/force-reinstall, Hermes git+venv install, manifest read/write, verify-only CLI path. All subprocess calls are mocked. |
 | `test_compare.py` | `benchmarks/compare.py` — suite resolution, endpoint parsing, noise-threshold pass/fail semantics, `ResultsStore` persistence, report serialisation, and CLI plumbing. Uses a canned `BenchmarkRunCallable` — no real network calls. |
 | `test_random_baseline.py` | `lib/random_baseline.py` — strategy registry, per-kind random-response generators (multiple-choice, function-call, empty-patch, trajectory, freeform), lift math, and CLI subcommands. |

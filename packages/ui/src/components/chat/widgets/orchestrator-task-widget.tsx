@@ -109,7 +109,7 @@ export function OrchestratorTaskWidgetView({
 }: OrchestratorTaskWidgetViewProps) {
   return (
     <WidgetSection
-      title={t("agentorchestrator.tasks", { defaultValue: "Tasks" })}
+      title={t("agentorchestrator.tasks", { defaultValue: "Projects" })}
       icon={<Workflow />}
       testId="chat-widget-orchestrator-tasks"
       onTitleClick={onOpenAll}

@@ -59,3 +59,17 @@ def test_load_samples_can_expand_selected_fixture_samples() -> None:
         include_edge_scenarios=True,
     )
     assert len(samples) == 11
+
+
+def test_hf_split_mapping_covers_sharded_suite_layouts() -> None:
+    """sd-qa is dialect-region-sharded (USA is canonical); mmsu is
+    subject-sharded (all splits form the suite); the rest use "test"."""
+    from elizaos_voicebench.dataset import hf_split_for_suite
+    from elizaos_voicebench.types import SUITES
+
+    assert hf_split_for_suite("sd-qa") == "usa"
+    assert hf_split_for_suite("mmsu") is None
+    for suite in SUITES:
+        if suite in ("sd-qa", "mmsu"):
+            continue
+        assert hf_split_for_suite(suite) == "test"

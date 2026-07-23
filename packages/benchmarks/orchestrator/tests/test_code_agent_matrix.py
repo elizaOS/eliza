@@ -15,6 +15,8 @@ from benchmarks.orchestrator.code_agent_matrix import (
     CellResult,
     DEFAULT_ADAPTERS,
     DEFAULT_BENCHMARKS,
+    DEFAULT_CEREBRAS_BASE_URL,
+    resolve_cerebras_base_url,
     build_previous_summary_comparison,
     build_head_to_head,
     build_benchmark_gate,
@@ -97,6 +99,114 @@ def test_builds_swe_bench_elizaos_cell_without_secret_values(tmp_path: Path) -> 
     assert "elizaos" in cell.command
     assert "--no-docker" in cell.command
     assert "--max-instances" in cell.command
+
+
+def _clear_base_url_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in (
+        "CEREBRAS_BASE_URL",
+        "BENCHMARK_BASE_URL",
+        "OPENAI_BASE_URL",
+        "OPENAI_API_BASE",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+
+def _build_base_url_probe_cell(tmp_path: Path, provider: str = "cerebras"):
+    return build_cell(
+        root=_root().parent,
+        run_root=tmp_path,
+        benchmark="swe_bench",
+        adapter="elizaos",
+        provider=provider,
+        model="gpt-oss-120b",
+        max_tasks=1,
+        smoke=False,
+        no_docker=True,
+    )
+
+
+def test_cell_base_url_defaults_when_no_ambient_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _clear_base_url_env(monkeypatch)
+
+    cell = _build_base_url_probe_cell(tmp_path)
+
+    assert resolve_cerebras_base_url() == DEFAULT_CEREBRAS_BASE_URL
+    assert cell.env_overrides["CEREBRAS_BASE_URL"] == DEFAULT_CEREBRAS_BASE_URL
+    assert cell.env_overrides["OPENAI_API_BASE"] == DEFAULT_CEREBRAS_BASE_URL
+
+
+def test_cell_base_url_honors_ambient_cerebras_base_url(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _clear_base_url_env(monkeypatch)
+    monkeypatch.setenv("CEREBRAS_BASE_URL", "https://elizacloud.ai/api/v1")
+    # Lower-precedence names must not shadow the explicit Cerebras override.
+    monkeypatch.setenv("BENCHMARK_BASE_URL", "https://ignored.example/v1")
+
+    cell = _build_base_url_probe_cell(tmp_path)
+
+    assert cell.env_overrides["CEREBRAS_BASE_URL"] == "https://elizacloud.ai/api/v1"
+    assert cell.env_overrides["OPENAI_API_BASE"] == "https://elizacloud.ai/api/v1"
+
+
+def test_cell_base_url_falls_back_to_benchmark_then_openai_base_url(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _clear_base_url_env(monkeypatch)
+    monkeypatch.setenv("BENCHMARK_BASE_URL", "https://elizacloud.ai/api/v1")
+
+    from_benchmark = _build_base_url_probe_cell(tmp_path / "benchmark")
+
+    monkeypatch.delenv("BENCHMARK_BASE_URL", raising=False)
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://openai-proxy.example/v1")
+
+    from_openai = _build_base_url_probe_cell(tmp_path / "openai")
+
+    assert from_benchmark.env_overrides["CEREBRAS_BASE_URL"] == (
+        "https://elizacloud.ai/api/v1"
+    )
+    assert from_openai.env_overrides["CEREBRAS_BASE_URL"] == (
+        "https://openai-proxy.example/v1"
+    )
+
+
+def test_cell_base_url_ignores_blank_ambient_values(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _clear_base_url_env(monkeypatch)
+    monkeypatch.setenv("CEREBRAS_BASE_URL", "   ")
+    monkeypatch.setenv("BENCHMARK_BASE_URL", "")
+
+    cell = _build_base_url_probe_cell(tmp_path)
+
+    assert cell.env_overrides["CEREBRAS_BASE_URL"] == DEFAULT_CEREBRAS_BASE_URL
+
+
+def test_cell_ambient_openai_api_base_wins_for_openai_sdk_harnesses(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _clear_base_url_env(monkeypatch)
+    monkeypatch.setenv("CEREBRAS_BASE_URL", "https://elizacloud.ai/api/v1")
+    monkeypatch.setenv("OPENAI_API_BASE", "https://explicit-openai.example/v1")
+
+    cell = _build_base_url_probe_cell(tmp_path)
+
+    assert cell.env_overrides["CEREBRAS_BASE_URL"] == "https://elizacloud.ai/api/v1"
+    assert cell.env_overrides["OPENAI_API_BASE"] == (
+        "https://explicit-openai.example/v1"
+    )
+
+
+def test_cell_omits_openai_api_base_for_non_cerebras_provider(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _clear_base_url_env(monkeypatch)
+
+    cell = _build_base_url_probe_cell(tmp_path, provider="openai")
+
+    assert "OPENAI_API_BASE" not in cell.env_overrides
 
 
 def test_swe_bench_repo_cache_dir_can_be_overridden(

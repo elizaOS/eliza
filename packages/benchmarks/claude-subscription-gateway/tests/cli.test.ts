@@ -1,7 +1,7 @@
 /** Exercises private artifact projection and the real child-process signal lifecycle without model I/O. */
 
 import { type ChildProcess, spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, type Stats } from "node:fs";
 import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -272,7 +272,7 @@ describe("gateway CLI", () => {
 
 const PRIVATE_MODE = 0o600;
 
-function statMode(stats: Awaited<ReturnType<typeof stat>>): number {
+function statMode(stats: Stats): number {
   return Number(stats.mode) & 0o777;
 }
 

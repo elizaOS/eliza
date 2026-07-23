@@ -103,6 +103,9 @@ export const INFERENCE_FLOW_STAGES = [
 	"evaluators",
 	"planner-overhead",
 	"response-finalization",
+	"message-ingress",
+	"message-delivery",
+	"message-lifecycle",
 	"message-service-overhead",
 	"unattributed",
 ] as const;
@@ -136,8 +139,11 @@ const FLOW_STAGE_PRIORITY: readonly InferenceFlowStage[] = [
 	"evaluators",
 	"providers",
 	"document-augmentation",
-	"planner-overhead",
 	"response-finalization",
+	"message-ingress",
+	"message-delivery",
+	"message-lifecycle",
+	"planner-overhead",
 	"message-service-overhead",
 ];
 
@@ -176,6 +182,15 @@ function classifyInferenceSpan(name: string): InferenceFlowStage | null {
 	if (normalized === "message:planner") return "planner-overhead";
 	if (normalized === "chat:response-finalization") {
 		return "response-finalization";
+	}
+	if (normalized.startsWith("message:ingress:")) {
+		return "message-ingress";
+	}
+	if (normalized.startsWith("message:delivery:")) {
+		return "message-delivery";
+	}
+	if (normalized.startsWith("message:lifecycle:")) {
+		return "message-lifecycle";
 	}
 	if (
 		normalized === "chat:message-service" ||

@@ -143,6 +143,19 @@ describe("real/live guarded-suite manifest (#9310 §E)", () => {
     });
   });
 
+  test("OpenRouter Anthropic caching has an invocable credentialed live proof", () => {
+    expect(
+      manifest.find(
+        (entry) =>
+          entry.file ===
+          "plugins/plugin-openrouter/__tests__/anthropic-cache.live.test.ts",
+      ),
+    ).toMatchObject({
+      requires: ["OPENROUTER_API_KEY"],
+      notes: expect.stringContaining("cache-write/cache-read"),
+    });
+  });
+
   test("Cerebras wire evidence is credentialed and uploaded as a structured artifact", () => {
     expect(
       manifest.find(

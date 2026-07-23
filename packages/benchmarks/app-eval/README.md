@@ -7,26 +7,26 @@ Scores are heuristic proxies based on keyword coverage and response structure. T
 ## Quick Start
 
 ```bash
-# Run all benchmarks (from the app repo root)
-bun run benchmarks/app-eval/run-benchmarks.ts
+# Run all benchmarks (from the repo root)
+bun run packages/benchmarks/app-eval/run-benchmarks.ts
 
 # Research tasks only
-bun run benchmarks/app-eval/run-benchmarks.ts --type research
+bun run packages/benchmarks/app-eval/run-benchmarks.ts --type research
 
 # Coding tasks only
-bun run benchmarks/app-eval/run-benchmarks.ts --type coding
+bun run packages/benchmarks/app-eval/run-benchmarks.ts --type coding
 
 # Single task
-bun run benchmarks/app-eval/run-benchmarks.ts --task research-001
+bun run packages/benchmarks/app-eval/run-benchmarks.ts --task research-001
 
 # Dry run (show tasks without executing)
-bun run benchmarks/app-eval/run-benchmarks.ts --dry-run
+bun run packages/benchmarks/app-eval/run-benchmarks.ts --dry-run
 
 # Server mode (boot runtime once, faster for full suite)
-bun run benchmarks/app-eval/run-benchmarks.ts --server
+bun run packages/benchmarks/app-eval/run-benchmarks.ts --server
 
 # Specify app root explicitly
-bun run benchmarks/app-eval/run-benchmarks.ts --root /path/to/app
+bun run packages/benchmarks/app-eval/run-benchmarks.ts --root /path/to/app
 ```
 
 ## Evaluating Results
@@ -35,13 +35,13 @@ After a benchmark run, evaluate the results:
 
 ```bash
 # Evaluate the latest run
-python3 benchmarks/app-eval/evaluate.py benchmarks/app-eval/results/latest/
+python3 packages/benchmarks/app-eval/evaluate.py packages/benchmarks/app-eval/results/latest/
 
 # JSON output
-python3 benchmarks/app-eval/evaluate.py benchmarks/app-eval/results/latest/ --format json
+python3 packages/benchmarks/app-eval/evaluate.py packages/benchmarks/app-eval/results/latest/ --format json
 
 # Save to file
-python3 benchmarks/app-eval/evaluate.py benchmarks/app-eval/results/latest/ -o report.json
+python3 packages/benchmarks/app-eval/evaluate.py packages/benchmarks/app-eval/results/latest/ -o report.json
 ```
 
 ## Directory Structure
@@ -111,7 +111,7 @@ Each criterion is weighted according to the task's `evaluation.criteria` array. 
 1. Add task definitions to `tasks/research-tasks.json` or `tasks/coding-tasks.json`
 2. Follow the existing task format (id, type, prompt, expected_keywords, evaluation criteria)
 3. Use unique IDs with the pattern `research-NNN` or `code-NNN`
-4. Run `bun run benchmarks/app-eval/run-benchmarks.ts --task <your-id>` to test
+4. Run `bun run packages/benchmarks/app-eval/run-benchmarks.ts --task <your-id>` to test
 
 ## Integration with elizaOS Benchmarks
 

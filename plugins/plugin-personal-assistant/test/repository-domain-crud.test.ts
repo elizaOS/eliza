@@ -144,6 +144,24 @@ describe("LifeOpsRepository domain CRUD", () => {
       completionPayload: { ok: true },
       updatedAt: LATER,
     });
+    // Completed-today read (#16935): the completed occurrence surfaces with
+    // its definition title inside the window, and drops out once `sinceIso`
+    // passes its completion bump.
+    expect(
+      await repository.listCompletedOccurrenceViewsSince(runtime.agentId, NOW),
+    ).toEqual([
+      expect.objectContaining({
+        id: occurrence.id,
+        state: "completed",
+        title: "Review priority inbox",
+      }),
+    ]);
+    expect(
+      await repository.listCompletedOccurrenceViewsSince(
+        runtime.agentId,
+        "2026-07-11T09:30:00.000Z",
+      ),
+    ).toEqual([]);
 
     const goal = createLifeOpsGoalDefinition({
       ...base,

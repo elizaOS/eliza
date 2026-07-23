@@ -183,12 +183,19 @@ function makeOwnerLifeAction(args: {
         name: "intent",
         description: "Free-form owner request.",
         required: false,
+        // Planners naturally phrase a change as `when`/`time`/`reschedule`;
+        // funnel those into the free-form intent instead of rejecting the
+        // whole call with "Unexpected argument" (observed live: an
+        // OWNER_REMINDERS update with `reschedule:"today 18:00"` burned a
+        // planner round on arg errors, #16935).
+        aliases: ["request", "reschedule", "when", "time"],
         schema: { type: "string" as const },
       },
       {
         name: "title",
         description: "Item title when known.",
         required: false,
+        aliases: ["name", "subject"],
         schema: { type: "string" as const },
       },
       {
@@ -196,12 +203,14 @@ function makeOwnerLifeAction(args: {
         description:
           "Existing item id/title for update/delete/complete/skip/snooze/review.",
         required: false,
+        aliases: ["query", "item", "task", "reminder", "id", "which"],
         schema: { type: "string" as const },
       },
       {
         name: "minutes",
         description: "Snooze minutes when action=snooze.",
         required: false,
+        aliases: ["snoozeMinutes", "durationMinutes"],
         schema: { type: "number" as const },
       },
       {

@@ -303,9 +303,15 @@ export interface ModelCatalogEntry {
 /** Provider→entries map inside the `catalog` field of `GET /api/models`. */
 export type ModelCatalogProviders = Record<string, ModelCatalogEntry[]>;
 
-/** The slice of the `GET /api/models` response the model completions consume. */
+/**
+ * The model-catalog response shape consumed by configuration UI and slash
+ * completions. Current runtimes return the curated catalog under `catalog`;
+ * some cloud agents served during rolling deploys answered `catalogOnly` with
+ * the catalog at the top level, so readers must normalize at their boundary.
+ */
 export interface ModelCatalogResponse {
-  catalog: { providers: ModelCatalogProviders };
+  providers?: unknown;
+  catalog?: { providers?: unknown };
 }
 
 export interface ModelCatalog {

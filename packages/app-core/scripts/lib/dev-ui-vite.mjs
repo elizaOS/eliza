@@ -21,7 +21,14 @@ export function resolveViteCommand({
   if (!existsSync(viteCli)) {
     throw new Error(`Vite CLI not found at ${viteCli}. Run bun install first.`);
   }
-  const args = [viteCli];
+  // When NODE_OPTIONS carries `--conditions=eliza-source`, workspace packages
+  // resolve to their TypeScript sources, whose NodeNext relative specifiers
+  // keep `.js` extensions. Node's loader cannot map those onto `.ts` worktree
+  // files by itself (Bun could, before the Vite child moved to Node), so the
+  // vite.config.ts import graph dies with ERR_MODULE_NOT_FOUND at the first
+  // source-conditioned package. tsx restores that mapping, mirroring the API
+  // child spawn in dev-ui.mjs.
+  const args = ["--import", "tsx", viteCli];
   if (force) args.push("--force");
   if (port !== undefined) args.push("--port", String(port));
   return { command: nodePath, args };

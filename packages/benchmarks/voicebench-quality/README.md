@@ -29,7 +29,7 @@ and treats the agent as an adapter under test.
 | `mmsu`       | MMLU-Pro spoken, 12 academic domains, MCQ     | Deterministic   |
 | `bbh`        | Big Bench Hard, mixed reasoning               | LLM judge       |
 
-The judged suites are scored by `gpt-oss-120b` on Cerebras — the same
+The judged suites are scored by `gemma-4-31b` on Cerebras — the same
 model LifeOpsBench uses as a simulated user, reused via
 `eliza_lifeops_bench.clients.cerebras` so retry / pricing / rate-limit
 policy is one canonical implementation in the repo.
@@ -94,7 +94,7 @@ Schema (top-level fields):
     "per_suite": {"openbookqa": 0.81, "mmsu": 0.55, ...},
     "n": 160,
     "elapsed_s": 412.3,
-    "judge_model": "gpt-oss-120b",
+    "judge_model": "gemma-4-31b",
     "stt_provider": "groq",
     "suite_details": [...]
 }
@@ -107,7 +107,7 @@ equally regardless of sample count, matching upstream).
 
 * `CEREBRAS_API_KEY` — required for the LLM judge on judged suites.
 * `GROQ_API_KEY` — required for cascaded STT (live adapters).
-* `CEREBRAS_MODEL` — override the judge model (default `gpt-oss-120b`).
+* `CEREBRAS_MODEL` — override the judge model (default `gemma-4-31b`).
 * `VOICEBENCH_STT_MODEL` — override the STT model (default
   `whisper-large-v3-turbo`).
 

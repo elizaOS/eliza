@@ -1,6 +1,6 @@
 # @elizaos/personality-bench
 
-Judge layer for the new personality benchmark. Five rubrics covering five
+Judge layer for the personality benchmark. Five rubrics covering five
 behavioural buckets:
 
 - `shut_up` — strict silence on demand
@@ -47,19 +47,19 @@ bun run packages/benchmarks/personality-bench/src/runner.ts \
   --output-json report.json
 
 # Or via the root script
-bun run personality:bench --agent eliza
+bun run bench:personality --agent eliza
 ```
 
 ## Environment
 
 | Var | Default | Purpose |
 | --- | --- | --- |
-| `CEREBRAS_API_KEY` | _none_ | Required for the LLM-judge layer. |
-| `CEREBRAS_BASE_URL` | `https://api.cerebras.ai/v1` | OpenAI-compatible base. |
-| `PERSONALITY_JUDGE_MODEL` | `gemma-4-31b` | LLM-judge model. |
+| `CEREBRAS_API_KEY` | _none_ | Required for the LLM-judge layer (falls back to `OPENAI_API_KEY`). |
+| `CEREBRAS_BASE_URL` | `https://api.cerebras.ai/v1` | OpenAI-compatible base (falls back to `OPENAI_BASE_URL`). |
+| `PERSONALITY_JUDGE_MODEL` | `gemma-4-31b` | LLM-judge model (falls back to `EVAL_MODEL`, then `CEREBRAS_MODEL`). |
 | `PERSONALITY_JUDGE_PASSES` | `2` | Independent passes per call. |
 | `PERSONALITY_JUDGE_TIMEOUT_MS` | `20000` | Per-pass timeout. |
-| `PERSONALITY_JUDGE_ENABLE_LLM` | auto | `0` disables the LLM layer. |
+| `PERSONALITY_JUDGE_ENABLE_LLM` | auto (on when an API key is set) | `0` or `false` disables the LLM layer. |
 | `PERSONALITY_JUDGE_ENABLE_EMBEDDING` | `0` | `1` enables embedding fallback. |
 | `PERSONALITY_JUDGE_STRICT` | `0` | `1` collapses `NEEDS_REVIEW` to `FAIL`. |
 
@@ -67,14 +67,14 @@ bun run personality:bench --agent eliza
 
 The calibration corpus lives in `tests/calibration/`:
 
-- `hand-graded.jsonl` — 54 scenarios across all five buckets with
-  hand-authored ground-truth labels (17 added in W3-3b for the new edge
-  categories: release detection, refuse + per-user-alternative, injection
-  resistance, and matching-language acknowledgement).
-- `adversarial.jsonl` — 16 edge cases focused on false-positive probing
-  (6 added in W3-3b: early re-engagement, yes-but fake refusal, sneaky
-  compliance, claimed-but-not refused injection, in-band style break, fake
-  release without marker).
+- `hand-graded.jsonl` — 66 scenarios across all five buckets with
+  hand-authored ground-truth labels, including the edge categories added in
+  W3-3b (release detection, refuse + per-user-alternative, injection
+  resistance, matching-language acknowledgement).
+- `adversarial.jsonl` — 21 edge cases focused on false-positive probing
+  (early re-engagement, yes-but fake refusal, sneaky compliance,
+  claimed-but-not refused injection, in-band style break, fake release
+  without marker, and similar).
 
 Run the calibration suite:
 

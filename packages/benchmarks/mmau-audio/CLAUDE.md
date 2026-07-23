@@ -52,7 +52,7 @@ pytest tests/ -x
 
 - Results write to `benchmark_results/mmau/<timestamp>/` (gitignored).
   The orchestrator result file is `mmau-results.json`.
-- Scored by `_score_from_mmau_json` in `registry/scores.py` (line 805).
+- Scored by `_score_from_mmau_json` in `registry/scores.py`.
 - Real runs (`--agent eliza|hermes|openclaw`) stream audio from Hugging Face
   (`gamma-lab-umd/MMAU-test-mini` 1k or `gamma-lab-umd/MMAU-test` 9k) and
   use Groq Whisper as a cascaded STT step (needs `GROQ_API_KEY`). The `sound`

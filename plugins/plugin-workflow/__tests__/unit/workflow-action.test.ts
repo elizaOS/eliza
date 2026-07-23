@@ -79,6 +79,27 @@ describe('workflowAction chat operations', () => {
     expect(deleteCache).toHaveBeenCalledTimes(1);
   });
 
+  test('rejects a supplied draft whose nodes are not workflow objects', async () => {
+    const deployWorkflow = mock(() =>
+      Promise.resolve({
+        id: 'must-not-deploy',
+        name: 'Invalid',
+        active: false,
+        nodeCount: 0,
+        missingCredentials: [],
+      })
+    );
+
+    const result = await runAction({ deployWorkflow } as Partial<WorkflowService>, {
+      action: 'create',
+      draft: { name: 'Invalid', nodes: [null], connections: {} },
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.text).toContain('valid workflow draft');
+    expect(deployWorkflow).not.toHaveBeenCalled();
+  });
+
   test('creates and lists a workflow under the same chat owner', async () => {
     const storedByOwner = new Map<string, ReturnType<typeof createWorkflowResponse>[]>();
     const draft = createValidWorkflow();

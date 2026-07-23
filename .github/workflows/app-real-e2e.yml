@@ -49,7 +49,12 @@ jobs:
     name: Browser-driven real app e2e (nightly)
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 60
-    continue-on-error: true
+    # NOTE: `continue-on-error` intentionally lives on the e2e run step below, NOT
+    # here at the job level. Job-level soft-fail resolves the whole run to
+    # `success` even when the only job fails — a vacuous green that hid a real
+    # browser-e2e failure (#16722). The lane stays advisory (a failed nightly
+    # still ends green, exactly as before), but the true outcome is now surfaced
+    # in the job summary + a warning annotation so `success` can't be misread.
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -76,6 +81,10 @@ jobs:
           bunx playwright install --with-deps chromium
 
       - name: Run browser-driven real app e2e
+        id: e2e
+        # Step-level soft-fail keeps the nightly advisory (the job/run still ends
+        # green on failure), while the report step below records the real result.
+        continue-on-error: true
         run: |
           set -euo pipefail
           # streaming-visible-text.live.e2e launches a real browser via
@@ -89,3 +98,30 @@ jobs:
           echo "Using ELIZA_CHROME_PATH=$ELIZA_CHROME_PATH"
           export ELIZA_CHROME_PATH
           bun run --cwd packages/app-core test:app-real-e2e
+
+      - name: Report real app e2e outcome
+        if: always()
+        env:
+          E2E_OUTCOME: ${{ steps.e2e.outcome }}
+        run: |
+          set -euo pipefail
+          {
+            echo "## App Real E2E (browser-driven, nightly · advisory)"
+            echo ""
+            echo "- Suite: \`packages/app-core\` \`test:app-real-e2e\`"
+            echo "- Trigger: \`${{ github.event_name }}\` · Ref: \`${{ github.ref }}\`"
+            echo "- Real e2e step outcome: \`${E2E_OUTCOME}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+          # This lane is advisory: the run stays green regardless, but a failed
+          # e2e must be visible, not silently masked by the green checkmark.
+          if [ "${E2E_OUTCOME}" = "failure" ]; then
+            # Annotation to stdout (GitHub surfaces `::warning::` on the run);
+            # human-readable line to the summary.
+            echo "::warning title=App Real E2E failed (advisory)::The browser-driven real app e2e suite FAILED (advisory nightly; run stays green). Inspect the 'Run browser-driven real app e2e' step."
+            echo "❌ **Real e2e FAILED** — advisory, so the run is green, but the suite did not pass." >> "$GITHUB_STEP_SUMMARY"
+          elif [ "${E2E_OUTCOME}" = "success" ]; then
+            echo "✅ **Real e2e passed.**" >> "$GITHUB_STEP_SUMMARY"
+          else
+            # skipped / cancelled — surface it rather than implying a pass.
+            echo "⚠️ **Real e2e did not run to a pass/fail** (outcome: \`${E2E_OUTCOME}\`)." >> "$GITHUB_STEP_SUMMARY"
+          fi
