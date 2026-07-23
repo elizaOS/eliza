@@ -8,7 +8,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
+  conditionalSkipBearingFiles,
   discoverTestSourceFiles,
+  findConditionalSkipSites,
   findViolations,
   parseFocusedAuditArgs,
   readTestSources,
@@ -274,6 +276,66 @@ describe("anti-larp test discovery", () => {
       test.only("custom import", () => {});
     `;
     expect(findViolations("fixture.test.ts", source)).toEqual([]);
+  });
+
+  test("classifies runtime-conditional skip sites and never blesses unconditional ones", () => {
+    const forms = (source: string) =>
+      findConditionalSkipSites("fixture.test.ts", source).map(
+        ({ form }) => form,
+      );
+    expect(
+      forms(
+        "const suite = ptyAvailable ? describe : describe.skip;\nsuite('pty', () => {});",
+      ),
+    ).toEqual(["conditional-runner-ternary"]);
+    expect(
+      forms('test.skip(!process.env.RUN_CLOUD_E2E, "set RUN_CLOUD_E2E");'),
+    ).toEqual(["conditional-skip"]);
+    expect(forms('describe.skipIf(!hasBackend)("store", () => {});')).toEqual([
+      "skipIf",
+    ]);
+    // Documented-but-unconditional skips pass the gate yet never bless a file.
+    expect(
+      forms('it.skip("[live] requires OPENAI_API_KEY", () => {});'),
+    ).toEqual([]);
+    expect(forms('describe.skipIf(true)("off", () => {}); // #1234')).toEqual(
+      [],
+    );
+    // A file with any gate violation yields zero sites.
+    expect(
+      forms(
+        "const suite = cond ? describe : describe.skip;\nsuite('a', () => {});\nit.skip('adds two numbers', () => {});",
+      ),
+    ).toEqual([]);
+    expect(() => findConditionalSkipSites("broken.test.ts", "test(")).toThrow(
+      /could not be parsed/,
+    );
+  });
+
+  test("returns the conditional-skip-bearing subset and fails closed on bad sources", () => {
+    const root = tempDir();
+    fs.writeFileSync(
+      path.join(root, "gated.test.ts"),
+      "const suite = hasSed ? describe : describe.skip;\nsuite('executed', () => {});\n",
+    );
+    fs.writeFileSync(
+      path.join(root, "documented.test.ts"),
+      'it.skip("[live] requires OPENAI_API_KEY", () => {});\n',
+    );
+    expect(
+      conditionalSkipBearingFiles(
+        ["gated.test.ts", "documented.test.ts"],
+        root,
+      ),
+    ).toEqual(new Set(["gated.test.ts"]));
+    expect(conditionalSkipBearingFiles([], root)).toEqual(new Set());
+    fs.writeFileSync(path.join(root, "broken.test.ts"), "test(");
+    expect(() => conditionalSkipBearingFiles(["broken.test.ts"], root)).toThrow(
+      /could not be parsed/,
+    );
+    expect(() =>
+      conditionalSkipBearingFiles(["missing.test.ts"], root),
+    ).toThrow();
   });
 
   test("rejects ignored or conflicting CLI input", () => {

@@ -31,6 +31,9 @@ function assertSafeDirectory(directory, relative, label) {
       throw new Error(`${label} parent is not a directory: ${relative}`);
     }
   } catch (error) {
+    // error-policy:J3 ENOENT is the explicit "not created yet" state — a
+    // missing parent cannot be a symlink and is built fresh by the writer;
+    // every other lstat failure propagates.
     if (error?.code !== "ENOENT") throw error;
   }
 }
@@ -148,6 +151,8 @@ export function atomicWriteFileSync(
     descriptor = undefined;
     renameSync(temporary, destination);
   } catch (error) {
+    // error-policy:J6 best-effort teardown of the exclusive temporary before
+    // the original write failure is rethrown unchanged.
     if (descriptor !== undefined) closeSync(descriptor);
     rmSync(temporary, { force: true });
     throw error;

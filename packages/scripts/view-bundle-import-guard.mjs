@@ -1080,6 +1080,9 @@ async function listBuiltBundles(options = {}) {
         );
       }
     } catch (error) {
+      // error-policy:J3 ENOENT becomes an explicit missingBundles record the
+      // guard reports as a failure — never a silently shorter bundle list;
+      // every other stat failure propagates.
       if (error?.code === "ENOENT") {
         missingBundles.push(entry);
         continue;
@@ -1124,6 +1127,9 @@ async function listUnexpectedOutputs(expected) {
     try {
       files = await listOutputFiles(directory);
     } catch (error) {
+      // error-policy:J3 an absent output directory legitimately has zero
+      // unexpected outputs (the bundle itself is reported missing by
+      // listBuiltBundles); every other readdir failure propagates.
       if (error?.code === "ENOENT") continue;
       throw error;
     }

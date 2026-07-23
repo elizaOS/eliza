@@ -609,8 +609,48 @@ jobs:
         skipped,
         ["packages/scripts/example.test.ts"],
         "reports/junit.xml",
+        () => new Set(),
       ),
-    ).toThrow("skipped test");
+    ).toThrow(
+      /skipped test\(s\) in packages\/scripts\/example\.test\.ts.*statically.*runtime-conditional/,
+    );
+    const classifierCalls: string[][] = [];
+    expect(
+      validateJunitEvidence(
+        skipped,
+        ["packages/scripts/example.test.ts"],
+        "reports/junit.xml",
+        (files: string[]) => {
+          classifierCalls.push([...files]);
+          return new Set(files);
+        },
+      ),
+    ).toMatchObject({
+      status: "valid",
+      skipped: 1,
+      skippedFiles: ["packages/scripts/example.test.ts"],
+    });
+    expect(classifierCalls).toEqual([["packages/scripts/example.test.ts"]]);
+    expect(() =>
+      validateJunitEvidence(
+        skipped,
+        ["packages/scripts/example.test.ts"],
+        "reports/junit.xml",
+        () => {
+          throw new Error("classifier exploded");
+        },
+      ),
+    ).toThrow("classifier exploded");
+    expect(
+      validateJunitEvidence(
+        xml,
+        ["packages/scripts/example.test.ts"],
+        "reports/junit.xml",
+        () => {
+          throw new Error("zero-skip artifacts must not invoke the classifier");
+        },
+      ),
+    ).toMatchObject({ status: "valid", skipped: 0, skippedFiles: [] });
 
     const emptySuite =
       '<testsuite name="packages/scripts/empty.test.ts" file="packages/scripts/empty.test.ts" tests="0" assertions="0" failures="0" skipped="0"></testsuite>';
@@ -643,6 +683,51 @@ jobs:
         "reports/junit.xml",
       ),
     ).toThrow("unexpected CDATA");
+  });
+
+  test("binds JUnit skip evidence to the real conditional-skip classifier", () => {
+    // Platform-gated executed suites (`const suite = GNU_SED ? describe :
+    // describe.skip`) are the only files permitted to report skips; a skip in
+    // any other discovered file is silently-dropped coverage and must fail.
+    const conditional =
+      "packages/scripts/cloud/admin/daemons/provisioning-worker-env-reconcile.test.ts";
+    const unconditional =
+      "packages/scripts/__tests__/script-test-inventory.test.ts";
+    const junitFor = (file: string) => `<?xml version="1.0"?>
+      <testsuites tests="2" assertions="2" failures="0" skipped="1">
+        <testsuite name="${file}" file="${file}" tests="2" assertions="2" failures="0" skipped="1">
+          <testcase name="works" file="${file}" assertions="2" />
+          <testcase name="gated" file="${file}" assertions="0"><skipped /></testcase>
+        </testsuite>
+      </testsuites>`;
+    expect(
+      validateJunitEvidence(
+        junitFor(conditional),
+        [conditional],
+        "reports/junit.xml",
+      ),
+    ).toMatchObject({
+      status: "valid",
+      skipped: 1,
+      skippedFiles: [conditional],
+    });
+    expect(() =>
+      validateJunitEvidence(
+        junitFor(unconditional),
+        [unconditional],
+        "reports/junit.xml",
+      ),
+    ).toThrow("statically classified as runtime-conditional");
+    // Fail-closed: a skipping suite file the classifier cannot read is a hard
+    // error, never a pass.
+    const unreadable = "packages/scripts/deleted-in-tree.test.ts";
+    expect(() =>
+      validateJunitEvidence(
+        junitFor(unreadable),
+        [unreadable],
+        "reports/junit.xml",
+      ),
+    ).toThrow();
   });
 
   test("the real repository has one executing lane for every discovered test", () => {

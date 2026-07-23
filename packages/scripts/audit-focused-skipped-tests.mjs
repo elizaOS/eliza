@@ -935,6 +935,124 @@ export function findViolations(filePath, content) {
   return violations;
 }
 
+/**
+ * Find every allowed runtime-conditional skip site in one test source.
+ *
+ * A site is runtime-conditional when whether the test skips is decided at run
+ * time, not in the source text: a runner ternary (`cond ? describe :
+ * describe.skip`), a `skipIf`/`todoIf` whose condition is not statically
+ * decidable, or a `skip`/`fixme` whose first argument is a non-literal,
+ * non-function condition. Unconditional skips — even documented ones — are
+ * never returned, and a file with any gate violation yields zero sites, so
+ * consumers (the script-lane JUnit evidence gate) cannot bless a file the
+ * anti-larp gate itself rejects. Throws on unparseable input.
+ *
+ * @param {string} filePath
+ * @param {string} content
+ * @returns {{file:string,line:number,form:string,text:string}[]}
+ */
+export function findConditionalSkipSites(filePath, content) {
+  if (findViolations(filePath, content).length > 0) return [];
+  const sourceFile = ts.createSourceFile(
+    filePath,
+    content,
+    ts.ScriptTarget.Latest,
+    true,
+    scriptKind(filePath),
+  );
+  const aliases = collectRunnerAliases(sourceFile);
+  const sites = [];
+  const recorded = new Set();
+  const record = (node, form) => {
+    const position = node.getStart(sourceFile);
+    if (recorded.has(position)) return;
+    recorded.add(position);
+    const { line } = sourceFile.getLineAndCharacterOfPosition(position);
+    sites.push({
+      file: filePath,
+      line: line + 1,
+      form,
+      text: lineText(sourceFile, node),
+    });
+  };
+  const isRunnerReference = (chain) =>
+    chain !== null &&
+    chain !== undefined &&
+    (RUNNER_ROOTS.has(chain[0]) ||
+      (chain.length === 1 &&
+        (DISABLED_ALIASES.has(chain[0]) || FOCUSED_ALIASES.has(chain[0]))));
+  const visit = (node) => {
+    if (
+      ts.isConditionalExpression(node) &&
+      staticTruthiness(node.condition) === undefined
+    ) {
+      const branches = [node.whenTrue, node.whenFalse].map((branch) =>
+        canonicalCallChain(branch, aliases),
+      );
+      if (
+        branches.every(isRunnerReference) &&
+        (disabledModifier(branches[0]) !== null) !==
+          (disabledModifier(branches[1]) !== null)
+      ) {
+        record(node, "conditional-runner-ternary");
+      }
+    }
+    if (ts.isCallExpression(node)) {
+      const chain = canonicalCallChain(node.expression, aliases);
+      const modifier = disabledModifier(chain);
+      if (modifier === "skipIf" || modifier === "todoIf") {
+        const alias = resolvedAlias(node.expression, aliases);
+        const modifierCall = alias?.conditionalDisable
+          ? alias.conditionalDisable.node
+          : findModifierCall(node, modifier, aliases);
+        const condition = alias?.conditionalDisable
+          ? alias.conditionalDisable.condition
+          : modifierCall?.arguments[0];
+        if (condition && staticTruthiness(condition) === undefined) {
+          record(modifierCall ?? node, modifier);
+        }
+      } else if (modifier === "skip" || modifier === "fixme") {
+        const firstArgument = node.arguments[0];
+        const firstValue = firstArgument && unwrapExpression(firstArgument);
+        if (
+          firstValue &&
+          !ts.isStringLiteralLike(firstValue) &&
+          !ts.isFunctionLike(firstValue) &&
+          staticTruthiness(firstValue) === undefined
+        ) {
+          record(node, `conditional-${modifier}`);
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return sites;
+}
+
+/**
+ * Return the subset of repo-relative test files that carry at least one
+ * allowed runtime-conditional skip site. This is the single classifier the
+ * script-lane JUnit evidence gate binds to: only files in this set may report
+ * skipped testcases. Fail-closed — unreadable or unparseable sources throw
+ * rather than classifying as skip-free.
+ *
+ * @param {string[]} files repo-relative test source paths
+ * @param {string} [root]
+ * @returns {Set<string>}
+ */
+export function conditionalSkipBearingFiles(files, root = REPO_ROOT) {
+  const bearing = new Set();
+  if (files.length === 0) return bearing;
+  const normalized = files.map(normalizeRelativePath);
+  for (const { rel, content } of readTestSources(normalized, root)) {
+    if (findConditionalSkipSites(rel, content).length > 0) {
+      bearing.add(rel);
+    }
+  }
+  return bearing;
+}
+
 function writeInventoryReport(report) {
   const output = resolveReportArtifactPath(
     REPO_ROOT,
@@ -1140,6 +1258,47 @@ function selfTest() {
     },
   ];
 
+  // The JUnit evidence gate in run-script-tests.mjs binds skipped counts to
+  // this classification; these cases pin which shapes bless a file and which
+  // (documented-but-unconditional, orphaned) never do.
+  const conditionalCases = [
+    {
+      name: "conditional: runner ternary is a runtime-conditional site",
+      src: "const suite = gnuSedAvailable ? describe : describe.skip;\nsuite('pty', () => {});",
+      expect: ["conditional-runner-ternary"],
+    },
+    {
+      name: "conditional: skip(cond, reason) is a runtime-conditional site",
+      src: 'test.skip(!process.env.RUN_CLOUD_E2E, "set RUN_CLOUD_E2E to run");',
+      expect: ["conditional-skip"],
+    },
+    {
+      name: "conditional: skipIf with a runtime condition is a site",
+      src: 'describe.skipIf(!hasBackend)("store", () => {});',
+      expect: ["skipIf"],
+    },
+    {
+      name: "conditional: statically-true skipIf is not runtime-conditional",
+      src: 'describe.skipIf(true)("store", () => {}); // skip: #1234',
+      expect: [],
+    },
+    {
+      name: "conditional: documented unconditional skip does not bless",
+      src: 'it.skip("[live] requires OPENAI_API_KEY", () => {});',
+      expect: [],
+    },
+    {
+      name: "conditional: a violating file yields zero sites",
+      src: 'const suite = cond ? describe : describe.skip;\nsuite("a", () => {});\nit.skip("adds two numbers", () => {});',
+      expect: [],
+    },
+    {
+      name: "conditional: non-runner ternary is ignored",
+      src: 'const value = cond ? left : right;\nit("a", () => {});',
+      expect: [],
+    },
+  ];
+
   let failed = 0;
   for (const c of cases) {
     const got = findViolations("<fixture>", c.src)
@@ -1156,11 +1315,27 @@ function selfTest() {
       console.log(`  ✓ ${c.name}`);
     }
   }
+  for (const c of conditionalCases) {
+    const got = findConditionalSkipSites("<fixture>", c.src)
+      .map((site) => site.form)
+      .sort();
+    const want = [...c.expect].sort();
+    const ok = JSON.stringify(got) === JSON.stringify(want);
+    if (!ok) {
+      failed++;
+      console.error(
+        `  ✗ ${c.name}: expected ${JSON.stringify(want)}, got ${JSON.stringify(got)}`,
+      );
+    } else {
+      console.log(`  ✓ ${c.name}`);
+    }
+  }
+  const total = cases.length + conditionalCases.length;
   if (failed > 0) {
-    console.error(`\nself-test FAILED (${failed}/${cases.length})`);
+    console.error(`\nself-test FAILED (${failed}/${total})`);
     return 1;
   }
-  console.log(`\nself-test PASSED (${cases.length}/${cases.length})`);
+  console.log(`\nself-test PASSED (${total}/${total})`);
   return 0;
 }
 

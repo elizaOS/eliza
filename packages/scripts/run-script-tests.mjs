@@ -14,6 +14,7 @@ import { mkdirSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { SaxesParser } from "saxes";
+import { conditionalSkipBearingFiles } from "./audit-focused-skipped-tests.mjs";
 import {
   atomicWriteJsonSync,
   resolveReportArtifactPath,
@@ -239,8 +240,21 @@ function reconcileSuite(suite, inheritedFile, identities) {
   return actual;
 }
 
-/** Validate Bun's JUnit artifact and bind it to the discovered source list. */
-export function validateJunitEvidence(xml, inventoryFiles, junitPath) {
+/**
+ * Validate Bun's JUnit artifact and bind it to the discovered source list.
+ *
+ * Skipped testcases are permitted only in suite files whose source carries a
+ * statically classified runtime-conditional skip (platform/credential gates
+ * like `const suite = GNU_SED ? describe : describe.skip`); the anti-larp
+ * classifier in audit-focused-skipped-tests.mjs is the single authority for
+ * that set. Any other skip means discovered coverage silently stopped running.
+ */
+export function validateJunitEvidence(
+  xml,
+  inventoryFiles,
+  junitPath,
+  classifyConditionalSkipFiles = conditionalSkipBearingFiles,
+) {
   if (!xml.trim()) throw new Error("JUnit artifact is empty");
   const root = parseJunitDocument(xml);
   const directSuites = root.children.filter(({ name }) => name === "testsuite");
@@ -251,6 +265,7 @@ export function validateJunitEvidence(xml, inventoryFiles, junitPath) {
   }
   const suiteFiles = new Set();
   const identities = new Set();
+  const skipsByFile = new Map();
   const actual = { tests: 0, assertions: 0, failures: 0, skipped: 0 };
   for (const suite of directSuites) {
     const file = suite.attributes.file;
@@ -264,6 +279,7 @@ export function validateJunitEvidence(xml, inventoryFiles, junitPath) {
         `JUnit top-level testsuite ${file} contains zero testcases`,
       );
     }
+    if (counts.skipped > 0) skipsByFile.set(file, counts.skipped);
     for (const key of Object.keys(actual)) actual[key] += counts[key];
   }
   for (const key of Object.keys(actual)) {
@@ -278,11 +294,6 @@ export function validateJunitEvidence(xml, inventoryFiles, junitPath) {
   if (tests === 0) {
     throw new Error("JUnit artifact contains zero tests");
   }
-  if (skipped !== 0) {
-    throw new Error(
-      `JUnit artifact contains ${skipped} skipped test(s); the complete script lane may not omit discovered coverage`,
-    );
-  }
   const expectedFiles = new Set(inventoryFiles);
   const missingFiles = [...expectedFiles].filter(
     (file) => !suiteFiles.has(file),
@@ -295,6 +306,20 @@ export function validateJunitEvidence(xml, inventoryFiles, junitPath) {
       `JUnit suite-file identity mismatch: ${missingFiles.length} missing, ${unexpectedFiles.length} unexpected`,
     );
   }
+  const skippedFiles = [...skipsByFile.keys()].sort();
+  if (skippedFiles.length > 0) {
+    const conditionalFiles = classifyConditionalSkipFiles(skippedFiles);
+    const unauthorized = skippedFiles.filter(
+      (file) => !conditionalFiles.has(file),
+    );
+    if (unauthorized.length > 0) {
+      throw new Error(
+        `JUnit artifact contains skipped test(s) in ${unauthorized.join(", ")}; ` +
+          "skipped tests are only permitted in files whose skips are statically " +
+          "classified as runtime-conditional (see packages/scripts/audit-focused-skipped-tests.mjs)",
+      );
+    }
+  }
   return {
     status: "valid",
     path: junitPath,
@@ -304,6 +329,7 @@ export function validateJunitEvidence(xml, inventoryFiles, junitPath) {
     assertions,
     failures,
     skipped,
+    skippedFiles,
     suiteFileCount: suiteFiles.size,
   };
 }
@@ -401,6 +427,9 @@ export function runScriptTests(options = {}) {
       );
       if (junit.failures > 0) status = status || 1;
     } catch (error) {
+      // error-policy:J3 malformed, unreadable, or policy-violating JUnit
+      // evidence becomes an explicit "invalid" record and a failing exit code
+      // in the report — never a silently valid lane.
       junit = {
         status: "invalid",
         path: normalizedJunitPath,
