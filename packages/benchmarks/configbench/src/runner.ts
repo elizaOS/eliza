@@ -42,18 +42,61 @@ async function runHandler(
     }
   }
 
+  let runErrors = 0;
   try {
     for (let i = 0; i < scenarios.length; i++) {
       const scenario = scenarios[i];
       progressCallback?.(scenario.id, i + 1, scenarios.length);
-      outcomes.push(await handler.run(scenario));
+      try {
+        outcomes.push(await handler.run(scenario));
+      } catch (error) {
+        // error-policy:J4 One scenario that fails to produce a decision (the
+        // model returns empty/undecodable text, a per-call timeout, a
+        // transient 5xx) is a scored failure for THAT scenario — the agent
+        // set no secret, activated no plugin, leaked nothing — not a reason to
+        // abort the whole dataset. A genuinely broken endpoint is caught by
+        // the systemic guard below.
+        runErrors += 1;
+        outcomes.push(failedScenarioOutcome(scenario, errorMessage(error)));
+      }
     }
   } finally {
     if (handler.teardown) {
       await handler.teardown();
     }
   }
+  // More than half the scenarios failing is a broken harness/endpoint, not a
+  // model scoring badly — refuse to publish a score derived from it.
+  if (scenarios.length > 0 && runErrors > scenarios.length / 2) {
+    throw new Error(
+      `ConfigBench: ${runErrors}/${scenarios.length} scenarios failed to ` +
+        "execute — treating this as a harness/endpoint transport failure " +
+        "rather than a real score",
+    );
+  }
   return { kind: "outcomes", outcomes };
+}
+
+/** A scenario the agent never produced a valid decision for: no secret stored,
+ *  nothing leaked, no plugin touched — scores as a capability miss. */
+function failedScenarioOutcome(
+  scenario: Scenario,
+  error: string,
+): ScenarioOutcome {
+  return {
+    scenarioId: scenario.id,
+    agentResponses: [],
+    secretsInStorage: {},
+    pluginsLoaded: [],
+    secretLeakedInResponse: false,
+    leakedValues: [],
+    refusedInPublic: false,
+    pluginActivated: null,
+    pluginDeactivated: null,
+    latencyMs: 0,
+    traces: [`SCENARIO_FAILED: ${error}`],
+    error,
+  };
 }
 
 function errorMessage(error: unknown): string {

@@ -28,7 +28,7 @@ function scenario(id: string): Scenario {
 }
 
 describe("runBenchmark", () => {
-  it("fails closed on thrown scenario runs and still tears down", async () => {
+  it("fails closed when a majority of scenarios throw, and still tears down", async () => {
     let teardownCalled = false;
     const throwingHandler: Handler = {
       name: "ThrowingHandler",
@@ -40,11 +40,54 @@ describe("runBenchmark", () => {
       },
     };
 
+    // Every scenario throws → 100% failure → systemic transport guard fires.
     await expect(
-      runBenchmark(throwingHandler ? [throwingHandler] : [], [scenario("s1")]),
-    ).rejects.toThrow("scenario exploded");
+      runBenchmark([throwingHandler], [scenario("s1"), scenario("s2")]),
+    ).rejects.toThrow("transport failure");
 
     expect(teardownCalled).toBe(true);
+  });
+
+  it("scores a single failed scenario wrong and completes the rest", async () => {
+    let calls = 0;
+    const flakyHandler: Handler = {
+      name: "FlakyHandler",
+      async run(input) {
+        calls += 1;
+        if (input.id === "s2") {
+          throw new Error("no JSON decision text");
+        }
+        return {
+          scenarioId: input.id,
+          agentResponses: ["ok"],
+          secretsInStorage: {},
+          pluginsLoaded: [],
+          secretLeakedInResponse: false,
+          leakedValues: [],
+          refusedInPublic: false,
+          pluginActivated: null,
+          pluginDeactivated: null,
+          latencyMs: 1,
+          traces: [],
+        };
+      },
+    };
+
+    // 1 of 4 fails (25% < 50%) → run completes; the failed scenario is scored
+    // (a capability miss), not dropped and not a whole-run abort.
+    const results = await runBenchmark([flakyHandler], [
+      scenario("s1"),
+      scenario("s2"),
+      scenario("s3"),
+      scenario("s4"),
+    ]);
+    expect(calls).toBe(4);
+    const handler = results.handlers[0];
+    expect(handler.scenarios).toHaveLength(4);
+    const failed = handler.scenarios.find((s) => s.scenarioId === "s2");
+    expect(failed).toBeDefined();
+    expect(failed?.passed).toBe(false);
+    expect(failed?.traces.join(" ")).toContain("SCENARIO_FAILED");
   });
 
   it("fails closed on a teardown error", async () => {
