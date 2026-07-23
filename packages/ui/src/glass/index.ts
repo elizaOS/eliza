@@ -4,11 +4,22 @@ export {
   GlassStyles,
   GlassSurface,
   type GlassSurfaceProps,
+  type NativeGlassAnchorOptions,
+  useNativeGlassAnchor,
 } from "./GlassSurface";
+export {
+  isNativeBackdropActive,
+  type NativeWallpaperSource,
+  resetNativeBackdropForTests,
+  setNativeWallpaperSource,
+  useNativeBackdropActive,
+} from "./native-backdrop";
 export {
   glassBridge,
   isNativeGlassAvailable,
+  type NativeBackdropOptions,
   type NativeGlassOptions,
+  nativeGlassPlatform,
   resetGlassBridgeForTests,
 } from "./native-bridge";
 export {
@@ -22,4 +33,8 @@ export {
   type GlassRecipe,
   type GlassVariant,
 } from "./tokens";
-export { type GlassTier, useNativeGlass } from "./useNativeGlass";
+export {
+  cssGlassTier,
+  type GlassTier,
+  useNativeGlass,
+} from "./useNativeGlass";

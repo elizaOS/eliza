@@ -9,6 +9,14 @@ import { resolveApiUrl, resolveAppAssetUrl } from "../utils/asset-url";
 export interface ImageBackgroundProps {
   /** Cover-image source — a data URL or a served `/api/media/…` URL. */
   imageUrl: string;
+  /**
+   * True while the native shell hosts this image below the WebView (see
+   * glass/native-backdrop.ts). The layer then skips the image paint but KEEPS
+   * the legibility scrim: a translucent DOM layer composites correctly over
+   * the native pixels and stays theme-reactive, so foreground text keeps
+   * winning on both tiers.
+   */
+  imageHostedNatively?: boolean;
 }
 
 /**
@@ -26,7 +34,7 @@ export interface ImageBackgroundProps {
  *    would resolve to `file:///wallpapers` and fail. This is the same
  *    URL-resolution trap `resolveTileImageUrl` handles for launcher hero art.
  */
-function resolveWallpaperUrl(url: string): string {
+export function resolveWallpaperUrl(url: string): string {
   if (
     url.startsWith("data:") ||
     url.startsWith("blob:") ||
@@ -72,12 +80,14 @@ function resolveWallpaperUrl(url: string): string {
  * scrim. */
 export function ImageBackground({
   imageUrl,
+  imageHostedNatively = false,
 }: ImageBackgroundProps): React.JSX.Element {
   return (
     <div
       aria-hidden="true"
       data-testid="app-background-image"
       data-eliza-bg="image"
+      data-native-hosted={imageHostedNatively ? "true" : "false"}
       className="pointer-events-none fixed inset-0"
       style={{
         zIndex: 0,
@@ -86,7 +96,11 @@ export function ImageBackground({
         // JS-MEASURED `--standalone-bottom-reclaim`, overriding the `inset-0`
         // `bottom: 0` from the class. See the BOTTOM EDGE note above.
         bottom: STANDALONE_BOTTOM_RECLAIM_OFFSET,
-        backgroundImage: `url("${resolveWallpaperUrl(imageUrl)}")`,
+        // Native-hosted: the pixels live below the WebView; painting them here
+        // too would cover the native copy. The scrim child still renders.
+        backgroundImage: imageHostedNatively
+          ? undefined
+          : `url("${resolveWallpaperUrl(imageUrl)}")`,
         backgroundSize: "cover",
         backgroundPosition: "center",
         backgroundRepeat: "no-repeat",
