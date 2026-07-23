@@ -4,6 +4,7 @@
 # expected in the parent Bun process's LCOV report. Keep this list narrow: plain
 # importable modules belong in normal in-process coverage.
 packages/core/scripts/provider-latency-report.ts
+packages/agent/scripts/cerebras-chat-flow-latency.ts
 packages/eliza-hub/deployment/hetzner-staging/scripts/backup-evidence.mjs
 packages/eliza-hub/deployment/hetzner-staging/scripts/database-evidence.mjs
 packages/eliza-hub/deployment/hetzner-staging/scripts/image-provenance-evidence.mjs
