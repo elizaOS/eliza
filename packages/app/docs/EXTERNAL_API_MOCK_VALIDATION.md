@@ -70,14 +70,15 @@ not injectable need that refactor first.
 | ElevenLabs | api.elevenlabs.io | no (key) | **unvalidated** | TTS returns binary audio (no JSON parse); the `/voices` JSON list is the validation target. |
 | Tavily web search | @tavily/core SDK | no (key) | **validated** | `plugin-web-search/.../webSearchService.{contract,real}.test.ts` — fixture typed as the SDK's `TavilySearchResponse` (compile-time drift guard) through the real normalizer + gated live (TAVILY_LIVE_TEST=1 + key). |
 
-## Ratchet
+## Contract integrity
 
-`test/external-api-mock-validation.test.ts` enforces three things:
-1. every **validated** API keeps its `routes.contract.test.ts` + `routes.real.test.ts`;
-2. every **contract-tested** API keeps its recorded-contract test file; and
-3. the **unvalidated** debt set only shrinks.
+`test/external-api-mock-contract-integrity.test.ts` verifies that every API
+declared **validated** still cites both a recorded-contract test and a live
+refresh test, and every API declared **contract-tested** still cites its
+recorded-contract test. The **unvalidated** rows remain a planning report; their
+count is not a CI threshold.
 
 To advance an API a tier: capture a real response, add the recorded-contract test
 (→ contract-tested), then add a live-drift/refresh test (→ validated), updating the
-sets in the gate. Public + injectable APIs (CoinGecko, block explorers) are the
+status table. Public + injectable APIs (CoinGecko, block explorers) are the
 cheapest next wins.

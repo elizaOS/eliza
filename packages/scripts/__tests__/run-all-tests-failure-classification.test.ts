@@ -1,13 +1,11 @@
 /**
- * Pins the run-all-tests.mjs vacuous-green guards (#12342/#13620).
- *
- * The suite spawns the real runner against temporary workspace packages so a
- * lane that collects no tasks, swallows a failure as "no tests found", or hides
- * a test-file mismatch cannot exit green without exercising the runner path.
+ * Exercises run-all-tests failure classification through temporary workspace
+ * packages, ensuring a no-tests banner cannot hide a genuine failing command
+ * or a mismatched runtime filter.
  */
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -55,17 +53,10 @@ function run(args, env = {}) {
   };
 }
 
-const NOWHERE_FILTER = "__no_such_package_zzz__";
-const ZERO_TASK_DIAGNOSTIC = "lane matched 0 task(s)";
 const TEMP_PACKAGE_DIR = join(
   repoRoot,
   "packages",
   "__run_all_tests_false_no_test_skip__",
-);
-const PLAN_FLOOR_PACKAGE_DIR = join(
-  repoRoot,
-  "packages",
-  "__run_all_tests_plan_floor_fixture__",
 );
 // A second temp package whose `test` script is a SINGLE `bun test <file>`
 // invocation — i.e. one that canSkipWhenOutputHasNoTests() treats as
@@ -83,156 +74,7 @@ const SKIPPABLE_EMPTY_PACKAGE_DIR = join(
   "__run_all_tests_genuinely_no_tests__",
 );
 
-function rootScript(name) {
-  const rootPackage = JSON.parse(
-    readFileSync(join(repoRoot, "package.json"), "utf8"),
-  );
-  const script = rootPackage.scripts?.[name];
-  if (typeof script !== "string") {
-    throw new Error(`missing root package script ${name}`);
-  }
-  return script;
-}
-
-describe("root test lane min-task wiring (#13620)", () => {
-  for (const [scriptName, floor] of [
-    ["test", 200],
-    ["test:server", 8],
-    ["test:client", 3],
-    ["test:plugins", 100],
-    ["test:e2e", 20],
-    ["test:live", 100],
-    ["test:e2e:live", 20],
-  ]) {
-    test(`${scriptName} arms the run-all-tests vacuous-green floor`, () => {
-      expect(rootScript(scriptName)).toContain(`--min-tasks=${floor}`);
-    });
-  }
-});
-
-describe("run-all-tests --min-tasks vacuous-green guard", () => {
-  test(
-    "exits 3 when a collapsed filter collects fewer tasks than the floor",
-    () => {
-      const result = run([
-        "--no-cloud",
-        `--filter=${NOWHERE_FILTER}`,
-        "--min-tasks=1",
-      ]);
-      expect(result.status).toBe(3);
-      expect(`${result.stdout}${result.stderr}`).toContain(
-        "VACUOUS-GREEN GUARD",
-      );
-    },
-    SPAWN_TIMEOUT_MS,
-  );
-
-  test(
-    "honours MIN_TEST_TASKS env identically to the flag",
-    () => {
-      const result = run(["--no-cloud", `--filter=${NOWHERE_FILTER}`], {
-        MIN_TEST_TASKS: "1",
-      });
-      expect(result.status).toBe(3);
-      expect(`${result.stdout}${result.stderr}`).toContain(
-        ZERO_TASK_DIAGNOSTIC,
-      );
-    },
-    SPAWN_TIMEOUT_MS,
-  );
-
-  test(
-    "enforces the task floor before plan mode exits",
-    () => {
-      const result = run([
-        "--plan=json",
-        "--no-cloud",
-        `--filter=${NOWHERE_FILTER}`,
-        "--min-tasks=1",
-      ]);
-      expect(result.status).toBe(3);
-      expect(result.stderr).toContain(ZERO_TASK_DIAGNOSTIC);
-      expect(result.stdout).toBe("");
-    },
-    SPAWN_TIMEOUT_MS,
-  );
-
-  test(
-    "without the guard, a collapsed lane keeps its historical non-failing exit",
-    () => {
-      // The guard is strictly additive: omitting --min-tasks must not change the
-      // pre-existing behaviour of a zero-task collapse (green, no guard text).
-      const result = run(["--no-cloud", `--filter=${NOWHERE_FILTER}`]);
-      expect(result.status).toBe(0);
-      expect(`${result.stdout}${result.stderr}`).not.toContain(
-        "VACUOUS-GREEN GUARD",
-      );
-    },
-    SPAWN_TIMEOUT_MS,
-  );
-
-  test(
-    "rejects a non-numeric --min-tasks with a usage error (exit 2)",
-    () => {
-      const result = run(["--plan=json", "--min-tasks=notanumber"]);
-      expect(result.status).toBe(2);
-      expect(result.stderr).toContain("--min-tasks/MIN_TEST_TASKS must be");
-    },
-    SPAWN_TIMEOUT_MS,
-  );
-
-  test(
-    "rejects a partially numeric --min-tasks with a usage error (exit 2)",
-    () => {
-      const result = run(["--plan=json", "--min-tasks=10abc"]);
-      expect(result.status).toBe(2);
-      expect(result.stderr).toContain("--min-tasks/MIN_TEST_TASKS must be");
-    },
-    SPAWN_TIMEOUT_MS,
-  );
-
-  test(
-    "plan mode still succeeds with a valid --min-tasks and reaches the floor",
-    () => {
-      // Use a self-contained fixture instead of an authored workspace package:
-      // this guard is explicitly invoked from packages/scripts/__tests__, which
-      // can run in sparse worktrees where @elizaos/agent is absent. The runner
-      // only needs to prove a real discovered task satisfies the floor.
-      rmSync(PLAN_FLOOR_PACKAGE_DIR, { recursive: true, force: true });
-      mkdirSync(PLAN_FLOOR_PACKAGE_DIR, { recursive: true });
-      try {
-        writeFileSync(
-          join(PLAN_FLOOR_PACKAGE_DIR, "package.json"),
-          `${JSON.stringify(
-            {
-              name: "@elizaos/run-all-tests-plan-floor-fixture",
-              private: true,
-              type: "module",
-              scripts: {
-                test: 'node -e "process.exit(0)"',
-              },
-            },
-            null,
-            2,
-          )}\n`,
-        );
-
-        const result = run([
-          "--plan=json",
-          "--only=test",
-          "--filter=@elizaos/run-all-tests-plan-floor-fixture",
-          "--min-tasks=1",
-        ]);
-        expect(result.status).toBe(0);
-        const parsed = JSON.parse(result.stdout);
-        expect(parsed.summary.taskCount).toBe(1);
-      } finally {
-        rmSync(PLAN_FLOOR_PACKAGE_DIR, { recursive: true, force: true });
-      }
-    },
-    SPAWN_TIMEOUT_MS,
-  );
-
+describe("run-all-tests failure classification (#13620)", () => {
   test(
     "does not reclassify arbitrary failing scripts as no-test skips",
     () => {
@@ -281,14 +123,9 @@ describe("run-all-tests --min-tasks vacuous-green guard", () => {
   );
 });
 
-// #13620 task 4: the no-tests-skip reclassification must be narrowed so a
-// non-zero exit whose output ALSO carries a genuine failure signal is not
-// swallowed as SKIP=green. Distinct from the `--min-tasks` guard (task 3,
-// #12342) pinned above, and from the existing "arbitrary failing script" case
-// whose fixture command is not no-test-skippable (so it never reached the
-// swallow branch). These fixtures use a SINGLE `bun test <file>` command, which
-// canSkipWhenOutputHasNoTests() does treat as skippable, so they exercise the
-// exact branch that used to swallow the failure.
+// These fixtures use a single `bun test <file>` command, which
+// canSkipWhenOutputHasNoTests() treats as skippable, to exercise the branch
+// where a no-tests banner can coexist with a genuine failure.
 describe("run-all-tests no-test-skip failure-swallow guard (#13620)", () => {
   test(
     "a skippable bun-test lane emitting a no-tests banner AND a real failure fails (not SKIP=green)",

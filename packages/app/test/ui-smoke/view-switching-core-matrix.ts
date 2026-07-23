@@ -36,7 +36,7 @@ export const REQUIRED_CORE_VIEW_IDS = [
 
 // Mirrors the canonical `SETTINGS_SECTION_META` order (id + group ordering is the
 // single source of truth in packages/ui/src/components/settings/settings-section-meta.ts).
-// Kept in lockstep with it — the view-switching coverage gate asserts equality.
+// These ids select the settings sections the runtime switching spec exercises.
 export const REQUIRED_SETTINGS_SECTION_IDS = [
   "identity",
   "ai-model",

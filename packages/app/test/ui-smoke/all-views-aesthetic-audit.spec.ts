@@ -56,11 +56,8 @@ const { strict: AUDIT_STRICT, needsWorkStrict: AUDIT_STRICT_NEEDS_WORK } =
 // un-contained overflow (WS5) blows past this comfortably.
 const HORIZONTAL_OVERFLOW_TOLERANCE_PX = 2;
 // Key: `${slug}-${viewport}`. Value: the worst verdict currently tolerated for
-// that view. Empty = zero debt (the INTERACTION_DEBT={}/MAX=0 convention). The
-// CI lane runs the gate default-on against an empty allowlist and passes, so the
-// current baseline carries no parked `broken`/`needs-work` view; keep it empty
-// and add a slug-viewport key ONLY for genuinely-accepted debt, shrinking it
-// over time.
+// that view. An empty map means every rendered view must be green; entries
+// document specific output-quality exceptions for manual review.
 const AESTHETIC_VERDICT_DEBT: AestheticVerdictDebt = {
   "builtin-background-desktop-landscape": "needs-work",
   "builtin-background-ipad-portrait": "needs-work",

@@ -101,10 +101,10 @@ ELIZA_UI_SMOKE_REUSE_SERVER=1 \
 
 | Requirement | Spec(s) | Asserts |
 | --- | --- | --- |
-| Pages load | `ui-smoke.spec.ts`, `all-pages-clicksafe.spec.ts`, `test/route-coverage.test.ts` | every route mounts without crash; chat composer ready signal `[data-testid="chat-composer-textarea"]` appears |
+| Pages load | `ui-smoke.spec.ts`, `all-pages-clicksafe.spec.ts` | exercised routes mount without crash; chat composer ready signal `[data-testid="chat-composer-textarea"]` appears |
 | Agent responds to chat | `live-agent-chat.spec.ts`, `assistant-home-flow.spec.ts` | a sent message yields an agent response |
 | View switching | `view-manager-actual-flow.spec.ts`, `plugin-views-visual.spec.ts` | navigating between plugin/builtin views mounts the right surface |
-| View-dependent actions | `test/view-interaction-coverage.test.ts`, `terminal-plugin-view-command-contract.spec.ts`, `*-gui-interactions.spec.ts` | view capabilities/actions dispatch and take effect |
+| View-dependent actions | `terminal-plugin-view-command-contract.spec.ts`, `*-gui-interactions.spec.ts` | view capabilities/actions dispatch and take effect |
 | Multi-window sync | `multi-window-sync.spec.ts`, `multi-client-desync.spec.ts` | cross-tab/client state stays consistent (some `test.fixme` pending live shared backend) |
 | Perf web-vitals | `perf-load-kpi.spec.ts` | FCP/LCP/JS-payload within soft budgets on `/chat` (doubles as a measurement) |
 

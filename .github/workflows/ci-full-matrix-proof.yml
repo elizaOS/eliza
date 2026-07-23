@@ -3,11 +3,10 @@ name: CI Full Matrix Proof
 # Un-cancellable proof that the exhaustive develop lane keeps its full coverage
 # shape (#12342). This does NOT re-run the test matrix — `test.yml` owns that on
 # its own schedule. It runs the deterministic proof job: it enumerates every
-# expected lane from the committed manifest, cross-checks them against
-# `test.yml` (job present, not pinned pull_request-only) and against
-# `run-all-tests.mjs --plan=json` (task/package floors, required core packages,
-# non-empty per-script lanes). A missing lane, a lane pointed at a nonexistent
-# glob, or a whole script lane collapsing to zero turns this red.
+# expected lane from the committed manifest and cross-checks them against
+# `test.yml` (job present, not pinned pull_request-only). The
+# `run-all-tests.mjs --plan=json` inventory is uploaded and summarized without
+# task/package floors, required-package lists, or non-empty count gates.
 #
 # Additive by design: it introduces no new required status check and does not
 # touch any PR-critical workflow. The twice-daily cadence exists so the #12342

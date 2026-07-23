@@ -1,22 +1,13 @@
-# Chat / touch / gesture coverage matrix (#12188)
+# Chat / touch / gesture test map (#12188)
 
-Checked-in inventory of every **chat/touch/gesture interaction** in the app and
-its multi-level test coverage. This doc is the human-readable companion to the
-enforced gate
-[`packages/app/test/chat-gesture-coverage.test.ts`](../test/chat-gesture-coverage.test.ts).
-
-**The gate is what keeps this honest.** Adding a new **gesture-handler site** to
-`packages/ui/src` (a pointer-capture drag, a custom touch handler, or a
-gesture-engine hook) without a matrix row **fails CI**. This doc is a table a
-reviewer can read; the gate is the assertion a CI run enforces. Keep them in
-sync — the gate's "stable roster" test pins the exact site set, so a drift in
-either surface is caught.
+This is a human-maintained map of chat/touch/gesture interactions and the tests
+that exercise them. It is diagnostic documentation, not an inventory gate:
+adding or removing a gesture does not fail CI because this table changed.
 
 ## What "gesture-handler site" means
 
 A file under `packages/ui/src` is a gesture-handler site when it registers a real
-pointer/touch gesture — identified by three low-false-positive markers (see
-`GESTURE_MARKERS` in the gate):
+pointer/touch gesture — identified by three low-false-positive markers:
 
 1. `setPointerCapture(` — you only capture a pointer to run a drag/pan gesture.
 2. a custom touch registration — `onTouchStart` / `addEventListener("touchstart"`
@@ -26,7 +17,7 @@ pointer/touch gesture — identified by three low-false-positive markers (see
 
 A plain `onClick` / `onPointerDown` button is intentionally **not** a gesture
 site. `*.test.*` / `*.fuzz.*` specs, `__e2e__` fixtures, and `testing/`
-scaffolding are excluded. The current roster is 12 files (pinned in the gate).
+scaffolding are excluded.
 
 **Out of scope of this matrix:** HTML5 native drag-and-drop reorder
 (`CharacterEditorPanels.tsx`, `draggable`/`onDragStart`) is a distinct input
@@ -51,14 +42,10 @@ and record a stable-named `.webm` (Design decision 8).
 
 ## Two evidence lanes
 
-| Lane | Produced by | Enforced by the gate? |
+| Lane | Produced by | CI execution |
 | --- | --- | --- |
-| **Automated (L1–L3)** | jsdom unit/component tests, the `run-*-e2e.mjs` CDP-touch runners (real gestures + video), and `gesture-matrix.spec.ts` on the shipped app | ✅ Existence of every referenced test/runner file is asserted; running them is a CI lane, not this vitest gate. |
-| **Platform / manual (L4)** | `bun run --cwd packages/app audit:app`, `capture:ios-sim` / `capture:android-emu` / desktop, video walkthroughs | ❌ No — needs a booted renderer / device; tracked here, produced per [`AGENTS.md`](../../../AGENTS.md). |
-
-The vitest gate is deliberately **boot-free** (file reads + set diffs), like its
-sibling [`launcher-view-coverage.test.ts`](../test/launcher-view-coverage.test.ts),
-so it runs on every PR in the cheap `test:client` lane.
+| **Automated (L1–L3)** | jsdom unit/component tests, the `run-*-e2e.mjs` CDP-touch runners (real gestures + video), and `gesture-matrix.spec.ts` on the shipped app | The actual tests and browser runners fail only on behavioral failures. |
+| **Platform / manual (L4)** | `bun run --cwd packages/app audit:app`, `capture:ios-sim` / `capture:android-emu` / desktop, video walkthroughs | Needs a booted renderer or device; produced per [`AGENTS.md`](../../../AGENTS.md). |
 
 ## Interaction matrix
 
@@ -94,8 +81,7 @@ the shade expands via a touch pan at the list top (desktop: wheel pull) — row
 
 ## Coverage gaps
 
-Every one of the 13 discovered gesture-handler sites is in a matrix row (the
-gate proves it). Two rows are honest **gaps** with no automated test yet:
+Two rows are honest **gaps** with no automated test yet:
 
 - **Row 15 (graph pan/pinch/wheel-zoom)** — `RelationshipsGraphPanel.tsx` has no
   L3 spec; planned via the app-side `touchPinch`/`touchPan` helpers
@@ -103,23 +89,16 @@ gate proves it). Two rows are honest **gaps** with no automated test yet:
 - **Row 17 (pinch/dblclick negative test)** — no test asserts the chat surface
   refuses to zoom; planned as an L3 negative case.
 
-These gaps are visible on purpose. A new gesture site can never land **silently**
-without a row — the gate's "every gesture-handler site is covered" assertion
-fails for it.
+These gaps remain visible here so reviewers can prioritize behavioral tests.
 
 ## How to add coverage for a new gesture
 
-When you add a gesture-handler site to `packages/ui/src` (the gate tells you if
-one appeared), do all three:
+When you add a gesture-handler site to `packages/ui/src`:
 
-1. Add the file to the `sites` of the matrix row whose interaction it implements
-   — or add a new row — in
-   [`packages/app/test/chat-gesture-coverage.test.ts`](../test/chat-gesture-coverage.test.ts),
-   and update `PINNED_GESTURE_SITES`.
-2. Add a real test at the right level (L1 recognizer math, L2 handler wiring, L3
+1. Add a real test at the right level (L1 recognizer math, L2 handler wiring, L3
    CDP-touch runner or `gesture-matrix.spec.ts` section) and reference it in the
-   row's `tests`.
-3. Add a row to the matrix table above.
+   matrix.
+2. Add or update the matrix row above.
 
 Then capture the L4 platform evidence (`audit:app`, Android/iOS/desktop where
 relevant) for the PR per `AGENTS.md`.

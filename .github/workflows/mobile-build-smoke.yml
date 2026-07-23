@@ -258,10 +258,7 @@ jobs:
         # fixture via the Playwright smoke, serves it over loopback HTTP, opens
         # it in real Mobile Safari on the booted simulator, and asserts a
         # non-blank screen capture. Wired here because this is the only
-        # PR-path lane with an iOS Simulator available, and the ui-e2e
-        # runner-coverage ratchet (packages/scripts/__tests__/
-        # ui-e2e-runner-coverage.test.ts) requires every packages/ui __e2e__
-        # runner to be invoked by a workflow leg.
+        # PR-path lane with an iOS Simulator available.
         run: |
           set -euo pipefail
           bunx playwright install webkit

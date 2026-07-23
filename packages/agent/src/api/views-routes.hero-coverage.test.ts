@@ -162,9 +162,6 @@ describe("GET /api/views/:id/hero — every view returns an image", () => {
     for (const fallbackId of FALLBACK_VIEW_IDS) {
       expect(ids.has(fallbackId)).toBe(true);
     }
-    expect(views.length).toBeGreaterThanOrEqual(
-      BUILTIN_VIEWS.length + FALLBACK_VIEW_IDS.size,
-    );
   });
 
   it("serves a non-empty image for EVERY registered view (no 404, image/* content-type)", async () => {

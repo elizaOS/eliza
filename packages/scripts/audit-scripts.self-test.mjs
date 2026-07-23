@@ -52,7 +52,9 @@ function assert(condition, message) {
 }
 
 function hasFinding(report, fragment) {
-  return report.failures.some((f) => f.includes(fragment));
+  return [...report.failures, ...(report.reports ?? [])].some((finding) =>
+    finding.includes(fragment),
+  );
 }
 
 // 1. A clean tree passes.
@@ -66,10 +68,10 @@ function hasFinding(report, fragment) {
   );
 }
 
-// 2. An orphan root script (unreferenced, unknown namespace) fails.
+// 2. An orphan root script is reported without blocking.
 {
   const report = runAudit({ root: { "frobnicate:widgets": "node tool.mjs" } });
-  assert(!report.ok, "orphan script should fail");
+  assert(report.ok, "orphan script inventory should be report-only");
   assert(hasFinding(report, "[orphan]"), "expected an [orphan] finding");
   assert(
     hasFinding(report, "frobnicate:widgets"),
@@ -160,7 +162,7 @@ function hasFinding(report, fragment) {
   );
 }
 
-// 9. An unallowlisted exact root -> package script wrapper fails.
+// 9. An unallowlisted exact root -> package script wrapper is advisory.
 {
   const report = runAudit({
     root: {
@@ -173,7 +175,7 @@ function hasFinding(report, fragment) {
       }),
     },
   });
-  assert(!report.ok, "unallowlisted cwd wrapper should fail");
+  assert(report.ok, "unallowlisted cwd wrapper should be report-only");
   assert(
     hasFinding(report, "[cwd-wrapper]"),
     "expected a [cwd-wrapper] finding",

@@ -1,16 +1,8 @@
-# Launcher view coverage inventory (#10719)
+# Launcher view test map (#10719)
 
-Checked-in inventory of every **default-launcher view** — the tiles the `/views`
-launcher grid renders — and its automated + manual test-coverage status. This
-doc is the human-readable companion to the enforced gate
-[`packages/app/test/launcher-view-coverage.test.ts`](../test/launcher-view-coverage.test.ts).
-
-**The gate is what keeps this honest.** Adding a new launcher view to
-`BUILTIN_VIEWS` ([`packages/agent/src/api/builtin-views.ts`](../../agent/src/api/builtin-views.ts))
-without a coverage entry **fails CI**. This doc is a table a reviewer can read;
-the gate is the assertion a CI run enforces. Keep them in sync — the gate's
-`covers a stable, non-empty set of launcher views` test pins the exact roster
-below, so a drift in either surface is caught.
+This human-maintained map records the automated and manual tests for the
+default-launcher views rendered by `/views`. It is not a merge gate or a pinned
+view inventory.
 
 ## What "default-launcher view" means
 
@@ -31,20 +23,15 @@ coverage, so they are in the table below.
 
 `camera` (`viewKind: preview`, `platforms: ["android"]`, native-OS) is the one
 `BUILTIN_VIEWS` entry that is **not** a default-launcher view; it is intentionally
-excluded from this inventory and the gate.
+excluded from this map.
 
 ## Two evidence lanes
 
-| Lane | Produced by | Enforced by the gate? |
+| Lane | Produced by | Validation |
 | --- | --- | --- |
-| **Automated smoke** | `builtin-views-visual.spec.ts` (desktop + mobile boot-smoke: view mounts, renders content, no uncaught page error) | ✅ Yes — every launcher view's path must be in the smoke matrix, and its spec/runner files must exist. |
-| **Dedicated e2e** | The `run-*-e2e.mjs` runners (real view → esbuild → headless Chromium, real interactions, video) | ✅ Existence of the referenced runner file is asserted; running it is a CI lane, not this vitest gate. |
-| **Manual / on-device capture** | `bun run --cwd packages/app audit:app` (live full-page audit), `capture:ios-sim` / `capture:android-emu` / `capture:linux-desktop` / `capture:windows-desktop`, video walkthroughs | ❌ No — needs a booted renderer / device; tracked here, produced in the PR-evidence lane per [`AGENTS.md`](../../../AGENTS.md). |
-
-The vitest gate is deliberately **boot-free** (file reads + set diffs), like its
-sibling [`route-coverage.test.ts`](../test/route-coverage.test.ts), so it runs on
-every PR in the cheap `test:client` lane instead of behind a ~12-min cold-renderer
-Playwright boot.
+| **Automated smoke** | `builtin-views-visual.spec.ts` (desktop + mobile boot-smoke: view mounts, renders content, no uncaught page error) | Behavioral failures fail the browser test. |
+| **Dedicated e2e** | The `run-*-e2e.mjs` runners (real view → esbuild → headless Chromium, real interactions, video) | Behavioral failures fail the runner. |
+| **Manual / on-device capture** | `bun run --cwd packages/app audit:app` (live full-page audit), `capture:ios-sim` / `capture:android-emu` / `capture:linux-desktop` / `capture:windows-desktop`, video walkthroughs | Produced in the PR-evidence lane per [`AGENTS.md`](../../../AGENTS.md). |
 
 ## Inventory
 
@@ -70,35 +57,26 @@ video evidence that only the manual/CI lane produces.
 | `settings` | `/settings` | system | ✅ smoke | smoke-only | `audit:app` + video |
 | `background` | `/background` | preview | ✅ smoke | `packages/ui/src/components/pages/__e2e__/run-background-e2e.mjs` | `audit:app` + video (preview toggle on) |
 
-### Coverage gaps
+### Test gaps
 
-**None.** Every default-launcher view has automated smoke coverage (cross-checked
-by the gate: each view's `path` is asserted present in
-`builtin-views-visual.spec.ts`'s `BUILTIN_VIEW_CASES`). `chat` and `background`
-additionally have dedicated interaction e2e runners, and the chat-native
+At the time of this map, every listed default-launcher view has an automated
+smoke case in `builtin-views-visual.spec.ts`. `chat` and `background`
+also have dedicated interaction e2e runners, and the chat-native
 tutorial is interaction-covered by `test/ui-smoke/tutorial-chat.spec.ts` (the
 tour is transcript turns, not a view of its own). The remaining views are
-`smoke-only`: boot-smoke is their automated floor, and the manual/CI capture lane
+`smoke-only`: boot-smoke is their automated test, and the manual/CI capture lane
 (`audit:app` + on-device captures) supplies the full-page-screenshot / video /
 device evidence per `AGENTS.md`.
 
-If a launcher view is ever added with **no** smoke case, the gate's "every
-launcher view's smoke spec actually covers its declared path" assertion fails —
-so a real gap can never land silently.
-
 ## How to add coverage for a new launcher view
 
-When you add a view to `BUILTIN_VIEWS` that is a default-launcher view (the gate
-tells you if it is), do all three:
+When you add a default-launcher view to `BUILTIN_VIEWS`:
 
 1. Add a `{ id, path }` case for the view's route to `BUILTIN_VIEW_CASES` in
    [`packages/app/test/ui-smoke/builtin-views-visual.spec.ts`](../test/ui-smoke/builtin-views-visual.spec.ts).
    (Add a dedicated `run-*-e2e.mjs` runner too if the view has real interactions
    worth driving.)
-2. Add a `LAUNCHER_VIEW_COVERAGE` entry in
-   [`packages/app/test/launcher-view-coverage.test.ts`](../test/launcher-view-coverage.test.ts)
-   and update the pinned roster in its "stable set" test.
-3. Add a row to the inventory table above.
+2. Add a row to the map above.
 
 Then capture the manual-lane evidence (`audit:app`, on-device where relevant) for
 the PR per `AGENTS.md`.

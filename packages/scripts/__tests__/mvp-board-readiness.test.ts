@@ -167,27 +167,6 @@ describe("MVP board readiness audit", () => {
     expect(report.rows[0].projectCheckSkipped).toBe(true);
   });
 
-  test("minimum issue guard prevents vacuous fallback passes", () => {
-    const report = board.auditMvpBoardReadiness(
-      [],
-      { items: [] },
-      {
-        projectCheckSkipped: true,
-        minIssues: 1,
-      },
-    );
-
-    expect(report.ok).toBe(false);
-    expect(report.minIssues).toBe(1);
-    expect(report.violations).toEqual([
-      expect.objectContaining({
-        type: "too-few-issues",
-        minimum: 1,
-        actual: 0,
-      }),
-    ]);
-  });
-
   test("does not scope project items from a different repository by number", () => {
     const report = board.auditMvpBoardReadiness(
       [issue(14747, ["mvp", "needs-shaw"])],
@@ -333,38 +312,6 @@ describe("MVP board readiness audit", () => {
     ]);
   });
 
-  test("CLI issues-only fixture mode fails when below minimum issue count", () => {
-    const dir = mkdtempSync(join(tmpdir(), "mvp-board-readiness-"));
-    const issuesJson = join(dir, "issues.json");
-    writeFileSync(issuesJson, JSON.stringify([]));
-
-    const result = spawnSync(
-      process.execPath,
-      [
-        scriptPath,
-        "--issues-json",
-        issuesJson,
-        "--issues-only",
-        "--min-issues",
-        "1",
-        "--json",
-      ],
-      { encoding: "utf8" },
-    );
-
-    expect(result.status).toBe(1);
-    expect(result.stderr).toBe("");
-    const report = JSON.parse(result.stdout);
-    expect(report.ok).toBe(false);
-    expect(report.violations).toEqual([
-      expect.objectContaining({
-        type: "too-few-issues",
-        minimum: 1,
-        actual: 0,
-      }),
-    ]);
-  });
-
   test("CLI fixture mode fails fast on a project card without a content type", () => {
     const dir = mkdtempSync(join(tmpdir(), "mvp-board-readiness-untyped-"));
     const issuesJson = join(dir, "issues.json");
@@ -418,23 +365,6 @@ describe("MVP board readiness audit", () => {
     );
     expect(result.stdout).toContain(
       "Skip Project status lookup and check only open MVP blocker labels.",
-    );
-    expect(result.stdout).toContain(
-      "--min-issues n  Fail if fewer than n open MVP issues are loaded.",
-    );
-  });
-
-  test("CLI rejects invalid minimum issue counts", () => {
-    const result = spawnSync(
-      process.execPath,
-      [scriptPath, "--issues-only", "--min-issues", "one"],
-      { encoding: "utf8" },
-    );
-
-    expect(result.status).toBe(1);
-    expect(result.stdout).toBe("");
-    expect(result.stderr).toContain(
-      "check-mvp-board-readiness: --min-issues must be a non-negative integer",
     );
   });
 });

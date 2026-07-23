@@ -37,9 +37,7 @@ export interface PluginViewMockCase {
 }
 
 export const PLUGIN_VIEW_LLM_MOCK_CASES: PluginViewMockCase[] = [
-  // Auto-mirrors the GUI visual smoke matrix. Kept in exact lockstep by
-  // plugin-view-llm-mock-coverage.test.ts; PLUGIN_VIEW_LLM_MOCK_JOURNEYS
-  // derives one journey per case below.
+  // These cases drive the plugin-view journeys consumed by the live LLM eval.
   { id: "birdclaw", viewType: "gui", path: "/birdclaw" },
   { id: "cloud", viewType: "gui", path: "/cloud" },
   { id: "contacts", viewType: "gui", path: "/contacts" },
@@ -756,34 +754,10 @@ function expandViewJourneyScenarios(
 export const EXPANDED_VIEW_USER_JOURNEYS: ViewJourneyScenario[] =
   expandViewJourneyScenarios(BASE_VIEW_USER_JOURNEYS);
 
-if (
-  EXPANDED_VIEW_USER_JOURNEYS.length !==
-  BASE_VIEW_USER_JOURNEYS.length * 10
-) {
-  throw new Error(
-    `view journey expansion must add exactly 10x (${BASE_VIEW_USER_JOURNEYS.length * 10}); got ${EXPANDED_VIEW_USER_JOURNEYS.length}`,
-  );
-}
-
 export const VIEW_USER_JOURNEYS: ViewJourneyScenario[] = [
   ...BASE_VIEW_USER_JOURNEYS,
   ...EXPANDED_VIEW_USER_JOURNEYS,
 ];
-
-export function countViewJourneyScenarios(): {
-  existing: number;
-  added: number;
-  total: number;
-  multiplierAdded: number;
-} {
-  return {
-    existing: BASE_VIEW_USER_JOURNEYS.length,
-    added: EXPANDED_VIEW_USER_JOURNEYS.length,
-    total: VIEW_USER_JOURNEYS.length,
-    multiplierAdded:
-      EXPANDED_VIEW_USER_JOURNEYS.length / BASE_VIEW_USER_JOURNEYS.length,
-  };
-}
 
 /**
  * Returns all scenarios matching any of the given tags.

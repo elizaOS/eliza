@@ -202,7 +202,7 @@ async function waitForViteClient(page: Page): Promise<void> {
 const PLUGIN_VIEWS_IN_ROOT_GRAPH = new Set<string>([
   // No plugin GUI view source is currently guaranteed in the "/" route's Vite
   // root graph. Keep this allowlist explicit so a future eager route can opt in
-  // together with a real source-file assertion in hmr-coverage.test.ts.
+  // together with a real source-file assertion in this HMR suite.
 ]);
 
 function isNotInRootGraph(name: string): boolean {

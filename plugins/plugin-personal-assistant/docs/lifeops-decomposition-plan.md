@@ -66,8 +66,8 @@ heaviest schema splits.
 - Calendar instrumentation is dormant (`CalendarSection`/`EventEditorDrawer` call
   `useAgentElement` but `CalendarView.tsx` doesn't mount them).
 - Screenshot harness EXISTS: `packages/app/test/ui-smoke/plugin-views-visual.spec.ts`
-  (62 `VIEW_CASES`, PNG + `.audit.json`), ratcheted by `route-coverage.test.ts` +
-  `view-interaction-coverage.test.ts`. Output is gitignored — no committed
+  (`VIEW_CASES`, PNG + `.audit.json`) and is exercised directly when visual
+  evidence is requested. Output is gitignored — no committed
   contact-sheet / manual-review like the cloud-frontend `audit:cloud` loop.
 
 ## Platform reality
@@ -630,7 +630,7 @@ passed / 3 failed — execution surfaced 3 REAL issues:
      the populated branch instead.
 Result: **8/8 green on desktop (chromium) AND 8/8 green at mobile (Pixel 7) viewport** —
 the same WebView layout that ships on Capacitor iOS/Android (extended the mobile-chromium
-project to run the spec). Boot-free coverage ratchets 19/19. Commits 8fbe4635c2 (fixes),
+project to run the spec). Boot-free functional checks 19/19. Commits 8fbe4635c2 (fixes),
 6557a18ba5 (mobile-viewport). This converts conditions 2/4 from "wired" to "DEMONSTRATED
 EXECUTING" for the in-sandbox-runnable platforms (linux + mobile viewport). Native iOS
 (needs macOS+Xcode sim) / Windows (needs Windows) / Android-native (embedded bun agent

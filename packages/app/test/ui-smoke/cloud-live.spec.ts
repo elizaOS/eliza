@@ -14,8 +14,8 @@
 //     as connected, so no interactive OAuth window is needed.
 //
 // It must NEVER run in a keyless PR lane: it spends real cloud credits and needs
-// secrets. It is classified LIVE_ONLY in ui-smoke-coverage.test.ts and is wired
-// only into the nightly/dispatch app-live-e2e.yml workflow.
+// secrets. The deny-list excludes it from the keyless PR selection, and
+// app-live-e2e.yml wires it only into nightly or manual dispatch.
 
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import { seedCloudLiveBrowserAuth } from "../cloud-live-browser-auth";

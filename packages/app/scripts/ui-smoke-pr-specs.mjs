@@ -7,7 +7,7 @@
 // the explicit, checked-in deny-list (.pr-deny-list.json), and emits the set of
 // specs that should run keyless. Any NEW spec is on the PR path by default; the
 // only way to exclude one is to record it in the deny-list with a category and a
-// reason. The companion gate test/ui-smoke-coverage.test.ts enforces that.
+// reason. `--check` validates that manifest directly.
 //
 // Modes:
 //   --list        (default) print every runnable spec (all specs - deny-list),
@@ -43,7 +43,7 @@ const WORKFLOW_PATH = path.join(
 const VALID_CATEGORIES = new Set([
   "live-only",
   "dedicated-tool",
-  "keyless-debt",
+  "keyless-unavailable",
 ]);
 
 /** All spec file paths under test/ui-smoke, relative to that directory, sorted. */

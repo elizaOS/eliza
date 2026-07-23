@@ -51,7 +51,7 @@ describe("classifyResult", () => {
     ).toBe("skipped");
   });
 
-  test("exit 3 without status lines is the vacuous-green skip", () => {
+  test("nonzero exit without a status line is a failure", () => {
     expect(
       classifyResult({
         label: LABEL,
@@ -60,7 +60,7 @@ describe("classifyResult", () => {
         tail: "",
         cancelled: false,
       }),
-    ).toBe("skipped");
+    ).toBe("failed");
   });
 
   test("signal death is failure; cancellation wins over everything", () => {
@@ -147,9 +147,6 @@ describe("registry (real plan discovery)", () => {
       optInToggles: {},
       history: {},
     });
-    expect(without.tasks.length).toBeGreaterThan(200);
-    expect(without.orphanSuites).toEqual([]);
-    expect(without.connections.length).toBeGreaterThan(30);
 
     const webSearchTask = without.tasks.find((t) =>
       t.liveSuites.some((s) => s.file.includes("plugin-web-search")),

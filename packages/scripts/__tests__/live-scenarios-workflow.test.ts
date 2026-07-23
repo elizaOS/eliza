@@ -1,7 +1,6 @@
 /**
- * Pins the credentialed scenario authority's clean-checkout prerequisites,
- * source-export conditions, honest catalog ownership, and default trajectory
- * artifacts.
+ * Verifies the credentialed scenario workflow's clean-checkout prerequisites,
+ * source-export conditions, execution plan, and trajectory artifacts.
  */
 import { expect, test } from "bun:test";
 import { EventEmitter } from "node:events";
@@ -16,9 +15,7 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { listScenarioMetadata } from "../../scenario-runner/src/loader.ts";
-import { main as auditScenarioCoverage } from "../check-scenario-workflow-coverage.mjs";
-import { PLUGIN_ROUTE_COVERAGE } from "../e2e-coverage/manifest.ts";
+import { scenarioCoverageReportExitCode } from "../check-scenario-workflow-coverage.mjs";
 import {
   evaluatePrerequisites,
   loadShard,
@@ -43,10 +40,6 @@ const coverageAuditPath = fileURLToPath(
 const workflowReadmePath = fileURLToPath(
   new URL("../../../.github/workflows/README.md", import.meta.url),
 );
-const defaultScenarioRoot = fileURLToPath(
-  new URL("../../test/scenarios/", import.meta.url),
-);
-
 function captureLogger(): {
   logger: {
     log(message: string): void;
@@ -231,57 +224,14 @@ test("keeps retired no-op workflow entry points absent", () => {
   expect(workflowReadme).not.toContain("packages/inference/voice-bench");
 });
 
-test("reports uncovered live-only scenarios as explicit deferrals", () => {
-  const tempRoot = mkdtempSync(path.join(tmpdir(), "scenario-coverage-"));
-  const reportDir = path.join(tempRoot, "report");
-  try {
-    expect(auditScenarioCoverage(["--report-dir", reportDir])).toBe(0);
-    const summary = JSON.parse(
-      readFileSync(path.join(reportDir, "workflow-coverage.json"), "utf8"),
-    ) as {
-      deferredLiveOnlyDefaultCount: number;
-      deferredDefaultReasons: Record<string, string>;
-      missingDefaultIds: string[];
-    };
-    expect(summary.missingDefaultIds).toEqual([]);
-    expect(summary.deferredLiveOnlyDefaultCount).toBeGreaterThan(0);
-    expect(Object.values(summary.deferredDefaultReasons)).toContainEqual(
-      expect.stringContaining("#16448"),
-    );
-    // Plain reads, not toMatchObject with an asymmetric matcher: bun's
-    // toMatchObject writes expect.stringContaining(...) INTO the received
-    // object, and PLUGIN_ROUTE_COVERAGE is shared module state — the corrupted
-    // entry then fails e2e-coverage.test.ts's written-reason gate later in the
-    // same sweep process.
-    const paEntry = PLUGIN_ROUTE_COVERAGE["plugin-personal-assistant"];
-    expect(paEntry?.status).toBe("exempt");
-    if (paEntry?.status !== "exempt") throw new Error("unreachable");
-    expect(paEntry.reason).toContain("live-scenarios.yml");
-  } finally {
-    rmSync(tempRoot, { recursive: true, force: true });
-  }
-}, 30_000);
-
-test("discovers the orchestrator live evidence in the scheduled catalog", async () => {
-  const metadata = await listScenarioMetadata(
-    defaultScenarioRoot,
-    undefined,
-    undefined,
-    false,
-    "live-only",
-  );
-  const orchestratorEvidence = metadata.filter((entry) =>
-    [
-      "orchestrator.grilling-happy-path",
-      "orchestrator.origin-routing-live",
-    ].includes(entry.id),
-  );
-
-  expect(orchestratorEvidence.map((entry) => entry.id).sort()).toEqual([
-    "orchestrator.grilling-happy-path",
-    "orchestrator.origin-routing-live",
-  ]);
-}, 15_000);
+test("scenario coverage gaps remain diagnostic instead of imposing a floor", () => {
+  expect(
+    scenarioCoverageReportExitCode({
+      missingDefaultIds: ["new-scenario"],
+      untaggedLaneScenarios: ["new-scenario.scenario.ts"],
+    }),
+  ).toBe(0);
+});
 
 test("builds the native trajectory export into the child invocation by default", () => {
   const plan = createLiveScenarioPlan({

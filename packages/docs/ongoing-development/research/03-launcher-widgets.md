@@ -83,7 +83,7 @@ scope here. Composition, top to bottom:
 **No render-nothing participation records:** the legacy default-sink opt-ins
 were deleted in #14349. Frontpage presence is now opt-in and curated: a
 declaration resolves only when this build can render a registered component or a
-`uiSpec`. `widget-coverage.test.ts` now guards those renderability and duplicate
+`uiSpec`. `widget-registry.test.ts` checks those renderability and duplicate
 ID invariants instead of enforcing a per-plugin breadth mandate.
 
 **Gating that already limits the set:** widgets for LifeOps plugins only resolve on hosts
@@ -108,7 +108,7 @@ plugin-snapshot enable/disable is honored per declaration `visibility`
 - **Chat is primary; the home is a glanceable field behind the floating chat.** Any widget
   is one tap from its full view; nothing on the home may be the only path to a feature
   (nothing currently is — every removal candidate has a routed view).
-- **Removals do not need sink rows.** `widget-coverage.test.ts` now checks that declared
+- **Removals do not need sink rows.** `widget-registry.test.ts` checks that declared
   widgets resolve to a renderable component or `uiSpec`, and that slot ids are unique. A
   plugin with an `elizaos.app` manifest is not required to be frontpage-aware.
 - **Children/price-safety:** the wallet widget is price-only by prior decision (#10706 —
@@ -134,7 +134,7 @@ sleep-rhythm management explicitly), they self-hide when idle, and the resting h
 at doctrine-sparse (time/weather + notifications + wallet). Removing them would delete the
 product, not the clutter. The e2e issue adds proof that they actually self-hide.
 
-**Q3. Does removing home widgets break `widget-coverage.test.ts`?**
+**Q3. Does removing home widgets break `widget-registry.test.ts`?**
 A: No, as of #14349. The pre-MVP doctrine ("every plugin must be frontpage-aware") pointed
 the wrong way for the sparse MVP home, so the gate now checks only declared-widget
 renderability and duplicate ids.
@@ -181,9 +181,9 @@ wherever the component remains mounted (P1).
    its data demands attention and disappears after. *(Done: `assertQuietHome` in
    `run-home-screen-e2e.mjs`; wallet is asserted absent per the superseding spec.)*
 6. **Done in #14349 — Retire the frontpage breadth mandate (#9143)**: deleted
-   `default-home-widget-sink-optins.ts` and relaxed `widget-coverage.test.ts` from
-   "every app plugin must be frontpage-aware" to "declared widgets must resolve", removing
-   participation-record machinery that rendered nothing.
+   `default-home-widget-sink-optins.ts` and replaced the breadth mandate with
+   `widget-registry.test.ts`, which checks that declared widgets resolve,
+   removing participation-record machinery that rendered nothing.
 
 ## Out of scope (explicit non-goals for MVP)
 

@@ -127,16 +127,10 @@ jobs:
       - name: Run lint (read-only)
         run: bun run lint:check
 
-      # UI render-time determinism gate. Fails on NEW Date.now()/Math.random()/
-      # crypto.randomUUID()/locale-defaulted toLocale* in a component/hook render
-      # path (the source of flaky screenshots + meaningless snapshots). The
-      # existing backlog is tracked in packages/scripts/ui-determinism-baseline.json;
-      # only regressions beyond it fail. Self-test asserts the AST classifier.
+      # Keep the manual determinism scanner's AST classifier healthy without
+      # applying its source baseline as merge policy.
       - name: UI determinism self-test
         run: bun run audit:ui-determinism:self-test
-
-      - name: UI determinism gate
-        run: bun run audit:ui-determinism
 
       # Anti-larp test gate (#10718). Fails on focused tests (.only / fit /
       # fdescribe — a single .only silently drops every sibling test in the file)

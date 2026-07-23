@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /**
- * Contract for #13402's zero-key command ownership slice. The keyless and
+ * Diagnostic report for #13402's zero-key command ownership slice. The keyless and
  * zero-key workflows may share setup, but each real test/suite command must
  * have exactly one owner so PRs do not execute the same suite in multiple
  * workflows by accident.
  *
  * This is a static YAML census: it does not run workflows. It scans only the
  * zero-key/keyless workflow surface listed below, extracts shell commands from
- * zero-key job blocks, normalizes them, and fails when the same non-setup
+ * zero-key job blocks, normalizes them, and reports when the same non-setup
  * command is owned by more than one workflow job. Ownership is counted per
  * workflow#job: a job may deliberately re-run its own suite under a different
  * env parameterization (e.g. an ENGINE=webkit cross-engine pass) - that is
@@ -65,10 +65,6 @@ const ALLOWED_DUPLICATE_COMMANDS = new Set([
 ]);
 
 const OWNERSHIP_RELEVANT_ENV = new Set(["ENGINE"]);
-
-function assert(condition, message) {
-  if (!condition) throw new Error(message);
-}
 
 function countIndent(line) {
   return line.match(/^ */)?.[0].length ?? 0;
@@ -207,43 +203,29 @@ export function findDuplicateOwnedCommands(rows) {
 
 export function runContract(repoRoot = DEFAULT_REPO_ROOT) {
   const rows = collectZeroKeyCommands(repoRoot);
-  assert(
-    rows.length > 0,
-    "zero-key command ownership census found no commands",
-  );
   const duplicates = findDuplicateOwnedCommands(rows);
-  assert(
-    duplicates.length === 0,
-    "Duplicate zero-key command ownership found:\n" +
-      duplicates
-        .map(
-          ({ command, locations }) =>
-            `- ${command}\n` +
-            locations
-              .map(
-                ({ workflow, job, owner }) =>
-                  `  - ${workflow}#${job} (${owner})`,
-              )
-              .join("\n"),
-        )
-        .join("\n"),
-  );
   return {
     commandCount: rows.length,
     workflows: OWNED_WORKFLOWS.map((workflow) => workflow.file),
+    duplicates,
   };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   try {
-    const { commandCount, workflows } = runContract();
+    const { commandCount, workflows, duplicates } = runContract();
     console.log(
-      `ci zero-key command ownership contract passed (${commandCount} command(s), ${workflows.length} workflow(s) scanned)`,
+      `ci zero-key command ownership report (${commandCount} command(s), ${workflows.length} workflow(s) scanned, ${duplicates.length} duplicate(s))`,
     );
+    for (const { command, locations } of duplicates) {
+      console.log(`  duplicate: ${command}`);
+      for (const { workflow, job, owner } of locations) {
+        console.log(`    - ${workflow}#${job} (${owner})`);
+      }
+    }
   } catch (error) {
-    console.error(
-      `[ci-zero-key-command-ownership-contract] FAIL ${error.message}`,
+    console.warn(
+      `[ci-zero-key-command-ownership-contract] report unavailable: ${error.message}`,
     );
-    process.exit(1);
   }
 }

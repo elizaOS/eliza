@@ -261,9 +261,8 @@ export default scenario({
     },
   ],
   finalChecks: [
-    // Structural marker: deterministic-action-coverage.test.ts reads
-    // `actionName` fields off loaded finalChecks to prove GIT_PATHOLOGY is
-    // still scenario-covered. The custom predicate below is the real gate.
+    // The action result and the custom predicate below jointly prove the real
+    // GIT_PATHOLOGY path ran and returned a valid report.
     {
       type: "actionCalled",
       actionName: "GIT_PATHOLOGY",

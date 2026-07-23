@@ -250,7 +250,7 @@ entries and clear restores them; the logs refresh re-queries the source; the
 memory viewer queries memory data on load and the Browse toggle switches the
 surface and issues a browse query.
 
-This was extended into broad, **enforced** interaction coverage:
+This was extended into broad runtime interaction coverage:
 
 - `apps-builtin-pages-interactions.spec.ts` — runtime (refresh re-queries),
   plugins (search filters), database (run a SQL query), skills (New Skill opens
@@ -259,20 +259,19 @@ This was extended into broad, **enforced** interaction coverage:
 - `settings-sections-interactions.spec.ts` — voice strategy select, appearance
   theme select, capability switch toggle, app-permission refresh, backup/export
   modal, character bio → Save (with the `/api/character` PUT mocked).
-- `apps-personal-assistant-decomposed-interactions.spec.ts` — 7 of the 8
-  decomposed PA views (calendar/inbox have real client controls; the rest assert
+- `apps-personal-assistant-decomposed-interactions.spec.ts` — the decomposed PA
+  views (calendar/inbox have real client controls; the rest assert
   the scaffold renders). These views are now registered in the ui-smoke stub
   (`smokeViewDeclarations`) so their bundles load. `documents` is excluded: its
   `/documents` view path collides with the built-in `documents` tab
-  (`/character/documents`) via `App.tsx` `findView`, so it stays tracked debt
-  (`MAX_INTERACTION_DEBT = 1`) until that path is disambiguated.
+  (`/character/documents`) via `App.tsx` `findView`, so that path still needs
+  disambiguation before the spec can exercise it.
 
-**Enforcement:** `view-interaction-coverage.test.ts` now runs with
-`INTERACTION_DEBT = {}` and `MAX_INTERACTION_DEBT = 0` — every view-matrix entry
-must name an interaction-owner spec, so a new view without one fails CI. Combined
-with `route-coverage.test.ts` (every route needs a clicksafe entry) and
-`ui-smoke-coverage.test.ts` (every spec must be wired/classified), the three
-ratchets make page/view coverage a non-regressing invariant.
+The source-inventory/count tests that previously parsed this matrix were
+retired. Runtime Playwright specs remain the evidence: a missing route,
+unmounted bundle, broken control, or console failure still fails the spec that
+drives it, while adding an unrelated route no longer fails an inventory
+threshold.
 
 ### Control-level gaps with a real keyless blocker (the next layer)
 
@@ -298,7 +297,8 @@ Only two controls remain genuinely uncovered, both with proven blockers:
   `voice.listening` headless (two attempts failed honestly). Needs the real
   audio/mic path; voice readiness is unit-tested (`voice-readiness.test.ts`).
 - **documents PA view** — `/documents` path collides with the `/character/documents`
-  tab (see above); tracked as the single `INTERACTION_DEBT` entry.
+  tab (see above), so the runtime interaction spec cannot address that surface
+  until the path is disambiguated.
 
 **Closed this pass** (previously listed as gaps):
 - Onboarding completion — `onboarding-completion-interactions.spec.ts` reaches the

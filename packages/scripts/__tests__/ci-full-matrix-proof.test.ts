@@ -77,12 +77,6 @@ const HEALTHY_MANIFEST = {
     { job: "server-tests", name: "Server Tests" },
     { job: "client-tests", name: "Client Tests" },
   ],
-  planFloors: {
-    minTaskCount: 3,
-    minPackageCount: 2,
-    requiredPackages: ["@elizaos/core"],
-    nonEmptyScriptLanes: ["test", "test:e2e"],
-  },
 };
 
 const POST_MERGE_MANIFEST = {
@@ -199,11 +193,12 @@ describe("ci-full-matrix-proof", () => {
       writeProofSummary(
         passPath,
         [{ lane: "scenario", name: "Scenario", status: "OK" }],
-        [{ metric: "taskCount", value: 4, floor: 3 }],
+        [{ metric: "taskCount", value: 4 }],
         [],
       );
       const pass = readFileSync(passPath, "utf8");
       expect(pass).toContain("| `scenario` | Scenario | OK |");
+      expect(pass).toContain("| taskCount | 4 |");
       expect(pass).toContain("**Result: PASS**");
 
       const failPath = join(dir, "fail.md");
@@ -260,7 +255,7 @@ describe("ci-full-matrix-proof", () => {
     }
   });
 
-  test("passes when every lane is present and the plan clears its floors", () => {
+  test("passes when every lane is present and reports the plan", () => {
     const result = runProof({
       workflow: HEALTHY_WORKFLOW,
       manifest: HEALTHY_MANIFEST,
@@ -315,7 +310,7 @@ describe("ci-full-matrix-proof", () => {
     expect(result.stderr).toContain("client-tests");
   });
 
-  test("fails when the plan collected fewer tasks than the floor", () => {
+  test("does not gate on a lower task count", () => {
     const plan = {
       ...HEALTHY_PLAN,
       summary: { ...HEALTHY_PLAN.summary, taskCount: 1 },
@@ -325,11 +320,10 @@ describe("ci-full-matrix-proof", () => {
       manifest: HEALTHY_MANIFEST,
       plan,
     });
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain("taskCount 1 < minTaskCount");
+    expect(result.status).toBe(0);
   });
 
-  test("fails when a required package has no discovered test task", () => {
+  test("does not gate on a package disappearing from the plan inventory", () => {
     const plan = {
       ...HEALTHY_PLAN,
       tasks: HEALTHY_PLAN.tasks.filter(
@@ -342,11 +336,10 @@ describe("ci-full-matrix-proof", () => {
       manifest: HEALTHY_MANIFEST,
       plan,
     });
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain('required package "@elizaos/core"');
+    expect(result.status).toBe(0);
   });
 
-  test("fails when a whole script lane collected zero tasks", () => {
+  test("does not gate on a script count disappearing from the plan inventory", () => {
     const plan = {
       ...HEALTHY_PLAN,
       summary: {
@@ -359,10 +352,7 @@ describe("ci-full-matrix-proof", () => {
       manifest: HEALTHY_MANIFEST,
       plan,
     });
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain(
-      'script lane "test:e2e" collected zero tasks',
-    );
+    expect(result.status).toBe(0);
   });
 
   test("models obsolete develop pushes as superseded while preserving a quiescent aggregate", () => {

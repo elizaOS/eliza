@@ -36,9 +36,9 @@ screenshot is byte-stable across machines and runs, which is what makes the
 artifacts diffable and the a11y results reproducible. The frozen instant matches
 the unit-test helper in `../determinism.ts`.
 
-`audit:ui-determinism` (`packages/scripts/audit-ui-determinism.mjs`) statically
-prevents new render-time nondeterminism from entering components in the first
-place.
+The manual `audit:ui-determinism` report
+(`packages/scripts/audit-ui-determinism.mjs`) highlights render-time
+nondeterminism outside the browser story checks.
 
 ## Running
 

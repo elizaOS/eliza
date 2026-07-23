@@ -1,16 +1,12 @@
 /**
- * Coverage manifest for the e2e ship-gate (issue #8802) — the committed source
- * of truth that maps each surface item to the real test artifact(s) that cover
- * it, or records an explicit, justified exemption.
- *
- * Precedent: this is the same curated-set + drift-check pattern as
- * `packages/app/test/route-coverage.test.ts` (DIRECT_ROUTE_CASES) and
- * `view-interaction-coverage.test.ts` (GUI_INTERACTION_OWNERS / INTERACTION_DEBT).
+ * Coverage manifest for the diagnostic e2e report. It maps known surface items
+ * to real test artifacts or records a documented exemption; report gaps are
+ * informational and never determine CI success.
  *
  * Anti-larp: a `covered` entry only counts when every artifact exists AND each
  * declared `signal` appears in at least one artifact. For new plugin-route tests
  * the signal is `tryHandleRuntimePluginRoute` — the real prod dispatch entry —
- * so a mocked-`json`-fn unit test (which never calls it) cannot satisfy the gate.
+ * so a mocked-`json`-fn unit test (which never calls it) cannot satisfy the report.
  * Known shape-only tests are listed in `LARP_TEST_ARTIFACTS` and are rejected
  * outright if cited as coverage.
  */
@@ -64,14 +60,13 @@ export const LARP_TEST_ARTIFACTS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Views are covered by the existing UI ship-gates; this issue references them
- * (#8796/#8797/#8798) rather than re-implementing view e2e. The gate only
- * asserts these gate files still exist (deletion = regression).
+ * View artifacts already exercise the real route and registry. The report
+ * references them instead of duplicating those tests.
  */
-export const VIEW_COVERAGE_GATES: readonly string[] = [
-  "packages/app/test/route-coverage.test.ts",
-  "packages/app/test/view-interaction-coverage.test.ts",
-  "packages/agent/src/__tests__/plugin-view-inventory-ratchet.test.ts",
+export const VIEW_COVERAGE_ARTIFACTS: readonly string[] = [
+  "packages/agent/src/__tests__/plugin-view-routing.test.ts",
+  "packages/agent/src/api/views-routes.hero-coverage.test.ts",
+  "packages/agent/src/api/views-routes.interact-coverage.test.ts",
 ];
 
 /**
@@ -120,18 +115,18 @@ function covered(artifact: string, extraSignals: string[] = []): CoverageEntry {
   };
 }
 
-/** A pre-existing route test is trusted to exist; deletion is the regression. */
+/** References a dedicated route test for inclusion in the diagnostic report. */
 function existing(artifact: string): CoverageEntry {
   return { status: "covered", artifacts: [artifact], signals: [] };
 }
 
 /**
  * Every plugin whose exported `Plugin` wires a non-empty `routes` array (the set
- * discovered by `discoverRoutePlugins`). Keys must stay in lock-step with that
- * scan — a newly route-wiring plugin with no entry here fails the gate.
+ * discovered by `discoverRoutePlugins`). Missing entries are surfaced by the
+ * report so maintainers can see which route plugins lack a dedicated artifact.
  */
 export const PLUGIN_ROUTE_COVERAGE: Record<string, ManifestEntry> = {
-  // ── Pre-existing dedicated route tests (trusted; ratcheted against deletion) ─
+  // ── Dedicated route tests ────────────────────────────────────────────────
   "plugin-agent-orchestrator": existing(
     "plugins/plugin-agent-orchestrator/__tests__/unit/agent-routes-goal-wrapper.test.ts",
   ),

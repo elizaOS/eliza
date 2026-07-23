@@ -1,7 +1,7 @@
 /**
  * In-process runtime coverage for the real `public/sw.js`: the module is
  * imported directly (not vm-evaluated) under stubbed service-worker globals, so
- * the coverage gate observes the production file while the tests drive every
+ * coverage instrumentation observes the production file while the tests drive every
  * registered handler — lifecycle cache cleanup + navigation-preload enable, all
  * four fetch strategies, the auth-navigation network passthrough (#15741), the
  * page message commands, and the push/notificationclick adapters.

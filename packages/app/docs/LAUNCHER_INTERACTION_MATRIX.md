@@ -1,12 +1,10 @@
 # Launcher interaction matrix (#12378, #12179 WI-9)
 
-The app-level, per-platform coverage matrix for every home ↔ launcher
-interaction: each row maps one interaction to the concrete unit, fixture-e2e,
-ui-smoke, desktop-packaged, Android, and iOS spec that exercises it. This is the
-executable §D matrix from #12179, and it is the **enforced twin** of
-`packages/app/test/launcher-interaction-matrix.test.ts` — that gate parses this
-file, fails when any cited spec path does not exist on disk, and fails when a
-known launcher gesture-handler source site is not mapped here.
+The app-level, per-platform test map for home ↔ launcher interactions: each row
+maps an interaction to the concrete unit, fixture-e2e, ui-smoke,
+desktop-packaged, Android, and iOS spec that exercises it. This is the
+human-reviewable §D matrix from #12179; the cited runtime tests establish
+behavior, while this document itself is not parsed as CI policy.
 
 Two sibling docs cover adjacent surfaces; this one is the launcher-specific,
 per-platform roll-up:

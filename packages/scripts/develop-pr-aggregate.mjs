@@ -41,6 +41,11 @@ const STALE_BASE_ACTIONS = [
 
 export const REQUIRED_CHECKS = Object.freeze([
   {
+    context: "test",
+    workflowPath: ".github/workflows/develop-pr.yml",
+    triggerActions: DEVELOP_PR_ACTIONS,
+  },
+  {
     context: "lint",
     workflowPath: ".github/workflows/develop-pr.yml",
     triggerActions: DEVELOP_PR_ACTIONS,

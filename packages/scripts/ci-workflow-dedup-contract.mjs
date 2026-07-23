@@ -13,8 +13,9 @@
  *     `merge_group` triggers from test.yml. The merge queue is gone repo-wide
  *     and develop PRs run the lightweight gate instead, so the full suite
  *     never double-runs pre- and post-merge.
- *   - develop-pr.yml owns the lightweight develop-PR gate (lint/typecheck/
- *     build only, NO tests): the pre-merge half of the split.
+ *   - develop-pr.yml owns the develop-PR gate (ordinary affected tests plus
+ *     lint/typecheck/build): the pre-merge half of the split. This is smaller
+ *     than the post-merge platform matrix but is still behavioral authority.
  *   - scenario-pr.yml keeps zero-key deterministic E2E: `pull_request:[main]`
  *     pre-merge and `push:[develop]` post-merge (#14051/#14194 moved the heavy
  *     scenario family off per-PR develop runs, matching the test.yml split).
@@ -195,6 +196,21 @@ export function runContract(repoRoot = DEFAULT_REPO_ROOT) {
     ),
     ["develop"],
     "develop-pr.yml PR branches",
+  );
+  assertIncludes(
+    developPr,
+    "name: Run affected package tests",
+    "develop-pr.yml ordinary affected test authority",
+  );
+  assertIncludes(
+    developPr,
+    "name: Run repository script tests",
+    "develop-pr.yml non-workspace script test authority",
+  );
+  assertIncludes(
+    developPr,
+    "name: Verify the proposed aggregate state machine",
+    "develop-pr.yml aggregate self-test authority",
   );
   // scenario-pr.yml follows the same pre/post-merge split as test.yml: the
   // heavy scenario family is off per-PR develop runs (#14051/#14194), so it

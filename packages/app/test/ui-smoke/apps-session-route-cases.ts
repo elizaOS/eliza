@@ -249,7 +249,7 @@ const managerVisibleViewTileCases = [
 /**
  * The View Manager (`/apps`) is the user-facing launcher. This full static list
  * mirrors every manager-visible GUI view declared by plugin manifests; the
- * route-coverage gate keeps it in sync.
+ * runtime click-safe specs consume these cases directly.
  */
 export const MANAGER_VISIBLE_VIEW_TILE_CASES: readonly SafeViewTileCase[] =
   managerVisibleViewTileCases.map(({ viewId, path }) => ({

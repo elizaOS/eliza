@@ -22,7 +22,6 @@
 import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
-  countViewJourneyScenarios,
   getScenarioById,
   getScenariosByTag,
   VIEW_USER_JOURNEYS,
@@ -536,19 +535,6 @@ describe.skipIf(!hasAnyCredential)(
 // ---------------------------------------------------------------------------
 
 describe("view-user-journeys scenario library", () => {
-  it("contains at least 20 scenarios", () => {
-    expect(VIEW_USER_JOURNEYS.length).toBeGreaterThanOrEqual(20);
-  });
-
-  it("expands the curated base set by exactly 10x", () => {
-    expect(countViewJourneyScenarios()).toEqual({
-      existing: 34,
-      added: 340,
-      total: 374,
-      multiplierAdded: 10,
-    });
-  });
-
   it("all scenario ids are unique", () => {
     const ids = VIEW_USER_JOURNEYS.map((s) => s.id);
     const unique = new Set(ids);

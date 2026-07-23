@@ -320,8 +320,9 @@ describe("CI plugin sharding contract", () => {
 
   test("Quality workflow gates develop PRs with static scans and lint", () => {
     expect(qualityWorkflow).toMatch(
-      /develop-static-gate:[\s\S]*?Prompt secret scan[\s\S]*?check:secrets[\s\S]*?UI determinism self-test[\s\S]*?audit:ui-determinism:self-test[\s\S]*?UI determinism gate[\s\S]*?audit:ui-determinism/,
+      /develop-static-gate:[\s\S]*?Prompt secret scan[\s\S]*?check:secrets[\s\S]*?UI determinism self-test[\s\S]*?audit:ui-determinism:self-test/,
     );
+    expect(qualityWorkflow).not.toContain("UI determinism gate");
     expect(qualityWorkflow).toMatch(
       /develop-lint-gate:[\s\S]*?install-command: bun install[\s\S]*?Run lint[\s\S]*?bun run lint:check/,
     );

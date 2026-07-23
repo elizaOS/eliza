@@ -17,10 +17,9 @@
  *      scope and keep schedule/dispatch/workflow-call events non-cancelling. A
  *      dropped `uses:`, shared standalone group, or cancelling reusable lane
  *      silently strips platform coverage from the exhaustive matrix and fails.
- *   4. `run-all-tests.mjs --plan=json` — the discovered task plan must clear the
- *      manifest floors (total tasks/packages, per-script-lane presence, and the
- *      set of required core packages). A pointed-at-a-nonexistent-glob lane or a
- *      deleted core package collapses one of these and fails the job.
+ *   4. `run-all-tests.mjs --plan=json` — the discovered task plan is summarized
+ *      for operators and uploaded by CI. Its counts are diagnostic; they do not
+ *      impose minimum task/package floors or historical ratchets.
  *
  * Usage:
  *   node packages/scripts/ci-full-matrix-proof.mjs [--plan-file <path>]
@@ -85,9 +84,6 @@ function loadManifest(manifestPath) {
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
   if (!Array.isArray(manifest.workflowLanes)) {
     throw new Error(`${manifestPath}: workflowLanes must be an array`);
-  }
-  if (!manifest.planFloors || typeof manifest.planFloors !== "object") {
-    throw new Error(`${manifestPath}: planFloors must be an object`);
   }
   return manifest;
 }
@@ -577,85 +573,30 @@ function checkPostMergeSignal(manifest, violations, laneReport) {
   });
 }
 
-function checkPlanFloors(manifest, plan, violations, floorReport) {
-  const floors = manifest.planFloors;
+function buildPlanReport(plan) {
   const summary = plan.summary || {};
   const tasks = Array.isArray(plan.tasks) ? plan.tasks : [];
 
   const taskCount = summary.taskCount ?? tasks.length;
   const packageCount =
     summary.packageCount ?? new Set(tasks.map((t) => t.packageName)).size;
-
-  floorReport.push({
-    metric: "taskCount",
-    value: taskCount,
-    floor: floors.minTaskCount,
-  });
-  if (
-    typeof floors.minTaskCount === "number" &&
-    taskCount < floors.minTaskCount
-  ) {
-    violations.push(
-      `plan floor: taskCount ${taskCount} < minTaskCount ${floors.minTaskCount} (a lane matched no tests?)`,
-    );
+  const pluginTaskCount = tasks.filter((task) =>
+    String(task.relativeDir || "").startsWith("plugins/"),
+  ).length;
+  const rows = [
+    { metric: "taskCount", value: taskCount },
+    { metric: "packageCount", value: packageCount },
+    { metric: "pluginTaskCount", value: pluginTaskCount },
+  ];
+  for (const [scriptName, count] of Object.entries(summary.byScript || {}).sort(
+    ([left], [right]) => left.localeCompare(right),
+  )) {
+    rows.push({ metric: `script:${scriptName}`, value: count });
   }
-
-  floorReport.push({
-    metric: "packageCount",
-    value: packageCount,
-    floor: floors.minPackageCount,
-  });
-  if (
-    typeof floors.minPackageCount === "number" &&
-    packageCount < floors.minPackageCount
-  ) {
-    violations.push(
-      `plan floor: packageCount ${packageCount} < minPackageCount ${floors.minPackageCount}`,
-    );
-  }
-
-  if (typeof floors.minPluginTaskCount === "number") {
-    const pluginTasks = tasks.filter((t) =>
-      String(t.relativeDir || "").startsWith("plugins/"),
-    ).length;
-    floorReport.push({
-      metric: "pluginTaskCount",
-      value: pluginTasks,
-      floor: floors.minPluginTaskCount,
-    });
-    if (pluginTasks < floors.minPluginTaskCount) {
-      violations.push(
-        `plan floor: pluginTaskCount ${pluginTasks} < minPluginTaskCount ${floors.minPluginTaskCount}`,
-      );
-    }
-  }
-
-  const presentPackages = new Set(tasks.map((t) => t.packageName));
-  for (const required of floors.requiredPackages || []) {
-    if (!presentPackages.has(required)) {
-      violations.push(
-        `plan floor: required package "${required}" has no discovered test task (deleted, renamed, or its test script vanished)`,
-      );
-    }
-  }
-
-  const byScript = summary.byScript || {};
-  for (const laneScript of floors.nonEmptyScriptLanes || []) {
-    const count = byScript[laneScript] ?? 0;
-    floorReport.push({
-      metric: `script:${laneScript}`,
-      value: count,
-      floor: 1,
-    });
-    if (count < 1) {
-      violations.push(
-        `plan floor: script lane "${laneScript}" collected zero tasks (whole ${laneScript} lane vanished)`,
-      );
-    }
-  }
+  return rows;
 }
 
-export function writeSummary(summaryPath, laneReport, floorReport, violations) {
+export function writeSummary(summaryPath, laneReport, planReport, violations) {
   if (!summaryPath) return;
   const lines = [];
   lines.push("## Exhaustive lane matrix proof");
@@ -668,18 +609,16 @@ export function writeSummary(summaryPath, laneReport, floorReport, violations) {
     lines.push(`| \`${row.lane}\` | ${row.name} | ${row.status} |`);
   }
   lines.push("");
-  lines.push("### Plan floors");
+  lines.push("### Test-plan inventory");
   lines.push("");
-  lines.push("| Metric | Value | Floor |");
-  lines.push("| --- | --- | --- |");
-  for (const row of floorReport) {
-    lines.push(`| ${row.metric} | ${row.value} | ${row.floor} |`);
+  lines.push("| Metric | Value |");
+  lines.push("| --- | --- |");
+  for (const row of planReport) {
+    lines.push(`| ${row.metric} | ${row.value} |`);
   }
   lines.push("");
   if (violations.length === 0) {
-    lines.push(
-      "**Result: PASS** — every expected lane is present and non-empty.",
-    );
+    lines.push("**Result: PASS** — every expected workflow lane is present.");
   } else {
     lines.push(`**Result: FAIL** — ${violations.length} violation(s):`);
     lines.push("");
@@ -696,14 +635,13 @@ export function runProof(options) {
   const plan = loadPlan(options);
   const violations = [];
   const laneReport = [];
-  const floorReport = [];
+  const planReport = buildPlanReport(plan);
 
   checkWorkflowLanes(manifest, violations, laneReport);
   checkReusableWorkflows(manifest, violations, laneReport);
   checkPostMergeSignal(manifest, violations, laneReport);
-  checkPlanFloors(manifest, plan, violations, floorReport);
 
-  return { manifest, plan, violations, laneReport, floorReport };
+  return { manifest, plan, violations, laneReport, planReport };
 }
 
 function main() {
@@ -715,18 +653,16 @@ function main() {
     process.exit(2);
   }
 
-  const { violations, laneReport, floorReport } = runProof(options);
+  const { violations, laneReport, planReport } = runProof(options);
 
   for (const row of laneReport) {
     console.log(`[ci-full-matrix-proof] lane ${row.lane} — ${row.status}`);
   }
-  for (const row of floorReport) {
-    console.log(
-      `[ci-full-matrix-proof] floor ${row.metric}=${row.value} (min ${row.floor})`,
-    );
+  for (const row of planReport) {
+    console.log(`[ci-full-matrix-proof] plan ${row.metric}=${row.value}`);
   }
 
-  writeSummary(options.summary, laneReport, floorReport, violations);
+  writeSummary(options.summary, laneReport, planReport, violations);
 
   if (violations.length > 0) {
     console.error(

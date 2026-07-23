@@ -20,7 +20,7 @@ const MIN_VISIBLE_TEXT_LENGTH_BY_VIEW_ID = new Map<string, number>([
 ]);
 const DEFAULT_MIN_VISIBLE_TEXT_LENGTH = 21;
 
-// Interaction coverage ratchet signals: rendered text, controls, screenshots.
+// These fields make each rendered-flow artifact useful during manual review.
 type ViewAudit = {
   id: string;
   viewType: "gui";

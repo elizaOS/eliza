@@ -175,11 +175,10 @@ sibling path.
 
 ### Test infrastructure (req 6) — strong core, stale edges
 
-Strong: 11 real-browser gesture runners (`packages/ui/src/components/shell/__e2e__/`),
-a CHAT_GESTURE_COVERAGE gate that fails CI when a gesture-handler site lacks a
-matrix row ([packages/app/test/chat-gesture-coverage.test.ts](../../../app/test/chat-gesture-coverage.test.ts),
-docs in `packages/app/docs/CHAT_GESTURE_COVERAGE.md`), WebKit engine coverage
-for the scroll chain, and a canary mode proving the glitch detectors fire.
+Strong: 11 real-browser gesture runners
+(`packages/ui/src/components/shell/__e2e__/`), the diagnostic interaction map in
+`packages/app/docs/CHAT_GESTURE_COVERAGE.md`, WebKit engine coverage for the
+scroll chain, and a canary mode proving the glitch detectors fire.
 
 Stale (post-#13531): `chat-clear-swipe.spec.ts:386,424,497` and
 `chat-send-voice-newchat-fuzz.spec.ts:325,382` still drive the removed

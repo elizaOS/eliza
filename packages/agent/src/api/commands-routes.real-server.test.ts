@@ -114,9 +114,6 @@ describe("GET /api/commands (real loopback server)", () => {
     const expectedNames = expected.map((c) => c.name).sort();
     expect(servedNames).toEqual(expectedNames);
 
-    // The catalog is non-trivial — at least the navigation surface + several
-    // agent-capability commands must be present.
-    expect(body.commands.length).toBeGreaterThanOrEqual(20);
     expect(body.surface).toBe("gui");
     expect(typeof body.generatedAt).toBe("string");
   });

@@ -1,9 +1,12 @@
 #!/usr/bin/env node
 /**
- * Guard against the root `package.json` scripts block becoming a dumping ground
- * again (issue #9942). Scans package.json scripts and fails CI when it finds:
+ * Audits root and package scripts for runnable-command correctness. Orphan
+ * scripts and one-to-one wrapper policies are reported for maintainers without
+ * blocking CI; fake-success commands, broken references, and generic-script
+ * plugin coupling remain correctness failures.
  *
- *   (a) ORPHAN root scripts — a root-package.json script that nothing invokes
+ *   (a) ORPHAN root scripts — reported when a root-package.json script has no
+ *       discovered caller, but never converted into a failing inventory floor.
  *       (no reference in .github/workflows/**, in any other script body, or in
  *       the docs / scripts source) AND that is not a recognised human/CI
  *       entrypoint. New scripts dumped into an ad-hoc namespace, or left behind
@@ -17,10 +20,8 @@
  *       that points `node`/`bun` at a repo file (`*.mjs/.ts/.js/...`) that is
  *       missing. Deleting a tool without deleting its root alias is caught here.
  *
- *   (e) UNJUSTIFIED 1:1 package wrappers — a root script whose entire body is
- *       exactly `bun run --cwd <dir> <script>`. These are allowed only when the
- *       root command is a deliberate cross-package product or CI entrypoint and
- *       is documented below with a reason.
+ *   (e) 1:1 package wrappers — reported when a root script only forwards to a
+ *       package command; the report is advisory.
  *
  * Scope:
  *   - (a) orphan: the root package.json scripts block (the dumping ground).
@@ -33,7 +34,7 @@
  *     local-mode `eliza/` clone paths that are intentionally absent here.
  *
  * Usage:
- *   node packages/scripts/audit-scripts.mjs            # audit the repo, exit 1 on failure
+ *   node packages/scripts/audit-scripts.mjs            # audit; exit 1 on correctness failure
  *   node packages/scripts/audit-scripts.mjs --json     # machine-readable findings
  *   node packages/scripts/audit-scripts.mjs --root DIR # audit a fixture tree (self-test)
  */
@@ -681,22 +682,41 @@ function main() {
   const root = rootArg === -1 ? DEFAULT_ROOT : path.resolve(args[rootArg + 1]);
   const json = args.includes("--json");
 
-  const failures = auditScripts(root);
+  const findings = auditScripts(root);
+  const isAdvisory = (finding) =>
+    finding.startsWith("[orphan]") ||
+    finding.startsWith("[orphan-file]") ||
+    finding.startsWith("[cwd-wrapper]");
+  const reports = findings.filter(isAdvisory);
+  const failures = findings.filter((finding) => !isAdvisory(finding));
 
   if (json) {
     process.stdout.write(
-      `${JSON.stringify({ ok: failures.length === 0, failures }, null, 2)}\n`,
+      `${JSON.stringify(
+        { ok: failures.length === 0, failures, reports },
+        null,
+        2,
+      )}\n`,
     );
-  } else if (failures.length === 0) {
+  } else if (findings.length === 0) {
     process.stdout.write(
       "[audit-scripts] OK — no orphan/no-op/broken scripts.\n",
     );
   } else {
-    process.stderr.write(
-      `[audit-scripts] ${failures.length} finding(s):\n` +
-        failures.map((f) => `  - ${f}`).join("\n") +
-        "\n",
-    );
+    if (reports.length > 0) {
+      process.stdout.write(
+        `[audit-scripts] ${reports.length} advisory finding(s):\n` +
+          reports.map((finding) => `  - ${finding}`).join("\n") +
+          "\n",
+      );
+    }
+    if (failures.length > 0) {
+      process.stderr.write(
+        `[audit-scripts] ${failures.length} correctness failure(s):\n` +
+          failures.map((f) => `  - ${f}`).join("\n") +
+          "\n",
+      );
+    }
   }
 
   process.exit(failures.length === 0 ? 0 : 1);

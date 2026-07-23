@@ -28,7 +28,6 @@ function usage() {
 Options:
   --json          Print machine-readable report.
   --issues-only   Skip Project status lookup and check only open MVP blocker labels.
-  --min-issues n  Fail if fewer than n open MVP issues are loaded.
   --no-fail      Exit 0 even when violations are found.`;
 }
 
@@ -40,7 +39,6 @@ function parseArgs(argv) {
     json: false,
     fail: true,
     issuesOnly: false,
-    minIssues: 0,
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -56,7 +54,6 @@ function parseArgs(argv) {
       arg === "--repo" ||
       arg === "--project-owner" ||
       arg === "--project-number" ||
-      arg === "--min-issues" ||
       arg === "--issues-json" ||
       arg === "--project-json"
     ) {
@@ -73,13 +70,6 @@ function parseArgs(argv) {
     }
   }
   return out;
-}
-
-function parseNonNegativeInteger(value, flag) {
-  if (!/^\d+$/.test(String(value))) {
-    throw new Error(`${flag} must be a non-negative integer`);
-  }
-  return Number(value);
 }
 
 function run(command, args) {
@@ -223,7 +213,6 @@ export function normalizeProjectItems(payload, repo = DEFAULT_REPO) {
 
 export function auditMvpBoardReadiness(issues, projectPayload, options = {}) {
   const projectCheckSkipped = options.projectCheckSkipped ?? false;
-  const minIssues = options.minIssues ?? 0;
   const projectItems = normalizeProjectItems(
     projectPayload,
     options.repo ?? DEFAULT_REPO,
@@ -237,15 +226,6 @@ export function auditMvpBoardReadiness(issues, projectPayload, options = {}) {
         const item = projectItems.get(issue.number);
         return item && item.status !== "Done";
       });
-
-  if (scopedIssues.length < minIssues) {
-    violations.push({
-      type: "too-few-issues",
-      minimum: minIssues,
-      actual: scopedIssues.length,
-      message: `Loaded ${scopedIssues.length} active Project 15 issue(s), below required minimum ${minIssues}`,
-    });
-  }
 
   for (const issue of scopedIssues) {
     const labels = labelNames(issue);
@@ -315,7 +295,6 @@ export function auditMvpBoardReadiness(issues, projectPayload, options = {}) {
     agentActionableCount: rows.filter((row) => row.blockerLabels.length === 0)
       .length,
     projectCheckSkipped,
-    minIssues,
     requiredBlockedStatus: REQUIRED_BLOCKED_STATUS,
     violations,
     rows,
@@ -330,9 +309,6 @@ function formatText(report) {
     `Agent-actionable issues: ${report.agentActionableCount}`,
     `Project status check: ${report.projectCheckSkipped ? "SKIPPED" : "checked"}`,
   ];
-  if (report.minIssues > 0) {
-    lines.push(`Minimum issue count: ${report.minIssues}`);
-  }
   if (!report.projectCheckSkipped) {
     lines.push(`Required blocked status: ${report.requiredBlockedStatus}`);
   }
@@ -360,7 +336,6 @@ async function main() {
     );
   }
 
-  const minIssues = parseNonNegativeInteger(args.minIssues, "--min-issues");
   const issues = args.issuesJson
     ? readJson(args.issuesJson)
     : fetchOpenProjectIssues(args.repo, args.projectOwner, args.projectNumber);
@@ -372,7 +347,6 @@ async function main() {
   const report = auditMvpBoardReadiness(issues, projectPayload, {
     repo: args.repo,
     projectCheckSkipped: args.issuesOnly,
-    minIssues,
   });
 
   process.stdout.write(

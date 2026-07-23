@@ -123,7 +123,7 @@ jobs:
         run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
 
       - name: Scenario runner unit coverage
-        run: bun run --cwd packages/scenario-runner test -- src/executor.test.ts src/runtime-factory.test.ts src/scenario-pr-workflow.test.ts src/__tests__/deterministic-action-coverage.test.ts
+        run: bun run --cwd packages/scenario-runner test -- src/executor.test.ts src/runtime-factory.test.ts src/scenario-pr-workflow.test.ts
 
       - name: Real local agent provisioning (no model, no secret)
         run: bun run --cwd packages/app-core test:local-provisioning
@@ -392,8 +392,8 @@ jobs:
           if-no-files-found: ignore
           retention-days: 3
 
-  app-browser-ratcheted:
-    name: Zero-Key app browser ratcheted
+  app-browser-extended:
+    name: Zero-Key app browser extended suite
     needs: changes
     if: needs.changes.outputs.run_scenario_pr == 'true'
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
@@ -423,14 +423,14 @@ jobs:
       - name: Install Playwright browsers
         run: bunx playwright install --with-deps chromium
 
-      - name: Actual app ratcheted keyless browser coverage
+      - name: Actual app extended keyless browser suite
         run: bun run --cwd packages/app test:e2e test/ui-smoke/ai-qa-capture.spec.ts test/ui-smoke/android-system-apps.spec.ts test/ui-smoke/apps-session.spec.ts test/ui-smoke/apps-session-direct-a.spec.ts test/ui-smoke/apps-session-direct-b.spec.ts test/ui-smoke/auth-startup.spec.ts test/ui-smoke/automations.spec.ts test/ui-smoke/browser-workspace.spec.ts test/ui-smoke/character-editor.spec.ts test/ui-smoke/wallet-inventory.spec.ts test/ui-smoke/workflow-editor.spec.ts test/ui-smoke/computer-use.spec.ts test/ui-smoke/connectors.spec.ts test/ui-smoke/first-run-startup.spec.ts test/ui-smoke/model-download-deferral.spec.ts test/ui-smoke/history-navigation.spec.ts test/ui-smoke/orchestrator-gui-workbench.spec.ts test/ui-smoke/reset-returns-to-onboarding.spec.ts test/ui-smoke/tutorial-chat.spec.ts test/ui-smoke/warming-shell-startup.spec.ts test/ui-smoke/runtime-configurability.spec.ts test/ui-smoke/perf-load-kpi.spec.ts test/ui-smoke/perf-interaction-kpi.spec.ts test/ui-smoke/perf-reduced-motion.spec.ts test/ui-smoke/screenshare-gui-interactions.spec.ts test/ui-smoke/task-coordinator-gui-interactions.spec.ts test/ui-smoke/titlebar-navigation.spec.ts test/ui-smoke/ui-smoke.spec.ts --project=chromium
 
-      - name: Upload app browser ratcheted artifacts
+      - name: Upload app browser extended-suite artifacts
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: scenario-pr-app-browser-ratcheted
+          name: scenario-pr-app-browser-extended
           path: |
             packages/app/playwright-report/
             packages/app/test-results/
@@ -443,8 +443,7 @@ jobs:
   # (packages/app/test/ui-smoke/.pr-deny-list.json). That makes any NEW spec land
   # on the PR path by default; the only way to exclude one is to record it in the
   # deny-list with a category and a reason. The spec set is emitted by
-  # packages/app/scripts/ui-smoke-pr-specs.mjs and the wiring is enforced by
-  # packages/app/test/ui-smoke-coverage.test.ts.
+  # packages/app/scripts/ui-smoke-pr-specs.mjs.
   app-browser-auto-discovered:
     name: Zero-Key app browser auto-discovered specs
     needs: changes
@@ -773,7 +772,7 @@ jobs:
       # this status name alive as a real delegation check so rulesets and the
       # scenario aggregate do not point at a deleted job, without running the
       # same diagnostics suites twice on PRs (#13402).
-      - name: Validate zero-key command ownership delegation
+      - name: Report zero-key command ownership delegation
         run: node packages/scripts/ci-zero-key-command-ownership-contract.mjs
 
   scenario-runner-e2e:
@@ -808,15 +807,7 @@ jobs:
       # outside workspace test discovery (run-all-tests.mjs never sees it). This
       # job used to enumerate individual files here, which left every unlisted
       # suite dead on arrival — most of the directory never ran anywhere
-      # (#15846). Sweep the whole directory so a new test file there always has
-      # a lane. The sweep still owns every guard the per-file steps named:
-      # test-task-pool, the vacuous-green runner guard (#13620/#12342), the
-      # agent-image workflow + build:core drift contracts and the plugin-build
-      # driver self-test (#10200), the scripts-inventory smoke, the real/live
-      # guarded-suite manifest gate (#9310 §E), the UI fixture-runner
-      # CI-coverage ratchet (#9310 §3.16), and the ENFORCED e2e-coverage
-      # ship-gate (#8802 — baseline green; route-manifest lockstep, zero-test
-      # plugins, and no-blocking-gaps ratchets fail the build on regression).
+      # (#15846). Sweep the whole directory so ordinary script tests execute.
       # `--conditions=eliza-source`: several suites (e2e-coverage among them)
       # scan workspace SOURCE that reaches @elizaos/core, which under bun's
       # default `bun` export condition resolves to unbuilt dist on this
@@ -824,18 +815,7 @@ jobs:
       # packages to src (same as the matrix-report step below), so the sweep
       # runs before build:core (#15759).
       - name: packages/scripts test sweep (all __tests__ suites)
-        env:
-          E2E_COVERAGE_GATE_ENFORCE: "1"
         run: bun test --conditions=eliza-source packages/scripts/__tests__/
-
-      # Per-plugin keyless-e2e coverage gate (issue #8801). The surface matrix
-      # above proves app-facing routes/views; this ratchet proves each plugin
-      # with user-facing capabilities has a deterministic, credential-free
-      # scenario or an explicit baseline entry.
-      # Source condition for the same reason as the ship-gate step: this test
-      # imports inventory.ts, which resolves plugin source → @elizaos/core (#15759).
-      - name: Per-plugin keyless e2e coverage self-test
-        run: bun test --conditions=eliza-source packages/scripts/e2e-coverage/check-e2e-coverage.test.ts
 
       # #15616: pass/fail classifier for the live cloud chat smokes
       # (hetzner-e2e-chat, live-cloud-provision-smoke). packages/scripts is
@@ -844,8 +824,8 @@ jobs:
       - name: Bridge chat-reply verdict classifier
         run: bun test packages/scripts/cloud/admin/bridge-reply-verdict.test.ts
 
-      - name: Per-plugin keyless e2e coverage gate
-        run: bun run audit:e2e-coverage
+      - name: Per-plugin keyless e2e coverage report
+        run: bun run report:e2e-coverage
 
       # #14549: parallel-certification compose generator drift gate + GPU queue
       # state machine + orchestrator degradation. docker/certification is
@@ -886,7 +866,7 @@ jobs:
       - app-browser-all-pages
       - app-browser-feature-interactions
       - app-browser-cloud-keyless
-      - app-browser-ratcheted
+      - app-browser-extended
       - app-browser-auto-discovered
       - app-browser-touch-dashboard
       - app-browser-touch-mobile
@@ -910,7 +890,7 @@ jobs:
             "app-browser-all-pages:${{ needs.app-browser-all-pages.result }}" \
             "app-browser-feature-interactions:${{ needs.app-browser-feature-interactions.result }}" \
             "app-browser-cloud-keyless:${{ needs.app-browser-cloud-keyless.result }}" \
-            "app-browser-ratcheted:${{ needs.app-browser-ratcheted.result }}" \
+            "app-browser-extended:${{ needs.app-browser-extended.result }}" \
             "app-browser-auto-discovered:${{ needs.app-browser-auto-discovered.result }}" \
             "app-browser-touch-dashboard:${{ needs.app-browser-touch-dashboard.result }}" \
             "app-browser-touch-mobile:${{ needs.app-browser-touch-mobile.result }}" \

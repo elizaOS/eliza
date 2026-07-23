@@ -7,8 +7,8 @@ This directory contains GitHub Actions workflows for the elizaOS project (v2.0.0
 | Workflow | Trigger | Purpose |
 |----------|---------|---------|
 | `ci.yaml` | Push/PR to main | Main-specific CI - typecheck, tests, lint, build, dev startup |
-| `develop-pr.yml` | PR to develop | Lightweight lint, typecheck, build, and deterministic lane-integrity checks |
-| `develop-pr-gate.yml` | PR target to develop, manual canaries | Stable fail-closed aggregate over the nine lightweight required contexts |
+| `develop-pr.yml` | PR to develop | Ordinary affected tests plus lint, typecheck, build, and the aggregate self-test |
+| `develop-pr-gate.yml` | PR target to develop, manual canaries | Stable fail-closed aggregate over the eight required contexts |
 | `test.yml` | Push to develop, manual, schedule | Broader post-merge develop tests; live jobs are separate |
 | `quality.yml` | PR to main, push main/develop, manual | Extended format, homepage, secret, UI-determinism, and lint checks |
 | `scenario-pr.yml` | PR to main, push develop, manual/schedule | Secret-free deterministic scenario/browser E2E gate |

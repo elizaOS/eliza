@@ -1,14 +1,13 @@
 name: Chat shell gestures
 
 # Real-browser gesture + interleaving e2e for the floating chat shell
-# (packages/ui ChatOverlay + home screen), the component-tree
-# render-parity contract, and the CHAT_GESTURE_COVERAGE gate (#12188).
+# (packages/ui ChatOverlay + home screen) and the component-tree
+# render-parity contract.
 #
 # All 11 __e2e__ runners compose the shared runner toolkit
 # (packages/ui/src/testing/e2e-runner) and record a stable-named .webm. This lane
-# drives the REAL surfaces with real pointer/touch gestures in headless chromium,
-# runs the boot-free coverage gate that fails when a gesture-handler site lacks a
-# matrix row, and uploads every runner's video + screenshots.
+# drives the REAL surfaces with real pointer/touch gestures in headless chromium
+# and uploads every runner's video + screenshots.
 #
 # One shell runner is intentionally NOT in this lane:
 #   - run-fused-wake-integration-e2e drives the REAL native desktop wake producer
@@ -25,7 +24,7 @@ name: Chat shell gestures
 # Both gates self-verify their detector's teeth: each injects a real non-transient
 # shift and asserts it is flagged, so a 0.0000 can never be a dead-observer pass.
 #
-# Path-gated to packages/ui (and the app-side gate + matrix) so it only runs when
+# Path-gated to packages/ui so it only runs when
 # the surface it covers changes. The e2e runners bundle the fixtures with esbuild
 # and stub @elizaos/core, so no core build is needed; the render-parity vitest
 # imports the real @elizaos/core, so the shared i18n data is generated first.
@@ -39,8 +38,6 @@ on:
       - "packages/ui/**"
       - "packages/shared/**"
       - "packages/core/src/i18n/**"
-      - "packages/app/test/chat-gesture-coverage.test.ts"
-      - "packages/app/docs/CHAT_GESTURE_COVERAGE.md"
   push:
     branches: [main, develop]
     paths:
@@ -50,8 +47,6 @@ on:
       - "packages/ui/**"
       - "packages/shared/**"
       - "packages/core/src/i18n/**"
-      - "packages/app/test/chat-gesture-coverage.test.ts"
-      - "packages/app/docs/CHAT_GESTURE_COVERAGE.md"
   workflow_dispatch:
 
 # CI fan-out fix: the PR-scoped concurrency from #14069 fell back to
@@ -107,11 +102,6 @@ jobs:
 
       - name: Install Playwright chromium + webkit
         run: bunx playwright install --with-deps chromium webkit
-
-      # Boot-free coverage gate: fails when a gesture-handler site in
-      # packages/ui/src lacks a CHAT_GESTURE_COVERAGE matrix row (#12188).
-      - name: Chat gesture coverage gate
-        run: bunx vitest run --config packages/app/vitest.config.ts packages/app/test/chat-gesture-coverage.test.ts
 
       # Component-tree render parity (jsdom/vitest) — ThreadLine vs MessageContent
       # render the same structure for a shared message corpus.

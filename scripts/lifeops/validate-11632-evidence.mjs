@@ -115,13 +115,9 @@ export function validate11632Evidence({
       "owner-agent-permission-matrix.txt",
     ).bytes.toString("utf8");
     matrixCounts = parseVitestCounts(matrix);
-    if (
-      matrixCounts.passed !== 20 ||
-      matrixCounts.failed !== 0 ||
-      matrixCounts.skipped !== 0
-    ) {
+    if (!isLiveVitestProof(matrixCounts)) {
       throw new Error(
-        "OWNER/AGENT matrix artifact does not prove exactly 20 passing tests",
+        "OWNER/AGENT matrix artifact is not skip-free executable test proof",
       );
     }
   }

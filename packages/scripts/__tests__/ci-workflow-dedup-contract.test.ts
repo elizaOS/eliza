@@ -49,16 +49,23 @@ jobs:
       - run: echo aggregate
 `;
 
-// The lightweight develop-PR gate that owns the pre-merge half of the split.
+// The develop-PR gate owns ordinary behavioral tests before merge without
+// duplicating the full post-merge platform matrix.
 const DEVELOP_PR_YML = `name: Develop PR
 on:
   pull_request:
     branches: [develop]
 jobs:
-  lint:
+  test:
     runs-on: ubuntu-24.04
     steps:
       - uses: ./.github/actions/setup-bun-workspace
+      - name: Run affected package tests
+        run: node packages/scripts/run-turbo.mjs run test --affected
+      - name: Run repository script tests
+        run: bun test packages/scripts/__tests__/
+      - name: Verify the proposed aggregate state machine
+        run: node packages/scripts/develop-pr-aggregate.self-test.mjs
 `;
 
 // Heavy scenario family: PRs gate on main, develop coverage is post-merge push.

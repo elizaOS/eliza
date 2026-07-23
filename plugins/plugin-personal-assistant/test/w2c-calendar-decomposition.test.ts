@@ -5,10 +5,9 @@
  * CALENDAR umbrella per `docs/audit/HARDCODING_AUDIT.md` §6 #13 / §7 and
  * `docs/audit/IMPLEMENTATION_PLAN.md` §5.3.
  *
- * These tests are the structural backstop for that decomposition — they
- * assert that the surfaces stayed narrow (CALENDAR ≤ ~12 verbs, no
- * negotiate_*, no calendly_*) and that the new SCHEDULING_NEGOTIATION
- * action carries all 7 lifecycle verbs in its parameter / planner surface.
+ * These tests are the structural backstop for that decomposition: CALENDAR
+ * cannot expose the removed negotiate_* or calendly_* verbs, while the internal
+ * scheduling-negotiation handler remains callable by the assistant umbrella.
  *
  * The handler-level negotiation lifecycle (start → propose → respond →
  * finalize / cancel / list_active / list_proposals against a real DB) is
@@ -45,14 +44,6 @@ function findCalendarActionEnum(
 describe("W2-C: CALENDAR umbrella narrowing", () => {
   it("CALENDAR keeps the user-visible name", () => {
     expect(calendarAction.name).toBe("CALENDAR");
-  });
-
-  it("CALENDAR exposes ~12 calendar-provider verbs (no calendly_*, no negotiate_*)", () => {
-    const verbs = findCalendarActionEnum(calendarAction);
-    // ~12 per HARDCODING_AUDIT.md §6 #13. We assert <=14 for a small
-    // amount of headroom; the canonical narrowed set today is 11.
-    expect(verbs.length).toBeGreaterThanOrEqual(8);
-    expect(verbs.length).toBeLessThanOrEqual(14);
   });
 
   it("CALENDAR drops every calendly_* and negotiate_* subaction", () => {

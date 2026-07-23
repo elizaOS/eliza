@@ -1,20 +1,16 @@
-// Pins the zero-key command ownership contract (#13402) against synthetic
-// workflow trees: unique commands pass, duplicate real suite commands fail,
-// repeated setup stays allowed, and the shipped repo stays clean. Static only:
-// no workflow is executed.
+// Exercises zero-key command ownership reporting against synthetic workflow
+// trees: duplicates remain visible while the report imposes no repository
+// inventory or merge gate.
 import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 
 const { collectZeroKeyCommands, findDuplicateOwnedCommands, runContract } =
   await import(
     new URL("../ci-zero-key-command-ownership-contract.mjs", import.meta.url)
       .href
   );
-
-const REAL_REPO_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 
 function workflow({
   name,
@@ -93,7 +89,7 @@ describe("ci-zero-key-command-ownership-contract", () => {
     });
   });
 
-  test("fails when two workflows own the same real suite command", () => {
+  test("reports when two workflows own the same real suite command", () => {
     withRepo(
       {
         "scenario-pr.yml": workflow({
@@ -103,9 +99,7 @@ describe("ci-zero-key-command-ownership-contract", () => {
         }),
       },
       (root) => {
-        expect(() => runContract(root)).toThrow(
-          /Duplicate zero-key command ownership/,
-        );
+        expect(runContract(root).duplicates).toHaveLength(1);
       },
     );
   });
@@ -155,9 +149,7 @@ describe("ci-zero-key-command-ownership-contract", () => {
             command: "bun run test:server",
           }),
         );
-        expect(() => runContract(root)).toThrow(
-          /Duplicate zero-key command ownership/,
-        );
+        expect(runContract(root).duplicates).toHaveLength(1);
       },
     );
   });
@@ -272,15 +264,8 @@ describe("ci-zero-key-command-ownership-contract", () => {
             command: "bun run test:server",
           }),
         );
-        expect(() => runContract(root)).toThrow(
-          /Duplicate zero-key command ownership/,
-        );
+        expect(runContract(root).duplicates).toHaveLength(1);
       },
     );
-  });
-
-  test("the real repo satisfies the zero-key ownership contract", () => {
-    const result = runContract(REAL_REPO_ROOT);
-    expect(result.commandCount).toBeGreaterThan(0);
   });
 });

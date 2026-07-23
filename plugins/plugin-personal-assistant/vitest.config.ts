@@ -595,7 +595,7 @@ export default defineConfig({
           "index.ts",
         ),
       },
-      // The scenario-corpus gate dynamically imports every scenario file, and the
+      // The scenario-integrity test dynamically imports every scenario file, and the
       // first-run onboarding helper (test/scenarios/_helpers/first-run-onboarding.ts)
       // pulls PA's OWN deep modules through the package specifier
       // (`@elizaos/plugin-personal-assistant/lifeops/first-run/*`). PA is not in
@@ -614,7 +614,7 @@ export default defineConfig({
           "$1.ts",
         ),
       },
-      // The scenario-corpus gate (test/executive-assistant-scenarios.test.ts)
+      // The scenario-integrity test (test/executive-assistant-scenarios.test.ts)
       // imports the real scenario loader from source; loader.ts references its
       // own package via `@elizaos/scenario-runner/schema`, a self-referencing
       // package-exports import Vite's resolver does not support. Anchor the
