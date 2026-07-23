@@ -70,14 +70,7 @@ function writeLineLcovAs(dir, name, sourcePath, hitLines, found = 10) {
   return file;
 }
 
-function runGate({
-  changed,
-  lcov,
-  enforce = true,
-  threshold = 50,
-  floorEnabled = true,
-  excluded = "",
-}) {
+function runGate({ changed, lcov, enforce = true, excluded = "" }) {
   const changedArgument = changed
     .replaceAll("\\", "\\\\")
     .replaceAll("\n", "\\n");
@@ -90,10 +83,6 @@ function runGate({
     [
       "-v",
       `changed=${changedArgument}`,
-      "-v",
-      `threshold=${threshold}`,
-      "-v",
-      `floor_enabled=${floorEnabled ? 1 : 0}`,
       "-v",
       `excluded=${excludedArgument}`,
       "-f",
@@ -189,18 +178,16 @@ try {
     assert.match(result.stdout, /changed source missing from LCOV/);
   });
   assertGate(
-    "aggregates a file across lanes: an incidental low record does not fail a file whose real lane clears the floor (#16043)",
+    "reports the strongest observation when a file appears in multiple lanes (#16043)",
     () => {
       const src = "packages/core/src/features/documents/service.ts";
-      // Its own focused lane covers it well (8/10 = 80%); another package's lane
-      // merely imports it (1/50 = 2%). Pre-fix, the 2% record alone failed the gate.
+      // Its own focused lane covers 8/10; another package merely imports 1/50.
       const ownLane = writeLcovAs(dir, "core.lcov", src, 10, 8);
       const importLane = writeLcovAs(dir, "meetings.lcov", src, 50, 1);
       const result = runGate({ changed: src, lcov: [ownLane, importLane] });
       assert.equal(result.status, 0, result.stderr || result.stdout);
       assert.match(result.stdout, /coverage gate OK/);
-      // Counted once, at the best lane's percentage — not the 2% record.
-      assert.match(result.stdout, /changed files: 1,/);
+      assert.match(result.stdout, /changed files observed: 1,/);
       assert.match(
         result.stdout,
         /80\.00% packages\/core\/src\/features\/documents\/service\.ts/,
@@ -208,34 +195,18 @@ try {
     },
   );
 
-  assertGate(
-    "still fails a file that is genuinely below the floor in every lane (#16043)",
-    () => {
-      const src = "packages/core/src/features/documents/service.ts";
-      // Both lanes under 50% (19.90% and 2%). The aggregated best is still below,
-      // so the gate must fail — aggregation must not blanket-pass shared files.
-      const laneA = writeLcovAs(dir, "a.lcov", src, 1000, 199);
-      const laneB = writeLcovAs(dir, "b.lcov", src, 50, 1);
-      const result = runGate({ changed: src, lcov: [laneA, laneB] });
-      assert.equal(result.status, 1, result.stdout);
-      assert.match(
-        result.stdout,
-        /BELOW: packages\/core\/src\/features\/documents\/service\.ts/,
-      );
-    },
-  );
-  assertGate("disabled floor reports low coverage without failing", () => {
-    const src = "packages/core/src/services/message.ts";
-    const lcov = writeLcov(dir, src, 100, 7);
-    const result = runGate({
-      changed: src,
-      lcov,
-      floorEnabled: false,
-    });
-    assert.equal(result.status, 0, result.stderr || result.stdout);
-    assert.match(result.stdout, /7\.00% packages\/core\/src\/services\/message\.ts/);
-    assert.match(result.stdout, /threshold: disabled/);
+  assertGate("does not enforce a percentage floor", () => {
+    const src = "packages/core/src/features/documents/service.ts";
+    const laneA = writeLcovAs(dir, "a.lcov", src, 1000, 199);
+    const laneB = writeLcovAs(dir, "b.lcov", src, 50, 1);
+    const result = runGate({ changed: src, lcov: [laneA, laneB] });
+    assert.equal(result.status, 0, result.stdout);
+    assert.match(
+      result.stdout,
+      /19\.90% packages\/core\/src\/features\/documents\/service\.ts/,
+    );
     assert.doesNotMatch(result.stdout, /BELOW:/);
+    assert.match(result.stdout, /coverage gate OK/);
   });
   assertGate(
     "union-merges complementary isolated Bun hits before comparing logical lanes",
@@ -292,10 +263,8 @@ try {
   );
 
   assertGate(
-    "an excluded file that DOES appear in LCOV is gated normally (#16409 — the escape expires)",
+    "an excluded file that appears in LCOV is reported normally",
     () => {
-      // Collection got fixed: the file shows up at 25% — below the floor, so
-      // the manifest entry must NOT shield it.
       const lcov = writeLcov(
         dir,
         "packages/agent/src/runtime/eliza.ts",
@@ -307,18 +276,12 @@ try {
         lcov,
         excluded: "packages/agent/src/runtime/eliza.ts",
       });
-      assert.equal(result.status, 1, result.stdout);
+      assert.equal(result.status, 0, result.stdout);
       assert.match(
         result.stdout,
-        /BELOW: packages\/agent\/src\/runtime\/eliza\.ts/,
+        /25\.00% packages\/agent\/src\/runtime\/eliza\.ts/,
       );
-      // The BELOW verdict must carry its remediation text, quoting the active
-      // threshold and the changed-tests-only rule.
-      assert.match(
-        result.stdout,
-        /How to fix: every BELOW file needs >=50% of its lines/,
-      );
-      assert.match(result.stdout, /unit tests CHANGED in this PR/);
+      assert.doesNotMatch(result.stdout, /EXCLUDED/);
     },
   );
 

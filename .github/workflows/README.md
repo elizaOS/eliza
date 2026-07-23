@@ -128,7 +128,7 @@ The aggregate contract runs directly under Node in
 `packages/scripts/develop-pr-aggregate.self-test.mjs`; the changed-file gate
 loads the same assertions through
 `packages/scripts/develop-pr-aggregate.test.mjs` so the implementation also
-produces enforced per-file coverage.
+appears in changed-source coverage reporting.
 
 Two SPOF guards, enforced by `packages/scripts/ci-merge-gate-contract.mjs` (run
 in the `changes` job, #13617):

@@ -51,6 +51,9 @@ changed_source() {
   } \
     | while IFS= read -r file; do
         [ -f "$file" ] || continue
+        case "$file" in
+          *.d.ts|*.d.mts|*.d.cts) continue ;;
+        esac
         grep -Fxq "$file" "$NODE_SELF_TEST_MANIFEST" && continue
         grep -Fxq "$file" "$SUBPROCESS_SOURCE_MANIFEST" && continue
         echo "$file"
