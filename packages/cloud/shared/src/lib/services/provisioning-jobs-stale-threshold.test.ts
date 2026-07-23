@@ -22,6 +22,7 @@ const COLD_BOOT_TYPES = [
   JOB_TYPES.AGENT_WAKE,
   JOB_TYPES.AGENT_RESTART,
   JOB_TYPES.AGENT_UPGRADE,
+  JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
   JOB_TYPES.AGENT_DOWNGRADE,
 ] as const;
 
@@ -73,6 +74,10 @@ describe("recoverStaleJobs threshold by job type", () => {
     // double-provisioned mid-flight (#15943).
     const seen = new Map<string, number>();
     const claimSpy = spyOn(jobsRepository, "claimPendingJobs").mockResolvedValue([]);
+    const sharedClaimSpy = spyOn(
+      jobsRepository,
+      "claimPendingJobsWithinSharedRunningLimit",
+    ).mockResolvedValue([]);
     const recoverSpy = spyOn(jobsRepository, "recoverStaleJobs").mockImplementation(
       async (filters: { type: string; staleThresholdMs: number }) => {
         seen.set(filters.type, filters.staleThresholdMs);
@@ -85,6 +90,7 @@ describe("recoverStaleJobs threshold by job type", () => {
       expect(seen.get(JOB_TYPES.AGENT_DELETE)).toBe(5 * 60 * 1000);
     } finally {
       claimSpy.mockRestore();
+      sharedClaimSpy.mockRestore();
       recoverSpy.mockRestore();
     }
   });

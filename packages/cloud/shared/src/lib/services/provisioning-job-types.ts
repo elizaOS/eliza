@@ -22,6 +22,12 @@ export const JOB_TYPES = {
    */
   AGENT_UPGRADE: "agent_upgrade",
   /**
+   * Super-admin canary image change: exact-target, cross-repository blue/green
+   * swap with an immutable digest and durable rollout audit. It is never
+   * selected by the fleet reconciler.
+   */
+  AGENT_ADMIN_CANARY_IMAGE: "agent_admin_canary_image",
+  /**
    * Fleet-downgrade / rollback: blue/green swap an agent back onto its
    * persisted `previous_image_digest`, restoring the `pre-upgrade` snapshot
    * before cutover. The inverse of AGENT_UPGRADE — enqueued explicitly (an
@@ -117,6 +123,7 @@ export const AGENT_JOB_TYPES = [
   JOB_TYPES.AGENT_MESSAGE,
   JOB_TYPES.AGENT_SNAPSHOT,
   JOB_TYPES.AGENT_UPGRADE,
+  JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
   JOB_TYPES.AGENT_DOWNGRADE,
   JOB_TYPES.AGENT_SLEEP,
   JOB_TYPES.AGENT_WAKE,

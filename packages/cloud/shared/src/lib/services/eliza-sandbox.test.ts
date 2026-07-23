@@ -4366,6 +4366,7 @@ describe("isPermanentlyLostSnapshot (prune-vs-preserve gating)", () => {
 describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LARP H3)", () => {
   const AGENT = "e06bb509-6c52-4c33-a9f7-66addc43e8c8";
   const ORG = "22222222-2222-4222-8222-222222222222";
+  const OWNER = "33333333-3333-4333-8333-333333333333";
   const DOCKER_IMAGE = "ghcr.io/elizaos/eliza-agent:latest";
   const FROM_DIGEST = "sha256:0000000000000000000000000000000000000000000000000000000000000aaa";
   const TO_DIGEST = "sha256:1111111111111111111111111111111111111111111111111111111111111bbb";
@@ -4976,6 +4977,281 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
     expect(executedSql).toBeUndefined();
     expect(stop).toHaveBeenCalledWith("sandbox-new-1");
   });
+
+  test("admin canary requires reported blue digest and uses the primary exact-pair read", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const SOURCE_IMAGE = "ghcr.io/elizaos/eliza:sha-production";
+    const TARGET_IMAGE = `ghcr.io/elizaos/eliza-demo@${TO_DIGEST}`;
+    const agent: AgentSandbox = { ...liveAgentRow(), docker_image: SOURCE_IMAGE };
+    const primarySpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
+      agent,
+    );
+    const replicaSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(agent);
+    const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(oldNode());
+    const { provider, stop } = await makeDockerProvider({
+      create: async () => blueHandle(null),
+      checkHealth: async () => true,
+    });
+    let transactionCalled = false;
+    upgradeTransactionImpl = async () => {
+      transactionCalled = true;
+      return false as never;
+    };
+    try {
+      const result = await new ElizaSandboxService(provider).executeAdminCanaryUpgrade({
+        agentId: AGENT,
+        organizationId: ORG,
+        targetOwnerUserId: OWNER,
+        sourceImage: SOURCE_IMAGE,
+        sourceDigest: FROM_DIGEST,
+        targetImage: TARGET_IMAGE,
+        targetDigest: TO_DIGEST,
+        onCutoverInTx: async () => {},
+      });
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("got missing");
+      expect(primarySpy).toHaveBeenCalledTimes(1);
+      expect(replicaSpy).not.toHaveBeenCalled();
+      expect(stop).toHaveBeenCalledWith("sandbox-new-1");
+      expect(transactionCalled).toBe(false);
+    } finally {
+      primarySpy.mockRestore();
+      replicaSpy.mockRestore();
+      nodeSpy.mockRestore();
+    }
+  });
+
+  test("admin canary refuses an ownership change before provisioning blue", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const SOURCE_IMAGE = "ghcr.io/elizaos/eliza:sha-production";
+    const TARGET_IMAGE = `ghcr.io/elizaos/eliza-demo@${TO_DIGEST}`;
+    const movedAgent: AgentSandbox = {
+      ...liveAgentRow(),
+      user_id: "44444444-4444-4444-8444-444444444444",
+      docker_image: SOURCE_IMAGE,
+    };
+    const primarySpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
+      movedAgent,
+    );
+    const { provider, create } = await makeDockerProvider({
+      create: async () => blueHandle(TO_DIGEST),
+      checkHealth: async () => true,
+    });
+    try {
+      const result = await new ElizaSandboxService(provider).executeAdminCanaryUpgrade({
+        agentId: AGENT,
+        organizationId: ORG,
+        targetOwnerUserId: OWNER,
+        sourceImage: SOURCE_IMAGE,
+        sourceDigest: FROM_DIGEST,
+        targetImage: TARGET_IMAGE,
+        targetDigest: TO_DIGEST,
+        onCutoverInTx: async () => {},
+      });
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("audited canary source image pair");
+      expect(create).not.toHaveBeenCalled();
+    } finally {
+      primarySpy.mockRestore();
+    }
+  });
+
+  test("admin canary exact CAS persists target repo+digest and exact rollback pair", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const SOURCE_IMAGE = "ghcr.io/elizaos/eliza:sha-production";
+    const TARGET_IMAGE = `ghcr.io/elizaos/eliza-demo@${TO_DIGEST}`;
+    const agent: AgentSandbox = { ...liveAgentRow(), docker_image: SOURCE_IMAGE };
+    const primarySpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
+      agent,
+    );
+    const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(oldNode());
+    const { provider } = await makeDockerProvider({
+      create: async () => blueHandle(TO_DIGEST),
+      checkHealth: async () => true,
+    });
+    const svc = new ElizaSandboxService(provider);
+    const lockSpy = spyOn(
+      svc as unknown as { lockLifecycle: (...a: unknown[]) => Promise<void> },
+      "lockLifecycle",
+    ).mockResolvedValue(undefined);
+    const readSpy = spyOn(
+      svc as unknown as {
+        getAgentForLifecycleMutation: (...a: unknown[]) => Promise<AgentSandbox | undefined>;
+      },
+      "getAgentForLifecycleMutation",
+    ).mockResolvedValue(agent);
+    const snapshotSpy = spyOn(
+      svc as unknown as { snapshot: (...a: unknown[]) => Promise<{ success: boolean }> },
+      "snapshot",
+    ).mockResolvedValue({ success: true });
+    let executedSql: unknown;
+    upgradeTransactionImpl = async (fn) => {
+      const tx: UpgradeTx = {
+        execute: async (query: unknown) => {
+          executedSql = query;
+          return { rows: [{ id: AGENT }] };
+        },
+      };
+      return fn(tx);
+    };
+    try {
+      const result = await svc.executeAdminCanaryUpgrade({
+        agentId: AGENT,
+        organizationId: ORG,
+        targetOwnerUserId: OWNER,
+        sourceImage: SOURCE_IMAGE,
+        sourceDigest: FROM_DIGEST,
+        targetImage: TARGET_IMAGE,
+        targetDigest: TO_DIGEST,
+        onCutoverInTx: async () => {},
+      });
+      expect(result.success).toBe(true);
+      const params = sqlBoundParams(executedSql);
+      expect(params).toContain(TARGET_IMAGE);
+      expect(params).toContain(TO_DIGEST);
+      expect(params).toContain(SOURCE_IMAGE);
+      expect(params).toContain(FROM_DIGEST);
+      expect(params).toContain(OWNER);
+    } finally {
+      primarySpy.mockRestore();
+      nodeSpy.mockRestore();
+      lockSpy.mockRestore();
+      readSpy.mockRestore();
+      snapshotSpy.mockRestore();
+    }
+  });
+
+  test("admin canary audit failure rolls back cutover and tears down blue", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const SOURCE_IMAGE = "ghcr.io/elizaos/eliza:sha-production";
+    const TARGET_IMAGE = `ghcr.io/elizaos/eliza-demo@${TO_DIGEST}`;
+    const agent: AgentSandbox = { ...liveAgentRow(), docker_image: SOURCE_IMAGE };
+    const primarySpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
+      agent,
+    );
+    const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(oldNode());
+    const { provider, stop, stopOnSpecificNode } = await makeDockerProvider({
+      create: async () => blueHandle(TO_DIGEST),
+      checkHealth: async () => true,
+    });
+    const svc = new ElizaSandboxService(provider);
+    const lockSpy = spyOn(
+      svc as unknown as { lockLifecycle: (...a: unknown[]) => Promise<void> },
+      "lockLifecycle",
+    ).mockResolvedValue(undefined);
+    const readSpy = spyOn(
+      svc as unknown as {
+        getAgentForLifecycleMutation: (...a: unknown[]) => Promise<AgentSandbox | undefined>;
+      },
+      "getAgentForLifecycleMutation",
+    ).mockResolvedValue(agent);
+    const snapshotSpy = spyOn(
+      svc as unknown as { snapshot: (...a: unknown[]) => Promise<{ success: boolean }> },
+      "snapshot",
+    ).mockResolvedValue({ success: true });
+    const audit = mock(async () => {
+      throw new Error("durable audit write failed");
+    });
+    upgradeTransactionImpl = async (fn) => {
+      const tx: UpgradeTx = {
+        execute: async () => ({ rows: [{ id: AGENT }] }),
+      };
+      return fn(tx);
+    };
+    try {
+      const result = await svc.executeAdminCanaryUpgrade({
+        agentId: AGENT,
+        organizationId: ORG,
+        targetOwnerUserId: OWNER,
+        sourceImage: SOURCE_IMAGE,
+        sourceDigest: FROM_DIGEST,
+        targetImage: TARGET_IMAGE,
+        targetDigest: TO_DIGEST,
+        onCutoverInTx: audit,
+      });
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("durable audit write failed");
+      expect(audit).toHaveBeenCalledTimes(1);
+      expect(stop).toHaveBeenCalledWith("sandbox-new-1");
+      expect(stopOnSpecificNode).not.toHaveBeenCalled();
+    } finally {
+      primarySpy.mockRestore();
+      nodeSpy.mockRestore();
+      lockSpy.mockRestore();
+      readSpy.mockRestore();
+      snapshotSpy.mockRestore();
+    }
+  });
+
+  test("admin canary keeps committed success when old-container and VPN cleanup fail", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const { headscaleIntegration } = await import("./headscale-integration");
+    const SOURCE_IMAGE = "ghcr.io/elizaos/eliza:sha-production";
+    const TARGET_IMAGE = `ghcr.io/elizaos/eliza-demo@${TO_DIGEST}`;
+    const agent: AgentSandbox = { ...liveAgentRow(), docker_image: SOURCE_IMAGE };
+    const primarySpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
+      agent,
+    );
+    const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(oldNode());
+    const { provider, stop, stopOnSpecificNode } = await makeDockerProvider({
+      create: async () => blueHandle(TO_DIGEST, "vpn-old"),
+      checkHealth: async () => true,
+    });
+    stopOnSpecificNode.mockImplementation(async () => {
+      throw new Error("old container teardown unavailable");
+    });
+    const removeSpy = spyOn(headscaleIntegration, "removeVpnNodeById").mockImplementation(
+      async () => {
+        throw new Error("old VPN teardown unavailable");
+      },
+    );
+    const svc = new ElizaSandboxService(provider);
+    const lockSpy = spyOn(
+      svc as unknown as { lockLifecycle: (...a: unknown[]) => Promise<void> },
+      "lockLifecycle",
+    ).mockResolvedValue(undefined);
+    const readSpy = spyOn(
+      svc as unknown as {
+        getAgentForLifecycleMutation: (...a: unknown[]) => Promise<AgentSandbox | undefined>;
+      },
+      "getAgentForLifecycleMutation",
+    ).mockResolvedValue(agent);
+    const snapshotSpy = spyOn(
+      svc as unknown as { snapshot: (...a: unknown[]) => Promise<{ success: boolean }> },
+      "snapshot",
+    ).mockResolvedValue({ success: true });
+    const audit = mock(() => Promise.resolve());
+    upgradeTransactionImpl = async (fn) => {
+      const tx: UpgradeTx = {
+        execute: async () => ({ rows: [{ id: AGENT }] }),
+      };
+      return fn(tx);
+    };
+    try {
+      const result = await svc.executeAdminCanaryUpgrade({
+        agentId: AGENT,
+        organizationId: ORG,
+        targetOwnerUserId: OWNER,
+        sourceImage: SOURCE_IMAGE,
+        sourceDigest: FROM_DIGEST,
+        targetImage: TARGET_IMAGE,
+        targetDigest: TO_DIGEST,
+        onCutoverInTx: audit,
+      });
+      expect(result.success).toBe(true);
+      expect(audit).toHaveBeenCalledTimes(1);
+      expect(stopOnSpecificNode).toHaveBeenCalledTimes(1);
+      expect(removeSpy).toHaveBeenCalledWith("vpn-old");
+      expect(stop).not.toHaveBeenCalled();
+    } finally {
+      primarySpy.mockRestore();
+      nodeSpy.mockRestore();
+      removeSpy.mockRestore();
+      lockSpy.mockRestore();
+      readSpy.mockRestore();
+      snapshotSpy.mockRestore();
+    }
+  });
 });
 
 // #9964 — executeDowngrade() symmetric blue/green rollback onto the persisted
@@ -4987,6 +5263,7 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
 describe("ElizaSandboxService.executeDowngrade rollback onto previous_image_digest (#9964)", () => {
   const AGENT = "e06bb509-6c52-4c33-a9f7-66addc43e8c8";
   const ORG = "22222222-2222-4222-8222-222222222222";
+  const OWNER = "33333333-3333-4333-8333-333333333333";
   const DOCKER_IMAGE = "ghcr.io/elizaos/eliza-agent:latest";
   // The agent currently runs on the post-upgrade digest; rollback targets PREV.
   const CURRENT_DIGEST = "sha256:1111111111111111111111111111111111111111111111111111111111111bbb";
@@ -5021,7 +5298,7 @@ describe("ElizaSandboxService.executeDowngrade rollback onto previous_image_dige
     } as unknown as DockerNode;
   }
 
-  function blueMetadata(imageDigest: string | null) {
+  function blueMetadata(imageDigest: string | null, previousVpnNodeId?: string) {
     return {
       provider: "docker" as const,
       nodeId: "node-rb",
@@ -5033,15 +5310,16 @@ describe("ElizaSandboxService.executeDowngrade rollback onto previous_image_dige
       volumePath: "/var/lib/eliza/agent-rb-1",
       dockerImage: DOCKER_IMAGE,
       imageDigest,
+      ...(previousVpnNodeId ? { previousVpnNodeId } : {}),
     };
   }
 
-  function blueHandle(imageDigest: string | null) {
+  function blueHandle(imageDigest: string | null, previousVpnNodeId?: string) {
     return {
       sandboxId: "sandbox-rb-1",
       bridgeUrl: "https://rb-bridge.example",
       healthUrl: "https://rb-bridge.example/health",
-      metadata: blueMetadata(imageDigest),
+      metadata: blueMetadata(imageDigest, previousVpnNodeId),
     };
   }
 
@@ -5068,6 +5346,102 @@ describe("ElizaSandboxService.executeDowngrade rollback onto previous_image_dige
   afterEach(() => {
     upgradeTransactionImpl = null;
   });
+
+  async function runAdminCanaryRollback(options: {
+    onCutoverInTx: () => Promise<void>;
+    failPostCutoverCleanup?: boolean;
+  }) {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const { headscaleIntegration } = await import("./headscale-integration");
+    const SOURCE_IMAGE = `ghcr.io/elizaos/eliza-demo@${CURRENT_DIGEST}`;
+    const TARGET_IMAGE = "ghcr.io/elizaos/eliza:sha-production";
+    const agent: AgentSandbox = {
+      ...upgradedAgentRow(),
+      docker_image: SOURCE_IMAGE,
+      previous_docker_image: TARGET_IMAGE,
+    };
+    const primarySpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
+      agent,
+    );
+    const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(curNode());
+    const backup = {
+      id: "backup-admin-canary-adversarial",
+      sandbox_record_id: AGENT,
+      snapshot_type: "pre-upgrade",
+    } as unknown as AgentSandboxBackup;
+    const byTypeSpy = spyOn(agentSandboxesRepository, "getLatestBackupByType").mockResolvedValue(
+      backup,
+    );
+    const reconstructSpy = spyOn(
+      agentSandboxesRepository,
+      "getReconstructedBackupState",
+    ).mockResolvedValue({ memories: [], config: {}, workspaceFiles: {} });
+    const { provider, stop, stopOnSpecificNode } = await makeDockerProvider({
+      create: async () =>
+        blueHandle(PREV_DIGEST, options.failPostCutoverCleanup ? "vpn-old-rollback" : undefined),
+      checkHealth: async () => true,
+    });
+    if (options.failPostCutoverCleanup) {
+      stopOnSpecificNode.mockImplementation(async () => {
+        throw new Error("rollback old-container teardown unavailable");
+      });
+    }
+    const removeSpy = spyOn(headscaleIntegration, "removeVpnNodeById").mockImplementation(
+      async () => {
+        if (options.failPostCutoverCleanup) {
+          throw new Error("rollback old-VPN teardown unavailable");
+        }
+      },
+    );
+    const svc = new ElizaSandboxService(provider);
+    const pushSpy = spyOn(
+      svc as unknown as { pushState: (...a: unknown[]) => Promise<void> },
+      "pushState",
+    ).mockResolvedValue(undefined);
+    const lockSpy = spyOn(
+      svc as unknown as { lockLifecycle: (...a: unknown[]) => Promise<void> },
+      "lockLifecycle",
+    ).mockResolvedValue(undefined);
+    const readSpy = spyOn(
+      svc as unknown as {
+        getAgentForLifecycleMutation: (...a: unknown[]) => Promise<AgentSandbox | undefined>;
+      },
+      "getAgentForLifecycleMutation",
+    ).mockResolvedValue(agent);
+    upgradeTransactionImpl = async (fn) => {
+      const tx: UpgradeTx = {
+        execute: async () => ({ rows: [{ id: AGENT }] }),
+      };
+      return fn(tx);
+    };
+    try {
+      const result = await svc.executeAdminCanaryRollback({
+        agentId: AGENT,
+        organizationId: ORG,
+        targetOwnerUserId: OWNER,
+        sourceImage: SOURCE_IMAGE,
+        sourceDigest: CURRENT_DIGEST,
+        targetImage: TARGET_IMAGE,
+        targetDigest: PREV_DIGEST,
+        onCutoverInTx: options.onCutoverInTx,
+      });
+      return {
+        result,
+        stop,
+        stopOnSpecificNode,
+        removedVpnNodeIds: removeSpy.mock.calls.map((call) => call[0]),
+      };
+    } finally {
+      primarySpy.mockRestore();
+      nodeSpy.mockRestore();
+      byTypeSpy.mockRestore();
+      reconstructSpy.mockRestore();
+      removeSpy.mockRestore();
+      pushSpy.mockRestore();
+      lockSpy.mockRestore();
+      readSpy.mockRestore();
+    }
+  }
 
   test("no previous_image_digest → refuses, never touches the live agent", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
@@ -5177,6 +5551,122 @@ describe("ElizaSandboxService.executeDowngrade rollback onto previous_image_dige
       lockSpy.mockRestore();
       readSpy.mockRestore();
     }
+  });
+
+  test("admin canary rollback restores and atomically returns to the exact canonical pair", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const SOURCE_IMAGE = `ghcr.io/elizaos/eliza-demo@${CURRENT_DIGEST}`;
+    const TARGET_IMAGE = "ghcr.io/elizaos/eliza:sha-production";
+    const agent: AgentSandbox = {
+      ...upgradedAgentRow(),
+      docker_image: SOURCE_IMAGE,
+      previous_docker_image: TARGET_IMAGE,
+    };
+    const primarySpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
+      agent,
+    );
+    const replicaSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(agent);
+    const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(curNode());
+    const backup = {
+      id: "backup-admin-canary",
+      sandbox_record_id: AGENT,
+      snapshot_type: "pre-upgrade",
+    } as unknown as AgentSandboxBackup;
+    const byTypeSpy = spyOn(agentSandboxesRepository, "getLatestBackupByType").mockResolvedValue(
+      backup,
+    );
+    const reconstructSpy = spyOn(
+      agentSandboxesRepository,
+      "getReconstructedBackupState",
+    ).mockResolvedValue({ memories: [], config: {}, workspaceFiles: {} });
+    const { provider, create } = await makeDockerProvider({
+      create: async () => blueHandle(PREV_DIGEST),
+      checkHealth: async () => true,
+    });
+    const svc = new ElizaSandboxService(provider);
+    const pushSpy = spyOn(
+      svc as unknown as { pushState: (...a: unknown[]) => Promise<void> },
+      "pushState",
+    ).mockResolvedValue(undefined);
+    const lockSpy = spyOn(
+      svc as unknown as { lockLifecycle: (...a: unknown[]) => Promise<void> },
+      "lockLifecycle",
+    ).mockResolvedValue(undefined);
+    const readSpy = spyOn(
+      svc as unknown as {
+        getAgentForLifecycleMutation: (...a: unknown[]) => Promise<AgentSandbox | undefined>;
+      },
+      "getAgentForLifecycleMutation",
+    ).mockResolvedValue(agent);
+    let executedSql: unknown;
+    upgradeTransactionImpl = async (fn) => {
+      const tx: UpgradeTx = {
+        execute: async (query: unknown) => {
+          executedSql = query;
+          return { rows: [{ id: AGENT }] };
+        },
+      };
+      return fn(tx);
+    };
+    try {
+      const result = await svc.executeAdminCanaryRollback({
+        agentId: AGENT,
+        organizationId: ORG,
+        targetOwnerUserId: OWNER,
+        sourceImage: SOURCE_IMAGE,
+        sourceDigest: CURRENT_DIGEST,
+        targetImage: TARGET_IMAGE,
+        targetDigest: PREV_DIGEST,
+        onCutoverInTx: async () => {},
+      });
+      expect(result.success).toBe(true);
+      expect(primarySpy).toHaveBeenCalledTimes(1);
+      expect(replicaSpy).not.toHaveBeenCalled();
+      expect(create.mock.calls[0]?.[0]).toMatchObject({
+        dockerImage: `ghcr.io/elizaos/eliza@${PREV_DIGEST}`,
+      });
+      const params = sqlBoundParams(executedSql);
+      expect(params).toContain(TARGET_IMAGE);
+      expect(params).toContain(PREV_DIGEST);
+      expect(params).toContain(SOURCE_IMAGE);
+      expect(params).toContain(CURRENT_DIGEST);
+    } finally {
+      primarySpy.mockRestore();
+      replicaSpy.mockRestore();
+      nodeSpy.mockRestore();
+      byTypeSpy.mockRestore();
+      reconstructSpy.mockRestore();
+      pushSpy.mockRestore();
+      lockSpy.mockRestore();
+      readSpy.mockRestore();
+    }
+  });
+
+  test("admin canary rollback audit failure preserves demo and tears down blue", async () => {
+    const audit = mock(async () => {
+      throw new Error("durable rollback audit write failed");
+    });
+    const { result, stop, stopOnSpecificNode } = await runAdminCanaryRollback({
+      onCutoverInTx: audit,
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("durable rollback audit write failed");
+    expect(audit).toHaveBeenCalledTimes(1);
+    expect(stop).toHaveBeenCalledWith("sandbox-rb-1");
+    expect(stopOnSpecificNode).not.toHaveBeenCalled();
+  });
+
+  test("admin canary rollback remains successful when post-cutover cleanup fails", async () => {
+    const audit = mock(() => Promise.resolve());
+    const { result, stop, stopOnSpecificNode, removedVpnNodeIds } = await runAdminCanaryRollback({
+      onCutoverInTx: audit,
+      failPostCutoverCleanup: true,
+    });
+    expect(result.success).toBe(true);
+    expect(audit).toHaveBeenCalledTimes(1);
+    expect(stopOnSpecificNode).toHaveBeenCalledTimes(1);
+    expect(removedVpnNodeIds).toContain("vpn-old-rollback");
+    expect(stop).not.toHaveBeenCalled();
   });
 });
 

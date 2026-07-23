@@ -1,6 +1,6 @@
 // Persists jobs records for cloud services through the shared DB boundary.
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, lt, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, lt, sql } from "drizzle-orm";
 import { ObjectNamespaces } from "../../lib/storage/object-namespace";
 import {
   hydrateJsonField,
@@ -220,6 +220,28 @@ export class JobsRepository {
   }
 
   /**
+   * Primary-DB lookup for control-plane decisions that immediately enqueue or
+   * derive a compensating operation from a terminal job.
+   */
+  async findByIdForWrite(id: string): Promise<Job | undefined> {
+    const [job] = await dbWrite.select().from(jobs).where(eq(jobs.id, id)).limit(1);
+    return job ? await hydrateJob(job) : undefined;
+  }
+
+  /**
+   * Reads every durable job in one admin canary rollout from the primary.
+   * Canary payloads are forced inline, so the JSON predicate is authoritative.
+   */
+  async findAdminCanaryRolloutForWrite(type: string, rolloutId: string): Promise<Job[]> {
+    const rows = await dbWrite
+      .select()
+      .from(jobs)
+      .where(and(eq(jobs.type, type), sql`${jobs.data}->>'rolloutId' = ${rolloutId}`))
+      .orderBy(jobs.created_at);
+    return await Promise.all(rows.map(hydrateJob));
+  }
+
+  /**
    * Gets jobs filtered by type, status, and organization.
    * Generic method that can be used by any service.
    *
@@ -378,6 +400,65 @@ export class JobsRepository {
   }
 
   /**
+   * Claims one image-change job type while enforcing a shared running budget
+   * across every listed type. The transaction-scoped advisory lock makes the
+   * count and claim one decision even when cron invocations overlap.
+   */
+  async claimPendingJobsWithinSharedRunningLimit(filters: {
+    type: string;
+    sharedTypes: string[];
+    maxRunning: number;
+    limit: number;
+    organizationId?: string;
+  }): Promise<Job[]> {
+    if (filters.sharedTypes.length === 0 || filters.maxRunning < 1 || filters.limit < 1) {
+      return [];
+    }
+
+    return await dbWrite.transaction(async (tx) => {
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtextextended('eliza:image-change-capacity:v1', 0))`,
+      );
+      const [running] = await tx
+        .select({ count: sql<number>`count(*)::int` })
+        .from(jobs)
+        .where(and(inArray(jobs.type, filters.sharedTypes), eq(jobs.status, "in_progress")));
+      if (!running) {
+        throw new Error("Shared image-change capacity query returned no aggregate row");
+      }
+      const claimLimit = Math.min(filters.limit, Math.max(0, filters.maxRunning - running.count));
+      if (claimLimit === 0) return [];
+
+      const orgFilter = filters.organizationId
+        ? sql`AND organization_id = ${filters.organizationId}`
+        : sql``;
+      const rows = await sqlRows<Job>(
+        tx,
+        sql`
+          WITH claimed AS (
+            SELECT id FROM ${jobs}
+            WHERE type = ${filters.type}
+              AND status = 'pending'
+              ${orgFilter}
+              AND scheduled_for <= NOW()
+            ORDER BY ${jobs.scheduled_for} ASC, ${jobs.created_at} ASC
+            LIMIT ${claimLimit}
+            FOR UPDATE SKIP LOCKED
+          )
+          UPDATE ${jobs}
+          SET
+            status = 'in_progress',
+            started_at = NOW(),
+            updated_at = NOW()
+          WHERE id IN (SELECT id FROM claimed)
+          RETURNING *
+        `,
+      );
+      return await Promise.all(rows.map(hydrateJob));
+    });
+  }
+
+  /**
    * Recovers stale jobs that have been stuck in in_progress status.
    * Jobs older than the threshold are reset to pending for retry.
    * Only recovers jobs with a valid started_at timestamp.
@@ -423,7 +504,7 @@ export class JobsRepository {
         ? `Job timed out ${newAttempts} times - max attempts reached`
         : `Job timed out - recovered for retry (attempt ${newAttempts}/${maxAttempts})`;
 
-      await dbWrite
+      const [updated] = await dbWrite
         .update(jobs)
         .set({
           status: isFailed ? "failed" : "pending",
@@ -431,9 +512,17 @@ export class JobsRepository {
           attempts: newAttempts,
           updated_at: new Date(),
         })
-        .where(eq(jobs.id, job.id));
+        .where(
+          and(
+            eq(jobs.id, job.id),
+            eq(jobs.status, "in_progress"),
+            eq(jobs.attempts, job.attempts),
+            lt(jobs.started_at, staleThreshold),
+          ),
+        )
+        .returning({ id: jobs.id });
 
-      if (!isFailed) {
+      if (updated && !isFailed) {
         recoveredCount++;
       }
     }
@@ -481,7 +570,7 @@ export class JobsRepository {
         ? `Job interrupted by worker restart ${newAttempts} times - max attempts reached`
         : `Job interrupted by worker restart - recovered for retry (attempt ${newAttempts}/${maxAttempts})`;
 
-      await dbWrite
+      const [updated] = await dbWrite
         .update(jobs)
         .set({
           status: isFailed ? "failed" : "pending",
@@ -489,9 +578,17 @@ export class JobsRepository {
           attempts: newAttempts,
           updated_at: new Date(),
         })
-        .where(eq(jobs.id, job.id));
+        .where(
+          and(
+            eq(jobs.id, job.id),
+            eq(jobs.status, "in_progress"),
+            eq(jobs.attempts, job.attempts),
+            lt(jobs.started_at, filters.startedBefore),
+          ),
+        )
+        .returning({ id: jobs.id });
 
-      if (!isFailed) {
+      if (updated && !isFailed) {
         recoveredCount++;
       }
     }
@@ -584,7 +681,7 @@ export class JobsRepository {
     maxAttempts: number,
     onFailedInTx?: (tx: DbTransaction, job: Job) => Promise<void>,
   ): Promise<Job | undefined> {
-    const job = await this.findById(id);
+    const job = await this.findByIdForWrite(id);
     if (!job) return undefined;
 
     const newAttempts = (job.attempts || 0) + 1;
@@ -613,7 +710,9 @@ export class JobsRepository {
           updated_at: new Date(),
           scheduled_for: isFailed ? job.scheduled_for : scheduledFor,
         })
-        .where(eq(jobs.id, id))
+        .where(
+          and(eq(jobs.id, id), eq(jobs.status, "in_progress"), eq(jobs.attempts, job.attempts)),
+        )
         .returning();
 
       if (!updated) return undefined;
@@ -690,6 +789,23 @@ export class JobsRepository {
       .from(jobs)
       .where(and(eq(jobs.type, type), sql`${jobs.status} IN ('pending', 'in_progress')`));
     return rows[0]?.count ?? 0;
+  }
+
+  /**
+   * Count pending and running image-change jobs across the ordinary fleet and
+   * explicit admin-canary lanes so both share the same capacity budget.
+   */
+  async countInFlightByTypes(types: string[]): Promise<number> {
+    if (types.length === 0) return 0;
+    const rows = await dbWrite
+      .select({ count: sql<number>`count(*)::int` })
+      .from(jobs)
+      .where(and(inArray(jobs.type, types), sql`${jobs.status} IN ('pending', 'in_progress')`));
+    const [aggregate] = rows;
+    if (!aggregate) {
+      throw new Error("Image-change in-flight query returned no aggregate row");
+    }
+    return aggregate.count;
   }
 
   /**

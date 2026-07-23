@@ -129,6 +129,7 @@ describe("resolvePerJobTimeoutMs — cold-boot job types outlast a full boot (#1
       JOB_TYPES.AGENT_WAKE,
       JOB_TYPES.AGENT_RESTART,
       JOB_TYPES.AGENT_UPGRADE,
+      JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
       JOB_TYPES.AGENT_DOWNGRADE,
     ]) {
       expect(resolvePerJobTimeoutMs(type)).toBeGreaterThanOrEqual(FULL_COLD_BOOT_MS);
@@ -154,6 +155,7 @@ describe("resolvePerJobTimeoutMs — cold-boot job types outlast a full boot (#1
       JOB_TYPES.AGENT_WAKE,
       JOB_TYPES.AGENT_RESTART,
       JOB_TYPES.AGENT_UPGRADE,
+      JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
       JOB_TYPES.AGENT_DOWNGRADE,
     ]);
     for (const type of Object.values(JOB_TYPES)) {
