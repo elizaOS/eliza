@@ -147,6 +147,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
     permissions:
+      actions: read
       contents: read
     outputs:
       should_deploy: ${{ steps.admission.outputs.should_deploy }}
@@ -163,14 +164,15 @@ jobs:
         run: |
           set -euo pipefail
 
-          current_sha=""
+          latest_eligible_run_id=""
           if [ "$EVENT_NAME" != "pull_request" ] \
             && [ "$TARGET_ENVIRONMENT" != "production" ] \
             && [ "$GITHUB_REF" != "refs/heads/main" ] \
             && [ "$FORCE" != "true" ]; then
-            current_sha="$(
-              gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/develop" \
-                --jq '.object.sha'
+            latest_eligible_run_id="$(
+              gh api \
+                "repos/${GITHUB_REPOSITORY}/actions/workflows/cloud-cf-deploy.yml/runs?branch=develop&event=push&per_page=1" \
+                --jq '.workflow_runs[0].id'
             )"
           fi
 
@@ -179,11 +181,12 @@ jobs:
             "--environment=$TARGET_ENVIRONMENT" \
             "--ref=$GITHUB_REF" \
             "--force=$FORCE" \
-            "--run-sha=$GITHUB_SHA" \
-            "--current-develop-sha=$current_sha"
+            "--run-id=$GITHUB_RUN_ID" \
+            "--latest-eligible-run-id=$latest_eligible_run_id"
 
-          if [ "$GITHUB_SHA" != "$current_sha" ] && [ -n "$current_sha" ]; then
-            echo "Superseded staging release: run=$GITHUB_SHA current=$current_sha" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$GITHUB_RUN_ID" != "$latest_eligible_run_id" ] \
+            && [ -n "$latest_eligible_run_id" ]; then
+            echo "Superseded staging release: run=$GITHUB_RUN_ID latest=$latest_eligible_run_id" >> "$GITHUB_STEP_SUMMARY"
           fi
 
   # ---------------------------------------------------------------------------

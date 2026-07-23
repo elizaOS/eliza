@@ -25,8 +25,8 @@ const result = decideReleaseAdmission({
   targetEnvironment: args.environment,
   ref: args.ref,
   force: args.force === "true",
-  runSha: args["run-sha"],
-  currentDevelopSha: args["current-develop-sha"],
+  runId: args["run-id"],
+  latestEligibleRunId: args["latest-eligible-run-id"],
 });
 
 // biome-ignore lint/suspicious/noUndeclaredEnvVars: GitHub Actions provides this step-output path.

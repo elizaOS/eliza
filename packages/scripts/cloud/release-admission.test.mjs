@@ -11,24 +11,22 @@ const staging = {
   targetEnvironment: "",
   ref: "refs/heads/develop",
   force: false,
-  runSha: "current",
-  currentDevelopSha: "current",
+  runId: "200",
+  latestEligibleRunId: "200",
 };
 
 describe("decideReleaseAdmission", () => {
-  it("admits the current automatic staging SHA", () => {
+  it("admits the latest deploy-eligible staging run", () => {
     expect(decideReleaseAdmission(staging)).toEqual({
       shouldDeploy: true,
-      reason: "current-staging-sha",
+      reason: "latest-eligible-staging-run",
     });
   });
 
-  it("rejects a superseded automatic staging SHA", () => {
-    expect(
-      decideReleaseAdmission({ ...staging, runSha: "superseded" }),
-    ).toEqual({
+  it("rejects a superseded automatic staging run", () => {
+    expect(decideReleaseAdmission({ ...staging, runId: "199" })).toEqual({
       shouldDeploy: false,
-      reason: "superseded-staging-sha",
+      reason: "superseded-staging-run",
     });
   });
 
@@ -55,8 +53,8 @@ describe("decideReleaseAdmission", () => {
     expect(
       decideReleaseAdmission({
         ...input,
-        runSha: "older",
-        currentDevelopSha: "newer",
+        runId: "199",
+        latestEligibleRunId: "200",
       }),
     ).toEqual({
       shouldDeploy: true,
@@ -64,12 +62,12 @@ describe("decideReleaseAdmission", () => {
     });
   });
 
-  it("fails closed when automatic staging SHAs cannot be resolved", () => {
+  it("fails closed when automatic staging run IDs cannot be resolved", () => {
     expect(() =>
       decideReleaseAdmission({
         ...staging,
-        currentDevelopSha: "",
+        latestEligibleRunId: "",
       }),
-    ).toThrow("requires both runSha and currentDevelopSha");
+    ).toThrow("requires both runId and latestEligibleRunId");
   });
 });
