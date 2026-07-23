@@ -107,12 +107,40 @@ describe("runAgentSessionRecovery", () => {
 
     expect(result).toEqual({ ok: true, redirectUrl, mode: "in-process" });
     expect(navigate).not.toHaveBeenCalled();
-    expect(exchangePairToken).toHaveBeenCalledWith("one-time");
+    expect(exchangePairToken).toHaveBeenCalledWith("one-time", {
+      cloudToken: "steward.jwt.token",
+      agentId: "23766030-0000-0000-0000-000000000000",
+      expectedOrigin: "https://agent.elizacloud.ai",
+    });
     expect(persistPairApiToken).toHaveBeenCalledWith("agent-api-key");
     expect(onPairedInProcess).toHaveBeenCalledWith("agent-api-key");
   });
 
-  it("does NOT navigate on 401, the cloud session is invalid, wall stands", async () => {
+  it("routes a native redirect without a pair token to Cloud management", async () => {
+    const redirectUrl = "https://agent.elizacloud.ai";
+    const clearStalePairCredentials = vi.fn();
+
+    const result = await runAgentSessionRecovery({
+      ...baseDeps,
+      fetchFn: vi
+        .fn()
+        .mockResolvedValue(
+          jsonResponse(200, { data: { redirectUrl } }),
+        ) as unknown as typeof fetch,
+      navigate: vi.fn(),
+      consumeRedirectInProcess: true,
+      clearStalePairCredentials,
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      reason: "manage-required",
+      message: "Pairing token returned a redirect without a pair token",
+    });
+    expect(clearStalePairCredentials).toHaveBeenCalledOnce();
+  });
+
+  it("does not navigate on 401 and reports Cloud reauthentication", async () => {
     const fetchFn = vi
       .fn()
       .mockResolvedValue(jsonResponse(401, { error: "unauthorized" }));
@@ -160,7 +188,10 @@ describe("runAgentSessionRecovery", () => {
       }),
     );
 
-    for (const status of [401, 403]) {
+    for (const [status, expectedReason] of [
+      [401, "unauthorized"],
+      [403, "manage-required"],
+    ] as const) {
       const result = await runAgentSessionRecovery({
         ...baseDeps,
         fetchFn: vi
@@ -171,7 +202,7 @@ describe("runAgentSessionRecovery", () => {
         navigate: vi.fn(),
       });
       expect(result.ok).toBe(false);
-      if (!result.ok) expect(result.reason).toBe("unauthorized");
+      if (!result.ok) expect(result.reason).toBe(expectedReason);
     }
 
     expect(localStorage.getItem("eliza:cloud-pair:api-token")).toBe(
@@ -186,7 +217,7 @@ describe("runAgentSessionRecovery", () => {
     expect(registry.profiles[0]?.accessToken).toBe("other-agent-token");
   });
 
-  it("purges stale pair credentials on 403 exactly like 401 (#16666)", async () => {
+  it("routes 403 to Cloud management without treating the bearer as invalid", async () => {
     const fetchFn = vi
       .fn()
       .mockResolvedValue(jsonResponse(403, { error: "forbidden" }));
@@ -200,9 +231,37 @@ describe("runAgentSessionRecovery", () => {
     });
 
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.reason).toBe("unauthorized");
+    if (!result.ok) expect(result.reason).toBe("manage-required");
     expect(clearStalePairCredentials).toHaveBeenCalledTimes(1);
   });
+
+  it.each([
+    [402, { error: "Insufficient credits" }],
+    [404, { error: "Agent not found" }],
+    [
+      500,
+      {
+        error: "Agent is in an error state",
+        data: { status: "error" },
+      },
+    ],
+  ])(
+    "routes permanent HTTP %i agent failures to Cloud management",
+    async (status, body) => {
+      const result = await runAgentSessionRecovery({
+        ...baseDeps,
+        fetchFn: vi
+          .fn()
+          .mockResolvedValue(
+            jsonResponse(status, body),
+          ) as unknown as typeof fetch,
+        navigate: vi.fn(),
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.reason).toBe("manage-required");
+    },
+  );
 
   it("does NOT purge pair credentials on a network-shaped failure (#16666)", async () => {
     // An offline PWA relaunch is the exact scenario the durable key exists

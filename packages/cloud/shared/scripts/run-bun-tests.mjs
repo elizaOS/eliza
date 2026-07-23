@@ -94,7 +94,7 @@ function resolveBunCommand(env) {
 // With shell:true node joins args into one cmd.exe command line without
 // quoting. CI passes no extra args; guard local invocations against args that
 // cmd.exe would misparse instead of silently mangling them.
-const SHELL_SAFE_ARG = /^[A-Za-z0-9_\-./\\=:*?,[\]@+]+$/;
+const SHELL_SAFE_ARG = /^[A-Za-z0-9_~\-./\\=:*?,[\]@+]+$/;
 function assertShellSafe(args) {
   const offender = args.find((arg) => !SHELL_SAFE_ARG.test(arg));
   if (offender !== undefined) {

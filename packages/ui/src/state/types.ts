@@ -97,6 +97,12 @@ export type ShellView = "character" | "desktop";
  */
 export interface CloudLoginOptions {
   requireClientAuth?: boolean;
+  /**
+   * Discard the renderer's current Cloud credential and require a new sign-in.
+   * Use only after that credential has been rejected by Cloud; this bypasses
+   * cached connected-state and stored-token short-circuits.
+   */
+  forceReauth?: boolean;
 }
 
 /** Deferred work scheduling for multi-step navigation. */

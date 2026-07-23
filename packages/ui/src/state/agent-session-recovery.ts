@@ -17,11 +17,16 @@
  * SECURITY NOTE (auth-adjacent): this weakens nothing. Re-pairing exchanges an
  * EXISTING valid cloud session for a fresh agent credential via the same
  * server-side pairing exchange that first-pairing uses. It never bypasses the
- * password wall, when there is no cloud session, the wall stands.
+ * authentication boundary: without a valid Cloud credential the managed
+ * native app asks the user to reauthenticate with Cloud, while self-hosted
+ * access keeps the owner-password wall.
  */
 
 import { isDirectCloudSharedAgentBase } from "../api/client-cloud";
-import { dedicatedCloudAgentIdFromBase } from "../utils/cloud-agent-base";
+import {
+  dedicatedCloudAgentIdFromBase,
+  ELIZA_CLOUD_CONTROL_PLANE_HOSTS,
+} from "../utils/cloud-agent-base";
 import type { PersistedActiveServer } from "./persistence";
 
 /**
@@ -34,6 +39,11 @@ export type AgentSessionUnauthReason =
   | "remote_password_not_configured"
   | undefined;
 
+export type ManagedCloudAgentRecoveryStatus =
+  | "cloud-reauth-required"
+  | "cloud-retry-required"
+  | "cloud-manage-required";
+
 export type AgentSessionRecoveryDecision =
   | {
       /** Re-run the cloud pairing exchange to refresh the stale credential. */
@@ -44,7 +54,11 @@ export type AgentSessionRecoveryDecision =
       cloudApiBase: string;
     }
   | {
-      /** Show the agent's internal password wall (no recovery available). */
+      /**
+       * No transparent recovery is available. The caller maps this legacy
+       * action to Cloud reauth for managed native targets or the owner-password
+       * wall for self-hosted targets.
+       */
       action: "show-wall";
     };
 
@@ -66,6 +80,51 @@ export interface AgentSessionRecoveryInput {
    * the wall so the user gets an actionable surface instead of a spinner.
    */
   alreadyAttempted: boolean;
+}
+
+function isManagedCloudSharedAgentBase(
+  apiBase: string | null | undefined,
+): boolean {
+  const normalized = apiBase?.trim();
+  if (!normalized || !isDirectCloudSharedAgentBase(normalized)) return false;
+  try {
+    const url = new URL(normalized);
+    return (
+      (url.protocol === "https:" || url.protocol === "http:") &&
+      ELIZA_CLOUD_CONTROL_PLANE_HOSTS.has(url.hostname.toLowerCase())
+    );
+  } catch {
+    // error-policy:J3 malformed persisted URLs fail closed as self-hosted.
+    return false;
+  }
+}
+
+/** Whether a persisted runtime is owned by managed Eliza Cloud. */
+export function isManagedCloudAgentServer(
+  activeServer: PersistedActiveServer | null,
+): boolean {
+  return Boolean(
+    activeServer &&
+      (activeServer.kind === "cloud" ||
+        isManagedCloudSharedAgentBase(activeServer.apiBase)),
+  );
+}
+
+/**
+ * Managed native Cloud targets must recover through Cloud; they never expose
+ * the dedicated runtime's owner-password wall, which Cloud users cannot use.
+ */
+export function shouldShowCloudAgentReauthNotice(input: {
+  isHostedLocation: boolean;
+  isNative: boolean;
+  activeServer: PersistedActiveServer | null;
+  recoveryStatus?: ManagedCloudAgentRecoveryStatus | null;
+}): boolean {
+  return (
+    input.isHostedLocation ||
+    Boolean(input.recoveryStatus) ||
+    (input.isNative && isManagedCloudAgentServer(input.activeServer))
+  );
 }
 
 const SHOW_WALL: AgentSessionRecoveryDecision = { action: "show-wall" };
@@ -93,7 +152,8 @@ export function dedicatedAgentIdFromApiBase(
     try {
       return decodeURIComponent(match[1]);
     } catch {
-      // Malformed encoding, use the raw segment rather than dropping it.
+      // error-policy:J3 malformed persisted encoding keeps the validated raw
+      // path segment rather than dropping the recoverable agent identity.
       return match[1];
     }
   }
@@ -129,7 +189,8 @@ export function resolveDedicatedAgentId(
  *   - a cloud session token exists to re-pair from, and
  *   - we have not already tried this cycle.
  *
- * Otherwise the password wall is the honest, actionable state.
+ * Otherwise no transparent repair is available; the caller chooses the
+ * platform-appropriate reauthentication surface.
  */
 export function resolveAgentSessionRecovery(
   input: AgentSessionRecoveryInput,
@@ -140,19 +201,17 @@ export function resolveAgentSessionRecovery(
   if (alreadyAttempted) return SHOW_WALL;
 
   // Only a rejected session/bearer is recoverable by re-pairing. When the host
-  // never configured an owner password, re-pairing cannot manufacture one, so
-  // keep the actionable setup wall.
+  // never configured an owner password, re-pairing cannot manufacture one;
+  // callers keep the self-hosted setup wall or route managed native users to
+  // Cloud management.
   if (reason !== "remote_auth_required") return SHOW_WALL;
 
   if (!activeServer) return SHOW_WALL;
 
   // A cloud-managed dedicated agent: kind "cloud", OR a cloud REST adapter base.
-  const isCloudManaged =
-    activeServer.kind === "cloud" ||
-    isDirectCloudSharedAgentBase(activeServer.apiBase);
-  if (!isCloudManaged) return SHOW_WALL;
+  if (!isManagedCloudAgentServer(activeServer)) return SHOW_WALL;
 
-  // No cloud session means nothing to re-pair with, so the wall is honest.
+  // No cloud session means nothing to re-pair with transparently.
   const token = cloudToken?.trim();
   if (!token) return SHOW_WALL;
 
@@ -194,10 +253,7 @@ export function agentSessionRepairNeedsCloudToken(
   if (reason !== "remote_auth_required") return false;
   if (!activeServer) return false;
 
-  const isCloudManaged =
-    activeServer.kind === "cloud" ||
-    isDirectCloudSharedAgentBase(activeServer.apiBase);
-  if (!isCloudManaged) return false;
+  if (!isManagedCloudAgentServer(activeServer)) return false;
 
   // The token is the ONLY missing piece — a present token is already handled by
   // `resolveAgentSessionRecovery` returning `re-pair`, so this predicate is for

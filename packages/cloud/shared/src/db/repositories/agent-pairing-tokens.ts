@@ -1,5 +1,8 @@
-// Persists agent pairing tokens records for cloud services through the shared DB boundary.
-import { and, eq, gt, isNull, lt } from "drizzle-orm";
+/**
+ * Persists one-time agent pairing tokens and performs their atomic,
+ * identity-bound consumption through the shared database boundary.
+ */
+import { and, eq, exists, gt, isNull, lt } from "drizzle-orm";
 import { ensureAgentSandboxSchema } from "../ensure-agent-sandbox-schema";
 import { dbRead, dbWrite } from "../helpers";
 import {
@@ -7,8 +10,16 @@ import {
   agentPairingTokens,
   type NewAgentPairingToken,
 } from "../schemas/agent-pairing-tokens";
+import { agentSandboxes } from "../schemas/agent-sandboxes";
 
 export type { AgentPairingToken, NewAgentPairingToken };
+
+export interface AuthenticatedPairingTokenBinding {
+  userId: string;
+  organizationId: string;
+  agentId: string;
+  expectedOrigin: string;
+}
 
 export class AgentPairingTokensRepository {
   async create(data: NewAgentPairingToken): Promise<AgentPairingToken> {
@@ -40,6 +51,50 @@ export class AgentPairingTokensRepository {
           eq(agentPairingTokens.expected_origin, expectedOrigin),
           isNull(agentPairingTokens.used_at),
           gt(agentPairingTokens.expires_at, now),
+        ),
+      )
+      .returning();
+
+    return row;
+  }
+
+  /**
+   * Atomically consume a native pairing token only when every authenticated
+   * binding still matches. Keeping identity, tenant, agent, origin, expiry,
+   * and single-use checks in one UPDATE prevents a failed cross-tenant or
+   * wrong-origin attempt from burning the rightful owner's token.
+   */
+  async consumeValidAuthenticatedToken(
+    tokenHash: string,
+    binding: AuthenticatedPairingTokenBinding,
+  ): Promise<AgentPairingToken | undefined> {
+    await ensureAgentSandboxSchema();
+
+    const now = new Date();
+
+    const [row] = await dbWrite
+      .update(agentPairingTokens)
+      .set({ used_at: now })
+      .where(
+        and(
+          eq(agentPairingTokens.token_hash, tokenHash),
+          eq(agentPairingTokens.user_id, binding.userId),
+          eq(agentPairingTokens.organization_id, binding.organizationId),
+          eq(agentPairingTokens.agent_id, binding.agentId),
+          eq(agentPairingTokens.expected_origin, binding.expectedOrigin),
+          isNull(agentPairingTokens.used_at),
+          gt(agentPairingTokens.expires_at, now),
+          exists(
+            dbWrite
+              .select({ id: agentSandboxes.id })
+              .from(agentSandboxes)
+              .where(
+                and(
+                  eq(agentSandboxes.id, binding.agentId),
+                  eq(agentSandboxes.organization_id, binding.organizationId),
+                ),
+              ),
+          ),
         ),
       )
       .returning();
