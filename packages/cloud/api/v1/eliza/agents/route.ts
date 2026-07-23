@@ -577,6 +577,39 @@ app.post("/", async (c) => {
               },
             );
           }
+          // Post-claim inference re-key (F0): the pool container booted under
+          // the sentinel pool org with a cloud inference key scoped to THAT
+          // org, so without this the first reply is the "key isn't authorized"
+          // fallback. Mint a user-org-scoped key and push it onto the live
+          // container (same bounded/non-fatal contract as the character push).
+          // On failure the claim still succeeds — the row env carries the new
+          // key, so the container re-credentials on its next restart — and the
+          // stable `warm_pool.key_push_failed` event makes a broken re-key
+          // path observable. NEVER log the key itself (only a safe prefix).
+          try {
+            const keyPush =
+              await elizaSandboxService.pushClaimedWarmContainerInferenceKey(
+                claimed,
+              );
+            if (keyPush.pushed) {
+              logger.info("[agent-api] Warm pool inference key push applied", {
+                agentId: agent.id,
+                orgId: user.organization_id,
+                keyPrefix: keyPush.keyPrefix,
+              });
+            }
+          } catch (keyErr) {
+            logger.warn(
+              "[agent-api] Warm pool inference key push failed; claim kept (re-credentials on next restart)",
+              {
+                event: "warm_pool.key_push_failed",
+                agentId: agent.id,
+                orgId: user.organization_id,
+                error:
+                  keyErr instanceof Error ? keyErr.message : String(keyErr),
+              },
+            );
+          }
           return c.json(
             {
               success: true,

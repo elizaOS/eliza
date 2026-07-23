@@ -645,6 +645,33 @@ describe("AgentSandboxesRepository", () => {
       expect(lowered).toContain("is not null");
     });
 
+    // F2 (warm-pool flip report): claim readiness must require a resolved
+    // BRIDGE URL, not just docker-health (`pool_ready_at`). An entry whose
+    // bridge_url never resolved is unreachable and would hand the user a dead
+    // container. The SELECT must gate on bridge_url present AND non-empty.
+    test("the claim SELECT requires a non-null, non-empty bridge_url (F2)", async () => {
+      userRowForClaim = pendingUserRow();
+      let claimSelectSql = "";
+      executeHandler = (sqlText: string) => {
+        if (sqlText.includes("FOR UPDATE SKIP LOCKED")) {
+          claimSelectSql = sqlText;
+          return { rows: [] };
+        }
+        return { rows: [{ count: 0 }] };
+      };
+
+      const { AgentSandboxesRepository } = await import("./agent-sandboxes");
+      const result = await new AgentSandboxesRepository().claimWarmContainer(params);
+
+      expect(result).toBeNull();
+      const lowered = claimSelectSql.toLowerCase();
+      expect(lowered).toContain("bridge_url");
+      // present (IS NOT NULL) AND non-empty (<> '')
+      const bridgeClauseMatch = lowered.match(/bridge_url[^)]*is not null/);
+      expect(bridgeClauseMatch).not.toBeNull();
+      expect(lowered).toContain("<> ''");
+    });
+
     test("a valid (non-null-node) pool row IS claimed — guard does not over-filter", async () => {
       userRowForClaim = pendingUserRow();
       warmClaimUpdateSet.mockClear();

@@ -166,6 +166,28 @@ async function fetchCloudLoginStatus(
   );
 }
 
+/**
+ * Pin the ElizaCloud cloud-proxy text route into a config object so
+ * `isCloudInferenceSelectedInConfig` returns true on the next boot. Additive
+ * and minimal: preserves any existing serviceRouting fields, only (re)writes
+ * the `llmText` slot with the canonical cloud-proxy shape. Used exclusively by
+ * the warm-claim re-credential path (forceInferenceEnabled).
+ */
+export function applyCloudProxyTextRouting(config: Record<string, unknown>): void {
+  const existingRouting =
+    config.serviceRouting && typeof config.serviceRouting === "object"
+      ? (config.serviceRouting as Record<string, unknown>)
+      : {};
+  config.serviceRouting = {
+    ...existingRouting,
+    llmText: {
+      backend: "elizacloud",
+      transport: "cloud-proxy",
+      accountId: "elizacloud",
+    },
+  };
+}
+
 async function persistCloudLoginStatus(args: {
   apiKey: string;
   organizationId?: string;
@@ -178,6 +200,21 @@ async function persistCloudLoginStatus(args: {
    * `/api/cloud/login/persist` (direct client push) — no race window.
    */
   epochAtPollStart?: number;
+  /**
+   * Force cloud inference ON regardless of the config-derived
+   * `isCloudInferenceSelectedInConfig` signal (warm-pool claim re-credential,
+   * #16977-class F0). A warm-pool container boots managed with
+   * `ELIZAOS_CLOUD_ENABLED=true` in its process env, but its persisted
+   * eliza.json service-routing may not report `llmText.transport='cloud-proxy'`
+   * (the managed env is the source of truth on that image, not the config
+   * file). Without this override the re-credential push would swap the API key
+   * but then DELETE `ELIZAOS_CLOUD_ENABLED`, leaving the just-claimed agent
+   * unable to infer. When true, the login persist keeps inference enabled and
+   * (below) writes the cloud-proxy service routing so the derivation agrees on
+   * the next boot. Defaults to the config-derived behavior (undefined) so the
+   * normal interactive login path is byte-identical.
+   */
+  forceInferenceEnabled?: boolean;
 }): Promise<void> {
   if (
     args.epochAtPollStart !== undefined &&
@@ -200,11 +237,21 @@ async function persistCloudLoginStatus(args: {
   >;
 
   cloud.apiKey = args.apiKey;
-  const cloudInferenceSelected = isCloudInferenceSelectedInConfig(
-    args.state.config as Record<string, unknown>,
-  );
+  const cloudInferenceSelected =
+    args.forceInferenceEnabled === true ||
+    isCloudInferenceSelectedInConfig(
+      args.state.config as Record<string, unknown>,
+    );
 
   args.state.config.cloud = cloud as ElizaConfig["cloud"];
+  // Warm-claim re-credential: pin the cloud-proxy text route so a subsequent
+  // container restart's config-derived `isCloudInferenceSelectedInConfig`
+  // agrees with the managed env and inference stays enabled without another
+  // push. Only when explicitly forced — the normal login path leaves routing
+  // to the interactive provider selection.
+  if (args.forceInferenceEnabled === true) {
+    applyCloudProxyTextRouting(args.state.config as Record<string, unknown>);
+  }
   args.services.applyCanonicalSetupConfig(args.state.config, {
     linkedAccounts: {
       elizacloud: {
@@ -486,6 +533,12 @@ export async function handleCloudRoute(
         state,
         userId:
           typeof body.userId === "string" ? body.userId.trim() : undefined,
+        // Warm-pool claim re-credential (F0): the cloud control plane forces
+        // inference ON so the just-claimed container can infer against the
+        // claiming org even when its persisted config routing does not report
+        // cloud-proxy. Strictly boolean-true opt-in — the interactive login
+        // path omits it and keeps config-derived behavior.
+        forceInferenceEnabled: body.forceInferenceEnabled === true,
       });
       sendJson(res, { ok: true });
     } catch (err) {

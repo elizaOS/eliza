@@ -218,6 +218,36 @@ async function __hono_POST(
               },
             );
           }
+          // Post-claim inference re-key (F0): mint a user-org-scoped inference
+          // key and push it onto the live container so it can infer against the
+          // claiming org (the pool container booted with a pool-org key).
+          // Bounded + NON-FATAL, mirror of the character push; on failure the
+          // claim stands and the container re-credentials from the row env on
+          // next restart. Never log the key (safe prefix only).
+          try {
+            const keyPush =
+              await elizaSandboxService.pushClaimedWarmContainerInferenceKey(
+                claimed,
+              );
+            if (keyPush.pushed) {
+              logger.info("[agent-api] Warm pool inference key push applied", {
+                agentId,
+                orgId: user.organization_id,
+                keyPrefix: keyPush.keyPrefix,
+              });
+            }
+          } catch (keyErr) {
+            logger.warn(
+              "[agent-api] Warm pool inference key push failed; claim kept (re-credentials on next restart)",
+              {
+                event: "warm_pool.key_push_failed",
+                agentId,
+                orgId: user.organization_id,
+                error:
+                  keyErr instanceof Error ? keyErr.message : String(keyErr),
+              },
+            );
+          }
           return applyCorsHeaders(
             Response.json({
               success: true,
