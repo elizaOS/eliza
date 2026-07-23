@@ -6,7 +6,7 @@
  * instead of re-queueing it under a generic service-level retry budget.
  */
 
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { jobs } from "../../schemas/jobs";
 
 process.env.DATABASE_URL ||= "pglite://memory";
@@ -187,5 +187,83 @@ describe("jobsRepository.recoverStaleJobs", () => {
       attempts: 0,
       error: null,
     });
+  });
+
+  test("completed canary audit cannot be rewritten by failure or restart recovery", async () => {
+    expect(pgliteReady).toBe(true);
+    const completedJobId = "00000000-0000-4000-8000-000000050854";
+    await seedJob({ id: completedJobId, maxAttempts: 1 });
+    await dbWrite.execute(
+      `UPDATE jobs
+       SET type = 'agent_admin_canary_image',
+           status = 'completed',
+           result = '{"success":true,"rolloutId":"durable"}'::jsonb,
+           completed_at = NOW()
+       WHERE id = '${completedJobId}';`,
+    );
+
+    const incremented = await repo.incrementAttempt(completedJobId, "late worker failure", 1);
+    const staleRecovered = await repo.recoverStaleJobs({
+      type: "agent_admin_canary_image",
+      staleThresholdMs: 1,
+      maxAttempts: 1,
+    });
+    const startupRecovered = await repo.recoverInProgressJobsStartedBefore({
+      type: "agent_admin_canary_image",
+      startedBefore: new Date(Date.now() + 60_000),
+      maxAttempts: 1,
+    });
+
+    expect(incremented).toBeUndefined();
+    expect(staleRecovered).toBe(0);
+    expect(startupRecovered).toBe(0);
+    const [completed] = await dbWrite
+      .select({
+        status: jobs.status,
+        attempts: jobs.attempts,
+        result: jobs.result,
+        error: jobs.error,
+      })
+      .from(jobs);
+    expect(completed).toEqual({
+      status: "completed",
+      attempts: 0,
+      result: { success: true, rolloutId: "durable" },
+      error: null,
+    });
+  });
+
+  test("failure attempts read primary state even when the read replica has not observed the job", async () => {
+    expect(pgliteReady).toBe(true);
+    const failedJobId = "00000000-0000-4000-8000-000000060854";
+    await seedJob({ id: failedJobId, maxAttempts: 1 });
+    const replicaSpy = spyOn(repo, "findById").mockResolvedValue(undefined);
+    const primarySpy = spyOn(repo, "findByIdForWrite");
+    try {
+      const failed = await repo.incrementAttempt(failedJobId, "canary cutover rejected", 1);
+      expect(replicaSpy).not.toHaveBeenCalled();
+      expect(primarySpy).toHaveBeenCalledWith(failedJobId);
+      expect(failed).toMatchObject({
+        id: failedJobId,
+        status: "failed",
+        attempts: 1,
+        error: "canary cutover rejected",
+      });
+      const [persisted] = await dbWrite
+        .select({
+          status: jobs.status,
+          attempts: jobs.attempts,
+          error: jobs.error,
+        })
+        .from(jobs);
+      expect(persisted).toEqual({
+        status: "failed",
+        attempts: 1,
+        error: "canary cutover rejected",
+      });
+    } finally {
+      replicaSpy.mockRestore();
+      primarySpy.mockRestore();
+    }
   });
 });
