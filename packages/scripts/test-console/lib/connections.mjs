@@ -38,6 +38,10 @@ export const OPT_IN_GATES = [
     key: "RUN_LIVE_SMITHERS_SUBSCRIPTION",
     label: "Smithers Codex subscription tests",
   },
+  {
+    key: "ELIZA_TOOLCALL_STREAM_LIVE",
+    label: "Eliza Cloud streamed tool-call proof",
+  },
   { key: "RUN_LIVE_NATIVE_ACP", label: "Native ACP smoke" },
   { key: "RUN_LIVE_ACPX", label: "ACPX sub-agent router" },
   { key: "FORCE_OSWORLD_BENCHMARK", label: "OSWorld benchmark" },
