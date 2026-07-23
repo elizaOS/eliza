@@ -173,10 +173,7 @@ export default defineConfig({
       },
       {
         find: /^@elizaos\/plugin-calendar\/ui$/,
-        replacement: path.join(
-          here,
-          "../../plugins/plugin-calendar/src/ui.ts",
-        ),
+        replacement: path.join(here, "../../plugins/plugin-calendar/src/ui.ts"),
       },
       {
         find: /^@elizaos\/capacitor-appblocker$/,

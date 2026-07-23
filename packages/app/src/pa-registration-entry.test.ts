@@ -22,8 +22,9 @@ function setWindowUrl(url: string): void {
 }
 
 function visibilityListenerCount(spy: ReturnType<typeof vi.spyOn>): number {
-  return spy.mock.calls.filter(([event]) => event === "visibilitychange")
-    .length;
+  return spy.mock.calls.filter(
+    ([event]: unknown[]) => event === "visibilitychange",
+  ).length;
 }
 
 afterEach(() => {
@@ -54,9 +55,9 @@ describe("personal-assistant renderer entries", () => {
     // Each namespace evaluates once: a re-import yields the identical object,
     // and re-importing never re-starts the capture.
     expect(await import(PA_ROOT)).toBe(root);
-    expect(
-      await import("@elizaos/plugin-personal-assistant/register"),
-    ).toBe(register);
+    expect(await import("@elizaos/plugin-personal-assistant/register")).toBe(
+      register,
+    );
     expect(visibilityListenerCount(addDoc)).toBe(afterRegister);
 
     // Correct exports land on the correct namespace.
@@ -85,9 +86,7 @@ describe("personal-assistant renderer entries", () => {
     setWindowUrl("/?popout=1");
     const addDoc = vi.spyOn(document, "addEventListener");
 
-    await import(
-      "@elizaos/plugin-personal-assistant/register"
-    );
+    await import("@elizaos/plugin-personal-assistant/register");
     expect(visibilityListenerCount(addDoc)).toBe(0);
   });
 });

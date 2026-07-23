@@ -134,9 +134,7 @@ describe("side-effect app module registration (manifest-driven)", () => {
       "plugins/plugin-personal-assistant/src/register.ts",
     );
     expect(code).toContain(JSON.stringify(paRegisterEntry));
-    expect(code).not.toContain(
-      'key: "@elizaos/plugin-personal-assistant",',
-    );
+    expect(code).not.toContain('key: "@elizaos/plugin-personal-assistant",');
   });
 
   it("loads chat inline-widget registrations before first render", () => {

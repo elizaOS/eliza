@@ -35,15 +35,24 @@ import "../api/client-lifeops.js";
 // Narrow @elizaos/ui subpaths only — the root barrel drags react-router and
 // the full component tree into this headless capture path, which both bloats
 // the renderer chunk and breaks under node module resolution in test lanes.
-import { client, isApiError } from "@elizaos/ui/api";
+import { client as apiClient, isApiError } from "@elizaos/ui/api";
 import { isElectrobunRuntime } from "@elizaos/ui/bridge";
 import { loadDesktopWorkspaceSnapshot } from "@elizaos/ui/browser";
 import { APP_PAUSE_EVENT, APP_RESUME_EVENT } from "@elizaos/ui/events";
+import type { LifeOpsElizaClientMethods } from "../api/client-lifeops.js";
 import type {
   CaptureLifeOpsActivitySignalRequest,
   LifeOpsActivitySignal,
 } from "../contracts/index.js";
 import { dispatchLifeOpsActivitySignalsStatus } from "../events/index.js";
+
+// client-lifeops (imported above for its side effect) installs the LifeOps
+// methods onto ElizaClient.prototype before this module body runs, but its
+// declaration merge targets the `@elizaos/ui` root barrel only — this headless
+// chunk imports the /api subpath, so it re-types its view of the client with
+// the one LifeOps method it calls.
+const client = apiClient as typeof apiClient &
+  Pick<LifeOpsElizaClientMethods, "captureLifeOpsActivitySignal">;
 
 const APP_SIGNAL_DEDUP_WINDOW_MS = 5_000;
 const RUNTIME_READY_POLL_MS = 5_000;

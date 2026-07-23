@@ -29,7 +29,9 @@ const hot = (
   }
 ).hot;
 
-const stop = isPrimaryAppRenderer() ? startLifeOpsActivitySignalCapture() : null;
+const stop = isPrimaryAppRenderer()
+  ? startLifeOpsActivitySignalCapture()
+  : null;
 
 // HMR replaces this module with a fresh evaluation; dispose the old capture
 // first so the replacement's start is a clean singleton claim, not a leak.

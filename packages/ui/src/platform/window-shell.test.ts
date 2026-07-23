@@ -5,8 +5,8 @@
 import { describe, expect, it } from "vitest";
 import {
   isPrimaryAppRenderer,
-  parseWindowShellRoute,
   type PrimaryRendererLocationLike,
+  parseWindowShellRoute,
   resolveDetachedShellPathname,
   resolveDetachedShellTarget,
 } from "./window-shell";
@@ -98,9 +98,7 @@ describe("isPrimaryAppRenderer", () => {
   it("rejects popout, phone-companion, and app-window renderers", () => {
     expect(isPrimaryAppRenderer(at({ search: "?popout" }))).toBe(false);
     expect(isPrimaryAppRenderer(at({ search: "?popout=1" }))).toBe(false);
-    expect(isPrimaryAppRenderer(at({ search: "?mode=companion" }))).toBe(
-      false,
-    );
+    expect(isPrimaryAppRenderer(at({ search: "?mode=companion" }))).toBe(false);
     expect(
       isPrimaryAppRenderer(
         at({ search: "?appWindow=1", pathname: "/apps/plugins" }),
@@ -109,13 +107,15 @@ describe("isPrimaryAppRenderer", () => {
   });
 
   it("rejects the model-tester shell on both path styles", () => {
-    expect(isPrimaryAppRenderer(at({ pathname: "/model-tester" }))).toBe(
-      false,
-    );
+    expect(isPrimaryAppRenderer(at({ pathname: "/model-tester" }))).toBe(false);
     // Packaged desktop shells navigate by hash under file: protocol.
     expect(
       isPrimaryAppRenderer(
-        at({ protocol: "file:", pathname: "/index.html", hash: "#/model-tester" }),
+        at({
+          protocol: "file:",
+          pathname: "/index.html",
+          hash: "#/model-tester",
+        }),
       ),
     ).toBe(false);
     expect(

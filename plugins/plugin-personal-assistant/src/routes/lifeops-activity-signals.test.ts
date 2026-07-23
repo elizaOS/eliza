@@ -10,11 +10,7 @@
  */
 import { IncomingMessage, ServerResponse } from "node:http";
 import { Socket } from "node:net";
-import {
-  AgentRuntime,
-  type Character,
-  type UUID,
-} from "@elizaos/core";
+import { AgentRuntime, type Character, type UUID } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { PgliteDatabaseAdapter } from "../../../plugin-sql/src/pglite/adapter.js";
@@ -192,11 +188,7 @@ describe("activity-signal ingestion e2e (real runtime + PGlite)", () => {
     // mirror failure — the runtime reported no errors).
     const mirrored = await adapter
       .getDatabase()
-      .execute(
-        sql.raw(
-          "SELECT family FROM app_lifeops.life_telemetry_events",
-        ),
-      );
+      .execute(sql.raw("SELECT family FROM app_lifeops.life_telemetry_events"));
     expect(mirrored.rows.length).toBe(1);
     expect(runtime.getRecentReportedErrors()).toEqual([]);
 
@@ -260,9 +252,7 @@ describe("activity-signal ingestion e2e (real runtime + PGlite)", () => {
 
     const rows = await adapter
       .getDatabase()
-      .execute(
-        sql.raw("SELECT id FROM app_lifeops.life_activity_signals"),
-      );
+      .execute(sql.raw("SELECT id FROM app_lifeops.life_activity_signals"));
     expect(rows.rows).toEqual([]);
   });
 

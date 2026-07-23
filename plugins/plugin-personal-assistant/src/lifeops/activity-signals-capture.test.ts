@@ -44,6 +44,10 @@ const h = vi.hoisted(() => {
     scheduleBackgroundRefresh: vi.fn(async () => ({ scheduled: true })),
   };
   return {
+    // The client-lifeops / client-calendar extension modules (side-effect
+    // imports of the capture) install methods onto ElizaClient.prototype at
+    // module scope; give the mock a real class so those installs land.
+    ElizaClient: class ElizaClient {},
     getStatus: vi.fn(async () => ({ state: "running" })),
     captureLifeOpsActivitySignal: vi.fn(async () => ({
       signal: { id: "sig-1" },
@@ -74,6 +78,7 @@ vi.mock("@elizaos/ui/bridge", () => ({
   },
   isElectrobunRuntime: h.isElectrobunRuntime,
   isApiError: h.isApiError,
+  ElizaClient: h.ElizaClient,
   loadDesktopWorkspaceSnapshot: h.loadDesktopWorkspaceSnapshot,
 }));
 vi.mock("@elizaos/ui/events", () => ({
@@ -85,10 +90,12 @@ vi.mock("@elizaos/ui/events", () => ({
   },
   isElectrobunRuntime: h.isElectrobunRuntime,
   isApiError: h.isApiError,
+  ElizaClient: h.ElizaClient,
   loadDesktopWorkspaceSnapshot: h.loadDesktopWorkspaceSnapshot,
 }));
 vi.mock("@elizaos/ui/api", () => ({
   isApiError: h.isApiError,
+  ElizaClient: h.ElizaClient,
   isElectrobunRuntime: h.isElectrobunRuntime,
   loadDesktopWorkspaceSnapshot: h.loadDesktopWorkspaceSnapshot,
   APP_PAUSE_EVENT: "eliza:app-pause",
@@ -102,6 +109,7 @@ vi.mock("@elizaos/ui/browser", () => ({
   loadDesktopWorkspaceSnapshot: h.loadDesktopWorkspaceSnapshot,
   isElectrobunRuntime: h.isElectrobunRuntime,
   isApiError: h.isApiError,
+  ElizaClient: h.ElizaClient,
   APP_PAUSE_EVENT: "eliza:app-pause",
   APP_RESUME_EVENT: "eliza:app-resume",
   client: {
@@ -464,8 +472,7 @@ describe("startLifeOpsActivitySignalCapture", () => {
   it("removes a listener installed after stop() landed mid-startup and never starts monitoring", async () => {
     useNativeMobileRuntime();
     const remove = vi.fn(async () => {});
-    const pendingListener =
-      deferred<{ remove: () => Promise<void> }>();
+    const pendingListener = deferred<{ remove: () => Promise<void> }>();
     h.mobile.addListener.mockImplementation(
       async () => pendingListener.promise,
     );
