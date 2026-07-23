@@ -30,7 +30,7 @@ import { users } from "../../db/schemas/users";
 import { ApiError } from "../api/cloud-worker-errors";
 import { adminAgentImageRolloutService } from "./admin-agent-image-rollout";
 import { type AdminCanaryTargetExpectation } from "./admin-canary-image";
-import { elizaSandboxService } from "./eliza-sandbox";
+import { elizaSandboxService, SNAPSHOT_ENDPOINT_UNSUPPORTED } from "./eliza-sandbox";
 import { JOB_TYPES } from "./provisioning-job-types";
 import { provisioningJobService, readAdminCanaryImageJobData } from "./provisioning-jobs";
 
@@ -456,6 +456,579 @@ describe("admin agent image rollout on primary PGlite", () => {
     expect(secondClaim).toHaveLength(0);
   });
 
+  test("primary audit queries preserve identity and interrupted canaries fail closed", async () => {
+    const seeded = await seedAgents(1);
+    const rollout = await adminAgentImageRolloutService.previewOrEnqueue(
+      {
+        operation: "upgrade",
+        dryRun: false,
+        targetImage: TARGET_IMAGE,
+        targets: seeded.targets,
+      },
+      seeded.actorUserId,
+    );
+    if (!rollout.rolloutId) throw new Error("expected durable rollout ID");
+    const [persisted] = await dbWrite
+      .select()
+      .from(jobs)
+      .where(eq(jobs.type, JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE));
+    if (!persisted) throw new Error("expected durable canary job");
+
+    const primary = await jobsRepository.findByIdForWrite(persisted.id);
+    expect(primary?.id).toBe(persisted.id);
+    expect(await jobsRepository.findById(persisted.id)).toMatchObject({
+      id: persisted.id,
+      organization_id: seeded.targets[0]!.organizationId,
+    });
+    expect(
+      await jobsRepository.findByIdAndOrg(persisted.id, seeded.targets[0]!.organizationId),
+    ).toMatchObject({ id: persisted.id });
+    expect(
+      await jobsRepository.findByIdAndOrg(persisted.id, "00000000-0000-4000-8000-000000000099"),
+    ).toBeUndefined();
+    expect(
+      await jobsRepository.findAdminCanaryRolloutForWrite(
+        JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
+        rollout.rolloutId,
+      ),
+    ).toEqual([expect.objectContaining({ id: persisted.id })]);
+    expect(
+      await jobsRepository.findByFilters({
+        type: JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
+        status: "pending",
+        organizationId: seeded.targets[0]!.organizationId,
+        limit: 5,
+        orderBy: "desc",
+      }),
+    ).toEqual([expect.objectContaining({ id: persisted.id })]);
+    expect(
+      await jobsRepository.findByDataField({
+        type: JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
+        organizationId: seeded.targets[0]!.organizationId,
+        dataField: "agentId",
+        dataValue: seeded.targets[0]!.agentId,
+      }),
+    ).toEqual([expect.objectContaining({ id: persisted.id })]);
+    expect(
+      await jobsRepository.findByDataFieldForWrite({
+        type: JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
+        organizationId: seeded.targets[0]!.organizationId,
+        dataField: "agentId",
+        dataValue: seeded.targets[0]!.agentId,
+        orderBy: "desc",
+      }),
+    ).toEqual([expect.objectContaining({ id: persisted.id })]);
+    expect(await jobsRepository.countInFlightByType(JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE)).toBe(1);
+    expect(await jobsRepository.findLatestCreatedAt()).toBeInstanceOf(Date);
+    expect(
+      await jobsRepository.countInFlightByTypes([
+        JOB_TYPES.AGENT_UPGRADE,
+        JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
+      ]),
+    ).toBe(1);
+    expect(await jobsRepository.countInFlightByTypes([])).toBe(0);
+
+    expect(
+      await jobsRepository.claimPendingJobsWithinSharedRunningLimit({
+        type: JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
+        sharedTypes: [],
+        maxRunning: 3,
+        limit: 1,
+      }),
+    ).toEqual([]);
+    const claimed = await jobsRepository.claimPendingJobsWithinSharedRunningLimit({
+      type: JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
+      sharedTypes: [JOB_TYPES.AGENT_UPGRADE, JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE],
+      maxRunning: 3,
+      limit: 1,
+      organizationId: seeded.targets[0]!.organizationId,
+    });
+    expect(claimed).toEqual([expect.objectContaining({ id: persisted.id })]);
+
+    await dbWrite
+      .update(jobs)
+      .set({ started_at: new Date("2026-07-22T00:00:00.000Z") })
+      .where(eq(jobs.id, persisted.id));
+    expect(
+      await jobsRepository.recoverInProgressJobsStartedBefore({
+        type: JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
+        organizationId: seeded.targets[0]!.organizationId,
+        startedBefore: new Date("2026-07-23T00:00:00.000Z"),
+        maxAttempts: 2,
+      }),
+    ).toBe(0);
+    expect(await jobsRepository.findByIdForWrite(persisted.id)).toMatchObject({
+      status: "failed",
+      attempts: 1,
+      error: expect.stringContaining("max attempts reached"),
+    });
+  });
+
+  test("direct canary enqueue rejects empty and duplicate target sets without writes", async () => {
+    const seeded = await seedAgents(1);
+    const decisionAt = new Date("2026-07-23T00:00:00.000Z").toISOString();
+
+    await expect(
+      provisioningJobService.enqueueAdminCanaryImageRollout({
+        rolloutId: "00000000-0000-4000-8000-000000000020",
+        actorUserId: seeded.actorUserId,
+        decisionAt,
+        targets: [],
+      }),
+    ).rejects.toBeInstanceOf(ApiError);
+
+    const target = {
+      operation: "upgrade" as const,
+      agentId: seeded.targets[0]!.agentId,
+      organizationId: seeded.targets[0]!.organizationId,
+      targetOwnerUserId: seeded.actorUserId,
+      sourceImage: SOURCE_IMAGE,
+      sourceDigest: SOURCE_DIGEST,
+      targetImage: TARGET_IMAGE,
+      targetDigest: TARGET_DIGEST,
+    };
+    await expect(
+      provisioningJobService.enqueueAdminCanaryImageRollout({
+        rolloutId: "00000000-0000-4000-8000-000000000021",
+        actorUserId: seeded.actorUserId,
+        decisionAt,
+        targets: [target, target],
+      }),
+    ).rejects.toBeInstanceOf(ApiError);
+    expect(await dbWrite.select().from(jobs)).toHaveLength(0);
+  });
+
+  test("an interrupted ordinary image swap is CAS-rearmed without admitting a second claim", async () => {
+    const seeded = await seedAgents(1);
+    const enqueued = await provisioningJobService.enqueueAgentUpgradeOnce({
+      agentId: seeded.targets[0]!.agentId,
+      organizationId: seeded.targets[0]!.organizationId,
+      userId: seeded.actorUserId,
+      dockerImage: SOURCE_IMAGE,
+      fromDigest: SOURCE_DIGEST,
+      toDigest: NEXT_DIGEST,
+    });
+    const claimed = await jobsRepository.claimPendingJobs({
+      type: JOB_TYPES.AGENT_UPGRADE,
+      organizationId: seeded.targets[0]!.organizationId,
+      limit: 1,
+    });
+    expect(claimed).toEqual([expect.objectContaining({ id: enqueued.job.id })]);
+    await dbWrite
+      .update(jobs)
+      .set({ started_at: new Date(Date.now() - 60_000) })
+      .where(eq(jobs.id, enqueued.job.id));
+
+    expect(
+      await jobsRepository.recoverStaleJobs({
+        type: JOB_TYPES.AGENT_UPGRADE,
+        organizationId: seeded.targets[0]!.organizationId,
+        staleThresholdMs: 1_000,
+        maxAttempts: 3,
+      }),
+    ).toBe(1);
+    expect(await jobsRepository.findByIdForWrite(enqueued.job.id)).toMatchObject({
+      status: "pending",
+      attempts: 1,
+      error: expect.stringContaining("recovered for retry"),
+    });
+    expect(
+      await jobsRepository.claimPendingJobsWithinSharedRunningLimit({
+        type: JOB_TYPES.AGENT_UPGRADE,
+        sharedTypes: [JOB_TYPES.AGENT_UPGRADE, JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE],
+        maxRunning: 3,
+        limit: 1,
+        organizationId: seeded.targets[0]!.organizationId,
+      }),
+    ).toEqual([expect.objectContaining({ id: enqueued.job.id })]);
+  });
+
+  test("one worker cycle drains ordinary and canary image changes through their distinct policies", async () => {
+    const seeded = await seedAgents(2);
+    await provisioningJobService.enqueueAgentUpgradeOnce({
+      agentId: seeded.targets[0]!.agentId,
+      organizationId: seeded.targets[0]!.organizationId,
+      userId: seeded.actorUserId,
+      dockerImage: SOURCE_IMAGE,
+      fromDigest: SOURCE_DIGEST,
+      toDigest: NEXT_DIGEST,
+    });
+    await adminAgentImageRolloutService.previewOrEnqueue(
+      {
+        operation: "upgrade",
+        dryRun: false,
+        targetImage: TARGET_IMAGE,
+        targets: [seeded.targets[1]!],
+      },
+      seeded.actorUserId,
+    );
+
+    const ordinaryExecution = spyOn(elizaSandboxService, "executeUpgrade").mockResolvedValue({
+      success: true,
+      oldNodeId: "ordinary-old-node",
+      oldContainerName: "ordinary-old",
+      newNodeId: "ordinary-new-node",
+      newContainerName: "ordinary-new",
+      newDigest: NEXT_DIGEST,
+    });
+    const canaryExecution = spyOn(
+      elizaSandboxService,
+      "executeAdminCanaryUpgrade",
+    ).mockImplementation(async (params) => {
+      await dbWrite.transaction(async (tx) => {
+        await tx
+          .update(agentSandboxes)
+          .set({
+            node_id: "canary-new-node",
+            container_name: "canary-new",
+            docker_image: params.targetImage,
+            image_digest: params.targetDigest,
+            previous_docker_image: params.sourceImage,
+            previous_image_digest: params.sourceDigest,
+          })
+          .where(eq(agentSandboxes.id, params.agentId));
+        await params.onCutoverInTx(tx, {
+          oldNodeId: "canary-old-node",
+          oldContainerName: "canary-old",
+          newNodeId: "canary-new-node",
+          newContainerName: "canary-new",
+          newDigest: params.targetDigest,
+        });
+      });
+      return {
+        success: true,
+        oldNodeId: "canary-old-node",
+        oldContainerName: "canary-old",
+        newNodeId: "canary-new-node",
+        newContainerName: "canary-new",
+        newDigest: params.targetDigest,
+      };
+    });
+    try {
+      const processed = await provisioningJobService.processPendingJobs(2, {
+        jobTypes: [JOB_TYPES.AGENT_UPGRADE, JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE],
+      });
+      expect(processed).toMatchObject({
+        claimed: 2,
+        succeeded: 2,
+        failed: 0,
+      });
+      expect(ordinaryExecution).toHaveBeenCalledTimes(1);
+      expect(canaryExecution).toHaveBeenCalledTimes(1);
+      const persisted = await dbWrite.select().from(jobs);
+      expect(persisted).toHaveLength(2);
+      expect(persisted.every((job) => job.status === "completed")).toBe(true);
+      expect(persisted.find((job) => job.type === JOB_TYPES.AGENT_UPGRADE)?.result).toMatchObject({
+        oldNodeId: "ordinary-old-node",
+        newNodeId: "ordinary-new-node",
+        newDigest: NEXT_DIGEST,
+      });
+      expect(
+        persisted.find((job) => job.type === JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE)?.result,
+      ).toMatchObject({
+        operation: "upgrade",
+        oldNodeId: "canary-old-node",
+        newNodeId: "canary-new-node",
+        targetDigest: TARGET_DIGEST,
+      });
+    } finally {
+      ordinaryExecution.mockRestore();
+      canaryExecution.mockRestore();
+    }
+  });
+
+  test("a canary does not block sibling lifecycle, diagnostics, or backup policy", async () => {
+    const seeded = await seedAgents(5);
+    await provisioningJobService.enqueueAgentRestartOnce({
+      agentId: seeded.targets[0]!.agentId,
+      organizationId: seeded.targets[0]!.organizationId,
+      userId: seeded.actorUserId,
+    });
+    await provisioningJobService.enqueueAgentDowngradeOnce({
+      agentId: seeded.targets[1]!.agentId,
+      organizationId: seeded.targets[1]!.organizationId,
+      userId: seeded.actorUserId,
+      dockerImage: SOURCE_IMAGE,
+      fromDigest: TARGET_DIGEST,
+    });
+    await provisioningJobService.enqueueAgentLogsOnce({
+      agentId: seeded.targets[2]!.agentId,
+      organizationId: seeded.targets[2]!.organizationId,
+      userId: seeded.actorUserId,
+      tail: 200,
+    });
+    await provisioningJobService.enqueueAgentSnapshotOnce({
+      agentId: seeded.targets[3]!.agentId,
+      organizationId: seeded.targets[3]!.organizationId,
+      userId: seeded.actorUserId,
+      snapshotType: "auto",
+    });
+    await adminAgentImageRolloutService.previewOrEnqueue(
+      {
+        operation: "upgrade",
+        dryRun: false,
+        targetImage: TARGET_IMAGE,
+        targets: [seeded.targets[4]!],
+      },
+      seeded.actorUserId,
+    );
+
+    const restartExecution = spyOn(elizaSandboxService, "executeRestart").mockResolvedValue({
+      success: true,
+      containerStopped: true,
+      containerStarted: true,
+      bridgeUrl: "http://10.0.0.10:3000",
+      healthUrl: "http://10.0.0.10:3000/health",
+    });
+    const downgradeExecution = spyOn(elizaSandboxService, "executeDowngrade").mockResolvedValue({
+      success: true,
+      oldNodeId: "rollback-old-node",
+      oldContainerName: "rollback-old",
+      newNodeId: "rollback-new-node",
+      newContainerName: "rollback-new",
+      newDigest: SOURCE_DIGEST,
+    });
+    const logsExecution = spyOn(elizaSandboxService, "executeLogs").mockResolvedValue({
+      success: true,
+      status: "running",
+      logs: "[agent] ready for demo",
+    });
+    const snapshotExecution = spyOn(elizaSandboxService, "executeSnapshot").mockResolvedValue({
+      success: false,
+      error: SNAPSHOT_ENDPOINT_UNSUPPORTED,
+    });
+    const canaryExecution = spyOn(
+      elizaSandboxService,
+      "executeAdminCanaryUpgrade",
+    ).mockImplementation(async (params) => {
+      await dbWrite.transaction(async (tx) => {
+        await params.onCutoverInTx(tx, {
+          oldNodeId: "canary-old-node",
+          oldContainerName: "canary-old",
+          newNodeId: "canary-new-node",
+          newContainerName: "canary-new",
+          newDigest: params.targetDigest,
+        });
+      });
+      return {
+        success: true,
+        oldNodeId: "canary-old-node",
+        oldContainerName: "canary-old",
+        newNodeId: "canary-new-node",
+        newContainerName: "canary-new",
+        newDigest: params.targetDigest,
+      };
+    });
+    // This contract exercises coexistence when operators explicitly enable the
+    // snapshot lane; its production default remains fail-closed.
+    const previousSnapshotGate = process.env.ELIZA_SNAPSHOT_JOBS_ENABLED;
+    process.env.ELIZA_SNAPSHOT_JOBS_ENABLED = "true";
+    try {
+      const processed = await provisioningJobService.processPendingJobs(5, {
+        jobTypes: [
+          JOB_TYPES.AGENT_RESTART,
+          JOB_TYPES.AGENT_DOWNGRADE,
+          JOB_TYPES.AGENT_LOGS,
+          JOB_TYPES.AGENT_SNAPSHOT,
+          JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
+        ],
+      });
+      expect(processed).toMatchObject({
+        claimed: 5,
+        succeeded: 5,
+        failed: 0,
+      });
+      expect(restartExecution).toHaveBeenCalledTimes(1);
+      expect(downgradeExecution).toHaveBeenCalledTimes(1);
+      expect(logsExecution).toHaveBeenCalledWith(
+        seeded.targets[2]!.agentId,
+        seeded.targets[2]!.organizationId,
+        200,
+      );
+      expect(snapshotExecution).toHaveBeenCalledWith(
+        seeded.targets[3]!.agentId,
+        seeded.targets[3]!.organizationId,
+        "auto",
+      );
+      expect(canaryExecution).toHaveBeenCalledTimes(1);
+      const persisted = await dbWrite.select().from(jobs);
+      expect(persisted).toHaveLength(5);
+      expect(persisted.every((job) => job.status === "completed")).toBe(true);
+      expect(persisted.find((job) => job.type === JOB_TYPES.AGENT_SNAPSHOT)?.result).toMatchObject({
+        skipped: true,
+        reason: SNAPSHOT_ENDPOINT_UNSUPPORTED,
+      });
+    } finally {
+      restartExecution.mockRestore();
+      downgradeExecution.mockRestore();
+      logsExecution.mockRestore();
+      snapshotExecution.mockRestore();
+      canaryExecution.mockRestore();
+      if (previousSnapshotGate === undefined) {
+        delete process.env.ELIZA_SNAPSHOT_JOBS_ENABLED;
+      } else {
+        process.env.ELIZA_SNAPSHOT_JOBS_ENABLED = previousSnapshotGate;
+      }
+    }
+  });
+
+  test("a queued canary does not block a real chat job for that same running agent", async () => {
+    const seeded = await seedAgents(1);
+    await adminAgentImageRolloutService.previewOrEnqueue(
+      {
+        operation: "upgrade",
+        dryRun: false,
+        targetImage: TARGET_IMAGE,
+        targets: seeded.targets,
+      },
+      seeded.actorUserId,
+    );
+    const chat = await provisioningJobService.enqueueAgentMessage({
+      agentId: seeded.targets[0]!.agentId,
+      organizationId: seeded.targets[0]!.organizationId,
+      userId: seeded.actorUserId,
+      text: "Confirm the demo agent remains responsive.",
+      senderId: seeded.actorUserId,
+      sessionId: "demo-rehearsal",
+      roomId: "main",
+    });
+    const bridge = spyOn(elizaSandboxService, "bridge").mockResolvedValue({
+      jsonrpc: "2.0",
+      id: 1,
+      result: { text: "Ready for the demo." },
+    });
+    const canaryExecution = spyOn(
+      elizaSandboxService,
+      "executeAdminCanaryUpgrade",
+    ).mockImplementation(async (params) => {
+      await dbWrite.transaction(async (tx) => {
+        await params.onCutoverInTx(tx, {
+          oldNodeId: "canary-old-node",
+          oldContainerName: "canary-old",
+          newNodeId: "canary-new-node",
+          newContainerName: "canary-new",
+          newDigest: params.targetDigest,
+        });
+      });
+      return {
+        success: true,
+        oldNodeId: "canary-old-node",
+        oldContainerName: "canary-old",
+        newNodeId: "canary-new-node",
+        newContainerName: "canary-new",
+        newDigest: params.targetDigest,
+      };
+    });
+    try {
+      const processed = await provisioningJobService.processPendingJobs(2, {
+        jobTypes: [JOB_TYPES.AGENT_MESSAGE, JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE],
+      });
+      expect(processed).toMatchObject({
+        claimed: 2,
+        succeeded: 2,
+        failed: 0,
+      });
+      expect(bridge).toHaveBeenCalledWith(
+        seeded.targets[0]!.agentId,
+        seeded.targets[0]!.organizationId,
+        {
+          jsonrpc: "2.0",
+          method: "message.send",
+          params: {
+            text: "Confirm the demo agent remains responsive.",
+            userId: seeded.actorUserId,
+            sessionId: "demo-rehearsal",
+            roomId: "main",
+          },
+        },
+      );
+      expect(await jobsRepository.findByIdForWrite(chat.job.id)).toMatchObject({
+        status: "completed",
+        result: {
+          cloudAgentId: seeded.targets[0]!.agentId,
+          text: "Ready for the demo.",
+        },
+      });
+      expect(canaryExecution).toHaveBeenCalledTimes(1);
+    } finally {
+      bridge.mockRestore();
+      canaryExecution.mockRestore();
+    }
+  });
+
+  test("a chat 401 is durably failed while the independent canary still completes", async () => {
+    const seeded = await seedAgents(1);
+    await adminAgentImageRolloutService.previewOrEnqueue(
+      {
+        operation: "upgrade",
+        dryRun: false,
+        targetImage: TARGET_IMAGE,
+        targets: seeded.targets,
+      },
+      seeded.actorUserId,
+    );
+    const chat = await provisioningJobService.enqueueAgentMessage({
+      agentId: seeded.targets[0]!.agentId,
+      organizationId: seeded.targets[0]!.organizationId,
+      userId: seeded.actorUserId,
+      text: "This request has an expired bridge credential.",
+    });
+    const bridge = spyOn(elizaSandboxService, "bridge").mockResolvedValue({
+      jsonrpc: "2.0",
+      id: 1,
+      error: { code: -32001, message: "401 unauthorized" },
+    });
+    const canaryExecution = spyOn(
+      elizaSandboxService,
+      "executeAdminCanaryUpgrade",
+    ).mockImplementation(async (params) => {
+      await dbWrite.transaction(async (tx) => {
+        await params.onCutoverInTx(tx, {
+          oldNodeId: "canary-old-node",
+          oldContainerName: "canary-old",
+          newNodeId: "canary-new-node",
+          newContainerName: "canary-new",
+          newDigest: params.targetDigest,
+        });
+      });
+      return {
+        success: true,
+        oldNodeId: "canary-old-node",
+        oldContainerName: "canary-old",
+        newNodeId: "canary-new-node",
+        newContainerName: "canary-new",
+        newDigest: params.targetDigest,
+      };
+    });
+    try {
+      const processed = await provisioningJobService.processPendingJobs(2, {
+        jobTypes: [JOB_TYPES.AGENT_MESSAGE, JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE],
+      });
+      expect(processed).toMatchObject({
+        claimed: 2,
+        succeeded: 1,
+        failed: 1,
+      });
+      expect(await jobsRepository.findByIdForWrite(chat.job.id)).toMatchObject({
+        status: "failed",
+        attempts: 1,
+        error: "401 unauthorized",
+        result: {
+          cloudAgentId: seeded.targets[0]!.agentId,
+          error: "401 unauthorized",
+        },
+      });
+      const canaryJobs = await dbWrite
+        .select()
+        .from(jobs)
+        .where(eq(jobs.type, JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE));
+      expect(canaryJobs).toEqual([expect.objectContaining({ status: "completed" })]);
+    } finally {
+      bridge.mockRestore();
+      canaryExecution.mockRestore();
+    }
+  });
+
   test("terminal execution failure retains actor, decision, error, and result timestamps", async () => {
     const seeded = await seedAgents(1);
     const rollout = await adminAgentImageRolloutService.previewOrEnqueue(
@@ -769,6 +1342,106 @@ describe("admin agent image rollout on primary PGlite", () => {
       expect(rollbackJob?.result).toMatchObject({
         success: false,
         operation: "rollback",
+      });
+    } finally {
+      execution.mockRestore();
+    }
+  });
+
+  test("successful rollback commits the canonical pair and durable audit atomically", async () => {
+    const seeded = await seedAgents(1);
+    await adminAgentImageRolloutService.previewOrEnqueue(
+      {
+        operation: "upgrade",
+        dryRun: false,
+        targetImage: TARGET_IMAGE,
+        targets: seeded.targets,
+      },
+      seeded.actorUserId,
+    );
+    const [upgradeJob] = await dbWrite
+      .select()
+      .from(jobs)
+      .where(eq(jobs.type, JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE));
+    if (!upgradeJob) throw new Error("expected source upgrade job");
+    await completeUpgradeJob(upgradeJob);
+    await adminAgentImageRolloutService.previewOrEnqueue(
+      {
+        operation: "rollback",
+        dryRun: false,
+        source: { jobId: upgradeJob.id },
+      },
+      seeded.actorUserId,
+    );
+
+    const execution = spyOn(elizaSandboxService, "executeAdminCanaryRollback").mockImplementation(
+      async (params) => {
+        await dbWrite.transaction(async (tx) => {
+          await tx
+            .update(agentSandboxes)
+            .set({
+              node_id: "node-canonical",
+              container_name: "agent-canonical",
+              docker_image: params.targetImage,
+              image_digest: params.targetDigest,
+              previous_docker_image: null,
+              previous_image_digest: null,
+            })
+            .where(eq(agentSandboxes.id, params.agentId));
+          await params.onCutoverInTx(tx, {
+            oldNodeId: "node-demo",
+            oldContainerName: "agent-demo",
+            newNodeId: "node-canonical",
+            newContainerName: "agent-canonical",
+            newDigest: params.targetDigest,
+          });
+        });
+        return {
+          success: true,
+          oldNodeId: "node-demo",
+          oldContainerName: "agent-demo",
+          newNodeId: "node-canonical",
+          newContainerName: "agent-canonical",
+          newDigest: params.targetDigest,
+        };
+      },
+    );
+    try {
+      const processed = await provisioningJobService.processPendingJobs(5, {
+        jobTypes: [JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE],
+      });
+      expect(processed).toMatchObject({ succeeded: 1, failed: 0 });
+      const [agent] = await dbWrite
+        .select()
+        .from(agentSandboxes)
+        .where(eq(agentSandboxes.id, seeded.targets[0]!.agentId));
+      expect(agent).toMatchObject({
+        node_id: "node-canonical",
+        container_name: "agent-canonical",
+        docker_image: SOURCE_IMAGE,
+        image_digest: SOURCE_DIGEST,
+        previous_docker_image: null,
+        previous_image_digest: null,
+      });
+      const canaryJobs = await dbWrite
+        .select()
+        .from(jobs)
+        .where(eq(jobs.type, JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE));
+      const rollbackJob = canaryJobs.find((job) => job.id !== upgradeJob.id);
+      expect(rollbackJob).toMatchObject({
+        status: "completed",
+        result_storage: "inline",
+        error: null,
+      });
+      expect(rollbackJob?.result).toMatchObject({
+        success: true,
+        operation: "rollback",
+        sourceImage: TARGET_IMAGE,
+        sourceDigest: TARGET_DIGEST,
+        targetImage: SOURCE_IMAGE,
+        targetDigest: SOURCE_DIGEST,
+        oldNodeId: "node-demo",
+        newNodeId: "node-canonical",
       });
     } finally {
       execution.mockRestore();
