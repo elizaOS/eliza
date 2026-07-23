@@ -91,7 +91,21 @@ concurrency:
   # pending with zero jobs while cancel and force-cancel both returned HTTP 500.
   # Same retirement pattern as v2 -> v3; cancel stale deploys instead of
   # rejecting environment gates.
-  group: cloud-cf-deploy-v4-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || (((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging') }}
+  #
+  # Per-SHA staging groups (Jul 22 R10/R11 + 2026-07-23 recurrence): since the
+  # 2026-07-16 required-reviewers rule on the `staging` environment, every push
+  # run parks at the env gate in status=waiting, and a waiting run HOLDS a
+  # shared workflow-level group. One unapproved run therefore wedged every
+  # newer develop push into pending/zero-jobs (looked exactly like runner
+  # starvation, wasn't). Staging runs now group per head SHA: a waiting run can
+  # no longer squat the group, and no in-flight deploy is ever cancelled
+  # mid-job (cancel-in-progress stays PR-only). Cross-run serialization of the
+  # actual deploy work is unchanged, still enforced by the job-level groups
+  # (cloud-db-migrate-v2-staging, cloud-cf-deploy-api-staging,
+  # cloud-cf-deploy-console-staging, cloud-cf-deploy-app-staging; all
+  # cancel-in-progress:false for push), and the #14083 freshness guard skips
+  # stale-SHA clobbers. Production keeps the shared queue-never-cancel group.
+  group: cloud-cf-deploy-v4-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || (((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || format('staging-{0}', github.sha)) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Default to least privilege. Override per-job where needed.
