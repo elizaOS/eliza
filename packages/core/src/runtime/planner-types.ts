@@ -57,6 +57,8 @@ export interface EvaluatorEffects {
 
 export type EvaluatorOutput = EvaluationResult & {
 	nextTool?: PlannerToolCall;
+	/** The model response violated the evaluator protocol. */
+	protocolFailure?: true;
 	parseError?: string;
 	raw?: Record<string, unknown>;
 };

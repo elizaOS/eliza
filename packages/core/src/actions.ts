@@ -71,6 +71,7 @@ export {
 	type SubactionHandlerMap,
 	type SubactionParameters,
 } from "./actions/subaction-dispatch";
+export { testSchemaPattern } from "./actions/validate-tool-args";
 
 type ActionDocByName = Record<string, (typeof allActionDocs)[number]>;
 

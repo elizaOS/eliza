@@ -31,6 +31,8 @@ export interface JsonSchema {
 	additionalProperties?: boolean | JsonSchema;
 	minimum?: number;
 	maximum?: number;
+	minLength?: number;
+	maxLength?: number;
 	pattern?: string;
 	oneOf?: JsonSchema[];
 	anyOf?: JsonSchema[];
@@ -223,6 +225,12 @@ export function actionParameterSchemaToJsonSchema(
 	if (schema.maximum !== undefined) {
 		jsonSchema.maximum = schema.maximum;
 	}
+	if (schema.minLength !== undefined) {
+		jsonSchema.minLength = schema.minLength;
+	}
+	if (schema.maxLength !== undefined) {
+		jsonSchema.maxLength = schema.maxLength;
+	}
 	if (schema.pattern !== undefined) {
 		jsonSchema.pattern = schema.pattern;
 	}
@@ -365,6 +373,8 @@ function jsonSchemaFromLocal(local: JsonSchema): JSONSchema {
 		out.default = local.default as JSONSchema["default"];
 	if (local.minimum !== undefined) out.minimum = local.minimum;
 	if (local.maximum !== undefined) out.maximum = local.maximum;
+	if (local.minLength !== undefined) out.minLength = local.minLength;
+	if (local.maxLength !== undefined) out.maxLength = local.maxLength;
 	if (local.pattern !== undefined) out.pattern = local.pattern;
 	if (local.required !== undefined) out.required = local.required;
 	if (local.properties) {

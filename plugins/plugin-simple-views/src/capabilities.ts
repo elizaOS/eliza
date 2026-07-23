@@ -4,15 +4,50 @@
  * server-side control plane for both views.
  */
 
-import type { ViewCapability } from "@elizaos/core";
+import type { ViewCapability, ViewCapabilityParameter } from "@elizaos/core";
+
+const TITLE_PARAM: ViewCapabilityParameter = {
+  type: "string",
+  description: "Title text.",
+  minLength: 1,
+  maxLength: 240,
+  pattern: "\\S",
+};
+
+const BODY_PARAM: ViewCapabilityParameter = {
+  type: "string",
+  description: "Optional body or details text.",
+  maxLength: 20_000,
+};
+
+const COLOR_PARAM: ViewCapabilityParameter = {
+  type: "string",
+  description: "Optional color: yellow, green, rose, or slate.",
+  enum: ["yellow", "green", "rose", "slate"],
+};
+
+const DATE_PARAM: ViewCapabilityParameter = {
+  type: "string",
+  description: "Date in YYYY-MM-DD format.",
+  pattern: "^\\d{4}-\\d{2}-\\d{2}$",
+};
+
+const TIME_PARAM: ViewCapabilityParameter = {
+  type: "string",
+  description: "Time in HH:mm 24-hour format.",
+  pattern: "^([01]\\d|2[0-3]):[0-5]\\d$",
+};
 
 const ID_PARAM = {
   id: {
     type: "string",
     description: "Stable entity id returned by a prior read or create.",
     required: true,
+    minLength: 3,
+    maxLength: 128,
+    pattern: "^[a-z][a-z0-9-]{2,127}$",
   },
-};
+} satisfies NonNullable<ViewCapability["params"]>;
 
 export const NOTES_CAPABILITIES: ViewCapability[] = [
   {
@@ -29,15 +64,12 @@ export const NOTES_CAPABILITIES: ViewCapability[] = [
     description: "Create a durable sticky note.",
     params: {
       title: {
-        type: "string",
+        ...TITLE_PARAM,
         description: "Required note title.",
         required: true,
       },
-      body: { type: "string", description: "Optional note body." },
-      color: {
-        type: "string",
-        description: "Optional color: yellow, green, rose, or slate.",
-      },
+      body: { ...BODY_PARAM, description: "Optional note body." },
+      color: COLOR_PARAM,
     },
   },
   {
@@ -45,10 +77,10 @@ export const NOTES_CAPABILITIES: ViewCapability[] = [
     description: "Update one or more fields on a sticky note.",
     params: {
       ...ID_PARAM,
-      title: { type: "string", description: "Replacement note title." },
-      body: { type: "string", description: "Replacement note body." },
+      title: { ...TITLE_PARAM, description: "Replacement note title." },
+      body: { ...BODY_PARAM, description: "Replacement note body." },
       color: {
-        type: "string",
+        ...COLOR_PARAM,
         description: "Replacement color: yellow, green, rose, or slate.",
       },
     },
@@ -57,11 +89,14 @@ export const NOTES_CAPABILITIES: ViewCapability[] = [
     id: "delete-note",
     description: "Delete one sticky note by id, exact title, or unique query.",
     params: {
-      id: { type: "string", description: "Stable note id." },
-      title: { type: "string", description: "Exact note title." },
+      id: { ...ID_PARAM.id, description: "Stable note id.", required: false },
+      title: { ...TITLE_PARAM, description: "Exact note title." },
       query: {
         type: "string",
         description: "Unique title/body search text.",
+        minLength: 1,
+        maxLength: 20_000,
+        pattern: "\\S",
       },
     },
   },
@@ -77,7 +112,7 @@ export const CALENDAR_CAPABILITIES: ViewCapability[] = [
     description: "Read selected date and calendar events as structured data.",
     params: {
       date: {
-        type: "string",
+        ...DATE_PARAM,
         description: "Optional YYYY-MM-DD filter.",
       },
     },
@@ -92,7 +127,7 @@ export const CALENDAR_CAPABILITIES: ViewCapability[] = [
     description: "Persist the date selected in the Simple Calendar view.",
     params: {
       date: {
-        type: "string",
+        ...DATE_PARAM,
         description: "Date in YYYY-MM-DD format.",
         required: true,
       },
@@ -103,23 +138,20 @@ export const CALENDAR_CAPABILITIES: ViewCapability[] = [
     description: "Create a durable Simple Calendar event.",
     params: {
       title: {
-        type: "string",
+        ...TITLE_PARAM,
         description: "Required event title.",
         required: true,
       },
       date: {
-        type: "string",
+        ...DATE_PARAM,
         description: "Optional YYYY-MM-DD date; defaults to selected date.",
       },
       time: {
-        type: "string",
+        ...TIME_PARAM,
         description: "Optional HH:mm 24-hour time; defaults to 09:00.",
       },
-      notes: { type: "string", description: "Optional event notes." },
-      color: {
-        type: "string",
-        description: "Optional color: yellow, green, rose, or slate.",
-      },
+      notes: { ...BODY_PARAM, description: "Optional event notes." },
+      color: COLOR_PARAM,
     },
   },
   {
@@ -127,12 +159,12 @@ export const CALENDAR_CAPABILITIES: ViewCapability[] = [
     description: "Update one or more fields on a Simple Calendar event.",
     params: {
       ...ID_PARAM,
-      title: { type: "string", description: "Replacement event title." },
-      date: { type: "string", description: "Replacement YYYY-MM-DD date." },
-      time: { type: "string", description: "Replacement HH:mm time." },
-      notes: { type: "string", description: "Replacement event notes." },
+      title: { ...TITLE_PARAM, description: "Replacement event title." },
+      date: { ...DATE_PARAM, description: "Replacement YYYY-MM-DD date." },
+      time: { ...TIME_PARAM, description: "Replacement HH:mm time." },
+      notes: { ...BODY_PARAM, description: "Replacement event notes." },
       color: {
-        type: "string",
+        ...COLOR_PARAM,
         description: "Replacement color: yellow, green, rose, or slate.",
       },
     },

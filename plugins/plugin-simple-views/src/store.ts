@@ -1,8 +1,8 @@
 /**
  * Atomic JSON persistence for managed Cloud Notes and Calendar. Each agent owns a
  * document beneath the configured elizaOS state directory; duplicate service
- * instances share one in-process cache and write barrier for that file. Legacy
- * unscoped state is validated and copied once without replacing scoped data.
+ * instances share one in-process cache and write barrier for that file. Missing
+ * agent-scoped documents start empty and are installed without replacing data.
  */
 
 import { randomUUID } from "node:crypto";
@@ -105,7 +105,14 @@ function isNodeErrorWithCode(
   error: unknown,
   code: string,
 ): error is NodeJS.ErrnoException {
-  return error instanceof Error && "code" in error && error.code === code;
+  // Filesystem errors can cross plugin/VM realms, where `instanceof Error`
+  // does not preserve identity even though the Node error contract does.
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === code
+  );
 }
 
 function toStoreError(
@@ -126,7 +133,6 @@ function toStoreError(
 export class SimpleViewsStore {
   readonly filePath: string;
 
-  private readonly legacyFilePath: string | undefined;
   private readonly now: () => Date;
   private readonly shared: SharedStoreState;
   private stopped = false;
@@ -142,10 +148,6 @@ export class SimpleViewsStore {
     this.filePath = options.filePath
       ? path.resolve(options.filePath)
       : simpleViewsStateFilePath(options.stateDir, options.agentId);
-    this.legacyFilePath =
-      !options.filePath && options.agentId?.trim()
-        ? simpleViewsStateFilePath(options.stateDir)
-        : undefined;
     this.now = options.now ? options.now : () => new Date();
     this.shared = acquireSharedState(this.filePath);
   }
@@ -180,12 +182,9 @@ export class SimpleViewsStore {
 
     this.shared.phase = "loading";
     this.shared.failure = undefined;
-    this.shared.initialization = this.load();
-    try {
-      await this.shared.initialization;
-    } catch (error) {
-      // error-policy:J2 context-adding rethrow — callers need the durable file
-      // path and a stable store code while preserving the original fs/JSON cause.
+    const initialization = this.load().catch((error) => {
+      // error-policy:J2 context-adding rethrow — every service instance sharing
+      // this initialization must observe the same typed failure and cause.
       const failure = toStoreError(
         error,
         "SIMPLE_VIEWS_STORE_LOAD_FAILED",
@@ -195,8 +194,14 @@ export class SimpleViewsStore {
       this.shared.failure = failure;
       this.shared.phase = "error";
       throw failure;
+    });
+    this.shared.initialization = initialization;
+    try {
+      await initialization;
     } finally {
-      this.shared.initialization = undefined;
+      if (this.shared.initialization === initialization) {
+        this.shared.initialization = undefined;
+      }
     }
   }
 
@@ -270,28 +275,15 @@ export class SimpleViewsStore {
   }
 
   private async initializeMissingDocument(): Promise<SimpleViewsDocument> {
-    let candidate: SimpleViewsDocument | undefined;
-    if (this.legacyFilePath) {
-      try {
-        candidate = await this.readDocument(this.legacyFilePath);
-      } catch (error) {
-        // error-policy:J3 a missing optional legacy source is explicit absence;
-        // corrupt or unreadable legacy state must still surface.
-        if (!isNodeErrorWithCode(error, "ENOENT")) throw error;
-      }
-    }
-
-    if (!candidate) {
-      const now = this.now();
-      candidate = {
-        schemaVersion: SIMPLE_VIEWS_SCHEMA_VERSION,
-        revision: 0,
-        persistedAt: now.toISOString(),
-        notes: [],
-        events: [],
-        selectedDate: todayDateKey(now),
-      };
-    }
+    const now = this.now();
+    const candidate: SimpleViewsDocument = {
+      schemaVersion: SIMPLE_VIEWS_SCHEMA_VERSION,
+      revision: 0,
+      persistedAt: now.toISOString(),
+      notes: [],
+      events: [],
+      selectedDate: todayDateKey(now),
+    };
 
     const installed = await this.writeAtomicIfAbsent(candidate);
     return installed ? candidate : this.readDocument(this.filePath);

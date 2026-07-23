@@ -297,7 +297,7 @@ describe("SimpleViewsStore", () => {
     await restarted.stop();
   });
 
-  it("migrates legacy state once without deleting it or overwriting the scoped restart", async () => {
+  it("keeps unscoped workbench state outside the agent-scoped durable store", async () => {
     const stateDir = await temporaryStateDirectory();
     const legacyPath = simpleViewsStateFilePath(stateDir);
     const scopedPath = simpleViewsStateFilePath(
@@ -312,7 +312,6 @@ describe("SimpleViewsStore", () => {
       time: "15:00",
     });
     await legacy.selectDate("2026-07-22");
-    const legacySnapshot = legacy.snapshot();
     await legacy.stop();
     const legacyBytes = await fs.readFile(legacyPath, "utf8");
 
@@ -325,9 +324,17 @@ describe("SimpleViewsStore", () => {
     );
     await Promise.all([first.initialize(), duplicate.initialize()]);
 
-    expect(first.snapshot()).toEqual(legacySnapshot);
-    expect(duplicate.snapshot()).toEqual(legacySnapshot);
-    expect(await fs.readFile(scopedPath, "utf8")).toBe(legacyBytes);
+    expect(first.snapshot()).toMatchObject({
+      revision: 0,
+      notes: [],
+      events: [],
+    });
+    expect(duplicate.snapshot()).toMatchObject({
+      revision: 0,
+      notes: [],
+      events: [],
+    });
+    expect(await fs.readFile(scopedPath, "utf8")).not.toBe(legacyBytes);
     expect(await fs.readFile(legacyPath, "utf8")).toBe(legacyBytes);
 
     await first.createNote({ title: "Scoped note" });
@@ -341,14 +348,13 @@ describe("SimpleViewsStore", () => {
     await restarted.initialize();
     expect(restarted.listNotes().map((note) => note.title)).toEqual([
       "Scoped note",
-      "Legacy note",
     ]);
-    expect(restarted.snapshot()).toMatchObject({ revision: 4 });
+    expect(restarted.snapshot()).toMatchObject({ revision: 1 });
     expect(await fs.readFile(legacyPath, "utf8")).toBe(legacyBytes);
     await restarted.stop();
   });
 
-  it("rejects malformed legacy state instead of migrating a healthy-looking empty document", async () => {
+  it("ignores malformed unscoped workbench state instead of importing it", async () => {
     const stateDir = await temporaryStateDirectory();
     const legacyPath = simpleViewsStateFilePath(stateDir);
     const scopedPath = simpleViewsStateFilePath(
@@ -366,12 +372,13 @@ describe("SimpleViewsStore", () => {
       await defaultStoreRuntime("agent-a"),
       { stateDir },
     );
-    await expect(service.initialize()).rejects.toMatchObject({
-      code: "SIMPLE_VIEWS_VALIDATION_FAILED",
+    await expect(service.initialize()).resolves.toBeUndefined();
+    expect(service.snapshot()).toMatchObject({
+      revision: 0,
+      notes: [],
+      events: [],
     });
-    await expect(fs.access(scopedPath)).rejects.toMatchObject({
-      code: "ENOENT",
-    });
+    await fs.access(scopedPath);
     await service.stop();
   });
 

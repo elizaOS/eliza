@@ -7,7 +7,11 @@
  * the full AppControlClient (different concern, different surface).
  */
 
-import type { ViewCapability, ViewType } from "@elizaos/core";
+import type {
+	ViewCapability,
+	ViewCapabilityParameter,
+	ViewType,
+} from "@elizaos/core";
 import { resolveServerOnlyPort } from "@elizaos/core";
 import { createViewsRequestHeaders } from "./views-request-auth.js";
 
@@ -61,7 +65,96 @@ function isObject(v: unknown): v is Record<string, unknown> {
 	return v !== null && typeof v === "object" && !Array.isArray(v);
 }
 
+export type ParsedViewInteractionResponse =
+	| {
+			ok: true;
+			success: boolean;
+			body: Record<string, unknown>;
+	  }
+	| {
+			ok: false;
+			error: string;
+	  };
+
+/**
+ * Parse the successful HTTP response envelope returned by the view interaction
+ * route. The route owns the authoritative success bit; a nested capability
+ * failure can only narrow that result, never turn a failed wrapper into success.
+ */
+export async function parseViewInteractionResponse(
+	response: Pick<Response, "json">,
+): Promise<ParsedViewInteractionResponse> {
+	let body: unknown;
+	try {
+		body = await response.json();
+	} catch {
+		// error-policy:J3 malformed interaction JSON is an explicit invalid result.
+		return { ok: false, error: "View interaction response was not valid JSON" };
+	}
+
+	if (!isObject(body)) {
+		return { ok: false, error: "View interaction response was not an object" };
+	}
+	if (typeof body.success !== "boolean") {
+		return {
+			ok: false,
+			error: "View interaction response was missing a boolean success field",
+		};
+	}
+
+	let nestedSuccess: boolean | undefined;
+	if (isObject(body.result) && Object.hasOwn(body.result, "success")) {
+		if (typeof body.result.success !== "boolean") {
+			return {
+				ok: false,
+				error: "View interaction result contained a non-boolean success field",
+			};
+		}
+		nestedSuccess = body.result.success;
+	}
+
+	return { ok: true, success: body.success && nestedSuccess !== false, body };
+}
+
 type ViewCapabilityParams = NonNullable<ViewCapability["params"]>;
+
+function parseCapabilityParameter(
+	value: unknown,
+	required: boolean | undefined,
+): ViewCapabilityParameter | null {
+	if (!isObject(value) || typeof value.type !== "string") return null;
+	const enumValues = Array.isArray(value.enum)
+		? value.enum.filter(
+				(entry): entry is string | number | boolean =>
+					typeof entry === "string" ||
+					typeof entry === "number" ||
+					typeof entry === "boolean",
+			)
+		: [];
+	return {
+		type: value.type,
+		description: typeof value.description === "string" ? value.description : "",
+		...(required === true ? { required: true } : {}),
+		...(enumValues.length > 0 ? { enum: enumValues } : {}),
+		...(typeof value.pattern === "string" ? { pattern: value.pattern } : {}),
+		...(typeof value.minLength === "number" &&
+		Number.isSafeInteger(value.minLength) &&
+		value.minLength >= 0
+			? { minLength: value.minLength }
+			: {}),
+		...(typeof value.maxLength === "number" &&
+		Number.isSafeInteger(value.maxLength) &&
+		value.maxLength >= 0
+			? { maxLength: value.maxLength }
+			: {}),
+		...(typeof value.minimum === "number" && Number.isFinite(value.minimum)
+			? { minimum: value.minimum }
+			: {}),
+		...(typeof value.maximum === "number" && Number.isFinite(value.maximum)
+			? { maximum: value.maximum }
+			: {}),
+	};
+}
 
 function parseCapabilityParams(
 	value: unknown,
@@ -69,15 +162,11 @@ function parseCapabilityParams(
 	if (!isObject(value)) return undefined;
 	const params: ViewCapabilityParams = {};
 	for (const [key, rawParam] of Object.entries(value)) {
-		if (!isObject(rawParam) || typeof rawParam.type !== "string") continue;
-		params[key] = {
-			type: rawParam.type,
-			description:
-				typeof rawParam.description === "string" ? rawParam.description : "",
-			...(typeof rawParam.required === "boolean"
-				? { required: rawParam.required }
-				: {}),
-		};
+		const parameter = parseCapabilityParameter(
+			rawParam,
+			isObject(rawParam) && rawParam.required === true,
+		);
+		if (parameter) params[key] = parameter;
 	}
 	return Object.keys(params).length > 0 ? params : undefined;
 }
@@ -95,16 +184,8 @@ function parseJsonSchemaParams(
 		: new Set<string>();
 	const params: ViewCapabilityParams = {};
 	for (const [key, rawProperty] of Object.entries(value.properties)) {
-		if (!isObject(rawProperty) || typeof rawProperty.type !== "string")
-			continue;
-		params[key] = {
-			type: rawProperty.type,
-			description:
-				typeof rawProperty.description === "string"
-					? rawProperty.description
-					: "",
-			...(required.has(key) ? { required: true } : {}),
-		};
+		const parameter = parseCapabilityParameter(rawProperty, required.has(key));
+		if (parameter) params[key] = parameter;
 	}
 	return Object.keys(params).length > 0 ? params : undefined;
 }
