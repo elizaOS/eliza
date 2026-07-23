@@ -100,6 +100,10 @@ import {
   runWakeRestoreIntegrityGate,
   type WakeRestoreIntegrityFailure,
 } from "./wake-restore-integrity";
+import {
+  buildWarmClaimCharacterPayload,
+  WARM_CLAIM_CHARACTER_PUSH_TIMEOUT_MS,
+} from "./warm-claim-character-push";
 
 export interface CreateAgentParams {
   organizationId: string;
@@ -2987,6 +2991,55 @@ export class ElizaSandboxService {
       return this.buildSharedRuntimeCharacter(bootstrap);
     }
     return null;
+  }
+
+  /**
+   * Post-claim character apply (warm pool). A pool container boots GENERIC
+   * (no ELIZA_AGENT_CHARACTER_JSON — agent-warm-pool-creator provisions with
+   * empty env), so after `claimWarmContainer` transfers the DB row the RUNNING
+   * container would still answer as the default Eliza. This pushes the user's
+   * character onto the live runtime via the container's own
+   * `PUT /api/character` route (which applies it in-memory, persists it to the
+   * agent DB so it survives restarts, and journals character history) — no
+   * container restart, no cold boot.
+   *
+   * Bounded and non-fatal by contract: the CALLER treats a failure as
+   * "claim still succeeds, character applies on next container restart"
+   * (the row's agent_config feeds ensureRuntimeAgentStarted / the env path on
+   * any subsequent boot). Throws on failure so the caller can log the
+   * `warm_pool.character_push_failed` event with context.
+   */
+  async pushClaimedWarmContainerCharacter(
+    rec: Pick<
+      AgentSandbox,
+      | "id"
+      | "agent_name"
+      | "agent_config"
+      | "environment_vars"
+      | "bridge_url"
+      | "health_url"
+      | "node_id"
+      | "bridge_port"
+      | "web_ui_port"
+      | "headscale_ip"
+      | "sandbox_id"
+    >,
+  ): Promise<{ pushed: boolean; agentName?: string }> {
+    const payload = buildWarmClaimCharacterPayload(rec.agent_config, rec.agent_name);
+    if (!payload) return { pushed: false };
+
+    const res = await this.fetchAgentApi(rec, "/api/character", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(WARM_CLAIM_CHARACTER_PUSH_TIMEOUT_MS),
+    });
+    if (!res.ok) {
+      // error-policy: enrich with a bounded body excerpt; a failed body read
+      // must never mask the HTTP status.
+      const text = await res.text().catch(() => "");
+      throw new Error(`Warm-claim character push failed: HTTP ${res.status} ${text.slice(0, 200)}`);
+    }
+    return { pushed: true, agentName: String(payload.name) };
   }
 
   // Bridge
