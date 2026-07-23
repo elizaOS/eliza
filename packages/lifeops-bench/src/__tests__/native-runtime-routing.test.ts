@@ -117,25 +117,28 @@ describe("campaign-native Eliza routing", () => {
     );
   });
 
-  it.each(
-    specializedClassifiers,
-  )("%s reaches AgentRuntime.useModel with explicit provenance", (classifier) => {
-    const classifierStart = messageRoute.indexOf(
-      `${classifier}(session.benchmark)`,
-    );
-    expect(classifierStart).toBeGreaterThanOrEqual(0);
-    const metadataStart = messageRoute.indexOf(
-      "const metadata = benchmarkTurnMetadata",
-      classifierStart,
-    );
-    expect(metadataStart).toBeGreaterThan(classifierStart);
-    const branch = messageRoute.slice(classifierStart, metadataStart + 500);
+  it.each(specializedClassifiers)(
+    "%s reaches AgentRuntime.useModel with explicit provenance",
+    (classifier) => {
+      const classifierStart = messageRoute.indexOf(
+        `${classifier}(session.benchmark)`,
+      );
+      expect(classifierStart).toBeGreaterThanOrEqual(0);
+      const metadataStart = messageRoute.indexOf(
+        "const metadata = benchmarkTurnMetadata",
+        classifierStart,
+      );
+      expect(metadataStart).toBeGreaterThan(classifierStart);
+      const branch = messageRoute.slice(classifierStart, metadataStart + 500);
 
-    expect(branch).toContain("runtime.useModel");
-    expect(branch).toContain('nativeRuntimeApi: "useModel"');
-    expect(branch).toMatch(/toolBridge: "runtime_model_(?:native_tools|text)"/);
-    expect(branch).not.toMatch(/\bfetch\s*\(/);
-  });
+      expect(branch).toContain("runtime.useModel");
+      expect(branch).toContain('nativeRuntimeApi: "useModel"');
+      expect(branch).toMatch(
+        /toolBridge: "runtime_model_(?:native_tools|text)"/,
+      );
+      expect(branch).not.toMatch(/\bfetch\s*\(/);
+    },
+  );
 
   it("keeps the generic conversation path on messageService.handleMessage", () => {
     const genericStart = messageRoute.indexOf(

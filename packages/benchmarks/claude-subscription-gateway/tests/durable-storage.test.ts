@@ -1,6 +1,13 @@
 /** Verifies crash repair, committed-corruption rejection, and bounded audit cursor idempotence on real files. */
 
-import { appendFile, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import {
+  appendFile,
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";

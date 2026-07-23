@@ -21,19 +21,19 @@ import {
   type ActionExample,
   type ActionResult,
   AUTONOMY_SERVICE_TYPE,
-    type HandlerCallback,
+  type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
   type Memory,
   type State,
   stringToUuid,
-  validateUuid,
   type Task,
   TRIGGER_SCHEMA_VERSION,
   type TriggerConfig,
   type TriggerType,
   type TriggerWakeMode,
   type UUID,
+  validateUuid,
 } from "@elizaos/core";
 
 import {
@@ -344,7 +344,8 @@ async function opCreate(
     delayMs !== undefined
       ? new Date(Date.now() + delayMs).toISOString()
       : undefined;
-  const scheduledAtIso = readString(params.scheduledAtIso) ?? scheduledFromDelay;
+  const scheduledAtIso =
+    readString(params.scheduledAtIso) ?? scheduledFromDelay;
   // A relative delay is one-shot by definition; a contradictory explicit
   // triggerType must not silently drop it.
   const triggerType =

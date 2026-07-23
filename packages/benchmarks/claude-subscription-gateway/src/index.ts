@@ -27,6 +27,11 @@ export {
   normalizeResetTimestampMs,
 } from "./claude-completion.js";
 export {
+  buildGatewayContentAttestation,
+  gatewayContentAttestationViolation,
+  parseGatewayContentContract,
+} from "./content-attestation.js";
+export {
   type CredentialBrokerLease,
   type CredentialLeaseBroker,
   CredentialParityError,
@@ -34,29 +39,15 @@ export {
   type RotatingCredentialCompletionRunnerOptions,
 } from "./credential-rotation.js";
 export {
-  buildGatewayContentAttestation,
-  gatewayContentAttestationViolation,
-  parseGatewayContentContract,
-} from "./content-attestation.js";
-export {
   FairHarnessQueue,
   type FairHarnessQueueOptions,
   QueueCapacityError,
   type QueuedResult,
 } from "./fair-queue.js";
 export {
-  GatewayStorageError,
-  type ClaudeSubscriptionGatewayHandle,
-  type GatewayHarnessEnvironment,
-  type GatewayLogger,
-  type GatewayStorageGuard,
-  type StartClaudeSubscriptionGatewayOptions,
-  startClaudeSubscriptionGateway,
-} from "./server.js";
-export {
   HashChainCorruptionError,
-  type HashChainedJsonlCursor,
   HashChainedJsonl,
+  type HashChainedJsonlCursor,
   type HashChainedJsonlOptions,
 } from "./hash-chained-jsonl.js";
 export {
@@ -70,6 +61,15 @@ export {
   ReplayJournal,
   ReplayMismatchError,
 } from "./replay-journal.js";
+export {
+  type ClaudeSubscriptionGatewayHandle,
+  type GatewayHarnessEnvironment,
+  type GatewayLogger,
+  GatewayStorageError,
+  type GatewayStorageGuard,
+  type StartClaudeSubscriptionGatewayOptions,
+  startClaudeSubscriptionGateway,
+} from "./server.js";
 export type {
   CanonicalChatCompletion,
   CapturedToolCall,

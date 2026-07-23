@@ -666,3 +666,5 @@ simple = { limit = 600, period = 60 }
 name = "CHAT_ROUTE_RATE_LIMITER"
 namespace_id = "1615322"
 simple = { limit = 200, period = 60 }
+
+# deploy-kick 2026-07-22T19:02Z: re-trigger push-event Cloud CF Deploy after GH queue wedge (runs 29918527708/29940486657/29946551580 all starved). [sol-orch]
