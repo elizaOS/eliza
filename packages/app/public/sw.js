@@ -14,9 +14,33 @@
  * Cache is version-keyed (VIEWS_CACHE_NAME, SHELL_CACHE_NAME, ASSETS_CACHE_NAME)
  * so bumping the version strings in a future deploy triggers automatic cleanup
  * of old caches in the `activate` handler.
+ *
+ * PER-DEPLOY VERSIONING (CONVERSATIONS-500-2026-07-22 fix #1): the `BUILD_REV`
+ * token below is REPLACED at build time by the sw-build-rev vite plugin with the
+ * git sha / build timestamp of THIS deploy. That makes `dist/sw.js` byte-change
+ * on every deploy, so the browser's SW byte-diff detects a new worker and runs
+ * install -> skipWaiting -> activate (drop-stale-caches + claim + navigate
+ * windows) automatically. Before this, `public/sw.js` was copied verbatim and
+ * was byte-identical across deploys, so the update machinery below was DEAD CODE
+ * and users needed a manual clear-data ritual to pick up a new renderer. The
+ * cache-name suffixes are derived from BUILD_REV too, so `activate`'s stale-cache
+ * purge drops the PRIOR deploy's caches instead of relying on a hand-bumped -vN.
  */
 
 "use strict";
+
+// Replaced at build time by vite/sw-build-rev-plugin.ts. In the dev/public copy
+// it stays as the literal sentinel, which is fine: dev never installs this SW
+// (registration is PROD-gated) and a missing replacement degrades to a stable
+// suffix rather than breaking the SW.
+const BUILD_REV = "__SW_BUILD_REV__";
+// A short, cache-name-safe suffix derived from the build rev. When the token was
+// not replaced (dev/public copy) fall back to a fixed baseline so cache names
+// stay valid and stable.
+const BUILD_SUFFIX =
+  BUILD_REV && BUILD_REV.indexOf("__SW_BUILD_REV__") === -1
+    ? BUILD_REV.replace(/[^a-zA-Z0-9]/g, "").slice(0, 16) || "dev"
+    : "dev";
 
 // Web Push handler logic (push/notificationclick shaping, deep-link routing,
 // badge helpers) lives in a standalone, unit-tested module. importScripts runs
@@ -31,7 +55,10 @@ try {
   console.warn("[SW] push module unavailable:", err && err.message);
 }
 
-const VIEWS_CACHE_NAME = "elizaos-views-v1";
+// Cache names carry the per-deploy BUILD_SUFFIX so a new deploy's `activate`
+// drops the PRIOR deploy's caches automatically (the -vN literals below are the
+// stable baseline; the suffix makes them deploy-unique without hand-bumping).
+const VIEWS_CACHE_NAME = `elizaos-views-v1-${BUILD_SUFFIX}`;
 // Bump the shell cache to evict any stale precached index/CSS in an installed
 // iOS standalone PWA (Add-to-Home-Screen runs this SW). The network-first shell
 // still updates on reload, but the version bump forces old caches to be dropped
@@ -39,14 +66,14 @@ const VIEWS_CACHE_NAME = "elizaos-views-v1";
 // v5: black launch baseline (theme-color + launch-bg -> #000000; the home
 // background is the black field with the orange ember glow, and boot no
 // longer paints orange). Bump drops any cached prior shell.
-const SHELL_CACHE_NAME = "elizaos-shell-v6";
+const SHELL_CACHE_NAME = `elizaos-shell-v6-${BUILD_SUFFIX}`;
 // Immutable runtime cache for Vite's content-hashed build output (/assets/*).
 // The filename hash IS the cache key's freshness guarantee: any byte change
 // produces a new filename, so cache-first can never serve a stale asset. This
 // insulates a resumed iOS PWA from WKWebView's aggressive HTTP-cache eviction
 // under memory pressure (which otherwise forces a multi-MB re-download of the
 // same immutable bundle). Bump the version to purge the whole cache on deploy.
-const ASSETS_CACHE_NAME = "elizaos-assets-v1";
+const ASSETS_CACHE_NAME = `elizaos-assets-v1-${BUILD_SUFFIX}`;
 const HERO_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 h
 // Bound the immutable /assets/* cache so a long-lived install with many deploys
 // can't grow it without limit. Content-hashed assets accumulate across builds;
@@ -257,6 +284,16 @@ self.addEventListener("fetch", (event) => {
 self.addEventListener("message", (event) => {
   const data = event.data;
   if (!data || typeof data !== "object") return;
+
+  // The page (sw-registration.ts) asks a freshly-installed-but-waiting worker to
+  // activate immediately on a deploy. `install` already calls skipWaiting(), so
+  // this is belt-and-suspenders for a worker that was already waiting when the
+  // page loaded — it makes the new renderer take over without a manual reload
+  // (CONVERSATIONS-500-2026-07-22 fix #1).
+  if (data.type === "SKIP_WAITING") {
+    event.waitUntil(self.skipWaiting());
+    return;
+  }
 
   if (data.type === "sw:evict-view") {
     const viewId = typeof data.viewId === "string" ? data.viewId : null;
