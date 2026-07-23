@@ -56,7 +56,7 @@ describe("validateOcrRecordPaths", () => {
         [
           { path: manifest[0].path },
           { path: manifest[1].path },
-          { path: "/audit/mobile-portrait/retired-social-alpha.png" },
+          { path: "/audit/mobile-portrait/retired-view.png" },
         ],
         manifest,
       ),

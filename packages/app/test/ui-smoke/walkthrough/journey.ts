@@ -536,7 +536,18 @@ export async function installJourneyRoutes(
   lane: Lane,
 ): Promise<JourneyRoutes> {
   await injectFullCapabilityHost(page);
-  await seedAppStorage(page, { "eliza:first-run-complete": "" });
+  await seedAppStorage(page, {
+    "eliza:first-run-complete": "",
+    // The journey's steps 01-03 walk the runtime chooser (Local vs Cloud);
+    // cloud-only sign-in is the default since #15244/#15532, so opt back in
+    // the same way first-run-startup.spec.ts and onboarding-to-home.shared.ts do.
+    "eliza:enable-runtime-chooser": "1",
+    // The injected __electrobunWindowId makes the platform read as desktop,
+    // which arms the post-onboarding permission-priming modal (#12331); its
+    // overlay would swallow every mid-journey click. Mark it already shown,
+    // matching assistant-home-flow / home-widget-priority / all-pages.
+    "eliza:permissions-primed": "1",
+  });
   await installDefaultAppRoutes(page);
   // The agent's TTS playback (e.g. the tutorial tour narrating) posts far-end
   // reference frames to this OPTIONAL echo-cancellation route. The keyless stub
@@ -580,6 +591,40 @@ async function installMockLaneWrites(page: Page): Promise<void> {
   await page.route("**/api/character", async (route) => {
     const method = route.request().method();
     if (method === "PUT" || method === "PATCH") {
+      await fulfillJson(route, 200, { ok: true });
+      return;
+    }
+    await route.fallback();
+  });
+  // The Models & Providers settings section (step 06) reads the model catalog,
+  // model config, and linked accounts; the keyless stub 501s all three, which
+  // trips the diagnostics gate without changing any asserted behaviour. Serve
+  // minimal healthy-empty payloads in the mock lane only.
+  await page.route("**/api/models**", async (route) => {
+    if (route.request().method() === "GET") {
+      const url = new URL(route.request().url());
+      await fulfillJson(
+        route,
+        200,
+        url.pathname.endsWith("/config")
+          ? { config: {}, providers: [] }
+          : { models: [] },
+      );
+      return;
+    }
+    await route.fallback();
+  });
+  await page.route("**/api/accounts", async (route) => {
+    if (route.request().method() === "GET") {
+      await fulfillJson(route, 200, { accounts: [] });
+      return;
+    }
+    await route.fallback();
+  });
+  // Chat collapse/reopen fires a best-effort turn abort; ack it so the gate
+  // sees no 5xx on a write the mock lane cannot execute.
+  await page.route("**/api/turns/*/abort", async (route) => {
+    if (route.request().method() === "POST") {
       await fulfillJson(route, 200, { ok: true });
       return;
     }
@@ -643,7 +688,7 @@ async function sendChatMessage(page: Page, text: string): Promise<void> {
  * the full detent.
  */
 async function pullChatSheetToFull(page: Page): Promise<void> {
-  const overlay = page.getByTestId("continuous-chat-overlay");
+  const overlay = page.getByTestId("chat-overlay");
   const sheet = page.getByTestId("chat-sheet");
   await expect(overlay).toHaveAttribute("data-open", "true", {
     timeout: 15_000,
@@ -681,7 +726,7 @@ async function reachChatReady(ctx: StepContext): Promise<void> {
   ctx.routes.firstRun.setComplete(true);
   await seedFirstRunCompleteBeforeLoad(ctx.page);
   await openAppPath(ctx.page, "/chat");
-  await expect(ctx.page.getByTestId("continuous-chat-overlay")).toBeVisible({
+  await expect(ctx.page.getByTestId("chat-overlay")).toBeVisible({
     timeout: 60_000,
   });
 }
@@ -772,7 +817,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
     async run({ page, lane }) {
       await page.goto("/", { waitUntil: "domcontentloaded" });
       const startedAt = Date.now();
-      const overlay = page.getByTestId("continuous-chat-overlay");
+      const overlay = page.getByTestId("chat-overlay");
       await expect(overlay).toBeVisible({
         timeout: FIRST_RUN_READY_TIMEOUT_MS[lane],
       });
@@ -786,11 +831,11 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
       return {
         assertions: [
           "Loaded / with first-run incomplete",
-          `continuous-chat-overlay + transcript runtime choices became visible in ${firstRunVisibleMs}ms`,
+          `chat-overlay + transcript runtime choices became visible in ${firstRunVisibleMs}ms`,
         ],
         dom: {
           ...(await domMarkers(page, {
-            chatOverlay: '[data-testid="continuous-chat-overlay"]',
+            chatOverlay: '[data-testid="chat-overlay"]',
             runtimeChoice: '[data-testid="choice-__first_run__:runtime:cloud"]',
             root: "#root",
           })),
@@ -863,7 +908,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
           "chat overlay + composer reachable (ready agent)",
         ],
         dom: await domMarkers(page, {
-          overlay: '[data-testid="continuous-chat-overlay"]',
+          overlay: '[data-testid="chat-overlay"]',
           composer: '[data-testid="chat-composer-textarea"]',
         }),
       };
@@ -1005,7 +1050,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
       page.on("request", onRequest);
 
       await sendChatMessage(page, userText);
-      const overlay = page.getByTestId("continuous-chat-overlay");
+      const overlay = page.getByTestId("chat-overlay");
       await expect(overlay).toHaveAttribute("data-open", "true", {
         timeout: 15_000,
       });
@@ -1052,8 +1097,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
             : "Reply came from the keyless mock (mock lane)",
         ],
         dom: await domMarkers(page, {
-          overlayOpen:
-            '[data-testid="continuous-chat-overlay"][data-open="true"]',
+          overlayOpen: '[data-testid="chat-overlay"][data-open="true"]',
         }),
         trajectory,
       };
@@ -1238,7 +1282,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
         .getByTestId("widget-host-home")
         .or(page.getByTestId("home-launcher-surface"));
       await expect(home.first()).toBeVisible({ timeout: 30_000 });
-      const overlay = page.getByTestId("continuous-chat-overlay");
+      const overlay = page.getByTestId("chat-overlay");
       const open = await overlay.getAttribute("data-open").catch(() => null);
       expect(open === "true").toBeFalsy();
       return {
@@ -1261,7 +1305,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
     async run(ctx) {
       const { page } = ctx;
       await openAppPath(page, "/chat");
-      const overlay = page.getByTestId("continuous-chat-overlay");
+      const overlay = page.getByTestId("chat-overlay");
       await expect(overlay).toBeVisible({ timeout: 30_000 });
       const grabber = page.getByTestId("chat-sheet-grabber");
       if (await grabber.isVisible().catch(() => false)) {
@@ -1279,7 +1323,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
             : "Chat reopened (thread hydration in progress)",
         ],
         dom: await domMarkers(page, {
-          overlay: '[data-testid="continuous-chat-overlay"]',
+          overlay: '[data-testid="chat-overlay"]',
         }),
       };
     },
@@ -1398,7 +1442,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
     expectation:
       "The overlay collapses to its pill/rest state while the composer remains reachable.",
     async run({ page }) {
-      const overlay = page.getByTestId("continuous-chat-overlay");
+      const overlay = page.getByTestId("chat-overlay");
       const composerEl = composer(page);
       await composerEl.press("Escape").catch(() => undefined);
       const backdrop = page.getByTestId("chat-sheet-backdrop");
@@ -1426,7 +1470,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
       "The overlay expands from rest back to the open/full state with the thread visible.",
     async run({ page }) {
       const grabber = page.getByTestId("chat-sheet-grabber");
-      const overlay = page.getByTestId("continuous-chat-overlay");
+      const overlay = page.getByTestId("chat-overlay");
       if (await grabber.isVisible({ timeout: 3_000 }).catch(() => false)) {
         await grabber.focus().catch(() => undefined);
         await page.keyboard.press("ArrowUp").catch(() => undefined);
@@ -1549,7 +1593,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
       if (reachable) {
         await input.click({ timeout: 10_000 }).catch(() => undefined);
       }
-      const overlay = page.getByTestId("continuous-chat-overlay");
+      const overlay = page.getByTestId("chat-overlay");
       const overlayVisible = await overlay
         .isVisible({ timeout: 10_000 })
         .catch(() => false);
@@ -1570,7 +1614,7 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
             : "Returned toward dashboard",
         ],
         dom: await domMarkers(page, {
-          overlay: '[data-testid="continuous-chat-overlay"]',
+          overlay: '[data-testid="chat-overlay"]',
         }),
       };
     },

@@ -9,6 +9,7 @@
 
 import type { ViewCapability, ViewType } from "@elizaos/core";
 import { resolveServerOnlyPort } from "@elizaos/core";
+import { createViewsRequestHeaders } from "./views-request-auth.js";
 
 const REQUEST_TIMEOUT_MS = 10_000;
 
@@ -298,7 +299,7 @@ export function createViewsClient(): ViewsClient {
 			const url = `${getApiBase()}/api/views${qs}`;
 			const response = await fetch(url, {
 				method: "GET",
-				headers: { "Content-Type": "application/json" },
+				headers: createViewsRequestHeaders(),
 				signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
 			});
 			if (!response.ok) {
@@ -311,7 +312,7 @@ export function createViewsClient(): ViewsClient {
 		async getCurrentView() {
 			const response = await fetch(`${getApiBase()}/api/views/current`, {
 				method: "GET",
-				headers: { "Content-Type": "application/json" },
+				headers: createViewsRequestHeaders(),
 				signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
 			});
 			if (!response.ok) {
@@ -326,7 +327,7 @@ export function createViewsClient(): ViewsClient {
 				`${getApiBase()}/api/views/${encodeURIComponent(viewId)}/navigate`,
 				{
 					method: "POST",
-					headers: { "Content-Type": "application/json" },
+					headers: createViewsRequestHeaders(),
 					body: JSON.stringify({ path: opts.path, viewType: opts.viewType }),
 					signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
 				},

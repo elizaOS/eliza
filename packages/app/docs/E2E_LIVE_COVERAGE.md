@@ -278,7 +278,7 @@ Only two controls remain genuinely uncovered, both with proven blockers:
 
 - **Chat message-action rail (copy/play/edit/delete)** — NOT a web feature: the
   rail lives only on the full `ChatView` transcript (`chat-transcript` →
-  `chat-message`), but the web chat is the continuous-chat *overlay* (`thread-line`,
+  `chat-message`), but the web chat is the chat *overlay* (`thread-line`,
   no rail), **both** `AppWorkspaceChrome` mounts (`App.tsx:340,357`) pass
   `chatDisabled`, and the orchestrator renders no transcript — so the rail is never
   rendered anywhere in the web app. It is a desktop/full-ChatView surface, covered

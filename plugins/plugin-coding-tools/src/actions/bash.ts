@@ -22,6 +22,7 @@ import {
 import { resolveRuntimeExecutionMode } from "@elizaos/shared";
 import { classifyDestructiveCommand } from "../lib/destructive-gate.js";
 import {
+  capTranscriptForChat,
   failureToActionResult,
   fencePreformatted,
   readBoolParam,
@@ -1458,10 +1459,10 @@ export const shellAction: Action = {
           .filter(Boolean)
           .join("\n");
         // Fenced (#16563): the stdout/stderr blocks are the same transcript
-        // format the fenced foreground path emits.
+        // format the fenced foreground path emits. Capped: bounded for chat.
         if (callback)
           await callback({
-            text: fencePreformatted(text),
+            text: fencePreformatted(capTranscriptForChat(text)),
             source: "coding-tools",
           });
         return successActionResult(text, {
@@ -1776,7 +1777,10 @@ export const shellAction: Action = {
     const text = streams.length > 0 ? `${head}\n${streams}` : head;
 
     if (callback)
-      await callback({ text: fencePreformatted(text), source: "coding-tools" });
+      await callback({
+        text: fencePreformatted(capTranscriptForChat(text)),
+        source: "coding-tools",
+      });
 
     if (timedOut) {
       return failureToActionResult(

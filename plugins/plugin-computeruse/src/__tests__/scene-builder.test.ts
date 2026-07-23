@@ -25,8 +25,8 @@ import type { DisplayDescriptor } from "../types.js";
 
 function crc32(bytes: Buffer): number {
   let crc = 0xffffffff >>> 0;
-  for (let i = 0; i < bytes.length; i += 1) {
-    crc = (crc ^ bytes[i]!) >>> 0;
+  for (const byte of bytes) {
+    crc = (crc ^ byte) >>> 0;
     for (let j = 0; j < 8; j += 1) {
       crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
     }
@@ -140,9 +140,11 @@ function makeBuilder(
   let i = 0;
   const ocr = makeFakeOcr(options.ocrBoxesPerCall ?? [[]]);
   const builder = new SceneBuilder({
-    captureAll: async () =>
-      captures[Math.min(i++, captures.length - 1)] ??
-      captures[captures.length - 1]!,
+    captureAll: async () => {
+      const next = captures[Math.min(i++, captures.length - 1)];
+      if (!next) throw new Error("capture fixture list is empty");
+      return next;
+    },
     captureOne: async () => {
       const first = captures[0]?.[0];
       if (!first) throw new Error("capture fixture list is empty");

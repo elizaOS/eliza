@@ -167,10 +167,11 @@ export const webSearch: Action & Record<string, unknown> = {
   contexts: [],
   suppressInitialMessage: true,
   routingHint:
-    "external/open-web or current real-world info (prices, news, weather, public facts about people/places/products, 'latest on...', recommendations) -> WEB_SEARCH; a specific URL you can already name -> WEB_FETCH; do NOT use for the user's own notes/memories/private data -> MEMORY (action=search); for messages already in a channel -> MESSAGE (action=search); for the skill catalog -> SKILL",
+    "external/open-web info (news, public facts about people/places/products, 'latest on...', recommendations) -> WEB_SEARCH; a live NOW-value with a constructable endpoint (spot crypto/stock price, exchange rate, current weather) -> WEB_FETCH to that live API (api.coingecko.com, wttr.in/<city>?format=j1) — search-index snippets lag live values by minutes-to-hours, the endpoint is exact; a specific URL you can already name -> WEB_FETCH; do NOT use for the user's own notes/memories/private data -> MEMORY (action=search); for messages already in a channel -> MESSAGE (action=search); for the skill catalog -> SKILL",
   description:
     "Search the open web and answer from the results. " +
-    "Use this for any question that needs current, real-world, or external information — prices, exchange rates, weather, sports scores, stock/crypto values, news, current events, recommendations ('best X', 'top Y'), facts about people, places, products, or companies, 'what/who/where/when is …', 'latest on …', 'how to …'. " +
+    "Use this for any question that needs current, real-world, or external information — news, current events, sports scores, recommendations ('best X', 'top Y'), facts about people, places, products, or companies, 'what/who/where/when is …', 'latest on …', 'how to …'. " +
+    "For a live NOW-value (spot price, exchange rate, current weather) prefer WEB_FETCH to a live JSON endpoint — search snippets lag live values; use WEB_SEARCH for those only when no endpoint is constructable. " +
     "Returns ranked results (title, url, snippet) inline THIS turn. The snippets contain the answer — read them and answer the user directly and completely right now, citing a source; do not promise to look further. " +
     "Keyless and fast; no API key and no coding sub-agent required.",
   parameters: [

@@ -57,6 +57,36 @@ import {
 
 const execFileAsync = promisify(execFile);
 
+async function createRecursiveDeleteCommand(): Promise<{
+  command: string;
+  target: string;
+}> {
+  const target = await fs.mkdtemp(
+    path.join(os.tmpdir(), "coding-tools-destructive-gate-"),
+  );
+  const quotedTarget =
+    process.platform === "win32"
+      ? `'${target.replaceAll("'", "''")}'`
+      : `'${target.replaceAll("'", "'\\''")}'`;
+  return {
+    target,
+    command:
+      process.platform === "win32"
+        ? `Remove-Item -LiteralPath ${quotedTarget} -Recurse -Force`
+        : `rm -rf ${quotedTarget}`,
+  };
+}
+
+async function pathExists(target: string): Promise<boolean> {
+  try {
+    await fs.access(target);
+    return true;
+  } catch {
+    // error-policy:J3 filesystem probe; a missing path is the explicit signal.
+    return false;
+  }
+}
+
 interface RuntimeOptions {
   blockedPaths?: string;
   shellTimeoutMs?: number;
@@ -460,6 +490,50 @@ describeIfPosix("shellAction", () => {
     expect(data?.command).toBe("echo hello");
   });
 
+  it("caps only the visible callback for long foreground output", async () => {
+    const lines = Array.from(
+      { length: 300 },
+      (_, index) =>
+        `foreground-${index.toString().padStart(3, "0")}-xxxxxxxxxxxxxxxxxxxx`,
+    );
+    const router = makeShellRouter(async () => ({
+      output: lines.join("\n"),
+      exitCode: 0,
+      timedOut: false,
+    }));
+    const { runtime } = await makeRuntime({ capabilityRouter: router });
+    const posts: Array<{ text: string; source?: string }> = [];
+
+    const result = requireActionResult(
+      await shellAction.handler?.(
+        runtime,
+        makeMessage(),
+        undefined,
+        { command: "printf long-output" },
+        async (content) => {
+          posts.push(content as { text: string; source?: string });
+          return [];
+        },
+      ),
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.text).toContain(lines[0]);
+    expect(result.text).toContain(lines[150]);
+    expect(result.text).toContain(lines[299]);
+    expect(result.text).not.toContain("lines omitted — ask to see more");
+
+    expect(posts).toHaveLength(1);
+    expect(posts[0].source).toBe("coding-tools");
+    expect(posts[0].text.startsWith("```")).toBe(true);
+    expect(posts[0].text.trimEnd().endsWith("```")).toBe(true);
+    expect(posts[0].text).toContain(lines[0]);
+    expect(posts[0].text).not.toContain(lines[150]);
+    expect(posts[0].text).toContain(lines[299]);
+    expect(posts[0].text).toMatch(/\[\d+ lines omitted — ask to see more\]/);
+    expect(posts[0].text.length).toBeLessThan(1700);
+  });
+
   it("marks empty stdout and stderr explicitly for successful commands", async () => {
     const { runtime } = await makeRuntime();
     const result = await shellAction.handler?.(
@@ -623,6 +697,55 @@ describeIfPosix("shellAction", () => {
       handle,
       (data) => data.status === "exited",
     );
+  });
+
+  it("caps only the visible callback for long background polls", async () => {
+    const { runtime } = await makeRuntime();
+    const message = makeMessage();
+    const start = requireActionResult(
+      await shellAction.handler?.(runtime, message, undefined, {
+        action: "start_background",
+        command:
+          'i=0; while [ "$i" -lt 300 ]; do printf \'background-%03d-xxxxxxxxxxxxxxxxxxxx\\n\' "$i"; i=$((i + 1)); done',
+      }),
+    );
+    const handle = (start.data as Record<string, unknown>).handle as string;
+    await pollUntil(
+      runtime,
+      message,
+      handle,
+      (data) => data.status === "exited",
+    );
+    const posts: Array<{ text: string; source?: string }> = [];
+
+    const result = requireActionResult(
+      await shellAction.handler?.(
+        runtime,
+        message,
+        undefined,
+        { action: "poll_background", handle },
+        async (content) => {
+          posts.push(content as { text: string; source?: string });
+          return [];
+        },
+      ),
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.text).toContain("background-000-xxxxxxxxxxxxxxxxxxxx");
+    expect(result.text).toContain("background-150-xxxxxxxxxxxxxxxxxxxx");
+    expect(result.text).toContain("background-299-xxxxxxxxxxxxxxxxxxxx");
+    expect(result.text).not.toContain("lines omitted — ask to see more");
+
+    expect(posts).toHaveLength(1);
+    expect(posts[0].source).toBe("coding-tools");
+    expect(posts[0].text.startsWith("```")).toBe(true);
+    expect(posts[0].text.trimEnd().endsWith("```")).toBe(true);
+    expect(posts[0].text).toContain("background-000-xxxxxxxxxxxxxxxxxxxx");
+    expect(posts[0].text).not.toContain("background-150-xxxxxxxxxxxxxxxxxxxx");
+    expect(posts[0].text).toContain("background-299-xxxxxxxxxxxxxxxxxxxx");
+    expect(posts[0].text).toMatch(/\[\d+ lines omitted — ask to see more\]/);
+    expect(posts[0].text.length).toBeLessThan(1700);
   });
 
   it("reports buffer truncation when background output exceeds the cap", async () => {
@@ -1850,37 +1973,44 @@ describe("platform-aware canned resource commands", () => {
 
 describe("destructive-bulk confirm gate", () => {
   it("blocks an unconfirmed recursive delete with needs_confirmation", async () => {
+    const { command, target } = await createRecursiveDeleteCommand();
     const { runtime } = await makeRuntime();
-    const result = await shellAction.handler?.(
-      runtime,
-      makeMessage(undefined, "clean up the old projects"),
-      undefined,
-      { command: "rm -rf /tmp/coding-tools-gate-test-nonexistent" },
-    );
-    expect(result.success).toBe(false);
-    expect(result.text).toContain("needs_confirmation");
-    expect(result.text).toContain("confirm=true");
-    const data = result.data as Record<string, unknown> | undefined;
-    expect(data?.destructive_reason).toBe("recursive delete");
+    try {
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(undefined, "clean up the old projects"),
+        undefined,
+        { command },
+      );
+      expect(result.success).toBe(false);
+      expect(result.text).toContain("needs_confirmation");
+      expect(result.text).toContain("confirm=true");
+      const data = result.data as Record<string, unknown> | undefined;
+      expect(data?.destructive_reason).toBe("recursive delete");
+      expect(await pathExists(target)).toBe(true);
+    } finally {
+      await fs.rm(target, { recursive: true, force: true });
+    }
   });
 
   it("runs the same command when confirm=true", async () => {
+    const { command, target } = await createRecursiveDeleteCommand();
     const { runtime } = await makeRuntime();
     const result = await shellAction.handler?.(
       runtime,
       makeMessage(undefined, "yes do it"),
       undefined,
       {
-        command: "rm -rf /tmp/coding-tools-gate-test-nonexistent",
+        command,
         confirm: true,
       },
     );
-    // The path does not exist; rm -rf exits 0 on nonexistent targets — the
-    // point is the gate let it through to real execution.
     expect(result.success).toBe(true);
+    expect(await pathExists(target)).toBe(false);
   });
 
   it("is exempt on the coding sub-agent path (task briefs carry confirmation)", async () => {
+    const { command, target } = await createRecursiveDeleteCommand();
     process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE = "1";
     try {
       const { runtime } = await makeRuntime();
@@ -1888,15 +2018,18 @@ describe("destructive-bulk confirm gate", () => {
         runtime,
         makeMessage(undefined, "build step"),
         undefined,
-        { command: "rm -rf /tmp/coding-tools-gate-test-nonexistent" },
+        { command },
       );
       expect(result.success).toBe(true);
+      expect(await pathExists(target)).toBe(false);
     } finally {
       delete process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE;
+      await fs.rm(target, { recursive: true, force: true });
     }
   });
 
   it("honors the ELIZA_SHELL_DESTRUCTIVE_CONFIRM=0 escape hatch", async () => {
+    const { command, target } = await createRecursiveDeleteCommand();
     process.env.ELIZA_SHELL_DESTRUCTIVE_CONFIRM = "0";
     try {
       const { runtime } = await makeRuntime();
@@ -1904,11 +2037,13 @@ describe("destructive-bulk confirm gate", () => {
         runtime,
         makeMessage(undefined, "clean up"),
         undefined,
-        { command: "rm -rf /tmp/coding-tools-gate-test-nonexistent" },
+        { command },
       );
       expect(result.success).toBe(true);
+      expect(await pathExists(target)).toBe(false);
     } finally {
       delete process.env.ELIZA_SHELL_DESTRUCTIVE_CONFIRM;
+      await fs.rm(target, { recursive: true, force: true });
     }
   });
 
@@ -1918,7 +2053,7 @@ describe("destructive-bulk confirm gate", () => {
       runtime,
       makeMessage(undefined, "whats here"),
       undefined,
-      { command: "ls /tmp" },
+      { command: 'node -e "process.exit(0)"' },
     );
     expect(result.success).toBe(true);
   });

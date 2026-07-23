@@ -366,6 +366,20 @@ describe("assertRequiredBundledPackagesLanded", () => {
     ).toBe(false);
   });
 
+  it("keeps runtime Smithers consumers on the engine-only dependency surface", () => {
+    for (const packageManifest of [
+      "plugins/plugin-agent-orchestrator/package.json",
+      "plugins/plugin-workflow/package.json",
+    ]) {
+      const dependencies = getRuntimeDependencies(
+        path.join(repoRoot, packageManifest),
+      );
+
+      expect(dependencies).toContain("@smithers-orchestrator/engine");
+      expect(dependencies).not.toContain("smithers-orchestrator");
+    }
+  });
+
   it("keeps lucide-react as a runtime dependency", () => {
     const packageRoot = path.join(tmpDir, "icon-consumer");
     mkdirSync(packageRoot, { recursive: true });

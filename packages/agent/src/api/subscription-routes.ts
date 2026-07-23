@@ -157,8 +157,11 @@ export async function handleSubscriptionRoutes(
         fetchAnthropicOAuthProfile,
       } = await loadSubscriptionAuth();
       const flow = state._anthropicFlow;
+      if (flow) {
+        flow.submitCode(body.code);
+      }
       const credentials = flow
-        ? (flow.submitCode(body.code), await flow.credentials)
+        ? await flow.credentials
         : await exchangeAnthropicAuthorizationCode(body.code);
       const profile = await fetchAnthropicOAuthProfile(credentials.access);
       const accountId = profile.accountId ?? crypto.randomUUID();

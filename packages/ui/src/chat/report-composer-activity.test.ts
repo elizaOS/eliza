@@ -34,7 +34,7 @@ describe("reportComposerActivity (#14679)", () => {
   it("POSTs composer metadata with auth and no draft text", () => {
     reportComposerActivity({
       activity: "typing_paused",
-      surface: "continuous_chat_overlay",
+      surface: "chat_overlay",
       conversationId: "conversation-1",
       draftLength: 17,
       idleForMs: 2000,
@@ -54,7 +54,7 @@ describe("reportComposerActivity (#14679)", () => {
     const body = JSON.parse(init.body as string);
     expect(body).toEqual({
       activity: "typing_paused",
-      surface: "continuous_chat_overlay",
+      surface: "chat_overlay",
       conversationId: "conversation-1",
       draftLength: 17,
       idleForMs: 2000,
@@ -67,7 +67,7 @@ describe("reportComposerActivity (#14679)", () => {
   it("reports a cleared draft reason", () => {
     reportComposerActivity({
       activity: "draft_abandoned",
-      surface: "continuous_chat_overlay",
+      surface: "chat_overlay",
       draftLength: 0,
       reason: "cleared",
     });
@@ -90,7 +90,7 @@ describe("reportComposerActivity (#14679)", () => {
     expect(() =>
       reportComposerActivity({
         activity: "typing_started",
-        surface: "continuous_chat_overlay",
+        surface: "chat_overlay",
         draftLength: 3,
       }),
     ).not.toThrow();
@@ -102,7 +102,7 @@ describe("reportComposerActivity (#14679)", () => {
 
     reportComposerActivity({
       activity: "typing_started",
-      surface: "continuous_chat_overlay",
+      surface: "chat_overlay",
       draftLength: 3,
     });
 

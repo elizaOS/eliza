@@ -83,8 +83,10 @@ const transformAtRest: Invariant = (model, observed, ctx) => {
   return null;
 };
 
-/** §D item 23: exactly one half is visible — the other is inert. */
+/** §D item 23: exactly one half is visible — the other is inert. Vacuous on
+ *  the combined home surface, which renders no separate halves at all. */
 const exactlyOneHalfInert: Invariant = (model, observed) => {
+  if (observed.hasHalves === false) return null;
   const expectHomeInert = model.page !== "home";
   const expectLauncherInert = model.page !== "launcher";
   if (observed.homeInert !== expectHomeInert) {

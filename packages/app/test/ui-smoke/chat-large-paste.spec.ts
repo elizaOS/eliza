@@ -133,7 +133,7 @@ test("chat overlay: a large paste becomes a pasted-text.md attachment and ships 
   const conversations = await installPasteStreamMock(page);
 
   await openAppPath(page, "/chat");
-  await expect(page.getByTestId("continuous-chat-overlay")).toBeVisible({
+  await expect(page.getByTestId("chat-overlay")).toBeVisible({
     timeout: 60_000,
   });
 

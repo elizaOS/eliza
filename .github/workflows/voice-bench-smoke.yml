@@ -160,7 +160,9 @@ jobs:
       - voiceagentbench-smoke
       - voicebench-quality-unit-smoke
       - voicebench-ts-unit
-    if: always()
+    # !cancelled(): still summarize (and hard-fail) when a smoke job fails, but
+    # don't turn a concurrency-superseded/cancelled run into a red summary.
+    if: ${{ !cancelled() }}
     steps:
       - name: Summarize smoke results
         run: |

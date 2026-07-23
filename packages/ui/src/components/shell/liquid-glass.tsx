@@ -1,5 +1,5 @@
 /**
- * Liquid-glass recipe shared by the chat sheet (ContinuousChatOverlay) and the
+ * Liquid-glass recipe shared by the chat sheet (ChatOverlay) and the
  * notification cards (NotificationsHomeCenter).
  *
  * "Liquid glass" reads from the EDGE, not the fill. Three layers build it:

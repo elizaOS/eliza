@@ -1,7 +1,7 @@
-# Continuous chat sheet — state × gesture transition matrix
+# Chat sheet — state × gesture transition matrix
 
 The single source of truth for what every gesture does from every resting state
-of the pull-up chat sheet (`ContinuousChatOverlay.tsx`). The e2e continuum suite
+of the pull-up chat sheet (`ChatOverlay.tsx`). The e2e continuum suite
 (`run-chat-sheet-e2e.mjs`, `runContinuumSuite`) asserts the load-bearing rows.
 
 ## Resting states
@@ -37,7 +37,7 @@ Continuous motion values: `threadHeight` (px, finger-tracked), `openProgress`
 | Held drag up, released anywhere | One continuum: first 120px morphs pill→input (`openProgress`), excess flows into the thread height. Release: < 64px of thread → INPUT; ≥ half+64 → FULL; between → HALF or free rest; a long haul (≥ 80% of the screen) → **MAXIMIZED**. |
 | Slow drag up < half the pill morph (`openProgress` < 0.5) | springs back to PILL. |
 | Flick/drag down | stays PILL (lowest state). |
-| Horizontal swipe | pages home ↔ launcher (sheet closed only). |
+| Horizontal swipe | no-op (no navigation — the home/launcher rail owns paging; the gesture is classified + consumed so it can't misread as a tap). |
 
 ### From INPUT
 | Gesture | Result |
@@ -59,6 +59,7 @@ Continuous motion values: `threadHeight` (px, finger-tracked), `openProgress`
 | Held over-pull past FULL | tracks the finger 1:1: the panel grows from the inset FULL height to the full-bleed ceiling across the REAL pixel gap (`fullPanelMaxH − insetPanelMaxH`), the shape morph (corners/insets/height cap) a pure function of that height; the grabber bar fades OUT with the same morph (`grabberBarOpacity`), fully dissolved by edge-to-edge. Travel past the ceiling is CONSUMED (offset rebased), so a reversal moves the sheet with the very first downward pixel. Release with the morph ≥ half complete — or a long haul from ≤ HALF sweeping ≥ 80% of the screen — commits MAXIMIZED; short of it, springs back to FULL. A pull that entered the over-pull zone but reversed back below the inset FULL height ABANDONS the maximize (its peak is voided) — the release rests where the finger left it, never re-maximizing. |
 | Held drag past the bottom ≥ 40px overshoot | PILL (chat → input → pill in one motion). |
 | Tap scrim/outside | keyboard up → dismiss keyboard; else collapse to INPUT. |
+| Horizontal swipe on the grabber | dismisses the open chat to the PILL (put-the-chat-away), never navigates. |
 | Escape | collapse to INPUT. |
 
 ### From FULL
@@ -122,8 +123,8 @@ hysteresis so end-of-gesture jitter can't flap it).
 
 | While holding | Fires when | Reverse (same held drag) |
 | --- | --- | --- |
-| **→ MAXIMIZED** | over-pull ≥ half the morph gap past FULL, or (started ≤ HALF) the pull sweeps ≥ 80% of the screen | pull back down past the slop → un-maximizes, then tracks the panel shrinking 1:1 (re-arms only below the inset FULL height) |
-| **→ PILL** | an open-sheet drag carried ≥ 40px past the bottom, or a big yank that started above HALF running out the bottom; or the input→pill morph crosses halfway | pull back up past the slop → resumes the pill-open drag from zero |
+| **→ MAXIMIZED** | over-pull ≥ half the morph gap past FULL (from the FULL detent itself the lower `MAXIMIZE_COMMIT_T` fraction applies — the panel is pinned at the inset ceiling there, so the zone must snap promptly), or the pull SWEEPS ≥ 80% of the screen from its start (travel is measured from the gesture's true origin — a pill start credits the morph distance, an open start subtracts its resting height) | pull back down past the hysteresis → un-maximizes AND restores the gesture's starting mode/free-rest (so a cancel settles where the drag began), then tracks the panel shrinking 1:1. Both the over-pull peak and the long-haul sweep are VOIDED by the reversal (below inset FULL / below HALF respectively) — the release can never re-maximize an abandoned pull. |
+| **→ PILL** | an open-sheet drag carried ≥ 40px past the bottom, or an input-start drag whose input→pill morph crosses halfway | pulling back up simply continues as a pill-open drag (the release paths for a pill-state gesture land it by height/velocity as usual) |
 
 The release then just settles where the mid-drag commit already landed the sheet.
 The initiating handle (grabber or pill) is kept mounted and pointer-active for

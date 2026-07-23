@@ -32,9 +32,10 @@ export function renderMarkdown(report: EvidenceReport): string {
   lines.push("Readiness score = pass / (pass + fail), excluding warn/skip.");
   lines.push("");
 
-  const tscIds = Object.keys(report.controls).sort();
-  for (const tsc of tscIds) {
-    const block = report.controls[tsc]!;
+  const controlEntries = Object.entries(report.controls).sort(([a], [b]) =>
+    a < b ? -1 : a > b ? 1 : 0,
+  );
+  for (const [tsc, block] of controlEntries) {
     lines.push(`## ${tsc}`);
     lines.push("");
     lines.push(
