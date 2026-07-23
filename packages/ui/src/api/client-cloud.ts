@@ -3187,7 +3187,8 @@ ElizaClient.prototype.provisionCloudSandbox = async (options) => {
   }
 
   // Step 3: Poll job status
-  const deadline = Date.now() + 120_000;
+  const startedAt = Date.now();
+  const deadline = startedAt + 120_000;
   while (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, 2000));
 
@@ -3221,11 +3222,55 @@ ElizaClient.prototype.provisionCloudSandbox = async (options) => {
       throw new Error(`Provisioning failed: ${error ?? "Unknown error"}`);
     }
 
-    onProgress?.("provisioning", `Status: ${status ?? "pending"}...`);
+    onProgress?.(
+      "provisioning",
+      describeProvisioningWait(status, Date.now() - startedAt),
+    );
   }
 
   throw new Error("Provisioning timed out after 2 minutes");
 };
+
+// Elapsed-time thresholds for the provisioning wait narration. A dedicated
+// provision typically lands in ~30-45s (PROVISIONING-SLOW-2026-07-22 traces:
+// create→first-turn 34-44s typical), so past ~20s the copy reassures rather
+// than repeats, and past ~60s it names the elapsed time so a degraded-mode
+// wait never looks frozen.
+const PROVISION_WAIT_REASSURE_MS = 20_000;
+const PROVISION_WAIT_LONG_MS = 60_000;
+
+/**
+ * Human copy for one provisioning-wait poll tick. The raw
+ * `Status: ${status}...` narration leaked backend job states ("pending",
+ * "in_progress") to the user and never changed across a 30s+ wait — the
+ * "static spinner" class from the 2026-07-22 QA reports. Instead: map the
+ * real job status to a staged step (getting things ready → starting up), and
+ * advance the copy with elapsed time so a long wait visibly progresses.
+ * Exported for unit tests.
+ */
+export function describeProvisioningWait(
+  status: string | undefined,
+  elapsedMs: number,
+): string {
+  if (elapsedMs >= PROVISION_WAIT_LONG_MS) {
+    // Bucketed to 30s steps: consumers (the first-run conductor) seed one
+    // chat turn per unique status text, so a per-tick counter would spam a
+    // new bubble every poll. A 30s step still visibly advances a long wait.
+    const bucket = Math.floor(elapsedMs / 30_000) * 30;
+    return `Still working — about ${bucket}s in. Almost there…`;
+  }
+  const active =
+    normalizeCloudJobStatus(status) === "processing" ||
+    normalizeCloudJobStatus(status) === "retrying";
+  if (elapsedMs >= PROVISION_WAIT_REASSURE_MS) {
+    return active
+      ? "Starting your agent — this usually takes under a minute…"
+      : "Waiting for a sandbox slot — this usually takes under a minute…";
+  }
+  return active
+    ? "Starting your agent…"
+    : "Getting your agent's environment ready…";
+}
 
 // Dedicated cold-boot wait defaults. A dedicated container cold-starts in
 // ~5 minutes (#8621, measured live 2026-06-19); the generic 202-retry budget in
@@ -3312,12 +3357,25 @@ export async function waitForCloudAgentRunning(
         )}s. It may still be booting — try again in a minute.`,
       );
     }
-    onProgress?.(
-      "starting",
-      `Starting your agent (${lastStatus}) — ${Math.round(elapsedMs / 1000)}s elapsed...`,
-    );
+    onProgress?.("starting", describeAgentWakeWait(elapsedMs));
     await new Promise((r) => setTimeout(r, pollIntervalMs));
   }
+}
+
+/**
+ * Human copy for one cold-boot wake poll tick. The old narration leaked the
+ * raw backend status (`Starting your agent (pending) — 35s elapsed...`) and
+ * changed every poll, which spams consumers that seed one chat turn per
+ * unique status text (the first-run conductor). Staged, minute-bucketed copy
+ * instead: it advances visibly on a long wait without a per-tick counter.
+ * Exported for unit tests.
+ */
+export function describeAgentWakeWait(elapsedMs: number): string {
+  if (elapsedMs < 60_000) {
+    return "Starting your agent — a cold boot can take a few minutes…";
+  }
+  const minutes = Math.floor(elapsedMs / 60_000);
+  return `Still starting your agent — about ${minutes} minute${minutes === 1 ? "" : "s"} in. Cold boots can take a few minutes…`;
 }
 
 /**
