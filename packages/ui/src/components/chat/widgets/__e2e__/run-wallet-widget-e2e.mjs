@@ -94,6 +94,24 @@ await writeFile(
   "group relative flex h-auto w-full overflow-hidden rounded-2xl border border-[color:color-mix(in_srgb,var(--brand-white)_20%,var(--brand-black))] bg-[var(--brand-black)] text-left text-[var(--brand-white)]";
 export function useWidgetNavigation() { return { openView() {}, openTab() {} }; }\n`,
 );
+// Wallet-section surface chrome deps (#16943): ViewHeader pulls the app-wide
+// navigation + agent-surface graphs (which reach Node-only modules through the
+// package barrels). The section composition under test — WalletSectionNav +
+// real SectionNav + real app-shell registry + real widget — stays real; these
+// three chrome seams are replaced with browser-safe minimal impls.
+const agentSurfaceStub = join(outDir, "agent-surface-stub.ts");
+await writeFile(
+  agentSurfaceStub,
+  `export function useAgentElement() { return { ref: () => {}, agentProps: {} }; }\n`,
+);
+const navigationStub = join(outDir, "navigation-stub.ts");
+await writeFile(
+  navigationStub,
+  `export function shouldUseHashNavigation() { return false; }\n`,
+);
+// The UI registry-host shim re-exports through the @elizaos/shared barrel;
+// resolve it straight to the self-contained shared source module instead.
+const registryHostSource = join(here, "../../../../../../shared/src/registry-host.ts");
 
 const stubModules = {
   name: "stub-wallet-deps",
@@ -101,6 +119,13 @@ const stubModules = {
     b.onResolve({ filter: /\/api$/ }, () => ({ path: apiStub }));
     b.onResolve({ filter: /useAuthStatus$/ }, () => ({ path: authStub }));
     b.onResolve({ filter: /home-widget-card$/ }, () => ({ path: navStub }));
+    b.onResolve({ filter: /\/agent-surface$/ }, () => ({
+      path: agentSurfaceStub,
+    }));
+    b.onResolve({ filter: /\/navigation$/ }, () => ({ path: navigationStub }));
+    b.onResolve({ filter: /\/registry-host$/ }, () => ({
+      path: registryHostSource,
+    }));
   },
 };
 
@@ -207,6 +232,107 @@ try {
     .locator('[data-testid="chat-widget-wallet-unavailable"]')
     .screenshot({ path: join(outDir, "wallet-unavailable-card.png") });
   console.log("  📸 wallet-unavailable.png");
+
+  // WALLET SECTION surface (#16943) — the decided routed mount after the home
+  // demotion: the REAL WalletSectionNav (real app-shell registry + tab strip)
+  // must carry the price rows, proving the surface cannot silently orphan the
+  // widget again. Captured at desktop and mobile viewports for PR evidence.
+  const desktop = await browser.newContext({
+    viewport: { width: 1280, height: 800 },
+    deviceScaleFactor: 2,
+  });
+  const desktopPage = await desktop.newPage();
+  desktopPage.on("pageerror", (e) => errors.push(String(e)));
+  await desktopPage.goto(
+    `file://${htmlPath}?surface=wallet-section&state=default`,
+  );
+  await desktopPage.waitForSelector(
+    '[data-testid="wallet-section-price-surface"] [data-testid="chat-widget-wallet-prices"]',
+    { timeout: 8000 },
+  );
+  const sectionRows = await desktopPage
+    .locator(
+      '[data-testid="wallet-section-price-surface"] [data-testid^="wallet-price-row-"]',
+    )
+    .evaluateAll((els) => els.map((e) => e.dataset.testid));
+  assert(
+    JSON.stringify(sectionRows) ===
+      JSON.stringify([
+        "wallet-price-row-BTC",
+        "wallet-price-row-SOL",
+        "wallet-price-row-ETH",
+      ]),
+    `WALLET SECTION surface carries the default BTC/SOL/ETH price rows (got ${JSON.stringify(sectionRows)})`,
+  );
+  assert(
+    (await desktopPage.locator('[data-testid="section-nav-wallet"]').count()) ===
+      1,
+    "WALLET SECTION surface renders the real section tab strip",
+  );
+  assert(
+    (await desktopPage
+      .locator('[data-testid="view-header"] h1, [data-testid="view-header"]')
+      .count()) >= 1,
+    "WALLET SECTION surface renders the Wallet view header",
+  );
+  await desktopPage.screenshot({
+    path: join(outDir, "wallet-section-desktop.png"),
+  });
+  await desktopPage.screenshot({
+    path: join(outDir, "wallet-section-desktop.jpg"),
+    type: "jpeg",
+    quality: 90,
+  });
+  console.log("  📸 wallet-section-desktop.png/.jpg");
+  await desktop.close();
+
+  const mobile = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    deviceScaleFactor: 2,
+  });
+  const mobilePage = await mobile.newPage();
+  mobilePage.on("pageerror", (e) => errors.push(String(e)));
+  // Held state on mobile: the section surface shows the top-3 held rows.
+  await mobilePage.goto(
+    `file://${htmlPath}?surface=wallet-section&state=held`,
+  );
+  await mobilePage.waitForSelector(
+    '[data-testid="wallet-section-price-surface"] [data-testid^="wallet-price-row-"]',
+    { timeout: 8000 },
+  );
+  const mobileRows = await mobilePage
+    .locator(
+      '[data-testid="wallet-section-price-surface"] [data-testid^="wallet-price-row-"]',
+    )
+    .evaluateAll((els) => els.map((e) => e.dataset.testid));
+  assert(
+    JSON.stringify(mobileRows) ===
+      JSON.stringify([
+        "wallet-price-row-ETH",
+        "wallet-price-row-SOL",
+        "wallet-price-row-USDC",
+      ]),
+    `WALLET SECTION (mobile, held) shows top-3 held rows (got ${JSON.stringify(mobileRows)})`,
+  );
+  const mobileText = await mobilePage
+    .locator('[data-testid="wallet-section-price-surface"]')
+    .innerText();
+  assert(
+    !mobileText.includes("5,000") &&
+      !mobileText.includes("2,000") &&
+      !mobileText.includes("800"),
+    "WALLET SECTION (mobile, held) leaks no holding values (price-only #10706)",
+  );
+  await mobilePage.screenshot({
+    path: join(outDir, "wallet-section-mobile.png"),
+  });
+  await mobilePage.screenshot({
+    path: join(outDir, "wallet-section-mobile.jpg"),
+    type: "jpeg",
+    quality: 90,
+  });
+  console.log("  📸 wallet-section-mobile.png/.jpg");
+  await mobile.close();
 
   assert(errors.length === 0, `no page errors (${errors.length})`);
   for (const e of errors) console.log("  ERR:", e);

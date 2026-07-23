@@ -8,6 +8,12 @@
  * rewrite (inventory → `/wallet`), and lands the doctrine geometry — a centered
  * "Wallet" `ViewHeader` (icon-only launcher back) ABOVE the secondary tab strip,
  * rather than a tabs-only header with no title.
+ *
+ * The wallet root also carries the price surface (#16943): when the home spec
+ * demoted the `wallet.balance` resident card, the routed wallet view became the
+ * price surface's mandated home (NOTIFICATIONS-WIDGETS-SYSTEM.md §E item 3).
+ * `WalletBalanceWidget` renders here on the root tab only — BTC/SOL/ETH by
+ * default, top-3 held, 60s visibility-gated refresh, price-only (#10706).
  */
 
 import { useSyncExternalStore } from "react";
@@ -16,6 +22,7 @@ import {
   getAppShellPageRegistrySnapshot,
   subscribeAppShellPages,
 } from "../../app-shell-registry";
+import { WalletBalanceWidget } from "../chat/widgets/wallet-balance";
 import {
   isSectionPath,
   normalizeSectionPath,
@@ -28,6 +35,16 @@ import { ViewHeader } from "../shared/ViewHeader";
 
 const WALLET_SECTION_GROUP = "wallet";
 const WALLET_ROOT_PATH = "/wallet";
+/** Registration path of the root inventory page (aliased to `/wallet`). */
+const WALLET_INVENTORY_PATH = "/inventory";
+
+/** True on the wallet root tab (either alias), where the price surface lives. */
+function isWalletRootPath(path: string): boolean {
+  const normalized = normalizeSectionPath(path);
+  return (
+    normalized === WALLET_ROOT_PATH || normalized === WALLET_INVENTORY_PATH
+  );
+}
 
 /**
  * Canonical-root rewrite for the Wallet section: the inventory page registers
@@ -84,6 +101,14 @@ export function WalletSectionNav({
         ariaLabel="Wallet sections"
         className="pt-0"
       />
+      {isWalletRootPath(activePath) ? (
+        <div
+          data-testid="wallet-section-price-surface"
+          className="mx-auto w-full max-w-md px-4 pb-3"
+        >
+          <WalletBalanceWidget spanClassName="w-full" />
+        </div>
+      ) : null}
     </div>
   );
 }

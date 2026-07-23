@@ -7,6 +7,12 @@
  */
 
 export {
+  getScheduledTaskChannelDispatcher,
+  listScheduledTaskChannelDispatcherKeys,
+  registerScheduledTaskChannelDispatcher,
+  type ScheduledTaskChannelDispatcherContribution,
+} from "./channel-dispatcher-registry.js";
+export {
   type CompletionCheckRegistry,
   createCompletionCheckRegistry,
   registerBuiltInCompletionChecks,

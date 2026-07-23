@@ -5333,6 +5333,23 @@ export async function startEliza(
         `[eliza] Failed to seed onboarding notifications: ${formatError(err)}`,
       );
     }
+    // Wallet balance-delta watcher (spec §E item 3, #16943): the demoted home
+    // wallet card's producer-side replacement — a structural ScheduledTask on
+    // the one scheduling spine that notifies on material total-balance moves.
+    // Desktop/cloud only: mobile has no EVM/Solana wallet surface (same gate
+    // as the /api/wallet routes).
+    if (!isMobilePlatform()) {
+      try {
+        const { registerWalletBalanceDeltaProducer } = await import(
+          "./wallet-balance-delta.ts"
+        );
+        await registerWalletBalanceDeltaProducer(runtime);
+      } catch (err) {
+        logger.warn(
+          `[eliza] Failed to register the wallet balance-delta watcher: ${formatError(err)}`,
+        );
+      }
+    }
     await installServerSideWebSearchIfAvailable();
     await registerWebFetchActionIfEnabled();
     await registerWebSearchActionIfEnabled();

@@ -231,10 +231,10 @@ export const BUILTIN_WIDGET_DECLARATIONS: PluginWidgetDeclaration[] = [
   // The wallet, sleep, and standalone goals residents are NO LONGER home
   // residents (spec §B "Explicitly NOT residents" / §E items 3-5):
   //  - wallet: a balance is state, not change. It fails the two-second "what
-  //    changed while I was gone?" rule. The wallet component + routed view stay;
-  //    a material balance delta becomes a producer-side notification instead.
-  //    (See the wallet producer follow-up note in PR #14560; the
-  //    balance-change hook lives store-side, not here.)
+  //    changed while I was gone?" rule. The price surface renders on the routed
+  //    wallet section root (WalletSectionNav) and a material balance delta is a
+  //    producer-side notification: a structural watcher ScheduledTask in
+  //    packages/agent/src/runtime/wallet-balance-delta.ts (#16943).
   //  - sleep: yesterday's sleep score is a daily-digest fact, not resting
   //    urgency; the threshold-crossed alert already travels as a `health`
   //    notification category. The sleep component + routed dashboard stay; only
