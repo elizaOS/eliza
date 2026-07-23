@@ -30,8 +30,7 @@ const CLAUDE_BINARY = "claude";
 // leaked into a user-facing Stage-1 reply live (#16941: "On it.
 // <system-reminder> Return exactly one JSON object … </system-reminder>").
 // Strip them before the runtime ever sees the text.
-const SYSTEM_REMINDER_BLOCK_RE =
-  /<system-reminder>[\s\S]*?(?:<\/system-reminder>|$)/g;
+const SYSTEM_REMINDER_BLOCK_RE = /<system-reminder>[\s\S]*?(?:<\/system-reminder>|$)/g;
 
 export function stripSystemReminderBlocks(text: string): string {
   return text.replace(SYSTEM_REMINDER_BLOCK_RE, "");
