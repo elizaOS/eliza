@@ -14,6 +14,8 @@ export {
 } from "./provider-map";
 export {
   getTeamPoolRegistry,
+  type PooledCredentialCacheResolution,
   type SelectedPooledCredential,
+  type TeamPoolCacheExecutionContext,
   TeamPoolRegistry,
 } from "./registry";

@@ -1,7 +1,7 @@
 // Exercises cloud API tests shared agent messages route.test behavior with deterministic Worker route fixtures.
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 
-import { InsufficientCreditsError } from "@/lib/api/errors";
+import { InsufficientCreditsError, RateLimitError } from "@/lib/api/errors";
 import * as realResolveSharedAgent from "@/lib/services/shared-runtime/resolve-shared-agent";
 import * as realSharedRestAdapter from "@/lib/services/shared-runtime/shared-rest-adapter";
 import * as realLogger from "@/lib/utils/logger";
@@ -51,6 +51,16 @@ afterAll(() => {
 const AGENT = "de42b5ff-72d3-4a1a-8a16-19aee293bfea";
 const ORG = "org-1";
 const APP_ORIGIN = "https://localhost";
+const DEFAULT_AGENT = {
+  id: AGENT,
+  organization_id: ORG,
+  execution_tier: "shared",
+};
+const DEFAULT_NAMESPACE = {
+  getByName: mock(() => ({
+    fetch: mock(async () => new Response()),
+  })),
+};
 
 function postMessage(body: unknown, origin?: string) {
   const headers: Record<string, string> = {
@@ -58,11 +68,20 @@ function postMessage(body: unknown, origin?: string) {
     "Content-Type": "application/json",
   };
   if (origin) headers.Origin = origin;
-  return messagesRoute.request("/", {
-    method: "POST",
-    headers,
-    body: JSON.stringify(body),
-  });
+  return messagesRoute.request(
+    "/",
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    },
+    { SHARED_RUNTIME_CONVERSATIONS: DEFAULT_NAMESPACE } as never,
+    {
+      waitUntil() {},
+      passThroughOnException() {},
+      props: {},
+    } as never,
+  );
 }
 
 function postMessageWithWorkerBindings(
@@ -92,6 +111,29 @@ function postMessageWithWorkerBindings(
   );
 }
 
+function getMessagesWithWorkerBindings(
+  namespace: {
+    getByName(name: string): {
+      fetch(request: RequestInfo | URL, init?: RequestInit): Promise<Response>;
+    };
+  } = DEFAULT_NAMESPACE,
+) {
+  return messagesRoute.request(
+    "/",
+    {
+      headers: {
+        Authorization: "Bearer user-api-key",
+      },
+    },
+    { SHARED_RUNTIME_CONVERSATIONS: namespace } as never,
+    {
+      waitUntil() {},
+      passThroughOnException() {},
+      props: {},
+    } as never,
+  );
+}
+
 describe("shared agent messages route", () => {
   beforeEach(() => {
     resolveSharedAgent.mockReset();
@@ -99,7 +141,7 @@ describe("shared agent messages route", () => {
     sharedRestMessagesGet.mockReset();
     loggerWarn.mockClear();
     resolveSharedAgent.mockResolvedValue({
-      agent: {},
+      agent: DEFAULT_AGENT,
       agentId: AGENT,
       orgId: ORG,
       agentName: "Eliza",
@@ -119,16 +161,13 @@ describe("shared agent messages route", () => {
       text: "hello",
       agentName: "Eliza",
     });
-    // 6th arg: the Workers executionCtx that defers the billing tail — the
-    // Hono test harness has none, so the route degrades to undefined (inline
-    // settlement).
     expect(sharedRestMessageSend).toHaveBeenCalledWith(
-      AGENT,
-      ORG,
+      DEFAULT_AGENT,
       AGENT,
       "say hi",
       "Eliza",
-      undefined,
+      expect.objectContaining({ waitUntil: expect.any(Function) }),
+      DEFAULT_NAMESPACE,
     );
   });
 
@@ -164,15 +203,42 @@ describe("shared agent messages route", () => {
       cacheOnly: true,
     });
     expect(sharedRestMessageSend).toHaveBeenCalledWith(
-      AGENT,
-      ORG,
+      agent,
       AGENT,
       "say hi",
       "Eliza",
       expect.objectContaining({ waitUntil: expect.any(Function) }),
-      agent,
       namespace,
     );
+  });
+
+  test("missing Durable Object binding fails closed before auth or adapter work", async () => {
+    const res = await messagesRoute.request(
+      "/",
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer user-api-key",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ text: "must not dispatch" }),
+      },
+      {} as never,
+      {
+        waitUntil() {},
+        passThroughOnException() {},
+        props: {},
+      } as never,
+    );
+
+    expect(res.status).toBe(503);
+    await expect(res.json()).resolves.toMatchObject({
+      code: "shared_runtime_context_unavailable",
+      retryable: true,
+    });
+    expect(resolveSharedAgent).not.toHaveBeenCalled();
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+    expect(sharedRestMessagesGet).not.toHaveBeenCalled();
   });
 
   test("returns a sanitized retryable 503 when shared runtime inference fails", async () => {
@@ -198,6 +264,57 @@ describe("shared agent messages route", () => {
         error: "provider secret detail: upstream 500",
       },
     );
+  });
+
+  test("preserves coordinator warming for history as an explicit retryable 503", async () => {
+    const warming = new Error("Conversation cache is warming. Retry shortly.");
+    warming.name = "SharedRuntimeCacheWarmingError";
+    sharedRestMessagesGet.mockRejectedValue(warming);
+
+    const res = await getMessagesWithWorkerBindings();
+
+    expect(res.status).toBe(503);
+    await expect(res.json()).resolves.toEqual({
+      success: false,
+      error: "Conversation cache is warming. Retry shortly.",
+      code: "shared_runtime_cache_warming",
+      retryable: true,
+    });
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+  });
+
+  test("preserves coordinator warming for sends before provider dispatch", async () => {
+    const warming = new Error("Conversation cache is warming. Retry shortly.");
+    warming.name = "SharedRuntimeCacheWarmingError";
+    sharedRestMessageSend.mockRejectedValue(warming);
+
+    const res = await postMessage({ text: "hello" });
+
+    expect(res.status).toBe(503);
+    await expect(res.json()).resolves.toEqual({
+      success: false,
+      error: "Conversation cache is warming. Retry shortly.",
+      code: "shared_runtime_cache_warming",
+      retryable: true,
+    });
+  });
+
+  test("preserves coordinator rate denial as a retryable 429", async () => {
+    sharedRestMessageSend.mockRejectedValue(
+      new RateLimitError("Organization rate limit exceeded.", 37),
+    );
+
+    const res = await postMessage({ text: "hello" }, APP_ORIGIN);
+
+    expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBe("37");
+    await expect(res.json()).resolves.toEqual({
+      success: false,
+      error: "Organization rate limit exceeded.",
+      code: "rate_limit_exceeded",
+      retryable: true,
+    });
+    expect(loggerWarn).not.toHaveBeenCalled();
   });
 
   test("empty text returns 400 without calling the adapter", async () => {

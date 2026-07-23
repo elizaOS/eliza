@@ -34,11 +34,14 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 import { fileTypeFromBuffer } from "file-type";
 import { parseBuffer } from "music-metadata";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { billFlatUsage } from "@/lib/services/ai-billing";
+import {
+  type BillingContext,
+  billFlatUsage,
+  reserveFlatUsageCredits,
+} from "@/lib/services/ai-billing";
 import { calculateSTTCostFromCatalog } from "@/lib/services/ai-pricing";
 import {
   type CreditReservation,
-  creditsService,
   InsufficientCreditsError,
 } from "@/lib/services/credits";
 import { getElevenLabsService } from "@/lib/services/elevenlabs";
@@ -377,6 +380,8 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
     request = sizeCheckedRequest;
 
     const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
+    const affiliateCode = request.headers.get("X-Affiliate-Code");
+    const billingRequestId = `voice-stt:${crypto.randomUUID()}`;
 
     const contentType = request.headers.get("content-type") ?? "";
     if (!contentType.includes("multipart/form-data")) {
@@ -483,16 +488,11 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
     };
 
     const reserveOr402 = async (
-      estimate: SttBillingEstimate,
+      billingContext: BillingContext,
       sttCost: Awaited<ReturnType<typeof calculateSTTCostFromCatalog>>,
     ): Promise<Response | CreditReservation> => {
       try {
-        return await creditsService.reserve({
-          organizationId: user.organization_id,
-          amount: sttCost.totalCost,
-          userId: user.id,
-          description: `STT transcription: ~${estimate.estimatedDurationMinutes.toFixed(1)} min`,
-        });
+        return await reserveFlatUsageCredits(billingContext, sttCost);
       } catch (error) {
         if (error instanceof InsufficientCreditsError) {
           return Response.json(
@@ -527,7 +527,25 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
         model: STT_PRICING_PROXY_MODEL,
         durationSeconds: estimate.durationSeconds,
       });
-      const deepgramReservation = await reserveOr402(estimate, sttCost);
+      const deepgramBillingContext: BillingContext = {
+        organizationId: user.organization_id,
+        userId: user.id,
+        apiKeyId: apiKey?.id ?? null,
+        model: DEEPGRAM_PRERECORDED_MODEL,
+        provider: "deepgram",
+        billingSource: "elevenlabs",
+        requestId: billingRequestId,
+        affiliateCode,
+        description: `STT transcription: ${estimate.estimatedDurationMinutes.toFixed(2)} min`,
+        metadata: {
+          pricingProxyProvider: "elevenlabs",
+          pricingProxyModel: STT_PRICING_PROXY_MODEL,
+        },
+      };
+      const deepgramReservation = await reserveOr402(
+        deepgramBillingContext,
+        sttCost,
+      );
       if (deepgramReservation instanceof Response) return deepgramReservation;
       reservation = deepgramReservation;
 
@@ -606,20 +624,7 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
 
       const deepgramDuration = Date.now() - deepgramStart;
       const billing = await billFlatUsage(
-        {
-          organizationId: user.organization_id,
-          userId: user.id,
-          apiKeyId: apiKey?.id ?? null,
-          model: DEEPGRAM_PRERECORDED_MODEL,
-          provider: "deepgram",
-          billingSource: "elevenlabs",
-          affiliateCode: request.headers.get("X-Affiliate-Code"),
-          description: `STT transcription: ${estimate.estimatedDurationMinutes.toFixed(2)} min`,
-          metadata: {
-            pricingProxyProvider: "elevenlabs",
-            pricingProxyModel: STT_PRICING_PROXY_MODEL,
-          },
-        },
+        deepgramBillingContext,
         sttCost,
         reservation,
       );
@@ -784,14 +789,23 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
       model: STT_PRICING_PROXY_MODEL,
       durationSeconds,
     });
+    const elevenLabsBillingContext: BillingContext = {
+      organizationId: user.organization_id,
+      userId: user.id,
+      apiKeyId: apiKey?.id ?? null,
+      model: "elevenlabs/scribe_v1",
+      provider: "elevenlabs",
+      billingSource: "elevenlabs",
+      requestId: billingRequestId,
+      affiliateCode,
+      description: `STT transcription: ${estimatedDurationMinutes.toFixed(2)} min`,
+    };
 
     try {
-      reservation = await creditsService.reserve({
-        organizationId: user.organization_id,
-        amount: sttCost.totalCost,
-        userId: user.id,
-        description: `STT transcription: ~${estimatedDurationMinutes.toFixed(1)} min`,
-      });
+      reservation = await reserveFlatUsageCredits(
+        elevenLabsBillingContext,
+        sttCost,
+      );
     } catch (error) {
       if (error instanceof InsufficientCreditsError) {
         return Response.json(
@@ -818,17 +832,7 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
     const duration = Date.now() - startTime;
 
     const billing = await billFlatUsage(
-      {
-        organizationId: user.organization_id,
-        userId: user.id,
-        apiKeyId: apiKey?.id ?? null,
-        model: "elevenlabs/scribe_v1",
-        provider: "elevenlabs",
-        billingSource: "elevenlabs",
-        // Affiliate revenue-share via X-Affiliate-Code (existing billFlatUsage branch).
-        affiliateCode: request.headers.get("X-Affiliate-Code"),
-        description: `STT transcription: ${estimatedDurationMinutes.toFixed(2)} min`,
-      },
+      elevenLabsBillingContext,
       sttCost,
       reservation,
     );

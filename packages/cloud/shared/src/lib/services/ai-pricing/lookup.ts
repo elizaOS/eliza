@@ -11,7 +11,11 @@ import {
   type PricingChargeUnit,
   type PricingProductFamily,
 } from "../ai-pricing-definitions";
-import { getCachedPersistedEntries } from "./cache";
+import {
+  getCachedPersistedEntries,
+  getCachedTextPricingRates,
+  type PricingCacheReadOptions,
+} from "./cache";
 import {
   chooseBestCandidatePricingEntry,
   expandPricingCatalogModelCandidates,
@@ -33,6 +37,7 @@ import type {
   FlatOperationCost,
   PreparedPricingEntry,
   TokenCostBreakdown,
+  TokenPricingRates,
 } from "./types";
 
 /**
@@ -385,12 +390,109 @@ function quantityForEntryUnit(
   }
 }
 
+interface TextPricingRateParams {
+  canonicalModel: string;
+  provider: string;
+  billingSource?: PricingBillingSource;
+  productFamily: PricingProductFamily;
+  requireInput: boolean;
+  requireOutput: boolean;
+  inputTokens: number;
+  outputTokens: number;
+}
+
+async function resolveTextPricingRates(params: TextPricingRateParams): Promise<TokenPricingRates> {
+  // Both lookups degrade to null on a catalog miss. A servable request must not
+  // fail purely because one exact row is absent, but it also must never invent a
+  // zero price: a required missing side resolves through the conservative
+  // provider-max/env fallback and otherwise fails closed (#11635).
+  const [inputEntry, outputEntry] = await Promise.all([
+    params.requireInput
+      ? resolvePreparedPricingEntry({
+          billingSource: params.billingSource,
+          provider: params.provider,
+          model: params.canonicalModel,
+          productFamily: params.productFamily,
+          chargeType: "input",
+        }).catch(() => null)
+      : null,
+    params.requireOutput
+      ? resolvePreparedPricingEntry({
+          billingSource: params.billingSource,
+          provider: params.provider,
+          model: params.canonicalModel,
+          productFamily: params.productFamily,
+          chargeType: "output",
+        }).catch(() => null)
+      : null,
+  ]);
+
+  const resolveRequiredSide = async (
+    chargeType: "input" | "output",
+    required: boolean,
+    entry: PreparedPricingEntry | null,
+    tokens: number,
+  ): Promise<number | null> => {
+    if (!required) return null;
+    if (entry) return entry.unitPrice;
+
+    const fallback = await resolveFallbackTokenRate({
+      billingSource: params.billingSource,
+      provider: params.provider,
+      canonicalModel: params.canonicalModel,
+      productFamily: params.productFamily,
+      chargeType,
+    });
+    if (!fallback) {
+      const message = `Pricing unavailable for ${params.productFamily}:${chargeType} ${params.canonicalModel}; refusing to bill unknown-priced inference`;
+      logger.error("ai-pricing: missing token price with no fallback; refusing request", {
+        canonicalModel: params.canonicalModel,
+        provider: params.provider,
+        billingSource: params.billingSource,
+        productFamily: params.productFamily,
+        chargeType,
+        tokens,
+      });
+      throw new Error(message);
+    }
+    logger.warn(`ai-pricing: ${chargeType} pricing unavailable; billing at fallback rate`, {
+      canonicalModel: params.canonicalModel,
+      provider: params.provider,
+      billingSource: params.billingSource,
+      fallbackSource: fallback.source,
+      fallbackUnitPrice: fallback.unitPrice,
+      ...(fallback.referenceModel ? { fallbackReferenceModel: fallback.referenceModel } : {}),
+    });
+    return fallback.unitPrice;
+  };
+
+  const [inputUnitPrice, outputUnitPrice] = await Promise.all([
+    resolveRequiredSide("input", params.requireInput, inputEntry, params.inputTokens),
+    resolveRequiredSide("output", params.requireOutput, outputEntry, params.outputTokens),
+  ]);
+  return { inputUnitPrice, outputUnitPrice };
+}
+
+function textPricingCacheKey(params: TextPricingRateParams): string {
+  return [
+    params.billingSource ?? "",
+    params.provider,
+    params.canonicalModel,
+    params.productFamily,
+    params.requireInput ? "i" : "",
+    params.requireOutput ? "o" : "",
+  ]
+    .map((part) => encodeURIComponent(part))
+    .join(":");
+}
+
 export async function calculateTextCostFromCatalog(params: {
   model: string;
   provider: string;
   billingSource?: PricingBillingSource;
   inputTokens: number;
   outputTokens: number;
+  cache?: PricingCacheReadOptions;
 }): Promise<TokenCostBreakdown> {
   const canonicalModel = canonicalModelId(params.model, params.provider);
   const productFamily: PricingProductFamily = params.model.includes("embedding")
@@ -412,93 +514,31 @@ export async function calculateTextCostFromCatalog(params: {
     productFamily,
     chargeType: "output",
   });
-  // Both lookups degrade to null on a catalog miss. A missing INPUT price used
-  // to throw uncaught here (the OUTPUT lookup was already guarded), and the
-  // throw propagated through calculateCost → the chat-completions reserve →
-  // a 500 / masked "bridge unreachable" on any model whose input row isn't in
-  // the catalog (notably embedding models, which are input-only and run every
-  // turn). A servable request must never fail purely on a missing price — but
-  // it must not be under-billed at $0 either. On a miss, bill the missing side
-  // only when a real fallback exists (provider max → env default). If neither
-  // source exists, fail closed because we should not sell inference we do not
-  // know how to price (#11635).
-  const [inputEntry, outputEntry] = await Promise.all([
-    resolvePreparedPricingEntry({
-      billingSource: params.billingSource,
-      provider: params.provider,
-      model: canonicalModel,
-      productFamily,
-      chargeType: "input",
-    }).catch(() => null),
-    resolvePreparedPricingEntry({
-      billingSource: params.billingSource,
-      provider: params.provider,
-      model: canonicalModel,
-      productFamily,
-      chargeType: "output",
-    }).catch(() => null),
-  ]);
 
-  // Resolve a fallback only for a side that actually bills tokens: a
-  // zero-token side costs $0 at any rate, and skipping it keeps input-only
-  // embedding traffic from warning on every turn about its unused output row.
-  const resolveMissingSide = async (
-    chargeType: "input" | "output",
-    tokens: number,
-  ): Promise<FallbackTokenRate | null> => {
-    if (tokens <= 0) {
-      return null;
-    }
-    const fallback = await resolveFallbackTokenRate({
-      billingSource: params.billingSource,
-      provider: params.provider,
-      canonicalModel,
-      productFamily,
-      chargeType,
-    });
-    if (!fallback) {
-      const message = `Pricing unavailable for ${productFamily}:${chargeType} ${canonicalModel}; refusing to bill unknown-priced inference`;
-      logger.error("ai-pricing: missing token price with no fallback; refusing request", {
-        canonicalModel,
-        provider: params.provider,
-        billingSource: params.billingSource,
-        productFamily,
-        chargeType,
-        tokens,
-      });
-      throw new Error(message);
-    }
-    logger.warn(`ai-pricing: ${chargeType} pricing unavailable; billing at fallback rate`, {
-      canonicalModel,
-      provider: params.provider,
-      billingSource: params.billingSource,
-      fallbackSource: fallback.source,
-      fallbackUnitPrice: fallback.unitPrice,
-      ...(fallback.referenceModel ? { fallbackReferenceModel: fallback.referenceModel } : {}),
-    });
-    return fallback;
+  const rateParams: TextPricingRateParams = {
+    canonicalModel,
+    provider: params.provider,
+    billingSource: params.billingSource,
+    productFamily,
+    requireInput: params.inputTokens > 0,
+    requireOutput: params.outputTokens > 0,
+    inputTokens: params.inputTokens,
+    outputTokens: params.outputTokens,
   };
+  const rates = await getCachedTextPricingRates(
+    textPricingCacheKey(rateParams),
+    { input: rateParams.requireInput, output: rateParams.requireOutput },
+    () => resolveTextPricingRates(rateParams),
+    params.cache,
+  );
 
-  const [inputFallback, outputFallback] = await Promise.all([
-    inputEntry ? null : resolveMissingSide("input", params.inputTokens),
-    outputEntry ? null : resolveMissingSide("output", params.outputTokens),
-  ]);
-
-  // Defense-in-depth money-boundary guard mirroring `computeCostFromEntry`.
-  // Candidate selection already drops non-finite/non-positive catalog prices, but the token
-  // path builds the Decimal directly rather than going through that sink, so
-  // re-assert finiteness before `asDecimal(...).mul(tokens)` — a `NaN` unit
-  // price would otherwise bill `NaN` inference silently, and a negative price
-  // would credit the caller. A zero-token side costs $0 at any rate, so only a
-  // side that actually bills tokens fails closed on a corrupt resolved price.
   const resolveTokenUnitPrice = (
     chargeType: "input" | "output",
-    entry: PreparedPricingEntry | null,
-    fallback: FallbackTokenRate | null,
+    unitPrice: number | null,
     tokens: number,
   ) => {
-    const unitPrice = entry ? entry.unitPrice : (fallback?.unitPrice ?? 0);
-    if (tokens > 0 && (!Number.isFinite(unitPrice) || unitPrice <= 0)) {
+    if (tokens === 0) return asDecimal(0);
+    if (unitPrice === null || !Number.isFinite(unitPrice) || unitPrice <= 0) {
       logger.error("ai-pricing: refusing to bill an invalid token price", {
         canonicalModel,
         provider: params.provider,
@@ -513,16 +553,10 @@ export async function calculateTextCostFromCatalog(params: {
     return asDecimal(unitPrice);
   };
 
-  const inputUnitPrice = resolveTokenUnitPrice(
-    "input",
-    inputEntry,
-    inputFallback,
-    params.inputTokens,
-  );
+  const inputUnitPrice = resolveTokenUnitPrice("input", rates.inputUnitPrice, params.inputTokens);
   const outputUnitPrice = resolveTokenUnitPrice(
     "output",
-    outputEntry,
-    outputFallback,
+    rates.outputUnitPrice,
     params.outputTokens,
   );
 

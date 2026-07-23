@@ -42,7 +42,11 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 import { authMiddleware } from "../src/middleware/auth";
 
 const resolveSharedAgent = mock();
-const bridgeStream = mock();
+const bridgeStream = mock(() => {
+  throw new Error("legacy bridgeStream must not run");
+});
+const coordinatorFetch =
+  mock<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>();
 
 mock.module("@/lib/services/shared-runtime/resolve-shared-agent", () => ({
   ...realResolveSharedAgent,
@@ -77,7 +81,18 @@ const ORG = "org-e9";
 const APP_ORIGIN = "https://localhost";
 const MOUNT =
   "/api/v1/eliza/agents/:agentId/api/conversations/:conversationId/messages/stream";
-const ENV = { NODE_ENV: "test" } as unknown as AppEnv["Bindings"];
+const NAMESPACE = {
+  getByName: mock(() => ({ fetch: coordinatorFetch })),
+};
+const ENV = {
+  NODE_ENV: "test",
+  SHARED_RUNTIME_CONVERSATIONS: NAMESPACE,
+} as unknown as AppEnv["Bindings"];
+const EXECUTION_CTX = {
+  waitUntil() {},
+  passThroughOnException() {},
+  props: {},
+};
 
 /**
  * Mirror `createApp()`'s global chain (bootstrap-app.ts) around the one route, so
@@ -131,6 +146,7 @@ async function postStream(body: unknown, origin?: string): Promise<Response> {
     path(),
     { method: "POST", headers, body: JSON.stringify(body) },
     ENV,
+    EXECUTION_CTX as never,
   );
 }
 
@@ -139,8 +155,12 @@ describe("shared agent messages/stream — real global middleware chain", () => 
     resolveSharedAgent.mockReset();
     bridgeStream.mockReset();
     // The resolved agent row must carry id/organization_id like a real
-    // resolve: the conversation coordinator sources bridgeStream args from the
-    // agent row, not the resolve envelope.
+    // resolve because the conversation coordinator scopes the Durable Object
+    // from that row rather than from the route envelope.
+    bridgeStream.mockImplementation(() => {
+      throw new Error("legacy bridgeStream must not run");
+    });
+    coordinatorFetch.mockReset();
     resolveSharedAgent.mockResolvedValue({
       agent: { id: AGENT, organization_id: ORG, execution_tier: "shared" },
       agentId: AGENT,
@@ -150,7 +170,7 @@ describe("shared agent messages/stream — real global middleware chain", () => 
   });
 
   test("reflects https://localhost Origin + credentials through cors+secureHeaders, streams SSE", async () => {
-    bridgeStream.mockResolvedValue(
+    coordinatorFetch.mockResolvedValue(
       new Response(
         'event: chunk\ndata: {"text":"hi"}\n\nevent: done\ndata: {"text":"hi"}\n\n',
         { headers: { "Content-Type": "text/event-stream" } },
@@ -171,18 +191,21 @@ describe("shared agent messages/stream — real global middleware chain", () => 
     await expect(res.text()).resolves.toContain("event: done");
 
     // The route forwarded message.send with roomId = conversationId.
-    const call = bridgeStream.mock.calls[0];
-    expect(call[0]).toBe(AGENT);
-    expect(call[1]).toBe(ORG);
-    expect(call[2].method).toBe("message.send");
-    expect(call[2].params).toMatchObject({
+    const envelope = JSON.parse(
+      String(coordinatorFetch.mock.calls[0]?.[1]?.body),
+    ) as {
+      rpc: { method: string; params: Record<string, unknown> };
+    };
+    expect(envelope.rpc.method).toBe("message.send");
+    expect(envelope.rpc.params).toMatchObject({
       text: "say hi",
       roomId: CONVERSATION,
     });
+    expect(bridgeStream).not.toHaveBeenCalled();
   });
 
   test("no-reply turn → 200 SSE error frame through the stack, never a 404", async () => {
-    bridgeStream.mockResolvedValue(null);
+    coordinatorFetch.mockResolvedValue(new Response(null));
 
     const res = await postStream({ text: "hi" }, APP_ORIGIN);
 

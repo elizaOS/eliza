@@ -14,7 +14,10 @@ import { retryOnTransientDbError } from "../../db/retry-transient";
 import { cache } from "../cache/client";
 import { CacheKeys, CacheTTL } from "../cache/keys";
 import { logger } from "../utils/logger";
-import { invalidateInferenceAuthContextsByKeyHashes } from "./inference-auth-cache";
+import {
+  invalidateInferenceAuthContextsByKeyHashes,
+  invalidateInferenceSessionAuthContexts,
+} from "./inference-auth-cache";
 
 function getErrorDetails(error: unknown): Record<string, unknown> {
   if (!(error instanceof Error)) {
@@ -63,6 +66,7 @@ export class UsersService {
     if (typeof stewardUserId === "string") {
       promises.push(cache.del(CacheKeys.user.byStewardId(stewardUserId)));
       promises.push(cache.del(CacheKeys.user.byStewardIdWithOrg(stewardUserId)));
+      promises.push(invalidateInferenceSessionAuthContexts([stewardUserId]));
     }
     const walletAddress = user.wallet_address;
     if (typeof walletAddress === "string") {
@@ -242,7 +246,9 @@ export class UsersService {
   }
 
   async create(data: NewUser): Promise<User> {
-    return await usersRepository.create(data);
+    const user = await usersRepository.create(data);
+    await this.invalidateCache(user);
+    return user;
   }
 
   /**
@@ -300,12 +306,14 @@ export class UsersService {
     const cacheDeletes = [
       cache.del(CacheKeys.user.byStewardId(stewardUserId)),
       cache.del(CacheKeys.user.byStewardIdWithOrg(stewardUserId)),
+      invalidateInferenceSessionAuthContexts([stewardUserId]),
     ];
 
     if (existingIdentity?.steward_user_id && existingIdentity.steward_user_id !== stewardUserId) {
       cacheDeletes.push(
         cache.del(CacheKeys.user.byStewardId(existingIdentity.steward_user_id)),
         cache.del(CacheKeys.user.byStewardIdWithOrg(existingIdentity.steward_user_id)),
+        invalidateInferenceSessionAuthContexts([existingIdentity.steward_user_id]),
       );
     }
 

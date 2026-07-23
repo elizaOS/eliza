@@ -73,13 +73,14 @@ describe("shared conversation coordinator", () => {
       method: "message.send",
       params: { text: "hi", roomId: "room-1" },
     };
+    const executionCtx = { waitUntil() {} };
 
-    expect((await coordinateSharedBridge(agent, rpc, { namespace })).result?.text).toBe(
-      "coordinated",
-    );
-    expect(await (await coordinateSharedStream(agent, rpc, { namespace }))?.text()).toContain(
-      "event: done",
-    );
+    expect(
+      (await coordinateSharedBridge(agent, rpc, { namespace, executionCtx })).result?.text,
+    ).toBe("coordinated");
+    expect(
+      await (await coordinateSharedStream(agent, rpc, { namespace, executionCtx }))?.text(),
+    ).toContain("event: done");
     expect(await coordinateSharedHistory("agent-1", "room-1", { namespace })).toEqual([
       { role: "assistant", content: "cached" },
     ]);
@@ -117,13 +118,109 @@ describe("shared conversation coordinator", () => {
       method: "message.send",
       params: { text: "hi", roomId: "room-1" },
     };
+    const executionCtx = { waitUntil() {} };
 
-    await expect(coordinateSharedBridge(agent, rpc, { namespace })).rejects.toMatchObject({
+    await expect(
+      coordinateSharedBridge(agent, rpc, { namespace, executionCtx }),
+    ).rejects.toMatchObject({
       name: "SharedRuntimeCacheWarmingError",
       message: "Conversation cache is warming. Retry shortly.",
     });
-    await expect(coordinateSharedStream(agent, rpc, { namespace })).rejects.toMatchObject({
+    await expect(
+      coordinateSharedStream(agent, rpc, { namespace, executionCtx }),
+    ).rejects.toMatchObject({
       name: "SharedRuntimeCacheWarmingError",
     });
+  });
+
+  test("rehydrates exact rate denial across the Durable Object boundary", async () => {
+    const namespace = {
+      getByName: () => ({
+        fetch: async () =>
+          Response.json(
+            {
+              error: "Organization rate limit exceeded.",
+              code: "rate_limit_exceeded",
+            },
+            { status: 429, headers: { "Retry-After": "19" } },
+          ),
+      }),
+    };
+    const agent = {
+      id: "agent-1",
+      organization_id: "org-1",
+      user_id: "user-1",
+      execution_tier: "shared",
+    } as never;
+    const rpc = {
+      jsonrpc: "2.0" as const,
+      id: "rpc-1",
+      method: "message.send",
+      params: { text: "hi", roomId: "room-1" },
+    };
+    const executionCtx = { waitUntil() {} };
+
+    await expect(
+      coordinateSharedBridge(agent, rpc, { namespace, executionCtx }),
+    ).rejects.toMatchObject({
+      name: "RateLimitError",
+      message: "Organization rate limit exceeded.",
+      retryAfter: 19,
+    });
+    await expect(
+      coordinateSharedStream(agent, rpc, { namespace, executionCtx }),
+    ).rejects.toMatchObject({
+      name: "RateLimitError",
+      retryAfter: 19,
+    });
+  });
+
+  test("missing namespace or execution context fails closed without the legacy service", async () => {
+    const agent = {
+      id: "agent-1",
+      organization_id: "org-1",
+      user_id: "user-1",
+      execution_tier: "shared",
+    } as never;
+    const rpc = {
+      jsonrpc: "2.0" as const,
+      id: "rpc-1",
+      method: "message.send",
+      params: { text: "hi", roomId: "room-1" },
+    };
+    const namespace = {
+      getByName: () => ({
+        fetch: async () => {
+          throw new Error("coordinator must not run");
+        },
+      }),
+    };
+
+    await expect(
+      coordinateSharedBridge(agent, rpc, {
+        namespace: undefined,
+        executionCtx: { waitUntil() {} },
+      } as never),
+    ).rejects.toMatchObject({
+      name: "SharedRuntimeCacheWarmingError",
+    });
+    await expect(
+      coordinateSharedStream(agent, rpc, {
+        namespace,
+        executionCtx: undefined,
+      } as never),
+    ).rejects.toMatchObject({
+      name: "SharedRuntimeCacheWarmingError",
+    });
+    await expect(
+      coordinateSharedHistory("agent-1", "room-1", {
+        namespace: undefined,
+      } as never),
+    ).rejects.toMatchObject({
+      name: "SharedRuntimeCacheWarmingError",
+    });
+    expect(directBridge).not.toHaveBeenCalled();
+    expect(directStream).not.toHaveBeenCalled();
+    expect(directHistory).not.toHaveBeenCalled();
   });
 });

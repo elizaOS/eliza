@@ -33,6 +33,7 @@ import * as creditsActual from "@/lib/services/credits";
 import * as inferenceAuthActual from "@/lib/services/inference-auth-context";
 import * as redeemableEarningsActual from "@/lib/services/redeemable-earnings";
 import * as usageActual from "@/lib/services/usage";
+import { createCreditReservationSettler } from "@/lib/utils/credit-reservation";
 
 process.env.DATABASE_URL ||= "pglite://memory";
 // Force the synchronous-reserve path (the one #12017 is about): optimistic
@@ -47,6 +48,7 @@ const ORG = "00000000-0000-4000-8000-0000000000aa";
 const USER = "00000000-0000-4000-8000-0000000000bb";
 const API_KEY_ID = "00000000-0000-4000-8000-0000000000cc";
 const AFFILIATE_USER = "00000000-0000-4000-8000-00000000aff1";
+const AFFILIATE_CODE_ID = "00000000-0000-4000-8000-00000000aff2";
 
 const EMBEDDING = [0.0125, -0.5, 0.333333];
 const BASE_COST = 0.1; // deterministic base+platform cost from calculateCost
@@ -95,7 +97,7 @@ mock.module("@/lib/pricing", () => ({
 let affiliateUserId = AFFILIATE_USER;
 let affiliateActive = true;
 const getAffiliateCodeByCode = mock(async () => ({
-  id: "aff-code-1",
+  id: AFFILIATE_CODE_ID,
   user_id: affiliateUserId,
   markup_percent: "1000",
   is_active: affiliateActive,
@@ -140,6 +142,50 @@ mock.module("@/lib/services/credits", () => ({
     get: (target, prop, receiver) =>
       prop === "reserve" ? reserve : Reflect.get(target, prop, receiver),
   }),
+}));
+
+mock.module("@/lib/services/organization-inference-admission", () => ({
+  InferenceAdmissionUnavailableError: class extends Error {},
+  InferenceAffiliateCacheUnavailableError: class extends Error {},
+  InferencePricingCacheUnavailableError: class extends Error {},
+  admitOrganizationInference: async (params: {
+    context: { organizationId: string };
+    estimatedInputTokens: number;
+    estimatedOutputTokens: number;
+    affiliateCode?: string | null;
+  }) => {
+    const billableAffiliate =
+      params.affiliateCode && affiliateActive && affiliateUserId !== USER;
+    const affiliateAttribution = billableAffiliate
+      ? {
+          affiliateCodeId: AFFILIATE_CODE_ID,
+          affiliateUserId,
+          affiliateCode: params.affiliateCode!,
+          markupPercent: 10,
+        }
+      : null;
+    const reservation = await reserve({
+      ...params.context,
+      estimatedCostMultiplier: billableAffiliate ? 11 : undefined,
+    });
+    const settle = createCreditReservationSettler(reservation);
+    return {
+      mode: "synchronous_reservation",
+      settle,
+      settleUnknown: () => settle(reservation.reservedAmount),
+      affiliateAttribution,
+      reservation: {
+        reservedAmount: reservation.reservedAmount,
+        reservationTransactionId: reservation.reservationTransactionId,
+        affiliateAttribution,
+        affiliatePayoutSourceId: affiliateAttribution
+          ? "ai_billing:affiliate:test-embedding-reservation"
+          : null,
+        reconcile: async (actualCostUsd: number) =>
+          (await settle(actualCostUsd)) ?? undefined,
+      },
+    };
+  },
 }));
 
 // --- The cashable write that must never exceed collected money. --------------
@@ -260,8 +306,13 @@ beforeEach(() => {
     };
   });
   resolveInferenceAuthContext.mockResolvedValue({
-    kind: "slow_path",
-    reason: "non_api_key",
+    kind: "authorized",
+    source: "cache",
+    ctx: {
+      userId: USER,
+      orgId: ORG,
+      apiKeyId: API_KEY_ID,
+    },
   });
   enforceOrgRateLimit.mockResolvedValue(null);
   usageCreate.mockResolvedValue({ id: "usage-1" });
@@ -307,17 +358,9 @@ describe("POST /api/v1/embeddings — affiliate markup is reserved upfront (#120
     };
     expect(reservation.reservedAmount).toBeGreaterThanOrEqual(settledCost);
 
-    expect(addEarnings).toHaveBeenCalledTimes(1);
-    const earningsArg = addEarnings.mock.calls[0][0] as {
-      userId: string;
-      amount: number;
-      source: string;
-      dedupeBySourceId: boolean;
-    };
-    expect(earningsArg.userId).toBe(AFFILIATE_USER);
-    expect(earningsArg.source).toBe("affiliate");
-    expect(earningsArg.amount).toBeCloseTo(BASE_COST * 10, 6); // the markup, now collected
-    expect(earningsArg.dedupeBySourceId).toBe(true);
+    // Settlement hands the payout to the durable outbox. The route never
+    // performs a redeemable-earnings write inline on the response path.
+    expect(addEarnings).not.toHaveBeenCalled();
   });
 
   test("no X-Affiliate-Code header → no multiplier on the hold and no earnings", async () => {

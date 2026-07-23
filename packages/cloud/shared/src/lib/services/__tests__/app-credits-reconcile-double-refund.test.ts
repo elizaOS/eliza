@@ -2,20 +2,21 @@
  * Reconcile double-refund mint — REAL path (#11512).
  *
  * On the monetized-app inference path (`/v1/chat/completions`, `/v1/messages`)
- * `AppCreditsService.reconcileCredits` COMMITS the org refund before its
- * throw-prone post-refund writes (`reverseCreatorEarnings`, the apps-counter
- * update). The settler (`createCreditReservationSettler`) used to reset its
+ * `AppCreditsService.reconcileCredits` reverses the cashable creator earnings
+ * BEFORE crediting the consumer refund: a failed or partial clawback must
+ * retain the consumer charge, otherwise both parties would hold the same
+ * money. The settler (`createCreditReservationSettler`) used to reset its
  * once-guard on throw, so the route's multi-site fallback
- * `settleReservation?.(0)` re-invoked reconcile after such a mid-reconcile
- * throw and issued a SECOND committed refund — org credited
- * ≈ 2×reserved − actual, i.e. minted, cashable credit.
+ * `settleReservation?.(0)` re-invoked reconcile after a mid-reconcile throw
+ * and issued a SECOND committed refund — org credited ≈ 2×reserved − actual,
+ * i.e. minted, cashable credit.
  *
  * These tests drive the CHANGED code end-to-end against in-process PGlite:
  * a real reservation (`reserveInferenceCredits` → org debit), a real reconcile
  * (org refund/charge rows in `credit_transactions`, creator-earnings ledger,
  * apps counters), with the only fault injection being a dependency DB blip
- * (`redeemableEarningsService.reduceEarnings` throwing once — the post-refund
- * write). Both fix layers are proven:
+ * (`redeemableEarningsService.reduceEarnings` throwing once — the reversal
+ * that gates the refund). Both fix layers are proven:
  *   (B) the settler never re-invokes reconcile after a rejection, and
  *   (A) even a re-invoked reconcile (any other retry vector) dedupes its
  *       org refund/charge on the synthetic `reconcile-refund:`/
@@ -229,17 +230,20 @@ describe("reconcile refund-then-throw + settler re-invoke (#11512)", () => {
 
     const blip = injectReduceEarningsBlipOnce();
     try {
-      // First settle: actual 0.01 < estimate 0.03 → refund branch. The org
-      // refund of 0.04 COMMITS, then the post-refund write throws.
+      // First settle: actual 0.01 < estimate 0.03 → refund branch. The creator
+      // reversal is the refund's gate and throws FIRST, so nothing moves: no
+      // reversal, and — critically — no consumer refund the creator's cashable
+      // markup is no longer backed by.
       await expect(settle(0.01)).rejects.toThrow("injected post-refund write blip");
-      expect(await orgBalance(payerOrgId)).toBeCloseTo(INITIAL_ORG_BALANCE - 0.06 + 0.04, 6);
+      expect(await orgBalance(payerOrgId)).toBeCloseTo(INITIAL_ORG_BALANCE - 0.06, 6);
+      expect(await creatorBalance(creatorUserId)).toBeCloseTo(0.03, 6);
 
       // The route's fallback catch: `await settleReservation?.(0)`. Before
       // #11512 this re-invoked reconcile(0) and issued a SECOND committed
       // refund (0.06 — the full reservation), leaving the org at 100.04 > 100:
       // minted, cashable credit. After #11608 the idempotent settler retries
-      // with the FIRST actual cost (0.01), so the refund dedupes and the
-      // creator reversal can heal.
+      // with the FIRST actual cost (0.01), so the reversal completes and the
+      // single refund follows it.
       const healed = await settle(0);
       expect(healed?.adjustmentType).toBe("refund");
       // A third pile-on call (onAbort/onError racing) reuses the healed result.
@@ -283,8 +287,10 @@ describe("reconcile refund-then-throw + settler re-invoke (#11512)", () => {
 
     const blip = injectReduceEarningsBlipOnce();
     try {
-      // First reconcile: refund commits (0.04), post-refund write throws.
+      // First reconcile: the reversal (the refund's gate) throws before any
+      // refund commits — consumer charge retained, creator markup untouched.
       await expect(reservation.reconcile(0.01)).rejects.toThrow("injected post-refund write blip");
+      expect(await orgBalance(payerOrgId)).toBeCloseTo(INITIAL_ORG_BALANCE - 0.06, 6);
 
       // A DIRECT re-invoke (any non-settler retry vector). Layer A: the org
       // refund dedupes on the `reconcile-refund:` key — no second credit —

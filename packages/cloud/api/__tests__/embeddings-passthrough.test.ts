@@ -18,7 +18,9 @@ import * as rateLimitActual from "@/lib/middleware/rate-limit";
 import * as languageModelActual from "@/lib/providers/language-model";
 import * as aiBillingActual from "@/lib/services/ai-billing";
 import * as inferenceAuthActual from "@/lib/services/inference-auth-context";
+import * as admissionActual from "@/lib/services/organization-inference-admission";
 import * as usageActual from "@/lib/services/usage";
+import { createCreditReservationSettler } from "@/lib/utils/credit-reservation";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 type AppCtx = Context<AppEnv>;
@@ -65,6 +67,28 @@ mock.module("@/lib/services/ai-billing", () => ({
   ...aiBillingActual,
   reserveCredits,
   billUsage,
+}));
+
+mock.module("@/lib/services/organization-inference-admission", () => ({
+  ...admissionActual,
+  admitOrganizationInference: async (params: {
+    context: Record<string, unknown>;
+    estimatedInputTokens: number;
+    estimatedOutputTokens: number;
+    affiliateCode?: string | null;
+  }) => {
+    const reservation = await reserveCredits(
+      { ...params.context, affiliateCode: params.affiliateCode ?? undefined },
+      params.estimatedInputTokens,
+      params.estimatedOutputTokens,
+    );
+    const settle = createCreditReservationSettler(reservation);
+    return {
+      mode: "synchronous_reservation",
+      settle,
+      settleUnknown: () => settle(reservation.reservedAmount),
+    };
+  },
 }));
 
 const usageCreate = mock();
@@ -114,6 +138,10 @@ afterAll(() => {
   );
   mock.module("@/lib/providers/language-model", () => languageModelActual);
   mock.module("@/lib/services/ai-billing", () => aiBillingActual);
+  mock.module(
+    "@/lib/services/organization-inference-admission",
+    () => admissionActual,
+  );
   mock.module("@/lib/services/usage", () => usageActual);
   globalThis.fetch = realFetch;
   for (const key of ENV_KEYS) {
@@ -199,8 +227,13 @@ beforeEach(() => {
     };
   });
   resolveInferenceAuthContext.mockResolvedValue({
-    kind: "slow_path",
-    reason: "non_api_key",
+    kind: "authorized",
+    source: "cache",
+    ctx: {
+      userId: USER,
+      orgId: ORG,
+      apiKeyId: API_KEY_ID,
+    },
   });
   enforceOrgRateLimit.mockResolvedValue(null);
   billUsage.mockResolvedValue({
@@ -320,7 +353,7 @@ describe("embeddings pass-through (#15512)", () => {
     expect(billUsage).not.toHaveBeenCalled();
   });
 
-  test("upstream 500 maps to 503 and releases the credit hold", async () => {
+  test("upstream 500 maps to 503 and retains the conservative estimate", async () => {
     const reconcileCosts = armReservation();
     fetchImpl = async () => new Response("upstream boom", { status: 500 });
 
@@ -333,7 +366,8 @@ describe("embeddings pass-through (#15512)", () => {
     expect(res.status).toBe(503);
     const body = (await res.json()) as { error: { code: string } };
     expect(body.error.code).toBe("provider_error");
-    expect(reconcileCosts).toEqual([0]);
+    // A server error after dispatch does not prove the provider did zero work.
+    expect(reconcileCosts).toEqual([0.01]);
   });
 
   test("upstream body without usage bills the local estimate instead of zero", async () => {

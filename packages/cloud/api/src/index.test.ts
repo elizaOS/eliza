@@ -322,6 +322,49 @@ describe("cloud-api worker entrypoint", () => {
     expect(stagingRoutes).toContain("app-staging.elizacloud.ai/*");
   });
 
+  test("binds inference routes to native limits in every Worker environment", async () => {
+    type RateLimitBinding = {
+      name?: string;
+      simple?: { limit?: number; period?: number };
+    };
+    const config = Bun.TOML.parse(
+      await Bun.file(new URL("../wrangler.toml", import.meta.url)).text(),
+    ) as {
+      ratelimits?: RateLimitBinding[];
+      env?: {
+        staging?: { ratelimits?: RateLimitBinding[] };
+        production?: { ratelimits?: RateLimitBinding[] };
+      };
+    };
+    for (const bindings of [
+      config.ratelimits,
+      config.env?.staging?.ratelimits,
+      config.env?.production?.ratelimits,
+    ]) {
+      expect(bindings).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            name: "CHAT_ROUTE_RATE_LIMITER",
+            simple: { limit: 200, period: 60 },
+          }),
+          expect.objectContaining({
+            name: "DASHBOARD_CHAT_ROUTE_RATE_LIMITER",
+            simple: { limit: 60, period: 60 },
+          }),
+        ]),
+      );
+    }
+
+    const [chat, messages, embeddings] = await Promise.all([
+      Bun.file(new URL("../v1/chat/route.ts", import.meta.url)).text(),
+      Bun.file(new URL("../v1/messages/route.ts", import.meta.url)).text(),
+      Bun.file(new URL("../v1/embeddings/route.ts", import.meta.url)).text(),
+    ]);
+    expect(chat).toContain('bindingName: "DASHBOARD_CHAT_ROUTE_RATE_LIMITER"');
+    expect(messages).toContain('bindingName: "CHAT_ROUTE_RATE_LIMITER"');
+    expect(embeddings).toContain('bindingName: "CHAT_ROUTE_RATE_LIMITER"');
+  });
+
   test("feed.elizacloud.ai is inert when FEED_ORIGIN_HOST is unset", () => {
     // No env / empty host => falls through to the cloud-api app (no regression).
     expect(

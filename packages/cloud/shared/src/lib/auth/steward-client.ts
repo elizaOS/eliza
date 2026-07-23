@@ -89,6 +89,10 @@ export interface StewardVerifyEnv {
   STEWARD_TENANT_ID?: string;
 }
 
+export interface StewardVerifyOptions {
+  executionCtx?: { waitUntil(promise: Promise<unknown>): void };
+}
+
 export const STEWARD_ACCESS_TOKEN_TTL_SECONDS = 60 * 60;
 
 // Cache the encoded secret keyed by raw value, so repeated requests with the
@@ -208,6 +212,7 @@ function extractClaims(payload: JWTPayload): StewardTokenClaims {
 export async function verifyStewardTokenCached(
   env: StewardVerifyEnv,
   token: string,
+  options: StewardVerifyOptions = {},
 ): Promise<StewardTokenClaims | null> {
   const secret = resolveJwtSecret(env);
   if (!secret) return null;
@@ -304,7 +309,19 @@ export async function verifyStewardTokenCached(
         cachedAt: Date.now(),
       };
 
-      await cache.set(cacheKey, cachedClaims, effectiveTtl);
+      const cacheWrite = cache.set(cacheKey, cachedClaims, effectiveTtl).catch((error) => {
+        // error-policy:J7 token verification already succeeded locally; cache
+        // population is diagnostic acceleration and must remain observable.
+        logger.warn("[StewardClient] Failed to cache verified token", {
+          tokenHash: tokenHash.substring(0, 8),
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+      if (options.executionCtx) {
+        options.executionCtx.waitUntil(cacheWrite);
+      } else {
+        await cacheWrite;
+      }
 
       logger.debug("[StewardClient] ✓ Cached verification result", {
         tokenHash: tokenHash.substring(0, 8),

@@ -2,29 +2,29 @@
  * Inference hot-path auth resolver (#9899).
  *
  * `resolveInferenceAuthContext(req)` collapses the pre-forward auth + org +
- * moderation chain into a SINGLE KV read for API-key dedicated-agent inference.
- * On a cache miss it runs the existing authoritative chain exactly once, then
- * starts caching the result for the next request. Worker callers register that
- * positive cache write with `waitUntil` so KV latency cannot hold the current
- * authorized response; non-Worker callers await the same operation inline.
+ * moderation chain into one cache decision for API-key and Steward-session
+ * inference. A cold Worker request returns a retryable warming result and
+ * hydrates the authoritative decision under `waitUntil`; non-Worker callers may
+ * still await the same operation inline for deterministic tools and tests.
  *
- * Scope: ONLY `X-API-Key` / `Bearer eliza_*` credentials are eligible. Wallet
- * (signature/timestamp-bound, fail-closed), Bearer-JWT, and cookie sessions are
- * NOT cacheable (no invalidation path / replay risk) and always take the
- * authoritative slow path. See `packages/cloud/api/docs/inference-hot-path.md`.
+ * API keys are keyed by their full hash and Steward sessions by a hash of the
+ * verified subject. The cache-backed mode is independently default-off:
+ * lifecycle invalidation of an eventually consistent cache is not a strong
+ * revocation boundary. Wallet signatures remain on the general non-Worker path
+ * because their timestamped proof cannot be replayed as asynchronous cache
+ * hydration.
  *
  * Safety invariants:
  *   - A positive IAC entry is written ONLY for a fully-authorized credential.
  *   - Auth failures (invalid/inactive/no-org) throw from the authoritative chain
  *     and propagate unchanged -> the route maps them to the exact 401/403.
- *   - No try/catch returns a synthesized context. Cache failure bypasses lower
- *     caches and authorizes from the database, never from stale/fabricated data.
+ *   - A Worker cache failure returns an explicit unavailable/warming result;
+ *     it never authorizes by joining a database fallback to model dispatch.
  */
 
 import { createHash, timingSafeEqual } from "node:crypto";
-import { ApiError } from "../api/errors";
+import { getErrorStatusCode } from "../api/errors";
 import { type CacheBackendKind, cache } from "../cache/client";
-import { CacheKeys, CacheTTL } from "../cache/keys";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
 import { adminService } from "./admin";
@@ -35,18 +35,31 @@ import {
   hashApiKey,
   INFERENCE_AUTH_CONTEXT_VERSION,
   type InferenceAuthContext,
+  type ResolvedInferenceAuthContext,
   readInferenceAuthContextWithOutcome,
+  writeInferenceApiKeyAuthRejection,
   writeInferenceAuthContext,
 } from "./inference-auth-cache";
+import { isInferenceAuthCacheEnabled } from "./inference-hot-path-caches";
+import { resolveInferenceSessionAuthContext } from "./inference-session-auth-context";
 
-export type { InferenceAuthContext } from "./inference-auth-cache";
+export type {
+  InferenceAuthContext,
+  InferenceSessionAuthContext,
+  ResolvedInferenceAuthContext,
+} from "./inference-auth-cache";
 
 export const INFERENCE_AUTH_PROBE_HEADER = "X-Eliza-Auth-Probe";
 
-export type InferenceAuthCredentialSource = "x_api_key" | "bearer_api_key" | "other";
+export type InferenceAuthCredentialSource =
+  | "x_api_key"
+  | "bearer_api_key"
+  | "steward_session"
+  | "other";
 export type InferenceAuthCacheRead =
   | "not_run"
   | "hit"
+  | "rejected"
   | "miss"
   | "invalid"
   | "unavailable"
@@ -138,6 +151,8 @@ interface MutableInferenceAuthTrace {
   };
 }
 
+const apiKeyHydrations = new Map<string, Promise<void>>();
+
 const OPAQUE_TRACE_ID =
   /^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i;
 
@@ -211,8 +226,13 @@ function freezeCacheWriteTrace(
  *   - `slow_path`: the route runs the general auth chain for non-API-key credentials.
  */
 export type InferenceAuthResolution =
-  | { kind: "authorized"; ctx: InferenceAuthContext; source: "cache" | "origin" }
-  | { kind: "suspended"; userId: string }
+  | {
+      kind: "authorized";
+      ctx: ResolvedInferenceAuthContext;
+      source: "cache" | "origin";
+    }
+  | { kind: "suspended"; userId?: string }
+  | { kind: "rejected"; status: 401 | 403 }
   | { kind: "warming" }
   | { kind: "slow_path"; reason: "non_api_key" };
 
@@ -252,6 +272,63 @@ export function extractApiKeyCredential(req: Request): string | null {
   return extractApiKeyCredentialWithSource(req)?.rawKey ?? null;
 }
 
+function getOrCreateApiKeyHydration(
+  req: Request,
+  keyHash: string,
+  traceId: string | undefined,
+): Promise<void> {
+  const existing = apiKeyHydrations.get(keyHash);
+  if (existing) return existing;
+
+  // The outer Worker waitUntil retains this whole operation, so the
+  // authoritative resolver intentionally runs without an execution context:
+  // it must finish the cache write before releasing the single-flight slot.
+  const hydration = resolveInferenceAuthContext(req, {
+    traceId,
+    cacheOnly: false,
+  })
+    .then(async (result) => {
+      if (result.kind === "suspended") {
+        const write = await writeInferenceApiKeyAuthRejection(keyHash, "suspended", 403);
+        if (write.kind !== "written") {
+          throw new Error(`Suspended inference-auth decision cache write failed: ${write.kind}`);
+        }
+      }
+    })
+    .catch(async (error) => {
+      const status = getErrorStatusCode(error);
+      if (status === 401 || status === 403) {
+        const write = await writeInferenceApiKeyAuthRejection(keyHash, "rejected", status);
+        if (write.kind !== "written") {
+          logger.warn("[InferenceAuth] rejected decision cache write failed", {
+            traceId: boundedTraceId(traceId),
+            status,
+            cacheWrite: write.kind,
+          });
+        }
+      }
+      // error-policy:J7 the current request already returned an explicit
+      // warming state; preserve the failure in logs and allow a later retry.
+      logger.warn("[InferenceAuth] background hydration failed", {
+        traceId: boundedTraceId(traceId),
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+  apiKeyHydrations.set(keyHash, hydration);
+  const clear = () => {
+    if (apiKeyHydrations.get(keyHash) === hydration) {
+      apiKeyHydrations.delete(keyHash);
+    }
+  };
+  hydration.then(clear, clear);
+  return hydration;
+}
+
+/** Test hook for isolating coalesced API-key hydration state. */
+export function __clearInferenceApiKeyHydrations(): void {
+  apiKeyHydrations.clear();
+}
+
 export async function resolveInferenceAuthContext(
   req: Request,
   options: ResolveInferenceAuthOptions = {},
@@ -278,10 +355,43 @@ export async function resolveInferenceAuthContext(
   };
 
   try {
+    const authCacheEnabled = isInferenceAuthCacheEnabled();
     const extractStartedAt = performance.now();
     const credential = extractApiKeyCredentialWithSource(req);
     trace.timings.extractMs = durationSince(extractStartedAt);
-    if (!credential) return { kind: "slow_path", reason: "non_api_key" };
+    if (!credential) {
+      const session = await resolveInferenceSessionAuthContext(req, {
+        cacheOnly: authCacheEnabled && options.cacheOnly,
+        useAuthCache: authCacheEnabled,
+        executionCtx: options.executionCtx,
+      });
+      if (session.kind === "not_session") {
+        return { kind: "slow_path", reason: "non_api_key" };
+      }
+
+      trace.authSource = "steward_session";
+      trace.cacheAvailability = cache.isAvailable() ? "available" : "unavailable";
+      trace.cacheBackend = cache.getBackendKind();
+      if (session.kind === "authorized") {
+        trace.cacheRead = session.source === "cache" ? "hit" : "miss";
+        trace.authoritative = session.source === "origin" ? "authorized" : "not_run";
+        trace.result = session.source === "cache" ? "authorized_cache" : "authorized_origin";
+        return session;
+      }
+      if (session.kind === "warming") {
+        trace.cacheRead = cache.isAvailable() ? "miss" : "unavailable";
+        trace.result = "warming";
+        return session;
+      }
+      if (session.kind === "suspended") {
+        trace.cacheRead = "hit";
+        trace.result = "suspended";
+        return session;
+      }
+      trace.cacheRead = "hit";
+      trace.result = "rejected";
+      return session;
+    }
     trace.authSource = credential.source;
     trace.result = "error";
     const probeDiscriminator = controlledProbeDiscriminator(req);
@@ -294,7 +404,7 @@ export async function resolveInferenceAuthContext(
     trace.cacheBackend = cache.getBackendKind();
 
     const keyHash = hashApiKey(credential.rawKey);
-    if (cacheAvailable) {
+    if (authCacheEnabled && cacheAvailable) {
       const cacheReadStartedAt = performance.now();
       const cached = await readInferenceAuthContextWithOutcome(
         keyHash,
@@ -319,54 +429,24 @@ export async function resolveInferenceAuthContext(
         trace.result = "authorized_cache";
         return { kind: "authorized", ctx: cached.ctx, source: "cache" };
       }
+      if (cached.kind === "rejected") {
+        trace.result = cached.decision === "suspended" ? "suspended" : "rejected";
+        return cached.decision === "suspended"
+          ? { kind: "suspended" }
+          : { kind: "rejected", status: cached.status };
+      }
     } else {
       trace.cacheRead = "unavailable";
     }
 
-    // Cache-only mode returns the retryable warming state ONLY when that state
-    // can converge: the cache must be reachable (the file invariant says cache
-    // failure authorizes from the database, and no fill could land anyway) and
-    // the credential must not be a known-rejected one (an invalid/revoked key
-    // can never acquire a positive entry, so warming would loop forever — the
-    // authoritative chain below produces the precise 401/403 instead; the
-    // marker never SERVES a rejection, so its staleness is harmless).
-    if (options.cacheOnly && cacheAvailable) {
-      const rejected = await cache
-        .get<{ rejectedAtMs: number }>(CacheKeys.inference.authRejected(keyHash))
-        .catch(() => null);
-      if (!rejected) {
-        trace.authoritative = "not_run";
-        trace.result = "warming";
-        if (options.executionCtx) {
-          const hydration = resolveInferenceAuthContext(req, {
-            traceId: options.traceId,
-            executionCtx: options.executionCtx,
-            cacheOnly: false,
-          })
-            .then(() => undefined)
-            .catch(async (error) => {
-              // error-policy:J7 the cold authoritative fill is deliberately
-              // detached from inference; the retry stays fail-closed on failure.
-              // A definite credential rejection is recorded so the next
-              // cache-only request converges to the authoritative 401/403.
-              if (error instanceof ApiError && error.status < 500) {
-                await cache
-                  .set(
-                    CacheKeys.inference.authRejected(keyHash),
-                    { rejectedAtMs: Date.now() },
-                    CacheTTL.inference.authRejected,
-                  )
-                  .catch(() => undefined);
-              }
-              logger.warn("[InferenceAuth] background hydration failed", {
-                traceId: boundedTraceId(options.traceId),
-                error: error instanceof Error ? error.message : String(error),
-              });
-            });
-          options.executionCtx.waitUntil(hydration);
-        }
-        return { kind: "warming" };
+    if (authCacheEnabled && options.cacheOnly) {
+      trace.authoritative = "not_run";
+      trace.result = "warming";
+      if (cacheAvailable && options.executionCtx) {
+        const hydration = getOrCreateApiKeyHydration(req, keyHash, options.traceId);
+        options.executionCtx.waitUntil(hydration);
       }
+      return { kind: "warming" };
     }
 
     trace.authoritative = "error";
@@ -416,6 +496,9 @@ export async function resolveInferenceAuthContext(
     trace.authoritative = "authorized";
     trace.result = "authorized_origin";
     const cacheWriteStartedAt = performance.now();
+    if (!authCacheEnabled) {
+      return { kind: "authorized", ctx, source: "origin" };
+    }
     const cacheWrite = writeInferenceAuthContext(ctx);
     if (cacheAvailable && typeof options.executionCtx?.waitUntil === "function") {
       trace.cacheWrite = "deferred";

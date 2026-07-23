@@ -1,0 +1,658 @@
+/**
+ * Serialized organization admission controls for Worker inference.
+ *
+ * Cloudflare KV is eventually consistent and cannot safely decrement a cached
+ * counter or balance under concurrency. A per-organization Durable Object
+ * therefore enforces endpoint limits and leases estimated spend before provider
+ * dispatch. Postgres accounting starts only after provider work or from an
+ * expired-lease alarm.
+ */
+
+import { sql } from "drizzle-orm";
+import { sqlRows } from "../../db/execute-helpers";
+import { writeTransaction } from "../../db/helpers";
+import type {
+  RuntimeDurableObjectNamespace,
+  RuntimeDurableObjectStub,
+} from "../../types/cloud-worker-env";
+import { getCloudBinding } from "../runtime/cloud-bindings";
+import { logger } from "../utils/logger";
+import { type CreditReconciliationResult, creditsService } from "./credits";
+import type { InferenceAdmissionRecoveryContext } from "./inference-admission-recovery";
+import type { EndpointType } from "./org-rate-limits";
+
+const GATE_BINDING = "INFERENCE_ADMISSION_GATES";
+const GATE_ORIGIN = "https://inference-admission.internal";
+const HYDRATION_GATE_TIMEOUT_MS = 5_000;
+const GATE_OPERATION_TIMEOUT_MS = 1_500;
+const DISPATCH_GATE_TIMEOUT_MS = 1_500;
+const DISPATCH_GATE_MAX_ATTEMPTS = 3;
+
+interface LeaseResponse {
+  admitted: boolean;
+  availableUsd: number;
+  requiredUsd: number;
+}
+
+interface SettleResponse {
+  settled: boolean;
+}
+
+interface DispatchResponse {
+  dispatched: boolean;
+}
+
+interface ReleaseResponse {
+  released: boolean;
+}
+
+interface HydrateResponse {
+  hydrated: boolean;
+}
+
+export interface InferenceRateLimitDecision {
+  allowed: boolean;
+  remaining: number;
+  resetAt: number;
+  retryAfter?: number;
+}
+
+export interface InferenceAdmissionLease {
+  organizationId: string;
+  requestId: string;
+  estimatedCostUsd: number;
+  gate: RuntimeDurableObjectStub;
+  providerDispatched: boolean;
+  /**
+   * Proves that a live Worker abandoned dispatch before invoking the provider.
+   * It is destroyed as soon as dispatch acknowledgement is received.
+   */
+  preProviderCancellationToken?: string;
+}
+
+export class InferenceAdmissionGateUnavailableError extends Error {
+  constructor(message = "Inference admission gate is unavailable", options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = "InferenceAdmissionGateUnavailableError";
+  }
+}
+
+/**
+ * The dispatch marker failed before this Worker invoked the provider.
+ *
+ * The Durable Object may still have committed the dispatch intent, so callers
+ * must use zero settlement rather than assuming the lease stayed untouched.
+ */
+export class InferenceAdmissionDispatchMarkError extends InferenceAdmissionGateUnavailableError {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = "InferenceAdmissionDispatchMarkError";
+  }
+}
+
+/** Recognize a dispatch-mark failure through context-adding error wrappers. */
+export function isInferenceAdmissionDispatchMarkError(error: unknown): boolean {
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+  for (let depth = 0; depth < 12 && current !== undefined; depth += 1) {
+    if (seen.has(current)) return false;
+    seen.add(current);
+    if (current instanceof InferenceAdmissionDispatchMarkError) return true;
+    current = current instanceof Error && "cause" in current ? current.cause : undefined;
+  }
+  return false;
+}
+
+export class InferenceAdmissionLeaseRejectedError extends Error {
+  constructor(
+    readonly requiredUsd: number,
+    readonly availableUsd: number,
+  ) {
+    super(
+      `Inference admission lease rejected. Required: $${requiredUsd.toFixed(4)}, Available: $${availableUsd.toFixed(4)}`,
+    );
+    this.name = "InferenceAdmissionLeaseRejectedError";
+  }
+}
+
+function finiteNonNegative(value: number, field: string): number {
+  if (!Number.isFinite(value) || value < 0) {
+    throw new InferenceAdmissionGateUnavailableError(
+      `Invalid ${field} supplied to inference admission gate`,
+    );
+  }
+  return value;
+}
+
+function gateStub(organizationId: string): RuntimeDurableObjectStub {
+  const namespace = getCloudBinding<RuntimeDurableObjectNamespace>(GATE_BINDING);
+  if (!namespace) {
+    throw new InferenceAdmissionGateUnavailableError(
+      "Inference admission Durable Object binding is missing",
+    );
+  }
+  return namespace.getByName(organizationId);
+}
+
+async function gateFetch(
+  organizationId: string,
+  path: string,
+  body: Record<string, unknown>,
+  stub = gateStub(organizationId),
+  signal?: AbortSignal,
+): Promise<Response> {
+  try {
+    return await stub.fetch(
+      new Request(`${GATE_ORIGIN}${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal,
+      }),
+    );
+  } catch (error) {
+    if (error instanceof InferenceAdmissionGateUnavailableError) throw error;
+    // error-policy:J2 preserve the failed binding/transport operation as cause.
+    throw new InferenceAdmissionGateUnavailableError(
+      error instanceof Error ? error.message : String(error),
+      { cause: error },
+    );
+  }
+}
+
+async function parseLeaseResponse(response: Response): Promise<LeaseResponse> {
+  try {
+    const value = await response.json();
+    if (
+      typeof value !== "object" ||
+      value === null ||
+      typeof (value as Record<string, unknown>).admitted !== "boolean" ||
+      !Number.isFinite((value as Record<string, unknown>).availableUsd) ||
+      !Number.isFinite((value as Record<string, unknown>).requiredUsd)
+    ) {
+      throw new TypeError("response does not match the lease schema");
+    }
+    return value as LeaseResponse;
+  } catch (error) {
+    // error-policy:J3 a malformed Durable Object response is an explicit
+    // unavailable decision, never an admission fallback.
+    throw new InferenceAdmissionGateUnavailableError(
+      `Inference admission gate returned invalid JSON: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+}
+
+async function parseSettleResponse(response: Response): Promise<SettleResponse> {
+  try {
+    const value = await response.json();
+    if (
+      typeof value !== "object" ||
+      value === null ||
+      (value as Record<string, unknown>).settled !== true
+    ) {
+      throw new TypeError("response does not match the settlement schema");
+    }
+    return value as SettleResponse;
+  } catch (error) {
+    // error-policy:J3 malformed responses never become successful settlement.
+    throw new InferenceAdmissionGateUnavailableError(
+      `Inference admission gate returned invalid settlement JSON: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+      { cause: error },
+    );
+  }
+}
+
+async function parseLeaseTransitionResponse<Field extends "dispatched" | "released">(
+  response: Response,
+  field: Field,
+): Promise<Field extends "dispatched" ? DispatchResponse : ReleaseResponse> {
+  try {
+    const value = await response.json();
+    if (
+      typeof value !== "object" ||
+      value === null ||
+      (value as Record<string, unknown>)[field] !== true
+    ) {
+      throw new TypeError(`response does not confirm ${field}`);
+    }
+    return value as Field extends "dispatched" ? DispatchResponse : ReleaseResponse;
+  } catch (error) {
+    // error-policy:J3 malformed transition responses never advance a lease.
+    throw new InferenceAdmissionGateUnavailableError(
+      `Inference admission gate returned invalid ${field} JSON: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+      { cause: error },
+    );
+  }
+}
+
+async function parseHydrateResponse(response: Response): Promise<HydrateResponse> {
+  try {
+    const value = await response.json();
+    if (
+      typeof value !== "object" ||
+      value === null ||
+      (value as Record<string, unknown>).hydrated !== true
+    ) {
+      throw new TypeError("response does not match the hydration schema");
+    }
+    return value as HydrateResponse;
+  } catch (error) {
+    // error-policy:J3 malformed responses never become successful hydration.
+    throw new InferenceAdmissionGateUnavailableError(
+      `Inference admission gate returned invalid hydration JSON: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+      { cause: error },
+    );
+  }
+}
+
+async function parseRateLimitResponse(response: Response): Promise<InferenceRateLimitDecision> {
+  try {
+    const value = await response.json();
+    if (typeof value !== "object" || value === null) {
+      throw new TypeError("response does not match the rate-limit schema");
+    }
+    const record = value as Record<string, unknown>;
+    if (
+      typeof record.allowed !== "boolean" ||
+      !Number.isSafeInteger(record.remaining) ||
+      (record.remaining as number) < 0 ||
+      !Number.isSafeInteger(record.resetAt) ||
+      (record.resetAt as number) <= 0 ||
+      (record.retryAfter !== undefined &&
+        (!Number.isSafeInteger(record.retryAfter) || (record.retryAfter as number) <= 0))
+    ) {
+      throw new TypeError("response does not match the rate-limit schema");
+    }
+    return value as InferenceRateLimitDecision;
+  } catch (error) {
+    // error-policy:J3 malformed responses never become an allowed request.
+    throw new InferenceAdmissionGateUnavailableError(
+      `Inference admission gate returned invalid rate-limit JSON: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+      { cause: error },
+    );
+  }
+}
+
+async function readGateErrorCode(response: Response): Promise<string | undefined> {
+  try {
+    const value = await response.json();
+    if (typeof value !== "object" || value === null) return undefined;
+    const code = (value as Record<string, unknown>).code;
+    return typeof code === "string" ? code : undefined;
+  } catch {
+    // error-policy:J3 a malformed error payload remains an unavailable
+    // decision; callers never treat it as admission.
+    return undefined;
+  }
+}
+
+const gateHydrations = new Map<string, Promise<void>>();
+
+function hydrateInferenceAdmissionGate(
+  organizationId: string,
+  stub: RuntimeDurableObjectStub,
+): Promise<void> {
+  const existing = gateHydrations.get(organizationId);
+  if (existing) return existing;
+  const hydration = writeTransaction(async (tx) => {
+    const rows = await sqlRows<{
+      credit_balance: string | number | null;
+      balance_revision: string | number | null;
+    }>(
+      tx,
+      sql`
+        SELECT credit_balance, balance_revision
+        FROM organizations
+        WHERE id = ${organizationId}
+        FOR UPDATE
+      `,
+    );
+    const row = rows[0];
+    const balanceUsd = row ? Number(row.credit_balance) : 0;
+    const balanceRevision = row ? String(row.balance_revision) : "0";
+    if (!Number.isFinite(balanceUsd) || balanceUsd < 0 || !/^(0|[1-9]\d*)$/.test(balanceRevision)) {
+      throw new InferenceAdmissionGateUnavailableError(
+        "Authoritative inference balance snapshot is invalid",
+      );
+    }
+    const response = await gateFetch(
+      organizationId,
+      "/hydrate",
+      { balanceUsd, balanceRevision },
+      stub,
+      AbortSignal.timeout(HYDRATION_GATE_TIMEOUT_MS),
+    );
+    if (!response.ok) {
+      throw new InferenceAdmissionGateUnavailableError(
+        `Inference admission gate hydration failed with status ${response.status}`,
+      );
+    }
+    await parseHydrateResponse(response);
+  }).finally(() => {
+    gateHydrations.delete(organizationId);
+  });
+  gateHydrations.set(organizationId, hydration);
+  return hydration;
+}
+
+function scheduleGateHydration(
+  organizationId: string,
+  stub: RuntimeDurableObjectStub,
+  executionCtx: { waitUntil(promise: Promise<unknown>): void },
+): void {
+  const observed = hydrateInferenceAdmissionGate(organizationId, stub).catch((error) => {
+    // error-policy:J7 cold-gate hydration is retried by the next 503 request;
+    // log the failure without turning the already-returned response into 500.
+    logger.warn("[InferenceAdmissionGate] hydration failed", {
+      organizationId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  });
+  executionCtx.waitUntil(observed);
+}
+
+/**
+ * Atomically consume one request from an organization's endpoint window.
+ * The Durable Object response is the only authoritative Worker-side decision.
+ */
+export async function consumeInferenceRateLimit(params: {
+  organizationId: string;
+  endpointType: EndpointType;
+  windowMs: number;
+  maxRequests: number;
+}): Promise<InferenceRateLimitDecision> {
+  if (
+    !params.organizationId ||
+    params.organizationId.length > 256 ||
+    !Number.isSafeInteger(params.windowMs) ||
+    params.windowMs <= 0 ||
+    !Number.isSafeInteger(params.maxRequests) ||
+    params.maxRequests <= 0
+  ) {
+    throw new InferenceAdmissionGateUnavailableError(
+      "Inference rate-limit identity and positive policy are required",
+    );
+  }
+
+  const response = await gateFetch(
+    params.organizationId,
+    "/rate-limit",
+    {
+      endpointType: params.endpointType,
+      windowMs: params.windowMs,
+      maxRequests: params.maxRequests,
+    },
+    undefined,
+    AbortSignal.timeout(GATE_OPERATION_TIMEOUT_MS),
+  );
+  if (response.status !== 200 && response.status !== 429) {
+    throw new InferenceAdmissionGateUnavailableError(
+      `Inference admission gate rate limit failed with status ${response.status}`,
+    );
+  }
+  const decision = await parseRateLimitResponse(response);
+  if (
+    (response.status === 200 && !decision.allowed) ||
+    (response.status === 429 && decision.allowed)
+  ) {
+    throw new InferenceAdmissionGateUnavailableError(
+      "Inference admission gate returned an inconsistent rate-limit decision",
+    );
+  }
+  return decision;
+}
+
+/**
+ * Atomically lease an estimated charge from the cached organization balance.
+ * Duplicate request IDs are idempotent only when the amount is identical.
+ */
+export async function acquireInferenceAdmissionLease(params: {
+  organizationId: string;
+  requestId: string;
+  balanceUsd: number;
+  balanceRevision: string;
+  estimatedCostUsd: number;
+  recovery: InferenceAdmissionRecoveryContext;
+  executionCtx?: { waitUntil(promise: Promise<unknown>): void };
+}): Promise<InferenceAdmissionLease> {
+  const balanceUsd = finiteNonNegative(params.balanceUsd, "balanceUsd");
+  const estimatedCostUsd = finiteNonNegative(params.estimatedCostUsd, "estimatedCostUsd");
+  if (
+    !params.organizationId ||
+    !params.requestId ||
+    !/^(0|[1-9]\d*)$/.test(params.balanceRevision) ||
+    estimatedCostUsd === 0
+  ) {
+    throw new InferenceAdmissionGateUnavailableError(
+      "Inference admission lease identity and positive cost are required",
+    );
+  }
+
+  const stub = gateStub(params.organizationId);
+  const response = await gateFetch(
+    params.organizationId,
+    "/lease",
+    {
+      organizationId: params.organizationId,
+      requestId: params.requestId,
+      balanceUsd,
+      balanceRevision: params.balanceRevision,
+      estimatedCostUsd,
+      recovery: params.recovery,
+    },
+    stub,
+    AbortSignal.timeout(GATE_OPERATION_TIMEOUT_MS),
+  );
+  if (response.status === 503) {
+    const code = await readGateErrorCode(response);
+    if (code === "inference_admission_gate_uninitialized" && params.executionCtx) {
+      scheduleGateHydration(params.organizationId, stub, params.executionCtx);
+    }
+    throw new InferenceAdmissionGateUnavailableError(
+      `Inference admission gate lease failed with status ${response.status}`,
+    );
+  }
+  const payload = await parseLeaseResponse(response);
+  if (response.status === 402) {
+    throw new InferenceAdmissionLeaseRejectedError(payload.requiredUsd, payload.availableUsd);
+  }
+  if (!response.ok || !payload?.admitted) {
+    throw new InferenceAdmissionGateUnavailableError(
+      `Inference admission gate lease failed with status ${response.status}`,
+    );
+  }
+  return {
+    organizationId: params.organizationId,
+    requestId: params.requestId,
+    estimatedCostUsd,
+    gate: stub,
+    providerDispatched: false,
+    preProviderCancellationToken: crypto.randomUUID(),
+  };
+}
+
+/** Convert reconciliation into the amount that was actually collected. */
+export function collectedInferenceCost(
+  lease: InferenceAdmissionLease,
+  actualCostUsd: number,
+  reconciliation: CreditReconciliationResult | null,
+): number {
+  const actual = finiteNonNegative(actualCostUsd, "actualCostUsd");
+  if (!reconciliation) {
+    return Math.max(actual, lease.estimatedCostUsd);
+  }
+  if (reconciliation.adjustmentType === "uncollected_overage") {
+    return Math.max(actual, lease.estimatedCostUsd);
+  }
+  if (reconciliation.collectedAmount !== undefined) {
+    return finiteNonNegative(reconciliation.collectedAmount, "reconciliation.collectedAmount");
+  }
+  return actual;
+}
+
+/** Split database-backed collection from conservative gate-only consumption. */
+export function inferenceSettlementAmounts(
+  lease: InferenceAdmissionLease,
+  actualCostUsd: number,
+  reconciliation: CreditReconciliationResult | null,
+): { balanceBackedUsd: number; gateConsumedUsd: number } {
+  const actual = finiteNonNegative(actualCostUsd, "actualCostUsd");
+  const gateConsumedUsd = collectedInferenceCost(lease, actual, reconciliation);
+  const balanceBackedUsd =
+    reconciliation?.collectedAmount !== undefined
+      ? finiteNonNegative(reconciliation.collectedAmount, "reconciliation.collectedAmount")
+      : reconciliation?.adjustmentType === "uncollected_overage"
+        ? Math.min(
+            gateConsumedUsd,
+            finiteNonNegative(reconciliation.reservedAmount, "reconciliation.reservedAmount"),
+          )
+        : actual;
+  return { balanceBackedUsd, gateConsumedUsd };
+}
+
+/** Persist dispatch intent immediately before invoking the upstream provider. */
+export async function markInferenceAdmissionLeaseDispatched(
+  lease: InferenceAdmissionLease,
+): Promise<void> {
+  if (lease.providerDispatched) return;
+  const cancellationToken = lease.preProviderCancellationToken;
+  if (!cancellationToken) {
+    throw new InferenceAdmissionDispatchMarkError(
+      "Inference admission lease has no pre-provider cancellation capability",
+    );
+  }
+
+  let lastAmbiguousError: unknown;
+  for (let attempt = 1; attempt <= DISPATCH_GATE_MAX_ATTEMPTS; attempt += 1) {
+    let response: Response;
+    try {
+      response = await gateFetch(
+        lease.organizationId,
+        "/dispatch",
+        {
+          requestId: lease.requestId,
+          preProviderCancellationToken: cancellationToken,
+        },
+        lease.gate,
+        AbortSignal.timeout(DISPATCH_GATE_TIMEOUT_MS),
+      );
+    } catch (error) {
+      lastAmbiguousError = error;
+      if (attempt < DISPATCH_GATE_MAX_ATTEMPTS) continue;
+      break;
+    }
+    if (!response.ok) {
+      const error = new InferenceAdmissionDispatchMarkError(
+        `Inference admission gate dispatch failed with status ${response.status}`,
+      );
+      if (response.status < 500) throw error;
+      lastAmbiguousError = error;
+      if (attempt < DISPATCH_GATE_MAX_ATTEMPTS) continue;
+      break;
+    }
+    try {
+      await parseLeaseTransitionResponse(response, "dispatched");
+    } catch (error) {
+      // A valid 2xx transport with an unreadable body can still follow a
+      // committed dispatch. Replaying the same capability resolves ambiguity.
+      lastAmbiguousError = error;
+      if (attempt < DISPATCH_GATE_MAX_ATTEMPTS) continue;
+      break;
+    }
+    lease.providerDispatched = true;
+    lease.preProviderCancellationToken = undefined;
+    return;
+  }
+  // error-policy:J2 all attempts remain ambiguous. The capability stays on
+  // the lease so a live error settlement can prove no provider was invoked.
+  throw new InferenceAdmissionDispatchMarkError(
+    `Inference admission gate dispatch acknowledgement remained ambiguous after ${DISPATCH_GATE_MAX_ATTEMPTS} attempts`,
+    { cause: lastAmbiguousError },
+  );
+}
+
+/** Release a lease only when no provider dispatch was attempted. */
+export async function releaseInferenceAdmissionLease(
+  lease: InferenceAdmissionLease,
+): Promise<void> {
+  if (lease.providerDispatched) {
+    throw new InferenceAdmissionGateUnavailableError(
+      "Dispatched inference work cannot be released without accounting",
+    );
+  }
+  const response = await gateFetch(
+    lease.organizationId,
+    "/release",
+    {
+      requestId: lease.requestId,
+      ...(lease.preProviderCancellationToken && {
+        preProviderCancellationToken: lease.preProviderCancellationToken,
+      }),
+    },
+    lease.gate,
+    AbortSignal.timeout(GATE_OPERATION_TIMEOUT_MS),
+  );
+  if (!response.ok) {
+    throw new InferenceAdmissionGateUnavailableError(
+      `Inference admission gate release failed with status ${response.status}`,
+    );
+  }
+  await parseLeaseTransitionResponse(response, "released");
+  lease.preProviderCancellationToken = undefined;
+}
+
+/**
+ * Finalize a provider-dispatched lease from an authoritative post-accounting
+ * balance snapshot. This read is deliberately post-provider and off-response;
+ * it prevents delayed cache snapshots from resurrecting an intervening debit.
+ */
+export async function settleInferenceAdmissionLease(
+  lease: InferenceAdmissionLease,
+  balanceBackedCostUsd: number,
+  gateConsumedCostUsd = balanceBackedCostUsd,
+): Promise<void> {
+  const balanceBackedUsd = finiteNonNegative(balanceBackedCostUsd, "balanceBackedCostUsd");
+  const gateConsumedUsd = finiteNonNegative(gateConsumedCostUsd, "gateConsumedCostUsd");
+  if (gateConsumedUsd < balanceBackedUsd) {
+    throw new InferenceAdmissionGateUnavailableError(
+      "Gate consumption cannot be lower than balance-backed collection",
+    );
+  }
+  if (!lease.providerDispatched) {
+    if (balanceBackedUsd === 0 && gateConsumedUsd === 0) {
+      await releaseInferenceAdmissionLease(lease);
+      return;
+    }
+    await markInferenceAdmissionLeaseDispatched(lease);
+  }
+  const snapshot = await creditsService.getOrganizationBalanceSnapshot(lease.organizationId);
+  const response = await gateFetch(
+    lease.organizationId,
+    "/settle",
+    {
+      requestId: lease.requestId,
+      balanceBackedUsd,
+      gateConsumedUsd,
+      balanceUsd: snapshot.balanceUsd,
+      balanceRevision: snapshot.revision,
+    },
+    lease.gate,
+    AbortSignal.timeout(GATE_OPERATION_TIMEOUT_MS),
+  );
+  if (!response.ok) {
+    throw new InferenceAdmissionGateUnavailableError(
+      `Inference admission gate settlement failed with status ${response.status}`,
+    );
+  }
+  await parseSettleResponse(response);
+}

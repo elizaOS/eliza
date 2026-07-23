@@ -72,7 +72,12 @@ describe("settle post-commit cache invalidation failure is logged, not swallowed
     const settle = createLedgerDebitSettler(CTX);
 
     // The invalidation failures must not fail the (already-committed) settle.
-    await expect(settle(0.01)).resolves.toBeNull();
+    await expect(settle(0.01)).resolves.toEqual({
+      reservedAmount: 0.01,
+      actualCost: 0.01,
+      adjustmentType: "none",
+      settlementTransactionIds: [],
+    });
 
     // Flush the two fire-and-forget `.catch` microtasks.
     await new Promise((resolve) => setTimeout(resolve, 0));

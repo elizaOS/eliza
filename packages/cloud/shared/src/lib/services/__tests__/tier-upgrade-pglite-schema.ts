@@ -19,6 +19,7 @@ export const TIER_UPGRADE_TEST_TABLES: readonly string[] = [
   "name" text NOT NULL,
   "slug" text NOT NULL,
   "credit_balance" numeric(12,6) NOT NULL DEFAULT 0.000000,
+  "balance_revision" bigint NOT NULL DEFAULT 0,
   "settings" jsonb DEFAULT '{}'::jsonb,
   "stripe_customer_id" text,
   "billing_email" text,

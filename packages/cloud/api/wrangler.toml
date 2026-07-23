@@ -96,22 +96,39 @@ name = "CHAT_ROUTE_RATE_LIMITER"
 namespace_id = "1615302"
 simple = { limit = 200, period = 60 }
 
+[[ratelimits]]
+name = "DASHBOARD_CHAT_ROUTE_RATE_LIMITER"
+namespace_id = "1615303"
+simple = { limit = 60, period = 60 }
+
 [[durable_objects.bindings]]
 name = "SHARED_RUNTIME_CONVERSATIONS"
 class_name = "SharedRuntimeConversation"
+
+[[durable_objects.bindings]]
+name = "INFERENCE_ADMISSION_GATES"
+class_name = "InferenceAdmissionGate"
+
+[[durable_objects.bindings]]
+name = "ANONYMOUS_CHAT_GATES"
+class_name = "AnonymousChatGate"
 
 [[migrations]]
 tag = "shared-runtime-conversations-v1"
 new_sqlite_classes = ["SharedRuntimeConversation"]
 
-# Exact organization limits and non-native route limits use Railway TCP Redis
-# via REDIS_URL (in-Worker SocketRedis, RESP2 over cloudflare:sockets). The
-# global flood backstop and chat API-key gate above use Cloudflare's local
-# protective counters, so Railway connection setup no longer blocks those two
-# outer ingress checks. The exact organization quota remains Redis-backed in
-# the handler. Upstash REST remains a legacy fallback. Shared-runtime chat
-# history still depends on durable Redis; local dev uses embedded Wadis when
-# unconfigured.
+[[migrations]]
+tag = "inference-admission-gates-v1"
+new_sqlite_classes = ["InferenceAdmissionGate"]
+
+[[migrations]]
+tag = "anonymous-chat-gates-v1"
+new_sqlite_classes = ["AnonymousChatGate"]
+
+# General API limits and queues may use Railway Redis via REDIS_URL. Inference
+# routes never connect to it: Cloudflare Rate Limiting bindings protect ingress,
+# Durable Objects serialize organization/anonymous quotas, and CACHE_KV serves
+# revisioned metadata. Local development can use embedded Wadis when configured.
 
 # Vectorize — embeddings (uncomment after `wrangler vectorize create`)
 # [[vectorize]]
@@ -172,36 +189,29 @@ CRYPTO_DIRECT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"
 CRYPTO_DIRECT_SOLANA_TOKEN_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
 CRYPTO_DIRECT_SOLANA_TOKEN_DECIMALS = "6"
 CACHE_ENABLED = "true"
-# auto: in-Worker SocketRedis (RESP2 over cloudflare:sockets) when REDIS_URL
-# (Railway TCP) is set, else the legacy Upstash REST fallback. "redis-rest"
-# would force the dead Upstash path and skip Railway Redis (client.ts:235).
+# auto: Workers prefer CACHE_KV; non-Worker services use REDIS_URL when set.
+# Explicit "redis" / "redis-rest" overrides remain compatibility options.
 CACHE_BACKEND = "auto"
 REDIS_RATE_LIMITING = "false"
-# Tier-2 optimistic off-path billing (#9899). INFERENCE_OPTIMISTIC_BILLING
-# enables it; when "true" with a writable KV backstop, an org clearing
-# SAFE_BALANCE_THRESHOLD skips the sync reserve and debits actual cost off the
-# response path (the sweep-inference-charges cron settles dropped inline settles).
-# SAFE_BALANCE_THRESHOLD (USD) empty/invalid -> +Inf -> every org takes the safe
-# synchronous-reserve path. The auth+moderation hot-path cache is the default now
-# (no flag); a cache miss falls back to the authoritative slow path.
+# Enables post-provider billing for cache-only Worker admission. Worker cache
+# misses warm and retry instead of joining an authoritative database fallback.
+# SAFE_BALANCE_THRESHOLD remains a non-Worker compatibility control; exact
+# Durable Object admission does not impose a minimum account-balance floor.
 INFERENCE_OPTIMISTIC_BILLING = "false"
 # Thin chat-only bootstrap. Keep production off until staging parity/latency soak passes.
 THIN_INFERENCE_ENTRY_ENABLED = "false"
 SAFE_BALANCE_THRESHOLD = ""
-# Optimistic-billing durable backstop: "db" = inference_pending_charges ledger
-# (atomic overdraw bound + exactly-once settle + age-ordered sweep); "" = KV
-# backstop (current). Off until soaked; cutover is an ops flip (#9899).
-INFERENCE_BILLING_LEDGER = ""
-# Tier-3 deferred admission (#9899): "true" moves the durable admission WRITE
-# (ledger insert / KV pending charge) off the pre-forward critical path via
-# executionCtx.waitUntil; the critical path keeps a cached 402 gate (15s
-# org-balance hint + in-isolate refusal blocklist). Requires
-# INFERENCE_OPTIMISTIC_BILLING. Off until soaked; cutover is an ops flip.
+# Compatibility selector for non-Worker admission and legacy sweep support.
+# Worker inference uses a Durable Object lease as its pre-dispatch WAL.
+INFERENCE_BILLING_LEDGER = "db"
+# Required for the Worker cache-only path. The only pre-provider write is the
+# per-organization Durable Object lease; Postgres accounting starts afterward.
 INFERENCE_DEFERRED_ADMISSION = "false"
-# Tier-3 in-isolate decision caches (#9899): org rate-limit lease (convergent;
-# leased requests are carried back into the Redis window), 60s shouldBlockUser
-# memo, 60s model-catalog memo. Default off; rollback = flip off.
+# Enables local decision memos in front of shared revisioned caches. Exact
+# organization rate and spend decisions remain in the Durable Object.
 INFERENCE_HOT_PATH_CACHES = "false"
+# Positive auth caching stays off until revocation is strongly consistent.
+INFERENCE_AUTH_CACHE_ENABLED = "false"
 # Pass-through streaming fast path (#15428): "true" pipes qualifying streamed
 # chat completions (OpenAI-compatible direct upstream, no tools/response_format/
 # web-search) byte-for-byte from the provider instead of decoding/re-encoding
@@ -409,34 +419,27 @@ CRYPTO_DIRECT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"
 CRYPTO_DIRECT_SOLANA_TOKEN_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
 CRYPTO_DIRECT_SOLANA_TOKEN_DECIMALS = "6"
 CACHE_ENABLED = "true"
-# auto: in-Worker SocketRedis (RESP2 over cloudflare:sockets) when REDIS_URL
-# (Railway TCP) is set, else the legacy Upstash REST fallback. "redis-rest"
-# would force the dead Upstash path and skip Railway Redis (client.ts:235).
+# auto: Workers prefer CACHE_KV; non-Worker services use REDIS_URL when set.
+# Explicit "redis" / "redis-rest" overrides remain compatibility options.
 CACHE_BACKEND = "auto"
 REDIS_RATE_LIMITING = "true"
-# Tier-2 optimistic off-path billing (#9899). INFERENCE_OPTIMISTIC_BILLING
-# enables it; when "true" with a writable KV backstop, an org clearing
-# SAFE_BALANCE_THRESHOLD skips the sync reserve and debits actual cost off the
-# response path (the sweep-inference-charges cron settles dropped inline settles).
-# SAFE_BALANCE_THRESHOLD (USD) empty/invalid -> +Inf -> every org takes the safe
-# synchronous-reserve path. The auth+moderation hot-path cache is the default now
-# (no flag); a cache miss falls back to the authoritative slow path.
+# Enables post-provider billing for cache-only Worker admission. Worker cache
+# misses warm and retry instead of joining an authoritative database fallback.
+# SAFE_BALANCE_THRESHOLD remains a non-Worker compatibility control; exact
+# Durable Object admission does not impose a minimum account-balance floor.
 INFERENCE_OPTIMISTIC_BILLING = "true"
 SAFE_BALANCE_THRESHOLD = "5.00"
-# Optimistic-billing durable backstop: "db" = inference_pending_charges ledger
-# (atomic overdraw bound + exactly-once settle + age-ordered sweep); "" = KV
-# backstop (current). Off until soaked; cutover is an ops flip (#9899).
-INFERENCE_BILLING_LEDGER = ""
-# Tier-3 deferred admission (#9899): "true" moves the durable admission WRITE
-# (ledger insert / KV pending charge) off the pre-forward critical path via
-# executionCtx.waitUntil; the critical path keeps a cached 402 gate (15s
-# org-balance hint + in-isolate refusal blocklist). Requires
-# INFERENCE_OPTIMISTIC_BILLING. Off until soaked; cutover is an ops flip.
+# Compatibility selector for non-Worker admission and legacy sweep support.
+# Worker inference uses a Durable Object lease as its pre-dispatch WAL.
+INFERENCE_BILLING_LEDGER = "db"
+# Required for the Worker cache-only path. The only pre-provider write is the
+# per-organization Durable Object lease; Postgres accounting starts afterward.
 INFERENCE_DEFERRED_ADMISSION = "true"
-# Tier-3 in-isolate decision caches (#9899): org rate-limit lease (convergent;
-# leased requests are carried back into the Redis window), 60s shouldBlockUser
-# memo, 60s model-catalog memo. Default off; rollback = flip off.
+# Enables local decision memos in front of shared revisioned caches. Exact
+# organization rate and spend decisions remain in the Durable Object.
 INFERENCE_HOT_PATH_CACHES = "true"
+# Staging retains authoritative auth while admission/cache foundations soak.
+INFERENCE_AUTH_CACHE_ENABLED = "false"
 # Pass-through streaming fast path (#15428): "true" pipes qualifying streamed
 # chat completions (OpenAI-compatible direct upstream, no tools/response_format/
 # web-search) byte-for-byte from the provider instead of decoding/re-encoding
@@ -495,6 +498,14 @@ id = "f7e24faaff734e7c8cd8e12b093c3571"
 name = "SHARED_RUNTIME_CONVERSATIONS"
 class_name = "SharedRuntimeConversation"
 
+[[env.staging.durable_objects.bindings]]
+name = "INFERENCE_ADMISSION_GATES"
+class_name = "InferenceAdmissionGate"
+
+[[env.staging.durable_objects.bindings]]
+name = "ANONYMOUS_CHAT_GATES"
+class_name = "AnonymousChatGate"
+
 [[env.staging.ratelimits]]
 name = "GLOBAL_RATE_LIMITER"
 namespace_id = "1615311"
@@ -504,6 +515,11 @@ simple = { limit = 600, period = 60 }
 name = "CHAT_ROUTE_RATE_LIMITER"
 namespace_id = "1615312"
 simple = { limit = 200, period = 60 }
+
+[[env.staging.ratelimits]]
+name = "DASHBOARD_CHAT_ROUTE_RATE_LIMITER"
+namespace_id = "1615313"
+simple = { limit = 60, period = 60 }
 
 [env.production]
 name = "eliza-cloud-api-prod"
@@ -601,34 +617,27 @@ CRYPTO_DIRECT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"
 CRYPTO_DIRECT_SOLANA_TOKEN_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
 CRYPTO_DIRECT_SOLANA_TOKEN_DECIMALS = "6"
 CACHE_ENABLED = "true"
-# auto: in-Worker SocketRedis (RESP2 over cloudflare:sockets) when REDIS_URL
-# (Railway TCP) is set, else the legacy Upstash REST fallback. "redis-rest"
-# would force the dead Upstash path and skip Railway Redis (client.ts:235).
+# auto: Workers prefer CACHE_KV; non-Worker services use REDIS_URL when set.
+# Explicit "redis" / "redis-rest" overrides remain compatibility options.
 CACHE_BACKEND = "auto"
 REDIS_RATE_LIMITING = "true"
-# Tier-2 optimistic off-path billing (#9899). INFERENCE_OPTIMISTIC_BILLING
-# enables it; when "true" with a writable KV backstop, an org clearing
-# SAFE_BALANCE_THRESHOLD skips the sync reserve and debits actual cost off the
-# response path (the sweep-inference-charges cron settles dropped inline settles).
-# SAFE_BALANCE_THRESHOLD (USD) empty/invalid -> +Inf -> every org takes the safe
-# synchronous-reserve path. The auth+moderation hot-path cache is the default now
-# (no flag); a cache miss falls back to the authoritative slow path.
+# Enables post-provider billing for cache-only Worker admission. Worker cache
+# misses warm and retry instead of joining an authoritative database fallback.
+# SAFE_BALANCE_THRESHOLD remains a non-Worker compatibility control; exact
+# Durable Object admission does not impose a minimum account-balance floor.
 INFERENCE_OPTIMISTIC_BILLING = "true"
 SAFE_BALANCE_THRESHOLD = "5.00"
-# Optimistic-billing durable backstop: "db" = inference_pending_charges ledger
-# (atomic overdraw bound + exactly-once settle + age-ordered sweep); "" = KV
-# backstop (current). Off until soaked; cutover is an ops flip (#9899).
-INFERENCE_BILLING_LEDGER = ""
-# Tier-3 deferred admission (#9899): "true" moves the durable admission WRITE
-# (ledger insert / KV pending charge) off the pre-forward critical path via
-# executionCtx.waitUntil; the critical path keeps a cached 402 gate (15s
-# org-balance hint + in-isolate refusal blocklist). Requires
-# INFERENCE_OPTIMISTIC_BILLING. Off until soaked; cutover is an ops flip.
+# Compatibility selector for non-Worker admission and legacy sweep support.
+# Worker inference uses a Durable Object lease as its pre-dispatch WAL.
+INFERENCE_BILLING_LEDGER = "db"
+# Required for the Worker cache-only path. The only pre-provider write is the
+# per-organization Durable Object lease; Postgres accounting starts afterward.
 INFERENCE_DEFERRED_ADMISSION = "true"
-# Tier-3 in-isolate decision caches (#9899): org rate-limit lease (convergent;
-# leased requests are carried back into the Redis window), 60s shouldBlockUser
-# memo, 60s model-catalog memo. Default off; rollback = flip off.
+# Enables local decision memos in front of shared revisioned caches. Exact
+# organization rate and spend decisions remain in the Durable Object.
 INFERENCE_HOT_PATH_CACHES = "true"
+# Production authorization remains authoritative until the revocation gate lands.
+INFERENCE_AUTH_CACHE_ENABLED = "false"
 # Pass-through streaming fast path (#15428): "true" pipes qualifying streamed
 # chat completions (OpenAI-compatible direct upstream, no tools/response_format/
 # web-search) byte-for-byte from the provider instead of decoding/re-encoding
@@ -680,6 +689,14 @@ id = "1dafabf1293d4b6b97f61c5cc22d6fec"
 name = "SHARED_RUNTIME_CONVERSATIONS"
 class_name = "SharedRuntimeConversation"
 
+[[env.production.durable_objects.bindings]]
+name = "INFERENCE_ADMISSION_GATES"
+class_name = "InferenceAdmissionGate"
+
+[[env.production.durable_objects.bindings]]
+name = "ANONYMOUS_CHAT_GATES"
+class_name = "AnonymousChatGate"
+
 [[env.production.ratelimits]]
 name = "GLOBAL_RATE_LIMITER"
 namespace_id = "1615321"
@@ -689,5 +706,10 @@ simple = { limit = 600, period = 60 }
 name = "CHAT_ROUTE_RATE_LIMITER"
 namespace_id = "1615322"
 simple = { limit = 200, period = 60 }
+
+[[env.production.ratelimits]]
+name = "DASHBOARD_CHAT_ROUTE_RATE_LIMITER"
+namespace_id = "1615323"
+simple = { limit = 60, period = 60 }
 
 # deploy-kick 2026-07-22T19:02Z: re-trigger push-event Cloud CF Deploy after GH queue wedge (runs 29918527708/29940486657/29946551580 all starved). [sol-orch]

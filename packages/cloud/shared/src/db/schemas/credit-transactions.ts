@@ -46,6 +46,11 @@ export const creditTransactions = pgTable(
       .where(
         sql`${table.type} = 'debit' AND (( ${table.metadata}->>'type' = 'reservation' AND ${table.metadata}->>'settlement_marker' = 'credit_reservation_v1') OR (${table.metadata}->>'type' = 'app_chat_reservation' AND ${table.metadata}->>'settlement_marker' = 'app_chat_reservation_v1')) AND ${table.settled_at} IS NULL`,
       ),
+    app_usage_projection_source_idx: index("credit_transactions_app_usage_projection_source_idx")
+      .on(table.created_at, table.id)
+      .where(
+        sql`${table.type} = 'debit' AND ${table.metadata}->>'appUsageProjectionVersion' = '1'`,
+      ),
     stripe_payment_intent_idx: uniqueIndex("credit_transactions_stripe_payment_intent_idx").on(
       table.stripe_payment_intent_id,
     ),

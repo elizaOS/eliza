@@ -189,6 +189,25 @@ export function isPublicPath(pathname: string): boolean {
   );
 }
 
+/**
+ * Shared-agent model endpoints perform their own cache-only credential and
+ * organization-scope gate. Running the global session resolver first would
+ * duplicate that gate and can hydrate a cold session from Postgres before the
+ * route has a chance to return its explicit warming response.
+ */
+export function isRouteAuthenticatedInferencePath(
+  method: string,
+  pathname: string,
+): boolean {
+  if (method !== "POST" && method !== "OPTIONS") return false;
+  return (
+    /^\/api\/v1\/eliza\/agents\/[^/]+\/(?:stream|bridge)\/?$/.test(pathname) ||
+    /^\/api\/v1\/eliza\/agents\/[^/]+\/api\/conversations\/[^/]+\/messages(?:\/stream)?\/?$/.test(
+      pathname,
+    )
+  );
+}
+
 function isLoopbackHostname(hostname: string): boolean {
   return (
     hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1"
@@ -254,6 +273,11 @@ export const authMiddleware: MiddlewareHandler<AppEnv> = async (c, next) => {
   }
 
   if (isPublicPath(pathname)) {
+    await next();
+    return;
+  }
+
+  if (isRouteAuthenticatedInferencePath(c.req.method, pathname)) {
     await next();
     return;
   }

@@ -62,6 +62,49 @@ afterEach(() => {
 });
 
 describe("runSharedAgentTurn — internal failure propagates vs designed-empty degrades", () => {
+  test("marks dispatch only at the final model handoff", async () => {
+    let dispatches = 0;
+    generateTextImpl = async () => {
+      expect(dispatches).toBe(1);
+      return { text: "provider reply" };
+    };
+    const onProviderDispatch = async () => {
+      dispatches += 1;
+    };
+
+    const providerTurn = await runSharedAgentTurn({
+      character: {
+        name: "Nova",
+        system: "You are Nova.",
+        model: "gpt-oss-120b",
+      },
+      history: [],
+      message: "hello",
+      onProviderDispatch,
+    });
+    expect(providerTurn.reply).toBe("provider reply");
+    expect(dispatches).toBe(1);
+
+    const navTurn = await runSharedAgentTurn({
+      character: { name: "Nova", system: "You are Nova." },
+      history: [],
+      message: "go to settings",
+      onProviderDispatch,
+    });
+    expect(navTurn.navIntent?.viewId).toBe("settings");
+    expect(dispatches).toBe(1);
+
+    providerConfigured = false;
+    const degradedTurn = await runSharedAgentTurn({
+      character: { name: "Nova", system: "You are Nova." },
+      history: [],
+      message: "hello again",
+      onProviderDispatch,
+    });
+    expect(degradedTurn.degraded).toBe(true);
+    expect(dispatches).toBe(1);
+  });
+
   test("an internal inference/provider failure throws (propagates) instead of degrading", async () => {
     providerConfigured = true;
     generateTextImpl = async () => {

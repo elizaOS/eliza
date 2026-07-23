@@ -100,6 +100,24 @@ export class OrganizationsRepository {
   // WRITE OPERATIONS (use primary)
   // ============================================================================
 
+  async findBalanceSnapshotForWrite(id: string): Promise<
+    | {
+        credit_balance: string | number | null;
+        balance_revision: string | number | null;
+      }
+    | undefined
+  > {
+    const [row] = await dbWrite
+      .select({
+        credit_balance: organizations.credit_balance,
+        balance_revision: organizations.balance_revision,
+      })
+      .from(organizations)
+      .where(eq(organizations.id, id))
+      .limit(1);
+    return row;
+  }
+
   /**
    * Creates a new organization.
    */

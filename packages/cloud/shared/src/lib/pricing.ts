@@ -8,6 +8,7 @@ import {
   calculateVideoGenerationCostFromCatalog,
   calculateVoiceCloneCostFromCatalog,
 } from "./services/ai-pricing";
+import type { PricingCacheReadOptions } from "./services/ai-pricing/cache";
 import type { PricingBillingSource } from "./services/ai-pricing-definitions";
 
 // Re-export constants from pricing-constants (safe for client components)
@@ -59,6 +60,7 @@ export async function calculateCost(
   inputTokens: number,
   outputTokens: number,
   billingSource?: PricingBillingSource,
+  cacheOptions?: PricingCacheReadOptions,
 ): Promise<CostBreakdown> {
   const breakdown = await calculateTextCostFromCatalog({
     model,
@@ -66,6 +68,7 @@ export async function calculateCost(
     billingSource,
     inputTokens,
     outputTokens,
+    cache: cacheOptions,
   });
   return {
     inputCost: breakdown.inputCost,

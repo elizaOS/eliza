@@ -2,9 +2,29 @@
 import { and, eq, gt, gte, lt, sql } from "drizzle-orm";
 import { mutateRowCount } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";
-import { type AnonymousSession, anonymousSessions } from "../schemas";
+import { type AnonymousSession, anonymousSessions, userIdentities } from "../schemas";
 
 export type { AnonymousSession };
+
+export interface AnonymousChatGateHydration {
+  sessionId: string;
+  userId: string;
+  messageCount: number;
+  messagesLimit: number;
+  hourlyMessageCount: number;
+  hourlyResetAt: Date | null;
+  expiresAt: Date;
+  gateRevision: number;
+}
+
+export interface AnonymousChatGateCounterSnapshot {
+  sessionId: string;
+  revision: number;
+  messageCount: number;
+  hourlyMessageCount: number;
+  hourlyResetAt: Date | null;
+  lastMessageAt: Date;
+}
 
 /**
  * Repository for anonymous session database operations.
@@ -50,6 +70,37 @@ export class AnonymousSessionsRepository {
       .limit(1);
 
     return session || null;
+  }
+
+  /**
+   * Reads the authoritative anonymous identity and quota snapshot from primary.
+   * This is used only by off-response-path Durable Object hydration.
+   */
+  async getGateHydrationByToken(sessionToken: string): Promise<AnonymousChatGateHydration | null> {
+    const [snapshot] = await dbWrite
+      .select({
+        sessionId: anonymousSessions.id,
+        userId: anonymousSessions.user_id,
+        messageCount: anonymousSessions.message_count,
+        messagesLimit: anonymousSessions.messages_limit,
+        hourlyMessageCount: anonymousSessions.hourly_message_count,
+        hourlyResetAt: anonymousSessions.hourly_reset_at,
+        expiresAt: anonymousSessions.expires_at,
+        gateRevision: anonymousSessions.gate_revision,
+      })
+      .from(anonymousSessions)
+      .innerJoin(userIdentities, eq(userIdentities.user_id, anonymousSessions.user_id))
+      .where(
+        and(
+          eq(anonymousSessions.session_token, sessionToken),
+          eq(anonymousSessions.is_active, true),
+          gte(anonymousSessions.expires_at, new Date()),
+          eq(userIdentities.is_anonymous, true),
+        ),
+      )
+      .limit(1);
+
+    return snapshot ?? null;
   }
 
   // ============================================================================
@@ -224,6 +275,31 @@ export class AnonymousSessionsRepository {
   }
 
   /**
+   * Mirrors a strongly ordered Durable Object counter snapshot to Postgres.
+   * The revision predicate makes delayed waitUntil work harmless.
+   */
+  async persistGateCounterSnapshot(snapshot: AnonymousChatGateCounterSnapshot): Promise<boolean> {
+    const [updated] = await dbWrite
+      .update(anonymousSessions)
+      .set({
+        message_count: snapshot.messageCount,
+        hourly_message_count: snapshot.hourlyMessageCount,
+        hourly_reset_at: snapshot.hourlyResetAt,
+        last_message_at: snapshot.lastMessageAt,
+        gate_revision: snapshot.revision,
+      })
+      .where(
+        and(
+          eq(anonymousSessions.id, snapshot.sessionId),
+          lt(anonymousSessions.gate_revision, snapshot.revision),
+        ),
+      )
+      .returning({ id: anonymousSessions.id });
+
+    return Boolean(updated);
+  }
+
+  /**
    * Atomically increments signup prompt count and updates timestamp.
    *
    * @throws Error if session not found.
@@ -246,26 +322,30 @@ export class AnonymousSessionsRepository {
   /**
    * Marks session as converted (user signed up) and deactivates it.
    */
-  async markConverted(sessionId: string): Promise<void> {
-    await dbWrite
+  async markConverted(sessionId: string): Promise<string | null> {
+    const [session] = await dbWrite
       .update(anonymousSessions)
       .set({
         converted_at: new Date(),
         is_active: false,
       })
-      .where(eq(anonymousSessions.id, sessionId));
+      .where(eq(anonymousSessions.id, sessionId))
+      .returning({ sessionToken: anonymousSessions.session_token });
+    return session?.sessionToken ?? null;
   }
 
   /**
    * Deactivates a session.
    */
-  async deactivate(sessionId: string): Promise<void> {
-    await dbWrite
+  async deactivate(sessionId: string): Promise<string | null> {
+    const [session] = await dbWrite
       .update(anonymousSessions)
       .set({
         is_active: false,
       })
-      .where(eq(anonymousSessions.id, sessionId));
+      .where(eq(anonymousSessions.id, sessionId))
+      .returning({ sessionToken: anonymousSessions.session_token });
+    return session?.sessionToken ?? null;
   }
 
   /**
