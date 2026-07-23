@@ -55,12 +55,14 @@ const AGENT_SANDBOX_DATE_FIELDS = [
  * we never fabricate a bogus `Date`.
  */
 function rehydrateCachedAgentDates(agent: AgentSandbox): AgentSandbox {
-  const out = agent as unknown as Record<string, unknown>;
   for (const field of AGENT_SANDBOX_DATE_FIELDS) {
-    const value = out[field];
+    // The cache boundary violates the static AgentSandbox date contract by
+    // JSON-decoding Date values as strings. Reflect keeps that untrusted read
+    // typed as unknown without asserting the whole row to an incompatible map.
+    const value: unknown = Reflect.get(agent, field);
     if (typeof value === "string") {
       const parsed = new Date(value);
-      if (!Number.isNaN(parsed.getTime())) out[field] = parsed;
+      if (!Number.isNaN(parsed.getTime())) Reflect.set(agent, field, parsed);
     }
   }
   return agent;
