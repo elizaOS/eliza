@@ -2819,6 +2819,14 @@ export class ElizaSandboxService {
         start: async (controller) => {
           let reply = "";
           let finished = false;
+          // Once the billing tail is registered it owns settlement end-to-end
+          // (success settles at totalCost, failure refunds). The stream catch
+          // below must then leave the reservation alone: a client cancel makes
+          // the `done` enqueue throw AFTER registration, and racing a
+          // settle(0) against the deferred tail's settle(totalCost) would turn
+          // a fully-delivered, persisted reply into an unbilled one depending
+          // on which write lands first.
+          let billingTailOwnsSettlement = false;
           try {
             for await (const part of parts) {
               if (part.type === "text-delta") {
@@ -2866,6 +2874,7 @@ export class ElizaSandboxService {
                 // contained and logged (never an unhandled waitUntil rejection)
                 // — the #11169 sweep-credit-reservations cron backstops a hold
                 // stranded by a dropped waitUntil or a failed refund.
+                billingTailOwnsSettlement = true;
                 await settleOffResponsePath(executionCtx, async () => {
                   try {
                     const billing = await billUsage(
@@ -2949,8 +2958,12 @@ export class ElizaSandboxService {
             }
           } catch (error) {
             // error-policy:J1 stream boundary translation — partial SSE streams
-            // cannot become HTTP errors, so emit a terminal error frame.
-            await settleReservation(0);
+            // cannot become HTTP errors, so emit a terminal error frame. The
+            // refund only runs while the reservation is still this scope's to
+            // settle — once the billing tail is registered it owns the hold.
+            if (!billingTailOwnsSettlement) {
+              await settleReservation(0);
+            }
             logger.warn("[shared-runtime] stream failed", {
               error: error instanceof Error ? error.message : String(error),
               agentId: rec.id,

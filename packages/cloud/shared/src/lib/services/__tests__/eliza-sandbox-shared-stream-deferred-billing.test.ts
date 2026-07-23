@@ -196,6 +196,56 @@ describe("bridgeSharedMessageStream — billing tail deferred via executionCtx.w
     expect(reconcileCalls).toEqual([0.0042]);
   });
 
+  test("client cancel between last token and `done` frame never refunds a delivered turn", async () => {
+    reset();
+    // Gate the parts iterator between the text-delta and the finish part so the
+    // test can cancel the response stream while the turn is still "delivering".
+    let releaseFinish: (() => void) | undefined;
+    const finishGate = new Promise<void>((resolve) => {
+      releaseFinish = resolve;
+    });
+    streamTurnImpl = () => ({
+      model: "openai/gpt-oss-120b",
+      degraded: false,
+      parts: (async function* () {
+        yield { type: "text-delta", text: "hi there" } as const;
+        await finishGate;
+        yield { type: "finish", text: "hi there" } as const;
+      })(),
+    });
+    // Gate billUsage so the deferred tail provably cannot settle before the
+    // stream's catch runs — pre-fix, the catch's settle(0) always won this race.
+    let releaseBill: (() => void) | undefined;
+    const billGate = new Promise<void>((resolve) => {
+      releaseBill = resolve;
+    });
+    billUsageImpl = async () => {
+      await billGate;
+      return { totalCost: 0.0042 };
+    };
+    const ctx = makeExecutionCtx();
+    const svc = makeService();
+
+    const response = await svc.bridgeSharedMessageStream(REC, RPC, ctx);
+    const reader = (response.body as ReadableStream<Uint8Array>).getReader();
+    await reader.read(); // the chunk frame
+    await reader.cancel(); // client disconnects; the later `done` enqueue throws
+    releaseFinish?.();
+
+    // Let the start() continuation run: history persists, the tail registers,
+    // the `done` enqueue throws into the stream catch.
+    while (ctx.captured.length === 0) {
+      await new Promise((resolve) => setTimeout(resolve, 1));
+    }
+    releaseBill?.();
+    await ctx.captured[0];
+
+    // The reply was fully generated and persisted — the hold must settle at the
+    // billed cost exactly once, never refund via the stream catch.
+    expect(reservation.reconcile).toHaveBeenCalledTimes(1);
+    expect(reconcileCalls).toEqual([0.0042]);
+  });
+
   test("nav-intent turn refunds synchronously and never touches waitUntil", async () => {
     reset();
     streamTurnImpl = () => ({
