@@ -988,18 +988,19 @@ async function runPlannerLoopIterations(
 			continue;
 		}
 
-		// Conservative gate (PR #7514): when a successful tool drained the queue
-		// and the just-completed planner call gave us a clean explicit
-		// `messageToUser`, synthesize a FINISH and skip the in-loop evaluator.
-		// Falls through on any ambiguity. See `tryGateEvaluator` doc-comment.
+		// Conservative gate (PR #7514): once a successful tool drains the queue,
+		// synthesize FINISH only from a clean explicit planner reply or a verified
+		// action-owned completion. Falls through on any ambiguity. See
+		// `tryGateEvaluator` for the full contract.
 		const gateStartedAt = Date.now();
-		const gated = tryGateEvaluator({
+		const gatedDecision = tryGateEvaluator({
 			trajectory,
 			failures,
 			lastPlannerExplicitMessageToUser,
 			lastPlannerExplicitCompleted,
 		});
-		if (gated) {
+		if (gatedDecision) {
+			const { output: gated, reason } = gatedDecision;
 			trajectory.evaluatorOutputs.push(gated);
 			trajectory.context = appendEvaluationEvent({
 				context: trajectory.context,
@@ -1014,6 +1015,7 @@ async function runPlannerLoopIterations(
 				startedAt: gateStartedAt,
 				endedAt: Date.now(),
 				output: gated,
+				reason,
 				logger: params.runtime.logger,
 			});
 			return {
@@ -1939,10 +1941,10 @@ function compactText(value: string, maxLength: number): string {
  * Synthesized recorder stage for the gated path. Emits a `kind: "evaluation"`
  * entry so the recorder timeline shows the iteration's outcome on the same
  * slot a model-produced evaluation would have occupied. The stage carries
- * `gated: true`, `llmCallSkipped: true`, and `reason: "explicit_terminal_reply"`
- * so replay/debug tools can distinguish gated decisions from real evaluator
- * calls without a string-match against the thought marker. No `model` block
- * is included — no LLM call happened.
+ * `gated: true`, `llmCallSkipped: true`, and a reason that distinguishes an
+ * explicit planner reply from a terminal action-owned result. Replay/debug
+ * tools can therefore identify both fast paths without string-matching the
+ * thought marker. No `model` block is included because no LLM call happened.
  */
 async function recordGatedEvaluationStage(args: {
 	recorder?: TrajectoryRecorder;
@@ -3746,11 +3748,15 @@ function diagnosticFailureReason(
  *   1. The just-completed tool result is `success: true`.
  *   2. The plan queue is drained — no tools remain to evaluate.
  *   3. No failures have accumulated (no recent error to investigate).
- *   4. The most-recent planner output supplied an EXPLICIT `messageToUser`
- *      field in its structured output (NOT a fallback inferred from a stray
- *      `text` on a native tool-call return — that path can carry a pre-tool
- *      thought rather than a final answer, which would be unsafe to surface).
- *   5. That `messageToUser` is not a tool/function-syntax leak (the evaluator's
+ *   4. One side owns a complete user reply:
+ *      - this is the turn's only executed tool and the action returned
+ *        `turnComplete:true`, `verifiedUserFacing:true`, and non-empty
+ *        `userFacingText` after seeing the real tool outcome; or
+ *      - the most-recent planner output supplied an EXPLICIT `messageToUser`
+ *        field (not a fallback inferred from native free text).
+ *      `turnComplete:false` is an explicit action-owned disclaimer and always
+ *      falls through to the evaluator.
+ *   5. The selected reply is not a tool/function-syntax leak (the evaluator's
  *      own prompt rules say leaked syntax should force CONTINUE; we honor the
  *      same constraint by reusing `isUnsafeUserVisibleText`).
  *   6. The planner did NOT explicitly set `completed: false` on this output.
@@ -3769,37 +3775,81 @@ function diagnosticFailureReason(
  * the decision in the context event stream, `trajectory.evaluatorOutputs` still
  * gets the entry, and the loop's return value still carries `evaluator` in the
  * shape consumers (`subPlannerResultToPlannerToolResult` in `services/message.ts`)
- * read — `success` and `messageToUser`. Recorder stage entries for "evaluation"
- * are NOT emitted in the gated case; the recorder timeline shows tool stages
- * only for that iteration.
+ * read — `success` and `messageToUser`. The recorder receives a synthesized
+ * evaluation stage whose reason distinguishes planner-owned replies from
+ * action-owned terminal results.
  *
  * Cost win: roughly 50% of LLM calls on "tool-then-explicit-reply" turns where
  * the planner committed a `messageToUser` field at plan-time. Native-mode
- * native-tool-call returns without an explicit `messageToUser` field do NOT
- * trigger the gate — those calls remain on the full evaluator path.
+ * native-tool-call returns without that field remain ambiguous; actions that
+ * truly own a single-operation turn can instead set `turnComplete:true` after
+ * execution. The gate requires both a drained queue and exactly one executed
+ * tool, so it never replaces the evaluator on a native parallel-call batch.
  */
+type GatedEvaluatorDecision = {
+	output: EvaluatorOutput;
+	reason: "explicit_terminal_reply" | "action_terminal_result";
+};
+
 function tryGateEvaluator(args: {
 	trajectory: PlannerTrajectory;
 	failures: readonly FailureLike[];
 	lastPlannerExplicitMessageToUser: string | undefined;
 	lastPlannerExplicitCompleted: boolean | undefined;
-}): EvaluatorOutput | null {
+}): GatedEvaluatorDecision | null {
 	const latestStep = args.trajectory.steps[args.trajectory.steps.length - 1];
 	const latestResult = latestStep?.result;
 	if (latestResult?.success !== true) return null;
 	if (args.trajectory.plannedQueue.length > 0) return null;
 	if (args.failures.length > 0) return null;
-	const message = args.lastPlannerExplicitMessageToUser?.trim();
-	if (!message) return null;
-	if (isUnsafeUserVisibleText(message)) return null;
 	// Precondition 6: respect the planner's own completion disclaimer.
 	if (args.lastPlannerExplicitCompleted === false) return null;
+	if (
+		latestResult.turnComplete === true &&
+		completedToolStepCount(args.trajectory) !== 1
+	) {
+		return null;
+	}
 
+	return selectGatedEvaluatorReply(latestResult, args);
+}
+
+function completedToolStepCount(trajectory: PlannerTrajectory): number {
+	return [...trajectory.archivedSteps, ...trajectory.steps].filter(
+		(step) => step.toolCall && step.result,
+	).length;
+}
+
+function selectGatedEvaluatorReply(
+	latestResult: PlannerToolResult,
+	args: { lastPlannerExplicitMessageToUser: string | undefined },
+): GatedEvaluatorDecision | null {
+	if (latestResult.turnComplete === true) {
+		const message = latestResult.userFacingText?.trim();
+		if (latestResult.verifiedUserFacing !== true || !message) return null;
+		if (isUnsafeUserVisibleText(message)) return null;
+		return {
+			reason: "action_terminal_result",
+			output: {
+				success: true,
+				decision: "FINISH",
+				thought: ACTION_RESULT_GATED_EVALUATOR_THOUGHT,
+				messageToUser: message,
+			},
+		};
+	}
+	if (latestResult.turnComplete === false) return null;
+
+	const message = args.lastPlannerExplicitMessageToUser?.trim();
+	if (!message || isUnsafeUserVisibleText(message)) return null;
 	return {
-		success: true,
-		decision: "FINISH",
-		thought: GATED_EVALUATOR_THOUGHT,
-		messageToUser: message,
+		reason: "explicit_terminal_reply",
+		output: {
+			success: true,
+			decision: "FINISH",
+			thought: GATED_EVALUATOR_THOUGHT,
+			messageToUser: message,
+		},
 	};
 }
 
@@ -3808,6 +3858,9 @@ function tryGateEvaluator(args: {
  * cheaply. */
 export const GATED_EVALUATOR_THOUGHT =
 	"Gated FINISH: queue drained successfully with a clean planner messageToUser; evaluator LLM call skipped.";
+
+export const ACTION_RESULT_GATED_EVALUATOR_THOUGHT =
+	"Gated FINISH: queue drained successfully with a terminal action-owned userFacingText; evaluator LLM call skipped.";
 
 const TERMINAL_TOOL_CALL_FINISH_THOUGHT =
 	"Terminal FINISH: planner ended the loop with a terminal tool call; evaluator LLM call skipped.";
@@ -4195,6 +4248,7 @@ export function actionResultToPlannerToolResult(
 		verifiedUserFacing: result.verifiedUserFacing,
 		data: Object.keys(data).length > 0 ? data : undefined,
 		error: result.error,
+		turnComplete: result.turnComplete,
 		continueChain: result.continueChain,
 	};
 	if (options.summary) {

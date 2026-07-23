@@ -6230,6 +6230,9 @@ function collectPreviousActionResults(
 					? { verifiedUserFacing: step.result.verifiedUserFacing }
 					: {}),
 				data: { actionName },
+				...(step.result.turnComplete !== undefined
+					? { turnComplete: step.result.turnComplete }
+					: {}),
 				...(step.result.continueChain !== undefined
 					? { continueChain: step.result.continueChain }
 					: {}),
@@ -6279,6 +6282,9 @@ function collectPreviousActionResults(
 			},
 			...(values ? { values } : {}),
 			...(error !== undefined ? { error } : {}),
+			...(step.result.turnComplete !== undefined
+				? { turnComplete: step.result.turnComplete }
+				: {}),
 			...(step.result.continueChain !== undefined
 				? { continueChain: step.result.continueChain }
 				: {}),
