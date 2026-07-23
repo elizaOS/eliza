@@ -146,6 +146,17 @@ test("chat: a .glb attachment renders an inline three.js WebGL viewer (not just 
 
   await openAppPath(page, "/chat");
 
+  // /chat rests on the ambient home with the sheet COLLAPSED; the seeded
+  // thread (and its attachment tiles) only mounts once the sheet opens, so
+  // open it the way a user would (grabber tap — same pattern as
+  // chat-message-actions / chat-thread-gestures).
+  await page.getByTestId("chat-sheet-grabber").click();
+  await expect(page.getByTestId("continuous-chat-overlay")).toHaveAttribute(
+    "data-open",
+    "true",
+    { timeout: 15_000 },
+  );
+
   // The 3D tile renders for the .glb attachment.
   const tile = page.getByTestId("model3d-attachment").first();
   await expect(tile).toBeVisible({ timeout: 60_000 });

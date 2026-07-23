@@ -231,6 +231,11 @@ test("chat overlay: attaching an image renders a pending thumbnail and sends the
     }),
   );
 
-  // 6) Sending clears the pending strip — the thumbnail is gone post-send.
-  await expect(pendingThumb).toHaveCount(0, { timeout: 10_000 });
+  // 6) Sending clears the pending strip. The transcript legitimately renders
+  //    the sent image again (the optimistic user turn echoes its attachments —
+  //    useChatSend #15186), so assert on the pending tile's remove button,
+  //    which only exists in the composer strip, not the bare img alt.
+  await expect(
+    page.getByRole("button", { name: "remove smoke.png" }),
+  ).toHaveCount(0, { timeout: 10_000 });
 });
