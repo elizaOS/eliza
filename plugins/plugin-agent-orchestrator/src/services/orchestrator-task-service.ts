@@ -126,8 +126,8 @@ import {
 } from "./independent-verifier.js";
 import {
   ORCHESTRATOR_OWNED_ARTIFACTS_METADATA_KEY,
-  readOwnedArtifactsFromMetadata,
   type OrchestratorOwnedArtifact,
+  readOwnedArtifactsFromMetadata,
 } from "./orchestrator-artifact-ownership.js";
 import {
   summarizeUsage,
@@ -669,9 +669,14 @@ function residualsRepoExpected(
   );
 }
 
-function residualsOrchestratorOwnedArtifacts(
-  acp: AcpService | undefined,
-  session: OrchestratorTaskSession | undefined,
+/** Owned-artifact fingerprints the residuals gate may exempt: the live ACP
+ * session ledger wins when non-empty; otherwise fall back to the records
+ * persisted on session metadata (a service restart loses the in-memory
+ * ledger). No session means no ownership claims — fail closed. Exported (with
+ * structural parameters) for direct unit coverage. */
+export function residualsOrchestratorOwnedArtifacts(
+  acp: Pick<AcpService, "getOrchestratorOwnedArtifacts"> | undefined,
+  session: Pick<OrchestratorTaskSession, "sessionId" | "metadata"> | undefined,
 ): OrchestratorOwnedArtifact[] {
   if (!session) return [];
   const live = acp?.getOrchestratorOwnedArtifacts(session.sessionId) ?? [];

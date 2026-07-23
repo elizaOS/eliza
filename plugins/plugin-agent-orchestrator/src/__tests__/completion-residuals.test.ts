@@ -28,8 +28,8 @@ import {
 import {
   createOwnedArtifactRecord,
   ORCHESTRATOR_OWNED_ARTIFACTS_METADATA_KEY,
-  readOwnedArtifactsFromMetadata,
   type OrchestratorOwnedArtifact,
+  readOwnedArtifactsFromMetadata,
 } from "../services/orchestrator-artifact-ownership.js";
 
 const roots: string[] = [];
