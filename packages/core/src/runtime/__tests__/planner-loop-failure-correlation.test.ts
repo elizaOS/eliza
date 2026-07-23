@@ -338,6 +338,64 @@ describe("planner-loop failed-operation correlation", () => {
 		expect(result.finalMessage).not.toContain("was sent");
 	});
 
+	it("keeps a later confirmation actionable over native terminal REPLY prose", async () => {
+		const runtime = {
+			useModel: vi
+				.fn()
+				.mockResolvedValueOnce(viewsUpdateCall("note-a", "A"))
+				.mockResolvedValueOnce(
+					plannerToolCall("send-b", "SEND", {
+						to: "owner@example.com",
+						text: "Project B update",
+					}),
+				)
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{
+							id: "reply",
+							name: "REPLY",
+							arguments: { text: "Project B was sent." },
+						},
+					],
+				}),
+		};
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall: vi
+				.fn()
+				.mockResolvedValueOnce({
+					success: false,
+					error: "note-a-conflict",
+					text: failureA,
+					userFacingText: failureA,
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					text: "Confirm B.",
+					userFacingText: "Confirm B.",
+					data: { requiresConfirmation: true },
+				}),
+			evaluate: vi
+				.fn()
+				.mockResolvedValueOnce({
+					success: false,
+					decision: "CONTINUE",
+					thought: "The unrelated note update failed.",
+				})
+				.mockResolvedValueOnce({
+					success: false,
+					decision: "CONTINUE",
+					thought: "The send needs approval.",
+				}),
+		});
+
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe("Confirm B.");
+		expect(result.finalMessage).not.toContain("was sent");
+	});
+
 	it("does not let an older confirmation hide a newer failed operation", async () => {
 		const newestFailure = "Project C tests failed.";
 		const runtime = {
