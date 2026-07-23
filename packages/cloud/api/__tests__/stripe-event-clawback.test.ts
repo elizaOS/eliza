@@ -46,6 +46,9 @@ class TestInsufficientCreditsError extends Error {
 mock.module("@/db/helpers", () => ({
   dbRead: {},
   dbWrite: {},
+  writeTransaction: mock(async (fn: (tx: unknown) => Promise<unknown>) =>
+    fn({}),
+  ),
 }));
 mock.module("@/db/repositories/organizations", () => ({
   organizationsRepository: {},
