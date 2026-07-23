@@ -1034,7 +1034,7 @@ def test_rebuild_latest_allows_tokenless_deterministic_benchmark_rows(
         run_group_id="rg_test",
         created_at="2026-05-12T00:00:00+00:00",
         request={},
-        benchmarks=["framework", "personality_bench", "social_alpha", "solana"],
+        benchmarks=["framework", "personality_bench", "solana"],
         repo_meta={},
     )
     _seed_run(
@@ -1061,7 +1061,6 @@ def test_rebuild_latest_allows_tokenless_deterministic_benchmark_rows(
             "personality_bench": _adapter(
                 "personality_bench", agent_compatibility=("eliza",)
             ),
-            "social_alpha": _adapter("social_alpha"),
             "solana": _adapter("solana"),
         },
     )
@@ -1105,7 +1104,7 @@ def test_rebuild_latest_allows_tokenless_deterministic_benchmark_rows(
     )
     assert "publication_warnings" not in payload
 
-    for benchmark_id in ("social_alpha", "solana"):
+    for benchmark_id in ("solana",):
         _seed_run(
             conn,
             benchmark_id=benchmark_id,
@@ -1130,12 +1129,11 @@ def test_rebuild_latest_allows_tokenless_deterministic_benchmark_rows(
             "personality_bench": _adapter(
                 "personality_bench", agent_compatibility=("eliza",)
             ),
-            "social_alpha": _adapter("social_alpha"),
             "solana": _adapter("solana"),
         },
     )
 
-    for benchmark_id in ("social_alpha", "solana"):
+    for benchmark_id in ("solana",):
         payload = json.loads(
             (tmp_path / "latest" / f"{benchmark_id}__eliza.json").read_text(
                 encoding="utf-8"

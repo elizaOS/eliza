@@ -510,16 +510,6 @@ ADAPTER_CAMPAIGN_ENTRIES: tuple[AdapterCampaignEntry, ...] = (
         reason="RecallBench uses deterministic in-bench embeddings and the selected harness never affects its score; run the direct 10k KPI lane.",
     ),
     _entry(
-        "social_alpha",
-        "social-alpha",
-        disposition=CampaignDisposition.MANUAL,
-        phases=_phase(
-            extra={"system": "eliza-bridge"},
-            required_overrides=("data_dir",),
-        ),
-        reason="The full Trenches chat corpus is external; the bundled fallback is only a smoke fixture.",
-    ),
-    _entry(
         "solana",
         "solana",
         disposition=CampaignDisposition.MANUAL,
