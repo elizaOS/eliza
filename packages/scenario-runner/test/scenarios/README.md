@@ -112,6 +112,26 @@ requires a real provider key for live natural-language planner runs.
   fallback occasionally drops the `PLUGIN` verb from the model's tool context for
   a whole boot (see the plugin scenario header), so re-run if the plugin toggle
   scenario reports only `REPLY`.
+- The chat-widget round-trip legs (MVP ws2 acceptance, #14322/#16939):
+  `live-chat-widgets-form-roundtrip` (FORM emit → `[form:submit …]` re-entry →
+  values used), `live-chat-widgets-choice-roundtrip` (a `[CHOICE:app-create …]`
+  picker, then the bare picked value `cancel` routed back into `APP` and the
+  pending-intent task deleted as the domain artifact — this leg also pins the
+  threadOps abort guard: a bare option value must be treated as a widget pick,
+  never a turn retraction), `live-chat-widgets-config-emission`
+  (`[CONFIG:<pluginId>]` for a plugin-setup ask), and
+  `live-chat-widgets-followups-restraint` (a factual question comes back with
+  no widget markers). The settings-in-chat legs live in
+  `plugins/plugin-app-control/test/scenarios/` (`settings-in-chat-config-card`,
+  `settings-in-chat-provider-switch`); both seed the production uiWidgets
+  guide + agent-level `SETTINGS` action (`_helpers/production-agent-seeds.ts`)
+  and the provider switch asserts the persisted per-run `eliza.json` write.
+  Run any of them with
+  `eliza-scenarios run <scenario-dir> --scenario <id> --report <out> --run-dir <dir>`
+  against a live model and attach the hand-read report + trajectories; the
+  rendered-surface companion is
+  `packages/app/test/ui-smoke/settings-in-chat-live.spec.ts`
+  (`ELIZA_UI_SMOKE_LIVE_STACK=1`).
 
 ## Residual Gaps
 

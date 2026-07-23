@@ -17,7 +17,12 @@
  * consolidation.
  */
 
+import { readFileSync } from "node:fs";
 import { scenario } from "@elizaos/scenario-runner/schema";
+import {
+  productionAgentSettingsSeed,
+  seededElizaConfigPath,
+} from "./_helpers/production-agent-seeds";
 
 export default scenario({
   lane: "live-only",
@@ -29,6 +34,13 @@ export default scenario({
   requires: {
     plugins: ["@elizaos/plugin-app-control"],
   },
+  // The lean scenario runtime registers only app-control's SETTINGS action,
+  // which by design disclaims provider switching ("switching the model is
+  // MODEL_SWITCH") — a live model correctly refuses to route this request
+  // through it. Production wins the SETTINGS name collision with the
+  // agent-level action (update_ai_provider op); seed that real action so the
+  // runtime under test matches production (#16939).
+  seed: [productionAgentSettingsSeed()],
   rooms: [
     {
       id: "main",
@@ -60,6 +72,32 @@ export default scenario({
       type: "selectedActionArguments",
       actionName: "SETTINGS",
       includesAll: [/update_ai_provider/i, /openai/i],
+    },
+    {
+      // Domain artifact: the switch actually landed in the (seed-isolated)
+      // eliza.json config store — the same shape the deterministic op suite
+      // (settings-chat-config-ops.test.ts) pins — not a fabricated success.
+      type: "custom",
+      name: "provider switch persisted to the isolated eliza.json",
+      predicate: async () => {
+        const configPath = seededElizaConfigPath();
+        if (!configPath) {
+          return "seed did not run: no isolated config path recorded";
+        }
+        const config = JSON.parse(readFileSync(configPath, "utf8")) as {
+          serviceRouting?: { llmText?: { backend?: string } };
+          agents?: { defaults?: { model?: { primary?: string } } };
+        };
+        const backend = config.serviceRouting?.llmText?.backend;
+        if (backend !== "openai") {
+          return `serviceRouting.llmText.backend is ${JSON.stringify(backend)}, expected "openai" (config: ${JSON.stringify(config).slice(0, 400)})`;
+        }
+        const primary = config.agents?.defaults?.model?.primary;
+        if (primary !== "@elizaos/plugin-openai") {
+          return `agents.defaults.model.primary is ${JSON.stringify(primary)}, expected "@elizaos/plugin-openai"`;
+        }
+        return undefined;
+      },
     },
   ],
 });

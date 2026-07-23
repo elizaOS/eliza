@@ -38,8 +38,7 @@ mock.module("./pool-deps", () => ({
 
 mock.module("../../../db/repositories/pooled-credentials", () => ({
   pooledCredentialsRepository: {
-    recordDailyUsage: mock(),
-    updatePoolStateForOrganization: mock(),
+    recordInferenceUse: mock(),
   },
 }));
 
@@ -129,5 +128,19 @@ describe("TeamPoolRegistry.selectCredential error policy", () => {
       label: "team-key",
     });
     expect(mockWarn).not.toHaveBeenCalled();
+  });
+
+  it("reuses the decrypted key and forwards Worker background persistence", async () => {
+    const registry = await freshRegistry();
+    const defer = mock((_task: Promise<void>) => undefined);
+    mockSelect.mockResolvedValue({ id: "cred-1", label: "team-key" });
+    mockSecretIdFor.mockReturnValue("secret-1");
+    mockGetDecryptedValue.mockResolvedValue("sk-real-key");
+
+    await registry.selectCredential({ ...PARAMS, defer });
+    await registry.selectCredential({ ...PARAMS, defer });
+
+    expect(mockGetDecryptedValue).toHaveBeenCalledTimes(1);
+    expect(mockGetDecryptedValue.mock.calls[0]?.[3]).toEqual({ defer });
   });
 });

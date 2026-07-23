@@ -147,7 +147,7 @@
       "plugins/plugin-wallet",
       "plugins/plugin-web-search"
     ],
-    "reason": "manifest of credential/opt-in-guarded real/live suites; each entry names the plugin whose tests self-skip without creds"
+    "reason": "credential/opt-in live-suite manifest must bind each discovered test file to its exact package path so drift checks can prove the guarded source and its execution metadata agree"
   },
   {
     "file": "packages/scripts/run-cerebras.ts",

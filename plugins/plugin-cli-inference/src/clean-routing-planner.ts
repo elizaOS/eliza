@@ -154,9 +154,12 @@ Rules:
 ${replyRule}
 - Never invent an action name that is not in the lists. Never invent required params you don't have grounds for.
 - params must be a JSON object obeying that action's param hints (arrays as JSON arrays, not comma strings).
+- params may contain ONLY keys listed in that action's param hints. Argument validation is strict: one extra key fails the whole call.
+- If the conversation shows an earlier action call that FAILED, fix the params per the error and route again — do not narrate the failure and do not claim the work happened.
 
 Output format (CRITICAL):
 - Output ONLY a single compact JSON object, nothing else — no prose, no markdown, no code fences, no explanation.
+- The conversation may render earlier steps as "[tool_call …]" / "[tool_result …]" lines. That is transcript NOTATION, not an output format — never write such lines yourself, and never fabricate a tool result. Your entire output is exactly one JSON object.
 - Shape: {"action": "<ACTION_NAME>", "params": { ... }}
 - Example: {"action":"WEB_FETCH","params":{"url":"https://api.example.com/x"}}
 - Example: {"action":"REPLY","params":{"text":"2 + 2 is 4."}}`;

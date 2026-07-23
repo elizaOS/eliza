@@ -219,7 +219,11 @@ accepts inline GitHub attachments.
 **What's weak.** The persona corpus is **134/212 verified**, and the shortfall
 concentrates exactly in the make-or-break neurodivergent packs — ADHD capture
 **8/28**, ADHD follow-through **5/24**, shift-rotation **4/22**. The widget
-round-trips have **zero live-LLM scenario coverage**. The non-MVP home widgets
+round-trips have live-only scenarios for every leg (FORM #14488, CHOICE /
+CONFIG / FOLLOWUPS, settings-in-chat card + provider switch with a persisted
+eliza.json assertion), with reviewer-visible hand-read runs attached to
+#16939; by design no CI lane runs them, so coverage is re-proven per change,
+not continuously. The non-MVP home widgets
 were removed and `wallet.balance` was demoted off the home per the ratified
 spec (#14560/#14669); the demotion's compensations — the routed price surface
 mount and the balance-delta notification producer — landed in #16943.

@@ -1099,6 +1099,7 @@ async function selectPooledInferenceCredential(params: {
   model: string;
   organizationId: string;
   sessionKey: string;
+  defer?: (task: Promise<void>) => void;
 }): Promise<PooledInferenceCredential | null> {
   const providerId = resolvePooledDirectProviderForModel(params.model);
   if (!providerId) return null;
@@ -1106,6 +1107,7 @@ async function selectPooledInferenceCredential(params: {
     organizationId: params.organizationId,
     providerId,
     sessionKey: params.sessionKey,
+    ...(params.defer ? { defer: params.defer } : {}),
   });
   return selected
     ? toPooledInferenceCredential(params.organizationId, selected)
@@ -1396,6 +1398,12 @@ export async function handleChatCompletionsPOST(
       model,
       organizationId: user.organization_id,
       sessionKey: apiKey?.id ?? user.id,
+      ...(options.executionCtx
+        ? {
+            defer: (task: Promise<void>) =>
+              options.executionCtx?.waitUntil(task),
+          }
+        : {}),
     });
     const modelSupportedParametersPromise: Promise<string[] | undefined> =
       skipCatalogLookup

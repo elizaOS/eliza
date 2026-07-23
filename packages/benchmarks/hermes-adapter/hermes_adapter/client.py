@@ -88,6 +88,7 @@ _CONTROL_CONTEXT_KEYS = {
     "agent_id",
     "tools",
     "tool_choice",
+    "capture_stop",
     "benchmark_workspace_path",
 }
 
@@ -987,6 +988,10 @@ class HermesClient:
                 ctx.get("max_tokens"), fallback=self.max_tokens
             ),
             "tool_choice": _coerce_optional_str(ctx.get("tool_choice"), fallback=None),
+            # Caller-declared env-owned tool contract: the native runner stops
+            # the turn at the first captured tool batch instead of iterating
+            # on bridge acknowledgements until max_iterations_reached.
+            "capture_stop": ctx.get("capture_stop") is True,
             "request_publishable_native": nonpublishable_reason is None,
             "nonpublishable_reason": nonpublishable_reason,
         }

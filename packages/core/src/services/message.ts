@@ -321,6 +321,7 @@ import {
 	type OptimizedPromptRuntimeLike,
 	resolveOptimizedPromptForRuntime,
 } from "./optimized-prompt-resolver";
+import { trackPostDeliveryTask } from "./post-delivery-task-tracker.ts";
 
 export {
 	findWebLookupActionName,
@@ -8369,29 +8370,12 @@ function clearLatestResponseId(
 	}
 }
 
-async function runPostDeliverySideEffect(
-	runtime: Pick<IAgentRuntime, "agentId" | "reportError">,
-	label: string,
-	task: () => Promise<unknown>,
-): Promise<void> {
-	try {
-		await task();
-	} catch (err) {
-		// error-policy:J1 Detached background-task boundary reports failures
-		// without converting them into a successful user-visible operation.
-		runtime.reportError("MessageService.postDeliverySideEffect", err, {
-			agentId: runtime.agentId,
-			label,
-		});
-	}
-}
-
 function detachPostDeliverySideEffect(
 	runtime: Pick<IAgentRuntime, "agentId" | "reportError">,
 	label: string,
 	task: () => Promise<unknown>,
 ): void {
-	void runPostDeliverySideEffect(runtime, label, task);
+	void trackPostDeliveryTask(runtime, label, task);
 }
 
 export function isSimpleReplyResponse(
@@ -8403,6 +8387,21 @@ export function isSimpleReplyResponse(
 		typeof responseContent.actions[0] === "string" &&
 		isReplyActionIdentifier(responseContent.actions[0])
 	);
+}
+
+const POST_TURN_SEMANTIC_SIGNAL =
+	/(?:https?:\/\/|\b(?:i am|i'm|i have|i've|i feel|i like|i love|i hate|i prefer|i need|i want|my|we|our|remember|friend|partner|wife|husband|relationship|work at|live in|located in|goal|plan)\b)/i;
+
+export function hasPostTurnSemanticSignal(
+	message: Pick<Memory, "content">,
+	state: Pick<State, "data"> | undefined,
+	responseContent: Pick<Content, "actions"> | null | undefined,
+): boolean {
+	if (!isSimpleReplyResponse(responseContent)) return true;
+	const actionResults = state?.data?.actionResults;
+	if (Array.isArray(actionResults) && actionResults.length > 0) return true;
+	const text = message.content.text?.trim() ?? "";
+	return POST_TURN_SEMANTIC_SIGNAL.test(text);
 }
 
 function isStopResponse(
@@ -11052,16 +11051,24 @@ export class DefaultMessageService implements IMessageService {
 		// that are not part of the unified evaluator service.
 		const didRespondGate =
 			shouldRespondToMessage && !isStopResponse(responseContent);
+		const semanticSignal = hasPostTurnSemanticSignal(
+			message,
+			state,
+			responseContent,
+		);
 		// Post-turn work is never part of connector completion. Connectors await
 		// handleMessage for generation/delivery bookkeeping, so awaiting an
 		// evaluator here makes every connector wait even though the reply has
 		// already been sent. Preserve evaluator-before-ALWAYS_AFTER ordering inside
 		// one detached task while keeping both failures observable at the boundary.
 		detachPostDeliverySideEffect(runtime, "post_turn", async () => {
-			await runPostTurnEvaluators(runtime, message, state, {
-				didRespond: didRespondGate,
-				responses: responseMessages,
-			});
+			if (semanticSignal) {
+				await runPostTurnEvaluators(runtime, message, state, {
+					didRespond: didRespondGate,
+					responses: responseMessages,
+					semanticSignal,
+				});
+			}
 			await runtime.runActionsByMode("ALWAYS_AFTER", message, state, {
 				didRespond: didRespondGate,
 				responses: responseMessages,

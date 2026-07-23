@@ -22,7 +22,6 @@
  *
  * Mocks only the module boundaries the handler imports; the route logic is
  * real. Harness modeled on eliza-agents-warm-pool-character-push.test.ts.
- * [sol-warmpool-keypush]
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
@@ -56,6 +55,10 @@ const enqueueAgentProvision = mock(async () => ({
   status: "pending",
   estimated_completion_at: new Date("2026-07-23T00:01:30.000Z"),
 }));
+const enqueueAgentRestartOnce = mock(async () => ({
+  job: { id: "restart-job-1", status: "pending" },
+  created: true,
+}));
 const triggerImmediate = mock(async () => undefined);
 
 const checkAgentCreditGate = mock(async () => ({
@@ -82,12 +85,14 @@ const loggerError = mock((_msg: string, _meta?: LoggerMeta) => undefined);
 const claimWarmContainer = mock(async (): Promise<unknown> => null);
 const listByOrganization = mock(async () => []);
 const countReadyPoolEntriesForImage = mock(async () => 0);
+const updateSandbox = mock(async () => undefined);
 
 mock.module("@/db/repositories/agent-sandboxes", () => ({
   agentSandboxesRepository: {
     claimWarmContainer,
     listByOrganization,
     countReadyPoolEntriesForImage,
+    update: updateSandbox,
   },
 }));
 
@@ -118,7 +123,11 @@ mock.module("@/lib/services/eliza-sandbox", () => ({
 }));
 
 mock.module("@/lib/services/provisioning-jobs", () => ({
-  provisioningJobService: { enqueueAgentProvision, triggerImmediate },
+  provisioningJobService: {
+    enqueueAgentProvision,
+    enqueueAgentRestartOnce,
+    triggerImmediate,
+  },
 }));
 
 mock.module("@/lib/services/agent-billing-gate", () => ({
@@ -160,7 +169,7 @@ app.route("/api/v1/eliza/agents", agentsRoute);
 
 const AGENT_ID = "e06bb509-6c52-4c33-a9f7-66addc43e8c8";
 // The secret that must NEVER leak into a log/event.
-const POOL_LIVE_KEY = "eliza_supersecretmusntleak0000";
+const POOL_LIVE_KEY = "eliza_" + "supersecretmusntleak0000";
 
 function pendingAgent() {
   return {
@@ -192,6 +201,7 @@ function claimedRow() {
     bridge_url: "http://100.64.0.11:3000",
     health_url: "http://100.64.0.11:3000/api",
     sandbox_id: `agent-${AGENT_ID}`,
+    warm_pool_row_id: "pool-row-1",
     // Pool-org cloud key baked at boot — the bug under repair.
     environment_vars: {
       ELIZA_API_TOKEN: "agent_pool_live",
@@ -242,6 +252,8 @@ describe("POST /api/v1/eliza/agents — warm-pool post-claim inference key push"
       keyPrefix: "eliza_abcde…",
     });
     enqueueAgentProvision.mockClear();
+    enqueueAgentRestartOnce.mockClear();
+    updateSandbox.mockClear();
     triggerImmediate.mockClear();
     countReadyPoolEntriesForImage.mockReset();
     countReadyPoolEntriesForImage.mockResolvedValue(0);
@@ -281,7 +293,7 @@ describe("POST /api/v1/eliza/agents — warm-pool post-claim inference key push"
     expect(everyLoggedMetaString()).not.toContain(POOL_LIVE_KEY);
   });
 
-  test("key-push failure does NOT fail the claim: still 201 source=warm_pool + failure event", async () => {
+  test("key-push failure returns recovery state and enqueues a restart", async () => {
     createAgent.mockResolvedValue({ agent: pendingAgent(), idempotent: false });
     claimWarmContainer.mockResolvedValue(claimedRow());
     pushClaimedWarmContainerInferenceKey.mockRejectedValue(
@@ -290,12 +302,16 @@ describe("POST /api/v1/eliza/agents — warm-pool post-claim inference key push"
 
     const res = await postCreate({ agentName: "alpha", alwaysOn: true });
 
-    // The claim survives the key-push failure.
-    expect(res.status).toBe(201);
+    expect(res.status).toBe(202);
     const body = (await res.json()) as { source?: string; success?: boolean };
     expect(body.success).toBe(true);
-    expect(body.source).toBe("warm_pool");
-    expect(enqueueAgentProvision).not.toHaveBeenCalled();
+    expect(body.source).toBe("warm_pool_recovery");
+    expect(enqueueAgentRestartOnce).toHaveBeenCalledTimes(1);
+    expect(updateSandbox).toHaveBeenCalledWith(AGENT_ID, {
+      status: "provisioning",
+      error_message: "Warm-pool credential handoff requires restart recovery",
+    });
+    expect(triggerImmediate).toHaveBeenCalledTimes(1);
 
     // The degrade is observable via the stable event, with error context.
     const events = keyPushFailedEvents();

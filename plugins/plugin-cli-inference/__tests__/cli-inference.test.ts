@@ -160,6 +160,11 @@ describe("claude CLI variant", () => {
       const mIdx = argv.indexOf("--model");
       expect(argv[mIdx + 1]).toBe("claude-opus-4-8");
 
+      // all built-in Claude Code tools disabled — pure text engine (#16939)
+      const toolsIdx = argv.indexOf("--tools");
+      expect(toolsIdx).toBeGreaterThanOrEqual(0);
+      expect(argv[toolsIdx + 1]).toBe("");
+
       // stdin from /dev/null, isolated tmpdir cwd
       expect(opts.stdinPath).toBe("/dev/null");
       expect(opts.cwd).toContain("eliza-cli-inference-");

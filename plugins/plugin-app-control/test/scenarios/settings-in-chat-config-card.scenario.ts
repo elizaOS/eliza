@@ -15,6 +15,7 @@
  */
 
 import { scenario } from "@elizaos/scenario-runner/schema";
+import { productionAgentSettingsSeed } from "./_helpers/production-agent-seeds";
 
 export default scenario({
   lane: "live-only",
@@ -26,6 +27,11 @@ export default scenario({
   requires: {
     plugins: ["@elizaos/plugin-app-control"],
   },
+  // The lean scenario runtime omits the @elizaos/agent eliza plugin, which is
+  // what teaches a production model the [CONFIG:…] marker vocabulary. Seed the
+  // real guide provider so the live model sees the same guidance production
+  // composes for connector-setup turns (#16939).
+  seed: [productionAgentSettingsSeed()],
   rooms: [
     {
       id: "main",

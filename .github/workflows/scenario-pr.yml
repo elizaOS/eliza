@@ -803,26 +803,14 @@ jobs:
       - name: Ensure generated shared i18n data
         run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
 
-      # packages/scripts has no package.json, so packages/scripts/__tests__ is
-      # outside workspace test discovery (run-all-tests.mjs never sees it). This
-      # job used to enumerate individual files here, which left every unlisted
-      # suite dead on arrival — most of the directory never ran anywhere
-      # (#15846). Sweep the whole directory so ordinary script tests execute.
-      # `--conditions=eliza-source`: several suites (e2e-coverage among them)
-      # scan workspace SOURCE that reaches @elizaos/core, which under bun's
-      # default `bun` export condition resolves to unbuilt dist on this
-      # --ignore-scripts install. The source condition resolves those workspace
-      # packages to src (same as the matrix-report step below), so the sweep
-      # runs before build:core (#15759).
-      - name: packages/scripts test sweep (all __tests__ suites)
-        run: bun test --conditions=eliza-source packages/scripts/__tests__/
-
-      # #15616: pass/fail classifier for the live cloud chat smokes
-      # (hetzner-e2e-chat, live-cloud-provision-smoke). packages/scripts is
-      # outside workspace test discovery, so keep this explicit or canned
-      # failure replies can silently start passing the nightly again.
-      - name: Bridge chat-reply verdict classifier
-        run: bun test packages/scripts/cloud/admin/bridge-reply-verdict.test.ts
+      # packages/scripts has no package.json and is invisible to workspace test
+      # fan-out. The shared runner discovers every nested test/spec source from
+      # Git, passes each file explicitly under the eliza-source condition, and
+      # writes the exact inventory plus JUnit evidence before build:core.
+      - name: Complete packages/scripts test sweep
+        env:
+          E2E_COVERAGE_GATE_ENFORCE: "1"
+        run: bun run test:scripts
 
       - name: Per-plugin keyless e2e coverage report
         run: bun run report:e2e-coverage
@@ -853,6 +841,7 @@ jobs:
             reports/scenarios/pr-deterministic-lifeops/
             reports/scenarios/catalog-inventory/
             reports/coverage/
+            reports/script-tests/
           if-no-files-found: ignore
           retention-days: 3
 

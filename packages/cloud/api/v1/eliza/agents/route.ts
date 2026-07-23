@@ -581,11 +581,9 @@ app.post("/", async (c) => {
           // the sentinel pool org with a cloud inference key scoped to THAT
           // org, so without this the first reply is the "key isn't authorized"
           // fallback. Mint a user-org-scoped key and push it onto the live
-          // container (same bounded/non-fatal contract as the character push).
-          // On failure the claim still succeeds — the row env carries the new
-          // key, so the container re-credentials on its next restart — and the
-          // stable `warm_pool.key_push_failed` event makes a broken re-key
-          // path observable. NEVER log the key itself (only a safe prefix).
+          // container and require runtime attestation. A failed handoff enters
+          // restart recovery from the updated row env; it is never reported as
+          // a ready warm claim. Never log the key itself.
           try {
             const keyPush =
               await elizaSandboxService.pushClaimedWarmContainerInferenceKey(
@@ -599,15 +597,47 @@ app.post("/", async (c) => {
               });
             }
           } catch (keyErr) {
+            const recovery =
+              await provisioningJobService.enqueueAgentRestartOnce({
+                agentId: agent.id,
+                organizationId: user.organization_id,
+                userId: user.id,
+              });
+            await agentSandboxesRepository.update(claimed.id, {
+              status: "provisioning",
+              error_message:
+                "Warm-pool credential handoff requires restart recovery",
+            });
+            if (recovery.created) {
+              void provisioningJobService.triggerImmediate(c.env).catch(() => {
+                // error-policy:J5 the persisted restart job is observed by the
+                // provisioning worker poll when the immediate nudge fails.
+              });
+            }
             logger.warn(
-              "[agent-api] Warm pool inference key push failed; claim kept (re-credentials on next restart)",
+              "[agent-api] Warm pool inference key push failed; restart recovery enqueued",
               {
                 event: "warm_pool.key_push_failed",
                 agentId: agent.id,
                 orgId: user.organization_id,
+                recoveryJobId: recovery.job.id,
+                recoveryJobCreated: recovery.created,
                 error:
                   keyErr instanceof Error ? keyErr.message : String(keyErr),
               },
+            );
+            return c.json(
+              {
+                success: true,
+                source: "warm_pool_recovery",
+                data: {
+                  id: claimed.id,
+                  agentName: claimed.agent_name,
+                  status: "provisioning",
+                  executionTier: claimed.execution_tier,
+                },
+              },
+              202,
             );
           }
           return c.json(

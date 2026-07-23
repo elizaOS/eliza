@@ -515,6 +515,13 @@ declare module "./client-base" {
       completed: boolean;
       /** Agent reasoning/thought for this turn, when the model emitted one. */
       reasoning?: string;
+      /**
+       * Persisted assistant memory id from the terminal SSE `done` frame. The
+       * client swaps its optimistic temp-resp-* bubble to this id so the
+       * proactive-message WS echo reconciles by id instead of appending a
+       * duplicate bubble.
+       */
+      messageId?: string;
       noResponseReason?: "ignored";
       usage?: ChatTokenUsage;
       /** See sendConversationMessage above. */

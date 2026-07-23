@@ -396,10 +396,13 @@ export const preferenceEvaluator: Evaluator<
 		"Extracts user preferences about the agent, views, and interaction style from ordinary conversation.",
 	priority: EvaluatorPriority.REFLECTION_PREFERENCES,
 	schema: preferenceOpsSchema,
-	async shouldRun({ runtime, message }) {
+	async shouldRun({ runtime, message, options }) {
 		// The agent's own messages carry no user preference signal, and
 		// evaluating them would let the agent "infer" preferences from itself.
-		return canEvaluateMessage(message) && message.entityId !== runtime.agentId;
+		return (
+			canEvaluateMessage(message, options) &&
+			message.entityId !== runtime.agentId
+		);
 	},
 	async prepare({ runtime, message }) {
 		return preparePreferences(runtime, message);

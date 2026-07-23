@@ -1,3 +1,5 @@
+import com.android.build.api.artifact.SingleArtifact
+
 apply plugin: 'com.android.application'
 
 // Single repo-root resolution shared by the elizavoice header gate and the
@@ -427,6 +429,112 @@ afterEvaluate {
             } else {
                 println "[app-thinning] keeping assets/agent/ in ${mergeTask.name} (local-agent capable build)"
             }
+        }
+    }
+}
+
+// Every Cloud release bundle, including an up-to-date or cache-restored final
+// signed Play artifact, must pass the same bundletool manifest/DEX audit as
+// run-mobile-build.mjs. A non-cacheable finalizer runs after a successful
+// bundle task and propagates the audit process exit status.
+def cloudBundleReleaseTasks = tasks.matching { it.name == 'bundleRelease' }
+def cloudReleaseAab = objects.fileProperty()
+androidComponents {
+    onVariants(selector().withName('release')) { variant ->
+        cloudReleaseAab.set(
+            variant.artifacts.get(SingleArtifact.BUNDLE.INSTANCE)
+        )
+    }
+}
+def auditCloudReleaseAab = tasks.register('auditCloudReleaseAab') {
+    group = 'verification'
+    description = 'Audits the exact Cloud release AAB with checksum-pinned bundletool.'
+    inputs.file(cloudReleaseAab)
+    outputs.upToDateWhen { false }
+    onlyIf('Cloud release build') {
+        project.findProperty('elizaCloudBuild') == 'true'
+    }
+    doFirst {
+        def bundleTask = cloudBundleReleaseTasks.find {
+            it.name == 'bundleRelease'
+        }
+        if (bundleTask == null || !bundleTask.state.executed) {
+            throw new GradleException(
+                '[cloud-aab-audit] bundleRelease did not reach an outcome'
+            )
+        }
+        if (bundleTask.state.failure != null) {
+            throw new GradleException(
+                '[cloud-aab-audit] refusing output from failed bundleRelease',
+                bundleTask.state.failure
+            )
+        }
+        if (bundleTask.state.skipped && !bundleTask.state.upToDate) {
+            def outcome = bundleTask.state.noSource
+                ? 'NO-SOURCE'
+                : (bundleTask.state.skipMessage ?: 'SKIPPED')
+            throw new GradleException(
+                "[cloud-aab-audit] refusing stale bundle because bundleRelease outcome was ${outcome}"
+            )
+        }
+    }
+    doLast {
+        // The orchestrator passes its own absolute path so npm-packages /
+        // white-label layouts (where the repo-root walk misses the scripts
+        // tree) still resolve the canonical audit CLI. The relative walk is
+        // the fallback for direct ./gradlew invocations from a source checkout.
+        def auditScriptOverride = System.getenv('ELIZA_MOBILE_AUDIT_SCRIPT')?.trim()
+        def auditScript
+        if (auditScriptOverride) {
+            auditScript = new File(auditScriptOverride)
+            if (!auditScript.isFile()) {
+                throw new GradleException(
+                    "[cloud-aab-audit] ELIZA_MOBILE_AUDIT_SCRIPT does not exist: ${auditScript}"
+                )
+            }
+        } else {
+            auditScript = new File(
+                elizaRepoRoot,
+                'packages/app-core/scripts/run-mobile-build.mjs'
+            )
+            if (!auditScript.isFile()) {
+                throw new GradleException(
+                    "[cloud-aab-audit] missing ${auditScript}"
+                )
+            }
+        }
+        def bundleArtifact = cloudReleaseAab.get().asFile
+        if (!bundleArtifact.isFile()) {
+            throw new GradleException(
+                "[cloud-aab-audit] missing final bundle ${bundleArtifact}"
+            )
+        }
+        def auditOutput = providers.exec {
+            workingDir elizaRepoRoot
+            ignoreExitValue = true
+            commandLine(
+                System.getenv('NODE_BINARY') ?: 'node',
+                auditScript.absolutePath,
+                'android-cloud-audit',
+                bundleArtifact.absolutePath
+            )
+        }
+        def auditStdout = auditOutput.standardOutput.asText.get().trim()
+        def auditStderr = auditOutput.standardError.asText.get().trim()
+        if (!auditStdout.isEmpty()) {
+            logger.lifecycle(auditStdout)
+        }
+        if (!auditStderr.isEmpty()) {
+            logger.error(auditStderr)
+        }
+        auditOutput.result.get().assertNormalExitValue()
+    }
+}
+
+afterEvaluate {
+    cloudBundleReleaseTasks.configureEach { bundleTask ->
+        if (project.findProperty('elizaCloudBuild') == 'true') {
+            bundleTask.finalizedBy(auditCloudReleaseAab)
         }
     }
 }

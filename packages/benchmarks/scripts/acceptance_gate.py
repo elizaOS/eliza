@@ -108,7 +108,11 @@ TIMEOUT_AGENT_SMOKE_S = 120
 # boot + pinned dataset load + docker terminal sandbox + live agent loop), so
 # the old 240s budget killed healthy runs. 900s bounds a wedged lane while
 # leaving honest headroom for slower agent loops.
-TIMEOUT_BENCHMARK_RUN_S = 900
+# Campaign policy: no artificial task budgets anywhere an agent may still be
+# working — a leg ends when the rollout concludes. This is a last-resort
+# process guard far above any plausible runtime, not a deadline; the
+# orchestrator's liveness policy owns hang detection.
+TIMEOUT_BENCHMARK_RUN_S = 86400
 TIMEOUT_RANDOM_RUN_S = 120
 
 
@@ -586,13 +590,24 @@ def _step_cerebras_smoke() -> GateStepResult:
     prompt = "Reply with the single word: PONG"
 
     request_start = _now_ms()
-    status, parsed, raw = _cerebras_chat(
-        api_key=api_key,
-        base_url=base_url,
-        model=model,
-        prompt=prompt,
-        timeout_s=TIMEOUT_CEREBRAS_SMOKE_S,
-    )
+    # The cloud proxy's billing-authorization cache goes cold between runs and
+    # answers the first request with a transient 503 "… warming. Retry
+    # shortly."; an immediate retry succeeds. Retrying only that exact shape
+    # keeps the smoke honest — any other failure still fails on attempt one.
+    attempts = 0
+    while True:
+        attempts += 1
+        status, parsed, raw = _cerebras_chat(
+            api_key=api_key,
+            base_url=base_url,
+            model=model,
+            prompt=prompt,
+            timeout_s=TIMEOUT_CEREBRAS_SMOKE_S,
+        )
+        if status == 503 and "warming" in raw.lower() and attempts < 6:
+            time.sleep(5.0 * attempts)
+            continue
+        break
     request_ms = _now_ms() - request_start
 
     details: dict[str, Any] = {

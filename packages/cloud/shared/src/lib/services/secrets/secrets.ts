@@ -17,6 +17,7 @@ import type {
   SecretProvider,
   SecretScope,
 } from "../../../db/schemas/secrets";
+import { logger } from "../../utils/logger";
 import { getEncryptionService, type SecretsEncryptionService } from "./encryption";
 
 const MAX_SECRET_VALUE_BYTES = 65536; // 64KB max for secret values
@@ -219,11 +220,29 @@ class SecretsService {
     secretId: string,
     organizationId: string,
     audit?: AuditContext,
+    options?: { defer?: (task: Promise<void>) => void },
   ): Promise<string> {
     const secret = await this.getExistingSecret(secretId, organizationId);
     const value = await this.decryptSecret(secret);
-    await secretsRepository.recordAccess(secretId);
-    if (audit) await this.logAudit(secretId, organizationId, "read", secret.name, audit);
+    const recordRead = async () => {
+      await secretsRepository.recordAccess(secretId);
+      if (audit) await this.logAudit(secretId, organizationId, "read", secret.name, audit);
+    };
+    if (options?.defer) {
+      options.defer(
+        recordRead().catch((error) => {
+          // error-policy:J7 audit persistence is observed by the Worker
+          // background lifetime and must not delay use of an already-decrypted key.
+          logger.error("[SecretsService] deferred read audit failed", {
+            secretId,
+            organizationId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }),
+      );
+    } else {
+      await recordRead();
+    }
     return value;
   }
 

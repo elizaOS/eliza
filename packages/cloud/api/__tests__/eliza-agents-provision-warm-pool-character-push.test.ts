@@ -35,6 +35,10 @@ const pushClaimedWarmContainerCharacter = mock(
       agentName?: string;
     },
 );
+const pushClaimedWarmContainerInferenceKey = mock(async () => ({
+  pushed: true,
+  keyPrefix: "key-prefix",
+}));
 
 const enqueueAgentProvisionOnce = mock(async () => ({
   job: {
@@ -42,6 +46,10 @@ const enqueueAgentProvisionOnce = mock(async () => ({
     status: "pending",
     estimated_completion_at: new Date("2026-07-23T00:01:30.000Z"),
   },
+  created: true,
+}));
+const enqueueAgentRestartOnce = mock(async () => ({
+  job: { id: "restart-job-1", status: "pending" },
   created: true,
 }));
 const triggerImmediate = mock(async () => undefined);
@@ -64,11 +72,13 @@ const loggerError = mock((_msg: string, _meta?: LoggerMeta) => undefined);
 
 const claimWarmContainer = mock(async (): Promise<unknown> => null);
 const countReadyPoolEntriesForImage = mock(async () => 0);
+const updateSandbox = mock(async () => undefined);
 
 mock.module("@/db/repositories/agent-sandboxes", () => ({
   agentSandboxesRepository: {
     claimWarmContainer,
     countReadyPoolEntriesForImage,
+    update: updateSandbox,
   },
 }));
 
@@ -81,11 +91,16 @@ mock.module("@/lib/services/eliza-sandbox", () => ({
     getAgentForWrite,
     provision,
     pushClaimedWarmContainerCharacter,
+    pushClaimedWarmContainerInferenceKey,
   },
 }));
 
 mock.module("@/lib/services/provisioning-jobs", () => ({
-  provisioningJobService: { enqueueAgentProvisionOnce, triggerImmediate },
+  provisioningJobService: {
+    enqueueAgentProvisionOnce,
+    enqueueAgentRestartOnce,
+    triggerImmediate,
+  },
 }));
 
 mock.module("@/lib/services/agent-billing-gate", () => ({
@@ -155,6 +170,7 @@ function claimedRow() {
     health_url: "http://100.64.0.11:3000/api",
     sandbox_id: `agent-${AGENT_ID}`,
     environment_vars: { ELIZA_API_TOKEN: "agent_pool_live" },
+    warm_pool_row_id: "pool-row-1",
   };
 }
 
@@ -185,6 +201,13 @@ describe("POST /api/v1/eliza/agents/[agentId]/provision — warm-pool post-claim
       pushed: true,
       agentName: "alpha",
     });
+    pushClaimedWarmContainerInferenceKey.mockReset();
+    pushClaimedWarmContainerInferenceKey.mockResolvedValue({
+      pushed: true,
+      keyPrefix: "key-prefix",
+    });
+    enqueueAgentRestartOnce.mockClear();
+    updateSandbox.mockClear();
     enqueueAgentProvisionOnce.mockClear();
     triggerImmediate.mockClear();
     countReadyPoolEntriesForImage.mockReset();
@@ -248,5 +271,24 @@ describe("POST /api/v1/eliza/agents/[agentId]/provision — warm-pool post-claim
     expect(res.status).toBe(202);
     expect(enqueueAgentProvisionOnce).toHaveBeenCalledTimes(1);
     expect(pushClaimedWarmContainerCharacter).not.toHaveBeenCalled();
+  });
+
+  test("failed key attestation marks recovery and enqueues an immediate restart", async () => {
+    claimWarmContainer.mockResolvedValue(claimedRow());
+    pushClaimedWarmContainerInferenceKey.mockRejectedValue(
+      new Error("Warm-claim key push was not attested"),
+    );
+
+    const res = await postProvision();
+    const body = (await res.json()) as { source?: string };
+
+    expect(res.status).toBe(202);
+    expect(body.source).toBe("warm_pool_recovery");
+    expect(enqueueAgentRestartOnce).toHaveBeenCalledTimes(1);
+    expect(updateSandbox).toHaveBeenCalledWith(AGENT_ID, {
+      status: "provisioning",
+      error_message: "Warm-pool credential handoff requires restart recovery",
+    });
+    expect(triggerImmediate).toHaveBeenCalledTimes(1);
   });
 });

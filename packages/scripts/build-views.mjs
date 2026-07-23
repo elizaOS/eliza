@@ -1,24 +1,65 @@
 #!/usr/bin/env node
 /**
- * Builds every plugin's dynamic view bundle and refuses to report success on a
- * build that emitted nothing. Each plugin with a `vite.config.views.ts` must
- * produce `dist/views/bundle.js`; a downstream audit trusts that artifact to
- * prove the production view, so a missing or stale bundle here is a hard failure
- * (issue #15791), never a silent no-op. The orchestration only runs when this
- * file is executed as a script — the helpers are importable for tests.
+ * Builds every workspace-owned dynamic view bundle and refuses to report
+ * success on incomplete discovery or missing output. The shared inventory
+ * binds each `vite.config.views.*` file to its package script and expected
+ * `dist/views/bundle.js`, which keeps this producer aligned with the downstream
+ * import guard across nested workspaces and platforms (#15791, #16995).
  */
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
-import { readdir, rm } from "node:fs/promises";
+import { lstatSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  discoverViewBundleInventory,
+  selectViewBundleTargets,
+} from "./lib/view-bundle-inventory.mjs";
 
 const repoRoot = path.resolve(import.meta.dirname, "../..");
 
 /** Absolute path to the bundle a plugin's view config is required to emit. */
 export function expectedBundlePath(configPath) {
   return path.join(path.dirname(configPath), "dist", "views", "bundle.js");
+}
+
+/**
+ * Resolve the generated output directory without allowing an existing path
+ * component to redirect recursive cleanup outside its owning workspace.
+ */
+export function assertSafeViewOutputDirectory(configPath) {
+  const workspace = path.resolve(path.dirname(configPath));
+  const output = path.resolve(path.dirname(expectedBundlePath(configPath)));
+  if (
+    path.relative(workspace, output).split(path.sep).join("/") !== "dist/views"
+  ) {
+    throw new Error(
+      "[build-views] view output must be workspace-local dist/views",
+    );
+  }
+  let current = workspace;
+  for (const segment of ["dist", "views"]) {
+    current = path.join(current, segment);
+    try {
+      const metadata = lstatSync(current);
+      if (metadata.isSymbolicLink()) {
+        throw new Error(
+          `[build-views] refusing to clean symlinked output path: ${current}`,
+        );
+      }
+      if (!metadata.isDirectory()) {
+        throw new Error(
+          `[build-views] output path component is not a directory: ${current}`,
+        );
+      }
+    } catch (error) {
+      // error-policy:J3 an output directory that does not exist is clean
+      if (error?.code === "ENOENT") break;
+      throw error;
+    }
+  }
+  return output;
 }
 
 /**
@@ -40,28 +81,49 @@ export function missingBundleReport(missingBundles) {
   );
 }
 
-async function findViewConfigs(filter) {
-  const pluginsDir = path.join(repoRoot, "plugins");
-  const entries = await readdir(pluginsDir, { withFileTypes: true });
-  return entries
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => path.join(pluginsDir, entry.name, "vite.config.views.ts"))
-    .filter((configPath) => existsSync(configPath))
-    .filter((configPath) => {
-      if (!filter) return true;
-      const pluginName = path.basename(path.dirname(configPath));
-      return pluginName.includes(filter) || `@elizaos/${pluginName}` === filter;
-    })
-    .sort();
+/** Parse the optional plugin filter without accepting ignored CLI input. */
+export function parseViewFilter(args) {
+  let filter;
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === "--filter") {
+      const value = args[index + 1];
+      if (!value || value.startsWith("-")) {
+        throw new Error("[build-views] --filter requires a target name");
+      }
+      if (filter !== undefined) {
+        throw new Error("[build-views] --filter may be specified only once");
+      }
+      filter = value;
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith("--filter=")) {
+      const value = arg.slice("--filter=".length);
+      if (!value || value.startsWith("-")) {
+        throw new Error("[build-views] --filter requires a target name");
+      }
+      if (filter !== undefined) {
+        throw new Error("[build-views] --filter may be specified only once");
+      }
+      filter = value;
+      continue;
+    }
+    throw new Error(`[build-views] unknown argument: ${arg}`);
+  }
+  return filter;
 }
 
 async function buildView(configPath) {
   const cwd = path.dirname(configPath);
   const label = path.relative(repoRoot, cwd);
-  // Delete the previous bundle first so a build that silently emits nothing
-  // (misconfigured entry, skipped compile) cannot pass on a stale artifact —
-  // the post-build guard would otherwise validate last run's output.
-  await rm(expectedBundlePath(configPath), { force: true });
+  // The directory is generated output owned solely by this config. Clearing it
+  // prevents a stale bundle or lazy chunk from surviving a later single-file
+  // build and being mistaken for current output.
+  await rm(assertSafeViewOutputDirectory(configPath), {
+    force: true,
+    recursive: true,
+  });
   const { status, output } = await runBun(["run", "build:views"], cwd);
   return { label, status: status ?? 1, output };
 }
@@ -84,20 +146,14 @@ function runBun(buildArgs, cwd) {
 }
 
 async function main() {
-  const args = process.argv.slice(2);
-  const filterArg = args.find(
-    (arg) => arg === "--filter" || arg.startsWith("--filter="),
-  );
-  const filter =
-    filterArg === "--filter"
-      ? args[args.indexOf(filterArg) + 1]
-      : filterArg?.slice("--filter=".length);
+  const filter = parseViewFilter(process.argv.slice(2));
+  const inventory = discoverViewBundleInventory({ repoRoot });
+  const targets = selectViewBundleTargets(inventory.targets, filter);
+  const configs = targets.map(({ configAbsolute }) => configAbsolute);
 
-  const configs = await findViewConfigs(filter);
-  if (configs.length === 0) {
-    console.log("[build-views] no view configs found");
-    process.exit(0);
-  }
+  console.log(
+    `[build-views] discovered ${inventory.targets.length} authoritative target(s); building ${targets.length}`,
+  );
 
   const concurrency = Math.min(
     configs.length,
@@ -140,14 +196,19 @@ async function main() {
   const { validateViewBundles } = await import(
     "./view-bundle-import-guard.mjs"
   );
-  const { violations, missingBundles } = await validateViewBundles();
+  const { violations, missingBundles, unexpectedChunks, unexpectedArtifacts } =
+    await validateViewBundles({ enforceFreshOutputs: true });
   // The guard scans every configured plugin; a `--filter` run only built a
   // subset, so only hold the built subset to the "must emit a bundle" rule.
-  const builtPluginNames = new Set(
-    configs.map((configPath) => path.basename(path.dirname(configPath))),
-  );
+  const builtPluginNames = new Set(targets.map(({ name }) => name));
   const missingFromBuilt = missingBundles.filter((bundle) =>
     builtPluginNames.has(bundle.name),
+  );
+  const chunksFromBuilt = unexpectedChunks.filter((chunk) =>
+    builtPluginNames.has(chunk.name),
+  );
+  const artifactsFromBuilt = unexpectedArtifacts.filter((artifact) =>
+    builtPluginNames.has(artifact.name),
   );
   const missingReport = missingBundleReport(missingFromBuilt);
   if (missingReport) {
@@ -165,6 +226,24 @@ async function main() {
       "[build-views] Import these from a host-provided specifier (e.g. the " +
         "`@elizaos/ui/components` barrel) instead of a deep subpath.",
     );
+    process.exit(1);
+  }
+  if (chunksFromBuilt.length > 0) {
+    console.error(
+      `[build-views] ${chunksFromBuilt.length} unexpected JavaScript chunk(s) remain:`,
+    );
+    for (const chunk of chunksFromBuilt) {
+      console.error(`  ✗ ${chunk.name}: ${chunk.relativeChunk}`);
+    }
+    process.exit(1);
+  }
+  if (artifactsFromBuilt.length > 0) {
+    console.error(
+      `[build-views] ${artifactsFromBuilt.length} unexpected sidecar artifact(s) remain:`,
+    );
+    for (const artifact of artifactsFromBuilt) {
+      console.error(`  ✗ ${artifact.name}: ${artifact.relativeArtifact}`);
+    }
     process.exit(1);
   }
 }

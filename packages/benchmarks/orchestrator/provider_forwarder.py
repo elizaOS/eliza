@@ -8,10 +8,28 @@ nonpublishable diagnostic. This forwarder restores publishability honestly:
 it binds ``http://127.0.0.1:<port>/v1`` (satisfying openclaw's strict
 ``http://127.0.0.1:`` prefix check and hermes's loopback predicate),
 authenticates each harness lane with its own ephemeral bearer token, and
-pipes ``/v1/chat/completions``, ``/v1/embeddings``, and ``/v1/models``
-byte-for-byte to the real upstream with the real credential attached only
-inside the coordinator process. Harness legs therefore hold no real
-credential, and their traffic genuinely traverses loopback.
+relays ``/v1/chat/completions``, ``/v1/embeddings``, and ``/v1/models`` to the
+real upstream with the real credential attached only inside the coordinator
+process — byte-for-byte except for the streaming adaptation below. Harness
+legs therefore hold no real credential, and their traffic genuinely traverses
+loopback.
+
+Chat-completion streaming is de-streamed by default rather than piped raw. The
+deployed elizacloud proxy duplicates streamed tool-call arguments — it emits
+the incremental argument deltas AND re-serializes the full arguments in its
+consolidated chunk, so the spec-mandated per-index concatenation on the client
+yields invalid JSON — while its ``stream:false`` responses are correct (fixed
+by PR #16973, but production deploys through reviewer-gated ``main``). So when
+a harness sends ``"stream": true``, the forwarder rewrites the upstream request
+to ``"stream": false``, waits for the complete JSON completion, and synthesizes
+a spec-compliant OpenAI SSE stream downstream — the same "SSE is a response
+adapter over the same completed query" design the claude-subscription gateway
+uses (``packages/benchmarks/claude-subscription-gateway/src/server.ts``), and
+its chunk sequence is mirrored here: role chunk, content delta, one indexed
+tool-call delta per call with the arguments emitted exactly once, finish
+chunk, usage chunk, ``[DONE]``. This also makes forwarded runs
+transport-deterministic. ``ELIZA_FORWARDER_PASSTHROUGH_STREAMING=1`` restores
+raw streaming passthrough once the cloud fix deploys.
 
 The cohort coordinator owns the lifecycle — one forwarder per cohort, fresh
 tokens each cohort, closed in the coordinator ``finally`` where a premature
@@ -28,6 +46,7 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import os
 import secrets
 import threading
 from dataclasses import dataclass, field
@@ -42,6 +61,11 @@ from .runner import PROVIDER_BASE_URL_ENV, PROVIDER_KEY_ENV
 DEFAULT_UPSTREAM_TIMEOUT_SECONDS = 600.0
 DEFAULT_STOP_TIMEOUT_SECONDS = 30.0
 _RELAY_CHUNK_BYTES = 65536
+# Escape hatch for the de-stream default: set to 1/true/yes/on to relay
+# ``stream:true`` chat completions byte-for-byte again once the elizacloud
+# streamed-tool-call duplication fix (PR #16973) is live in production.
+PASSTHROUGH_STREAMING_ENV = "ELIZA_FORWARDER_PASSTHROUGH_STREAMING"
+_ENV_TRUTHY = frozenset({"1", "true", "yes", "on"})
 # Hop-by-hop and transport-framing headers are recomputed per hop; the
 # credential headers are replaced with the coordinator-held upstream key.
 # Accept-Encoding is pinned to identity so the relay stays a transparent byte
@@ -160,11 +184,161 @@ class _ForwarderState:
     upstream_api_key: str
     tokens_to_harness: dict[str, str]
     upstream_timeout_seconds: float
+    passthrough_streaming: bool = False
     lock: threading.Lock = field(default_factory=threading.Lock)
     lane_request_counts: dict[str, int] = field(default_factory=dict)
     unauthorized_requests: int = 0
     upstream_transport_failures: int = 0
+    upstream_invalid_completions: int = 0
+    destreamed_requests: int = 0
     aborted_connections: int = 0
+
+
+def _streaming_request_payload(body: bytes) -> dict[str, object] | None:
+    """The parsed request body iff it is a de-streamable chat completion.
+
+    Only a JSON object carrying exactly ``"stream": true`` qualifies; anything
+    else (malformed JSON, non-object payloads, absent/false/exotic ``stream``
+    values) is relayed unchanged so the upstream stays the authority on
+    accepting or rejecting it.
+    """
+
+    # error-policy:J3 the body is untrusted harness input; a parse failure is
+    # an explicit not-de-streamable verdict, never a fabricated request.
+    try:
+        payload = json.loads(body)
+    except ValueError:
+        return None
+    if not isinstance(payload, dict) or payload.get("stream") is not True:
+        return None
+    return payload
+
+
+def _synthesize_sse_frames(completion: dict[str, object]) -> list[bytes]:
+    """Adapt one complete chat completion into OpenAI SSE chunk frames.
+
+    Mirrors the claude-subscription gateway's ``sendSseCompletion`` sequence,
+    which both real downstream consumers are proven against — the hermes
+    chat-completions stream accumulator (name by assignment, arguments by
+    per-index concatenation) and OpenClaw's ``openai-completions`` transport
+    (the official openai JS SDK): per choice a role(+content) chunk, one
+    indexed tool-call delta per call with the full arguments emitted exactly
+    once (valid per spec — concatenation of one fragment is the fragment),
+    and a finish chunk; then a usage chunk when the completion carried usage,
+    then ``[DONE]``. ``id``/``model``/``created``/``system_fingerprint`` are
+    preserved from the upstream response. Raises ``ValueError`` on a payload
+    that is not a completion so the caller can fail closed instead of
+    emitting a half-valid stream.
+    """
+
+    choices = completion.get("choices")
+    if not isinstance(choices, list) or not choices:
+        raise ValueError("upstream completion has no choices list")
+    base: dict[str, object] = {
+        "id": completion.get("id"),
+        "object": "chat.completion.chunk",
+        "created": completion.get("created"),
+        "model": completion.get("model"),
+    }
+    if "system_fingerprint" in completion:
+        base["system_fingerprint"] = completion["system_fingerprint"]
+    frames: list[bytes] = []
+
+    def emit(payload: dict[str, object]) -> None:
+        frames.append(
+            b"data: " + json.dumps(payload, ensure_ascii=True).encode("utf-8") + b"\n\n"
+        )
+
+    for position, choice in enumerate(choices):
+        if not isinstance(choice, dict):
+            raise ValueError("upstream completion choice is not an object")
+        message = choice.get("message")
+        if not isinstance(message, dict):
+            raise ValueError("upstream completion choice has no message object")
+        index = choice.get("index", position)
+        initial_delta: dict[str, object] = {"role": message.get("role") or "assistant"}
+        content = message.get("content")
+        if isinstance(content, str) and content:
+            initial_delta["content"] = content
+        # Providers that surface chain-of-thought (the cloud proxy's gemma
+        # lineup among them) put it on message.reasoning_content; hermes
+        # accumulates the streamed field of the same name, so carry it over
+        # rather than dropping it in the adaptation.
+        reasoning = message.get("reasoning_content")
+        if isinstance(reasoning, str) and reasoning:
+            initial_delta["reasoning_content"] = reasoning
+        emit(
+            {
+                **base,
+                "choices": [
+                    {
+                        "index": index,
+                        "delta": initial_delta,
+                        "finish_reason": None,
+                        "logprobs": None,
+                    }
+                ],
+                "usage": None,
+            }
+        )
+        tool_calls = message.get("tool_calls")
+        if isinstance(tool_calls, list):
+            for call_position, call in enumerate(tool_calls):
+                if not isinstance(call, dict) or not isinstance(
+                    call.get("function"), dict
+                ):
+                    raise ValueError("upstream tool call has no function object")
+                function = call["function"]
+                arguments = function.get("arguments", "")
+                if not isinstance(arguments, str):
+                    # The spec requires a JSON-encoded string; normalize the
+                    # rare provider that inlines a decoded object.
+                    arguments = json.dumps(arguments, ensure_ascii=True)
+                emit(
+                    {
+                        **base,
+                        "choices": [
+                            {
+                                "index": index,
+                                "delta": {
+                                    "tool_calls": [
+                                        {
+                                            "index": call_position,
+                                            "id": call.get("id"),
+                                            "type": call.get("type", "function"),
+                                            "function": {
+                                                "name": function.get("name"),
+                                                "arguments": arguments,
+                                            },
+                                        }
+                                    ]
+                                },
+                                "finish_reason": None,
+                                "logprobs": None,
+                            }
+                        ],
+                        "usage": None,
+                    }
+                )
+        emit(
+            {
+                **base,
+                "choices": [
+                    {
+                        "index": index,
+                        "delta": {},
+                        "finish_reason": choice.get("finish_reason"),
+                        "logprobs": None,
+                    }
+                ],
+                "usage": None,
+            }
+        )
+    usage = completion.get("usage")
+    if isinstance(usage, dict):
+        emit({**base, "choices": [], "usage": usage})
+    frames.append(b"data: [DONE]\n\n")
+    return frames
 
 
 class _ForwarderServer(ThreadingHTTPServer):
@@ -248,6 +422,14 @@ class _ForwarderHandler(BaseHTTPRequestHandler):
             )
             return
         body = self.rfile.read(int(raw_length))
+        if (
+            subpath == "/chat/completions"
+            and not self.server.state.passthrough_streaming
+        ):
+            destream_payload = _streaming_request_payload(body)
+            if destream_payload is not None:
+                self._forward_destreamed(subpath, query, destream_payload)
+                return
         self._forward("POST", subpath, query, body)
 
     def _authorized_harness(self) -> str | None:
@@ -275,13 +457,15 @@ class _ForwarderHandler(BaseHTTPRequestHandler):
             )
         return harness
 
-    def _forward(
+    def _open_upstream(
         self,
         method: str,
         subpath: str,
         query: str,
         body: bytes | None,
-    ) -> None:
+    ) -> tuple[HTTPConnection, HTTPResponse] | None:
+        """One authenticated upstream exchange, or None after a written 502."""
+
         state = self.server.state
         target = state.upstream
         upstream_path = f"{target.path_prefix}{subpath}"
@@ -297,7 +481,7 @@ class _ForwarderHandler(BaseHTTPRequestHandler):
             headers = self._outbound_headers()
             headers["Authorization"] = f"Bearer {state.upstream_api_key}"
             connection.request(method, upstream_path, body=body, headers=headers)
-            upstream_response = connection.getresponse()
+            return connection, connection.getresponse()
         except (OSError, TimeoutError) as error:
             # error-policy:J1 the forwarder is the harness-to-upstream
             # transport boundary; a transport failure surfaces as an explicit
@@ -318,11 +502,100 @@ class _ForwarderHandler(BaseHTTPRequestHandler):
                     }
                 },
             )
+            return None
+
+    def _forward(
+        self,
+        method: str,
+        subpath: str,
+        query: str,
+        body: bytes | None,
+    ) -> None:
+        exchange = self._open_upstream(method, subpath, query, body)
+        if exchange is None:
             return
+        connection, upstream_response = exchange
         try:
             self._relay_response(upstream_response)
         finally:
             connection.close()
+
+    def _forward_destreamed(
+        self,
+        subpath: str,
+        query: str,
+        payload: dict[str, object],
+    ) -> None:
+        """Complete the request upstream at ``stream:false``, answer in SSE.
+
+        ``stream_options`` is dropped alongside the rewrite because it is only
+        valid on streaming requests; the synthesized stream always ends with a
+        usage chunk when the completed response carried usage.
+        """
+
+        state = self.server.state
+        upstream_payload = dict(payload)
+        upstream_payload["stream"] = False
+        upstream_payload.pop("stream_options", None)
+        body = json.dumps(upstream_payload, ensure_ascii=True).encode("utf-8")
+        exchange = self._open_upstream("POST", subpath, query, body)
+        if exchange is None:
+            return
+        connection, upstream_response = exchange
+        try:
+            if upstream_response.status != 200:
+                # Fail closed: an upstream failure stays a failure the harness
+                # observes (both real consumers treat any non-200 as an API
+                # error before stream parsing begins) — never a fabricated
+                # completion stream.
+                self._relay_response(upstream_response)
+                return
+            raw = upstream_response.read()
+            # error-policy:J1 the forwarder is the harness-to-upstream
+            # boundary for the adapted response too: a 200 that is not a
+            # parseable chat completion becomes an explicit 502 instead of a
+            # half-valid synthesized stream.
+            try:
+                completion = json.loads(raw)
+                if not isinstance(completion, dict):
+                    raise ValueError("upstream completion is not a JSON object")
+                frames = _synthesize_sse_frames(completion)
+            except ValueError:
+                with state.lock:
+                    state.upstream_invalid_completions += 1
+                self._write_json(
+                    502,
+                    {
+                        "error": {
+                            "message": (
+                                "provider forwarder could not de-stream the "
+                                "upstream response: 200 status without a "
+                                "parseable chat completion body"
+                            ),
+                            "type": "provider_forwarder_upstream_error",
+                        }
+                    },
+                )
+                return
+            with state.lock:
+                state.destreamed_requests += 1
+            self._write_sse(frames)
+        finally:
+            connection.close()
+
+    def _write_sse(self, frames: list[bytes]) -> None:
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-cache, no-store")
+        self.send_header("X-Accel-Buffering", "no")
+        # The synthesized stream has no Content-Length; the closed connection
+        # delimits the body exactly like the passthrough SSE branch.
+        self.close_connection = True
+        self.send_header("Connection", "close")
+        self.end_headers()
+        for frame in frames:
+            self.wfile.write(frame)
+        self.wfile.flush()
 
     def _outbound_headers(self) -> dict[str, str]:
         headers: dict[str, str] = {}
@@ -347,9 +620,10 @@ class _ForwarderHandler(BaseHTTPRequestHandler):
         else:
             # Without a known length the relay streams until upstream EOF and
             # the closed connection delimits the body for the HTTP/1.1 client.
-            # SSE (``"stream": true``) always takes this branch; each upstream
-            # read is flushed immediately so tokens reach the harness as they
-            # are produced instead of after the completion finishes.
+            # Passthrough SSE (``"stream": true`` under the escape hatch)
+            # always takes this branch; each upstream read is flushed
+            # immediately so tokens reach the harness as they are produced
+            # instead of after the completion finishes.
             self.close_connection = True
             self.send_header("Connection", "close")
         self.end_headers()
@@ -470,8 +744,13 @@ class ProviderForwarderProcess:
                 "listen_origin": self.origin,
                 "harness_lanes": sorted(self._harness_tokens),
                 "harness_request_counts": dict(state.lane_request_counts),
+                "stream_mode": (
+                    "passthrough" if state.passthrough_streaming else "de-stream"
+                ),
+                "destreamed_requests": state.destreamed_requests,
                 "unauthorized_requests": state.unauthorized_requests,
                 "upstream_transport_failures": state.upstream_transport_failures,
+                "upstream_invalid_completions": state.upstream_invalid_completions,
                 "aborted_connections": state.aborted_connections,
                 "started_at": self._started_at,
                 "closed_at": _utc_now() if closed else None,
@@ -499,12 +778,16 @@ def start_provider_forwarder(
     evidence_dir: Path,
     upstream_timeout_seconds: float = DEFAULT_UPSTREAM_TIMEOUT_SECONDS,
     stop_timeout_seconds: float = DEFAULT_STOP_TIMEOUT_SECONDS,
+    passthrough_streaming: bool | None = None,
 ) -> ProviderForwarderProcess:
     """Start a per-cohort loopback forwarder with per-harness bearer lanes.
 
     Fails closed before any worker can spend quota: a missing upstream key, a
     bind failure, or a failed self-health probe raises instead of returning a
-    half-configured boundary.
+    half-configured boundary. ``passthrough_streaming`` selects raw
+    ``stream:true`` relaying instead of the de-stream default; ``None`` defers
+    to ``ELIZA_FORWARDER_PASSTHROUGH_STREAMING`` so operators can flip the
+    escape hatch without a coordinator change.
     """
 
     normalized_provider = provider.strip().lower()
@@ -524,6 +807,11 @@ def start_provider_forwarder(
             "Provider forwarder requires a non-empty upstream API key"
         )
     upstream = _parse_upstream(upstream_base_url)
+    if passthrough_streaming is None:
+        passthrough_streaming = (
+            os.environ.get(PASSTHROUGH_STREAMING_ENV, "").strip().lower()
+            in _ENV_TRUTHY
+        )
 
     harness_tokens = {
         harness: secrets.token_urlsafe(32) for harness in normalized_harnesses
@@ -537,6 +825,7 @@ def start_provider_forwarder(
         upstream_api_key=upstream_api_key.strip(),
         tokens_to_harness={token: harness for harness, token in harness_tokens.items()},
         upstream_timeout_seconds=upstream_timeout_seconds,
+        passthrough_streaming=passthrough_streaming,
     )
     try:
         server = _ForwarderServer(("127.0.0.1", 0), state)

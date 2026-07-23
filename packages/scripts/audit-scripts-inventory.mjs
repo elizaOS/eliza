@@ -45,20 +45,35 @@
  *   node packages/scripts/audit-scripts-inventory.mjs            # write + print
  *   node packages/scripts/audit-scripts-inventory.mjs --json     # print JSON
  */
-import {
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  writeFileSync,
-} from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseDocument } from "yaml";
+import {
+  atomicWriteJsonSync,
+  resolveReportArtifactPath,
+} from "./lib/report-artifact-path.mjs";
+import {
+  assertContainedRegularFile,
+  assertUniqueRepositoryIdentities,
+  normalizeGitRepositoryPath,
+} from "./lib/repository-file-integrity.mjs";
+import { buildScriptTestInventory } from "./lib/script-test-inventory.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(SCRIPT_DIR, "..", "..");
-const SCRIPTS_DIR = path.join(ROOT, "packages", "scripts");
-const APP_PKG = path.join(ROOT, "packages", "app", "package.json");
+const APP_PACKAGE_PATH = "packages/app/package.json";
+
+// The public feed path is a checked-in alias of the canonical regular file,
+// which the documentation scan reads independently. Keeping the one alias
+// explicit prevents a broad symlink exemption from weakening source evidence.
+const DOCUMENTATION_SOURCE_ALIASES = new Map([
+  [
+    "packages/feed/apps/web/public/genesis.json",
+    "packages/feed/apps/web/genesis.json",
+  ],
+]);
 
 const CATEGORIES = [
   "reachable-from-verify",
@@ -85,19 +100,6 @@ const APP_CATEGORIES = [
   "orphan",
 ];
 
-const PACKAGE_JSON_PRUNE_DIRS = new Set([
-  ".git",
-  ".next",
-  ".turbo",
-  "aesthetic-audit-output",
-  "benchmark_results",
-  "build",
-  "coverage",
-  "dist",
-  "node_modules",
-  "reports",
-]);
-
 const DOCUMENTATION_REFERENCE_EXTENSIONS = new Set([
   ".cjs",
   ".js",
@@ -113,60 +115,125 @@ const DOCUMENTATION_REFERENCE_EXTENSIONS = new Set([
   ".yml",
 ]);
 
-function readJson(file) {
-  return JSON.parse(readFileSync(file, "utf8"));
+/** Read one Git-named repository file without following symlinked components. */
+export function readRepositoryCandidateText(repoRoot, relative, label) {
+  const source = assertContainedRegularFile(
+    repoRoot,
+    relative,
+    label ?? `script inventory source ${relative}`,
+  );
+  return readFileSync(source.absolute, "utf8");
 }
 
-function readTextIfReadable(file) {
+function readRepositoryText(relative) {
+  return readRepositoryCandidateText(ROOT, relative);
+}
+
+function readRepositoryJson(relative) {
+  const source = readRepositoryText(relative);
   try {
-    return readFileSync(file, "utf8");
-  } catch {
-    return "";
+    return JSON.parse(source);
+  } catch (error) {
+    // error-policy:J2 identify the repository manifest that invalidated inventory
+    throw new Error(`invalid JSON in script inventory source ${relative}`, {
+      cause: error,
+    });
   }
 }
 
-function walk(dir, visit) {
-  let entries;
-  try {
-    entries = readdirSync(dir, { withFileTypes: true });
-  } catch {
-    return;
-  }
-  for (const entry of entries) {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) walk(full, visit);
-    else visit(full);
-  }
+function repositoryCandidateFiles() {
+  const files = execFileSync(
+    "git",
+    [
+      "-C",
+      ROOT,
+      "ls-files",
+      "-z",
+      "--cached",
+      "--others",
+      "--exclude-standard",
+    ],
+    {
+      encoding: "utf8",
+      maxBuffer: 64 * 1024 * 1024,
+    },
+  )
+    .split("\0")
+    .filter(Boolean)
+    .map((file) =>
+      normalizeGitRepositoryPath(file, "script inventory candidate"),
+    )
+    .sort();
+  assertUniqueRepositoryIdentities(
+    files,
+    "case-colliding or duplicate script inventory candidates",
+  );
+  return files;
 }
 
-function walkPruned(dir, visit) {
-  let entries;
-  try {
-    entries = readdirSync(dir, { withFileTypes: true });
-  } catch {
-    return;
+/** Extract executable workflow step bodies without treating comments or env as calls. */
+export function workflowExecutionSteps(source, file = "<workflow>") {
+  const document = parseDocument(source, {
+    merge: false,
+    prettyErrors: true,
+    uniqueKeys: true,
+  });
+  if (document.errors.length > 0) {
+    throw new Error(
+      `invalid workflow YAML in ${file}: ${document.errors[0].message}`,
+    );
   }
-  for (const entry of entries) {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      if (!PACKAGE_JSON_PRUNE_DIRS.has(entry.name)) walkPruned(full, visit);
-    } else {
-      visit(full);
+  const root = document.toJS();
+  const jobs =
+    root && typeof root === "object" && !Array.isArray(root)
+      ? root.jobs
+      : undefined;
+  if (!jobs || typeof jobs !== "object" || Array.isArray(jobs)) return [];
+  const executionSteps = [];
+  for (const job of Object.values(jobs)) {
+    if (!job || typeof job !== "object" || !Array.isArray(job.steps)) continue;
+    for (const step of job.steps) {
+      if (!step || typeof step !== "object" || !Object.hasOwn(step, "run")) {
+        continue;
+      }
+      if (typeof step.run !== "string") {
+        throw new Error(`workflow run step in ${file} must be a string`);
+      }
+      executionSteps.push({
+        run: step.run,
+        workingDirectory:
+          typeof step["working-directory"] === "string"
+            ? step["working-directory"]
+            : undefined,
+      });
     }
   }
+  return executionSteps;
 }
 
-function loc(file) {
-  const text = readTextIfReadable(file);
-  if (!text) return 0;
+function loc(relative) {
+  const text = readRepositoryText(relative);
   return text.split("\n").length;
 }
 
 /** All packages/scripts/*.mjs basenames (the file universe we classify). */
-function collectScriptFiles() {
-  return readdirSync(SCRIPTS_DIR)
-    .filter((name) => name.endsWith(".mjs"))
+function collectScriptFiles(candidateFiles) {
+  const files = candidateFiles
+    .filter((file) => /^packages\/scripts\/[^/]+\.mjs$/i.test(file))
+    .map((file) => path.posix.basename(file))
     .sort();
+  const identities = new Map();
+  for (const file of files) {
+    const identity = file.toLocaleLowerCase("en-US");
+    const previous = identities.get(identity);
+    if (previous && previous !== file) {
+      throw new Error(
+        `case-colliding top-level script files: ${previous} and ${file}`,
+      );
+    }
+    identities.set(identity, file);
+  }
+  return files;
 }
 
 /** Root-script names invoked from a script body via `bun|npm|pnpm|yarn run X`. */
@@ -181,10 +248,11 @@ function referencedRootScripts(body) {
 /** packages/scripts/*.mjs basenames named anywhere in a text body. */
 function referencedScriptFiles(body, fileUniverse) {
   const found = new Set();
-  for (const file of fileUniverse) {
-    const escaped = file.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const re = new RegExp(`(^|[^A-Za-z0-9_.-])${escaped}($|[^A-Za-z0-9_.-])`);
-    if (re.test(body)) found.add(file);
+  const universe = new Set(fileUniverse);
+  const tokenPattern =
+    /(?:^|[^A-Za-z0-9_.-])([A-Za-z0-9][A-Za-z0-9._-]*\.mjs)(?=$|[^A-Za-z0-9_.-])/g;
+  for (const match of body.matchAll(tokenPattern)) {
+    if (universe.has(match[1])) found.add(match[1]);
   }
   return found;
 }
@@ -209,7 +277,7 @@ function reachableRootScripts(seeds, rootScripts) {
 function buildFileGraph(fileUniverse) {
   const graph = new Map();
   for (const file of fileUniverse) {
-    const body = readTextIfReadable(path.join(SCRIPTS_DIR, file));
+    const body = readRepositoryText(`packages/scripts/${file}`);
     const refs = referencedScriptFiles(body, fileUniverse);
     refs.delete(file);
     graph.set(file, refs);
@@ -279,24 +347,23 @@ function filesFromOperatorScripts(reachedRoots, rootScripts, fileUniverse) {
  * public package script surface so helpers used by a package command are not
  * reported as disposable just because root verify/build/CI do not call them.
  */
-function filesFromPackageScripts(fileUniverse) {
+function filesFromPackageScripts(fileUniverse, candidateFiles) {
   const callersByFile = new Map();
-  walkPruned(ROOT, (file) => {
-    if (path.basename(file) !== "package.json") return;
-    if (path.resolve(file) === path.join(ROOT, "package.json")) return;
-
-    const pkg = readJson(file);
+  for (const relativeFile of candidateFiles) {
+    if (path.posix.basename(relativeFile) !== "package.json") continue;
+    if (relativeFile === "package.json") continue;
+    const pkg = readRepositoryJson(relativeFile);
     const scripts = pkg.scripts ?? {};
     for (const [name, body] of Object.entries(scripts)) {
       for (const scriptFile of referencedScriptFiles(body, fileUniverse)) {
         if (!callersByFile.has(scriptFile)) callersByFile.set(scriptFile, []);
         callersByFile.get(scriptFile).push({
-          packageJson: path.relative(ROOT, file),
+          packageJson: relativeFile,
           script: name,
         });
       }
     }
-  });
+  }
 
   for (const callers of callersByFile.values()) {
     callers.sort((a, b) =>
@@ -314,24 +381,38 @@ function filesFromPackageScripts(fileUniverse) {
  * operator-script reachability wins, but a documented standalone support script
  * is not a true zero-reference orphan.
  */
-function filesFromDocumentation(fileUniverse) {
+function filesFromDocumentation(fileUniverse, candidateFiles) {
   const referencesByFile = new Map();
-  walkPruned(ROOT, (file) => {
-    const rel = path.relative(ROOT, file);
-    if (rel === "package.json" || path.basename(file) === "package.json") {
-      return;
+  const candidates = new Set(candidateFiles);
+  for (const rel of candidateFiles) {
+    if (rel === "package.json" || path.posix.basename(rel) === "package.json") {
+      continue;
     }
-    if (!DOCUMENTATION_REFERENCE_EXTENSIONS.has(path.extname(file))) return;
-    const body = readTextIfReadable(file);
-    if (!body) return;
+    if (
+      !DOCUMENTATION_REFERENCE_EXTENSIONS.has(
+        path.posix.extname(rel).toLocaleLowerCase("en-US"),
+      )
+    ) {
+      continue;
+    }
+    const canonicalAliasTarget = DOCUMENTATION_SOURCE_ALIASES.get(rel);
+    if (canonicalAliasTarget) {
+      if (!candidates.has(canonicalAliasTarget)) {
+        throw new Error(
+          `documentation source alias ${rel} is missing canonical target ${canonicalAliasTarget}`,
+        );
+      }
+      continue;
+    }
+    const body = readRepositoryText(rel);
     for (const scriptFile of referencedScriptFiles(body, fileUniverse)) {
-      const ownScriptPath = path.join("packages", "scripts", scriptFile);
+      const ownScriptPath = path.posix.join("packages", "scripts", scriptFile);
       if (rel === ownScriptPath) continue;
       if (!referencesByFile.has(scriptFile))
         referencesByFile.set(scriptFile, []);
       referencesByFile.get(scriptFile).push(rel);
     }
-  });
+  }
 
   for (const references of referencesByFile.values()) {
     references.sort((a, b) => a.localeCompare(b));
@@ -397,14 +478,12 @@ function appScriptsViaRun(body, appUniverse) {
  * Split each workflow into step blocks (list items under `steps:`) so a
  * working-directory in one step never bleeds onto another step's commands.
  */
-function appScriptsFromCiWorkdir(workflowChunks, appUniverse) {
+function appScriptsFromCiWorkdir(workflowSteps, appUniverse) {
   const found = new Set();
-  for (const text of workflowChunks) {
-    for (const block of text.split(/\n(?=\s*- )/)) {
-      if (!/working-directory:\s*packages\/app(\s|$)/m.test(block)) continue;
-      for (const name of referencedRootScripts(block)) {
-        if (appUniverse.has(name)) found.add(name);
-      }
+  for (const step of workflowSteps) {
+    if (step.workingDirectory !== "packages/app") continue;
+    for (const name of referencedRootScripts(step.run)) {
+      if (appUniverse.has(name)) found.add(name);
     }
   }
   return found;
@@ -446,18 +525,49 @@ function reachableAppScripts(seeds, appScripts, appUniverse) {
 }
 
 function buildInventory() {
-  const rootScripts = readJson(path.join(ROOT, "package.json")).scripts ?? {};
-  const fileUniverse = collectScriptFiles();
+  const rootScripts = readRepositoryJson("package.json").scripts ?? {};
+  const candidateFiles = repositoryCandidateFiles();
+  const fileUniverse = collectScriptFiles(candidateFiles);
+  if (fileUniverse.length === 0) {
+    throw new Error(
+      "packages/scripts inventory discovered zero top-level files",
+    );
+  }
   const fileGraph = buildFileGraph(fileUniverse);
-  const packageScriptCallersByFile = filesFromPackageScripts(fileUniverse);
-  const documentationReferencesByFile = filesFromDocumentation(fileUniverse);
+  const packageScriptCallersByFile = filesFromPackageScripts(
+    fileUniverse,
+    candidateFiles,
+  );
+  const documentationReferencesByFile = filesFromDocumentation(
+    fileUniverse,
+    candidateFiles,
+  );
 
   // CI workflow corpus + the root-script names + script files it references.
-  const workflowChunks = [];
-  walk(path.join(ROOT, ".github"), (file) => {
-    if (/\.(ya?ml)$/.test(file)) workflowChunks.push(readTextIfReadable(file));
+  const workflowFiles = candidateFiles.filter((file) =>
+    /^\.github\/.*\.ya?ml$/i.test(file),
+  );
+  if (workflowFiles.length === 0) {
+    throw new Error("script inventory discovered zero GitHub workflows");
+  }
+  const workflowSources = workflowFiles.map((file) => ({
+    file,
+    source: readRepositoryText(file),
+  }));
+  const workflowSteps = workflowSources.flatMap(({ file, source }) =>
+    workflowExecutionSteps(source, file),
+  );
+  const ciText = workflowSteps.map(({ run }) => run).join("\n");
+  const scenarioWorkflowPath = ".github/workflows/scenario-pr.yml";
+  if (!candidateFiles.includes(scenarioWorkflowPath)) {
+    throw new Error(`script inventory is missing ${scenarioWorkflowPath}`);
+  }
+  const scriptTests = buildScriptTestInventory({
+    repoRoot: ROOT,
+    candidateFiles,
+    packageScripts: rootScripts,
+    scenarioWorkflow: readRepositoryText(scenarioWorkflowPath),
   });
-  const ciText = workflowChunks.join("\n");
   const ciRootSeeds = referencedRootScripts(ciText);
   const ciFileSeeds = referencedScriptFiles(ciText, fileUniverse);
 
@@ -483,7 +593,13 @@ function buildInventory() {
     fileGraph,
   );
   const testFiles = reachableFiles(
-    filesFromRootScripts(testRoots, rootScripts, fileUniverse),
+    new Set([
+      ...filesFromRootScripts(testRoots, rootScripts, fileUniverse),
+      ...scriptTests.files
+        .map(({ file }) => file)
+        .filter((file) => /^packages\/scripts\/[^/]+\.mjs$/.test(file))
+        .map((file) => path.posix.basename(file)),
+    ]),
     fileGraph,
   );
   const buildFiles = reachableFiles(
@@ -531,7 +647,7 @@ function buildInventory() {
 
   const files = fileUniverse.map((file) => ({
     file,
-    loc: loc(path.join(SCRIPTS_DIR, file)),
+    loc: loc(`packages/scripts/${file}`),
     category: classifyFile(file),
     operatorScriptCallers: operatorScriptCallersByFile.get(file) ?? [],
     packageScriptCallers: packageScriptCallersByFile.get(file) ?? [],
@@ -555,8 +671,8 @@ function buildInventory() {
   // script is reachable when a reachable root script or a CI workflow invokes it
   // (via `--cwd packages/app <name>` or a `working-directory: packages/app` step),
   // or when another reachable app script / npm lifecycle hook chains to it.
-  const appScripts = existsSync(APP_PKG)
-    ? (readJson(APP_PKG).scripts ?? {})
+  const appScripts = existsSync(path.join(ROOT, APP_PACKAGE_PATH))
+    ? (readRepositoryJson(APP_PACKAGE_PATH).scripts ?? {})
     : {};
   const appUniverse = new Set(Object.keys(appScripts));
 
@@ -586,7 +702,7 @@ function buildInventory() {
   for (const app of appScriptsViaCwd(ciText, appUniverse)) {
     appSeedsByColor["reachable-from-ci-workflow"].add(app);
   }
-  for (const app of appScriptsFromCiWorkdir(workflowChunks, appUniverse)) {
+  for (const app of appScriptsFromCiWorkdir(workflowSteps, appUniverse)) {
     appSeedsByColor["reachable-from-ci-workflow"].add(app);
   }
 
@@ -669,10 +785,13 @@ function buildInventory() {
       totalAppScripts: appScriptList.length,
       orphanAppScripts: appTotals.orphan,
       appScriptsByCategory: appTotals,
+      totalScriptTests: scriptTests.discoveredCount,
+      excludedScriptTests: scriptTests.excludedCount,
     },
     files,
     roots,
     appScripts: appScriptList,
+    scriptTests,
   };
 }
 
@@ -737,25 +856,88 @@ function printSummary(inv) {
     for (const a of appOrphans) w(`    - ${a.name}\n`);
     w("\n");
   }
+
+  w("[audit-scripts-inventory] packages/scripts executable tests\n\n");
+  w(
+    `  discovered: ${summary.totalScriptTests}  explicit exclusions: ${summary.excludedScriptTests}\n`,
+  );
+  w(
+    `  runner: ${inv.scriptTests.runner.command}\n  lanes: ${inv.scriptTests.runner.lanes.join(", ")}\n\n`,
+  );
+}
+
+export function parseInventoryArgs(args) {
+  const supported = new Set(["--help", "-h", "--json"]);
+  for (const arg of args) {
+    if (!supported.has(arg)) {
+      throw new Error(`unknown argument: ${arg}`);
+    }
+  }
+  if (new Set(args).size !== args.length) {
+    throw new Error("arguments may be specified only once");
+  }
+  const helpFlags = args.filter((arg) => arg === "--help" || arg === "-h");
+  if (helpFlags.length > 1) {
+    throw new Error("help may be specified only once");
+  }
+  if (helpFlags.length === 1 && args.length !== 1) {
+    throw new Error("help cannot be combined with inventory arguments");
+  }
+  return {
+    help: args.includes("--help") || args.includes("-h"),
+    json: args.includes("--json"),
+  };
+}
+
+function printUsage() {
+  process.stdout.write(
+    "Usage: node packages/scripts/audit-scripts-inventory.mjs [--json]\n",
+  );
+}
+
+function writeJsonAtomic(file, value) {
+  atomicWriteJsonSync(file, value);
 }
 
 function main() {
-  const args = process.argv.slice(2);
+  const options = parseInventoryArgs(process.argv.slice(2));
+  if (options.help) {
+    printUsage();
+    return;
+  }
   const inv = buildInventory();
 
-  if (args.includes("--json")) {
+  if (options.json) {
     process.stdout.write(`${JSON.stringify(inv, null, 2)}\n`);
     return;
   }
 
   const outDir = path.join(ROOT, "reports");
   if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true });
-  const outFile = path.join(outDir, "scripts-inventory.json");
-  writeFileSync(outFile, `${JSON.stringify(inv, null, 2)}\n`);
+  const outFile = resolveReportArtifactPath(
+    ROOT,
+    "reports/scripts-inventory.json",
+    {
+      extension: ".json",
+      label: "scripts inventory report",
+    },
+  ).absolute;
+  writeJsonAtomic(outFile, inv);
   printSummary(inv);
   process.stdout.write(`  JSON written to ${path.relative(ROOT, outFile)}\n\n`);
 }
 
 export { buildInventory };
 
-if (import.meta.url === `file://${process.argv[1]}`) main();
+if (import.meta.url === `file://${process.argv[1]}`) {
+  try {
+    main();
+  } catch (error) {
+    // error-policy:J1 the executable boundary translates incomplete discovery
+    // or invalid input into a non-zero audit result.
+    process.stderr.write(
+      `[audit-scripts-inventory] ${error instanceof Error ? error.message : String(error)}\n`,
+    );
+    process.exitCode = 1;
+  }
+}
