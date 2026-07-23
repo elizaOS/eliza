@@ -667,11 +667,9 @@ function normalizeNativeToolsForCall(
     }
 
     const description = firstString(tool.description, functionTool.description);
-    // Default to a permissive object schema. The empty-properties shape
-    // (`{ type: "object", properties: {}, additionalProperties: false }`) is
-    // accepted by OpenAI but rejected by strict-grammar providers like
-    // Cerebras with `Object fields require at least one of: 'properties' or
-    // 'anyOf' with a list of possible properties`.
+    // A missing schema means the tool takes no arguments. Provider-specific
+    // normalization below turns this bare object into the explicit closed
+    // shape required by strict grammar compilers.
     const rawSchema =
       tool.parameters ?? functionTool.parameters ?? ({ type: "object" } satisfies JSONSchema7);
     const strict =

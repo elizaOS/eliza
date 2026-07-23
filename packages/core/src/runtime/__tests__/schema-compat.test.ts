@@ -1,12 +1,4 @@
-/**
- * Unit coverage for the Cerebras schema/function-name compatibility shims
- * (`normalizeSchemaForCerebras`, `sanitizeFunctionNameForCerebras`): closing
- * empty object schemas (explicit empty `properties` + `additionalProperties:
- * false` — Cerebras rejects a bare `{type:"object"}` with `Object fields
- * require at least one of: 'properties' or 'anyOf'`), recursion into nested
- * properties and array items, and identifier rewriting. Pure functions,
- * deterministic.
- */
+/** Covers Cerebras schema normalization across every JSON-schema child form. */
 import { describe, expect, it } from "vitest";
 import {
 	normalizeSchemaForCerebras,
@@ -28,11 +20,6 @@ describe("normalizeSchemaForCerebras", () => {
 	});
 
 	it("closes a bare object schema (adds properties:{} + additionalProperties:false)", () => {
-		// A bare `{type:"object"}` is request-fatal on Cerebras: the grammar
-		// compiler 400s the ENTIRE chat completion (`Object fields require at
-		// least one of: 'properties' or 'anyOf'`). Regression guard for the
-		// no-arg terminal tools (IGNORE / STOP) whose schema is exactly this
-		// shape — the earlier strip-the-keys behavior produced it.
 		const result = normalizeSchemaForCerebras({
 			type: "object",
 		}) as Record<string, unknown>;
@@ -87,9 +74,6 @@ describe("normalizeSchemaForCerebras", () => {
 	});
 
 	it("closes a bare nested object property", () => {
-		// e.g. PAGE_DELEGATE's free-form `parameters` arg: nested
-		// `{type:"object"}` without properties is rejected by Cerebras exactly
-		// like the root shape.
 		const result = normalizeSchemaForCerebras({
 			type: "object",
 			properties: { params: { type: "object", description: "freeform" } },
@@ -120,6 +104,91 @@ describe("normalizeSchemaForCerebras", () => {
 		}) as Record<string, unknown>;
 		expect(Array.isArray(result.anyOf)).toBe(true);
 		expect((result.anyOf as unknown[]).length).toBe(2);
+	});
+
+	it("walks every schema-bearing keyword", () => {
+		const bareObject = () => ({ type: "object" });
+		const result = normalizeSchemaForCerebras({
+			type: "object",
+			properties: {
+				direct: bareObject(),
+			},
+			patternProperties: { "^x-": bareObject() },
+			$defs: { hoisted: bareObject() },
+			definitions: { legacy: bareObject() },
+			dependentSchemas: { direct: bareObject() },
+			dependencies: {
+				direct: bareObject(),
+				names: ["direct"],
+			},
+			anyOf: [bareObject()],
+			oneOf: [bareObject()],
+			allOf: [bareObject()],
+			prefixItems: [bareObject()],
+			items: [bareObject(), bareObject()],
+			contains: bareObject(),
+			propertyNames: bareObject(),
+			not: bareObject(),
+			if: bareObject(),
+			// biome-ignore lint/suspicious/noThenProperty: JSON Schema reserves this key for conditional branches.
+			then: bareObject(),
+			else: bareObject(),
+			additionalProperties: bareObject(),
+			unevaluatedProperties: bareObject(),
+			unevaluatedItems: bareObject(),
+			contentSchema: bareObject(),
+			additionalItems: bareObject(),
+		}) as Record<string, unknown>;
+
+		const expectClosed = (value: unknown) => {
+			expect(value).toMatchObject({
+				type: "object",
+				properties: {},
+				additionalProperties: false,
+			});
+		};
+		expectClosed((result.properties as Record<string, unknown>).direct);
+		expectClosed((result.patternProperties as Record<string, unknown>)["^x-"]);
+		expectClosed((result.$defs as Record<string, unknown>).hoisted);
+		expectClosed((result.definitions as Record<string, unknown>).legacy);
+		expectClosed((result.dependentSchemas as Record<string, unknown>).direct);
+		expectClosed((result.dependencies as Record<string, unknown>).direct);
+		expect((result.dependencies as Record<string, unknown>).names).toEqual([
+			"direct",
+		]);
+		for (const key of ["anyOf", "oneOf", "allOf", "prefixItems"] as const) {
+			expectClosed((result[key] as unknown[])[0]);
+		}
+		for (const item of result.items as unknown[]) expectClosed(item);
+		for (const key of [
+			"contains",
+			"propertyNames",
+			"not",
+			"if",
+			"then",
+			"else",
+			"additionalProperties",
+			"unevaluatedProperties",
+			"unevaluatedItems",
+			"contentSchema",
+			"additionalItems",
+		] as const) {
+			expectClosed(result[key]);
+		}
+	});
+
+	it("closes inferred and nullable object nodes", () => {
+		expect(normalizeSchemaForCerebras({ properties: {} })).toMatchObject({
+			properties: {},
+			additionalProperties: false,
+		});
+		expect(
+			normalizeSchemaForCerebras({ type: ["object", "null"] }),
+		).toMatchObject({
+			type: ["object", "null"],
+			properties: {},
+			additionalProperties: false,
+		});
 	});
 
 	it("returns non-object scalars unchanged", () => {

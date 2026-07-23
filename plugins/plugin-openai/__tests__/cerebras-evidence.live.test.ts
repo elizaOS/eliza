@@ -466,8 +466,15 @@ describe.skipIf(!HAS_CEREBRAS_KEY)("plugin-openai Cerebras evidence", () => {
           ],
           tools: [
             {
+              name: "IGNORE",
+              description: "End the turn without a user-facing response.",
+              parameters: { type: "object" },
+              strict: true,
+            },
+            {
               name: "RECORD_EVIDENCE",
               description: "Record the evidence verdict.",
+              strict: true,
               parameters: {
                 type: "object",
                 properties: {
@@ -491,11 +498,27 @@ describe.skipIf(!HAS_CEREBRAS_KEY)("plugin-openai Cerebras evidence", () => {
     });
     const request = requireJsonRequest(wireCalls[0]);
     expect(request.tools).toEqual(expect.any(Array));
+    const ignoreTool = (request.tools as unknown[]).find((candidate) => {
+      if (!isRecord(candidate) || !isRecord(candidate.function)) return false;
+      return candidate.function.name === "IGNORE";
+    });
+    expect(ignoreTool).toMatchObject({
+      function: {
+        name: "IGNORE",
+        parameters: {
+          type: "object",
+          properties: {},
+          additionalProperties: false,
+        },
+        strict: true,
+      },
+    });
     expect(request.tool_choice).toEqual(expect.objectContaining({ type: "function" }));
+    expect(wireCalls[0].response?.status).toBe(200);
     expect(wireCalls[0].response?.body?.utf8).toContain("tool_calls");
 
     receipts.push({
-      name: "tool-call",
+      name: "tool-call-with-empty-terminal",
       status: "passed",
       wireCallIds: wireCalls.map((call) => call.id),
       result,
