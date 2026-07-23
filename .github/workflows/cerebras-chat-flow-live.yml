@@ -1,8 +1,9 @@
 name: Cerebras Chat Flow Live
 
 # Manual real-model evidence for the complete local AgentRuntime chat path. The
-# credential stays in the staging environment; reports contain only synthetic
-# prompts, outputs, timing spans, token usage, and provider/cache telemetry.
+# credential uses the repository's established benchmark secret; reports
+# contain only synthetic prompts, outputs, timing spans, token usage, and
+# provider/cache telemetry.
 on:
   workflow_dispatch:
     inputs:
@@ -27,7 +28,6 @@ jobs:
     name: Gemma 4 31B full runtime
     runs-on: ubuntu-24.04
     timeout-minutes: 45
-    environment: staging
     env:
       CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
       ELIZA_CEREBRAS_CHAT_MODEL: gemma-4-31b
