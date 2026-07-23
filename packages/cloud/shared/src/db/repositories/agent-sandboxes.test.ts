@@ -66,12 +66,16 @@ const select = mock(() => ({ from: selectFrom }));
 type ExecuteResult = { rows: unknown[]; rowCount?: number };
 let executeHandler: (sqlText: string) => ExecuteResult = () => ({ rows: [] });
 let userRowForClaim: unknown;
+let warmClaimWhereClause: SQL | undefined;
 const warmClaimUpdateSet = mock((values: Record<string, unknown>) => {
   void values;
   return {
-    where: mock(() => ({
-      returning: mock(() => [{ ...(values as Record<string, unknown>), id: "user-row" }]),
-    })),
+    where: mock((clause: SQL) => {
+      warmClaimWhereClause = clause;
+      return {
+        returning: mock(() => [{ ...(values as Record<string, unknown>), id: "user-row" }]),
+      };
+    }),
   };
 });
 const warmClaimDeleteWhere = mock(() => Promise.resolve({ rowCount: 1 }));
@@ -269,6 +273,65 @@ describe("AgentSandboxesRepository", () => {
     // eq/ne bind their operands, so the values land in `params`, not the SQL.
     expect(query.params).toContain("running");
     expect(query.params).toContain("shared");
+  });
+
+  test("heartbeat writeback is fenced to the exact running generation and loses to deletion", async () => {
+    capturedWhere = undefined;
+
+    const { AgentSandboxesRepository } = await import("./agent-sandboxes");
+
+    await new AgentSandboxesRepository().update(
+      "e06bb509-6c52-4c33-a9f7-66addc43e8c8",
+      { last_heartbeat_at: new Date("2026-07-23T12:00:00.000Z") },
+      {
+        organizationId: "22222222-2222-4222-8222-222222222222",
+        environmentRevision: 7,
+        sandboxId: "sandbox-generation-7",
+        nodeId: "node-generation-7",
+        containerName: "agent-generation-7",
+        updatedAt: new Date("2026-07-23T11:59:00.000Z"),
+      },
+    );
+
+    if (!capturedWhere) throw new Error("update did not build a generation fence");
+    const query = new PgDialect().sqlToQuery(capturedWhere);
+    const sql = query.sql.toLowerCase();
+    expect(sql).toContain("organization_id");
+    expect(sql).toContain("status");
+    expect(sql).toContain("environment_revision");
+    expect(sql).toContain("deletion_attempt_id");
+    expect(sql).toContain("is null");
+    expect(sql).toContain("sandbox_id");
+    expect(sql).toContain("node_id");
+    expect(sql).toContain("container_name");
+    expect(sql).toContain("updated_at");
+    expect(sql.match(/is not distinct from/g)).toHaveLength(3);
+    expect(query.params).toEqual(
+      expect.arrayContaining([
+        "e06bb509-6c52-4c33-a9f7-66addc43e8c8",
+        "22222222-2222-4222-8222-222222222222",
+        "running",
+        7,
+        "sandbox-generation-7",
+        "node-generation-7",
+        "agent-generation-7",
+        "2026-07-23T11:59:00.000Z",
+      ]),
+    );
+  });
+
+  test("generic repository updates cannot write through a durable deletion owner", async () => {
+    capturedWhere = undefined;
+
+    const { AgentSandboxesRepository } = await import("./agent-sandboxes");
+    await new AgentSandboxesRepository().update("e06bb509-6c52-4c33-a9f7-66addc43e8c8", {
+      snapshot_id: "snapshot-after-delete-race",
+    });
+
+    if (!capturedWhere) throw new Error("generic update did not build a deletion fence");
+    const sql = new PgDialect().sqlToQuery(capturedWhere).sql.toLowerCase();
+    expect(sql).toContain("deletion_attempt_id");
+    expect(sql).toContain("is null");
   });
 
   test("marks only orphaned user-owned pending rows with no provision job as error", async () => {
@@ -608,6 +671,10 @@ describe("AgentSandboxesRepository", () => {
         status: "pending",
         database_status: null,
         database_uri: null,
+        deletion_attempt_id: null,
+        deletion_started_at: null,
+        claimed_at: null,
+        warm_claim_credential_state: null,
         agent_config: {},
         character_id: null,
         updated_at: new Date("2026-07-07T12:00:00.000Z"),
@@ -681,6 +748,7 @@ describe("AgentSandboxesRepository", () => {
         pool_status: "unclaimed",
         status: "running",
         docker_image: IMAGE,
+        image_digest: `sha256:${"a".repeat(64)}`,
         pool_ready_at: new Date("2026-07-07T11:00:00.000Z"),
         node_id: "node-1",
         container_name: "agent-pool-1",
@@ -706,9 +774,18 @@ describe("AgentSandboxesRepository", () => {
 
       expect(result).not.toBeNull();
       // The claim inherited the pool row's REAL node_id (never a null).
-      const setArg = warmClaimUpdateSet.mock.calls[0]?.[0] as { node_id?: string; status?: string };
-      expect(setArg.status).toBe("running");
+      const setArg = warmClaimUpdateSet.mock.calls[0]?.[0] as {
+        node_id?: string;
+        status?: string;
+        image_digest?: string;
+        warm_claim_credential_state?: string;
+        warm_claim_source_pool_id?: string;
+      };
+      expect(setArg.status).toBe("provisioning");
       expect(setArg.node_id).toBe("node-1");
+      expect(setArg.image_digest).toBe(validPool.image_digest);
+      expect(setArg.warm_claim_credential_state).toBe("pending");
+      expect(setArg.warm_claim_source_pool_id).toBe("pool-1");
       // Pool row deleted on claim (single record now the user's).
       expect(warmClaimDeleteWhere).toHaveBeenCalledTimes(1);
       // The DELETED pool row's id rides out on the claimed row: the container's
@@ -717,6 +794,50 @@ describe("AgentSandboxesRepository", () => {
       // carries the id out of the transaction (#17066 review — the claimed
       // row's own id can never reach that key name).
       expect(result?.warm_pool_row_id).toBe("pool-1");
+      if (!warmClaimWhereClause) throw new Error("Warm claim did not build an update predicate");
+      const updateSql = new PgDialect().sqlToQuery(warmClaimWhereClause).sql.toLowerCase();
+      expect(updateSql).toContain("organization_id");
+      expect(updateSql).toContain("deletion_attempt_id");
+      expect(updateSql).toContain("deletion_pending");
+      expect(updateSql).toContain("deletion_failed");
+    });
+
+    test("a deletion-owned user row cannot consume a warm pool container", async () => {
+      userRowForClaim = {
+        ...pendingUserRow(),
+        status: "deletion_pending",
+        deletion_attempt_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        deletion_started_at: new Date("2026-07-23T12:30:00.000Z"),
+      };
+      warmClaimUpdateSet.mockClear();
+      warmClaimDeleteWhere.mockClear();
+      executeHandler = (sqlText: string) => {
+        if (sqlText.includes("FOR UPDATE SKIP LOCKED")) {
+          return {
+            rows: [
+              {
+                id: "pool-delete-race",
+                pool_status: "unclaimed",
+                status: "running",
+                docker_image: IMAGE,
+                image_digest: `sha256:${"a".repeat(64)}`,
+                pool_ready_at: new Date("2026-07-07T11:00:00.000Z"),
+                node_id: "node-1",
+                container_name: "agent-pool-delete-race",
+                bridge_url: "http://100.64.0.11:3000",
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      };
+
+      const { AgentSandboxesRepository } = await import("./agent-sandboxes");
+      const result = await new AgentSandboxesRepository().claimWarmContainer(params);
+
+      expect(result).toBeNull();
+      expect(warmClaimUpdateSet).not.toHaveBeenCalled();
+      expect(warmClaimDeleteWhere).not.toHaveBeenCalled();
     });
 
     test("countUnclaimedPool excludes null/empty node_id rows (ready == claimable)", async () => {

@@ -5,6 +5,7 @@
 
 import crypto from "node:crypto";
 import { isIP } from "node:net";
+import { ElizaError } from "@elizaos/core";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
 import { type Database, dbWrite } from "../../db/helpers";
@@ -30,8 +31,10 @@ import {
   type NewAgentSandboxBackup,
   WARM_POOL_ORG_ID,
 } from "../../db/schemas/agent-sandboxes";
+import { dockerNodes } from "../../db/schemas/docker-nodes";
 import { jobs } from "../../db/schemas/jobs";
 import { imageRepo } from "../../db/utils/docker-image-ref";
+import { ApiError } from "../api/cloud-worker-errors";
 import { InsufficientCreditsError as InsufficientCreditsApiError } from "../api/errors";
 import { containersEnv } from "../config/containers-env";
 import { getElizaAgentPublicWebUiUrl } from "../eliza-agent-web-ui";
@@ -80,8 +83,11 @@ import {
   elizaCodingContainerImageAdvisoryLockSql,
   elizaProvisionAdvisoryLockSql,
 } from "./eliza-provision-lock";
-import { headscaleIntegration } from "./headscale-integration";
-import { applyManagedAgentInferenceEnvDefaults } from "./managed-eliza-config";
+import {
+  applyManagedAgentInferenceEnvDefaults,
+  type ManagedElizaEnvironmentResult,
+  prepareManagedElizaSharedEnvironment,
+} from "./managed-eliza-config";
 import { prepareManagedElizaEnvironment } from "./managed-eliza-env";
 import { JOB_TYPES } from "./provisioning-job-types";
 import { mergeRuntimeAgentSecretsFromEnv } from "./runtime-agent-secrets";
@@ -91,6 +97,7 @@ import {
   type SandboxHandle,
   type SandboxProvider,
 } from "./sandbox-provider";
+import { SandboxReplacementCleanupUnresolvedError } from "./sandbox-provider-types";
 import { isDedicatedBootstrapWindow } from "./shared-runtime/dedicated-bootstrap";
 import {
   type RunSharedAgentTurnResult,
@@ -114,8 +121,10 @@ import {
 } from "./warm-claim-character-push";
 import {
   buildWarmClaimKeyPushBody,
+  hasReadyWarmClaimCredential,
   safeKeyPrefix,
   WARM_CLAIM_KEY_PUSH_TIMEOUT_MS,
+  WARM_CLAIM_RECOVERY_FAILURE_PREFIX,
   warmClaimKeyFingerprint,
 } from "./warm-claim-key-push";
 
@@ -554,7 +563,35 @@ interface ImageSwapResult {
    * whose old container was already not serving.
    */
   rolledBack?: boolean;
+  /**
+   * The image cutover committed, but the replaced container's durable cleanup
+   * fence remains populated. Callers must not present the operation as fully
+   * converged until the replacement-cleanup reconciler clears it.
+   */
+  cleanupPending?: boolean;
 }
+
+type ReplacementCleanupLocator = {
+  sandboxId: string;
+  nodeId: string;
+  containerName: string;
+  replacementAttemptId: string | null;
+  containerId: string | null;
+  vpnNodeId: string | null;
+  vpnNodeName: string | null;
+  previousVpnNodeId: string | null;
+  vpnRegistrationStartedAt: Date | null;
+  allocationCounted: boolean;
+  createdAt: Date;
+};
+
+type ReplacementCleanupExpectation = {
+  status: AgentSandboxStatus;
+  environmentRevision: number;
+  sandboxId: string | null;
+  nodeId: string | null;
+  containerName: string | null;
+};
 
 function digestPinnedImageRef(imageRef: string, digest: string): string {
   if (imageRef.includes("@sha256:")) return imageRef;
@@ -1413,14 +1450,170 @@ export class ElizaSandboxService {
     orgId: string,
     environmentVars: Record<string, string>,
   ): Promise<AgentSandbox | undefined> {
-    const rec = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
-    if (!rec) return undefined;
     // BYO secrets (provider API keys, tokens) are encrypted at rest (#11332);
     // the materialization paths (provision / fleet upgrade / runtime
     // bootstrap) decrypt, so the running agent still sees real values.
-    return agentSandboxesRepository.update(rec.id, {
-      environment_vars: await encryptAgentEnvVarsForStorage(orgId, environmentVars),
+    const encryptedEnvironment = await encryptAgentEnvVarsForStorage(orgId, environmentVars);
+    const updated = await dbWrite.transaction(async (tx) => {
+      await this.lockLifecycle(tx, agentId, orgId);
+      const rec = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
+      if (!rec) return undefined;
+      if (rec.deletion_attempt_id) {
+        throw new ApiError(409, "session_not_ready", "Agent deletion is in progress");
+      }
+      const [row] = await tx
+        .update(agentSandboxes)
+        .set({
+          environment_vars: encryptedEnvironment,
+          environment_revision: sql`${agentSandboxes.environment_revision} + 1`,
+          warm_claim_credential_state: sql`
+            CASE
+              WHEN ${agentSandboxes.claimed_at} IS NOT NULL
+                AND ${agentSandboxes.warm_claim_credential_state} = 'ready'
+              THEN 'pending'
+              ELSE ${agentSandboxes.warm_claim_credential_state}
+            END
+          `,
+          warm_claim_key_fingerprint: sql`
+            CASE
+              WHEN ${agentSandboxes.claimed_at} IS NOT NULL
+                AND ${agentSandboxes.warm_claim_credential_state} = 'ready'
+              THEN NULL
+              ELSE ${agentSandboxes.warm_claim_key_fingerprint}
+            END
+          `,
+          warm_claim_attested_at: sql`
+            CASE
+              WHEN ${agentSandboxes.claimed_at} IS NOT NULL
+                AND ${agentSandboxes.warm_claim_credential_state} = 'ready'
+              THEN NULL
+              ELSE ${agentSandboxes.warm_claim_attested_at}
+            END
+          `,
+          warm_claim_attested_environment_revision: sql`
+            CASE
+              WHEN ${agentSandboxes.claimed_at} IS NOT NULL
+                AND ${agentSandboxes.warm_claim_credential_state} = 'ready'
+              THEN NULL
+              ELSE ${agentSandboxes.warm_claim_attested_environment_revision}
+            END
+          `,
+          updated_at: new Date(),
+        })
+        .where(
+          and(
+            eq(agentSandboxes.id, agentId),
+            eq(agentSandboxes.organization_id, orgId),
+            sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
+            sql`COALESCE(${agentSandboxes.warm_claim_credential_state}, '') NOT IN ('pending', 'attested')`,
+          ),
+        )
+        .returning();
+      return row;
     });
+    if (updated?.claimed_at && updated.warm_claim_credential_state === "pending") {
+      const { provisioningJobService } = await import("./provisioning-jobs");
+      await provisioningJobService.enqueueAgentRestartOnce({
+        agentId: updated.id,
+        organizationId: updated.organization_id,
+        userId: updated.user_id,
+      });
+    }
+    return updated;
+  }
+
+  /**
+   * Rotate the generic managed-launch credential and persist its environment
+   * under the same per-agent lifecycle lock used by delete/restart/upgrade.
+   * Key minting stays inside that ownership window so a delete cannot revoke
+   * and then lose to a late mint. A transaction/commit failure compensates by
+   * revoking the newly minted sandbox-scoped key.
+   */
+  async prepareManagedLaunchEnvironment(params: {
+    agentId: string;
+    organizationId: string;
+    userId: string;
+  }): Promise<
+    | {
+        sandbox: AgentSandbox;
+        environment: ManagedElizaEnvironmentResult;
+      }
+    | undefined
+  > {
+    let credentialMinted = false;
+    try {
+      const result = await dbWrite.transaction(async (tx) => {
+        await this.lockLifecycle(tx, params.agentId, params.organizationId);
+        const rec = await this.getAgentForLifecycleMutation(
+          tx,
+          params.agentId,
+          params.organizationId,
+        );
+        if (rec?.deletion_attempt_id || rec?.claimed_at) return undefined;
+        if (!rec) return undefined;
+
+        const environment = await prepareManagedElizaSharedEnvironment({
+          existingEnv: rec.environment_vars,
+          organizationId: params.organizationId,
+          userId: params.userId,
+          agentSandboxId: rec.id,
+        });
+        credentialMinted = true;
+        if (!environment.changed) {
+          return { sandbox: rec, environment };
+        }
+
+        const [updated] = await tx
+          .update(agentSandboxes)
+          .set({
+            environment_vars: environment.environmentVars,
+            environment_revision: sql`${agentSandboxes.environment_revision} + 1`,
+            updated_at: new Date(),
+          })
+          .where(
+            and(
+              eq(agentSandboxes.id, rec.id),
+              eq(agentSandboxes.organization_id, rec.organization_id),
+              eq(agentSandboxes.environment_revision, rec.environment_revision),
+              eq(agentSandboxes.updated_at, rec.updated_at),
+              sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
+              sql`${agentSandboxes.claimed_at} IS NULL`,
+            ),
+          )
+          .returning();
+        return updated ? { sandbox: updated, environment } : undefined;
+      });
+
+      if (!result && credentialMinted) {
+        await apiKeysService.revokeForAgent(params.agentId);
+      }
+      return result;
+    } catch (error) {
+      // error-policy:J6 compensating teardown — a minted credential is revoked
+      // before the original managed-launch failure is rethrown.
+      if (credentialMinted) {
+        try {
+          await apiKeysService.revokeForAgent(params.agentId);
+        } catch (cleanupError) {
+          // error-policy:J2 context-adding rethrow — failed credential cleanup is
+          // fatal and retains both the cleanup cause and original launch failure.
+          throw new ElizaError(
+            "Managed launch environment failed and its replacement credential could not be revoked",
+            {
+              code: "MANAGED_LAUNCH_CREDENTIAL_CLEANUP_FAILED",
+              cause: cleanupError,
+              context: {
+                agentId: params.agentId,
+                organizationId: params.organizationId,
+                originalError: error instanceof Error ? error.message : String(error),
+              },
+              severity: "fatal",
+            },
+          );
+        }
+      }
+      throw error;
+    }
   }
 
   /**
@@ -1435,21 +1628,40 @@ export class ElizaSandboxService {
     orgId: string,
     input: { agentName?: string; agentConfig?: Record<string, unknown> },
   ): Promise<AgentSandbox | undefined> {
-    const rec = await agentSandboxesRepository.findByIdAndOrgForWrite(agentId, orgId);
-    if (!rec) return undefined;
+    return dbWrite.transaction(async (tx) => {
+      await this.lockLifecycle(tx, agentId, orgId);
+      const rec = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
+      if (!rec) return undefined;
+      if (rec.deletion_attempt_id) {
+        throw new ApiError(409, "session_not_ready", "Agent deletion is in progress");
+      }
 
-    const updates: { agent_name?: string; agent_config?: Record<string, unknown> } = {};
-    if (input.agentName !== undefined) updates.agent_name = input.agentName;
-    if (input.agentConfig !== undefined) {
-      const existing =
-        rec.agent_config && typeof rec.agent_config === "object" && !Array.isArray(rec.agent_config)
-          ? (rec.agent_config as Record<string, unknown>)
-          : {};
-      updates.agent_config = { ...existing, ...input.agentConfig };
-    }
-    if (Object.keys(updates).length === 0) return rec;
+      const updates: { agent_name?: string; agent_config?: Record<string, unknown> } = {};
+      if (input.agentName !== undefined) updates.agent_name = input.agentName;
+      if (input.agentConfig !== undefined) {
+        const existing =
+          rec.agent_config &&
+          typeof rec.agent_config === "object" &&
+          !Array.isArray(rec.agent_config)
+            ? (rec.agent_config as Record<string, unknown>)
+            : {};
+        updates.agent_config = { ...existing, ...input.agentConfig };
+      }
+      if (Object.keys(updates).length === 0) return rec;
 
-    return agentSandboxesRepository.update(rec.id, updates);
+      const [updated] = await tx
+        .update(agentSandboxes)
+        .set({ ...updates, updated_at: new Date() })
+        .where(
+          and(
+            eq(agentSandboxes.id, agentId),
+            eq(agentSandboxes.organization_id, orgId),
+            sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
+          ),
+        )
+        .returning();
+      return updated;
+    });
   }
 
   async getAgentForWrite(agentId: string, orgId: string) {
@@ -1528,23 +1740,21 @@ export class ElizaSandboxService {
       }
     }
 
+    // Revoke both credential owners before deleting the row. The source-pool
+    // id is durable recovery state for a claimed handoff; deleting first would
+    // make a transient authoritative revocation failure impossible to retry.
+    const credentialOwners = new Set(
+      [agentId, precheck.sourcePoolId].filter((id): id is string => Boolean(id)),
+    );
+    for (const credentialOwnerId of credentialOwners) {
+      await apiKeysService.revokeForAgent(credentialOwnerId);
+    }
+
     // Phase 3 — short transaction: re-take the lock, re-validate (a concurrent
     // provision could have started while teardown ran), then delete the row.
-    const result = await this.commitAgentRowDelete(agentId, orgId);
+    const result = await this.commitAgentRowDelete(agentId, orgId, precheck);
 
     if (result.success) {
-      // Best-effort: revoke the per-agent API key after the row delete commits.
-      // A failure here does not un-delete the sandbox; the key just lingers as
-      // inactive data and can be cleaned by ops.
-      try {
-        await apiKeysService.revokeForAgent(agentId);
-      } catch (err) {
-        logger.warn("[agent-sandbox] Failed to revoke per-agent API key", {
-          agentId,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
-
       // Best-effort: drop the shared-runtime (Tier-0) conversation history for
       // this agent. That table is deliberately decoupled from the sandbox row
       // (no FK cascade), so the per-channel history rows would otherwise be
@@ -1580,7 +1790,15 @@ export class ElizaSandboxService {
     agentId: string,
     orgId: string,
   ): Promise<
-    | { ok: true; sandboxId: string | null; status: AgentSandbox["status"] }
+    | {
+        ok: true;
+        sandboxId: string | null;
+        status: AgentSandbox["status"];
+        sourcePoolId: string | null;
+        environmentRevision: number;
+        deletionAttemptId: string;
+        deletionStartedAt: Date;
+      }
     | { ok: false; error: string }
   > {
     return dbWrite.transaction(async (tx) => {
@@ -1588,13 +1806,56 @@ export class ElizaSandboxService {
 
       const rec = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
       if (!rec) return { ok: false as const, error: "Agent not found" };
-
-      const hasActiveProvisionJob = await this.hasActiveProvisionJobTx(tx, agentId, orgId);
-      if (rec.status === "provisioning" || hasActiveProvisionJob) {
-        return { ok: false as const, error: "Agent provisioning is in progress" };
+      if (this.getReplacementCleanupLocator(rec)) {
+        return {
+          ok: false as const,
+          error: "Agent replacement cleanup is still pending",
+        };
       }
 
-      return { ok: true as const, sandboxId: rec.sandbox_id, status: rec.status };
+      const hasActiveProvisionJob = await this.hasActiveProvisionJobTx(tx, agentId, orgId);
+      const hasActiveReplacementJob = await this.hasActiveReplacementJobTx(tx, agentId, orgId);
+      if (rec.status === "provisioning" || hasActiveProvisionJob || hasActiveReplacementJob) {
+        return { ok: false as const, error: "Agent provisioning is in progress" };
+      }
+      const deletionAttemptId = rec.deletion_attempt_id ?? crypto.randomUUID();
+      const deletionStartedAt = rec.deletion_started_at ?? new Date();
+      const [owned] = await tx
+        .update(agentSandboxes)
+        .set({
+          status: "deletion_pending",
+          deletion_attempt_id: deletionAttemptId,
+          deletion_started_at: deletionStartedAt,
+          updated_at: new Date(),
+        })
+        .where(
+          and(
+            eq(agentSandboxes.id, agentId),
+            eq(agentSandboxes.organization_id, orgId),
+            sql`${agentSandboxes.replacement_cleanup_sandbox_id} IS NULL`,
+          ),
+        )
+        .returning({
+          id: agentSandboxes.id,
+          deletionAttemptId: agentSandboxes.deletion_attempt_id,
+          deletionStartedAt: agentSandboxes.deletion_started_at,
+        });
+      if (!owned) {
+        return { ok: false as const, error: "Agent deletion ownership changed" };
+      }
+      if (!owned.deletionAttemptId || !owned.deletionStartedAt) {
+        throw new Error("Agent deletion intent was not persisted");
+      }
+
+      return {
+        ok: true as const,
+        sandboxId: rec.sandbox_id,
+        status: rec.status,
+        sourcePoolId: rec.warm_claim_source_pool_id,
+        environmentRevision: rec.environment_revision,
+        deletionAttemptId: owned.deletionAttemptId,
+        deletionStartedAt: owned.deletionStartedAt,
+      };
     });
   }
 
@@ -1603,18 +1864,40 @@ export class ElizaSandboxService {
    * the lifecycle lock, re-validates (a concurrent provision could have started
    * while the out-of-transaction teardown ran), then deletes the sandbox row.
    */
-  private async commitAgentRowDelete(agentId: string, orgId: string): Promise<DeleteAgentResult> {
+  private async commitAgentRowDelete(
+    agentId: string,
+    orgId: string,
+    ownership: {
+      sandboxId: string | null;
+      environmentRevision: number;
+      deletionAttemptId: string;
+      deletionStartedAt: Date;
+    },
+  ): Promise<DeleteAgentResult> {
     return dbWrite.transaction(async (tx) => {
       await this.lockLifecycle(tx, agentId, orgId);
 
       const rec = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
       if (!rec) return { success: false, error: "Agent not found" } as const;
-
-      const hasActiveProvisionJob = await this.hasActiveProvisionJobTx(tx, agentId, orgId);
-      if (rec.status === "provisioning" || hasActiveProvisionJob) {
+      if (this.getReplacementCleanupLocator(rec)) {
         return {
           success: false,
-          error: "Agent provisioning is in progress",
+          error: "Agent replacement cleanup is still pending",
+        } as const;
+      }
+
+      const hasActiveProvisionJob = await this.hasActiveProvisionJobTx(tx, agentId, orgId);
+      if (
+        rec.status !== "deletion_pending" ||
+        rec.deletion_attempt_id !== ownership.deletionAttemptId ||
+        rec.deletion_started_at?.getTime() !== ownership.deletionStartedAt.getTime() ||
+        rec.sandbox_id !== ownership.sandboxId ||
+        rec.environment_revision !== ownership.environmentRevision ||
+        hasActiveProvisionJob
+      ) {
+        return {
+          success: false,
+          error: "Agent deletion ownership changed",
         } as const;
       }
 
@@ -1622,6 +1905,11 @@ export class ElizaSandboxService {
         DELETE FROM ${agentSandboxes}
         WHERE id = ${agentId}
           AND organization_id = ${orgId}
+          AND status = 'deletion_pending'
+          AND deletion_attempt_id = ${ownership.deletionAttemptId}
+          AND deletion_started_at = ${ownership.deletionStartedAt}
+          AND sandbox_id IS NOT DISTINCT FROM ${ownership.sandboxId}
+          AND environment_revision = ${ownership.environmentRevision}
         RETURNING *
       `);
       const deletedSandbox = deleted.rows[0];
@@ -1647,12 +1935,52 @@ export class ElizaSandboxService {
           await provider.stop(sandboxId);
           return null;
         } catch (error) {
+          // error-policy:J1 provider boundary translation — deletion records the
+          // exact stop failure so the outer workflow can report a structured outcome.
           return { error };
         }
       })(),
       SANDBOX_DELETE_STOP_TIMEOUT_MS,
       `agent-delete stop ${sandboxId}`,
-    ).catch((error: unknown) => ({ error, timedOut: true as const }));
+    ).catch(
+      // error-policy:J1 timeout boundary translation — the deletion workflow
+      // distinguishes a bounded timeout from a completed provider failure.
+      (error: unknown) => ({ error, timedOut: true as const }),
+    );
+  }
+
+  /**
+   * Replacement teardown is stricter than deletion: it may not abandon an
+   * unreachable workload because a second container would produce two live
+   * agents when the old node recovers. Providers must positively implement the
+   * absence-proof boundary; missing support, errors, and timeouts all preserve
+   * the database fence and block replacement.
+   */
+  private async runBoundedSandboxStopForReplacement(
+    sandboxId: string,
+  ): Promise<BoundedSandboxStopResult> {
+    return withTimeout(
+      (async (): Promise<null | { error: unknown }> => {
+        try {
+          const provider = await this.getProvider();
+          if (!provider.stopForReplacement) {
+            throw new Error("Sandbox provider cannot prove workload absence before replacement");
+          }
+          await provider.stopForReplacement(sandboxId);
+          return null;
+        } catch (error) {
+          // error-policy:J1 provider boundary translation — replacement remains
+          // fenced until the structured stop failure is handled by its caller.
+          return { error };
+        }
+      })(),
+      SANDBOX_DELETE_STOP_TIMEOUT_MS,
+      `agent-replacement stop ${sandboxId}`,
+    ).catch(
+      // error-policy:J1 timeout boundary translation — an unproven replacement
+      // stop is an explicit timed-out failure, never inferred absence.
+      (error: unknown) => ({ error, timedOut: true as const }),
+    );
   }
 
   /**
@@ -1744,6 +2072,36 @@ export class ElizaSandboxService {
   ): Promise<ProvisionResult> {
     let rec = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
     if (!rec) return { success: false, error: "Agent not found" } as ProvisionResult;
+    if (rec.claimed_at && rec.warm_claim_credential_state === "failed") {
+      const retryPreparation = await this.retireFailedWarmClaimForRetry(agentId, orgId);
+      if (!retryPreparation.success) {
+        return {
+          success: false,
+          sandboxRecord: rec,
+          error: retryPreparation.error,
+        };
+      }
+      rec = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
+      if (!rec) return { success: false, error: "Agent not found" } as ProvisionResult;
+    }
+    if (this.getReplacementCleanupLocator(rec)) {
+      try {
+        await this.retirePersistedReplacementCleanup(agentId, orgId);
+      } catch (error) {
+        // error-policy:J1 provisioning boundary translation — unresolved cleanup
+        // becomes an explicit retryable failure while the durable fence remains.
+        return {
+          success: false,
+          retryable: true,
+          sandboxRecord: rec,
+          error: `Replacement cleanup is still pending: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        };
+      }
+      rec = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
+      if (!rec) return { success: false, error: "Agent not found" } as ProvisionResult;
+    }
 
     const previousStatus = rec.status;
     const lock = await agentSandboxesRepository.trySetProvisioning(rec.id);
@@ -1783,25 +2141,35 @@ export class ElizaSandboxService {
       }
     }
 
-    const managedEnvironment = await prepareManagedElizaEnvironment({
-      existingEnv: (rec.environment_vars as Record<string, string>) ?? {},
-      organizationId: rec.organization_id,
-      userId: rec.user_id,
-      sandboxId: agentId,
-    });
+    const recoveringPendingWarmClaim =
+      rec.claimed_at !== null &&
+      (rec.warm_claim_credential_state === "pending" ||
+        rec.warm_claim_credential_state === "attested");
     const containerLaunch = resolveSandboxContainerLaunchConfig(rec.agent_config);
 
-    if (managedEnvironment.changed) {
-      const updatedEnvRecord = await agentSandboxesRepository.update(rec.id, {
-        environment_vars: managedEnvironment.environmentVars,
+    // Every claimed row carries the exact managed key owned by its durable
+    // handoff fence. Generic environment preparation revokes that key before
+    // writing the replacement, so it is reserved for cold-created rows; warm
+    // claims reuse their persisted environment through restart and attestation.
+    if (!rec.claimed_at) {
+      const managedEnvironment = await prepareManagedElizaEnvironment({
+        existingEnv: (rec.environment_vars as Record<string, string>) ?? {},
+        organizationId: rec.organization_id,
+        userId: rec.user_id,
+        sandboxId: agentId,
       });
-      if (updatedEnvRecord) {
-        rec = updatedEnvRecord;
-      } else {
-        rec = {
-          ...rec,
+      if (managedEnvironment.changed) {
+        const updatedEnvRecord = await agentSandboxesRepository.update(rec.id, {
           environment_vars: managedEnvironment.environmentVars,
-        };
+        });
+        if (updatedEnvRecord) {
+          rec = updatedEnvRecord;
+        } else {
+          rec = {
+            ...rec,
+            environment_vars: managedEnvironment.environmentVars,
+          };
+        }
       }
     }
 
@@ -1884,10 +2252,26 @@ export class ElizaSandboxService {
             snapshotId: rec.snapshot_id ?? undefined,
             dockerImage: provisionDockerImage,
             container: containerLaunch,
+            ...this.replacementCleanupCallbacks(rec.id, rec.organization_id, {
+              status: "provisioning",
+              environmentRevision: rec.environment_revision,
+              sandboxId: rec.sandbox_id,
+              nodeId: rec.node_id,
+              containerName: rec.container_name,
+            }),
           });
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
+        if (err instanceof SandboxReplacementCleanupUnresolvedError) {
+          await this.persistUnresolvedReplacementCleanupFence(rec.id, rec.organization_id, err);
+          return {
+            success: false,
+            retryable: true,
+            sandboxRecord: await agentSandboxesRepository.findById(rec.id),
+            error: msg,
+          };
+        }
         await this.markError(rec, `Sandbox creation failed: ${msg}`);
         return {
           success: false,
@@ -1929,7 +2313,13 @@ export class ElizaSandboxService {
             //       collision, and tearing down the very container we preserved.
             // Without this write the leave-and-reconcile path is defeated for
             // exactly the SSH-transport-blip case it exists for.
-            await this.persistContainerHandleForRetry(rec.id, handle, dockerMeta);
+            await this.persistContainerHandleForRetry(
+              rec.id,
+              rec.organization_id,
+              rec.environment_revision,
+              handle,
+              dockerMeta,
+            );
             throw new SandboxTransportUnresolvedError(
               "Sandbox readiness probe could not reach the container (SSH transport unresolved); " +
                 "leaving the container in place for retry/reconciliation",
@@ -2003,12 +2393,23 @@ export class ElizaSandboxService {
         // (ghost cleanup → retry or markError), so 'running' never sticks on a
         // failed provision.
         const updateData: Parameters<typeof agentSandboxesRepository.update>[1] = {
-          status: "running",
+          status: recoveringPendingWarmClaim ? "provisioning" : "running",
           sandbox_id: handle.sandboxId,
           bridge_url: handle.bridgeUrl,
           health_url: handle.healthUrl,
           last_heartbeat_at: new Date(),
           error_message: null,
+          replacement_cleanup_sandbox_id: null,
+          replacement_cleanup_node_id: null,
+          replacement_cleanup_container_name: null,
+          replacement_cleanup_attempt_id: null,
+          replacement_cleanup_container_id: null,
+          replacement_cleanup_vpn_node_id: null,
+          replacement_cleanup_vpn_node_name: null,
+          replacement_cleanup_preserved_vpn_node_id: null,
+          replacement_cleanup_vpn_registration_started_at: null,
+          replacement_cleanup_allocation_counted: null,
+          replacement_cleanup_created_at: null,
         };
 
         if (dockerMeta) {
@@ -2025,7 +2426,13 @@ export class ElizaSandboxService {
           updateData.image_digest = dockerMeta.imageDigest;
         }
 
-        const updated = await agentSandboxesRepository.update(rec.id, updateData);
+        const updated = await this.transferReplacementToPrimary(
+          rec.id,
+          rec.organization_id,
+          handle,
+          rec.environment_revision,
+          updateData,
+        );
 
         // Re-enter the billable set on every successful provision. A
         // credit-suspended agent (billing_status='suspended') that a user tops
@@ -2181,12 +2588,36 @@ export class ElizaSandboxService {
           error: msg,
         });
 
-        await (await this.getProvider()).stop(handle.sandboxId).catch((stopErr) => {
-          logger.error("[agent-sandbox] Ghost container cleanup failed", {
+        try {
+          const current = await agentSandboxesRepository.findByIdAndOrg(
+            rec.id,
+            rec.organization_id,
+          );
+          if (current && this.getReplacementCleanupLocator(current)) {
+            await this.retirePersistedReplacementCleanup(rec.id, rec.organization_id);
+          } else {
+            const provider = await this.getProvider();
+            if (!provider.stopForReplacement) {
+              throw new Error("Sandbox provider cannot prove failed provision absent");
+            }
+            await provider.stopForReplacement(handle.sandboxId);
+          }
+        } catch (stopErr) {
+          // error-policy:J1 provisioning boundary translation — failed ghost
+          // cleanup is surfaced as retryable and retains its durable locator.
+          logger.error("[agent-sandbox] Ghost container cleanup remains unresolved", {
             sandboxId: handle.sandboxId,
             error: stopErr instanceof Error ? stopErr.message : String(stopErr),
           });
-        });
+          return {
+            success: false,
+            retryable: true,
+            sandboxRecord: await agentSandboxesRepository.findById(rec.id),
+            error: `Replacement cleanup is still pending: ${
+              stopErr instanceof Error ? stopErr.message : String(stopErr)
+            }`,
+          };
+        }
 
         // Check if it's a unique constraint error (port collision) -> retry
         const isUniqueConstraintError =
@@ -3255,10 +3686,7 @@ export class ElizaSandboxService {
       signal: AbortSignal.timeout(WARM_CLAIM_CHARACTER_PUSH_TIMEOUT_MS),
     });
     if (!res.ok) {
-      // error-policy: enrich with a bounded body excerpt; a failed body read
-      // must never mask the HTTP status.
-      const text = await res.text().catch(() => "");
-      throw new Error(`Warm-claim character push failed: HTTP ${res.status} ${text.slice(0, 200)}`);
+      throw new Error(`Warm-claim character push failed: HTTP ${res.status}`);
     }
     return { pushed: true, agentName: String(payload.name) };
   }
@@ -3314,19 +3742,434 @@ export class ElizaSandboxService {
       throw new Error("Warm-claim key push requires the source agent-sandbox pool row id");
     }
 
-    // The source pool credential is named after the pool row, not the claimed
-    // user row. Its identity must cross the claim transaction so this handoff
-    // can revoke the correct credential.
-    const { plainKey } = await apiKeysService.createForAgent({
-      organizationId: rec.organization_id,
-      userId: rec.user_id,
-      agentSandboxId: rec.id,
+    return await this.completeWarmClaimCredentialHandoff(
+      rec.id,
+      rec.organization_id,
+      rec.warm_pool_row_id,
+    );
+  }
+
+  /**
+   * Retry a durable warm-claim credential handoff after a route/worker crash.
+   * The source pool id and target fingerprint live on the sandbox row, so no
+   * plaintext credential or request-local state is required for recovery.
+   */
+  async recoverPendingWarmClaimInferenceKey(
+    agentId: string,
+    organizationId: string,
+  ): Promise<{ pushed: boolean; keyPrefix?: string }> {
+    return await this.completeWarmClaimCredentialHandoff(agentId, organizationId);
+  }
+
+  /**
+   * Upgrade a pre-fence claimed row into the durable handoff protocol before
+   * restart tears down its live container. The row is never declared ready
+   * from legacy metadata: the subsequent provision resolves a fresh immutable
+   * image digest and recovery remints, pushes, and live-attests a user-org key.
+   */
+  private async prepareLegacyWarmClaimCredentialRecovery(
+    agentId: string,
+    organizationId: string,
+  ): Promise<void> {
+    await dbWrite.transaction(async (tx) => {
+      await this.lockLifecycle(tx, agentId, organizationId);
+      const current = await this.getAgentForLifecycleMutation(tx, agentId, organizationId);
+      if (!current?.claimed_at) return;
+      if (current.warm_claim_credential_state !== null) return;
+      if (!["running", "provisioning", "stopped", "error"].includes(current.status)) {
+        throw new Error(
+          `Legacy warm-claim credential recovery cannot start from ${current.status}`,
+        );
+      }
+      const prepared = await tx.execute<{ id: string }>(sql`
+        UPDATE ${agentSandboxes}
+        SET
+          status = 'provisioning',
+          warm_claim_credential_state = 'pending',
+          warm_claim_source_pool_id = NULL,
+          warm_claim_key_fingerprint = NULL,
+          warm_claim_attested_at = NULL,
+          warm_claim_attested_environment_revision = NULL,
+          warm_claim_cleanup_completed_at = NULL,
+          error_message = 'Legacy warm claim requires credential and image re-attestation',
+          updated_at = NOW()
+        WHERE id = ${agentId}
+          AND organization_id = ${organizationId}
+          AND status IN ('running', 'provisioning', 'stopped', 'error')
+          AND claimed_at IS NOT NULL
+          AND warm_claim_credential_state IS NULL
+        RETURNING id
+      `);
+      if (prepared.rows.length !== 1) {
+        throw new Error("Legacy warm-claim preparation lost its state CAS");
+      }
+    });
+  }
+
+  /**
+   * An explicit provision after durable failed-handoff cleanup starts a cold
+   * retry. Clearing the claim fence happens under the lifecycle lock only after
+   * both retained credential owners were revoked, so cleanup can never revoke a
+   * newly minted retry key.
+   */
+  private async retireFailedWarmClaimForRetry(
+    agentId: string,
+    organizationId: string,
+  ): Promise<{ success: true } | { success: false; error: string }> {
+    return dbWrite.transaction(async (tx) => {
+      await this.lockLifecycle(tx, agentId, organizationId);
+      const current = await this.getAgentForLifecycleMutation(tx, agentId, organizationId);
+      if (
+        !current?.claimed_at ||
+        current.warm_claim_credential_state !== "failed" ||
+        !current.warm_claim_cleanup_completed_at
+      ) {
+        return {
+          success: false as const,
+          error: "Warm-claim retry ownership changed before teardown",
+        };
+      }
+      if (!current.sandbox_id && (current.node_id || current.container_name)) {
+        return {
+          success: false as const,
+          error: "Previous warm-claim container locator is incomplete",
+        };
+      }
+      if (current.sandbox_id) {
+        const stop = await this.runBoundedSandboxStopForReplacement(current.sandbox_id);
+        if (stop) {
+          return {
+            success: false as const,
+            error: "Failed to retire the previous warm-claim container",
+          };
+        }
+      }
+      const reset = await tx.execute<{ id: string }>(sql`
+        UPDATE ${agentSandboxes}
+        SET
+          status = 'stopped',
+          claimed_at = NULL,
+          warm_claim_credential_state = NULL,
+          warm_claim_source_pool_id = NULL,
+          warm_claim_key_fingerprint = NULL,
+          warm_claim_attested_at = NULL,
+          warm_claim_attested_environment_revision = NULL,
+          warm_claim_cleanup_completed_at = NULL,
+          sandbox_id = NULL,
+          bridge_url = NULL,
+          health_url = NULL,
+          node_id = NULL,
+          container_name = NULL,
+          headscale_ip = NULL,
+          error_message = NULL,
+          updated_at = NOW()
+        WHERE id = ${agentId}
+          AND organization_id = ${organizationId}
+          AND claimed_at IS NOT NULL
+          AND warm_claim_credential_state = 'failed'
+          AND warm_claim_cleanup_completed_at IS NOT NULL
+          AND sandbox_id IS NOT DISTINCT FROM ${current.sandbox_id}
+          AND node_id IS NOT DISTINCT FROM ${current.node_id}
+          AND container_name IS NOT DISTINCT FROM ${current.container_name}
+        RETURNING id
+      `);
+      if (reset.rows.length !== 1) {
+        throw new Error("Failed warm-claim retry lost its cleanup CAS");
+      }
+      return { success: true as const };
+    });
+  }
+
+  /**
+   * Revoke every credential owner retained by an exhausted handoff. The row
+   * remains the durable retry record until both revocations succeed and a
+   * lifecycle-locked CAS records cleanup completion.
+   */
+  async cleanupFailedWarmClaimCredentialHandoff(
+    agentId: string,
+    organizationId: string,
+  ): Promise<boolean> {
+    const prepared = await dbWrite.transaction(async (tx) => {
+      await this.lockLifecycle(tx, agentId, organizationId);
+      const current = await this.getAgentForLifecycleMutation(tx, agentId, organizationId);
+      if (!current || current.warm_claim_credential_state !== "failed") {
+        return null;
+      }
+      if (current.warm_claim_cleanup_completed_at) {
+        return { alreadyComplete: true, sourcePoolId: null };
+      }
+      return {
+        alreadyComplete: false,
+        sourcePoolId: current.warm_claim_source_pool_id,
+      };
+    });
+    if (!prepared) return false;
+    if (prepared.alreadyComplete) return true;
+
+    const credentialOwners = new Set(
+      [agentId, prepared.sourcePoolId].filter((id): id is string => Boolean(id)),
+    );
+    for (const credentialOwnerId of credentialOwners) {
+      await apiKeysService.revokeForAgent(credentialOwnerId);
+    }
+
+    return await dbWrite.transaction(async (tx) => {
+      await this.lockLifecycle(tx, agentId, organizationId);
+      const result = await tx.execute<{ id: string }>(sql`
+        UPDATE ${agentSandboxes}
+        SET
+          warm_claim_source_pool_id = NULL,
+          warm_claim_cleanup_completed_at = NOW(),
+          updated_at = NOW()
+        WHERE id = ${agentId}
+          AND organization_id = ${organizationId}
+          AND warm_claim_credential_state = 'failed'
+          AND warm_claim_cleanup_completed_at IS NULL
+          AND warm_claim_source_pool_id IS NOT DISTINCT FROM ${prepared.sourcePoolId}
+        RETURNING id
+      `);
+      if (result.rows.length === 1) return true;
+      const current = await this.getAgentForLifecycleMutation(tx, agentId, organizationId);
+      return Boolean(
+        current?.warm_claim_credential_state === "failed" &&
+          current.warm_claim_cleanup_completed_at,
+      );
+    });
+  }
+
+  private async completeWarmClaimCredentialHandoff(
+    agentId: string,
+    organizationId: string,
+    expectedSourcePoolId?: string,
+  ): Promise<{ pushed: boolean; keyPrefix?: string }> {
+    const prepared = await dbWrite.transaction(async (tx) => {
+      await this.lockLifecycle(tx, agentId, organizationId);
+      const current = await this.getAgentForLifecycleMutation(tx, agentId, organizationId);
+      if (!current?.claimed_at) {
+        throw new Error("Warm-claim key push requires a claimed sandbox row");
+      }
+      if (
+        current.warm_claim_credential_state === "ready" &&
+        current.status === "running" &&
+        current.warm_claim_source_pool_id === null
+      ) {
+        return { current, plainKey: null, fingerprint: current.warm_claim_key_fingerprint };
+      }
+      if (current.status !== "provisioning") {
+        throw new Error(`Warm-claim credential handoff cannot run from ${current.status}`);
+      }
+      if (expectedSourcePoolId && current.warm_claim_source_pool_id !== expectedSourcePoolId) {
+        throw new Error("Warm-claim source pool row changed before credential handoff");
+      }
+
+      const materialized = await decryptAgentEnvVars(current.environment_vars);
+      const persistedKey = materialized.ELIZAOS_CLOUD_API_KEY;
+      if (current.warm_claim_credential_state === "attested") {
+        if (!persistedKey) {
+          throw new Error("Attested warm-claim target credential is missing");
+        }
+        const persistedFingerprint = await warmClaimKeyFingerprint(persistedKey);
+        if (
+          current.warm_claim_key_fingerprint !== persistedFingerprint ||
+          current.warm_claim_attested_environment_revision !== current.environment_revision
+        ) {
+          const rows = await tx.execute<AgentSandbox>(sql`
+            UPDATE ${agentSandboxes}
+            SET
+              warm_claim_credential_state = 'pending',
+              warm_claim_key_fingerprint = NULL,
+              warm_claim_attested_at = NULL,
+              warm_claim_attested_environment_revision = NULL,
+              updated_at = NOW()
+            WHERE id = ${agentId}
+              AND organization_id = ${organizationId}
+              AND status = 'provisioning'
+              AND warm_claim_credential_state = 'attested'
+              AND warm_claim_source_pool_id IS NOT DISTINCT FROM ${
+                current.warm_claim_source_pool_id
+              }
+              AND environment_revision = ${current.environment_revision}
+            RETURNING *
+          `);
+          const rearmed = rows.rows[0];
+          if (!rearmed) {
+            throw new Error("Warm-claim re-attestation lost its state CAS");
+          }
+          const { plainKey } = await apiKeysService.createForAgent({
+            organizationId,
+            userId: rearmed.user_id,
+            agentSandboxId: rearmed.id,
+          });
+          const fingerprint = await warmClaimKeyFingerprint(plainKey);
+          const encryptedPatch = await encryptAgentEnvVarsForStorage(organizationId, {
+            ELIZAOS_CLOUD_API_KEY: plainKey,
+            ELIZAOS_CLOUD_ENABLED: "true",
+          });
+          const remintedRows = await tx.execute<AgentSandbox>(sql`
+            UPDATE ${agentSandboxes}
+            SET
+              environment_vars = environment_vars || ${JSON.stringify(encryptedPatch)}::jsonb,
+              environment_revision = environment_revision + 1,
+              warm_claim_key_fingerprint = ${fingerprint},
+              updated_at = NOW()
+            WHERE id = ${agentId}
+              AND organization_id = ${organizationId}
+              AND status = 'provisioning'
+              AND warm_claim_credential_state = 'pending'
+              AND warm_claim_key_fingerprint IS NULL
+              AND warm_claim_source_pool_id IS NOT DISTINCT FROM ${
+                rearmed.warm_claim_source_pool_id
+              }
+              AND environment_revision = ${rearmed.environment_revision}
+            RETURNING *
+          `);
+          const reminted = remintedRows.rows[0];
+          if (!reminted) {
+            throw new Error("Warm-claim credential remint lost its state CAS");
+          }
+          return {
+            current: reminted,
+            plainKey,
+            fingerprint,
+          };
+        }
+        return { current, plainKey: null, fingerprint: current.warm_claim_key_fingerprint };
+      }
+      if (
+        current.warm_claim_credential_state !== "pending" &&
+        current.warm_claim_credential_state !== null
+      ) {
+        throw new Error(`Warm-claim credential handoff is ${current.warm_claim_credential_state}`);
+      }
+      if (current.warm_claim_key_fingerprint) {
+        if (
+          !persistedKey ||
+          (await warmClaimKeyFingerprint(persistedKey)) !== current.warm_claim_key_fingerprint
+        ) {
+          const rows = await tx.execute<AgentSandbox>(sql`
+            UPDATE ${agentSandboxes}
+            SET
+              warm_claim_key_fingerprint = NULL,
+              warm_claim_attested_at = NULL,
+              warm_claim_attested_environment_revision = NULL,
+              updated_at = NOW()
+            WHERE id = ${agentId}
+              AND organization_id = ${organizationId}
+              AND status = 'provisioning'
+              AND warm_claim_credential_state = 'pending'
+              AND warm_claim_key_fingerprint = ${current.warm_claim_key_fingerprint}
+              AND warm_claim_source_pool_id IS NOT DISTINCT FROM ${
+                current.warm_claim_source_pool_id
+              }
+              AND environment_revision = ${current.environment_revision}
+            RETURNING *
+          `);
+          const rearmed = rows.rows[0];
+          if (!rearmed) {
+            throw new Error("Warm-claim pending credential re-arm lost its state CAS");
+          }
+          const { plainKey } = await apiKeysService.createForAgent({
+            organizationId,
+            userId: rearmed.user_id,
+            agentSandboxId: rearmed.id,
+          });
+          const fingerprint = await warmClaimKeyFingerprint(plainKey);
+          const encryptedPatch = await encryptAgentEnvVarsForStorage(organizationId, {
+            ELIZAOS_CLOUD_API_KEY: plainKey,
+            ELIZAOS_CLOUD_ENABLED: "true",
+          });
+          const remintedRows = await tx.execute<AgentSandbox>(sql`
+            UPDATE ${agentSandboxes}
+            SET
+              environment_vars = environment_vars || ${JSON.stringify(encryptedPatch)}::jsonb,
+              environment_revision = environment_revision + 1,
+              warm_claim_key_fingerprint = ${fingerprint},
+              updated_at = NOW()
+            WHERE id = ${agentId}
+              AND organization_id = ${organizationId}
+              AND status = 'provisioning'
+              AND warm_claim_credential_state = 'pending'
+              AND warm_claim_key_fingerprint IS NULL
+              AND warm_claim_source_pool_id IS NOT DISTINCT FROM ${
+                rearmed.warm_claim_source_pool_id
+              }
+              AND environment_revision = ${rearmed.environment_revision}
+            RETURNING *
+          `);
+          const reminted = remintedRows.rows[0];
+          if (!reminted) {
+            throw new Error("Warm-claim pending credential remint lost its state CAS");
+          }
+          return { current: reminted, plainKey, fingerprint };
+        }
+        return {
+          current,
+          plainKey: persistedKey,
+          fingerprint: current.warm_claim_key_fingerprint,
+        };
+      }
+
+      const { plainKey } = await apiKeysService.createForAgent({
+        organizationId,
+        userId: current.user_id,
+        agentSandboxId: current.id,
+      });
+      const fingerprint = await warmClaimKeyFingerprint(plainKey);
+      const encryptedPatch = await encryptAgentEnvVarsForStorage(organizationId, {
+        ELIZAOS_CLOUD_API_KEY: plainKey,
+        ELIZAOS_CLOUD_ENABLED: "true",
+      });
+      const rows = await tx.execute<AgentSandbox>(sql`
+        UPDATE ${agentSandboxes}
+        SET
+          environment_vars = environment_vars || ${JSON.stringify(encryptedPatch)}::jsonb,
+          environment_revision = environment_revision + 1,
+          warm_claim_key_fingerprint = ${fingerprint},
+          updated_at = NOW()
+        WHERE id = ${agentId}
+          AND organization_id = ${organizationId}
+          AND status = 'provisioning'
+          AND claimed_at IS NOT NULL
+          AND (
+            warm_claim_credential_state = 'pending'
+            OR warm_claim_credential_state IS NULL
+          )
+        RETURNING *
+      `);
+      const updated = rows.rows[0];
+      if (!updated) {
+        throw new Error("Warm-claim credential persistence lost its state CAS");
+      }
+      return { current: updated, plainKey, fingerprint };
     });
 
+    if (
+      prepared.current.warm_claim_credential_state === "ready" &&
+      prepared.current.status === "running"
+    ) {
+      return {
+        pushed: false,
+        keyPrefix: prepared.plainKey ? safeKeyPrefix(prepared.plainKey) : undefined,
+      };
+    }
+    if (prepared.current.warm_claim_credential_state === "attested") {
+      await this.finalizeWarmClaimCredentialHandoff(
+        agentId,
+        organizationId,
+        prepared.current.warm_claim_source_pool_id,
+        prepared.current.warm_claim_key_fingerprint,
+        prepared.current.warm_claim_attested_environment_revision,
+      );
+      return { pushed: false };
+    }
+    if (!prepared.plainKey || !prepared.fingerprint) {
+      throw new Error("Warm-claim target credential is unavailable");
+    }
+
     const body = buildWarmClaimKeyPushBody({
-      apiKey: plainKey,
-      organizationId: rec.organization_id,
-      userId: rec.user_id,
+      apiKey: prepared.plainKey,
+      organizationId,
+      userId: prepared.current.user_id,
     });
     if (!body) {
       // A blank minted key or missing org is a broken mint pipeline. Reporting
@@ -3336,26 +4179,9 @@ export class ElizaSandboxService {
       throw new Error("Warm-claim key push has no usable minted key/org for the claimed row");
     }
 
-    // 2. Persist the new key onto the row env so a restart boots re-credentialed.
-    const currentEnv = (rec.environment_vars as Record<string, string> | null) ?? {};
-    const nextEnv: Record<string, string> = {
-      ...currentEnv,
-      ELIZAOS_CLOUD_API_KEY: plainKey,
-      ELIZAOS_CLOUD_ENABLED: "true",
-    };
-    await agentSandboxesRepository.update(rec.id, {
-      environment_vars: nextEnv,
-    });
-
-    // The replacement is durable before the boot credential is revoked. From
-    // this point any live-push failure is repaired by restarting from row env.
-    await apiKeysService.revokeForAgent(rec.warm_pool_row_id);
-
-    // Push onto the LIVE container. Use a rec whose env already carries the
-    //    NEW ELIZA_API_TOKEN transport auth (unchanged by the re-key) so
-    //    fetchAgentApi authenticates correctly.
+    const materializedEnv = await decryptAgentEnvVars(prepared.current.environment_vars);
     const res = await this.fetchAgentApi(
-      { ...rec, environment_vars: nextEnv },
+      { ...prepared.current, environment_vars: materializedEnv },
       "/api/cloud/login/persist",
       {
         method: "POST",
@@ -3364,11 +4190,7 @@ export class ElizaSandboxService {
       },
     );
     if (!res.ok) {
-      // error-policy: bounded body excerpt; a failed body read must not mask
-      // the status. The excerpt cannot contain the pushed key (this route
-      // echoes only `{ ok }` + a fingerprint), but slice defensively regardless.
-      const text = await res.text().catch(() => "");
-      throw new Error(`Warm-claim key push failed: HTTP ${res.status} ${text.slice(0, 200)}`);
+      throw new Error(`Warm-claim key push failed: HTTP ${res.status}`);
     }
 
     const responseBody = (await res.json()) as {
@@ -3379,12 +4201,141 @@ export class ElizaSandboxService {
       typeof responseBody.appliedKeyFingerprint === "string"
         ? responseBody.appliedKeyFingerprint
         : undefined;
-    const expectedFingerprint = await warmClaimKeyFingerprint(plainKey);
-    if (responseBody.ok !== true || echoedFingerprint !== expectedFingerprint) {
+    if (responseBody.ok !== true || echoedFingerprint !== prepared.fingerprint) {
       throw new Error("Warm-claim key push was not attested by the running runtime");
     }
 
-    return { pushed: true, keyPrefix: safeKeyPrefix(plainKey) };
+    const attestedAt = new Date();
+    const attestedRevision = await dbWrite.transaction(async (tx) => {
+      await this.lockLifecycle(tx, agentId, organizationId);
+      const current = await this.getAgentForLifecycleMutation(tx, agentId, organizationId);
+      if (!current) return null;
+      if (current.warm_claim_credential_state === "attested") {
+        return current.warm_claim_attested_environment_revision;
+      }
+      if (
+        current.status !== "provisioning" ||
+        current.warm_claim_credential_state !== "pending" ||
+        current.warm_claim_key_fingerprint !== prepared.fingerprint ||
+        current.warm_claim_source_pool_id !== prepared.current.warm_claim_source_pool_id
+      ) {
+        return null;
+      }
+      const currentEnv = await decryptAgentEnvVars(current.environment_vars);
+      const currentKey = currentEnv.ELIZAOS_CLOUD_API_KEY;
+      if (!currentKey || (await warmClaimKeyFingerprint(currentKey)) !== prepared.fingerprint) {
+        return null;
+      }
+      const result = await tx.execute<{ environment_revision: number }>(sql`
+        UPDATE ${agentSandboxes}
+        SET
+          warm_claim_credential_state = 'attested',
+          warm_claim_attested_at = ${attestedAt},
+          warm_claim_attested_environment_revision = environment_revision,
+          error_message = NULL,
+          updated_at = NOW()
+        WHERE id = ${agentId}
+          AND organization_id = ${organizationId}
+          AND status = 'provisioning'
+          AND warm_claim_credential_state = 'pending'
+          AND warm_claim_key_fingerprint = ${prepared.fingerprint}
+          AND warm_claim_source_pool_id IS NOT DISTINCT FROM ${
+            prepared.current.warm_claim_source_pool_id
+          }
+          AND environment_revision = ${current.environment_revision}
+        RETURNING environment_revision
+      `);
+      return result.rows[0]?.environment_revision ?? null;
+    });
+    if (attestedRevision === null) {
+      throw new Error("Warm-claim credential attestation lost its state CAS");
+    }
+    await this.finalizeWarmClaimCredentialHandoff(
+      agentId,
+      organizationId,
+      prepared.current.warm_claim_source_pool_id,
+      prepared.fingerprint,
+      attestedRevision,
+    );
+
+    return { pushed: true, keyPrefix: safeKeyPrefix(prepared.plainKey) };
+  }
+
+  private async finalizeWarmClaimCredentialHandoff(
+    agentId: string,
+    organizationId: string,
+    expectedSourcePoolId: string | null,
+    expectedFingerprint: string | null,
+    expectedEnvironmentRevision: number | null,
+  ): Promise<void> {
+    if (!expectedFingerprint || expectedEnvironmentRevision === null) {
+      throw new Error("Warm-claim attestation metadata is incomplete");
+    }
+    const readyToRevoke = await dbWrite.transaction(async (tx) => {
+      await this.lockLifecycle(tx, agentId, organizationId);
+      const current = await this.getAgentForLifecycleMutation(tx, agentId, organizationId);
+      return Boolean(
+        current &&
+          current.status === "provisioning" &&
+          current.warm_claim_credential_state === "attested" &&
+          current.warm_claim_source_pool_id === expectedSourcePoolId &&
+          current.warm_claim_key_fingerprint === expectedFingerprint &&
+          current.environment_revision === expectedEnvironmentRevision &&
+          current.warm_claim_attested_environment_revision === expectedEnvironmentRevision,
+      );
+    });
+    if (!readyToRevoke) {
+      throw new Error("Warm-claim source revocation lost its state CAS");
+    }
+
+    if (expectedSourcePoolId) {
+      await apiKeysService.revokeForAgent(expectedSourcePoolId);
+    }
+
+    const finalized = await dbWrite.transaction(async (tx) => {
+      await this.lockLifecycle(tx, agentId, organizationId);
+      const current = await this.getAgentForLifecycleMutation(tx, agentId, organizationId);
+      if (
+        current?.status === "running" &&
+        current.warm_claim_credential_state === "ready" &&
+        current.warm_claim_source_pool_id === null
+      ) {
+        return true;
+      }
+      if (
+        !current ||
+        current.status !== "provisioning" ||
+        current.warm_claim_credential_state !== "attested" ||
+        current.warm_claim_source_pool_id !== expectedSourcePoolId ||
+        current.warm_claim_key_fingerprint !== expectedFingerprint ||
+        current.environment_revision !== expectedEnvironmentRevision ||
+        current.warm_claim_attested_environment_revision !== expectedEnvironmentRevision
+      ) {
+        return false;
+      }
+      const result = await tx.execute<{ id: string }>(sql`
+        UPDATE ${agentSandboxes}
+        SET
+          status = 'running',
+          warm_claim_credential_state = 'ready',
+          warm_claim_source_pool_id = NULL,
+          error_message = NULL,
+          updated_at = NOW()
+        WHERE id = ${agentId}
+          AND organization_id = ${organizationId}
+          AND status = 'provisioning'
+          AND warm_claim_credential_state = 'attested'
+          AND warm_claim_source_pool_id IS NOT DISTINCT FROM ${expectedSourcePoolId}
+          AND warm_claim_key_fingerprint = ${expectedFingerprint}
+          AND environment_revision = ${expectedEnvironmentRevision}
+          AND warm_claim_attested_environment_revision = ${expectedEnvironmentRevision}
+        RETURNING id
+      `);
+      return result.rows.length === 1;
+    });
+    if (!finalized) {
+      throw new Error("Warm-claim credential finalization lost its state CAS");
+    }
   }
 
   // Bridge
@@ -5040,6 +5991,25 @@ export class ElizaSandboxService {
 
   // Heartbeat
 
+  /**
+   * A probe observes one running compute generation, then performs network I/O
+   * without holding a database lock. Its writeback must therefore be fenced to
+   * that exact generation and must lose to a durable delete intent.
+   */
+  private async updateObservedRunningGeneration(
+    rec: AgentSandbox,
+    data: Partial<NewAgentSandbox>,
+  ): Promise<AgentSandbox | undefined> {
+    return agentSandboxesRepository.update(rec.id, data, {
+      organizationId: rec.organization_id,
+      environmentRevision: rec.environment_revision,
+      sandboxId: rec.sandbox_id,
+      nodeId: rec.node_id,
+      containerName: rec.container_name,
+      updatedAt: rec.updated_at,
+    });
+  }
+
   async heartbeat(agentId: string, orgId: string): Promise<boolean> {
     const rec = await agentSandboxesRepository.findRunningSandbox(agentId, orgId);
     if (!rec?.bridge_url) return false;
@@ -5076,12 +6046,13 @@ export class ElizaSandboxService {
       // public proxy) because they all read the same columns.
       const reconcile = await this.reconcileStaleTailnetIp(rec);
       if (reconcile.outcome === "repaired") {
-        await agentSandboxesRepository.update(rec.id, {
+        const updated = await this.updateObservedRunningGeneration(rec, {
           headscale_ip: reconcile.headscaleIp,
           bridge_url: reconcile.bridgeUrl,
           last_heartbeat_at: new Date(),
           error_count: 0,
         });
+        if (!updated) return false;
         logger.info(
           `[agent-sandbox] Reconciled stale tailnet IP ${rec.headscale_ip}→${reconcile.headscaleIp} for agent ${agentId}`,
         );
@@ -5097,7 +6068,7 @@ export class ElizaSandboxService {
         // at "running" forever.
         const unresolvedCycles = (rec.error_count ?? 0) + 1;
         if (unresolvedCycles < IP_RECONCILE_MAX_UNRESOLVED_CYCLES) {
-          await agentSandboxesRepository.update(rec.id, {
+          await this.updateObservedRunningGeneration(rec, {
             error_count: unresolvedCycles,
           });
           logger.warn(
@@ -5113,19 +6084,19 @@ export class ElizaSandboxService {
         reason: probe.reason,
         reconcileOutcome: reconcile.outcome,
       });
-      await agentSandboxesRepository.update(rec.id, {
+      await this.updateObservedRunningGeneration(rec, {
         status: "disconnected",
       });
       return false;
     }
-    await agentSandboxesRepository.update(rec.id, {
+    const updated = await this.updateObservedRunningGeneration(rec, {
       last_heartbeat_at: new Date(),
       // Reset the unresolvable-cycle grace counter on any clean heartbeat so the
       // "escalate after 3 consecutive unresolvable cycles" window measures from
       // the last healthy beat, not a stale prior error_count from an old episode.
       error_count: 0,
     });
-    return true;
+    return Boolean(updated);
   }
 
   /**
@@ -5271,7 +6242,7 @@ export class ElizaSandboxService {
       return;
     }
     if (count >= DB_LIVENESS_RESTART_BUDGET) {
-      await agentSandboxesRepository.update(rec.id, {
+      const updated = await this.updateObservedRunningGeneration(rec, {
         status: "error",
         error_count: count,
         error_message: `${DB_LIVENESS_RESTART_MARKER} budget-exhausted count=${count} at=${new Date(now).toISOString()} reason=${reason}`,
@@ -5281,14 +6252,16 @@ export class ElizaSandboxService {
         count,
         reason,
       });
+      if (!updated) return;
       return;
     }
 
     const nextCount = count + 1;
-    await agentSandboxesRepository.update(rec.id, {
+    const updated = await this.updateObservedRunningGeneration(rec, {
       error_count: nextCount,
       error_message: `${DB_LIVENESS_RESTART_MARKER} count=${nextCount} at=${new Date(now).toISOString()} reason=${reason}`,
     });
+    if (!updated) return;
     const { provisioningJobService } = await import("./provisioning-jobs");
     const result = await provisioningJobService.enqueueAgentRestartOnce({
       agentId: rec.id,
@@ -5603,6 +6576,10 @@ export class ElizaSandboxService {
   ): Promise<"recovered" | "unresolved" | "gone"> {
     const rec = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
     if (!rec || rec.status !== "provisioning" || !rec.sandbox_id) return "gone";
+    if (rec.claimed_at && rec.warm_claim_credential_state !== "ready") {
+      await this.recoverPendingWarmClaimInferenceKey(agentId, orgId);
+      return "recovered";
+    }
 
     const provider = await this.getProvider();
     const handle: SandboxHandle = {
@@ -5666,9 +6643,37 @@ export class ElizaSandboxService {
 
       const rec = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
       if (!rec) return { success: false, error: "Agent not found" } as const;
+      if (rec.deletion_attempt_id || this.isAwaitingDeletion(rec.status)) {
+        return { success: false, error: "Agent not found" } as const;
+      }
+      if (this.getReplacementCleanupLocator(rec)) {
+        return { success: false, error: "Agent replacement cleanup is still pending" } as const;
+      }
 
       const hasActiveProvisionJob = await this.hasActiveProvisionJobTx(tx, agentId, orgId);
-      if (rec.status === "provisioning" || hasActiveProvisionJob) {
+      const recoveringWarmCredentialFence =
+        rec.status === "provisioning" &&
+        rec.claimed_at !== null &&
+        (rec.warm_claim_credential_state === "pending" ||
+          rec.warm_claim_credential_state === "attested");
+      const hasCompleteWarmRecoveryLocator =
+        rec.sandbox_id !== null && rec.node_id !== null && rec.container_name !== null;
+      const hasNoWarmRecoveryLocator =
+        rec.sandbox_id === null && rec.node_id === null && rec.container_name === null;
+      if (
+        recoveringWarmCredentialFence &&
+        !hasCompleteWarmRecoveryLocator &&
+        !hasNoWarmRecoveryLocator
+      ) {
+        return {
+          success: false,
+          error: "Warm-claim recovery locator is incomplete",
+        } as const;
+      }
+      const recoveringWarmCredential =
+        recoveringWarmCredentialFence &&
+        (hasCompleteWarmRecoveryLocator || hasNoWarmRecoveryLocator);
+      if ((rec.status === "provisioning" && !recoveringWarmCredential) || hasActiveProvisionJob) {
         return {
           success: false,
           error: "Agent provisioning is in progress",
@@ -5691,13 +6696,19 @@ export class ElizaSandboxService {
       }
 
       if (rec.sandbox_id) {
-        await (await this.getProvider()).stop(rec.sandbox_id).catch((e) => {
+        const stop = await this.runBoundedSandboxStopForReplacement(rec.sandbox_id);
+        if (stop) {
+          const error = stop.error instanceof Error ? stop.error.message : String(stop.error);
           logger.warn("[agent-sandbox] Stop failed during shutdown", {
             sandboxId: rec.sandbox_id,
             status: rec.status,
-            error: e instanceof Error ? e.message : String(e),
+            error,
           });
-        });
+          return {
+            success: false,
+            error: "Failed to prove the previous sandbox stopped",
+          } as const;
+        }
       }
 
       await tx.execute(sql`
@@ -5730,11 +6741,10 @@ export class ElizaSandboxService {
 
   /**
    * Daemon-side handler for the `agent_suspend` job. Calls the provider's
-   * `stop()` (which removes the container and frees the node slot), flips the
-   * DB row to `stopped`, and clears bridge/health URLs — but keeps `sandbox_id`
-   * and the per-tenant managed DB so a subsequent `agent_resume` re-provisions
-   * against the retained state. Replaces the Worker-callable `shutdown()` path
-   * which silently failed to stop the container (Workers can't SSH).
+   * absence-proof replacement stop, flips the DB row to `stopped`, and clears
+   * bridge/health URLs — but keeps `sandbox_id` and the per-tenant managed DB
+   * so a subsequent `agent_resume` re-provisions against the retained state.
+   * Replaces the Worker-callable `shutdown()` path which cannot reach SSH.
    */
   async executeSuspend(
     agentId: string,
@@ -5743,12 +6753,19 @@ export class ElizaSandboxService {
     return await dbWrite.transaction(async (tx) => {
       await this.lockLifecycle(tx, agentId, orgId);
       const rec = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
-      if (!rec || this.isAwaitingDeletion(rec.status))
+      if (!rec || rec.deletion_attempt_id || this.isAwaitingDeletion(rec.status))
         return {
           success: false,
           containerStopped: false,
           error: "Agent not found",
         } as const;
+      if (this.getReplacementCleanupLocator(rec)) {
+        return {
+          success: false,
+          containerStopped: false,
+          error: "Agent replacement cleanup is still pending",
+        } as const;
+      }
 
       const hasActiveProvisionJob = await this.hasActiveProvisionJobTx(tx, agentId, orgId);
       if (rec.status === "provisioning" || hasActiveProvisionJob) {
@@ -5762,24 +6779,15 @@ export class ElizaSandboxService {
 
       let containerStopped = false;
       if (rec.sandbox_id) {
-        try {
-          await (await this.getProvider()).stop(rec.sandbox_id);
-          containerStopped = true;
-        } catch (e) {
-          if (this.isIgnorableSandboxStopError(e)) {
-            containerStopped = true;
-            logger.info("[agent-sandbox] Sandbox already absent during suspend", {
-              sandboxId: rec.sandbox_id,
-              error: e instanceof Error ? e.message : String(e),
-            });
-          } else {
-            return {
-              success: false,
-              containerStopped: false,
-              error: e instanceof Error ? e.message : String(e),
-            } as const;
-          }
+        const stop = await this.runBoundedSandboxStopForReplacement(rec.sandbox_id);
+        if (stop) {
+          return {
+            success: false,
+            containerStopped: false,
+            error: stop.error instanceof Error ? stop.error.message : String(stop.error),
+          } as const;
         }
+        containerStopped = true;
       } else {
         containerStopped = true;
       }
@@ -5831,7 +6839,7 @@ export class ElizaSandboxService {
     // maps "Agent not found" to completed), silently dropping the request. The
     // existence + deletion-state check must be authoritative.
     const rec = await this.getAgentForWrite(agentId, orgId);
-    if (!rec || this.isAwaitingDeletion(rec.status))
+    if (!rec || rec.deletion_attempt_id || this.isAwaitingDeletion(rec.status))
       return {
         success: false,
         containerStarted: false,
@@ -5883,8 +6891,15 @@ export class ElizaSandboxService {
   }> {
     // Primary read: replica lag must not turn a real sleep into a no-op.
     const rec = await this.getAgentForWrite(agentId, orgId);
-    if (!rec || this.isAwaitingDeletion(rec.status))
+    if (!rec || rec.deletion_attempt_id || this.isAwaitingDeletion(rec.status))
       return { success: false, containerRemoved: false, error: "Agent not found" };
+    if (this.getReplacementCleanupLocator(rec)) {
+      return {
+        success: false,
+        containerRemoved: false,
+        error: "Agent replacement cleanup is still pending",
+      };
+    }
     if (rec.status === "sleeping") return { success: true, containerRemoved: true };
     if (rec.status === "provisioning") {
       return {
@@ -5931,43 +6946,108 @@ export class ElizaSandboxService {
       }
     }
 
-    // 2. Tear down compute.
-    let containerRemoved = false;
-    if (rec.sandbox_id) {
-      try {
-        await (await this.getProvider()).stop(rec.sandbox_id);
-        containerRemoved = true;
-      } catch (e) {
-        if (this.isIgnorableSandboxStopError(e)) {
-          containerRemoved = true;
-          logger.info("[agent-sandbox] Sandbox already absent during sleep", {
-            sandboxId: rec.sandbox_id,
-            error: e instanceof Error ? e.message : String(e),
-          });
-        } else {
+    // The backup is intentionally captured without holding a database lock.
+    // Revalidate its exact lifecycle generation under the advisory/row locks,
+    // then keep those locks through absence proof and the locator clear. A
+    // restart can reuse deterministic container ids, so the updated_at fence
+    // is part of the identity check rather than comparing locators alone.
+    const sleepCommit = await dbWrite.transaction(async (tx) => {
+      await this.lockLifecycle(tx, agentId, orgId);
+      const current = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
+      if (!current || current.deletion_attempt_id || this.isAwaitingDeletion(current.status)) {
+        return {
+          success: false as const,
+          containerRemoved: false,
+          error: "Agent not found",
+        };
+      }
+      if (this.getReplacementCleanupLocator(current)) {
+        return {
+          success: false as const,
+          containerRemoved: false,
+          error: "Agent replacement cleanup is still pending",
+        };
+      }
+      if (
+        current.status === "provisioning" ||
+        (await this.hasActiveReplacementJobTx(tx, agentId, orgId))
+      ) {
+        return {
+          success: false as const,
+          containerRemoved: false,
+          error: "Agent provisioning is in progress",
+        };
+      }
+
+      const unchangedLifecycleGeneration =
+        current.status === rec.status &&
+        current.sandbox_id === rec.sandbox_id &&
+        current.node_id === rec.node_id &&
+        current.container_name === rec.container_name &&
+        current.bridge_url === rec.bridge_url &&
+        current.health_url === rec.health_url &&
+        current.environment_revision === rec.environment_revision &&
+        current.updated_at?.getTime() === rec.updated_at?.getTime();
+      if (!unchangedLifecycleGeneration) {
+        return {
+          success: false as const,
+          containerRemoved: false,
+          error: "Agent lifecycle changed while sleep was prepared",
+        };
+      }
+      if (!current.sandbox_id && (current.node_id || current.container_name)) {
+        return {
+          success: false as const,
+          containerRemoved: false,
+          error: "Sandbox locator is incomplete; compute was left unchanged",
+        };
+      }
+
+      if (current.sandbox_id) {
+        const stop = await this.runBoundedSandboxStopForReplacement(current.sandbox_id);
+        if (stop) {
           return {
-            success: false,
+            success: false as const,
             containerRemoved: false,
-            error: e instanceof Error ? e.message : String(e),
+            error: stop.error instanceof Error ? stop.error.message : String(stop.error),
           };
         }
       }
-    } else {
-      containerRemoved = true;
-    }
 
-    // 3. Free the slot; retain DB + env + image for wake.
-    await agentSandboxesRepository.update(rec.id, {
-      status: "sleeping",
-      sandbox_id: null,
-      bridge_url: null,
-      health_url: null,
-      node_id: null,
-      container_name: null,
-      bridge_port: null,
-      web_ui_port: null,
-      last_backup_at: new Date(),
+      const cleared = await tx.execute<{ id: string }>(sql`
+        UPDATE ${agentSandboxes}
+        SET
+          status = 'sleeping',
+          sandbox_id = NULL,
+          bridge_url = NULL,
+          health_url = NULL,
+          node_id = NULL,
+          container_name = NULL,
+          headscale_ip = NULL,
+          bridge_port = NULL,
+          web_ui_port = NULL,
+          last_backup_at = NOW(),
+          updated_at = NOW()
+        WHERE id = ${current.id}
+          AND organization_id = ${orgId}
+          AND status = ${current.status}
+          AND sandbox_id IS NOT DISTINCT FROM ${current.sandbox_id}
+          AND node_id IS NOT DISTINCT FROM ${current.node_id}
+          AND container_name IS NOT DISTINCT FROM ${current.container_name}
+          AND environment_revision = ${current.environment_revision}
+          AND updated_at IS NOT DISTINCT FROM ${current.updated_at}
+        RETURNING id
+      `);
+      if (cleared.rows.length !== 1) {
+        throw new Error("Sleep lost its lifecycle generation CAS");
+      }
+      return {
+        success: true as const,
+        containerRemoved: true,
+      };
     });
+    if (!sleepCommit.success) return sleepCommit;
+
     await agentSandboxesRepository.pruneBackups(rec.id, MAX_BACKUPS).catch((error) => {
       logger.warn("[agent-sandbox] Backup pruning failed after sleep", {
         agentId,
@@ -5975,8 +7055,12 @@ export class ElizaSandboxService {
       });
     });
 
-    logger.info("[agent-sandbox] Sleep complete", { agentId, backupId, containerRemoved });
-    return { success: true, containerRemoved, backupId };
+    logger.info("[agent-sandbox] Sleep complete", {
+      agentId,
+      backupId,
+      containerRemoved: sleepCommit.containerRemoved,
+    });
+    return { success: true, containerRemoved: sleepCommit.containerRemoved, backupId };
   }
 
   /**
@@ -6012,7 +7096,7 @@ export class ElizaSandboxService {
   }> {
     // Primary read: a replica-lagged "Agent not found" must not no-op a wake.
     const rec = await this.getAgentForWrite(agentId, orgId);
-    if (!rec || this.isAwaitingDeletion(rec.status))
+    if (!rec || rec.deletion_attempt_id || this.isAwaitingDeletion(rec.status))
       return { success: false, reprovisioned: false, error: "Agent not found" };
     if (rec.status === "running" && rec.bridge_url) {
       return { success: true, reprovisioned: false };
@@ -6096,10 +7180,10 @@ export class ElizaSandboxService {
    * silently no-op'd the SSH stop and left the old container running
    * alongside the new one.
    *
-   * `shutdown()` failure is logged but doesn't abort — same lenience as
-   * the legacy restart route (the old container may already be gone or
-   * unreachable; the goal is "end up with a running fresh container",
-   * not "verify the old one stopped cleanly").
+   * A replacement is created only after the provider positively proves the old
+   * workload stopped. Treating an unreachable node as gone can revive two live
+   * agents when that node returns, so shutdown failure keeps the row fenced and
+   * fails this restart for the durable job retry.
    */
   async executeRestart(
     agentId: string,
@@ -6119,7 +7203,7 @@ export class ElizaSandboxService {
     // PRIMARY so a replica-lagged status doesn't bail a legitimate restart (or
     // miss an in-flight deletion) on stale data.
     const rec = await this.getAgentForWrite(agentId, orgId);
-    if (!rec || this.isAwaitingDeletion(rec.status)) {
+    if (!rec || rec.deletion_attempt_id || this.isAwaitingDeletion(rec.status)) {
       return {
         success: false,
         containerStopped: false,
@@ -6127,21 +7211,18 @@ export class ElizaSandboxService {
         error: "Agent not found",
       };
     }
+    if (rec.claimed_at && rec.warm_claim_credential_state === null) {
+      await this.prepareLegacyWarmClaimCredentialRecovery(agentId, orgId);
+    }
 
     const shutdownResult = await this.shutdown(agentId, orgId);
     if (!shutdownResult.success) {
-      if (shutdownResult.error === "Agent not found") {
-        return {
-          success: false,
-          containerStopped: false,
-          containerStarted: false,
-          error: "Agent not found",
-        };
-      }
-      logger.warn("[agent-sandbox] Shutdown during restart returned error, continuing", {
-        agentId,
-        error: shutdownResult.error,
-      });
+      return {
+        success: false,
+        containerStopped: false,
+        containerStarted: false,
+        error: shutdownResult.error ?? "Failed to stop sandbox before restart",
+      };
     }
 
     const provisionResult = await this.provision(agentId, orgId);
@@ -6152,6 +7233,23 @@ export class ElizaSandboxService {
         containerStarted: false,
         error: provisionResult.error,
       };
+    }
+
+    if (rec.claimed_at && rec.warm_claim_credential_state !== "ready") {
+      try {
+        await this.recoverPendingWarmClaimInferenceKey(agentId, orgId);
+      } catch (error) {
+        // error-policy:J1 restart boundary translation — credential recovery
+        // failure is returned explicitly instead of claiming the restart succeeded.
+        return {
+          success: false,
+          containerStopped: shutdownResult.success,
+          containerStarted: true,
+          error: `${WARM_CLAIM_RECOVERY_FAILURE_PREFIX} ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        };
+      }
     }
 
     return {
@@ -6230,9 +7328,9 @@ export class ElizaSandboxService {
    *   4. Capture a pre-upgrade snapshot from the still-live old container.
    *   5. Atomic UPDATE: swap the row's bridge_url / node_id / container_name
    *      / image_digest. New HTTP requests hit blue from this point on.
-   *   6. Best-effort SIGTERM (30s drain) on the old container, then remove
-   *      it. Already-in-flight HTTP responses on the old finish; websockets
-   *      get a clean drop and reconnect to blue.
+   *   6. Atomically transfer the durable cleanup locator from blue to the old
+   *      container, then prove the old container and VPN node absent before
+   *      reporting full convergence.
    */
   private async executeUpgradeWithPolicy(
     agentId: string,
@@ -6242,10 +7340,37 @@ export class ElizaSandboxService {
     fromDigest: string | null,
     adminCanary?: AdminCanaryImageExecutionPolicy,
   ): Promise<ImageSwapResult> {
-    const agent = adminCanary
+    let agent = adminCanary
       ? await agentSandboxesRepository.findByIdAndOrgForWrite(agentId, orgId)
       : await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
     if (!agent) return { success: false, error: "Agent not found" };
+    if (this.getReplacementCleanupLocator(agent)) {
+      try {
+        await this.retirePersistedReplacementCleanup(agentId, orgId);
+      } catch (error) {
+        // error-policy:J1 image-swap boundary translation — pending cleanup keeps
+        // rollback ownership and returns an explicit non-success result.
+        return {
+          success: false,
+          rolledBack: true,
+          cleanupPending: true,
+          error: `Replacement cleanup is still pending: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        };
+      }
+      agent = adminCanary
+        ? await agentSandboxesRepository.findByIdAndOrgForWrite(agentId, orgId)
+        : await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
+      if (!agent) return { success: false, error: "Agent not found" };
+    }
+    if (!hasReadyWarmClaimCredential(agent)) {
+      return {
+        success: false,
+        rolledBack: true,
+        error: "Warm-claim credential handoff is not ready",
+      };
+    }
     if (agent.status !== "running") {
       // Genuinely-dead: the old container is not serving (status is not
       // running), so the terminal error writeback is correct here.
@@ -6255,15 +7380,16 @@ export class ElizaSandboxService {
         error: `Agent not running (status: ${agent.status})`,
       };
     }
-    if (!agent.node_id || !agent.container_name) {
+    if (!agent.sandbox_id || !agent.node_id || !agent.container_name) {
       // Shared-runtime / web-only row: nothing was torn down. The old serving
       // path is untouched. (These are already excluded by the reconciler.)
       return {
         success: false,
         rolledBack: true,
-        error: "Agent has no node_id or container_name to upgrade from",
+        error: "Agent has no sandbox_id, node_id, or container_name to upgrade from",
       };
     }
+    const sourceEnvironmentRevision = agent.environment_revision;
     // Refuse a fleet upgrade only for a genuinely CUSTOM image (a different
     // repo than the fleet-managed default), NOT for a stale default-family
     // image pinned to an older tag. Comparing the full ref (`docker_image !==
@@ -6315,6 +7441,13 @@ export class ElizaSandboxService {
         error: `Old node ${oldNodeId} not registered in docker_nodes`,
       };
     }
+    if (!Number.isInteger(oldNode.allocated_count) || oldNode.allocated_count < 1) {
+      return {
+        success: false,
+        rolledBack: true,
+        error: `Old node ${oldNodeId} has no durable capacity ownership`,
+      };
+    }
 
     const provider = await this.getProvider();
     const { DockerSandboxProvider } = await import("./docker-sandbox-provider");
@@ -6354,78 +7487,74 @@ export class ElizaSandboxService {
       // provider records its id as metadata.previousVpnNodeId; it is deleted
       // by id below only after the atomic swap succeeds.
       reclaimStaleVpnNode: false,
+      ...this.replacementCleanupCallbacks(agentId, orgId, {
+        status: "running",
+        environmentRevision: sourceEnvironmentRevision,
+        sandboxId: oldSandboxId,
+        nodeId: oldNodeId,
+        containerName: oldContainerName,
+      }),
     };
 
     let blueHandle: Awaited<ReturnType<typeof provider.create>>;
     try {
       blueHandle = await provider.create(config);
     } catch (err) {
+      if (err instanceof SandboxReplacementCleanupUnresolvedError) {
+        await this.persistUnresolvedReplacementCleanupFence(agentId, orgId, err);
+      }
       return {
         success: false,
         rolledBack: true,
+        cleanupPending: err instanceof SandboxReplacementCleanupUnresolvedError,
         oldNodeId,
         oldContainerName,
         error: `Blue provision failed: ${err instanceof Error ? err.message : String(err)}`,
       };
     }
-
-    if (!(await provider.checkHealth(blueHandle))) {
-      // Blue never came up. Roll back: tear it down, leave the agent on old.
+    const failBeforeUpgradeCutover = async (error: string): Promise<ImageSwapResult> => {
       try {
-        await provider.stop(blueHandle.sandboxId);
-      } catch (err) {
-        logger.warn("[agent-sandbox] Failed to tear down unhealthy blue during upgrade rollback", {
-          agentId,
-          err: err instanceof Error ? err.message : String(err),
-        });
+        await this.retirePersistedReplacementCleanup(agentId, orgId);
+      } catch (cleanupError) {
+        // error-policy:J1 pre-cutover boundary translation — unresolved retirement
+        // is reported with cleanupPending while traffic remains on the old placement.
+        return {
+          success: false,
+          rolledBack: true,
+          cleanupPending: true,
+          oldNodeId,
+          oldContainerName,
+          error: `${error}; replacement cleanup remains pending: ${
+            cleanupError instanceof Error ? cleanupError.message : String(cleanupError)
+          }`,
+        };
       }
       return {
         success: false,
         rolledBack: true,
         oldNodeId,
         oldContainerName,
-        error: "Blue health check failed; rolled back to old container",
+        error,
       };
+    };
+
+    if (!(await provider.checkHealth(blueHandle))) {
+      return await failBeforeUpgradeCutover(
+        "Blue health check failed; kept agent on old container",
+      );
     }
 
     const blueMeta = isDockerSandboxMetadata(blueHandle.metadata) ? blueHandle.metadata : undefined;
     if (!blueMeta) {
-      try {
-        await provider.stop(blueHandle.sandboxId);
-      } catch (err) {
-        logger.warn(
-          "[agent-sandbox] Failed to tear down blue with non-docker metadata during upgrade rollback",
-          {
-            agentId,
-            err: err instanceof Error ? err.message : String(err),
-          },
-        );
-      }
-      return {
-        success: false,
-        rolledBack: true,
-        oldNodeId,
-        oldContainerName,
-        error: "Blue provisioner returned non-docker metadata",
-      };
+      return await failBeforeUpgradeCutover("Blue provisioner returned non-docker metadata");
     }
     if (
       (adminCanary && !blueMeta.imageDigest) ||
       (blueMeta.imageDigest && blueMeta.imageDigest !== toDigest)
     ) {
-      await provider.stop(blueHandle.sandboxId).catch((stopErr) =>
-        logger.warn("[agent-sandbox] Failed to tear down blue after digest mismatch", {
-          agentId,
-          err: stopErr instanceof Error ? stopErr.message : String(stopErr),
-        }),
+      return await failBeforeUpgradeCutover(
+        `Blue image digest mismatch: expected ${toDigest}, got ${blueMeta.imageDigest ?? "missing"}`,
       );
-      return {
-        success: false,
-        rolledBack: true,
-        oldNodeId,
-        oldContainerName,
-        error: `Blue image digest mismatch: expected ${toDigest}, got ${blueMeta.imageDigest ?? "missing"}`,
-      };
     }
 
     const runtimeHealth = await this.verifyUpgradeRuntimeHealth({
@@ -6433,19 +7562,9 @@ export class ElizaSandboxService {
       bridgeUrl: blueHandle.bridgeUrl,
     });
     if (!runtimeHealth.success) {
-      await provider.stop(blueHandle.sandboxId).catch((stopErr) =>
-        logger.warn("[agent-sandbox] Failed to tear down blue after runtime readiness failure", {
-          agentId,
-          err: stopErr instanceof Error ? stopErr.message : String(stopErr),
-        }),
+      return await failBeforeUpgradeCutover(
+        `Blue runtime readiness gate failed: ${runtimeHealth.error}`,
       );
-      return {
-        success: false,
-        rolledBack: true,
-        oldNodeId,
-        oldContainerName,
-        error: `Blue runtime readiness gate failed: ${runtimeHealth.error}`,
-      };
     }
 
     // Capture a restore point on the OLD (still-live) container before the
@@ -6458,19 +7577,9 @@ export class ElizaSandboxService {
       error: err instanceof Error ? err.message : String(err),
     }));
     if (!preUpgradeSnapshot.success) {
-      await provider.stop(blueHandle.sandboxId).catch((stopErr) =>
-        logger.warn("[agent-sandbox] Failed to tear down blue after pre-upgrade snapshot failure", {
-          agentId,
-          err: stopErr instanceof Error ? stopErr.message : String(stopErr),
-        }),
+      return await failBeforeUpgradeCutover(
+        `Pre-upgrade snapshot failed: ${preUpgradeSnapshot.error ?? "unknown error"}`,
       );
-      return {
-        success: false,
-        rolledBack: true,
-        oldNodeId,
-        oldContainerName,
-        error: `Pre-upgrade snapshot failed: ${preUpgradeSnapshot.error ?? "unknown error"}`,
-      };
     }
 
     try {
@@ -6478,12 +7587,17 @@ export class ElizaSandboxService {
         await this.lockLifecycle(tx, agentId, orgId);
         const current = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
         if (!current) return false;
+        const cleanupLocator = this.getReplacementCleanupLocator(current);
         if (
           current.status !== "running" ||
           current.node_id !== oldNodeId ||
           current.container_name !== oldContainerName ||
           current.sandbox_id !== oldSandboxId ||
           current.image_digest !== fromDigest ||
+          current.environment_revision !== sourceEnvironmentRevision ||
+          !hasReadyWarmClaimCredential(current) ||
+          !cleanupLocator ||
+          !this.replacementCleanupMatchesHandle(cleanupLocator, blueHandle) ||
           // The docker_image leg of this CAS exists to catch one concurrent
           // COMPETING change: the agent being repointed at a custom image (a
           // DIFFERENT repo) while the blue provisioned — adopting the blue
@@ -6527,12 +7641,46 @@ export class ElizaSandboxService {
             previous_docker_image = ${
               adminCanary ? adminCanary.sourceImage : current.docker_image || dockerImage
             },
+            replacement_cleanup_sandbox_id = ${oldSandboxId},
+            replacement_cleanup_node_id = ${oldNodeId},
+            replacement_cleanup_container_name = ${oldContainerName},
+            replacement_cleanup_attempt_id = NULL,
+            replacement_cleanup_container_id = NULL,
+            replacement_cleanup_vpn_node_id = ${blueMeta.previousVpnNodeId ?? null},
+            replacement_cleanup_vpn_node_name = NULL,
+            replacement_cleanup_preserved_vpn_node_id = NULL,
+            replacement_cleanup_vpn_registration_started_at = NULL,
+            replacement_cleanup_allocation_counted = TRUE,
+            replacement_cleanup_created_at = NOW(),
             error_message = NULL,
             last_heartbeat_at = NOW(),
             updated_at = NOW()
           WHERE id = ${agentId}
             AND organization_id = ${orgId}
             AND status = 'running'
+            AND environment_revision = ${sourceEnvironmentRevision}
+            AND replacement_cleanup_sandbox_id = ${blueHandle.sandboxId}
+            AND replacement_cleanup_node_id = ${blueMeta.nodeId}
+            AND replacement_cleanup_container_name = ${blueMeta.containerName}
+            AND replacement_cleanup_attempt_id IS NOT DISTINCT FROM ${cleanupLocator.replacementAttemptId}
+            AND replacement_cleanup_container_id IS NOT DISTINCT FROM ${cleanupLocator.containerId}
+            AND replacement_cleanup_vpn_node_id IS NOT DISTINCT FROM ${cleanupLocator.vpnNodeId}
+            AND replacement_cleanup_vpn_node_name IS NOT DISTINCT FROM ${cleanupLocator.vpnNodeName}
+            AND replacement_cleanup_preserved_vpn_node_id IS NOT DISTINCT FROM ${cleanupLocator.previousVpnNodeId}
+            AND replacement_cleanup_vpn_registration_started_at IS NOT DISTINCT FROM ${cleanupLocator.vpnRegistrationStartedAt}
+            AND replacement_cleanup_allocation_counted = ${cleanupLocator.allocationCounted}
+            AND replacement_cleanup_created_at = ${cleanupLocator.createdAt}
+            AND deletion_attempt_id IS NULL
+            AND (
+              claimed_at IS NULL
+              OR (
+                warm_claim_credential_state = 'ready'
+                AND warm_claim_attested_at IS NOT NULL
+                AND warm_claim_source_pool_id IS NULL
+                AND warm_claim_key_fingerprint IS NOT NULL
+                AND warm_claim_attested_environment_revision IS NOT NULL
+              )
+            )
             ${exactAdminCanaryWhere}
           RETURNING id
         `);
@@ -6557,49 +7705,30 @@ export class ElizaSandboxService {
         agentId,
         err: errMsg,
       });
-      await provider.stop(blueHandle.sandboxId).catch((stopErr) =>
-        logger.warn("[agent-sandbox] Failed to tear down blue after atomic swap UPDATE failure", {
-          agentId,
-          err: stopErr instanceof Error ? stopErr.message : String(stopErr),
-        }),
-      );
-      return {
-        success: false,
-        rolledBack: true,
-        oldNodeId,
-        oldContainerName,
-        error: `Atomic swap UPDATE failed: ${errMsg}`,
-      };
+      return await failBeforeUpgradeCutover(`Atomic swap UPDATE failed: ${errMsg}`);
     }
 
-    // Old container teardown is best-effort: traffic is already on blue and,
-    // for admin canaries, the success audit committed with the cutover.
     try {
-      await provider.stopOnSpecificNode(oldNode, oldContainerName, 30);
+      await this.retirePersistedReplacementCleanup(agentId, orgId);
     } catch (err) {
-      // error-policy:J6 post-cutover cleanup must not rewrite a committed image swap.
-      logger.warn("[agent-sandbox] Failed to tear down old container after upgrade cutover", {
+      logger.warn("[agent-sandbox] Old container cleanup remains pending after upgrade cutover", {
         agentId,
         oldNodeId,
         oldContainerName,
         err: err instanceof Error ? err.message : String(err),
       });
-    }
-    // The preserved live node (recorded pre-provision under
-    // reclaimStaleVpnNode=false) is deleted BY ID only now, after the swap —
-    // by-name would be ambiguous with blue sharing the hostname, and every
-    // rolled-back path above deliberately leaves it untouched (#16565).
-    if (blueMeta?.previousVpnNodeId) {
-      try {
-        await headscaleIntegration.removeVpnNodeById(blueMeta.previousVpnNodeId);
-      } catch (err) {
-        // error-policy:J6 post-cutover VPN cleanup cannot invalidate committed traffic.
-        logger.warn("[agent-sandbox] Failed to remove old VPN node after upgrade cutover", {
-          agentId,
-          vpnNodeId: blueMeta.previousVpnNodeId,
-          err: err instanceof Error ? err.message : String(err),
-        });
-      }
+      return {
+        success: true,
+        cleanupPending: true,
+        oldNodeId,
+        oldContainerName,
+        newNodeId: blueMeta.nodeId,
+        newContainerName: blueMeta.containerName,
+        newDigest: toDigest,
+        error: `Cutover committed; replacement cleanup remains pending: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      };
     }
 
     logger.info("[agent-sandbox] Fleet upgrade completed", {
@@ -6689,7 +7818,9 @@ export class ElizaSandboxService {
    *   4. Atomic CAS swap: point the row at blue, set `image_digest` to the
    *      prior digest, and clear the previous-image columns (the upgrade we
    *      just undid is no longer the rollback target).
-   *   5. Best-effort teardown of the old (post-upgrade) container.
+   *   5. Atomically transfer the durable cleanup locator from blue to the old
+   *      container, then prove old container and VPN absence before reporting
+   *      full convergence.
    *
    * This is invoked only behind an explicit operator action — it never runs
    * automatically (image-rollout-status reports `rollback` as a gated,
@@ -6702,22 +7833,48 @@ export class ElizaSandboxService {
     fromDigest: string,
     adminCanary?: AdminCanaryImageExecutionPolicy,
   ): Promise<ImageSwapResult> {
-    const agent = adminCanary
+    let agent = adminCanary
       ? await agentSandboxesRepository.findByIdAndOrgForWrite(agentId, orgId)
       : await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
     if (!agent) return { success: false, error: "Agent not found" };
+    if (this.getReplacementCleanupLocator(agent)) {
+      try {
+        await this.retirePersistedReplacementCleanup(agentId, orgId);
+      } catch (error) {
+        // error-policy:J1 rollback boundary translation — pending cleanup remains
+        // explicit and prevents a second replacement from starting.
+        return {
+          success: false,
+          cleanupPending: true,
+          error: `Replacement cleanup is still pending: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        };
+      }
+      agent = adminCanary
+        ? await agentSandboxesRepository.findByIdAndOrgForWrite(agentId, orgId)
+        : await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
+      if (!agent) return { success: false, error: "Agent not found" };
+    }
+    if (!hasReadyWarmClaimCredential(agent)) {
+      return {
+        success: false,
+        error: "Warm-claim credential handoff is not ready",
+      };
+    }
     if (agent.status !== "running") {
       return {
         success: false,
         error: `Agent not running (status: ${agent.status})`,
       };
     }
-    if (!agent.node_id || !agent.container_name) {
+    if (!agent.sandbox_id || !agent.node_id || !agent.container_name) {
       return {
         success: false,
-        error: "Agent has no node_id or container_name to roll back from",
+        error: "Agent has no sandbox_id, node_id, or container_name to roll back from",
       };
     }
+    const sourceEnvironmentRevision = agent.environment_revision;
     // Same fleet-managed-vs-custom distinction as the upgrade path (#15101):
     // a rollback of a default-family agent must not be refused just because its
     // tag differs from the target.
@@ -6771,6 +7928,12 @@ export class ElizaSandboxService {
         error: `Old node ${oldNodeId} not registered in docker_nodes`,
       };
     }
+    if (!Number.isInteger(oldNode.allocated_count) || oldNode.allocated_count < 1) {
+      return {
+        success: false,
+        error: `Old node ${oldNodeId} has no durable capacity ownership`,
+      };
+    }
 
     const provider = await this.getProvider();
     const { DockerSandboxProvider } = await import("./docker-sandbox-provider");
@@ -6802,69 +7965,66 @@ export class ElizaSandboxService {
       // provider records its id as metadata.previousVpnNodeId; it is deleted
       // by id below only after the atomic swap succeeds.
       reclaimStaleVpnNode: false,
+      ...this.replacementCleanupCallbacks(agentId, orgId, {
+        status: "running",
+        environmentRevision: sourceEnvironmentRevision,
+        sandboxId: oldSandboxId,
+        nodeId: oldNodeId,
+        containerName: oldContainerName,
+      }),
     };
 
     let blueHandle: Awaited<ReturnType<typeof provider.create>>;
     try {
       blueHandle = await provider.create(config);
     } catch (err) {
+      if (err instanceof SandboxReplacementCleanupUnresolvedError) {
+        await this.persistUnresolvedReplacementCleanupFence(agentId, orgId, err);
+      }
       return {
         success: false,
+        cleanupPending: err instanceof SandboxReplacementCleanupUnresolvedError,
         oldNodeId,
         oldContainerName,
         error: `Blue provision failed: ${err instanceof Error ? err.message : String(err)}`,
       };
     }
+    const failBeforeRollbackCutover = async (error: string): Promise<ImageSwapResult> => {
+      try {
+        await this.retirePersistedReplacementCleanup(agentId, orgId);
+      } catch (cleanupError) {
+        // error-policy:J1 pre-cutover boundary translation — unresolved retirement
+        // is returned with cleanupPending while the current placement stays live.
+        return {
+          success: false,
+          cleanupPending: true,
+          oldNodeId,
+          oldContainerName,
+          error: `${error}; replacement cleanup remains pending: ${
+            cleanupError instanceof Error ? cleanupError.message : String(cleanupError)
+          }`,
+        };
+      }
+      return { success: false, oldNodeId, oldContainerName, error };
+    };
 
     if (!(await provider.checkHealth(blueHandle))) {
-      await provider.stop(blueHandle.sandboxId).catch((err) =>
-        logger.warn("[agent-sandbox] Failed to tear down unhealthy blue during rollback", {
-          agentId,
-          err: err instanceof Error ? err.message : String(err),
-        }),
+      return await failBeforeRollbackCutover(
+        "Blue health check failed; kept agent on current image",
       );
-      return {
-        success: false,
-        oldNodeId,
-        oldContainerName,
-        error: "Blue health check failed; kept agent on current image",
-      };
     }
 
     const blueMeta = isDockerSandboxMetadata(blueHandle.metadata) ? blueHandle.metadata : undefined;
     if (!blueMeta) {
-      await provider.stop(blueHandle.sandboxId).catch((err) =>
-        logger.warn(
-          "[agent-sandbox] Failed to tear down blue with non-docker metadata in rollback",
-          {
-            agentId,
-            err: err instanceof Error ? err.message : String(err),
-          },
-        ),
-      );
-      return {
-        success: false,
-        oldNodeId,
-        oldContainerName,
-        error: "Blue provisioner returned non-docker metadata",
-      };
+      return await failBeforeRollbackCutover("Blue provisioner returned non-docker metadata");
     }
     if (
       (adminCanary && !blueMeta.imageDigest) ||
       (blueMeta.imageDigest && blueMeta.imageDigest !== toDigest)
     ) {
-      await provider.stop(blueHandle.sandboxId).catch((stopErr) =>
-        logger.warn("[agent-sandbox] Failed to tear down blue after rollback digest mismatch", {
-          agentId,
-          err: stopErr instanceof Error ? stopErr.message : String(stopErr),
-        }),
+      return await failBeforeRollbackCutover(
+        `Blue image digest mismatch: expected ${toDigest}, got ${blueMeta.imageDigest ?? "missing"}`,
       );
-      return {
-        success: false,
-        oldNodeId,
-        oldContainerName,
-        error: `Blue image digest mismatch: expected ${toDigest}, got ${blueMeta.imageDigest ?? "missing"}`,
-      };
     }
 
     // Restore the pre-upgrade state onto blue BEFORE cutover. A rollback that
@@ -6886,46 +8046,17 @@ export class ElizaSandboxService {
           });
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
-          await provider.stop(blueHandle.sandboxId).catch((stopErr) =>
-            logger.warn("[agent-sandbox] Failed to tear down blue after rollback restore failure", {
-              agentId,
-              err: stopErr instanceof Error ? stopErr.message : String(stopErr),
-            }),
-          );
-          return {
-            success: false,
-            oldNodeId,
-            oldContainerName,
-            error: `Pre-upgrade state restore failed: ${message}`,
-          };
+          return await failBeforeRollbackCutover(`Pre-upgrade state restore failed: ${message}`);
         }
       } else {
-        await provider.stop(blueHandle.sandboxId).catch((stopErr) =>
-          logger.warn("[agent-sandbox] Failed to tear down blue after empty rollback restore", {
-            agentId,
-            err: stopErr instanceof Error ? stopErr.message : String(stopErr),
-          }),
+        return await failBeforeRollbackCutover(
+          `Pre-upgrade backup ${preUpgradeBackup.id} could not be reconstructed`,
         );
-        return {
-          success: false,
-          oldNodeId,
-          oldContainerName,
-          error: `Pre-upgrade backup ${preUpgradeBackup.id} could not be reconstructed`,
-        };
       }
     } else {
-      await provider.stop(blueHandle.sandboxId).catch((stopErr) =>
-        logger.warn("[agent-sandbox] Failed to tear down blue after missing rollback snapshot", {
-          agentId,
-          err: stopErr instanceof Error ? stopErr.message : String(stopErr),
-        }),
+      return await failBeforeRollbackCutover(
+        "No pre-upgrade snapshot found; refusing rollback without restore point",
       );
-      return {
-        success: false,
-        oldNodeId,
-        oldContainerName,
-        error: "No pre-upgrade snapshot found; refusing rollback without restore point",
-      };
     }
 
     try {
@@ -6933,12 +8064,17 @@ export class ElizaSandboxService {
         await this.lockLifecycle(tx, agentId, orgId);
         const current = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
         if (!current) return false;
+        const cleanupLocator = this.getReplacementCleanupLocator(current);
         if (
           current.status !== "running" ||
           current.node_id !== oldNodeId ||
           current.container_name !== oldContainerName ||
           current.sandbox_id !== oldSandboxId ||
           current.image_digest !== fromDigest ||
+          current.environment_revision !== sourceEnvironmentRevision ||
+          !hasReadyWarmClaimCredential(current) ||
+          !cleanupLocator ||
+          !this.replacementCleanupMatchesHandle(cleanupLocator, blueHandle) ||
           // Same repo-match semantics as the upgrade swap's CAS above: this
           // leg detects a concurrent repoint at a DIFFERENT repo, not textual
           // pin drift within the fleet repo (an empty or tag/digest-pinned
@@ -6977,11 +8113,45 @@ export class ElizaSandboxService {
             image_digest = ${toDigest},
             previous_image_digest = NULL,
             previous_docker_image = NULL,
+            replacement_cleanup_sandbox_id = ${oldSandboxId},
+            replacement_cleanup_node_id = ${oldNodeId},
+            replacement_cleanup_container_name = ${oldContainerName},
+            replacement_cleanup_attempt_id = NULL,
+            replacement_cleanup_container_id = NULL,
+            replacement_cleanup_vpn_node_id = ${blueMeta.previousVpnNodeId ?? null},
+            replacement_cleanup_vpn_node_name = NULL,
+            replacement_cleanup_preserved_vpn_node_id = NULL,
+            replacement_cleanup_vpn_registration_started_at = NULL,
+            replacement_cleanup_allocation_counted = TRUE,
+            replacement_cleanup_created_at = NOW(),
             last_heartbeat_at = NOW(),
             updated_at = NOW()
           WHERE id = ${agentId}
             AND organization_id = ${orgId}
             AND status = 'running'
+            AND environment_revision = ${sourceEnvironmentRevision}
+            AND replacement_cleanup_sandbox_id = ${blueHandle.sandboxId}
+            AND replacement_cleanup_node_id = ${blueMeta.nodeId}
+            AND replacement_cleanup_container_name = ${blueMeta.containerName}
+            AND replacement_cleanup_attempt_id IS NOT DISTINCT FROM ${cleanupLocator.replacementAttemptId}
+            AND replacement_cleanup_container_id IS NOT DISTINCT FROM ${cleanupLocator.containerId}
+            AND replacement_cleanup_vpn_node_id IS NOT DISTINCT FROM ${cleanupLocator.vpnNodeId}
+            AND replacement_cleanup_vpn_node_name IS NOT DISTINCT FROM ${cleanupLocator.vpnNodeName}
+            AND replacement_cleanup_preserved_vpn_node_id IS NOT DISTINCT FROM ${cleanupLocator.previousVpnNodeId}
+            AND replacement_cleanup_vpn_registration_started_at IS NOT DISTINCT FROM ${cleanupLocator.vpnRegistrationStartedAt}
+            AND replacement_cleanup_allocation_counted = ${cleanupLocator.allocationCounted}
+            AND replacement_cleanup_created_at = ${cleanupLocator.createdAt}
+            AND deletion_attempt_id IS NULL
+            AND (
+              claimed_at IS NULL
+              OR (
+                warm_claim_credential_state = 'ready'
+                AND warm_claim_attested_at IS NOT NULL
+                AND warm_claim_source_pool_id IS NULL
+                AND warm_claim_key_fingerprint IS NOT NULL
+                AND warm_claim_attested_environment_revision IS NOT NULL
+              )
+            )
             ${exactAdminCanaryWhere}
           RETURNING id
         `);
@@ -7009,45 +8179,30 @@ export class ElizaSandboxService {
           err: errMsg,
         },
       );
-      await provider.stop(blueHandle.sandboxId).catch((stopErr) =>
-        logger.warn("[agent-sandbox] Failed to tear down blue after rollback swap UPDATE failure", {
-          agentId,
-          err: stopErr instanceof Error ? stopErr.message : String(stopErr),
-        }),
-      );
-      return {
-        success: false,
-        oldNodeId,
-        oldContainerName,
-        error: `Rollback atomic swap UPDATE failed: ${errMsg}`,
-      };
+      return await failBeforeRollbackCutover(`Rollback atomic swap UPDATE failed: ${errMsg}`);
     }
 
-    // Old (post-upgrade) container teardown is best-effort: traffic is on blue
-    // and the admin rollback audit, when applicable, is already committed.
     try {
-      await provider.stopOnSpecificNode(oldNode, oldContainerName, 30);
+      await this.retirePersistedReplacementCleanup(agentId, orgId);
     } catch (err) {
-      // error-policy:J6 post-cutover cleanup must not rewrite a committed rollback.
-      logger.warn("[agent-sandbox] Failed to tear down old container after rollback cutover", {
+      logger.warn("[agent-sandbox] Old container cleanup remains pending after rollback cutover", {
         agentId,
         oldNodeId,
         oldContainerName,
         err: err instanceof Error ? err.message : String(err),
       });
-    }
-    // Same post-cutover, by-id-only deletion of the preserved node (#16565).
-    if (blueMeta?.previousVpnNodeId) {
-      try {
-        await headscaleIntegration.removeVpnNodeById(blueMeta.previousVpnNodeId);
-      } catch (err) {
-        // error-policy:J6 post-cutover VPN cleanup cannot invalidate committed traffic.
-        logger.warn("[agent-sandbox] Failed to remove old VPN node after rollback cutover", {
-          agentId,
-          vpnNodeId: blueMeta.previousVpnNodeId,
-          err: err instanceof Error ? err.message : String(err),
-        });
-      }
+      return {
+        success: true,
+        cleanupPending: true,
+        oldNodeId,
+        oldContainerName,
+        newNodeId: blueMeta.nodeId,
+        newContainerName: blueMeta.containerName,
+        newDigest: toDigest,
+        error: `Cutover committed; replacement cleanup remains pending: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      };
     }
 
     logger.info("[agent-sandbox] Fleet rollback completed", {
@@ -7137,6 +8292,627 @@ export class ElizaSandboxService {
 
   // Private helpers
 
+  private replacementCleanupCallbacks(
+    agentId: string,
+    orgId: string,
+    expected: ReplacementCleanupExpectation,
+  ) {
+    return {
+      onReplacementCreateIntent: async (handle: SandboxHandle) => {
+        await this.persistReplacementCleanupStage(agentId, orgId, handle, expected, "intent");
+      },
+      onReplacementCreated: async (handle: SandboxHandle) => {
+        await this.persistReplacementCleanupStage(agentId, orgId, handle, expected, "created");
+      },
+      onReplacementVpnRegistered: async (handle: SandboxHandle) => {
+        await this.persistReplacementCleanupStage(agentId, orgId, handle, expected, "vpn");
+      },
+    };
+  }
+
+  private getReplacementCleanupLocator(
+    rec: Pick<
+      AgentSandbox,
+      | "replacement_cleanup_sandbox_id"
+      | "replacement_cleanup_node_id"
+      | "replacement_cleanup_container_name"
+      | "replacement_cleanup_attempt_id"
+      | "replacement_cleanup_container_id"
+      | "replacement_cleanup_vpn_node_id"
+      | "replacement_cleanup_vpn_node_name"
+      | "replacement_cleanup_preserved_vpn_node_id"
+      | "replacement_cleanup_vpn_registration_started_at"
+      | "replacement_cleanup_allocation_counted"
+      | "replacement_cleanup_created_at"
+    >,
+  ): ReplacementCleanupLocator | null {
+    const core = [
+      rec.replacement_cleanup_sandbox_id,
+      rec.replacement_cleanup_node_id,
+      rec.replacement_cleanup_container_name,
+      rec.replacement_cleanup_allocation_counted,
+      rec.replacement_cleanup_created_at,
+    ];
+    const optional = [
+      rec.replacement_cleanup_attempt_id,
+      rec.replacement_cleanup_container_id,
+      rec.replacement_cleanup_vpn_node_id,
+      rec.replacement_cleanup_vpn_node_name,
+      rec.replacement_cleanup_preserved_vpn_node_id,
+      rec.replacement_cleanup_vpn_registration_started_at,
+    ];
+    if (core.every((value) => value === null)) {
+      if (optional.some((value) => value !== null)) {
+        throw new Error("Replacement cleanup locator contains unowned identity fields");
+      }
+      return null;
+    }
+    if (core.some((value) => value === null)) {
+      throw new Error("Replacement cleanup locator is incomplete");
+    }
+    if (
+      (rec.replacement_cleanup_vpn_node_name === null) !==
+      (rec.replacement_cleanup_vpn_registration_started_at === null)
+    ) {
+      throw new Error("Replacement cleanup VPN correlation is incomplete");
+    }
+    const vpnRegistrationStartedAt = this.parseReplacementVpnStartedAt(
+      rec.replacement_cleanup_vpn_registration_started_at,
+    );
+    const createdAt = this.parseReplacementCreatedAt(rec.replacement_cleanup_created_at);
+    return {
+      sandboxId: rec.replacement_cleanup_sandbox_id!,
+      nodeId: rec.replacement_cleanup_node_id!,
+      containerName: rec.replacement_cleanup_container_name!,
+      replacementAttemptId: rec.replacement_cleanup_attempt_id,
+      containerId: rec.replacement_cleanup_container_id,
+      vpnNodeId: rec.replacement_cleanup_vpn_node_id,
+      vpnNodeName: rec.replacement_cleanup_vpn_node_name,
+      previousVpnNodeId: rec.replacement_cleanup_preserved_vpn_node_id,
+      vpnRegistrationStartedAt,
+      allocationCounted: rec.replacement_cleanup_allocation_counted!,
+      createdAt,
+    };
+  }
+
+  private parseReplacementVpnStartedAt(value: Date | string | null | undefined): Date | null {
+    if (!value) return null;
+    const parsed = value instanceof Date ? new Date(value.getTime()) : new Date(value);
+    if (!Number.isFinite(parsed.getTime())) {
+      throw new Error("Replacement cleanup VPN registration timestamp is invalid");
+    }
+    return parsed;
+  }
+
+  private parseReplacementCreatedAt(value: Date | string | null | undefined): Date {
+    if (!value) {
+      throw new Error("Replacement cleanup creation timestamp is missing");
+    }
+    const parsed = value instanceof Date ? new Date(value.getTime()) : new Date(value);
+    if (!Number.isFinite(parsed.getTime())) {
+      throw new Error("Replacement cleanup creation timestamp is invalid");
+    }
+    return parsed;
+  }
+
+  private replacementLocatorFromHandle(
+    handle: SandboxHandle,
+  ): Omit<ReplacementCleanupLocator, "createdAt"> {
+    const metadata = isDockerSandboxMetadata(handle.metadata) ? handle.metadata : undefined;
+    if (
+      !metadata?.nodeId ||
+      !metadata.containerName ||
+      !metadata.replacementAttemptId ||
+      typeof metadata.allocationCounted !== "boolean"
+    ) {
+      throw new Error(
+        `Replacement sandbox ${handle.sandboxId} has no durable Docker placement metadata`,
+      );
+    }
+    const vpnRegistrationStartedAt = this.parseReplacementVpnStartedAt(
+      metadata.vpnRegistrationStartedAt,
+    );
+    const vpnNodeName = metadata.vpnNodeName ?? null;
+    if ((vpnNodeName === null) !== (vpnRegistrationStartedAt === null)) {
+      throw new Error("Replacement sandbox has incomplete VPN correlation metadata");
+    }
+    return {
+      sandboxId: handle.sandboxId,
+      nodeId: metadata.nodeId,
+      containerName: metadata.containerName,
+      replacementAttemptId: metadata.replacementAttemptId,
+      containerId: metadata.containerId ?? null,
+      vpnNodeId: metadata.vpnNodeId ?? null,
+      vpnNodeName,
+      previousVpnNodeId: metadata.previousVpnNodeId ?? null,
+      vpnRegistrationStartedAt,
+      allocationCounted: metadata.allocationCounted,
+    };
+  }
+
+  private replacementLocatorFromCleanupError(
+    cleanupError: SandboxReplacementCleanupUnresolvedError,
+  ): Omit<ReplacementCleanupLocator, "createdAt"> {
+    const vpnRegistrationStartedAt = this.parseReplacementVpnStartedAt(
+      cleanupError.vpnRegistrationStartedAt,
+    );
+    if ((cleanupError.vpnNodeName === null) !== (vpnRegistrationStartedAt === null)) {
+      throw new Error("Unresolved replacement has incomplete VPN correlation metadata");
+    }
+    if (!cleanupError.replacementAttemptId) {
+      throw new Error("Unresolved replacement has no durable attempt identity");
+    }
+    if (cleanupError.allocationCounted === null) {
+      throw new Error("Unresolved replacement has no capacity ownership marker");
+    }
+    return {
+      sandboxId: cleanupError.sandboxId,
+      nodeId: cleanupError.nodeId,
+      containerName: cleanupError.containerName,
+      replacementAttemptId: cleanupError.replacementAttemptId,
+      containerId: cleanupError.containerId,
+      vpnNodeId: cleanupError.vpnNodeId,
+      vpnNodeName: cleanupError.vpnNodeName,
+      previousVpnNodeId: cleanupError.previousVpnNodeId,
+      vpnRegistrationStartedAt,
+      allocationCounted: cleanupError.allocationCounted,
+    };
+  }
+
+  private assertSameReplacementIdentity(
+    existing: ReplacementCleanupLocator,
+    incoming: Omit<ReplacementCleanupLocator, "createdAt">,
+  ): void {
+    const same =
+      existing.sandboxId === incoming.sandboxId &&
+      existing.nodeId === incoming.nodeId &&
+      existing.containerName === incoming.containerName &&
+      existing.replacementAttemptId === incoming.replacementAttemptId &&
+      existing.vpnNodeName === incoming.vpnNodeName &&
+      existing.previousVpnNodeId === incoming.previousVpnNodeId &&
+      existing.vpnRegistrationStartedAt?.getTime() ===
+        incoming.vpnRegistrationStartedAt?.getTime() &&
+      existing.allocationCounted === incoming.allocationCounted;
+    if (!same) {
+      throw new Error(
+        `Agent already owns a different unresolved replacement ${existing.sandboxId} on ${existing.nodeId}`,
+      );
+    }
+    if (
+      existing.containerId !== null &&
+      incoming.containerId !== null &&
+      existing.containerId !== incoming.containerId
+    ) {
+      throw new Error("Replacement Docker identity changed during enrichment");
+    }
+    if (
+      existing.vpnNodeId !== null &&
+      incoming.vpnNodeId !== null &&
+      existing.vpnNodeId !== incoming.vpnNodeId
+    ) {
+      throw new Error("Replacement VPN identity changed during enrichment");
+    }
+  }
+
+  private replacementCleanupMatchesHandle(
+    existing: ReplacementCleanupLocator,
+    handle: SandboxHandle,
+  ): boolean {
+    try {
+      const incoming = this.replacementLocatorFromHandle(handle);
+      this.assertSameReplacementIdentity(existing, incoming);
+      return (
+        existing.containerId === incoming.containerId && existing.vpnNodeId === incoming.vpnNodeId
+      );
+    } catch {
+      // error-policy:J3 replacement identity validation — a mismatch is the
+      // explicit invalid signal consumed by the lifecycle CAS.
+      return false;
+    }
+  }
+
+  private replacementCleanupLocatorsEqual(
+    left: ReplacementCleanupLocator,
+    right: ReplacementCleanupLocator,
+  ): boolean {
+    try {
+      this.assertSameReplacementIdentity(left, right);
+      return (
+        left.containerId === right.containerId &&
+        left.vpnNodeId === right.vpnNodeId &&
+        left.createdAt.getTime() === right.createdAt.getTime()
+      );
+    } catch {
+      // error-policy:J3 replacement identity validation — unequal or malformed
+      // locators fail closed as an explicit false comparison.
+      return false;
+    }
+  }
+
+  private async persistReplacementCleanupStage(
+    agentId: string,
+    orgId: string,
+    handle: SandboxHandle,
+    expected: ReplacementCleanupExpectation,
+    stage: "intent" | "created" | "vpn",
+  ): Promise<void> {
+    const incoming = this.replacementLocatorFromHandle(handle);
+    if (stage === "intent" && (incoming.containerId !== null || incoming.vpnNodeId !== null)) {
+      throw new Error("Replacement intent already contains a committed remote identity");
+    }
+    if (stage === "created" && incoming.containerId === null) {
+      throw new Error("Replacement Docker enrichment is missing the container id");
+    }
+    if (stage === "vpn" && incoming.vpnNodeId === null) {
+      throw new Error("Replacement VPN enrichment is missing the node id");
+    }
+    if (expected.status === "running" && !incoming.allocationCounted) {
+      throw new Error("Blue/green replacement requires durable node capacity ownership");
+    }
+    await dbWrite.transaction(async (tx) => {
+      await this.lockLifecycle(tx, agentId, orgId);
+      const current = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
+      if (!current) throw new Error("Agent disappeared before replacement ownership");
+      if (
+        current.deletion_attempt_id !== null ||
+        current.status === "deletion_pending" ||
+        current.status === "deletion_failed"
+      ) {
+        throw new Error("Agent deletion owns the lifecycle before replacement ownership");
+      }
+      const existing = this.getReplacementCleanupLocator(current);
+      if (existing) {
+        this.assertSameReplacementIdentity(existing, incoming);
+        const containerId = existing.containerId ?? incoming.containerId;
+        const vpnNodeId = existing.vpnNodeId ?? incoming.vpnNodeId;
+        if (containerId === existing.containerId && vpnNodeId === existing.vpnNodeId) return;
+        const enriched = await tx.execute<{ id: string }>(sql`
+          UPDATE ${agentSandboxes}
+          SET
+            replacement_cleanup_container_id = ${containerId},
+            replacement_cleanup_vpn_node_id = ${vpnNodeId},
+            updated_at = NOW()
+          WHERE id = ${agentId}
+            AND organization_id = ${orgId}
+            AND replacement_cleanup_sandbox_id = ${existing.sandboxId}
+            AND replacement_cleanup_node_id = ${existing.nodeId}
+            AND replacement_cleanup_container_name = ${existing.containerName}
+            AND replacement_cleanup_attempt_id IS NOT DISTINCT FROM ${existing.replacementAttemptId}
+            AND replacement_cleanup_container_id IS NOT DISTINCT FROM ${existing.containerId}
+            AND replacement_cleanup_vpn_node_id IS NOT DISTINCT FROM ${existing.vpnNodeId}
+            AND replacement_cleanup_vpn_node_name IS NOT DISTINCT FROM ${existing.vpnNodeName}
+            AND replacement_cleanup_preserved_vpn_node_id IS NOT DISTINCT FROM ${existing.previousVpnNodeId}
+            AND replacement_cleanup_vpn_registration_started_at IS NOT DISTINCT FROM ${existing.vpnRegistrationStartedAt}
+            AND replacement_cleanup_allocation_counted = ${existing.allocationCounted}
+            AND replacement_cleanup_created_at = ${existing.createdAt}
+          RETURNING id
+        `);
+        if (enriched.rows.length !== 1) {
+          throw new Error("Replacement cleanup enrichment CAS failed");
+        }
+        return;
+      }
+      if (stage !== "intent") {
+        throw new Error("Replacement enrichment arrived before durable intent ownership");
+      }
+      if (
+        current.status !== expected.status ||
+        current.environment_revision !== expected.environmentRevision ||
+        current.sandbox_id !== expected.sandboxId ||
+        current.node_id !== expected.nodeId ||
+        current.container_name !== expected.containerName
+      ) {
+        throw new Error("Agent generation changed before replacement ownership");
+      }
+      if (incoming.allocationCounted) {
+        const reserved = await tx.execute<{ node_id: string }>(sql`
+          UPDATE ${dockerNodes}
+          SET
+            allocated_count = allocated_count + 1,
+            updated_at = NOW()
+          WHERE node_id = ${incoming.nodeId}
+            AND enabled = TRUE
+            AND status = 'healthy'
+            AND allocated_count < capacity
+          RETURNING node_id
+        `);
+        if (reserved.rows.length !== 1) {
+          throw new Error(`Replacement node ${incoming.nodeId} has no reservable capacity`);
+        }
+      }
+      const persisted = await tx.execute<{ id: string }>(sql`
+        UPDATE ${agentSandboxes}
+        SET
+          replacement_cleanup_sandbox_id = ${incoming.sandboxId},
+          replacement_cleanup_node_id = ${incoming.nodeId},
+          replacement_cleanup_container_name = ${incoming.containerName},
+          replacement_cleanup_attempt_id = ${incoming.replacementAttemptId},
+          replacement_cleanup_container_id = ${incoming.containerId},
+          replacement_cleanup_vpn_node_id = ${incoming.vpnNodeId},
+          replacement_cleanup_vpn_node_name = ${incoming.vpnNodeName},
+          replacement_cleanup_preserved_vpn_node_id = ${incoming.previousVpnNodeId},
+          replacement_cleanup_vpn_registration_started_at = ${incoming.vpnRegistrationStartedAt},
+          replacement_cleanup_allocation_counted = ${incoming.allocationCounted},
+          replacement_cleanup_created_at = NOW(),
+          updated_at = NOW()
+        WHERE id = ${agentId}
+          AND organization_id = ${orgId}
+          AND status = ${expected.status}
+          AND environment_revision = ${expected.environmentRevision}
+          AND sandbox_id IS NOT DISTINCT FROM ${expected.sandboxId}
+          AND node_id IS NOT DISTINCT FROM ${expected.nodeId}
+          AND container_name IS NOT DISTINCT FROM ${expected.containerName}
+          AND deletion_attempt_id IS NULL
+          AND replacement_cleanup_sandbox_id IS NULL
+        RETURNING id
+      `);
+      if (persisted.rows.length !== 1) {
+        throw new Error("Replacement cleanup ownership CAS failed");
+      }
+    });
+  }
+
+  private async persistUnresolvedReplacementCleanupFence(
+    agentId: string,
+    orgId: string,
+    cleanupError: SandboxReplacementCleanupUnresolvedError,
+  ): Promise<void> {
+    const incoming = this.replacementLocatorFromCleanupError(cleanupError);
+    await dbWrite.transaction(async (tx) => {
+      await this.lockLifecycle(tx, agentId, orgId);
+      const current = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
+      if (!current) {
+        throw new Error("Agent disappeared before unresolved replacement could be fenced");
+      }
+      const existing = this.getReplacementCleanupLocator(current);
+      if (!existing) {
+        throw new Error("Unresolved replacement escaped without durable intent ownership");
+      }
+      this.assertSameReplacementIdentity(existing, incoming);
+      const containerId = existing.containerId ?? incoming.containerId;
+      const vpnNodeId = existing.vpnNodeId ?? incoming.vpnNodeId;
+      if (containerId === existing.containerId && vpnNodeId === existing.vpnNodeId) return;
+      const persisted = await tx.execute<{ id: string }>(sql`
+        UPDATE ${agentSandboxes}
+        SET
+          replacement_cleanup_container_id = ${containerId},
+          replacement_cleanup_vpn_node_id = ${vpnNodeId},
+          updated_at = NOW()
+        WHERE id = ${agentId}
+          AND organization_id = ${orgId}
+          AND replacement_cleanup_sandbox_id = ${existing.sandboxId}
+          AND replacement_cleanup_node_id = ${existing.nodeId}
+          AND replacement_cleanup_container_name = ${existing.containerName}
+          AND replacement_cleanup_attempt_id IS NOT DISTINCT FROM ${existing.replacementAttemptId}
+          AND replacement_cleanup_container_id IS NOT DISTINCT FROM ${existing.containerId}
+          AND replacement_cleanup_vpn_node_id IS NOT DISTINCT FROM ${existing.vpnNodeId}
+          AND replacement_cleanup_vpn_node_name IS NOT DISTINCT FROM ${existing.vpnNodeName}
+          AND replacement_cleanup_preserved_vpn_node_id IS NOT DISTINCT FROM ${existing.previousVpnNodeId}
+          AND replacement_cleanup_vpn_registration_started_at IS NOT DISTINCT FROM ${existing.vpnRegistrationStartedAt}
+          AND replacement_cleanup_allocation_counted = ${existing.allocationCounted}
+          AND replacement_cleanup_created_at = ${existing.createdAt}
+        RETURNING id
+      `);
+      if (persisted.rows.length !== 1) {
+        throw new Error("Unresolved replacement cleanup enrichment CAS failed");
+      }
+    });
+  }
+
+  private async transferReplacementToPrimary(
+    agentId: string,
+    orgId: string,
+    handle: SandboxHandle,
+    expectedEnvironmentRevision: number,
+    updateData: Partial<NewAgentSandbox>,
+  ): Promise<AgentSandbox> {
+    return dbWrite.transaction(async (tx) => {
+      await this.lockLifecycle(tx, agentId, orgId);
+      const current = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
+      if (!current) throw new Error("Agent disappeared before replacement adoption");
+      if (
+        current.status !== "provisioning" ||
+        current.environment_revision !== expectedEnvironmentRevision
+      ) {
+        throw new Error("Agent generation changed before replacement adoption");
+      }
+
+      const locator = this.getReplacementCleanupLocator(current);
+      const incoming = this.replacementLocatorFromHandle(handle);
+      if (locator) {
+        this.assertSameReplacementIdentity(locator, incoming);
+        if (
+          locator.containerId !== incoming.containerId ||
+          locator.vpnNodeId !== incoming.vpnNodeId
+        ) {
+          throw new Error("Replacement cleanup ownership changed before adoption");
+        }
+      } else if (
+        isDockerBackedMetadata(handle.metadata) &&
+        current.sandbox_id !== handle.sandboxId
+      ) {
+        throw new Error("Docker replacement has no durable cleanup ownership");
+      }
+
+      const [adopted] = await tx
+        .update(agentSandboxes)
+        .set({
+          ...updateData,
+          replacement_cleanup_sandbox_id: null,
+          replacement_cleanup_node_id: null,
+          replacement_cleanup_container_name: null,
+          replacement_cleanup_attempt_id: null,
+          replacement_cleanup_container_id: null,
+          replacement_cleanup_vpn_node_id: null,
+          replacement_cleanup_vpn_node_name: null,
+          replacement_cleanup_preserved_vpn_node_id: null,
+          replacement_cleanup_vpn_registration_started_at: null,
+          replacement_cleanup_allocation_counted: null,
+          replacement_cleanup_created_at: null,
+          updated_at: new Date(),
+        })
+        .where(
+          and(
+            eq(agentSandboxes.id, agentId),
+            eq(agentSandboxes.organization_id, orgId),
+            eq(agentSandboxes.status, "provisioning"),
+            eq(agentSandboxes.environment_revision, expectedEnvironmentRevision),
+            sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
+          ),
+        )
+        .returning();
+      if (!adopted) throw new Error("Replacement adoption CAS failed");
+      return adopted;
+    });
+  }
+
+  /**
+   * Snapshot the cleanup identity, prove the exact remote resources absent
+   * without holding a database transaction open, then re-lock and atomically
+   * release its node allocation and fence. A changed identity invalidates the
+   * remote proof, so retries cannot decrement another live agent's slot.
+   */
+  private async retirePersistedReplacementCleanup(
+    agentId: string,
+    orgId: string,
+  ): Promise<boolean> {
+    const provider = await this.getProvider();
+    if (!provider.stopOnSpecificNodeForReplacement) {
+      throw new Error("Sandbox provider cannot prove a persisted replacement absent");
+    }
+    const stopOnSpecificNodeForReplacement =
+      provider.stopOnSpecificNodeForReplacement.bind(provider);
+    const locator = await dbWrite.transaction(async (tx) => {
+      await this.lockLifecycle(tx, agentId, orgId);
+      const current = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
+      if (!current) return null;
+      return this.getReplacementCleanupLocator(current);
+    });
+    if (!locator) return false;
+
+    await stopOnSpecificNodeForReplacement(
+      locator.nodeId,
+      locator.containerName,
+      locator.vpnNodeId,
+      {
+        replacementAttemptId: locator.replacementAttemptId,
+        containerId: locator.containerId,
+        vpnNodeName: locator.vpnNodeName,
+        previousVpnNodeId: locator.previousVpnNodeId,
+        vpnRegistrationStartedAt: locator.vpnRegistrationStartedAt?.toISOString() ?? null,
+        allocationCounted: locator.allocationCounted,
+      },
+    );
+
+    return dbWrite.transaction(async (tx) => {
+      await this.lockLifecycle(tx, agentId, orgId);
+      const current = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
+      if (!current) return false;
+      const currentLocator = this.getReplacementCleanupLocator(current);
+      if (!currentLocator || !this.replacementCleanupLocatorsEqual(currentLocator, locator)) {
+        throw new Error("Replacement cleanup fence changed after remote absence proof");
+      }
+      const cleared = await tx.execute<{ id: string }>(sql`
+        UPDATE ${agentSandboxes}
+        SET
+          replacement_cleanup_sandbox_id = NULL,
+          replacement_cleanup_node_id = NULL,
+          replacement_cleanup_container_name = NULL,
+          replacement_cleanup_attempt_id = NULL,
+          replacement_cleanup_container_id = NULL,
+          replacement_cleanup_vpn_node_id = NULL,
+          replacement_cleanup_vpn_node_name = NULL,
+          replacement_cleanup_preserved_vpn_node_id = NULL,
+          replacement_cleanup_vpn_registration_started_at = NULL,
+          replacement_cleanup_allocation_counted = NULL,
+          replacement_cleanup_created_at = NULL,
+          updated_at = NOW()
+        WHERE id = ${agentId}
+          AND organization_id = ${orgId}
+          AND replacement_cleanup_sandbox_id = ${locator.sandboxId}
+          AND replacement_cleanup_node_id = ${locator.nodeId}
+          AND replacement_cleanup_container_name = ${locator.containerName}
+          AND replacement_cleanup_attempt_id IS NOT DISTINCT FROM ${locator.replacementAttemptId}
+          AND replacement_cleanup_container_id IS NOT DISTINCT FROM ${locator.containerId}
+          AND replacement_cleanup_vpn_node_id IS NOT DISTINCT FROM ${locator.vpnNodeId}
+          AND replacement_cleanup_vpn_node_name IS NOT DISTINCT FROM ${locator.vpnNodeName}
+          AND replacement_cleanup_preserved_vpn_node_id IS NOT DISTINCT FROM ${locator.previousVpnNodeId}
+          AND replacement_cleanup_vpn_registration_started_at IS NOT DISTINCT FROM ${locator.vpnRegistrationStartedAt}
+          AND replacement_cleanup_allocation_counted = ${locator.allocationCounted}
+          AND replacement_cleanup_created_at = ${locator.createdAt}
+        RETURNING id
+      `);
+      if (cleared.rows.length !== 1) {
+        throw new Error("Replacement cleanup fence changed before durable release");
+      }
+      if (locator.allocationCounted) {
+        const released = await tx.execute<{ node_id: string }>(sql`
+          UPDATE ${dockerNodes}
+          SET
+            allocated_count = allocated_count - 1,
+            updated_at = NOW()
+          WHERE node_id = ${locator.nodeId}
+            AND allocated_count > 0
+          RETURNING node_id
+        `);
+        if (released.rows.length !== 1) {
+          throw new Error(`Replacement cleanup node ${locator.nodeId} disappeared before release`);
+        }
+      }
+      return true;
+    });
+  }
+
+  /**
+   * Low-cadence daemon backstop for cleanup interrupted after a process crash or
+   * an unreachable node. Each row is independently fenced; failures remain
+   * durable for the next sweep and cannot authorize another replacement.
+   */
+  async reconcileReplacementCleanupFences(limit = 25): Promise<{
+    total: number;
+    retired: number;
+    failed: number;
+  }> {
+    const pending = await dbWrite.execute<{ id: string; organization_id: string }>(sql`
+      SELECT id, organization_id
+      FROM ${agentSandboxes}
+      WHERE replacement_cleanup_sandbox_id IS NOT NULL
+      ORDER BY replacement_cleanup_created_at ASC
+      LIMIT ${limit}
+    `);
+    let retired = 0;
+    let failed = 0;
+    for (const row of pending.rows) {
+      try {
+        if (await this.retirePersistedReplacementCleanup(row.id, row.organization_id)) {
+          retired += 1;
+        }
+      } catch (error) {
+        // error-policy:J7 reconciliation must not kill the sweep — the durable
+        // fence remains for retry and the per-row failure is counted and logged.
+        failed += 1;
+        logger.warn("[agent-sandbox] Replacement cleanup remains pending", {
+          agentId: row.id,
+          organizationId: row.organization_id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    return { total: pending.rows.length, retired, failed };
+  }
+
+  /**
+   * Completes the durable retirement owned by one agent. Admin canary jobs use
+   * this after a cutover audit was committed but the old placement could not be
+   * proven absent during the original worker execution.
+   */
+  async convergeReplacementCleanupFence(agentId: string, orgId: string): Promise<void> {
+    const current = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
+    if (!current) throw new Error("Agent not found while converging replacement cleanup");
+    if (!this.getReplacementCleanupLocator(current)) return;
+    await this.retirePersistedReplacementCleanup(agentId, orgId);
+  }
+
   private async lockLifecycle(tx: LifecycleTx, agentId: string, orgId: string): Promise<void> {
     await tx.execute(elizaProvisionAdvisoryLockSql(orgId, agentId));
   }
@@ -7165,6 +8941,36 @@ export class ElizaSandboxService {
       SELECT id
       FROM ${jobs}
       WHERE type = ${JOB_TYPES.AGENT_PROVISION}
+        AND organization_id = ${orgId}
+        AND ${jobs.agent_id} = ${agentId}
+        AND status IN ('pending', 'in_progress')
+      LIMIT 1
+    `);
+    return result.rows.length > 0;
+  }
+
+  /**
+   * Sleep must not interleave with a queued operation that can install a new
+   * compute generation after the sleep snapshot but before its strict stop.
+   * The sleep job itself is deliberately absent from this set.
+   */
+  private async hasActiveReplacementJobTx(
+    tx: LifecycleTx,
+    agentId: string,
+    orgId: string,
+  ): Promise<boolean> {
+    const result = await tx.execute<{ id: string }>(sql`
+      SELECT id
+      FROM ${jobs}
+      WHERE type IN (
+        'agent_provision',
+        'agent_resume',
+        'agent_wake',
+        'agent_restart',
+        'agent_upgrade',
+        'agent_downgrade',
+        'agent_admin_canary_image'
+      )
         AND organization_id = ${orgId}
         AND ${jobs.agent_id} = ${agentId}
         AND status IN ('pending', 'in_progress')
@@ -7361,11 +9167,14 @@ export class ElizaSandboxService {
    * on `sandbox_id IS NOT NULL`) and re-probe it, and what lets a provision-job
    * retry adopt the existing container instead of colliding on its
    * deterministic name. Deliberately does NOT flip to `running` — only a
-   * confirmed-healthy re-probe may do that. Best-effort: a write failure here is
-   * logged, not thrown (the retryable error is surfaced regardless).
+   * confirmed-healthy re-probe may do that. The same write transfers ownership
+   * from the temporary cleanup fence to the primary row; if it fails, the
+   * durable fence remains and the cleanup reconciler retires the candidate.
    */
   private async persistContainerHandleForRetry(
     agentId: string,
+    organizationId: string,
+    environmentRevision: number,
     handle: SandboxHandle,
     dockerMeta: DockerSandboxMetadata | undefined,
   ): Promise<void> {
@@ -7383,28 +9192,27 @@ export class ElizaSandboxService {
       );
     }
 
-    try {
-      const updateData: Parameters<typeof agentSandboxesRepository.update>[1] = {
-        sandbox_id: handle.sandboxId,
-        bridge_url: handle.bridgeUrl,
-        health_url: handle.healthUrl,
-      };
-      if (dockerMeta) {
-        if (dockerMeta.nodeId) updateData.node_id = dockerMeta.nodeId;
-        if (dockerMeta.containerName) updateData.container_name = dockerMeta.containerName;
-        if (dockerMeta.bridgePort) updateData.bridge_port = dockerMeta.bridgePort;
-        if (dockerMeta.webUiPort) updateData.web_ui_port = dockerMeta.webUiPort;
-        if (dockerMeta.headscaleIp) updateData.headscale_ip = dockerMeta.headscaleIp;
-        if (dockerMeta.dockerImage) updateData.docker_image = dockerMeta.dockerImage;
-        updateData.image_digest = dockerMeta.imageDigest;
-      }
-      await agentSandboxesRepository.update(agentId, updateData);
-    } catch (error) {
-      logger.warn(
-        "[agent-sandbox] Failed to persist container handle for transport-unresolved retry",
-        { agentId, error: error instanceof Error ? error.message : String(error) },
-      );
+    const updateData: Partial<NewAgentSandbox> = {
+      sandbox_id: handle.sandboxId,
+      bridge_url: handle.bridgeUrl,
+      health_url: handle.healthUrl,
+    };
+    if (dockerMeta) {
+      if (dockerMeta.nodeId) updateData.node_id = dockerMeta.nodeId;
+      if (dockerMeta.containerName) updateData.container_name = dockerMeta.containerName;
+      if (dockerMeta.bridgePort) updateData.bridge_port = dockerMeta.bridgePort;
+      if (dockerMeta.webUiPort) updateData.web_ui_port = dockerMeta.webUiPort;
+      if (dockerMeta.headscaleIp) updateData.headscale_ip = dockerMeta.headscaleIp;
+      if (dockerMeta.dockerImage) updateData.docker_image = dockerMeta.dockerImage;
+      updateData.image_digest = dockerMeta.imageDigest;
     }
+    await this.transferReplacementToPrimary(
+      agentId,
+      organizationId,
+      handle,
+      environmentRevision,
+      updateData,
+    );
   }
 
   private async provisionAgentDatabase(

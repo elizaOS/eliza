@@ -527,6 +527,7 @@ app.post("/", async (c) => {
     }
 
     if (executionTier !== "custom" && containersEnv.warmPoolEnabled()) {
+      let committedWarmClaim = false;
       try {
         const claimed = await agentSandboxesRepository.claimWarmContainer({
           userAgentId: agent.id,
@@ -539,6 +540,7 @@ app.post("/", async (c) => {
           characterId: agent.character_id,
         });
         if (claimed) {
+          committedWarmClaim = true;
           logger.info("[agent-api] Warm pool claim succeeded on create", {
             agentId: agent.id,
             orgId: user.organization_id,
@@ -603,11 +605,6 @@ app.post("/", async (c) => {
                 organizationId: user.organization_id,
                 userId: user.id,
               });
-            await agentSandboxesRepository.update(claimed.id, {
-              status: "provisioning",
-              error_message:
-                "Warm-pool credential handoff requires restart recovery",
-            });
             if (recovery.created) {
               void provisioningJobService.triggerImmediate(c.env).catch(() => {
                 // error-policy:J5 the persisted restart job is observed by the
@@ -647,7 +644,7 @@ app.post("/", async (c) => {
               data: {
                 id: claimed.id,
                 agentName: claimed.agent_name,
-                status: claimed.status,
+                status: "running",
                 bridgeUrl: claimed.bridge_url,
                 healthUrl: claimed.health_url,
                 executionTier: claimed.execution_tier,
@@ -682,6 +679,26 @@ app.post("/", async (c) => {
           // Observability probe is best-effort; never block the create path.
         }
       } catch (err) {
+        if (committedWarmClaim) {
+          logger.error(
+            "[agent-api] Warm pool claim committed but recovery enqueue failed",
+            {
+              event: "warm_pool.recovery_enqueue_failed",
+              agentId: agent.id,
+              orgId: user.organization_id,
+              error: err instanceof Error ? err.message : String(err),
+            },
+          );
+          return c.json(
+            {
+              success: false,
+              code: "service_unavailable",
+              error:
+                "Warm-pool credential recovery is pending but could not be scheduled",
+            },
+            503,
+          );
+        }
         // Don't block on claim errors — fall through to the async job path.
         // Emit a stable `event` so a persistently broken warm pool is
         // observable in aggregate (otherwise every claim silently degrades to

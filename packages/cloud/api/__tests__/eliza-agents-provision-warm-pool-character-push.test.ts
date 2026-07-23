@@ -72,7 +72,12 @@ const loggerError = mock((_msg: string, _meta?: LoggerMeta) => undefined);
 
 const claimWarmContainer = mock(async (): Promise<unknown> => null);
 const countReadyPoolEntriesForImage = mock(async () => 0);
-const updateSandbox = mock(async () => undefined);
+let durableSandboxStatus = "running";
+const updateSandbox = mock(
+  async (_id: string, changes: { status?: string }) => {
+    if (changes.status) durableSandboxStatus = changes.status;
+  },
+);
 
 mock.module("@/db/repositories/agent-sandboxes", () => ({
   agentSandboxesRepository: {
@@ -206,7 +211,12 @@ describe("POST /api/v1/eliza/agents/[agentId]/provision — warm-pool post-claim
       pushed: true,
       keyPrefix: "key-prefix",
     });
-    enqueueAgentRestartOnce.mockClear();
+    enqueueAgentRestartOnce.mockReset();
+    enqueueAgentRestartOnce.mockResolvedValue({
+      job: { id: "restart-job-1", status: "pending" },
+      created: true,
+    });
+    durableSandboxStatus = "running";
     updateSandbox.mockClear();
     enqueueAgentProvisionOnce.mockClear();
     triggerImmediate.mockClear();
@@ -285,10 +295,49 @@ describe("POST /api/v1/eliza/agents/[agentId]/provision — warm-pool post-claim
     expect(res.status).toBe(202);
     expect(body.source).toBe("warm_pool_recovery");
     expect(enqueueAgentRestartOnce).toHaveBeenCalledTimes(1);
-    expect(updateSandbox).toHaveBeenCalledWith(AGENT_ID, {
-      status: "provisioning",
-      error_message: "Warm-pool credential handoff requires restart recovery",
-    });
+    expect(updateSandbox).not.toHaveBeenCalled();
     expect(triggerImmediate).toHaveBeenCalledTimes(1);
+  });
+
+  test("delete winning after restart enqueue remains deletion_pending", async () => {
+    claimWarmContainer.mockResolvedValue(claimedRow());
+    pushClaimedWarmContainerInferenceKey.mockRejectedValue(
+      new Error("Warm-claim key push was not attested"),
+    );
+    enqueueAgentRestartOnce.mockImplementation(async () => {
+      durableSandboxStatus = "deletion_pending";
+      return {
+        job: { id: "restart-job-1", status: "pending" },
+        created: true,
+      };
+    });
+
+    const res = await postProvision();
+
+    expect(res.status).toBe(202);
+    expect(durableSandboxStatus).toBe("deletion_pending");
+    expect(updateSandbox).not.toHaveBeenCalled();
+  });
+
+  test("a committed claim never falls into cold provision when recovery enqueue fails", async () => {
+    claimWarmContainer.mockImplementation(async () => {
+      durableSandboxStatus = "provisioning";
+      return claimedRow();
+    });
+    pushClaimedWarmContainerInferenceKey.mockRejectedValue(
+      new Error("Warm-claim key push was not attested"),
+    );
+    enqueueAgentRestartOnce.mockRejectedValue(
+      new Error("job database unavailable"),
+    );
+    checkProvisioningWorkerHealth.mockClear();
+
+    const res = await postProvision();
+
+    expect(res.status).toBe(503);
+    expect(durableSandboxStatus).toBe("provisioning");
+    expect(checkProvisioningWorkerHealth).not.toHaveBeenCalled();
+    expect(enqueueAgentProvisionOnce).not.toHaveBeenCalled();
+    expect(updateSandbox).not.toHaveBeenCalled();
   });
 });

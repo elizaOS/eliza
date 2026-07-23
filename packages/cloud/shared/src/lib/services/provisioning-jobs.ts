@@ -14,7 +14,7 @@
  */
 
 import { ElizaError } from "@elizaos/core";
-import { and, desc, eq, inArray, ne, type SQL, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, ne, type SQL, sql } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
 import { dbWrite } from "../../db/helpers";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
@@ -46,6 +46,7 @@ import {
   type AdminCanaryPlannedTarget,
   assertAdminCanaryImageJobData,
   isAdminCanaryImageJobData,
+  isPendingAdminCanaryCutoverAudit,
 } from "./admin-canary-image";
 import { dispatchAppDbDeprovisionJob } from "./app-db-deprovision-job-service";
 import { dispatchAppDeployJob, readAppDeployJobData } from "./app-deploy-job-service";
@@ -68,6 +69,7 @@ import {
   WakeRestoreIntegrityError,
   type WakeRestoreIntegrityFailure,
 } from "./wake-restore-integrity";
+import { hasReadyWarmClaimCredential } from "./warm-claim-key-push";
 
 // ---------------------------------------------------------------------------
 // Job data shapes (hydrated from object storage when jobs.data is offloaded)
@@ -669,6 +671,17 @@ export interface EnqueueAgentRestartResult {
   created: boolean;
 }
 
+export interface WarmClaimCredentialReconcileResult {
+  legacyFound: number;
+  strandedFound: number;
+  recoveryEnqueued: number;
+  recoveryInFlight: number;
+  recoveryDeferred: number;
+  cleanupFound: number;
+  cleanupCompleted: number;
+  cleanupFailed: number;
+}
+
 export interface EnqueueAgentDowngradeResult {
   job: Job;
   created: boolean;
@@ -692,6 +705,13 @@ interface LifecycleSandboxRow {
   id: string;
   status: string;
   updated_at: Date | null;
+  claimed_at: Date | null;
+  warm_claim_credential_state: "pending" | "attested" | "ready" | "failed" | null;
+  warm_claim_attested_at: Date | null;
+  warm_claim_source_pool_id: string | null;
+  warm_claim_key_fingerprint: string | null;
+  warm_claim_attested_environment_revision: number | null;
+  environment_revision: number;
   user_id: string;
   sandbox_id: string | null;
   node_id: string | null;
@@ -700,6 +720,8 @@ interface LifecycleSandboxRow {
   image_digest: string | null;
   previous_docker_image: string | null;
   previous_image_digest: string | null;
+  deletion_attempt_id: string | null;
+  deletion_started_at: Date | null;
 }
 
 interface LifecycleJobOptions<TData extends object> {
@@ -726,6 +748,12 @@ interface LifecycleJobOptions<TData extends object> {
    * inputs, e.g. logs tail length or snapshot type.
    */
   idempotencyPredicates?: SQL[];
+  /**
+   * Other job types that mutate the same per-agent resource and therefore
+   * cannot overlap this job. The lookup runs under the lifecycle advisory
+   * lock, making exclusion symmetric regardless of enqueue order.
+   */
+  mutuallyExclusiveJobTypes?: readonly ProvisioningJobType[];
   /**
    * Called inside the transaction after the sandbox row is fetched and
    * before the existing-job lookup. Throw to abort the enqueue (e.g.
@@ -834,6 +862,7 @@ const COLD_BOOT_JOB_TYPES: ReadonlySet<ProvisioningJobType> = new Set([
  *  operators enable the lane. */
 const SNAPSHOT_GATE_RETRY_DELAY_MS = 10 * 60 * 1000;
 const PROVISION_TRANSPORT_RETRY_DELAY_MS = 2 * 60 * 1000;
+const WARM_CLAIM_RECOVERY_ORPHAN_GRACE_MS = 2 * 60 * 1000;
 
 /**
  * Unreachable loopback bridge that E2E preload historically stamped onto
@@ -946,21 +975,30 @@ class RetryableProvisionTransportError extends Error {
   }
 }
 
+class RetryableReplacementCleanupError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RetryableReplacementCleanupError";
+  }
+}
+
 const ADMIN_CANARY_CONFLICTING_JOB_TYPES: ProvisioningJobType[] = [
   JOB_TYPES.AGENT_PROVISION,
   JOB_TYPES.AGENT_DELETE,
   JOB_TYPES.AGENT_SUSPEND,
   JOB_TYPES.AGENT_RESUME,
   JOB_TYPES.AGENT_RESTART,
-  JOB_TYPES.AGENT_UPGRADE,
   JOB_TYPES.AGENT_DOWNGRADE,
   JOB_TYPES.AGENT_SLEEP,
   JOB_TYPES.AGENT_WAKE,
-  JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
 ];
 const SHARED_IMAGE_CHANGE_JOB_TYPES: ProvisioningJobType[] = [
   JOB_TYPES.AGENT_UPGRADE,
   JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
+];
+const EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES: ProvisioningJobType[] = [
+  ...ADMIN_CANARY_CONFLICTING_JOB_TYPES,
+  ...SHARED_IMAGE_CHANGE_JOB_TYPES,
 ];
 
 export class ProvisioningJobService {
@@ -1019,6 +1057,14 @@ export class ProvisioningJobService {
         id: agentSandboxes.id,
         status: agentSandboxes.status,
         updated_at: agentSandboxes.updated_at,
+        claimed_at: agentSandboxes.claimed_at,
+        warm_claim_credential_state: agentSandboxes.warm_claim_credential_state,
+        warm_claim_attested_at: agentSandboxes.warm_claim_attested_at,
+        warm_claim_source_pool_id: agentSandboxes.warm_claim_source_pool_id,
+        warm_claim_key_fingerprint: agentSandboxes.warm_claim_key_fingerprint,
+        warm_claim_attested_environment_revision:
+          agentSandboxes.warm_claim_attested_environment_revision,
+        environment_revision: agentSandboxes.environment_revision,
         user_id: agentSandboxes.user_id,
         sandbox_id: agentSandboxes.sandbox_id,
         node_id: agentSandboxes.node_id,
@@ -1027,6 +1073,9 @@ export class ProvisioningJobService {
         image_digest: agentSandboxes.image_digest,
         previous_docker_image: agentSandboxes.previous_docker_image,
         previous_image_digest: agentSandboxes.previous_image_digest,
+        replacement_cleanup_sandbox_id: agentSandboxes.replacement_cleanup_sandbox_id,
+        deletion_attempt_id: agentSandboxes.deletion_attempt_id,
+        deletion_started_at: agentSandboxes.deletion_started_at,
       })
       .from(agentSandboxes)
       .where(
@@ -1050,7 +1099,62 @@ export class ProvisioningJobService {
       });
     }
 
+    if (
+      EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES.includes(opts.jobType) &&
+      sandbox.replacement_cleanup_sandbox_id
+    ) {
+      throw new ApiError(
+        409,
+        "session_not_ready",
+        `Agent ${opts.agentId} has unresolved replacement cleanup`,
+      );
+    }
+    if (
+      EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES.includes(opts.jobType) &&
+      opts.jobType !== JOB_TYPES.AGENT_DELETE &&
+      (sandbox.deletion_attempt_id ||
+        sandbox.status === "deletion_pending" ||
+        sandbox.status === "deletion_failed")
+    ) {
+      throw new ApiError(409, "session_not_ready", `Agent ${opts.agentId} deletion is in progress`);
+    }
+
     opts.validateSandbox?.(sandbox);
+
+    const configuredConflicts = opts.mutuallyExclusiveJobTypes ?? [];
+    const symmetricConflicts = EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES.includes(opts.jobType)
+      ? EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES
+      : [];
+    const conflictingTypes = [...new Set([...configuredConflicts, ...symmetricConflicts])].filter(
+      (jobType) => jobType !== opts.jobType,
+    );
+    if (conflictingTypes && conflictingTypes.length > 0) {
+      const [conflict] = await tx
+        .select({ id: jobs.id, type: jobs.type, status: jobs.status })
+        .from(jobs)
+        .where(
+          and(
+            eq(jobs.organization_id, opts.organizationId),
+            eq(jobs.agent_id, opts.agentId),
+            inArray(jobs.type, [...conflictingTypes]),
+            sql`${jobs.status} IN ('pending', 'in_progress')`,
+          ),
+        )
+        .orderBy(desc(jobs.created_at))
+        .limit(1);
+      if (conflict) {
+        throw new ApiError(
+          409,
+          "session_not_ready",
+          `Agent ${opts.agentId} has conflicting ${conflict.type} job ${conflict.id}`,
+          {
+            conflictingJobId: conflict.id,
+            conflictingJobType: conflict.type,
+            conflictingJobStatus: conflict.status,
+          },
+        );
+      }
+    }
 
     const [existing] = await tx
       .select()
@@ -1235,6 +1339,13 @@ export class ProvisioningJobService {
       // bail. Actual row removal happens in executeAgentDelete once SSH
       // stop() succeeds.
       beforeInsert: async (tx, sandbox) => {
+        if (
+          sandbox.claimed_at &&
+          (sandbox.warm_claim_credential_state === "pending" ||
+            sandbox.warm_claim_credential_state === "attested")
+        ) {
+          throw new Error("Warm-claim credential handoff is still in progress");
+        }
         // A genuine user-initiated delete (the row is not already in a deletion
         // state) starts the deletion-failure counter fresh — error_count may
         // carry a stale provisioning-error value, and a new delete should get a
@@ -1242,11 +1353,26 @@ export class ProvisioningJobService {
         // A recovery re-enqueue (status is already deletion_pending/_failed)
         // PRESERVES the count so reEnqueueFailedDeletions can stop the loop.
         const isRecoveryReEnqueue =
-          sandbox.status === "deletion_pending" || sandbox.status === "deletion_failed";
+          Boolean(sandbox.deletion_attempt_id) ||
+          sandbox.status === "deletion_pending" ||
+          sandbox.status === "deletion_failed";
+        const deletionStartedAt =
+          isRecoveryReEnqueue && sandbox.deletion_started_at
+            ? sandbox.deletion_started_at
+            : new Date();
+        const deletionAttemptId =
+          isRecoveryReEnqueue && sandbox.deletion_attempt_id
+            ? sandbox.deletion_attempt_id
+            : crypto.randomUUID();
         await tx
           .update(agentSandboxes)
           .set({
             status: "deletion_pending" as const,
+            deletion_attempt_id: deletionAttemptId,
+            deletion_started_at: deletionStartedAt,
+            billing_status: "suspended" as const,
+            scheduled_shutdown_at: null,
+            shutdown_warning_sent_at: null,
             ...(isRecoveryReEnqueue ? {} : { error_count: 0 }),
             updated_at: new Date(),
           })
@@ -1496,6 +1622,226 @@ export class ProvisioningJobService {
   }
 
   /**
+   * Rolling migration and failure cleanup for the durable warm-claim fence.
+   * Legacy rows are never backfilled ready: each is lifecycle-locked, moved to
+   * pending, and restarted through the real remint/live-attest path. Failed
+   * handoffs retain their cleanup record until both credential owners revoke.
+   */
+  async reconcileWarmClaimCredentialFences(limit = 5): Promise<WarmClaimCredentialReconcileResult> {
+    const boundedLimit = Math.max(1, Math.min(25, Math.trunc(limit)));
+    const cleanupCandidates =
+      await agentSandboxesRepository.listFailedWarmClaimCredentialCleanupCandidates(boundedLimit);
+    let cleanupCompleted = 0;
+    let cleanupFailed = 0;
+    for (const candidate of cleanupCandidates) {
+      try {
+        if (
+          await elizaSandboxService.cleanupFailedWarmClaimCredentialHandoff(
+            candidate.id,
+            candidate.organization_id,
+          )
+        ) {
+          cleanupCompleted += 1;
+        }
+      } catch (error) {
+        // error-policy:J7 Each failed row remains durably selectable for the
+        // next daemon pass; report it without starving unrelated cleanups.
+        cleanupFailed += 1;
+        logger.error("[provisioning-jobs] Warm-claim credential cleanup failed", {
+          agentId: candidate.id,
+          orgId: candidate.organization_id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    const legacyCandidates =
+      await agentSandboxesRepository.listLegacyWarmClaimRecoveryCandidates(boundedLimit);
+    let recoveryEnqueued = 0;
+    let recoveryInFlight = 0;
+    let recoveryDeferred = 0;
+    for (const candidate of legacyCandidates) {
+      try {
+        const result = await this.enqueueLifecycleJob<AgentRestartJobData>({
+          jobType: JOB_TYPES.AGENT_RESTART,
+          jobData: {
+            agentId: candidate.id,
+            organizationId: candidate.organization_id,
+            userId: candidate.user_id,
+          },
+          toRecord: agentRestartJobDataToRecord,
+          agentId: candidate.id,
+          organizationId: candidate.organization_id,
+          userId: candidate.user_id,
+          maxAttempts: 3,
+          estimatedDurationMs: 90_000,
+          logName: "legacy_warm_claim_recovery",
+          mutuallyExclusiveJobTypes: [
+            ...ADMIN_CANARY_CONFLICTING_JOB_TYPES,
+            ...SHARED_IMAGE_CHANGE_JOB_TYPES,
+          ],
+          validateSandbox: (sandbox) => {
+            if (
+              !["running", "provisioning", "stopped", "error"].includes(sandbox.status) ||
+              !sandbox.claimed_at ||
+              sandbox.warm_claim_credential_state !== null ||
+              sandbox.user_id !== candidate.user_id
+            ) {
+              throw new ApiError(
+                409,
+                "session_not_ready",
+                `Agent ${candidate.id} is no longer a legacy warm-claim candidate`,
+              );
+            }
+          },
+          beforeInsert: async (tx) => {
+            const prepared = await tx.execute<{ id: string }>(sql`
+              UPDATE ${agentSandboxes}
+              SET
+                status = 'provisioning',
+                warm_claim_credential_state = 'pending',
+                warm_claim_source_pool_id = NULL,
+                warm_claim_key_fingerprint = NULL,
+                warm_claim_attested_at = NULL,
+                warm_claim_attested_environment_revision = NULL,
+                warm_claim_cleanup_completed_at = NULL,
+                error_message = 'Legacy warm claim requires credential and image re-attestation',
+                updated_at = NOW()
+              WHERE id = ${candidate.id}
+                AND organization_id = ${candidate.organization_id}
+                AND user_id = ${candidate.user_id}
+                AND status IN ('running', 'provisioning', 'stopped', 'error')
+                AND claimed_at IS NOT NULL
+                AND warm_claim_credential_state IS NULL
+              RETURNING id
+            `);
+            if (prepared.rows.length !== 1) {
+              throw new ApiError(
+                409,
+                "session_not_ready",
+                `Agent ${candidate.id} changed before legacy warm-claim recovery enqueue`,
+              );
+            }
+          },
+        });
+        if (result.created) recoveryEnqueued += 1;
+        else recoveryInFlight += 1;
+      } catch (error) {
+        // error-policy:J1 per-candidate recovery boundary — a concurrent
+        // ownership change becomes an explicit deferred count; other failures surface.
+        if (error instanceof ApiError && error.status === 409) {
+          recoveryDeferred += 1;
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    const strandedCutoff = new Date(Date.now() - WARM_CLAIM_RECOVERY_ORPHAN_GRACE_MS);
+    const strandedLimit = boundedLimit - legacyCandidates.length;
+    const strandedCandidates =
+      strandedLimit > 0
+        ? await agentSandboxesRepository.listStrandedWarmClaimRecoveryCandidates(
+            strandedCutoff,
+            strandedLimit,
+          )
+        : [];
+    for (const candidate of strandedCandidates) {
+      try {
+        const result = await this.enqueueLifecycleJob<AgentRestartJobData>({
+          jobType: JOB_TYPES.AGENT_RESTART,
+          jobData: {
+            agentId: candidate.id,
+            organizationId: candidate.organization_id,
+            userId: candidate.user_id,
+          },
+          toRecord: agentRestartJobDataToRecord,
+          agentId: candidate.id,
+          organizationId: candidate.organization_id,
+          userId: candidate.user_id,
+          maxAttempts: 3,
+          estimatedDurationMs: 90_000,
+          logName: "stranded_warm_claim_recovery",
+          mutuallyExclusiveJobTypes: [
+            ...ADMIN_CANARY_CONFLICTING_JOB_TYPES,
+            ...SHARED_IMAGE_CHANGE_JOB_TYPES,
+          ],
+          validateSandbox: (sandbox) => {
+            if (
+              !sandbox.claimed_at ||
+              (sandbox.warm_claim_credential_state !== "pending" &&
+                sandbox.warm_claim_credential_state !== "attested") ||
+              sandbox.user_id !== candidate.user_id ||
+              !sandbox.updated_at ||
+              sandbox.updated_at >= strandedCutoff
+            ) {
+              throw new ApiError(
+                409,
+                "session_not_ready",
+                `Agent ${candidate.id} is no longer a stranded warm-claim recovery`,
+              );
+            }
+          },
+          beforeInsert: async (tx) => {
+            const prepared = await tx.execute<{ id: string }>(sql`
+              UPDATE ${agentSandboxes}
+              SET
+                status = 'provisioning',
+                error_message = 'Warm-claim credential recovery restart was re-enqueued',
+                updated_at = NOW()
+              WHERE id = ${candidate.id}
+                AND organization_id = ${candidate.organization_id}
+                AND user_id = ${candidate.user_id}
+                AND claimed_at IS NOT NULL
+                AND warm_claim_credential_state IN ('pending', 'attested')
+                AND deleted_at IS NULL
+              RETURNING id
+            `);
+            if (prepared.rows.length !== 1) {
+              throw new ApiError(
+                409,
+                "session_not_ready",
+                `Agent ${candidate.id} changed before stranded warm-claim recovery enqueue`,
+              );
+            }
+          },
+        });
+        if (result.created) recoveryEnqueued += 1;
+        else recoveryInFlight += 1;
+      } catch (error) {
+        // error-policy:J1 per-candidate recovery boundary — a concurrent
+        // ownership change becomes an explicit deferred count; other failures surface.
+        if (error instanceof ApiError && error.status === 409) {
+          recoveryDeferred += 1;
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    return {
+      legacyFound: legacyCandidates.length,
+      strandedFound: strandedCandidates.length,
+      recoveryEnqueued,
+      recoveryInFlight,
+      recoveryDeferred,
+      cleanupFound: cleanupCandidates.length,
+      cleanupCompleted,
+      cleanupFailed,
+    };
+  }
+
+  /**
+   * Retry exact-node retirement records left by an interrupted or unreachable
+   * replacement. Rows stay fenced until container and VPN absence plus the
+   * capacity release commit together.
+   */
+  async reconcileReplacementCleanupFences(limit = 5) {
+    const boundedLimit = Math.max(1, Math.min(25, Math.trunc(limit)));
+    return elizaSandboxService.reconcileReplacementCleanupFences(boundedLimit);
+  }
+
+  /**
    * Fleet-upgrade: enqueue a blue/green swap of `agentId` onto `toDigest`.
    * Called by the reconciler when a registry probe sees the configured tag
    * has moved. The handler provisions a new container on the least-loaded
@@ -1538,6 +1884,19 @@ export class ProvisioningJobService {
       // (~30s) + atomic DB swap + 30s graceful stop = ~3 min budget.
       estimatedDurationMs: 180_000,
       logName: "agent_upgrade",
+      mutuallyExclusiveJobTypes: SHARED_IMAGE_CHANGE_JOB_TYPES,
+      validateSandbox: (sandbox) => {
+        if (sandbox.status !== "running") {
+          throw new ApiError(409, "session_not_ready", `Agent ${params.agentId} is not running`);
+        }
+        if (!hasReadyWarmClaimCredential(sandbox)) {
+          throw new ApiError(
+            409,
+            "session_not_ready",
+            `Agent ${params.agentId} warm-claim credential handoff is not ready`,
+          );
+        }
+      },
     });
   }
 
@@ -1616,6 +1975,7 @@ export class ProvisioningJobService {
           maxAttempts: 1,
           estimatedDurationMs: 180_000,
           logName: "agent_admin_canary_image",
+          mutuallyExclusiveJobTypes: SHARED_IMAGE_CHANGE_JOB_TYPES,
           logExtras: {
             rolloutId: data.rolloutId,
             operation: data.operation,
@@ -1636,6 +1996,13 @@ export class ProvisioningJobService {
                 409,
                 "session_not_ready",
                 `Agent ${data.agentId} is not a running dedicated sandbox`,
+              );
+            }
+            if (!hasReadyWarmClaimCredential(sandbox)) {
+              throw new ApiError(
+                409,
+                "session_not_ready",
+                `Agent ${data.agentId} warm-claim credential handoff is not ready`,
               );
             }
             if (sandbox.user_id !== data.targetOwnerUserId) {
@@ -2209,7 +2576,10 @@ export class ProvisioningJobService {
         const errorMsg = err instanceof Error ? err.message : String(err);
         result.errors.push({ jobId: job.id, error: errorMsg });
 
-        if (err instanceof RetryableProvisionTransportError) {
+        if (
+          err instanceof RetryableProvisionTransportError ||
+          err instanceof RetryableReplacementCleanupError
+        ) {
           result.retried++;
           await jobsRepository.retryLaterWithoutIncrementingAttempts(
             job.id,
@@ -2305,6 +2675,36 @@ export class ProvisioningJobService {
             jobId: job.id,
             agentId,
           });
+        };
+      }
+      case JOB_TYPES.AGENT_RESTART: {
+        const { agentId, organizationId } = readAgentRestartJobData(job);
+        return async (tx) => {
+          const [failedWarmClaim] = await tx
+            .update(agentSandboxes)
+            .set({
+              status: "error",
+              warm_claim_credential_state: "failed",
+              warm_claim_cleanup_completed_at: null,
+              error_message: `Warm-claim credential recovery permanently failed after ${job.max_attempts} attempts: ${errorMsg}`,
+              updated_at: new Date(),
+            })
+            .where(
+              and(
+                eq(agentSandboxes.id, agentId),
+                eq(agentSandboxes.organization_id, organizationId),
+                isNotNull(agentSandboxes.claimed_at),
+                sql`${agentSandboxes.warm_claim_credential_state} IN ('pending', 'attested')`,
+                sql`${agentSandboxes.deleted_at} IS NULL`,
+              ),
+            )
+            .returning({ id: agentSandboxes.id });
+          if (failedWarmClaim) {
+            logger.warn(
+              "[provisioning-jobs] Marked exhausted warm-claim handoff failed for durable credential cleanup",
+              { jobId: job.id, agentId, organizationId },
+            );
+          }
         };
       }
       // A permanently-exhausted AGENT_UPGRADE is NOT uniformly terminal. Most
@@ -2513,6 +2913,40 @@ export class ProvisioningJobService {
   }
 
   private async executeJob(job: Job): Promise<void> {
+    if (
+      EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES.includes(job.type as ProvisioningJobType) &&
+      job.agent_id
+    ) {
+      await dbWrite.transaction(async (tx) => {
+        await tx.execute(elizaProvisionAdvisoryLockSql(job.organization_id, job.agent_id!));
+        const [conflict] = await tx
+          .select({ id: jobs.id, type: jobs.type, status: jobs.status })
+          .from(jobs)
+          .where(
+            and(
+              eq(jobs.organization_id, job.organization_id),
+              eq(jobs.agent_id, job.agent_id!),
+              inArray(jobs.type, EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES),
+              ne(jobs.id, job.id),
+              sql`${jobs.status} IN ('pending', 'in_progress')`,
+            ),
+          )
+          .orderBy(desc(jobs.created_at))
+          .limit(1);
+        if (conflict) {
+          throw new ApiError(
+            409,
+            "session_not_ready",
+            `Agent ${job.agent_id} has conflicting ${conflict.type} job ${conflict.id}`,
+            {
+              conflictingJobId: conflict.id,
+              conflictingJobType: conflict.type,
+              conflictingJobStatus: conflict.status,
+            },
+          );
+        }
+      });
+    }
     switch (job.type) {
       case JOB_TYPES.AGENT_PROVISION:
         await this.executeAgentProvision(job);
@@ -3029,6 +3463,55 @@ export class ProvisioningJobService {
       throw new Error(`Admin canary audit identity mismatch for job ${job.id}`);
     }
     const startedAt = jobAuditTimestamp(job.started_at ?? job.updated_at);
+    const priorCutover = isPendingAdminCanaryCutoverAudit(job.result) ? job.result : undefined;
+    if (priorCutover) {
+      if (
+        priorCutover.jobId !== job.id ||
+        priorCutover.operation !== data.operation ||
+        priorCutover.rolloutId !== data.rolloutId ||
+        priorCutover.actorUserId !== data.actorUserId ||
+        priorCutover.agentId !== data.agentId ||
+        priorCutover.organizationId !== data.organizationId ||
+        priorCutover.targetDigest !== data.targetDigest
+      ) {
+        throw new Error(`Admin canary pending-cutover audit mismatch for job ${job.id}`);
+      }
+      try {
+        await elizaSandboxService.convergeReplacementCleanupFence(
+          data.agentId,
+          data.organizationId,
+        );
+      } catch (error) {
+        // error-policy:J2 context-adding rethrow — the queue needs a typed
+        // retryable failure while preserving the cleanup cause.
+        throw new RetryableReplacementCleanupError(
+          `Admin canary cleanup remains pending: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+      const finishedAt = new Date();
+      const completedResult: AdminCanaryImageJobResult = {
+        ...priorCutover,
+        success: true,
+        cleanupPending: false,
+        finishedAt: finishedAt.toISOString(),
+      };
+      await jobsRepository.updateStatus(job.id, "completed", {
+        result: adminCanaryImageJobResultToRecord(completedResult),
+        result_storage: "inline",
+        error: null,
+        error_storage: "inline",
+        completed_at: finishedAt,
+      });
+      logger.info("[provisioning-jobs] Admin canary cleanup converged", {
+        jobId: job.id,
+        rolloutId: data.rolloutId,
+        agentId: data.agentId,
+      });
+      return;
+    }
+
     let committedAudit: AdminCanaryImageJobResult | undefined;
     const onCutoverInTx = async (
       tx: DbTransaction,
@@ -3044,8 +3527,11 @@ export class ProvisioningJobService {
         throw new Error(`Admin canary cutover digest mismatch for job ${job.id}`);
       }
       const finishedAt = new Date();
+      const cutoverAt = finishedAt.toISOString();
       const jobResult: AdminCanaryImageJobResult = {
-        success: true,
+        success: false,
+        cleanupPending: true,
+        cutoverAt,
         jobId: job.id,
         operation: data.operation,
         rolloutId: data.rolloutId,
@@ -3059,7 +3545,7 @@ export class ProvisioningJobService {
         targetImage: data.targetImage,
         targetDigest: data.targetDigest,
         startedAt,
-        finishedAt: finishedAt.toISOString(),
+        finishedAt: cutoverAt,
         oldNodeId: cutover.oldNodeId,
         oldContainerName: cutover.oldContainerName,
         newNodeId: cutover.newNodeId,
@@ -3068,14 +3554,13 @@ export class ProvisioningJobService {
       const [updated] = await tx
         .update(jobs)
         .set({
-          status: "completed",
           result: adminCanaryImageJobResultToRecord(jobResult),
           result_storage: "inline",
           result_key: null,
           error: null,
           error_storage: "inline",
           error_key: null,
-          completed_at: finishedAt,
+          completed_at: null,
           updated_at: finishedAt,
         })
         .where(
@@ -3132,11 +3617,36 @@ export class ProvisioningJobService {
           });
 
     if (!result.success) {
+      if (result.cleanupPending) {
+        throw new RetryableReplacementCleanupError(
+          result.error ?? "Admin canary pre-cutover cleanup remains pending",
+        );
+      }
       throw new Error(result.error ?? "Admin canary image change failed");
     }
     if (!committedAudit) {
       throw new Error(`Admin canary job ${job.id} cut over without a committed audit`);
     }
+    if (result.cleanupPending) {
+      throw new RetryableReplacementCleanupError(
+        result.error ?? "Admin canary post-cutover cleanup remains pending",
+      );
+    }
+
+    const finishedAt = new Date();
+    const completedAudit: AdminCanaryImageJobResult = {
+      ...committedAudit,
+      success: true,
+      cleanupPending: false,
+      finishedAt: finishedAt.toISOString(),
+    };
+    await jobsRepository.updateStatus(job.id, "completed", {
+      result: adminCanaryImageJobResultToRecord(completedAudit),
+      result_storage: "inline",
+      error: null,
+      error_storage: "inline",
+      completed_at: finishedAt,
+    });
 
     logger.info("[provisioning-jobs] Admin canary image change completed", {
       jobId: job.id,
@@ -3146,7 +3656,7 @@ export class ProvisioningJobService {
       operation: data.operation,
       targetImage: data.targetImage,
       targetDigest: data.targetDigest,
-      durationMs: new Date(committedAudit.finishedAt).getTime() - new Date(startedAt).getTime(),
+      durationMs: finishedAt.getTime() - new Date(startedAt).getTime(),
     });
   }
 
