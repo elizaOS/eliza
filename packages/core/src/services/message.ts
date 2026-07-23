@@ -1421,6 +1421,56 @@ type FailureReplyAttempt =
 	| { kind: "rateLimited" }
 	| { kind: "authFailed" };
 
+const FAILURE_REPLY_PUBLIC_TEXT_FIELDS = [
+	"text",
+	"replyText",
+	"messageToUser",
+	"response",
+] as const;
+
+/**
+ * Returns the object body only when the entire model response is a raw or
+ * fenced JSON object. Failure replies may contain ordinary prose with braces
+ * or structured chat markers; neither is an internal response envelope.
+ */
+function wholeFailureReplyObjectBody(value: string): string | null {
+	let body = value.trim();
+	const fence = body.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+	if (fence?.[1]) {
+		body = fence[1].trim();
+	}
+	return body.startsWith("{") && body.endsWith("}") ? body : null;
+}
+
+function classifyFailureReplyModelText(
+	cleaned: string,
+):
+	| { kind: "text"; value: string }
+	| { kind: "unusableStructured" }
+	| { kind: "empty" } {
+	if (!cleaned) return { kind: "empty" };
+
+	const objectBody = wholeFailureReplyObjectBody(cleaned);
+	if (!objectBody) return { kind: "text", value: cleaned };
+
+	const parsed = parseJSONObjectFromText(objectBody);
+	for (const field of FAILURE_REPLY_PUBLIC_TEXT_FIELDS) {
+		const candidate = parsed?.[field];
+		if (typeof candidate !== "string" || candidate.trim().length === 0) {
+			continue;
+		}
+		const text = candidate.trim();
+		// A public field is an extraction boundary, not permission to nest and
+		// expose another raw planner/evaluator envelope.
+		if (wholeFailureReplyObjectBody(text)) {
+			continue;
+		}
+		return { kind: "text", value: text };
+	}
+
+	return { kind: "unusableStructured" };
+}
+
 export function shouldSkipResponseMemoryPersistence(memory: Memory): boolean {
 	const content = memory.content as Record<string, unknown> | undefined;
 	const metadata = memory.metadata as Record<string, unknown> | undefined;

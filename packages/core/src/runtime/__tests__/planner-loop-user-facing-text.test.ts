@@ -584,6 +584,9 @@ describe("looksLikeActionEnvelopeJson — planner fallback-envelope leak detecto
 	});
 
 	it("does NOT flag an action string without a parameters object", () => {
+		expect(looksLikeActionEnvelopeJson('{"action":"","parameters":{}}')).toBe(
+			false,
+		);
 		expect(looksLikeActionEnvelopeJson('{"action":"approve"}')).toBe(false);
 		expect(
 			looksLikeActionEnvelopeJson('{"action":"approve","parameters":"yes"}'),
@@ -592,8 +595,22 @@ describe("looksLikeActionEnvelopeJson — planner fallback-envelope leak detecto
 
 	it("does NOT flag prose or unparseable text", () => {
 		expect(looksLikeActionEnvelopeJson("The action succeeded.")).toBe(false);
+		expect(looksLikeActionEnvelopeJson('[{"action":"BROWSER"}]')).toBe(false);
 		expect(looksLikeActionEnvelopeJson('{"action": broken')).toBe(false);
 		expect(looksLikeActionEnvelopeJson("")).toBe(false);
+	});
+
+	it("preserves structured chat markers even when their form data uses action-shaped keys", () => {
+		expect(
+			looksLikeActionEnvelopeJson(
+				'[FORM]\n{"action":"proceed","parameters":{"count":2}}\n[/FORM]',
+			),
+		).toBe(false);
+		expect(
+			looksLikeActionEnvelopeJson(
+				"[CHOICE:approval id=next]\nvalue=Proceed\n[/CHOICE]",
+			),
+		).toBe(false);
 	});
 });
 

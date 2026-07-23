@@ -86,16 +86,42 @@ describe("DefaultMessageService structured failure replies", () => {
 		).resolves.toEqual({ kind: "creditsExhausted" });
 	});
 
-	it("extracts the user-facing text from a structured envelope reply", async () => {
-		const service =
-			new DefaultMessageService() as unknown as FailureReplyService;
-		const runtime = makeRuntimeReturning([
-			'{"shouldRespond": true, "replyText": "sorry, that broke on my side"}',
-		]);
-		await expect(
-			service.generateFailureReplyText(runtime, "recent messages", "test"),
-		).resolves.toEqual({ kind: "text", value: "sorry, that broke on my side" });
-	});
+	it.each([
+		[
+			"text",
+			'{"shouldRespond":true,"text":"sorry, that failed on my side"}',
+		],
+		[
+			"replyText",
+			'{"shouldRespond":true,"replyText":"sorry, that failed on my side"}',
+		],
+		[
+			"messageToUser",
+			'{"shouldRespond":true,"messageToUser":"sorry, that failed on my side"}',
+		],
+		[
+			"response",
+			'{"shouldRespond":true,"response":"sorry, that failed on my side"}',
+		],
+		[
+			"later safe field",
+			'{"shouldRespond":true,"text":"{\\"action\\":\\"VIEWS\\",\\"parameters\\":{}}","response":"sorry, that failed on my side"}',
+		],
+	])(
+		"extracts the %s public field from a structured reply",
+		async (_, reply) => {
+			const service =
+				new DefaultMessageService() as unknown as FailureReplyService;
+			const runtime = makeRuntimeReturning([reply]);
+
+			await expect(
+				service.generateFailureReplyText(runtime, "recent messages", "test"),
+			).resolves.toEqual({
+				kind: "text",
+				value: "sorry, that failed on my side",
+			});
+		},
+	);
 
 	it("never ships a raw JSON envelope as the failure reply", async () => {
 		const service =
@@ -173,6 +199,36 @@ describe("DefaultMessageService structured failure replies", () => {
 			context?: { classification?: string };
 		};
 		expect(reportedError.context?.classification).toBe("unexpected-json");
+	});
+
+	it("preserves a public structured-chat marker instead of treating its inner JSON as an envelope", async () => {
+		const service =
+			new DefaultMessageService() as unknown as FailureReplyService;
+		const marker = '[FORM]\n{"title":"Retry details","fields":[]}\n[/FORM]';
+		const runtime = makeRuntimeReturning([
+			JSON.stringify({ shouldRespond: true, messageToUser: marker }),
+		]);
+
+		await expect(
+			service.generateFailureReplyText(runtime, "recent messages", "test"),
+		).resolves.toEqual({ kind: "text", value: marker });
+	});
+
+	it("returns empty when every slot yields only unusable structured output", async () => {
+		const service =
+			new DefaultMessageService() as unknown as FailureReplyService;
+		const envelope = '{"action":"X","parameters":{}}';
+		const runtime = makeRuntimeReturning([
+			envelope,
+			` \`\`\`json\n${envelope}\n\`\`\` `.trim(),
+			'{"decision":"CONTINUE","thought":"retry"}',
+			'{"shouldRespond":true,"messageToUser":{"text":"not public prose"}}',
+		]);
+
+		await expect(
+			service.generateFailureReplyText(runtime, "recent messages", "test"),
+		).resolves.toEqual({ kind: "text", value: "" });
+		expect(runtime.reportError).toHaveBeenCalledTimes(4);
 	});
 
 	it("renders the designed default when every slot yields invalid envelopes", async () => {

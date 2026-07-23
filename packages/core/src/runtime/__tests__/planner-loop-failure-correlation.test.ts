@@ -544,6 +544,46 @@ describe("planner-loop failed-operation correlation", () => {
 		expect(runtime.useModel).toHaveBeenCalledTimes(3);
 	});
 
+	it("keeps the unresolved failure receipt authoritative over a fenced action-envelope reply", async () => {
+		const leakedEnvelope =
+			'```json\n{"action":"VIEWS","parameters":{"view":"notes","capability":"get-notes"}}\n```';
+		const runtime = {
+			useModel: vi
+				.fn()
+				.mockResolvedValueOnce(viewsUpdateCall("note-a", "A"))
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{
+							id: "reply",
+							name: "REPLY",
+							arguments: { text: leakedEnvelope },
+						},
+					],
+				}),
+		};
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall: vi.fn().mockResolvedValueOnce({
+				success: false,
+				error: "note-a-conflict",
+				text: failureA,
+				userFacingText: failureA,
+				data: { receiptId: "receipt-note-a-failure" },
+			}),
+			evaluate: vi.fn().mockResolvedValueOnce({
+				success: false,
+				decision: "CONTINUE",
+				thought: "The mutation failed.",
+			}),
+		});
+
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe(failureA);
+		expect(result.finalMessage).not.toContain('"action":"VIEWS"');
+	});
+
 	it("does not relay successful B when evaluator protocol fails after failed A", async () => {
 		const runtime = runtimeForFailureThenSuccessThenReply();
 		const result = await runPlannerLoop({
