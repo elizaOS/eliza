@@ -33,12 +33,12 @@ import {
   writeRecentLifeSaveCache,
 } from "./lib/lifeops-deferred-draft.js";
 import {
+  applyLeadUpReminderShape,
   buildCadenceFromLlmParams,
   buildCadenceFromUpdateFields,
-  buildMilestoneReminderPlan,
   formatLeadOffsetPhrase,
-  maybeAddEarlierReminderStep,
   parseMilestoneListFromIntent,
+  reminderStepMinutesBeforeDue,
   resolveDefinitionFromIntent,
   resolveOnceDueAt,
   runLifeConnectedQuery,
@@ -1870,7 +1870,7 @@ describe("runLifeOperationHandler consent gate (#16941)", () => {
   });
 });
 
-describe("earlier-nudge reminder plan augmentation (#16941)", () => {
+describe("lead-up reminder shape (#16941)", () => {
   const BASE_PLAN = {
     steps: [{ channel: "in_app" as const, offsetMinutes: 0, label: "due" }],
   };
@@ -1888,93 +1888,94 @@ describe("earlier-nudge reminder plan augmentation (#16941)", () => {
     expect(wantsEarlierReminderNudge("remind me friday at 5pm")).toBe(false);
   });
 
-  it("adds a day-before step when there is at least two days of runway", () => {
+  it("widens the once lead and anchors an early step at relevance start", () => {
     const now = Date.parse("2026-07-20T09:00:00.000Z");
-    const plan = maybeAddEarlierReminderStep({
-      plan: BASE_PLAN,
+    const shaped = applyLeadUpReminderShape({
       cadence: { kind: "once", dueAt: "2026-07-24T09:00:00.000Z" },
+      plan: BASE_PLAN,
       ownerText: ASK,
       title: "Book report",
+      milestones: [],
       now,
     });
-    expect(plan.steps).toHaveLength(2);
-    expect(plan.steps[0]).toMatchObject({
-      channel: "in_app",
-      offsetMinutes: -1440,
+    // Steps fire at (dueAt - lead) + offset: offset 0 is the early nudge a
+    // day out, offset = lead is the due-time reminder.
+    expect(shaped.cadence).toMatchObject({
+      kind: "once",
+      visibilityLeadMinutes: 1440,
     });
-    expect(plan.steps[1]).toMatchObject({ offsetMinutes: 0 });
+    expect(shaped.plan.steps).toEqual([
+      {
+        channel: "in_app",
+        offsetMinutes: 0,
+        label: "Early start: Book report",
+      },
+      {
+        channel: "in_app",
+        offsetMinutes: 1440,
+        label: "Book report reminder",
+      },
+    ]);
+    expect(reminderStepMinutesBeforeDue(shaped.cadence, 0)).toBe(1440);
+    expect(reminderStepMinutesBeforeDue(shaped.cadence, 1440)).toBe(0);
   });
 
   it("shrinks the lead toward the midpoint when the deadline is close", () => {
     const now = Date.parse("2026-07-20T09:00:00.000Z");
-    const plan = maybeAddEarlierReminderStep({
-      plan: BASE_PLAN,
+    const shaped = applyLeadUpReminderShape({
       cadence: { kind: "once", dueAt: "2026-07-20T12:00:00.000Z" },
+      plan: BASE_PLAN,
       ownerText: ASK,
       title: "Book report",
+      milestones: [],
       now,
     });
-    expect(plan.steps[0]).toMatchObject({ offsetMinutes: -90 });
+    expect(shaped.cadence).toMatchObject({ visibilityLeadMinutes: 90 });
   });
 
-  it("leaves the plan alone without an ask, without runway, off-once, or when a lead exists", () => {
+  it("leaves the shape alone without an ask, without runway, or off-once", () => {
     const now = Date.parse("2026-07-20T09:00:00.000Z");
-    const dueSoon = {
-      kind: "once" as const,
-      dueAt: "2026-07-20T09:30:00.000Z",
-    };
     expect(
-      maybeAddEarlierReminderStep({
-        plan: BASE_PLAN,
+      applyLeadUpReminderShape({
         cadence: { kind: "once", dueAt: "2026-07-24T09:00:00.000Z" },
+        plan: BASE_PLAN,
         ownerText: "yes lock it in!",
         title: "Book report",
+        milestones: [],
         now,
-      }).steps,
+      }).plan.steps,
     ).toHaveLength(1);
     expect(
-      maybeAddEarlierReminderStep({
+      applyLeadUpReminderShape({
+        cadence: { kind: "once", dueAt: "2026-07-20T09:30:00.000Z" },
         plan: BASE_PLAN,
-        cadence: dueSoon,
         ownerText: ASK,
         title: "Book report",
+        milestones: [],
         now,
-      }).steps,
+      }).plan.steps,
     ).toHaveLength(1);
     expect(
-      maybeAddEarlierReminderStep({
-        plan: BASE_PLAN,
+      applyLeadUpReminderShape({
         cadence: { kind: "daily", windows: ["morning"] },
+        plan: BASE_PLAN,
         ownerText: ASK,
         title: "Book report",
+        milestones: [],
         now,
-      }).steps,
+      }).plan.steps,
     ).toHaveLength(1);
-    const withLead = {
-      steps: [
-        { channel: "in_app" as const, offsetMinutes: -600, label: "early" },
-        ...BASE_PLAN.steps,
-      ],
-    };
-    expect(
-      maybeAddEarlierReminderStep({
-        plan: withLead,
-        cadence: { kind: "once", dueAt: "2026-07-24T09:00:00.000Z" },
-        ownerText: ASK,
-        title: "Book report",
-        now,
-      }).steps,
-    ).toHaveLength(2);
   });
 
   it("renders lead offsets as human phrases", () => {
-    expect(formatLeadOffsetPhrase(-1440)).toBe("a day");
-    expect(formatLeadOffsetPhrase(-90)).toBe("1.5 hours");
-    expect(formatLeadOffsetPhrase(-60)).toBe("1 hour");
-    expect(formatLeadOffsetPhrase(-45)).toBe("45 minutes");
+    expect(formatLeadOffsetPhrase(1440)).toBe("a day");
+    expect(formatLeadOffsetPhrase(90)).toBe("1.5 hours");
+    expect(formatLeadOffsetPhrase(60)).toBe("1 hour");
+    expect(formatLeadOffsetPhrase(45)).toBe("45 minutes");
+    expect(formatLeadOffsetPhrase(4320)).toBe("3 days");
   });
 
-  it("persists the lead step and reports it on a crisp confirm-with-additions save", async () => {
+  it("persists the lead shape and reports it on a crisp confirm-with-additions save", async () => {
     serviceState.createCalls.length = 0;
     const runtime = makeRuntime((prompt) => {
       if (prompt.includes("create_definition request")) {
@@ -2003,10 +2004,17 @@ describe("earlier-nudge reminder plan augmentation (#16941)", () => {
     );
     expect(result.success).toBe(true);
     expect(serviceState.createCalls).toHaveLength(1);
-    const plan = serviceState.createCalls[0]?.reminderPlan as {
-      steps: Array<{ offsetMinutes: number }>;
+    const created = serviceState.createCalls[0] as {
+      cadence: { kind: string; visibilityLeadMinutes?: number };
+      reminderPlan: { steps: Array<{ offsetMinutes: number }> };
     };
-    expect(plan.steps.some((step) => step.offsetMinutes < 0)).toBe(true);
+    expect(created.cadence.visibilityLeadMinutes ?? 0).toBeGreaterThanOrEqual(
+      60,
+    );
+    expect(created.reminderPlan.steps.length).toBeGreaterThanOrEqual(2);
+    expect(
+      created.reminderPlan.steps.every((step) => step.offsetMinutes >= 0),
+    ).toBe(true);
     // The stored lead must surface in the confirmed reply, not stay a silent
     // row: the live failure was an earlier checkpoint "proposed, not created".
     expect(result.text ?? "").toContain("early nudge");
@@ -2326,47 +2334,32 @@ describe("milestone reminder plans (#16941)", () => {
   });
 
   it("spreads milestone steps across the runway, all before the due step", () => {
-    const plan = buildMilestoneReminderPlan({
-      milestones: ["Outline", "Rough draft", "Final proofread"],
+    const shaped = applyLeadUpReminderShape({
       cadence: { kind: "once", dueAt: DUE },
+      plan: {
+        steps: [{ channel: "in_app", offsetMinutes: 0, label: "due" }],
+      },
+      ownerText: "yes save it exactly like that.",
+      title: "History report milestones",
+      milestones: ["Outline", "Rough draft", "Final proofread"],
       now: NOW3,
     });
-    expect(plan).not.toBeNull();
-    const steps = plan?.steps ?? [];
-    expect(steps).toHaveLength(4);
-    const offsets = steps.map((step) => step.offsetMinutes);
-    // 4 days of runway → milestones at -75%, -50%, -25% of it, then due.
-    expect(offsets).toEqual([-4320, -2880, -1440, 0]);
-    expect(steps.map((step) => step.label)).toEqual([
+    // 4 days of runway → lead 3 days; milestones at 0/-2d/-1d before due,
+    // then the due-time step at offset = lead.
+    expect(shaped.cadence).toMatchObject({ visibilityLeadMinutes: 4320 });
+    expect(shaped.plan.steps.map((step) => step.offsetMinutes)).toEqual([
+      0, 1440, 2880, 4320,
+    ]);
+    expect(shaped.plan.steps.map((step) => step.label)).toEqual([
       "Outline",
       "Rough draft",
       "Final proofread",
-      "Due",
+      "Due: History report milestones",
     ]);
-  });
-
-  it("returns null off-once, under-runway, or with fewer than two milestones", () => {
-    expect(
-      buildMilestoneReminderPlan({
-        milestones: ["Outline", "Draft"],
-        cadence: { kind: "daily", windows: ["morning"] },
-        now: NOW3,
-      }),
-    ).toBeNull();
-    expect(
-      buildMilestoneReminderPlan({
-        milestones: ["Outline", "Draft"],
-        cadence: { kind: "once", dueAt: "2026-07-23T10:00:00.000Z" },
-        now: NOW3,
-      }),
-    ).toBeNull();
-    expect(
-      buildMilestoneReminderPlan({
-        milestones: ["Outline"],
-        cadence: { kind: "once", dueAt: DUE },
-        now: NOW3,
-      }),
-    ).toBeNull();
+    const beforeDue = shaped.plan.steps.map((step) =>
+      reminderStepMinutesBeforeDue(shaped.cadence, step.offsetMinutes),
+    );
+    expect(beforeDue).toEqual([4320, 2880, 1440, 0]);
   });
 
   it("persists milestone steps on a confirmed multiStep save and names them", async () => {
@@ -2407,12 +2400,16 @@ describe("milestone reminder plans (#16941)", () => {
     );
     expect(result.success).toBe(true);
     expect(serviceState.createCalls).toHaveLength(1);
-    const plan = serviceState.createCalls[0]?.reminderPlan as {
-      steps: Array<{ offsetMinutes: number; label: string }>;
+    const created = serviceState.createCalls[0] as {
+      cadence: { visibilityLeadMinutes?: number };
+      reminderPlan: { steps: Array<{ offsetMinutes: number; label: string }> };
     };
-    const leads = plan.steps.filter((step) => step.offsetMinutes < 0);
-    expect(leads.length).toBe(3);
-    expect(leads.map((step) => step.label)).toEqual([
+    const lead = created.cadence.visibilityLeadMinutes ?? 0;
+    expect(lead).toBeGreaterThanOrEqual(120);
+    const beforeDue = created.reminderPlan.steps.filter(
+      (step) => lead - step.offsetMinutes >= 60,
+    );
+    expect(beforeDue.map((step) => step.label)).toEqual([
       "Outline",
       "Rough draft",
       "Final proofread",

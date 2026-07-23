@@ -1873,6 +1873,11 @@ function stableCadenceKey(cadence: unknown): string {
       const out: Record<string, unknown> = {};
       for (const key of Object.keys(record).sort()) {
         if (record[key] === undefined) continue;
+        // Visibility lead/lag are scheduling presentation hints, not item
+        // identity — a re-call that adds a lead-up shape must still hit the
+        // content-duplicate guard.
+        if (key === "visibilityLeadMinutes" || key === "visibilityLagMinutes")
+          continue;
         out[key] = canonicalize(record[key]);
       }
       return out;
@@ -2627,50 +2632,109 @@ export function formatLeadOffsetPhrase(offsetMinutes: number): string {
 }
 
 /**
- * Adds a lead-up step to a one-off reminder plan when the owner explicitly
- * asked to be nudged before the due time too. Prefers a full day of lead and
- * shrinks toward the midpoint when the deadline is closer than that; leaves
- * the plan untouched when an earlier step already exists, when there is under
- * an hour of room, or when the cadence is not a dated one-off.
+ * Reshapes a dated one-off into the store's lead-up form when the owner asked
+ * to be nudged before the due time too. Reminder-plan step offsets must be
+ * >= 0 and fire at `relevanceStartAt + offset`, so earliness is expressed by
+ * widening the once cadence's `visibilityLeadMinutes` (relevance opens at
+ * `dueAt - lead`) and anchoring the early step at offset 0 with the due-time
+ * step at `lead`. A first attempt stored negative offsets and the service
+ * rightly rejected them (#16941 live: every "bug me before friday too" plan
+ * collapsed to a single due-time step).
  */
-export function maybeAddEarlierReminderStep(args: {
-  plan: NonNullable<CreateLifeOpsDefinitionRequest["reminderPlan"]>;
+export function applyLeadUpReminderShape(args: {
   cadence: LifeOpsCadence;
+  plan: NonNullable<CreateLifeOpsDefinitionRequest["reminderPlan"]>;
   ownerText: string;
   title: string;
+  milestones: string[];
   now?: number;
-}): NonNullable<CreateLifeOpsDefinitionRequest["reminderPlan"]> {
-  if (
-    args.cadence.kind !== "once" ||
-    !wantsEarlierReminderNudge(args.ownerText)
-  ) {
-    return args.plan;
+}): {
+  cadence: LifeOpsCadence;
+  plan: NonNullable<CreateLifeOpsDefinitionRequest["reminderPlan"]>;
+} {
+  const unchanged = { cadence: args.cadence, plan: args.plan };
+  if (args.cadence.kind !== "once") {
+    return unchanged;
   }
   const dueAtMs = Date.parse(args.cadence.dueAt);
   if (!Number.isFinite(dueAtMs)) {
-    return args.plan;
-  }
-  if (args.plan.steps.some((step) => step.offsetMinutes <= -240)) {
-    return args.plan;
+    return unchanged;
   }
   const now = args.now ?? Date.now();
-  const minutesUntilDue = Math.floor((dueAtMs - now) / 60_000);
-  // Need ≥1h of runway before the due-time fire for a lead nudge to be real.
-  if (minutesUntilDue < 60) {
-    return args.plan;
+  const runwayMinutes = Math.floor((dueAtMs - now) / 60_000);
+  const hasMilestones = args.milestones.length >= 2 && runwayMinutes >= 120;
+  const wantsLead =
+    wantsEarlierReminderNudge(args.ownerText) && runwayMinutes >= 60;
+  if (!hasMilestones && !wantsLead) {
+    return unchanged;
   }
-  const leadMinutes = Math.min(1440, Math.floor(minutesUntilDue / 2));
+  // Already shaped (an explicit lead plus a multi-step ladder) — keep it.
+  if (
+    (args.cadence.visibilityLeadMinutes ?? 0) >= 60 &&
+    args.plan.steps.length >= 2
+  ) {
+    return unchanged;
+  }
+  // 15-minute granularity keeps a same-turn planner re-call from minting a
+  // slightly different lead and slipping past the content-duplicate guard.
+  const quantize = (minutes: number): number => Math.round(minutes / 15) * 15;
+  if (hasMilestones) {
+    const count = args.milestones.length;
+    const lead = Math.max(15, quantize((runwayMinutes * count) / (count + 1)));
+    const steps = args.milestones.map((label, index) => ({
+      channel: "in_app" as const,
+      offsetMinutes: Math.min(
+        lead,
+        quantize((runwayMinutes * index) / (count + 1)),
+      ),
+      label,
+    }));
+    steps.push({
+      channel: "in_app",
+      offsetMinutes: lead,
+      label: `Due: ${args.title}`,
+    });
+    return {
+      cadence: { ...args.cadence, visibilityLeadMinutes: lead },
+      plan: { ...args.plan, steps },
+    };
+  }
+  const lead = Math.max(
+    15,
+    quantize(Math.min(1440, Math.floor(runwayMinutes / 2))),
+  );
   return {
-    ...args.plan,
-    steps: [
-      {
-        channel: "in_app",
-        offsetMinutes: -leadMinutes,
-        label: `Early start: ${args.title}`,
-      },
-      ...args.plan.steps,
-    ],
+    cadence: { ...args.cadence, visibilityLeadMinutes: lead },
+    plan: {
+      ...args.plan,
+      steps: [
+        {
+          channel: "in_app",
+          offsetMinutes: 0,
+          label: `Early start: ${args.title}`,
+        },
+        {
+          channel: "in_app",
+          offsetMinutes: lead,
+          label: `${args.title} reminder`,
+        },
+      ],
+    },
   };
+}
+
+/**
+ * Minutes before the due instant a plan step fires, given the cadence lead:
+ * a step at offset 0 fires at `dueAt - lead`, the step at offset = lead fires
+ * at the due time. Non-positive results mean "at (or after) the due time".
+ */
+export function reminderStepMinutesBeforeDue(
+  cadence: LifeOpsCadence,
+  offsetMinutes: number,
+): number {
+  const lead =
+    cadence.kind === "once" ? (cadence.visibilityLeadMinutes ?? 15) : 0;
+  return lead - offsetMinutes;
 }
 
 /**
@@ -2706,41 +2770,6 @@ export function parseMilestoneListFromIntent(text: string): string[] {
     }
   }
   return items.length >= 2 ? items : [];
-}
-
-/**
- * Builds the stored artifact for a multi-milestone dated ask ("set reminders
- * for outline, rough draft, and final proofread" before a deadline): one
- * reminder-plan step per milestone, spread evenly across the runway so every
- * phase lands before the due-time step. Null when the ask is not a dated
- * one-off, has fewer than two milestones, or has under two hours of runway —
- * callers then fall through to the plain default plan.
- */
-export function buildMilestoneReminderPlan(args: {
-  milestones: string[];
-  cadence: LifeOpsCadence;
-  now?: number;
-}): NonNullable<CreateLifeOpsDefinitionRequest["reminderPlan"]> | null {
-  if (args.cadence.kind !== "once" || args.milestones.length < 2) {
-    return null;
-  }
-  const dueAtMs = Date.parse(args.cadence.dueAt);
-  if (!Number.isFinite(dueAtMs)) {
-    return null;
-  }
-  const now = args.now ?? Date.now();
-  const runwayMinutes = Math.floor((dueAtMs - now) / 60_000);
-  if (runwayMinutes < 120) {
-    return null;
-  }
-  const count = args.milestones.length;
-  const steps = args.milestones.map((label, index) => ({
-    channel: "in_app" as const,
-    offsetMinutes: -Math.round((runwayMinutes * (count - index)) / (count + 1)),
-    label,
-  }));
-  steps.push({ channel: "in_app", offsetMinutes: 0, label: "Due" });
-  return { steps };
 }
 
 function resolveMilestoneLabels(args: {
@@ -3715,6 +3744,23 @@ export async function runLifeOperationHandler(
           | CreateLifeOpsDefinitionRequest["kind"]
           | undefined) ??
         "habit";
+      const leadShaped = applyLeadUpReminderShape({
+        cadence,
+        plan:
+          (detailObject(details, "reminderPlan") as
+            | CreateLifeOpsDefinitionRequest["reminderPlan"]
+            | undefined) ??
+          deferredDefinitionDraft?.request.reminderPlan ??
+          buildDefaultReminderPlan(`${title} reminder`),
+        ownerText: messageText(message),
+        title,
+        milestones: resolveMilestoneLabels({
+          details,
+          intent,
+          ownerText: messageText(message),
+          multiStep: llmPlan?.multiStep === true,
+        }),
+      });
       const definitionDraft: DeferredLifeDefinitionDraft = {
         intent,
         operation: "create_definition",
@@ -3727,7 +3773,7 @@ export async function runLifeOperationHandler(
           deferredDefinitionDraft?.sourceMessageId ??
           (currentMessageId !== "" ? currentMessageId : undefined),
         request: {
-          cadence,
+          cadence: leadShaped.cadence,
           description:
             explicitDescription ??
             llmDescription ??
@@ -3750,26 +3796,7 @@ export async function runLifeOperationHandler(
               "progressionRule",
             ) as CreateLifeOpsDefinitionRequest["progressionRule"]) ??
             deferredDefinitionDraft?.request.progressionRule,
-          reminderPlan: maybeAddEarlierReminderStep({
-            plan:
-              (detailObject(details, "reminderPlan") as
-                | CreateLifeOpsDefinitionRequest["reminderPlan"]
-                | undefined) ??
-              buildMilestoneReminderPlan({
-                milestones: resolveMilestoneLabels({
-                  details,
-                  intent,
-                  ownerText: messageText(message),
-                  multiStep: llmPlan?.multiStep === true,
-                }),
-                cadence,
-              }) ??
-              deferredDefinitionDraft?.request.reminderPlan ??
-              buildDefaultReminderPlan(`${title} reminder`),
-            cadence,
-            ownerText: messageText(message),
-            title,
-          }),
+          reminderPlan: leadShaped.plan,
           timezone:
             normalizeLifeTimeZoneToken(llmPlan?.timeZone) ??
             normalizeLifeTimeZoneToken(
@@ -3801,13 +3828,21 @@ export async function runLifeOperationHandler(
       ) {
         const draftLeadSteps = (
           definitionDraft.request.reminderPlan?.steps ?? []
-        ).filter((step) => step.offsetMinutes < 0);
+        )
+          .map((step) => ({
+            label: step.label,
+            minutesBeforeDue: reminderStepMinutesBeforeDue(
+              definitionDraft.request.cadence,
+              step.offsetMinutes,
+            ),
+          }))
+          .filter((step) => step.minutesBeforeDue >= 60);
         const draftLeadPhrase =
           draftLeadSteps.length > 0
             ? ` It includes early nudges: ${draftLeadSteps
                 .map(
                   (step) =>
-                    `"${step.label}" ${formatLeadOffsetPhrase(step.offsetMinutes)} before`,
+                    `"${step.label}" ${formatLeadOffsetPhrase(step.minutesBeforeDue)} before`,
                 )
                 .join(", ")}.`
             : "";
@@ -3917,17 +3952,23 @@ export async function runLifeOperationHandler(
           ? { sourceMessageId: currentMessageId }
           : {}),
       });
-      const savedLeadSteps = (created.reminderPlan?.steps ?? []).filter(
-        (step) => step.offsetMinutes < 0,
-      );
+      const savedLeadSteps = (created.reminderPlan?.steps ?? [])
+        .map((step) => ({
+          label: step.label,
+          minutesBeforeDue: reminderStepMinutesBeforeDue(
+            created.definition.cadence,
+            step.offsetMinutes,
+          ),
+        }))
+        .filter((step) => step.minutesBeforeDue >= 60);
       const leadPhrase =
         savedLeadSteps.length === 1
-          ? ` with an early nudge ${formatLeadOffsetPhrase(savedLeadSteps[0].offsetMinutes)} before`
+          ? ` with an early nudge ${formatLeadOffsetPhrase(savedLeadSteps[0].minutesBeforeDue)} before`
           : savedLeadSteps.length > 1
             ? ` with early nudges ${savedLeadSteps
                 .map(
                   (step) =>
-                    `"${step.label}" ${formatLeadOffsetPhrase(step.offsetMinutes)} before`,
+                    `"${step.label}" ${formatLeadOffsetPhrase(step.minutesBeforeDue)} before`,
                 )
                 .join(", ")}`
             : "";
@@ -3945,8 +3986,9 @@ export async function runLifeOperationHandler(
             cadence: created.definition.cadence,
             ...(savedLeadSteps.length > 0
               ? {
-                  earlyNudges: savedLeadSteps.map((step) =>
-                    formatLeadOffsetPhrase(step.offsetMinutes),
+                  earlyNudges: savedLeadSteps.map(
+                    (step) =>
+                      `${step.label} ${formatLeadOffsetPhrase(step.minutesBeforeDue)} before`,
                   ),
                 }
               : {}),
