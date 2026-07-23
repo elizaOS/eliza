@@ -1044,6 +1044,45 @@ describe("Android artifact boundary selection", () => {
     ).toBe("base dex");
   });
 
+  it("parses and bounds the committed multi-module AAB without bundletool", () => {
+    const artifactBytes = fs.readFileSync(REAL_AAB_FIXTURE);
+    const entries = listAndroidArtifactEntries(REAL_AAB_FIXTURE, JAVA_HOME, {
+      artifactBytes,
+    });
+
+    expect(entries).toContain("base/manifest/AndroidManifest.xml");
+    expect(entries).toContain("base/dex/classes.dex");
+    expect(entries).toContain("initialInstall/dex/classes.dex");
+    expect(
+      readAndroidArtifactEntryBuffers(
+        REAL_AAB_FIXTURE,
+        ["base/dex/classes.dex"],
+        JAVA_HOME,
+        { artifactBytes },
+      )[0].byteLength,
+    ).toBeGreaterThan(0);
+  });
+
+  it("rejects attacker-sized declarations before payload decoding", () => {
+    const entry = "base/dex/classes.dex";
+    const archive = rewriteEntryDeclaredSize(
+      zipSync({ [entry]: Buffer.from("bounded payload") }),
+      entry,
+      0xffffffff,
+    );
+
+    expect(() =>
+      readAndroidArtifactEntryBuffers(
+        "/artifact.aab",
+        [entry],
+        JAVA_HOME,
+        { artifactBytes: archive },
+      ),
+    ).toThrow(
+      expect.objectContaining({ code: "ANDROID_ARTIFACT_ENTRY_TOO_LARGE" }),
+    );
+  });
+
   it("rejects compressed-byte declarations above the audit limit", () => {
     const archive = zipSync(
       {
