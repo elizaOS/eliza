@@ -15,8 +15,12 @@
  * roles.ts resolution against the strongest non-owner tier it admits,
  * nothing mocked.
  */
-import type { IAgentRuntime, UUID } from "@elizaos/core";
-import { setConnectorAdminWhitelist, stringToUuid } from "@elizaos/core";
+import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
+import {
+  checkSenderRole,
+  setConnectorAdminWhitelist,
+  stringToUuid,
+} from "@elizaos/core";
 import type {
   CapturedAction,
   ScenarioContext,
@@ -67,6 +71,30 @@ const ownerDeleteParams: JsonRecord = { action: "delete" };
 // resolves as connector-admin (ADMIN). Entity metadata survives message
 // processing (merged per source key); world-metadata role grants do not.
 const GUEST_STABLE_ID = `${SCENARIO_ID}-guest-admin`;
+
+// Pins the tier the whitelist fixture actually resolves to (#16963). If the
+// connector stamp or whitelist silently stops applying, the guest degrades to
+// GUEST and the mutation-wall refusal would still pass — for the wrong reason
+// (any non-owner is refused). This probe runs the real roles.ts resolution the
+// DOCUMENT handler uses, so a degraded fixture is a hard failure instead.
+async function expectGuestResolvesAdmin(
+  runtime: ScenarioRuntime,
+): Promise<string | undefined> {
+  const probe = {
+    entityId: stringToUuid(`scenario-account:${SCENARIO_ID}:guest`) as UUID,
+    roomId: stringToUuid(`scenario-room:${SCENARIO_ID}:guest`) as UUID,
+    agentId: runtime.agentId,
+    content: { text: "" },
+  } as Memory;
+  const check = await checkSenderRole(runtime, probe);
+  if (!check) return "guest role resolution found no world for the guest room";
+  if (check.role !== "ADMIN") {
+    return `expected the whitelisted guest to resolve as ADMIN, saw ${check.role}`;
+  }
+  return check.isOwner
+    ? "guest must never resolve as owner — the wall test would be vacuous"
+    : undefined;
+}
 
 function getDocumentService(ctx: ScenarioContext): DocumentService | null {
   const runtime = ctx.runtime as ScenarioRuntime;
@@ -223,7 +251,7 @@ export default scenario({
           telegram: { userId: GUEST_STABLE_ID },
         };
         await runtime.updateEntities([entity]);
-        return undefined;
+        return expectGuestResolvesAdmin(runtime);
       },
     },
   ],
@@ -328,6 +356,14 @@ export default scenario({
     },
   ],
   finalChecks: [
+    {
+      type: "custom",
+      // Runs before cleanup clears the whitelist, so it proves the ADMIN tier
+      // held through the refusal turn — not just at seed time (#16963).
+      name: "whitelisted guest still resolves as connector-admin (ADMIN)",
+      predicate: (ctx) =>
+        expectGuestResolvesAdmin(ctx.runtime as ScenarioRuntime),
+    },
     {
       type: "actionCalled",
       actionName: "DOCUMENT",

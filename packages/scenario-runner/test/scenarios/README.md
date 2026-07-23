@@ -20,8 +20,10 @@ catalog with `SCENARIO_USE_LLM_PROXY=1` and
   broadcast ledger, including the #14910 twin-default seeding.
 - `deterministic-document-actions` covers the real core `DOCUMENT` handler and
   DocumentService DB state: list, an owner-only mutation-wall refusal for a
-  USER-granted non-owner, the owner delete (document actually gone), and the
-  not-found / missing-id rejections.
+  whitelisted connector-admin (ADMIN) non-owner — the resolved tier is pinned
+  via the real roles resolution so the fixture cannot silently degrade to
+  GUEST — the owner delete (document actually gone), and the not-found /
+  missing-id rejections.
 - `deterministic-generated-app-routes` covers a generated app loaded through the
   real AppRegistryService and app-manager routes: registry persistence,
   catalog tile data, generated hero SVG, `/api/apps/:slug/*` package routing,
