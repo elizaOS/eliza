@@ -24,6 +24,7 @@ interface LauncherOptions {
   help?: string;
   helpExit?: number;
   requiredPrefix?: string;
+  stderrWarning?: string;
   version?: string;
   versionExit?: number;
 }
@@ -40,11 +41,14 @@ function launcher({
   help = "Usage: eliza [options]\n\nOptions:\n  --help  Show help\n",
   helpExit = 0,
   requiredPrefix,
+  stderrWarning,
   version = "2.0.0",
   versionExit = 0,
 }: LauncherOptions = {}): string {
   return fixture(`
 const args = process.argv.slice(2);
+const stderrWarning = ${stderrWarning === undefined ? "undefined" : JSON.stringify(stderrWarning)};
+if (stderrWarning !== undefined) process.stderr.write(stderrWarning);
 const requiredPrefix = ${requiredPrefix === undefined ? "undefined" : JSON.stringify(requiredPrefix)};
 if (requiredPrefix !== undefined && args.shift() !== requiredPrefix) process.exit(64);
 const flag = args.shift();
@@ -113,6 +117,17 @@ describe("packaged CLI verification", () => {
     expect(() => verify(launcher({ versionExit: 1 }))).toThrow("exited 1");
     expect(() => verify(launcher({ version: "1.9.9" }))).toThrow(
       "version mismatch",
+    );
+  });
+
+  test("compares the version against stdout only, keeping stderr for diagnostics", () => {
+    const stderrWarning =
+      "(node:1) ExperimentalWarning: Type stripping is enabled\n";
+    expect(verify(launcher({ stderrWarning }))).toMatch(
+      /(?:Options|Commands):/,
+    );
+    expect(() => verify(launcher({ stderrWarning, version: "1.9.9" }))).toThrow(
+      /version mismatch.*ExperimentalWarning/s,
     );
   });
 

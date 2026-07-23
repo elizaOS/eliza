@@ -86,7 +86,9 @@ export function runCommand(
     throw new Error(`${command} ${args.join(" ")} ${outcome}\n${output}`);
   }
 
-  return output.trim();
+  // `stdout` is the verified contract value; the combined `output` exists
+  // solely for diagnostics, so stderr warnings never corrupt a comparison.
+  return { output: output.trim(), stdout: result.stdout.trim() };
 }
 
 export function verifyPackagedCli(
@@ -95,14 +97,18 @@ export function verifyPackagedCli(
   expectedVersion,
   options,
 ) {
-  const versionOutput = runCommand(
+  const versionResult = runCommand(
     command,
     [...commandArgs, "--version"],
     options,
   );
-  if (versionOutput !== expectedVersion) {
+  if (versionResult.stdout !== expectedVersion) {
+    const diagnostics =
+      versionResult.output === versionResult.stdout
+        ? ""
+        : `\nCombined output:\n${versionResult.output}`;
     throw new Error(
-      `Packaged CLI version mismatch: expected ${expectedVersion}, received ${JSON.stringify(versionOutput)}`,
+      `Packaged CLI version mismatch: expected ${expectedVersion}, received ${JSON.stringify(versionResult.stdout)}${diagnostics}`,
     );
   }
 
@@ -110,7 +116,7 @@ export function verifyPackagedCli(
     command,
     [...commandArgs, "--help"],
     options,
-  ).replaceAll("\r\n", "\n");
+  ).stdout.replaceAll("\r\n", "\n");
   const hasUsage = /(^|\n)Usage:\s*(?:\S[^\n]*|\n[ \t]+\S)/m.test(helpOutput);
   const hasPopulatedSection =
     /(^|\n)(?:Commands|Options):[ \t]*\n[ \t]+\S/m.test(helpOutput);
