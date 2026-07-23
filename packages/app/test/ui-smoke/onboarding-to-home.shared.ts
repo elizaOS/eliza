@@ -1312,30 +1312,129 @@ export async function collapseChatOverlay(page: Page): Promise<void> {
 }
 
 /**
- * Assert the launcher is reachable from the post-onboarding home. The home and
- * launcher are ONE combined surface now (App.tsx renders HomeScreen with the
- * embedded LauncherSurface grid under the "Apps" region — there is no
- * horizontal rail and no swipe-to-launcher gesture anymore), so this asserts a
- * real launcher tile on the combined page instead of flicking a pager.
+ * Swipe-left on the home page → the rail pans to the launcher, then assert a
+ * real launcher tile. Uses a real left-flick that moves past the 72px
+ * RAIL_FLICK_THRESHOLD. Mobile callers use Chromium CDP touch input and fail if
+ * the real touch stream does not move the rail; desktop callers use mouse drag.
  */
-export async function expectInlineLauncher(
+export async function swipeLeftToLauncher(
   page: Page,
   surface: Locator,
+  options: { input?: "mouse" | "touch" | "auto" } = {},
 ): Promise<void> {
   // Post-onboarding the overlay already auto-collapsed; this guard only closes
-  // a sheet a previous step deliberately opened, so the launcher grid is not
-  // hidden behind the chat scrim. The permission-priming modal (#12331) also
-  // arms on the completion edge — skip it the way a user would.
+  // a sheet a previous step deliberately opened, so the swipe lands on the
+  // home rail rather than the chat scrim. The permission-priming modal
+  // (#12331) also arms on the completion edge and eats the drag — skip it the
+  // way a user would.
   await dismissPermissionPrimingIfShown(page);
   await collapseChatOverlay(page);
-  await expect(surface).toBeVisible();
-  await expect(surface).toHaveAttribute("data-page", "home");
-  // The embedded launcher grid ("Apps" region) carries the real tiles.
-  const appsRegion = page.getByTestId("home-apps-scroll");
-  await expect(appsRegion).toBeVisible({ timeout: 15_000 });
-  const settingsTile = appsRegion.getByTestId("launcher-tile-settings");
-  // On short viewports the grid can sit below the fold; bring it into view
-  // the way a user scrolling the home column would.
-  await settingsTile.scrollIntoViewIfNeeded();
-  await expect(settingsTile).toBeVisible({ timeout: 15_000 });
+  const homePage = page.getByTestId("home-launcher-home-page");
+  await expect(homePage).toBeVisible();
+  const box = await homePage.boundingBox();
+  if (!box) throw new Error("home-launcher-home-page has no bounding box");
+  const startX = box.x + box.width * 0.72;
+  // Flick from the time/weather HEADER band, ABOVE the inline notification
+  // center. That center is flex-1 (it fills the home middle) and its rows own a
+  // horizontal swipe-to-dismiss (#15039) that eats a mid-screen launcher flick
+  // on the narrow mobile viewport; the header bubbles pointer moves straight to
+  // the rail pager. Fall back to a fixed top band when no notification is seeded.
+  const notifBox = await page
+    .getByTestId("home-notification-center")
+    .boundingBox()
+    .catch(() => null);
+  const midY =
+    notifBox && notifBox.y > box.y
+      ? (box.y + notifBox.y) / 2
+      : box.y + box.height * 0.14;
+  const touchCapable = await page.evaluate(
+    () =>
+      navigator.maxTouchPoints > 0 ||
+      window.matchMedia("(pointer: coarse)").matches,
+  );
+  const input = options.input ?? "auto";
+  if (input === "touch" && !touchCapable) {
+    throw new Error(
+      "swipeLeftToLauncher requested touch input in a non-touch context",
+    );
+  }
+
+  if (input === "touch" || (input === "auto" && touchCapable)) {
+    const client = await page.context().newCDPSession(page);
+    try {
+      await client.send("Input.dispatchTouchEvent", {
+        type: "touchStart",
+        touchPoints: [{ x: startX, y: midY, id: 1, radiusX: 4, radiusY: 4 }],
+      });
+      for (let i = 1; i <= 6; i++) {
+        await client.send("Input.dispatchTouchEvent", {
+          type: "touchMove",
+          touchPoints: [
+            { x: startX - i * 40, y: midY, id: 1, radiusX: 4, radiusY: 4 },
+          ],
+        });
+      }
+      await client.send("Input.dispatchTouchEvent", {
+        type: "touchEnd",
+        touchPoints: [],
+      });
+    } finally {
+      await client.detach().catch(() => undefined);
+    }
+    await page.waitForTimeout(250);
+    if ((await surface.getAttribute("data-page")) !== "launcher") {
+      throw new Error(
+        "CDP touch swipe did not open the launcher; refusing synthetic pointer fallback",
+      );
+    }
+  } else {
+    // A deliberate mouse drag uses the pager's distance contract rather than
+    // synthetic event timing: cross the 50% threshold so a slow CI pointer is
+    // equivalent to a user dragging past halfway before release.
+    const endX = box.x + box.width * 0.18;
+    await page.mouse.move(startX, midY);
+    await page.mouse.down();
+    // Several steps keep the tracked rail continuous through the drag.
+    for (let i = 1; i <= 6; i++) {
+      await page.mouse.move(startX + ((endX - startX) * i) / 6, midY);
+    }
+    await page.mouse.up();
+  }
+
+  await expect(surface).toHaveAttribute("data-page", "launcher", {
+    timeout: 10_000,
+  });
+  const launcherPage = page.getByTestId("home-launcher-launcher-page");
+  await expect(launcherPage).toBeVisible();
+  // A real launcher tile is visible on the launcher.
+  await expect(launcherPage.getByTestId("launcher-tile-settings")).toBeVisible({
+    timeout: 15_000,
+  });
+
+  // The rail slides ~300ms into place. Give that finite slide a moment to settle
+  // for a clean screenshot — but BEST-EFFORT only, never a test failure: the
+  // launcher-open contract is already asserted above (data-page="launcher" + a
+  // visible launcher tile). The rail subtree still holds the off-screen home
+  // page, whose seeded attention cards carry perpetual decorative animations
+  // that never fully "settle", so gate on finite animations and swallow a
+  // timeout rather than fail a passing swipe on a cosmetic wait.
+  await page
+    .waitForFunction(
+      () => {
+        const rail = document.querySelector(
+          '[data-testid="home-launcher-rail"]',
+        );
+        if (!rail) return false;
+        return !(rail as HTMLElement)
+          .getAnimations({ subtree: true })
+          .some((a) => {
+            if (a.playState !== "running") return false;
+            const iterations = a.effect?.getComputedTiming().iterations;
+            return iterations !== Infinity;
+          });
+      },
+      undefined,
+      { timeout: 3_000 },
+    )
+    .catch(() => undefined);
 }
