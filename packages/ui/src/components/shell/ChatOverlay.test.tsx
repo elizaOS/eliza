@@ -1374,7 +1374,15 @@ describe("ChatOverlay", () => {
   it("composes the in-flight status as a busy transcript row", () => {
     render(
       <ChatOverlay
-        controller={makeController({ phase: "responding", responding: true })}
+        controller={makeController({
+          phase: "responding",
+          responding: true,
+          messages: [
+            { id: "u", role: "user", content: "hello", createdAt: 1 },
+            { id: "a", role: "assistant", content: "", createdAt: 2 },
+          ],
+          turnStatus: { kind: "thinking" },
+        })}
       />,
     );
     fireEvent.focus(screen.getByLabelText("message"));
@@ -2798,7 +2806,7 @@ describe("ChatOverlay", () => {
 
   // ── Rich turn-status indicator (#8813) ──────────────────────────────────
   describe("turn status indicator", () => {
-    it("labels the thinking phase in the standalone status row", () => {
+    it("does not paint a standalone status row before the assistant slot exists", () => {
       render(
         <ChatOverlay
           controller={makeController({
@@ -2809,24 +2817,19 @@ describe("ChatOverlay", () => {
         />,
       );
       fireEvent.focus(screen.getByLabelText("message"));
-      const indicator = screen.getByTestId("turn-status-indicator");
-      expect(indicator.getAttribute("data-status-kind")).toBe("thinking");
-      expect(indicator.getAttribute("role")).toBe("status");
-      expect(indicator.getAttribute("aria-live")).toBe("polite");
-      // The standalone status row carries a word for every phase (including
-      // thinking) beside a spinner — the bare-dots variant is the in-bubble one.
-      expect(screen.getByTestId("turn-status-label").textContent).toContain(
-        "Thinking",
-      );
-      expect(screen.getByTestId("turn-status-spinner")).toBeTruthy();
+      expect(screen.queryByTestId("turn-status-indicator")).toBeNull();
     });
 
-    it("humanizes the action name for a running_action phase", () => {
+    it("humanizes the action name inside the assistant response slot", () => {
       render(
         <ChatOverlay
           controller={makeController({
             phase: "responding",
             responding: true,
+            messages: [
+              { id: "u", role: "user", content: "open notes", createdAt: 1 },
+              { id: "a", role: "assistant", content: "", createdAt: 2 },
+            ],
             turnStatus: { kind: "running_action", actionName: "SEND_MESSAGE" },
           } as Partial<ShellController>)}
         />,
@@ -2887,12 +2890,10 @@ describe("ChatOverlay", () => {
 
       expect(screen.getByText("Draft answer")).toBeTruthy();
       expect(screen.queryByRole("button", { name: /thinking/i })).toBeNull();
-      expect(screen.getByTestId("turn-status-label").textContent).toBe(
-        "Running Open view",
-      );
+      expect(screen.queryByTestId("turn-status-indicator")).toBeNull();
     });
 
-    it("shows reasoning disclosure after the assistant turn settles", () => {
+    it("keeps internal reasoning out of the consumer transcript after settle", () => {
       render(
         <ChatOverlay
           controller={makeController({
@@ -2913,7 +2914,9 @@ describe("ChatOverlay", () => {
       );
 
       fireEvent.focus(screen.getByLabelText("message"));
-      expect(screen.getByRole("button", { name: /thinking/i })).toBeTruthy();
+      expect(screen.getByText("Final answer")).toBeTruthy();
+      expect(screen.queryByRole("button", { name: /thinking/i })).toBeNull();
+      expect(screen.queryByText("compact reasoning summary")).toBeNull();
     });
 
     it("holds the first label through a fast phase change (min-dwell, no flicker)", () => {
@@ -2924,6 +2927,10 @@ describe("ChatOverlay", () => {
             controller={makeController({
               phase: "responding",
               responding: true,
+              messages: [
+                { id: "u", role: "user", content: "do it", createdAt: 1 },
+                { id: "a", role: "assistant", content: "", createdAt: 2 },
+              ],
               turnStatus: { kind: "thinking" },
             } as Partial<ShellController>)}
           />,
@@ -2940,6 +2947,10 @@ describe("ChatOverlay", () => {
             controller={makeController({
               phase: "responding",
               responding: true,
+              messages: [
+                { id: "u", role: "user", content: "do it", createdAt: 1 },
+                { id: "a", role: "assistant", content: "", createdAt: 2 },
+              ],
               turnStatus: {
                 kind: "running_action",
                 actionName: "SEND_MESSAGE",
@@ -2987,11 +2998,12 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
   // in the middle so both directions WOULD have been navigable pre-#13531.
   const CONVERSATIONS = [conv("a"), conv("b"), conv("c")];
 
-  function makeSwipeController() {
+  function makeSwipeController(overrides: Partial<ShellController> = {}) {
     const onSelect = vi.fn<(id: string) => void>();
     const conversationNav = buildConversationNav(CONVERSATIONS, "b", onSelect);
     const controller = makeController({
       conversationNav,
+      ...overrides,
     } as unknown as Partial<ShellController>);
     return { controller, onSelect };
   }
@@ -3127,12 +3139,7 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     // inert test-fallback proxy (noop for everything else the overlay reads via
     // other selectors) so only the jump collaborators are observable.
     const selectSpy = vi.fn<(id: string) => Promise<void>>(async () => {});
-    const aroundSpy = vi.fn(async () => {
-      const anchor = document.createElement("div");
-      anchor.id = "chat-message-m-hit";
-      document.body.appendChild(anchor);
-      return true;
-    });
+    const aroundSpy = vi.fn(async () => false);
     const noop = () => {};
     __setAppValueForTests(
       new Proxy({} as never, {
@@ -3166,7 +3173,16 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
       count: 1,
     });
 
-    const { controller } = makeSwipeController();
+    const { controller } = makeSwipeController({
+      messages: [
+        {
+          id: "m-hit",
+          role: "assistant",
+          content: "the quarterly budget review is on friday",
+          createdAt: 1_700_000_000_000,
+        },
+      ],
+    });
     render(<ChatOverlay controller={controller} />);
     openSheet();
 
@@ -3185,20 +3201,23 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     );
     expect(result.textContent).toContain("budget");
 
-    // Selecting the hit jumps to its conversation (the real jump plumbing) and
-    // then loads the centered around-window because this fixture starts with no
-    // DOM anchor for the hit.
+    // Selecting a result already mounted in the canonical message scroller
+    // uses its coordinated jump API, flashes only the contained bubble, and
+    // never falls through to the around-message network fetch.
     fireEvent.click(result);
     expect(selectSpy).toHaveBeenCalledWith("conv-42");
-    await waitFor(() =>
-      expect(aroundSpy).toHaveBeenCalledWith("conv-42", "m-hit"),
+    const anchor = document.getElementById("chat-message-m-hit");
+    expect(anchor).toBeTruthy();
+    const bubble = anchor?.querySelector<HTMLElement>(
+      '[data-chat-message-bubble="true"]',
     );
     await waitFor(() =>
-      expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({
-        block: "center",
-        behavior: "smooth",
-      }),
+      expect(bubble?.getAttribute("data-chat-search-highlight")).toBe("true"),
     );
+    expect(bubble?.style.outline).toContain("var(--accent)");
+    expect(bubble?.style.outlineOffset).toBe("-2px");
+    expect(aroundSpy).not.toHaveBeenCalled();
+    expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
     await waitFor(() =>
       expect(screen.queryByTestId("chat-message-search")).toBeNull(),
     );
@@ -3522,70 +3541,83 @@ describe("ChatOverlay — empty thread while the sheet is open", () => {
   });
 });
 
-describe("ChatOverlay — streaming + thinking render (#10712)", () => {
-  const reasoningMessages: ShellMessage[] = [
-    { id: "u", role: "user", content: "why X over Y?", createdAt: 1 },
-    {
-      id: "a",
-      role: "assistant",
-      content: "because X is simpler",
-      reasoning: "compared X and Y; X has fewer moving parts",
-      createdAt: 2,
-    },
-  ];
-
-  it("renders the collapsed Thinking disclosure for an assistant turn that carries reasoning", () => {
+describe("ChatOverlay — streaming + consumer activity render (#10712)", () => {
+  it("renders the reply while keeping tool traces and reasoning in diagnostics", () => {
     render(
       <ChatOverlay
         controller={makeController({
           responding: false,
-          messages: reasoningMessages,
+          messages: [
+            { id: "u", role: "user", content: "open notes", createdAt: 1 },
+            {
+              id: "a",
+              role: "assistant",
+              content: "Opening Notes now.",
+              reasoning: "The Notes view is registered, so I selected it.",
+              toolEvents: [
+                {
+                  id: "views-1",
+                  type: "tool_result",
+                  actionName: "VIEWS",
+                  args: { action: "show", target: "notes" },
+                  result: { success: true },
+                  status: "completed",
+                },
+              ],
+              createdAt: 2,
+            },
+          ],
         } as unknown as Partial<ShellController>)}
       />,
     );
-    // Open the sheet so the thread (and its reasoning block) mounts.
     fireEvent.focus(screen.getByLabelText("message"));
-    const thinking = screen.getByRole("button", { name: /thinking/i });
-    expect(thinking).toBeTruthy();
-    // Collapsed by default: the reasoning body is not shown until toggled.
-    expect(thinking.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.getByText("Opening Notes now.")).toBeTruthy();
+    expect(screen.queryByTestId("tool-call-event-log")).toBeNull();
+    expect(screen.queryByRole("button", { name: /thinking/i })).toBeNull();
     expect(
-      screen.queryByText("compared X and Y; X has fewer moving parts"),
+      screen.queryByText("The Notes view is registered, so I selected it."),
     ).toBeNull();
   });
 
-  it("reveals the reasoning body when the Thinking disclosure is toggled", () => {
+  it("renders one navigation reply while hiding the matching VIEWS result prose", () => {
     render(
       <ChatOverlay
         controller={makeController({
           responding: false,
-          messages: reasoningMessages,
+          messages: [
+            { id: "u", role: "user", content: "open calendar", createdAt: 1 },
+            {
+              id: "a",
+              role: "assistant",
+              content: "Opening your calendar now.",
+              toolEvents: [
+                {
+                  id: "views-calendar",
+                  type: "tool_result",
+                  actionName: "VIEWS",
+                  args: { action: "show", target: "simple-calendar" },
+                  result: {
+                    success: true,
+                    userFacingText: "Opening your calendar now.",
+                  },
+                  status: "completed",
+                },
+              ],
+              createdAt: 2,
+            },
+          ],
         } as unknown as Partial<ShellController>)}
       />,
     );
     fireEvent.focus(screen.getByLabelText("message"));
-    fireEvent.click(screen.getByRole("button", { name: /thinking/i }));
-    expect(
-      screen.getByText("compared X and Y; X has fewer moving parts"),
-    ).toBeTruthy();
+
+    expect(screen.getAllByText("Opening your calendar now.")).toHaveLength(1);
+    expect(screen.queryByText("VIEWS")).toBeNull();
+    expect(screen.queryByText("Args")).toBeNull();
+    expect(screen.queryByText("Result")).toBeNull();
   });
 
-  it("suppresses reasoning on the last assistant turn while it is still streaming", () => {
-    render(
-      <ChatOverlay
-        controller={makeController({
-          // suppressReasoning = responding && isLastAssistant → the Thinking
-          // block stays hidden until the stream completes.
-          responding: true,
-          messages: reasoningMessages,
-        } as unknown as Partial<ShellController>)}
-      />,
-    );
-    fireEvent.focus(screen.getByLabelText("message"));
-    expect(screen.queryByRole("button", { name: /thinking/i })).toBeNull();
-  });
-
-  it("paints reducer-streamed tokens incrementally and shows Thinking after completion", () => {
+  it("replaces Thinking with token one in the same assistant row", () => {
     let conversationMessages: ConversationMessage[] = [
       {
         id: "u-stream",
@@ -3623,6 +3655,10 @@ describe("ChatOverlay — streaming + thinking render (#10712)", () => {
       />,
     );
     fireEvent.focus(screen.getByLabelText("message"));
+    const pendingRow = screen
+      .getByTestId("turn-status-indicator")
+      .closest('[data-testid="thread-line"]');
+    expect(pendingRow).toBeTruthy();
 
     applyStreamingTextModification(setConversationMessages, {
       messageId: "a-stream",
@@ -3638,7 +3674,10 @@ describe("ChatOverlay — streaming + thinking render (#10712)", () => {
         } as unknown as Partial<ShellController>)}
       />,
     );
-    expect(screen.getByText("Token one")).toBeTruthy();
+    const token = screen.getByText("Token one");
+    expect(token).toBeTruthy();
+    expect(token.closest('[data-testid="thread-line"]')).toBe(pendingRow);
+    expect(screen.queryByTestId("turn-status-indicator")).toBeNull();
     expect(screen.queryByText("Token one and two")).toBeNull();
     expect(screen.queryByRole("button", { name: /thinking/i })).toBeNull();
 
@@ -3673,16 +3712,64 @@ describe("ChatOverlay — streaming + thinking render (#10712)", () => {
       />,
     );
 
-    const thinking = screen.getByRole("button", { name: /thinking/i });
-    expect(thinking.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.getByText("Token one and two")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /thinking/i })).toBeNull();
     expect(
       screen.queryByText("Waited for the done frame before showing reasoning."),
     ).toBeNull();
+  });
 
-    fireEvent.click(thinking);
+  it("keeps the future assistant row through microphone barge-in", () => {
+    const messages: ShellMessage[] = [
+      { id: "u-barge", role: "user", content: "read it", createdAt: 1 },
+      { id: "a-barge", role: "assistant", content: "", createdAt: 2 },
+    ];
+    const { rerender } = render(
+      <ChatOverlay
+        controller={makeController({
+          phase: "responding",
+          responding: true,
+          messages,
+          turnStatus: { kind: "thinking" },
+        } as Partial<ShellController>)}
+      />,
+    );
+    fireEvent.focus(screen.getByLabelText("message"));
+    const responseRow = screen
+      .getByTestId("turn-status-indicator")
+      .closest('[data-testid="thread-line"]');
+
+    rerender(
+      <ChatOverlay
+        controller={makeController({
+          phase: "listening",
+          responding: true,
+          recording: true,
+          messages,
+          turnStatus: { kind: "thinking" },
+        } as Partial<ShellController>)}
+      />,
+    );
+
     expect(
-      screen.getByText("Waited for the done frame before showing reasoning."),
-    ).toBeTruthy();
+      screen
+        .getByTestId("turn-status-indicator")
+        .closest('[data-testid="thread-line"]'),
+    ).toBe(responseRow);
+
+    rerender(
+      <ChatOverlay
+        controller={makeController({
+          phase: "listening",
+          responding: false,
+          recording: true,
+          messages,
+          turnStatus: null,
+        } as Partial<ShellController>)}
+      />,
+    );
+    expect(screen.queryByTestId("turn-status-indicator")).toBeNull();
+    expect(document.querySelector('[data-message-id="a-barge"]')).toBeNull();
   });
 });
 

@@ -45,18 +45,6 @@ vi.mock("../../widgets/WidgetHost", () => ({
   ),
 }));
 
-vi.mock("../pages/LauncherSurface", () => ({
-  LauncherSurface: ({ layout }: { layout: string }) => (
-    <nav
-      aria-label="Launcher apps"
-      data-testid="home-launcher-grid"
-      data-layout={layout}
-    >
-      <button type="button">Calendar</button>
-    </nav>
-  ),
-}));
-
 import type { AgentNotification } from "@elizaos/core";
 import {
   __ingestNotificationForTests,
@@ -97,46 +85,41 @@ function makeNotification(
 }
 
 describe("HomeScreen", () => {
-  it("orders notifications, inline apps, then ranked widgets in one scrolling column", () => {
+  it("keeps notifications and ranked widgets on the home page without embedding the launcher", () => {
     __setHydratedForTests(true);
     render(<HomeScreen onOpenTile={vi.fn()} />);
     // The clock/date was removed — the home stays simple.
     expect(screen.queryByTestId("home-clock")).toBeNull();
     const notifications = screen.getByTestId("home-notification-center");
     const apps = screen.getByTestId("home-apps-scroll");
-    const launcher = screen.getByTestId("home-launcher-grid");
-    expect(launcher.getAttribute("data-layout")).toBe("embedded");
     const host = screen.getByTestId("home-widget-host");
     expect(host.getAttribute("data-slot")).toBe("home");
     expect(
       notifications.compareDocumentPosition(apps) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeGreaterThan(0);
-    expect(apps.contains(launcher)).toBe(true);
     expect(apps.contains(host)).toBe(true);
+    expect(screen.queryByTestId("home-launcher-grid")).toBeNull();
     expect(
-      launcher.compareDocumentPosition(host) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeGreaterThan(0);
+      screen.queryByRole("navigation", { name: "Launcher apps" }),
+    ).toBeNull();
     expect(screen.getByTestId("home-screen").className).toContain(
       "overflow-hidden",
     );
-    // ONE scroller: the content column owns vertical scroll; the shade and the
-    // app region are content-sized siblings inside it.
-    const column = screen.getByTestId("home-content-column");
-    expect(column.className).toContain("overflow-y-auto");
-    expect(column.className).toContain("scrollbar-hide");
-    expect(column.className).toContain("[scrollbar-width:none]");
-    expect(column.className).toContain("[&::-webkit-scrollbar]:hidden");
-    expect(column.hasAttribute("data-scroll-cert-scroller")).toBe(true);
-    expect(column.contains(apps)).toBe(true);
-    expect(apps.className).not.toContain("overflow-y-auto");
-    expect(apps.className).toContain("flex-none");
+    expect(apps.className).toContain("overflow-y-auto");
+    expect(apps.className).toContain("scrollbar-hide");
+    expect(apps.className).toContain("[scrollbar-width:none]");
+    expect(apps.className).toContain("[&::-webkit-scrollbar]:hidden");
+    expect(apps.hasAttribute("data-scroll-cert-scroller")).toBe(true);
+    expect(
+      apps.parentElement?.hasAttribute("data-home-below-notifications"),
+    ).toBe(true);
   });
 
-  it("does not render a second AOSP tile list beside the curated launcher", () => {
+  it("does not place launcher or AOSP app grids beside home notifications", () => {
     render(<HomeScreen onOpenTile={vi.fn()} showNativeOsTiles />);
     expect(screen.queryByTestId("home-tiles")).toBeNull();
-    expect(screen.getAllByRole("button", { name: "Calendar" })).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: "Calendar" })).toBeNull();
   });
 
   it("has no Edit button or Pinned label (clean, action-driven dashboard)", () => {
@@ -154,7 +137,7 @@ describe("HomeScreen", () => {
     expect(screen.queryByTestId("notifications-shade")).toBeNull();
   });
 
-  it("keeps rested notifications compact and keeps apps mounted, visible, and interactive through expansion", () => {
+  it("keeps rested notifications compact, then displaces and restores focused secondary content", () => {
     __ingestNotificationForTests(
       makeNotification({ title: "Priority alert", priority: "urgent" }),
     );
@@ -165,11 +148,16 @@ describe("HomeScreen", () => {
         priority: "normal",
       }),
     );
-    render(<HomeScreen onOpenTile={vi.fn()} />);
+    render(
+      <HomeScreen
+        onOpenTile={vi.fn()}
+        apps={<button type="button">Calendar</button>}
+      />,
+    );
     const home = screen.getByTestId("home-screen");
     const card = screen.getByTestId("home-notification-center");
     const apps = screen.getByTestId("home-apps-scroll");
-    const launcher = screen.getByTestId("home-launcher-grid");
+    const calendarButton = screen.getByRole("button", { name: "Calendar" });
     expect(home.contains(card)).toBe(true);
     expect(screen.queryByTestId("notifications-shade")).toBeNull();
     expect(card.className).toContain("eliza-notif-center-in");
@@ -177,48 +165,129 @@ describe("HomeScreen", () => {
     expect(
       header.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeGreaterThan(0);
-    // The shade wrapper is content-sized in BOTH modes: expansion grows the
-    // inbox inline and pushes apps down the one page scroller — no flex
-    // reallocation, no height cap, no hiding.
     const wrapper = card.parentElement;
-    expect(wrapper?.className).toContain("flex-none");
-    expect(wrapper?.className).not.toContain("max-h-[40%]");
+    expect(wrapper?.hasAttribute("data-home-notification-region")).toBe(true);
     expect(wrapper?.className).toContain("mt-4");
     expect(wrapper?.className).toContain("mb-3");
+    expect(card.className).toContain("flex-1");
     const column = screen.getByTestId("home-content-column");
+    const secondaryRegion = apps.parentElement;
     expect(column.className).toContain("h-full");
     expect(column.className).not.toContain("min-h-full");
+    expect(secondaryRegion?.className).toContain("flex-1");
     expect(apps.hasAttribute("inert")).toBe(false);
-    expect(apps.contains(launcher)).toBe(true);
+    expect(apps.contains(calendarButton)).toBe(true);
+    apps.scrollTop = 96;
 
-    const calendarButton = screen.getByRole("button", { name: "Calendar" });
     calendarButton.focus();
     fireEvent.wheel(screen.getByTestId("home-notification-list"), {
       deltaY: -(PULL_COMMIT_PX + 10),
     });
-    expect(screen.getByTestId("home-notification-list").dataset.shadeMode).toBe(
-      "expanded",
+    expect(apps.className).toContain("overflow-y-auto");
+    expect(apps.className).not.toContain("overflow-y-hidden");
+    expect(apps.getAttribute("aria-hidden")).toBe("true");
+    expect(apps.hasAttribute("inert")).toBe(true);
+    expect(apps.contains(calendarButton)).toBe(true);
+    expect(document.activeElement).toBe(
+      screen.getByTestId("notifications-collapse"),
     );
-    // Apps are NOT displaced: still rendered, still interactive, never inert.
-    expect(wrapper?.className).toContain("flex-none");
-    expect(apps.className).not.toContain("h-0");
-    expect(apps.getAttribute("aria-hidden")).toBeNull();
-    expect(apps.hasAttribute("inert")).toBe(false);
-    expect(apps.contains(launcher)).toBe(true);
-    // No focus teleportation either — the launcher control keeps focus.
-    expect(document.activeElement).toBe(calendarButton);
     expect(screen.getByTestId("notifications-count").style.opacity).toBe("0");
     expect(screen.queryByTestId("notification-group-label")).toBeNull();
 
     fireEvent.click(screen.getByTestId("notifications-collapse"));
-    act(() => vi.advanceTimersByTime(300));
+    act(() => vi.advanceTimersByTime(700));
     expect(screen.getByTestId("home-notification-list").dataset.shadeMode).toBe(
       "rested",
     );
     expect(apps.hasAttribute("inert")).toBe(false);
     expect(apps.getAttribute("aria-hidden")).toBeNull();
-    expect(apps.contains(launcher)).toBe(true);
+    expect(apps.className).toContain("overflow-y-auto");
+    expect(apps.contains(calendarButton)).toBe(true);
+    expect(apps.scrollTop).toBe(96);
     expect(document.activeElement).toBe(calendarButton);
+  });
+
+  it("settles the shade and secondary home content on one velocity-aware clock", () => {
+    __ingestNotificationForTests(makeNotification());
+    render(<HomeScreen onOpenTile={vi.fn()} />);
+
+    const home = screen.getByTestId("home-screen");
+    const column = screen.getByTestId("home-content-column");
+    const list = screen.getByTestId("home-notification-list");
+    const notificationRegion = column.querySelector<HTMLElement>(
+      "[data-home-notification-region]",
+    );
+    const secondaryRegion = column.querySelector<HTMLElement>(
+      "[data-home-below-notifications]",
+    );
+    const secondaryRegionInner = column.querySelector<HTMLElement>(
+      "[data-home-below-notifications-inner]",
+    );
+    const css = home.querySelector("style")?.textContent ?? "";
+
+    expect(column.hasAttribute("data-home-has-notifications")).toBe(true);
+    expect(notificationRegion).toBeTruthy();
+    expect(secondaryRegion).toBeTruthy();
+    expect(secondaryRegionInner?.className).toContain("min-h-0");
+    expect(secondaryRegionInner?.className).toContain("overflow-y-auto");
+    expect(
+      secondaryRegion?.contains(screen.getByTestId("home-widget-host")),
+    ).toBe(true);
+    expect(css).toContain(
+      '[data-shade-preview="expanding"][data-shade-dragging]',
+    );
+    expect(css).toContain(
+      '[data-shade-mode="expanded"]:not([data-shade-settling])',
+    );
+    expect(css).toContain("grid-template-rows: 0fr");
+    expect(css).toContain("--eliza-home-notification-settle-duration");
+
+    fireEvent.pointerDown(list, {
+      pointerType: "mouse",
+      isPrimary: true,
+      pointerId: 91,
+      clientX: 100,
+      clientY: 100,
+    });
+    fireEvent.pointerMove(list, {
+      pointerType: "mouse",
+      pointerId: 91,
+      clientX: 100,
+      clientY: 130,
+    });
+    expect(list.getAttribute("data-shade-preview")).toBe("expanding");
+    expect(list.hasAttribute("data-shade-dragging")).toBe(true);
+    fireEvent.pointerUp(list, {
+      pointerType: "mouse",
+      pointerId: 91,
+      clientX: 100,
+      clientY: 130,
+    });
+    expect(list.getAttribute("data-shade-preview")).toBe("expanding");
+    expect(list.hasAttribute("data-shade-dragging")).toBe(false);
+    expect(
+      screen
+        .getByTestId("home-notification-center")
+        .hasAttribute("data-notification-shade-cancelling"),
+    ).toBe(true);
+    expect(
+      column.style.getPropertyValue(
+        "--eliza-home-notification-settle-duration",
+      ),
+    ).toMatch(/^\d+ms$/);
+    act(() => vi.advanceTimersByTime(700));
+    expect(list.hasAttribute("data-shade-preview")).toBe(false);
+
+    fireEvent.wheel(list, { deltaY: -(PULL_COMMIT_PX + 10) });
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    fireEvent.click(screen.getByTestId("notifications-collapse"));
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    expect(list.hasAttribute("data-shade-settling")).toBe(true);
+    expect(
+      column.style.getPropertyValue(
+        "--eliza-home-notification-settle-duration",
+      ),
+    ).toBe("460ms");
   });
 
   it("keeps the hydrated empty gesture band quiet without growing the notification region", () => {
@@ -233,7 +302,7 @@ describe("HomeScreen", () => {
     expect(empty.getAttribute("aria-hidden")).toBe("true");
     expect(center.parentElement?.className).not.toContain("flex-1");
     const apps = screen.getByTestId("home-apps-scroll");
-    expect(apps.className).toContain("flex-none");
+    expect(apps.parentElement?.className).toContain("flex-1");
     expect(apps.hasAttribute("inert")).toBe(false);
   });
 
@@ -249,9 +318,10 @@ describe("HomeScreen", () => {
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
     expect(apps.hasAttribute("inert")).toBe(false);
     expect(apps.getAttribute("aria-hidden")).toBeNull();
+    expect(apps.className).toContain("overflow-y-auto");
   });
 
-  it("keeps app focus untouched when a notification arrives in an expanded empty shade", () => {
+  it("moves and restores app focus when a notification arrives in an expanded empty shade", () => {
     __setHydratedForTests(true);
     render(
       <HomeScreen
@@ -275,18 +345,18 @@ describe("HomeScreen", () => {
       );
     });
 
-    // Apps never leave the interaction tree, so an arrival must not displace
-    // the user's focus — there is nothing to restore later either.
-    expect(apps.hasAttribute("inert")).toBe(false);
-    expect(document.activeElement).toBe(calendarButton);
+    expect(apps.hasAttribute("inert")).toBe(true);
+    expect(document.activeElement).toBe(
+      screen.getByTestId("notifications-collapse"),
+    );
 
     fireEvent.click(screen.getByTestId("notifications-collapse"));
-    act(() => vi.advanceTimersByTime(300));
+    act(() => vi.advanceTimersByTime(700));
     expect(apps.hasAttribute("inert")).toBe(false);
     expect(document.activeElement).toBe(calendarButton);
   });
 
-  it("leaves focus in chat while the shade expands and collapses", () => {
+  it("does not steal focus back from chat when the expanded shade collapses", () => {
     __ingestNotificationForTests(
       makeNotification({ title: "Priority alert", priority: "urgent" }),
     );
@@ -306,8 +376,8 @@ describe("HomeScreen", () => {
     });
     calendarButton.focus();
     fireEvent.wheel(list, { deltaY: -(PULL_COMMIT_PX + 10) });
-    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
-    expect(apps.hasAttribute("inert")).toBe(false);
+    expect(apps.hasAttribute("inert")).toBe(true);
+    act(() => vi.advanceTimersByTime(700));
 
     const chatComposer = screen.getByRole("textbox", {
       name: "Chat composer",
@@ -315,55 +385,65 @@ describe("HomeScreen", () => {
     chatComposer.focus();
     fireEvent.wheel(list, { deltaY: PULL_COMMIT_PX + 10 });
     fireEvent.wheel(list, { deltaY: PULL_COMMIT_PX + 10 });
-    act(() => vi.advanceTimersByTime(300));
+    act(() => vi.advanceTimersByTime(700));
 
-    expect(list.getAttribute("data-shade-mode")).toBe("rested");
     expect(apps.hasAttribute("inert")).toBe(false);
     expect(document.activeElement).toBe(chatComposer);
   });
 
-  it("expands from a quiet-background pull over app space but never from an interactive tile", () => {
-    __ingestNotificationForTests(
-      makeNotification({ title: "Priority alert", priority: "urgent" }),
-    );
-    __ingestNotificationForTests(
-      makeNotification({
-        id: "22222222-2222-4222-8222-222222222222" as AgentNotification["id"],
-        title: "Quiet summary",
-        priority: "normal",
-      }),
-    );
+  it("lets an empty-inbox vertical pull start below the notification band", () => {
+    __setHydratedForTests(true);
     render(
       <HomeScreen
         onOpenTile={vi.fn()}
         apps={<button type="button">Open Calendar</button>}
       />,
     );
+    const apps = screen.getByTestId("home-apps-scroll");
     const list = screen.getByTestId("home-notification-list");
-    const calendarButton = screen.getByRole("button", {
-      name: "Open Calendar",
-    });
-    // A pull that starts on an interactive tile belongs to the tile.
-    fireEvent.touchStart(calendarButton, {
-      touches: [{ clientX: 200, clientY: 300 }],
-    });
-    fireEvent.touchMove(calendarButton, {
-      touches: [{ clientX: 202, clientY: 460 }],
-    });
-    fireEvent.touchEnd(calendarButton, { touches: [] });
+    fireEvent.wheel(apps, { deltaY: -(PULL_COMMIT_PX + 10) });
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    expect(screen.getByTestId("notifications-empty").textContent).toBe(
+      "No Notifications",
+    );
+
+    act(() => vi.advanceTimersByTime(700));
+    fireEvent.wheel(apps, { deltaY: PULL_COMMIT_PX + 10 });
+    fireEvent.wheel(apps, { deltaY: PULL_COMMIT_PX + 10 });
+    act(() => vi.advanceTimersByTime(700));
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
 
-    // Non-interactive app-region space is part of the one home surface: a
-    // pull-down at the page top opens the shade (platform-shade idiom).
-    const apps = screen.getByTestId("home-apps-scroll");
     fireEvent.touchStart(apps, {
       touches: [{ clientX: 200, clientY: 300 }],
     });
     fireEvent.touchMove(apps, {
-      touches: [{ clientX: 202, clientY: 460 }],
+      touches: [{ clientX: 202, clientY: 440 }],
     });
     fireEvent.touchEnd(apps, { touches: [] });
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+  });
+
+  it("yields a horizontal drag below the empty notification band to the home pager", () => {
+    __setHydratedForTests(true);
+    render(
+      <HomeScreen
+        onOpenTile={vi.fn()}
+        apps={<button type="button">Open Calendar</button>}
+      />,
+    );
+    const apps = screen.getByTestId("home-apps-scroll");
+    const list = screen.getByTestId("home-notification-list");
+
+    fireEvent.touchStart(apps, {
+      touches: [{ clientX: 280, clientY: 320 }],
+    });
+    fireEvent.touchMove(apps, {
+      touches: [{ clientX: 100, clientY: 324 }],
+    });
+    fireEvent.touchEnd(apps, { touches: [] });
+
+    expect(list.getAttribute("data-shade-mode")).toBe("rested");
+    expect(screen.getByTestId("notifications-empty").style.opacity).toBe("0");
   });
 
   it("tapping an inline row follows its safe deep link directly", () => {

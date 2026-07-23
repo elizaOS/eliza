@@ -19,7 +19,6 @@ import {
   SendHorizontal,
 } from "lucide-react";
 import {
-  AnimatePresence,
   animate,
   type MotionValue,
   motion,
@@ -33,7 +32,6 @@ import * as React from "react";
 
 import { client } from "../../api/client";
 import type {
-  ChatTurnStatus,
   ConversationMessageSearchResult,
   ImageAttachment,
 } from "../../api/client-types-chat";
@@ -110,7 +108,6 @@ import {
 import { findChoiceRegions } from "../chat/message-choice-parser";
 import { parseFormSubmitDisplay } from "../chat/message-parser-helpers";
 import { MessageSearchPanel } from "../chat/message-search/MessageSearchPanel";
-import { ThinkingBlock } from "../chat/ThinkingBlock";
 import { AgentProvisioningWidget } from "../chat/widgets/agent-provisioning";
 import {
   buildReplyTargetFromMessage,
@@ -123,7 +120,6 @@ import type {
   ChatMessageRenderContext,
 } from "../composites/chat/chat-types";
 import { TurnStatus } from "../composites/chat/chat-typing-indicator";
-import { ToolCallEventLog } from "../tool-events/ToolCallEventLog";
 import { Button } from "../ui/button";
 import {
   DropdownMenu,
@@ -249,8 +245,6 @@ const HANDLE_BAR_COLOR = "rgba(255, 255, 255, 0.96)";
 // Shared easing for the overlay's cheap motion path. Open/close must stay
 // opacity/translate only: animating blur/filter or scaling a scrollable
 // transcript repaints too much of the viewport and visibly janks on laptops.
-const OVERLAY_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
-
 // `screen.height` is a useful keyboard-down reference only on the iOS
 // standalone/native surfaces that own the collapsed-viewport reclaim. On
 // desktop and Android it describes the monitor or physical device rather than
@@ -821,43 +815,28 @@ function MessageScrollerSendFollow({ request }: { request: number }) {
   return null;
 }
 
-/**
- * The rich, phase-aware status row shown while the assistant works (#8813),
- * replacing the bare typing dots in the pre-placeholder gap. Wraps the
- * canonical TurnStatus in its own glass bubble + fade so it reads as a turn.
- */
-function TurnStatusIndicator({
-  status,
-  reduce,
+type ScrollToTranscriptMessage = ReturnType<
+  typeof useMessageScroller
+>["scrollToMessage"];
+
+/** Exposes the scroller's coordinated jump API to search result handling. */
+function MessageScrollerSearchBridge({
+  scrollToMessageRef,
 }: {
-  status: ChatTurnStatus | null;
-  reduce?: boolean;
-}): React.JSX.Element {
-  const speaking = status?.kind === "speaking";
-  return (
-    <motion.div
-      className="mb-2.5 flex w-full justify-start"
-      // Fade in/out so the row dissolves with the reply rather than popping.
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: reduce ? 0 : 0.45, ease: OVERLAY_EASE }}
-    >
-      <div
-        className={cn(
-          "rounded-2xl rounded-bl-md border px-3.5 py-2",
-          WALLPAPER_FLOAT_SHADOW,
-          // Orange (the accent) ONLY for spoken replies; every other phase is
-          // neutral white glass. No blue anywhere.
-          // #10698: no own scrim — the shared panel glass carries the contrast;
-          // keep only the tone border (orange when speaking) + WALLPAPER_FLOAT_SHADOW.
-          speaking ? "border-accent/45" : "border-border",
-        )}
-      >
-        <TurnStatus status={status} />
-      </div>
-    </motion.div>
-  );
+  scrollToMessageRef: React.MutableRefObject<ScrollToTranscriptMessage | null>;
+}) {
+  const { scrollToMessage } = useMessageScroller();
+
+  React.useLayoutEffect(() => {
+    scrollToMessageRef.current = scrollToMessage;
+    return () => {
+      if (scrollToMessageRef.current === scrollToMessage) {
+        scrollToMessageRef.current = null;
+      }
+    };
+  }, [scrollToMessage, scrollToMessageRef]);
+
+  return null;
 }
 
 /**
@@ -882,12 +861,10 @@ function ThreadLineText({ content }: { content: string }): React.ReactNode {
 
 /**
  * The overlay's message BODY — everything rendered inside the canonical
- * ChatMessage glass row: the no-provider recovery gate, the in-flight breathing
- * dots (TurnStatus), a user turn's slash-bolded text, and a settled assistant
- * turn's inline widgets + attachments + secret request + reasoning. Kept
- * structurally identical to the ChatView (MessageContent) paths for the
- * affordances the render-parity contract pins; the row chrome (bubble,
- * tap-reveal actions, copy-hold, retry, suggestion) lives in ChatMessage.
+ * ChatMessage glass row: the no-provider recovery gate, the in-flight neutral
+ * shimmer, a user turn's slash-bolded text, and consumer-visible assistant
+ * content. Tool traces and model reasoning remain available to diagnostics but
+ * never become transcript chrome.
  * `onOpenSettings` reaches only the no-provider gate.
  */
 function renderOverlayMessageBody(
@@ -932,9 +909,8 @@ function renderOverlayMessageBody(
   }
 
   if (!isUser && !message.text.trim() && !message.attachments?.length) {
-    // The in-flight assistant turn: dots INSIDE the bubble, anchored where the
-    // streamed text fills in — then the text replaces them. Labels stay in the
-    // standalone status row so the bubble never flashes "Running …" text.
+    // The in-flight assistant turn owns the exact row that the first streamed
+    // token fills, avoiding a separate activity row that shifts the transcript.
     return (
       <>
         <TurnStatus status={ctx?.turnStatus ?? null} showLabel={false} />
@@ -954,10 +930,8 @@ function renderOverlayMessageBody(
   }
 
   // Settled assistant turn: render inline widgets (task/choice/form/followups)
-  // instead of leaking raw markers as text (#8997); plain replies fall through
-  // the fast path unchanged. Attachments, the secret/OAuth request, and the
-  // reasoning block render alongside. The secret block is pointer-events-auto so
-  // it stays clickable inside the open thread's scroll surface.
+  // instead of leaking raw markers as text (#8997). The secret block stays
+  // clickable inside the open thread's scroll surface.
   return (
     <>
       <InlineWidgetText content={message.text} />
@@ -967,27 +941,14 @@ function renderOverlayMessageBody(
           <SensitiveRequestBlock request={message.secretRequest} />
         </div>
       ) : null}
-      {message.toolEvents?.length ? (
-        <div className="pointer-events-auto mt-2 flex flex-col gap-1.5">
-          {message.toolEvents.map((event) => (
-            <ToolCallEventLog key={event.callId ?? event.id} event={event} />
-          ))}
-        </div>
-      ) : null}
-      {!ctx?.suppressReasoning && message.reasoning?.trim() ? (
-        <ThinkingBlock reasoning={message.reasoning} />
-      ) : null}
     </>
   );
 }
 
 /** Project a shell transcript turn onto the canonical row's data shape. The
- *  body renderer reads the passthrough fields (reasoning/secretRequest/
- *  attachments/failureKind) straight off it, so the row stays presentation-only.
- *  Cached per ShellMessage identity so a live drag (which re-renders the overlay
- *  every pointer-move frame) reuses the same object — keeping ChatMessage's memo
- *  on its `prev.message === next.message` fast path. Shell turns are immutable
- *  (a streamed update replaces the object), so a changed turn misses the cache. */
+ *  body renderer receives only consumer-visible fields. Reasoning and tool
+ *  traces remain on ShellMessage for diagnostics. Cached per ShellMessage
+ *  identity so live drags retain ChatMessage's memo fast path. */
 const shellMessageDataCache = new WeakMap<ShellMessage, ChatMessageData>();
 function shellToChatMessageData(m: ShellMessage): ChatMessageData {
   const cached = shellMessageDataCache.get(m);
@@ -998,8 +959,6 @@ function shellToChatMessageData(m: ShellMessage): ChatMessageData {
     text: m.content,
     ...(m.source ? { source: m.source } : {}),
     ...(m.failureKind ? { failureKind: m.failureKind } : {}),
-    ...(m.reasoning ? { reasoning: m.reasoning } : {}),
-    ...(m.toolEvents?.length ? { toolEvents: m.toolEvents } : {}),
     ...(m.attachments ? { attachments: m.attachments } : {}),
     ...(m.secretRequest ? { secretRequest: m.secretRequest } : {}),
   };
@@ -1770,13 +1729,15 @@ export function ChatOverlay({
   // after the user has moved on.
   const pendingExpandOnRevealRef = React.useRef(false);
   const focusThreadRef = React.useRef(false);
-  // Recomputed only when the thread or phase changes — NOT on every drag/draft
-  // re-render. Pure windowing (empty-turn filter, with the streaming-assistant
-  // exception) lives in shell-state so it's unit-tested; the count of renderable
-  // turns drives the scroll-up reveal-before-fetch policy.
+  // A microphone barge-in briefly changes phase while the response is still
+  // live. Keep its assistant placeholder mounted until token one arrives.
   const renderableMessages = React.useMemo(
-    () => filterRenderableShellMessages(messages, phase),
-    [messages, phase],
+    () =>
+      filterRenderableShellMessages(
+        messages,
+        responding ? "responding" : phase,
+      ),
+    [messages, phase, responding],
   );
   // Mirror the active id so an async older-page result is dropped after a
   // mid-flight conversation switch: a page fetched for the previous thread must
@@ -1976,21 +1937,66 @@ export function ChatOverlay({
       }),
     [],
   );
-  const scrollAndFlashSearchAnchor = React.useCallback((el: HTMLElement) => {
-    el.scrollIntoView({ block: "center", behavior: "smooth" });
-    el.style.transition = "outline-color 0.5s ease-out";
-    el.style.outline = "2px solid var(--primary)";
-    el.style.outlineOffset = "2px";
-    el.style.borderRadius = "8px";
-    window.setTimeout(() => {
-      el.style.outline = "2px solid transparent";
-    }, 1200);
-    window.setTimeout(() => {
-      el.style.removeProperty("outline");
-      el.style.removeProperty("outline-offset");
-      el.style.removeProperty("transition");
-    }, 1800);
+  const activeSearchHighlightRef = React.useRef<{
+    element: HTMLElement;
+    fadeTimer: number;
+    cleanupTimer: number;
+    outline: string;
+    outlineOffset: string;
+    transition: string;
+  } | null>(null);
+  const clearSearchHighlight = React.useCallback(() => {
+    const active = activeSearchHighlightRef.current;
+    if (!active) return;
+    window.clearTimeout(active.fadeTimer);
+    window.clearTimeout(active.cleanupTimer);
+    active.element.style.outline = active.outline;
+    active.element.style.outlineOffset = active.outlineOffset;
+    active.element.style.transition = active.transition;
+    active.element.removeAttribute("data-chat-search-highlight");
+    activeSearchHighlightRef.current = null;
   }, []);
+  React.useEffect(() => clearSearchHighlight, [clearSearchHighlight]);
+  const searchScrollToMessageRef =
+    React.useRef<ScrollToTranscriptMessage | null>(null);
+  const scrollAndFlashSearchAnchor = React.useCallback(
+    (el: HTMLElement, messageId: string) => {
+      clearSearchHighlight();
+      const scrolled = searchScrollToMessageRef.current?.(messageId, {
+        align: "center",
+        behavior: "auto",
+      });
+      if (!scrolled) {
+        el.scrollIntoView({ block: "center", behavior: "smooth" });
+      }
+      // Paint inside the actual bubble so the scroller's paint containment
+      // cannot clip the transient accent.
+      const bubble =
+        el.querySelector<HTMLElement>('[data-chat-message-bubble="true"]') ??
+        el;
+      const previous = {
+        outline: bubble.style.outline,
+        outlineOffset: bubble.style.outlineOffset,
+        transition: bubble.style.transition,
+      };
+      bubble.setAttribute("data-chat-search-highlight", "true");
+      bubble.style.outline = "2px solid var(--accent)";
+      bubble.style.outlineOffset = "-2px";
+      bubble.style.transition =
+        "outline-color 650ms cubic-bezier(0.22, 1, 0.36, 1)";
+      const fadeTimer = window.setTimeout(() => {
+        bubble.style.outline = "2px solid transparent";
+      }, 1050);
+      const cleanupTimer = window.setTimeout(clearSearchHighlight, 1750);
+      activeSearchHighlightRef.current = {
+        element: bubble,
+        fadeTimer,
+        cleanupTimer,
+        ...previous,
+      };
+    },
+    [clearSearchHighlight],
+  );
   const handleSearchJump = React.useCallback(
     (result: ConversationMessageSearchResult) => {
       const anchorId = getChatMessageAnchorId(result.messageId);
@@ -2000,20 +2006,22 @@ export function ChatOverlay({
         await handleSelectConversation(result.conversationId);
         let el = await waitForSearchAnchor(anchorId, 20);
         if (!el) {
-          // The hit predates the loaded recent window: load a window CENTERED on
-          // it, then reveal the full loaded set so the centered pivot is not
-          // sliced out of the render window (#15281) — without the reveal a
-          // windowed transcript drops the anchor and the jump silently no-ops.
+          // The message may already be loaded but outside the deliberately
+          // bounded render window. Reveal local history before fetching.
+          renderWindow.revealFullWindow();
+          el = await waitForSearchAnchor(anchorId, 2);
+        }
+        if (!el) {
+          // A genuinely older hit needs a window centered on the message.
           const loaded = await loadConversationMessagesAround(
             result.conversationId,
             result.messageId,
           );
           if (loaded) {
-            renderWindow.revealFullWindow();
             el = await waitForSearchAnchor(anchorId, 20);
           }
         }
-        if (el) scrollAndFlashSearchAnchor(el);
+        if (el) scrollAndFlashSearchAnchor(el, result.messageId);
       })();
     },
     [
@@ -2058,9 +2066,8 @@ export function ChatOverlay({
       el?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
   }, []);
-  // The single, stable body renderer handed to every row (see
-  // renderOverlayMessageBody). Stable identity keeps ChatMessage's memo intact;
-  // per-row volatile values (turnStatus/suppressReasoning) flow via renderContext.
+  // The stable body renderer keeps ChatMessage's memo intact while the sheet
+  // moves; only the active assistant row receives volatile turn status.
   const renderRowBody = React.useCallback(
     (m: ChatMessageData, ctx: ChatMessageRenderContext | undefined) =>
       renderOverlayMessageBody(m, ctx, openSettings),
@@ -2074,7 +2081,6 @@ export function ChatOverlay({
     (message: ChatMessageData) => {
       setChatReplyTarget(buildReplyTargetFromMessage(message, agentName));
       setMode((m) => (m === "half" || m === "full" ? m : "half"));
-      inputRef.current?.focus();
     },
     [setChatReplyTarget, agentName],
   );
@@ -2085,18 +2091,27 @@ export function ChatOverlay({
     (m: ShellMessage, index: number) => {
       const isLastAssistant =
         index === visibleMessages.length - 1 && m.role === "assistant";
-      const isInFlight = isLastAssistant && !m.content.trim();
+      const isInFlight =
+        isLastAssistant &&
+        responding &&
+        !m.content.trim() &&
+        !m.attachments?.length &&
+        !m.failureKind &&
+        !m.secretRequest;
       // Only the last assistant turn reads volatile status; every settled row
       // gets no renderContext so its memo identity is unchanged.
       const renderContext: ChatMessageRenderContext | undefined =
         isLastAssistant
           ? {
               turnStatus: isInFlight ? turnStatus : null,
-              suppressReasoning: responding,
             }
           : undefined;
       return (
-        <MessageScrollerItem key={m.id} messageId={m.id} className="w-full">
+        <MessageScrollerItem
+          key={m.id}
+          messageId={m.id}
+          className={cn("w-full", firstRunOpen && index > 0 && "mt-2")}
+        >
           <ChatMessage
             appearance="glass"
             enterOnMount={m.id.startsWith("temp-")}
@@ -2108,7 +2123,7 @@ export function ChatOverlay({
             onSpeak={handleSpeakMessage}
             onEdit={handleEditResend}
             onDelete={handleDeleteMessage}
-            onReply={handleReplyMessage}
+            onReply={isInFlight ? undefined : handleReplyMessage}
             onRetry={handleRetry}
             playing={speaking && playingMessageId === m.id}
             renderContent={renderRowBody}
@@ -2121,6 +2136,7 @@ export function ChatOverlay({
     },
     [
       visibleMessages.length,
+      firstRunOpen,
       agentName,
       reduce,
       handleCopyMessage,
@@ -5565,6 +5581,9 @@ export function ChatOverlay({
                   defaultScrollPosition={firstRunOpen ? "start" : "end"}
                 >
                   <MessageScrollerSendFollow request={scrollToEndRequest} />
+                  <MessageScrollerSearchBridge
+                    scrollToMessageRef={searchScrollToMessageRef}
+                  />
                   <MessageScroller>
                     <motion.div
                       className="flex size-full min-h-0 flex-col"
@@ -5694,30 +5713,6 @@ export function ChatOverlay({
                             : visibleMessages.map((m, i) =>
                                 renderThreadLine(m, i),
                               )}
-                          <AnimatePresence>
-                            {/* Rich status row (#8813): what the agent is doing —
-                          thinking / running an action / waking / speaking — for
-                          the brief window where we're responding but the assistant
-                          placeholder turn isn't in the thread yet. Once the
-                          in-flight assistant bubble exists it carries the same
-                          status row inline (anchored where the reply fills in),
-                          so don't double up. */}
-                            {responding &&
-                            !(
-                              visibleMessages.at(-1)?.role === "assistant" &&
-                              !visibleMessages.at(-1)?.content.trim()
-                            ) ? (
-                              <MessageScrollerItem
-                                key="turn-status"
-                                className="w-full"
-                              >
-                                <TurnStatusIndicator
-                                  status={turnStatus}
-                                  reduce={reduce}
-                                />
-                              </MessageScrollerItem>
-                            ) : null}
-                          </AnimatePresence>
                         </MessageScrollerContent>
                       </MessageScrollerViewport>
                     </motion.div>

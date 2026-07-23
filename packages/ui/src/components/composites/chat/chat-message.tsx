@@ -753,6 +753,7 @@ export const ChatMessage = memo(function ChatMessage({
       return (
         <motion.div
           ref={articleRef as React.RefObject<HTMLDivElement>}
+          id={getChatMessageAnchorId(message.id)}
           data-testid="thread-line"
           data-role={message.role}
           data-failure="no_provider"
@@ -941,6 +942,7 @@ export const ChatMessage = memo(function ChatMessage({
     return (
       <MotionMessageRow
         ref={articleRef as React.RefObject<HTMLDivElement>}
+        id={getChatMessageAnchorId(message.id)}
         align={isUser ? "end" : "start"}
         data-testid="thread-line"
         data-role={message.role}
@@ -978,6 +980,7 @@ export const ChatMessage = memo(function ChatMessage({
               onClick={handleBubbleClick}
               onKeyDown={handleBubbleKeyDown}
               className={bubbleExtraClassName}
+              data-chat-message-bubble="true"
               data-proactive-suggestion={isSuggestion ? "true" : undefined}
             >
               {bubbleContent}
@@ -989,6 +992,7 @@ export const ChatMessage = memo(function ChatMessage({
               tone={isUser ? "user" : "assistant"}
               {...(holdHandlers ?? {})}
               className={bubbleExtraClassName}
+              data-chat-message-bubble="true"
               data-proactive-suggestion={isSuggestion ? "true" : undefined}
             >
               {bubbleContent}

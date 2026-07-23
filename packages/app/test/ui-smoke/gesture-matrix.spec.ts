@@ -85,26 +85,43 @@ async function openHome(page: Page): Promise<void> {
   });
 }
 
-/** Bring the embedded launcher grid into view (setup, not the gesture under
- *  test). Home and apps share one combined surface — the grid lives under the
- *  "Apps" region on the home column; scrolling it into view is what a user
- *  does, there is no separate launcher page to navigate to. */
-async function revealLauncherGrid(page: Page): Promise<void> {
-  const appsRegion = page.getByTestId("home-apps-scroll");
-  await expect(appsRegion).toBeVisible({ timeout: 15_000 });
-  const settingsTile = appsRegion.getByTestId("launcher-tile-settings");
-  await settingsTile.scrollIntoViewIfNeeded();
-  await expect(settingsTile).toBeVisible({ timeout: 15_000 });
+/** Navigate to the launcher half deterministically (setup, not the gesture
+ *  under test) and wait for the rail settle. A real leftward drag across the
+ *  home half drives the rail's own gesture handler into `goLauncher()` — the
+ *  same store action the UI calls; there is no event-bridge shortcut. */
+async function openLauncherHalf(page: Page): Promise<void> {
+  const homeHalf = page.getByTestId("home-launcher-home-page");
+  await expect(homeHalf).toBeVisible({ timeout: 15_000 });
+  await mousePointerDrag(page, homeHalf, -220, 4, { steps: 10 });
+  await expect(page.getByTestId("home-launcher-surface")).toHaveAttribute(
+    "data-page",
+    "launcher",
+    { timeout: 10_000 },
+  );
+  await expect(page.getByTestId("home-launcher-launcher-page")).toBeVisible({
+    timeout: 15_000,
+  });
+  await page.waitForFunction(
+    () => {
+      const rail = document.querySelector('[data-testid="home-launcher-rail"]');
+      if (!rail) return false;
+      return !(rail as HTMLElement)
+        .getAnimations({ subtree: true })
+        .some((animation) => animation.playState === "running");
+    },
+    undefined,
+    { timeout: 10_000 },
+  );
 }
 
 test("launcher tile: tap launches, long press does NOT ghost-launch on release", async ({
   page,
 }) => {
   await openHome(page);
-  await revealLauncherGrid(page);
+  await openLauncherHalf(page);
 
   const settingsTile = page
-    .getByTestId("home-apps-scroll")
+    .getByTestId("home-launcher-launcher-page")
     .getByTestId("launcher-tile-settings");
   await expect(settingsTile).toBeVisible({ timeout: 15_000 });
   const tileButton = settingsTile.getByRole("button").first();
@@ -124,7 +141,7 @@ test("launcher tile: tap launches, long press does NOT ghost-launch on release",
   await expect(page.getByTestId("settings-shell")).toHaveCount(0);
   await expect(page.getByTestId("home-launcher-surface")).toHaveAttribute(
     "data-page",
-    "home",
+    "launcher",
   );
   await evidenceShot(page, "tile-longpress-no-launch");
 
@@ -381,7 +398,7 @@ test("dashboard notification center: row tap marks read in place, hover-X dismis
   expect(await rowTitleOrder(center)).toEqual(SEEDED_ORDER);
   // The tap had no deepLink: the home surface must not have navigated.
   await expect(page.getByTestId("home-screen")).toBeVisible();
-  await expect(page.getByTestId("chat-overlay")).not.toHaveAttribute(
+  await expect(page.getByTestId("continuous-chat-overlay")).not.toHaveAttribute(
     "data-open",
     "true",
   );
@@ -400,10 +417,15 @@ test("dashboard notification center: row tap marks read in place, hover-X dismis
   ).toHaveCount(0, { timeout: 10_000 });
   await expect(center.getByTestId("notification-row")).toHaveCount(7);
 
-  // (d) There is no bulk clear-all trash button any more — rows are dismissed
-  // one at a time. The right-click contextual menu is a second per-row path:
-  // open it on a remaining row and dismiss from it.
-  await expect(center.getByTestId("notifications-clear-all")).toHaveCount(0);
+  // (d) The bulk command keeps one stable DOM node so a pull can reveal it
+  // continuously, but its rested slot is fully collapsed and inert. The
+  // right-click contextual menu remains a second per-row dismissal path.
+  const clearAll = center.getByTestId("notifications-clear-all");
+  await expect(clearAll).toHaveCount(1);
+  await expect(clearAll.locator("..")).toHaveCSS("opacity", "0");
+  await expect(clearAll.locator("..")).toHaveCSS("height", "0px");
+  await expect(clearAll.locator("..")).toHaveAttribute("aria-hidden", "true");
+  await expect(clearAll.locator("..")).toHaveAttribute("inert", "");
   // Right-click the row button; the contextmenu bubbles to the row li, which
   // opens the menu.
   const menuTarget = center
@@ -427,7 +449,7 @@ test("chat sheet: fast flick snaps open, slow sub-threshold drag stays closed, a
   page,
 }) => {
   await openHome(page);
-  const overlay = page.getByTestId("chat-overlay");
+  const overlay = page.getByTestId("continuous-chat-overlay");
   await expect(overlay).toBeVisible({ timeout: 60_000 });
   await expect(overlay).not.toHaveAttribute("data-open", "true");
   const grabber = page.locator('[data-testid="chat-sheet-grabber"]').first();
@@ -476,7 +498,7 @@ test("chat sheet: fast flick snaps open, slow sub-threshold drag stays closed, a
 });
 
 test.describe("real touch (hasTouch project)", () => {
-  test("horizontal flick over the launcher grid via CDP touch does not ghost-launch the tile under the finger", async ({
+  test("rail flick home→launcher via CDP touch does not ghost-launch the tile under the finger", async ({
     page,
     browserName,
   }, testInfo) => {
@@ -489,31 +511,31 @@ test.describe("real touch (hasTouch project)", () => {
 
     await openHome(page);
     const surface = page.getByTestId("home-launcher-surface");
-    await revealLauncherGrid(page);
-    const appsRegion = page.getByTestId("home-apps-scroll");
+    const homeHalf = page.getByTestId("home-launcher-home-page");
 
-    // Genuine touch flick LEFT across the embedded grid. Home and apps share
-    // one combined surface: there is no rail to pan, so the flick must be a
-    // no-op navigation-wise…
-    await cdpTouchDrag(page, appsRegion, -220, 4, 10);
-    await evidenceShot(page, "touch-grid-flick");
+    // Genuine touch flick LEFT across the home half → the launcher page.
+    await cdpTouchDrag(page, homeHalf, -220, 4, 10);
+    await expect(surface).toHaveAttribute("data-page", "launcher", {
+      timeout: 10_000,
+    });
+    await evidenceShot(page, "touch-rail-flick-to-launcher");
 
-    // …and, GHOST-CLICK: the release must not tap-launch whatever tile ended
-    // up under the finger — no view opened, the combined home still showing.
+    // GHOST-CLICK: the release must not tap-launch whatever tile ended up
+    // under the finger — no view opened, the launcher is still showing.
     await page.waitForTimeout(500);
     await expect(page.getByTestId("settings-shell")).toHaveCount(0);
-    await expect(surface).toHaveAttribute("data-page", "home");
-    await expect(page.getByTestId("chat-overlay")).not.toHaveAttribute(
-      "data-open",
-      "true",
-    );
+    await expect(surface).toHaveAttribute("data-page", "launcher");
+    await expect(
+      page.getByTestId("continuous-chat-overlay"),
+    ).not.toHaveAttribute("data-open", "true");
 
-    // The paired opposite flick is equally inert.
-    await cdpTouchDrag(page, appsRegion, 220, 4, 10);
-    await page.waitForTimeout(500);
-    await expect(page.getByTestId("settings-shell")).toHaveCount(0);
-    await expect(surface).toHaveAttribute("data-page", "home");
-    await evidenceShot(page, "touch-grid-flick-back");
+    // Flick RIGHT on the launcher half → back home (the paired back gesture).
+    const launcherHalf = page.getByTestId("home-launcher-launcher-page");
+    await cdpTouchDrag(page, launcherHalf, 220, 4, 10);
+    await expect(surface).toHaveAttribute("data-page", "home", {
+      timeout: 10_000,
+    });
+    await evidenceShot(page, "touch-rail-flick-back-home");
   });
 
   test("vertical pan over the notification list is contained — no rail flip, no home scroll, no ghost row-tap", async ({
@@ -582,10 +604,9 @@ test.describe("real touch (hasTouch project)", () => {
       OVERFLOW_ROWS,
     );
     await expect(center.getByTestId("notification-row-options")).toHaveCount(0);
-    await expect(page.getByTestId("chat-overlay")).not.toHaveAttribute(
-      "data-open",
-      "true",
-    );
+    await expect(
+      page.getByTestId("continuous-chat-overlay"),
+    ).not.toHaveAttribute("data-open", "true");
     await evidenceShot(page, "touch-notification-list-pan-contained");
   });
 
