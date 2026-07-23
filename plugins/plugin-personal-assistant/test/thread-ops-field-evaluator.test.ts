@@ -347,7 +347,10 @@ describe("threadOpsFieldEvaluator", () => {
         },
       ];
       const handleCtx: ResponseHandlerFieldHandleContext<unknown> = {
-        ...buildCtx(runtime, buildMessage("actually stop everything", "room-1")),
+        ...buildCtx(
+          runtime,
+          buildMessage("actually stop everything", "room-1"),
+        ),
         value: [{ type: "abort", reason: "user retracted" }],
         parsed: {
           shouldRespond: "RESPOND",

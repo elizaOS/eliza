@@ -4640,9 +4640,7 @@ export class AgentRuntime implements IAgentRuntime {
 		if (
 			failedProviderData.length > 0 &&
 			providerSignal?.aborted &&
-			failedProviderData.every(
-				(record) => record.providerOutcome === "aborted",
-			)
+			failedProviderData.every((record) => record.providerOutcome === "aborted")
 		) {
 			const reason = providerSignal.reason;
 			throw reason instanceof TurnAbortedError
