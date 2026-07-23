@@ -240,12 +240,6 @@ async function touchSwipeRight(page, testId) {
   });
 }
 
-// A STATIONARY hold past the long-press window. On the curated launcher this
-// must NOT enter edit mode (the launcher is read-only, fixed placement).
-async function longPressHold(page, tileTestId) {
-  await touchLongPress(page, `[data-testid="${tileTestId}"] button`, 600);
-}
-
 async function installCoarsePointerMedia(page) {
   await page.addInitScript(() => {
     const real = window.matchMedia.bind(window);
@@ -744,13 +738,12 @@ try {
       "collapse returns the notification center to its rested controls",
     );
   }
-  // No general quick-access tiles anymore - Launcher is the adjacent
-  // launcher. The only tiles left are the AOSP native-OS surfaces, shown here
-  // because the mobile page sets ?native (see HomeScreen.tsx HOME_TILES).
+  // Home no longer renders a second tile list beside the embedded curated
+  // launcher. Native surfaces, when available, belong to launcher curation.
   for (const id of ["messages", "phone", "contacts", "camera"]) {
     assert(
-      await mobile.getByTestId(`home-tile-${id}`).isVisible(),
-      `native-OS tile ${id} renders (native enabled)`,
+      (await mobile.getByTestId(`home-tile-${id}`).count()) === 0,
+      `legacy native-OS home tile ${id} is absent`,
     );
   }
   // The removed defaults must NOT appear, even with native enabled.
@@ -854,6 +847,7 @@ try {
   // the rail's - exactly the phone input this profile emulates).
   await touchSwipeLeft(mobile, "home-launcher-home-page");
   await waitForSurfacePageSettled(mobile, "launcher");
+  const launcherPage = mobile.getByTestId("home-launcher-launcher-page");
   assert(
     (await mobile.getByTestId("rail-pager-edge-prev").count()) === 0 &&
       (await mobile.getByTestId("rail-pager-edge-next").count()) === 0 &&
@@ -865,7 +859,7 @@ try {
   // ── Curated apps page - the everyday apps render as tiles, in curated order.
   for (const id of ["wallet", "automations", "browser", "settings"]) {
     assert(
-      await mobile.getByTestId(`launcher-tile-${id}`).isVisible(),
+      await launcherPage.getByTestId(`launcher-tile-${id}`).isVisible(),
       `curated app "${id}" renders on the launcher apps page`,
     );
   }
@@ -889,8 +883,8 @@ try {
   }
   // A single Wallet tile survives the duplicate wallet + inventory registrations.
   assert(
-    (await mobile.getByTestId("launcher-tile-wallet").count()) === 1,
-    "duplicate wallet registrations collapse to one tile",
+    (await launcherPage.getByTestId("launcher-tile-wallet").count()) === 1,
+    "duplicate wallet registrations collapse to one tile on the visible launcher",
   );
 
   // ── Glyph-only app icons (#13453 "deslop the launcher grid"): a launcher tile
@@ -899,7 +893,7 @@ try {
   // (a virus for Settings, a ladybug for Memories: the "icons are slop" report).
   // Each curated tile exposes its `data-view-visual` plate and NO hero image.
   for (const id of ["wallet", "automations", "browser", "character"]) {
-    const visual = mobile.locator(`[data-view-visual="${id}"]`);
+    const visual = launcherPage.locator(`[data-view-visual="${id}"]`);
     assert(
       (await visual.count()) === 1 && (await visual.isVisible()),
       `curated app "${id}" renders its glyph icon plate`,
@@ -931,24 +925,27 @@ try {
   // gradients are deterministic per id (id-hashed palette), so distinct tiles
   // get distinct gradients — a launcher of one flat placeholder would be the
   // regression this guards against.
-  const visualCount = await mobile.locator("[data-view-visual]").count();
+  const visualCount = await launcherPage.locator("[data-view-visual]").count();
   assert(
     visualCount >= 5,
     `launcher renders multiple glyph tiles (${visualCount})`,
   );
   assert(
-    (await mobile.locator('[data-testid^="launcher-image-"]').count()) === 0,
+    (await launcherPage.locator('[data-testid^="launcher-image-"]').count()) ===
+      0,
     "no launcher tile renders a hero <img> (glyph-only launcher)",
   );
-  const tileGradients = await mobile.$$eval("[data-view-visual]", (els) =>
-    Array.from(
-      new Set(
-        els
-          .map((el) => getComputedStyle(el).backgroundImage)
-          .filter((v) => Boolean(v) && v !== "none"),
+  const tileGradients = await launcherPage
+    .locator("[data-view-visual]")
+    .evaluateAll((els) =>
+      Array.from(
+        new Set(
+          els
+            .map((el) => getComputedStyle(el).backgroundImage)
+            .filter((v) => Boolean(v) && v !== "none"),
+        ),
       ),
-    ),
-  );
+    );
   assert(
     tileGradients.length >= 3,
     `launcher glyph plates use varied gradients, not one placeholder (${tileGradients.length} distinct)`,
@@ -957,10 +954,15 @@ try {
   // ── The curated launcher is READ-ONLY: a long-press never enters edit mode
   // (fixed placement, no reorder). Edit mode animates tiles with `animate-pulse`,
   // so its absence after a stationary hold is the real read-only signal. #3
-  await longPressHold(mobile, "launcher-tile-wallet");
+  await touchLongPress(
+    mobile,
+    '[data-testid="home-launcher-launcher-page"] [data-testid="launcher-tile-wallet"] button',
+    600,
+  );
   await mobile.waitForTimeout(150);
   assert(
     (await mobile
+      .getByTestId("home-launcher-launcher-page")
       .getByTestId("launcher-tile-wallet")
       .locator("button.animate-pulse")
       .count()) === 0,
@@ -992,7 +994,7 @@ try {
     "plugins",
   ]) {
     assert(
-      (await mobile
+      (await launcherPage
         .getByTestId("launcher-page-window")
         .getByTestId(`launcher-tile-${id}`)
         .count()) === 1,
