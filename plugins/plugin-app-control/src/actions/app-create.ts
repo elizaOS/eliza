@@ -13,6 +13,7 @@ import type {
 	HandlerOptions,
 	IAgentRuntime,
 	Memory,
+	UUID,
 } from "@elizaos/core";
 import { logger, ModelType, spawnWithTrajectoryLink } from "@elizaos/core";
 import {
@@ -612,6 +613,10 @@ async function persistIntentTask(
 		name: "APP_CREATE intent",
 		description: `Awaiting user choice for: ${metadata.intent}`,
 		tags: [APP_CREATE_INTENT_TAG, "AWAITING_CHOICE"],
+		// Top-level roomId is what the room-scoped AWAITING_CHOICE queries (core
+		// CHOICE provider, threadOps pick guard) filter on; metadata.roomId is
+		// kept for the existing findExistingIntentTask lookup.
+		roomId: metadata.roomId as UUID,
 		metadata: {
 			roomId: metadata.roomId,
 			intent: metadata.intent,
