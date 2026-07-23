@@ -38,14 +38,12 @@ import type {
 	RefCountedResource,
 } from "../../shared-resources";
 import type { Phrase } from "../../types";
-import {
-	KOKORO_MOBILE_TTFA_BUDGET_MS,
-	type KokoroTtsBackend,
-} from "../kokoro-backend";
+import type { KokoroTtsBackend } from "../kokoro-backend";
 import {
 	type KokoroEngineDiscoveryResult,
 	resolveKokoroEngineConfig,
 } from "../kokoro-engine-discovery";
+import { resolveKokoroTtfaBudgetMs } from "../kokoro-ttfa-budget";
 
 const isBun = typeof (globalThis as { Bun?: unknown }).Bun !== "undefined";
 const LIB_PATH = resolveFusedLibraryPath(null, process.env);
@@ -226,16 +224,10 @@ describe.skipIf(!isBun || !LIB_PATH || !KOKORO_MODEL)(
 			// Real, non-empty 24 kHz PCM — never a silent stub (acceptance criterion 4).
 			expect(totalSamples).toBeGreaterThan(0);
 			expect(sampleRate).toBe(24_000);
-			// First audible chunk within the TTFA budget (criterion 7). The default
-			// is the mobile product budget; KOKORO_SMOKE_TTFA_BUDGET_MS (the same
-			// knob kokoro-real-smoke.ts honors) overrides it on desktop-CPU CI
-			// hosts, where the run proves loadability + real PCM, not mobile
-			// latency, and a generous ceiling still catches loader hangs.
-			const budgetRaw = process.env.KOKORO_SMOKE_TTFA_BUDGET_MS?.trim();
-			const budgetMs = budgetRaw
-				? Number.parseInt(budgetRaw, 10)
-				: KOKORO_MOBILE_TTFA_BUDGET_MS;
-			expect(Number.isFinite(budgetMs) && budgetMs > 0).toBe(true);
+			// First audible chunk within the TTFA budget (criterion 7) — the mobile
+			// product budget by default, overridable for desktop-CPU CI hosts via
+			// the shared KOKORO_SMOKE_TTFA_BUDGET_MS knob.
+			const budgetMs = resolveKokoroTtfaBudgetMs();
 			expect(firstAudibleAtMs).not.toBeNull();
 			expect(firstAudibleAtMs as unknown as number).toBeLessThanOrEqual(
 				budgetMs,

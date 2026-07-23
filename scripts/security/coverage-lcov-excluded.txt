@@ -78,3 +78,28 @@ packages/scripts/audit-ui-determinism.mjs
 # importable, test-instrumented module.
 packages/app-core/scripts/dev-ui.mjs
 packages/app/scripts/dev-shared.mjs
+
+# Real-voice lane entrypoints + adapter (#16945): every one of these executes
+# through the fused native `libelizainference` (bun:ffi dlopen) with staged
+# multi-GB GGUF bundles. The scripts are top-level CLI entrypoints — importing
+# one in a unit suite immediately probes for the native lib and process.exit()s
+# — and the workbench adapter's every code path acquires real fused
+# encoder/diarizer/Kokoro handles, so none of them can execute inside the
+# Vitest/Bun unit lanes where the native lib does not exist. They are exercised
+# for real, end to end, by the self-provisioning voice-live-e2e nightly
+# (roundtrip + acoustic-matrix jobs run each entrypoint against the real
+# models in require-real mode; green run 29991510871). The pure logic they
+# gained in #16945 is factored into
+# plugins/plugin-local-inference/src/services/voice/kokoro/kokoro-ttfa-budget.ts,
+# which IS instrumented via kokoro-ttfa-budget.test.ts. Delete an entry if its
+# file is ever refactored so the remaining logic lives in an importable,
+# test-instrumented module.
+packages/app-core/scripts/voice-attribution-smoke.ts
+packages/benchmarks/voice/voice-real-ci-matrix.mjs
+plugins/plugin-local-inference/scripts/asr-real-smoke.ts
+plugins/plugin-local-inference/scripts/kokoro-real-smoke.ts
+plugins/plugin-local-inference/scripts/real-agent-voice-overlap.ts
+plugins/plugin-local-inference/scripts/real-robustness-asr.ts
+plugins/plugin-local-inference/scripts/real-voice-stack.ts
+plugins/plugin-local-inference/scripts/voice-bench-shared.ts
+plugins/plugin-local-inference/src/services/voice/workbench-real-services.ts

@@ -1,0 +1,8 @@
+{
+  "forkCommit": "32b78e44bf54906329cdf85de0e7fca04bb91b11",
+  "forkDirty": "",
+  "backend": "cpu",
+  "fusedLib": "libelizainference.so",
+  "fusedSha256": "727898240782c0c68ddf50ff79d7877137f5fa19e5fdfd3c1dc85183591ead3d",
+  "builtAt": "2026-07-23T07:07:44.264Z"
+}
