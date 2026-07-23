@@ -1984,15 +1984,14 @@ async function runSend(
       };
     }
 
-    await callbackText(
-      callback,
-      "No input provided. Specify 'input', 'task', or 'keys' parameter.",
-    );
+    // Planner-input error: the failure reaches the model via the ActionResult
+    // and the planner corrects or reports — posting the raw diagnostic mid-turn
+    // produced a bare "Failed to send to agent: …" message before the answer.
     return errorResult("NO_INPUT");
   } catch (error) {
-    // error-policy:J1 send action boundary → user-facing error + structured failure.
+    // error-policy:J1 send action boundary → structured failure to the planner;
+    // no raw callback text (the turn's final message reports honestly).
     const msg = failureMessage(error);
-    await callbackText(callback, `Failed to send to agent: ${msg}`);
     return { success: false, error: msg };
   }
 }
@@ -2146,7 +2145,7 @@ async function runListAgents(
   if (sessions.length === 0) {
     const text =
       'No active task agents. Use TASKS { action: "create" } when the user needs anything more involved than a simple direct reply.';
-    await callbackText(callback, text);
+    // Read-only query: no visible callback (see history).
     return {
       success: true,
       text,
@@ -2161,7 +2160,8 @@ async function runListAgents(
     );
   }
   const text = lines.join("\n");
-  await callbackText(callback, text);
+  // Read-only query: no visible callback. The listing reaches the model via
+  // the ActionResult; posting it raw produced a double reply (dump, answer).
 
   return {
     success: true,
@@ -2564,6 +2564,10 @@ async function runHistory(
   const window = historyWindowValue(params.window ?? content.window);
   const statuses = historyStatusesValue(params.statuses ?? content.statuses);
   const search = textValue(params.search) ?? textValue(content.search);
+  // Session-scoped history resolves through the durable session index. A task
+  // may have several sessions, so comparing only its latest session would make
+  // older sessions disappear or allow an unrelated thread into the answer.
+  const sessionId = textValue(params.sessionId) ?? textValue(content.sessionId);
   // Registered-project filter: restrict the thread listing to tasks bound to
   // one project (the store filters on the indexed/structural `projectId`).
   const projectId = textValue(params.projectId) ?? textValue(content.projectId);
@@ -2575,14 +2579,21 @@ async function runHistory(
   ) as OrchestratorTaskService | null | undefined;
   if (taskService && typeof taskService.listTasks === "function") {
     try {
-      const allTasks = (
-        await taskService.listTasks({
-          includeArchived,
-          ...(search ? { search } : {}),
-          ...(projectId ? { projectId } : {}),
-        })
-      ).filter((task) =>
-        taskMatchesHistoryFilters(task, statuses, windowFilters, search),
+      const sessionTask = sessionId
+        ? await taskService.getTaskForSession(sessionId)
+        : undefined;
+      const taskCandidates =
+        sessionId && !sessionTask
+          ? []
+          : await taskService.listTasks({
+              includeArchived,
+              ...(search ? { search } : {}),
+              ...(projectId ? { projectId } : {}),
+            });
+      const allTasks = taskCandidates.filter(
+        (task) =>
+          taskMatchesHistoryFilters(task, statuses, windowFilters, search) &&
+          (!sessionTask || task.id === sessionTask.id),
       );
       const count = allTasks.length;
       const tasks = allTasks.slice(0, limit);
@@ -2591,6 +2602,7 @@ async function runHistory(
         statuses.length > 0 ? `statuses ${statuses.join(", ")}` : undefined,
         search ? `search "${search}"` : undefined,
         projectId ? `project ${projectId}` : undefined,
+        sessionId ? `session ${sessionId}` : undefined,
         includeArchived ? "including archived" : undefined,
       ].filter((part): part is string => Boolean(part));
       const filterSuffix =
@@ -2604,7 +2616,9 @@ async function runHistory(
       } else if (metric === "detail") {
         const task = tasks[0];
         responseText = [
-          `The most recent orchestrator task is "${task.title}" [${task.status}].`,
+          sessionId
+            ? `The orchestrator task containing session ${sessionId} is "${task.title}" [${task.status}].`
+            : `The most recent orchestrator task is "${task.title}" [${task.status}].`,
           `Task id: ${task.id}`,
           `Latest session: ${task.latestSessionLabel ?? task.latestSessionId ?? "none"}`,
           `Workspace: ${task.latestWorkdir ?? "none"}`,
@@ -2620,7 +2634,9 @@ async function runHistory(
         ].join("\n");
       }
 
-      if (callback) await callback({ text: responseText });
+      // Read-only query: no visible callback. The listing reaches the model
+      // via the ActionResult and the user via the planner's final message —
+      // posting the raw dump produced a double reply (dump, then answer).
       return {
         success: true,
         text: responseText,
@@ -2634,6 +2650,7 @@ async function runHistory(
             ...(statuses.length > 0 ? { statuses } : {}),
             ...(search ? { search } : {}),
             ...(projectId ? { projectId } : {}),
+            ...(sessionId ? { sessionId } : {}),
             includeArchived,
             limit,
           },
@@ -2657,8 +2674,10 @@ async function runHistory(
     });
   }
   const sessions = (await listSessionsWithin(service, 2000))
-    .filter((session) =>
-      sessionMatchesHistoryFilters(session, statuses, windowFilters, search),
+    .filter(
+      (session) =>
+        (!sessionId || session.id === sessionId) &&
+        sessionMatchesHistoryFilters(session, statuses, windowFilters, search),
     )
     .slice(0, limit);
   const count = sessions.length;
@@ -2688,7 +2707,7 @@ async function runHistory(
     ].join("\n");
   }
 
-  if (callback) await callback({ text: responseText });
+  // Read-only query: no visible callback (same contract as history).
   return {
     success: true,
     text: responseText,
@@ -3996,7 +4015,7 @@ export const tasksAction: Action & {
     {
       name: "sessionId",
       description:
-        "Target session id for action=send / action=stop_agent / action=cancel / action=control / action=share.",
+        "Exact ACP session id for action=send / action=stop_agent / action=cancel / action=control / action=share / action=history. For history, returns the durable task containing that session even when it is not the task's latest session.",
       required: false,
       schema: { type: "string" as const },
     },

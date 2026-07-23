@@ -2,6 +2,7 @@
  * Verifies TASKS:spawn_agent.
  * Deterministic unit test with a stubbed runtime; no live model.
  */
+import { promoteSubactionsToActions } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 // SPAWN_AGENT is `TASKS { action: "spawn_agent" }`.
 import { spawnAgentAction } from "../../src/actions/tasks.js";
@@ -18,6 +19,28 @@ const TASK_ROOM = "11111111-2222-3333-4444-555555555555";
 const WORKTREE_ROOM = "22222222-3333-4444-5555-666666666666";
 
 describe("TASKS:spawn_agent", () => {
+  it("rejects a list_agents alias on the promoted spawn tool before spawning", async () => {
+    const spawn = promoteSubactionsToActions(spawnAgentAction).find(
+      (action) => action.name === "TASKS_SPAWN_AGENT",
+    );
+    if (!spawn) throw new Error("TASKS_SPAWN_AGENT was not promoted");
+    const svc = serviceMock();
+
+    const result = await spawn.handler(
+      runtimeWith(svc),
+      memory({ task: "list active agents" }),
+      state,
+      { parameters: { op: "list_agents", task: "list active agents" } },
+      callback(),
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      text: expect.stringContaining("Call TASKS_LIST_AGENTS"),
+    });
+    expect(svc.spawnSession).not.toHaveBeenCalled();
+  });
+
   it("keeps spawn_agent planner-visible on the umbrella action", () => {
     expect(
       spawnAgentAction.parameters?.find(

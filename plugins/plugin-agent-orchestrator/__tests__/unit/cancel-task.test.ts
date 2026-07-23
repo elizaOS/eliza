@@ -2,6 +2,7 @@
  * Verifies TASKS:cancel.
  * Deterministic unit test with a stubbed runtime; no live model.
  */
+import { promoteSubactionsToActions } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 // CANCEL_TASK is `TASKS { action: "cancel" }`.
 import { cancelTaskAction } from "../../src/actions/tasks.js";
@@ -16,6 +17,28 @@ import {
 const cancelOptions = { parameters: { action: "cancel" } };
 
 describe("TASKS:cancel", () => {
+  it("rejects an undeclared history verb on the promoted cancel tool", async () => {
+    const cancel = promoteSubactionsToActions(cancelTaskAction).find(
+      (action) => action.name === "TASKS_CANCEL",
+    );
+    if (!cancel) throw new Error("TASKS_CANCEL was not promoted");
+    const svc = serviceMock();
+
+    const result = await cancel.handler(
+      runtimeWith(svc),
+      memory({ sessionId: "abcdef123456" }),
+      state,
+      { parameters: { verb: "history", sessionId: "abcdef123456" } },
+      callback(),
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      text: expect.stringContaining("Call TASKS_HISTORY"),
+    });
+    expect(svc.cancelSession).not.toHaveBeenCalled();
+  });
+
   it("keeps cancel planner-visible on the umbrella action", () => {
     expect(
       cancelTaskAction.parameters?.find(
