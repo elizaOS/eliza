@@ -4,7 +4,9 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  isPrimaryAppRenderer,
   parseWindowShellRoute,
+  type PrimaryRendererLocationLike,
   resolveDetachedShellPathname,
   resolveDetachedShellTarget,
 } from "./window-shell";
@@ -57,5 +59,73 @@ describe("resolveDetachedShellTarget", () => {
     expect(
       resolveDetachedShellPathname({ mode: "surface", tab: "connectors" }),
     ).toBe("/settings");
+  });
+});
+
+describe("isPrimaryAppRenderer", () => {
+  function at(
+    overrides: Partial<PrimaryRendererLocationLike>,
+  ): PrimaryRendererLocationLike {
+    return {
+      search: "",
+      pathname: "/",
+      hash: "",
+      protocol: "https:",
+      ...overrides,
+    };
+  }
+
+  it("accepts the plain main window", () => {
+    expect(isPrimaryAppRenderer(at({}))).toBe(true);
+    expect(isPrimaryAppRenderer(at({ pathname: "/chat" }))).toBe(true);
+    // Unrelated params must not disqualify the main window.
+    expect(isPrimaryAppRenderer(at({ search: "?tab=chat" }))).toBe(true);
+  });
+
+  it("rejects every standalone window-shell mode", () => {
+    for (const search of [
+      "?shell=settings",
+      "?shell=settings&tab=connectors",
+      "?shell=surface&tab=browser",
+      "?shellMode=chat-overlay",
+      "?shell-mode=chat-overlay",
+      "?shellMode=tray-popover",
+    ]) {
+      expect(isPrimaryAppRenderer(at({ search }))).toBe(false);
+    }
+  });
+
+  it("rejects popout, phone-companion, and app-window renderers", () => {
+    expect(isPrimaryAppRenderer(at({ search: "?popout" }))).toBe(false);
+    expect(isPrimaryAppRenderer(at({ search: "?popout=1" }))).toBe(false);
+    expect(isPrimaryAppRenderer(at({ search: "?mode=companion" }))).toBe(
+      false,
+    );
+    expect(
+      isPrimaryAppRenderer(
+        at({ search: "?appWindow=1", pathname: "/apps/plugins" }),
+      ),
+    ).toBe(false);
+  });
+
+  it("rejects the model-tester shell on both path styles", () => {
+    expect(isPrimaryAppRenderer(at({ pathname: "/model-tester" }))).toBe(
+      false,
+    );
+    // Packaged desktop shells navigate by hash under file: protocol.
+    expect(
+      isPrimaryAppRenderer(
+        at({ protocol: "file:", pathname: "/index.html", hash: "#/model-tester" }),
+      ),
+    ).toBe(false);
+    expect(
+      isPrimaryAppRenderer(
+        at({ protocol: "file:", pathname: "/index.html", hash: "" }),
+      ),
+    ).toBe(true);
+  });
+
+  it("returns false with no window/location", () => {
+    expect(isPrimaryAppRenderer(undefined)).toBe(false);
   });
 });

@@ -100,6 +100,56 @@ export function shouldInstallMainWindowFirstRunPatches(
   return route.mode === "main";
 }
 
+/**
+ * Location shape `isPrimaryAppRenderer` needs — a structural subset of
+ * `window.Location` so tests and non-window callers can pass a plain object.
+ */
+export interface PrimaryRendererLocationLike {
+  search: string;
+  pathname: string;
+  hash: string;
+  protocol: string;
+}
+
+/**
+ * Whether this renderer is the primary main-window app shell — the single
+ * intended host for self-starting renderer services (plugin `appRegister`
+ * side-effect modules that capture activity, poll devices, or hold
+ * per-app-instance state). Popouts, detached surface/settings windows, chat
+ * overlays, tray popovers, the phone companion, `/apps/<slug>` app windows,
+ * and the model-tester shell all boot the same renderer bundle; without this
+ * gate a service would run once per window and double-report.
+ *
+ * The app shell's own render branching (packages/app main.tsx) stays separate:
+ * it picks WHAT to render per shell, while this predicate answers whether a
+ * background service should run AT ALL. Both read the same URL contracts:
+ * `?shell=`/`?shellMode=` (this file), `?popout`, `?mode=companion`,
+ * `?appWindow=1`, and the `/model-tester` route.
+ */
+export function isPrimaryAppRenderer(
+  location: PrimaryRendererLocationLike | undefined = typeof window ===
+  "undefined"
+    ? undefined
+    : window.location,
+): boolean {
+  if (!location) return false;
+  if (parseWindowShellRoute(location.search).mode !== "main") return false;
+
+  const params = new URLSearchParams(location.search);
+  if (params.has("popout")) return false;
+  if (params.get("mode") === "companion") return false;
+  if (params.get("appWindow") === "1") return false;
+
+  const path =
+    location.protocol === "file:"
+      ? location.hash.replace(/^#/, "") || "/"
+      : location.pathname;
+  const normalized = path.replace(/[?#].*$/, "");
+  if (normalized === "/model-tester") return false;
+
+  return true;
+}
+
 export function resolveDetachedShellTarget(
   route: WindowShellRoute,
 ): DetachedShellTarget {

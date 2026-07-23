@@ -75,9 +75,21 @@ declare module "@elizaos/app-core" {
 declare module "@elizaos/plugin-personal-assistant" {
   export const AppBlockerSettingsCard: ComponentType<AppBlockerSettingsCardProps>;
   export const WebsiteBlockerSettingsCard: ComponentType<WebsiteBlockerSettingsCardProps>;
-  export const LifeOpsActivitySignalsEffect: ComponentType<
-    Record<string, never>
-  >;
+  export function registerLifeOpsApp(): void;
+}
+
+// PA's `appRegister` side-effect boot entry: evaluating it starts the LifeOps
+// activity-signal capture (in primary renderers only). Export-free by
+// contract; declared here so the loader-identity test can import it without
+// pulling PA's server-side TS graph into this program.
+declare module "@elizaos/plugin-personal-assistant/register" {
+  export {};
+}
+
+declare module "@elizaos/plugin-personal-assistant/lifeops/activity-signals-capture" {
+  export function startLifeOpsActivitySignalCapture(
+    enabled?: boolean,
+  ): () => void;
 }
 
 declare module "@elizaos/plugin-blocker" {

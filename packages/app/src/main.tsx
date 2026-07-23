@@ -308,12 +308,6 @@ const WebsiteBlockerSettingsCard =
   lazyNamedComponent<WebsiteBlockerSettingsCardProps>(
     async () => (await importPersonalAssistant()).WebsiteBlockerSettingsCard,
   );
-// Headless effect: mounts the LifeOps presence/screen-time activity-signal
-// capture feed (Capacitor mobile signals + desktop power/screen-time) inside
-// the GUI shell so it runs for the lifetime of the main app.
-const LifeOpsActivitySignalsEffect = lazyNamedComponent<Record<string, never>>(
-  async () => (await importPersonalAssistant()).LifeOpsActivitySignalsEffect,
-);
 const CodingAgentControlChip = lazyNamedComponent<Record<string, never>>(
   async () => (await importAppTaskCoordinator()).CodingAgentControlChip,
 );
@@ -2422,14 +2416,12 @@ function mountReactApp(): void {
           so every leaf's detectDomModality() reads one authoritative source.
           #9948: provide the canonical role context once, under AppProvider, so
           any view can gate developer/owner surfaces with useRole/<RoleGate>. */}
+      {/* LifeOps presence/screen-time activity-signal capture self-starts via
+          plugin-personal-assistant's `appRegister` side-effect entry
+          (src/register.ts) — no React mount here. */}
       <ShellModalityProvider modality="gui">
         <ShellRoleProvider>
           <App />
-          {/* Presence/screen-time activity-signal capture. Own Suspense so the
-              lazy plugin-personal-assistant chunk never blocks the app render. */}
-          <Suspense fallback={null}>
-            <LifeOpsActivitySignalsEffect />
-          </Suspense>
         </ShellRoleProvider>
       </ShellModalityProvider>
     </>

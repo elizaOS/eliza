@@ -21,8 +21,19 @@ import path from "node:path";
 export type AppRegisterMode = "register" | "ui";
 
 export type SideEffectAppModule = {
-  /** Canonical package name — used as the dedupe key + load log label. */
+  /**
+   * Role-qualified identity (`<package>#<mode>`) — the renderer's dynamic
+   * import cache key and load log label. The entry role must be part of the
+   * identity: the app shell also imports package ROOT facades through the same
+   * cache, and a bare package name would let whichever loader ran first
+   * suppress the other — handing consumers the wrong module namespace (a
+   * `register` side-effect entry is not the root facade). See #16504.
+   */
   key: string;
+  /** Canonical package name — for workspace-dependency and manifest ratchets. */
+  packageName: string;
+  /** Which entry role the plugin opted into via `elizaos.appRegister`. */
+  mode: AppRegisterMode;
   /** Absolute path to the renderer registration entry imported at boot. */
   entry: string;
 };
@@ -87,7 +98,12 @@ export function discoverSideEffectAppModules(
         );
       }
       seen.add(name);
-      discovered.push({ key: name, entry });
+      discovered.push({
+        key: `${name}#${mode}`,
+        packageName: name,
+        mode,
+        entry,
+      });
     }
   }
 
