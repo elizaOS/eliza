@@ -1,8 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  navIntentActionResult,
-  resolveSharedNavIntent,
-} from "./shared-nav-intent";
+import { navIntentActionResult, resolveSharedNavIntent } from "./shared-nav-intent";
 
 describe("resolveSharedNavIntent", () => {
   test.each([
