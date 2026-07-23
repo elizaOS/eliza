@@ -5345,9 +5345,16 @@ export async function startEliza(
         );
         await registerWalletBalanceDeltaProducer(runtime);
       } catch (err) {
+        // error-policy:J7 registering the balance-delta watcher must not kill
+        // agent boot — the wallet surface works without it. reportError makes
+        // the missing producer agent-visible (RECENT_ERRORS) and escalates on
+        // repeat instead of only landing in a boot-log warning.
         logger.warn(
           `[eliza] Failed to register the wallet balance-delta watcher: ${formatError(err)}`,
         );
+        runtime.reportError("eliza.walletBalanceDeltaProducer", err, {
+          phase: "deferred-boot",
+        });
       }
     }
     await installServerSideWebSearchIfAvailable();

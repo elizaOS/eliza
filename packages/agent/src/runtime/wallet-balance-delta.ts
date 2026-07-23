@@ -20,7 +20,15 @@
  * zero". A failed leg fetch surfaces as a typed retryable dispatch failure
  * (the runner's dispatch policy retries the same step), and a change in WHICH
  * legs are samplable (chain errored, RPC readiness flipped, address
- * added/removed) re-baselines silently instead of fabricating a delta.
+ * added/removed) re-baselines silently instead of fabricating a delta. The
+ * same doctrine covers price availability: the upstream balance stack encodes
+ * "price unknown" as `valueUsd: "0"` with no error (wallet-evm-balance.ts
+ * seeds "0" and only overwrites on a dex-price hit; wallet-dex-prices.ts
+ * swallows provider failures into a partial map), so a dexscreener /
+ * geckoterminal outage collapses totals to ~0 while unit balances are
+ * unchanged. The sample fingerprint therefore folds in per-position price
+ * coverage: a priced↔unpriced flip is a sampling change, not a balance move,
+ * and re-baselines silently instead of emitting a "down ~100%" / "up" flap.
  *
  * Registered from the agent boot path (desktop/cloud only — mobile has no
  * EVM/Solana wallet surface, mirroring the /api/wallet route gate).
@@ -63,11 +71,13 @@ const RETRY_AFTER_MINUTES = 15;
 /** Persisted baseline: the last total we notified about (or first observed). */
 export interface WalletBalanceBaseline {
   totalUsd: number;
-  /** Sorted leg fingerprint (e.g. `["evm:base", "evm:ethereum", "sol"]`) —
-   * which components the total was computed from. A fingerprint change is a
-   * sampling-composition change, not a balance change; the watcher
-   * re-baselines instead of notifying. */
-  sampledLegs: string[];
+  /** Sorted sample fingerprint: the legs the total was computed from (e.g.
+   * `"evm:ethereum"`, `"sol"`) plus one `unpriced:<position>` entry per
+   * position whose units are nonzero but whose USD value is unknown (the
+   * upstream "0"-means-unpriced encoding). A fingerprint change is a
+   * sampling-composition or price-coverage change, not a balance change; the
+   * watcher re-baselines instead of notifying. */
+  sampleFingerprint: string[];
   observedAtIso: string;
 }
 
@@ -116,18 +126,60 @@ export function sumWalletBalancesUsd(balances: WalletBalancesResponse): number {
   return total;
 }
 
-/** Sorted fingerprint of the legs the total was computed from. */
+/**
+ * Sorted fingerprint of what the total was computed FROM: the samplable legs
+ * plus one `unpriced:<position>` entry per position holding nonzero units
+ * whose USD value is unknown. Upstream encodes "price unknown" as
+ * `valueUsd: "0"` with no error, so without the coverage entries a price-feed
+ * outage (units unchanged, values collapsed to 0) is indistinguishable from
+ * the owner's balance actually going to zero — the dispatcher re-baselines on
+ * any fingerprint change instead of notifying. Positions on an errored chain
+ * are excluded entirely (the whole leg already is).
+ */
 export function walletSampleFingerprint(
   balances: WalletBalancesResponse,
 ): string[] {
-  const legs: string[] = [];
-  if (balances.solana) legs.push("sol");
-  if (balances.evm) {
-    for (const chain of balances.evm.chains) {
-      if (chain.error === null) legs.push(`evm:${chain.chain}`);
+  const entries: string[] = [];
+  const markUnpriced = (
+    positionId: string,
+    units: string,
+    valueUsd: string,
+  ): void => {
+    const amount = Number.parseFloat(units);
+    if (Number.isFinite(amount) && amount > 0 && parseUsd(valueUsd) === 0) {
+      entries.push(`unpriced:${positionId}`);
+    }
+  };
+  if (balances.solana) {
+    entries.push("sol");
+    markUnpriced(
+      "sol:native",
+      balances.solana.solBalance,
+      balances.solana.solValueUsd,
+    );
+    for (const token of balances.solana.tokens) {
+      markUnpriced(`sol:token:${token.mint}`, token.balance, token.valueUsd);
     }
   }
-  return legs.sort();
+  if (balances.evm) {
+    for (const chain of balances.evm.chains) {
+      if (chain.error !== null) continue;
+      entries.push(`evm:${chain.chain}`);
+      markUnpriced(
+        `evm:${chain.chain}:native`,
+        chain.nativeBalance,
+        chain.nativeValueUsd,
+      );
+      for (const token of chain.tokens) {
+        markUnpriced(
+          `evm:${chain.chain}:token:${token.contractAddress.toLowerCase()}`,
+          token.balance,
+          token.valueUsd,
+        );
+      }
+    }
+  }
+  return entries.sort();
 }
 
 /**
@@ -199,8 +251,8 @@ function isBaseline(value: unknown): value is WalletBalanceBaseline {
     isRecord(value) &&
     typeof value.totalUsd === "number" &&
     Number.isFinite(value.totalUsd) &&
-    Array.isArray(value.sampledLegs) &&
-    value.sampledLegs.every((leg) => typeof leg === "string") &&
+    Array.isArray(value.sampleFingerprint) &&
+    value.sampleFingerprint.every((entry) => typeof entry === "string") &&
     typeof value.observedAtIso === "string"
   );
 }
@@ -276,7 +328,7 @@ export function createWalletBalanceDeltaDispatcher(
     }
 
     const totalUsd = sumWalletBalancesUsd(balances);
-    const sampledLegs = walletSampleFingerprint(balances);
+    const sampleFingerprint = walletSampleFingerprint(balances);
     const nowIso = new Date().toISOString();
     const stored = await runtime.getCache<WalletBalanceBaseline>(
       WALLET_BALANCE_DELTA_BASELINE_CACHE_KEY,
@@ -286,7 +338,7 @@ export function createWalletBalanceDeltaDispatcher(
     const persistBaseline = async (): Promise<void> => {
       const next: WalletBalanceBaseline = {
         totalUsd,
-        sampledLegs,
+        sampleFingerprint,
         observedAtIso: nowIso,
       };
       await runtime.setCache(WALLET_BALANCE_DELTA_BASELINE_CACHE_KEY, next);
@@ -297,12 +349,33 @@ export function createWalletBalanceDeltaDispatcher(
       return { ok: true, target: "baseline_recorded" };
     }
 
-    if (baseline.sampledLegs.join("|") !== sampledLegs.join("|")) {
-      // Which legs are samplable changed (chain errored / recovered, RPC
-      // readiness flipped, address added/removed). That is a sampling change,
-      // not a balance change — re-baseline silently.
+    if (baseline.sampleFingerprint.join("|") !== sampleFingerprint.join("|")) {
+      // WHAT we can sample changed, not what the owner holds: either the leg
+      // composition moved (chain errored / recovered, RPC readiness flipped,
+      // address added/removed) or price coverage flipped (a position's USD
+      // value became unknown or recovered — the price-feed-outage flap). Both
+      // re-baseline silently; notifying would fabricate a delta the units
+      // never made.
+      const legsOf = (fp: string[]): string =>
+        fp.filter((entry) => !entry.startsWith("unpriced:")).join("|");
+      const target =
+        legsOf(baseline.sampleFingerprint) !== legsOf(sampleFingerprint)
+          ? "rebaselined_leg_change"
+          : "rebaselined_price_coverage_change";
       await persistBaseline();
-      return { ok: true, target: "rebaselined_leg_change" };
+      logger.debug(
+        {
+          src: "wallet-balance-delta",
+          agentId: runtime.agentId,
+          taskId: record.taskId,
+          previousFingerprint: baseline.sampleFingerprint,
+          currentFingerprint: sampleFingerprint,
+          previousTotalUsd: baseline.totalUsd,
+          currentTotalUsd: totalUsd,
+        },
+        `[WalletBalanceDelta] sample composition changed — ${target}`,
+      );
+      return { ok: true, target };
     }
 
     const thresholds = resolveThresholds(record.metadata);

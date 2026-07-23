@@ -16,13 +16,14 @@
  * failure driving the dispatch policy, and delegation for other channels).
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
+import { type IAgentRuntime, isElizaError } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 
 import {
   buildPrShepherdScheduleInput,
   GITHUB_PR_SHEPHERD_SERVICE_TYPE,
   ORCHESTRATOR_TASK_SERVICE_TYPE,
+  PR_SHEPHERD_DISPATCH_CHANNEL,
 } from "../coding-agent-schedules.js";
 import {
   getScheduledTaskChannelDispatcher,
@@ -227,6 +228,42 @@ describe("contributed dispatch channels — registry semantics + runner routing"
         dispatch: null,
       }),
     ).toThrow(/dispatch function required/);
+  });
+
+  it("rejects reserved/built-in channel keys so a contribution cannot hijack them", () => {
+    // Contributed lookup runs BEFORE the built-in channels at dispatch time,
+    // so without this guard a registration under the pr-shepherd channel or a
+    // host connector kind would silently reroute that channel's dispatches.
+    const runtime = makeFakeRuntime();
+    let thrown: unknown;
+    try {
+      registerScheduledTaskChannelDispatcher(runtime, {
+        channelKey: PR_SHEPHERD_DISPATCH_CHANNEL,
+        dispatch: async () => ({ ok: true }),
+      });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(isElizaError(thrown)).toBe(true);
+    if (!isElizaError(thrown)) throw new Error("expected ElizaError");
+    expect(thrown.code).toBe("SCHEDULED_TASK_CHANNEL_KEY_RESERVED");
+    expect(thrown.message).toContain(PR_SHEPHERD_DISPATCH_CHANNEL);
+    expect(thrown.message).toContain("reserved");
+
+    for (const hostKey of ["imessage", "in_app", "telegram"]) {
+      expect(() =>
+        registerScheduledTaskChannelDispatcher(runtime, {
+          channelKey: hostKey,
+          dispatch: async () => ({ ok: true }),
+        }),
+      ).toThrow(/reserved for a built-in dispatch channel/);
+    }
+
+    // Nothing leaked into the registry — built-in routing stays untouched.
+    expect(
+      getScheduledTaskChannelDispatcher(runtime, PR_SHEPHERD_DISPATCH_CHANNEL),
+    ).toBeNull();
+    expect(listScheduledTaskChannelDispatcherKeys(runtime)).toEqual([]);
   });
 
   it("routes fires on a contributed channel to the contribution — including registrations made after the runner was built", async () => {

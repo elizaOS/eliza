@@ -199,7 +199,82 @@ describe("materiality math (pure)", () => {
     // 100 + 50 + 300; the errored base chain ($9000) is excluded, and the
     // unparseable token contributes nothing rather than poisoning the total.
     expect(sumWalletBalancesUsd(balances)).toBe(450);
-    expect(walletSampleFingerprint(balances)).toEqual(["evm:ethereum", "sol"]);
+    // The JUP position holds units but its USD value is unknown, so it shows
+    // up as an unpriced-coverage entry; the errored base chain's positions are
+    // excluded entirely along with the leg.
+    expect(walletSampleFingerprint(balances)).toEqual([
+      "evm:ethereum",
+      "sol",
+      "unpriced:sol:token:jup",
+    ]);
+  });
+
+  it("price coverage is part of the fingerprint: priced↔unpriced flips change it, pure value moves do not", () => {
+    const priced: WalletBalancesResponse = {
+      evm: {
+        address: "0xabc",
+        chains: [
+          {
+            chain: "ethereum",
+            chainId: 1,
+            nativeBalance: "1",
+            nativeSymbol: "ETH",
+            nativeValueUsd: "100",
+            tokens: [
+              {
+                symbol: "USDC",
+                name: "USD Coin",
+                balance: "50",
+                decimals: 6,
+                valueUsd: "50",
+                logoUrl: "",
+                contractAddress: "0xUSDC",
+              },
+              {
+                // Zero-unit position: valueUsd "0" is legitimately zero, not
+                // "price unknown" — it must NOT read as an unpriced position.
+                symbol: "DUST",
+                name: "Dust",
+                balance: "0",
+                decimals: 18,
+                valueUsd: "0",
+                logoUrl: "",
+                contractAddress: "0xdust",
+              },
+            ],
+            error: null,
+          },
+        ],
+      },
+      solana: null,
+    };
+    expect(walletSampleFingerprint(priced)).toEqual(["evm:ethereum"]);
+
+    // Price outage: same units, values collapse to the upstream "0"-means-
+    // unknown encoding — the fingerprint changes, so the dispatcher
+    // re-baselines instead of reading a ~100% balance drop.
+    const outage: WalletBalancesResponse = structuredClone(priced);
+    if (!outage.evm) throw new Error("evm leg missing");
+    const chain = outage.evm.chains[0];
+    if (!chain) throw new Error("chain missing");
+    chain.nativeValueUsd = "0";
+    const usdc = chain.tokens[0];
+    if (!usdc) throw new Error("usdc missing");
+    usdc.valueUsd = "0";
+    expect(walletSampleFingerprint(outage)).toEqual([
+      "evm:ethereum",
+      "unpriced:evm:ethereum:native",
+      "unpriced:evm:ethereum:token:0xusdc",
+    ]);
+
+    // A pure value move (units and coverage unchanged) keeps the fingerprint
+    // identical — genuine deltas still flow to the notify path.
+    const moved: WalletBalancesResponse = structuredClone(priced);
+    if (!moved.evm?.chains[0]) throw new Error("chain missing");
+    moved.evm.chains[0].nativeValueUsd = "40";
+    expect(walletSampleFingerprint(moved)).toEqual(
+      walletSampleFingerprint(priced),
+    );
   });
 
   it("requires BOTH the USD floor and the percent threshold", () => {
@@ -299,7 +374,10 @@ describe("balance-delta watcher — real runner + real notification inbox", () =
     const baseline1 = h.cache.get(
       WALLET_BALANCE_DELTA_BASELINE_CACHE_KEY,
     ) as WalletBalanceBaseline;
-    expect(baseline1).toMatchObject({ totalUsd: 100, sampledLegs: ["sol"] });
+    expect(baseline1).toMatchObject({
+      totalUsd: 100,
+      sampleFingerprint: ["sol"],
+    });
 
     // Fire 2 (+31m): a $5 move fails the $10 floor — silent.
     sample = () => solanaBalances(95);
@@ -381,7 +459,7 @@ describe("balance-delta watcher — real runner + real notification inbox", () =
       WALLET_BALANCE_DELTA_BASELINE_CACHE_KEY,
     ) as WalletBalanceBaseline;
     expect(rebased.totalUsd).toBe(500);
-    expect(rebased.sampledLegs).toEqual(["evm:ethereum", "sol"]);
+    expect(rebased.sampleFingerprint).toEqual(["evm:ethereum", "sol"]);
 
     // Fire 6 (+later): a second material move coalesces onto the same
     // groupKey — one inbox row carrying the supersede count (§C.3).
@@ -398,6 +476,115 @@ describe("balance-delta watcher — real runner + real notification inbox", () =
       deltaUsd: -100,
       deltaPct: -20,
       count: 2,
+    });
+  });
+
+  it("a price-feed outage (values collapse, units unchanged) re-baselines silently — and a later genuine unit drop still notifies", async () => {
+    const solanaPricedToken = (args: {
+      solUnits: string;
+      solUsd: string;
+      tokenUsd: string;
+    }): WalletBalancesResponse => ({
+      evm: null,
+      solana: {
+        address: "So11111111111111111111111111111111111111112",
+        solBalance: args.solUnits,
+        solValueUsd: args.solUsd,
+        tokens: [
+          {
+            symbol: "JUP",
+            name: "Jupiter",
+            balance: "10",
+            decimals: 6,
+            valueUsd: args.tokenUsd,
+            logoUrl: "",
+            mint: "jup",
+          },
+        ],
+      },
+    });
+    const h = await makeHarness("2026-07-23T10:00:00.000Z");
+    let sample: () => WalletBalancesResponse = () =>
+      solanaPricedToken({ solUnits: "2", solUsd: "200", tokenUsd: "50" });
+    await registerWalletBalanceDeltaProducer(h.runtime, {
+      source: async () => sample(),
+    });
+    const runner = h.runnerService.getRunner({ agentId: AGENT_ID });
+    const watcher = (await runner.list()).find(
+      (t) => t.idempotencyKey === WALLET_BALANCE_DELTA_TASK_IDEMPOTENCY_KEY,
+    );
+    if (!watcher) throw new Error("watcher not scheduled");
+
+    // Baseline at $250, all positions priced.
+    const first = await h.fire(watcher.taskId);
+    expect(first.kind).toBe("fired");
+    expect(h.notifications.list()).toHaveLength(0);
+
+    // Price outage: dexscreener/geckoterminal down — upstream reports the
+    // SAME units with valueUsd "0" and no error, a ~100% USD collapse. The
+    // coverage entries change the fingerprint, so the watcher re-baselines
+    // silently instead of emitting "Wallet balance down ~100%".
+    sample = () =>
+      solanaPricedToken({ solUnits: "2", solUsd: "0", tokenUsd: "0" });
+    h.setNow("2026-07-23T10:31:00.000Z");
+    const outage = await h.fire(watcher.taskId, { allowTerminalRefire: true });
+    expect(outage.kind).toBe("fired");
+    expect(h.notifications.list()).toHaveLength(0);
+    if (outage.kind === "fired") {
+      expect(outage.task.metadata?.lastDispatchResult).toMatchObject({
+        ok: true,
+        target: "rebaselined_price_coverage_change",
+      });
+    }
+    const collapsed = h.cache.get(
+      WALLET_BALANCE_DELTA_BASELINE_CACHE_KEY,
+    ) as WalletBalanceBaseline;
+    expect(collapsed.totalUsd).toBe(0);
+    expect(collapsed.sampleFingerprint).toEqual([
+      "sol",
+      "unpriced:sol:native",
+      "unpriced:sol:token:jup",
+    ]);
+
+    // Recovery: prices return at the old level — again a coverage change, so
+    // no matching "Wallet balance up" flap either.
+    sample = () =>
+      solanaPricedToken({ solUnits: "2", solUsd: "200", tokenUsd: "50" });
+    h.setNow("2026-07-23T11:02:00.000Z");
+    const recovery = await h.fire(watcher.taskId, {
+      allowTerminalRefire: true,
+    });
+    expect(recovery.kind).toBe("fired");
+    expect(h.notifications.list()).toHaveLength(0);
+    if (recovery.kind === "fired") {
+      expect(recovery.task.metadata?.lastDispatchResult).toMatchObject({
+        ok: true,
+        target: "rebaselined_price_coverage_change",
+      });
+    }
+    expect(
+      (
+        h.cache.get(
+          WALLET_BALANCE_DELTA_BASELINE_CACHE_KEY,
+        ) as WalletBalanceBaseline
+      ).totalUsd,
+    ).toBe(250);
+
+    // Genuine drop: the UNITS move (2 SOL → 1 SOL) with prices intact —
+    // coverage unchanged, so the material delta still notifies.
+    sample = () =>
+      solanaPricedToken({ solUnits: "1", solUsd: "100", tokenUsd: "50" });
+    h.setNow("2026-07-23T11:33:00.000Z");
+    const drop = await h.fire(watcher.taskId, { allowTerminalRefire: true });
+    expect(drop.kind).toBe("fired");
+    const inbox = h.notifications.list();
+    expect(inbox).toHaveLength(1);
+    expect(inbox[0]?.title).toBe("Wallet balance down");
+    expect(inbox[0]?.data).toMatchObject({
+      previousTotalUsd: 250,
+      currentTotalUsd: 150,
+      deltaUsd: -100,
+      deltaPct: -40,
     });
   });
 

@@ -12,8 +12,10 @@
  * free of consumer imports (the dependency points inward — consumers import
  * this module), while consumers get structural, non-prompt-driven fire
  * behavior through the one scheduler instead of standing up a second timer.
- * Registration is keyed on the runtime (WeakMap) and duplicate channel keys
- * throw — silent override would let one plugin steal another's channel.
+ * Registration is keyed on the runtime (WeakMap); duplicate channel keys and
+ * reserved/built-in keys throw — the runner host routes contributed keys
+ * BEFORE its built-in channels, so a contribution registered under a built-in
+ * key would silently hijack that channel's dispatches.
  *
  * Lookup happens at dispatch time, not at runner construction, so a consumer
  * that registers after the (cached, lazily built) runner exists still gets
@@ -21,7 +23,8 @@
  * `channelAvailable` so `runner.schedule()` channel validation accepts them.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
+import { ElizaError, type IAgentRuntime } from "@elizaos/core";
+import { PR_SHEPHERD_DISPATCH_CHANNEL } from "../coding-agent-schedules.js";
 import type { DispatchResult } from "../dispatch-types.js";
 import type { ScheduledTaskDispatchRecord } from "./runner.js";
 
@@ -40,6 +43,35 @@ export interface ScheduledTaskChannelDispatcherContribution {
   ): Promise<DispatchResult | undefined>;
 }
 
+/**
+ * Channel keys a contribution may never claim. Contributed lookup runs before
+ * the built-in channels at dispatch time, so registering under one of these
+ * would silently reroute the built-in channel's dispatches to the
+ * contribution. Covers the coding-agent recipe channel plus the host
+ * connector / in-process delivery channel kinds from the LifeOps channel pack
+ * (plugin-personal-assistant `channels/default-pack.ts`) — listed literally
+ * because the dependency points the other way: consumer plugins import
+ * plugin-scheduling, never the reverse.
+ */
+export const RESERVED_SCHEDULED_TASK_CHANNEL_KEYS: ReadonlySet<string> =
+  new Set([
+    PR_SHEPHERD_DISPATCH_CHANNEL,
+    "in_app",
+    "push",
+    "browser",
+    "email",
+    "imessage",
+    "telegram",
+    "discord",
+    "signal",
+    "whatsapp",
+    "x",
+    "x_dm",
+    "sms",
+    "voice",
+    "twilio_voice",
+  ]);
+
 const contributionsByRuntime = new WeakMap<
   IAgentRuntime,
   Map<string, ScheduledTaskChannelDispatcherContribution>
@@ -57,9 +89,11 @@ function contributionMap(
 }
 
 /**
- * Register a contributed dispatch channel. Throws on a duplicate channel key
- * (mirrors `TaskGateRegistry.register`: silent override is a cross-plugin
- * hazard, not a feature).
+ * Register a contributed dispatch channel. Throws on a reserved/built-in
+ * channel key (a contribution there would hijack the built-in channel's
+ * dispatches) and on a duplicate channel key (mirrors
+ * `TaskGateRegistry.register`: silent override is a cross-plugin hazard, not
+ * a feature).
  */
 export function registerScheduledTaskChannelDispatcher(
   runtime: IAgentRuntime,
@@ -74,6 +108,16 @@ export function registerScheduledTaskChannelDispatcher(
   if (typeof contribution.dispatch !== "function") {
     throw new Error(
       `registerScheduledTaskChannelDispatcher: dispatch function required for channel "${channelKey}"`,
+    );
+  }
+  if (RESERVED_SCHEDULED_TASK_CHANNEL_KEYS.has(channelKey)) {
+    throw new ElizaError(
+      `registerScheduledTaskChannelDispatcher: channel key "${channelKey}" is reserved for a built-in dispatch channel; contributed dispatchers must use a distinct namespaced key`,
+      {
+        code: "SCHEDULED_TASK_CHANNEL_KEY_RESERVED",
+        context: { channelKey },
+        severity: "fatal",
+      },
     );
   }
   const map = contributionMap(runtime);
