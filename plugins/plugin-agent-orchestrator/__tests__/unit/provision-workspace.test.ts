@@ -2,6 +2,7 @@
  * Verifies TASKS:provision_workspace.
  * Deterministic unit test with a stubbed runtime; no live model.
  */
+import { promoteSubactionsToActions } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { provisionWorkspaceAction } from "../../src/actions/tasks.js";
 import { CodingWorkspaceService } from "../../src/services/workspace-service.js";
@@ -30,6 +31,43 @@ function workspaceServiceMock(overrides: Record<string, unknown> = {}) {
 }
 
 describe("TASKS:provision_workspace", () => {
+  it("rejects a send subaction on the promoted provision tool", async () => {
+    const provision = promoteSubactionsToActions(provisionWorkspaceAction).find(
+      (action) => action.name === "TASKS_PROVISION_WORKSPACE",
+    );
+    if (!provision) {
+      throw new Error("TASKS_PROVISION_WORKSPACE was not promoted");
+    }
+    const service = workspaceServiceMock();
+
+    const result = await provision.handler(
+      runtimeWith(service),
+      memory({}),
+      state,
+      {
+        parameters: {
+          subaction: "send",
+          repo: "elizaOS/eliza",
+        },
+      },
+      callback(),
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      text: expect.stringContaining("Call TASKS_SEND"),
+    });
+    expect(service.provisionWorkspace).not.toHaveBeenCalled();
+  });
+
+  it("keeps provision_workspace planner-visible on the umbrella action", () => {
+    expect(
+      provisionWorkspaceAction.parameters?.find(
+        (parameter) => parameter.name === "action",
+      )?.schema.enum,
+    ).toContain("provision_workspace");
+  });
+
   it("uses planner parameters before legacy message content", async () => {
     const service = workspaceServiceMock();
 

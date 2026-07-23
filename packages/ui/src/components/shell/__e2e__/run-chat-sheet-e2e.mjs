@@ -1964,13 +1964,10 @@ try {
   }
 
   if (!ONLY_AUTOSCROLL) {
-  // ===== GRABBER horizontal flick → launcher intent, REAL touch (#9943) =====
-  // The collapsed grabber's horizontal swipe pages home → launcher through the
-  // shell-surface store (goLauncher). Android's on-device spec drives this with
-  // a real finger; drive it here through Chromium's REAL touch pipeline
-  // (Input.dispatchTouchEvent, hit-test + touch-action + implicit capture), and
-  // ALSO under a janked main thread (fire-and-forget dispatch → the renderer
-  // coalesces the moves), the failure shape of the Davey!-janked WebView.
+  // ===== Collapsed grabber horizontal flick stays inert, REAL touch (#9943) =====
+  // Home and apps share one surface, so a collapsed grabber has no horizontal
+  // destination. Exercise Chromium's real touch pipeline and a janked/coalesced
+  // delivery to prove neither path opens chat or changes the shell surface.
   {
     const surfacePage = (p) =>
       p.evaluate(
@@ -2007,10 +2004,10 @@ try {
     await touchSwipe(p, grabberSel, -150, -6, { steps: 14, stepDelayMs: 20 });
     await p.waitForTimeout(400);
     assert(
-      (await surfacePage(p)) === "launcher",
-      "[grabber-swipe] REAL-touch left flick on the grabber commits goLauncher (#9943)",
+      (await surfacePage(p)) === "home",
+      "[grabber-swipe] REAL-touch left flick on the collapsed grabber stays inert (#9943)",
     );
-    await snap(p, "grabber-real-touch-launcher");
+    await snap(p, "grabber-real-touch-inert");
 
     // 2. Real-touch flick with the main thread JANKED: dispatch the whole
     // sequence fire-and-forget so the renderer coalesces the moves (this is
@@ -2057,8 +2054,8 @@ try {
     await busy;
     await p.waitForTimeout(600);
     assert(
-      (await surfacePage(p)) === "launcher",
-      "[grabber-swipe] real-touch flick still commits with the main thread janked / moves coalesced (#9943)",
+      (await surfacePage(p)) === "home",
+      "[grabber-swipe] real-touch flick stays inert with the main thread janked / moves coalesced (#9943)",
     );
     await cdp.detach().catch(() => {});
 
@@ -2088,8 +2085,8 @@ try {
     }, grabberSel);
     await p.waitForTimeout(400);
     assert(
-      (await surfacePage(p)) === "launcher",
-      "[grabber-swipe] synthetic PointerEvent flick still commits (parity)",
+      (await surfacePage(p)) === "home",
+      "[grabber-swipe] synthetic PointerEvent flick stays inert (parity)",
     );
     await p.close();
   }

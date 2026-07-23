@@ -261,9 +261,8 @@ export async function filterUnavailableLocalInference(
 
 	// TEXT_EMBEDDING is self-sufficient like TTS: the on-device gte-small handler
 	// (dim384) resolves its fused embed bundle on demand and throws
-	// LocalInferenceUnavailableError when the bundle isn't staged, so the router's
-	// transient failover reaches the configured cloud embedder. Keep the local
-	// candidate so prefer-local uses gte-small whenever it is available — its
+	// LocalInferenceUnavailableError when the bundle isn't staged. Keep only the
+	// local candidate by default so prefer-local uses gte-small — its
 	// readiness is independent of whether a local *text* LLM is loaded, and a
 	// cloud/cerebras chat brain paired with on-device embeddings is the common
 	// case. The generic gate below keyed embedding availability on
@@ -273,8 +272,9 @@ export async function filterUnavailableLocalInference(
 	// deliberately keep embeddings on Cloud set `ELIZAOS_CLOUD_USE_EMBEDDINGS`
 	// (cloud containers whose dim1536 store must stay consistent do this at boot);
 	// that flag also skips the gte-small warmup, so honour it here and let cloud
-	// win without a per-call local throw. A local-only/manual pin still forces
-	// local via `shouldForceLocalInference`.
+	// win without a per-call local throw. Without that explicit opt-in, a local
+	// failure surfaces to recall's keyword/BM25 fallback instead of silently
+	// adding a cloud round-trip. A local-only/manual pin still forces local.
 	if (slot === "TEXT_EMBEDDING") {
 		if (
 			readBooleanEnv("ELIZAOS_CLOUD_USE_EMBEDDINGS") &&
@@ -286,7 +286,14 @@ export async function filterUnavailableLocalInference(
 				false,
 			);
 		}
-		return candidates;
+		const localCandidates = candidates.filter(
+			(candidate) => candidate.provider === "eliza-local-inference",
+		);
+		// Local GTE-small owns embeddings unless the operator explicitly opts in
+		// to cloud embeddings above. Do not silently rotate to a network provider
+		// when local initialization fails: that turns every reply into a hidden
+		// 1-2 second network dependency and can change vector dimensions mid-store.
+		return localCandidates.length > 0 ? localCandidates : candidates;
 	}
 
 	const hasLocalInference = candidates.some(

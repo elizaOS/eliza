@@ -66,9 +66,10 @@ function readInput(inputPath?: string): Uint8Array {
     return new Uint8Array(readFileSync(inputPath));
   }
   const chunks: Buffer[] = [];
-  let chunk: Buffer | null;
-  while ((chunk = process.stdin.read()) !== null) {
-    chunks.push(chunk as Buffer);
+  for (;;) {
+    const chunk: Buffer | null = process.stdin.read();
+    if (chunk === null) break;
+    chunks.push(chunk);
   }
   // Fallback: blocking read via readFileSync of /dev/stdin
   if (chunks.length === 0) {

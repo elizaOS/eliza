@@ -24,8 +24,16 @@ packages/eliza-hub/deployment/hetzner-staging/scripts/storage-evidence.mjs
 packages/eliza-hub/services/merge-steward/scripts/sync-openapi-production-evidence-schema.mjs
 packages/eliza-hub/services/merge-steward/src/cli.js
 
+# The app-core dev server binds ports and installs process-level signal handlers
+# at module evaluation; its importable bootstrap policies carry unit coverage.
+packages/app-core/src/runtime/dev-server.ts
+
 # ACP stdio entrypoint is exercised via spawned runtime contract tests; importing it in-process starts the protocol server.
 packages/examples/code/src/acp.ts
+
+# The dev host entrypoint performs real port/process cleanup on import. Its ACP
+# reload guard is exercised through the one-shot real-process diagnostic.
+packages/app-core/scripts/dev-ui.mjs
 
 # The cloud-shared package test wrapper is exercised by a spawned real-process contract suite; importing it starts the test runner.
 packages/cloud/shared/scripts/run-bun-tests.mjs
@@ -33,3 +41,8 @@ packages/cloud/shared/scripts/run-bun-tests.mjs
 # Workflow policy checker: both contract validation modes are process
 # entrypoints because importing the module immediately reads workflow files.
 packages/scripts/ci-merge-gate-contract.mjs
+
+# The mobile build CLI orchestrates destructive native build phases in a child process.
+# Its focused contract test spawns the exact entrypoint and fails at the
+# sideload-versus-Play policy guard before any platform files are changed.
+packages/app-core/scripts/run-mobile-build.mjs

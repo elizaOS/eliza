@@ -1,11 +1,12 @@
 /**
- * BACKGROUND action tests for plan inference and renderer broadcast payloads.
+ * BACKGROUND action tests for plan inference, renderer delivery, and the
+ * authenticated loopback boundary used by the default emitter and navigator.
  */
 
 import type { IAgentRuntime, Media, Memory } from "@elizaos/core";
 import type { NavigateViewDetail } from "@elizaos/shared/events";
 import { BACKGROUND_APPLY_EVENT as SHARED_BACKGROUND_APPLY_EVENT } from "@elizaos/shared/events";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	BACKGROUND_APPLY_EVENT,
 	type BackgroundApplyPayload,
@@ -14,6 +15,11 @@ import {
 } from "./background.ts";
 
 const runtime = {} as IAgentRuntime;
+
+afterEach(() => {
+	vi.unstubAllEnvs();
+	vi.unstubAllGlobals();
+});
 
 function message(text: string, attachments?: Media[]): Memory {
 	return { content: { text, attachments } } as Memory;
@@ -387,6 +393,60 @@ describe("programmable GLSL shader plan (#10694)", () => {
 describe("BACKGROUND action handler", () => {
 	it("uses the shared background apply event contract", () => {
 		expect(BACKGROUND_APPLY_EVENT).toBe(SHARED_BACKGROUND_APPLY_EVENT);
+	});
+
+	it("authenticates the default broadcast and navigation view routes", async () => {
+		vi.stubEnv("ELIZA_PORT", "3456");
+		vi.stubEnv("ELIZA_API_TOKEN", "background-loopback-token");
+		const fetchMock = vi.fn(
+			async () => ({ ok: true, status: 200 }) as Response,
+		);
+		vi.stubGlobal("fetch", fetchMock);
+		const action = createBackgroundAction();
+
+		await action.handler(
+			runtime,
+			message("make the background blue"),
+			undefined,
+			undefined,
+			vi.fn(),
+		);
+		await action.handler(
+			runtime,
+			message("i want to upload my own background image"),
+			undefined,
+			undefined,
+			vi.fn(),
+		);
+
+		expect(fetchMock).toHaveBeenNthCalledWith(
+			1,
+			"http://127.0.0.1:3456/api/views/events/broadcast",
+			expect.objectContaining({
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					Authorization: "Bearer background-loopback-token",
+				},
+			}),
+		);
+		expect(fetchMock).toHaveBeenNthCalledWith(
+			2,
+			"http://127.0.0.1:3456/api/views/background/navigate",
+			expect.objectContaining({
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					Authorization: "Bearer background-loopback-token",
+				},
+				body: JSON.stringify({ path: "/background" }),
+			}),
+		);
+		for (const [url, init] of fetchMock.mock.calls) {
+			expect(`${String(url)}\n${String(init?.body ?? "")}`).not.toContain(
+				"background-loopback-token",
+			);
+		}
 	});
 
 	function setup() {

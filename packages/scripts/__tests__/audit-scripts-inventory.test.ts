@@ -23,6 +23,7 @@ const APP_CATEGORIES = [
   "reachable-from-test",
   "reachable-from-build",
   "reachable-from-ci-workflow",
+  "reachable-from-operator-script",
   "reachable-from-app-internal",
   "orphan",
 ];

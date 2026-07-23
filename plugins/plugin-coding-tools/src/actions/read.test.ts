@@ -8,7 +8,7 @@ import {
   type IAgentRuntime,
   UnavailableCapabilityRouter,
 } from "@elizaos/core";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setupEnv, type TestEnv } from "./_test-helpers.js";
 import { readFileHandler } from "./read.js";
 
@@ -67,6 +67,44 @@ describe("READ", () => {
     expect(posts[0].text.startsWith("```")).toBe(true);
     expect(posts[0].text.trimEnd().endsWith("```")).toBe(true);
     expect(posts[0].text).toContain("**bold**");
+  });
+
+  it("caps only the visible callback for long reads", async () => {
+    const file = path.join(env.tmpDir, "long-visible-read.txt");
+    const lines = Array.from(
+      { length: 300 },
+      (_, index) =>
+        `line-${index.toString().padStart(3, "0")}-xxxxxxxxxxxxxxxxxxxx`,
+    );
+    await fs.writeFile(file, lines.join("\n"), "utf8");
+    const posts: Array<{ text: string; source?: string }> = [];
+
+    const result = await readFileHandler(
+      env.runtime,
+      env.message,
+      undefined,
+      { parameters: { file_path: file } },
+      async (content) => {
+        posts.push(content as { text: string; source?: string });
+        return [];
+      },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.text).toContain(lines[0]);
+    expect(result.text).toContain(lines[150]);
+    expect(result.text).toContain(lines[299]);
+    expect(result.text).not.toContain("lines omitted — ask to see more");
+
+    expect(posts).toHaveLength(1);
+    expect(posts[0].source).toBe("coding-tools");
+    expect(posts[0].text.startsWith("```")).toBe(true);
+    expect(posts[0].text.trimEnd().endsWith("```")).toBe(true);
+    expect(posts[0].text).toContain(lines[0]);
+    expect(posts[0].text).not.toContain(lines[150]);
+    expect(posts[0].text).toContain(lines[299]);
+    expect(posts[0].text).toMatch(/\[\d+ lines omitted — ask to see more\]/);
+    expect(posts[0].text.length).toBeLessThan(1700);
   });
 
   it("right-pads line numbers to 6 chars and uses tab separator", async () => {
@@ -229,19 +267,48 @@ describe("READ", () => {
   });
 
   it("resolves relative paths against the session cwd", async () => {
-    const cwdRuntime = {
-      ...env.runtime,
-      getService: <T>(serviceType: string): T | null =>
-        serviceType === "CODING_TOOLS_SESSION_CWD"
-          ? ({ getCwd: () => env.tmpDir } as T)
-          : env.runtime.getService<T>(serviceType),
-    } as typeof env.runtime;
+    env.sessionCwd.setCwd("test-room", env.tmpDir);
     await fs.writeFile(path.join(env.tmpDir, "rel-note.md"), "hello cwd");
-    const result = await readFileHandler(cwdRuntime, env.message, undefined, {
+    const result = await readFileHandler(env.runtime, env.message, undefined, {
       parameters: { file_path: "rel-note.md" },
     });
     expect(result.success).toBe(true);
     expect(result.text).toContain("hello cwd");
+  });
+
+  it("reports a missing session cwd service for relative paths", async () => {
+    const getService = vi
+      .spyOn(env.runtime, "getService")
+      .mockReturnValueOnce(null);
+    const result = await readFileHandler(env.runtime, env.message, undefined, {
+      parameters: { file_path: "rel-note.md" },
+    });
+    getService.mockRestore();
+
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("SessionCwdService unavailable");
+  });
+
+  it("rejects UNC input before resolving a relative path", async () => {
+    const result = await readFileHandler(env.runtime, env.message, undefined, {
+      parameters: { file_path: "//server/share/file.txt" },
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("UNC paths are not supported");
+  });
+
+  it("reports a non-absolute cwd returned by the session service", async () => {
+    const getCwd = vi
+      .spyOn(env.sessionCwd, "getCwd")
+      .mockReturnValueOnce("relative-cwd");
+    const result = await readFileHandler(env.runtime, env.message, undefined, {
+      parameters: { file_path: "note.md" },
+    });
+    getCwd.mockRestore();
+
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("non-absolute working directory");
   });
 
   it("rejects paths under the blocklist", async () => {

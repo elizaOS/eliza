@@ -85,16 +85,20 @@ export const myAction: Action = {
   `validateCommand(cmd)`, `addRoot`/`removeRoot`, `rootsFor`. **Always validate
   paths through this before reading or writing.**
 - `SessionCwdService` (`SESSION_CWD_SERVICE`) — `getCwd`, `setCwd`,
-  `pushWorktree`, `popWorktree`. Use as default when an optional `path`/`cwd`
-  param is omitted.
+  `pushWorktree`, `popWorktree`. Use it to resolve relative READ/WRITE/EDIT
+  paths and as the default when an optional `path`/`cwd` param is omitted.
 - `RipgrepService` (`RIPGREP_SERVICE`) — `search(options, mode)`. GREP only.
 - `ShellTaskService` (`SHELL_TASK_SERVICE`) — `start_`, `get`, `waitFor`,
   `stop_`. SHELL backgrounding + TASK_OUTPUT + TASK_STOP.
 
 ## Path & cwd rules (NON-NEGOTIABLE)
 
-- **READ / WRITE / EDIT / NOTEBOOK_EDIT** — `file_path` is required and must
-  be an absolute path. Reject relative paths via `SandboxService.validatePath`.
+- **READ / WRITE / EDIT** — `file_path` is required. Resolve a relative value
+  against `SessionCwdService.getCwd(conversationId)`, then pass the resulting
+  absolute path through `SandboxService.validatePath`. Missing
+  `SessionCwdService` is an explicit internal failure, never a process-cwd
+  fallback.
+- **NOTEBOOK_EDIT** — `file_path` is required and must be absolute.
 - **GLOB / GREP / LS** — `path` parameter optional. When omitted, default to
   `SessionCwdService.getCwd(conversationId)`. When provided, must be absolute,
   validated through SandboxService.

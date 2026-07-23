@@ -26,13 +26,7 @@
       },
       "description": "HSM-backed secrets + multi-chain signing for elizaOS agents via 1Claw — vault access and EVM/Solana/BTC/XRP/Cardano/Tron signing without the agent ever holding private keys; optional Shroud TEE LLM proxy.",
       "homepage": "https://github.com/1clawAI/1claw-elizaos-plugin",
-      "topics": [
-        "security",
-        "secrets",
-        "vault",
-        "signing",
-        "multi-chain"
-      ],
+      "topics": ["security", "secrets", "vault", "signing", "multi-chain"],
       "stargazers_count": 0,
       "language": "TypeScript",
       "origin": "third-party",
@@ -118,14 +112,7 @@
       },
       "description": "WaaP wallet plugin for ElizaOS — 2-of-2 MPC signing for EVM and Sui, with native 2FA and server-enforced spending policies; the agent never holds private keys.",
       "homepage": "https://github.com/holonym-foundation/eliza-plugin-waap",
-      "topics": [
-        "wallet",
-        "mpc",
-        "2pc",
-        "evm",
-        "sui",
-        "2fa"
-      ],
+      "topics": ["wallet", "mpc", "2pc", "evm", "sui", "2fa"],
       "stargazers_count": 0,
       "language": "TypeScript",
       "origin": "third-party",
@@ -164,12 +151,7 @@
       },
       "description": "ElizaOS LLM plugin for LMX Cloud — pay per call in USDC via x402 on Base (no API key).",
       "homepage": "https://lmxcloud.io",
-      "topics": [
-        "lmxcloud",
-        "x402",
-        "usdc",
-        "llm"
-      ],
+      "topics": ["lmxcloud", "x402", "usdc", "llm"],
       "stargazers_count": 0,
       "language": "TypeScript",
       "origin": "third-party",
@@ -208,13 +190,7 @@
       },
       "description": "MEV-protected same-chain swaps via Ophis (CoW Protocol): the agent signs a GPv2 order with its own EVM key and it settles gaslessly in a batch auction (surplus returned, no sandwiching). Carries an integrator partner fee + optional referral rebate.",
       "homepage": "https://docs.ophis.fi/ai-agents",
-      "topics": [
-        "defi",
-        "swap",
-        "dex",
-        "cow-protocol",
-        "mev-protection"
-      ],
+      "topics": ["defi", "swap", "dex", "cow-protocol", "mev-protection"],
       "stargazers_count": 0,
       "language": "TypeScript",
       "origin": "third-party",
@@ -461,6 +437,52 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "@valuepacket/adapter-eliza": {
+      "git": {
+        "repo": "KryptosAI/ValuePacket",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@valuepacket/adapter-eliza",
+        "v0": null,
+        "v1": null,
+        "v2": "0.3.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "ValuePacket payment protocol adapter — let your ElizaOS agent pay and get paid by other AI agents across any framework using on-chain payment channels with EIP-712 signed micropayments.",
+      "homepage": "https://github.com/KryptosAI/ValuePacket",
+      "topics": [
+        "payment",
+        "settlement",
+        "crypto",
+        "stablecoin",
+        "agent-economy",
+        "micropayments"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "adapters/eliza"
+    },
     "@wasmagent/eliza-rollout-plugin": {
       "git": {
         "repo": "WasmAgent/wasmagent-js",
@@ -534,13 +556,7 @@
       },
       "description": "Wealthville liquidity-pool scores, ENTER/HOLD/EXIT verdicts, and public miss-inclusive track record for DeFi agents (Solana + EVM).",
       "homepage": "https://wealthville.net/developers",
-      "topics": [
-        "solana",
-        "defi",
-        "liquidity-pools",
-        "scoring",
-        "wealthville"
-      ],
+      "topics": ["solana", "defi", "liquidity-pools", "scoring", "wealthville"],
       "stargazers_count": 0,
       "language": "TypeScript",
       "origin": "third-party",
@@ -775,11 +791,7 @@
       },
       "description": "Reference third-party elizaOS plugin: an ECHO action that repeats a message back.",
       "homepage": "https://github.com/elizaOS/eliza/tree/main/packages/examples/plugin-echo",
-      "topics": [
-        "example",
-        "utility",
-        "reference"
-      ],
+      "topics": ["example", "utility", "reference"],
       "stargazers_count": 0,
       "language": "TypeScript",
       "origin": "third-party",
@@ -818,12 +830,7 @@
       },
       "description": "Farcaster engagement discovery, like, reply, and follow/unfollow actions via Neynar REST API for ElizaOS agents",
       "homepage": null,
-      "topics": [
-        "farcaster",
-        "neynar",
-        "social",
-        "discovery"
-      ],
+      "topics": ["farcaster", "neynar", "social", "discovery"],
       "stargazers_count": 0,
       "language": "TypeScript",
       "origin": "third-party",
@@ -911,11 +918,7 @@
       },
       "description": "ElizaOS plugin for Reddit integration — search, engage, and manage Reddit interactions autonomously",
       "homepage": null,
-      "topics": [
-        "reddit",
-        "social",
-        "discovery"
-      ],
+      "topics": ["reddit", "social", "discovery"],
       "stargazers_count": 0,
       "language": "TypeScript",
       "origin": "third-party",
@@ -945,7 +948,7 @@
         "repo": "elizaos-plugin-true402",
         "v0": null,
         "v1": null,
-        "v2": "0.1.1"
+        "v2": "1.1.0"
       },
       "supports": {
         "v0": false,
@@ -1010,6 +1013,58 @@
         "agentic-payments",
         "evm",
         "mcp"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
+    "plugin-gauge": {
+      "git": {
+        "repo": "CHANGCHINFU/plugin-gauge-x402",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "plugin-gauge",
+        "v0": null,
+        "v1": null,
+        "v2": "0.6.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "GAUGE: verifiable official-source signals for AI agents via x402 (USDC on Base, no API key). Flood-risk & river anomaly (USGS/NOAA), air quality (AQI/PM2.5), precipitation/drought, agriculture (USDM soil moisture + heat/GDD + crop VHI), power-grid demand & energy inflation (FRED), shipping route disruption + sea-state + live AIS throughput, and SEC-EDGAR corporate distress (8-K material events, late-filing delinquency, Form 4 insider). Free raw reading; paid screening-level records with official thresholds + statistical anomaly + record_hash provenance.",
+      "homepage": "https://github.com/CHANGCHINFU/plugin-gauge-x402#readme",
+      "topics": [
+        "x402",
+        "usdc",
+        "base",
+        "verifiable",
+        "flood-risk",
+        "environment",
+        "agriculture",
+        "power-grid",
+        "shipping",
+        "sec-edgar",
+        "micropayments",
+        "no-api-key"
       ],
       "stargazers_count": 0,
       "language": "TypeScript",
@@ -1261,24 +1316,6 @@
       "kind": "plugin",
       "registryKind": "plugin",
       "directory": null
-    },
-    "@valuepacket/adapter-eliza": {
-      "git": {
-        "repo": "github:KryptosAI/ValuePacket",
-        "directory": "adapters/eliza"
-      },
-      "v2": "0.3.0",
-      "name": "ValuePacket payment adapter",
-      "description": "Let your ElizaOS agent pay and get paid by other AI agents across any framework using on-chain payment channels with EIP-712 signed micropayments.",
-      "homepage": "https://github.com/KryptosAI/ValuePacket",
-      "tags": [
-        "payment",
-        "settlement",
-        "crypto",
-        "stablecoin",
-        "agent-economy",
-        "micropayments"
-      ]
     }
   }
 }

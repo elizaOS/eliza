@@ -1,12 +1,18 @@
 /**
- * Path predicates and resolution used by the sandbox policy and file handlers:
- * `isAbsolutePath`, `isWithin`, `resolveRealPath`, `isUncPath`, plus a blocklist of
- * device and `/proc/<pid>/fd` pseudo-paths that must never be opened.
+ * Path predicates and resolution used by the sandbox policy and file handlers.
+ * Relative FILE inputs resolve through the conversation's session cwd, while
+ * device and `/proc/<pid>/fd` pseudo-paths remain blocked.
  */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-
-import type { IAgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime, Service } from "@elizaos/core";
+import type { SessionCwdService } from "../services/session-cwd-service.js";
+import {
+  failure,
+  SESSION_CWD_SERVICE,
+  success,
+  type ToolResult,
+} from "../types.js";
 
 const BLOCKED_PATHS = new Set([
   "/dev/zero",
@@ -18,6 +24,16 @@ const BLOCKED_PATHS = new Set([
 ]);
 
 const BLOCKED_PROC_FD = /^\/proc\/\d+\/fd\//;
+
+type SessionCwdReader = Service & Pick<SessionCwdService, "getCwd">;
+
+function isSessionCwdReader(
+  service: Service | null,
+): service is SessionCwdReader {
+  return (
+    service !== null && typeof Reflect.get(service, "getCwd") === "function"
+  );
+}
 
 export function isAbsolutePath(p: string): boolean {
   if (!p || typeof p !== "string") return false;
@@ -77,40 +93,34 @@ export function relativeFromRoot(p: string, root: string): string {
 }
 
 /**
- * Resolve a relative tool path against the conversation's working directory.
- * The planner naturally says `file_path: "AGENTS.md"` the way every CLI user
- * would; rejecting relatives outright errored the whole turn (observed live:
- * three identical not_absolute failures, then a silent errored turn). Absolute
- * paths pass through untouched; sandbox validation still runs on the result.
- */
-export function resolveRelativeToCwd(filePath: string, cwd: string): string {
-  return isAbsolutePath(filePath) ? filePath : path.resolve(cwd, filePath);
-}
-
-/** Minimal shape of the SessionCwdService this resolver depends on. */
-interface CwdLookup {
-  getCwd(id: string | undefined): string;
-}
-
-/**
- * Resolve a handler's `file_path` input to an absolute path using the
- * conversation's working directory. Owns the SessionCwdService lookup so
- * read/write/edit share one definition; `getCwd` itself defaults to
- * `process.cwd()` when the conversation has no recorded cwd.
- *
- * The `runtime` param mirrors core's generic `getService<T>(): T | null`
- * signature so a full `IAgentRuntime` is assignable here; the resolved
- * service is narrowed to the {@link CwdLookup} shape internally.
+ * Resolves a FILE handler path against the conversation's working directory.
+ * Relative paths require SessionCwdService so a missing plugin service cannot
+ * silently redirect filesystem work to the process working directory.
  */
 export function resolveInputPath(
-  runtime: Pick<IAgentRuntime, "getService">,
-  conversationId: string | undefined,
+  runtime: IAgentRuntime,
+  conversationId: string,
   filePath: string,
-): string {
-  if (isAbsolutePath(filePath)) return filePath;
-  const cwdService = runtime.getService(
-    "CODING_TOOLS_SESSION_CWD",
-  ) as CwdLookup | null;
-  const cwd = cwdService?.getCwd(conversationId) ?? process.cwd();
-  return path.resolve(cwd, filePath);
+): ToolResult<string> {
+  if (isUncPath(filePath)) {
+    return failure("invalid_param", "UNC paths are not supported");
+  }
+  if (isAbsolutePath(filePath)) return success(filePath);
+
+  const cwdService = runtime.getService<Service>(SESSION_CWD_SERVICE);
+  if (!isSessionCwdReader(cwdService)) {
+    return failure(
+      "internal",
+      "SessionCwdService unavailable; cannot resolve relative file_path",
+    );
+  }
+
+  const cwd = cwdService.getCwd(conversationId);
+  if (!isAbsolutePath(cwd)) {
+    return failure(
+      "internal",
+      "SessionCwdService returned a non-absolute working directory",
+    );
+  }
+  return success(path.resolve(cwd, filePath));
 }
