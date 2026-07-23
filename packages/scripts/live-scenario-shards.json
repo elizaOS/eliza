@@ -7,7 +7,7 @@
   "costCeiling": {
     "maxWorkflowMinutes": 120,
     "maxConcurrentShards": 1,
-    "note": "One shared dependency build and three serial shard runs. Provider-side token budgets remain enforced by the scenario runner."
+    "note": "One shared dependency build and four serial shard runs. The scenario-runner view-chat shard is restricted to its declared scenarioIds; provider-side token budgets remain enforced by the scenario runner."
   },
   "shards": [
     {
@@ -26,7 +26,15 @@
         ]
       ],
       "requiredSecrets": ["CEREBRAS_API_KEY"],
-      "artifactContract": ["report", "matrix", "viewer", "native-jsonl", "logs"]
+      "artifactContract": [
+        "report",
+        "matrix",
+        "viewer",
+        "native-jsonl",
+        "native-manifest",
+        "privacy-attestation",
+        "logs"
+      ]
     },
     {
       "id": "plugin-health",
@@ -44,7 +52,15 @@
         ]
       ],
       "requiredSecrets": ["CEREBRAS_API_KEY"],
-      "artifactContract": ["report", "matrix", "viewer", "native-jsonl", "logs"]
+      "artifactContract": [
+        "report",
+        "matrix",
+        "viewer",
+        "native-jsonl",
+        "native-manifest",
+        "privacy-attestation",
+        "logs"
+      ]
     },
     {
       "id": "app-control",
@@ -62,7 +78,42 @@
         ]
       ],
       "requiredSecrets": ["CEREBRAS_API_KEY"],
-      "artifactContract": ["report", "matrix", "viewer", "native-jsonl", "logs"]
+      "artifactContract": [
+        "report",
+        "matrix",
+        "viewer",
+        "native-jsonl",
+        "native-manifest",
+        "privacy-attestation",
+        "logs"
+      ]
+    },
+    {
+      "id": "scenario-runner-view-chat",
+      "root": "packages/scenario-runner/test/scenarios",
+      "scenarioIds": ["live-document-delete"],
+      "report": "artifacts/scenario-runner-view-chat-report.json",
+      "runDir": "artifacts/scenario-runs/scenario-runner-view-chat",
+      "requiredAnySecrets": [
+        [
+          "OPENAI_API_KEY",
+          "OPENROUTER_API_KEY",
+          "ANTHROPIC_API_KEY",
+          "GOOGLE_GENERATIVE_AI_API_KEY",
+          "GOOGLE_API_KEY",
+          "GROQ_API_KEY"
+        ]
+      ],
+      "requiredSecrets": ["CEREBRAS_API_KEY"],
+      "artifactContract": [
+        "report",
+        "matrix",
+        "viewer",
+        "native-jsonl",
+        "native-manifest",
+        "privacy-attestation",
+        "logs"
+      ]
     }
   ]
 }
