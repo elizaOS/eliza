@@ -36,6 +36,7 @@ import {
   assertAndroidArtifactSnapshotUnchanged,
   auditAndroidArtifactDexLp3Policy,
   auditAndroidCloudArtifact,
+  createAndroidBuildEnv,
   dumpAndroidArtifactBadging,
   dumpAndroidArtifactManifest,
   findAndroidCloudAab,
@@ -827,6 +828,30 @@ describe("pinned bundletool provisioning", () => {
       "auditOutput.standardError.asText.get()",
     );
     expect(ANDROID_APP_GRADLE).toContain("'android-cloud-audit'");
+  });
+
+  it("passes an absolute JavaScript runtime to Gradle for the AAB finalizer", () => {
+    const target = {
+      env: {},
+      includeSmsGatewayEnvDefaults: false,
+    };
+    const defaults = createAndroidBuildEnv(target, {
+      androidSdkRoot: "/android-sdk",
+      env: { PATH: "/usr/bin" },
+      javaHome: "/jdk",
+    });
+    const overridden = createAndroidBuildEnv(target, {
+      androidSdkRoot: "/android-sdk",
+      env: {
+        NODE_BINARY: "  /tools/node  ",
+        PATH: "/usr/bin",
+      },
+      javaHome: "/jdk",
+    });
+
+    expect(path.isAbsolute(defaults.NODE_BINARY)).toBe(true);
+    expect(defaults.NODE_BINARY).toBe(process.execPath);
+    expect(overridden.NODE_BINARY).toBe("/tools/node");
   });
 });
 

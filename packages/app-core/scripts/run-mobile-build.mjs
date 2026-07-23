@@ -6805,7 +6805,10 @@ function resolveAndroidSmsGatewayEnvDefaults(env) {
   };
 }
 
-function createAndroidBuildEnv(target, { androidSdkRoot, env, javaHome }) {
+export function createAndroidBuildEnv(
+  target,
+  { androidSdkRoot, env, javaHome },
+) {
   return {
     ...env,
     ...target.env,
@@ -6815,6 +6818,7 @@ function createAndroidBuildEnv(target, { androidSdkRoot, env, javaHome }) {
     ANDROID_HOME: androidSdkRoot,
     ANDROID_SDK_ROOT: androidSdkRoot,
     JAVA_HOME: javaHome,
+    NODE_BINARY: env.NODE_BINARY?.trim() || process.execPath,
     PATH: prependPath(env, [
       path.join(javaHome, "bin"),
       path.join(androidSdkRoot, "platform-tools"),
