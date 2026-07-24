@@ -23,7 +23,7 @@ export async function countAllocatedWorkloadsOnNodeWithDatabase(
   database: WorkloadCountDatabase,
   nodeId: string,
 ): Promise<number> {
-  const [[containerRow], [agentRow]] = await Promise.all([
+  const [[containerRow], [agentRow], [replacementRow]] = await Promise.all([
     database
       .select({ count: sql<number>`count(*)::int` })
       .from(containers)
@@ -45,7 +45,16 @@ export async function countAllocatedWorkloadsOnNodeWithDatabase(
           )})`,
         ),
       ),
+    database
+      .select({ count: sql<number>`count(*)::int` })
+      .from(agentSandboxes)
+      .where(
+        and(
+          eq(agentSandboxes.replacement_cleanup_node_id, nodeId),
+          eq(agentSandboxes.replacement_cleanup_allocation_counted, true),
+        ),
+      ),
   ]);
 
-  return containerRow.count + agentRow.count;
+  return containerRow.count + agentRow.count + replacementRow.count;
 }

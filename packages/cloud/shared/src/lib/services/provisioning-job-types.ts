@@ -96,6 +96,25 @@ export const JOB_TYPES = {
 
 export type ProvisioningJobType = (typeof JOB_TYPES)[keyof typeof JOB_TYPES];
 
+/**
+ * Agent lifecycle operations that exclusively own placement and replacement
+ * resources while pending or running. Cleanup and enqueue paths share this
+ * list so a background reconciler cannot retire a blue candidate still owned
+ * by an active operation.
+ */
+export const EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES: readonly ProvisioningJobType[] = [
+  JOB_TYPES.AGENT_PROVISION,
+  JOB_TYPES.AGENT_DELETE,
+  JOB_TYPES.AGENT_SUSPEND,
+  JOB_TYPES.AGENT_RESUME,
+  JOB_TYPES.AGENT_RESTART,
+  JOB_TYPES.AGENT_DOWNGRADE,
+  JOB_TYPES.AGENT_SLEEP,
+  JOB_TYPES.AGENT_WAKE,
+  JOB_TYPES.AGENT_UPGRADE,
+  JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
+];
+
 // ── Lanes (which daemon claims which jobs) ──────────────────────────────────
 // The one `jobs` table + ProvisioningJobService codepath is shared, but the
 // rows split into two INDEPENDENT lanes that can be claimed by SEPARATE daemons:

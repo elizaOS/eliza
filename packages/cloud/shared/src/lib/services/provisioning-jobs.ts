@@ -56,6 +56,7 @@ import { dispatchContainerJob, getContainerExecutorDeps } from "./container-job-
 import { readContainerProvisionJobData } from "./container-jobs-data";
 import { dispatchContainerStopJob } from "./container-stop-job-service";
 import {
+  configureElizaLifecycleTransaction,
   elizaAdminCanaryRolloutAdvisoryLockSql,
   elizaProvisionAdvisoryLockSql,
 } from "./eliza-provision-lock";
@@ -64,7 +65,11 @@ import {
   elizaSandboxService,
   SNAPSHOT_ENDPOINT_UNSUPPORTED,
 } from "./eliza-sandbox";
-import { JOB_TYPES, type ProvisioningJobType } from "./provisioning-job-types";
+import {
+  EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES,
+  JOB_TYPES,
+  type ProvisioningJobType,
+} from "./provisioning-job-types";
 import {
   isWaifuWebhookTargetUrl,
   resolveWaifuWebhookTarget,
@@ -1011,11 +1016,6 @@ const SHARED_IMAGE_CHANGE_JOB_TYPES: ProvisioningJobType[] = [
   JOB_TYPES.AGENT_UPGRADE,
   JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
 ];
-const EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES: ProvisioningJobType[] = [
-  ...ADMIN_CANARY_CONFLICTING_JOB_TYPES,
-  ...SHARED_IMAGE_CHANGE_JOB_TYPES,
-];
-
 export class ProvisioningJobService {
   /**
    * Common path for the seven `enqueueAgent*Once` methods. Acquires the
@@ -1065,6 +1065,7 @@ export class ProvisioningJobService {
       estimated_completion_at: new Date(Date.now() + opts.estimatedDurationMs),
     };
 
+    await configureElizaLifecycleTransaction(tx);
     await tx.execute(elizaProvisionAdvisoryLockSql(opts.organizationId, opts.agentId));
 
     const [sandbox] = await tx
@@ -1137,9 +1138,11 @@ export class ProvisioningJobService {
     opts.validateSandbox?.(sandbox);
 
     const configuredConflicts = opts.mutuallyExclusiveJobTypes ?? [];
-    const symmetricConflicts = EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES.includes(opts.jobType)
-      ? EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES
-      : [];
+    const symmetricConflicts =
+      opts.jobType !== JOB_TYPES.AGENT_DELETE &&
+      EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES.includes(opts.jobType)
+        ? EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES
+        : [];
     const conflictingTypes = [...new Set([...configuredConflicts, ...symmetricConflicts])].filter(
       (jobType) => jobType !== opts.jobType,
     );
@@ -1959,6 +1962,7 @@ export class ProvisioningJobService {
     }
 
     return await dbWrite.transaction(async (tx) => {
+      await configureElizaLifecycleTransaction(tx);
       await tx.execute(elizaAdminCanaryRolloutAdvisoryLockSql());
 
       const replay = await tx
@@ -2981,41 +2985,47 @@ export class ProvisioningJobService {
     }
   }
 
-  private async executeJob(job: Job): Promise<void> {
+  private async assertNoConflictingLifecycleExecution(job: Job): Promise<void> {
     if (
-      EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES.includes(job.type as ProvisioningJobType) &&
-      job.agent_id
+      !EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES.includes(job.type as ProvisioningJobType) ||
+      !job.agent_id
     ) {
-      await dbWrite.transaction(async (tx) => {
-        await tx.execute(elizaProvisionAdvisoryLockSql(job.organization_id, job.agent_id!));
-        const [conflict] = await tx
-          .select({ id: jobs.id, type: jobs.type, status: jobs.status })
-          .from(jobs)
-          .where(
-            and(
-              eq(jobs.organization_id, job.organization_id),
-              eq(jobs.agent_id, job.agent_id!),
-              inArray(jobs.type, EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES),
-              ne(jobs.id, job.id),
-              sql`${jobs.status} IN ('pending', 'in_progress')`,
-            ),
-          )
-          .orderBy(desc(jobs.created_at))
-          .limit(1);
-        if (conflict) {
-          throw new ApiError(
-            409,
-            "session_not_ready",
-            `Agent ${job.agent_id} has conflicting ${conflict.type} job ${conflict.id}`,
-            {
-              conflictingJobId: conflict.id,
-              conflictingJobType: conflict.type,
-              conflictingJobStatus: conflict.status,
-            },
-          );
-        }
-      });
+      return;
     }
+    await dbWrite.transaction(async (tx) => {
+      await configureElizaLifecycleTransaction(tx);
+      await tx.execute(elizaProvisionAdvisoryLockSql(job.organization_id, job.agent_id!));
+      const [conflict] = await tx
+        .select({ id: jobs.id, type: jobs.type, status: jobs.status })
+        .from(jobs)
+        .where(
+          and(
+            eq(jobs.organization_id, job.organization_id),
+            eq(jobs.agent_id, job.agent_id!),
+            inArray(jobs.type, EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES),
+            ne(jobs.id, job.id),
+            sql`${jobs.status} IN ('pending', 'in_progress')`,
+          ),
+        )
+        .orderBy(desc(jobs.created_at))
+        .limit(1);
+      if (conflict) {
+        throw new ApiError(
+          409,
+          "session_not_ready",
+          `Agent ${job.agent_id} has conflicting ${conflict.type} job ${conflict.id}`,
+          {
+            conflictingJobId: conflict.id,
+            conflictingJobType: conflict.type,
+            conflictingJobStatus: conflict.status,
+          },
+        );
+      }
+    });
+  }
+
+  private async executeJob(job: Job): Promise<void> {
+    await this.assertNoConflictingLifecycleExecution(job);
     switch (job.type) {
       case JOB_TYPES.AGENT_PROVISION:
         await this.executeAgentProvision(job);
