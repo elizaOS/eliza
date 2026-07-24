@@ -90,10 +90,33 @@ describe("Launcher", () => {
     expect(page.className).toContain("scrollbar-hide");
     expect(page.className).toContain("[scrollbar-width:none]");
     expect(page.className).toContain("[&::-webkit-scrollbar]:hidden");
+    expect(page.className).toContain("scroll-fade");
+    expect(page.className).toContain("scroll-fade-t-[3.5rem]");
+    expect(page.className).toContain("[--scroll-fade-reveal:1px]");
+    expect(page.className).toContain("scroll-fade-b-");
     const grid = page.querySelector(".grid");
     expect(grid?.className).toContain("grid-cols-3");
     expect(grid?.className).toContain("min-[360px]:grid-cols-4");
     expect(grid?.className).toContain("sm:grid-cols-5");
+  });
+
+  it("scales icons and labels from the launcher container while keeping short landscape compact", () => {
+    render(<Launcher entries={FEW} onLaunch={() => {}} />);
+    const css = [...document.querySelectorAll("style")]
+      .map((style) => style.textContent ?? "")
+      .find((value) => value.includes("[data-launcher-icon]"));
+
+    expect(css).toContain("container-type: inline-size");
+    expect(css).toContain("width: clamp(3.5rem, 16cqi, 4.5rem)");
+    expect(css).toContain(
+      "font-size: clamp(.75rem, calc(.68rem + .25cqi), .875rem)",
+    );
+    expect(css).toContain(
+      "@media (orientation: landscape) and (max-height: 520px)",
+    );
+    expect(
+      screen.getAllByText("Chat")[0].getAttribute("data-launcher-label"),
+    ).toBe("");
   });
 
   it("renders at natural height when embedded in Home's app scroller", () => {
@@ -101,6 +124,7 @@ describe("Launcher", () => {
     const page = screen.getByTestId("launcher-page-window");
     expect(page.className).toContain("overflow-visible");
     expect(page.className).not.toContain("overflow-y-auto");
+    expect(page.className).not.toContain("scroll-fade");
     expect(screen.getByTestId("launcher").className).not.toContain("flex-1");
   });
 

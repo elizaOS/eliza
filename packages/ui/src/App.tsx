@@ -71,6 +71,7 @@ import { ChatOverlay } from "./components/shell/ChatOverlay";
 import { ChatSurface } from "./components/shell/ChatSurface";
 import { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";
 import { DynamicPluginFallback } from "./components/shell/DynamicPluginFallback";
+import { HomeLauncherSurface } from "./components/shell/HomeLauncherSurface";
 import { HomePill } from "./components/shell/HomePill";
 import { HomeScreen, type HomeTileTarget } from "./components/shell/HomeScreen";
 import { KioskViewCanvas } from "./components/shell/KioskViewCanvas";
@@ -230,6 +231,7 @@ import {
   isCharacterSectionPath,
 } from "./components/character/CharacterSectionNav";
 import { DesktopTabBar } from "./components/desktop/DesktopTabBar";
+import { LauncherSurface } from "./components/pages/LauncherSurface";
 import {
   isWalletSectionPath,
   WalletSectionNav,
@@ -625,10 +627,12 @@ function TabContentView({
   // is transparent unless a view opts back into its own opaque surface.
   surface = "transparent",
   nav,
+  reserveChatClearance = true,
 }: {
   children: ReactNode;
   surface?: "opaque" | "transparent";
   nav?: ReactNode;
+  reserveChatClearance?: boolean;
 }) {
   return (
     <AppWorkspaceChrome
@@ -638,13 +642,24 @@ function TabContentView({
       main={
         <div
           data-shell-content-region="true"
-          className="eliza-chat-scroll flex flex-col flex-1 min-h-0 min-w-0 w-full overflow-hidden pb-[var(--eliza-chat-clearance,5.25rem)] pe-[var(--eliza-chat-side-clearance,0px)]"
+          className={cn(
+            "eliza-chat-scroll flex min-h-0 min-w-0 w-full flex-1 flex-col overflow-hidden",
+            reserveChatClearance &&
+              "pb-[var(--eliza-chat-clearance,5.25rem)] pe-[var(--eliza-chat-side-clearance,0px)]",
+          )}
         >
           {children}
         </div>
       }
     />
   );
+}
+
+function surfaceOwnsViewport(
+  declaration: SurfaceManifestBearer | null | undefined,
+): boolean {
+  const header = resolveSurfaceManifest(declaration).header;
+  return header === "fullscreen" || header === "immersive";
 }
 
 interface ResolvedDynamicPage {
@@ -1158,9 +1173,12 @@ function renderRemoteView(view: ViewRegistryEntry, nav?: ReactNode): ReactNode {
   // matching #13586 ("the shell enforces the shared ViewHeader on every normal
   // view"); `fullscreen`/`modal`/`immersive` opt out. A section nav (Wallet /
   // Character strip) already supplies the header, so it suppresses this one.
-  const showHeader = !nav && resolveSurfaceManifest(view).header === "normal";
+  const manifest = resolveSurfaceManifest(view);
+  const showHeader = !nav && manifest.header === "normal";
+  const ownsViewport =
+    manifest.header === "fullscreen" || manifest.header === "immersive";
   return (
-    <TabContentView nav={nav}>
+    <TabContentView nav={nav} reserveChatClearance={!ownsViewport}>
       {showHeader ? <ViewHeader title={view.label} /> : null}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <DynamicViewLoader
@@ -1549,14 +1567,18 @@ function renderViewRouterContent({
 }): ReactNode {
   if (visibleDynamicPage(dynamicPage, enabledKinds)) {
     return (
-      <TabContentView>
+      <TabContentView
+        reserveChatClearance={!surfaceOwnsViewport(dynamicPage.registration)}
+      >
         <DynamicPluginPage resolved={dynamicPage} />
       </TabContentView>
     );
   }
   if (visibleDynamicPage(dynamicAppPage, enabledKinds)) {
     return (
-      <TabContentView>
+      <TabContentView
+        reserveChatClearance={!surfaceOwnsViewport(dynamicAppPage.registration)}
+      >
         <DynamicPluginPage resolved={dynamicAppPage} />
       </TabContentView>
     );
@@ -1580,7 +1602,10 @@ function renderViewRouterContent({
     isViewVisible(appShellPageForRoute, enabledKinds)
   ) {
     return (
-      <TabContentView nav={walletNav}>
+      <TabContentView
+        nav={walletNav}
+        reserveChatClearance={!surfaceOwnsViewport(appShellPageForRoute)}
+      >
         <RegisteredAppShellPage registration={appShellPageForRoute} />
       </TabContentView>
     );
@@ -1998,9 +2023,8 @@ function ChatOverlayMount(): ReactNode {
 }
 
 /**
- * The iOS-style home dashboard for chat and launcher routes. Notifications,
- * apps, and ranked widgets share one vertical surface behind the always-present
- * chat overlay. Host-provided tile taps still route through the real nav:
+ * The iOS-style home dashboard sits beside the launcher behind the
+ * always-present chat overlay. Host-provided tile taps still route through the real nav:
  * builtin tabs via setTab, plugin/remote views via the navigate-view event.
  */
 function HomeScreenMount({
@@ -2039,8 +2063,9 @@ function HomeScreenMount({
     ),
     [Home, onOpenTile],
   );
+  const launcher = useMemo(() => <LauncherSurface />, []);
   // Keep the dashboard warm during first-run, but hide its clock, widgets, and
-  // apps so the onboarding overlay reveals only the shared wallpaper.
+  // launcher so the onboarding overlay reveals only the shared wallpaper.
   return (
     <div
       aria-hidden={firstRunOpen ? "true" : undefined}
@@ -2050,18 +2075,11 @@ function HomeScreenMount({
         firstRunOpen && "invisible",
       )}
     >
-      <section
-        data-testid="home-launcher-surface"
-        data-page={initialSection === "apps" ? "launcher" : "home"}
-        className="absolute inset-0"
-      >
-        {/* Native harnesses read the route intent through the accessibility
-            tree; the combined visual surface has no separate horizontal page. */}
-        <span className="sr-only" data-testid="home-launcher-page-probe">
-          {`home-launcher-page:${initialSection === "apps" ? "launcher" : "home"}`}
-        </span>
-        {home}
-      </section>
+      <HomeLauncherSurface
+        home={home}
+        launcher={launcher}
+        initialPage={initialSection === "apps" ? "launcher" : "home"}
+      />
     </div>
   );
 }
@@ -2451,7 +2469,10 @@ function AppContent() {
     tab,
     trimmedNavigationPath(navigationPath),
   );
-  const isFullBleed = useTabIsFullBleed(tab);
+  const isFullBleed =
+    useTabIsFullBleed(tab) ||
+    activeViewSurface.manifest.header === "fullscreen" ||
+    activeViewSurface.manifest.header === "immersive";
 
   // Keep hook order stable across first-run/auth state transitions.
   // Otherwise React can throw when first-run setup completes and the main shell mounts.
@@ -2951,7 +2972,9 @@ function AppContent() {
           // clear their status bar. Top banners bleed their bg back up via
           // `.mobile-top-banner:first-child` (styles.css). No-op on web.
           style={{
-            paddingTop: "max(calc(var(--safe-area-top, 0px) - 2rem), 0.75rem)",
+            paddingTop: isFullBleed
+              ? 0
+              : "max(calc(var(--safe-area-top, 0px) - 2rem), 0.75rem)",
           }}
         >
           {/* BOTTOM-BAR / SAFE-AREA FLOOR (do not remove): a viewport-filling

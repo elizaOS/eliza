@@ -47,8 +47,7 @@ export const LAUNCHER_APPS_ORDER: readonly string[] = [
   "automations",
   "my-apps",
   "browser",
-  // Cloud account app — gated to cloud-signed-in sessions via
-  // LAUNCHER_CLOUD_IDS below.
+  // Cloud account app — gated to cloud-signed-in sessions below.
   "cloud",
   // Character family — ONE tile. Personality/Relationships/Skills/Experience
   // are sections inside it (CharacterSectionNav strip, #13560/#13591); their
@@ -249,17 +248,11 @@ function preferenceScore(entry: ViewEntry): number {
 }
 
 /**
- * Launcher tiles that back an Eliza Cloud surface and must not appear unless
- * the user is signed into cloud (#10725). The Cloud Applications studio
- * (`cloud-apps`) needs no entry here: it never tiles at all
- * (LAUNCHER_HIDDEN_IDS) — My Apps owns its entry point and applies the same
- * signed-in gate to that row.
+ * Launcher tiles that require an Eliza Cloud account. Plugin-provided views
+ * such as Notes and Calendar are governed by the live view catalogue instead:
+ * if a local or Cloud runtime registers them, they belong on the Apps page.
  */
-export const LAUNCHER_CLOUD_IDS: ReadonlySet<string> = new Set([
-  "cloud",
-  "notes",
-  "simple-calendar",
-]);
+export const LAUNCHER_CLOUD_IDS: ReadonlySet<string> = new Set(["cloud"]);
 
 export interface CurateLauncherOptions {
   /** Include the native-OS tiles (phone/messages/contacts/camera/files). */

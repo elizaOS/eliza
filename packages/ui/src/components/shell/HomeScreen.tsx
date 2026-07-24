@@ -1,35 +1,129 @@
 /**
- * Composes the shell home screen as one vertical notification-and-app surface
- * beneath the floating chat. The home column is a SINGLE vertical scroller:
- * time/weather header, then the inline notification shade, then the launcher
- * grid and ranked home widgets. Expanding the shade grows it in place and
- * pushes the app region down — apps stay mounted, visible, and interactive
- * (nothing is hidden or made inert), and collapse remains reachable through
- * the shade's sticky pill, an outside tap, or the push gestures the shade owns.
+ * Composes the shell home dashboard from notifications and ranked widgets;
+ * launcher apps remain on the adjacent swipe page.
  */
 import type * as React from "react";
-import { useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 
 import { useActivityEvents } from "../../hooks/useActivityEvents";
 import { isRenderTelemetryEnabled } from "../../hooks/useRenderGuard";
 import { cn } from "../../lib/utils";
+import { useNotifications } from "../../state/notifications/notification-store";
 import { LAYOUT_SHIFT_OBSERVER_INIT } from "../../testing/layout-stability";
 import { WidgetHost } from "../../widgets/WidgetHost";
-import { LauncherSurface } from "../pages/LauncherSurface";
 import { DefaultHomeWidgets } from "./DefaultHomeWidgets";
 import { NotificationsHomeCenter } from "./NotificationsHomeCenter";
 
 // A gentle staggered fade-up as the home settles in - iOS-style, calm, and
 // fully stilled under prefers-reduced-motion. Each block carries a small
 // animation-delay (set inline) so the cards/tiles cascade in.
-const HOME_ENTER_CSS = `
+const HOME_SCREEN_CSS = `
 @keyframes home-enter {
   from { opacity: 0; transform: translateY(10px); }
   to   { opacity: 1; transform: none; }
 }
 .home-enter { animation: home-enter 460ms cubic-bezier(0.22,1,0.36,1) both; }
+
+/* Size the editorial header from its own usable column, not the browser
+   window. One-line date variants keep the widget height stable while the
+   clock and weather scale fluidly across compact phones and desktop. */
+[data-testid="home-screen"] [data-home-editorial-header] {
+  container: home-editorial / inline-size;
+  column-gap: clamp(.5rem, 4cqw, 1rem);
+}
+[data-testid="home-screen"] [data-home-clock-time] {
+  font-size: clamp(2.25rem, min(16cqw, 14dvh), 5.25rem);
+}
+[data-testid="home-screen"] [data-home-clock-suffix] {
+  font-size: clamp(.75rem, min(4cqw, 3.5dvh), 1.25rem);
+}
+[data-testid="home-screen"] [data-home-clock-date] {
+  display: block;
+  block-size: 1lh;
+  margin-top: clamp(.5rem, 3cqw, .75rem);
+  font-size: clamp(.8125rem, min(4cqw, 3.5dvh), 1.125rem);
+  line-height: 1;
+  white-space: nowrap;
+}
+[data-testid="home-screen"] [data-home-clock-date] > span { line-height: inherit; }
+[data-testid="home-screen"] [data-home-clock-date-compact] { display: none; }
+@container home-editorial (max-width: 32rem) {
+  [data-testid="home-screen"] [data-home-clock-date-full] { display: none; }
+  [data-testid="home-screen"] [data-home-clock-date-compact] { display: block; }
+}
+[data-testid="home-screen"] [data-home-weather-reading] {
+  gap: clamp(.375rem, 2cqw, .5rem);
+}
+[data-testid="home-screen"] [data-home-weather-icon] {
+  width: clamp(1.5rem, min(7cqw, 8dvh), 2.75rem);
+  height: clamp(1.5rem, min(7cqw, 8dvh), 2.75rem);
+}
+[data-testid="home-screen"] [data-home-weather-temperature] {
+  font-size: clamp(2.25rem, min(13cqw, 12dvh), 4rem);
+}
+[data-testid="home-screen"] [data-home-weather-unit] {
+  font-size: clamp(.75rem, min(4cqw, 3.5dvh), 1.25rem);
+}
+[data-testid="home-screen"] [data-home-weather-condition] {
+  font-size: clamp(.8125rem, min(4cqw, 3.5dvh), 1.125rem);
+}
+
+/* The shade and secondary home content share one settle clock. Pull previews
+   allocate space before the shade commits, while committed closes release that
+   space on the same velocity-aware duration as the notification cards. */
+[data-home-notification-region] {
+  flex-grow: 0;
+  max-height: 40%;
+  transition:
+    flex-grow var(--eliza-home-notification-settle-duration, 460ms) cubic-bezier(0.25,0.1,0.25,1),
+    max-height var(--eliza-home-notification-settle-duration, 460ms) cubic-bezier(0.25,0.1,0.25,1);
+}
+[data-home-below-notifications] {
+  display: grid;
+  flex-grow: 1;
+  grid-template-rows: 1fr;
+  min-height: 0;
+  opacity: 1;
+  overflow: hidden;
+  transition:
+    flex-grow var(--eliza-home-notification-settle-duration, 460ms) cubic-bezier(0.25,0.1,0.25,1),
+    grid-template-rows var(--eliza-home-notification-settle-duration, 460ms) cubic-bezier(0.25,0.1,0.25,1),
+    opacity 220ms ease-out;
+}
+[data-home-below-notifications-inner] {
+  min-height: 0;
+}
+[data-testid="home-content-column"][data-home-has-notifications]:has(
+  [data-testid="home-notification-list"][data-shade-preview="expanding"][data-shade-dragging]
+) [data-home-notification-region],
+[data-testid="home-content-column"][data-home-has-notifications]:has(
+  [data-testid="home-notification-list"][data-shade-mode="expanded"]:not([data-shade-settling])
+) [data-home-notification-region] {
+  flex-grow: 1;
+  max-height: 100%;
+}
+[data-testid="home-content-column"][data-home-has-notifications]:has(
+  [data-testid="home-notification-list"][data-shade-preview="expanding"][data-shade-dragging]
+) [data-home-below-notifications],
+[data-testid="home-content-column"][data-home-has-notifications]:has(
+  [data-testid="home-notification-list"][data-shade-mode="expanded"]:not([data-shade-settling])
+) [data-home-below-notifications] {
+  flex-grow: 0;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+}
 @media (prefers-reduced-motion: reduce) {
   .home-enter { animation: none; }
+  [data-home-notification-region],
+  [data-home-below-notifications] { transition: none; }
 }
 `;
 
@@ -97,14 +191,12 @@ export interface HomeScreenProps {
 }
 
 /**
- * The /chat home sits behind the always-present floating chat. The content
- * column owns the ONE vertical scroll: header, inline notification shade, and
- * the launcher grid + ranked widgets are content-sized siblings that the page
- * scrolls past. Rested notifications stay compact triage; expanding the shade
- * inserts the full inbox inline, pushing apps down while they remain live —
- * there is no displaced/inert mode and no focus bookkeeping. The shade owns its
- * pull gestures and gates them on this scroller's position (passed down as
- * `pageSurfaceRef`), which also serves as the quiet-background pull target.
+ * The /chat home sits behind the always-present floating chat. Time/weather is
+ * fixed at the top, the notification shade follows inline, and ranked widgets
+ * own the remaining vertical space. Rested notifications stay compact;
+ * expanding the shade takes that remaining space and makes secondary home
+ * content inert until the shade collapses. The separate launcher page is owned
+ * by HomeLauncherSurface, not this dashboard.
  */
 export function HomeScreen({ apps }: HomeScreenProps): React.JSX.Element {
   // The live activity stream feeds the home ranker's attention signals.
@@ -114,16 +206,100 @@ export function HomeScreen({ apps }: HomeScreenProps): React.JSX.Element {
   const enterClass = useEnterOnceClass();
   // Dev/test-only: observe home layout shifts on the shared telemetry channel.
   useHomeLayoutShiftObserver();
-  const columnScrollRef = useRef<HTMLDivElement>(null);
+  const homeScreenRef = useRef<HTMLDivElement>(null);
+  const homeContentColumnRef = useRef<HTMLDivElement>(null);
+  const appsRegionRef = useRef<HTMLElement>(null);
+  const displacedAppFocusRef = useRef<HTMLElement | null>(null);
+  const appsDisplacedRef = useRef(false);
+  const wasAppsDisplacedRef = useRef(false);
+  const [notificationShadeExpanded, setNotificationShadeExpanded] =
+    useState(false);
+  const { notifications } = useNotifications();
+  const appsDisplaced = notificationShadeExpanded && notifications.length > 0;
+  appsDisplacedRef.current = appsDisplaced;
+
+  // Remember the latest launcher control independently of the shade gesture.
+  // A notification can arrive asynchronously while an expanded empty shade
+  // still leaves apps interactive, so no second expansion callback fires.
+  const handleAppsFocusCapture = useCallback(
+    (event: React.FocusEvent<HTMLElement>) => {
+      if (event.target instanceof HTMLElement) {
+        displacedAppFocusRef.current = event.target;
+      }
+    },
+    [],
+  );
+  const handleAppsBlurCapture = useCallback(
+    (event: React.FocusEvent<HTMLElement>) => {
+      // Applying `inert` can blur the focused app during the commit. Preserve
+      // that target only for displacement; ordinary focus departures clear it.
+      if (appsDisplacedRef.current) return;
+      const next = event.relatedTarget;
+      if (!(next instanceof Node) || !appsRegionRef.current?.contains(next)) {
+        displacedAppFocusRef.current = null;
+      }
+    },
+    [],
+  );
+
+  // Capture the focused app before React applies `inert`. Engines differ on
+  // whether an already-focused inert descendant keeps focus or blurs, so a
+  // later effect cannot reliably discover which launcher control owned it.
+  const handleShadeExpandedChange = useCallback((expanded: boolean) => {
+    if (expanded) {
+      const active = document.activeElement;
+      if (
+        active instanceof HTMLElement &&
+        appsRegionRef.current?.contains(active)
+      ) {
+        displacedAppFocusRef.current = active;
+      }
+    }
+    setNotificationShadeExpanded(expanded);
+  }, []);
+
+  // Explicitly hand focus to the expanded shade across those engine behaviors,
+  // then restore the same launcher control when the shade itself still owns
+  // focus on collapse. Another surface such as chat must keep focus if the user
+  // deliberately moved there while notifications were open.
+  useLayoutEffect(() => {
+    if (appsDisplaced) {
+      if (displacedAppFocusRef.current) {
+        const shadeControl = homeScreenRef.current?.querySelector<HTMLElement>(
+          '[data-testid="notifications-collapse"], [data-testid="notification-stack-collapse"]',
+        );
+        const shade = homeScreenRef.current?.querySelector<HTMLElement>(
+          '[data-testid="home-notification-center"]',
+        );
+        (shadeControl ?? shade)?.focus({ preventScroll: true });
+      }
+    } else if (wasAppsDisplacedRef.current) {
+      const prior = displacedAppFocusRef.current;
+      displacedAppFocusRef.current = null;
+      const active = document.activeElement;
+      const shade = homeScreenRef.current?.querySelector<HTMLElement>(
+        '[data-testid="home-notification-center"]',
+      );
+      const shadeStillOwnsFocus =
+        active === document.body ||
+        active === document.documentElement ||
+        (active instanceof Node && shade?.contains(active) === true);
+      if (shadeStillOwnsFocus && prior?.isConnected) {
+        prior.focus({ preventScroll: true });
+      }
+    }
+    wasAppsDisplacedRef.current = appsDisplaced;
+  }, [appsDisplaced]);
 
   return (
     <div
+      ref={homeScreenRef}
       data-testid="home-screen"
       className={cn(
-        // The content column below is the only vertical scroll owner. Keeping
+        // The launcher grid below is the only vertical scroll owner. Keeping
         // the shell itself clipped avoids nested wheel/touch arbitration with
         // notification pull gestures.
-        "eliza-chat-scroll absolute inset-0 z-[1] touch-pan-y overflow-hidden",
+        "eliza-continuous-chat-scroll absolute inset-0 z-[1] touch-pan-y overflow-hidden",
         // The shell root already reserves the status-bar safe area (its
         // paddingTop: var(--safe-area-top)); adding it again here double-padded
         // the content and left a large empty band above the dashboard. Just a
@@ -135,63 +311,78 @@ export function HomeScreen({ apps }: HomeScreenProps): React.JSX.Element {
         // Clear the floating chat composer at the bottom. Short landscape
         // screens use compact app icons and a smaller breathing gutter so the
         // first row keeps both icon and label in view without touching chat;
-        // overflow still belongs to the content column below.
+        // overflow still belongs to the launcher region below.
         "pb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-chat-clearance,5.25rem)+1.5rem)] [@media(orientation:landscape)_and_(max-height:520px)]:pb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-chat-clearance,5.25rem)+0.5rem)]",
       )}
     >
-      <style>{HOME_ENTER_CSS}</style>
-      {/* THE home scroller: header, shade, and apps scroll as one surface.
-          `overscroll-y-contain` keeps the shade's at-top pull gesture from
-          triggering browser overscroll/refresh; the shade reads this element's
-          scroll position (via pageSurfaceRef) to gate expand/collapse. */}
+      <style>{HOME_SCREEN_CSS}</style>
+      {/* A definite-height flex column makes the notification shade and app
+          scroller share exactly the space above the floating chat. */}
       <div
-        ref={columnScrollRef}
+        ref={homeContentColumnRef}
         data-testid="home-content-column"
-        data-scroll-cert-scroller=""
-        className="scrollbar-hide mx-auto flex h-full w-full max-w-2xl flex-col overflow-x-hidden overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch] [scrollbar-width:none] touch-pan-y [&::-webkit-scrollbar]:hidden"
+        data-home-has-notifications={notifications.length > 0 ? "" : undefined}
+        className="mx-auto flex h-full w-full max-w-2xl flex-col"
       >
         {/* The always-on base: a naked sized grid with the time + weather as
             2×2 neighbours - no card, white text on the ambient field. Anchored
-            at the top of the column as the editorial header; scrolls away with
-            the page like a platform home. */}
-        <div
-          className={cn(enterClass, "flex-none")}
-          style={{ animationDelay: "70ms" }}
-        >
+            at the top of the column as the editorial header. */}
+        <div className={enterClass} style={{ animationDelay: "70ms" }}>
           <DefaultHomeWidgets />
         </div>
 
-        {/* The inline shade is content-sized in BOTH modes: rested triage stays
-            compact, and expansion grows the list in place, pushing the app
-            region down instead of hiding it. */}
+        {/* Rested notifications are content-sized and capped so apps retain
+            the usable remainder. Expansion gives the shade the full remainder
+            and pushes the mounted app region out of interaction. */}
         <div
+          data-home-notification-region=""
           className={cn(
             enterClass,
-            "mt-4 mb-3 flex flex-none flex-col max-sm:-mx-2",
+            "mt-4 mb-3 flex min-h-0 flex-col max-sm:-mx-2",
           )}
           style={{ animationDelay: "90ms" }}
         >
-          <NotificationsHomeCenter pageSurfaceRef={columnScrollRef} />
+          <NotificationsHomeCenter
+            emptyGestureTargetRef={homeScreenRef}
+            shadeLayoutTargetRef={homeContentColumnRef}
+            onShadeExpandedChange={handleShadeExpandedChange}
+          />
         </div>
 
-        <section
-          aria-label="Apps"
-          data-testid="home-apps-scroll"
-          className="flex-none"
+        <div
+          data-home-below-notifications=""
+          data-eliza-layout-shift-intent={enterClass ? "transient" : undefined}
+          className="relative min-h-0 flex-1"
         >
-          {apps ?? <LauncherSurface layout="embedded" />}
-          <div
-            className={cn(enterClass, "flex min-h-32 flex-col py-6")}
-            style={{ animationDelay: "110ms" }}
+          <section
+            ref={appsRegionRef}
+            aria-label="Home content"
+            aria-hidden={appsDisplaced || undefined}
+            inert={appsDisplaced || undefined}
+            onBlurCapture={handleAppsBlurCapture}
+            onFocusCapture={handleAppsFocusCapture}
+            data-home-below-notifications-inner=""
+            data-testid="home-apps-scroll"
+            data-scroll-cert-scroller=""
+            className={cn(
+              "scrollbar-hide relative min-h-0 touch-pan-y overflow-x-hidden overflow-y-auto overscroll-y-contain [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden",
+              appsDisplaced && "pointer-events-none",
+            )}
           >
-            <WidgetHost
-              slot="home"
-              layout="grid"
-              events={events}
-              clearEvents={clearEvents}
-            />
-          </div>
-        </section>
+            {apps}
+            <div
+              className={cn(enterClass, "flex min-h-32 flex-col py-6")}
+              style={{ animationDelay: "110ms" }}
+            >
+              <WidgetHost
+                slot="home"
+                layout="grid"
+                events={events}
+                clearEvents={clearEvents}
+              />
+            </div>
+          </section>
+        </div>
       </div>
     </div>
   );
