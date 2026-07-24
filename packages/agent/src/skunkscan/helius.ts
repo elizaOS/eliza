@@ -81,7 +81,9 @@ function getHeliusApiKey(): string {
   const apiKey = process.env.HELIUS_API_KEY?.trim();
 
   if (!apiKey) {
-    throw new Error("Missing HELIUS_API_KEY environment variable");
+    throw new Error(
+      "Missing HELIUS_API_KEY environment variable",
+    );
   }
 
   return apiKey;
@@ -89,11 +91,13 @@ function getHeliusApiKey(): string {
 
 function getHeliusRpcUrl(): string {
   const apiKey = getHeliusApiKey();
+
   return `https://mainnet.helius-rpc.com/?api-key=${apiKey}`;
 }
 
 function getHeliusApiUrl(path: string): string {
   const apiKey = getHeliusApiKey();
+
   return `https://api.helius.xyz${path}?api-key=${apiKey}`;
 }
 
@@ -116,13 +120,18 @@ async function callHeliusRpc<T>(
   });
 
   if (!response.ok) {
-    throw new Error(`Helius request failed with status ${response.status}`);
+    throw new Error(
+      `Helius request failed with status ${response.status}`,
+    );
   }
 
   const data = await response.json();
 
   if (data.error) {
-    throw new Error(data.error.message ?? "Helius returned an error");
+    throw new Error(
+      data.error.message ??
+        "Helius returned an error",
+    );
   }
 
   return data.result as T;
@@ -135,18 +144,22 @@ export async function getSolanaBalance(
     throw new Error("Wallet address is required");
   }
 
+  const walletAddress = address.trim();
+
   const lamports = await callHeliusRpc<number>(
     "skunkscan-balance",
     "getBalance",
-    [address.trim()],
+    [walletAddress],
   ).then((result: any) => result?.value);
 
   if (typeof lamports !== "number") {
-    throw new Error("Invalid Helius balance response");
+    throw new Error(
+      "Invalid Helius balance response",
+    );
   }
 
   return {
-    address: address.trim(),
+    address: walletAddress,
     lamports,
     sol: lamports / 1_000_000_000,
   };
@@ -160,16 +173,17 @@ export async function getSolanaRecentSignatures(
     throw new Error("Wallet address is required");
   }
 
-  const result = await callHeliusRpc<SolanaSignatureResult[]>(
-    "skunkscan-signatures",
-    "getSignaturesForAddress",
-    [
-      address.trim(),
-      {
-        limit,
-      },
-    ],
-  );
+  const result =
+    await callHeliusRpc<SolanaSignatureResult[]>(
+      "skunkscan-signatures",
+      "getSignaturesForAddress",
+      [
+        address.trim(),
+        {
+          limit,
+        },
+      ],
+    );
 
   return Array.isArray(result) ? result : [];
 }
@@ -183,12 +197,19 @@ export async function getSolanaOldestKnownSignature(
     throw new Error("Wallet address is required");
   }
 
+  const walletAddress = address.trim();
+
   let before: string | undefined;
-  let oldestSignature: SolanaSignatureResult | null = null;
+  let oldestSignature: SolanaSignatureResult | null =
+    null;
   let scannedTransactionCount = 0;
   let reachedOldestKnownTransaction = false;
 
-  for (let page = 0; page < maxPages; page += 1) {
+  for (
+    let page = 0;
+    page < maxPages;
+    page += 1
+  ) {
     const options: {
       limit: number;
       before?: string;
@@ -200,19 +221,24 @@ export async function getSolanaOldestKnownSignature(
       options.before = before;
     }
 
-    const signatures = await callHeliusRpc<SolanaSignatureResult[]>(
-      `skunkscan-oldest-signature-${page + 1}`,
-      "getSignaturesForAddress",
-      [address.trim(), options],
-    );
+    const signatures =
+      await callHeliusRpc<SolanaSignatureResult[]>(
+        `skunkscan-oldest-signature-${page + 1}`,
+        "getSignaturesForAddress",
+        [walletAddress, options],
+      );
 
-    if (!Array.isArray(signatures) || signatures.length === 0) {
+    if (
+      !Array.isArray(signatures) ||
+      signatures.length === 0
+    ) {
       reachedOldestKnownTransaction = true;
       break;
     }
 
     scannedTransactionCount += signatures.length;
-    oldestSignature = signatures[signatures.length - 1];
+    oldestSignature =
+      signatures[signatures.length - 1];
 
     if (signatures.length < pageSize) {
       reachedOldestKnownTransaction = true;
@@ -244,18 +270,23 @@ export async function getSolanaParsedTransactions(
     return [];
   }
 
-  const response = await fetch(getHeliusApiUrl("/v0/transactions"), {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
+  const response = await fetch(
+    getHeliusApiUrl("/v0/transactions"),
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        transactions: cleanedSignatures,
+      }),
     },
-    body: JSON.stringify({
-      transactions: cleanedSignatures,
-    }),
-  });
+  );
 
   if (!response.ok) {
-    throw new Error(`Helius transaction parse failed with status ${response.status}`);
+    throw new Error(
+      `Helius transaction parse failed with status ${response.status}`,
+    );
   }
 
   const data = await response.json();
@@ -283,7 +314,8 @@ export async function getSolanaTokenHoldings(
     [
       address.trim(),
       {
-        programId: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        programId:
+          "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
       },
       {
         encoding: "jsonParsed",
@@ -297,17 +329,29 @@ export async function getSolanaTokenHoldings(
 
   return accounts
     .map((account) => {
-      const info = account?.account?.data?.parsed?.info;
+      const info =
+        account?.account?.data?.parsed?.info;
+
       const tokenAmount = info?.tokenAmount;
 
       return {
         mint: String(info?.mint ?? ""),
-        amount: Number(tokenAmount?.uiAmount ?? 0),
-        decimals: Number(tokenAmount?.decimals ?? 0),
-        rawAmount: String(tokenAmount?.amount ?? "0"),
+        amount: Number(
+          tokenAmount?.uiAmount ?? 0,
+        ),
+        decimals: Number(
+          tokenAmount?.decimals ?? 0,
+        ),
+        rawAmount: String(
+          tokenAmount?.amount ?? "0",
+        ),
       };
     })
-    .filter((token) => token.mint && token.amount > 0);
+    .filter(
+      (token) =>
+        token.mint.length > 0 &&
+        token.amount > 0,
+    );
 }
 
 export type SolanaNftHolding = {
@@ -317,15 +361,170 @@ export type SolanaNftHolding = {
   imageUrl: string | null;
 };
 
+type HeliusDasGrouping = {
+  group_key?: string;
+  group_value?: string;
+  collection_metadata?: {
+    name?: string;
+  };
+};
+
+type HeliusDasFile = {
+  uri?: string;
+  mime?: string;
+};
+
+type HeliusDasAsset = {
+  id?: string;
+  interface?: string;
+  content?: {
+    metadata?: {
+      name?: string;
+    };
+    links?: {
+      image?: string;
+    };
+    files?: HeliusDasFile[];
+  };
+  grouping?: HeliusDasGrouping[];
+};
+
+type HeliusGetAssetsByOwnerResponse = {
+  jsonrpc?: string;
+  id?: string;
+  result?: {
+    total?: number;
+    limit?: number;
+    page?: number;
+    items?: HeliusDasAsset[];
+  };
+  error?: {
+    code?: number;
+    message?: string;
+  };
+};
+
+function isNftAsset(
+  asset: HeliusDasAsset,
+): boolean {
+  const assetInterface = String(
+    asset.interface ?? "",
+  )
+    .trim()
+    .toLowerCase();
+
+  return (
+    assetInterface === "v1_nft" ||
+    assetInterface === "programmablenft" ||
+    assetInterface === "programmable_nft" ||
+    assetInterface === "custom" ||
+    assetInterface.includes("nft")
+  );
+}
+
+function getNftCollection(
+  asset: HeliusDasAsset,
+): string | null {
+  if (!Array.isArray(asset.grouping)) {
+    return null;
+  }
+
+  const collectionGroup = asset.grouping.find(
+    (group) =>
+      group?.group_key === "collection",
+  );
+
+  if (!collectionGroup) {
+    return null;
+  }
+
+  const collectionName =
+    collectionGroup.collection_metadata?.name?.trim();
+
+  if (collectionName) {
+    return collectionName;
+  }
+
+  const collectionAddress =
+    collectionGroup.group_value?.trim();
+
+  return collectionAddress || null;
+}
+
+function getNftImageUrl(
+  asset: HeliusDasAsset,
+): string | null {
+  const linkedImage =
+    asset.content?.links?.image?.trim();
+
+  if (linkedImage) {
+    return linkedImage;
+  }
+
+  const files = asset.content?.files;
+
+  if (!Array.isArray(files)) {
+    return null;
+  }
+
+  const imageFile = files.find((file) => {
+    const mime = file?.mime
+      ?.trim()
+      .toLowerCase();
+
+    return (
+      typeof mime === "string" &&
+      mime.startsWith("image/") &&
+      Boolean(file?.uri?.trim())
+    );
+  });
+
+  if (imageFile?.uri?.trim()) {
+    return imageFile.uri.trim();
+  }
+
+  const firstFileUrl = files.find(
+    (file) => Boolean(file?.uri?.trim()),
+  )?.uri;
+
+  return firstFileUrl?.trim() || null;
+}
+
 export async function getSolanaNftHoldings(
   address: string,
 ): Promise<SolanaNftHolding[]> {
-  if (!address || address.trim().length === 0) {
-    throw new Error("Wallet address is required");
+  const walletAddress = address.trim();
+
+  if (!walletAddress) {
+    throw new Error(
+      "Wallet address is required",
+    );
   }
 
   const response = await fetch(
-    getHeliusApiUrl(`/v0/addresses/${address.trim()}/nfts`),
+    getHeliusRpcUrl(),
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "skunkscan-nft-holdings",
+        method: "getAssetsByOwner",
+        params: {
+          ownerAddress: walletAddress,
+          page: 1,
+          limit: 100,
+          displayOptions: {
+            showFungible: false,
+            showNativeBalance: false,
+            showCollectionMetadata: true,
+            showUnverifiedCollections: false,
+          },
+        },
+      }),
+    },
   );
 
   if (!response.ok) {
@@ -334,16 +533,35 @@ export async function getSolanaNftHoldings(
     );
   }
 
-  const data = await response.json();
+  const data =
+    (await response.json()) as
+      HeliusGetAssetsByOwnerResponse;
 
-  if (!Array.isArray(data)) {
+  if (data.error) {
+    throw new Error(
+      `Helius NFT request failed: ${
+        data.error.message ??
+        "Unknown DAS API error"
+      }`,
+    );
+  }
+
+  const items = data.result?.items;
+
+  if (!Array.isArray(items)) {
     return [];
   }
 
-  return data.slice(0, 10).map((nft: any) => ({
-    mint: String(nft?.mint ?? ""),
-    name: nft?.content?.metadata?.name ?? null,
-    collection: nft?.grouping?.[0]?.group_value ?? null,
-    imageUrl: nft?.content?.links?.image ?? null,
-  }));
+  return items
+    .filter(isNftAsset)
+    .slice(0, 10)
+    .map((asset) => ({
+      mint: String(asset.id ?? "").trim(),
+      name:
+        asset.content?.metadata?.name?.trim() ||
+        null,
+      collection: getNftCollection(asset),
+      imageUrl: getNftImageUrl(asset),
+    }))
+    .filter((nft) => nft.mint.length > 0);
 }
