@@ -2009,6 +2009,12 @@ async function runViewsLayout({
 }
 
 function withViewsUserFacingText(result: ActionResult): ActionResult {
+	if (
+		result.transcriptVisibility === "internal" &&
+		result.userFacingText === undefined
+	) {
+		return result;
+	}
 	const text = typeof result.text === "string" ? result.text.trim() : "";
 	if (!text) return result;
 	return {

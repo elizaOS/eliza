@@ -55,6 +55,22 @@ const NOTES_VIEW: ViewSummary = {
 	pluginName: "plugin-simple-views",
 	available: true,
 	viewType: "gui",
+	capabilities: [
+		{
+			id: "create-note",
+			description: "Create a durable sticky note.",
+			params: {
+				title: {
+					type: "string",
+					description: "Required note title.",
+					required: true,
+					minLength: 1,
+					maxLength: 240,
+					pattern: "\\S",
+				},
+			},
+		},
+	],
 };
 
 const servers: http.Server[] = [];
