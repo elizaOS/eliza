@@ -6,6 +6,7 @@ import {
   isAdminCanaryImageJobData,
   isPendingAdminCanaryCutoverAudit,
 } from "../../lib/services/admin-canary-image";
+import { configureElizaLifecycleTransaction } from "../../lib/services/eliza-provision-lock";
 import { ObjectNamespaces } from "../../lib/storage/object-namespace";
 import {
   hydrateJsonField,
@@ -617,6 +618,7 @@ export class JobsRepository {
     }
 
     return await dbWrite.transaction(async (tx) => {
+      await configureElizaLifecycleTransaction(tx);
       await tx.execute(
         sql`SELECT pg_advisory_xact_lock(hashtextextended('eliza:image-change-capacity:v1', 0))`,
       );

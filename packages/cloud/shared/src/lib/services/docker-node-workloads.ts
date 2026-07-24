@@ -91,12 +91,10 @@ export function agentIdFromContainerName(name: string): string | null {
 }
 
 /**
- * Load (key, status, nodeId, updatedAtMs) for the agent_sandboxes rows matching
- * the given agent ids, including terminal-state rows. The reconciler needs the
- * status to tell a missing row (`no_db_row`) from a terminal one
- * (`terminal_db_row`), and the node + timestamp to detect a stale twin left on
- * an old node by a re-provision (`wrong_node`, #15228). `agent_sandboxes.id` is
- * a PRIMARY KEY, so each key maps to at most one row.
+ * Load every owned placement for the agent_sandboxes rows matching the given
+ * ids. A replacement fence owns a second real container until its exact remote
+ * retirement and capacity release complete, so both primary and replacement
+ * nodes must protect that key from the orphan reaper.
  */
 async function loadSandboxStatusesByIds(agentIds: readonly string[]): Promise<LiveContainerRef[]> {
   if (agentIds.length === 0) return [];
@@ -106,15 +104,32 @@ async function loadSandboxStatusesByIds(agentIds: readonly string[]): Promise<Li
       status: agentSandboxes.status,
       nodeId: agentSandboxes.node_id,
       updatedAt: agentSandboxes.updated_at,
+      replacementNodeId: agentSandboxes.replacement_cleanup_node_id,
+      replacementCreatedAt: agentSandboxes.replacement_cleanup_created_at,
     })
     .from(agentSandboxes)
     .where(inArray(agentSandboxes.id, agentIds as string[]));
-  return rows.map((r) => ({
-    key: r.key,
-    status: r.status,
-    nodeId: r.nodeId ?? undefined,
-    updatedAtMs: r.updatedAt ? new Date(r.updatedAt).getTime() : undefined,
-  }));
+  return rows.flatMap((row) => {
+    const placements: LiveContainerRef[] = [
+      {
+        key: row.key,
+        status: row.status,
+        nodeId: row.nodeId ?? undefined,
+        updatedAtMs: row.updatedAt ? new Date(row.updatedAt).getTime() : undefined,
+      },
+    ];
+    if (row.replacementNodeId) {
+      placements.push({
+        key: row.key,
+        status: "replacement_cleanup_owned",
+        nodeId: row.replacementNodeId,
+        updatedAtMs: row.replacementCreatedAt
+          ? new Date(row.replacementCreatedAt).getTime()
+          : undefined,
+      });
+    }
+    return placements;
+  });
 }
 
 /**
@@ -152,7 +167,7 @@ export function reconcileOrphanContainersOnNodes(): Promise<OrphanReconcileResul
  * recreate them elsewhere — so they do NOT count as retained.
  */
 export async function countRetainedWorkloadsOnNode(nodeId: string): Promise<number> {
-  const [containerCount, agentCount] = await Promise.all([
+  const [containerCount, agentCount, replacementCount] = await Promise.all([
     countRows(
       dbRead
         .select({ count: sql<number>`count(*)::int` })
@@ -176,7 +191,13 @@ export async function countRetainedWorkloadsOnNode(nodeId: string): Promise<numb
           ),
         ),
     ),
+    countRows(
+      dbRead
+        .select({ count: sql<number>`count(*)::int` })
+        .from(agentSandboxes)
+        .where(eq(agentSandboxes.replacement_cleanup_node_id, nodeId)),
+    ),
   ]);
 
-  return containerCount + agentCount;
+  return containerCount + agentCount + replacementCount;
 }

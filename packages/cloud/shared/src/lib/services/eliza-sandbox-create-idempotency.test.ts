@@ -25,6 +25,7 @@ let existingRows: AgentSandbox[] = [];
 let insertedRows: NewAgentSandbox[] = [];
 let capturedSelectWhere: SQL | undefined;
 let executeCalls: number = 0;
+let deadlineParams: string[][] = [];
 // The capped (#11023) path's `select({count}).from().where()` is AWAITED at
 // `.where()` (no orderBy/for/limit), so the chain is thenable and resolves to
 // these count rows. The reuse guard instead ends in `.limit()` (returns
@@ -38,8 +39,12 @@ let lockKeys: string[] = [];
 const txExecute = mock(async (sql: SQL) => {
   executeCalls += 1;
   try {
-    const { params } = new PgDialect().sqlToQuery(sql);
-    if (params.length > 1) lockKeys.push(String(params[1] ?? ""));
+    const { sql: text, params } = new PgDialect().sqlToQuery(sql);
+    if (text.includes("pg_advisory_xact_lock")) {
+      lockKeys.push(String(params[1] ?? ""));
+    } else if (text.includes("set_config")) {
+      deadlineParams.push(params.map(String));
+    }
   } catch {
     // non-advisory-lock execute (none today) — ignore for ordering capture
   }
@@ -172,6 +177,7 @@ function resetTx(): void {
   insertedRows = [];
   capturedSelectWhere = undefined;
   executeCalls = 0;
+  deadlineParams = [];
   countRows = [{ count: 0 }];
   lockKeys = [];
   txExecute.mockClear();
@@ -201,7 +207,8 @@ describe("ElizaSandboxService.createAgent — opt-in org reuse guard", () => {
     });
     expect(first.idempotent).toBe(false);
     expect(insertedRows.length).toBe(1);
-    expect(executeCalls).toBe(1); // advisory lock taken
+    expect(executeCalls).toBe(2); // transaction deadline, then advisory lock
+    expect(deadlineParams).toEqual([["10000ms", "30000ms"]]);
 
     // 2nd call: the just-created row is now the org's non-terminal agent.
     existingRows = [{ ...baseRow(), id: first.agent.id, organization_id: ORG_A }];
@@ -313,7 +320,8 @@ describe("ElizaSandboxService.createAgent — forceCreate per-org quota (#11023)
     // The count + insert ran inside the transaction that first took the org
     // advisory lock — so the check and the write are atomic (no TOCTOU).
     expect(transaction).toHaveBeenCalledTimes(1);
-    expect(executeCalls).toBe(1);
+    expect(executeCalls).toBe(2);
+    expect(deadlineParams).toEqual([["10000ms", "30000ms"]]);
     // The count scoped to this org AND to the quota-counted statuses. The
     // filter uses inArray → the status values are query PARAMS, not inline
     // literals; and the quota count is intentionally BROADER than the reuse
@@ -346,7 +354,8 @@ describe("ElizaSandboxService.createAgent — forceCreate per-org quota (#11023)
     ).rejects.toBeInstanceOf(AgentQuotaExceededError);
 
     // The lock was taken (so the count was authoritative) but NO row was inserted.
-    expect(executeCalls).toBe(1);
+    expect(executeCalls).toBe(2);
+    expect(deadlineParams).toEqual([["10000ms", "30000ms"]]);
     expect(insertedRows.length).toBe(0);
   });
 
@@ -402,6 +411,7 @@ describe("ElizaSandboxService.createCodingContainerAgent — same per-org quota 
     // serialize creates with DIFFERENT images against one org's quota, and the
     // strict org→image order keeps this path deadlock-free vs createAgent.
     expect(lockKeys).toEqual(["agent-create", "coding-container:ghcr.io/elizaos/tool:v1"]);
+    expect(deadlineParams).toEqual([["10000ms", "30000ms"]]);
     // The quota count scoped to the org + quota-counted statuses ran under the
     // lock. inArray parameterizes the status values (params, not inline SQL),
     // and the count is intentionally BROADER than the reuse guard.
@@ -433,6 +443,7 @@ describe("ElizaSandboxService.createCodingContainerAgent — same per-org quota 
     expect(insertedRows.length).toBe(0);
     // Both locks were still taken (ordering preserved) before the refusal.
     expect(lockKeys).toEqual(["agent-create", "coding-container:ghcr.io/elizaos/tool:v6"]);
+    expect(deadlineParams).toEqual([["10000ms", "30000ms"]]);
   });
 
   test("a same-image retry at the cap still returns the existing row (idempotent) — never 429", async () => {
@@ -471,6 +482,7 @@ describe("ElizaSandboxService.createCodingContainerAgent — same per-org quota 
     // Coding containers ALWAYS run in the transaction (per-image idempotency),
     // so both locks are taken even uncapped — but no count gates the insert.
     expect(lockKeys).toEqual(["agent-create", "coding-container:ghcr.io/elizaos/tool:v9"]);
+    expect(deadlineParams).toEqual([["10000ms", "30000ms"]]);
   });
 });
 
