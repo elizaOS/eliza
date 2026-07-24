@@ -1208,6 +1208,54 @@ export type WalletInvestmentStyleSummary = {
   investorInsights?: InvestorEvidenceCollection;
 };
 
+export type WalletProfitabilitySummary = {
+  profitabilityScore: number;
+
+  displayScore: string;
+
+  profitabilityLevel:
+    | "unknown"
+    | "weak"
+    | "limited"
+    | "moderate"
+    | "strong"
+    | "very_strong";
+
+  estimatedProfitability:
+    | "unknown"
+    | "unlikely"
+    | "possible"
+    | "likely";
+
+  confidence:
+    | "low"
+    | "medium"
+    | "high";
+
+  evidenceConfidence:
+    | "low"
+    | "medium"
+    | "high";
+
+  confidenceAnalysis?: WalletConfidenceAnalysis;
+
+  investorHeadline: string;
+
+  investorSummary: string;
+
+  investorTakeaway: string;
+
+  positiveIndicators: string[];
+
+  negativeIndicators: string[];
+
+  limitations: string[];
+
+  investorExplanation?: InvestorExplanation;
+
+  investorInsights?: InvestorEvidenceCollection;
+};
+
 export type WalletInvestigationReport = {
   generatedAt: string;
 
