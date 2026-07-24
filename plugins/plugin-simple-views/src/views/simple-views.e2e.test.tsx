@@ -107,7 +107,11 @@ afterEach(async () => {
 describe("Simple Views deterministic UI-to-service journey", () => {
   it("creates, edits, and preserves a note while creating an event across view switches", async () => {
     const notes = render(<NotesView />);
-    expect(await screen.findByText("0 notes · revision 0")).toBeTruthy();
+    expect(
+      await screen.findByRole("main", {
+        name: "Notes. 0 notes · revision 0",
+      }),
+    ).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText("Note title"), {
       target: { value: "Demo briefing" },
@@ -132,7 +136,11 @@ describe("Simple Views deterministic UI-to-service journey", () => {
 
     notes.unmount();
     const calendar = render(<SimpleCalendarView />);
-    expect(await screen.findByText(/0 events · revision 2/)).toBeTruthy();
+    expect(
+      await screen.findByRole("main", {
+        name: "Calendar. 0 events · revision 2",
+      }),
+    ).toBeTruthy();
     const selectedDate = service?.snapshot().selectedDate;
     if (!selectedDate) throw new Error("Calendar selected date is required.");
 
