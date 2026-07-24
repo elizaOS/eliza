@@ -202,6 +202,72 @@ describe("runStartingRuntime — managed cloud cold-boot warmup", () => {
     expect(dispatch).not.toHaveBeenCalledWith({ type: "AGENT_TIMEOUT" });
   });
 
+  it.each([401, 429] as const)(
+    "advances a rejected adopted bearer (%s) to the auth gate instead of warming forever",
+    async (status) => {
+      persistenceMock.loadPersistedActiveServer.mockReturnValue({
+        id: "cloud:agent-123",
+        kind: "cloud",
+        label: "Eliza Cloud",
+      });
+      clientMock.hasToken.mockReturnValue(true);
+      clientMock.listConversations.mockRejectedValue({
+        status,
+        message: "Unauthorized",
+      });
+
+      const dispatch = vi.fn();
+      const deps = createDeps();
+
+      await runStartingRuntime(
+        deps,
+        dispatch,
+        1,
+        { current: 1 },
+        { current: false },
+        { current: null },
+        "cloud-managed",
+      );
+
+      expect(clientMock.listConversations).toHaveBeenCalledTimes(1);
+      expect(deps.setConnected).toHaveBeenCalledWith(false);
+      expect(deps.setFirstRunLoading).toHaveBeenCalledWith(false);
+      expect(dispatch).toHaveBeenCalledWith({ type: "AGENT_RUNNING" });
+      expect(deps.setStartupError).not.toHaveBeenCalled();
+    },
+  );
+
+  it("keeps a tokenless native 401 in warmup while credential injection is pending", async () => {
+    persistenceMock.loadPersistedActiveServer.mockReturnValue({
+      id: "cloud:agent-123",
+      kind: "cloud",
+      label: "Eliza Cloud",
+    });
+    clientMock.hasToken.mockReturnValue(false);
+
+    const cancelled = { current: false };
+    clientMock.listConversations.mockImplementation(async () => {
+      cancelled.current = true;
+      throw { status: 401, message: "Unauthorized" };
+    });
+
+    const dispatch = vi.fn();
+    const deps = createDeps();
+
+    await runStartingRuntime(
+      deps,
+      dispatch,
+      1,
+      { current: 1 },
+      cancelled,
+      { current: null },
+      "cloud-managed",
+    );
+
+    expect(dispatch).not.toHaveBeenCalledWith({ type: "AGENT_RUNNING" });
+    expect(deps.setStartupError).not.toHaveBeenCalled();
+  });
+
   // ── CONVERSATIONS-500 HARDENING (persistent 5xx must not spin forever) ──
 
   it("persistent /api/conversations 500 + /api/status canRespond → advances to chat despite the broken list endpoint", async () => {

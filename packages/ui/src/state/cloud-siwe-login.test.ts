@@ -219,12 +219,15 @@ describe("e2e wallet + SIWE login", () => {
     window.localStorage.setItem(E2E_WALLET_KEY_STORAGE_KEY, PRIVATE_KEY);
     await installE2eWalletIfRequested();
     const { verified } = mockFetch();
+    const tokenSync = vi.fn();
+    window.addEventListener("steward-token-sync", tokenSync, { once: true });
 
     const apiKey = await siweLoginWithInjectedWallet("https://api.test/");
     expect(apiKey).toBe("eliza_test_api_key");
     expect(window.localStorage.getItem("steward_session_token")).toBe(
       "eliza_test_api_key",
     );
+    expect(tokenSync).toHaveBeenCalledTimes(1);
 
     // The signed message embeds the server's nonce/domain and the signature
     // genuinely recovers to the wallet address — exactly what the cloud API's

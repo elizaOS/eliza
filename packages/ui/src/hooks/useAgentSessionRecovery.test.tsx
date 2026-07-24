@@ -9,7 +9,7 @@
  * agent with a valid cloud session must transition to "recovering" (transparent
  * re-pair) instead of "idle" (password-wall dead-end).
  */
-import { render, waitFor } from "@testing-library/react";
+import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 // Mock the environment reads the hook makes so we can drive the decision.
@@ -89,6 +89,7 @@ function cloudServer(agentId: string) {
 }
 
 afterEach(() => {
+  cleanup();
   delete (globalThis as { Capacitor?: unknown }).Capacitor;
   vi.clearAllMocks();
   // Restore the default "no cookie" behavior after clearAllMocks wipes it.
@@ -286,6 +287,44 @@ describe("useAgentSessionRecovery", () => {
       expect(statuses[statuses.length - 1]).toBe("cloud-reauth-required");
     });
     expect(mockRunRecovery).not.toHaveBeenCalled();
+  });
+
+  it("re-pairs when native SIWE supplies the Cloud token after the initial recovery attempt", async () => {
+    (globalThis as { Capacitor?: unknown }).Capacitor = {
+      isNativePlatform: () => true,
+    };
+    let cloudToken: string | null = null;
+    mockCloudToken.mockImplementation(() => cloudToken);
+    mockActiveServer.mockReturnValue(cloudServer("agent-1"));
+    mockRunRecovery.mockReturnValue(new Promise(() => {}));
+
+    const statuses: string[] = [];
+    render(
+      <Probe
+        active
+        reason="remote_auth_required"
+        onStatus={(status) => statuses.push(status)}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(statuses.at(-1)).toBe("cloud-reauth-required");
+    });
+    expect(mockRunRecovery).not.toHaveBeenCalled();
+
+    cloudToken = "steward.jwt.from-native-siwe";
+    act(() => {
+      window.dispatchEvent(new CustomEvent("steward-token-sync"));
+    });
+
+    await waitFor(() => {
+      expect(mockRunRecovery).toHaveBeenCalledTimes(1);
+    });
+    expect(statuses).toContain("recovering");
+    expect(mockRunRecovery.mock.calls[0][0]).toMatchObject({
+      agentId: "agent-1",
+      cloudToken: "steward.jwt.from-native-siwe",
+    });
   });
 
   it("REGRESSION: returning PWA with no app-origin token but a live Eliza Cloud cookie silently re-pairs instead of dead-ending", async () => {

@@ -58,8 +58,16 @@ export function resolveCloudPairExchangeUrl(cloudApiBase?: string): string {
     .replace(/\/+$/, "")
     .replace(/\/api\/v1\/?$/, "");
   const url = new URL(`${base}/api/auth/pair`);
-  if (url.hostname === "www.elizacloud.ai") {
-    url.hostname = "elizacloud.ai";
+  const apiHost = new Map([
+    ["elizacloud.ai", "api.elizacloud.ai"],
+    ["www.elizacloud.ai", "api.elizacloud.ai"],
+    ["app.elizacloud.ai", "api.elizacloud.ai"],
+    ["dev.elizacloud.ai", "api.elizacloud.ai"],
+    ["staging.elizacloud.ai", "api-staging.elizacloud.ai"],
+    ["app-staging.elizacloud.ai", "api-staging.elizacloud.ai"],
+  ]).get(url.hostname.toLowerCase());
+  if (apiHost) {
+    url.hostname = apiHost;
   }
   return url.toString();
 }
