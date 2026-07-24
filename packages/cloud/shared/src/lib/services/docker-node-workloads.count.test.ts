@@ -70,7 +70,15 @@ describe("countAllocatedWorkloadsOnNode — live-slot accounting (#15378)", () =
 
   test("sums container + agent counts (one row each here) into total live slots", async () => {
     const total = await countAllocatedWorkloadsOnNode("node-under-test");
-    expect(where).toHaveBeenCalledTimes(2);
-    expect(total).toBe(2);
+    expect(where).toHaveBeenCalledTimes(3);
+    expect(total).toBe(3);
+  });
+
+  test("counts a durable replacement reservation as its own live slot", async () => {
+    await countAllocatedWorkloadsOnNode("replacement-node");
+
+    const rendered = capturedWheres.map(renderParams);
+    expect(rendered.filter((params) => params.includes("replacement-node"))).toHaveLength(3);
+    expect(rendered.some((params) => params.includes("true"))).toBe(true);
   });
 });

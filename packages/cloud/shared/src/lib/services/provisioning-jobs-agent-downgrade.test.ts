@@ -55,6 +55,12 @@ function makeDowngradeJob(): Job {
 
 function withClaimedDowngradeJob() {
   const job = makeDowngradeJob();
+  const conflictSpy = spyOn(
+    provisioningJobService as unknown as {
+      assertNoConflictingLifecycleExecution(job: Job): Promise<void>;
+    },
+    "assertNoConflictingLifecycleExecution",
+  ).mockResolvedValue(undefined);
   const claimSpy = spyOn(jobsRepository, "claimPendingJobs").mockImplementation(
     async (filters: { type: ProvisioningJobType }) =>
       filters.type === JOB_TYPES.AGENT_DOWNGRADE ? [job] : [],
@@ -67,6 +73,7 @@ function withClaimedDowngradeJob() {
     updateStatusSpy,
     incrementSpy,
     restore() {
+      conflictSpy.mockRestore();
       claimSpy.mockRestore();
       recoverSpy.mockRestore();
       updateStatusSpy.mockRestore();

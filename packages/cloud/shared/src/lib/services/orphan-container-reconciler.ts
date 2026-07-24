@@ -194,10 +194,10 @@ export const DEFAULT_NODE_MOVE_GRACE_MS = 5 * 60_000;
  * (never reaped) if ANY of its rows is non-terminal. This is order-independent,
  * so it does not matter that the `WHERE key IN (...)` query has no ORDER BY.
  *
- * For agents the key is `agent_sandboxes.id`, a PRIMARY KEY, so each key maps to
- * AT MOST ONE row — the per-key list is a singleton and `every(terminal)`
- * reduces to the single-row terminal check, i.e. identical reaping decisions to
- * the previous last-write-wins map. (Proof of behavior-preservation.)
+ * For agents the storage key is `agent_sandboxes.id`, a PRIMARY KEY. Its loader
+ * may nevertheless emit two live placement refs while a replacement fence owns
+ * both the serving and replacement containers; either placement protects the
+ * key on its exact node until fenced retirement completes.
  *
  * Containers whose name does not match the managed pattern are ignored
  * entirely — they belong to something else on the node.

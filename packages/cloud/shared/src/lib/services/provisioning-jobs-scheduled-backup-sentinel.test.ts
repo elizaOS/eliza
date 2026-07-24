@@ -425,6 +425,23 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
     expect(up.created).toBe(true);
     expect((up.job.data as { toDigest?: string }).toDigest).toBe("sha256:new");
 
+    await expect(
+      provisioningJobService.enqueueAgentDowngradeOnce({
+        agentId,
+        organizationId: orgId,
+        userId,
+        dockerImage: "eliza/agent",
+        fromDigest: "sha256:new",
+      }),
+    ).rejects.toMatchObject({
+      code: "session_not_ready",
+      message: expect.stringContaining("conflicting agent_upgrade job"),
+    });
+    await dbWrite
+      .update(jobs)
+      .set({ status: "completed", completed_at: new Date() })
+      .where(eq(jobs.id, up.job.id));
+
     const down = await provisioningJobService.enqueueAgentDowngradeOnce({
       agentId,
       organizationId: orgId,

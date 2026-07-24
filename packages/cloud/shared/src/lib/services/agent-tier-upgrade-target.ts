@@ -53,6 +53,7 @@ import { encryptAgentEnvVarsForStorage } from "./agent-env-crypto";
 import { apiKeysService } from "./api-keys";
 import { AGENT_UPGRADED_FROM_KEY } from "./eliza-agent-config";
 import {
+  configureElizaLifecycleTransaction,
   elizaAgentCreateAdvisoryLockSql,
   elizaAgentTierUpgradeAdvisoryLockSql,
 } from "./eliza-provision-lock";
@@ -273,6 +274,7 @@ export async function createTierUpgradeTargetWithProvision(
   // Anything durable a previous winner committed is visible here, so retries
   // and post-commit racers return without preparing any state of their own.
   const preexisting = await dbWrite.transaction(async (tx) => {
+    await configureElizaLifecycleTransaction(tx);
     // Org lock FIRST (global order: org → tier-upgrade → provision): the
     // quota count is only atomic if every quota-consuming creation path —
     // createAgent, coding containers, upgrades of OTHER source agents —
@@ -322,6 +324,7 @@ export async function createTierUpgradeTargetWithProvision(
     // under the org + per-source locks. A rollback discards target and job
     // together.
     result = await dbWrite.transaction(async (tx) => {
+      await configureElizaLifecycleTransaction(tx);
       // Same global lock order as phase 1: org → tier-upgrade (→ the nested
       // enqueue's provision lock). The org lock is what makes the quota
       // count→insert atomic against createAgent and other-source upgrades.

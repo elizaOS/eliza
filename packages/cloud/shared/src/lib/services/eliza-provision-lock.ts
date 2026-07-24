@@ -1,5 +1,27 @@
-// Coordinates cloud service eliza provision lock behavior behind route handlers.
+/**
+ * Coordinates bounded cloud agent lifecycle locks behind route handlers.
+ */
+
 import { sql } from "drizzle-orm";
+import type { DbTransaction } from "../../db/client";
+
+export const ELIZA_LIFECYCLE_LOCK_TIMEOUT_MS = 10_000;
+export const ELIZA_LIFECYCLE_STATEMENT_TIMEOUT_MS = 30_000;
+
+/**
+ * Bounds every transaction that acquires an Eliza lifecycle advisory lock.
+ * PostgreSQL advisory waits otherwise outlive JavaScript promise timeouts and
+ * can retain a pooled connection after its caller has already abandoned work.
+ */
+export async function configureElizaLifecycleTransaction(
+  tx: Pick<DbTransaction, "execute">,
+): Promise<void> {
+  await tx.execute(sql`
+    SELECT
+      set_config('lock_timeout', ${`${ELIZA_LIFECYCLE_LOCK_TIMEOUT_MS}ms`}, TRUE),
+      set_config('statement_timeout', ${`${ELIZA_LIFECYCLE_STATEMENT_TIMEOUT_MS}ms`}, TRUE)
+  `);
+}
 
 /**
  * Per-agent lifecycle advisory lock shared by enqueue/delete/shutdown paths.
