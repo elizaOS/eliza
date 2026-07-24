@@ -2810,6 +2810,13 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 						return {
 							success: interaction.success,
 							text: resultText,
+							...(interaction.success
+								? {
+										userFacingText: resultText,
+										verifiedUserFacing: true,
+										turnComplete: true,
+									}
+								: {}),
 							values: {
 								mode: "interact",
 								viewId,

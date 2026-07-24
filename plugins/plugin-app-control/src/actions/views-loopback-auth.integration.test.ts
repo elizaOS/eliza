@@ -343,6 +343,57 @@ describe("authenticated view loopback requests", () => {
 		).not.toContain(token);
 	});
 
+	it("makes a successful view interaction the turn's single terminal receipt", async () => {
+		const token = "views-interaction-token";
+		const server = await startAuthenticatedViewsServer(token);
+		process.env.ELIZA_PORT = String(server.port);
+		process.env.ELIZA_API_TOKEN = token;
+
+		const callbackTexts: string[] = [];
+		const result = await createViewsAction({
+			hasOwnerAccess: async () => true,
+		}).handler(
+			{ agentId: "agent-1" } as never,
+			{
+				entityId: "user-1",
+				roomId: "room-1",
+				agentId: "agent-1",
+				content: { text: "create nub note" },
+			} as never,
+			undefined,
+			{
+				action: "interact",
+				view: "notes",
+				capability: "create-note",
+				title: "nub",
+			},
+			async (content) => {
+				if (content.text) callbackTexts.push(content.text);
+				return [];
+			},
+		);
+
+		expect(callbackTexts).toEqual(["interaction complete"]);
+		expect(result).toMatchObject({
+			success: true,
+			text: "interaction complete",
+			userFacingText: "interaction complete",
+			verifiedUserFacing: true,
+			turnComplete: true,
+		});
+		expect(server.requests.at(-1)).toMatchObject({
+			method: "POST",
+			pathname: "/api/views/notes/interact",
+			authorization: `Bearer ${token}`,
+			body: JSON.stringify({
+				capability: "create-note",
+				params: { title: "nub" },
+				timeoutMs: 5_000,
+				viewType: "gui",
+			}),
+		});
+	});
+
 	it("authenticates every Node-side loopback caller", async () => {
 		const token = "all-views-callers-token";
 		const server = await startAuthenticatedViewsServer(token);
