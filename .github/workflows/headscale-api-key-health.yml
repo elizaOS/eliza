@@ -180,7 +180,7 @@ jobs:
               --until "2026-07-24 04:11:40 UTC" \
               --no-pager --output=short-iso-precise >"$journal_file"
             grep_status=0
-            grep -F -B 20 -A 200 \
+            grep -F -B 20 -A 40 \
               -e "27273194-76bf-48ee-95f7-59c487afc129" \
               -e "889edf8a-b830-50ea-9e1b-ef40e0726578" \
               "$journal_file" >"$matched_file" || grep_status=$?
