@@ -46,12 +46,14 @@ import type {
 let handleConversationRoutes: typeof import("../conversation-routes.ts")["handleConversationRoutes"];
 let resetChatDedupe: () => void;
 let markChatMessageSeen: typeof import("../chat-routes.ts")["isDuplicateChatMessage"];
+let setChatOutcome: typeof import("../chat-routes.ts")["setChatMessageIdOutcome"];
 
 beforeAll(async () => {
   vi.resetModules();
   const chatRoutes = await import("../chat-routes.ts");
   resetChatDedupe = chatRoutes.__resetChatDedupeForTests;
   markChatMessageSeen = chatRoutes.isDuplicateChatMessage;
+  setChatOutcome = chatRoutes.setChatMessageIdOutcome;
   ({ handleConversationRoutes } = await import("../conversation-routes.ts"));
 });
 
@@ -103,6 +105,7 @@ interface TestHarness {
   state: ConversationRouteState;
   handleMessage: ReturnType<typeof vi.fn>;
   createMemory: ReturnType<typeof vi.fn>;
+  storedMemories: Memory[];
 }
 
 /** Real-route harness: the runtime stub streams one "ok" chunk per turn via
@@ -133,6 +136,9 @@ function createHarness(): TestHarness {
     { id: UUID; agentId: UUID; metadata: Record<string, unknown> }
   >();
   const createMemory = vi.fn(async (memory: Memory) => {
+    if (memory.id && storedMemories.some((stored) => stored.id === memory.id)) {
+      throw new Error("duplicate unique constraint: messages.id");
+    }
     storedMemories.push(memory);
     return memory.id ?? stringToUuid("created-memory");
   });
@@ -163,6 +169,11 @@ function createHarness(): TestHarness {
     createMemory,
     createLogs: vi.fn(async () => undefined),
     getMemories: vi.fn(async () => storedMemories),
+    getMemoriesByIds: vi.fn(async (ids: UUID[]) =>
+      storedMemories.filter(
+        (memory) => memory.id && ids.includes(memory.id as UUID),
+      ),
+    ),
     ensureConnection: vi.fn(async (input: { worldId?: UUID }) => {
       if (!input.worldId) throw new Error("worldId is required");
       if (!worlds.has(input.worldId)) {
@@ -201,7 +212,7 @@ function createHarness(): TestHarness {
     broadcastWs: null,
   } as unknown as ConversationRouteState;
 
-  return { state, handleMessage, createMemory };
+  return { state, handleMessage, createMemory, storedMemories };
 }
 
 function createReq(method: string, url: string): http.IncomingMessage {
@@ -216,9 +227,7 @@ interface CapturedJson {
   payload: unknown;
 }
 
-/** Drive one request through the real route handler, then drain the event loop
- *  so streamed chunks and the post-`done` deferred persistence both settle
- *  before the caller asserts on call counts. */
+/** Drive one request through the real route handler and await its durable terminal result. */
 async function runRoute(
   method: string,
   pathname: string,
@@ -264,9 +273,20 @@ async function runRoute(
   return { record, captured };
 }
 
-function parseDataFrames(
-  record: MockResponseRecord,
-): Array<{ type: string; fullText?: string }> {
+function parseDataFrames(record: MockResponseRecord): Array<{
+  type: string;
+  fullText?: string;
+  messageId?: string;
+  agentName?: string;
+  transcriptVisibility?: "internal";
+  thought?: string;
+  usage?: unknown;
+  actionResults?: unknown;
+  failureKind?: string;
+  accountConnect?: unknown;
+  localInference?: unknown;
+  noResponseReason?: "ignored";
+}> {
   return record.writes
     .join("")
     .split(/\r?\n/)
@@ -276,6 +296,16 @@ function parseDataFrames(
         JSON.parse(line.slice("data: ".length)) as {
           type: string;
           fullText?: string;
+          messageId?: string;
+          agentName?: string;
+          transcriptVisibility?: "internal";
+          thought?: string;
+          usage?: unknown;
+          actionResults?: unknown;
+          failureKind?: string;
+          accountConnect?: unknown;
+          localInference?: unknown;
+          noResponseReason?: "ignored";
         },
     );
 }
@@ -313,6 +343,169 @@ describe("conversation-route chat idempotency wiring", () => {
     expect(frames).toHaveLength(1);
     expect(frames[0]).toMatchObject({ type: "done", fullText: "ok" });
     expect(second.record.ended).toBe(true);
+  });
+
+  it("replays the complete terminal contract with explicit stream and JSON mappings", async () => {
+    const { state, handleMessage } = createHarness();
+    const clientMessageId = "terminal-contract-retry";
+    expect(markChatMessageSeen(ROOM_ID, clientMessageId)).toBe(false);
+    setChatOutcome(ROOM_ID, clientMessageId, {
+      text: "",
+      agentName: "Original Agent",
+      messageId: stringToUuid("terminal-contract-reply"),
+      transcriptVisibility: "internal",
+      thought: "private reasoning",
+      usage: {
+        promptTokens: 7,
+        completionTokens: 3,
+        totalTokens: 10,
+        isEstimated: false,
+        llmCalls: 1,
+      },
+      actionResults: [{ actionName: "VIEWS", success: true }],
+      failureKind: "no_provider",
+      accountConnect: { providers: ["openai-codex"] },
+      localInference: { status: "ready" },
+    });
+
+    const stream = await runRoute("POST", STREAM_PATH, state, {
+      text: "ignored retry payload",
+      clientMessageId,
+    });
+    expect(parseDataFrames(stream.record)).toEqual([
+      expect.objectContaining({
+        type: "done",
+        fullText: "",
+        agentName: "Original Agent",
+        messageId: stringToUuid("terminal-contract-reply"),
+        transcriptVisibility: "internal",
+        thought: "private reasoning",
+        usage: expect.objectContaining({ totalTokens: 10 }),
+        actionResults: [{ actionName: "VIEWS", success: true }],
+        failureKind: "no_provider",
+        accountConnect: { providers: ["openai-codex"] },
+        localInference: { status: "ready" },
+      }),
+    ]);
+
+    const jsonRetry = await runRoute("POST", SEND_PATH, state, {
+      text: "ignored retry payload",
+      clientMessageId,
+    });
+    expect(jsonRetry.captured.payload).toEqual({
+      text: "",
+      agentName: "Original Agent",
+      messageId: stringToUuid("terminal-contract-reply"),
+      transcriptVisibility: "internal",
+      actionResults: [{ actionName: "VIEWS", success: true }],
+      failureKind: "no_provider",
+      accountConnect: { providers: ["openai-codex"] },
+      localInference: { status: "ready" },
+    });
+    expect(handleMessage).not.toHaveBeenCalled();
+  });
+
+  it("SSE: interleaved turns replay the outcome bound to the retried key", async () => {
+    const { state, handleMessage, storedMemories } = createHarness();
+    let releaseA: (() => void) | undefined;
+    let releaseB: (() => void) | undefined;
+    const gateA = new Promise<void>((resolve) => {
+      releaseA = resolve;
+    });
+    const gateB = new Promise<void>((resolve) => {
+      releaseB = resolve;
+    });
+    handleMessage.mockImplementation(
+      async (
+        _runtime: unknown,
+        message: { content?: { text?: string } },
+        _callback: unknown,
+        options?: { onStreamChunk?: (chunk: string) => Promise<void> | void },
+      ) => {
+        const prompt = message.content?.text ?? "";
+        const isA = prompt === "turn a";
+        await (isA ? gateA : gateB);
+        const text = isA ? "reply a" : "reply b";
+        await options?.onStreamChunk?.(text);
+        return {
+          didRespond: true,
+          responseContent: { text },
+          responseMessages: [],
+        };
+      },
+    );
+
+    const turnA = runRoute("POST", STREAM_PATH, state, {
+      text: "turn a",
+      clientMessageId: "interleaved-a",
+    });
+    await vi.waitFor(() => expect(handleMessage).toHaveBeenCalledTimes(1));
+    const turnB = runRoute("POST", STREAM_PATH, state, {
+      text: "turn b",
+      clientMessageId: "interleaved-b",
+    });
+    await vi.waitFor(() => expect(handleMessage).toHaveBeenCalledTimes(2));
+
+    releaseA?.();
+    const first = await turnA;
+    releaseB?.();
+    const second = await turnB;
+    const firstDone = parseDataFrames(first.record).find(
+      (frame) => frame.type === "done",
+    );
+    const secondDone = parseDataFrames(second.record).find(
+      (frame) => frame.type === "done",
+    );
+    expect(firstDone).toMatchObject({ fullText: "reply a" });
+    expect(secondDone).toMatchObject({ fullText: "reply b" });
+
+    const retry = await runRoute("POST", STREAM_PATH, state, {
+      text: "turn a",
+      clientMessageId: "interleaved-a",
+    });
+    const retryDone = parseDataFrames(retry.record).find(
+      (frame) => frame.type === "done",
+    );
+    expect(retryDone).toMatchObject({
+      fullText: "reply a",
+      messageId: firstDone?.messageId,
+    });
+    expect(retryDone?.messageId).not.toBe(secondDone?.messageId);
+    expect(
+      storedMemories.some(
+        (memory) =>
+          memory.id === firstDone?.messageId &&
+          (memory.content as { text?: string }).text === "reply a",
+      ),
+    ).toBe(true);
+  });
+
+  it("SSE: rapid same-text turns persist both advertised ids", async () => {
+    const { state, storedMemories } = createHarness();
+    const first = await runRoute("POST", STREAM_PATH, state, {
+      text: "same",
+      clientMessageId: "same-a",
+    });
+    const second = await runRoute("POST", STREAM_PATH, state, {
+      text: "same",
+      clientMessageId: "same-b",
+    });
+    const doneFrames = [first, second].map(({ record }) =>
+      parseDataFrames(record).find((frame) => frame.type === "done"),
+    );
+
+    expect(doneFrames[0]?.messageId).toBeTruthy();
+    expect(doneFrames[1]?.messageId).toBeTruthy();
+    expect(doneFrames[0]?.messageId).not.toBe(doneFrames[1]?.messageId);
+    for (const done of doneFrames) {
+      expect(
+        storedMemories.some(
+          (memory) =>
+            memory.id === done?.messageId &&
+            (memory.content as { text?: string }).text === "ok",
+        ),
+      ).toBe(true);
+    }
   });
 
   it("SSE: a dupe landing while the original is still mid-turn keeps the empty ignored shape", async () => {
@@ -404,6 +597,295 @@ describe("conversation-route chat idempotency wiring", () => {
     expect(createMemory.mock.calls.length).toBeGreaterThan(0);
   });
 
+  it("SSE: terminal setup and persistence failures release the key for a real retry", async () => {
+    const { state, handleMessage, createMemory, storedMemories } =
+      createHarness();
+    const body = { text: "retry me", clientMessageId: "terminal-retry-1" };
+    const runtime = state.runtime;
+    state.runtime = null;
+
+    const unavailable = await runRoute("POST", STREAM_PATH, state, body);
+    expect(
+      parseDataFrames(unavailable.record).some(
+        (frame) => frame.type === "error",
+      ),
+    ).toBe(true);
+
+    state.runtime = runtime;
+    const persistImpl = createMemory.getMockImplementation();
+    if (!persistImpl)
+      throw new Error("createMemory fixture lost implementation");
+    let rejectAssistantWrites = true;
+    createMemory.mockImplementation(async (memory: Memory) => {
+      if (rejectAssistantWrites && memory.entityId === AGENT_ID) {
+        throw new Error("assistant persistence unavailable");
+      }
+      return await (persistImpl as (value: Memory) => Promise<unknown>)(memory);
+    });
+
+    const persistenceFailure = await runRoute("POST", STREAM_PATH, state, body);
+    expect(
+      parseDataFrames(persistenceFailure.record).some(
+        (frame) => frame.type === "error",
+      ),
+    ).toBe(true);
+    rejectAssistantWrites = false;
+
+    const recovered = await runRoute("POST", STREAM_PATH, state, body);
+    const recoveredDone = parseDataFrames(recovered.record).find(
+      (frame) => frame.type === "done",
+    );
+    expect(recoveredDone).toMatchObject({ fullText: "ok" });
+    expect(recoveredDone?.messageId).toBeTruthy();
+    expect(handleMessage).toHaveBeenCalledTimes(2);
+    expect(
+      storedMemories.filter((memory) => memory.entityId === USER_ID),
+    ).toHaveLength(1);
+  });
+
+  it("SSE: a room-initialization failure releases the key for recovery", async () => {
+    const { state, handleMessage } = createHarness();
+    const runtime = state.runtime;
+    if (!runtime) throw new Error("runtime fixture missing");
+    vi.mocked(runtime.ensureConnection).mockRejectedValueOnce(
+      new Error("room setup unavailable"),
+    );
+    const body = { text: "retry room setup", clientMessageId: "room-retry-1" };
+
+    const failed = await runRoute("POST", STREAM_PATH, state, body);
+    expect(
+      parseDataFrames(failed.record).some((frame) => frame.type === "error"),
+    ).toBe(true);
+    const recovered = await runRoute("POST", STREAM_PATH, state, body);
+
+    expect(
+      parseDataFrames(recovered.record).find((frame) => frame.type === "done"),
+    ).toMatchObject({ fullText: "ok" });
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("SSE: a user-write failure releases the key for recovery", async () => {
+    const { state, handleMessage, createMemory } = createHarness();
+    createMemory.mockRejectedValueOnce(new Error("user write unavailable"));
+    const body = { text: "retry user write", clientMessageId: "user-retry-1" };
+
+    const failed = await runRoute("POST", STREAM_PATH, state, body);
+    expect(
+      parseDataFrames(failed.record).some((frame) => frame.type === "error"),
+    ).toBe(true);
+    const recovered = await runRoute("POST", STREAM_PATH, state, body);
+
+    expect(
+      parseDataFrames(recovered.record).find((frame) => frame.type === "done"),
+    ).toMatchObject({ fullText: "ok" });
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails closed when a released key is retried with a different user payload", async () => {
+    const { state, handleMessage, createMemory, storedMemories } =
+      createHarness();
+    const createImpl = createMemory.getMockImplementation();
+    if (!createImpl)
+      throw new Error("createMemory fixture lost implementation");
+    let rejectAssistantWrite = true;
+    createMemory.mockImplementation(async (memory: Memory) => {
+      if (rejectAssistantWrite && memory.entityId === AGENT_ID) {
+        throw new Error("assistant persistence unavailable");
+      }
+      return await (createImpl as (value: Memory) => Promise<unknown>)(memory);
+    });
+    const clientMessageId = "changed-payload-retry";
+
+    const failed = await runRoute("POST", STREAM_PATH, state, {
+      text: "original payload",
+      clientMessageId,
+    });
+    expect(
+      parseDataFrames(failed.record).some((frame) => frame.type === "error"),
+    ).toBe(true);
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+
+    rejectAssistantWrite = false;
+    const conflicting = await runRoute("POST", STREAM_PATH, state, {
+      text: "different payload",
+      clientMessageId,
+    });
+    expect(
+      parseDataFrames(conflicting.record).some(
+        (frame) => frame.type === "error",
+      ),
+    ).toBe(true);
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+
+    const recovered = await runRoute("POST", STREAM_PATH, state, {
+      text: "original payload",
+      clientMessageId,
+    });
+    expect(
+      parseDataFrames(recovered.record).find((frame) => frame.type === "done"),
+    ).toMatchObject({ fullText: "ok" });
+    expect(handleMessage).toHaveBeenCalledTimes(2);
+    expect(
+      storedMemories.filter((memory) => memory.entityId === USER_ID),
+    ).toHaveLength(1);
+  });
+
+  it("SSE: a neighboring successful turn cannot suppress this turn's failure fallback", async () => {
+    const { state, handleMessage, storedMemories } = createHarness();
+    let releaseFailedTurn: (() => void) | undefined;
+    const failedTurnGate = new Promise<void>((resolve) => {
+      releaseFailedTurn = resolve;
+    });
+    handleMessage.mockImplementation(
+      async (
+        _runtime: unknown,
+        message: { content?: { text?: string } },
+        _callback: unknown,
+        options?: { onStreamChunk?: (chunk: string) => Promise<void> | void },
+      ) => {
+        if (message.content?.text === "turn a fails") {
+          await failedTurnGate;
+          throw new Error("turn a provider failure");
+        }
+        await options?.onStreamChunk?.("turn b reply");
+        return {
+          didRespond: true,
+          responseContent: { text: "turn b reply" },
+          responseMessages: [],
+        };
+      },
+    );
+
+    const failedTurn = runRoute("POST", STREAM_PATH, state, {
+      text: "turn a fails",
+      clientMessageId: "interleaved-failed-a",
+    });
+    await vi.waitFor(() => expect(handleMessage).toHaveBeenCalledTimes(1));
+    const successfulTurn = await runRoute("POST", STREAM_PATH, state, {
+      text: "turn b succeeds",
+      clientMessageId: "interleaved-success-b",
+    });
+    releaseFailedTurn?.();
+    const failedResult = await failedTurn;
+
+    const successfulDone = parseDataFrames(successfulTurn.record).find(
+      (frame) => frame.type === "done",
+    );
+    const failedDone = parseDataFrames(failedResult.record).find(
+      (frame) => frame.type === "done",
+    );
+    expect(successfulDone).toMatchObject({ fullText: "turn b reply" });
+    expect(failedDone?.noResponseReason).toBeUndefined();
+    expect(failedDone?.fullText).toBeTruthy();
+    expect(failedDone?.messageId).toBeTruthy();
+    expect(failedDone?.messageId).not.toBe(successfulDone?.messageId);
+    expect(
+      storedMemories.some(
+        (memory) =>
+          memory.id === failedDone?.messageId &&
+          (memory.content as { text?: string }).text === failedDone?.fullText,
+      ),
+    ).toBe(true);
+
+    const retry = await runRoute("POST", STREAM_PATH, state, {
+      text: "turn a fails",
+      clientMessageId: "interleaved-failed-a",
+    });
+    expect(
+      parseDataFrames(retry.record).find((frame) => frame.type === "done"),
+    ).toMatchObject({
+      fullText: failedDone?.fullText,
+      messageId: failedDone?.messageId,
+    });
+    expect(handleMessage).toHaveBeenCalledTimes(2);
+  });
+
+  it("SSE: rapid identical post-token failures each persist and advertise their own row", async () => {
+    const { state, handleMessage, storedMemories } = createHarness();
+    handleMessage.mockImplementation(
+      async (
+        _runtime: unknown,
+        _message: unknown,
+        _callback: unknown,
+        options?: { onStreamChunk?: (chunk: string) => Promise<void> | void },
+      ) => {
+        await options?.onStreamChunk?.("partial reply");
+        throw new Error("planner failed after token");
+      },
+    );
+
+    const first = await runRoute("POST", STREAM_PATH, state, {
+      text: "same",
+      clientMessageId: "post-token-a",
+    });
+    const second = await runRoute("POST", STREAM_PATH, state, {
+      text: "same",
+      clientMessageId: "post-token-b",
+    });
+    const doneFrames = [first, second].map(({ record }) =>
+      parseDataFrames(record).find((frame) => frame.type === "done"),
+    );
+
+    expect(doneFrames[0]).toMatchObject({ fullText: "partial reply" });
+    expect(doneFrames[1]).toMatchObject({ fullText: "partial reply" });
+    expect(doneFrames[0]?.messageId).toBeTruthy();
+    expect(doneFrames[1]?.messageId).toBeTruthy();
+    expect(doneFrames[0]?.messageId).not.toBe(doneFrames[1]?.messageId);
+    for (const done of doneFrames) {
+      expect(
+        storedMemories.some(
+          (memory) =>
+            memory.id === done?.messageId &&
+            (memory.content as { text?: string }).text === "partial reply",
+        ),
+      ).toBe(true);
+    }
+  });
+
+  it("rapid identical wallet guidance persists distinct rows on stream and JSON routes", async () => {
+    const { state, handleMessage, storedMemories } = createHarness();
+    const requests = [
+      [STREAM_PATH, "wallet-stream-a"],
+      [STREAM_PATH, "wallet-stream-b"],
+      [SEND_PATH, "wallet-json-a"],
+      [SEND_PATH, "wallet-json-b"],
+    ] as const;
+    const messageIds: string[] = [];
+
+    for (const [pathname, clientMessageId] of requests) {
+      const result = await runRoute("POST", pathname, state, {
+        text: "what is my wallet address?",
+        clientMessageId,
+      });
+      if (pathname === STREAM_PATH) {
+        const done = parseDataFrames(result.record).find(
+          (frame) => frame.type === "done",
+        );
+        expect(done?.fullText).toContain("Detected wallets");
+        expect(done?.messageId).toBeTruthy();
+        messageIds.push(String(done?.messageId));
+      } else {
+        const payload = result.captured.payload as {
+          text?: string;
+          messageId?: string;
+        };
+        expect(payload.text).toContain("Detected wallets");
+        expect(payload.messageId).toBeTruthy();
+        messageIds.push(String(payload.messageId));
+      }
+    }
+
+    expect(handleMessage).not.toHaveBeenCalled();
+    expect(new Set(messageIds)).toHaveProperty("size", 4);
+    for (const messageId of messageIds) {
+      expect(
+        storedMemories.some(
+          (memory) => memory.id === messageId && memory.entityId === AGENT_ID,
+        ),
+      ).toBe(true);
+    }
+  });
+
   it("SSE: sends without a clientMessageId are never deduped", async () => {
     const { state, handleMessage } = createHarness();
     const body = { text: "hello" };
@@ -434,9 +916,10 @@ describe("conversation-route chat idempotency wiring", () => {
     // The first attempt's reply already persisted — the retry answers with
     // the normal success shape carrying that reply, not the empty ignored
     // shape, so the already-delivered turn reads identically on both attempts.
-    expect(second.captured.payload).toEqual({
+    expect(second.captured.payload).toMatchObject({
       text: "ok",
       agentName: "Test Agent",
+      messageId: expect.any(String),
     });
   });
 
@@ -495,9 +978,10 @@ describe("conversation-route chat idempotency wiring", () => {
     const retry = await runRoute("POST", SEND_PATH, state, body);
 
     expect(handleMessage).toHaveBeenCalledTimes(1);
-    expect(retry.captured.payload).toEqual({
+    expect(retry.captured.payload).toMatchObject({
       text: "ok",
       agentName: "Test Agent",
+      messageId: expect.any(String),
     });
   });
 });

@@ -64,39 +64,105 @@ beforeEach(() => stateHook.mockReset());
 afterEach(cleanup);
 
 describe("Simple Views state labels", () => {
-  it("lets each view own scrolling inside the overflow-hidden host", () => {
-    stateHook.mockReturnValue(hookState({ snapshot: snapshot(1) }));
+  it("uses accessible view names without rendering redundant summary headings", () => {
+    const notesSnapshot = snapshot(4);
+    notesSnapshot.notes = [stickyNote()];
+    stateHook.mockReturnValue(hookState({ snapshot: notesSnapshot }));
     const notes = render(<NotesView />);
-    const notesRoot = notes.getByTestId("simple-notes-view");
-    expect(notesRoot.style.overflowY).toBe("auto");
-    expect(notesRoot.style.scrollPaddingBottom).toContain(
-      "--eliza-continuous-chat-clearance",
-    );
-    expect(notesRoot.style.scrollPaddingInlineEnd).toContain(
-      "--eliza-continuous-chat-side-clearance",
-    );
+    expect(
+      screen.getByRole("main", {
+        name: "Notes. 1 note · revision 4",
+      }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("heading", { level: 1, name: "Notes" }),
+    ).toBeNull();
+    expect(
+      screen
+        .getByRole("button", { name: "Clear" })
+        .closest("section")
+        ?.getAttribute("aria-label"),
+    ).toBe("Notes");
     notes.unmount();
 
-    const calendar = render(<SimpleCalendarView />);
-    const calendarRoot = calendar.getByTestId("simple-calendar-view");
-    expect(calendarRoot.style.overflowY).toBe("auto");
-    expect(calendarRoot.style.scrollPaddingBottom).toContain(
-      "--eliza-continuous-chat-clearance",
-    );
-    expect(calendarRoot.style.scrollPaddingInlineEnd).toContain(
-      "--eliza-continuous-chat-side-clearance",
-    );
+    render(<SimpleCalendarView />);
+    expect(
+      screen.getByRole("main", {
+        name: "Calendar. 0 events · revision 4",
+      }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("heading", { level: 1, name: "Calendar" }),
+    ).toBeNull();
   });
+
+  it.each([
+    { height: 499, label: "compact", width: 315 },
+    { height: 800, label: "desktop", width: 1280 },
+  ])(
+    "lets each view own scrolling inside the overflow-hidden host at $label size",
+    ({ height, width }) => {
+      Object.defineProperties(window, {
+        innerHeight: { configurable: true, value: height },
+        innerWidth: { configurable: true, value: width },
+      });
+      stateHook.mockReturnValue(hookState({ snapshot: snapshot(1) }));
+      const notes = render(<NotesView />);
+      const notesRoot = notes.getByTestId("simple-notes-view");
+      expect(notesRoot.style.height).toBe("100%");
+      expect(notesRoot.style.minHeight).toBe("0px");
+      expect(notesRoot.style.overflowY).toBe("auto");
+      expect(notesRoot.style.paddingBottom).toContain("--eliza-chat-clearance");
+      expect(notesRoot.style.paddingInlineEnd).toContain(
+        "--eliza-chat-side-clearance",
+      );
+      expect(notesRoot.style.scrollPaddingBottom).toContain(
+        "--eliza-chat-clearance",
+      );
+      expect(notesRoot.style.scrollPaddingInlineEnd).toContain(
+        "--eliza-chat-side-clearance",
+      );
+      notes.unmount();
+
+      const calendar = render(<SimpleCalendarView />);
+      const calendarRoot = calendar.getByTestId("simple-calendar-view");
+      expect(calendarRoot.style.height).toBe("100%");
+      expect(calendarRoot.style.minHeight).toBe("0px");
+      expect(calendarRoot.style.overflowY).toBe("auto");
+      expect(calendarRoot.style.paddingBottom).toContain(
+        "--eliza-chat-clearance",
+      );
+      expect(calendarRoot.style.paddingInlineEnd).toContain(
+        "--eliza-chat-side-clearance",
+      );
+      expect(calendarRoot.style.scrollPaddingBottom).toContain(
+        "--eliza-chat-clearance",
+      );
+      expect(calendarRoot.style.scrollPaddingInlineEnd).toContain(
+        "--eliza-chat-side-clearance",
+      );
+    },
+  );
 
   it("does not report healthy zero counts before the first snapshot", () => {
     stateHook.mockReturnValue(hookState({ loading: true }));
     const notes = render(<NotesView />);
-    expect(screen.getByText("Loading shared notes…")).toBeTruthy();
+    expect(
+      screen.getByRole("main", {
+        name: "Notes. Loading shared notes…",
+      }),
+    ).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toBe("Loading…");
     expect(screen.queryByText(/0 notes/)).toBeNull();
     notes.unmount();
 
     render(<SimpleCalendarView />);
-    expect(screen.getByText("Loading shared calendar…")).toBeTruthy();
+    expect(
+      screen.getByRole("main", {
+        name: "Calendar. Loading shared calendar…",
+      }),
+    ).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toBe("Loading…");
     expect(screen.queryByText(/0 events/)).toBeNull();
   });
 
@@ -105,7 +171,11 @@ describe("Simple Views state labels", () => {
       hookState({ snapshot: snapshot(4), error: "Agent disconnected" }),
     );
     const notes = render(<NotesView />);
-    expect(screen.getByText("Sync unavailable · revision 4")).toBeTruthy();
+    expect(
+      screen.getByRole("main", {
+        name: "Notes. Sync unavailable · revision 4",
+      }),
+    ).toBeTruthy();
     expect(screen.getByRole("alert").textContent).toContain(
       "Agent disconnected",
     );
@@ -113,7 +183,11 @@ describe("Simple Views state labels", () => {
     notes.unmount();
 
     render(<SimpleCalendarView />);
-    expect(screen.getByText("Sync unavailable · revision 4")).toBeTruthy();
+    expect(
+      screen.getByRole("main", {
+        name: "Calendar. Sync unavailable · revision 4",
+      }),
+    ).toBeTruthy();
     expect(screen.getByRole("alert").textContent).toContain(
       "Agent disconnected",
     );
@@ -123,11 +197,21 @@ describe("Simple Views state labels", () => {
   it("reports empty counts only after a successful snapshot", () => {
     stateHook.mockReturnValue(hookState({ snapshot: snapshot(7) }));
     const notes = render(<NotesView />);
-    expect(screen.getByText("0 notes · revision 7")).toBeTruthy();
+    expect(
+      screen.getByRole("main", {
+        name: "Notes. 0 notes · revision 7",
+      }),
+    ).toBeTruthy();
+    expect(screen.getByText("A quiet note wall")).toBeTruthy();
     notes.unmount();
 
     render(<SimpleCalendarView />);
-    expect(screen.getByText("0 events · revision 7")).toBeTruthy();
+    expect(
+      screen.getByRole("main", {
+        name: "Calendar. 0 events · revision 7",
+      }),
+    ).toBeTruthy();
+    expect(screen.getByText("No plans yet")).toBeTruthy();
   });
 });
 
@@ -221,5 +305,21 @@ describe("Simple Calendar month cursor", () => {
         screen.getByRole("heading", { name: "September 2026" }),
       ).toBeTruthy(),
     );
+  });
+
+  it("stacks native date controls before their values can truncate", () => {
+    stateHook.mockReturnValue(hookState({ snapshot: snapshot(7) }));
+    render(<SimpleCalendarView />);
+
+    const fields = screen.getByTestId("calendar-event-schedule-fields");
+    expect(fields.style.gridTemplateColumns).toBe(
+      "repeat(auto-fit, minmax(min(100%, 180px), 1fr))",
+    );
+    expect(
+      screen.getByLabelText<HTMLInputElement>("Calendar event date").value,
+    ).toBe("2026-07-15");
+    expect(
+      screen.getByLabelText<HTMLInputElement>("Calendar event time").value,
+    ).toBe("09:00");
   });
 });

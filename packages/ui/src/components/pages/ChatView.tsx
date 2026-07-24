@@ -200,7 +200,6 @@ export function ChatView({
     handleChatStop: s.handleChatStop,
     interruptActiveChatPipeline: s.interruptActiveChatPipeline,
     handleChatEdit: s.handleChatEdit,
-    handleChatDelete: s.handleChatDelete,
     elizaCloudConnected: s.elizaCloudConnected,
     elizaCloudVoiceProxyAvailable: s.elizaCloudVoiceProxyAvailable,
     elizaCloudHasPersistedKey: s.elizaCloudHasPersistedKey,
@@ -229,7 +228,6 @@ export function ChatView({
     handleChatStop,
     interruptActiveChatPipeline,
     handleChatEdit,
-    handleChatDelete,
     elizaCloudConnected,
     elizaCloudVoiceProxyAvailable,
     elizaCloudHasPersistedKey,
@@ -731,7 +729,6 @@ export function ChatView({
   const chatMessageLabels = useMemo(
     () => ({
       cancel: t("common.cancel"),
-      delete: t("aria.deleteMessage"),
       edit: t("aria.editMessage"),
       play: t("aria.playMessage"),
       responseInterrupted: t("chatmessage.ResponseInterrupte"),
@@ -777,15 +774,6 @@ export function ChatView({
     },
     [copyToClipboard],
   );
-  // Persistent per-message delete (#13533): the server DELETE + optimistic
-  // removal with rollback lives in handleChatDelete. Distinct from
-  // handleDismissSuggestion, which is a local-only (#8792) removal.
-  const handleDeleteMessage = useCallback(
-    (messageId: string) => {
-      void handleChatDelete(messageId);
-    },
-    [handleChatDelete],
-  );
   // Reply arms the composer: set the shared reply target so the next turn
   // carries replyToMessageId (→ REPLY_CONTEXT) and the pill renders above the
   // input. Focus the composer so the user can type the reply immediately.
@@ -799,7 +787,7 @@ export function ChatView({
   const renderChatMessageContent = useCallback(
     (message: ChatMessageData) => (
       <MessageContent
-        message={message as ConversationMessage}
+        message={withoutTranscriptReasoning(message)}
         analysisMode={analysisMode}
       />
     ),
@@ -833,7 +821,6 @@ export function ChatView({
           onEdit={handleEditMessage}
           onSpeak={handleSpeakMessage}
           onCopy={handleCopyMessageText}
-          onDelete={handleDeleteMessage}
           onReply={handleReplyMessage}
           onDismissSuggestion={handleDismissSuggestion}
           onAcceptSuggestion={handleAcceptSuggestion}
@@ -1239,12 +1226,21 @@ function withDefaultSource<T extends { source?: string }>(msg: T): T {
   return tagged;
 }
 
+function withoutTranscriptReasoning(
+  message: ChatMessageData,
+): ConversationMessage {
+  if (!message.reasoning) return message as ConversationMessage;
+  const consumerMessage = { ...message };
+  delete consumerMessage.reasoning;
+  return consumerMessage as ConversationMessage;
+}
+
 // Module-level stable identity: an inline arrow here would change every render
 // and break ChatMessage's arePropsEqual (renderContent compare), re-parsing
 // markdown for every inbox message on any panel re-render. (Inbox doesn't use
 // analysisMode, so unlike the main path this needs no closure.)
 function renderInboxMessageContent(message: ChatMessageData) {
-  return <MessageContent message={message as ConversationMessage} />;
+  return <MessageContent message={withoutTranscriptReasoning(message)} />;
 }
 
 function InboxChatPanel({

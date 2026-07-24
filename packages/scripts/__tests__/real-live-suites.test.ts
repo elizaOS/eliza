@@ -174,6 +174,20 @@ describe("real/live guarded-suite manifest (#9310 §E)", () => {
     expect(workflow).toContain("runner.temp }}/develop-live-evidence");
   });
 
+  test("Eliza Cloud streamed tool-call proof requires an explicit credentialed live run", () => {
+    expect(
+      manifest.find(
+        (entry) =>
+          entry.file ===
+          "plugins/plugin-elizacloud/__tests__/text-streaming.live.test.ts",
+      ),
+    ).toMatchObject({
+      optIn: "ELIZA_TOOLCALL_STREAM_LIVE",
+      requires: ["ELIZAOS_CLOUD_API_KEY"],
+      notes: expect.stringContaining("exact-head/output metadata"),
+    });
+  });
+
   test("computer-use service actuation is isolated behind a per-command acknowledgment", () => {
     const entry = manifest.find(
       (candidate) =>

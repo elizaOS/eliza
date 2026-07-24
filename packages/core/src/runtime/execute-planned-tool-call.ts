@@ -154,6 +154,9 @@ export function projectActionResultForClipboard(
 	return {
 		success: result.success,
 		...(result.text !== undefined ? { text: result.text } : {}),
+		...(result.transcriptVisibility !== undefined
+			? { transcriptVisibility: result.transcriptVisibility }
+			: {}),
 		...(result.userFacingText !== undefined
 			? { userFacingText: result.userFacingText }
 			: {}),
@@ -709,6 +712,11 @@ export function dropEmptyOptionalArgs(
 	action: Action,
 	args: Record<string, unknown>,
 ): Record<string, unknown> {
+	// Strict provider schemas can force placeholder values for every property.
+	// Non-strict polymorphic tools preserve optional empty strings because the
+	// resolved child contract may define "" as an intentional mutation.
+	if (action.toolSchemaStrict === false) return args;
+
 	let filtered: Record<string, unknown> | undefined;
 	for (const parameter of action.parameters ?? []) {
 		if (parameter.required === true) continue;

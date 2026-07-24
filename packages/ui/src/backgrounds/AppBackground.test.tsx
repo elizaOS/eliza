@@ -110,6 +110,20 @@ describe("AppBackground", () => {
     expect(scrim?.className).toContain("bg-bg/50");
   });
 
+  it("preserves detail in the low-light Canopy wallpaper in dark mode", () => {
+    seed({
+      mode: "image",
+      color: "#000000",
+      imageUrl: "/wallpapers/canopy.webp",
+    });
+    const { container } = render(<AppBackground />);
+    const scrim = container.querySelector<HTMLElement>(
+      '[data-testid="app-background-image-scrim"]',
+    );
+    expect(scrim?.className).toContain("bg-bg/50");
+    expect(scrim?.className).toContain("dark:bg-bg/15");
+  });
+
   it("does NOT reintroduce the cosmetic warm bottom-floor gradient", () => {
     // The cosmetic warm-ember floor lift existed ONLY to disguise the launch-bg
     // band that showed when fixed app boxes stopped short of the drawable

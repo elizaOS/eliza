@@ -128,6 +128,7 @@ function makeController(
     responding: false,
     turnStatus: null,
     recording: false,
+    analyser: null,
     transcript: "",
     transcriptionMode: false,
     // Required ShellController surface the overlay reads unconditionally — the
@@ -231,11 +232,29 @@ describe("ChatOverlay", () => {
 
   it("swaps mic → send once the user types (ChatGPT-style)", () => {
     render(<ChatOverlay controller={makeController()} />);
+    const controls = screen.getByTestId("chat-composer-trailing-controls");
+    const voice = screen.getByLabelText("talk");
+    const voiceTransition = voice.closest("[data-composer-control]");
     fireEvent.change(screen.getByLabelText("message"), {
       target: { value: "hello" },
     });
-    expect(screen.getByLabelText("send")).toBeTruthy();
-    expect(screen.queryByLabelText("talk")).toBeNull();
+    const send = screen.getByLabelText("send");
+    expect(screen.getByTestId("chat-composer-trailing-controls")).toBe(
+      controls,
+    );
+    expect(controls.className).toContain("grid-cols-2");
+    expect(
+      screen.getByTestId("chat-composer-control-slot-left").className,
+    ).toContain("size-10");
+    expect(
+      screen.getByTestId("chat-composer-control-slot-right").className,
+    ).toContain("size-10");
+    expect(voiceTransition?.getAttribute("aria-hidden")).toBe("true");
+    expect(voiceTransition?.hasAttribute("inert")).toBe(true);
+    expect(
+      send.closest("[data-composer-control]")?.getAttribute("aria-hidden"),
+    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "talk" })).toBeNull();
   });
 
   it("renders the frosted sheet from the glass token system (no saturate)", () => {
@@ -340,7 +359,7 @@ describe("ChatOverlay", () => {
     expect(screen.getByLabelText("send")).toBeTruthy();
     fireEvent.change(input, { target: { value: "" } });
     expect(screen.getByLabelText("talk")).toBeTruthy();
-    expect(screen.queryByLabelText("send")).toBeNull();
+    expect(screen.queryByRole("button", { name: "send" })).toBeNull();
   });
 
   it("submits the draft on Enter, calls send(), and clears the input", () => {
@@ -784,9 +803,8 @@ describe("ChatOverlay", () => {
     expect(grabber.className).toContain("before:bottom-0");
   });
 
-  // #14331: the waveform pulses whenever capture is hot, but only turns orange
-  // when its own conversation mode is active. Transcription belongs to the
-  // adjacent mic and must not recolor this separate control.
+  // #14331: the waveform reflects only spoken-conversation capture. Dedicated
+  // transcription replaces it with the neutral activity presentation below.
   describe("waveform + pill pulse while capture is hot (#14331)", () => {
     it("does not pulse the mic while idle (neutral resting, no motion)", () => {
       render(<ChatOverlay controller={makeController()} />);
@@ -801,20 +819,15 @@ describe("ChatOverlay", () => {
       expect(waveform.className).toContain("animate-pulse");
       expect(waveform.className).toContain("motion-reduce:animate-none");
       expect(waveform.className).toContain("text-accent");
+      expect(waveform.className).toContain("hover:text-accent");
     });
 
-    it.each([
-      ["recording", { recording: true }],
-      ["transcribing", { transcriptionMode: true }],
-    ] as const)(
-      "keeps the pulsing waveform neutral while %s",
-      (_label, override) => {
-        render(<ChatOverlay controller={makeController(override)} />);
-        const waveform = screen.getByTestId("chat-composer-mic");
-        expect(waveform.className).toContain("animate-pulse");
-        expect(waveform.className).not.toContain("text-accent");
-      },
-    );
+    it("keeps the pulsing waveform neutral during push-to-talk recording", () => {
+      render(<ChatOverlay controller={makeController({ recording: true })} />);
+      const waveform = screen.getByTestId("chat-composer-mic");
+      expect(waveform.className).toContain("animate-pulse");
+      expect(waveform.className).not.toContain("text-accent");
+    });
 
     it("drops the pulse the moment the capture predicate clears", () => {
       const { rerender } = render(
@@ -1092,6 +1105,34 @@ describe("ChatOverlay", () => {
     expect(sheet.getAttribute("data-detent")).toBe("collapsed");
   });
 
+  it("keeps the transcript mounted while a downward flick collapses HALF→INPUT", () => {
+    render(<ChatOverlay controller={makeController()} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    const flick = (fromY: number, toY: number) => {
+      fireEvent.pointerDown(grabber, { clientY: fromY, pointerId: 1 });
+      fireEvent.pointerMove(grabber, { clientY: toY, pointerId: 1 });
+      fireEvent.pointerUp(grabber, { clientY: toY, pointerId: 1 });
+    };
+
+    flick(420, 280);
+    expect(sheet.getAttribute("data-detent")).toBe("half");
+    expect(screen.getByTestId("chat-thread")).toBeTruthy();
+
+    // Less than the distance threshold: synchronous release velocity chooses
+    // the flick-detent path rather than the deliberate free-drag settle.
+    flick(280, 304);
+    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+    expect(sheet.getAttribute("data-revealed")).toBe("true");
+    expect(screen.getByTestId("chat-thread")).toBeTruthy();
+    expect(
+      document.getElementById("continuous-thread")?.getAttribute("aria-hidden"),
+    ).toBe("true");
+    expect(
+      document.getElementById("continuous-thread")?.getAttribute("tabindex"),
+    ).toBe("-1");
+  });
+
   it("lands full when a collapsed drag is released above the half threshold", () => {
     render(<ChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
@@ -1179,8 +1220,8 @@ describe("ChatOverlay", () => {
   it("renders composer controls icon-only — no capsule/border/fill, accent when active (#10711)", () => {
     // Resting: the +, transcribe, and voice controls carry only the icon — no
     // round capsule, no border, no translucent white fill. The visible box is
-    // 40px with a 20px mark (the "icons slightly too big" fix); the invisible
-    // before-overlay pads the pointer target back out to 44×44 (WCAG 2.5.5).
+    // 40px with a 20px mark (the "icons slightly too big" fix); the shared
+    // Button primitive raises the real box to 44×44 on coarse pointers.
     const { unmount } = render(<ChatOverlay controller={makeController()} />);
     for (const id of [
       "chat-composer-plus",
@@ -1197,8 +1238,10 @@ describe("ChatOverlay", () => {
       expect(cls).not.toContain("h-11");
       // The tighter 20px glyph (down from 22px)…
       expect(cls).toContain("[&_svg]:size-5");
-      // …with the hit target padded back to ≥44px by the invisible overlay.
-      expect(cls).toContain("before:-inset-0.5");
+      // …with a non-overlapping real 44px target on touch hardware.
+      expect(cls).toContain("pointer-coarse:min-h-touch");
+      expect(cls).toContain("pointer-coarse:min-w-touch");
+      expect(cls).not.toContain("before:-inset-0.5");
     }
     unmount();
 
@@ -1374,7 +1417,15 @@ describe("ChatOverlay", () => {
   it("composes the in-flight status as a busy transcript row", () => {
     render(
       <ChatOverlay
-        controller={makeController({ phase: "responding", responding: true })}
+        controller={makeController({
+          phase: "responding",
+          responding: true,
+          messages: [
+            { id: "u", role: "user", content: "hello", createdAt: 1 },
+            { id: "a", role: "assistant", content: "", createdAt: 2 },
+          ],
+          turnStatus: { kind: "thinking" },
+        })}
       />,
     );
     fireEvent.focus(screen.getByLabelText("message"));
@@ -1390,6 +1441,26 @@ describe("ChatOverlay", () => {
     expect(content?.getAttribute("aria-busy")).toBe("true");
     expect(row?.parentElement).toBe(content);
     expect(row?.className).toContain("w-full");
+  });
+
+  it("fades the expanded transcript under the grabber without masking its scroller", () => {
+    render(<ChatOverlay controller={makeController()} />);
+    fireEvent.focus(screen.getByLabelText("message"));
+
+    const fade = screen.getByTestId("chat-thread-top-fade");
+    const rim = screen.getByTestId("chat-sheet-rim");
+    const viewport = screen.getByTestId("chat-thread-scroll");
+    expect(fade.className).toContain("pointer-events-none");
+    expect(fade.className).toContain("absolute");
+    expect(fade.className).toContain("inset-x-px");
+    expect(fade.className).toContain("top-px");
+    expect(fade.className).toContain("z-30");
+    expect(fade.style.opacity).not.toBe("");
+    expect(fade.style.backgroundImage).toContain("linear-gradient");
+    expect(rim.className).toContain("z-40");
+    expect(rim.className).toContain("border-border-strong");
+    expect(viewport.style.maskImage).toBe("");
+    expect(viewport.style.webkitMaskImage).toBe("");
   });
 
   it("closes the sheet on Escape", () => {
@@ -1472,6 +1543,21 @@ describe("ChatOverlay", () => {
     expect(controller.send).not.toHaveBeenCalled();
     fireEvent.keyDown(input, { key: "Enter" });
     expect(vi.mocked(controller.send).mock.calls[0]?.[0]).toBe("line one");
+  });
+
+  it("releases stale inline height when the composer becomes empty", () => {
+    render(<ChatOverlay controller={makeController()} />);
+    const input = screen.getByLabelText("message") as HTMLTextAreaElement;
+    Object.defineProperty(input, "scrollHeight", {
+      configurable: true,
+      value: 190,
+    });
+
+    fireEvent.change(input, { target: { value: "wrapped draft" } });
+    expect(input.style.height).toBe("190px");
+
+    fireEvent.change(input, { target: { value: "" } });
+    expect(input.style.height).toBe("");
   });
 
   it("closes the sheet on a pull-down drag of the grabber", () => {
@@ -1877,6 +1963,92 @@ describe("ChatOverlay", () => {
     expect(screen.getAllByTestId("chat-composer-textarea")).toHaveLength(1);
   });
 
+  it("keeps the chat-actions menu focused on search and upload", () => {
+    render(<ChatOverlay controller={makeController()} />);
+    const plus = screen.getByTestId("chat-composer-plus");
+    expect(screen.getByLabelText("chat actions")).toBeTruthy();
+
+    fireEvent.pointerDown(plus, {
+      button: 0,
+      pointerId: 1,
+      pointerType: "mouse",
+    });
+    fireEvent.pointerUp(plus, {
+      button: 0,
+      pointerId: 1,
+      pointerType: "mouse",
+    });
+
+    expect(screen.getByText("Search chat…")).toBeTruthy();
+    expect(screen.getByText("Upload file")).toBeTruthy();
+    expect(screen.queryByText("Enable camera")).toBeNull();
+    expect(screen.queryByText("Transcribe")).toBeNull();
+    expect(screen.queryByText("Stop transcribing")).toBeNull();
+  });
+
+  it.each(["half", "full"] as const)(
+    "keeps the %s sheet open while the portaled Upload action opens the file picker",
+    (detent) => {
+      render(<ChatOverlay controller={makeController()} />);
+      const sheet = screen.getByTestId("chat-sheet");
+      const grabber = screen.getByTestId("chat-sheet-grabber");
+      const input = screen.getByLabelText("message") as HTMLTextAreaElement;
+
+      fireEvent.focus(input);
+      expect(sheet.getAttribute("data-detent")).toBe("half");
+      if (detent === "full") {
+        fireEvent.pointerDown(grabber, { clientY: 420, pointerId: 10 });
+        fireEvent.pointerMove(grabber, { clientY: 280, pointerId: 10 });
+        fireEvent.pointerUp(grabber, { clientY: 280, pointerId: 10 });
+        expect(sheet.getAttribute("data-detent")).toBe("full");
+      }
+
+      const fileInput = document.querySelector(
+        'input[type="file"]',
+      ) as HTMLInputElement;
+      const openPicker = vi
+        .spyOn(fileInput, "click")
+        .mockImplementation(() => {});
+      fireEvent.pointerDown(screen.getByTestId("chat-composer-plus"), {
+        button: 0,
+        pointerId: 11,
+        pointerType: "mouse",
+      });
+      fireEvent.pointerUp(screen.getByTestId("chat-composer-plus"), {
+        button: 0,
+        pointerId: 11,
+        pointerType: "mouse",
+      });
+      const upload = screen
+        .getByText("Upload file")
+        .closest('[role="menuitem"]');
+      if (!(upload instanceof HTMLElement)) {
+        throw new Error("Upload menu item not found");
+      }
+
+      // The regression lives in the document capture handlers; a synthetic
+      // click alone cannot prove the portaled menu is treated as sheet chrome.
+      fireEvent.pointerDown(upload, {
+        button: 0,
+        clientX: 40,
+        clientY: 40,
+        pointerId: 12,
+        pointerType: "mouse",
+      });
+      fireEvent.pointerUp(upload, {
+        button: 0,
+        clientX: 40,
+        clientY: 40,
+        pointerId: 12,
+        pointerType: "mouse",
+      });
+      fireEvent.click(upload);
+
+      expect(openPicker).toHaveBeenCalledTimes(1);
+      expect(sheet.getAttribute("data-detent")).toBe(detent);
+    },
+  );
+
   it("keeps composer controls in one non-wrapping input row inside the constrained panel", () => {
     render(<ChatOverlay controller={makeController()} />);
 
@@ -1891,8 +2063,14 @@ describe("ChatOverlay", () => {
     expect(panel.parentElement?.style.maxWidth).toBe("768px");
     expect(bar?.className).toContain("flex");
     expect(bar?.className).not.toContain("flex-wrap");
+    expect(bar?.className).toContain("gap-[clamp(0.125rem,1.25vw,0.5rem)]");
+    expect(bar?.className).toContain("px-[clamp(0.25rem,1.5vw,0.5rem)]");
+    expect(bar?.className).toContain("py-[clamp(0.125rem,0.75dvh,0.375rem)]");
     expect(input.className).toContain("flex-1");
     expect(input.className).not.toContain("basis-full");
+    expect(
+      screen.getByTestId("chat-composer-trailing-controls").className,
+    ).toContain("gap-0");
   });
 
   it("renders no prompt-suggestion chips while the strip is flagged off", () => {
@@ -2066,6 +2244,7 @@ describe("ChatOverlay", () => {
           phase: "responding",
           responding: true,
           stop,
+          turnStatus: { kind: "thinking" },
         } as unknown as Partial<ShellController>)}
       />,
     );
@@ -2081,14 +2260,20 @@ describe("ChatOverlay", () => {
   it("reverts the trailing control to send the moment a draft exists mid-stream", () => {
     render(
       <ChatOverlay
-        controller={makeController({ phase: "responding", responding: true })}
+        controller={makeController({
+          phase: "responding",
+          responding: true,
+          turnStatus: { kind: "thinking" },
+        })}
       />,
     );
     expect(screen.getByTestId("chat-composer-stop")).toBeTruthy();
     fireEvent.change(screen.getByLabelText("message"), {
       target: { value: "queued" },
     });
-    expect(screen.queryByTestId("chat-composer-stop")).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "stop generating" }),
+    ).toBeNull();
     expect(screen.getByLabelText(/send/)).toBeTruthy();
   });
 
@@ -2242,7 +2427,9 @@ describe("ChatOverlay", () => {
     render(<ChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
     const grabber = screen.getByTestId("chat-sheet-grabber");
+    const content = screen.getByTestId("chat-content");
     expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+    expect(content.style.clipPath).toContain("inset(0 round");
     expect(screen.getByTestId("chat-composer-textarea")).toBeTruthy();
     // A downward drag past the threshold collapses the input away into the pill.
     fireEvent.pointerDown(grabber, { clientY: 200, pointerId: 1 });
@@ -2253,7 +2440,7 @@ describe("ChatOverlay", () => {
     // In pill mode the composer is hidden away: kept mounted for the
     // pill→input morph but made inert (opacity 0 + `inert`) so it's unreachable
     // behind the pill capsule.
-    expect(screen.getByTestId("chat-content").hasAttribute("inert")).toBe(true);
+    expect(content.hasAttribute("inert")).toBe(true);
   });
 
   it("keeps the collapsed pill handle non-interactive while the input is formed", () => {
@@ -2381,16 +2568,17 @@ describe("ChatOverlay", () => {
     expect(screen.getByTestId("chat-composer-textarea")).toBeTruthy();
   });
 
-  it("shows the transcribe (mic-glyph) button beside the voice control at rest — ChatGPT arrangement", () => {
-    // Resting composer: BOTH controls are always available — the mic glyph
-    // starts a transcription/dictation session, the waveform glyph next to it
-    // is the spoken conversation. (Previously transcribe only appeared once a
-    // voice session was already live.)
+  it("keeps spoken conversation before the rightmost transcription mic at rest", () => {
+    // Resting composer: both controls stay available, with spoken conversation
+    // first and dictation rightmost so that mic can morph directly into Stop.
     render(<ChatOverlay controller={makeController()} />);
-    expect(screen.getByTestId("chat-composer-mic")).toBeTruthy();
+    const voice = screen.getByTestId("chat-composer-mic");
     const transcribe = screen.getByTestId("chat-composer-transcribe");
-    expect(transcribe).toBeTruthy();
     expect(transcribe.getAttribute("aria-label")).toBe("start transcription");
+    expect(
+      voice.compareDocumentPosition(transcribe) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it("resting transcribe tap starts a transcription session", () => {
@@ -2411,8 +2599,10 @@ describe("ChatOverlay", () => {
     fireEvent.change(screen.getByLabelText("message"), {
       target: { value: "typing…" },
     });
-    expect(screen.queryByTestId("chat-composer-mic")).toBeNull();
-    expect(screen.queryByTestId("chat-composer-transcribe")).toBeNull();
+    expect(screen.queryByRole("button", { name: "talk" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "start transcription" }),
+    ).toBeNull();
     expect(screen.getByTestId("chat-composer-action")).toBeTruthy();
   });
 
@@ -2426,7 +2616,8 @@ describe("ChatOverlay", () => {
         } as unknown as Partial<ShellController>)}
       />,
     );
-    // Both controls present in voice mode; the mic stays the master control.
+    // Idle dictation and spoken-conversation controls remain independently
+    // available when neither mode owns capture.
     expect(screen.getByTestId("chat-composer-mic")).toBeTruthy();
     expect(screen.getByTestId("chat-composer-transcribe")).toBeTruthy();
     expect(
@@ -2434,95 +2625,90 @@ describe("ChatOverlay", () => {
     ).toBe("start transcription");
   });
 
-  it("shows the transcribe button (as stop) while transcribing, alongside the status badge (#10699)", () => {
+  it("gives active transcription the full lane plus one Stop control", () => {
     render(
       <ChatOverlay
         controller={makeController({
           transcriptionMode: true,
+          responding: true,
+          canSend: false,
         } as unknown as Partial<ShellController>)}
       />,
     );
-    fireEvent.focus(screen.getByLabelText("message"));
+
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    fireEvent.pointerDown(grabber, { clientY: 420, pointerId: 1 });
+    fireEvent.pointerMove(grabber, { clientY: 280, pointerId: 1 });
+    fireEvent.pointerUp(grabber, { clientY: 280, pointerId: 1 });
     expect(screen.getByTestId("chat-transcribing-badge")).toBeTruthy();
-    const transcribe = screen.getByTestId("chat-composer-transcribe");
-    expect(transcribe).toBeTruthy();
-    expect(transcribe.getAttribute("aria-label")).toBe("stop transcription");
+    expect(screen.queryByTestId("chat-composer-plus")).toBeNull();
+    expect(screen.queryByTestId("chat-composer-textarea")).toBeNull();
+    expect(screen.getByTestId("chat-composer-mic-activity")).toBeTruthy();
+    expect(screen.queryByTestId("chat-composer-mic")).toBeNull();
+    expect(screen.queryByTestId("chat-composer-transcribe")).toBeNull();
+    expect(screen.queryByTestId("chat-composer-action")).toBeNull();
+    expect(
+      screen
+        .getByTestId("chat-composer-mic-activity")
+        .querySelectorAll("span[style]").length,
+    ).toBe(15);
+
+    const stopTranscription = screen.getByTestId(
+      "chat-composer-transcription-stop",
+    );
+    expect(stopTranscription.getAttribute("aria-label")).toBe(
+      "stop transcription",
+    );
+    // A stopped agent blocks delivery, not finalization back into the draft.
+    expect(stopTranscription.getAttribute("aria-disabled")).toBe("false");
+    expect(
+      screen
+        .getByTestId("chat-composer-trailing-controls")
+        .contains(stopTranscription),
+    ).toBe(true);
+    expect(screen.queryByTestId("chat-composer-transcribe-status")).toBeNull();
   });
 
-  it("clicking the transcribe button toggles transcription mode (#10699)", () => {
-    const toggleTranscriptionMode = vi.fn();
+  it("an empty finalization never sends and ignores a second in-flight tap", async () => {
+    let releaseDrain: (() => void) | null = null;
+    const send = vi.fn();
+    const toggleTranscriptionMode = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseDrain = resolve;
+        }),
+    );
     render(
       <ChatOverlay
         controller={makeController({
-          handsFree: true,
-          recording: true,
+          transcriptionMode: true,
+          send,
           toggleTranscriptionMode,
         } as unknown as Partial<ShellController>)}
       />,
     );
-    fireEvent.click(screen.getByTestId("chat-composer-transcribe"));
+    const stopTranscription = screen.getByTestId(
+      "chat-composer-transcription-stop",
+    );
+    fireEvent.click(stopTranscription);
+    fireEvent.click(stopTranscription);
     expect(toggleTranscriptionMode).toHaveBeenCalledTimes(1);
-  });
+    expect(send).not.toHaveBeenCalled();
+    expect(
+      screen
+        .getByTestId("chat-composer-mic-activity")
+        .getAttribute("aria-label"),
+    ).toBe("Finishing transcription");
+    expect(
+      screen
+        .getByTestId("chat-composer-transcription-stop")
+        .getAttribute("aria-label"),
+    ).toBe("finishing transcription");
+    expect(screen.queryByTestId("chat-composer-action")).toBeNull();
 
-  it("keeps the waveform pressed but visually neutral while the mic transcribes", () => {
-    render(
-      <ChatOverlay
-        controller={makeController({
-          transcriptionMode: true,
-          toggleTranscriptionMode: vi.fn(),
-        } as unknown as Partial<ShellController>)}
-      />,
-    );
-    const waveform = screen.getByTestId("chat-composer-mic");
-    expect(waveform.getAttribute("aria-pressed")).toBe("true");
-    expect(waveform.className).toContain("animate-pulse");
-    expect(waveform.className).toContain("text-muted-strong");
-    expect(waveform.className).not.toContain("text-accent");
-  });
-
-  it("a mic tap while transcribing ends transcription, never starts a conversation", () => {
-    const stopTranscriptionAndMic = vi.fn();
-    const toggleHandsFree = vi.fn();
-    render(
-      <ChatOverlay
-        controller={makeController({
-          transcriptionMode: true,
-          stopTranscriptionAndMic,
-          toggleHandsFree,
-        } as unknown as Partial<ShellController>)}
-      />,
-    );
-    fireEvent.click(screen.getByTestId("chat-composer-mic"));
-    // The mic is the master voice control: a tap ends transcription AND the mic
-    // (stopTranscriptionAndMic → finished transcript drops into the composer);
-    // it must NOT open a hands-free conversation.
-    expect(stopTranscriptionAndMic).toHaveBeenCalledTimes(1);
-    expect(toggleHandsFree).not.toHaveBeenCalled();
-  });
-
-  it("a mic tap ends transcription even while a reply is in flight (#9880 inline reply)", () => {
-    // A wake-word inline reply during transcription flips `responding` true
-    // while `handsFree` is false (the transcript layer paused it). The mic —
-    // labeled "stop transcription" — must still turn the session off; gating
-    // the OFF path on `responding` left a lit, dead mic button until the reply
-    // finished.
-    const stopTranscriptionAndMic = vi.fn();
-    const toggleHandsFree = vi.fn();
-    render(
-      <ChatOverlay
-        controller={makeController({
-          transcriptionMode: true,
-          recording: true,
-          responding: true,
-          handsFree: false,
-          stopTranscriptionAndMic,
-          toggleHandsFree,
-        } as unknown as Partial<ShellController>)}
-      />,
-    );
-    fireEvent.click(screen.getByTestId("chat-composer-mic"));
-    expect(stopTranscriptionAndMic).toHaveBeenCalledTimes(1);
-    expect(toggleHandsFree).not.toHaveBeenCalled();
+    await act(async () => {
+      releaseDrain?.();
+    });
   });
 
   it("the audio-unlock chip works while the sheet is open (not swallowed as an outside tap)", () => {
@@ -2554,36 +2740,6 @@ describe("ChatOverlay", () => {
     expect(unlockAudio).toHaveBeenCalledTimes(1);
     // The sheet must stay open — the chip tap is not an outside collapse.
     expect(sheet.getAttribute("data-variant")).toBe("open");
-  });
-
-  it("does not enter push-to-talk on a long press while transcribing", () => {
-    vi.useFakeTimers();
-    try {
-      const stopTranscriptionAndMic = vi.fn();
-      const startRecording = vi.fn();
-      render(
-        <ChatOverlay
-          controller={makeController({
-            transcriptionMode: true,
-            stopTranscriptionAndMic,
-            startRecording,
-          } as unknown as Partial<ShellController>)}
-        />,
-      );
-
-      const mic = screen.getByTestId("chat-composer-mic");
-      fireEvent.pointerDown(mic, { button: 0, pointerId: 1 });
-      act(() => {
-        vi.advanceTimersByTime(250);
-      });
-      fireEvent.pointerUp(mic, { button: 0, pointerId: 1 });
-      fireEvent.click(mic);
-
-      expect(startRecording).not.toHaveBeenCalled();
-      expect(stopTranscriptionAndMic).toHaveBeenCalledTimes(1);
-    } finally {
-      vi.useRealTimers();
-    }
   });
 
   it("push-to-talk dictates into the composer on release; the label matches (never 'send')", () => {
@@ -2798,7 +2954,7 @@ describe("ChatOverlay", () => {
 
   // ── Rich turn-status indicator (#8813) ──────────────────────────────────
   describe("turn status indicator", () => {
-    it("labels the thinking phase in the standalone status row", () => {
+    it("does not paint a standalone status row before the assistant slot exists", () => {
       render(
         <ChatOverlay
           controller={makeController({
@@ -2809,24 +2965,19 @@ describe("ChatOverlay", () => {
         />,
       );
       fireEvent.focus(screen.getByLabelText("message"));
-      const indicator = screen.getByTestId("turn-status-indicator");
-      expect(indicator.getAttribute("data-status-kind")).toBe("thinking");
-      expect(indicator.getAttribute("role")).toBe("status");
-      expect(indicator.getAttribute("aria-live")).toBe("polite");
-      // The standalone status row carries a word for every phase (including
-      // thinking) beside a spinner — the bare-dots variant is the in-bubble one.
-      expect(screen.getByTestId("turn-status-label").textContent).toContain(
-        "Thinking",
-      );
-      expect(screen.getByTestId("turn-status-spinner")).toBeTruthy();
+      expect(screen.queryByTestId("turn-status-indicator")).toBeNull();
     });
 
-    it("humanizes the action name for a running_action phase", () => {
+    it("humanizes the action name inside the assistant response slot", () => {
       render(
         <ChatOverlay
           controller={makeController({
             phase: "responding",
             responding: true,
+            messages: [
+              { id: "u", role: "user", content: "open notes", createdAt: 1 },
+              { id: "a", role: "assistant", content: "", createdAt: 2 },
+            ],
             turnStatus: { kind: "running_action", actionName: "SEND_MESSAGE" },
           } as Partial<ShellController>)}
         />,
@@ -2887,12 +3038,10 @@ describe("ChatOverlay", () => {
 
       expect(screen.getByText("Draft answer")).toBeTruthy();
       expect(screen.queryByRole("button", { name: /thinking/i })).toBeNull();
-      expect(screen.getByTestId("turn-status-label").textContent).toBe(
-        "Running Open view",
-      );
+      expect(screen.queryByTestId("turn-status-indicator")).toBeNull();
     });
 
-    it("shows reasoning disclosure after the assistant turn settles", () => {
+    it("keeps internal reasoning out of the consumer transcript after settle", () => {
       render(
         <ChatOverlay
           controller={makeController({
@@ -2913,7 +3062,9 @@ describe("ChatOverlay", () => {
       );
 
       fireEvent.focus(screen.getByLabelText("message"));
-      expect(screen.getByRole("button", { name: /thinking/i })).toBeTruthy();
+      expect(screen.getByText("Final answer")).toBeTruthy();
+      expect(screen.queryByRole("button", { name: /thinking/i })).toBeNull();
+      expect(screen.queryByText("compact reasoning summary")).toBeNull();
     });
 
     it("holds the first label through a fast phase change (min-dwell, no flicker)", () => {
@@ -2924,6 +3075,10 @@ describe("ChatOverlay", () => {
             controller={makeController({
               phase: "responding",
               responding: true,
+              messages: [
+                { id: "u", role: "user", content: "do it", createdAt: 1 },
+                { id: "a", role: "assistant", content: "", createdAt: 2 },
+              ],
               turnStatus: { kind: "thinking" },
             } as Partial<ShellController>)}
           />,
@@ -2940,6 +3095,10 @@ describe("ChatOverlay", () => {
             controller={makeController({
               phase: "responding",
               responding: true,
+              messages: [
+                { id: "u", role: "user", content: "do it", createdAt: 1 },
+                { id: "a", role: "assistant", content: "", createdAt: 2 },
+              ],
               turnStatus: {
                 kind: "running_action",
                 actionName: "SEND_MESSAGE",
@@ -2987,11 +3146,12 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
   // in the middle so both directions WOULD have been navigable pre-#13531.
   const CONVERSATIONS = [conv("a"), conv("b"), conv("c")];
 
-  function makeSwipeController() {
+  function makeSwipeController(overrides: Partial<ShellController> = {}) {
     const onSelect = vi.fn<(id: string) => void>();
     const conversationNav = buildConversationNav(CONVERSATIONS, "b", onSelect);
     const controller = makeController({
       conversationNav,
+      ...overrides,
     } as unknown as Partial<ShellController>);
     return { controller, onSelect };
   }
@@ -3116,9 +3276,37 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     // "+" → "Search chat…" reveals the search panel over the transcript.
     openSearchFromComposerMenu();
     const searchLayer = screen.getByTestId("chat-message-search");
-    expect(searchLayer.className).toContain("bg-black/20");
-    expect(searchLayer.className).not.toContain("bg-scrim");
+    expect(searchLayer.className).not.toContain("bg-black/20");
+    expect(searchLayer.className).not.toContain("backdrop-blur");
     expect(screen.getByTestId("message-search-panel")).toBeTruthy();
+    const transcript = screen.getByTestId("chat-thread-scroll");
+    expect(transcript.getAttribute("aria-hidden")).toBe("true");
+    expect(transcript.getAttribute("tabindex")).toBe("-1");
+    expect(transcript.closest("[inert]")).toBeTruthy();
+  });
+
+  it("keeps search-result scrolling from stepping or closing the chat sheet", () => {
+    const { controller } = makeSwipeController();
+    render(<ChatOverlay controller={controller} />);
+    openSheet();
+    openSearchFromComposerMenu();
+
+    const sheet = screen.getByTestId("chat-sheet");
+    const searchScroller = screen.getByTestId("message-search-scroll");
+    expect(sheet.getAttribute("data-detent")).toBe("full");
+
+    // This bubbles through the fieldset's trackpad-detent handler. The search
+    // viewport must claim it before that handler interprets it as a sheet pull.
+    fireEvent.wheel(searchScroller, { deltaY: -120 });
+
+    // The pinned input is a sibling of the scroll viewport. Its wheel gesture
+    // still belongs to the open search mode and must never resize the sheet.
+    fireEvent.wheel(screen.getByTestId("message-search-input"), {
+      deltaY: -120,
+    });
+
+    expect(sheet.getAttribute("data-detent")).toBe("full");
+    expect(screen.getByTestId("chat-message-search")).toBeTruthy();
   });
 
   it("drives the header search → query → jump path against the real search API shape (#14330)", async () => {
@@ -3127,12 +3315,7 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     // inert test-fallback proxy (noop for everything else the overlay reads via
     // other selectors) so only the jump collaborators are observable.
     const selectSpy = vi.fn<(id: string) => Promise<void>>(async () => {});
-    const aroundSpy = vi.fn(async () => {
-      const anchor = document.createElement("div");
-      anchor.id = "chat-message-m-hit";
-      document.body.appendChild(anchor);
-      return true;
-    });
+    const aroundSpy = vi.fn(async () => false);
     const noop = () => {};
     __setAppValueForTests(
       new Proxy({} as never, {
@@ -3166,7 +3349,16 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
       count: 1,
     });
 
-    const { controller } = makeSwipeController();
+    const { controller } = makeSwipeController({
+      messages: [
+        {
+          id: "m-hit",
+          role: "assistant",
+          content: "the quarterly budget review is on friday",
+          createdAt: 1_700_000_000_000,
+        },
+      ],
+    });
     render(<ChatOverlay controller={controller} />);
     openSheet();
 
@@ -3185,20 +3377,23 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     );
     expect(result.textContent).toContain("budget");
 
-    // Selecting the hit jumps to its conversation (the real jump plumbing) and
-    // then loads the centered around-window because this fixture starts with no
-    // DOM anchor for the hit.
+    // Selecting a result already mounted in the canonical message scroller
+    // uses its coordinated jump API, flashes only the contained bubble, and
+    // never falls through to the around-message network fetch.
     fireEvent.click(result);
     expect(selectSpy).toHaveBeenCalledWith("conv-42");
-    await waitFor(() =>
-      expect(aroundSpy).toHaveBeenCalledWith("conv-42", "m-hit"),
+    const anchor = document.getElementById("chat-message-m-hit");
+    expect(anchor).toBeTruthy();
+    const bubble = anchor?.querySelector<HTMLElement>(
+      '[data-chat-message-bubble="true"]',
     );
     await waitFor(() =>
-      expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({
-        block: "center",
-        behavior: "smooth",
-      }),
+      expect(bubble?.getAttribute("data-chat-search-highlight")).toBe("true"),
     );
+    expect(bubble?.style.outline).toContain("var(--accent)");
+    expect(bubble?.style.outlineOffset).toBe("-2px");
+    expect(aroundSpy).not.toHaveBeenCalled();
+    expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
     await waitFor(() =>
       expect(screen.queryByTestId("chat-message-search")).toBeNull(),
     );
@@ -3522,70 +3717,83 @@ describe("ChatOverlay — empty thread while the sheet is open", () => {
   });
 });
 
-describe("ChatOverlay — streaming + thinking render (#10712)", () => {
-  const reasoningMessages: ShellMessage[] = [
-    { id: "u", role: "user", content: "why X over Y?", createdAt: 1 },
-    {
-      id: "a",
-      role: "assistant",
-      content: "because X is simpler",
-      reasoning: "compared X and Y; X has fewer moving parts",
-      createdAt: 2,
-    },
-  ];
-
-  it("renders the collapsed Thinking disclosure for an assistant turn that carries reasoning", () => {
+describe("ChatOverlay — streaming + consumer activity render (#10712)", () => {
+  it("renders the reply while keeping tool traces and reasoning in diagnostics", () => {
     render(
       <ChatOverlay
         controller={makeController({
           responding: false,
-          messages: reasoningMessages,
+          messages: [
+            { id: "u", role: "user", content: "open notes", createdAt: 1 },
+            {
+              id: "a",
+              role: "assistant",
+              content: "Opening Notes now.",
+              reasoning: "The Notes view is registered, so I selected it.",
+              toolEvents: [
+                {
+                  id: "views-1",
+                  type: "tool_result",
+                  actionName: "VIEWS",
+                  args: { action: "show", target: "notes" },
+                  result: { success: true },
+                  status: "completed",
+                },
+              ],
+              createdAt: 2,
+            },
+          ],
         } as unknown as Partial<ShellController>)}
       />,
     );
-    // Open the sheet so the thread (and its reasoning block) mounts.
     fireEvent.focus(screen.getByLabelText("message"));
-    const thinking = screen.getByRole("button", { name: /thinking/i });
-    expect(thinking).toBeTruthy();
-    // Collapsed by default: the reasoning body is not shown until toggled.
-    expect(thinking.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.getByText("Opening Notes now.")).toBeTruthy();
+    expect(screen.queryByTestId("tool-call-event-log")).toBeNull();
+    expect(screen.queryByRole("button", { name: /thinking/i })).toBeNull();
     expect(
-      screen.queryByText("compared X and Y; X has fewer moving parts"),
+      screen.queryByText("The Notes view is registered, so I selected it."),
     ).toBeNull();
   });
 
-  it("reveals the reasoning body when the Thinking disclosure is toggled", () => {
+  it("renders one navigation reply while hiding the matching VIEWS result prose", () => {
     render(
       <ChatOverlay
         controller={makeController({
           responding: false,
-          messages: reasoningMessages,
+          messages: [
+            { id: "u", role: "user", content: "open calendar", createdAt: 1 },
+            {
+              id: "a",
+              role: "assistant",
+              content: "Opening your calendar now.",
+              toolEvents: [
+                {
+                  id: "views-calendar",
+                  type: "tool_result",
+                  actionName: "VIEWS",
+                  args: { action: "show", target: "simple-calendar" },
+                  result: {
+                    success: true,
+                    userFacingText: "Opening your calendar now.",
+                  },
+                  status: "completed",
+                },
+              ],
+              createdAt: 2,
+            },
+          ],
         } as unknown as Partial<ShellController>)}
       />,
     );
     fireEvent.focus(screen.getByLabelText("message"));
-    fireEvent.click(screen.getByRole("button", { name: /thinking/i }));
-    expect(
-      screen.getByText("compared X and Y; X has fewer moving parts"),
-    ).toBeTruthy();
+
+    expect(screen.getAllByText("Opening your calendar now.")).toHaveLength(1);
+    expect(screen.queryByText("VIEWS")).toBeNull();
+    expect(screen.queryByText("Args")).toBeNull();
+    expect(screen.queryByText("Result")).toBeNull();
   });
 
-  it("suppresses reasoning on the last assistant turn while it is still streaming", () => {
-    render(
-      <ChatOverlay
-        controller={makeController({
-          // suppressReasoning = responding && isLastAssistant → the Thinking
-          // block stays hidden until the stream completes.
-          responding: true,
-          messages: reasoningMessages,
-        } as unknown as Partial<ShellController>)}
-      />,
-    );
-    fireEvent.focus(screen.getByLabelText("message"));
-    expect(screen.queryByRole("button", { name: /thinking/i })).toBeNull();
-  });
-
-  it("paints reducer-streamed tokens incrementally and shows Thinking after completion", () => {
+  it("replaces Thinking with token one in the same assistant row", () => {
     let conversationMessages: ConversationMessage[] = [
       {
         id: "u-stream",
@@ -3623,6 +3831,10 @@ describe("ChatOverlay — streaming + thinking render (#10712)", () => {
       />,
     );
     fireEvent.focus(screen.getByLabelText("message"));
+    const pendingRow = screen
+      .getByTestId("turn-status-indicator")
+      .closest('[data-testid="thread-line"]');
+    expect(pendingRow).toBeTruthy();
 
     applyStreamingTextModification(setConversationMessages, {
       messageId: "a-stream",
@@ -3638,7 +3850,10 @@ describe("ChatOverlay — streaming + thinking render (#10712)", () => {
         } as unknown as Partial<ShellController>)}
       />,
     );
-    expect(screen.getByText("Token one")).toBeTruthy();
+    const token = screen.getByText("Token one");
+    expect(token).toBeTruthy();
+    expect(token.closest('[data-testid="thread-line"]')).toBe(pendingRow);
+    expect(screen.queryByTestId("turn-status-indicator")).toBeNull();
     expect(screen.queryByText("Token one and two")).toBeNull();
     expect(screen.queryByRole("button", { name: /thinking/i })).toBeNull();
 
@@ -3673,21 +3888,69 @@ describe("ChatOverlay — streaming + thinking render (#10712)", () => {
       />,
     );
 
-    const thinking = screen.getByRole("button", { name: /thinking/i });
-    expect(thinking.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.getByText("Token one and two")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /thinking/i })).toBeNull();
     expect(
       screen.queryByText("Waited for the done frame before showing reasoning."),
     ).toBeNull();
+  });
 
-    fireEvent.click(thinking);
+  it("keeps the future assistant row through microphone barge-in", () => {
+    const messages: ShellMessage[] = [
+      { id: "u-barge", role: "user", content: "read it", createdAt: 1 },
+      { id: "a-barge", role: "assistant", content: "", createdAt: 2 },
+    ];
+    const { rerender } = render(
+      <ChatOverlay
+        controller={makeController({
+          phase: "responding",
+          responding: true,
+          messages,
+          turnStatus: { kind: "thinking" },
+        } as Partial<ShellController>)}
+      />,
+    );
+    fireEvent.focus(screen.getByLabelText("message"));
+    const responseRow = screen
+      .getByTestId("turn-status-indicator")
+      .closest('[data-testid="thread-line"]');
+
+    rerender(
+      <ChatOverlay
+        controller={makeController({
+          phase: "listening",
+          responding: true,
+          recording: true,
+          messages,
+          turnStatus: { kind: "thinking" },
+        } as Partial<ShellController>)}
+      />,
+    );
+
     expect(
-      screen.getByText("Waited for the done frame before showing reasoning."),
-    ).toBeTruthy();
+      screen
+        .getByTestId("turn-status-indicator")
+        .closest('[data-testid="thread-line"]'),
+    ).toBe(responseRow);
+
+    rerender(
+      <ChatOverlay
+        controller={makeController({
+          phase: "listening",
+          responding: false,
+          recording: true,
+          messages,
+          turnStatus: null,
+        } as Partial<ShellController>)}
+      />,
+    );
+    expect(screen.queryByTestId("turn-status-indicator")).toBeNull();
+    expect(document.querySelector('[data-message-id="a-barge"]')).toBeNull();
   });
 });
 
 // Per-message click-to-reveal action row (#10713): assistant → Copy + Play,
-// user → Copy + Edit-and-resend, temp turns are not editable.
+// user → Copy + in-place Edit, temp turns are not editable.
 describe("ChatOverlay — per-message action row (#10713)", () => {
   function openThreadWith(overrides: Partial<ShellController>) {
     render(
@@ -3706,6 +3969,42 @@ describe("ChatOverlay — per-message action row (#10713)", () => {
       ?.querySelector("div.select-text") as HTMLElement;
   }
 
+  it("reserves an animated reply lane without focusing and clears it when the sheet closes", async () => {
+    openThreadWith({
+      messages: [
+        {
+          id: "reply-source",
+          role: "assistant",
+          content: "Reply without moving the sheet",
+          createdAt: 1,
+        },
+      ],
+    });
+    const sheet = screen.getByTestId("chat-sheet");
+    const input = screen.getByLabelText("message");
+    input.focus();
+    expect(document.activeElement).toBe(input);
+    input.blur();
+    const detentBeforeReply = sheet.getAttribute("data-detent");
+
+    fireEvent.click(bubbleFor("Reply without moving the sheet"));
+    fireEvent.click(screen.getByTestId("thread-line-reply"));
+
+    const replyPill = screen.getByTestId("chat-reply-pill");
+    expect(screen.getByTestId("chat-thread").contains(replyPill)).toBe(true);
+    const replyLane = screen.getByTestId("chat-reply-lane");
+    expect(replyLane.className).toContain("shrink-0");
+    expect(replyLane.className).toContain("overflow-hidden");
+    expect(replyLane.className).not.toContain("absolute");
+    expect(sheet.getAttribute("data-detent")).toBe(detentBeforeReply);
+    expect(document.activeElement).not.toBe(input);
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => {
+      expect(screen.queryByTestId("chat-reply-pill")).toBeNull();
+    });
+  });
+
   it("reveals Copy + Play on an assistant message and no top-menu copy button", () => {
     const speak = vi.fn();
     openThreadWith({
@@ -3715,10 +4014,15 @@ describe("ChatOverlay — per-message action row (#10713)", () => {
       speak,
       speaking: false,
     });
-    // No row until the bubble is clicked.
-    expect(screen.queryByTestId("thread-line-actions")).toBeNull();
+    // Keeping the rail mounted prevents message geometry from shifting when it appears.
+    const actions = screen.getByTestId("thread-line-actions");
+    expect(actions.getAttribute("aria-hidden")).toBe("true");
+    expect(actions.hasAttribute("inert")).toBe(true);
+    expect(actions.style.opacity).toBe("0");
     fireEvent.click(bubbleFor("the answer"));
-    expect(screen.getByTestId("thread-line-actions")).toBeTruthy();
+    expect(screen.getByTestId("thread-line-actions")).toBe(actions);
+    expect(actions.getAttribute("aria-hidden")).toBe("false");
+    expect(actions.hasAttribute("inert")).toBe(false);
     expect(screen.getByTestId("thread-line-copy")).toBeTruthy();
     expect(screen.getByTestId("thread-line-speak")).toBeTruthy();
     // Assistant has no edit affordance.
@@ -3779,6 +4083,8 @@ describe("ChatOverlay — per-message action row (#10713)", () => {
       ],
       speak,
       speaking: true,
+      responding: true,
+      turnStatus: { kind: "speaking" },
     });
     // Reveal both action rows. With the global `speaking` flag set but nothing
     // Played yet, NEITHER bubble claims Stop (the old bug lit every bubble).
@@ -3800,6 +4106,80 @@ describe("ChatOverlay — per-message action row (#10713)", () => {
     ).toEqual(["Stop", "Play audio"]);
   });
 
+  it("places automatic speaking shimmer on only the latest settled assistant", () => {
+    openThreadWith({
+      messages: [
+        { id: "a", role: "assistant", content: "first answer", createdAt: 1 },
+        { id: "u", role: "user", content: "follow up", createdAt: 2 },
+        { id: "b", role: "assistant", content: "second answer", createdAt: 3 },
+      ],
+      speaking: true,
+    });
+
+    const accessory = screen.getByTestId("speaking-status-accessory");
+    expect(
+      accessory.closest('[data-testid="thread-line"]')?.textContent,
+    ).toContain("second answer");
+    expect(screen.getAllByTestId("speaking-status-accessory")).toHaveLength(1);
+    expect(accessory.textContent).toContain("Speaking");
+  });
+
+  it("moves speaking shimmer to the exact assistant selected for playback", () => {
+    const speak = vi.fn();
+    openThreadWith({
+      messages: [
+        { id: "a", role: "assistant", content: "first answer", createdAt: 1 },
+        { id: "b", role: "assistant", content: "second answer", createdAt: 2 },
+      ],
+      speak,
+      speaking: true,
+    });
+
+    fireEvent.click(bubbleFor("first answer"));
+    fireEvent.click(screen.getAllByTestId("thread-line-speak")[0]);
+
+    const accessory = screen.getByTestId("speaking-status-accessory");
+    expect(
+      accessory.closest('[data-testid="thread-line"]')?.textContent,
+    ).toContain("first answer");
+    expect(screen.getAllByTestId("speaking-status-accessory")).toHaveLength(1);
+    expect(screen.queryByTestId("chat-composer-stop")).toBeNull();
+    expect(screen.getByLabelText("start transcription")).toBeTruthy();
+  });
+
+  it("adds and removes speaking shimmer without replacing the stable action lane", () => {
+    const messages = [
+      {
+        id: "a",
+        role: "assistant" as const,
+        content: "stable speaking row",
+        createdAt: 1,
+      },
+    ];
+    const { rerender } = render(
+      <ChatOverlay
+        controller={makeController({ messages, speaking: false })}
+      />,
+    );
+    fireEvent.focus(screen.getByLabelText("message"));
+    const actions = screen.getByTestId("thread-line-actions");
+    expect(screen.queryByTestId("speaking-status-accessory")).toBeNull();
+
+    rerender(
+      <ChatOverlay controller={makeController({ messages, speaking: true })} />,
+    );
+    expect(screen.getByTestId("thread-line-actions")).toBe(actions);
+    expect(screen.getByTestId("speaking-status-accessory")).toBeTruthy();
+
+    rerender(
+      <ChatOverlay
+        controller={makeController({ messages, speaking: false })}
+      />,
+    );
+    expect(screen.getByTestId("thread-line-actions")).toBe(actions);
+    expect(screen.queryByTestId("speaking-status-accessory")).toBeNull();
+  });
+
   it("row Copy writes the message text to the clipboard", () => {
     vi.mocked(copyTextToClipboard).mockClear();
     openThreadWith({
@@ -3813,11 +4193,23 @@ describe("ChatOverlay — per-message action row (#10713)", () => {
     expect(copyTextToClipboard).toHaveBeenCalledWith("copy this text");
   });
 
-  it("reveals Copy + Edit on a user message and resends the edited text", () => {
+  it("edits a user message in place without creating a duplicate turn", async () => {
     const send = vi.fn();
+    const stopSpeaking = vi.fn();
+    const handleChatEdit = vi.fn().mockResolvedValue(true);
+    const noop = () => {};
+    __setAppValueForTests(
+      new Proxy({} as never, {
+        get(_target, prop) {
+          if (prop === "handleChatEdit") return handleChatEdit;
+          return noop;
+        },
+      }),
+    );
     openThreadWith({
       messages: [{ id: "u", role: "user", content: "helo wrld", createdAt: 1 }],
       send,
+      stopSpeaking,
     });
     fireEvent.click(bubbleFor("helo wrld"));
     expect(screen.getByTestId("thread-line-copy")).toBeTruthy();
@@ -3826,13 +4218,21 @@ describe("ChatOverlay — per-message action row (#10713)", () => {
     expect(screen.queryByTestId("thread-line-speak")).toBeNull();
 
     fireEvent.click(screen.getByTestId("thread-line-edit"));
+    expect(
+      screen.getByTestId("thread-line-actions").getAttribute("aria-hidden"),
+    ).toBe("false");
+    expect(screen.getByTestId("thread-line-edit-controls")).toBeTruthy();
     const input = screen.getByTestId(
       "thread-line-edit-input",
     ) as HTMLTextAreaElement;
     expect(input.value).toBe("helo wrld");
     fireEvent.change(input, { target: { value: "hello world" } });
     fireEvent.click(screen.getByTestId("thread-line-edit-save"));
-    expect(send).toHaveBeenCalledWith("hello world");
+    await waitFor(() => {
+      expect(handleChatEdit).toHaveBeenCalledWith("u", "hello world");
+    });
+    expect(stopSpeaking).toHaveBeenCalledTimes(1);
+    expect(send).not.toHaveBeenCalled();
   });
 
   it("does not offer Edit on an optimistic temp- user turn", () => {
@@ -3854,10 +4254,16 @@ describe("ChatOverlay — per-message action row (#10713)", () => {
       ],
       speak: vi.fn(),
     });
+    const actions = screen.getByTestId("thread-line-actions");
     fireEvent.click(bubbleFor("tap away"));
-    expect(screen.getByTestId("thread-line-actions")).toBeTruthy();
+    expect(screen.getByTestId("thread-line-actions")).toBe(actions);
+    expect(actions.getAttribute("aria-hidden")).toBe("false");
+    expect(actions.hasAttribute("inert")).toBe(false);
     fireEvent.pointerDown(document.body);
-    expect(screen.queryByTestId("thread-line-actions")).toBeNull();
+    expect(screen.getByTestId("thread-line-actions")).toBe(actions);
+    expect(actions.getAttribute("aria-hidden")).toBe("true");
+    expect(actions.hasAttribute("inert")).toBe(true);
+    expect(actions.style.opacity).toBe("0");
   });
 
   it("Escape cancels the inline editor without resending", () => {

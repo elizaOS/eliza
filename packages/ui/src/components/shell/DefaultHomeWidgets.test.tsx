@@ -67,9 +67,19 @@ describe("DefaultHomeWidgets", () => {
     expect(root.textContent).toContain("Thursday");
     expect(root.textContent).toContain("June");
     expect(root.textContent).toContain("25");
-    expect(screen.getByText("Thursday, June 25").className).toContain(
-      "truncate",
+    const date = root.querySelector("[data-home-clock-date]");
+    const accessibleDate = root.querySelector(
+      "[data-home-clock-date-accessible]",
     );
+    const fullDate = root.querySelector("[data-home-clock-date-full]");
+    const compactDate = root.querySelector("[data-home-clock-date-compact]");
+    expect(date?.getAttribute("title")).toBe("Thursday, June 25");
+    expect(accessibleDate?.textContent).toBe("Thursday, June 25");
+    expect(accessibleDate?.classList.contains("sr-only")).toBe(true);
+    expect(fullDate?.textContent).toBe("Thursday, June 25");
+    expect(fullDate?.getAttribute("aria-hidden")).toBe("true");
+    expect(compactDate?.textContent).toBe("Thu, Jun 25");
+    expect(compactDate?.getAttribute("aria-hidden")).toBe("true");
 
     // Weather tile renders its reading next to the time.
     const weather = screen.getByTestId("home-weather");

@@ -1,8 +1,9 @@
 /**
  * Keeps an explicitly opted-in Light Phone III in full color while LightOS is
  * running. This direct-distribution-only foreground service observes the
- * SettingsProvider keys that the stock launcher rewrites and delegates all
- * repair decisions to {@link Lp3ColorPolicy}.
+ * SettingsProvider keys that the stock launcher rewrites, while app/channel
+ * notification-block broadcasts stop the privileged repair path whenever its
+ * required ongoing disclosure is unavailable.
  */
 package ai.elizaos.app;
 
@@ -12,9 +13,11 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.content.BroadcastReceiver;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.pm.ServiceInfo;
@@ -32,7 +35,6 @@ public final class Lp3ColorPolicyService extends Service {
     static final String PREFERENCES_NAME = "lp3_color_policy";
     static final String OPT_IN_PREFERENCE = "enabled";
     private static final String TAG = "ElizaLp3Color";
-    private static final String CHANNEL_ID = "lp3_color_policy";
     private static final int NOTIFICATION_ID = 31;
     private static final long REPAIR_DEBOUNCE_MILLIS = 150L;
     private static final String DALTONIZER_ENABLED =
@@ -42,6 +44,9 @@ public final class Lp3ColorPolicyService extends Service {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private ContentObserver settingsObserver;
     private Lp3ColorPolicy.Debouncer repairDebouncer;
+    private final Lp3ColorPolicy.LifecycleRegistration notificationStateRegistration =
+        new Lp3ColorPolicy.LifecycleRegistration();
+    private BroadcastReceiver notificationStateReceiver;
     private boolean foregroundStarted;
     private boolean initialized;
 
@@ -105,6 +110,13 @@ public final class Lp3ColorPolicyService extends Service {
 
         try {
             ensureNotificationChannel();
+            updateNotificationStateReceiver(true);
+            decision = currentDecision(this);
+            if (decision != Lp3ColorPolicy.Decision.ELIGIBLE) {
+                logInactiveDecision("service-create-post-channel", decision);
+                stopAndRemoveNotification();
+                return;
+            }
             Notification notification = buildNotification();
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                 startForeground(
@@ -156,6 +168,7 @@ public final class Lp3ColorPolicyService extends Service {
     @Override
     public void onDestroy() {
         initialized = false;
+        updateNotificationStateReceiver(false);
         if (repairDebouncer != null) {
             repairDebouncer.cancel();
             repairDebouncer = null;
@@ -214,6 +227,73 @@ public final class Lp3ColorPolicyService extends Service {
         );
     }
 
+    private void updateNotificationStateReceiver(boolean shouldRegister) {
+        boolean supported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P;
+        notificationStateRegistration.update(
+            shouldRegister && supported,
+            new Lp3ColorPolicy.RegistrationHooks() {
+                @Override
+                public void register() {
+                    BroadcastReceiver candidate = new BroadcastReceiver() {
+                        @Override
+                        public void onReceive(Context context, Intent intent) {
+                            String action = intent == null ? null : intent.getAction();
+                            String channelId = intent == null
+                                ? null
+                                : intent.getStringExtra(
+                                    NotificationManager.EXTRA_NOTIFICATION_CHANNEL_ID
+                                );
+                            if (
+                                !Lp3ColorPolicy.acceptsNotificationStateChange(
+                                    action,
+                                    channelId
+                                )
+                            ) {
+                                return;
+                            }
+                            reconcileAtBoundary("notification-state-change");
+                        }
+                    };
+                    registerNotificationStateReceiver(
+                        Lp3ColorPolicyService.this,
+                        candidate
+                    );
+                    notificationStateReceiver = candidate;
+                }
+
+                @Override
+                public void unregister() {
+                    BroadcastReceiver registeredReceiver = notificationStateReceiver;
+                    if (registeredReceiver == null) {
+                        throw new IllegalStateException(
+                            "LP3 notification-state receiver registration lost"
+                        );
+                    }
+                    unregisterReceiver(registeredReceiver);
+                    notificationStateReceiver = null;
+                }
+            }
+        );
+    }
+
+    static void registerNotificationStateReceiver(
+            Context context,
+            BroadcastReceiver receiver) {
+        IntentFilter filter = new IntentFilter();
+        filter.addAction(NotificationManager.ACTION_APP_BLOCK_STATE_CHANGED);
+        filter.addAction(
+            NotificationManager.ACTION_NOTIFICATION_CHANNEL_BLOCK_STATE_CHANGED
+        );
+        // These two framework actions are protected broadcasts from system UID.
+        // NOT_EXPORTED keeps app-originated spoof broadcasts outside the process
+        // while still receiving the targeted system delivery on modern Android.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            context.registerReceiver(receiver, filter);
+        }
+    }
+
     private boolean reconcileAtBoundary(String trigger) {
         try {
             Lp3ColorPolicy.Outcome outcome = Lp3ColorPolicy.reconcile(new AndroidState(this));
@@ -240,6 +320,7 @@ public final class Lp3ColorPolicyService extends Service {
 
     private void stopAndRemoveNotification() {
         initialized = false;
+        updateNotificationStateReceiver(false);
         if (repairDebouncer != null) {
             repairDebouncer.cancel();
             repairDebouncer = null;
@@ -259,7 +340,7 @@ public final class Lp3ColorPolicyService extends Service {
 
     private void ensureNotificationChannel() {
         NotificationChannel channel = new NotificationChannel(
-            CHANNEL_ID,
+            Lp3ColorPolicy.NOTIFICATION_CHANNEL_ID,
             "LP3 color guard",
             NotificationManager.IMPORTANCE_LOW
         );
@@ -281,7 +362,7 @@ public final class Lp3ColorPolicyService extends Service {
             launchIntent,
             PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
         );
-        return new NotificationCompat.Builder(this, CHANNEL_ID)
+        return new NotificationCompat.Builder(this, Lp3ColorPolicy.NOTIFICATION_CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle("Eliza display color")
             .setContentText("Keeping this Light Phone III in full color")
@@ -292,14 +373,16 @@ public final class Lp3ColorPolicyService extends Service {
             .build();
     }
 
-    private static Lp3ColorPolicy.Decision currentDecision(Context context) {
+    static Lp3ColorPolicy.Decision currentDecision(Context context) {
         AndroidState state = new AndroidState(context);
         return Lp3ColorPolicy.decide(
             state.buildEnabled(),
             state.manufacturer(),
             state.model(),
             state.optedIn(),
-            state.hasWriteSecureSettings()
+            state.hasWriteSecureSettings(),
+            state.hasPostNotificationsPermission(),
+            state.hasVisibleNotificationDisclosure()
         );
     }
 
@@ -323,6 +406,17 @@ public final class Lp3ColorPolicyService extends Service {
         String message = "[Lp3ColorPolicy] guard inactive; trigger=" + trigger + "; reason=" + decision;
         if (decision == Lp3ColorPolicy.Decision.MISSING_PERMISSION) {
             Log.e(TAG, message + "; grant android.permission.WRITE_SECURE_SETTINGS");
+        } else if (
+            decision == Lp3ColorPolicy.Decision.MISSING_NOTIFICATION_PERMISSION
+        ) {
+            Log.e(TAG, message + "; grant android.permission.POST_NOTIFICATIONS");
+        } else if (
+            decision == Lp3ColorPolicy.Decision.MISSING_NOTIFICATION_DISCLOSURE
+        ) {
+            Log.e(
+                TAG,
+                message + "; enable app notifications and the LP3 color guard channel"
+            );
         } else {
             Log.i(TAG, message);
         }
@@ -361,6 +455,32 @@ public final class Lp3ColorPolicyService extends Service {
         public boolean hasWriteSecureSettings() {
             return context.checkSelfPermission(Manifest.permission.WRITE_SECURE_SETTINGS)
                 == PackageManager.PERMISSION_GRANTED;
+        }
+
+        @Override
+        public boolean hasPostNotificationsPermission() {
+            return Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU
+                || context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+                    == PackageManager.PERMISSION_GRANTED;
+        }
+
+        @Override
+        public boolean hasVisibleNotificationDisclosure() {
+            NotificationManager manager = context.getSystemService(
+                NotificationManager.class
+            );
+            if (manager == null) {
+                throw new IllegalStateException("NotificationManager unavailable");
+            }
+            NotificationChannel channel = manager.getNotificationChannel(
+                Lp3ColorPolicy.NOTIFICATION_CHANNEL_ID
+            );
+            return Lp3ColorPolicy.hasVisibleNotificationDisclosure(
+                manager.areNotificationsEnabled(),
+                channel != null,
+                channel != null
+                    && channel.getImportance() == NotificationManager.IMPORTANCE_NONE
+            );
         }
 
         @Override

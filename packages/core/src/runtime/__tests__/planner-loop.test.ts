@@ -2193,7 +2193,7 @@ describe("v5 planner loop skeleton", () => {
 		expect(evaluate).not.toHaveBeenCalled();
 	});
 
-	it("replans once when a failed tool is finished without a user-visible message", async () => {
+	it("keeps the original failure authoritative when a fallback tool succeeds without a correlated retry", async () => {
 		const runtime = {
 			useModel: vi
 				.fn()
@@ -2266,7 +2266,9 @@ describe("v5 planner loop skeleton", () => {
 			},
 			expect.objectContaining({ iteration: 2 }),
 		);
-		expect(result.finalMessage).toBe("The backup source returned a result.");
+		expect(result.finalMessage).toBe(
+			"I tried to complete that, but the available runtime step failed before it produced a usable result.",
+		);
 	});
 
 	it("does not finish with terminal planner text after tool work when the evaluator asks to continue", async () => {
@@ -2597,7 +2599,7 @@ describe("v5 planner loop skeleton", () => {
 
 		expect(executeToolCall).toHaveBeenCalledTimes(2);
 		expect(result.finalMessage).toBe(
-			"I could not retrieve that from the available sources.",
+			"I tried to complete that, but the available runtime step failed before it produced a usable result.",
 		);
 	});
 
@@ -3704,29 +3706,32 @@ describe("v5 planner loop — evaluator gate", () => {
 		expect(result.finalMessage).not.toContain("call:automation:");
 	});
 
-	it("never surfaces scratch prose accompanying a STOP-only terminal", async () => {
-		// Live regression 2026-06-12 (tj-5d0d458b7ad281): after spawning a
-		// sub-agent the planner emitted STOP plus the free text "We should wait
-		// for the sub-agent result before replying." — and that scratch
-		// reasoning was sent to Discord verbatim as the reply.
-		const runtime = {
-			useModel: vi.fn().mockResolvedValueOnce({
-				text: "We should wait for the sub-agent result before replying.",
-				toolCalls: [{ id: "stop-1", name: "STOP", arguments: {} }],
-			}),
-			logger: { warn: vi.fn() },
-		};
+	it.each(["STOP", "IGNORE"])(
+		"never surfaces scratch prose accompanying a %s-only terminal",
+		async (terminal) => {
+			// Live regression 2026-06-12 (tj-5d0d458b7ad281): after spawning a
+			// sub-agent the planner emitted STOP plus the free text "We should wait
+			// for the sub-agent result before replying." — and that scratch
+			// reasoning was sent to Discord verbatim as the reply.
+			const runtime = {
+				useModel: vi.fn().mockResolvedValueOnce({
+					text: "We should wait for the sub-agent result before replying.",
+					toolCalls: [{ id: "terminal-1", name: terminal, arguments: {} }],
+				}),
+				logger: { warn: vi.fn() },
+			};
 
-		const result = await runPlannerLoop({
-			runtime,
-			context: { id: "ctx" },
-			executeToolCall: vi.fn(),
-			evaluate: vi.fn(),
-		});
+			const result = await runPlannerLoop({
+				runtime,
+				context: { id: "ctx" },
+				executeToolCall: vi.fn(),
+				evaluate: vi.fn(),
+			});
 
-		expect(result.status).toBe("finished");
-		expect(result.finalMessage).toBeUndefined();
-	});
+			expect(result.status).toBe("finished");
+			expect(result.finalMessage).toBeUndefined();
+		},
+	);
 
 	it("keeps the prose fallback for a textless REPLY terminal", async () => {
 		// Counterpart contract: when the model DID choose REPLY but put the

@@ -13,12 +13,14 @@
 
 import crypto from "node:crypto";
 import type http from "node:http";
+import { isDeepStrictEqual } from "node:util";
 import {
   type ActionResult,
   type AgentRuntime,
   ChannelType,
   type Content,
   createMessageMemory,
+  ElizaError,
   EventType,
   emitInferenceTiming,
   getInferenceTimer,
@@ -199,7 +201,26 @@ const CLIENT_MESSAGE_ID_MAX_LENGTH = 128;
  * once per TTL window) — the same O(1)-check / amortized-eviction shape as the
  * WS cache.
  */
-const chatSeenMessageIds = new Map<string, number>();
+export interface ChatMessageIdOutcome {
+  text: string;
+  agentName: string;
+  messageId?: UUID;
+  transcriptVisibility?: "internal";
+  thought?: string;
+  usage?: ChatGenerationResult["usage"];
+  actionResults?: ChatActionResultSummary[];
+  failureKind?: ChatFailureKind;
+  accountConnect?: AccountConnectRequest;
+  localInference?: LocalInferenceChatMetadata;
+  noResponseReason?: "ignored";
+}
+
+interface ChatMessageIdEntry {
+  firstSeenAt: number;
+  outcome?: ChatMessageIdOutcome;
+}
+
+const chatSeenMessageIds = new Map<string, ChatMessageIdEntry>();
 const DEFAULT_CHAT_GENERATION_TIMEOUT_MS = 180_000;
 const CHAT_DEDUPE_RECONNECT_WAIT_MS = 30_000;
 const CHAT_DEDUPE_SETTLE_BUFFER_MS = 30_000;
@@ -238,16 +259,20 @@ export function isDuplicateChatMessage(
 ): boolean {
   if (!clientMessageId) return false;
   const key = `${scope}:${clientMessageId}`;
-  const seenAt = chatSeenMessageIds.get(key);
-  if (seenAt !== undefined && now - seenAt <= CHAT_DEDUPE_TTL_MS) return true;
-  chatSeenMessageIds.set(key, now);
+  const entry = chatSeenMessageIds.get(key);
+  if (entry !== undefined && now - entry.firstSeenAt <= CHAT_DEDUPE_TTL_MS) {
+    return true;
+  }
+  chatSeenMessageIds.set(key, { firstSeenAt: now });
   // Amortized eviction: sweep expired entries at most once per TTL window
   // rather than on every request, keeping the map bounded without a per-request
   // O(n) scan.
   if (now - chatSeenLastSweepAt > CHAT_DEDUPE_TTL_MS) {
     chatSeenLastSweepAt = now;
-    for (const [seenKey, ts] of chatSeenMessageIds) {
-      if (now - ts > CHAT_DEDUPE_TTL_MS) chatSeenMessageIds.delete(seenKey);
+    for (const [seenKey, seenEntry] of chatSeenMessageIds) {
+      if (now - seenEntry.firstSeenAt > CHAT_DEDUPE_TTL_MS) {
+        chatSeenMessageIds.delete(seenKey);
+      }
     }
   }
   return false;
@@ -278,19 +303,48 @@ export function releaseChatMessageId(
 /**
  * Original arrival timestamp recorded for a `(scope, clientMessageId)` pair,
  * or `null` when the pair is unknown (never seen, expired and swept, or
- * released). Consulted by the duplicate-suppression branches AFTER
- * {@link isDuplicateChatMessage} returns `true`: the recorded arrival bounds
- * the "since" window for looking up the FIRST attempt's persisted assistant
- * reply, so a retry that lands after delivery can return that reply instead
- * of an empty ignored turn. A duplicate sighting never refreshes the stored
- * timestamp, so this is always the first attempt's arrival.
+ * released). A duplicate sighting never refreshes it, so diagnostics and
+ * focused cache tests can distinguish the first request from later retries.
  */
 export function getChatMessageIdFirstSeenAt(
   scope: string,
   clientMessageId: string | null,
 ): number | null {
   if (!clientMessageId) return null;
-  return chatSeenMessageIds.get(`${scope}:${clientMessageId}`) ?? null;
+  return (
+    chatSeenMessageIds.get(`${scope}:${clientMessageId}`)?.firstSeenAt ?? null
+  );
+}
+
+/**
+ * Bind the durable terminal result to the exact client idempotency key.
+ *
+ * A room-level "latest assistant memory" lookup cannot identify which of two
+ * concurrent turns produced a reply. The first request records its result only
+ * after that result is durable; a retry can then replay this exact outcome
+ * without starting another model turn or borrowing a neighboring turn.
+ */
+export function setChatMessageIdOutcome(
+  scope: string,
+  clientMessageId: string | null,
+  outcome: ChatMessageIdOutcome,
+): void {
+  if (!clientMessageId) return;
+  const key = `${scope}:${clientMessageId}`;
+  const entry = chatSeenMessageIds.get(key);
+  if (!entry) return;
+  entry.outcome = structuredClone(outcome);
+}
+
+/** Return the durable outcome bound to an exact idempotency key, if settled. */
+export function getChatMessageIdOutcome(
+  scope: string,
+  clientMessageId: string | null,
+): ChatMessageIdOutcome | null {
+  if (!clientMessageId) return null;
+  const outcome =
+    chatSeenMessageIds.get(`${scope}:${clientMessageId}`)?.outcome ?? null;
+  return outcome ? structuredClone(outcome) : null;
 }
 
 /** Test-only: clear the HTTP chat idempotency cache between cases. */
@@ -815,6 +869,8 @@ export interface AccountConnectRequest {
 export interface ChatGenerationResult {
   text: string;
   agentName: string;
+  /** Machine-only final text that must not render as assistant prose. */
+  transcriptVisibility?: "internal";
   /** The agent's internal reasoning for this turn, when the model emitted one. */
   thought?: string;
   noResponseReason?: "ignored";
@@ -1021,17 +1077,31 @@ export function chatEventsFromStructuredStreamPayload(
     const statusText = firstNonEmptyString(record.status, toolCall?.status);
     const failed = type === "tool_error" || statusText === "failed";
     const result = record.result ?? toolCall?.result;
+    const resultRecord = asRecord(result);
+    const transcriptVisibility =
+      resultRecord?.transcriptVisibility === "internal"
+        ? ("internal" as const)
+        : undefined;
     if (failed) {
       return {
         toolEvent: {
           phase: "error",
           callId,
           toolName,
+          ...(transcriptVisibility ? { transcriptVisibility } : {}),
           error: firstNonEmptyString(result, statusText) ?? "tool failed",
         },
       };
     }
-    return { toolEvent: { phase: "result", callId, toolName, result } };
+    return {
+      toolEvent: {
+        phase: "result",
+        callId,
+        toolName,
+        ...(transcriptVisibility ? { transcriptVisibility } : {}),
+        result,
+      },
+    };
   }
 
   if (type === "evaluation") {
@@ -1075,6 +1145,9 @@ function getLatestVisibleResponseMessageText(
 
   for (let index = responseMessages.length - 1; index >= 0; index -= 1) {
     const content = responseMessages[index]?.content;
+    if (content?.transcriptVisibility === "internal") {
+      continue;
+    }
     const text =
       typeof extractCompatTextContent(content) === "string"
         ? extractCompatTextContent(content).trim()
@@ -1540,6 +1613,25 @@ function summarizeRuntimeActionResults(
     .map(summarizeActionResultForClient)
     .filter((entry): entry is ChatActionResultSummary => Boolean(entry))
     .slice(-8);
+}
+
+function resolveFinalTranscriptVisibility(
+  finalText: string,
+  actionResults: readonly ActionResult[] | undefined,
+  contents: readonly (Content | null | undefined)[] = [],
+): "internal" | undefined {
+  if (!finalText) return undefined;
+  return contents.some(
+    (content) =>
+      content?.transcriptVisibility === "internal" &&
+      extractCompatTextContent(content) === finalText,
+  ) ||
+    actionResults?.some(
+      (result) =>
+        result.transcriptVisibility === "internal" && result.text === finalText,
+    )
+    ? "internal"
+    : undefined;
 }
 
 function pickInsufficientCreditsChatReply(): string {
@@ -2058,6 +2150,70 @@ export async function persistConversationMemory(
   return memory;
 }
 
+export async function persistExactConversationMemory(
+  runtime: AgentRuntime,
+  memory: ReturnType<typeof createMessageMemory>,
+): Promise<ReturnType<typeof createMessageMemory>> {
+  if (!memory.id) {
+    throw new ElizaError(
+      "Exact conversation memory is missing its durable id",
+      {
+        code: "CONVERSATION_MEMORY_ID_MISSING",
+        context: { roomId: memory.roomId },
+      },
+    );
+  }
+
+  const loadExisting = async (): Promise<Memory | null> => {
+    const [existing] = await runtime.getMemoriesByIds(
+      [memory.id as UUID],
+      "messages",
+    );
+    return existing ?? null;
+  };
+  const assertExact = (
+    existing: Memory,
+  ): ReturnType<typeof createMessageMemory> => {
+    if (
+      existing.id === memory.id &&
+      existing.roomId === memory.roomId &&
+      existing.agentId === memory.agentId &&
+      existing.entityId === memory.entityId &&
+      isDeepStrictEqual(existing.content, memory.content)
+    ) {
+      return existing as ReturnType<typeof createMessageMemory>;
+    }
+    throw new ElizaError(
+      "Conversation memory id is already bound to different content",
+      {
+        code: "CONVERSATION_MEMORY_ID_CONFLICT",
+        context: {
+          memoryId: memory.id,
+          roomId: memory.roomId,
+          agentId: memory.agentId,
+          entityId: memory.entityId,
+        },
+      },
+    );
+  };
+
+  const existing = await loadExisting();
+  if (existing) return assertExact(existing);
+
+  try {
+    await runtime.createMemory(memory, "messages");
+    return memory;
+  } catch (cause) {
+    const raced = await loadExisting();
+    if (raced) return assertExact(raced);
+    throw new ElizaError("Failed to store exact conversation memory", {
+      code: "CONVERSATION_MEMORY_WRITE_FAILED",
+      cause,
+      context: { memoryId: memory.id, roomId: memory.roomId },
+    });
+  }
+}
+
 async function hasRecentAssistantMemory(
   runtime: AgentRuntime,
   roomId: UUID,
@@ -2137,10 +2293,15 @@ export async function getRecentVisibleAssistantMemorySince(
 
     const persistedAssistantTurn = recent
       .filter((memory) => {
-        const contentText = (memory.content as { text?: string })?.text?.trim();
+        const content = memory.content as {
+          text?: string;
+          transcriptVisibility?: "internal";
+        };
+        const contentText = content.text?.trim();
         const createdAt = memory.createdAt ?? 0;
         return (
           memory.entityId === runtime.agentId &&
+          content.transcriptVisibility !== "internal" &&
           Boolean(contentText) &&
           createdAt >= sinceMs - slackMs
         );
@@ -2194,7 +2355,7 @@ export async function persistAssistantConversationMemory(
   const trimmed = persistedContent.text.trim();
   if (!trimmed) return null;
 
-  if (typeof dedupeSinceMs === "number") {
+  if (typeof dedupeSinceMs === "number" && !memoryId) {
     const alreadyPersisted = await hasRecentAssistantMemory(
       runtime,
       roomId,
@@ -2204,16 +2365,16 @@ export async function persistAssistantConversationMemory(
     if (alreadyPersisted) return null;
   }
 
-  return await persistConversationMemory(
-    runtime,
-    createMessageMemory({
-      id: memoryId ?? (crypto.randomUUID() as UUID),
-      entityId: runtime.agentId,
-      agentId: runtime.agentId,
-      roomId,
-      content: persistedContent,
-    }),
-  );
+  const memory = createMessageMemory({
+    id: memoryId ?? (crypto.randomUUID() as UUID),
+    entityId: runtime.agentId,
+    agentId: runtime.agentId,
+    roomId,
+    content: persistedContent,
+  });
+  return memoryId
+    ? await persistExactConversationMemory(runtime, memory)
+    : await persistConversationMemory(runtime, memory);
 }
 
 // ---------------------------------------------------------------------------
@@ -2888,6 +3049,9 @@ async function generateChatResponseWithTiming(
                         generationTimeoutMs,
                       );
                     }
+                    if (content.transcriptVisibility === "internal") {
+                      return [];
+                    }
 
                     const chunk = extractCompatTextContent(content);
                     const visibleChunk = isInternalStructuredStreamText(chunk)
@@ -3150,13 +3314,22 @@ async function generateChatResponseWithTiming(
     const responseMessageText = getLatestVisibleResponseMessageText(
       result?.responseMessages,
     );
+    const resultContentCandidates = [
+      result?.responseContent,
+      ...(result?.responseMessages ?? []).map((entry) => entry.content),
+    ];
     const resultText =
       responseMessageText ||
       extractCompatTextContent(result?.responseContent) ||
       "";
+    const resultTextVisibility = resolveFinalTranscriptVisibility(
+      resultText,
+      result?.actionResults,
+      resultContentCandidates,
+    );
 
     // Fallback: if callbacks weren't used for text, stream + return final text.
-    if (!responseText && resultText) {
+    if (!responseText && resultText && resultTextVisibility !== "internal") {
       if (opts?.onSnapshot) {
         emitSnapshot(resultText);
       } else {
@@ -3165,6 +3338,7 @@ async function generateChatResponseWithTiming(
     } else if (
       actionCallbacksSeen === 0 &&
       resultText &&
+      resultTextVisibility !== "internal" &&
       resultText !== responseText &&
       resultText.startsWith(responseText)
     ) {
@@ -3172,6 +3346,7 @@ async function generateChatResponseWithTiming(
     } else if (
       actionCallbacksSeen === 0 &&
       resultText &&
+      resultTextVisibility !== "internal" &&
       resultText !== responseText &&
       !forcedWalletExecutionText &&
       !blockedUnexecutedActionPayload
@@ -3216,6 +3391,11 @@ async function generateChatResponseWithTiming(
         ? (noResponseFallback ??
           (normalizedResponseText || responseText || "(no response)"))
         : normalizedResponseText;
+    const transcriptVisibility = resolveFinalTranscriptVisibility(
+      finalText,
+      result?.actionResults,
+      resultContentCandidates,
+    );
 
     const responseMessages = Array.isArray(result?.responseMessages)
       ? result.responseMessages.map((entry) => ({
@@ -3223,14 +3403,24 @@ async function generateChatResponseWithTiming(
           ...(entry.content ? { content: entry.content } : {}),
         }))
       : [];
-    const responseContent =
+    const responseContent: Content | null =
       result?.responseContent && typeof result.responseContent === "object"
-        ? ({
-            ...result.responseContent,
-            text: finalText,
-          } satisfies Content)
+        ? (() => {
+            const content = {
+              ...result.responseContent,
+              text: finalText,
+            } satisfies Content;
+            delete content.transcriptVisibility;
+            if (transcriptVisibility) {
+              content.transcriptVisibility = transcriptVisibility;
+            }
+            return content;
+          })()
         : finalText
-          ? ({ text: finalText } satisfies Content)
+          ? ({
+              text: finalText,
+              ...(transcriptVisibility ? { transcriptVisibility } : {}),
+            } satisfies Content)
           : null;
     const responseRecord = responseContent as
       | (Record<string, unknown> & {
@@ -3276,6 +3466,7 @@ async function generateChatResponseWithTiming(
     return {
       text: finalText,
       agentName,
+      ...(transcriptVisibility ? { transcriptVisibility } : {}),
       ...(thought ? { thought } : {}),
       ...(intentionalNoResponse
         ? { noResponseReason: "ignored" as const }
@@ -3725,6 +3916,7 @@ export async function handleChatRoutes(
         sendChunk({ role: "assistant" }, null);
 
         let fullText = "";
+        let transcriptVisibility: "internal" | undefined;
 
         {
           const runtime = state.runtime;
@@ -3764,9 +3956,13 @@ export async function handleChatRoutes(
                 resolveNoResponseFallback(state.logBuffer, runtime),
             },
           );
+          transcriptVisibility = result.transcriptVisibility;
           if (result.localInference && !fullText) {
-            fullText = result.text;
-            sendChunk({ content: result.text }, null);
+            fullText =
+              result.transcriptVisibility === "internal" ? "" : result.text;
+            if (fullText) {
+              sendChunk({ content: fullText }, null);
+            }
           }
           syncRuntimeCharacterToChatStateConfig(state);
         }
@@ -3778,7 +3974,8 @@ export async function handleChatRoutes(
         );
         if (
           (fullText.trim().length === 0 || isNoResponsePlaceholder(fullText)) &&
-          resolved.trim()
+          resolved.trim() &&
+          transcriptVisibility !== "internal"
         ) {
           sendChunk({ content: resolved }, null);
         }
@@ -3839,6 +4036,7 @@ export async function handleChatRoutes(
       let responseText: string;
       let localInference: LocalInferenceChatMetadata | undefined;
       let failureKind: ChatFailureKind | undefined;
+      let transcriptVisibility: "internal" | undefined;
 
       {
         if (!state.runtime) {
@@ -3883,7 +4081,9 @@ export async function handleChatRoutes(
           },
         );
         syncRuntimeCharacterToChatStateConfig(state);
-        responseText = result.text;
+        transcriptVisibility = result.transcriptVisibility;
+        responseText =
+          result.transcriptVisibility === "internal" ? "" : result.text;
         localInference = result.localInference;
         failureKind = result.failureKind;
       }
@@ -3903,11 +4103,14 @@ export async function handleChatRoutes(
         return true;
       }
 
-      const resolvedText = normalizeChatResponseText(
-        responseText,
-        state.logBuffer,
-        state.runtime,
-      );
+      const resolvedText =
+        transcriptVisibility === "internal"
+          ? ""
+          : normalizeChatResponseText(
+              responseText,
+              state.logBuffer,
+              state.runtime,
+            );
       json(res, {
         id,
         object: "chat.completion",
@@ -4075,6 +4278,7 @@ export async function handleChatRoutes(
 
         let fullText = "";
         let outputTokens = 0;
+        let transcriptVisibility: "internal" | undefined;
 
         const onDelta = (chunk: string) => {
           if (!chunk) return;
@@ -4124,6 +4328,7 @@ export async function handleChatRoutes(
                 resolveNoResponseFallback(state.logBuffer, runtime),
             },
           );
+          transcriptVisibility = generation.transcriptVisibility;
           outputTokens = generation.usage?.completionTokens ?? outputTokens;
           syncRuntimeCharacterToChatStateConfig(state);
         }
@@ -4135,7 +4340,8 @@ export async function handleChatRoutes(
         );
         if (
           (fullText.trim().length === 0 || isNoResponsePlaceholder(fullText)) &&
-          resolved.trim()
+          resolved.trim() &&
+          transcriptVisibility !== "internal"
         ) {
           onDelta(resolved);
         }
@@ -4195,6 +4401,7 @@ export async function handleChatRoutes(
       let responseText: string;
       let inputTokens = estimateTokenCount(prompt);
       let outputTokens = 0;
+      let transcriptVisibility: "internal" | undefined;
 
       {
         if (!state.runtime) {
@@ -4239,18 +4446,23 @@ export async function handleChatRoutes(
           },
         );
         syncRuntimeCharacterToChatStateConfig(state);
-        responseText = result.text;
+        transcriptVisibility = result.transcriptVisibility;
+        responseText =
+          result.transcriptVisibility === "internal" ? "" : result.text;
         if (result.usage) {
           inputTokens = result.usage.promptTokens;
           outputTokens = result.usage.completionTokens;
         }
       }
 
-      const resolvedText = normalizeChatResponseText(
-        responseText,
-        state.logBuffer,
-        state.runtime,
-      );
+      const resolvedText =
+        transcriptVisibility === "internal"
+          ? ""
+          : normalizeChatResponseText(
+              responseText,
+              state.logBuffer,
+              state.runtime,
+            );
       json(res, {
         id,
         type: "message",
@@ -4383,11 +4595,14 @@ export async function handleChatRoutes(
       );
       syncRuntimeCharacterToChatStateConfig(state);
 
-      const resolvedText = normalizeChatResponseText(
-        result.text,
-        state.logBuffer,
-        state.runtime,
-      );
+      const resolvedText =
+        result.transcriptVisibility === "internal"
+          ? ""
+          : normalizeChatResponseText(
+              result.text,
+              state.logBuffer,
+              state.runtime,
+            );
 
       json(res, {
         response: resolvedText,

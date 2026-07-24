@@ -239,6 +239,7 @@ export interface RecordedToolSearchStage {
 }
 
 export interface RecordedEvaluationStage extends EvaluationResult {
+	protocolFailure?: true;
 	[key: string]: unknown;
 }
 
@@ -757,8 +758,9 @@ function applyMetricsForStage(
 	if (stage.kind === "toolSearch") metrics.toolSearchCount += 1;
 	if (
 		stage.kind === "evaluation" &&
-		typeof stage.evaluation?.parseError === "string" &&
-		stage.evaluation.parseError.trim().length > 0
+		((typeof stage.evaluation?.parseError === "string" &&
+			stage.evaluation.parseError.trim().length > 0) ||
+			stage.evaluation?.protocolFailure === true)
 	) {
 		metrics.evaluatorFailures += 1;
 	}

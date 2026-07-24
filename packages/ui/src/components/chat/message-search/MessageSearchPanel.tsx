@@ -100,8 +100,10 @@ export function MessageSearchPanel({
 
   const handleJump = useCallback(
     (result: ConversationMessageSearchResult) => {
-      onJump(result);
+      // Remove the keyboard-anchored search layer before the destination row
+      // scrolls, so focus restoration cannot move the sheet during the jump.
       onClose();
+      onJump(result);
     },
     [onJump, onClose],
   );
@@ -133,7 +135,7 @@ export function MessageSearchPanel({
       // away when the results list above it is long.
       className={
         keyboardAnchored
-          ? "shrink-0 border-white/15 bg-white/[0.08] text-white shadow-sm placeholder:text-white/45"
+          ? "shrink-0 rounded-xl border-white/20 bg-[rgba(12,16,18,0.86)] text-white shadow-[0_12px_32px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-xl placeholder:text-white/45"
           : undefined
       }
     />
@@ -178,7 +180,14 @@ export function MessageSearchPanel({
 
   const resultsListEl =
     results.length > 0 ? (
-      <ul data-testid="message-search-results" className="flex flex-col gap-1">
+      <ul
+        data-testid="message-search-results"
+        className={
+          keyboardAnchored
+            ? "mt-auto flex flex-col gap-1"
+            : "flex flex-col gap-1"
+        }
+      >
         {results.map((result) => (
           <li key={result.messageId}>
             <Button
@@ -187,7 +196,7 @@ export function MessageSearchPanel({
               variant="ghost"
               className={
                 keyboardAnchored
-                  ? "flex h-auto w-full flex-col items-start gap-0.5 whitespace-normal rounded-lg border border-transparent bg-white/[0.04] px-3 py-2 text-left font-normal hover:border-white/10 hover:bg-white/[0.08]"
+                  ? "flex h-auto w-full flex-col items-start gap-0.5 whitespace-normal rounded-xl border border-white/10 bg-[rgba(12,16,18,0.86)] px-3 py-2 text-left font-normal shadow-[0_10px_28px_rgba(0,0,0,0.2),inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-xl hover:border-white/20 hover:bg-[rgba(18,22,24,0.92)]"
                   : "flex h-auto w-full flex-col items-start gap-0.5 whitespace-normal rounded-md px-2 py-1.5 text-left font-normal hover:bg-muted/60"
               }
             >
@@ -221,7 +230,8 @@ export function MessageSearchPanel({
       >
         <div
           data-testid="message-search-scroll"
-          className="scroll-fade flex min-h-0 flex-1 flex-col justify-end gap-1 overflow-y-auto overscroll-contain [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden"
+          data-chat-sheet-scroll-region
+          className="scroll-fade flex min-h-0 flex-1 touch-pan-y flex-col gap-1 overflow-y-auto overscroll-contain [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden"
         >
           {resultsListEl}
         </div>

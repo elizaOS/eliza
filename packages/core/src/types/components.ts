@@ -508,6 +508,17 @@ export interface Action {
 	allowAdditionalParameters?: boolean;
 
 	/**
+	 * Whether provider-native tool calls should use strict JSON Schema mode.
+	 *
+	 * Defaults to true. Set false only for an aggregator whose single planner
+	 * tool intentionally spans multiple parameter shapes and therefore needs
+	 * optional fields to remain optional on the wire. Runtime argument
+	 * validation and the handler's resolved child contract still enforce the
+	 * selected operation before execution.
+	 */
+	toolSchemaStrict?: boolean;
+
+	/**
 	 * Domain contexts this action belongs to.
 	 * Used by the context-routing classifier to scope the planner's action search.
 	 * An action may belong to multiple contexts (e.g., a token-swap action is both
@@ -836,6 +847,9 @@ export interface ActionResult {
 
 	/** Optional text description of the result */
 	text?: string;
+
+	/** Marks raw machine-only output that must not render as assistant prose. */
+	transcriptVisibility?: "internal";
 
 	/**
 	 * Optional clean user-facing answer. When set, the planner-loop's

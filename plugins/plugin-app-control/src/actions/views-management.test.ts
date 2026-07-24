@@ -2267,6 +2267,12 @@ describe("view management actions", () => {
 								id: "get-calendar-state",
 								description:
 									"Return selected date and all calendar events as structured data.",
+								params: {
+									date: {
+										type: "string",
+										description: "Optional YYYY-MM-DD date filter.",
+									},
+								},
 							},
 							{
 								id: "create-calendar-event",

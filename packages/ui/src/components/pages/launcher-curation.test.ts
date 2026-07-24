@@ -243,19 +243,21 @@ describe("curateLauncherPages", () => {
     }
   });
 
-  it("shows Notes and Calendar only for an active Eliza Cloud session (#16864)", () => {
+  it("shows registered Notes and Calendar views without requiring Cloud auth", () => {
     const views = [
       entry("notes", { label: "Notes" }),
       entry("simple-calendar", { label: "Calendar" }),
     ];
 
     expect(
-      curateLauncherPages(views, {
-        isAosp: false,
-        enabledKinds: APPS_ONLY,
-        cloudActive: false,
-      }),
-    ).toEqual([]);
+      ids(
+        curateLauncherPages(views, {
+          isAosp: false,
+          enabledKinds: APPS_ONLY,
+          cloudActive: false,
+        }),
+      ),
+    ).toEqual(["simple-calendar", "notes"]);
     expect(
       ids(
         curateLauncherPages(views, {

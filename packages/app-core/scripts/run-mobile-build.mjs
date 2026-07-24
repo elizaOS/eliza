@@ -5295,6 +5295,7 @@ function ensureIosFullBunEngineArtifact({ buildTarget = null } = {}) {
 //
 // Components deleted from the manifest (and from app/src/main/java/...):
 export const ANDROID_LP3_COLOR_POLICY_COMPONENTS = [
+  "Lp3ColorPolicyInitializer",
   "Lp3ColorPolicyService",
   "Lp3ColorPolicyBootReceiver",
 ];
@@ -5305,10 +5306,28 @@ export const ANDROID_LP3_COLOR_POLICY_PERMISSIONS = [
   "FOREGROUND_SERVICE_SPECIAL_USE",
 ];
 
+export const ANDROID_LP3_COLOR_POLICY_REQUIRED_PERMISSIONS = [
+  ...ANDROID_LP3_COLOR_POLICY_PERMISSIONS,
+  "POST_NOTIFICATIONS",
+];
+
 export const ANDROID_LP3_COLOR_POLICY_JAVA_FILES = [
   "Lp3ColorPolicy.java",
+  "Lp3ColorPolicyInitializer.java",
   "Lp3ColorPolicyService.java",
   "Lp3ColorPolicyBootReceiver.java",
+];
+
+export const ANDROID_LP3_COLOR_POLICY_COMMAND_ACTIONS = [
+  "ai.elizaos.app.action.ENABLE_LP3_COLOR_POLICY",
+  "ai.elizaos.app.action.DISABLE_LP3_COLOR_POLICY",
+  "ai.elizaos.app.action.SYNC_LP3_COLOR_POLICY",
+];
+
+export const ANDROID_LP3_COLOR_POLICY_ACTIONS = [
+  "android.intent.action.BOOT_COMPLETED",
+  "android.intent.action.MY_PACKAGE_REPLACED",
+  ...ANDROID_LP3_COLOR_POLICY_COMMAND_ACTIONS,
 ];
 
 export const ANDROID_CLOUD_STRIPPED_COMPONENTS = [
@@ -6210,7 +6229,7 @@ function auditAndroidCloudSource(phase, { env = process.env } = {}) {
           );
         }
       }
-      for (const permission of ANDROID_LP3_COLOR_POLICY_PERMISSIONS) {
+      for (const permission of ANDROID_LP3_COLOR_POLICY_REQUIRED_PERMISSIONS) {
         const full = `android.permission.${permission}`;
         if (!hasAndroidPermissionRequest(lp3Manifest, full)) {
           failures.push(
@@ -7704,8 +7723,14 @@ function findAndroidManifestElementBlock(
 }
 
 function assertAndroidLp3ColorPolicyManifest(manifestText) {
+  const initializerName = `${APP.appId}.Lp3ColorPolicyInitializer`;
   const serviceName = `${APP.appId}.Lp3ColorPolicyService`;
   const receiverName = `${APP.appId}.Lp3ColorPolicyBootReceiver`;
+  const initializer = findAndroidManifestElementBlock(
+    manifestText,
+    "provider",
+    initializerName,
+  );
   const service = findAndroidManifestElementBlock(
     manifestText,
     "service",
@@ -7716,6 +7741,11 @@ function assertAndroidLp3ColorPolicyManifest(manifestText) {
     "receiver",
     receiverName,
   );
+  if (!initializer) {
+    throw new Error(
+      `[mobile-build] opted-in LP3 artifact is missing ${initializerName}`,
+    );
+  }
   if (!service) {
     throw new Error(
       `[mobile-build] opted-in LP3 artifact is missing ${serviceName}`,
@@ -7731,6 +7761,16 @@ function assertAndroidLp3ColorPolicyManifest(manifestText) {
       `[mobile-build] opted-in LP3 service must be android:exported=false`,
     );
   }
+  if (!/android:exported[^\n]*(?:0x0|false)/.test(initializer)) {
+    throw new Error(
+      `[mobile-build] opted-in LP3 initializer must be android:exported=false`,
+    );
+  }
+  if (!initializer.includes(`${APP.appId}.lp3-color-policy-initializer`)) {
+    throw new Error(
+      `[mobile-build] opted-in LP3 initializer is missing its private authority`,
+    );
+  }
   if (!/android:exported[^\n]*(?:0x0|false)/.test(receiver)) {
     throw new Error(
       `[mobile-build] opted-in LP3 receiver must be android:exported=false`,
@@ -7744,13 +7784,7 @@ function assertAndroidLp3ColorPolicyManifest(manifestText) {
       `[mobile-build] opted-in LP3 service is missing its specialUse foreground contract`,
     );
   }
-  for (const action of [
-    "android.intent.action.BOOT_COMPLETED",
-    "android.intent.action.MY_PACKAGE_REPLACED",
-    "ai.elizaos.app.action.ENABLE_LP3_COLOR_POLICY",
-    "ai.elizaos.app.action.DISABLE_LP3_COLOR_POLICY",
-    "ai.elizaos.app.action.SYNC_LP3_COLOR_POLICY",
-  ]) {
+  for (const action of ANDROID_LP3_COLOR_POLICY_ACTIONS) {
     if (!receiver.includes(action)) {
       throw new Error(
         `[mobile-build] opted-in LP3 receiver is missing action ${action}`,
@@ -7941,12 +7975,13 @@ export function auditAndroidCloudArtifact(
         }
       }
       if (lp3ColorPolicyEnabled) {
-        const missingPermissions = ANDROID_LP3_COLOR_POLICY_PERMISSIONS.filter(
-          (permission) =>
-            !badging.includes(
-              `uses-permission: name='android.permission.${permission}'`,
-            ),
-        );
+        const missingPermissions =
+          ANDROID_LP3_COLOR_POLICY_REQUIRED_PERMISSIONS.filter(
+            (permission) =>
+              !badging.includes(
+                `uses-permission: name='android.permission.${permission}'`,
+              ),
+          );
         if (missingPermissions.length > 0) {
           throw mobileBuildError(
             "[mobile-build] opted-in LP3 artifact is missing required permissions:\n" +
@@ -8017,7 +8052,6 @@ export function auditAndroidCloudArtifact(
   } finally {
     fs.rmSync(snapshotDir, { force: true, recursive: true });
   }
-
   const finalSnapshot = snapshotAndroidArtifact(artifact);
   assertAndroidArtifactSnapshotUnchanged(
     artifact,

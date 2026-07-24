@@ -112,6 +112,8 @@ export interface ChatMessageData {
   role: string;
   source?: string;
   text: string;
+  /** Message creation time as epoch milliseconds, when the transport supplies it. */
+  timestamp?: number;
   /** Voice speaker attribution when this message arrived via voice (R10 §4.1). */
   voiceSpeaker?: ChatVoiceSpeaker;
   /**

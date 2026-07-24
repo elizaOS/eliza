@@ -29,6 +29,7 @@ import {
   type AgentRuntime,
   ChannelType,
   logger,
+  type Memory,
   ModelType,
   stringToUuid,
   type UUID,
@@ -63,7 +64,25 @@ vi.mock("../chat-routes.ts", async () => {
         : {}),
     })),
     persistConversationMemory: vi.fn(async (_runtime, memory) => memory),
-    persistAssistantConversationMemory: vi.fn(async () => null),
+    persistAssistantConversationMemory: vi.fn(
+      async (
+        runtime,
+        roomId,
+        content,
+        _channelType,
+        _dedupeSinceMs,
+        memoryId,
+      ) =>
+        ({
+          id: memoryId ?? stringToUuid("stream-contract-assistant"),
+          entityId: runtime.agentId,
+          agentId: runtime.agentId,
+          roomId,
+          content:
+            typeof content === "string" ? { text: content } : { ...content },
+          createdAt: Date.now(),
+        }) as never,
+    ),
     hasRecentVisibleAssistantMemorySince: vi.fn(async () => false),
     resolveNoResponseFallback: () => "",
   };
@@ -105,7 +124,10 @@ import type {
   ConversationRouteContext,
   ConversationRouteState,
 } from "../conversation-routes.ts";
-import { handleConversationRoutes } from "../conversation-routes.ts";
+import {
+  handleConversationRoutes,
+  persistRecentAssistantActionCallbackHistory,
+} from "../conversation-routes.ts";
 
 const AGENT_ID = stringToUuid("stream-contract-agent") as UUID;
 const USER_ID = stringToUuid("stream-contract-user") as UUID;
@@ -337,6 +359,78 @@ function createViewShortcutMessageService(): NonNullable<
   } satisfies NonNullable<AgentRuntime["messageService"]>;
 }
 
+function createPersistedCallbackMessageService(
+  messageId: UUID,
+): NonNullable<AgentRuntime["messageService"]> {
+  const text = "Calendar is ready.";
+  return {
+    async handleMessage(_runtime, _message, callback) {
+      await callback?.({ text });
+      return {
+        didRespond: true,
+        responseContent: { text },
+        responseMessages: [
+          {
+            id: messageId,
+            entityId: AGENT_ID,
+            agentId: AGENT_ID,
+            roomId: ROOM_ID,
+            content: { text },
+            createdAt: Date.now(),
+          },
+        ],
+      };
+    },
+    shouldRespond: () => ({
+      shouldRespond: true,
+      skipEvaluation: true,
+      reason: "persisted-callback-stream-contract-test",
+    }),
+    deleteMessage: async () => undefined,
+    clearChannel: async () => undefined,
+  } satisfies NonNullable<AgentRuntime["messageService"]>;
+}
+
+function createMixedPersistedTransientMessageService(
+  persistedEarlyId: UUID,
+  transientFinalId?: UUID,
+): NonNullable<AgentRuntime["messageService"]> {
+  return {
+    async handleMessage(_runtime, _message, callback) {
+      await callback?.({ text: "Final answer.", action: "VIEWS" });
+      return {
+        didRespond: true,
+        responseContent: { text: "Final answer." },
+        responseMessages: [
+          {
+            id: persistedEarlyId,
+            entityId: AGENT_ID,
+            agentId: AGENT_ID,
+            roomId: ROOM_ID,
+            content: { text: "Final answer." },
+            createdAt: Date.now() - 1,
+          },
+          {
+            id: transientFinalId,
+            entityId: AGENT_ID,
+            agentId: AGENT_ID,
+            roomId: ROOM_ID,
+            content: { text: "Final answer." },
+            createdAt: Date.now(),
+          },
+        ],
+      };
+    },
+    shouldRespond: () => ({
+      shouldRespond: true,
+      skipEvaluation: true,
+      reason: "mixed-persistence-stream-contract-test",
+    }),
+    deleteMessage: async () => undefined,
+    clearChannel: async () => undefined,
+  } satisfies NonNullable<AgentRuntime["messageService"]>;
+}
+
 function createState(
   messageServiceOverride?: NonNullable<AgentRuntime["messageService"]>,
 ): {
@@ -360,6 +454,7 @@ function createState(
       metadata: Record<string, unknown>;
     }
   >();
+  const storedMemories = new Map<UUID, Memory>();
   const runtime = {
     agentId: AGENT_ID,
     character: {
@@ -394,6 +489,32 @@ function createState(
     getSetting: vi.fn(() => null),
     drainChatPreHandlers: vi.fn(async () => null),
     createLogs: vi.fn(async () => undefined),
+    createMemory: vi.fn(async (memory: Memory) => {
+      if (memory.id) storedMemories.set(memory.id as UUID, memory);
+      return memory.id;
+    }),
+    getMemoriesByIds: vi.fn(async (ids: UUID[]) => {
+      const clientUserId = requestClientMessageId
+        ? (stringToUuid(
+            `conversation-user:${ROOM_ID}:${requestClientMessageId}`,
+          ) as UUID)
+        : null;
+      return ids.flatMap((id) => {
+        const stored = storedMemories.get(id);
+        if (stored) return [stored];
+        if (id === clientUserId) return [];
+        return [
+          {
+            id,
+            entityId: AGENT_ID,
+            agentId: AGENT_ID,
+            roomId: ROOM_ID,
+            content: { text: "Calendar is ready." },
+            createdAt: Date.now(),
+          },
+        ];
+      });
+    }),
     reportError: vi.fn(),
     adapter: {},
   } as unknown as AgentRuntime;
@@ -775,6 +896,330 @@ describe("conversation stream SSE contract (#10712)", () => {
         },
       ],
     });
+  });
+
+  it("uses this turn's exact persisted response id instead of a room-latest guess", async () => {
+    const responseId = stringToUuid("persisted-callback-response") as UUID;
+    const { ctx, record, state } = createCtx(
+      createPersistedCallbackMessageService(responseId),
+    );
+    const runtime = state.runtime;
+    if (!runtime) throw new Error("runtime fixture missing");
+    vi.mocked(runtime.getMemoriesByIds).mockResolvedValueOnce([
+      {
+        id: responseId,
+        entityId: AGENT_ID,
+        agentId: AGENT_ID,
+        roomId: ROOM_ID,
+        content: { text: "<response>Calendar is ready.</response>" },
+        createdAt: Date.now(),
+      },
+    ]);
+    runtime.updateMemory = vi.fn(async () => true);
+    vi.mocked(persistAssistantConversationMemory).mockClear();
+
+    await handleConversationRoutes(ctx);
+
+    const done = parseSsePayloads(record.writes).find(
+      (payload) => payload.type === "done",
+    );
+    expect(done).toMatchObject({
+      type: "done",
+      fullText: "Calendar is ready.",
+      messageId: responseId,
+    });
+    expect(persistAssistantConversationMemory).not.toHaveBeenCalled();
+  });
+
+  it("emits an error instead of done when exact callback metadata cannot become durable", async () => {
+    const responseId = stringToUuid("callback-write-failure-response") as UUID;
+    const { ctx, record, state } = createCtx(
+      createPersistedCallbackMessageService(responseId),
+    );
+    const runtime = state.runtime;
+    if (!runtime) throw new Error("runtime fixture missing");
+    vi.mocked(runtime.getMemoriesByIds).mockResolvedValue([
+      {
+        id: responseId,
+        entityId: AGENT_ID,
+        agentId: AGENT_ID,
+        roomId: ROOM_ID,
+        content: { text: "Calendar is ready." },
+        createdAt: Date.now(),
+      },
+    ]);
+    runtime.updateMemory = vi.fn(async () => {
+      throw new Error("callback metadata write failed");
+    });
+
+    await handleConversationRoutes(ctx);
+
+    const payloads = parseSsePayloads(record.writes);
+    expect(payloads.some((payload) => payload.type === "done")).toBe(false);
+    expect(payloads).toContainEqual(
+      expect.objectContaining({
+        type: "error",
+        message: expect.stringContaining(
+          "Failed to persist action callback history",
+        ),
+      }),
+    );
+  });
+
+  it("does not advertise a transient responseMessages id that is absent from storage", async () => {
+    const transientId = stringToUuid("transient-callback-response") as UUID;
+    const { ctx, record, state } = createCtx(
+      createPersistedCallbackMessageService(transientId),
+    );
+    const runtime = state.runtime;
+    if (!runtime) throw new Error("runtime fixture missing");
+    vi.mocked(runtime.getMemoriesByIds).mockResolvedValueOnce([]);
+    runtime.updateMemory = vi.fn(async () => true);
+    vi.mocked(persistAssistantConversationMemory).mockClear();
+
+    await handleConversationRoutes(ctx);
+
+    const done = parseSsePayloads(record.writes).find(
+      (payload) => payload.type === "done",
+    );
+    expect(done).toMatchObject({
+      type: "done",
+      fullText: "Calendar is ready.",
+    });
+    expect(done?.messageId).not.toBe(transientId);
+    expect(typeof done?.messageId).toBe("string");
+    expect(
+      vi
+        .mocked(persistAssistantConversationMemory)
+        .mock.calls.some((call) => call[5] === done?.messageId),
+    ).toBe(true);
+  });
+
+  it("does not reuse a stored response row owned by another agent id", async () => {
+    const responseId = stringToUuid("wrong-agent-id-response") as UUID;
+    const { ctx, record, state } = createCtx(
+      createPersistedCallbackMessageService(responseId),
+    );
+    const runtime = state.runtime;
+    if (!runtime) throw new Error("runtime fixture missing");
+    vi.mocked(runtime.getMemoriesByIds).mockResolvedValueOnce([
+      {
+        id: responseId,
+        entityId: AGENT_ID,
+        agentId: stringToUuid("different-agent"),
+        roomId: ROOM_ID,
+        content: { text: "Calendar is ready." },
+        createdAt: Date.now(),
+      },
+    ]);
+    runtime.updateMemory = vi.fn(async () => true);
+    vi.mocked(persistAssistantConversationMemory).mockClear();
+
+    await handleConversationRoutes(ctx);
+
+    const done = parseSsePayloads(record.writes).find(
+      (payload) => payload.type === "done",
+    );
+    expect(done).toMatchObject({
+      type: "done",
+      fullText: "Calendar is ready.",
+    });
+    expect(done?.messageId).not.toBe(responseId);
+    expect(
+      vi
+        .mocked(persistAssistantConversationMemory)
+        .mock.calls.some((call) => call[5] === done?.messageId),
+    ).toBe(true);
+  });
+
+  it.each([
+    [
+      "stream",
+      "absent from storage",
+      "/api/conversations/conv-1/messages/stream",
+      stringToUuid("transient-final-stream"),
+    ],
+    [
+      "json",
+      "absent from storage",
+      "/api/conversations/conv-1/messages",
+      stringToUuid("transient-final-json"),
+    ],
+    [
+      "stream",
+      "missing",
+      "/api/conversations/conv-1/messages/stream",
+      undefined,
+    ],
+    ["json", "missing", "/api/conversations/conv-1/messages", undefined],
+  ] as const)(
+    "%s: a final response whose id is %s cannot borrow an older same-text persisted id",
+    async (mode, _idState, pathname, transientFinalId) => {
+      const persistedEarlyId = stringToUuid(`persisted-early-${mode}`) as UUID;
+      const { ctx, record, state } = createCtx(
+        createMixedPersistedTransientMessageService(
+          persistedEarlyId,
+          transientFinalId,
+        ),
+      );
+      const runtime = state.runtime;
+      if (!runtime) throw new Error("runtime fixture missing");
+      let routeOwnedMemory:
+        | {
+            id: UUID;
+            entityId: UUID;
+            agentId: UUID;
+            roomId: UUID;
+            content: { text: string };
+            createdAt: number;
+          }
+        | undefined;
+      vi.mocked(persistAssistantConversationMemory).mockImplementationOnce(
+        async (
+          callbackRuntime,
+          roomId,
+          content,
+          _channelType,
+          _dedupeSinceMs,
+          memoryId,
+        ) => {
+          if (!memoryId) throw new Error("route-owned id missing");
+          routeOwnedMemory = {
+            id: memoryId,
+            entityId: callbackRuntime.agentId,
+            agentId: callbackRuntime.agentId,
+            roomId,
+            content: {
+              text:
+                typeof content === "string"
+                  ? content
+                  : String(content.text ?? ""),
+            },
+            createdAt: Date.now(),
+          };
+          return routeOwnedMemory as never;
+        },
+      );
+      vi.mocked(runtime.getMemoriesByIds).mockImplementation(async (ids) => {
+        const rows = [];
+        if (ids.includes(persistedEarlyId)) {
+          rows.push({
+            id: persistedEarlyId,
+            entityId: AGENT_ID,
+            agentId: AGENT_ID,
+            roomId: ROOM_ID,
+            content: { text: "Final answer." },
+            createdAt: Date.now() - 1,
+          });
+        }
+        if (routeOwnedMemory && ids.includes(routeOwnedMemory.id)) {
+          rows.push(routeOwnedMemory);
+        }
+        return rows as never;
+      });
+      const updateMemory = vi.fn(async () => true);
+      runtime.updateMemory = updateMemory;
+      let jsonPayload: Record<string, unknown> | undefined;
+      if (mode === "json") {
+        ctx.pathname = pathname;
+        ctx.json = vi.fn((_res, payload) => {
+          jsonPayload = payload as Record<string, unknown>;
+        });
+      }
+
+      await handleConversationRoutes(ctx);
+
+      const terminal =
+        mode === "stream"
+          ? parseSsePayloads(record.writes).find(
+              (payload) => payload.type === "done",
+            )
+          : jsonPayload;
+      const messageId = terminal?.messageId;
+      expect(terminal).toMatchObject({ messageId });
+      if (mode === "stream") {
+        expect(terminal).toMatchObject({ fullText: "Final answer." });
+      } else {
+        expect(terminal).toMatchObject({ text: "Final answer." });
+      }
+      expect(typeof messageId).toBe("string");
+      expect(messageId).not.toBe(persistedEarlyId);
+      expect(messageId).not.toBe(transientFinalId);
+      expect(routeOwnedMemory?.id).toBe(messageId);
+      expect(updateMemory).toHaveBeenCalledWith(
+        expect.objectContaining({ id: messageId }),
+      );
+      expect(updateMemory).not.toHaveBeenCalledWith(
+        expect.objectContaining({ id: persistedEarlyId }),
+      );
+    },
+  );
+
+  it.each([
+    ["wrong room", stringToUuid("other-room"), AGENT_ID, AGENT_ID],
+    ["wrong assistant entity", ROOM_ID, stringToUuid("other-agent"), AGENT_ID],
+    ["wrong assistant agent", ROOM_ID, AGENT_ID, stringToUuid("other-agent")],
+  ] as const)(
+    "refuses to write callback history to an exact target in the %s",
+    async (_label, roomId, entityId, agentId) => {
+      const targetId = stringToUuid("callback-target") as UUID;
+      const { state } = createCtx();
+      const runtime = state.runtime;
+      if (!runtime) throw new Error("runtime fixture missing");
+      vi.mocked(runtime.getMemoriesByIds).mockResolvedValueOnce([
+        {
+          id: targetId,
+          entityId,
+          agentId,
+          roomId,
+          content: { text: "Some other turn." },
+          createdAt: Date.now(),
+        },
+      ]);
+      const updateMemory = vi.fn(async () => true);
+      runtime.updateMemory = updateMemory;
+
+      await expect(
+        persistRecentAssistantActionCallbackHistory(
+          runtime,
+          ROOM_ID,
+          ["VIEWS"],
+          Date.now(),
+          targetId,
+        ),
+      ).rejects.toThrow("Failed to persist action callback history");
+      expect(updateMemory).not.toHaveBeenCalled();
+    },
+  );
+
+  it("surfaces an exact callback-history update failure before terminal delivery", async () => {
+    const targetId = stringToUuid("callback-update-failure") as UUID;
+    const { state } = createCtx();
+    const runtime = state.runtime;
+    if (!runtime) throw new Error("runtime fixture missing");
+    vi.mocked(runtime.getMemoriesByIds).mockResolvedValueOnce([
+      {
+        id: targetId,
+        entityId: AGENT_ID,
+        agentId: AGENT_ID,
+        roomId: ROOM_ID,
+        content: { text: "Calendar is ready." },
+        createdAt: Date.now(),
+      },
+    ]);
+    runtime.updateMemory = vi.fn(async () => {
+      throw new Error("callback metadata write failed");
+    });
+
+    await expect(
+      persistRecentAssistantActionCallbackHistory(
+        runtime,
+        ROOM_ID,
+        ["VIEWS"],
+        Date.now(),
+        targetId,
+      ),
+    ).rejects.toThrow("Failed to persist action callback history");
   });
 
   it("delivers a post-SSE-init failure as a structured SSE error frame, not an HTTP error", async () => {
