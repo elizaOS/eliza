@@ -1256,6 +1256,42 @@ export type WalletProfitabilitySummary = {
   investorInsights?: InvestorEvidenceCollection;
 };
 
+export type WalletReputationSummary = {
+  reputationScore: number;
+
+  displayScore: string;
+
+  reputationLevel:
+    | "unknown"
+    | "poor"
+    | "limited"
+    | "moderate"
+    | "good"
+    | "excellent";
+
+  confidence: "low" | "medium" | "high";
+
+  evidenceConfidence: "low" | "medium" | "high";
+
+  confidenceAnalysis?: WalletConfidenceAnalysis;
+
+  investorHeadline: string;
+
+  investorSummary: string;
+
+  investorTakeaway: string;
+
+  strengths: string[];
+
+  concerns: string[];
+
+  limitations: string[];
+
+  investorExplanation?: InvestorExplanation;
+
+  investorInsights?: InvestorEvidenceCollection;
+};
+
 export type WalletInvestigationReport = {
   generatedAt: string;
 
