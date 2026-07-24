@@ -33,13 +33,14 @@ import { analyzeWalletStrategy } from "../analyzers/strategy";
 import { analyzeWalletTransactionRisk } from "../analyzers/transactionRisk";
 import { analyzeWalletTrust } from "../analyzers/trust";
 import { analyzeWalletWhaleStatus } from "../analyzers/whale";
+import { getSolanaNftHoldings } from "../helius";
 import { getWalletIntelligenceSources } from "../sources/registry";
 import {
   WalletPipelineInput,
   WalletPipelineOutput,
 } from "./types";
 
-export function runWalletPipeline(
+export async function runWalletPipeline(
   input: WalletPipelineInput,
 ): WalletPipelineOutput {
   const activity = analyzeWalletActivity(
@@ -62,6 +63,11 @@ export function runWalletPipeline(
     input.tokenHoldings,
     input.tokenPrices,
   );
+
+  const nftHoldings =
+  input.chain === "solana"
+    ? await getSolanaNftHoldings(input.address)
+    : [];
 
   const risk = analyzeWalletRisk(
     input.balance.nativeAmount,
@@ -327,6 +333,7 @@ export function runWalletPipeline(
     age,
     funding,
     portfolio,
+    nftHoldings,
     risk,
     whale,
     defi,
