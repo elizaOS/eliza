@@ -1292,6 +1292,25 @@ export type WalletReputationSummary = {
   investorInsights?: InvestorEvidenceCollection;
 };
 
+export type WalletSkunkScoreSummary = {
+  score: number;
+
+  displayScore: string;
+
+  rating:
+    | "poor"
+    | "fair"
+    | "good"
+    | "very_good"
+    | "excellent";
+
+  stars: 1 | 2 | 3 | 4 | 5;
+
+  recommendation: string;
+
+  summary: string;
+};
+
 export type WalletInvestigationReport = {
   generatedAt: string;
 
