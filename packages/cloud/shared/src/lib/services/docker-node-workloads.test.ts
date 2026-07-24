@@ -77,6 +77,47 @@ describe("computeOrphanContainersToReap (agent diff)", () => {
     expect(orphans).toEqual([]);
   });
 
+  test("keeps both primary and replacement placements owned by one sandbox row", () => {
+    const rows: LiveContainerRef[] = [
+      { key: "same", status: "running", nodeId: "node-old", updatedAtMs: 1 },
+      {
+        key: "same",
+        status: "replacement_cleanup_owned",
+        nodeId: "node-new",
+        updatedAtMs: 1,
+      },
+    ];
+    const config = { ...AGENT_DIFF, nodeAware: true, nodeMoveGraceMs: 1 };
+
+    expect(
+      computeOrphanContainersToReap(
+        [{ ...container("agent-same", "old"), createdAtMs: 1 }],
+        rows,
+        config,
+        "node-old",
+        10,
+      ),
+    ).toEqual([]);
+    expect(
+      computeOrphanContainersToReap(
+        [{ ...container("agent-same", "new"), createdAtMs: 1 }],
+        rows,
+        config,
+        "node-new",
+        10,
+      ),
+    ).toEqual([]);
+    expect(
+      computeOrphanContainersToReap(
+        [{ ...container("agent-same", "ghost"), createdAtMs: 1 }],
+        rows,
+        config,
+        "node-third",
+        10,
+      ),
+    ).toEqual([{ name: "agent-same", id: "ghost", key: "same", reason: "wrong_node" }]);
+  });
+
   test("does NOT reap a row in deletion_pending (delete job owns teardown)", () => {
     const orphans = compute(
       [container("agent-deleting", "c4")],

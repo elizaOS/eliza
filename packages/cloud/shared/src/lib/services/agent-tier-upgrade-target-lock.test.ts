@@ -57,6 +57,8 @@ function makeTx(txIndex: number) {
       const { sql: text, params } = new PgDialect().sqlToQuery(query);
       if (text.includes("pg_advisory_xact_lock")) {
         events.push({ tx: txIndex, kind: "lock", detail: String(params[1] ?? "") });
+      } else if (text.includes("set_config")) {
+        events.push({ tx: txIndex, kind: "deadline", detail: params.join(",") });
       } else {
         events.push({ tx: txIndex, kind: "execute" });
       }
@@ -212,6 +214,7 @@ describe("tier-upgrade single-flight span (#15943)", () => {
 
     const phase1 = events.filter((event) => event.tx === 1);
     expect(phase1.map((event) => event.kind)).toEqual([
+      "deadline",
       "lock",
       "lock",
       "select-live-target",
@@ -220,8 +223,9 @@ describe("tier-upgrade single-flight span (#15943)", () => {
     // Global lock order: the ORG-WIDE agent-create lock is acquired FIRST
     // (quota atomicity against createAgent and other-source upgrades,
     // #16042 review), then the per-source tier-upgrade lock.
-    expect(phase1[0]?.detail).toBe("agent-create");
-    expect(phase1[1]?.detail).toBe(`tier-upgrade:${SRC}`);
+    expect(phase1[0]?.detail).toBe("10000ms,30000ms");
+    expect(phase1[1]?.detail).toBe("agent-create");
+    expect(phase1[2]?.detail).toBe(`tier-upgrade:${SRC}`);
 
     // The load-bearing assertion: target insert AND provision-job insert are
     // statements of the SAME transaction that took the org + tier-upgrade
@@ -230,21 +234,29 @@ describe("tier-upgrade single-flight span (#15943)", () => {
     // locks and the head of the list changes.
     const phase3 = events.filter((event) => event.tx === 2);
     expect(phase3.map((event) => event.kind)).toEqual([
+      "deadline",
       "lock",
       "lock",
       "select-live-target",
       "select-quota-count",
       "insert-target",
+      "deadline",
       "lock",
       "select-sandbox-for-enqueue",
       "select-active-job",
+      "select-active-job",
       "insert-provision-job",
     ]);
-    expect(phase3[0]?.detail).toBe("agent-create");
-    expect(phase3[1]?.detail).toBe(`tier-upgrade:${SRC}`);
+    expect(phase3[0]?.detail).toBe("10000ms,30000ms");
+    expect(phase3[1]?.detail).toBe("agent-create");
+    expect(phase3[2]?.detail).toBe(`tier-upgrade:${SRC}`);
     // The nested provision lock is keyed on the freshly minted target id
     // (org → tier-upgrade → provision; never any other order).
-    expect(phase3[5]?.detail).toBe(result.agent.id);
+    expect(phase3.filter((event) => event.kind === "lock").map((event) => event.detail)).toEqual([
+      "agent-create",
+      `tier-upgrade:${SRC}`,
+      result.agent.id,
+    ]);
 
     // Happy path: the prepared credentials were adopted, not revoked.
     expect(prepCalls).toBe(1);
@@ -268,7 +280,12 @@ describe("tier-upgrade single-flight span (#15943)", () => {
     expect(txCounter).toBe(1);
     expect(prepCalls).toBe(0);
     expect(revokeForAgent).not.toHaveBeenCalled();
-    expect(events.map((event) => event.kind)).toEqual(["lock", "lock", "select-live-target"]);
+    expect(events.map((event) => event.kind)).toEqual([
+      "deadline",
+      "lock",
+      "lock",
+      "select-live-target",
+    ]);
   });
 
   test("losing the race inside the boundary revokes the candidate credentials and adopts the winner's target", async () => {

@@ -231,6 +231,10 @@ function createPgPool(url: string, hyperdriveUrl?: string): PgPool {
   // local plaintext endpoint, so bypass the remote-TLS enforcement.
   const tls = hyperdriveUrl ? { url: hyperdriveUrl, ssl: undefined } : enforceTlsForRemote(url);
   const options: PoolConfig = { connectionString: tls.url };
+  // A remote Node daemon must fail a saturated pool checkout instead of
+  // waiting forever behind a leaked transaction while outer job timers merely
+  // abandon their awaiters.
+  options.connectionTimeoutMillis = 30_000;
   if (tls.ssl) options.ssl = tls.ssl;
   // Identify our connections in pg_stat_activity. Railway sets
   // RAILWAY_SERVICE_NAME per service, so on a shared Postgres a connection leak

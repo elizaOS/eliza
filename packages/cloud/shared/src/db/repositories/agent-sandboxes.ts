@@ -9,7 +9,10 @@ import {
   selectPrunableBackupIds,
 } from "../../lib/services/agent-backup-diff";
 import { AGENT_MANAGED_DISCORD_KEY } from "../../lib/services/eliza-agent-config";
-import { elizaProvisionAdvisoryLockSql } from "../../lib/services/eliza-provision-lock";
+import {
+  configureElizaLifecycleTransaction,
+  elizaProvisionAdvisoryLockSql,
+} from "../../lib/services/eliza-provision-lock";
 import { mergeWarmClaimEnvironmentVars } from "../../lib/services/warm-claim-character-push";
 import { ObjectNamespaces } from "../../lib/storage/object-namespace";
 import { getObjectText, offloadJsonField } from "../../lib/storage/object-store";
@@ -1293,6 +1296,7 @@ export class AgentSandboxesRepository {
   }): Promise<WarmClaimedAgentSandbox | null> {
     await ensureAgentSandboxSchema();
     return dbWrite.transaction(async (tx) => {
+      await configureElizaLifecycleTransaction(tx);
       await tx.execute(elizaProvisionAdvisoryLockSql(params.organizationId, params.userAgentId));
       // Attribution guard (audit §C1c): NEVER claim a pool row whose node_id is
       // null/empty. createPoolContainer provisions via the same provision() path
