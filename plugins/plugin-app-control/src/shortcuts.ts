@@ -9,7 +9,7 @@
 import type { ShortcutDefinition } from "@elizaos/core";
 
 const VIEW_TARGET_PATTERN =
-	"settings|calendar|agenda|schedule|inbox|messages|mailbox|mail|email|e-mail|emails|wallet|app builder|task coordinator|home|home screen|home page|home dashboard|dashboard|main screen|main page|main chat|chat";
+	"settings|notes?|calendar|agenda|schedule|inbox|messages|mailbox|mail|email|e-mail|emails|wallet|app builder|task coordinator|home|home screen|home page|home dashboard|dashboard|main screen|main page|main chat|chat";
 const NAVIGATION_VERB_PATTERN =
 	"open|show|go(?: back)?(?: to)?|back(?: to)?|return(?: to)?|switch to|take me to|pull up|bring up|check|view";
 
