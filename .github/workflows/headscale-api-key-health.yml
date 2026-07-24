@@ -177,12 +177,18 @@ jobs:
             PEM
             sudo journalctl -u eliza-provisioning-worker.service \
               --since "2026-07-24 03:56:00 UTC" \
-              --until "2026-07-24 04:11:40 UTC" \
+              --until "2026-07-24 04:30:00 UTC" \
               --no-pager --output=short-iso-precise >"$journal_file"
             grep_status=0
-            grep -F -B 20 -A 40 \
+            grep -E -B 2 -A 6 \
               -e "27273194-76bf-48ee-95f7-59c487afc129" \
               -e "889edf8a-b830-50ea-9e1b-ef40e0726578" \
+              -e "747a415a-e1ac-4c32-a147-9ab8c5a69d99" \
+              -e "node 2255" \
+              -e "Backup created" \
+              -e "Atomic swap" \
+              -e "Fleet upgrade completed" \
+              -e "replacement cleanup" \
               "$journal_file" >"$matched_file" || grep_status=$?
             case "$grep_status" in
               0) ;;
