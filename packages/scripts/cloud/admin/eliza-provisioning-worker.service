@@ -13,15 +13,17 @@ EnvironmentFile=/opt/eliza/cloud/.env.local
 # ssh2 + dockerode are Node-only, so the daemon runs under tsx (not bun).
 # Use the installed workspace binary directly; `npx tsx` adds npm/esbuild
 # startup overhead and has hit Node worker heap limits on the deploy host.
-Environment=NODE_OPTIONS=--max-old-space-size=1024
+Environment=NODE_OPTIONS=--max-old-space-size=1536
 ExecStartPre=/opt/eliza/packages/scripts/cloud/admin/ensure-generated-keywords.sh
 ExecStart=/opt/eliza/node_modules/.bin/tsx --tsconfig /opt/eliza/packages/cloud/shared/tsconfig.json /opt/eliza/packages/scripts/cloud/admin/daemons/provisioning-worker.ts
 
 Restart=always
 RestartSec=5
 
-MemoryMax=1536M
-MemoryHigh=1024M
+# Blue/green replacement loads the provider and runtime health graph in one
+# process. Keep measured old-space demand below a hard per-service host fence.
+MemoryHigh=1792M
+MemoryMax=2048M
 
 StandardOutput=journal
 StandardError=journal
