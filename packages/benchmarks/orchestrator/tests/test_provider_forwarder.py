@@ -18,8 +18,11 @@ from pathlib import Path
 import pytest
 
 from benchmarks.orchestrator.provider_forwarder import (
+    MAX_UPSTREAM_ATTEMPTS_ENV,
     PASSTHROUGH_STREAMING_ENV,
+    RETRY_BUDGET_SECONDS_ENV,
     ForwarderLifecycleError,
+    _parse_retry_after,
     is_loopback_url,
     start_provider_forwarder,
 )
@@ -224,6 +227,36 @@ class _UpstreamHandler(BaseHTTPRequestHandler):
         payload = json.loads(self.rfile.read(length) or b"{}")
         self._record(payload)
         if self.path == "/api/v1/chat/completions":
+            with self.server.counter_lock:
+                self.server.chat_calls += 1
+                drop = self.server.transport_fail_remaining > 0
+                if drop:
+                    self.server.transport_fail_remaining -= 1
+                transient = (not drop) and self.server.transient_fail_remaining > 0
+                if transient:
+                    self.server.transient_fail_remaining -= 1
+                    status = self.server.transient_fail_status
+                    retry_after = self.server.transient_retry_after
+            if drop:
+                self.close_connection = True
+                try:
+                    self.connection.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
+                self.connection.close()
+                return
+            if transient:
+                body = json.dumps(
+                    {"error": {"message": "overloaded", "type": "server_error"}}
+                ).encode("utf-8")
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                if retry_after is not None:
+                    self.send_header("Retry-After", retry_after)
+                self.end_headers()
+                self.wfile.write(body)
+                return
             if self.server.fail_status is not None:
                 self._json(
                     self.server.fail_status,
@@ -294,6 +327,20 @@ class _UpstreamServer(ThreadingHTTPServer):
         self.fail_status: int | None = None
         self.invalid_json_completion = False
         self.release_stream = threading.Event()
+        # Transient-failure model for the retry tests: the next
+        # ``transient_fail_remaining`` chat-completion calls answer with
+        # ``transient_fail_status`` (and an optional ``Retry-After``), then the
+        # upstream recovers — the realistic shape of an overload/throttle spike.
+        self.counter_lock = threading.Lock()
+        self.transient_fail_remaining = 0
+        self.transient_fail_status = 503
+        self.transient_retry_after: str | None = None
+        # The next ``transport_fail_remaining`` chat calls drop the connection
+        # before answering, so the forwarder sees a transport-layer failure
+        # (RemoteDisconnected) rather than an HTTP status — the "connect/read
+        # died" transient class, distinct from a 5xx.
+        self.transport_fail_remaining = 0
+        self.chat_calls = 0
 
 
 @pytest.fixture()
@@ -778,7 +825,9 @@ def test_destream_relays_upstream_errors_without_fabricating_a_stream(
     upstream: _UpstreamServer, tmp_path: Path
 ) -> None:
     upstream.fail_status = 429
-    forwarder = _start(upstream, tmp_path)
+    # Single-attempt: this test pins the verbatim relay of one upstream error.
+    # The transient-error retry envelope is exercised separately below.
+    forwarder = _start(upstream, tmp_path, max_upstream_attempts=1)
     try:
         lane_token = forwarder.env_for_harness("hermes")["OPENAI_API_KEY"]
         connection, response = _open_stream(
@@ -910,7 +959,8 @@ def test_upstream_error_passes_through_verbatim(
     upstream: _UpstreamServer, tmp_path: Path
 ) -> None:
     upstream.fail_status = 429
-    forwarder = _start(upstream, tmp_path)
+    # Single-attempt: verbatim relay of one upstream error (retries below).
+    forwarder = _start(upstream, tmp_path, max_upstream_attempts=1)
     try:
         lane_token = forwarder.env_for_harness("openclaw")["OPENAI_API_KEY"]
         status, body, _headers = _request(
@@ -938,6 +988,7 @@ def test_unreachable_upstream_becomes_502_never_a_completion(
         upstream,
         tmp_path,
         upstream_base_url=f"http://127.0.0.1:{dead_port}/api/v1",
+        max_upstream_attempts=1,
     )
     try:
         lane_token = forwarder.env_for_harness("hermes")["OPENAI_API_KEY"]
@@ -1046,3 +1097,278 @@ def test_close_raises_when_serving_thread_died_before_close(
     assert not forwarder._thread.is_alive()
     with pytest.raises(ForwarderLifecycleError, match="exited before close"):
         forwarder.close()
+
+
+# --- Transient upstream-error retry envelope (long-run reliability) ----------
+# Regression coverage for the adhdbench hermes-leg progressive failure: a
+# sustained upstream throttle/overload window is relayed verbatim, and because
+# the native agent's tiny per-turn retry budget exhausts every turn, the leg
+# fails contiguously to the end. The forwarder now rides transient upstream
+# errors so a recoverable spike never cascades into a permanent leg failure.
+
+_FAST_RETRY: dict[str, object] = {
+    "retry_base_delay_seconds": 0.001,
+    "retry_max_delay_seconds": 0.01,
+    "retry_budget_seconds": 5.0,
+}
+
+
+def _fd_count() -> int | None:
+    """Open file-descriptor count for this process, or None off Linux."""
+
+    fd_dir = Path(f"/proc/{__import__('os').getpid()}/fd")
+    if not fd_dir.is_dir():
+        return None
+    try:
+        return len(list(fd_dir.iterdir()))
+    except OSError:
+        return None
+
+
+def test_parse_retry_after_accepts_both_rfc7231_forms() -> None:
+    from email.utils import format_datetime
+    from datetime import datetime, timedelta, timezone
+
+    assert _parse_retry_after("2") == 2.0
+    assert _parse_retry_after("0") == 0.0
+    # A past HTTP-date clamps to a non-negative wait.
+    past = format_datetime(datetime.now(timezone.utc) - timedelta(seconds=30))
+    assert _parse_retry_after(past) == 0.0
+    future = format_datetime(datetime.now(timezone.utc) + timedelta(seconds=5))
+    assert 0.0 < _parse_retry_after(future) <= 6.0
+    # A malformed negative delay clamps to an immediate (zero) wait.
+    assert _parse_retry_after("-3") == 0.0
+    # Unusable inputs yield no hint (caller falls back to its own backoff).
+    for junk in (None, "", "   ", "soon", "1.5", 5):
+        assert _parse_retry_after(junk) is None
+
+
+def test_transient_upstream_error_is_retried_and_absorbed(
+    upstream: _UpstreamServer, tmp_path: Path
+) -> None:
+    upstream.transient_fail_remaining = 3
+    upstream.transient_fail_status = 503
+    forwarder = _start(
+        upstream, tmp_path, max_upstream_attempts=4, **_FAST_RETRY
+    )
+    try:
+        lane_token = forwarder.env_for_harness("hermes")["OPENAI_API_KEY"]
+        # stream:false → de-stream path is bypassed; goes through _forward.
+        status, body, _headers = _request(
+            forwarder.base_url,
+            "POST",
+            "/v1/chat/completions",
+            token=lane_token,
+            payload={"model": "gemma-4-31b", "messages": [], "stream": False},
+        )
+        # The client never saw the three 503s — the fourth attempt succeeded.
+        assert status == 200
+        assert json.loads(body) == CHAT_COMPLETION
+        assert upstream.chat_calls == 4
+    finally:
+        evidence_file = forwarder.close()
+    evidence = json.loads(evidence_file.read_text(encoding="utf-8"))
+    assert evidence["upstream_retries"] == 3
+    assert evidence["upstream_retry_exhaustions"] == 0
+    assert evidence["upstream_transport_failures"] == 0
+
+
+def test_transient_error_on_destream_path_is_absorbed(
+    upstream: _UpstreamServer, tmp_path: Path
+) -> None:
+    upstream.transient_fail_remaining = 2
+    upstream.transient_fail_status = 429
+    upstream.transient_retry_after = "1"  # capped by retry_max_delay_seconds
+    forwarder = _start(
+        upstream, tmp_path, max_upstream_attempts=4, **_FAST_RETRY
+    )
+    try:
+        lane_token = forwarder.env_for_harness("hermes")["OPENAI_API_KEY"]
+        connection, response = _open_stream(
+            forwarder.base_url,
+            lane_token,
+            {"model": "gemma-4-31b", "messages": [], "stream": True},
+        )
+        try:
+            assert response.status == 200
+            events = _read_sse_data(response)
+        finally:
+            connection.close()
+        accumulated = _accumulate_openai_stream(events)
+        assert accumulated["content"] == "4"
+        assert upstream.chat_calls == 3
+    finally:
+        evidence_file = forwarder.close()
+    evidence = json.loads(evidence_file.read_text(encoding="utf-8"))
+    assert evidence["upstream_retries"] == 2
+    assert evidence["destreamed_requests"] == 1
+
+
+def test_persistent_upstream_error_surfaces_the_real_status_after_exhaustion(
+    upstream: _UpstreamServer, tmp_path: Path
+) -> None:
+    upstream.fail_status = 503
+    forwarder = _start(
+        upstream, tmp_path, max_upstream_attempts=3, **_FAST_RETRY
+    )
+    try:
+        lane_token = forwarder.env_for_harness("openclaw")["OPENAI_API_KEY"]
+        status, body, _headers = _request(
+            forwarder.base_url,
+            "POST",
+            "/v1/chat/completions",
+            token=lane_token,
+            payload={"model": "gemma-4-31b", "messages": [], "stream": False},
+        )
+        # Retries were tried and exhausted; the harness sees the real 503, not
+        # a fabricated 502 — its own failure handling stays authoritative.
+        assert status == 503
+        assert json.loads(body) == {
+            "error": {"message": "quota exhausted", "type": "rate_limit"}
+        }
+        assert upstream.chat_calls == 3
+    finally:
+        evidence_file = forwarder.close()
+    evidence = json.loads(evidence_file.read_text(encoding="utf-8"))
+    assert evidence["upstream_retries"] == 2
+    assert evidence["upstream_retry_exhaustions"] == 1
+
+
+def test_transient_transport_failure_recovers_then_succeeds(
+    upstream: _UpstreamServer, tmp_path: Path
+) -> None:
+    """Upstream connections dropped mid-flight are retried through to a 200.
+
+    A read/connect failure (no HTTP status) is the other transient class: it
+    must be retried like a 5xx, not turned straight into a 502.
+    """
+
+    upstream.transport_fail_remaining = 2
+    forwarder = _start(
+        upstream,
+        tmp_path,
+        max_upstream_attempts=4,
+        retry_base_delay_seconds=0.001,
+        retry_max_delay_seconds=0.01,
+        retry_budget_seconds=5.0,
+    )
+    try:
+        lane_token = forwarder.env_for_harness("hermes")["OPENAI_API_KEY"]
+        status, body, _headers = _request(
+            forwarder.base_url,
+            "POST",
+            "/v1/chat/completions",
+            token=lane_token,
+            payload={"model": "gemma-4-31b", "messages": [], "stream": False},
+        )
+        assert status == 200
+        assert json.loads(body) == CHAT_COMPLETION
+        assert upstream.chat_calls == 3
+    finally:
+        evidence_file = forwarder.close()
+    evidence = json.loads(evidence_file.read_text(encoding="utf-8"))
+    assert evidence["upstream_transport_failures"] == 2
+    assert evidence["upstream_retries"] == 2
+    assert evidence["upstream_retry_exhaustions"] == 0
+
+
+def test_retry_envelope_reads_env_overrides(
+    upstream: _UpstreamServer, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(MAX_UPSTREAM_ATTEMPTS_ENV, "2")
+    monkeypatch.setenv(RETRY_BUDGET_SECONDS_ENV, "3.5")
+    upstream.fail_status = 500
+    forwarder = _start(
+        upstream,
+        tmp_path,
+        retry_base_delay_seconds=0.001,
+        retry_max_delay_seconds=0.01,
+    )
+    try:
+        assert forwarder._state.max_upstream_attempts == 2
+        assert forwarder._state.retry_budget_seconds == 3.5
+        lane_token = forwarder.env_for_harness("hermes")["OPENAI_API_KEY"]
+        status, _body, _headers = _request(
+            forwarder.base_url,
+            "POST",
+            "/v1/chat/completions",
+            token=lane_token,
+            payload={"model": "gemma-4-31b", "messages": [], "stream": False},
+        )
+        assert status == 500
+        assert upstream.chat_calls == 2  # env-capped attempts honored
+    finally:
+        forwarder.close()
+
+
+def test_invalid_retry_env_fails_closed(
+    upstream: _UpstreamServer, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(MAX_UPSTREAM_ATTEMPTS_ENV, "0")
+    with pytest.raises(ValueError, match="positive integer"):
+        _start(upstream, tmp_path)
+    monkeypatch.setenv(MAX_UPSTREAM_ATTEMPTS_ENV, "3")
+    monkeypatch.setenv(RETRY_BUDGET_SECONDS_ENV, "not-a-number")
+    with pytest.raises(ValueError, match="positive number"):
+        _start(upstream, tmp_path)
+
+
+def test_forwarder_soak_rides_recurring_transient_windows_without_leaking(
+    upstream: _UpstreamServer, tmp_path: Path
+) -> None:
+    """Long-run regression: thousands of requests through recurring transient
+    upstream windows keep succeeding with stable threads/fds — the property the
+    3.5h adhdbench cohort violated when a throttle window cascaded to a solid
+    block of failures."""
+
+    total = 2400
+    burst_every = 300
+    burst_size = 3  # < max_upstream_attempts so every burst is fully absorbed
+    forwarder = _start(
+        upstream,
+        tmp_path,
+        max_upstream_attempts=5,
+        retry_base_delay_seconds=0.001,
+        retry_max_delay_seconds=0.005,
+        retry_budget_seconds=5.0,
+    )
+    try:
+        lane_token = forwarder.env_for_harness("hermes")["OPENAI_API_KEY"]
+        base_threads = threading.active_count()
+        base_fd = _fd_count()
+        thread_samples: list[int] = []
+        fd_samples: list[int] = []
+        non_200 = 0
+        for i in range(1, total + 1):
+            if i % burst_every == 0:
+                with upstream.counter_lock:
+                    upstream.transient_fail_remaining = burst_size
+                    upstream.transient_fail_status = 503 if i % 2 else 429
+            status, _body, _headers = _request(
+                forwarder.base_url,
+                "POST",
+                "/v1/chat/completions",
+                token=lane_token,
+                payload={"model": "gemma-4-31b", "messages": [], "stream": False},
+            )
+            if status != 200:
+                non_200 += 1
+            if i % 400 == 0:
+                thread_samples.append(threading.active_count())
+                fd = _fd_count()
+                if fd is not None:
+                    fd_samples.append(fd)
+        # Every transient burst was fully absorbed: zero client-visible failures.
+        assert non_200 == 0
+        # Threads never accumulate — the serving loop reaps every handler.
+        assert max(thread_samples) <= base_threads + 4, thread_samples
+        if base_fd is not None and fd_samples:
+            # No descriptor leak across the whole run.
+            assert max(fd_samples) <= base_fd + 8, (base_fd, fd_samples)
+    finally:
+        evidence_file = forwarder.close()
+    evidence = json.loads(evidence_file.read_text(encoding="utf-8"))
+    assert evidence["harness_request_counts"]["hermes"] == total
+    # Retries actually fired (each burst) but none exhausted.
+    assert evidence["upstream_retries"] >= (total // burst_every) * burst_size
+    assert evidence["upstream_retry_exhaustions"] == 0

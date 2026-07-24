@@ -47,10 +47,13 @@ from __future__ import annotations
 import ipaddress
 import json
 import os
+import random
 import secrets
 import threading
+import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 from http.client import HTTPConnection, HTTPResponse, HTTPSConnection
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -61,6 +64,32 @@ from .runner import PROVIDER_BASE_URL_ENV, PROVIDER_KEY_ENV
 DEFAULT_UPSTREAM_TIMEOUT_SECONDS = 600.0
 DEFAULT_STOP_TIMEOUT_SECONDS = 30.0
 _RELAY_CHUNK_BYTES = 65536
+
+# Transient upstream failures the forwarder rides through with bounded
+# exponential backoff instead of relaying straight to the harness. A long
+# publishable cohort routes every native-agent turn through this one loopback
+# chokepoint, and the native agents (hermes especially) carry only a tiny
+# per-turn API-retry budget with no failover target when pointed at a single
+# custom provider: a sustained upstream throttle/overload window therefore
+# exhausts every turn's retries and, because the window persists, cascades into
+# a solid contiguous block of turn failures to the end of the run (observed:
+# adhdbench hermes leg, ~700 healthy turns then 151 contiguous failures after a
+# 429 onset, forwarder evidence showing zero transport failures because the
+# non-2xx responses were relayed verbatim). Absorbing transient upstream errors
+# here — 429 throttling, 5xx overload/server errors, and connect/read timeouts
+# — keeps a recoverable spike from becoming a permanent leg failure. A genuinely
+# terminal condition (persistent 402 billing, 4xx request errors) is never
+# retried and surfaces immediately; a transient class that outlives the retry
+# budget surfaces the real upstream response so the harness still fails honestly.
+_RETRYABLE_UPSTREAM_STATUSES = frozenset({429, 500, 502, 503, 504})
+DEFAULT_MAX_UPSTREAM_ATTEMPTS = 4
+DEFAULT_RETRY_BASE_DELAY_SECONDS = 0.5
+DEFAULT_RETRY_MAX_DELAY_SECONDS = 8.0
+DEFAULT_RETRY_BUDGET_SECONDS = 60.0
+# Operator overrides for the retry envelope; unset/blank/invalid falls back to
+# the defaults above so a soak or a tighter-budget run needs no code change.
+MAX_UPSTREAM_ATTEMPTS_ENV = "ELIZA_FORWARDER_MAX_UPSTREAM_ATTEMPTS"
+RETRY_BUDGET_SECONDS_ENV = "ELIZA_FORWARDER_RETRY_BUDGET_SECONDS"
 # Escape hatch for the de-stream default: set to 1/true/yes/on to relay
 # ``stream:true`` chat completions byte-for-byte again once the elizacloud
 # streamed-tool-call duplication fix (PR #16973) is live in production.
@@ -114,6 +143,15 @@ class ForwarderLifecycleError(RuntimeError):
     """Reports a forwarder startup/serving/teardown contract failure."""
 
 
+class _UpstreamTransportError(RuntimeError):
+    """A single upstream exchange failed at the transport layer (no response).
+
+    Carried between ``_open_upstream_once`` and the retry loop so a connect/read
+    failure is retried like a retryable status rather than immediately becoming
+    a 502; the loop translates the final one into the harness-facing error.
+    """
+
+
 def is_loopback_url(value: object) -> bool:
     """Whether an http(s) URL resolves syntactically to a loopback host.
 
@@ -146,6 +184,52 @@ def is_loopback_url(value: object) -> bool:
 
 def _utc_now() -> str:
     return datetime.now(UTC).isoformat()
+
+
+def _resolve_positive_int(
+    override: int | None, *, env_name: str, default: int, label: str
+) -> int:
+    if override is not None:
+        if override <= 0:
+            raise ValueError(f"Provider forwarder {label} must be positive")
+        return override
+    raw = os.environ.get(env_name, "").strip()
+    if not raw:
+        return default
+    # error-policy:J3 the env value is untrusted operator configuration; an
+    # unparseable/non-positive value is a hard startup error, not a silent
+    # fallback that would mask a misconfigured run.
+    try:
+        value = int(raw)
+    except ValueError as error:
+        raise ValueError(
+            f"{env_name} must be a positive integer, got {raw!r}"
+        ) from error
+    if value <= 0:
+        raise ValueError(f"{env_name} must be a positive integer, got {raw!r}")
+    return value
+
+
+def _resolve_positive_float(
+    override: float | None, *, env_name: str, default: float, label: str
+) -> float:
+    if override is not None:
+        if override <= 0:
+            raise ValueError(f"Provider forwarder {label} must be positive")
+        return float(override)
+    raw = os.environ.get(env_name, "").strip()
+    if not raw:
+        return default
+    # error-policy:J3 see _resolve_positive_int — misconfiguration fails loudly.
+    try:
+        value = float(raw)
+    except ValueError as error:
+        raise ValueError(
+            f"{env_name} must be a positive number, got {raw!r}"
+        ) from error
+    if value <= 0:
+        raise ValueError(f"{env_name} must be a positive number, got {raw!r}")
+    return value
 
 
 @dataclass(frozen=True)
@@ -185,6 +269,10 @@ class _ForwarderState:
     tokens_to_harness: dict[str, str]
     upstream_timeout_seconds: float
     passthrough_streaming: bool = False
+    max_upstream_attempts: int = DEFAULT_MAX_UPSTREAM_ATTEMPTS
+    retry_base_delay_seconds: float = DEFAULT_RETRY_BASE_DELAY_SECONDS
+    retry_max_delay_seconds: float = DEFAULT_RETRY_MAX_DELAY_SECONDS
+    retry_budget_seconds: float = DEFAULT_RETRY_BUDGET_SECONDS
     lock: threading.Lock = field(default_factory=threading.Lock)
     lane_request_counts: dict[str, int] = field(default_factory=dict)
     unauthorized_requests: int = 0
@@ -192,6 +280,11 @@ class _ForwarderState:
     upstream_invalid_completions: int = 0
     destreamed_requests: int = 0
     aborted_connections: int = 0
+    # Retries performed (backoff sleeps) and requests whose transient-error
+    # retries were exhausted before a success — the evidence signal that a long
+    # run rode through upstream turbulence instead of failing every turn.
+    upstream_retries: int = 0
+    upstream_retry_exhaustions: int = 0
 
 
 def _streaming_request_payload(body: bytes) -> dict[str, object] | None:
@@ -212,6 +305,34 @@ def _streaming_request_payload(body: bytes) -> dict[str, object] | None:
     if not isinstance(payload, dict) or payload.get("stream") is not True:
         return None
     return payload
+
+
+def _parse_retry_after(value: object) -> float | None:
+    """Seconds to wait from a ``Retry-After`` header, or None if unusable.
+
+    Accepts the two RFC 7231 forms — a non-negative integer delay and an
+    HTTP-date — and clamps a past/oversized date to a small non-negative float.
+    Any parse failure yields None so the caller falls back to its own backoff.
+    """
+
+    if not isinstance(value, str) or not value.strip():
+        return None
+    text = value.strip()
+    # error-policy:J3 the header is untrusted upstream input; an unparseable
+    # value is an explicit "no hint" verdict, not a fabricated delay.
+    try:
+        seconds = float(int(text))
+    except ValueError:
+        try:
+            when = parsedate_to_datetime(text)
+        except (TypeError, ValueError):
+            return None
+        if when is None:
+            return None
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=UTC)
+        seconds = (when - datetime.now(UTC)).total_seconds()
+    return max(seconds, 0.0)
 
 
 def _synthesize_sse_frames(completion: dict[str, object]) -> list[bytes]:
@@ -457,14 +578,19 @@ class _ForwarderHandler(BaseHTTPRequestHandler):
             )
         return harness
 
-    def _open_upstream(
+    def _open_upstream_once(
         self,
         method: str,
         subpath: str,
         query: str,
         body: bytes | None,
-    ) -> tuple[HTTPConnection, HTTPResponse] | None:
-        """One authenticated upstream exchange, or None after a written 502."""
+    ) -> tuple[HTTPConnection, HTTPResponse]:
+        """A single authenticated upstream exchange.
+
+        Raises ``_UpstreamTransportError`` on a connect/read failure (with the
+        socket already closed) so the retry loop can decide between another
+        attempt and surfacing the failure; never writes downstream itself.
+        """
 
         state = self.server.state
         target = state.upstream
@@ -483,26 +609,119 @@ class _ForwarderHandler(BaseHTTPRequestHandler):
             connection.request(method, upstream_path, body=body, headers=headers)
             return connection, connection.getresponse()
         except (OSError, TimeoutError) as error:
-            # error-policy:J1 the forwarder is the harness-to-upstream
-            # transport boundary; a transport failure surfaces as an explicit
-            # HTTP error the harness observes and fails its run on — never a
-            # fabricated completion, never a fallback to a different endpoint.
+            connection.close()
+            raise _UpstreamTransportError(
+                f"{type(error).__name__}: {error}"
+            ) from error
+
+    def _retry_delay(self, attempt: int, *, retry_after: float | None) -> float:
+        """Backoff seconds before retry ``attempt+1`` — jittered, header-aware.
+
+        Exponential in the attempt count, floored by any ``Retry-After`` hint,
+        capped at ``retry_max_delay_seconds`` so a single oversized hint cannot
+        stall the turn, then full-jittered (halfway to full) to keep the
+        concurrent harness lanes sharing this forwarder from synchronizing their
+        retries into a thundering herd against the upstream.
+        """
+
+        state = self.server.state
+        backoff = state.retry_base_delay_seconds * (2 ** (attempt - 1))
+        delay = min(backoff, state.retry_max_delay_seconds)
+        if retry_after is not None:
+            delay = min(max(delay, retry_after), state.retry_max_delay_seconds)
+        return random.uniform(delay * 0.5, delay)
+
+    def _open_upstream(
+        self,
+        method: str,
+        subpath: str,
+        query: str,
+        body: bytes | None,
+    ) -> tuple[HTTPConnection, HTTPResponse] | None:
+        """An upstream exchange with transient-failure retries, or None on 502.
+
+        Retries the transient classes (``_RETRYABLE_UPSTREAM_STATUSES`` plus
+        transport errors) with bounded exponential backoff under a per-request
+        time budget. A non-retryable status returns on the first attempt. When
+        retries are exhausted the real failure surfaces to the harness: the last
+        upstream response for a retryable *status* is relayed verbatim (so the
+        harness sees the true 429/5xx), while a terminal *transport* failure —
+        which has no response to relay — becomes an explicit 502.
+        """
+
+        state = self.server.state
+        deadline = time.monotonic() + state.retry_budget_seconds
+        last_transport: _UpstreamTransportError | None = None
+        attempt = 0
+        while True:
+            attempt += 1
+            try:
+                connection, response = self._open_upstream_once(
+                    method, subpath, query, body
+                )
+            except _UpstreamTransportError as error:
+                # error-policy:J1 the forwarder is the harness-to-upstream
+                # transport boundary; the failure surfaces as an explicit HTTP
+                # error only after retries are exhausted — never a fabricated
+                # completion, never a fallback to a different endpoint.
+                with state.lock:
+                    state.upstream_transport_failures += 1
+                last_transport = error
+                delay = self._retry_delay(attempt, retry_after=None)
+                if (
+                    attempt >= state.max_upstream_attempts
+                    or time.monotonic() + delay > deadline
+                ):
+                    break
+                with state.lock:
+                    state.upstream_retries += 1
+                time.sleep(delay)
+                continue
+            if (
+                response.status not in _RETRYABLE_UPSTREAM_STATUSES
+                or attempt >= state.max_upstream_attempts
+            ):
+                if response.status in _RETRYABLE_UPSTREAM_STATUSES:
+                    with state.lock:
+                        state.upstream_retry_exhaustions += 1
+                return connection, response
+            delay = self._retry_delay(
+                attempt, retry_after=_parse_retry_after(response.headers.get("Retry-After"))
+            )
+            if time.monotonic() + delay > deadline:
+                # No budget left to retry: surface the real upstream error
+                # instead of discarding it for a fabricated 502.
+                with state.lock:
+                    state.upstream_retry_exhaustions += 1
+                return connection, response
+            # Discard this attempt's body and socket before backing off.
+            try:
+                response.read()
+            except OSError:
+                # error-policy:J6 best-effort drain of a response we are already
+                # discarding for a retry; the close() below reclaims the socket
+                # regardless, and the real failure is the retryable status.
+                pass
             connection.close()
             with state.lock:
-                state.upstream_transport_failures += 1
-            self._write_json(
-                502,
-                {
-                    "error": {
-                        "message": (
-                            "provider forwarder upstream request failed: "
-                            f"{type(error).__name__}: {error}"
-                        ),
-                        "type": "provider_forwarder_upstream_error",
-                    }
-                },
-            )
-            return None
+                state.upstream_retries += 1
+            time.sleep(delay)
+        with state.lock:
+            state.upstream_retry_exhaustions += 1
+        detail = str(last_transport) if last_transport else "unknown transport failure"
+        self._write_json(
+            502,
+            {
+                "error": {
+                    "message": (
+                        "provider forwarder upstream request failed after "
+                        f"{attempt} attempt(s): {detail}"
+                    ),
+                    "type": "provider_forwarder_upstream_error",
+                }
+            },
+        )
+        return None
 
     def _forward(
         self,
@@ -751,6 +970,8 @@ class ProviderForwarderProcess:
                 "unauthorized_requests": state.unauthorized_requests,
                 "upstream_transport_failures": state.upstream_transport_failures,
                 "upstream_invalid_completions": state.upstream_invalid_completions,
+                "upstream_retries": state.upstream_retries,
+                "upstream_retry_exhaustions": state.upstream_retry_exhaustions,
                 "aborted_connections": state.aborted_connections,
                 "started_at": self._started_at,
                 "closed_at": _utc_now() if closed else None,
@@ -779,6 +1000,10 @@ def start_provider_forwarder(
     upstream_timeout_seconds: float = DEFAULT_UPSTREAM_TIMEOUT_SECONDS,
     stop_timeout_seconds: float = DEFAULT_STOP_TIMEOUT_SECONDS,
     passthrough_streaming: bool | None = None,
+    max_upstream_attempts: int | None = None,
+    retry_budget_seconds: float | None = None,
+    retry_base_delay_seconds: float = DEFAULT_RETRY_BASE_DELAY_SECONDS,
+    retry_max_delay_seconds: float = DEFAULT_RETRY_MAX_DELAY_SECONDS,
 ) -> ProviderForwarderProcess:
     """Start a per-cohort loopback forwarder with per-harness bearer lanes.
 
@@ -788,6 +1013,12 @@ def start_provider_forwarder(
     ``stream:true`` relaying instead of the de-stream default; ``None`` defers
     to ``ELIZA_FORWARDER_PASSTHROUGH_STREAMING`` so operators can flip the
     escape hatch without a coordinator change.
+
+    ``max_upstream_attempts`` / ``retry_budget_seconds`` bound the transient
+    upstream-error retry envelope; ``None`` defers to the
+    ``ELIZA_FORWARDER_MAX_UPSTREAM_ATTEMPTS`` / ``ELIZA_FORWARDER_RETRY_BUDGET_SECONDS``
+    env vars and then the module defaults, so a long publishable run rides
+    through an upstream throttle/overload window without a coordinator change.
     """
 
     normalized_provider = provider.strip().lower()
@@ -812,6 +1043,20 @@ def start_provider_forwarder(
             os.environ.get(PASSTHROUGH_STREAMING_ENV, "").strip().lower()
             in _ENV_TRUTHY
         )
+    resolved_attempts = _resolve_positive_int(
+        max_upstream_attempts,
+        env_name=MAX_UPSTREAM_ATTEMPTS_ENV,
+        default=DEFAULT_MAX_UPSTREAM_ATTEMPTS,
+        label="max upstream attempts",
+    )
+    resolved_budget = _resolve_positive_float(
+        retry_budget_seconds,
+        env_name=RETRY_BUDGET_SECONDS_ENV,
+        default=DEFAULT_RETRY_BUDGET_SECONDS,
+        label="retry budget seconds",
+    )
+    if retry_base_delay_seconds <= 0 or retry_max_delay_seconds <= 0:
+        raise ValueError("Provider forwarder retry delays must be positive")
 
     harness_tokens = {
         harness: secrets.token_urlsafe(32) for harness in normalized_harnesses
@@ -826,6 +1071,10 @@ def start_provider_forwarder(
         tokens_to_harness={token: harness for harness, token in harness_tokens.items()},
         upstream_timeout_seconds=upstream_timeout_seconds,
         passthrough_streaming=passthrough_streaming,
+        max_upstream_attempts=resolved_attempts,
+        retry_base_delay_seconds=retry_base_delay_seconds,
+        retry_max_delay_seconds=retry_max_delay_seconds,
+        retry_budget_seconds=resolved_budget,
     )
     try:
         server = _ForwarderServer(("127.0.0.1", 0), state)
