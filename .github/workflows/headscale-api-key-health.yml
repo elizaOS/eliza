@@ -139,8 +139,8 @@ jobs:
               --property=MemoryPeak
             echo "Systemd manager events during the interrupted canary:"
             sudo journalctl -t systemd \
-              --since "2026-07-24 02:40:00 UTC" \
-              --until "2026-07-24 02:43:30 UTC" \
+              --since "2026-07-24 04:09:20 UTC" \
+              --until "2026-07-24 04:11:40 UTC" \
               --no-pager --output=short-iso-precise |
               grep -F "$unit" || echo "(no matching systemd manager event)"
 
@@ -163,7 +163,7 @@ jobs:
             curl --silent --show-error --connect-timeout 5 --max-time 20 \
               --output "$response_file" --write-out '%{http_code}' \
               --header "X-API-Key: $ELIZACLOUD_API_KEY" \
-              "https://api.elizacloud.ai/api/v1/admin/agent-image-canary/jobs/c623aa7e-0520-43e6-ab45-1ce92fda57df"
+              "https://api.elizacloud.ai/api/v1/admin/agent-image-canary/jobs/27273194-76bf-48ee-95f7-59c487afc129"
           )"
           if [ "$status" != "200" ]; then
             echo "::error::Actor-bound canary job read returned HTTP $status"
@@ -179,18 +179,18 @@ jobs:
           const { readFileSync } = require("node:fs");
 
           const diagnosticPublicKey = `-----BEGIN PUBLIC KEY-----
-          MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAvqYnnJ+P2IhDXWHS7b3Q
-          tZWAn4lI5agG8uku6DfwLGu/dWr7ne6IqwQSO0ipq5hCpsp/OlIUUckBvd+f+z+a
-          0WtRjSgjMFzWaYMnh9SlXKfebtIoVzPviMjNvgFeD5zZjga0KFt3wi2YPE6VPlPP
-          jjEbynSqZD/lPK4cWnNYuWBQatlA5LCP5l2JqLDXTI49Hch6PGuf8TP252Xglv13
-          kTRWoLOp8UNPWjbgzCe0o4bdD38GqcOc9h1W+XFRTY/cASohIgzrhf+taqxOrYOD
-          2yZMytf2o7ugr5VtP6UUJzghdbDu/335A4MwHCZWw56Uem7SV1UmC9lA94At2Gyz
-          pY+xjX00T+5AnyCmdDqMSjdrzbC9p8NWFxC1rT76uodbVpr5CgTLrcgJPXWqJDc5
-          815uiGl6IY7+VV41d4idCcVsN7Rr2Y1qrQ64cn28yuKFBBVXQf4SiI259XEHS0GO
-          dvFzcIY+inulxRx48/m/2BjQH0Ix8pUbDEiK8YvRoY7rQFYGbpodwumWIcRTPxPM
-          c4p6fuFNCnOBSaxDRsuzEdlZHlir86390Ph/GVm0kP+qLBh79iCRYpi2twCI1Oi9
-          sI114Dw43u2bMUXyABZExJq32KmSORki5+zlV+peL1OZ69tELYe2wIY7tkB/J1Te
-          H6A4ANu7X2Wl+Gnznd+c/7cCAwEAAQ==
+          MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAkxjzt8ZcwLbsk9fvWfDp
+          bXuPVS5o5WpsoP78NwEyD8aY3cm76Bzha/seCrghcBpaJA33a+gxLAL0ZHRj/8AD
+          8GTm9aNsfxf5TBvXo+tZFLMDzQwgYplm7DxJ3X+RUN9I1luEhwkoMGFm9q0gJx4O
+          OYeNf1X7zO1/gucgzsCN00MmT7+w/ZDbXn871/W/E3RdLBrb+eymsqGcEh+oiHxY
+          0QiikXdNDJk3IMZ8wnpUTronWiCwJtHNIRcAqQCNlY5d9CaHczjhuvlWA1Oj9VBM
+          r4rGSL+qTctzEXpT8urnWIMUEnU4tzqrwgiiLe4CMf6zevWo/bbcP4WKpJKVN+ez
+          hkjjEUA6asrxQaIezHQ8eWDHFvR6qUDD43Pbiw8nsIm8+1Wse4UNcT0GHvrqnxNw
+          W9GGq/zHynLnmr1qODZ0S4TJs78LZ8e0wzjGJbSsyRth5PCgNV/oKgZC/ImmHFsQ
+          eON0B1dkZmwjpPyDnT6rCcg6QXwoDFPMQoL3pBeXhr9lpj8ZIjyMmj8iq8Eia62x
+          bTd9IddrIEnvIpV1h1bxLrkSrndnyjIS2GED27hyLyBhHUfL+4H3X4/jCLbgVXu4
+          C3hwGY5THu68n8rpijkzAJ7qW3tMZsyP7BvfAx2GQYX7PNkqh89/65X9JP3mbKFI
+          bHwZPjE6iT9loZ2bxgSpu0cCAwEAAQ==
           -----END PUBLIC KEY-----`;
           const raw = readFileSync(process.argv[2], "utf8");
           const secret = process.env.ELIZACLOUD_API_KEY;
@@ -208,7 +208,7 @@ jobs:
           }
 
           const job = payload?.data;
-          if (!job || job.id !== "c623aa7e-0520-43e6-ab45-1ce92fda57df") {
+          if (!job || job.id !== "27273194-76bf-48ee-95f7-59c487afc129") {
             console.error("::error::Canary job endpoint returned the wrong job.");
             process.exit(1);
           }
