@@ -85,7 +85,7 @@ export function analyzeInvestmentStyle(
         input.alpha.alphaScore,
       maxScore: 100,
       displayScore:
-        input.alpha.displayScore,
+        `${(input.alpha.alphaScore / 10).toFixed(1)} / 10`,
       maxDisplayScore: 10,
       level: confidence,
       reasons: supportingSignals,
