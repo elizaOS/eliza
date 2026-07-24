@@ -1311,6 +1311,18 @@ export type WalletSkunkScoreSummary = {
   summary: string;
 };
 
+export type WalletNftSummary = {
+  hasNfts: boolean;
+  nftCount: number;
+  items: Array<{
+    mint: string;
+    name: string | null;
+    collection: string | null;
+    imageUrl: string | null;
+  }>;
+  notes: string[];
+};
+
 export type WalletInvestigationReport = {
   generatedAt: string;
 
