@@ -205,7 +205,7 @@ const tokenHoldings: WalletTokenHolding[] =
           : "success",
     }),
   );
-       const pipeline = runWalletPipeline({
+       const pipeline = await runWalletPipeline({
   chain,
   address: walletAddress,
   balance: walletBalance,
@@ -225,6 +225,7 @@ const {
   age,
   funding,
   portfolio,
+  nftHoldings,
   risk,
   whale,
   defi,
@@ -280,6 +281,7 @@ void investigation;
   balance: walletBalance,
   tokenHoldings,
   portfolio,
+  nftHoldings,
   whale,
   defi,
   protocols,
