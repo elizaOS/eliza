@@ -7,10 +7,17 @@ const workflow = readFileSync(
   join(root, ".github/workflows/deploy-eliza-provisioning-worker.yml"),
   "utf8",
 );
+const provisioningService = readFileSync(
+  join(root, "packages/scripts/cloud/admin/eliza-provisioning-worker.service"),
+  "utf8",
+);
 const services = [
-  "packages/scripts/cloud/admin/eliza-provisioning-worker.service",
-  "packages/scripts/cloud/admin/eliza-agent-router.service",
-].map((path) => readFileSync(join(root, path), "utf8"));
+  provisioningService,
+  readFileSync(
+    join(root, "packages/scripts/cloud/admin/eliza-agent-router.service"),
+    "utf8",
+  ),
+];
 
 describe("provisioning worker deployment contract", () => {
   it("resolves one immutable SHA and deploys exactly that snapshot", () => {
@@ -60,5 +67,35 @@ describe("provisioning worker deployment contract", () => {
         "ExecStartPre=/opt/eliza/packages/scripts/cloud/admin/ensure-generated-keywords.sh",
       );
     }
+  });
+
+  it("keeps replacement workload memory inside the control-plane service fence", () => {
+    const oldSpaceMatches = [
+      ...provisioningService.matchAll(
+        /^Environment=NODE_OPTIONS=--max-old-space-size=(\d+)$/gm,
+      ),
+    ];
+    const memoryHighMatches = [
+      ...provisioningService.matchAll(/^MemoryHigh=(\d+)M$/gm),
+    ];
+    const memoryMaxMatches = [
+      ...provisioningService.matchAll(/^MemoryMax=(\d+)M$/gm),
+    ];
+
+    expect(oldSpaceMatches).toHaveLength(1);
+    expect(memoryHighMatches).toHaveLength(1);
+    expect(memoryMaxMatches).toHaveLength(1);
+
+    const oldSpaceMiB = Number(oldSpaceMatches[0]?.[1]);
+    const memoryHighMiB = Number(memoryHighMatches[0]?.[1]);
+    const memoryMaxMiB = Number(memoryMaxMatches[0]?.[1]);
+
+    expect(oldSpaceMiB).toBe(1536);
+    expect(memoryHighMiB).toBe(1792);
+    expect(memoryMaxMiB).toBe(2048);
+    expect(oldSpaceMiB).toBeLessThan(memoryHighMiB);
+    expect(memoryHighMiB).toBeLessThan(memoryMaxMiB);
+    expect(memoryHighMiB - oldSpaceMiB).toBeGreaterThanOrEqual(256);
+    expect(memoryMaxMiB - oldSpaceMiB).toBeGreaterThanOrEqual(512);
   });
 });
