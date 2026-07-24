@@ -232,4 +232,36 @@ describe("useVoiceChat TTS fails closed (#12253)", () => {
     // Never reached the local-inference route — the browser IS the config.
     expect(fetchWithCsrf).not.toHaveBeenCalled();
   });
+
+  it("does not cancel a browser utterance while its engine delays onstart", async () => {
+    speechSynthesisMock.speak.mockImplementationOnce((utterance) => {
+      speechSynthesisMock.spoken.push(utterance);
+    });
+    const { result } = renderHook(() =>
+      useVoiceChat({
+        onTranscript: vi.fn(),
+        voiceConfig: { provider: "edge" },
+      }),
+    );
+
+    act(() => {
+      result.current.speak("allow the embedded browser time to begin");
+    });
+    await waitFor(() => {
+      expect(result.current.isSpeaking).toBe(true);
+    });
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 650));
+    });
+    expect(result.current.isSpeaking).toBe(true);
+
+    act(() => {
+      speechSynthesisMock.spoken[0]?.onstart?.();
+      speechSynthesisMock.spoken[0]?.onend?.();
+    });
+    await waitFor(() => {
+      expect(result.current.isSpeaking).toBe(false);
+    });
+  });
 });

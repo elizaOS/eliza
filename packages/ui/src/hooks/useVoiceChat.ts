@@ -722,17 +722,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
 
       // ── Browser TTS: sine-wave mouth + safety check ──────────────
       const sinceStart = Date.now() - speakingStartRef.current;
-      if (
-        sinceStart > 500 &&
-        synthRef.current &&
-        !synthRef.current.speaking &&
-        !synthRef.current.pending
-      ) {
-        utteranceRef.current = null;
-        setIsSpeaking(false);
-        return;
-      }
-
       const elapsed = sinceStart / 1000;
       const base = Math.sin(elapsed * 12) * 0.3 + 0.4;
       const detail = Math.sin(elapsed * 18.7) * 0.15;

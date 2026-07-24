@@ -90,7 +90,6 @@ const meta = {
     userMessagesOnRight: true,
     variant: "default",
     onCopy: () => {},
-    onDelete: () => {},
     onEdit: () => true,
     onSpeak: () => {},
   },

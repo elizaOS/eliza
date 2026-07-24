@@ -41,6 +41,12 @@ function seedMessages(count: number): ConversationMessage[] {
       text: `Message ${i}`,
       timestamp: now - (count - i) * 1000,
       source: "eliza",
+      ...(i === count - 1
+        ? {
+            reasoning:
+              "Internal reasoning must stay out of the consumer transcript.",
+          }
+        : {}),
     });
   }
   return msgs;
@@ -264,6 +270,18 @@ describe("ChatView transcript render window (#15281)", () => {
     expect(threadRowCount(container)).toBe(MAX_RENDERED_SHELL_MESSAGES);
   });
 
+  it("keeps reasoning out of the full transcript like the overlay", () => {
+    render(<ChatView hideComposer />);
+
+    expect(screen.getByText(`Message ${THREAD_LENGTH - 1}`)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /thinking/i })).toBeNull();
+    expect(
+      screen.queryByText(
+        "Internal reasoning must stay out of the consumer transcript.",
+      ),
+    ).toBeNull();
+  });
+
   it("renders the terminal loading branch for a session not yet in the live list", () => {
     appState.activeTerminalSessionId = "starting-session";
     const { getByTestId } = render(<ChatView />);
@@ -310,14 +328,13 @@ describe("ChatView transcript render window (#15281)", () => {
     expect(screen.getByRole("textbox")).toBeTruthy();
   });
 
-  it("routes transcript copy, reply, edit, and delete actions through app boundaries", async () => {
+  it("routes transcript copy, reply, and edit actions through app boundaries", async () => {
     render(<ChatView />);
     fireEvent.click(screen.getAllByLabelText("Copy message")[0]);
     fireEvent.click(screen.getAllByLabelText("Reply")[0]);
     fireEvent.click(screen.getAllByLabelText("aria.editMessage")[0]);
-    fireEvent.click(screen.getAllByLabelText("aria.deleteMessage")[0]);
     await waitFor(() => expect(appState.copyToClipboard).toHaveBeenCalled());
-    expect(appState.handleChatDelete).toHaveBeenCalled();
+    expect(screen.queryByLabelText("aria.deleteMessage")).toBeNull();
   });
 
   it("loads and replies through the connector inbox boundary", async () => {
