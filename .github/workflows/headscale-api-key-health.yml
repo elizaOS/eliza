@@ -109,3 +109,152 @@ jobs:
                 exit 1
                 ;;
             esac
+
+      - name: Read failed demo canary outcome
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production' }}
+        env:
+          ELIZACLOUD_API_KEY: ${{ secrets.ELIZACLOUD_API_KEY }}
+        run: |
+          set -euo pipefail
+          response_file="$(mktemp)"
+          trap 'rm -f "$response_file"' EXIT
+
+          [ -n "$ELIZACLOUD_API_KEY" ] || {
+            echo "::error::missing secret ELIZACLOUD_API_KEY"
+            exit 1
+          }
+          echo "::add-mask::$ELIZACLOUD_API_KEY"
+
+          status="$(
+            curl --silent --show-error --connect-timeout 5 --max-time 20 \
+              --output "$response_file" --write-out '%{http_code}' \
+              --header "X-API-Key: $ELIZACLOUD_API_KEY" \
+              "https://api.elizacloud.ai/api/v1/admin/agent-image-canary/jobs/c623aa7e-0520-43e6-ab45-1ce92fda57df"
+          )"
+          if [ "$status" != "200" ]; then
+            echo "::error::Actor-bound canary job read returned HTTP $status"
+            exit 1
+          fi
+
+          node - "$response_file" <<'NODE'
+          const { createHash } = require("node:crypto");
+          const { readFileSync } = require("node:fs");
+
+          const raw = readFileSync(process.argv[2], "utf8");
+          const secret = process.env.ELIZACLOUD_API_KEY;
+          if (!secret || raw.includes(secret)) {
+            console.error("::error::Canary response failed the credential-leak guard.");
+            process.exit(1);
+          }
+
+          let payload;
+          try {
+            payload = JSON.parse(raw);
+          } catch {
+            console.error("::error::Canary job endpoint returned invalid JSON.");
+            process.exit(1);
+          }
+
+          const job = payload?.data;
+          if (!job || job.id !== "c623aa7e-0520-43e6-ab45-1ce92fda57df") {
+            console.error("::error::Canary job endpoint returned the wrong job.");
+            process.exit(1);
+          }
+
+          const classify = (value) => {
+            if (value == null) return null;
+            if (typeof value !== "string") {
+              console.error("::error::Canary error field has an invalid type.");
+              process.exit(1);
+            }
+            const lower = value.toLowerCase();
+            const signalPatterns = {
+              authentication: ["unauthorized", "forbidden", "credential", "api key", "token"],
+              billing: ["billing"],
+              capacity: ["capacity", "reserve"],
+              container: ["container", "docker", "sandbox", "image pull"],
+              cutover: ["cutover", "atomic audit", "digest mismatch", "source image changed"],
+              headscale_registration: ["headscale", "vpn registration", "vpn ip", "tunnel"],
+              image_policy: ["image allow", "repository", "digest", "image pair"],
+              network: ["network", "connection", "fetch failed", "econn", "dns"],
+              post_cutover_cleanup: [
+                "post-cutover",
+                "post cutover",
+                "cleanup remains pending",
+                "replacement cleanup",
+              ],
+              pre_cutover_cleanup: [
+                "pre-cutover",
+                "pre cutover",
+                "candidate retirement",
+                "retire candidate",
+              ],
+              runtime_readiness: [
+                "runtime readiness",
+                "runtime ready",
+                "health check",
+                "healthcheck",
+                "failed to become ready",
+                "not healthy",
+              ],
+              snapshot: ["snapshot", "backup", "restore"],
+              timeout: ["timeout", "timed out", "deadline"],
+            };
+            return {
+              bytes: Buffer.byteLength(value, "utf8"),
+              sha256: createHash("sha256").update(value).digest("hex"),
+              signals: Object.entries(signalPatterns)
+                .filter(([, patterns]) => patterns.some((pattern) => lower.includes(pattern)))
+                .map(([signal]) => signal),
+            };
+          };
+
+          const optionalBoolean = (value, field) => {
+            if (value == null || typeof value === "boolean") return value ?? null;
+            console.error(`::error::Canary ${field} field has an invalid type.`);
+            process.exit(1);
+          };
+          const optionalTimestamp = (value, field) => {
+            if (value == null) return null;
+            if (typeof value !== "string" || !Number.isFinite(Date.parse(value))) {
+              console.error(`::error::Canary ${field} field is not a timestamp.`);
+              process.exit(1);
+            }
+            return new Date(value).toISOString();
+          };
+
+          if (job.status !== "failed") {
+            console.error("::error::Canary job is not in the expected failed terminal state.");
+            process.exit(1);
+          }
+          if (!Number.isSafeInteger(job.attempts) || job.attempts < 0) {
+            console.error("::error::Canary attempts field is invalid.");
+            process.exit(1);
+          }
+          if (job.result != null && (typeof job.result !== "object" || Array.isArray(job.result))) {
+            console.error("::error::Canary result field has an invalid type.");
+            process.exit(1);
+          }
+          const operation = job.result?.operation ?? null;
+          if (operation !== null && operation !== "upgrade" && operation !== "rollback") {
+            console.error("::error::Canary operation field is invalid.");
+            process.exit(1);
+          }
+
+          const projection = {
+            id: job.id,
+            status: job.status,
+            errorFingerprint: classify(job.error),
+            resultSuccess: optionalBoolean(job.result?.success, "result success"),
+            cleanupPending: optionalBoolean(job.result?.cleanupPending, "cleanup pending"),
+            operation,
+            resultErrorFingerprint: classify(job.result?.error),
+            attempts: job.attempts,
+            createdAt: optionalTimestamp(job.createdAt, "createdAt"),
+            updatedAt: optionalTimestamp(job.updatedAt, "updatedAt"),
+            completedAt: optionalTimestamp(job.completedAt, "completedAt"),
+          };
+          process.stdout.write(
+            `Privacy-safe actor-bound canary outcome: ${JSON.stringify(projection)}\n`,
+          );
+          NODE
