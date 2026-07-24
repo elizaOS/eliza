@@ -7782,7 +7782,7 @@ export class ElizaSandboxService {
             replacement_cleanup_preserved_vpn_node_id = NULL,
             replacement_cleanup_vpn_registration_started_at = NULL,
             replacement_cleanup_allocation_counted = TRUE,
-            replacement_cleanup_created_at = NOW(),
+            replacement_cleanup_created_at = date_trunc('milliseconds', NOW()),
             error_message = NULL,
             last_heartbeat_at = NOW(),
             updated_at = NOW()
@@ -7800,7 +7800,7 @@ export class ElizaSandboxService {
             AND replacement_cleanup_preserved_vpn_node_id IS NOT DISTINCT FROM ${cleanupLocator.previousVpnNodeId}
             AND replacement_cleanup_vpn_registration_started_at IS NOT DISTINCT FROM ${cleanupLocator.vpnRegistrationStartedAt}
             AND replacement_cleanup_allocation_counted = ${cleanupLocator.allocationCounted}
-            AND replacement_cleanup_created_at = ${cleanupLocator.createdAt}
+            AND ${this.replacementCleanupCreatedAtMatches(cleanupLocator.createdAt)}
             AND deletion_attempt_id IS NULL
             AND (
               claimed_at IS NULL
@@ -8291,7 +8291,7 @@ export class ElizaSandboxService {
             replacement_cleanup_preserved_vpn_node_id = NULL,
             replacement_cleanup_vpn_registration_started_at = NULL,
             replacement_cleanup_allocation_counted = TRUE,
-            replacement_cleanup_created_at = NOW(),
+            replacement_cleanup_created_at = date_trunc('milliseconds', NOW()),
             last_heartbeat_at = NOW(),
             updated_at = NOW()
           WHERE id = ${agentId}
@@ -8308,7 +8308,7 @@ export class ElizaSandboxService {
             AND replacement_cleanup_preserved_vpn_node_id IS NOT DISTINCT FROM ${cleanupLocator.previousVpnNodeId}
             AND replacement_cleanup_vpn_registration_started_at IS NOT DISTINCT FROM ${cleanupLocator.vpnRegistrationStartedAt}
             AND replacement_cleanup_allocation_counted = ${cleanupLocator.allocationCounted}
-            AND replacement_cleanup_created_at = ${cleanupLocator.createdAt}
+            AND ${this.replacementCleanupCreatedAtMatches(cleanupLocator.createdAt)}
             AND deletion_attempt_id IS NULL
             AND (
               claimed_at IS NULL
@@ -8578,6 +8578,18 @@ export class ElizaSandboxService {
     return parsed;
   }
 
+  /**
+   * PostgreSQL retains microseconds that JavaScript Date cannot round-trip.
+   * The durable placement fields fence identity; this one-millisecond window
+   * preserves the timestamp generation check without making valid CAS writes
+   * miss solely because the database carried sub-millisecond precision.
+   */
+  private replacementCleanupCreatedAtMatches(createdAt: Date) {
+    const nextMillisecond = new Date(createdAt.getTime() + 1);
+    return sql`${agentSandboxes.replacement_cleanup_created_at} >= ${createdAt}
+      AND ${agentSandboxes.replacement_cleanup_created_at} < ${nextMillisecond}`;
+  }
+
   private replacementLocatorFromHandle(
     handle: SandboxHandle,
   ): Omit<ReplacementCleanupLocator, "createdAt"> {
@@ -8767,7 +8779,7 @@ export class ElizaSandboxService {
             AND replacement_cleanup_preserved_vpn_node_id IS NOT DISTINCT FROM ${existing.previousVpnNodeId}
             AND replacement_cleanup_vpn_registration_started_at IS NOT DISTINCT FROM ${existing.vpnRegistrationStartedAt}
             AND replacement_cleanup_allocation_counted = ${existing.allocationCounted}
-            AND replacement_cleanup_created_at = ${existing.createdAt}
+            AND ${this.replacementCleanupCreatedAtMatches(existing.createdAt)}
           RETURNING id
         `);
         if (enriched.rows.length !== 1) {
@@ -8816,7 +8828,7 @@ export class ElizaSandboxService {
           replacement_cleanup_preserved_vpn_node_id = ${incoming.previousVpnNodeId},
           replacement_cleanup_vpn_registration_started_at = ${incoming.vpnRegistrationStartedAt},
           replacement_cleanup_allocation_counted = ${incoming.allocationCounted},
-          replacement_cleanup_created_at = NOW(),
+          replacement_cleanup_created_at = date_trunc('milliseconds', NOW()),
           updated_at = NOW()
         WHERE id = ${agentId}
           AND organization_id = ${orgId}
@@ -8873,7 +8885,7 @@ export class ElizaSandboxService {
           AND replacement_cleanup_preserved_vpn_node_id IS NOT DISTINCT FROM ${existing.previousVpnNodeId}
           AND replacement_cleanup_vpn_registration_started_at IS NOT DISTINCT FROM ${existing.vpnRegistrationStartedAt}
           AND replacement_cleanup_allocation_counted = ${existing.allocationCounted}
-          AND replacement_cleanup_created_at = ${existing.createdAt}
+          AND ${this.replacementCleanupCreatedAtMatches(existing.createdAt)}
         RETURNING id
       `);
       if (persisted.rows.length !== 1) {
@@ -9070,7 +9082,7 @@ export class ElizaSandboxService {
           AND replacement_cleanup_preserved_vpn_node_id IS NOT DISTINCT FROM ${locator.previousVpnNodeId}
           AND replacement_cleanup_vpn_registration_started_at IS NOT DISTINCT FROM ${locator.vpnRegistrationStartedAt}
           AND replacement_cleanup_allocation_counted = ${locator.allocationCounted}
-          AND replacement_cleanup_created_at = ${locator.createdAt}
+          AND ${this.replacementCleanupCreatedAtMatches(locator.createdAt)}
         RETURNING id
       `);
       if (cleared.rows.length !== 1) {
