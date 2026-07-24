@@ -26,6 +26,7 @@ import { analyzeWalletSmartMoney } from "../analyzers/smartMoney";
 import { analyzeWalletConviction } from "../analyzers/conviction";
 import { analyzeWalletAlpha } from "../analyzers/alpha";
 import { analyzeInvestmentStyle } from "../analyzers/investmentStyle";
+import { analyzeWalletProfitability } from "../analyzers/profitability";
 import { analyzeWalletStrategy } from "../analyzers/strategy";
 import { analyzeWalletTransactionRisk } from "../analyzers/transactionRisk";
 import { analyzeWalletTrust } from "../analyzers/trust";
@@ -205,6 +206,15 @@ export function runWalletPipeline(
   defi,
 });
 
+  const profitability = analyzeWalletProfitability({
+  alpha,
+  conviction,
+  strategy,
+  trust,
+  smartMoney,
+  portfolio,
+});
+
   const investigationReplay =
     analyzeInvestigationReplay(
       portfolio,
@@ -319,6 +329,7 @@ export function runWalletPipeline(
     conviction,
     alpha,
     investmentStyle,
+    profitability,
     investigationReplay,
     evidenceRecords,
     decision,
