@@ -144,6 +144,108 @@ jobs:
               --no-pager --output=short-iso-precise |
               grep -F "$unit" || echo "(no matching systemd manager event)"
 
+      - name: Encrypt actor-bound provisioning log slice
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production' }}
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
+        with:
+          host: ${{ env.DEPLOY_HOST }}
+          username: deploy
+          key: ${{ env.DEPLOY_SSH_KEY }}
+          command_timeout: 2m
+          script: |
+            set -eu
+            temp_dir="$(mktemp -d)"
+            trap 'rm -rf "$temp_dir"' EXIT
+            public_key="$temp_dir/public.pem"
+            journal_file="$temp_dir/journal.log"
+            matched_file="$temp_dir/matched.log"
+            cat >"$public_key" <<'PEM'
+            -----BEGIN PUBLIC KEY-----
+            MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAkxjzt8ZcwLbsk9fvWfDp
+            bXuPVS5o5WpsoP78NwEyD8aY3cm76Bzha/seCrghcBpaJA33a+gxLAL0ZHRj/8AD
+            8GTm9aNsfxf5TBvXo+tZFLMDzQwgYplm7DxJ3X+RUN9I1luEhwkoMGFm9q0gJx4O
+            OYeNf1X7zO1/gucgzsCN00MmT7+w/ZDbXn871/W/E3RdLBrb+eymsqGcEh+oiHxY
+            0QiikXdNDJk3IMZ8wnpUTronWiCwJtHNIRcAqQCNlY5d9CaHczjhuvlWA1Oj9VBM
+            r4rGSL+qTctzEXpT8urnWIMUEnU4tzqrwgiiLe4CMf6zevWo/bbcP4WKpJKVN+ez
+            hkjjEUA6asrxQaIezHQ8eWDHFvR6qUDD43Pbiw8nsIm8+1Wse4UNcT0GHvrqnxNw
+            W9GGq/zHynLnmr1qODZ0S4TJs78LZ8e0wzjGJbSsyRth5PCgNV/oKgZC/ImmHFsQ
+            eON0B1dkZmwjpPyDnT6rCcg6QXwoDFPMQoL3pBeXhr9lpj8ZIjyMmj8iq8Eia62x
+            bTd9IddrIEnvIpV1h1bxLrkSrndnyjIS2GED27hyLyBhHUfL+4H3X4/jCLbgVXu4
+            C3hwGY5THu68n8rpijkzAJ7qW3tMZsyP7BvfAx2GQYX7PNkqh89/65X9JP3mbKFI
+            bHwZPjE6iT9loZ2bxgSpu0cCAwEAAQ==
+            -----END PUBLIC KEY-----
+            PEM
+            sudo journalctl -u eliza-provisioning-worker.service \
+              --since "2026-07-24 03:56:00 UTC" \
+              --until "2026-07-24 04:11:40 UTC" \
+              --no-pager --output=cat >"$journal_file"
+            grep_status=0
+            grep -F -B 20 -A 40 \
+              -e "27273194-76bf-48ee-95f7-59c487afc129" \
+              -e "889edf8a-b830-50ea-9e1b-ef40e0726578" \
+              "$journal_file" >"$matched_file" || grep_status=$?
+            case "$grep_status" in
+              0) ;;
+              1)
+                echo "::error::Provisioning journal has no actor-bound canary record"
+                exit 1
+                ;;
+              *)
+                echo "::error::Provisioning journal actor-bound selection failed"
+                exit 1
+                ;;
+            esac
+            bytes="$(wc -c <"$matched_file" | tr -d ' ')"
+            lines="$(wc -l <"$matched_file" | tr -d ' ')"
+            printf 'actor_bound_log_bytes=%s\n' "$bytes"
+            printf 'actor_bound_log_lines=%s\n' "$lines"
+            [ "$bytes" -gt 0 ] || {
+              echo "::error::Actor-bound provisioning log slice is empty"
+              exit 1
+            }
+            [ "$bytes" -le 24000 ] || {
+              echo "::error::Actor-bound provisioning log slice exceeds its encryption bound"
+              exit 1
+            }
+            printf 'actor_bound_log_sha256=%s\n' \
+              "$(sha256sum "$matched_file" | cut -d' ' -f1)"
+            emit_count() {
+              label="$1"
+              pattern="$2"
+              count="$(grep -Eic "$pattern" "$matched_file" || true)"
+              printf '%s=%s\n' "$label" "$count"
+            }
+            emit_count headscale 'headscale|vpn registration|vpn ip|tunnel'
+            emit_count runtime_readiness 'runtime readiness|health check|failed to become ready'
+            emit_count image_pull 'pull|manifest|digest'
+            emit_count cutover 'cutover|atomic audit'
+            emit_count cleanup 'cleanup|retire|remove'
+            emit_count timeout 'timeout|timed out|deadline'
+            emit_count error 'error|failed|failure'
+            split -b 300 -d -a 2 "$matched_file" "$temp_dir/chunk-"
+            count=0
+            for chunk in "$temp_dir"/chunk-*; do
+              cipher_file="$temp_dir/cipher-$count.bin"
+              openssl pkeyutl -encrypt -pubin -inkey "$public_key" \
+                -pkeyopt rsa_padding_mode:oaep \
+                -pkeyopt rsa_oaep_md:sha256 \
+                -pkeyopt rsa_mgf1_md:sha256 \
+                -in "$chunk" -out "$cipher_file"
+              cipher_bytes="$(wc -c <"$cipher_file" | tr -d ' ')"
+              [ "$cipher_bytes" -eq 512 ] || {
+                echo "::error::Encrypted log chunk has an invalid RSA ciphertext size"
+                exit 1
+              }
+              ciphertext="$(openssl base64 -A -in "$cipher_file")"
+              [ "${#ciphertext}" -eq 684 ] || {
+                echo "::error::Encrypted log chunk has an invalid base64 size"
+                exit 1
+              }
+              printf 'actor_bound_log_ciphertext_%02d=%s\n' "$count" "$ciphertext"
+              count=$((count + 1))
+            done
+            printf 'actor_bound_log_ciphertext_count=%s\n' "$count"
+
       - name: Read failed demo canary outcome
         if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production' }}
         env:
