@@ -178,7 +178,7 @@ jobs:
             sudo journalctl -u eliza-provisioning-worker.service \
               --since "2026-07-24 03:56:00 UTC" \
               --until "2026-07-24 04:11:40 UTC" \
-              --no-pager --output=cat >"$journal_file"
+              --no-pager --output=short-iso-precise >"$journal_file"
             grep_status=0
             grep -F -B 20 -A 200 \
               -e "27273194-76bf-48ee-95f7-59c487afc129" \
