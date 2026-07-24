@@ -277,7 +277,40 @@ export async function getSolanaTokenHoldings(
     throw new Error("Wallet address is required");
   }
 
-  export type SolanaNftHolding = {
+  const accounts = await callHeliusRpc<any[]>(
+    "skunkscan-token-accounts",
+    "getTokenAccountsByOwner",
+    [
+      address.trim(),
+      {
+        programId: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      },
+      {
+        encoding: "jsonParsed",
+      },
+    ],
+  ).then((result: any) => result?.value);
+
+  if (!Array.isArray(accounts)) {
+    return [];
+  }
+
+  return accounts
+    .map((account) => {
+      const info = account?.account?.data?.parsed?.info;
+      const tokenAmount = info?.tokenAmount;
+
+      return {
+        mint: String(info?.mint ?? ""),
+        amount: Number(tokenAmount?.uiAmount ?? 0),
+        decimals: Number(tokenAmount?.decimals ?? 0),
+        rawAmount: String(tokenAmount?.amount ?? "0"),
+      };
+    })
+    .filter((token) => token.mint && token.amount > 0);
+}
+
+export type SolanaNftHolding = {
   mint: string;
   name: string | null;
   collection: string | null;
@@ -313,37 +346,4 @@ export async function getSolanaNftHoldings(
     collection: nft?.grouping?.[0]?.group_value ?? null,
     imageUrl: nft?.content?.links?.image ?? null,
   }));
-}
-
-  const accounts = await callHeliusRpc<any[]>(
-    "skunkscan-token-accounts",
-    "getTokenAccountsByOwner",
-    [
-      address.trim(),
-      {
-        programId: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-      },
-      {
-        encoding: "jsonParsed",
-      },
-    ],
-  ).then((result: any) => result?.value);
-
-  if (!Array.isArray(accounts)) {
-    return [];
-  }
-
-  return accounts
-    .map((account) => {
-      const info = account?.account?.data?.parsed?.info;
-      const tokenAmount = info?.tokenAmount;
-
-      return {
-        mint: String(info?.mint ?? ""),
-        amount: Number(tokenAmount?.uiAmount ?? 0),
-        decimals: Number(tokenAmount?.decimals ?? 0),
-        rawAmount: String(tokenAmount?.amount ?? "0"),
-      };
-    })
-    .filter((token) => token.mint && token.amount > 0);
 }
