@@ -110,6 +110,40 @@ jobs:
                 ;;
             esac
 
+      - name: Inspect provisioning worker restart
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production' }}
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
+        with:
+          host: ${{ env.DEPLOY_HOST }}
+          username: deploy
+          key: ${{ env.DEPLOY_SSH_KEY }}
+          command_timeout: 2m
+          script: |
+            set -eu
+            unit=eliza-provisioning-worker.service
+            sudo systemctl is-active --quiet "$unit" || {
+              echo "::error::Provisioning worker is not active"
+              exit 1
+            }
+            sudo systemctl show "$unit" --no-pager \
+              --property=ActiveState \
+              --property=SubState \
+              --property=Result \
+              --property=NRestarts \
+              --property=ExecMainCode \
+              --property=ExecMainStatus \
+              --property=ExecMainStartTimestamp \
+              --property=ExecMainExitTimestamp \
+              --property=ActiveEnterTimestamp \
+              --property=MemoryCurrent \
+              --property=MemoryPeak
+            echo "Systemd manager events during the interrupted canary:"
+            sudo journalctl -t systemd \
+              --since "2026-07-24 02:40:00 UTC" \
+              --until "2026-07-24 02:43:30 UTC" \
+              --no-pager --output=short-iso-precise |
+              grep -F "$unit" || echo "(no matching systemd manager event)"
+
       - name: Read failed demo canary outcome
         if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production' }}
         env:
