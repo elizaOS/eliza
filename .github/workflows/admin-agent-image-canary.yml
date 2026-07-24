@@ -102,3 +102,4 @@ jobs:
             echo
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+          printf 'CANARY_DIAGNOSTIC=%s\n' "$(cat "$sanitized")"
