@@ -277,6 +277,44 @@ export async function getSolanaTokenHoldings(
     throw new Error("Wallet address is required");
   }
 
+  export type SolanaNftHolding = {
+  mint: string;
+  name: string | null;
+  collection: string | null;
+  imageUrl: string | null;
+};
+
+export async function getSolanaNftHoldings(
+  address: string,
+): Promise<SolanaNftHolding[]> {
+  if (!address || address.trim().length === 0) {
+    throw new Error("Wallet address is required");
+  }
+
+  const response = await fetch(
+    getHeliusApiUrl(`/v0/addresses/${address.trim()}/nfts`),
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      `Helius NFT request failed with status ${response.status}`,
+    );
+  }
+
+  const data = await response.json();
+
+  if (!Array.isArray(data)) {
+    return [];
+  }
+
+  return data.slice(0, 10).map((nft: any) => ({
+    mint: String(nft?.mint ?? ""),
+    name: nft?.content?.metadata?.name ?? null,
+    collection: nft?.grouping?.[0]?.group_value ?? null,
+    imageUrl: nft?.content?.links?.image ?? null,
+  }));
+}
+
   const accounts = await callHeliusRpc<any[]>(
     "skunkscan-token-accounts",
     "getTokenAccountsByOwner",
