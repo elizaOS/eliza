@@ -106,9 +106,59 @@ Vision, VLM API keys, the claude/codex CLIs) and prints the exact install/start
 command for anything missing. Install what it flags — a missing tool is a
 fixable instruction, never a reason to ship without evidence.
 
+### Install or repair the capture toolchain
+
+From the repository root, one command installs or repairs the required
+cross-platform capture dependencies and verifies their executable behavior:
+
 ```bash
-bun run evidence:doctor            # human report of the capture toolchain
-bun run evidence:doctor -- --strict  # non-zero exit if a REQUIRED tool is missing
+bun run evidence:install-tools
+```
+
+The installer supports macOS with Homebrew, Windows with WinGet, and Linux with
+apt-get, dnf, yum, apk, pacman, or zypper. It prefers healthy system or packaged
+ffmpeg/ffprobe binaries instead of installing a redundant system copy, installs
+the repository-pinned Playwright Chromium, and runs the strict doctor before it
+returns success. Dependency bootstrap is locked and uses `--ignore-scripts`, so
+it does not run unrelated repository postinstall or artifact-sync hooks.
+
+Use `--github` to also install and execute the optional GitHub CLI; this does
+not authenticate, persist credentials, change repository permissions, or prove
+that a token can upload evidence. Use `--skip-deps` only when the locked
+workspace dependencies are already installed. `--dry-run` prints the exact
+argument-safe commands of the one resolved plan execution also consumes —
+including the trailing strict doctor verification — without changing the host;
+lines beginning `# assumes:` note where resolution depends on the dependency
+step having run (packaged media binaries only resolve after `bun install`).
+Add `--strict` to a dry run to fail when such assumptions remain. Every step
+carries a deadline (15 minutes for package-manager operations, 2 minutes for
+probes, 10 minutes for the doctor) so a wedged package manager or download
+cannot block forever; multiply all deadlines on slow hosts with
+`--timeout-scale=<factor>` or `ELIZA_EVIDENCE_INSTALL_TIMEOUT_SCALE`.
+
+```bash
+bun run evidence:install-tools -- --github
+bun run evidence:install-tools -- --skip-deps
+bun run evidence:install-tools -- --dry-run
+bun run evidence:install-tools -- --dry-run --strict
+bun run evidence:install-tools -- --timeout-scale=3
+```
+
+Package downloads, Playwright browser installation, and package-manager index
+updates require network access. Linux system packages use root directly or
+require a successful `sudo -n` preflight; the installer never prompts for a
+password. Homebrew runs as the current user, while WinGet uses silent,
+non-interactive agreement flags. A missing Homebrew, WinGet, or supported Linux
+package manager is an explicit failure. Windows PATH refresh is local to the
+installer process, and no supported platform path edits shell profiles or
+developer configuration. Missing optional accelerators remain explicit
+non-blocking doctor findings; missing required OCR, media, or browser
+capabilities fail the strict doctor.
+
+```bash
+bun run evidence:doctor                   # human capability report
+bun run evidence:doctor -- --strict       # fail if a required tool is missing
+bun run evidence:doctor -- --strict --json  # normalized CI/operator report
 ```
 
 **Visual verification is layered and always available.** OCR runs the GPU/Baidu
