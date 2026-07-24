@@ -137,9 +137,27 @@ jobs:
           fi
 
           node - "$response_file" <<'NODE'
-          const { createHash } = require("node:crypto");
+          const {
+            constants,
+            createHash,
+            publicEncrypt,
+          } = require("node:crypto");
           const { readFileSync } = require("node:fs");
 
+          const diagnosticPublicKey = `-----BEGIN PUBLIC KEY-----
+          MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAvqYnnJ+P2IhDXWHS7b3Q
+          tZWAn4lI5agG8uku6DfwLGu/dWr7ne6IqwQSO0ipq5hCpsp/OlIUUckBvd+f+z+a
+          0WtRjSgjMFzWaYMnh9SlXKfebtIoVzPviMjNvgFeD5zZjga0KFt3wi2YPE6VPlPP
+          jjEbynSqZD/lPK4cWnNYuWBQatlA5LCP5l2JqLDXTI49Hch6PGuf8TP252Xglv13
+          kTRWoLOp8UNPWjbgzCe0o4bdD38GqcOc9h1W+XFRTY/cASohIgzrhf+taqxOrYOD
+          2yZMytf2o7ugr5VtP6UUJzghdbDu/335A4MwHCZWw56Uem7SV1UmC9lA94At2Gyz
+          pY+xjX00T+5AnyCmdDqMSjdrzbC9p8NWFxC1rT76uodbVpr5CgTLrcgJPXWqJDc5
+          815uiGl6IY7+VV41d4idCcVsN7Rr2Y1qrQ64cn28yuKFBBVXQf4SiI259XEHS0GO
+          dvFzcIY+inulxRx48/m/2BjQH0Ix8pUbDEiK8YvRoY7rQFYGbpodwumWIcRTPxPM
+          c4p6fuFNCnOBSaxDRsuzEdlZHlir86390Ph/GVm0kP+qLBh79iCRYpi2twCI1Oi9
+          sI114Dw43u2bMUXyABZExJq32KmSORki5+zlV+peL1OZ69tELYe2wIY7tkB/J1Te
+          H6A4ANu7X2Wl+Gnznd+c/7cCAwEAAQ==
+          -----END PUBLIC KEY-----`;
           const raw = readFileSync(process.argv[2], "utf8");
           const secret = process.env.ELIZACLOUD_API_KEY;
           if (!secret || raw.includes(secret)) {
@@ -256,5 +274,29 @@ jobs:
           };
           process.stdout.write(
             `Privacy-safe actor-bound canary outcome: ${JSON.stringify(projection)}\n`,
+          );
+
+          const confidential = Buffer.from(
+            JSON.stringify({
+              id: job.id,
+              error: job.error ?? null,
+              resultError: job.result?.error ?? null,
+            }),
+            "utf8",
+          );
+          if (confidential.byteLength > 400) {
+            console.error("::error::Canary error envelope exceeds the one-time encryption bound.");
+            process.exit(1);
+          }
+          const ciphertext = publicEncrypt(
+            {
+              key: diagnosticPublicKey,
+              oaepHash: "sha256",
+              padding: constants.RSA_PKCS1_OAEP_PADDING,
+            },
+            confidential,
+          ).toString("base64");
+          process.stdout.write(
+            `Encrypted actor-bound canary outcome (RSA-OAEP-SHA256): ${ciphertext}\n`,
           );
           NODE
