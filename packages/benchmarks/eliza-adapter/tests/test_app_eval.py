@@ -194,3 +194,17 @@ def test_research_cli_runs_all_ten_authored_tasks(tmp_path: Path) -> None:
     summary = json.loads(output.read_text(encoding="utf-8"))
     assert summary["total_tasks"] == 10
     assert [item["type"] for item in summary["results"]] == ["research"] * 10
+
+
+def test_publishable_run_with_imperfect_score_exits_zero() -> None:
+    """A real run that measured the model (infrastructure OK) exits 0 even when
+    the model scored low — e.g. gemma failed 10/20 coding tasks. Regression for
+    the campaign marking app-eval a cohort failure on a valid low score."""
+    from eliza_adapter.app_eval import app_eval_exit_code
+
+    # Publishable measurement, imperfect score → success.
+    assert app_eval_exit_code(publishable=True, structural_mock_ok=False) == 0
+    # Infrastructure failure (not publishable, not a structural mock) → failure.
+    assert app_eval_exit_code(publishable=False, structural_mock_ok=False) == 1
+    # Mock research (no coding) is a structural pass.
+    assert app_eval_exit_code(publishable=False, structural_mock_ok=True) == 0

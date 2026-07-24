@@ -329,6 +329,21 @@ def _run_task(
         }
 
 
+def app_eval_exit_code(*, publishable: bool, structural_mock_ok: bool) -> int:
+    """Process exit code for an app-eval run.
+
+    A benchmark's job is to *measure* performance, so a low model score (the
+    model wrote failing code, answered a research task poorly) is a valid
+    result and exits 0. Exit non-zero only when the run produced no publishable
+    measurement — an infrastructure failure (already folded into
+    ``publishable``) or a mock run that structurally cannot score coding
+    (``structural_mock_ok`` is False for mock+coding). Requiring every task to
+    pass would demand a perfect model to exit 0, which defeats the point and
+    made the orchestrator treat a real low score as a cohort failure.
+    """
+    return 0 if (publishable or structural_mock_ok) else 1
+
+
 def _coding_failure(raw: Mapping[str, Any]) -> str | None:
     if raw.get("success") is True:
         return None
@@ -673,7 +688,9 @@ def main() -> int:
     output.write_text(json.dumps(summary, indent=2), encoding="utf-8")
     print(json.dumps(summary, indent=2))
     structural_mock_ok = args.mock and not coding_tasks
-    return 0 if passed == len(results) and (publishable or structural_mock_ok) else 1
+    return app_eval_exit_code(
+        publishable=publishable, structural_mock_ok=structural_mock_ok
+    )
 
 
 if __name__ == "__main__":
