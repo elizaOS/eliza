@@ -20,6 +20,29 @@ from eliza_adapter.client import ElizaClient
 logger = logging.getLogger(__name__)
 
 
+def _detach_and_die_with_parent() -> None:
+    """preexec_fn for the server subprocess (Linux): start a new session so
+    ``stop()`` can signal the whole process group, and arm PR_SET_PDEATHSIG so
+    the kernel SIGKILLs this server the instant its Python parent dies.
+
+    Without the death signal, a parent killed by SIGKILL (a benchmark leg that
+    times out, a campaign restart) never runs ``stop()``, and the ~500MB node
+    server is reparented to init and leaks — 39 such orphans once cost 21GB.
+    Best-effort: on any platform without prctl(2) we still get the new session.
+    """
+    os.setsid()
+    try:
+        import ctypes
+
+        PR_SET_PDEATHSIG = 1
+        libc = ctypes.CDLL("libc.so.6", use_errno=True)
+        libc.prctl(PR_SET_PDEATHSIG, signal.SIGKILL, 0, 0, 0)
+    except Exception:
+        # error-policy:J6 best-effort teardown hardening; the process-group
+        # kill in stop() remains the primary path on non-Linux/no-prctl hosts.
+        pass
+
+
 def _find_repo_root() -> Path:
     """Walk up from this file to find the elizaOS repo root.
 
@@ -449,6 +472,15 @@ class ElizaServerManager:
         self._stdout_log = Path(stdout_file.name)
         self._stderr_log = Path(stderr_file.name)
 
+        # preexec_fn does setsid (so stop() can killpg the group) AND arms
+        # PR_SET_PDEATHSIG so the server dies with a SIGKILLed parent instead of
+        # orphaning. Falls back to start_new_session on platforms without fork
+        # (Windows), where the leak scenario does not apply.
+        popen_kwargs: dict[str, object] = {}
+        if hasattr(os, "fork"):
+            popen_kwargs["preexec_fn"] = _detach_and_die_with_parent
+        else:
+            popen_kwargs["start_new_session"] = True
         self._proc = subprocess.Popen(
             _server_command(server_script),
             cwd=str(cwd),
@@ -456,7 +488,7 @@ class ElizaServerManager:
             stdout=stdout_file,
             stderr=stderr_file,
             text=True,
-            start_new_session=True,
+            **popen_kwargs,
         )
 
         # Wait for the ready sentinel or health check. Poll the child process

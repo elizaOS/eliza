@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from eliza_adapter.server_manager import (
@@ -403,3 +404,40 @@ def test_normalize_model_env_non_cerebras_setdefault_path_keeps_preset() -> None
     }
     _normalize_model_env(env)
     assert env["OPENAI_BASE_URL"] == "https://elizacloud.ai/api/v1"
+
+
+def test_server_subprocess_is_armed_to_die_with_parent(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """On Linux the server must start under a preexec_fn that both starts a new
+    session (for group-kill in stop()) and arms PR_SET_PDEATHSIG, so a parent
+    killed by SIGKILL (a timed-out leg, a campaign restart) cannot leak the
+    ~500MB node server. Regression for a 21GB orphan-server pileup."""
+    server = tmp_path / "packages" / "app-core" / "src" / "benchmark" / "server.ts"
+    server.parent.mkdir(parents=True)
+    server.write_text("console.log('fake benchmark server')\n", encoding="utf-8")
+    captured = {}
+
+    def fake_popen(*args, **kwargs):
+        captured["kwargs"] = kwargs
+        return _FakeProcess()
+
+    manager = ElizaServerManager(repo_root=tmp_path, port=0)
+    monkeypatch.setattr(manager.client, "is_ready", lambda: True)
+    monkeypatch.setattr(manager.client, "health", lambda **_kwargs: {"status": "ready"})
+    monkeypatch.setattr(manager.client, "reset", lambda *args, **kwargs: None)
+    monkeypatch.setattr("eliza_adapter.server_manager.subprocess.Popen", fake_popen)
+    _stub_node_resolution(monkeypatch)
+
+    manager.start()
+    manager._proc = None
+
+    if hasattr(os, "fork"):
+        from eliza_adapter.server_manager import _detach_and_die_with_parent
+
+        assert captured["kwargs"].get("preexec_fn") is _detach_and_die_with_parent
+        # start_new_session must NOT also be set — the preexec_fn owns setsid.
+        assert not captured["kwargs"].get("start_new_session")
+    else:
+        assert captured["kwargs"].get("start_new_session") is True
