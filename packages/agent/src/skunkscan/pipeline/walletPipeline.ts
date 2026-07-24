@@ -28,6 +28,7 @@ import { analyzeWalletAlpha } from "../analyzers/alpha";
 import { analyzeInvestmentStyle } from "../analyzers/investmentStyle";
 import { analyzeWalletProfitability } from "../analyzers/profitability";
 import { analyzeWalletReputation } from "../analyzers/reputation";
+import { analyzeSkunkScore } from "../analyzers/skunkScore";
 import { analyzeWalletStrategy } from "../analyzers/strategy";
 import { analyzeWalletTransactionRisk } from "../analyzers/transactionRisk";
 import { analyzeWalletTrust } from "../analyzers/trust";
@@ -224,6 +225,15 @@ export function runWalletPipeline(
   profitability,
 });
 
+  const skunkScore = analyzeSkunkScore({
+  reputation,
+  trust,
+  risk,
+  smartMoney,
+  profitability,
+  exposure,
+});
+
   const investigationReplay =
     analyzeInvestigationReplay(
       portfolio,
@@ -340,6 +350,7 @@ export function runWalletPipeline(
     investmentStyle,
     profitability,
     reputation,
+    skunkScore,
     investigationReplay,
     evidenceRecords,
     decision,
