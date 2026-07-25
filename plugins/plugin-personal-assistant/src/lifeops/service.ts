@@ -2636,6 +2636,20 @@ export class LifeOpsService extends LifeOpsServiceBase {
       getXDms: (...args) => this.getXDms(...args),
     },
     loadPriorityScoringSettings: async () => {
+      // Deterministic harnesses opt out the same way they disable the
+      // character-voice rewrite (ACTION_CALLBACK_VOICE_REWRITE): scoring spends
+      // background TEXT_SMALL calls that a strict scenario LLM proxy has no
+      // fixtures for, and the resulting reported errors contaminate the
+      // RECENT_ERRORS provider text that strict turn fixtures key on.
+      const scoringOverride = this.runtime.getSetting(
+        "LIFEOPS_INBOX_PRIORITY_SCORING",
+      );
+      if (
+        typeof scoringOverride === "string" &&
+        scoringOverride.trim().toLowerCase() === "false"
+      ) {
+        return { enabled: false, model: null };
+      }
       try {
         const state = await loadLifeOpsAppState(this.runtime);
         return {

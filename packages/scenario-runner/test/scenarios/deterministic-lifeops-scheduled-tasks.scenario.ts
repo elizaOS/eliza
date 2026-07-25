@@ -31,9 +31,12 @@ const completeText =
 const historyText =
   "Run SCHEDULED_TASKS to read the deterministic water reminder history";
 
+// Owner-chat reminder creates delegate to the OWNER_REMINDERS definition
+// flow (routing contract in scheduled-task.ts); "custom" keeps the raw
+// scheduler admin surface this scenario deterministically exercises.
 const createParameters = {
   action: "create",
-  kind: "reminder",
+  kind: "custom",
   promptInstructions: "drink a glass of water",
   trigger: { kind: "manual" },
   priority: "medium",
@@ -46,7 +49,7 @@ const createParameters = {
 
 const listParameters = {
   action: "list",
-  kind: "reminder",
+  kind: "custom",
   status: "scheduled",
   ownerVisibleOnly: true,
 };
@@ -259,8 +262,8 @@ function expectCreatedTurn(
   if (typeof task.taskId !== "string" || task.taskId.length === 0) {
     return `expected task.taskId string, saw ${stableStringify(task.taskId)}`;
   }
-  if (task.kind !== "reminder") {
-    return `expected task.kind=reminder, saw ${String(task.kind)}`;
+  if (task.kind !== "custom") {
+    return `expected task.kind=custom, saw ${String(task.kind)}`;
   }
   if (task.promptInstructions !== createParameters.promptInstructions) {
     return `expected task.promptInstructions=${createParameters.promptInstructions}, saw ${String(task.promptInstructions)}`;

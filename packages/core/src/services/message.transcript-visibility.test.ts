@@ -311,7 +311,11 @@ describe("DefaultMessageService transcript visibility integration", () => {
 		expect(persisted).toHaveLength(1);
 		expect(persisted[0]?.content.text).toBe(visibleSummary);
 		expect(persisted[0]?.content.transcriptVisibility).toBeUndefined();
-		expect(harness.persistedAtCallback).toEqual([true]);
+		// Core delivers the visible reply before persisting the response memory
+		// (#17105 took the write off the reply path); durability-before-terminal
+		// is the conversation route's contract, not the callback's. The summary
+		// is persisted by the time handleMessage resolves (asserted above).
+		expect(harness.persistedAtCallback).toEqual([false]);
 		expect(harness.callbacks).toHaveLength(1);
 		expect(harness.callbacks[0]?.text).toBe(visibleSummary);
 		expect(harness.sent).toHaveLength(1);

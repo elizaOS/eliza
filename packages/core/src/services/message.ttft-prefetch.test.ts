@@ -250,9 +250,13 @@ describe("post-turn evaluation detachment", () => {
 		});
 		const service = new DefaultMessageService();
 
+		// The message must carry a post-turn semantic signal ("remember" matches
+		// POST_TURN_SEMANTIC_SIGNAL) — a plain smalltalk reply now skips
+		// runPostTurnEvaluators entirely, and this test is about the evaluator
+		// running detached, not about the skip gate.
 		const connectorWait = service.handleMessage(
 			runtime,
-			userMessage("reply before reflection finishes"),
+			userMessage("remember to reply before reflection finishes"),
 		);
 		await expect(connectorWait).resolves.toBeDefined();
 		await evaluatorStarted;

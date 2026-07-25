@@ -45,6 +45,10 @@ test('startup resumes a killed execution without duplicating its persisted side 
     db,
     getSetting: (key: string) => (key === 'WORKFLOW_SEED_DEFAULTS' ? 'false' : undefined),
     getService: () => null,
+    getTasks: async () => [],
+    createTask: async () => '00000000-0000-4000-8000-000000000001',
+    deleteTask: async () => {},
+    reportError: () => {},
   } as never;
   const server = createServer();
   let sideEffectCalls = 0;

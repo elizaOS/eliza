@@ -17,10 +17,12 @@ import {
   type Task,
   type UUID,
 } from '@elizaos/core';
-import { NotificationService } from '@elizaos/core/node';
+// TaskService must come from the same package entry the runtime loads —
+// a relative src import creates a second class identity and the
+// `instanceof TaskService` readiness check always fails against it.
+import { NotificationService, TaskService } from '@elizaos/core/node';
 import { eq } from 'drizzle-orm';
 import { registerTriggerTaskWorker } from '../../../../packages/agent/src/triggers/runtime.ts';
-import { TaskService } from '../../../../packages/core/src/services/task.ts';
 import { plugin as sqlPlugin } from '../../../plugin-sql/src/index.ts';
 import { DatabaseMigrationService } from '../../../plugin-sql/src/migration-service.ts';
 import { PgliteDatabaseAdapter } from '../../../plugin-sql/src/pglite/adapter.ts';

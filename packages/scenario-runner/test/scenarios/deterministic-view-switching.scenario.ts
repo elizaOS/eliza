@@ -32,11 +32,14 @@ import {
 type BuiltinView = {
   id: string;
   label: string;
+  navigationLabel?: string;
   path: string;
 };
 
 const BUILTIN_VIEWS: BuiltinView[] = [
-  { id: "chat", label: "Chat", path: "/chat" },
+  // Chat surfaces on Home (the overlay is the chat surface), so the show
+  // receipt names Home while the resolved view stays `chat`.
+  { id: "chat", label: "Chat", navigationLabel: "Home", path: "/chat" },
   { id: "character", label: "Character", path: "/character" },
   { id: "automations", label: "Automations", path: "/automations" },
   { id: "plugins-page", label: "Plugins", path: "/apps/plugins" },
@@ -70,7 +73,7 @@ function expectShowTurn(
   execution: ScenarioTurnExecution,
   view: BuiltinView,
 ): string | undefined {
-  const expectedText = `Navigated to ${view.label} (gui).`;
+  const expectedText = `Opened ${view.navigationLabel ?? view.label}.`;
   if (execution.responseText !== expectedText) {
     return `expected responseText=${JSON.stringify(expectedText)}, saw ${JSON.stringify(execution.responseText)}`;
   }
@@ -97,8 +100,9 @@ function expectShowTurn(
   if (values.viewId !== view.id) {
     return `expected result.values.viewId=${view.id}, saw ${String(values.viewId)}`;
   }
-  if (values.label !== view.label) {
-    return `expected result.values.label=${view.label}, saw ${String(values.label)}`;
+  const expectedLabel = view.navigationLabel ?? view.label;
+  if (values.label !== expectedLabel) {
+    return `expected result.values.label=${expectedLabel}, saw ${String(values.label)}`;
   }
   const data = toRecord(action.result?.data);
   const resolvedView = toRecord(data.view);
@@ -155,7 +159,7 @@ export default scenario({
     text: `Open the ${view.label} view`,
     actionName: "VIEWS",
     options: { action: "show", view: view.id, viewType: "gui" },
-    responseIncludesAny: [`Navigated to ${view.label}`],
+    responseIncludesAny: [`Opened ${view.navigationLabel ?? view.label}`],
     assertTurn: (execution: ScenarioTurnExecution) =>
       expectShowTurn(execution, view),
   })),

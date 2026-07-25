@@ -42,7 +42,7 @@ type CoveredView = {
 
 // The curated domain views covered by CURATED_MULTILINGUAL (calendar, wallet,
 // inbox, settings), with the label + path the loopback registry serves. The
-// VIEWS show handler echoes `label` back ("Navigated to <label> (gui).") and
+// VIEWS show handler echoes `label` back ("Opened <label>.") and
 // surfaces `data.view.path`, so these must match what the registry returns.
 const COVERED_VIEWS: CoveredView[] = [
   { id: "calendar", label: "Calendar", path: "/apps/calendar" },
@@ -84,7 +84,7 @@ function expectShowTurn(
   execution: ScenarioTurnExecution,
   view: CoveredView,
 ): string | undefined {
-  const expectedText = `Navigated to ${view.label} (gui).`;
+  const expectedText = `Opened ${view.label}.`;
   if (execution.responseText !== expectedText) {
     return `expected responseText=${JSON.stringify(expectedText)}, saw ${JSON.stringify(execution.responseText)}`;
   }
@@ -186,7 +186,7 @@ export default scenario({
       text: entry.phrase,
       actionName: "VIEWS",
       options: { action: "show", viewType: "gui" },
-      responseIncludesAny: [`Navigated to ${view.label}`],
+      responseIncludesAny: [`Opened ${view.label}`],
       assertTurn: (execution: ScenarioTurnExecution) =>
         expectShowTurn(execution, view),
     };

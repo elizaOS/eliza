@@ -28,6 +28,16 @@ function ownerMessage(agentId: UUID, text: string): Memory {
   } as Memory;
 }
 
+// Owner-chat reminder creates delegate to the OWNER_REMINDERS definition flow
+// (routing contract in scheduled-task.ts); only autonomy-sourced messages keep
+// the raw scheduler surface this file exercises. Creates therefore arrive as
+// autonomy messages, the way background automations schedule their own work.
+function autonomyMessage(agentId: UUID, text: string): Memory {
+  const message = ownerMessage(agentId, text);
+  message.content.source = "autonomy";
+  return message;
+}
+
 describe("SCHEDULED_TASK action", () => {
   let runtimeResult: RealTestRuntimeResult | null = null;
 
@@ -44,7 +54,7 @@ describe("SCHEDULED_TASK action", () => {
 
     const created = await scheduledTaskAction.handler?.(
       runtime,
-      ownerMessage(runtime.agentId, "schedule a reminder"),
+      autonomyMessage(runtime.agentId, "schedule a reminder"),
       undefined,
       {
         parameters: {
@@ -135,7 +145,7 @@ describe("SCHEDULED_TASK action", () => {
 
     const result = await scheduledTaskAction.handler?.(
       runtime,
-      ownerMessage(runtime.agentId, "schedule a gated reminder"),
+      autonomyMessage(runtime.agentId, "schedule a gated reminder"),
       undefined,
       {
         parameters: {
@@ -173,7 +183,10 @@ describe("SCHEDULED_TASK action", () => {
     );
     const tasks = (listed?.data as { tasks?: ScheduledTask[] } | undefined)
       ?.tasks;
-    expect(tasks).toHaveLength(0);
+    if (!tasks) throw new Error("list did not return scheduled tasks");
+    // First-run defaults seed check-in/watcher/recap/output tasks on a fresh
+    // runtime; the rejected create must not have written its reminder row.
+    expect(tasks.filter((task) => task.kind === "reminder")).toHaveLength(0);
   });
 
   it("get returns NOT_FOUND for an unknown taskId", async () => {
@@ -205,7 +218,7 @@ describe("SCHEDULED_TASK action", () => {
     for (const instructions of ["sort the receipts", "reply to Jordan"]) {
       const created = await scheduledTaskAction.handler?.(
         runtime,
-        ownerMessage(runtime.agentId, `remind me to ${instructions}`),
+        autonomyMessage(runtime.agentId, `remind me to ${instructions}`),
         undefined,
         {
           parameters: {

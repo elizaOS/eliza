@@ -554,6 +554,11 @@ export async function createScenarioRuntime(
       // rewrite (services/message) would spend an unfixtured TEXT_SMALL call and
       // restyle that text, so keep it off in the deterministic harness.
       ACTION_CALLBACK_VOICE_REWRITE: "false",
+      // LifeOps inbox priority scoring is a background TEXT_SMALL batch; under
+      // the strict proxy it has no fixtures, and its reported failure leaks
+      // into the RECENT_ERRORS provider text that strict turn fixtures key on
+      // (deterministic-pr-smoke went red exactly this way).
+      LIFEOPS_INBOX_PRIORITY_SCORING: "false",
     },
   });
 

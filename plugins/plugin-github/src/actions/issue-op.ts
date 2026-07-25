@@ -420,12 +420,13 @@ export const issueOpAction: Action = {
       describeSelection(selection),
       options,
     );
+    const prompt = `${preview} Reply yes to confirm or no to cancel.`;
     const decision = await requireConfirmation({
       runtime,
       message,
       actionName: "GITHUB_ISSUE_OP",
       pendingKey: `${op}:${repo}`,
-      prompt: `${preview} Reply yes to confirm or no to cancel.`,
+      prompt,
       callback,
     });
     if (decision.status === "pending") {
@@ -433,6 +434,11 @@ export const issueOpAction: Action = {
         success: false,
         requiresConfirmation: true,
         preview,
+        // Mirror the delivered prompt and the pending-interaction markers so
+        // the planner terminal path grounds on the tool-owned text instead of
+        // appending its generic failed-tool fallback after the visible prompt.
+        text: prompt,
+        data: { requiresConfirmation: true, preview, awaitingUserInput: true },
       };
     }
     if (decision.status === "cancelled") {
