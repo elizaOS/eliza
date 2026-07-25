@@ -657,6 +657,26 @@ function normalizeNativeToolsForCall(
 
   const toolSet: Record<string, unknown> = {};
 
+  // Cerebras's grammar compiler treats strictness as request-wide, not
+  // per-tool: one non-strict (or unflagged) tool downgrades every tool in the
+  // call, so the wire flag must be emitted uniformly — and always explicitly,
+  // since an omitted flag is not the same as false to the compiler. Schema
+  // handling below still follows each tool's declared flag (a declared
+  // non-strict schema passes through raw; everything else is sanitized).
+  const cerebrasRequestStrict =
+    options.cerebrasMode === true &&
+    tools.every((rawTool) => {
+      const tool = asRecord(rawTool);
+      const functionTool = asRecord(tool.function);
+      const declared =
+        typeof tool.strict === "boolean"
+          ? tool.strict
+          : typeof functionTool.strict === "boolean"
+            ? functionTool.strict
+            : undefined;
+      return declared === true;
+    });
+
   for (const rawTool of tools) {
     const tool = asRecord(rawTool);
     const functionTool = asRecord(tool.function);
@@ -717,7 +737,11 @@ function normalizeNativeToolsForCall(
     toolSet[registeredName] = {
       ...(description ? { description } : {}),
       inputSchema: jsonSchema(inputSchema as JSONSchema7),
-      ...(strict === undefined ? {} : { strict }),
+      ...(options.cerebrasMode
+        ? { strict: cerebrasRequestStrict }
+        : strict === undefined
+          ? {}
+          : { strict }),
     };
   }
 

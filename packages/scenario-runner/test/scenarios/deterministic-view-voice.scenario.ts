@@ -45,6 +45,9 @@ type VoiceView = {
   // View id the rigid matcher resolves `noun` to (matchViewCommand).
   id: string;
   label: string;
+  // SHARED_NAV_TARGETS canonical label the show receipt echoes when it
+  // differs from the registry label (e.g. todos -> "To-dos").
+  navigationLabel?: string;
   path: string;
 };
 
@@ -58,11 +61,18 @@ const VOICE_VIEWS: VoiceView[] = [
   },
   { noun: "wallet", id: "wallet", label: "Wallet", path: "/apps/wallet" },
   { noun: "inbox", id: "inbox", label: "Inbox", path: "/apps/inbox" },
-  { noun: "todos", id: "todos", label: "Todos", path: "/apps/todos" },
+  {
+    noun: "todos",
+    id: "todos",
+    label: "Todos",
+    navigationLabel: "To-dos",
+    path: "/apps/todos",
+  },
   {
     noun: "documents",
     id: "documents",
     label: "Documents",
+    navigationLabel: "Knowledge",
     path: "/apps/documents",
   },
   // Voice "contacts" → the relationships view (matcher noun synonym).
@@ -98,7 +108,7 @@ function expectVoiceTurn(
   execution: ScenarioTurnExecution,
   view: VoiceView,
 ): string | undefined {
-  const expectedText = `Navigated to ${view.label} (gui).`;
+  const expectedText = `Opened ${view.navigationLabel ?? view.label}.`;
   if (execution.responseText !== expectedText) {
     return `expected responseText=${JSON.stringify(expectedText)}, saw ${JSON.stringify(execution.responseText)}`;
   }
@@ -129,8 +139,9 @@ function expectVoiceTurn(
   if (values.viewId !== view.id) {
     return `expected result.values.viewId=${view.id}, saw ${String(values.viewId)}`;
   }
-  if (values.label !== view.label) {
-    return `expected result.values.label=${view.label}, saw ${String(values.label)}`;
+  const expectedLabel = view.navigationLabel ?? view.label;
+  if (values.label !== expectedLabel) {
+    return `expected result.values.label=${expectedLabel}, saw ${String(values.label)}`;
   }
   const data = toRecord(action.result?.data);
   const resolvedView = toRecord(data.view);
@@ -191,7 +202,7 @@ export default scenario({
     text: view.noun,
     actionName: "VIEWS",
     options: { action: "show", viewType: "gui" },
-    responseIncludesAny: [`Navigated to ${view.label}`],
+    responseIncludesAny: [`Opened ${view.navigationLabel ?? view.label}`],
     assertTurn: (execution: ScenarioTurnExecution) =>
       expectVoiceTurn(execution, view),
   })),

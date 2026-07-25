@@ -92,9 +92,13 @@ const getText =
 const completeText = "Run SCHEDULED_TASKS to complete the pharmacy reminder";
 const historyText = "Run SCHEDULED_TASKS to read the pharmacy reminder history";
 
+// Owner-chat reminder creates delegate to the OWNER_REMINDERS definition
+// flow (routing contract in scheduled-task.ts); "custom" keeps the raw
+// scheduler surface whose recurrence/snooze/refire mechanics this journey
+// deterministically exercises.
 const createParameters = {
   action: "create",
-  kind: "reminder",
+  kind: "custom",
   promptInstructions: "call the pharmacy about the prescription refill",
   trigger: { kind: "cron", expression: "0 9 * * *", tz: "UTC" },
   priority: "medium",

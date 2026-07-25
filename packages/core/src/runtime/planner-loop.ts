@@ -4020,11 +4020,20 @@ function shouldRecoverSilentFailedFinish(args: {
 	return latestFailedToolStep(args.trajectory) !== undefined;
 }
 
+/**
+ * Generic last-resort reply for a turn that ends on a failed tool with no
+ * user-safe tool-owned text. Exported so the message service can recognize it
+ * and drop it as redundant when the failed tool's own callback already told
+ * the user what happened.
+ */
+export const FAILED_TOOL_FALLBACK_MESSAGE =
+	"I tried to complete that, but the available runtime step failed before it produced a usable result.";
+
 function failedToolFallbackMessage(
 	trajectory: PlannerTrajectory,
 ): string | undefined {
 	if (!latestFailedToolStep(trajectory)) return undefined;
-	return "I tried to complete that, but the available runtime step failed before it produced a usable result.";
+	return FAILED_TOOL_FALLBACK_MESSAGE;
 }
 
 function exposedToolNameSet(
@@ -4259,7 +4268,7 @@ function groundedFailedToolMessage(step: PlannerStep): string {
 			: result?.userFacingText;
 	const candidate = sanitizePlannerMessage(toolOwnedText);
 	if (candidate && !isUnsafeUserVisibleText(candidate)) return candidate;
-	return "I tried to complete that, but the available runtime step failed before it produced a usable result.";
+	return FAILED_TOOL_FALLBACK_MESSAGE;
 }
 
 function terminalToolCallFinish(

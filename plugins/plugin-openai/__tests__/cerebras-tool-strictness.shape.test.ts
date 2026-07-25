@@ -71,10 +71,12 @@ describe("Cerebras native tool strictness", () => {
     ]);
 
     expectUniformStrictness(tools, false);
+    // Canonical closed shape from core's closedEmptyObjectSchema: `required`
+    // is deliberately omitted — an empty `required` is accepted by the
+    // grammar compiler but carries no information.
     expect(tools.zero_arg_tool?.inputSchema.jsonSchema).toEqual({
       type: "object",
       properties: {},
-      required: [],
       additionalProperties: false,
     });
   });

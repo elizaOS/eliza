@@ -441,7 +441,7 @@ export default scenario({
               view: "settings",
               viewType: "gui",
             },
-            "Navigated to Settings (gui).",
+            "Opened Settings.",
           ),
           handleResponseFixture("Search views for finance", "VIEWS"),
           plannerFixture(
@@ -644,7 +644,7 @@ export default scenario({
       kind: "message",
       name: "natural language opens a view",
       text: "Open the settings view",
-      responseIncludesAny: ["Navigated to Settings"],
+      responseIncludesAny: ["Opened Settings"],
       assertTurn: (execution) =>
         expectRoutedAction(execution, {
           actionName: "VIEWS",

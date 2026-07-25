@@ -601,12 +601,12 @@ export default scenario({
       text: "Open the settings view",
       actionName: "VIEWS",
       options: { action: "show", view: "settings", viewType: "gui" },
-      responseIncludesAny: ["Navigated to Settings"],
+      responseIncludesAny: ["Opened Settings"],
       assertTurn: (execution) =>
         expectActionTurn(execution, {
           actionName: "VIEWS",
           parameters: { action: "show", view: "settings", viewType: "gui" },
-          responseText: "Navigated to Settings (gui).",
+          responseText: "Opened Settings.",
           resultFields: {
             "values.mode": "show",
             "values.viewId": "settings",
@@ -621,7 +621,7 @@ export default scenario({
       text: "Open the remote ledger view",
       actionName: "VIEWS",
       options: { action: "open", view: "remote-ledger", viewType: "gui" },
-      responseIncludesAny: ["Navigated to Remote Ledger"],
+      responseIncludesAny: ["Opened Remote Ledger"],
       assertTurn: (execution) =>
         expectActionTurn(execution, {
           actionName: "VIEWS",
@@ -630,7 +630,7 @@ export default scenario({
             view: "remote-ledger",
             viewType: "gui",
           },
-          responseText: "Navigated to Remote Ledger (gui).",
+          responseText: "Opened Remote Ledger.",
           resultFields: {
             "values.mode": "show",
             "values.viewId": "remote-ledger",
