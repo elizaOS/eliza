@@ -163,6 +163,10 @@ function repositoryCandidateFiles() {
     .map((file) =>
       normalizeGitRepositoryPath(file, "script inventory candidate"),
     )
+    // `git ls-files --cached` keeps an unstaged deletion in its output. The
+    // inventory describes the current source tree, so a removed artifact must
+    // disappear immediately instead of making the audit unreadable until staged.
+    .filter((file) => existsSync(path.resolve(ROOT, file)))
     .sort();
   assertUniqueRepositoryIdentities(
     files,

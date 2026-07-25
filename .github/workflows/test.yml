@@ -158,7 +158,7 @@ jobs:
       - name: Validate zero-key command ownership contract
         run: node packages/scripts/ci-zero-key-command-ownership-contract.mjs
 
-      - name: Validate Windows command coverage contract
+      - name: Validate Windows command source contract
         run: node packages/scripts/ci-windows-command-coverage-contract.mjs
 
       - name: Install alias-read guard parser dependency

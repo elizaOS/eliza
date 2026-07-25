@@ -7,8 +7,8 @@ This directory contains GitHub Actions workflows for the elizaOS project (v2.0.0
 | Workflow | Trigger | Purpose |
 |----------|---------|---------|
 | `ci.yaml` | Push/PR to main | Main-specific CI - typecheck, tests, lint, build, dev startup |
-| `develop-pr.yml` | PR to develop | Lightweight lint, typecheck, build, and deterministic lane-integrity checks |
-| `develop-pr-gate.yml` | PR target to develop, manual canaries | Stable fail-closed aggregate over the nine lightweight required contexts |
+| `develop-pr.yml` | PR to develop | Owning-package tests, lint, typecheck, build, and deterministic lane-integrity checks |
+| `develop-pr-gate.yml` | PR target to develop, manual canaries | Stable fail-closed aggregate over every declared lightweight required context |
 | `test.yml` | Push to develop, manual, schedule | Broader post-merge develop tests; live jobs are separate |
 | `quality.yml` | PR to main, push main/develop, manual | Extended format, homepage, secret, UI-determinism, and lint checks |
 | `scenario-pr.yml` | PR to main, push develop, manual/schedule | Secret-free deterministic scenario/browser E2E gate |
@@ -118,7 +118,7 @@ the lightweight PR surface and remains independent of the exhaustive fleet:
   node scripts with no self-hosted needs; pinning them to the fleet (#8501) once
   left every downstream job queued indefinitely and gridlocked develop.
 - **`Develop PR Gate`** runs on `ubuntu-24.04` and only observes check metadata
-  from the nine lightweight component contexts. It never waits for post-merge,
+  from the declared lightweight component contexts. It never waits for post-merge,
   scheduled, device, aesthetic, or exhaustive suites.
 - **`ci-ok`**, `plugin-tests-status`, and `merge-quality-gate` remain hosted
   roll-ups inside the post-merge `test.yml` orchestrator. They report branch

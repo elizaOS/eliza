@@ -162,14 +162,26 @@ describe("Cloud CF realtime voice deploy contract", () => {
       "&& 'true' || 'false'",
     );
 
-    const frontendRealtimeFlags = workflowSource.match(
-      /VITE_VOICE_REALTIME_WS: \$\{\{[^}]*vars\.VOICE_REALTIME_WS_ENABLED[^}]*&& '1' \|\| '0' \}\}/g,
-    );
-    expect(frontendRealtimeFlags?.length).toBeGreaterThanOrEqual(2);
-    for (const flag of frontendRealtimeFlags ?? []) {
+    const frontendBuildSteps = [
+      ["build-pages", "Build console artifact"],
+      ["build-pages", "Build app artifact"],
+      ["deploy-console", "Legacy inline fallback - build console"],
+      ["deploy-app", "Legacy inline fallback - build app"],
+    ] as const;
+    for (const [jobName, stepName] of frontendBuildSteps) {
+      const step = workflow.jobs?.[jobName]?.steps?.find(
+        (candidate) => candidate.name === stepName,
+      );
+      expect(
+        step,
+        `missing ${jobName} / ${stepName} frontend build step`,
+      ).toBeDefined();
+      const flag = step?.env?.VITE_VOICE_REALTIME_WS;
+      expect(flag).toBeDefined();
       expect(flag).toContain("inputs.environment == 'production'");
       expect(flag).toContain("github.ref == 'refs/heads/main'");
       expect(flag).toContain("vars.VOICE_REALTIME_WS_ENABLED");
+      expect(flag).toContain("&& '1' || '0'");
     }
   });
 

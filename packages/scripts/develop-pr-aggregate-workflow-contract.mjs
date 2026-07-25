@@ -205,6 +205,7 @@ export function runContract(repoRoot = DEFAULT_REPO_ROOT) {
         `${workflowPath}: contexts disagree about owner activity types`,
       );
       const marker =
+        check.context === "test" ||
         check.context === "lint" ||
         check.context === "typecheck" ||
         check.context === "build" ||

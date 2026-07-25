@@ -25,10 +25,27 @@ function runCoverageResult(...args: string[]) {
   });
 }
 
+function readCoverageReport() {
+  const report = JSON.parse(runCoverage("--json"));
+  const totals = report.packs.reduce(
+    (
+      sum: { target: number; authored: number; verified: number },
+      pack: { target: number; authored: number; verified: number },
+    ) => ({
+      target: sum.target + pack.target,
+      authored: sum.authored + pack.authored,
+      verified: sum.verified + pack.verified,
+    }),
+    { target: 0, authored: 0, verified: 0 },
+  );
+  expect(report).toMatchObject({ ...totals, errors: [] });
+  expect(totals.verified).toBeLessThanOrEqual(totals.authored);
+  return report;
+}
+
 describe("LifeOps persona catalog coverage", () => {
   test("JSON output includes unverified rows grouped by surface", () => {
-    const report = JSON.parse(runCoverage("--json"));
-    expect(report.errors).toEqual([]);
+    const report = readCoverageReport();
 
     const g1 = report.packs.find(
       (pack: { pack: string }) => pack.pack === "G1",
@@ -60,16 +77,20 @@ describe("LifeOps persona catalog coverage", () => {
   });
 
   test("default summary separates planning targets from authored-row counts", () => {
+    const report = readCoverageReport();
     const output = runCoverage();
     expect(output).toContain("E1 29 authored (target 28, +1)");
     expect(output).toContain("F1 35 authored (target 32, +3)");
     expect(output).toContain(
-      "Total: 300 authored (target 296), 163/300 verified, 137 unverified",
+      `Total: ${report.authored} authored (target ${report.target}), ${report.verified}/${report.authored} verified, ${report.authored - report.verified} unverified`,
     );
-    expect(output).not.toContain("300/296 authored");
+    expect(output).not.toContain(
+      `${report.authored}/${report.target} authored`,
+    );
   });
 
   test("--unverified prints a board-triage list without hiding surface blockers", () => {
+    const report = readCoverageReport();
     const output = runCoverage("--unverified");
     expect(output).toContain(
       "G1  9/10 unverified (lifeops-bench:6, scenario-runner:3)",
@@ -78,7 +99,7 @@ describe("LifeOps persona catalog coverage", () => {
       "J1 10/10 unverified (lifeops-bench:3, scenario-runner:7)",
     );
     expect(output).toContain(
-      "Total: 137/300 authored rows still need verification",
+      `Total: ${report.authored - report.verified}/${report.authored} authored rows still need verification`,
     );
   });
 

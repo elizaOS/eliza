@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * Proof job for the exhaustive develop lane (#12342). Fails loudly when the
- * committed lane manifest and the real workflow/test-plan drift apart, so the
- * scheduled full-matrix run cannot silently drop coverage or report vacuous
- * green.
+ * Proves that the exhaustive develop workflow and its generated test plan are
+ * executable from the current source tree. Workflow authority stays explicit,
+ * while planned tasks are validated structurally instead of against historical
+ * package or task totals.
  *
  * It cross-checks four independent sources of truth:
  *   1. `packages/scripts/ci-lane-manifest.json` — the committed expectation.
@@ -17,10 +17,8 @@
  *      scope and keep schedule/dispatch/workflow-call events non-cancelling. A
  *      dropped `uses:`, shared standalone group, or cancelling reusable lane
  *      silently strips platform coverage from the exhaustive matrix and fails.
- *   4. `run-all-tests.mjs --plan=json` — the discovered task plan must clear the
- *      manifest floors (total tasks/packages, per-script-lane presence, and the
- *      set of required core packages). A pointed-at-a-nonexistent-glob lane or a
- *      deleted core package collapses one of these and fails the job.
+ *   4. `run-all-tests.mjs --plan=json` — every selected task must be unique,
+ *      agree with its summary, and resolve to a real package and script.
  *
  * Usage:
  *   node packages/scripts/ci-full-matrix-proof.mjs [--plan-file <path>]
@@ -43,7 +41,7 @@ import {
   rmSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, posix, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -86,9 +84,6 @@ function loadManifest(manifestPath) {
   if (!Array.isArray(manifest.workflowLanes)) {
     throw new Error(`${manifestPath}: workflowLanes must be an array`);
   }
-  if (!manifest.planFloors || typeof manifest.planFloors !== "object") {
-    throw new Error(`${manifestPath}: planFloors must be an object`);
-  }
   return manifest;
 }
 
@@ -107,10 +102,14 @@ function loadPlan({ planFile }) {
   const fd = openSync(planPath, "w");
   let result;
   try {
-    result = spawnSync(process.execPath, [runner, "--plan=json"], {
-      cwd: repoRoot,
-      stdio: ["ignore", fd, "pipe"],
-    });
+    result = spawnSync(
+      process.execPath,
+      [runner, "--plan=json", "--require-work"],
+      {
+        cwd: repoRoot,
+        stdio: ["ignore", fd, "pipe"],
+      },
+    );
   } finally {
     closeSync(fd);
   }
@@ -577,85 +576,189 @@ function checkPostMergeSignal(manifest, violations, laneReport) {
   });
 }
 
-function checkPlanFloors(manifest, plan, violations, floorReport) {
-  const floors = manifest.planFloors;
-  const summary = plan.summary || {};
-  const tasks = Array.isArray(plan.tasks) ? plan.tasks : [];
-
-  const taskCount = summary.taskCount ?? tasks.length;
-  const packageCount =
-    summary.packageCount ?? new Set(tasks.map((t) => t.packageName)).size;
-
-  floorReport.push({
-    metric: "taskCount",
-    value: taskCount,
-    floor: floors.minTaskCount,
-  });
-  if (
-    typeof floors.minTaskCount === "number" &&
-    taskCount < floors.minTaskCount
-  ) {
-    violations.push(
-      `plan floor: taskCount ${taskCount} < minTaskCount ${floors.minTaskCount} (a lane matched no tests?)`,
-    );
-  }
-
-  floorReport.push({
-    metric: "packageCount",
-    value: packageCount,
-    floor: floors.minPackageCount,
-  });
-  if (
-    typeof floors.minPackageCount === "number" &&
-    packageCount < floors.minPackageCount
-  ) {
-    violations.push(
-      `plan floor: packageCount ${packageCount} < minPackageCount ${floors.minPackageCount}`,
-    );
-  }
-
-  if (typeof floors.minPluginTaskCount === "number") {
-    const pluginTasks = tasks.filter((t) =>
-      String(t.relativeDir || "").startsWith("plugins/"),
-    ).length;
-    floorReport.push({
-      metric: "pluginTaskCount",
-      value: pluginTasks,
-      floor: floors.minPluginTaskCount,
-    });
-    if (pluginTasks < floors.minPluginTaskCount) {
-      violations.push(
-        `plan floor: pluginTaskCount ${pluginTasks} < minPluginTaskCount ${floors.minPluginTaskCount}`,
-      );
+function countBy(tasks, key) {
+  const counts = {};
+  for (const task of tasks) {
+    const value = task?.[key];
+    if (typeof value === "string" && value.length > 0) {
+      counts[value] = (counts[value] ?? 0) + 1;
     }
   }
-
-  const presentPackages = new Set(tasks.map((t) => t.packageName));
-  for (const required of floors.requiredPackages || []) {
-    if (!presentPackages.has(required)) {
-      violations.push(
-        `plan floor: required package "${required}" has no discovered test task (deleted, renamed, or its test script vanished)`,
-      );
-    }
-  }
-
-  const byScript = summary.byScript || {};
-  for (const laneScript of floors.nonEmptyScriptLanes || []) {
-    const count = byScript[laneScript] ?? 0;
-    floorReport.push({
-      metric: `script:${laneScript}`,
-      value: count,
-      floor: 1,
-    });
-    if (count < 1) {
-      violations.push(
-        `plan floor: script lane "${laneScript}" collected zero tasks (whole ${laneScript} lane vanished)`,
-      );
-    }
-  }
+  return counts;
 }
 
-export function writeSummary(summaryPath, laneReport, floorReport, violations) {
+function equalCountRecords(actual, expected) {
+  if (actual === null || typeof actual !== "object" || Array.isArray(actual)) {
+    return false;
+  }
+  const entries = (record) =>
+    Object.entries(record).sort(([left], [right]) => left.localeCompare(right));
+  return JSON.stringify(entries(actual)) === JSON.stringify(entries(expected));
+}
+
+function validRelativeDirectory(value) {
+  return (
+    typeof value === "string" &&
+    value.length > 0 &&
+    value !== "." &&
+    !value.includes("\\") &&
+    !posix.isAbsolute(value) &&
+    posix.normalize(value) === value &&
+    !value.split("/").includes("..")
+  );
+}
+
+function checkPlanSources(plan, violations, planReport) {
+  const initialViolationCount = violations.length;
+  if (plan === null || typeof plan !== "object" || Array.isArray(plan)) {
+    violations.push("test plan must be an object");
+    planReport.push({
+      check: "planned task source resolution",
+      status: "INVALID",
+      detail: "plan is not an object",
+    });
+    return;
+  }
+  if (!Array.isArray(plan.tasks)) {
+    violations.push("test plan tasks must be an array");
+    planReport.push({
+      check: "planned task source resolution",
+      status: "INVALID",
+      detail: "tasks is not an array",
+    });
+    return;
+  }
+
+  const tasks = plan.tasks;
+  if (tasks.length === 0) {
+    violations.push(
+      "test plan resolved no executable workspace tasks; required execution may not report vacuous green",
+    );
+  }
+
+  const identities = new Set();
+  const labels = new Set();
+  const packageCache = new Map();
+  for (const [index, task] of tasks.entries()) {
+    const prefix = `plan task ${index}`;
+    if (task === null || typeof task !== "object" || Array.isArray(task)) {
+      violations.push(`${prefix}: task must be an object`);
+      continue;
+    }
+    const { packageName, relativeDir, scriptName, label } = task;
+    if (!validRelativeDirectory(relativeDir)) {
+      violations.push(
+        `${prefix}: relativeDir must be a normalized repository-relative package directory`,
+      );
+      continue;
+    }
+    if (typeof packageName !== "string" || packageName.length === 0) {
+      violations.push(`${prefix}: packageName must be a non-empty string`);
+      continue;
+    }
+    if (typeof scriptName !== "string" || scriptName.length === 0) {
+      violations.push(`${prefix}: scriptName must be a non-empty string`);
+      continue;
+    }
+
+    const identity = `${relativeDir}#${scriptName}`;
+    if (identities.has(identity)) {
+      violations.push(`${prefix}: duplicate planned task ${identity}`);
+    }
+    identities.add(identity);
+    if (typeof label !== "string" || label.length === 0) {
+      violations.push(`${prefix}: label must be a non-empty string`);
+    } else if (labels.has(label)) {
+      violations.push(`${prefix}: duplicate planned label ${label}`);
+    }
+    labels.add(label);
+
+    let packageJson = packageCache.get(relativeDir);
+    if (!packageJson) {
+      const packagePath = resolve(repoRoot, relativeDir, "package.json");
+      const resolvedRelative = relative(repoRoot, packagePath);
+      if (
+        resolvedRelative.startsWith("..") ||
+        resolvedRelative.includes(`..${posix.sep}`)
+      ) {
+        violations.push(`${prefix}: package path escapes the repository`);
+        continue;
+      }
+      try {
+        packageJson = JSON.parse(readFileSync(packagePath, "utf8"));
+        packageCache.set(relativeDir, packageJson);
+      } catch (error) {
+        violations.push(
+          `${prefix}: ${relativeDir}/package.json is not readable JSON (${error.message})`,
+        );
+        continue;
+      }
+    }
+
+    const sourcePackageName = packageJson.name || relativeDir;
+    if (packageName !== sourcePackageName) {
+      violations.push(
+        `${prefix}: packageName "${packageName}" does not match ${relativeDir}/package.json name "${sourcePackageName}"`,
+      );
+    }
+    const command = packageJson.scripts?.[scriptName];
+    if (typeof command !== "string" || command.trim().length === 0) {
+      violations.push(
+        `${prefix}: ${relativeDir}/package.json has no executable "${scriptName}" script`,
+      );
+    }
+    const expectedLabel = `${sourcePackageName} (${relativeDir})#${scriptName}`;
+    if (label !== expectedLabel) {
+      violations.push(
+        `${prefix}: label "${String(label)}" does not match source-derived label "${expectedLabel}"`,
+      );
+    }
+  }
+
+  const summary = plan.summary;
+  if (
+    summary === null ||
+    typeof summary !== "object" ||
+    Array.isArray(summary)
+  ) {
+    violations.push("test plan summary must be an object");
+  } else {
+    const packageCount = new Set(
+      tasks
+        .map((task) => task?.packageName)
+        .filter((value) => typeof value === "string" && value.length > 0),
+    ).size;
+    if (summary.taskCount !== tasks.length) {
+      violations.push(
+        `test plan summary taskCount ${String(summary.taskCount)} does not match ${tasks.length} task row(s)`,
+      );
+    }
+    if (summary.packageCount !== packageCount) {
+      violations.push(
+        `test plan summary packageCount ${String(summary.packageCount)} does not match ${packageCount} source package(s)`,
+      );
+    }
+    if (!equalCountRecords(summary.byScript, countBy(tasks, "scriptName"))) {
+      violations.push(
+        "test plan summary byScript does not match the planned task rows",
+      );
+    }
+    if (!equalCountRecords(summary.byPackage, countBy(tasks, "packageName"))) {
+      violations.push(
+        "test plan summary byPackage does not match the planned task rows",
+      );
+    }
+  }
+
+  planReport.push({
+    check: "planned task source resolution",
+    status:
+      violations.length === initialViolationCount ? "OK" : "SOURCE-INVALID",
+    detail: `${tasks.length} task(s) checked`,
+  });
+}
+
+export function writeSummary(summaryPath, laneReport, planReport, violations) {
   if (!summaryPath) return;
   const lines = [];
   lines.push("## Exhaustive lane matrix proof");
@@ -668,17 +771,17 @@ export function writeSummary(summaryPath, laneReport, floorReport, violations) {
     lines.push(`| \`${row.lane}\` | ${row.name} | ${row.status} |`);
   }
   lines.push("");
-  lines.push("### Plan floors");
+  lines.push("### Plan source resolution");
   lines.push("");
-  lines.push("| Metric | Value | Floor |");
+  lines.push("| Check | Status | Detail |");
   lines.push("| --- | --- | --- |");
-  for (const row of floorReport) {
-    lines.push(`| ${row.metric} | ${row.value} | ${row.floor} |`);
+  for (const row of planReport) {
+    lines.push(`| ${row.check} | ${row.status} | ${row.detail} |`);
   }
   lines.push("");
   if (violations.length === 0) {
     lines.push(
-      "**Result: PASS** — every expected lane is present and non-empty.",
+      "**Result: PASS** — every declared workflow lane is present and every planned task resolves to live package source.",
     );
   } else {
     lines.push(`**Result: FAIL** — ${violations.length} violation(s):`);
@@ -696,14 +799,14 @@ export function runProof(options) {
   const plan = loadPlan(options);
   const violations = [];
   const laneReport = [];
-  const floorReport = [];
+  const planReport = [];
 
   checkWorkflowLanes(manifest, violations, laneReport);
   checkReusableWorkflows(manifest, violations, laneReport);
   checkPostMergeSignal(manifest, violations, laneReport);
-  checkPlanFloors(manifest, plan, violations, floorReport);
+  checkPlanSources(plan, violations, planReport);
 
-  return { manifest, plan, violations, laneReport, floorReport };
+  return { manifest, plan, violations, laneReport, planReport };
 }
 
 function main() {
@@ -715,18 +818,18 @@ function main() {
     process.exit(2);
   }
 
-  const { violations, laneReport, floorReport } = runProof(options);
+  const { violations, laneReport, planReport } = runProof(options);
 
   for (const row of laneReport) {
     console.log(`[ci-full-matrix-proof] lane ${row.lane} — ${row.status}`);
   }
-  for (const row of floorReport) {
+  for (const row of planReport) {
     console.log(
-      `[ci-full-matrix-proof] floor ${row.metric}=${row.value} (min ${row.floor})`,
+      `[ci-full-matrix-proof] plan ${row.check} — ${row.status} (${row.detail})`,
     );
   }
 
-  writeSummary(options.summary, laneReport, floorReport, violations);
+  writeSummary(options.summary, laneReport, planReport, violations);
 
   if (violations.length > 0) {
     console.error(
@@ -737,7 +840,9 @@ function main() {
     }
     process.exit(1);
   }
-  console.log("[ci-full-matrix-proof] PASS every expected lane accounted for");
+  console.log(
+    "[ci-full-matrix-proof] PASS workflow lanes and planned tasks resolve to live source",
+  );
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

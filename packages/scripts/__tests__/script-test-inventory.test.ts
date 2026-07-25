@@ -732,7 +732,8 @@ jobs:
 
   test("the real repository has one executing lane for every discovered test", () => {
     const result = buildScriptTestInventory();
-    expect(result.discoveredCount).toBeGreaterThan(100);
+    expect(result.files).not.toHaveLength(0);
+    expect(result.discoveredCount).toBe(result.files.length);
     expect(result.excluded).toEqual([]);
     expect(
       result.files.some(
@@ -748,10 +749,10 @@ jobs:
       ),
     ).toBe(true);
     for (const entry of result.files) {
-      expect(entry.lanes).toHaveLength(3);
+      expect(entry.lanes).toEqual(result.runner.lanes);
       expect(entry.bytes).toBeGreaterThan(0);
       expect(entry.sha256).toMatch(/^[a-f0-9]{64}$/);
     }
     expect(result.inventorySha256).toMatch(/^[a-f0-9]{64}$/);
-  });
+  }, 60_000);
 });

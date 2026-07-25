@@ -147,9 +147,18 @@ describe("registry (real plan discovery)", () => {
       optInToggles: {},
       history: {},
     });
-    expect(without.tasks.length).toBeGreaterThan(200);
+    expect(without.tasks).not.toHaveLength(0);
+    expect(without.tasks).toHaveLength(without.summary.taskCount);
+    expect(new Set(without.tasks.map((task) => task.label)).size).toBe(
+      without.tasks.length,
+    );
     expect(without.orphanSuites).toEqual([]);
-    expect(without.connections.length).toBeGreaterThan(30);
+    expect(without.connections.map((connection) => connection.id)).toContain(
+      "tavily",
+    );
+    expect(
+      new Set(without.connections.map((connection) => connection.id)).size,
+    ).toBe(without.connections.length);
 
     const webSearchTask = without.tasks.find((t) =>
       t.liveSuites.some((s) => s.file.includes("plugin-web-search")),

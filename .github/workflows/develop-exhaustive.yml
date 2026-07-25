@@ -175,7 +175,7 @@ jobs:
         run: node packages/scripts/ci-workflow-dedup-contract.mjs
 
       - name: Capture exhaustive test plan
-        run: node packages/scripts/run-all-tests.mjs --plan=json > /tmp/full-matrix-plan.json
+        run: node packages/scripts/run-all-tests.mjs --plan=json --require-work > /tmp/full-matrix-plan.json
 
       - name: Prove exhaustive lane coverage (manifest + reusable wiring)
         run: node packages/scripts/ci-full-matrix-proof.mjs --plan-file /tmp/full-matrix-plan.json

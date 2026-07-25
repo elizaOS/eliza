@@ -77,12 +77,6 @@ const HEALTHY_MANIFEST = {
     { job: "server-tests", name: "Server Tests" },
     { job: "client-tests", name: "Client Tests" },
   ],
-  planFloors: {
-    minTaskCount: 3,
-    minPackageCount: 2,
-    requiredPackages: ["@elizaos/core"],
-    nonEmptyScriptLanes: ["test", "test:e2e"],
-  },
 };
 
 const POST_MERGE_MANIFEST = {
@@ -95,27 +89,36 @@ const HEALTHY_PLAN = {
     taskCount: 4,
     packageCount: 3,
     byScript: { test: 3, "test:e2e": 1 },
+    byPackage: {
+      "@elizaos/core": 1,
+      "@elizaos/agent": 1,
+      "@elizaos/ui": 2,
+    },
   },
   tasks: [
     {
       packageName: "@elizaos/core",
       relativeDir: "packages/core",
       scriptName: "test",
+      label: "@elizaos/core (packages/core)#test",
     },
     {
       packageName: "@elizaos/agent",
       relativeDir: "packages/agent",
       scriptName: "test",
+      label: "@elizaos/agent (packages/agent)#test",
     },
     {
-      packageName: "plugin-x",
-      relativeDir: "plugins/plugin-x",
+      packageName: "@elizaos/ui",
+      relativeDir: "packages/ui",
       scriptName: "test",
+      label: "@elizaos/ui (packages/ui)#test",
     },
     {
-      packageName: "plugin-x",
-      relativeDir: "plugins/plugin-x",
+      packageName: "@elizaos/ui",
+      relativeDir: "packages/ui",
       scriptName: "test:e2e",
+      label: "@elizaos/ui (packages/ui)#test:e2e",
     },
   ],
 };
@@ -160,7 +163,7 @@ function runProof({ workflow, manifest, plan, orchestrator, reusables }) {
           (row) => `[ci-full-matrix-proof] lane ${row.lane} — ${row.status}`,
         ),
         ...(proof.violations.length === 0
-          ? ["PASS every expected lane accounted for"]
+          ? ["PASS workflow lanes and planned tasks resolve to live source"]
           : []),
       ].join("\n"),
       stderr: proof.violations.join("\n"),
@@ -199,11 +202,20 @@ describe("ci-full-matrix-proof", () => {
       writeProofSummary(
         passPath,
         [{ lane: "scenario", name: "Scenario", status: "OK" }],
-        [{ metric: "taskCount", value: 4, floor: 3 }],
+        [
+          {
+            check: "planned task source resolution",
+            status: "OK",
+            detail: "4 task(s) checked",
+          },
+        ],
         [],
       );
       const pass = readFileSync(passPath, "utf8");
       expect(pass).toContain("| `scenario` | Scenario | OK |");
+      expect(pass).toContain(
+        "| planned task source resolution | OK | 4 task(s) checked |",
+      );
       expect(pass).toContain("**Result: PASS**");
 
       const failPath = join(dir, "fail.md");
@@ -260,14 +272,16 @@ describe("ci-full-matrix-proof", () => {
     }
   });
 
-  test("passes when every lane is present and the plan clears its floors", () => {
+  test("passes when every lane is present and every plan task resolves to source", () => {
     const result = runProof({
       workflow: HEALTHY_WORKFLOW,
       manifest: HEALTHY_MANIFEST,
       plan: HEALTHY_PLAN,
     });
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain("PASS every expected lane accounted for");
+    expect(result.stdout).toContain(
+      "PASS workflow lanes and planned tasks resolve to live source",
+    );
   });
 
   test("fails when a manifest lane is missing from the workflow", () => {
@@ -315,43 +329,44 @@ describe("ci-full-matrix-proof", () => {
     expect(result.stderr).toContain("client-tests");
   });
 
-  test("fails when the plan collected fewer tasks than the floor", () => {
-    const plan = {
-      ...HEALTHY_PLAN,
-      summary: { ...HEALTHY_PLAN.summary, taskCount: 1 },
-    };
-    const result = runProof({
-      workflow: HEALTHY_WORKFLOW,
-      manifest: HEALTHY_MANIFEST,
-      plan,
-    });
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain("taskCount 1 < minTaskCount");
-  });
-
-  test("fails when a required package has no discovered test task", () => {
-    const plan = {
-      ...HEALTHY_PLAN,
-      tasks: HEALTHY_PLAN.tasks.filter(
-        (t) => t.packageName !== "@elizaos/core",
-      ),
-      summary: { ...HEALTHY_PLAN.summary, taskCount: 3 },
-    };
-    const result = runProof({
-      workflow: HEALTHY_WORKFLOW,
-      manifest: HEALTHY_MANIFEST,
-      plan,
-    });
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain('required package "@elizaos/core"');
-  });
-
-  test("fails when a whole script lane collected zero tasks", () => {
+  test("fails when a required plan resolves no executable tasks", () => {
     const plan = {
       ...HEALTHY_PLAN,
       summary: {
         ...HEALTHY_PLAN.summary,
-        byScript: { test: 4 }, // test:e2e lane vanished
+        taskCount: 0,
+        packageCount: 0,
+        byScript: {},
+        byPackage: {},
+      },
+      tasks: [],
+    };
+    const result = runProof({
+      workflow: HEALTHY_WORKFLOW,
+      manifest: HEALTHY_MANIFEST,
+      plan,
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("resolved no executable workspace tasks");
+  });
+
+  test("fails when a planned package does not resolve to live source", () => {
+    const plan = {
+      ...HEALTHY_PLAN,
+      tasks: [
+        {
+          ...HEALTHY_PLAN.tasks[0],
+          packageName: "@elizaos/ghost",
+          relativeDir: "packages/ghost",
+          label: "@elizaos/ghost (packages/ghost)#test",
+        },
+      ],
+      summary: {
+        ...HEALTHY_PLAN.summary,
+        taskCount: 1,
+        packageCount: 1,
+        byScript: { test: 1 },
+        byPackage: { "@elizaos/ghost": 1 },
       },
     };
     const result = runProof({
@@ -361,7 +376,84 @@ describe("ci-full-matrix-proof", () => {
     });
     expect(result.status).toBe(1);
     expect(result.stderr).toContain(
-      'script lane "test:e2e" collected zero tasks',
+      "packages/ghost/package.json is not readable JSON",
+    );
+  });
+
+  test("fails when a planned script is absent from the source package", () => {
+    const plan = {
+      ...HEALTHY_PLAN,
+      tasks: [
+        {
+          ...HEALTHY_PLAN.tasks[0],
+          scriptName: "test:ghost",
+          label: "@elizaos/core (packages/core)#test:ghost",
+        },
+      ],
+      summary: {
+        ...HEALTHY_PLAN.summary,
+        taskCount: 1,
+        packageCount: 1,
+        byScript: { "test:ghost": 1 },
+        byPackage: { "@elizaos/core": 1 },
+      },
+    };
+    const result = runProof({
+      workflow: HEALTHY_WORKFLOW,
+      manifest: HEALTHY_MANIFEST,
+      plan,
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('has no executable "test:ghost" script');
+  });
+
+  test("fails when the plan contains duplicate task identities", () => {
+    const duplicate = HEALTHY_PLAN.tasks[0];
+    const plan = {
+      ...HEALTHY_PLAN,
+      tasks: [duplicate, duplicate],
+      summary: {
+        ...HEALTHY_PLAN.summary,
+        taskCount: 2,
+        packageCount: 1,
+        byScript: { test: 2 },
+        byPackage: { "@elizaos/core": 2 },
+      },
+    };
+    const result = runProof({
+      workflow: HEALTHY_WORKFLOW,
+      manifest: HEALTHY_MANIFEST,
+      plan,
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "duplicate planned task packages/core#test",
+    );
+    expect(result.stderr).toContain(
+      "duplicate planned label @elizaos/core (packages/core)#test",
+    );
+  });
+
+  test("fails when summary counts disagree with live plan rows", () => {
+    const plan = {
+      ...HEALTHY_PLAN,
+      summary: {
+        ...HEALTHY_PLAN.summary,
+        taskCount: 99,
+        byScript: { test: 99 },
+      },
+    };
+    const result = runProof({
+      workflow: HEALTHY_WORKFLOW,
+      manifest: HEALTHY_MANIFEST,
+      plan,
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "summary taskCount 99 does not match 4 task row(s)",
+    );
+    expect(result.stderr).toContain(
+      "summary byScript does not match the planned task rows",
     );
   });
 
@@ -541,7 +633,9 @@ jobs:
       },
     });
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain("PASS every expected lane accounted for");
+    expect(result.stdout).toContain(
+      "PASS workflow lanes and planned tasks resolve to live source",
+    );
   });
 
   test("fails when the orchestrator drops a reusable lane's uses:", () => {
@@ -694,6 +788,8 @@ jobs:
       maxBuffer: 64 * 1024 * 1024,
     });
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain("PASS every expected lane accounted for");
+    expect(result.stdout).toContain(
+      "PASS workflow lanes and planned tasks resolve to live source",
+    );
   }, 60_000);
 });

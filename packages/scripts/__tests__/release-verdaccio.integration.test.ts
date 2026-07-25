@@ -25,15 +25,19 @@ import {
 const roots: string[] = [];
 const processes: ChildProcess[] = [];
 
+function hasExited(child: ChildProcess) {
+  return child.exitCode !== null || child.signalCode !== null;
+}
+
 afterEach(async () => {
   for (const child of processes.splice(0)) {
-    if (child.exitCode !== null) continue;
+    if (hasExited(child)) continue;
     child.kill("SIGTERM");
     await Promise.race([
       new Promise<void>((resolve) => child.once("exit", () => resolve())),
       Bun.sleep(750),
     ]);
-    if (child.exitCode === null) child.kill("SIGKILL");
+    if (!hasExited(child)) child.kill("SIGKILL");
   }
   for (const root of roots.splice(0))
     fs.rmSync(root, { recursive: true, force: true });
@@ -170,10 +174,12 @@ async function startVerdaccio(base: string, port: number) {
   });
   const registryUrl = `http://127.0.0.1:${port}/`;
   for (let attempt = 0; attempt < 400; attempt += 1) {
-    if (child.exitCode !== null)
+    if (hasExited(child))
       throw new Error(`Verdaccio exited before readiness:\n${logs}`);
     try {
-      const response = await fetch(new URL("-/ping", registryUrl));
+      const response = await fetch(new URL("-/ping", registryUrl), {
+        signal: AbortSignal.timeout(250),
+      });
       if (response.ok) return { child, registryUrl, logs: () => logs };
     } catch {
       // error-policy:J3 readiness polling distinguishes not-ready from test failure
@@ -222,7 +228,7 @@ function writeNpmConfig(base: string, registryUrl: string) {
       `@eliza-release-integration:registry=${registryUrl}`,
       `//${parsed.host}${parsed.pathname}:_authToken=\${NODE_AUTH_TOKEN}`,
       "fetch-retries=0",
-      "fetch-timeout=1000",
+      "fetch-timeout=10000",
       "",
     ].join("\n"),
   );
@@ -282,7 +288,7 @@ function writeAuthenticatedNpm(base: string, npmConfigPath: string) {
 }
 
 async function waitForExit(child: ChildProcess) {
-  if (child.exitCode !== null) return;
+  if (hasExited(child)) return;
   await new Promise<void>((resolve) => child.once("exit", () => resolve()));
 }
 
@@ -493,4 +499,6 @@ test("real Verdaccio transport failure resumes only the integrity-matched partia
     },
     resumedServer.logs(),
   );
-}, 120_000);
+  // The watchdog contains runaway child processes; elapsed host speed is not a
+  // release-correctness signal for this real multi-process integration.
+}, 300_000);

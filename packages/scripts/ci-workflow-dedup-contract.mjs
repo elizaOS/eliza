@@ -13,8 +13,9 @@
  *     `merge_group` triggers from test.yml. The merge queue is gone repo-wide
  *     and develop PRs run the lightweight gate instead, so the full suite
  *     never double-runs pre- and post-merge.
- *   - develop-pr.yml owns the lightweight develop-PR gate (lint/typecheck/
- *     build only, NO tests): the pre-merge half of the split.
+ *   - develop-pr.yml owns the lightweight develop-PR gate (owning-package and
+ *     repository-script tests plus lint/typecheck/build): the pre-merge half
+ *     of the split.
  *   - scenario-pr.yml keeps zero-key deterministic E2E: `pull_request:[main]`
  *     pre-merge and `push:[develop]` post-merge (#14051/#14194 moved the heavy
  *     scenario family off per-PR develop runs, matching the test.yml split).

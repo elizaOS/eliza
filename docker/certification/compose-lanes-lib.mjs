@@ -155,7 +155,7 @@ export function allocateCpusets(totalCores, laneCount) {
  * `--no-cloud` is safe because the plan-derived `cloud` lane carries that step. */
 export function laneCommand(lane) {
   if (lane.kind === "command") return lane.command;
-  return "node packages/scripts/run-all-tests.mjs --no-cloud --min-tasks=1";
+  return "node packages/scripts/run-all-tests.mjs --no-cloud --require-work";
 }
 
 /** Compose interpolation treats `$` specially; env values that must reach the

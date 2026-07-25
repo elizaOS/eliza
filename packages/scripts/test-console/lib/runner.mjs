@@ -11,9 +11,9 @@
  * per spawn — noise against real suite runtimes.
  *
  * Result classification: run-all-tests prints `[eliza-test] PASS/SKIP/FAIL
- * <label>` lines. A self-skipping task exits 3 (the vacuous-green floor with
- * --min-tasks=1), so classification parses the log tail first and only falls
- * back to the exit code — exit 0 alone is not proof a test ran.
+ * <label>` lines. A self-skipping required task exits 3, so classification
+ * parses the log tail first and only falls back to the exit code — exit 0
+ * alone is not proof a test ran.
  */
 
 import { spawn } from "node:child_process";
@@ -140,14 +140,14 @@ export class RunManager extends EventEmitter {
     });
   }
 
-  buildCommand(entry, lane) {
+  buildCommand(entry) {
     if (entry.label === CLOUD_LABEL) {
       return { cmd: "bun", args: ["run", "test:cloud"] };
     }
     const args = [
       "packages/scripts/run-all-tests.mjs",
       `--filter=^${escapeRegex(entry.label)}$`,
-      "--min-tasks=1",
+      "--require-work",
       "--no-cloud",
     ];
     // Non-`test` scripts (test:e2e, test:live, …) need --all so the extra
@@ -175,7 +175,7 @@ export class RunManager extends EventEmitter {
     return new Promise((resolvePromise) => {
       const logFile = path.join(REPO_ROOT, entry.log);
       const logStream = fs.createWriteStream(logFile);
-      const { cmd, args } = this.buildCommand(entry, run.lane);
+      const { cmd, args } = this.buildCommand(entry);
       entry.status = "running";
       entry.startedAt = new Date().toISOString();
       this.persist();
@@ -331,8 +331,8 @@ export function classifyResult({ label, code, signal, tail, cancelled }) {
     return "passed";
   if (new RegExp(`\\[eliza-test\\] SKIP ${labelPattern}`).test(tail))
     return "skipped";
-  // Exit 3 is run-all-tests' vacuous-green floor: the only task collected
-  // self-skipped. Anything else nonzero without a status line is a failure.
+  // Exit 3 means required execution resolved no work or only a self-skip.
+  // Anything else nonzero without a status line is a failure.
   if (code === 3) return "skipped";
   return code === 0 ? "passed" : "failed";
 }
