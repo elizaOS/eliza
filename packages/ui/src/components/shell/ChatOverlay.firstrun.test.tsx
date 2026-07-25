@@ -266,7 +266,11 @@ describe("ChatOverlay first-run gating", () => {
     expect(composer.contains(decorativeHandle)).toBe(true);
     expect(decorativeHandle.getAttribute("aria-hidden")).toBe("true");
     expect(decorativeHandle.tagName).toBe("SPAN");
-    expect(composer.className.split(" ")).toContain("py-2");
+    // The composer keeps its normal equal-inset padding during first-run —
+    // the responsive clamp token from the composer row, not a taller pt-5.
+    expect(composer.className.split(" ")).toContain(
+      "py-[clamp(0.125rem,0.75dvh,0.375rem)]",
+    );
     expect(composer.className.split(" ")).not.toContain("pt-5");
     expect(sheet.getAttribute("data-variant")).toBe("open");
     expect(sheet.getAttribute("data-detent")).toBe("full");

@@ -48,6 +48,10 @@ export function makeScriptedAcp() {
     },
     stopSession: async () => undefined,
     getChangedPaths: () => [],
+    // Auto goal verification reads the orchestrator-owned artifact ledger;
+    // without this the optional-chained call throws and the residual gate
+    // never runs (completions park in `validating`).
+    getOrchestratorOwnedArtifacts: (_sessionId: string): [] => [],
     getSession: async () => undefined,
     updateSessionMetadata: async () => undefined,
   };
