@@ -1534,7 +1534,7 @@ describe("admin agent image canary workflow", () => {
     expect(source).toContain(
       "Recovery requires one lowercase prior request UUID.",
     );
-    expect(source).toContain("bun-version: 1.4.0");
+    expect(source).toContain("bun-version: \"1.3.14\"");
     expect(source).toContain("agent-image-canary-live.test.ts");
     expect(source).toContain("agent-image-canary-live.ts");
   });
