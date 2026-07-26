@@ -21,7 +21,6 @@ function tokenMatches(expected: string, provided: string): boolean {
 }
 
 const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
-const MAX_BACKUP_BODY_BYTES = 128 * 1024 * 1024; // 128 MB
 
 import path from "node:path";
 import {
@@ -47,7 +46,10 @@ import type {
   FavoriteAppsStore,
 } from "@elizaos/plugin-app-manager";
 import type { WalletRouteDependencies } from "@elizaos/plugin-wallet";
-import { readAliasedEnv } from "@elizaos/shared";
+import {
+  AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES,
+  readAliasedEnv,
+} from "@elizaos/shared";
 import {
   getStylePresets,
   normalizeCharacterLanguage,
@@ -826,7 +828,10 @@ async function readBackupJsonBody(
 ): Promise<unknown | null> {
   try {
     const raw = await readRequestBody(req, {
-      maxBytes: MAX_BACKUP_BODY_BYTES,
+      maxBytes: AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES,
+      tooLargeMessage:
+        `Agent snapshot v1 payload exceeds the maximum restorable wire size ` +
+        `(${AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES} bytes)`,
     });
     if (!raw) {
       error(res, "Request body is required", 400);
