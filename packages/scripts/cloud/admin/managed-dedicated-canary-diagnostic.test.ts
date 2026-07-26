@@ -283,6 +283,70 @@ describe("managed dedicated canary diagnostic", () => {
     },
   );
 
+  test.each([
+    "agent_provision",
+    "agent_delete",
+    "agent_suspend",
+    "agent_resume",
+    "agent_restart",
+    "agent_downgrade",
+    "agent_sleep",
+    "agent_wake",
+    "agent_upgrade",
+    "agent_admin_canary_image",
+  ])(
+    "classifies the exclusive-job conflict without publishing identifiers: %s",
+    (jobType) => {
+      const input = failedDeleteInput();
+      const agent = input.agent as Record<string, unknown>;
+      const [job] = input.jobs as Record<string, unknown>[];
+      const error =
+        `Agent 55f332f8-da54-4c53-952c-a38f5f01287b has conflicting ${jobType} ` +
+        "job 398b3cae-4aa0-4f63-8736-ac3c7ca9ab96";
+      agent.errorMessage = `Deletion permanently failed after 3 attempts: ${error}`;
+      job.error = error;
+      job.result = null;
+
+      const canonical = canonicalizeManagedDedicatedCanaryDiagnostic(
+        JSON.stringify(input),
+        SUFFIX,
+      );
+      const evidence = JSON.parse(canonical);
+      expect(evidence.sandbox.errorCode).toBe("lifecycle_conflict");
+      expect(evidence.jobs[0]).toMatchObject({
+        errorCode: "lifecycle_conflict",
+        resultErrorCode: "none",
+        containerStopped: null,
+        rowDeleted: null,
+      });
+      expect(canonical).not.toContain("55f332f8");
+      expect(canonical).not.toContain("398b3cae");
+      expect(canonical).not.toContain("has conflicting");
+    },
+  );
+
+  test.each([
+    "Agent 55f332f8-da54-4c53-952c-a38f5f01287b has conflicting agent_message job 398b3cae-4aa0-4f63-8736-ac3c7ca9ab96",
+    "Agent 55f332f8-da54-4c53-952c-a38f5f01287b has conflicting agent_logs job 398b3cae-4aa0-4f63-8736-ac3c7ca9ab96",
+    "Agent 55f332f8-da54-4c53-952c-a38f5f01287b has conflicting container_delete job 398b3cae-4aa0-4f63-8736-ac3c7ca9ab96",
+    "Agent not-a-uuid has conflicting agent_delete job 398b3cae-4aa0-4f63-8736-ac3c7ca9ab96",
+    "Agent 55f332f8-da54-4c53-952c-a38f5f01287b has conflicting agent_delete job 398b3cae-4aa0-4f63-8736-ac3c7ca9ab96 trailing",
+  ])("rejects a noncanonical lifecycle-conflict message", (error) => {
+    const input = failedDeleteInput();
+    const agent = input.agent as Record<string, unknown>;
+    const [job] = input.jobs as Record<string, unknown>[];
+    agent.errorMessage = `Deletion permanently failed after 3 attempts: ${error}`;
+    job.error = error;
+    job.result = null;
+
+    expect(() =>
+      canonicalizeManagedDedicatedCanaryDiagnostic(
+        JSON.stringify(input),
+        SUFFIX,
+      ),
+    ).toThrow("privacy-safe classifier");
+  });
+
   test("classifies row-delete failures without publishing the SQL text", () => {
     const input = failedDeleteInput();
     const agent = input.agent as Record<string, unknown>;
