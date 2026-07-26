@@ -9,6 +9,10 @@
 import * as crypto from "node:crypto";
 import * as http from "node:http";
 import { sql } from "drizzle-orm";
+import {
+  AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES,
+  AgentSnapshotV1WireLimitError,
+} from "../../shared/src/contracts/agent-snapshot.ts";
 import restartExitCodeDefinition from "../../shared/src/restart-exit-code.json" with {
   type: "json",
 };
@@ -295,7 +299,7 @@ export interface CloudAgentConfig {
    * Omit or pass empty string to disable auth.
    */
   bridgeSecret?: string;
-  /** Max request body size in bytes. Default: 1 MB */
+  /** Max bridge RPC request body size in bytes. Default: 1 MB */
   maxBodyBytes?: number;
   /** Max memories kept in state. 0 = unlimited. Default: 0 */
   maxMemories?: number;
@@ -347,21 +351,69 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
     }
   }
 
-  function readBody(req: http.IncomingMessage): Promise<string> {
+  function readBody(
+    req: http.IncomingMessage,
+    maxBytes = MAX_BODY_BYTES,
+    createTooLargeError: (
+      receivedBytes: number,
+      maxBytes: number,
+    ) => Error = () => new Error("Request body too large"),
+    destroyOnTooLarge = true,
+  ): Promise<string> {
+    const stopOversizedRequest = (): void => {
+      if (destroyOnTooLarge) {
+        req.destroy();
+        return;
+      }
+      req.resume();
+    };
+    const contentLength = Number(req.headers["content-length"]);
+    if (
+      maxBytes > 0 &&
+      Number.isSafeInteger(contentLength) &&
+      contentLength > maxBytes
+    ) {
+      stopOversizedRequest();
+      return Promise.reject(createTooLargeError(contentLength, maxBytes));
+    }
     return new Promise<string>((resolve, reject) => {
       let body = "";
       let totalBytes = 0;
-      req.on("data", (chunk: Buffer) => {
+      let settled = false;
+
+      const cleanup = (): void => {
+        req.off("data", onData);
+        req.off("end", onEnd);
+        req.off("error", onError);
+      };
+      const fail = (error: Error): void => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(error);
+      };
+      const onData = (chunk: Buffer): void => {
         totalBytes += chunk.length;
-        if (MAX_BODY_BYTES > 0 && totalBytes > MAX_BODY_BYTES) {
-          req.destroy();
-          reject(new Error("Request body too large"));
+        if (maxBytes > 0 && totalBytes > maxBytes) {
+          stopOversizedRequest();
+          fail(createTooLargeError(totalBytes, maxBytes));
           return;
         }
         body += chunk;
-      });
-      req.on("end", () => resolve(body));
-      req.on("error", reject);
+      };
+      const onEnd = (): void => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve(body);
+      };
+      const onError = (error: Error): void => {
+        fail(error);
+      };
+
+      req.on("data", onData);
+      req.on("end", onEnd);
+      req.on("error", onError);
     });
   }
 
@@ -827,7 +879,24 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
     }
 
     if (req.method === "POST" && req.url === "/api/restore") {
-      const body = await readBody(req);
+      let body: string;
+      try {
+        body = await readBody(
+          req,
+          AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES,
+          (receivedBytes, maxBytes) =>
+            new AgentSnapshotV1WireLimitError(receivedBytes, maxBytes),
+          false,
+        );
+      } catch (error) {
+        // error-policy:J1 HTTP boundary translates the typed wire-limit failure.
+        if (error instanceof AgentSnapshotV1WireLimitError) {
+          res.writeHead(413);
+          res.end(JSON.stringify({ error: error.message }));
+          return;
+        }
+        throw error;
+      }
       let incoming: Partial<typeof state>;
       try {
         incoming = JSON.parse(body) as Partial<typeof state>;

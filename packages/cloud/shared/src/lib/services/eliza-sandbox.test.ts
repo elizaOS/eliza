@@ -8125,7 +8125,7 @@ describe("snapshot hydration budgets (#16639)", () => {
     const { readBodyWithinBudget } = await import("./eliza-sandbox.ts?actual");
     const oversized = "x".repeat(2 * 1024 * 1024);
     await expect(readBodyWithinBudget(streamedResponse(oversized), 1024 * 1024)).rejects.toThrow(
-      "raw hydration budget",
+      "maximum restorable wire size",
     );
   });
 
@@ -8133,6 +8133,20 @@ describe("snapshot hydration budgets (#16639)", () => {
     const { readBodyWithinBudget } = await import("./eliza-sandbox.ts?actual");
     const body = JSON.stringify({ ok: true });
     expect(await readBodyWithinBudget(streamedResponse(body), 1024)).toBe(body);
+  });
+
+  test("the raw override may lower but never raise the v1 restorable wire cap", async () => {
+    const { resolveSnapshotMaxRawBytes } = await import("./eliza-sandbox.ts?actual");
+    expect(
+      resolveSnapshotMaxRawBytes({
+        ELIZA_SNAPSHOT_MAX_RAW_BYTES: "1048576",
+      } as NodeJS.ProcessEnv),
+    ).toBe(1024 * 1024);
+    expect(
+      resolveSnapshotMaxRawBytes({
+        ELIZA_SNAPSHOT_MAX_RAW_BYTES: String(129 * 1024 * 1024),
+      } as NodeJS.ProcessEnv),
+    ).toBe(128 * 1024 * 1024);
   });
 
   test("file-count and expanded-byte budgets fail closed before retention", async () => {
@@ -8194,7 +8208,9 @@ describe("snapshot hydration budgets (#16639)", () => {
       body: null,
       text: async () => "x".repeat(2048),
     } as unknown as Response;
-    await expect(readBodyWithinBudget(readerless, 1024)).rejects.toThrow("raw hydration budget");
+    await expect(readBodyWithinBudget(readerless, 1024)).rejects.toThrow(
+      "maximum restorable wire size",
+    );
   });
 
   test("manifest file-sets count every component, taking max(declared, decoded)", async () => {
