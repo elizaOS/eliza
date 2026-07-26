@@ -37,6 +37,8 @@ type ErrorCode =
   | "none"
   | "sandbox_stop_failed"
   | "agent_not_found"
+  | "replacement_cleanup_pending"
+  | "provisioning_in_progress"
   | "lifecycle_conflict"
   | "credential_revoke_failed"
   | "row_delete_failed"
@@ -148,6 +150,12 @@ function classifyError(value: unknown, label: string): ErrorCode {
     return classifyError(permanentDelete[1], `${label} cause`);
   if (value === "Failed to delete sandbox") return "sandbox_stop_failed";
   if (value === "Agent not found") return "agent_not_found";
+  if (value === "Agent replacement cleanup is still pending") {
+    return "replacement_cleanup_pending";
+  }
+  if (value === "Agent provisioning is in progress") {
+    return "provisioning_in_progress";
+  }
   if (/failed query:[\s\S]*delete from\s+"?agent_sandboxes"?/i.test(value)) {
     return "row_delete_failed";
   }
