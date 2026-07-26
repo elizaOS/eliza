@@ -48,7 +48,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { desc, eq, isNull, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, lt, or, sql } from "drizzle-orm";
 import {
   decryptAgentBackupStateData,
   isEncryptedAgentBackupStateData,
@@ -75,6 +75,11 @@ import {
   requireBackupStateData,
   resolveBackupChain,
 } from "./agent-backup-diff";
+import { readStoredChunkedBackup } from "./agent-backup-v2-storage";
+import {
+  AGENT_SNAPSHOT_V2_CONTENT_TYPE,
+  validateAgentSnapshotV2Stream,
+} from "./agent-snapshot-v2-stream";
 import {
   type DaemonHealthAlert,
   sendProvisioningWorkerAlert,
@@ -259,6 +264,36 @@ function classifyMissingObjectPayload(error: unknown): BackupVerificationFailure
     /no such key|not found/i.test(error.message)
   ) {
     return { kind: "payload-missing", message: error.message };
+  }
+  return null;
+}
+
+function classifySnapshotV2Error(error: unknown): BackupVerificationFailure | null {
+  const crypto = classifyCryptoError(error);
+  if (crypto) return crypto;
+  const missingPayload = classifyMissingObjectPayload(error);
+  if (missingPayload) return missingPayload;
+  if (!(error instanceof Error)) return null;
+  const code = (error as Error & { code?: unknown }).code;
+  if (code === "AGENT_BACKUP_CHUNK_MISSING") {
+    return { kind: "payload-missing", message: error.message };
+  }
+  if (
+    code === "AGENT_BACKUP_CHUNK_CIPHERTEXT_INVALID" ||
+    code === "AGENT_BACKUP_CHUNK_PLAINTEXT_INVALID" ||
+    code === "AGENT_BACKUP_CHUNK_TOTAL_INVALID"
+  ) {
+    return { kind: "hash-mismatch", message: error.message };
+  }
+  if (
+    code === "AGENT_BACKUP_CHUNK_DESCRIPTOR_INVALID" ||
+    code === "AGENT_BACKUP_CHUNK_IDENTITY_INVALID" ||
+    code === "AGENT_SNAPSHOT_V2_STREAM_INVALID" ||
+    /is not a complete schema-v2 restore point|is not bound to the requested tenant/i.test(
+      error.message,
+    )
+  ) {
+    return { kind: "invalid-payload", message: error.message };
   }
   return null;
 }
@@ -598,7 +633,12 @@ async function reconstructIncrementalStateSequential(
       const [member] = await dbRead
         .select()
         .from(agentSandboxBackups)
-        .where(eq(agentSandboxBackups.id, memberId))
+        .where(
+          and(
+            eq(agentSandboxBackups.id, memberId),
+            eq(agentSandboxBackups.storage_commit_state, "complete"),
+          ),
+        )
         .limit(1);
       if (!member) {
         return {
@@ -654,6 +694,101 @@ async function reconstructIncrementalStateSequential(
   return { state };
 }
 
+async function verifySnapshotV2Restorability(
+  row: StoredAgentSandboxBackup,
+  budget: DecryptBudget,
+  checks: BackupVerificationResult["checks"],
+): Promise<BackupVerificationResult> {
+  const fail = (failure: BackupVerificationFailure): BackupVerificationResult => ({
+    ok: false,
+    failure,
+    checks,
+  });
+  const descriptor = row.state_data_descriptor;
+  const storedBytes = row.size_bytes;
+  if (
+    row.snapshot_schema_version !== 2 ||
+    row.state_data_storage !== "chunked-v2" ||
+    row.storage_commit_state !== "complete" ||
+    row.snapshot_type !== "pre-upgrade" ||
+    row.backup_kind !== "full" ||
+    row.parent_backup_id !== null ||
+    !descriptor ||
+    descriptor.commitState !== "complete" ||
+    descriptor.backupSchemaVersion !== 2 ||
+    descriptor.backupId !== row.id ||
+    descriptor.sandboxRecordId !== row.sandbox_record_id ||
+    typeof storedBytes !== "number" ||
+    !Number.isSafeInteger(storedBytes) ||
+    storedBytes < 0 ||
+    descriptor.totalPlaintextBytes !== storedBytes
+  ) {
+    return fail({
+      kind: "invalid-payload",
+      message: `backup ${row.id} has an unsupported or inconsistent schema-v2 storage shape`,
+    });
+  }
+
+  const charge = chargeBudget(budget, storedBytes);
+  if (charge !== "ok") {
+    return {
+      ok: false,
+      skipped: {
+        reason: charge,
+        requiredBytes: storedBytes,
+        budgetBytes: budget.totalBytes,
+      },
+      checks,
+    };
+  }
+
+  let summary: Awaited<ReturnType<typeof validateAgentSnapshotV2Stream>>;
+  try {
+    const source = await readStoredChunkedBackup({
+      organizationId: descriptor.organizationId,
+      row,
+    });
+    summary = await validateAgentSnapshotV2Stream({
+      source,
+      options: {
+        contentType: AGENT_SNAPSHOT_V2_CONTENT_TYPE,
+        expectedAgentId: row.sandbox_record_id,
+      },
+    });
+  } catch (error) {
+    const classified = classifySnapshotV2Error(error);
+    if (classified) return fail(classified);
+    throw error;
+  }
+  checks.decrypted = true;
+
+  if (summary.wireBytes !== storedBytes) {
+    return fail({
+      kind: "hash-mismatch",
+      message: `stored size ${storedBytes} != validated stream size ${summary.wireBytes}`,
+    });
+  }
+  if (!row.content_hash) {
+    return fail({
+      kind: "invalid-payload",
+      message: `schema-v2 backup ${row.id} has no content_hash`,
+    });
+  }
+  if (summary.trailer.aggregateSha256 !== row.content_hash) {
+    return fail({
+      kind: "hash-mismatch",
+      message:
+        `content_hash ${row.content_hash} != validated snapshot aggregate ` +
+        summary.trailer.aggregateSha256,
+    });
+  }
+  checks.contentHashChecked = true;
+  // The v2 descriptor is the manifest: the stream validator checks every
+  // component, file, chunk, and aggregate hash before returning.
+  checks.manifestChecked = true;
+  return { ok: true, checks };
+}
+
 /**
  * Verify one stored backup row end to end: fetch payload → decrypt with the
  * real KMS → reconstruct the full state (sequential chain-only replay for
@@ -675,6 +810,25 @@ export async function verifyBackupRestorability(
     failure,
     checks,
   });
+
+  if (row.storage_commit_state !== "complete") {
+    return fail({
+      kind: "invalid-payload",
+      message: `backup ${row.id} is not committed`,
+    });
+  }
+  if (row.snapshot_schema_version === 2 || row.state_data_storage === "chunked-v2") {
+    return await verifySnapshotV2Restorability(row, budget, checks);
+  }
+  if (
+    row.snapshot_schema_version !== 1 ||
+    (row.state_data_storage !== "inline" && row.state_data_storage !== "r2")
+  ) {
+    return fail({
+      kind: "invalid-payload",
+      message: `backup ${row.id} has an unsupported snapshot storage shape`,
+    });
+  }
 
   const resolved = await resolveStoredPayload(row);
   if ("failure" in resolved) return fail(resolved.failure);
@@ -848,6 +1002,7 @@ export async function runBackupVerificationCycle(
   const latest = dbRead
     .selectDistinctOn([agentSandboxBackups.sandbox_record_id])
     .from(agentSandboxBackups)
+    .where(eq(agentSandboxBackups.storage_commit_state, "complete"))
     .orderBy(agentSandboxBackups.sandbox_record_id, desc(agentSandboxBackups.created_at))
     .as("latest_backup_per_agent");
 
@@ -876,7 +1031,12 @@ export async function runBackupVerificationCycle(
         verified_at: now,
         verification_error: formatInfraError(streak, message),
       })
-      .where(eq(agentSandboxBackups.id, row.id));
+      .where(
+        and(
+          eq(agentSandboxBackups.id, row.id),
+          eq(agentSandboxBackups.storage_commit_state, "complete"),
+        ),
+      );
     if (streak >= config.erroredAlertStreak) {
       await alert({
         title: `agent backup verification has errored ${streak} consecutive attempts`,
@@ -965,7 +1125,12 @@ export async function runBackupVerificationCycle(
           ? null
           : `${result.failure?.kind}: ${result.failure?.message}`,
       })
-      .where(eq(agentSandboxBackups.id, row.id));
+      .where(
+        and(
+          eq(agentSandboxBackups.id, row.id),
+          eq(agentSandboxBackups.storage_commit_state, "complete"),
+        ),
+      );
 
     if (result.ok) {
       summary.verified += 1;

@@ -13,7 +13,7 @@
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { desc, eq } from "drizzle-orm";
 
 const AMBIENT_DATABASE_URL = process.env.DATABASE_URL ?? "";
@@ -34,6 +34,7 @@ import { closeDatabaseConnectionsForTests, dbWrite } from "../../db/client";
 import { resetKmsClientForTests } from "../../db/crypto/kms-client";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import {
+  type AgentBackupChunkCompleteDescriptor,
   type AgentBackupFileEntry,
   type AgentBackupFileSet,
   type AgentBackupManifest,
@@ -48,6 +49,7 @@ import { users } from "../../db/schemas/users";
 import { type RuntimeR2Bucket, setRuntimeR2Bucket } from "../storage/r2-runtime-binding";
 import { resetObjectStorageClientForTests } from "../storage/s3-compatible-client";
 import { computeStateHash, diffBackupState } from "./agent-backup-diff";
+import { agentBackupV2StorageService } from "./agent-backup-v2-storage";
 import {
   type BackupVerifierConfig,
   classifyCryptoError,
@@ -55,7 +57,18 @@ import {
   runBackupVerificationCycle,
   verifyBackupRestorability,
 } from "./agent-backup-verifier";
+import {
+  AGENT_SNAPSHOT_V2_CHUNK_BYTES,
+  AGENT_SNAPSHOT_V2_CONTENT_TYPE,
+  AGENT_SNAPSHOT_V2_FORMAT,
+  AGENT_SNAPSHOT_V2_TRANSFER,
+  agentSnapshotV2Sha256,
+  agentSnapshotV2Sha256Json,
+  agentSnapshotV2StableJson,
+  validateAgentSnapshotV2Stream,
+} from "./agent-snapshot-v2-stream";
 import type { DaemonHealthAlert } from "./provisioning-worker-health-monitor";
+import { runWakeRestoreIntegrityGate } from "./wake-restore-integrity";
 
 const PGLITE_TIMEOUT = 60_000;
 let pgliteReady = true;
@@ -144,6 +157,143 @@ async function seedSandbox(): Promise<string> {
     })
     .returning();
   return sandbox.id;
+}
+
+async function organizationIdForSandbox(sandboxRecordId: string): Promise<string> {
+  const [sandbox] = await dbWrite
+    .select({ organizationId: agentSandboxes.organization_id })
+    .from(agentSandboxes)
+    .where(eq(agentSandboxes.id, sandboxRecordId))
+    .limit(1);
+  if (!sandbox) throw new Error(`sandbox ${sandboxRecordId} not found`);
+  return sandbox.organizationId;
+}
+
+function binaryMemoryBucket(objects: Map<string, Uint8Array>): RuntimeR2Bucket {
+  return {
+    async get(key) {
+      const value = objects.get(key);
+      if (!value) return null;
+      return {
+        size: value.byteLength,
+        async text() {
+          return new TextDecoder().decode(value);
+        },
+        async arrayBuffer() {
+          return value.slice().buffer;
+        },
+      };
+    },
+    async put(key, value) {
+      if (typeof value === "string") {
+        objects.set(key, new TextEncoder().encode(value));
+      } else if (value instanceof Uint8Array) {
+        objects.set(key, value.slice());
+      } else if (value instanceof ArrayBuffer) {
+        objects.set(key, new Uint8Array(value.slice(0)));
+      } else if (ArrayBuffer.isView(value)) {
+        objects.set(
+          key,
+          new Uint8Array(value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength)),
+        );
+      } else {
+        throw new Error("unsupported in-memory object value");
+      }
+    },
+    async delete(key) {
+      objects.delete(key);
+    },
+  };
+}
+
+function snapshotV2Wire(agentId: string): {
+  aggregateSha256: string;
+  wire: Uint8Array;
+} {
+  const emptyFileSetSha256 = agentSnapshotV2Sha256Json([]);
+  const identitySha256 = "ab".repeat(32);
+  const databaseSha256 = agentSnapshotV2Sha256Json({
+    algorithm: "sha256",
+    identitySha256,
+    identityVersion: 1,
+    kind: "external-postgres-reference",
+  });
+  const descriptor = {
+    agentId,
+    chunkSize: AGENT_SNAPSHOT_V2_CHUNK_BYTES,
+    components: {
+      character: {
+        configFileIndex: null,
+        kind: "character-config",
+        sha256: agentSnapshotV2Sha256Json({ configFile: null }),
+      },
+      database: {
+        externalPostgres: {
+          algorithm: "sha256",
+          identitySha256,
+          identityVersion: 1,
+          kind: "external-postgres-reference",
+          sha256: databaseSha256,
+        },
+        kind: "external-postgres-reference",
+        sha256: databaseSha256,
+      },
+      media: { fileIndices: [], kind: "file-set", sha256: emptyFileSetSha256 },
+      stateFiles: { fileIndices: [], kind: "file-set", sha256: emptyFileSetSha256 },
+      vault: { fileIndices: [], kind: "file-set", sha256: emptyFileSetSha256 },
+    },
+    createdAt: "2026-07-26T12:00:00.000Z",
+    files: [],
+    format: AGENT_SNAPSHOT_V2_FORMAT,
+    schemaVersion: 2,
+    transfer: AGENT_SNAPSHOT_V2_TRANSFER,
+    type: "descriptor",
+  } as const;
+  const aggregateSha256 = agentSnapshotV2Sha256(Buffer.alloc(0));
+  const trailer = {
+    aggregateSha256,
+    chunkCount: 0,
+    descriptorSha256: agentSnapshotV2Sha256(agentSnapshotV2StableJson(descriptor)),
+    fileCount: 0,
+    totalBytes: 0,
+    type: "trailer",
+  } as const;
+  return {
+    aggregateSha256,
+    wire: Buffer.from(
+      `${agentSnapshotV2StableJson(descriptor)}\n${agentSnapshotV2StableJson(trailer)}\n`,
+    ),
+  };
+}
+
+async function seedChunkedV2Backup(sandboxRecordId: string, objects: Map<string, Uint8Array>) {
+  setRuntimeR2Bucket(binaryMemoryBucket(objects));
+  const organizationId = await organizationIdForSandbox(sandboxRecordId);
+  const snapshot = snapshotV2Wire(sandboxRecordId);
+  async function* source(): AsyncGenerator<Uint8Array> {
+    yield snapshot.wire;
+  }
+  const row = await agentBackupV2StorageService.create({
+    identity: {
+      organizationId,
+      sandboxRecordId,
+      backupSchemaVersion: 2,
+    },
+    snapshotType: "pre-upgrade",
+    source: source(),
+    verify: async (storedSource) => {
+      const summary = await validateAgentSnapshotV2Stream({
+        source: storedSource,
+        options: {
+          contentType: AGENT_SNAPSHOT_V2_CONTENT_TYPE,
+          expectedAgentId: sandboxRecordId,
+        },
+      });
+      return { contentHash: summary.trailer.aggregateSha256 };
+    },
+  });
+  expect(row.content_hash).toBe(snapshot.aggregateSha256);
+  return row;
 }
 
 function sampleState(marker: string): AgentBackupStateData {
@@ -409,6 +559,113 @@ describe("classifyCryptoError", () => {
 });
 
 describe("runBackupVerificationCycle (real PGlite + real memory KMS)", () => {
+  test("healthy schema-v2 backup decrypts through the tenant-bound reader and validates its stream hash", async () => {
+    expect(pgliteReady).toBe(true);
+    const objects = new Map<string, Uint8Array>();
+    const sandboxId = await seedSandbox();
+    const backup = await seedChunkedV2Backup(sandboxId, objects);
+
+    const result = await verifyBackupRestorability(await readBackupRow(backup.id));
+
+    expect(result).toEqual({
+      ok: true,
+      checks: {
+        decrypted: true,
+        contentHashChecked: true,
+        manifestChecked: true,
+      },
+    });
+  });
+
+  test("wake restore-integrity gate re-verifies a schema-v2 restore point through the same stream path", async () => {
+    expect(pgliteReady).toBe(true);
+    const objects = new Map<string, Uint8Array>();
+    const sandboxId = await seedSandbox();
+    const backup = await seedChunkedV2Backup(sandboxId, objects);
+    await dbWrite
+      .update(agentSandboxBackups)
+      .set({ verification_status: null, verified_at: null, verification_error: null })
+      .where(eq(agentSandboxBackups.id, backup.id));
+    const now = new Date();
+
+    const result = await runWakeRestoreIntegrityGate(
+      { sandboxRecordId: sandboxId },
+      {
+        config: {
+          enabled: true,
+          verifiedFreshnessMs: 24 * 3_600_000,
+          alternativeScanLimit: 25,
+        },
+        now: () => now,
+      },
+    );
+
+    expect(result).toEqual({ ok: true, backupId: backup.id, verification: "verified" });
+    const row = await readBackupRow(backup.id);
+    expect(row.verification_status).toBe("verified");
+    expect(row.verified_at?.getTime()).toBe(now.getTime());
+  });
+
+  test("schema-v2 ciphertext corruption fails integrity verification", async () => {
+    expect(pgliteReady).toBe(true);
+    const objects = new Map<string, Uint8Array>();
+    const sandboxId = await seedSandbox();
+    const backup = await seedChunkedV2Backup(sandboxId, objects);
+    const descriptor = backup.state_data_descriptor as AgentBackupChunkCompleteDescriptor;
+    const objectKey = descriptor.chunks[0]?.objectKey;
+    if (!objectKey) throw new Error("expected encrypted schema-v2 chunk");
+    const ciphertext = objects.get(objectKey);
+    if (!ciphertext) throw new Error("expected stored schema-v2 ciphertext");
+    const tampered = ciphertext.slice();
+    tampered[0] = (tampered[0] ?? 0) ^ 0xff;
+    objects.set(objectKey, tampered);
+
+    const result = await verifyBackupRestorability(await readBackupRow(backup.id));
+
+    expect(result.ok).toBe(false);
+    expect(result.failure?.kind).toBe("hash-mismatch");
+    expect(result.failure?.message).toContain("ciphertext integrity");
+  });
+
+  test("newer staging row cannot hide the latest complete backup from the sampler", async () => {
+    expect(pgliteReady).toBe(true);
+    const objects = new Map<string, Uint8Array>();
+    const sandboxId = await seedSandbox();
+    const complete = await seedChunkedV2Backup(sandboxId, objects);
+    await dbWrite
+      .update(agentSandboxBackups)
+      .set({ verification_status: null, verified_at: null, verification_error: null })
+      .where(eq(agentSandboxBackups.id, complete.id));
+    const organizationId = await organizationIdForSandbox(sandboxId);
+    const staging = await agentSandboxesRepository.createChunkedBackupStaging({
+      descriptor: {
+        format: "elizaos.agent-backup-chunks",
+        descriptorVersion: 1,
+        backupSchemaVersion: 2,
+        commitState: "staging",
+        organizationId,
+        sandboxRecordId: sandboxId,
+        backupId: randomUUID(),
+        createdAt: new Date(Date.now() + 60_000).toISOString(),
+        plannedObjectKeys: [],
+        failure: null,
+      },
+      snapshotType: "pre-upgrade",
+    });
+    const { alert } = makeAlertSpy();
+
+    const summary = await runBackupVerificationCycle({ config: CONFIG, alert });
+
+    expect(summary).toMatchObject({ sampled: 1, verified: 1, failed: 0, errored: 0 });
+    expect((await readBackupRow(complete.id)).verification_status).toBe("verified");
+    const stagingRow = await readBackupRow(staging.id);
+    expect(stagingRow.storage_commit_state).toBe("staging");
+    expect(stagingRow.verification_status).toBeNull();
+    const direct = await verifyBackupRestorability(stagingRow);
+    expect(direct.ok).toBe(false);
+    expect(direct.failure?.kind).toBe("invalid-payload");
+  });
+
   test("happy path: decrypts, matches content_hash, stamps verified, no alert", async () => {
     expect(pgliteReady).toBe(true);
     const sandboxId = await seedSandbox();
