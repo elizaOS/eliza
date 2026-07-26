@@ -39,6 +39,7 @@ type ErrorCode =
   | "agent_not_found"
   | "lifecycle_conflict"
   | "credential_revoke_failed"
+  | "row_delete_failed"
   | "database_failed"
   | "timeout";
 
@@ -49,12 +50,6 @@ export interface ManagedDedicatedCanaryDiagnostic {
     status: string;
     errorCode: ErrorCode;
     errorCount: number;
-    deletionOwned: boolean;
-    locator: {
-      sandboxIdPresent: boolean;
-      nodeIdPresent: boolean;
-      containerNamePresent: boolean;
-    };
     deletionStartedAt: string | null;
     updatedAt: string;
   };
@@ -65,6 +60,7 @@ export interface ManagedDedicatedCanaryDiagnostic {
     containerStopped: boolean | null;
     rowDeleted: boolean | null;
     errorCode: ErrorCode;
+    resultErrorCode: ErrorCode;
     scheduledFor: string;
     startedAt: string | null;
     completedAt: string | null;
@@ -152,6 +148,14 @@ function classifyError(value: unknown, label: string): ErrorCode {
     return classifyError(permanentDelete[1], `${label} cause`);
   if (value === "Failed to delete sandbox") return "sandbox_stop_failed";
   if (value === "Agent not found") return "agent_not_found";
+  if (/failed query:[\s\S]*delete from\s+"?agent_sandboxes"?/i.test(value)) {
+    return "row_delete_failed";
+  }
+  if (
+    /failed query:[\s\S]*(?:delete from|update)\s+"?api_keys"?/i.test(value)
+  ) {
+    return "credential_revoke_failed";
+  }
   if (
     /(?:lifecycle|identity changed|ownership changed|non-quiescent|organization id mismatch)/i.test(
       value,
@@ -161,7 +165,9 @@ function classifyError(value: unknown, label: string): ErrorCode {
   }
   if (/(?:revoke|credential)/i.test(value)) return "credential_revoke_failed";
   if (
-    /(?:database|postgres|sql|transaction|deadlock|connection)/i.test(value)
+    /(?:failed query|database|postgres|sql|transaction|deadlock|connection)/i.test(
+      value,
+    )
   ) {
     return "database_failed";
   }
@@ -214,6 +220,18 @@ export function sanitizeManagedDedicatedCanaryDiagnostic(
     ["sandboxIdPresent", "nodeIdPresent", "containerNamePresent"],
     "agent.locator",
   );
+  const deletionOwned = boolean(agent.deletionOwned, "agent.deletionOwned");
+  const deletionStartedAt = timestamp(
+    agent.deletionStartedAt,
+    "agent.deletionStartedAt",
+    true,
+  );
+  if (deletionOwned !== (deletionStartedAt !== null)) {
+    throw new Error("agent deletion ownership and timestamp disagree");
+  }
+  boolean(locator.sandboxIdPresent, "locator.sandboxIdPresent");
+  boolean(locator.nodeIdPresent, "locator.nodeIdPresent");
+  boolean(locator.containerNamePresent, "locator.containerNamePresent");
 
   if (
     !Array.isArray(root.jobs) ||
@@ -275,14 +293,6 @@ export function sanitizeManagedDedicatedCanaryDiagnostic(
         `jobs[${index}].result.error`,
       );
     }
-    if (
-      jobErrorCode !== "none" &&
-      resultErrorCode !== "none" &&
-      jobErrorCode !== resultErrorCode
-    ) {
-      throw new Error(`jobs[${index}] error sources disagree`);
-    }
-
     const scheduledFor = timestamp(
       job.scheduledFor,
       `jobs[${index}].scheduledFor`,
@@ -306,57 +316,89 @@ export function sanitizeManagedDedicatedCanaryDiagnostic(
       `jobs[${index}].updatedAt`,
     ) as string;
     const createdAtMs = Date.parse(createdAt);
-    if (createdAtMs >= previousCreatedAt) {
+    if (createdAtMs > previousCreatedAt) {
       throw new Error("jobs are not strictly newest-first");
     }
     previousCreatedAt = createdAtMs;
 
+    const attempts = integer(job.attempts, `jobs[${index}].attempts`, 0, 100);
+    const maxAttempts = integer(
+      job.maxAttempts,
+      `jobs[${index}].maxAttempts`,
+      1,
+      100,
+    );
+    if (attempts > maxAttempts) {
+      throw new Error(`jobs[${index}] attempts exceed maxAttempts`);
+    }
+    if (rowDeleted === true && containerStopped !== true) {
+      throw new Error(
+        `jobs[${index}] deleted a row without a stopped container`,
+      );
+    }
+    if (
+      job.status === "completed" &&
+      (jobErrorCode !== "none" ||
+        resultErrorCode !== "none" ||
+        containerStopped !== true ||
+        rowDeleted !== true)
+    ) {
+      throw new Error(`jobs[${index}] has an invalid completed result`);
+    }
+    if (
+      job.status === "failed" &&
+      (attempts === 0 || jobErrorCode === "none")
+    ) {
+      throw new Error(`jobs[${index}] has an invalid failed result`);
+    }
+    const terminalAt =
+      completedAt ??
+      (job.status === "completed" ||
+      job.status === "failed" ||
+      job.status === "cancelled"
+        ? updatedAt
+        : null);
+    elapsedMs(createdAt, updatedAt);
+
     return {
       status: job.status,
-      attempts: integer(job.attempts, `jobs[${index}].attempts`, 0, 100),
-      maxAttempts: integer(
-        job.maxAttempts,
-        `jobs[${index}].maxAttempts`,
-        1,
-        100,
-      ),
+      attempts,
+      maxAttempts,
       containerStopped,
       rowDeleted,
-      errorCode: jobErrorCode === "none" ? resultErrorCode : jobErrorCode,
+      errorCode: jobErrorCode,
+      resultErrorCode,
       scheduledFor,
       startedAt,
       completedAt,
       createdAt,
       updatedAt,
-      durationMs: elapsedMs(startedAt, completedAt),
+      durationMs: elapsedMs(startedAt, terminalAt),
       queueDurationMs: elapsedMs(createdAt, startedAt),
     };
   });
+
+  const sandboxErrorCode = classifyError(
+    agent.errorMessage,
+    "agent.errorMessage",
+  );
+  if (
+    agent.status === "deletion_failed" &&
+    (sandboxErrorCode === "none" ||
+      jobs[0]?.status !== "failed" ||
+      jobs[0].errorCode !== sandboxErrorCode)
+  ) {
+    throw new Error("sandbox and latest failed deletion job disagree");
+  }
 
   return {
     schemaVersion: 1,
     targetCount: 1,
     sandbox: {
       status: agent.status,
-      errorCode: classifyError(agent.errorMessage, "agent.errorMessage"),
+      errorCode: sandboxErrorCode,
       errorCount: integer(agent.errorCount, "agent.errorCount", 0, 1_000),
-      deletionOwned: boolean(agent.deletionOwned, "agent.deletionOwned"),
-      locator: {
-        sandboxIdPresent: boolean(
-          locator.sandboxIdPresent,
-          "locator.sandboxIdPresent",
-        ),
-        nodeIdPresent: boolean(locator.nodeIdPresent, "locator.nodeIdPresent"),
-        containerNamePresent: boolean(
-          locator.containerNamePresent,
-          "locator.containerNamePresent",
-        ),
-      },
-      deletionStartedAt: timestamp(
-        agent.deletionStartedAt,
-        "agent.deletionStartedAt",
-        true,
-      ),
+      deletionStartedAt,
       updatedAt: timestamp(agent.updatedAt, "agent.updatedAt") as string,
     },
     jobs,

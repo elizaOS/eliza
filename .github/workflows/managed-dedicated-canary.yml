@@ -398,6 +398,10 @@ jobs:
           COMMIT;
           SQL
 
+      - name: Classify privacy-safe diagnostic
+        shell: bash
+        run: |
+          set -euo pipefail
           bun run packages/scripts/cloud/admin/managed-dedicated-canary-diagnostic.ts \
             "$CANARY_DIAGNOSTIC_SUFFIX" \
             "$CANARY_DIAGNOSTIC_RAW_PATH" \
@@ -427,9 +431,9 @@ jobs:
             console.log("- exact target count: `" + evidence.targetCount + "`");
             console.log("- sandbox status: `" + evidence.sandbox.status + "`");
             console.log("- sandbox error class: `" + evidence.sandbox.errorCode + "`");
-            console.log("- deletion owned: `" + evidence.sandbox.deletionOwned + "`");
             console.log("- latest job status: `" + latestJob.status + "`");
             console.log("- latest job error class: `" + latestJob.errorCode + "`");
+            console.log("- latest persisted result class: `" + latestJob.resultErrorCode + "`");
             console.log("- attempts: `" + latestJob.attempts + "/" + latestJob.maxAttempts + "`");
             console.log("- container stopped: `" + latestJob.containerStopped + "`");
             console.log("- row deleted: `" + latestJob.rowDeleted + "`");

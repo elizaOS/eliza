@@ -75,12 +75,6 @@ describe("managed dedicated canary diagnostic", () => {
         status: "deletion_failed",
         errorCode: "sandbox_stop_failed",
         errorCount: 1,
-        deletionOwned: true,
-        locator: {
-          sandboxIdPresent: true,
-          nodeIdPresent: true,
-          containerNamePresent: true,
-        },
         deletionStartedAt: "2026-07-26T23:08:09.000Z",
         updatedAt: "2026-07-26T23:11:30.000Z",
       },
@@ -92,6 +86,7 @@ describe("managed dedicated canary diagnostic", () => {
           containerStopped: false,
           rowDeleted: false,
           errorCode: "sandbox_stop_failed",
+          resultErrorCode: "sandbox_stop_failed",
           scheduledFor: "2026-07-26T23:10:30.000Z",
           startedAt: "2026-07-26T23:10:31.000Z",
           completedAt: "2026-07-26T23:11:30.000Z",
@@ -200,7 +195,7 @@ describe("managed dedicated canary diagnostic", () => {
     ).toThrow(message);
   });
 
-  test("rejects disagreement between stored error sources", () => {
+  test("preserves distinct terminal and prior-attempt result classifications", () => {
     const input = failedDeleteInput();
     const [job] = input.jobs as Record<string, unknown>[];
     job.result = {
@@ -208,9 +203,86 @@ describe("managed dedicated canary diagnostic", () => {
       rowDeleted: false,
       error: "credential revoke failed",
     };
+    const evidence = sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX);
+    expect(evidence.jobs[0]).toMatchObject({
+      errorCode: "sandbox_stop_failed",
+      resultErrorCode: "credential_revoke_failed",
+    });
+  });
+
+  test("classifies row-delete failures without publishing the SQL text", () => {
+    const input = failedDeleteInput();
+    const agent = input.agent as Record<string, unknown>;
+    const [job] = input.jobs as Record<string, unknown>[];
+    const error =
+      'Failed query: DELETE FROM "agent_sandboxes" WHERE "agent_sandboxes"."id" = $1';
+    agent.errorMessage = `Deletion permanently failed after 3 attempts: ${error}`;
+    job.error = error;
+    job.result = {
+      containerStopped: true,
+      rowDeleted: false,
+      error: "Failed to delete sandbox",
+    };
+
+    const canonical = canonicalizeManagedDedicatedCanaryDiagnostic(
+      JSON.stringify(input),
+      SUFFIX,
+    );
+    const evidence = JSON.parse(canonical);
+    expect(evidence.sandbox.errorCode).toBe("row_delete_failed");
+    expect(evidence.jobs[0]).toMatchObject({
+      errorCode: "row_delete_failed",
+      resultErrorCode: "sandbox_stop_failed",
+    });
+    expect(canonical).not.toContain("DELETE FROM");
+    expect(canonical).not.toContain("agent_sandboxes");
+  });
+
+  test("uses terminal updatedAt when failed jobs have no completedAt", () => {
+    const input = failedDeleteInput();
+    const [job] = input.jobs as Record<string, unknown>[];
+    job.completedAt = null;
+
+    expect(
+      sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX).jobs[0]
+        ?.durationMs,
+    ).toBe(59_000);
+  });
+
+  test.each([
+    [
+      "attempts above maxAttempts",
+      (job: Record<string, unknown>) => {
+        job.attempts = 4;
+      },
+      "attempts exceed",
+    ],
+    [
+      "row deletion without a stopped container",
+      (job: Record<string, unknown>) => {
+        job.result = {
+          containerStopped: false,
+          rowDeleted: true,
+          error: null,
+        };
+        job.error = null;
+        job.status = "completed";
+      },
+      "deleted a row without",
+    ],
+    [
+      "failed status without attempts",
+      (job: Record<string, unknown>) => {
+        job.attempts = 0;
+      },
+      "invalid failed",
+    ],
+  ])("rejects semantic contradiction: %s", (_name, mutate, message) => {
+    const input = failedDeleteInput();
+    mutate((input.jobs as Record<string, unknown>[])[0]);
     expect(() =>
       sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX),
-    ).toThrow("error sources disagree");
+    ).toThrow(message);
   });
 
   test("requires newest-first job ordering", () => {
@@ -246,6 +318,9 @@ describe("managed dedicated canary diagnostic", () => {
     expect(workflow).toContain("inputs.diagnose_stale_canary_suffix == ''");
     expect(workflow).toContain(
       "bun run packages/scripts/cloud/admin/managed-dedicated-canary.ts",
+    );
+    expect(workflow).toMatch(
+      /managed-dedicated-canary-diagnostic\.ts \\\n\s+"\$CANARY_DIAGNOSTIC_SUFFIX" \\\n\s+"\$CANARY_DIAGNOSTIC_RAW_PATH" \\\n\s+"\$CANARY_DIAGNOSTIC_EVIDENCE_PATH"/,
     );
 
     const sql = workflow.match(/<<'SQL'\n([\s\S]*?)\n\s+SQL/)?.[1];
