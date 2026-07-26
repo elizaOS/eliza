@@ -367,23 +367,15 @@ describe("executeJob dispatch — success path per job type marks the job comple
           expect(completed).toBeUndefined();
           expect(atomicAuditWrites).toHaveLength(3);
           expect(atomicAuditWrites[0]).toMatchObject({
-            result_storage: "inline",
-            error: null,
-            completed_at: null,
-          });
-          expect(atomicAuditWrites[0]?.result).toMatchObject({
-            success: false,
-            cleanupPending: true,
-          });
-          expect(atomicAuditWrites[0]).not.toHaveProperty("status");
-          expect(atomicAuditWrites[1]).toMatchObject({
             status: "completed",
             result_storage: "inline",
             error: null,
           });
-          expect(atomicAuditWrites[1]?.result).toMatchObject({
+          expect(atomicAuditWrites[0]?.result).toMatchObject({
             success: true,
             cleanupPending: false,
+            standbyPending: true,
+            standbyGeneration: ctx.job.id,
           });
           expect(atomicAuditWrites[2]).toEqual({
             lifecycle_job_id: null,
@@ -407,27 +399,22 @@ describe("executeJob dispatch — success path per job type marks the job comple
     });
   }
 
-  test("admin canary remains retryable after cutover until old-placement cleanup converges", async () => {
+  test("admin canary completes at cutover while the old placement remains rollback standby", async () => {
     const arm = AGENT_ARMS.find(
       (candidate) => candidate.type === JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
     );
     if (!arm) throw new Error("admin canary dispatch arm missing");
     const first = harness(makeJob(arm.type, arm.data));
-    let pendingAudit: Record<string, unknown> | undefined;
-    let pendingSnapshot: Job | undefined;
-    const findByIdSpy = spyOn(jobsRepository, "findByIdForWrite").mockImplementation(async () => {
-      return pendingSnapshot;
-    });
+    let standbyAudit: Record<string, unknown> | undefined;
     const canarySpy = spyOn(elizaSandboxService, "executeAdminCanaryUpgrade").mockImplementation(
       async (params) => {
         const tx = {
           update: () => ({
             set: (updates: Record<string, unknown>) => {
-              pendingAudit = updates.result as Record<string, unknown>;
-              pendingSnapshot = { ...first.job, ...updates } as Job;
+              standbyAudit = updates.result as Record<string, unknown>;
               return {
                 where: () => ({
-                  returning: async () => [pendingSnapshot],
+                  returning: async () => [{ ...first.job, ...updates }],
                 }),
               };
             },
@@ -449,13 +436,15 @@ describe("executeJob dispatch — success path per job type marks the job comple
     );
     serviceSpies.push(canarySpy);
     try {
-      const pending = await run(arm.type);
-      expect(pending).toMatchObject({ succeeded: 0, retried: 1, failed: 0 });
-      expect(first.retryLaterSpy).toHaveBeenCalledTimes(1);
+      const completed = await run(arm.type);
+      expect(completed).toMatchObject({ succeeded: 1, retried: 0, failed: 0 });
+      expect(first.retryLaterSpy).not.toHaveBeenCalled();
       expect(completedCall(first)).toBeUndefined();
-      expect(pendingAudit).toMatchObject({
-        success: false,
-        cleanupPending: true,
+      expect(standbyAudit).toMatchObject({
+        success: true,
+        cleanupPending: false,
+        standbyPending: true,
+        standbyGeneration: first.job.id,
       });
     } finally {
       first.claimSpy.mockRestore();
