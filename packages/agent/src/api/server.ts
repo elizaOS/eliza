@@ -52,10 +52,8 @@ import type {
   FavoriteAppsStore,
 } from "@elizaos/plugin-app-manager";
 import type { WalletRouteDependencies } from "@elizaos/plugin-wallet";
-import {
-  MAX_RESTORABLE_AGENT_BACKUP_BYTES,
-  readAliasedEnv,
-} from "@elizaos/shared";
+import { readAliasedEnv } from "@elizaos/shared";
+import { MAX_RESTORABLE_AGENT_BACKUP_BYTES } from "@elizaos/shared/agent-backup-limits";
 import {
   getStylePresets,
   normalizeCharacterLanguage,

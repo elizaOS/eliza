@@ -760,6 +760,67 @@ describe("ElizaSandboxService state restore auth", () => {
     });
   });
 
+  test("refuses a restore payload over the v1 restorable limit BEFORE the fetch (#17172)", async () => {
+    // `/api/restore` caps its request body at the same canonical limit, so an
+    // oversized push is a guaranteed far-end rejection. This runs on the
+    // blue/green rollback path, where a failed request is a failed ROLLBACK —
+    // so the refusal has to happen locally, before anything is sent.
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const { MAX_RESTORABLE_AGENT_BACKUP_BYTES } = await import(
+      "@elizaos/shared/agent-backup-limits"
+    );
+    let fetchCalls = 0;
+    globalThis.fetch = mock(async () => {
+      fetchCalls += 1;
+      return Response.json({ ok: true });
+    });
+
+    // One oversized value is enough to push the serialized body past the cap;
+    // build it from a repeated char so the payload is big but cheap to make.
+    const oversized = "x".repeat(MAX_RESTORABLE_AGENT_BACKUP_BYTES + 1024);
+    const push = (
+      new ElizaSandboxService() as unknown as {
+        pushState: (
+          bridgeUrl: string,
+          state: { memories: unknown[]; config: Record<string, unknown>; workspaceFiles: object },
+          options: { trusted: true; authRec: Pick<AgentSandbox, "id" | "environment_vars"> },
+        ) => Promise<void>;
+      }
+    ).pushState(
+      "https://runtime.example",
+      { memories: [], config: { blob: oversized }, workspaceFiles: {} },
+      { trusted: true, authRec: customSandbox() },
+    );
+
+    await expect(push).rejects.toThrow(/exceeds the v1 restorable limit/);
+    expect(fetchCalls).toBe(0);
+  });
+
+  test("pushes a restore payload that fits the v1 restorable limit (#17172)", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    let fetchCalls = 0;
+    globalThis.fetch = mock(async () => {
+      fetchCalls += 1;
+      return Response.json({ ok: true });
+    });
+
+    await (
+      new ElizaSandboxService() as unknown as {
+        pushState: (
+          bridgeUrl: string,
+          state: { memories: unknown[]; config: Record<string, unknown>; workspaceFiles: object },
+          options: { trusted: true; authRec: Pick<AgentSandbox, "id" | "environment_vars"> },
+        ) => Promise<void>;
+      }
+    ).pushState(
+      "https://runtime.example",
+      { memories: [], config: { small: "payload" }, workspaceFiles: {} },
+      { trusted: true, authRec: customSandbox() },
+    );
+
+    expect(fetchCalls).toBe(1);
+  });
+
   test("keeps legacy bridge URL restores unauthenticated when no sandbox record is supplied", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const requests: Array<{ headers: Record<string, string> }> = [];
