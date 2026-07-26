@@ -60,6 +60,14 @@ async function seedSandbox(): Promise<{ organizationId: string; sandboxRecordId:
   return { organizationId: organization.id, sandboxRecordId: sandbox.id };
 }
 
+async function seedOrganization(): Promise<string> {
+  const [organization] = await dbWrite
+    .insert(organizations)
+    .values({ name: "Other Chunked Backup Org", slug: unique("other-chunked-backup") })
+    .returning();
+  return organization.id;
+}
+
 function stagingDescriptor(params: {
   organizationId: string;
   sandboxRecordId: string;
@@ -174,8 +182,8 @@ describe("schema-v2 backup repository transitions", () => {
     expect((await repository.getStoredBackupById(backupId))?.storage_commit_state).toBe("complete");
 
     const [firstClaim, secondClaim] = await Promise.all([
-      repository.claimPrunableChunkedBackups(sandboxRecordId, 0),
-      repository.claimPrunableChunkedBackups(sandboxRecordId, 0),
+      repository.claimPrunableChunkedBackups(sandboxRecordId, organizationId, 0),
+      repository.claimPrunableChunkedBackups(sandboxRecordId, organizationId, 0),
     ]);
     expect(firstClaim.length + secondClaim.length).toBe(1);
     expect(await repository.getStoredBackupById(backupId)).toBeUndefined();
@@ -190,5 +198,38 @@ describe("schema-v2 backup repository transitions", () => {
     expect(
       await dbWrite.select().from(agentSandboxBackups).where(eq(agentSandboxBackups.id, backupId)),
     ).toHaveLength(0);
+  });
+
+  test("denies cross-tenant staging, lookup binding, and prune claims", async () => {
+    const { organizationId, sandboxRecordId } = await seedSandbox();
+    const otherOrganizationId = await seedOrganization();
+    const backupId = "00000000-0000-4000-8000-000000000012";
+
+    await expect(
+      repository.createChunkedBackupStaging({
+        descriptor: stagingDescriptor({
+          organizationId: otherOrganizationId,
+          sandboxRecordId,
+          backupId,
+        }),
+        snapshotType: "pre-upgrade",
+      }),
+    ).rejects.toThrow("does not belong");
+
+    const staging = stagingDescriptor({ organizationId, sandboxRecordId, backupId });
+    await repository.createChunkedBackupStaging({
+      descriptor: staging,
+      snapshotType: "pre-upgrade",
+    });
+    await expect(
+      repository.assertChunkedBackupTenant({
+        backupId,
+        organizationId: otherOrganizationId,
+        sandboxRecordId,
+      }),
+    ).rejects.toThrow("not bound");
+    await expect(
+      repository.claimPrunableChunkedBackups(sandboxRecordId, otherOrganizationId, 0),
+    ).rejects.toThrow("does not belong");
   });
 });
