@@ -183,6 +183,7 @@ export {
 export { Semaphore } from "./utils/batch-queue/semaphore.js";
 export * from "./utils/boolean";
 export * from "./utils/buffer";
+export * from "./utils/canonical-model";
 export type {
 	ConfirmationDecision,
 	ConfirmationStatus,

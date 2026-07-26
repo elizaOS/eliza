@@ -420,6 +420,7 @@ export {
 export { Semaphore } from "./utils/batch-queue/semaphore.js";
 export * from "./utils/boolean";
 export * from "./utils/buffer";
+export * from "./utils/canonical-model";
 // Export channel utilities (room/world helpers)
 export * from "./utils/channel-utils";
 export type {

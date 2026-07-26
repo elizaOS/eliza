@@ -98,6 +98,7 @@ export {
 } from "./utils";
 export { Semaphore } from "./utils/batch-queue/semaphore.js";
 export * from "./utils/buffer";
+export * from "./utils/canonical-model";
 export * from "./utils/channel-utils";
 export * from "./utils/description-compressed-lint";
 export * from "./utils/environment";
