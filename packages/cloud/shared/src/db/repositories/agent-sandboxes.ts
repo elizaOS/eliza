@@ -49,6 +49,8 @@ import { ensureAgentSandboxSchema } from "../ensure-agent-sandbox-schema";
 import { sqlRows } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";
 import {
+  type AgentBackupChunkCompleteDescriptor,
+  type AgentBackupChunkStagingDescriptor,
   type AgentBackupSnapshotType,
   type AgentBackupStateData,
   type AgentBackupStoredStateData,
@@ -119,6 +121,7 @@ const EMPTY_BACKUP_STATE: AgentSandboxBackup["state_data"] = {
   workspaceFiles: {},
 };
 const MAX_RECONSTRUCTED_BACKUP_CHAIN_DEPTH = 100;
+const COMPLETE_BACKUP = eq(agentSandboxBackups.storage_commit_state, "complete");
 
 /**
  * Correlates a sandbox row with the queue operations that legitimately own its
@@ -226,7 +229,7 @@ async function getStoredBackupById(
   const [row] = await dbRead
     .select()
     .from(agentSandboxBackups)
-    .where(eq(agentSandboxBackups.id, backupId))
+    .where(and(eq(agentSandboxBackups.id, backupId), COMPLETE_BACKUP))
     .limit(1);
   return row;
 }
@@ -244,6 +247,13 @@ async function backupOrganizationId(sandboxRecordId: string): Promise<string> {
 export async function hydrateAgentSandboxBackup(
   backup: StoredAgentSandboxBackup,
 ): Promise<AgentSandboxBackup> {
+  if (
+    backup.snapshot_schema_version !== 1 ||
+    backup.state_data_storage === "chunked-v2" ||
+    backup.storage_commit_state !== "complete"
+  ) {
+    throw new Error(`Agent sandbox backup ${backup.id} is not a committed schema-v1 payload`);
+  }
   let stateData = backup.state_data;
   if (backup.state_data_storage === "r2") {
     if (!backup.state_data_key) {
@@ -1958,7 +1968,7 @@ export class AgentSandboxesRepository {
     const rows = await dbRead
       .select()
       .from(agentSandboxBackups)
-      .where(eq(agentSandboxBackups.sandbox_record_id, sandboxRecordId))
+      .where(and(eq(agentSandboxBackups.sandbox_record_id, sandboxRecordId), COMPLETE_BACKUP))
       .orderBy(desc(agentSandboxBackups.created_at))
       .limit(limit);
     return await Promise.all(rows.map(hydrateAgentSandboxBackup));
@@ -1973,8 +1983,13 @@ export class AgentSandboxesRepository {
         id: agentSandboxBackups.id,
         sandbox_record_id: agentSandboxBackups.sandbox_record_id,
         snapshot_type: agentSandboxBackups.snapshot_type,
+        snapshot_schema_version: agentSandboxBackups.snapshot_schema_version,
         state_data_storage: agentSandboxBackups.state_data_storage,
         state_data_key: agentSandboxBackups.state_data_key,
+        state_data_descriptor: agentSandboxBackups.state_data_descriptor,
+        storage_commit_state: agentSandboxBackups.storage_commit_state,
+        storage_commit_error: agentSandboxBackups.storage_commit_error,
+        storage_commit_updated_at: agentSandboxBackups.storage_commit_updated_at,
         size_bytes: agentSandboxBackups.size_bytes,
         backup_kind: agentSandboxBackups.backup_kind,
         parent_backup_id: agentSandboxBackups.parent_backup_id,
@@ -1985,7 +2000,7 @@ export class AgentSandboxesRepository {
         created_at: agentSandboxBackups.created_at,
       })
       .from(agentSandboxBackups)
-      .where(eq(agentSandboxBackups.sandbox_record_id, sandboxRecordId))
+      .where(and(eq(agentSandboxBackups.sandbox_record_id, sandboxRecordId), COMPLETE_BACKUP))
       .orderBy(desc(agentSandboxBackups.created_at))
       .limit(limit);
   }
@@ -1994,7 +2009,7 @@ export class AgentSandboxesRepository {
     const [r] = await dbRead
       .select()
       .from(agentSandboxBackups)
-      .where(eq(agentSandboxBackups.sandbox_record_id, sandboxRecordId))
+      .where(and(eq(agentSandboxBackups.sandbox_record_id, sandboxRecordId), COMPLETE_BACKUP))
       .orderBy(desc(agentSandboxBackups.created_at))
       .limit(1);
     return r ? await hydrateAgentSandboxBackup(r) : undefined;
@@ -2016,6 +2031,7 @@ export class AgentSandboxesRepository {
         and(
           eq(agentSandboxBackups.sandbox_record_id, sandboxRecordId),
           eq(agentSandboxBackups.snapshot_type, snapshotType),
+          COMPLETE_BACKUP,
         ),
       )
       .orderBy(desc(agentSandboxBackups.created_at))
@@ -2038,6 +2054,142 @@ export class AgentSandboxesRepository {
     return getStoredBackupById(backupId);
   }
 
+  async createChunkedBackupStaging(params: {
+    descriptor: AgentBackupChunkStagingDescriptor;
+    snapshotType: AgentBackupSnapshotType;
+  }): Promise<StoredAgentSandboxBackup> {
+    const [row] = await dbWrite
+      .insert(agentSandboxBackups)
+      .values({
+        id: params.descriptor.backupId,
+        sandbox_record_id: params.descriptor.sandboxRecordId,
+        snapshot_type: params.snapshotType,
+        snapshot_schema_version: 2,
+        state_data: EMPTY_BACKUP_STATE,
+        state_data_storage: "chunked-v2",
+        state_data_descriptor: params.descriptor,
+        storage_commit_state: "staging",
+        storage_commit_error: null,
+        storage_commit_updated_at: new Date(),
+        backup_kind: "full",
+        created_at: new Date(params.descriptor.createdAt),
+      })
+      .returning();
+    if (!row) throw new Error("Failed to create chunked backup staging row");
+    return row;
+  }
+
+  async updateChunkedBackupStaging(
+    backupId: string,
+    descriptor: AgentBackupChunkStagingDescriptor,
+  ): Promise<void> {
+    const [row] = await dbWrite
+      .update(agentSandboxBackups)
+      .set({
+        state_data_descriptor: descriptor,
+        storage_commit_updated_at: new Date(),
+      })
+      .where(
+        and(
+          eq(agentSandboxBackups.id, backupId),
+          eq(agentSandboxBackups.snapshot_schema_version, 2),
+          eq(agentSandboxBackups.state_data_storage, "chunked-v2"),
+          eq(agentSandboxBackups.storage_commit_state, "staging"),
+        ),
+      )
+      .returning({ id: agentSandboxBackups.id });
+    if (!row) throw new Error(`Chunked backup staging row ${backupId} is no longer writable`);
+  }
+
+  async commitChunkedBackup(params: {
+    backupId: string;
+    contentHash: string;
+    descriptor: AgentBackupChunkCompleteDescriptor;
+    verifiedAt: Date;
+  }): Promise<StoredAgentSandboxBackup> {
+    const [row] = await dbWrite
+      .update(agentSandboxBackups)
+      .set({
+        state_data_descriptor: params.descriptor,
+        storage_commit_state: "complete",
+        storage_commit_error: null,
+        storage_commit_updated_at: params.verifiedAt,
+        size_bytes: params.descriptor.totalPlaintextBytes,
+        content_hash: params.contentHash,
+        verification_status: "verified",
+        verified_at: params.verifiedAt,
+        verification_error: null,
+      })
+      .where(
+        and(
+          eq(agentSandboxBackups.id, params.backupId),
+          eq(agentSandboxBackups.snapshot_schema_version, 2),
+          eq(agentSandboxBackups.state_data_storage, "chunked-v2"),
+          eq(agentSandboxBackups.storage_commit_state, "staging"),
+        ),
+      )
+      .returning();
+    if (!row) throw new Error(`Chunked backup staging row ${params.backupId} was not committed`);
+    return row;
+  }
+
+  async failChunkedBackup(
+    backupId: string,
+    descriptor: AgentBackupChunkStagingDescriptor,
+    error: string,
+  ): Promise<void> {
+    await dbWrite
+      .update(agentSandboxBackups)
+      .set({
+        state_data_descriptor: descriptor,
+        storage_commit_state: "failed",
+        storage_commit_error: error,
+        storage_commit_updated_at: new Date(),
+      })
+      .where(
+        and(
+          eq(agentSandboxBackups.id, backupId),
+          eq(agentSandboxBackups.snapshot_schema_version, 2),
+          eq(agentSandboxBackups.state_data_storage, "chunked-v2"),
+          ne(agentSandboxBackups.storage_commit_state, "complete"),
+        ),
+      );
+  }
+
+  async listIncompleteChunkedBackupsBefore(
+    before: Date,
+    limit: number,
+  ): Promise<StoredAgentSandboxBackup[]> {
+    return await dbRead
+      .select()
+      .from(agentSandboxBackups)
+      .where(
+        and(
+          eq(agentSandboxBackups.snapshot_schema_version, 2),
+          eq(agentSandboxBackups.state_data_storage, "chunked-v2"),
+          ne(agentSandboxBackups.storage_commit_state, "complete"),
+          lt(agentSandboxBackups.storage_commit_updated_at, before),
+        ),
+      )
+      .orderBy(asc(agentSandboxBackups.storage_commit_updated_at))
+      .limit(limit);
+  }
+
+  async deleteIncompleteChunkedBackup(backupId: string): Promise<boolean> {
+    const rows = await dbWrite
+      .delete(agentSandboxBackups)
+      .where(
+        and(
+          eq(agentSandboxBackups.id, backupId),
+          eq(agentSandboxBackups.snapshot_schema_version, 2),
+          eq(agentSandboxBackups.state_data_storage, "chunked-v2"),
+          ne(agentSandboxBackups.storage_commit_state, "complete"),
+        ),
+      )
+      .returning({ id: agentSandboxBackups.id });
+    return rows.length === 1;
+  }
+
   /** Newest stored (still-encrypted) backup row for a sandbox, un-hydrated. */
   async getLatestStoredBackup(
     sandboxRecordId: string,
@@ -2045,7 +2197,7 @@ export class AgentSandboxesRepository {
     const [row] = await dbRead
       .select()
       .from(agentSandboxBackups)
-      .where(eq(agentSandboxBackups.sandbox_record_id, sandboxRecordId))
+      .where(and(eq(agentSandboxBackups.sandbox_record_id, sandboxRecordId), COMPLETE_BACKUP))
       .orderBy(desc(agentSandboxBackups.created_at))
       .limit(1);
     return row;
@@ -2087,7 +2239,7 @@ export class AgentSandboxesRepository {
         createdAt: agentSandboxBackups.created_at,
       })
       .from(agentSandboxBackups)
-      .where(eq(agentSandboxBackups.sandbox_record_id, sandboxRecordId));
+      .where(and(eq(agentSandboxBackups.sandbox_record_id, sandboxRecordId), COMPLETE_BACKUP));
     if (all.length <= keep) return 0;
     const nodes: BackupChainNode[] = all.map((b) => ({
       id: b.id,
