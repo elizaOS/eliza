@@ -5,6 +5,7 @@
  */
 
 import { afterEach, describe, expect, mock, test } from "bun:test";
+import { JOB_TYPES } from "@/lib/services/provisioning-job-types";
 import { createAdminAgentImageCanaryRoute } from "../v1/admin/agent-image-canary/route";
 
 type RouteDependencies = NonNullable<
@@ -19,6 +20,9 @@ const ACTOR_ORG = "77777777-7777-4777-8777-777777777777";
 const JOB = "44444444-4444-4444-8444-444444444444";
 const ROLLOUT = "55555555-5555-4555-8555-555555555555";
 const REQUEST = "88888888-8888-4888-8888-888888888888";
+const BACKUP = "99999999-9999-4999-8999-999999999999";
+const RESTORE_AGGREGATE_SHA256 = "e".repeat(64);
+const RESTORE_CANDIDATE_ID = "restore-candidate-999999";
 const SOURCE_DIGEST = `sha256:${"a".repeat(64)}`;
 const TARGET_DIGEST = `sha256:${"b".repeat(64)}`;
 const PLAN_FINGERPRINT = `sha256:${"c".repeat(64)}`;
@@ -144,9 +148,14 @@ function canaryJob(overrides: Record<string, unknown> = {}): PolledJob {
 const getJob = mock<RouteDependencies["jobService"]["getJob"]>(async () =>
   canaryJob(),
 );
+const decideStandby = mock<
+  RouteDependencies["rolloutService"]["decideStandby"]
+>(async () =>
+  canaryJob({ type: JOB_TYPES.AGENT_ADMIN_CANARY_STANDBY_DECISION }),
+);
 const route = createAdminAgentImageCanaryRoute({
   requireAdmin,
-  rolloutService: { previewOrEnqueue, recoverRequest },
+  rolloutService: { previewOrEnqueue, recoverRequest, decideStandby },
   jobService: { getJob, triggerImmediate },
   logger: {
     info: () => undefined,
@@ -161,6 +170,10 @@ afterEach(() => {
     role: "super_admin",
   });
   previewOrEnqueue.mockReset();
+  decideStandby.mockReset();
+  decideStandby.mockResolvedValue(
+    canaryJob({ type: JOB_TYPES.AGENT_ADMIN_CANARY_STANDBY_DECISION }),
+  );
   previewOrEnqueue.mockResolvedValue({
     dryRun: true,
     operation: "upgrade",
@@ -331,6 +344,106 @@ describe("POST /api/v1/admin/agent-image-canary", () => {
   });
 });
 
+describe("POST /api/v1/admin/agent-image-canary/jobs/:jobId/decision", () => {
+  function decisionRequest(body: unknown, jobId = JOB): Request {
+    return new Request(`http://test.local/jobs/${jobId}/decision`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+
+  test("accept binds the authenticated actor and nudges only after durable enqueue", async () => {
+    const body = {
+      requestId: REQUEST,
+      decision: "accept",
+      verifiedBackupId: BACKUP,
+      restoreValidationId: BACKUP,
+      restoreValidationAggregateSha256: RESTORE_AGGREGATE_SHA256,
+      restoreValidatedCandidateProviderSandboxId: RESTORE_CANDIDATE_ID,
+    };
+    const response = await route.fetch(decisionRequest(body), {
+      CRON_SECRET: "test",
+    });
+    expect(response.status).toBe(202);
+    expect(decideStandby).toHaveBeenCalledWith(
+      {
+        ...body,
+        sourceJobId: JOB,
+      },
+      ACTOR,
+    );
+    expect(triggerImmediate).toHaveBeenCalledTimes(1);
+    const payload = (await response.json()) as {
+      data: { jobId: string; sourceJobId: string; decision: string };
+      polling: { endpoint: string };
+    };
+    expect(payload.data).toEqual({
+      jobId: JOB,
+      sourceJobId: JOB,
+      decision: "accept",
+    });
+    expect(payload.polling.endpoint).toBe(
+      `/api/v1/admin/agent-image-canary/jobs/${JOB}`,
+    );
+  });
+
+  test("reject forbids backup authority and accept requires it", async () => {
+    expect(
+      (
+        await route.fetch(
+          decisionRequest({
+            requestId: REQUEST,
+            decision: "reject",
+            verifiedBackupId: BACKUP,
+          }),
+        )
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await route.fetch(
+          decisionRequest({
+            requestId: REQUEST,
+            decision: "accept",
+          }),
+        )
+      ).status,
+    ).toBe(400);
+    expect(decideStandby).not.toHaveBeenCalled();
+    expect(triggerImmediate).not.toHaveBeenCalled();
+  });
+
+  test("rejects non-super-admins and malformed source job IDs before enqueue", async () => {
+    requireAdmin.mockResolvedValue({ user: AUTH_USER, role: "moderator" });
+    expect(
+      (
+        await route.fetch(
+          decisionRequest({
+            requestId: REQUEST,
+            decision: "reject",
+          }),
+        )
+      ).status,
+    ).toBe(403);
+    requireAdmin.mockResolvedValue({ user: AUTH_USER, role: "super_admin" });
+    expect(
+      (
+        await route.fetch(
+          decisionRequest(
+            {
+              requestId: REQUEST,
+              decision: "reject",
+            },
+            "not-a-uuid",
+          ),
+        )
+      ).status,
+    ).toBe(400);
+    expect(decideStandby).not.toHaveBeenCalled();
+  });
+});
+
 describe("GET /api/v1/admin/agent-image-canary/requests/:requestId", () => {
   function recoveryRequest(requestId = REQUEST): Request {
     return new Request(`http://test.local/requests/${requestId}`);
@@ -381,6 +494,73 @@ describe("GET /api/v1/admin/agent-image-canary/jobs/:jobId", () => {
       expect.objectContaining({ id: JOB, status: "pending" }),
     );
     expect(payload.polling.shouldContinue).toBe(true);
+  });
+
+  test("polling a completed standby acceptance preserves exact restore proof", async () => {
+    const now = new Date("2026-07-23T00:00:00.000Z");
+    getJob.mockResolvedValue(
+      canaryJob({
+        type: JOB_TYPES.AGENT_ADMIN_CANARY_STANDBY_DECISION,
+        status: "completed",
+        data: {
+          requestId: REQUEST,
+          sourceJobId: REQUEST,
+          decision: "accept",
+          verifiedBackupId: BACKUP,
+          restoreValidationId: BACKUP,
+          restoreValidationAggregateSha256: RESTORE_AGGREGATE_SHA256,
+          restoreValidatedCandidateProviderSandboxId: RESTORE_CANDIDATE_ID,
+          standbyGeneration: ROLLOUT,
+          rolloutId: ROLLOUT,
+          actorUserId: ACTOR,
+          userId: ACTOR,
+          decisionAt: now.toISOString(),
+          agentId: AGENT,
+          organizationId: ORG,
+          targetOwnerUserId: OTHER_ACTOR,
+          sourceImage: "ghcr.io/elizaos/eliza:sha-production",
+          sourceDigest: SOURCE_DIGEST,
+          targetImage: TARGET_IMAGE,
+          targetDigest: TARGET_DIGEST,
+        },
+        result: {
+          success: true,
+          decision: "accept",
+          outcome: "accepted",
+          requestId: REQUEST,
+          sourceJobId: REQUEST,
+          decisionJobId: JOB,
+          standbyGeneration: ROLLOUT,
+          rolloutId: ROLLOUT,
+          actorUserId: ACTOR,
+          agentId: AGENT,
+          organizationId: ORG,
+          targetImage: TARGET_IMAGE,
+          targetDigest: TARGET_DIGEST,
+          verifiedBackupId: BACKUP,
+          restoreValidationId: BACKUP,
+          restoreValidationAggregateSha256: RESTORE_AGGREGATE_SHA256,
+          restoreValidatedCandidateProviderSandboxId: RESTORE_CANDIDATE_ID,
+          startedAt: now.toISOString(),
+          finishedAt: now.toISOString(),
+        },
+        completed_at: now,
+      }),
+    );
+
+    const response = await route.fetch(pollRequest());
+    expect(response.status).toBe(200);
+    const payload = (await response.json()) as {
+      data: { result: Record<string, unknown> };
+      polling: { shouldContinue: boolean };
+    };
+    expect(payload.data.result).toMatchObject({
+      verifiedBackupId: BACKUP,
+      restoreValidationId: BACKUP,
+      restoreValidationAggregateSha256: RESTORE_AGGREGATE_SHA256,
+      restoreValidatedCandidateProviderSandboxId: RESTORE_CANDIDATE_ID,
+    });
+    expect(payload.polling.shouldContinue).toBe(false);
   });
 
   test("a different super-admin receives the same 404 as a missing job", async () => {
