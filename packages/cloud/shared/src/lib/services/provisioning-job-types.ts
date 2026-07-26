@@ -28,6 +28,11 @@ export const JOB_TYPES = {
    */
   AGENT_ADMIN_CANARY_IMAGE: "agent_admin_canary_image",
   /**
+   * Explicit acceptance or rejection of an admin-canary placement whose prior
+   * exact container is retained as a paused rollback standby.
+   */
+  AGENT_ADMIN_CANARY_STANDBY_DECISION: "agent_admin_canary_standby_decision",
+  /**
    * Fleet-downgrade / rollback: blue/green swap an agent back onto its
    * persisted `previous_image_digest`, restoring the `pre-upgrade` snapshot
    * before cutover. The inverse of AGENT_UPGRADE — enqueued explicitly (an
@@ -113,6 +118,7 @@ export const EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES: readonly ProvisioningJobType[]
   JOB_TYPES.AGENT_WAKE,
   JOB_TYPES.AGENT_UPGRADE,
   JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
+  JOB_TYPES.AGENT_ADMIN_CANARY_STANDBY_DECISION,
 ];
 
 // ── Lanes (which daemon claims which jobs) ──────────────────────────────────
@@ -143,6 +149,7 @@ export const AGENT_JOB_TYPES = [
   JOB_TYPES.AGENT_SNAPSHOT,
   JOB_TYPES.AGENT_UPGRADE,
   JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
+  JOB_TYPES.AGENT_ADMIN_CANARY_STANDBY_DECISION,
   JOB_TYPES.AGENT_DOWNGRADE,
   JOB_TYPES.AGENT_SLEEP,
   JOB_TYPES.AGENT_WAKE,
