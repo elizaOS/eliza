@@ -15,6 +15,11 @@ on:
         required: false
         type: string
         default: ""
+      diagnose_stale_canary_suffix:
+        description: "Read-only staging diagnosis for one exact stale canary suffix; performs no canary or lifecycle mutation"
+        required: false
+        type: string
+        default: ""
   # A maintainer-applied label lets the workflow prove a new harness before it
   # reaches the default branch; the staging environment still owns secret and
   # approval policy.
@@ -31,7 +36,7 @@ permissions:
 jobs:
   canary:
     name: Provision + bridge + SSE + cleanup
-    if: ${{ github.event_name != 'pull_request' || github.event.label.name == 'run-managed-dedicated-canary' }}
+    if: ${{ (github.event_name != 'pull_request' || github.event.label.name == 'run-managed-dedicated-canary') && inputs.diagnose_stale_canary_suffix == '' }}
     runs-on: ubuntu-24.04
     environment: staging
     # The script's absolute worst-case request budgets stay below this cap and
@@ -255,3 +260,181 @@ jobs:
           ' >> "$GITHUB_STEP_SUMMARY"
 
           echo "Managed dedicated canary passed with exact cleanup."
+
+  diagnose:
+    name: Read-only stale canary diagnosis
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.diagnose_stale_canary_suffix != '' }}
+    runs-on: ubuntu-24.04
+    environment: staging
+    timeout-minutes: 10
+    env:
+      CANARY_DIAGNOSTIC_SUFFIX: ${{ inputs.diagnose_stale_canary_suffix }}
+      CANARY_RECOVERY_SUFFIX: ${{ inputs.stale_canary_suffix }}
+      CANARY_DIAGNOSTIC_RAW_PATH: reports/managed-dedicated-canary-diagnostic.raw.json
+      CANARY_DIAGNOSTIC_EVIDENCE_PATH: reports/managed-dedicated-canary-diagnostic.json
+    steps:
+      - name: Checkout exact diagnostic source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: canary
+
+      - name: Validate diagnostic contracts
+        run: bun test packages/scripts/cloud/admin/managed-dedicated-canary-diagnostic.test.ts
+
+      - name: Query exact stale canary read-only
+        shell: bash
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          PGOPTIONS: -c default_transaction_read_only=on -c statement_timeout=20000
+        run: |
+          set -euo pipefail
+          if [[ ! "$CANARY_DIAGNOSTIC_SUFFIX" =~ ^r[1-9][0-9]{7,19}a[1-9][0-9]{0,3}$ ]]; then
+            echo "::error::Diagnostic suffix is invalid."
+            exit 1
+          fi
+          if [[ -n "$CANARY_RECOVERY_SUFFIX" ]]; then
+            echo "::error::Diagnostic and mutation recovery inputs are mutually exclusive."
+            exit 1
+          fi
+          if [[ -z "${DATABASE_URL:-}" ]]; then
+            echo "::error::Staging DATABASE_URL is unavailable."
+            exit 1
+          fi
+
+          mkdir -p reports
+          umask 077
+          psql "$DATABASE_URL" \
+            --no-psqlrc \
+            --no-align \
+            --tuples-only \
+            --quiet \
+            --set ON_ERROR_STOP=1 \
+            --set suffix="$CANARY_DIAGNOSTIC_SUFFIX" \
+            > "$CANARY_DIAGNOSTIC_RAW_PATH" <<'SQL'
+          BEGIN READ ONLY;
+          SET LOCAL statement_timeout = '20s';
+          WITH target AS (
+            SELECT
+              id,
+              status,
+              error_message,
+              error_count,
+              deletion_attempt_id IS NOT NULL AS deletion_owned,
+              deletion_started_at,
+              updated_at,
+              sandbox_id IS NOT NULL AS sandbox_id_present,
+              node_id IS NOT NULL AS node_id_present,
+              container_name IS NOT NULL AS container_name_present
+            FROM agent_sandboxes
+            WHERE agent_name = 'managed-dedicated-canary-' || :'suffix'
+          ),
+          newest_jobs AS (
+            SELECT
+              jobs.id AS sort_id,
+              jobs.created_at AS sort_created_at,
+              json_build_object(
+                'status', jobs.status,
+                'error', jobs.error,
+                'result', CASE
+                  WHEN jobs.result IS NULL THEN NULL
+                  ELSE json_build_object(
+                    'containerStopped', jobs.result -> 'containerStopped',
+                    'rowDeleted', jobs.result -> 'rowDeleted',
+                    'error', jobs.result -> 'error'
+                  )
+                END,
+                'attempts', jobs.attempts,
+                'maxAttempts', jobs.max_attempts,
+                'resultStorage', jobs.result_storage,
+                'errorStorage', jobs.error_storage,
+                'scheduledFor', jobs.scheduled_for,
+                'startedAt', jobs.started_at,
+                'completedAt', jobs.completed_at,
+                'createdAt', jobs.created_at,
+                'updatedAt', jobs.updated_at
+              ) AS diagnostic
+            FROM jobs
+            INNER JOIN target ON target.id::text = jobs.agent_id
+            WHERE jobs.type = 'agent_delete'
+            ORDER BY jobs.created_at DESC, jobs.id DESC
+            LIMIT 3
+          )
+          SELECT json_build_object(
+            'targetCount', (SELECT count(*) FROM target),
+            'agent', (
+              SELECT json_build_object(
+                'status', status,
+                'errorMessage', error_message,
+                'errorCount', error_count,
+                'deletionOwned', deletion_owned,
+                'deletionStartedAt', deletion_started_at,
+                'updatedAt', updated_at,
+                'locator', json_build_object(
+                  'sandboxIdPresent', sandbox_id_present,
+                  'nodeIdPresent', node_id_present,
+                  'containerNamePresent', container_name_present
+                )
+              )
+              FROM target
+              LIMIT 1
+            ),
+            'jobs', COALESCE(
+              (
+                SELECT json_agg(
+                  newest_jobs.diagnostic
+                  ORDER BY newest_jobs.sort_created_at DESC, newest_jobs.sort_id DESC
+                )
+                FROM newest_jobs
+              ),
+              '[]'::json
+            )
+          );
+          COMMIT;
+          SQL
+
+      - name: Classify privacy-safe diagnostic
+        shell: bash
+        run: |
+          set -euo pipefail
+          bun run packages/scripts/cloud/admin/managed-dedicated-canary-diagnostic.ts \
+            "$CANARY_DIAGNOSTIC_SUFFIX" \
+            "$CANARY_DIAGNOSTIC_RAW_PATH" \
+            "$CANARY_DIAGNOSTIC_EVIDENCE_PATH"
+          rm -f "$CANARY_DIAGNOSTIC_RAW_PATH"
+
+      - name: Upload privacy-safe diagnostic
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: managed-dedicated-canary-diagnostic-${{ github.run_id }}-${{ github.run_attempt }}
+          path: reports/managed-dedicated-canary-diagnostic.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Summarize classified result
+        shell: bash
+        run: |
+          set -euo pipefail
+          bun -e '
+            import { readFileSync } from "node:fs";
+            const evidence = JSON.parse(
+              readFileSync(process.env.CANARY_DIAGNOSTIC_EVIDENCE_PATH, "utf8"),
+            );
+            const latestJob = evidence.jobs[0];
+            console.log("### Managed dedicated staging canary diagnostic");
+            console.log("");
+            console.log("- exact target count: `" + evidence.targetCount + "`");
+            console.log("- sandbox status: `" + evidence.sandbox.status + "`");
+            console.log("- sandbox error class: `" + evidence.sandbox.errorCode + "`");
+            console.log("- latest job status: `" + latestJob.status + "`");
+            console.log("- latest job error class: `" + latestJob.errorCode + "`");
+            console.log("- latest persisted result class: `" + latestJob.resultErrorCode + "`");
+            console.log("- attempts: `" + latestJob.attempts + "/" + latestJob.maxAttempts + "`");
+            console.log("- container stopped: `" + latestJob.containerStopped + "`");
+            console.log("- row deleted: `" + latestJob.rowDeleted + "`");
+          ' >> "$GITHUB_STEP_SUMMARY"
