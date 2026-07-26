@@ -8,12 +8,17 @@
  * complete only after every object is durable; callers commit it atomically
  * with the backup row before making the restore point visible.
  */
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
 import { orgKey } from "@elizaos/security/kms";
 import { getKmsClient } from "../../db/crypto/kms-client";
 import { ObjectNamespaces } from "../storage/object-namespace";
-import { deleteObject, getObjectBytes, putObjectBytes } from "../storage/object-store";
+import {
+  buildObjectKey,
+  deleteObject,
+  getObjectBytes,
+  putObjectBytes,
+} from "../storage/object-store";
 
 const textEncoder = new TextEncoder();
 const DEFAULT_CHUNK_BYTES = 4 * 1024 * 1024;
@@ -21,6 +26,9 @@ const MAX_CHUNK_BYTES = 16 * 1024 * 1024;
 const MAX_CHUNK_COUNT = 512;
 const MAX_TOTAL_BYTES = DEFAULT_CHUNK_BYTES * MAX_CHUNK_COUNT;
 const CHUNK_CONTENT_TYPE = "application/vnd.elizaos.agent-backup-chunk";
+const NONCE_BYTES = 12;
+const AUTH_TAG_BYTES = 16;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 export interface AgentBackupEncryptedChunk {
   index: number;
@@ -43,6 +51,7 @@ export interface AgentBackupChunkDescriptor {
   organizationId: string;
   sandboxRecordId: string;
   backupId: string;
+  objectSetId: string;
   createdAt: string;
   chunkBytes: number;
   totalPlaintextBytes: number;
@@ -55,6 +64,11 @@ export interface AgentBackupChunkIdentity {
   sandboxRecordId: string;
   backupId: string;
   backupSchemaVersion: 2;
+}
+
+export interface AgentBackupPlannedChunk {
+  index: number;
+  objectKey: string;
 }
 
 function backupChunkError(code: string, message: string, context?: Record<string, unknown>) {
@@ -83,8 +97,13 @@ function toBase64(bytes: Uint8Array): string {
   return Buffer.from(bytes).toString("base64");
 }
 
-function fromBase64(value: string, field: string): Uint8Array {
-  if (value.length === 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(value)) {
+function fromBase64(value: string, field: string, expectedBytes: number): Uint8Array {
+  const expectedEncodedLength = Math.ceil(expectedBytes / 3) * 4;
+  if (
+    typeof value !== "string" ||
+    value.length !== expectedEncodedLength ||
+    !/^[A-Za-z0-9+/]+={0,2}$/.test(value)
+  ) {
     throw backupChunkError(
       "AGENT_BACKUP_CHUNK_DESCRIPTOR_INVALID",
       `${field} is not canonical base64`,
@@ -95,6 +114,12 @@ function fromBase64(value: string, field: string): Uint8Array {
     throw backupChunkError(
       "AGENT_BACKUP_CHUNK_DESCRIPTOR_INVALID",
       `${field} is not canonical base64`,
+    );
+  }
+  if (decoded.byteLength !== expectedBytes) {
+    throw backupChunkError(
+      "AGENT_BACKUP_CHUNK_DESCRIPTOR_INVALID",
+      `${field} must decode to exactly ${expectedBytes} bytes`,
     );
   }
   return new Uint8Array(decoded);
@@ -127,6 +152,13 @@ async function* fixedChunks(
         "Backup byte stream emitted a non-Uint8Array value",
       );
     }
+    if (input.byteLength > MAX_CHUNK_BYTES) {
+      throw backupChunkError(
+        "AGENT_BACKUP_CHUNK_SOURCE_INVALID",
+        `Backup byte stream emitted a view larger than ${MAX_CHUNK_BYTES} bytes`,
+        { emittedBytes: input.byteLength },
+      );
+    }
     let offset = 0;
     while (offset < input.byteLength) {
       const copied = Math.min(chunkBytes - used, input.byteLength - offset);
@@ -135,21 +167,26 @@ async function* fixedChunks(
       used += copied;
       if (used === chunkBytes) {
         yield target;
-        target = new Uint8Array(chunkBytes);
         used = 0;
       }
     }
   }
-  if (used > 0) yield target.slice(0, used);
+  if (used > 0) yield target.subarray(0, used);
 }
 
 function validateIdentity(identity: AgentBackupChunkIdentity): void {
-  for (const [name, value] of Object.entries(identity)) {
-    if (name === "backupSchemaVersion") continue;
-    if (typeof value !== "string" || value.trim().length === 0) {
+  if (!identity || typeof identity !== "object") {
+    throw backupChunkError(
+      "AGENT_BACKUP_CHUNK_IDENTITY_INVALID",
+      "Backup chunk identity must be an object",
+    );
+  }
+  for (const name of ["organizationId", "sandboxRecordId", "backupId"] as const) {
+    const value = identity[name];
+    if (typeof value !== "string" || !UUID_RE.test(value)) {
       throw backupChunkError(
         "AGENT_BACKUP_CHUNK_IDENTITY_INVALID",
-        `${name} must be a non-empty string`,
+        `${name} must be a canonical UUID`,
       );
     }
   }
@@ -161,12 +198,35 @@ function validateIdentity(identity: AgentBackupChunkIdentity): void {
   }
 }
 
+function canonicalCreatedAt(value: string): Date | null {
+  if (typeof value !== "string") return null;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime()) || date.toISOString() !== value) return null;
+  return date;
+}
+
+function chunkObjectParams(params: {
+  identity: AgentBackupChunkIdentity;
+  objectSetId: string;
+  createdAt: Date;
+  index: number;
+}) {
+  return {
+    namespace: ObjectNamespaces.AgentSandboxBackups,
+    organizationId: params.identity.organizationId,
+    objectId: `${params.identity.backupId}.${params.objectSetId}`,
+    field: `chunk-${String(params.index).padStart(6, "0")}`,
+    createdAt: params.createdAt,
+  } as const;
+}
+
 export async function stageEncryptedAgentBackupChunks(params: {
   identity: AgentBackupChunkIdentity;
   source: AsyncIterable<Uint8Array>;
   createdAt?: Date;
   chunkBytes?: number;
   maxTotalBytes?: number;
+  onObjectPlanned?: (planned: AgentBackupPlannedChunk) => Promise<void>;
 }): Promise<AgentBackupChunkDescriptor> {
   validateIdentity(params.identity);
   const chunkBytes = params.chunkBytes ?? DEFAULT_CHUNK_BYTES;
@@ -175,6 +235,13 @@ export async function stageEncryptedAgentBackupChunks(params: {
   assertPositiveInteger(maxTotalBytes, "maxTotalBytes", MAX_TOTAL_BYTES);
 
   const createdAt = params.createdAt ?? new Date();
+  if (!Number.isFinite(createdAt.getTime())) {
+    throw backupChunkError(
+      "AGENT_BACKUP_CHUNK_DESCRIPTOR_INVALID",
+      "Backup chunk creation time must be a valid Date",
+    );
+  }
+  const objectSetId = randomUUID();
   const kms = getKmsClient();
   const keyId = orgKey(params.identity.organizationId, "dek");
   await kms.getOrCreateKey(keyId);
@@ -207,16 +274,42 @@ export async function stageEncryptedAgentBackupChunks(params: {
         chunkAad(params.identity, index, plaintext.byteLength),
       );
       const ciphertext = new Uint8Array(encrypted.ciphertext);
-      const objectKey = await putObjectBytes({
-        namespace: ObjectNamespaces.AgentSandboxBackups,
-        organizationId: params.identity.organizationId,
-        objectId: params.identity.backupId,
-        field: `chunk-${String(index).padStart(6, "0")}`,
+      if (
+        encrypted.keyId !== keyId ||
+        !Number.isSafeInteger(encrypted.keyVersion) ||
+        encrypted.keyVersion < 1 ||
+        encrypted.nonce.byteLength !== NONCE_BYTES ||
+        encrypted.authTag.byteLength !== AUTH_TAG_BYTES ||
+        ciphertext.byteLength !== plaintext.byteLength
+      ) {
+        throw backupChunkError(
+          "AGENT_BACKUP_CHUNK_ENCRYPTION_INVALID",
+          "KMS returned metadata that is incompatible with the chunk protocol",
+        );
+      }
+      const objectParams = chunkObjectParams({
+        identity: params.identity,
+        objectSetId,
         createdAt,
+        index,
+      });
+      const expectedObjectKey = buildObjectKey({ ...objectParams, extension: "bin" });
+      // error-policy:J6 best-effort teardown — track the intended key before
+      // PUT because a transport error can occur after object storage commits.
+      uploadedKeys.push(expectedObjectKey);
+      await params.onObjectPlanned?.({ index, objectKey: expectedObjectKey });
+      const objectKey = await putObjectBytes({
+        ...objectParams,
         body: ciphertext,
         contentType: CHUNK_CONTENT_TYPE,
       });
-      uploadedKeys.push(objectKey);
+      if (objectKey !== expectedObjectKey) {
+        uploadedKeys.push(objectKey);
+        throw backupChunkError(
+          "AGENT_BACKUP_CHUNK_OBJECT_KEY_INVALID",
+          "Object storage returned a key outside the staged backup object set",
+        );
+      }
       chunks.push({
         index,
         objectKey,
@@ -231,11 +324,15 @@ export async function stageEncryptedAgentBackupChunks(params: {
       });
     }
   } catch (error) {
+    // error-policy:J6 best-effort teardown — staging is not visible until its
+    // descriptor commits, so every possibly-written object must be removed.
     const cleanupFailures: string[] = [];
     for (const key of uploadedKeys.reverse()) {
       try {
         await deleteObject(key);
       } catch (cleanupError) {
+        // error-policy:J6 best-effort teardown — aggregate every failed delete
+        // and surface the residue instead of hiding it behind the stage error.
         cleanupFailures.push(
           `${key}: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`,
         );
@@ -262,6 +359,7 @@ export async function stageEncryptedAgentBackupChunks(params: {
     organizationId: params.identity.organizationId,
     sandboxRecordId: params.identity.sandboxRecordId,
     backupId: params.identity.backupId,
+    objectSetId,
     createdAt: createdAt.toISOString(),
     chunkBytes,
     totalPlaintextBytes,
@@ -276,13 +374,18 @@ function validateDescriptor(
 ): void {
   validateIdentity(identity);
   if (
+    !descriptor ||
+    typeof descriptor !== "object" ||
     descriptor.format !== "elizaos.agent-backup-chunks" ||
     descriptor.descriptorVersion !== 1 ||
     descriptor.backupSchemaVersion !== 2 ||
     descriptor.commitState !== "complete" ||
     descriptor.organizationId !== identity.organizationId ||
     descriptor.sandboxRecordId !== identity.sandboxRecordId ||
-    descriptor.backupId !== identity.backupId
+    descriptor.backupId !== identity.backupId ||
+    typeof descriptor.objectSetId !== "string" ||
+    !UUID_RE.test(descriptor.objectSetId) ||
+    canonicalCreatedAt(descriptor.createdAt) === null
   ) {
     throw backupChunkError(
       "AGENT_BACKUP_CHUNK_DESCRIPTOR_INVALID",
@@ -303,6 +406,62 @@ function validateDescriptor(
       "Backup chunk descriptor has invalid aggregate metadata",
     );
   }
+  const expectedChunkCount =
+    descriptor.totalPlaintextBytes === 0
+      ? 0
+      : Math.ceil(descriptor.totalPlaintextBytes / descriptor.chunkBytes);
+  if (descriptor.chunks.length !== expectedChunkCount) {
+    throw backupChunkError(
+      "AGENT_BACKUP_CHUNK_DESCRIPTOR_INVALID",
+      "Backup chunk descriptor does not contain the canonical fixed-size chunk count",
+    );
+  }
+}
+
+function validateChunkMetadata(params: {
+  chunk: AgentBackupEncryptedChunk;
+  position: number;
+  descriptor: AgentBackupChunkDescriptor;
+  identity: AgentBackupChunkIdentity;
+  createdAt: Date;
+  expectedKeyId: string;
+}): { nonce: Uint8Array; authTag: Uint8Array } {
+  const { chunk, position, descriptor } = params;
+  const expectedPlaintextBytes = Math.min(
+    descriptor.chunkBytes,
+    descriptor.totalPlaintextBytes - position * descriptor.chunkBytes,
+  );
+  const expectedObjectKey = buildObjectKey({
+    ...chunkObjectParams({
+      identity: params.identity,
+      objectSetId: descriptor.objectSetId,
+      createdAt: params.createdAt,
+      index: position,
+    }),
+    extension: "bin",
+  });
+  if (
+    !chunk ||
+    typeof chunk !== "object" ||
+    chunk.index !== position ||
+    chunk.plaintextBytes !== expectedPlaintextBytes ||
+    chunk.ciphertextBytes !== expectedPlaintextBytes ||
+    !/^[a-f0-9]{64}$/.test(chunk.plaintextSha256) ||
+    !/^[a-f0-9]{64}$/.test(chunk.ciphertextSha256) ||
+    chunk.objectKey !== expectedObjectKey ||
+    chunk.kmsKeyId !== params.expectedKeyId ||
+    !Number.isSafeInteger(chunk.kmsKeyVersion) ||
+    chunk.kmsKeyVersion < 1
+  ) {
+    throw backupChunkError(
+      "AGENT_BACKUP_CHUNK_DESCRIPTOR_INVALID",
+      `Backup chunk descriptor is invalid at index ${position}`,
+    );
+  }
+  return {
+    nonce: fromBase64(chunk.nonceBase64, `chunks[${position}].nonceBase64`, NONCE_BYTES),
+    authTag: fromBase64(chunk.authTagBase64, `chunks[${position}].authTagBase64`, AUTH_TAG_BYTES),
+  };
 }
 
 export async function* readEncryptedAgentBackupChunks(params: {
@@ -311,32 +470,36 @@ export async function* readEncryptedAgentBackupChunks(params: {
 }): AsyncGenerator<Uint8Array> {
   validateDescriptor(params.descriptor, params.identity);
   const kms = getKmsClient();
+  const expectedKeyId = orgKey(params.identity.organizationId, "dek");
+  const createdAt = canonicalCreatedAt(params.descriptor.createdAt);
+  if (!createdAt) {
+    throw backupChunkError(
+      "AGENT_BACKUP_CHUNK_DESCRIPTOR_INVALID",
+      "Backup chunk descriptor has an invalid creation time",
+    );
+  }
+  const validatedChunks = params.descriptor.chunks.map((chunk, position) =>
+    validateChunkMetadata({
+      chunk,
+      position,
+      descriptor: params.descriptor,
+      identity: params.identity,
+      createdAt,
+      expectedKeyId,
+    }),
+  );
   const totalHash = createHash("sha256");
   let totalPlaintextBytes = 0;
 
   for (const [position, chunk] of params.descriptor.chunks.entries()) {
-    if (
-      chunk.index !== position ||
-      !Number.isSafeInteger(chunk.plaintextBytes) ||
-      chunk.plaintextBytes < 1 ||
-      chunk.plaintextBytes > params.descriptor.chunkBytes ||
-      !Number.isSafeInteger(chunk.ciphertextBytes) ||
-      chunk.ciphertextBytes < 1 ||
-      !/^[a-f0-9]{64}$/.test(chunk.plaintextSha256) ||
-      !/^[a-f0-9]{64}$/.test(chunk.ciphertextSha256) ||
-      typeof chunk.objectKey !== "string" ||
-      !chunk.objectKey.startsWith(`${ObjectNamespaces.AgentSandboxBackups}/`) ||
-      typeof chunk.kmsKeyId !== "string" ||
-      chunk.kmsKeyId.length === 0 ||
-      !Number.isSafeInteger(chunk.kmsKeyVersion) ||
-      chunk.kmsKeyVersion < 1
-    ) {
+    const validated = validatedChunks[position];
+    if (!validated) {
       throw backupChunkError(
         "AGENT_BACKUP_CHUNK_DESCRIPTOR_INVALID",
         `Backup chunk descriptor is invalid at index ${position}`,
       );
     }
-    const ciphertext = await getObjectBytes(chunk.objectKey);
+    const ciphertext = await getObjectBytes(chunk.objectKey, chunk.ciphertextBytes);
     if (!ciphertext) {
       throw backupChunkError(
         "AGENT_BACKUP_CHUNK_MISSING",
@@ -356,8 +519,8 @@ export async function* readEncryptedAgentBackupChunks(params: {
       await kms.decrypt(
         chunk.kmsKeyId,
         ciphertext,
-        fromBase64(chunk.nonceBase64, `chunks[${position}].nonceBase64`),
-        fromBase64(chunk.authTagBase64, `chunks[${position}].authTagBase64`),
+        validated.nonce,
+        validated.authTag,
         chunkAad(params.identity, position, chunk.plaintextBytes),
         chunk.kmsKeyVersion,
       ),
