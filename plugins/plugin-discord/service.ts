@@ -1712,6 +1712,14 @@ export class DiscordService extends Service implements IDiscordService {
 
 		let targetChannel: Channel | undefined | null = null;
 		let resolvedChannelId: string | null = null;
+		let dmRecipient:
+			| {
+					entityId: UUID;
+					discordUserId: string;
+					userName?: string;
+					name?: string;
+			  }
+			| undefined;
 
 		try {
 			if (target.channelId) {
@@ -1745,6 +1753,19 @@ export class DiscordService extends Service implements IDiscordService {
 				const user = await client.users.fetch(discordUserId);
 				if (user) {
 					targetChannel = user.dmChannel ?? (await user.createDM());
+					// Connector user listings carry Discord snowflakes in entityId,
+					// while identity-linked targets already carry their canonical UUID.
+					const recipientEntityId = normalizeDiscordTargetUserId(
+						target.entityId,
+					)
+						? this.resolveDiscordEntityId(discordUserId)
+						: (target.entityId as UUID);
+					dmRecipient = {
+						entityId: recipientEntityId,
+						discordUserId,
+						userName: user.username,
+						name: user.displayName || user.username,
+					};
 				}
 			} else {
 				throw new Error(
@@ -1807,6 +1828,15 @@ export class DiscordService extends Service implements IDiscordService {
 					const channelType = await this.getChannelType(
 						targetChannel as Channel,
 					);
+					const targetChannelGuild =
+						"guild" in targetChannel ? targetChannel.guild : null;
+					const serverId = targetChannelGuild?.id
+						? targetChannelGuild.id
+						: targetChannel.id;
+					const worldId = createUniqueUuid(runtime, serverId) as UUID;
+					const worldName = targetChannelGuild?.name
+						? targetChannelGuild.name
+						: undefined;
 
 					const textContent = normalizeDiscordMessageText(content.text);
 					const outboundReplyToMessageId =
@@ -1842,6 +1872,27 @@ export class DiscordService extends Service implements IDiscordService {
 							return;
 						}
 						outboundReservation = outboundDedupe.reservation;
+						if (dmRecipient) {
+							// Participant registration precedes the external send so a
+							// successful Discord delivery can always be discovered through
+							// the recipient's runtime rooms.
+							await this.runtime.ensureConnection({
+								entityId: dmRecipient.entityId,
+								roomId,
+								userName: dmRecipient.userName,
+								userId: dmRecipient.discordUserId as UUID,
+								name: dmRecipient.name,
+								source: "discord",
+								channelId: targetChannel.id,
+								messageServerId: stringToUuid(serverId),
+								type: channelType,
+								worldId,
+								worldName,
+								metadata: {
+									accountId,
+								},
+							});
+						}
 						if (textContent) {
 							const chunks = splitMessage(textContent, MAX_MESSAGE_LENGTH);
 							if (chunks.length > 1) {
@@ -1906,16 +1957,6 @@ export class DiscordService extends Service implements IDiscordService {
 						outboundReservation = undefined;
 						runtime.logger.warn("No text content or attachments provided");
 					}
-
-					const targetChannelGuild =
-						"guild" in targetChannel ? targetChannel.guild : null;
-					const serverId = targetChannelGuild?.id
-						? targetChannelGuild.id
-						: targetChannel.id;
-					const worldId = createUniqueUuid(runtime, serverId) as UUID;
-					const worldName = targetChannelGuild?.name
-						? targetChannelGuild.name
-						: undefined;
 
 					const clientUser = client.user;
 					await this.runtime.ensureConnection({

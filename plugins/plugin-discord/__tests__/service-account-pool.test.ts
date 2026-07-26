@@ -5,7 +5,11 @@
  * connector registration, account lookup, command registration, and message
  * mutations execute production code without opening a gateway connection.
  */
-import { ChannelType as CoreChannelType } from "@elizaos/core";
+import {
+	ChannelType as CoreChannelType,
+	type Memory,
+	type UUID,
+} from "@elizaos/core";
 import { Collection, ChannelType as DiscordChannelType } from "discord.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -40,6 +44,7 @@ type MutableDiscordService = DiscordService & {
 function makeRuntime() {
 	const rooms = new Map<string, unknown>();
 	const worlds = new Map<string, unknown>();
+	const memories = new Map<string, Memory>();
 	return {
 		agentId: AGENT_ID,
 		character: { name: "Eliza", settings: {} },
@@ -62,6 +67,16 @@ function makeRuntime() {
 		}),
 		getRoom: vi.fn(async (roomId) => rooms.get(String(roomId)) ?? null),
 		getWorld: vi.fn(async (worldId) => worlds.get(String(worldId)) ?? null),
+		getMemoryById: vi.fn(
+			async (memoryId: UUID) => memories.get(String(memoryId)) ?? null,
+		),
+		createMemory: vi.fn(async (memory: Memory) => {
+			if (!memory.id) {
+				throw new Error("Discord message memory must have a stable id");
+			}
+			memories.set(String(memory.id), memory);
+			return memory.id;
+		}),
 		getEntityById: vi.fn(async () => null),
 		getRelationships: vi.fn(async () => []),
 		emitEvent: vi.fn(),
@@ -156,13 +171,30 @@ function makeDiscordGraph() {
 		type: DiscordChannelType.GuildVoice,
 		isVoiceBased: () => true,
 	};
+	const dmChannel = {
+		id: "888888888888888888",
+		name: "sender",
+		type: DiscordChannelType.DM,
+		isTextBased: () => true,
+		isVoiceBased: () => false,
+		isThread: () => false,
+		send: vi.fn(async (payload: { content?: string }) =>
+			makeMessage({
+				id: "555555555555555555",
+				content: payload.content,
+				author: { id: "999999999999999999", username: "bot" },
+			}),
+		),
+	};
 	const cachedUser = {
 		id: "222222222222222222",
 		username: "sender",
+		displayName: "Sender",
 		globalName: "Sender",
 		tag: "sender#0001",
 		bot: false,
-		createDM: vi.fn(),
+		dmChannel,
+		createDM: vi.fn(async () => dmChannel),
 	};
 	const member = {
 		id: cachedUser.id,
@@ -229,10 +261,12 @@ function makeDiscordGraph() {
 			cache: new Collection([
 				[textChannel.id, textChannel],
 				[voiceChannel.id, voiceChannel],
+				[dmChannel.id, dmChannel],
 			]),
 			fetch: vi.fn(async (channelId: string) => {
 				if (channelId === textChannel.id) return textChannel;
 				if (channelId === voiceChannel.id) return voiceChannel;
+				if (channelId === dmChannel.id) return dmChannel;
 				return null;
 			}),
 		},
@@ -246,7 +280,16 @@ function makeDiscordGraph() {
 		},
 		destroy: vi.fn().mockResolvedValue(undefined),
 	};
-	return { botMember, cachedUser, client, guild, member, message, textChannel };
+	return {
+		botMember,
+		cachedUser,
+		client,
+		dmChannel,
+		guild,
+		member,
+		message,
+		textChannel,
+	};
 }
 
 function makeState(
@@ -364,6 +407,111 @@ describe("DiscordService.getAccountLabel", () => {
 });
 
 describe("DiscordService account-scoped primitives", () => {
+	it("registers a resolved outbound DM recipient before delivering the message", async () => {
+		const { graph, runtime, service } = makeService();
+		const recipientEntityId = service.resolveDiscordEntityId(
+			graph.cachedUser.id,
+		);
+
+		const persisted = await service.handleSendMessage(
+			runtime as never,
+			{
+				source: "discord",
+				accountId: "work",
+				entityId: graph.cachedUser.id as UUID,
+			},
+			{ text: "remember this outbound DM" },
+		);
+
+		expect(runtime.ensureConnection).toHaveBeenNthCalledWith(
+			1,
+			expect.objectContaining({
+				entityId: recipientEntityId,
+				userId: graph.cachedUser.id,
+				userName: graph.cachedUser.username,
+				name: graph.cachedUser.displayName,
+				channelId: graph.dmChannel.id,
+				type: CoreChannelType.DM,
+				metadata: { accountId: "work" },
+			}),
+		);
+		expect(runtime.ensureConnection).toHaveBeenNthCalledWith(
+			2,
+			expect.objectContaining({
+				entityId: AGENT_ID,
+				channelId: graph.dmChannel.id,
+				type: CoreChannelType.DM,
+				metadata: { accountId: "work" },
+			}),
+		);
+		expect(runtime.ensureConnection.mock.invocationCallOrder[0]).toBeLessThan(
+			graph.dmChannel.send.mock.invocationCallOrder[0],
+		);
+		expect(graph.dmChannel.send).toHaveBeenCalledWith(
+			expect.objectContaining({ content: "remember this outbound DM" }),
+		);
+		expect(persisted).toMatchObject({
+			entityId: AGENT_ID,
+			content: { text: "remember this outbound DM" },
+			metadata: { accountId: "work" },
+		});
+	});
+
+	it("preserves a canonical runtime entity when resolving its Discord identity", async () => {
+		const { graph, runtime, service } = makeService();
+		const recipientEntityId = "00000000-0000-0000-0000-000000000099" as UUID;
+		service.resolveDiscordTargetUserId = vi.fn(async () => graph.cachedUser.id);
+
+		await service.handleSendMessage(
+			runtime as never,
+			{
+				source: "discord",
+				accountId: "work",
+				entityId: recipientEntityId,
+			},
+			{ text: "preserve the linked runtime identity" },
+		);
+
+		expect(runtime.ensureConnection).toHaveBeenNthCalledWith(
+			1,
+			expect.objectContaining({
+				entityId: recipientEntityId,
+				userId: graph.cachedUser.id,
+			}),
+		);
+	});
+
+	it("fails before DM delivery and leaves the same request retryable", async () => {
+		const { graph, runtime, service } = makeService();
+		const target = {
+			source: "discord",
+			accountId: "work",
+			entityId: graph.cachedUser.id as UUID,
+		};
+		const content = {
+			text: "must not escape before participation is durable",
+		};
+		runtime.ensureConnection.mockRejectedValueOnce(
+			new Error("recipient persistence unavailable"),
+		);
+
+		await expect(
+			service.handleSendMessage(runtime as never, target, content),
+		).rejects.toThrow("recipient persistence unavailable");
+
+		expect(graph.dmChannel.send).not.toHaveBeenCalled();
+		expect(runtime.createMemory).not.toHaveBeenCalled();
+
+		await expect(
+			service.handleSendMessage(runtime as never, target, content),
+		).resolves.toMatchObject({
+			entityId: AGENT_ID,
+			content: { text: content.text },
+		});
+		expect(graph.dmChannel.send).toHaveBeenCalledTimes(1);
+		expect(runtime.createMemory).toHaveBeenCalledTimes(1);
+	});
+
 	it("registers account connectors and scopes wrapper calls to the selected account", async () => {
 		const { runtime, service } = makeService();
 		DiscordService.registerSendHandlers(runtime as never, service);
