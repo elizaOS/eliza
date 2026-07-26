@@ -45,6 +45,19 @@ describe("libpq connection URL", () => {
       expect(() => toLibpqConnectionUrl(value)).toThrow();
     },
   );
+
+  test.each([
+    "?uselibpqcompat=false",
+    "?uselibpqcompat=",
+    "?uselibpqcompat=true&uselibpqcompat=true",
+    "?UseLibpqCompat=true",
+  ])("rejects an ambiguous compatibility hint: %s", (query) => {
+    expect(() =>
+      toLibpqConnectionUrl(
+        `postgresql://operator:secret@db.example.test/eliza${query}`,
+      ),
+    ).toThrow("invalid libpq compatibility hint");
+  });
 });
 
 function failedDeleteInput(): Record<string, unknown> {

@@ -16,7 +16,20 @@ export function toLibpqConnectionUrl(value: string): string {
     throw new Error("database URL must use PostgreSQL");
   }
 
-  url.searchParams.delete("uselibpqcompat");
+  const compatibilityHints = [...url.searchParams].filter(
+    ([key]) => key.toLowerCase() === "uselibpqcompat",
+  );
+  if (
+    compatibilityHints.length > 1 ||
+    compatibilityHints.some(
+      ([key, hint]) => key !== "uselibpqcompat" || hint !== "true",
+    )
+  ) {
+    throw new Error("database URL has an invalid libpq compatibility hint");
+  }
+  if (compatibilityHints.length === 1) {
+    url.searchParams.delete("uselibpqcompat");
+  }
   return url.toString();
 }
 
