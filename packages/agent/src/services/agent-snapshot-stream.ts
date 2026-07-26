@@ -1142,7 +1142,9 @@ export async function restoreAgentSnapshotStream(
   const filesRoot = path.join(stagingRoot, "files");
   await fs.mkdir(filesRoot, { recursive: true, mode: 0o700 });
 
-  let pendingParts: Buffer[] = [];
+  let pendingBuffer = Buffer.allocUnsafe(
+    Math.min(64 * 1024, AGENT_SNAPSHOT_STREAM_MAX_LINE_BYTES),
+  );
   let pendingBytes = 0;
   let descriptor: AgentSnapshotStreamDescriptor | null = null;
   let trailer: AgentSnapshotStreamTrailer | null = null;
@@ -1273,23 +1275,30 @@ export async function restoreAgentSnapshotStream(
 
   const appendPending = (bytes: Buffer): void => {
     if (bytes.length === 0) return;
-    pendingBytes += bytes.length;
-    if (pendingBytes > AGENT_SNAPSHOT_STREAM_MAX_LINE_BYTES) {
+    const nextBytes = pendingBytes + bytes.length;
+    if (
+      !Number.isSafeInteger(nextBytes) ||
+      nextBytes > AGENT_SNAPSHOT_STREAM_MAX_LINE_BYTES
+    ) {
       throw invalidStream("Snapshot stream line exceeds its byte budget");
     }
-    pendingParts.push(bytes);
+    if (nextBytes > pendingBuffer.byteLength) {
+      let capacity = pendingBuffer.byteLength;
+      while (capacity < nextBytes) {
+        capacity = Math.min(AGENT_SNAPSHOT_STREAM_MAX_LINE_BYTES, capacity * 2);
+      }
+      const expanded = Buffer.allocUnsafe(capacity);
+      pendingBuffer.copy(expanded, 0, 0, pendingBytes);
+      pendingBuffer = expanded;
+    }
+    bytes.copy(pendingBuffer, pendingBytes);
+    pendingBytes = nextBytes;
   };
 
   const consumeLine = async (tail: Buffer): Promise<void> => {
     appendPending(tail);
-    const line =
-      pendingParts.length === 1
-        ? pendingParts[0]
-        : Buffer.concat(pendingParts, pendingBytes);
-    if (!line) throw invalidStream("Snapshot stream line is missing");
-    pendingParts = [];
+    await processLine(pendingBuffer.subarray(0, pendingBytes));
     pendingBytes = 0;
-    await processLine(line);
   };
 
   try {
