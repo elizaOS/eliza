@@ -6,7 +6,10 @@
 import crypto from "node:crypto";
 import { isIP } from "node:net";
 import { ElizaError } from "@elizaos/core";
-import { resolveRetainableAgentBackupBytes } from "@elizaos/shared";
+import {
+  MAX_RESTORABLE_AGENT_BACKUP_BYTES,
+  resolveRetainableAgentBackupBytes,
+} from "@elizaos/shared/agent-backup-limits";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
 import { type Database, dbWrite } from "../../db/helpers";
@@ -9649,9 +9652,22 @@ export class ElizaSandboxService {
       authRec?: Pick<AgentSandbox, "id" | "environment_vars">;
     },
   ) {
+    // Measure the assembled payload ONCE, before it leaves the worker (#17172).
+    // `/api/restore` caps its request body at the same canonical limit, so an
+    // oversized push is a guaranteed far-end rejection — and this runs on the
+    // blue/green ROLLBACK path, where discovering that after the request is a
+    // failed rollback rather than a clean refusal. Stringifying into a local
+    // also avoids building the payload twice.
+    const body = JSON.stringify(state);
+    const bodyBytes = Buffer.byteLength(body, "utf8");
+    if (bodyBytes > MAX_RESTORABLE_AGENT_BACKUP_BYTES) {
+      throw new Error(
+        `State restore refused: reconstructed payload of ${bodyBytes} bytes exceeds the v1 restorable limit of ${MAX_RESTORABLE_AGENT_BACKUP_BYTES} bytes`,
+      );
+    }
     const requestInit: RequestInit = {
       method: "POST",
-      body: JSON.stringify(state),
+      body,
       signal: AbortSignal.timeout(SNAPSHOT_RESTORE_TIMEOUT_MS),
     };
     const res =
