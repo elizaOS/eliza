@@ -150,6 +150,14 @@ class FakeRepository {
     return this.committedRow;
   }
 
+  async assertChunkedBackupTenant(_params: {
+    backupId: string;
+    organizationId: string;
+    sandboxRecordId: string;
+  }): Promise<void> {
+    this.events.push("assert-tenant");
+  }
+
   async failChunkedBackup(
     _backupId: string,
     descriptor: AgentBackupChunkStagingDescriptor,
@@ -170,6 +178,7 @@ class FakeRepository {
 
   async claimPrunableChunkedBackups(
     _sandboxRecordId: string,
+    _organizationId: string,
     _keep: number,
   ): Promise<StoredAgentSandboxBackup[]> {
     this.events.push("claim-prunable");
@@ -274,6 +283,7 @@ describe("AgentBackupV2StorageService", () => {
       "plan:1",
       "put",
       "fail",
+      "assert-tenant",
       `delete-object:${objectKey}`,
       "delete-row",
     ]);
@@ -359,14 +369,15 @@ describe("AgentBackupV2StorageService", () => {
     const fixture = dependencies({ repository });
     const service = new AgentBackupV2StorageService(fixture.dependencies);
 
-    await expect(service.prune({ sandboxRecordId, keep: 1 })).resolves.toEqual({
+    await expect(service.prune({ organizationId, sandboxRecordId, keep: 1 })).resolves.toEqual({
       legacyDeleted: 1,
       chunkedDeleted: 1,
       chunkedPending: 0,
     });
     expect(repository.events).toEqual([
-      "prune-legacy",
       "claim-prunable",
+      "prune-legacy",
+      "assert-tenant",
       `delete-object:${objectKey}`,
       "delete-row",
     ]);
@@ -382,7 +393,7 @@ describe("AgentBackupV2StorageService", () => {
     const fixture = dependencies({ repository, deleteFails: true });
     const service = new AgentBackupV2StorageService(fixture.dependencies);
 
-    await expect(service.prune({ sandboxRecordId, keep: 1 })).resolves.toEqual({
+    await expect(service.prune({ organizationId, sandboxRecordId, keep: 1 })).resolves.toEqual({
       legacyDeleted: 1,
       chunkedDeleted: 0,
       chunkedPending: 1,
