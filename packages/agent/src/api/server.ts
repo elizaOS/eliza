@@ -342,13 +342,8 @@ import {
   subscribeAuditFeed,
 } from "../security/audit-log.ts";
 import {
-  type AgentBackupStateData,
-  createAgentSnapshot,
   createLocalAgentBackup,
   listLocalAgentBackups,
-  parseAgentSnapshotRequest,
-  type ResolvedAgentSnapshotRequest,
-  restoreAgentSnapshot,
   restoreLocalAgentBackup,
 } from "../services/agent-backup.ts";
 import {
@@ -391,6 +386,7 @@ import {
 } from "../triggers/scheduling.ts";
 import { resolveAbsentPluginRouteStub } from "./absent-plugin-route-stubs.ts";
 import { detectRuntimeModel, resolveProviderFromModel } from "./agent-model.ts";
+import { handleAgentSnapshotRoutes } from "./agent-snapshot-routes.ts";
 import { persistConfigEnv } from "./config-env.ts";
 import { restoreConversationsFromDb as restoreConversationsFromDbImpl } from "./conversation-restore.ts";
 import { wireCoordinatorBridgesWhenReady } from "./coordinator-wiring.ts";
@@ -812,40 +808,6 @@ const readBody = (req: http.IncomingMessage): Promise<string> =>
 
 function isJsonRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isAgentBackupStateData(value: unknown): value is AgentBackupStateData {
-  if (!isJsonRecord(value)) return false;
-  return (
-    Array.isArray(value.memories) &&
-    isJsonRecord(value.config) &&
-    isJsonRecord(value.workspaceFiles) &&
-    isJsonRecord(value.manifest)
-  );
-}
-
-const MAX_SNAPSHOT_REQUEST_BODY_BYTES = 4 * 1024;
-
-async function readSnapshotRequestBody(
-  req: http.IncomingMessage,
-  res: http.ServerResponse,
-): Promise<ResolvedAgentSnapshotRequest | null> {
-  try {
-    const raw = await readRequestBody(req, {
-      maxBytes: MAX_SNAPSHOT_REQUEST_BODY_BYTES,
-    });
-    const parsed =
-      raw && raw.trim().length > 0 ? (JSON.parse(raw) as unknown) : undefined;
-    return parseAgentSnapshotRequest(parsed);
-  } catch (err) {
-    // error-policy:J1 The HTTP boundary translates malformed protocol input to a 400 response.
-    error(
-      res,
-      err instanceof Error ? err.message : "Invalid snapshot request body",
-      400,
-    );
-    return null;
-  }
 }
 
 async function readBackupJsonBody(
@@ -2087,55 +2049,17 @@ async function handleRequest(
     return;
   }
 
-  if (method === "POST" && pathname === "/api/snapshot") {
-    if (!state.runtime) {
-      error(res, "Runtime not ready", 503);
-      return;
-    }
-    const snapshotRequest = await readSnapshotRequestBody(req, res);
-    if (!snapshotRequest) return;
-    try {
-      const snapshot = await createAgentSnapshot(
-        state.runtime,
-        state.config,
-        snapshotRequest,
-      );
-      json(res, snapshot);
-    } catch (err) {
-      logger.error(
-        {
-          err: err instanceof Error ? err.message : String(err),
-        },
-        "[agent-backup] Snapshot failed",
-      );
-      error(res, err instanceof Error ? err.message : "Snapshot failed", 500);
-    }
-    return;
-  }
-
-  if (method === "POST" && pathname === "/api/restore") {
-    if (!state.runtime) {
-      error(res, "Runtime not ready", 503);
-      return;
-    }
-    const body = await readBackupJsonBody(req, res);
-    if (!body) return;
-    if (!isAgentBackupStateData(body)) {
-      error(res, "Invalid backup snapshot payload", 400);
-      return;
-    }
-    try {
-      const result = await restoreAgentSnapshot(state.runtime, body);
-      json(res, result);
-    } catch (err) {
-      logger.error(
-        {
-          err: err instanceof Error ? err.message : String(err),
-        },
-        "[agent-backup] Restore failed",
-      );
-      error(res, err instanceof Error ? err.message : "Restore failed", 500);
-    }
+  if (
+    await handleAgentSnapshotRoutes({
+      config: state.config,
+      method,
+      pathname,
+      req,
+      res,
+      runtime: state.runtime,
+      url,
+    })
+  ) {
     return;
   }
 

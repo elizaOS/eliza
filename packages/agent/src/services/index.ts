@@ -10,6 +10,8 @@
 
 export * from "./agent-backup.ts";
 export * from "./agent-export.ts";
+export * from "./agent-snapshot-stream.ts";
+export * from "./agent-snapshot-stream-protocol.ts";
 export * from "./app-session-gate.ts";
 export {
   type AuditedDecision,
