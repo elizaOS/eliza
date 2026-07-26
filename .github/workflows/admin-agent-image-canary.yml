@@ -14,8 +14,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     env:
-      CANARY_JOB_ID: 9c359763-a243-4cd6-8887-41d19d0d15a0
-      EXPECTED_REF: refs/heads/codex/canary-job-diagnostic-30059329967
+      CANARY_JOB_ID: 771bc989-3244-41d7-bb03-c9ff565be8c6
+      EXPECTED_REF: refs/heads/codex/canary-job-diagnostic-30183809168
     steps:
       - name: Require the exact contained diagnostic branch
         env:
