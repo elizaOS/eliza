@@ -48,6 +48,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { resolveAgentSnapshotV1MaxWireBytes } from "@elizaos/shared";
 import { desc, eq, isNull, lt, or, sql } from "drizzle-orm";
 import {
   decryptAgentBackupStateData,
@@ -133,7 +134,6 @@ const DEFAULT_BATCH_SIZE = 10;
 const DEFAULT_REVERIFY_HOURS = 24;
 const DEFAULT_ESCALATION_PCT = 50;
 const DEFAULT_MIN_SYSTEMIC_SAMPLE = 5;
-const DEFAULT_MAX_DECRYPT_BYTES = 256 * 1024 * 1024;
 const DEFAULT_ERRORED_ALERT_STREAK = 3;
 /** Matches the repository's historical retained-backups lookup cap. */
 const CHAIN_LOOKUP_LIMIT = 1000;
@@ -166,9 +166,8 @@ export function readBackupVerifierConfig(
       env.BACKUP_VERIFICATION_MIN_SYSTEMIC_SAMPLE,
       DEFAULT_MIN_SYSTEMIC_SAMPLE,
     ),
-    maxDecryptBytesPerCycle: parsePositiveInt(
+    maxDecryptBytesPerCycle: resolveAgentSnapshotV1MaxWireBytes(
       env.BACKUP_VERIFICATION_MAX_DECRYPT_BYTES,
-      DEFAULT_MAX_DECRYPT_BYTES,
     ),
     erroredAlertStreak: parsePositiveInt(
       env.BACKUP_VERIFICATION_ERRORED_ALERT_STREAK,

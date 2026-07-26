@@ -25,6 +25,7 @@ process.env.MOCK_REDIS = "1";
 process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
 
 import { KmsError, StewardKmsAdapter } from "@elizaos/security/kms";
+import { AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES } from "@elizaos/shared";
 import { pushSchema } from "drizzle-kit/api";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../db/client";
 import { resetKmsClientForTests } from "../../db/crypto/kms-client";
@@ -68,7 +69,7 @@ const CONFIG: BackupVerifierConfig = {
   reVerifyIntervalMs: 24 * 3_600_000,
   escalationThresholdPct: 50,
   minSystemicSample: 5,
-  maxDecryptBytesPerCycle: 256 * 1024 * 1024,
+  maxDecryptBytesPerCycle: AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES,
   erroredAlertStreak: 3,
 };
 
@@ -287,14 +288,14 @@ afterAll(async () => {
 });
 
 describe("readBackupVerifierConfig", () => {
-  test("defaults: enabled, batch 10, 24h re-verify, 50% escalation, floor 5, 256MiB budget, streak 3", () => {
+  test("defaults: enabled, batch 10, 24h re-verify, 50% escalation, floor 5, v1 wire budget, streak 3", () => {
     const config = readBackupVerifierConfig({} as NodeJS.ProcessEnv);
     expect(config.enabled).toBe(true);
     expect(config.batchSize).toBe(10);
     expect(config.reVerifyIntervalMs).toBe(24 * 3_600_000);
     expect(config.escalationThresholdPct).toBe(50);
     expect(config.minSystemicSample).toBe(5);
-    expect(config.maxDecryptBytesPerCycle).toBe(256 * 1024 * 1024);
+    expect(config.maxDecryptBytesPerCycle).toBe(AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES);
     expect(config.erroredAlertStreak).toBe(3);
   });
 
@@ -327,7 +328,12 @@ describe("readBackupVerifierConfig", () => {
     } as NodeJS.ProcessEnv);
     expect(garbage.batchSize).toBe(10);
     expect(garbage.reVerifyIntervalMs).toBe(24 * 3_600_000);
-    expect(garbage.maxDecryptBytesPerCycle).toBe(256 * 1024 * 1024);
+    expect(garbage.maxDecryptBytesPerCycle).toBe(AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES);
+
+    const capped = readBackupVerifierConfig({
+      BACKUP_VERIFICATION_MAX_DECRYPT_BYTES: String(AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES + 1),
+    } as NodeJS.ProcessEnv);
+    expect(capped.maxDecryptBytesPerCycle).toBe(AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES);
   });
 });
 
