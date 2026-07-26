@@ -96,7 +96,7 @@ function safeSegment(value: string): string {
   return value.replace(/[^a-zA-Z0-9._=-]/g, "_");
 }
 
-function objectKey(params: {
+export function buildObjectKey(params: {
   namespace: ObjectNamespace;
   organizationId: string;
   objectId: string;
@@ -124,7 +124,7 @@ export async function putObjectText(params: {
   contentType: string;
 }): Promise<string> {
   const extension = params.contentType.includes("json") ? "json" : "txt";
-  const key = objectKey({ ...params, extension });
+  const key = buildObjectKey({ ...params, extension });
 
   const runtimeBucket = getRuntimeR2Bucket();
   if (runtimeBucket) {
@@ -160,7 +160,7 @@ export async function putObjectBytes(params: {
   body: Uint8Array;
   contentType: string;
 }): Promise<string> {
-  const key = objectKey({ ...params, extension: "bin" });
+  const key = buildObjectKey({ ...params, extension: "bin" });
   const runtimeBucket = getRuntimeR2Bucket();
   if (runtimeBucket) {
     await runtimeBucket.put(key, params.body, {
@@ -200,7 +200,21 @@ export async function getObjectText(key: string): Promise<string | null> {
   return (await out.Body?.transformToString()) ?? null;
 }
 
-export async function getObjectBytes(key: string): Promise<Uint8Array | null> {
+function assertStoredByteLength(key: string, value: unknown, maxBytes: number): number {
+  if (!Number.isSafeInteger(value) || (value as number) < 0) {
+    throw new Error(`Object ${key} does not expose a valid byte length`);
+  }
+  const byteLength = value as number;
+  if (byteLength > maxBytes) {
+    throw new Error(`Object ${key} exceeds the ${maxBytes}-byte read budget`);
+  }
+  return byteLength;
+}
+
+export async function getObjectBytes(key: string, maxBytes: number): Promise<Uint8Array | null> {
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) {
+    throw new Error("Object byte-read budget must be a positive safe integer");
+  }
   const runtimeBucket = getRuntimeR2Bucket();
   if (runtimeBucket) {
     const object = await runtimeBucket.get(key);
@@ -208,14 +222,25 @@ export async function getObjectBytes(key: string): Promise<Uint8Array | null> {
     if (!object.arrayBuffer) {
       throw new Error("Runtime object storage does not expose binary reads");
     }
-    return new Uint8Array(await object.arrayBuffer());
+    const expectedBytes = assertStoredByteLength(key, Reflect.get(object, "size"), maxBytes);
+    const bytes = new Uint8Array(await object.arrayBuffer());
+    if (bytes.byteLength !== expectedBytes || bytes.byteLength > maxBytes) {
+      throw new Error(`Object ${key} changed size while it was being read`);
+    }
+    return bytes;
   }
 
   const bucket = heavyPayloadBucket();
   const client = getObjectStorageClient();
   if (!bucket || !client) return null;
   const out = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
-  return out.Body ? new Uint8Array(await out.Body.transformToByteArray()) : null;
+  if (!out.Body) return null;
+  const expectedBytes = assertStoredByteLength(key, out.ContentLength, maxBytes);
+  const bytes = new Uint8Array(await out.Body.transformToByteArray());
+  if (bytes.byteLength !== expectedBytes || bytes.byteLength > maxBytes) {
+    throw new Error(`Object ${key} changed size while it was being read`);
+  }
+  return bytes;
 }
 
 export async function deleteObject(key: string): Promise<void> {
