@@ -62,6 +62,12 @@ import {
   isAdminCanaryImageJobData,
   isPendingAdminCanaryCutoverAudit,
 } from "./admin-canary-image";
+import {
+  type AdminCanaryStandbyDecisionJobData,
+  type AdminCanaryStandbyDecisionJobResult,
+  assertAdminCanaryStandbyDecisionJobData,
+  isAdminCanaryStandbyDecisionJobData,
+} from "./admin-canary-standby";
 import { dispatchAppDbDeprovisionJob } from "./app-db-deprovision-job-service";
 import { dispatchAppDeployJob, readAppDeployJobData } from "./app-deploy-job-service";
 import { appsService } from "./apps";
@@ -383,6 +389,18 @@ function adminCanaryImageJobResultToRecord(
   return { ...result };
 }
 
+function adminCanaryStandbyDecisionJobDataToRecord(
+  data: AdminCanaryStandbyDecisionJobData,
+): Record<string, unknown> {
+  return { ...data };
+}
+
+function adminCanaryStandbyDecisionJobResultToRecord(
+  result: AdminCanaryStandbyDecisionJobResult,
+): Record<string, unknown> {
+  return { ...result };
+}
+
 function jobAuditTimestamp(value: Date | string): string {
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 }
@@ -577,6 +595,14 @@ export function readAdminCanaryImageJobData(job: Job): AdminCanaryImageJobData {
   return job.data;
 }
 
+export function readAdminCanaryStandbyDecisionJobData(job: Job): AdminCanaryStandbyDecisionJobData {
+  if (!isAdminCanaryStandbyDecisionJobData(job.data)) {
+    throw new Error(`Invalid admin canary standby decision data for job ${job.id}`);
+  }
+  assertAdminCanaryStandbyDecisionJobData(job.data);
+  return job.data;
+}
+
 function isAgentDowngradeJobData(value: unknown): value is AgentDowngradeJobData {
   if (typeof value !== "object" || value === null) return false;
   const v = value as Record<string, unknown>;
@@ -747,6 +773,9 @@ interface LifecycleSandboxRow {
   previous_docker_image: string | null;
   previous_image_digest: string | null;
   replacement_cleanup_sandbox_id: string | null;
+  rollback_standby_state: string | null;
+  rollback_standby_generation: string | null;
+  rollback_standby_source_job_id: string | null;
   deletion_attempt_id: string | null;
   deletion_started_at: Date | null;
 }
@@ -1117,6 +1146,9 @@ export class ProvisioningJobService {
         previous_docker_image: agentSandboxes.previous_docker_image,
         previous_image_digest: agentSandboxes.previous_image_digest,
         replacement_cleanup_sandbox_id: agentSandboxes.replacement_cleanup_sandbox_id,
+        rollback_standby_state: agentSandboxes.rollback_standby_state,
+        rollback_standby_generation: agentSandboxes.rollback_standby_generation,
+        rollback_standby_source_job_id: agentSandboxes.rollback_standby_source_job_id,
         deletion_attempt_id: agentSandboxes.deletion_attempt_id,
         deletion_started_at: agentSandboxes.deletion_started_at,
       })
@@ -1150,6 +1182,17 @@ export class ProvisioningJobService {
         409,
         "session_not_ready",
         `Agent ${opts.agentId} has unresolved replacement cleanup`,
+      );
+    }
+    if (
+      EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES.includes(opts.jobType) &&
+      opts.jobType !== JOB_TYPES.AGENT_ADMIN_CANARY_STANDBY_DECISION &&
+      sandbox.rollback_standby_state
+    ) {
+      throw new ApiError(
+        409,
+        "session_not_ready",
+        `Agent ${opts.agentId} has unresolved rollback standby generation ${sandbox.rollback_standby_generation}`,
       );
     }
     if (
@@ -2166,7 +2209,7 @@ export class ProvisioningJobService {
           agentId: data.agentId,
           organizationId: data.organizationId,
           userId: data.actorUserId,
-          maxAttempts: 1,
+          maxAttempts: data.operation === "upgrade" ? 3 : 1,
           estimatedDurationMs: 180_000,
           logName: "agent_admin_canary_image",
           mutuallyExclusiveJobTypes: SHARED_IMAGE_CHANGE_JOB_TYPES,
@@ -2277,6 +2320,70 @@ export class ProvisioningJobService {
         inserted.push(result.job);
       }
       return { jobs: inserted, created: true };
+    });
+  }
+
+  async enqueueAdminCanaryStandbyDecision(
+    data: AdminCanaryStandbyDecisionJobData,
+  ): Promise<{ job: Job; created: boolean }> {
+    assertAdminCanaryStandbyDecisionJobData(data);
+    return await this.enqueueLifecycleJob<AdminCanaryStandbyDecisionJobData>({
+      jobType: JOB_TYPES.AGENT_ADMIN_CANARY_STANDBY_DECISION,
+      jobData: data,
+      toRecord: adminCanaryStandbyDecisionJobDataToRecord,
+      agentId: data.agentId,
+      organizationId: data.organizationId,
+      userId: data.actorUserId,
+      maxAttempts: 10,
+      estimatedDurationMs: 120_000,
+      logName: "agent_admin_canary_standby_decision",
+      logExtras: {
+        sourceJobId: data.sourceJobId,
+        rolloutId: data.rolloutId,
+        standbyGeneration: data.standbyGeneration,
+        decision: data.decision,
+      },
+      idempotencyPredicates: [
+        sql`${jobs.data}->>'sourceJobId' = ${data.sourceJobId}`,
+        sql`${jobs.data}->>'standbyGeneration' = ${data.standbyGeneration}`,
+        sql`${jobs.data}->>'decision' = ${data.decision}`,
+      ],
+      validateSandbox: (sandbox) => {
+        if (
+          sandbox.status !== "running" ||
+          sandbox.user_id !== data.targetOwnerUserId ||
+          sandbox.rollback_standby_state !== "paused" ||
+          sandbox.rollback_standby_generation !== data.standbyGeneration ||
+          sandbox.rollback_standby_source_job_id !== data.sourceJobId ||
+          sandbox.docker_image !== data.targetImage ||
+          sandbox.image_digest !== data.targetDigest
+        ) {
+          throw new ApiError(
+            409,
+            "session_not_ready",
+            `Agent ${data.agentId} no longer matches the retained rollback standby`,
+          );
+        }
+      },
+      validateReuse: (existing) => {
+        const existingData = readAdminCanaryStandbyDecisionJobData(existing);
+        if (
+          existingData.sourceJobId !== data.sourceJobId ||
+          existingData.standbyGeneration !== data.standbyGeneration ||
+          existingData.decision !== data.decision ||
+          existingData.verifiedBackupId !== data.verifiedBackupId ||
+          existingData.restoreValidationId !== data.restoreValidationId ||
+          existingData.restoreValidationAggregateSha256 !== data.restoreValidationAggregateSha256 ||
+          existingData.restoreValidatedCandidateProviderSandboxId !==
+            data.restoreValidatedCandidateProviderSandboxId
+        ) {
+          throw new ApiError(
+            409,
+            "session_not_ready",
+            `Rollback standby already has a different decision job ${existing.id}`,
+          );
+        }
+      },
     });
   }
 
@@ -3184,6 +3291,9 @@ export class ProvisioningJobService {
       case JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE:
         await this.executeAdminCanaryImage(job);
         break;
+      case JOB_TYPES.AGENT_ADMIN_CANARY_STANDBY_DECISION:
+        await this.executeAdminCanaryStandbyDecision(job);
+        break;
       case JOB_TYPES.AGENT_DOWNGRADE:
         await this.executeAgentDowngrade(job);
         break;
@@ -3666,10 +3776,132 @@ export class ProvisioningJobService {
     });
   }
 
+  private async executeAdminCanaryUpgradeWithStandby(
+    job: Job,
+    data: AdminCanaryImageJobData,
+  ): Promise<void> {
+    const startedAt = jobAuditTimestamp(job.started_at ?? job.updated_at);
+    let completedAudit: AdminCanaryImageJobResult | undefined;
+    const onCutoverInTx = async (
+      tx: DbTransaction,
+      cutover: {
+        oldNodeId: string;
+        oldContainerName: string;
+        newNodeId: string;
+        newContainerName: string;
+        newDigest: string;
+      },
+    ): Promise<void> => {
+      if (cutover.newDigest !== data.targetDigest) {
+        throw new Error(`Admin canary cutover digest mismatch for job ${job.id}`);
+      }
+      const finishedAt = new Date();
+      const result: AdminCanaryImageJobResult = {
+        success: true,
+        cleanupPending: false,
+        standbyPending: true,
+        standbyGeneration: job.id,
+        cutoverAt: finishedAt.toISOString(),
+        jobId: job.id,
+        operation: data.operation,
+        rolloutId: data.rolloutId,
+        actorUserId: data.actorUserId,
+        decisionAt: data.decisionAt,
+        agentId: data.agentId,
+        organizationId: data.organizationId,
+        targetOwnerUserId: data.targetOwnerUserId,
+        sourceImage: data.sourceImage,
+        sourceDigest: data.sourceDigest,
+        targetImage: data.targetImage,
+        targetDigest: data.targetDigest,
+        startedAt,
+        finishedAt: finishedAt.toISOString(),
+        oldNodeId: cutover.oldNodeId,
+        oldContainerName: cutover.oldContainerName,
+        newNodeId: cutover.newNodeId,
+        newContainerName: cutover.newContainerName,
+      };
+      const [updated] = await tx
+        .update(jobs)
+        .set({
+          status: "completed",
+          result: adminCanaryImageJobResultToRecord(result),
+          result_storage: "inline",
+          result_key: null,
+          error: null,
+          error_storage: "inline",
+          error_key: null,
+          completed_at: finishedAt,
+          updated_at: finishedAt,
+        })
+        .where(
+          and(
+            eq(jobs.id, job.id),
+            eq(jobs.type, JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE),
+            eq(jobs.status, "in_progress"),
+            eq(jobs.organization_id, data.organizationId),
+            eq(jobs.agent_id, data.agentId),
+            eq(jobs.user_id, data.actorUserId),
+            eq(jobs.attempts, job.attempts),
+            eq(jobs.max_attempts, job.max_attempts),
+            sql`${jobs.started_at} IS NOT DISTINCT FROM ${
+              job.started_at ? new Date(jobAuditTimestamp(job.started_at)) : null
+            }`,
+            sql`${jobs.completed_at} IS NULL`,
+            sql`${jobs.updated_at} IS NOT DISTINCT FROM ${new Date(
+              jobAuditTimestamp(job.updated_at),
+            )}`,
+            sql`${jobs.data_storage} = 'inline'`,
+            sql`${jobs.data_key} IS NULL`,
+            sql`${jobs.data} IS NOT DISTINCT FROM ${JSON.stringify(job.data)}::jsonb`,
+            sql`${jobs.result_storage} = ${job.result_storage}`,
+            sql`${jobs.result_key} IS NOT DISTINCT FROM ${job.result_key}`,
+            job.result == null
+              ? sql`${jobs.result} IS NULL`
+              : sql`${jobs.result} IS NOT DISTINCT FROM ${JSON.stringify(job.result)}::jsonb`,
+          ),
+        )
+        .returning({ id: jobs.id });
+      if (!updated) {
+        throw new Error(`Admin canary job ${job.id} changed before standby cutover audit`);
+      }
+      completedAudit = result;
+    };
+    const result = await elizaSandboxService.executeAdminCanaryUpgrade({
+      sourceJobId: job.id,
+      rolloutId: data.rolloutId,
+      agentId: data.agentId,
+      organizationId: data.organizationId,
+      targetOwnerUserId: data.targetOwnerUserId,
+      sourceImage: data.sourceImage,
+      sourceDigest: data.sourceDigest,
+      targetImage: data.targetImage,
+      targetDigest: data.targetDigest,
+      onCutoverInTx,
+      onConvergedInTx: async () => undefined,
+    });
+    if (!result.success) {
+      throw new Error(result.error ?? "Admin canary standby cutover failed");
+    }
+    if (!completedAudit) {
+      throw new Error(`Admin canary job ${job.id} cut over without a standby audit`);
+    }
+    logger.info("[provisioning-jobs] Admin canary cut over with rollback standby", {
+      jobId: job.id,
+      rolloutId: data.rolloutId,
+      agentId: data.agentId,
+      standbyGeneration: job.id,
+    });
+  }
+
   private async executeAdminCanaryImage(job: Job): Promise<void> {
     const data = readAdminCanaryImageJobData(job);
     if (data.organizationId !== job.organization_id || data.actorUserId !== job.user_id) {
       throw new Error(`Admin canary audit identity mismatch for job ${job.id}`);
+    }
+    if (data.operation === "upgrade" && !isPendingAdminCanaryCutoverAudit(job.result)) {
+      await this.executeAdminCanaryUpgradeWithStandby(job, data);
+      return;
     }
     const startedAt = jobAuditTimestamp(job.started_at ?? job.updated_at);
     const priorCutover = isPendingAdminCanaryCutoverAudit(job.result) ? job.result : undefined;
@@ -3974,32 +4206,21 @@ export class ProvisioningJobService {
       targetDigest: data.targetDigest,
     });
 
-    let result: Awaited<ReturnType<typeof elizaSandboxService.executeAdminCanaryUpgrade>>;
+    let result: Awaited<ReturnType<typeof elizaSandboxService.executeAdminCanaryRollback>>;
     try {
-      result =
-        data.operation === "upgrade"
-          ? await elizaSandboxService.executeAdminCanaryUpgrade({
-              agentId: data.agentId,
-              organizationId: data.organizationId,
-              targetOwnerUserId: data.targetOwnerUserId,
-              sourceImage: data.sourceImage,
-              sourceDigest: data.sourceDigest,
-              targetImage: data.targetImage,
-              targetDigest: data.targetDigest,
-              onCutoverInTx,
-              onConvergedInTx,
-            })
-          : await elizaSandboxService.executeAdminCanaryRollback({
-              agentId: data.agentId,
-              organizationId: data.organizationId,
-              targetOwnerUserId: data.targetOwnerUserId,
-              sourceImage: data.sourceImage,
-              sourceDigest: data.sourceDigest,
-              targetImage: data.targetImage,
-              targetDigest: data.targetDigest,
-              onCutoverInTx,
-              onConvergedInTx,
-            });
+      result = await elizaSandboxService.executeAdminCanaryRollback({
+        sourceJobId: job.id,
+        rolloutId: data.rolloutId,
+        agentId: data.agentId,
+        organizationId: data.organizationId,
+        targetOwnerUserId: data.targetOwnerUserId,
+        sourceImage: data.sourceImage,
+        sourceDigest: data.sourceDigest,
+        targetImage: data.targetImage,
+        targetDigest: data.targetDigest,
+        onCutoverInTx,
+        onConvergedInTx,
+      });
     } catch (error) {
       // error-policy:J2 A post-cutover failure is rethrown with the exact
       // durable retry snapshot; failures before cutover retain their identity.
@@ -4054,6 +4275,100 @@ export class ProvisioningJobService {
       targetImage: data.targetImage,
       targetDigest: data.targetDigest,
       durationMs: new Date(completedAudit.finishedAt).getTime() - new Date(startedAt).getTime(),
+    });
+  }
+
+  private async executeAdminCanaryStandbyDecision(job: Job): Promise<void> {
+    const data = readAdminCanaryStandbyDecisionJobData(job);
+    if (
+      data.organizationId !== job.organization_id ||
+      data.agentId !== job.agent_id ||
+      data.actorUserId !== job.user_id ||
+      data.userId !== job.user_id
+    ) {
+      throw new Error(`Admin canary standby decision identity mismatch for job ${job.id}`);
+    }
+    const startedAt = jobAuditTimestamp(job.started_at ?? job.updated_at);
+    let completed: AdminCanaryStandbyDecisionJobResult | undefined;
+    const outcome = await elizaSandboxService.executeAdminCanaryStandbyDecision({
+      data,
+      decisionJobId: job.id,
+      onConvergedInTx: async (tx, convergedOutcome) => {
+        const finishedAt = new Date();
+        const result: AdminCanaryStandbyDecisionJobResult = {
+          success: true,
+          decision: data.decision,
+          outcome: convergedOutcome,
+          requestId: data.requestId,
+          sourceJobId: data.sourceJobId,
+          decisionJobId: job.id,
+          standbyGeneration: data.standbyGeneration,
+          rolloutId: data.rolloutId,
+          actorUserId: data.actorUserId,
+          agentId: data.agentId,
+          organizationId: data.organizationId,
+          targetImage: data.targetImage,
+          targetDigest: data.targetDigest,
+          ...(convergedOutcome === "accepted" && data.verifiedBackupId
+            ? {
+                verifiedBackupId: data.verifiedBackupId,
+                restoreValidationId: data.restoreValidationId,
+                restoreValidationAggregateSha256: data.restoreValidationAggregateSha256,
+                restoreValidatedCandidateProviderSandboxId:
+                  data.restoreValidatedCandidateProviderSandboxId,
+              }
+            : {}),
+          startedAt,
+          finishedAt: finishedAt.toISOString(),
+        };
+        const [updated] = await tx
+          .update(jobs)
+          .set({
+            status: "completed",
+            result: adminCanaryStandbyDecisionJobResultToRecord(result),
+            result_storage: "inline",
+            result_key: null,
+            error: null,
+            error_storage: "inline",
+            error_key: null,
+            completed_at: finishedAt,
+            updated_at: finishedAt,
+          })
+          .where(
+            and(
+              eq(jobs.id, job.id),
+              eq(jobs.type, JOB_TYPES.AGENT_ADMIN_CANARY_STANDBY_DECISION),
+              eq(jobs.status, "in_progress"),
+              eq(jobs.organization_id, data.organizationId),
+              eq(jobs.agent_id, data.agentId),
+              eq(jobs.user_id, data.actorUserId),
+              eq(jobs.attempts, job.attempts),
+              eq(jobs.max_attempts, job.max_attempts),
+              sql`${jobs.started_at} IS NOT DISTINCT FROM ${
+                job.started_at ? new Date(jobAuditTimestamp(job.started_at)) : null
+              }`,
+              sql`${jobs.completed_at} IS NULL`,
+              sql`${jobs.data_storage} = 'inline'`,
+              sql`${jobs.data_key} IS NULL`,
+              sql`${jobs.data} IS NOT DISTINCT FROM ${JSON.stringify(job.data)}::jsonb`,
+            ),
+          )
+          .returning({ id: jobs.id });
+        if (!updated) {
+          throw new Error(`Standby decision job ${job.id} changed before atomic completion`);
+        }
+        completed = result;
+      },
+    });
+    if (!completed || completed.outcome !== outcome) {
+      throw new Error(`Standby decision job ${job.id} converged without durable completion`);
+    }
+    logger.info("[provisioning-jobs] Admin canary standby decision completed", {
+      jobId: job.id,
+      sourceJobId: data.sourceJobId,
+      agentId: data.agentId,
+      decision: data.decision,
+      outcome,
     });
   }
 

@@ -56,6 +56,11 @@ import {
   parseAdminCanaryDemoImage,
 } from "./admin-canary-image";
 import {
+  type AdminCanaryStandbyDecisionJobData,
+  UnconfiguredVerifiedRestorePointReader,
+  type VerifiedRestorePointReader,
+} from "./admin-canary-standby";
+import {
   computeStateHash,
   estimateDeltaBytes,
   incrementalChainDepth,
@@ -103,7 +108,10 @@ import {
   type SandboxHandle,
   type SandboxProvider,
 } from "./sandbox-provider";
-import { SandboxReplacementCleanupUnresolvedError } from "./sandbox-provider-types";
+import {
+  SandboxReplacementCleanupUnresolvedError,
+  type SandboxRollbackStandbyLocator,
+} from "./sandbox-provider-types";
 import { isDedicatedBootstrapWindow } from "./shared-runtime/dedicated-bootstrap";
 import {
   type RunSharedAgentTurnResult,
@@ -553,6 +561,8 @@ type TailnetIpReconcileResult =
 
 interface AdminCanaryImageExecutionPolicy {
   operation: "upgrade" | "rollback";
+  sourceJobId: string;
+  rolloutId: string;
   targetOwnerUserId: string;
   sourceImage: string;
   sourceDigest: string;
@@ -946,11 +956,16 @@ export function isPermanentlyLostSnapshot(error: unknown): boolean {
 export class ElizaSandboxService {
   private _provider?: SandboxProvider;
   private _providerPromise?: Promise<SandboxProvider>;
+  private readonly verifiedRestorePointReader: VerifiedRestorePointReader;
 
-  constructor(provider?: SandboxProvider) {
+  constructor(
+    provider?: SandboxProvider,
+    verifiedRestorePointReader: VerifiedRestorePointReader = new UnconfiguredVerifiedRestorePointReader(),
+  ) {
     if (provider) {
       this._provider = provider;
     }
+    this.verifiedRestorePointReader = verifiedRestorePointReader;
   }
 
   private async getProvider(): Promise<SandboxProvider> {
@@ -7409,12 +7424,424 @@ export class ElizaSandboxService {
     return await this.executeUpgradeWithPolicy(agentId, orgId, toDigest, dockerImage, fromDigest);
   }
 
+  private rollbackStandbyClearValues() {
+    return {
+      rollback_standby_state: null,
+      rollback_standby_generation: null,
+      rollback_standby_rollout_id: null,
+      rollback_standby_source_job_id: null,
+      rollback_standby_decision_job_id: null,
+      rollback_standby_verified_backup_id: null,
+      rollback_standby_restore_validation_id: null,
+      rollback_standby_restore_validation_aggregate_sha256: null,
+      rollback_standby_restore_candidate_provider_sandbox_id: null,
+      rollback_standby_sandbox_id: null,
+      rollback_standby_node_id: null,
+      rollback_standby_container_name: null,
+      rollback_standby_container_id: null,
+      rollback_standby_bridge_url: null,
+      rollback_standby_health_url: null,
+      rollback_standby_bridge_port: null,
+      rollback_standby_web_ui_port: null,
+      rollback_standby_headscale_ip: null,
+      rollback_standby_vpn_node_id: null,
+      rollback_standby_docker_image: null,
+      rollback_standby_image_digest: null,
+      rollback_standby_previous_docker_image: null,
+      rollback_standby_previous_image_digest: null,
+      rollback_standby_environment_revision: null,
+      rollback_standby_allocation_counted: null,
+      rollback_standby_primary_sandbox_id: null,
+      rollback_standby_primary_node_id: null,
+      rollback_standby_primary_container_name: null,
+      rollback_standby_primary_container_id: null,
+      rollback_standby_primary_vpn_node_id: null,
+      rollback_standby_primary_replacement_attempt_id: null,
+      rollback_standby_created_at: null,
+    };
+  }
+
+  private async recoverAdminCanaryPreCutoverStandby(
+    agent: AgentSandbox,
+    policy: AdminCanaryImageExecutionPolicy,
+  ): Promise<void> {
+    if (
+      agent.rollback_standby_state !== "pausing" &&
+      agent.rollback_standby_state !== "paused_pre_cutover"
+    ) {
+      throw new Error(`Rollback standby ${agent.rollback_standby_state} requires a decision`);
+    }
+    if (
+      agent.rollback_standby_source_job_id !== policy.sourceJobId ||
+      agent.rollback_standby_rollout_id !== policy.rolloutId ||
+      agent.rollback_standby_generation !== policy.sourceJobId
+    ) {
+      throw new Error("Rollback standby belongs to a different canary job");
+    }
+    const provider = await this.getProvider();
+    if (!provider.pauseForRollbackStandby || !provider.resumeRollbackStandby) {
+      throw new Error("Sandbox provider does not support rollback standby recovery");
+    }
+
+    // The replacement must be proven absent before the old writer is resumed.
+    // A crash while this bridge is pre-cutover therefore cannot create two
+    // concurrently writable runtimes.
+    await this.retirePersistedReplacementCleanup(agent.id, agent.organization_id);
+    const locator: SandboxRollbackStandbyLocator =
+      agent.rollback_standby_container_id &&
+      agent.rollback_standby_node_id &&
+      agent.rollback_standby_container_name
+        ? {
+            nodeId: agent.rollback_standby_node_id,
+            containerName: agent.rollback_standby_container_name,
+            containerId: agent.rollback_standby_container_id,
+          }
+        : await provider.pauseForRollbackStandby(agent.rollback_standby_sandbox_id!);
+    await provider.resumeRollbackStandby(locator);
+
+    const cleared = await dbWrite.transaction(async (tx) => {
+      await this.lockLifecycle(tx, agent.id, agent.organization_id);
+      const [updated] = await tx
+        .update(agentSandboxes)
+        .set({
+          ...this.rollbackStandbyClearValues(),
+          updated_at: new Date(),
+        })
+        .where(
+          and(
+            eq(agentSandboxes.id, agent.id),
+            eq(agentSandboxes.organization_id, agent.organization_id),
+            eq(agentSandboxes.rollback_standby_generation, policy.sourceJobId),
+            eq(agentSandboxes.rollback_standby_source_job_id, policy.sourceJobId),
+            inArray(agentSandboxes.rollback_standby_state, ["pausing", "paused_pre_cutover"]),
+            eq(agentSandboxes.sandbox_id, agent.rollback_standby_sandbox_id!),
+            eq(agentSandboxes.node_id, agent.rollback_standby_node_id!),
+            eq(agentSandboxes.container_name, agent.rollback_standby_container_name!),
+            sql`${agentSandboxes.replacement_cleanup_sandbox_id} IS NULL`,
+          ),
+        )
+        .returning({ id: agentSandboxes.id });
+      return Boolean(updated);
+    });
+    if (!cleared) {
+      throw new Error("Rollback standby changed while pre-cutover recovery completed");
+    }
+  }
+
+  private async executeAdminCanaryStandbyCutover(params: {
+    agent: AgentSandbox;
+    provider: SandboxProvider;
+    blueHandle: SandboxHandle;
+    blueMeta: DockerSandboxMetadata;
+    policy: AdminCanaryImageExecutionPolicy;
+    toDigest: string;
+    oldNodeId: string;
+    oldContainerName: string;
+    oldSandboxId: string;
+    sourceEnvironmentRevision: number;
+  }): Promise<ImageSwapResult> {
+    const {
+      agent,
+      provider,
+      blueHandle,
+      blueMeta,
+      policy,
+      toDigest,
+      oldNodeId,
+      oldContainerName,
+      oldSandboxId,
+      sourceEnvironmentRevision,
+    } = params;
+    const failBeforeStandbyIntent = async (error: string): Promise<ImageSwapResult> => {
+      try {
+        await this.retirePersistedReplacementCleanup(agent.id, agent.organization_id);
+      } catch (cleanupError) {
+        // error-policy:J1 pre-cutover boundary translation — traffic remains on
+        // the old placement, while the durable cleanup fence retains ownership
+        // of a blue workload that could not yet be proven absent.
+        return {
+          success: false,
+          rolledBack: true,
+          cleanupPending: true,
+          oldNodeId,
+          oldContainerName,
+          error: `${error}; replacement cleanup remains pending: ${
+            cleanupError instanceof Error ? cleanupError.message : String(cleanupError)
+          }`,
+        };
+      }
+      return {
+        success: false,
+        rolledBack: true,
+        oldNodeId,
+        oldContainerName,
+        error,
+      };
+    };
+    if (!provider.pauseForRollbackStandby || !provider.resumeRollbackStandby) {
+      return await failBeforeStandbyIntent(
+        "Sandbox provider does not support exact rollback standby transitions",
+      );
+    }
+    if (
+      !agent.bridge_url ||
+      !agent.health_url ||
+      agent.bridge_port === null ||
+      agent.web_ui_port === null ||
+      !agent.docker_image ||
+      !agent.image_digest ||
+      !blueMeta.containerId ||
+      !blueMeta.vpnNodeId ||
+      !blueMeta.previousVpnNodeId
+    ) {
+      return await failBeforeStandbyIntent(
+        "Canary placement lacks exact rollback standby identity",
+      );
+    }
+
+    const generation = policy.sourceJobId;
+    const intentPersisted = await dbWrite.transaction(async (tx) => {
+      await this.lockLifecycle(tx, agent.id, agent.organization_id);
+      const current = await this.getAgentForLifecycleMutation(tx, agent.id, agent.organization_id);
+      const cleanupLocator = current ? this.getReplacementCleanupLocator(current) : undefined;
+      if (
+        !current ||
+        current.rollback_standby_state !== null ||
+        current.status !== "running" ||
+        current.user_id !== policy.targetOwnerUserId ||
+        current.sandbox_id !== oldSandboxId ||
+        current.node_id !== oldNodeId ||
+        current.container_name !== oldContainerName ||
+        current.docker_image !== policy.sourceImage ||
+        current.image_digest !== policy.sourceDigest ||
+        current.environment_revision !== sourceEnvironmentRevision ||
+        !cleanupLocator ||
+        !this.replacementCleanupMatchesHandle(cleanupLocator, blueHandle)
+      ) {
+        return false;
+      }
+      const [updated] = await tx
+        .update(agentSandboxes)
+        .set({
+          rollback_standby_state: "pausing",
+          rollback_standby_generation: generation,
+          rollback_standby_rollout_id: policy.rolloutId,
+          rollback_standby_source_job_id: policy.sourceJobId,
+          rollback_standby_decision_job_id: null,
+          rollback_standby_verified_backup_id: null,
+          rollback_standby_sandbox_id: oldSandboxId,
+          rollback_standby_node_id: oldNodeId,
+          rollback_standby_container_name: oldContainerName,
+          rollback_standby_container_id: null,
+          rollback_standby_bridge_url: agent.bridge_url,
+          rollback_standby_health_url: agent.health_url,
+          rollback_standby_bridge_port: agent.bridge_port,
+          rollback_standby_web_ui_port: agent.web_ui_port,
+          rollback_standby_headscale_ip: agent.headscale_ip,
+          rollback_standby_vpn_node_id: blueMeta.previousVpnNodeId,
+          rollback_standby_docker_image: policy.sourceImage,
+          rollback_standby_image_digest: policy.sourceDigest,
+          rollback_standby_previous_docker_image: agent.previous_docker_image,
+          rollback_standby_previous_image_digest: agent.previous_image_digest,
+          rollback_standby_environment_revision: sourceEnvironmentRevision,
+          rollback_standby_allocation_counted: true,
+          rollback_standby_primary_sandbox_id: blueHandle.sandboxId,
+          rollback_standby_primary_node_id: blueMeta.nodeId,
+          rollback_standby_primary_container_name: blueMeta.containerName,
+          rollback_standby_primary_container_id: blueMeta.containerId,
+          rollback_standby_primary_vpn_node_id: blueMeta.vpnNodeId,
+          rollback_standby_primary_replacement_attempt_id: blueMeta.replacementAttemptId,
+          rollback_standby_created_at: new Date(),
+          updated_at: new Date(),
+        })
+        .where(
+          and(
+            eq(agentSandboxes.id, agent.id),
+            eq(agentSandboxes.organization_id, agent.organization_id),
+            eq(agentSandboxes.user_id, policy.targetOwnerUserId),
+            sql`${agentSandboxes.rollback_standby_state} IS NULL`,
+            eq(agentSandboxes.sandbox_id, oldSandboxId),
+            eq(agentSandboxes.node_id, oldNodeId),
+            eq(agentSandboxes.container_name, oldContainerName),
+            eq(agentSandboxes.docker_image, policy.sourceImage),
+            eq(agentSandboxes.image_digest, policy.sourceDigest),
+            eq(agentSandboxes.environment_revision, sourceEnvironmentRevision),
+          ),
+        )
+        .returning({ id: agentSandboxes.id });
+      return Boolean(updated);
+    });
+    if (!intentPersisted) {
+      return await failBeforeStandbyIntent(
+        "Agent changed before rollback standby intent was persisted",
+      );
+    }
+
+    let standby: SandboxRollbackStandbyLocator;
+    try {
+      standby = await provider.pauseForRollbackStandby(oldSandboxId);
+      if (standby.nodeId !== oldNodeId || standby.containerName !== oldContainerName) {
+        throw new Error("Paused rollback standby does not match the routed old placement");
+      }
+      const [enriched] = await dbWrite
+        .update(agentSandboxes)
+        .set({
+          rollback_standby_state: "paused_pre_cutover",
+          rollback_standby_container_id: standby.containerId,
+          updated_at: new Date(),
+        })
+        .where(
+          and(
+            eq(agentSandboxes.id, agent.id),
+            eq(agentSandboxes.organization_id, agent.organization_id),
+            eq(agentSandboxes.rollback_standby_state, "pausing"),
+            eq(agentSandboxes.rollback_standby_generation, generation),
+            eq(agentSandboxes.rollback_standby_source_job_id, policy.sourceJobId),
+          ),
+        )
+        .returning({ id: agentSandboxes.id });
+      if (!enriched) {
+        throw new Error("Rollback standby changed before exact Docker identity was persisted");
+      }
+    } catch (error) {
+      const current = await agentSandboxesRepository.findByIdAndOrgForWrite(
+        agent.id,
+        agent.organization_id,
+      );
+      if (current) {
+        await this.recoverAdminCanaryPreCutoverStandby(current, policy);
+      }
+      return {
+        success: false,
+        rolledBack: true,
+        error: `Rollback standby pause failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      };
+    }
+
+    try {
+      const swapped = await dbWrite.transaction(async (tx) => {
+        await this.lockLifecycle(tx, agent.id, agent.organization_id);
+        const current = await this.getAgentForLifecycleMutation(
+          tx,
+          agent.id,
+          agent.organization_id,
+        );
+        const cleanupLocator = current ? this.getReplacementCleanupLocator(current) : undefined;
+        if (
+          !current ||
+          current.rollback_standby_state !== "paused_pre_cutover" ||
+          current.rollback_standby_generation !== generation ||
+          current.rollback_standby_container_id !== standby.containerId ||
+          current.user_id !== policy.targetOwnerUserId ||
+          current.sandbox_id !== oldSandboxId ||
+          current.node_id !== oldNodeId ||
+          current.container_name !== oldContainerName ||
+          current.docker_image !== policy.sourceImage ||
+          current.image_digest !== policy.sourceDigest ||
+          current.environment_revision !== sourceEnvironmentRevision ||
+          !cleanupLocator ||
+          !this.replacementCleanupMatchesHandle(cleanupLocator, blueHandle)
+        ) {
+          return false;
+        }
+        const [updated] = await tx
+          .update(agentSandboxes)
+          .set({
+            sandbox_id: blueHandle.sandboxId,
+            bridge_url: blueHandle.bridgeUrl,
+            health_url: blueHandle.healthUrl,
+            node_id: blueMeta.nodeId,
+            container_name: blueMeta.containerName,
+            bridge_port: blueMeta.bridgePort,
+            web_ui_port: blueMeta.webUiPort,
+            headscale_ip: blueMeta.headscaleIp ?? null,
+            docker_image: policy.targetImage,
+            image_digest: toDigest,
+            previous_docker_image: policy.sourceImage,
+            previous_image_digest: policy.sourceDigest,
+            replacement_cleanup_sandbox_id: null,
+            replacement_cleanup_node_id: null,
+            replacement_cleanup_container_name: null,
+            replacement_cleanup_attempt_id: null,
+            replacement_cleanup_container_id: null,
+            replacement_cleanup_vpn_node_id: null,
+            replacement_cleanup_vpn_node_name: null,
+            replacement_cleanup_preserved_vpn_node_id: null,
+            replacement_cleanup_vpn_registration_started_at: null,
+            replacement_cleanup_allocation_counted: null,
+            replacement_cleanup_created_at: null,
+            rollback_standby_state: "paused",
+            error_message: null,
+            last_heartbeat_at: new Date(),
+            updated_at: new Date(),
+          })
+          .where(
+            and(
+              eq(agentSandboxes.id, agent.id),
+              eq(agentSandboxes.organization_id, agent.organization_id),
+              eq(agentSandboxes.user_id, policy.targetOwnerUserId),
+              eq(agentSandboxes.rollback_standby_state, "paused_pre_cutover"),
+              eq(agentSandboxes.rollback_standby_generation, generation),
+              eq(agentSandboxes.rollback_standby_container_id, standby.containerId),
+              eq(agentSandboxes.sandbox_id, oldSandboxId),
+              eq(agentSandboxes.node_id, oldNodeId),
+              eq(agentSandboxes.container_name, oldContainerName),
+              eq(agentSandboxes.docker_image, policy.sourceImage),
+              eq(agentSandboxes.image_digest, policy.sourceDigest),
+              eq(agentSandboxes.environment_revision, sourceEnvironmentRevision),
+            ),
+          )
+          .returning({ id: agentSandboxes.id });
+        if (!updated) return false;
+        await policy.onCutoverInTx(tx, {
+          oldNodeId,
+          oldContainerName,
+          newNodeId: blueMeta.nodeId,
+          newContainerName: blueMeta.containerName,
+          newDigest: toDigest,
+        });
+        return true;
+      });
+      if (!swapped) {
+        throw new Error("Agent changed during rollback-standby cutover");
+      }
+    } catch (error) {
+      const current = await agentSandboxesRepository.findByIdAndOrgForWrite(
+        agent.id,
+        agent.organization_id,
+      );
+      if (current?.rollback_standby_state === "paused_pre_cutover") {
+        await this.recoverAdminCanaryPreCutoverStandby(current, policy);
+      }
+      return {
+        success: false,
+        rolledBack: true,
+        error: `Rollback-standby cutover failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      };
+    }
+
+    return {
+      success: true,
+      oldNodeId,
+      oldContainerName,
+      newNodeId: blueMeta.nodeId,
+      newContainerName: blueMeta.containerName,
+      newDigest: toDigest,
+    };
+  }
+
   /**
    * Executes the dedicated cross-repository canary policy. Callers must have
    * already created an audited admin-canary job; the ordinary fleet method
    * remains same-repository-only.
    */
   async executeAdminCanaryUpgrade(params: {
+    sourceJobId: string;
+    rolloutId: string;
     agentId: string;
     organizationId: string;
     targetOwnerUserId: string;
@@ -7439,6 +7866,8 @@ export class ElizaSandboxService {
       params.sourceDigest,
       {
         operation: "upgrade",
+        sourceJobId: params.sourceJobId,
+        rolloutId: params.rolloutId,
         targetOwnerUserId: params.targetOwnerUserId,
         sourceImage: params.sourceImage,
         sourceDigest: params.sourceDigest,
@@ -7448,6 +7877,499 @@ export class ElizaSandboxService {
         onConvergedInTx: params.onConvergedInTx,
       },
     );
+  }
+
+  private assertStandbyDecisionIdentity(
+    agent: AgentSandbox,
+    data: AdminCanaryStandbyDecisionJobData,
+    states: readonly string[],
+  ): void {
+    const rollbackCommitted = agent.rollback_standby_state === "rollback_cleanup_pending";
+    const accepting = agent.rollback_standby_state === "retiring";
+    if (
+      !states.includes(agent.rollback_standby_state ?? "") ||
+      agent.rollback_standby_generation !== data.standbyGeneration ||
+      agent.rollback_standby_rollout_id !== data.rolloutId ||
+      agent.rollback_standby_source_job_id !== data.sourceJobId ||
+      agent.user_id !== data.targetOwnerUserId ||
+      (!rollbackCommitted &&
+        (agent.docker_image !== data.targetImage || agent.image_digest !== data.targetDigest)) ||
+      (rollbackCommitted &&
+        (agent.docker_image !== data.sourceImage ||
+          agent.image_digest !== data.sourceDigest ||
+          agent.sandbox_id !== agent.rollback_standby_sandbox_id ||
+          agent.node_id !== agent.rollback_standby_node_id ||
+          agent.container_name !== agent.rollback_standby_container_name)) ||
+      !agent.rollback_standby_sandbox_id ||
+      !agent.rollback_standby_node_id ||
+      !agent.rollback_standby_container_name ||
+      !agent.rollback_standby_container_id ||
+      !agent.rollback_standby_bridge_url ||
+      !agent.rollback_standby_health_url ||
+      agent.rollback_standby_bridge_port === null ||
+      agent.rollback_standby_web_ui_port === null ||
+      !agent.rollback_standby_vpn_node_id ||
+      agent.rollback_standby_docker_image !== data.sourceImage ||
+      agent.rollback_standby_image_digest !== data.sourceDigest ||
+      agent.rollback_standby_environment_revision === null ||
+      agent.rollback_standby_allocation_counted !== true ||
+      !agent.rollback_standby_primary_sandbox_id ||
+      !agent.rollback_standby_primary_node_id ||
+      !agent.rollback_standby_primary_container_name ||
+      !agent.rollback_standby_primary_container_id ||
+      !agent.rollback_standby_primary_vpn_node_id ||
+      !agent.rollback_standby_primary_replacement_attempt_id ||
+      (accepting &&
+        (agent.rollback_standby_verified_backup_id !== data.verifiedBackupId ||
+          agent.rollback_standby_restore_validation_id !== data.restoreValidationId ||
+          agent.rollback_standby_restore_validation_aggregate_sha256 !==
+            data.restoreValidationAggregateSha256 ||
+          agent.rollback_standby_restore_candidate_provider_sandbox_id !==
+            data.restoreValidatedCandidateProviderSandboxId)) ||
+      (!accepting &&
+        (agent.rollback_standby_restore_validation_id !== null ||
+          agent.rollback_standby_restore_validation_aggregate_sha256 !== null ||
+          agent.rollback_standby_restore_candidate_provider_sandbox_id !== null))
+    ) {
+      throw new Error(`Agent ${data.agentId} rollback standby identity changed`);
+    }
+  }
+
+  private async retireAcceptedRollbackStandby(params: {
+    agent: AgentSandbox;
+    data: AdminCanaryStandbyDecisionJobData;
+    decisionJobId: string;
+    onConvergedInTx: (tx: DbTransaction, outcome: "accepted" | "rolled_back") => Promise<void>;
+  }): Promise<"accepted"> {
+    const { agent, data, decisionJobId, onConvergedInTx } = params;
+    this.assertStandbyDecisionIdentity(agent, data, ["retiring"]);
+    if (
+      agent.rollback_standby_decision_job_id !== decisionJobId ||
+      agent.rollback_standby_verified_backup_id !== data.verifiedBackupId ||
+      agent.rollback_standby_restore_validation_id !== data.restoreValidationId ||
+      agent.rollback_standby_restore_validation_aggregate_sha256 !==
+        data.restoreValidationAggregateSha256 ||
+      agent.rollback_standby_restore_candidate_provider_sandbox_id !==
+        data.restoreValidatedCandidateProviderSandboxId
+    ) {
+      throw new Error("Rollback standby acceptance audit changed");
+    }
+    const provider = await this.getProvider();
+    if (!provider.stopOnSpecificNodeForReplacement) {
+      throw new Error("Sandbox provider cannot prove the accepted standby absent");
+    }
+    await provider.stopOnSpecificNodeForReplacement(
+      agent.rollback_standby_node_id!,
+      agent.rollback_standby_container_name!,
+      agent.rollback_standby_vpn_node_id,
+      {
+        replacementAttemptId: null,
+        containerId: agent.rollback_standby_container_id,
+        vpnNodeName: null,
+        previousVpnNodeId: null,
+        vpnRegistrationStartedAt: null,
+        allocationCounted: true,
+      },
+    );
+    await dbWrite.transaction(async (tx) => {
+      await this.lockLifecycle(tx, data.agentId, data.organizationId);
+      const current = await this.getAgentForLifecycleMutation(
+        tx,
+        data.agentId,
+        data.organizationId,
+      );
+      if (!current) throw new Error("Agent disappeared after standby retirement");
+      this.assertStandbyDecisionIdentity(current, data, ["retiring"]);
+      if (
+        current.rollback_standby_decision_job_id !== decisionJobId ||
+        current.rollback_standby_verified_backup_id !== data.verifiedBackupId ||
+        current.rollback_standby_restore_validation_id !== data.restoreValidationId ||
+        current.rollback_standby_restore_validation_aggregate_sha256 !==
+          data.restoreValidationAggregateSha256 ||
+        current.rollback_standby_restore_candidate_provider_sandbox_id !==
+          data.restoreValidatedCandidateProviderSandboxId
+      ) {
+        throw new Error("Rollback standby acceptance fence changed after remote retirement");
+      }
+      const [cleared] = await tx
+        .update(agentSandboxes)
+        .set({
+          ...this.rollbackStandbyClearValues(),
+          updated_at: new Date(),
+        })
+        .where(
+          and(
+            eq(agentSandboxes.id, data.agentId),
+            eq(agentSandboxes.organization_id, data.organizationId),
+            eq(agentSandboxes.rollback_standby_state, "retiring"),
+            eq(agentSandboxes.rollback_standby_generation, data.standbyGeneration),
+            eq(agentSandboxes.rollback_standby_decision_job_id, decisionJobId),
+            eq(agentSandboxes.rollback_standby_verified_backup_id, data.verifiedBackupId!),
+            eq(agentSandboxes.rollback_standby_restore_validation_id, data.restoreValidationId!),
+            eq(
+              agentSandboxes.rollback_standby_restore_validation_aggregate_sha256,
+              data.restoreValidationAggregateSha256!,
+            ),
+            eq(
+              agentSandboxes.rollback_standby_restore_candidate_provider_sandbox_id,
+              data.restoreValidatedCandidateProviderSandboxId!,
+            ),
+            eq(agentSandboxes.user_id, data.targetOwnerUserId),
+            eq(agentSandboxes.docker_image, data.targetImage),
+            eq(agentSandboxes.image_digest, data.targetDigest),
+            eq(agentSandboxes.environment_revision, current.environment_revision),
+          ),
+        )
+        .returning({ id: agentSandboxes.id });
+      if (!cleared) {
+        throw new Error("Rollback standby acceptance fence changed before durable release");
+      }
+      const released = await tx.execute<{ node_id: string }>(sql`
+        UPDATE ${dockerNodes}
+        SET allocated_count = allocated_count - 1, updated_at = NOW()
+        WHERE node_id = ${agent.rollback_standby_node_id}
+          AND allocated_count > 0
+        RETURNING node_id
+      `);
+      if (released.rows.length !== 1) {
+        throw new Error(`Standby node ${agent.rollback_standby_node_id} capacity release failed`);
+      }
+      await onConvergedInTx(tx, "accepted");
+    });
+    return "accepted";
+  }
+
+  private async rollbackToExactStandby(params: {
+    agent: AgentSandbox;
+    data: AdminCanaryStandbyDecisionJobData;
+    decisionJobId: string;
+    onConvergedInTx: (tx: DbTransaction, outcome: "accepted" | "rolled_back") => Promise<void>;
+  }): Promise<"rolled_back"> {
+    const { data, decisionJobId, onConvergedInTx } = params;
+    const blueNodeId = params.agent.rollback_standby_primary_node_id!;
+    const blueContainerName = params.agent.rollback_standby_primary_container_name!;
+    let agent = params.agent;
+    this.assertStandbyDecisionIdentity(agent, data, [
+      "paused",
+      "rollback_pending",
+      "rollback_cleanup_pending",
+    ]);
+    if (agent.rollback_standby_state === "paused") {
+      const [transitioned] = await dbWrite
+        .update(agentSandboxes)
+        .set({
+          rollback_standby_state: "rollback_pending",
+          rollback_standby_decision_job_id: decisionJobId,
+          rollback_standby_verified_backup_id: null,
+          updated_at: new Date(),
+        })
+        .where(
+          and(
+            eq(agentSandboxes.id, data.agentId),
+            eq(agentSandboxes.organization_id, data.organizationId),
+            eq(agentSandboxes.rollback_standby_state, "paused"),
+            eq(agentSandboxes.rollback_standby_generation, data.standbyGeneration),
+            sql`${agentSandboxes.rollback_standby_decision_job_id} IS NULL`,
+          ),
+        )
+        .returning();
+      if (!transitioned) throw new Error("Rollback standby changed before rejection was fenced");
+      agent = transitioned;
+    } else if (agent.rollback_standby_decision_job_id !== decisionJobId) {
+      throw new Error("Rollback standby is owned by a different decision job");
+    }
+
+    const provider = await this.getProvider();
+    if (
+      !provider.pauseForRollbackStandby ||
+      !provider.resumeRollbackStandby ||
+      !provider.stopOnSpecificNodeForReplacement
+    ) {
+      throw new Error("Sandbox provider lacks exact rollback standby operations");
+    }
+
+    if (agent.rollback_standby_state !== "rollback_cleanup_pending") {
+      const primary = await provider.pauseForRollbackStandby(
+        agent.rollback_standby_primary_sandbox_id!,
+      );
+      if (
+        primary.nodeId !== agent.rollback_standby_primary_node_id ||
+        primary.containerName !== agent.rollback_standby_primary_container_name ||
+        primary.containerId !== agent.rollback_standby_primary_container_id
+      ) {
+        throw new Error("Paused canary primary does not match durable rollback identity");
+      }
+      const standby: SandboxRollbackStandbyLocator = {
+        nodeId: agent.rollback_standby_node_id!,
+        containerName: agent.rollback_standby_container_name!,
+        containerId: agent.rollback_standby_container_id!,
+      };
+      await provider.resumeRollbackStandby(standby);
+
+      const swapOutcome = await dbWrite.transaction(async (tx) => {
+        await this.lockLifecycle(tx, data.agentId, data.organizationId);
+        const current = await this.getAgentForLifecycleMutation(
+          tx,
+          data.agentId,
+          data.organizationId,
+        );
+        if (!current) throw new Error("Agent disappeared during rollback standby swap");
+        if (
+          current.rollback_standby_state === "rollback_cleanup_pending" &&
+          current.rollback_standby_generation === data.standbyGeneration &&
+          current.rollback_standby_decision_job_id === decisionJobId
+        ) {
+          return "already" as const;
+        }
+        this.assertStandbyDecisionIdentity(current, data, ["rollback_pending"]);
+        if (
+          current.rollback_standby_decision_job_id !== decisionJobId ||
+          current.sandbox_id !== agent.sandbox_id ||
+          current.node_id !== agent.node_id ||
+          current.container_name !== agent.container_name
+        ) {
+          return "changed" as const;
+        }
+        const [updated] = await tx
+          .update(agentSandboxes)
+          .set({
+            sandbox_id: current.rollback_standby_sandbox_id,
+            bridge_url: current.rollback_standby_bridge_url,
+            health_url: current.rollback_standby_health_url,
+            node_id: current.rollback_standby_node_id,
+            container_name: current.rollback_standby_container_name,
+            bridge_port: current.rollback_standby_bridge_port,
+            web_ui_port: current.rollback_standby_web_ui_port,
+            headscale_ip: current.rollback_standby_headscale_ip,
+            docker_image: current.rollback_standby_docker_image,
+            image_digest: current.rollback_standby_image_digest,
+            previous_docker_image: current.rollback_standby_previous_docker_image,
+            previous_image_digest: current.rollback_standby_previous_image_digest,
+            environment_revision: current.rollback_standby_environment_revision!,
+            rollback_standby_state: "rollback_cleanup_pending",
+            error_message: null,
+            last_heartbeat_at: new Date(),
+            updated_at: new Date(),
+          })
+          .where(
+            and(
+              eq(agentSandboxes.id, data.agentId),
+              eq(agentSandboxes.organization_id, data.organizationId),
+              eq(agentSandboxes.rollback_standby_state, "rollback_pending"),
+              eq(agentSandboxes.rollback_standby_generation, data.standbyGeneration),
+              eq(agentSandboxes.rollback_standby_decision_job_id, decisionJobId),
+              eq(agentSandboxes.sandbox_id, agent.sandbox_id!),
+              eq(agentSandboxes.node_id, agent.node_id!),
+              eq(agentSandboxes.container_name, agent.container_name!),
+              eq(agentSandboxes.image_digest, data.targetDigest),
+            ),
+          )
+          .returning();
+        return updated ? ("swapped" as const) : ("changed" as const);
+      });
+      if (swapOutcome === "changed") {
+        // The primary CAS failed after the old writer resumed. Restore the
+        // single-writer invariant before surfacing the conflict.
+        const rePaused = await provider.pauseForRollbackStandby(agent.rollback_standby_sandbox_id!);
+        if (rePaused.containerId !== standby.containerId) {
+          throw new Error("Rollback compensation found a different standby container");
+        }
+        await provider.resumeRollbackStandby(primary);
+        throw new Error("Agent changed during rollback standby swap");
+      }
+      agent =
+        (await agentSandboxesRepository.findByIdAndOrgForWrite(
+          data.agentId,
+          data.organizationId,
+        )) ?? agent;
+    }
+
+    this.assertStandbyDecisionIdentity(agent, data, ["rollback_cleanup_pending"]);
+    await provider.stopOnSpecificNodeForReplacement(
+      blueNodeId,
+      blueContainerName,
+      agent.rollback_standby_primary_vpn_node_id,
+      {
+        replacementAttemptId: agent.rollback_standby_primary_replacement_attempt_id,
+        containerId: agent.rollback_standby_primary_container_id,
+        vpnNodeName: null,
+        previousVpnNodeId: null,
+        vpnRegistrationStartedAt: null,
+        allocationCounted: true,
+      },
+    );
+    await dbWrite.transaction(async (tx) => {
+      await this.lockLifecycle(tx, data.agentId, data.organizationId);
+      const current = await this.getAgentForLifecycleMutation(
+        tx,
+        data.agentId,
+        data.organizationId,
+      );
+      if (!current) throw new Error("Agent disappeared after rollback cleanup");
+      this.assertStandbyDecisionIdentity(current, data, ["rollback_cleanup_pending"]);
+      if (current.rollback_standby_decision_job_id !== decisionJobId) {
+        throw new Error("Rollback cleanup is owned by a different decision job");
+      }
+      const [cleared] = await tx
+        .update(agentSandboxes)
+        .set({
+          ...this.rollbackStandbyClearValues(),
+          updated_at: new Date(),
+        })
+        .where(
+          and(
+            eq(agentSandboxes.id, data.agentId),
+            eq(agentSandboxes.organization_id, data.organizationId),
+            eq(agentSandboxes.rollback_standby_state, "rollback_cleanup_pending"),
+            eq(agentSandboxes.rollback_standby_generation, data.standbyGeneration),
+            eq(agentSandboxes.rollback_standby_decision_job_id, decisionJobId),
+          ),
+        )
+        .returning({ id: agentSandboxes.id });
+      if (!cleared) throw new Error("Rollback cleanup fence changed before durable release");
+      const released = await tx.execute<{ node_id: string }>(sql`
+        UPDATE ${dockerNodes}
+        SET allocated_count = allocated_count - 1, updated_at = NOW()
+        WHERE node_id = ${blueNodeId}
+          AND allocated_count > 0
+        RETURNING node_id
+      `);
+      if (released.rows.length !== 1) {
+        throw new Error(`Canary node ${blueNodeId} capacity release failed`);
+      }
+      await onConvergedInTx(tx, "rolled_back");
+    });
+    return "rolled_back";
+  }
+
+  async executeAdminCanaryStandbyDecision(params: {
+    data: AdminCanaryStandbyDecisionJobData;
+    decisionJobId: string;
+    onConvergedInTx: (tx: DbTransaction, outcome: "accepted" | "rolled_back") => Promise<void>;
+  }): Promise<"accepted" | "rolled_back"> {
+    let agent = await agentSandboxesRepository.findByIdAndOrgForWrite(
+      params.data.agentId,
+      params.data.organizationId,
+    );
+    if (!agent) throw new Error("Agent not found");
+    this.assertStandbyDecisionIdentity(agent, params.data, [
+      "paused",
+      "retiring",
+      "rollback_pending",
+      "rollback_cleanup_pending",
+    ]);
+
+    if (params.data.decision === "accept" && agent.rollback_standby_state === "paused") {
+      try {
+        const health = await this.verifyReplacementRuntimeHealth({
+          agent,
+          bridgeUrl: agent.bridge_url!,
+        });
+        if (!health.success) {
+          throw new Error(`Canary acceptance health gate failed: ${health.error}`);
+        }
+        const transitioned = await dbWrite.transaction(async (tx) => {
+          await this.lockLifecycle(tx, params.data.agentId, params.data.organizationId);
+          const current = await this.getAgentForLifecycleMutation(
+            tx,
+            params.data.agentId,
+            params.data.organizationId,
+          );
+          if (!current) throw new Error("Agent disappeared during standby acceptance");
+          this.assertStandbyDecisionIdentity(current, params.data, ["paused"]);
+          if (
+            current.rollback_standby_decision_job_id !== null ||
+            params.data.restoreValidatedCandidateProviderSandboxId === current.sandbox_id ||
+            params.data.restoreValidatedCandidateProviderSandboxId ===
+              current.rollback_standby_sandbox_id
+          ) {
+            throw new Error("Restore validation candidate is not a distinct never-routed sandbox");
+          }
+          await this.verifiedRestorePointReader.assertVerifiedV2CandidateRestoreInTx(tx, {
+            backupId: params.data.verifiedBackupId!,
+            restoreValidationId: params.data.restoreValidationId!,
+            restoreValidationAggregateSha256: params.data.restoreValidationAggregateSha256!,
+            restoreValidatedCandidateProviderSandboxId:
+              params.data.restoreValidatedCandidateProviderSandboxId!,
+            organizationId: params.data.organizationId,
+            sandboxRecordId: params.data.agentId,
+            agentId: params.data.agentId,
+            targetOwnerUserId: params.data.targetOwnerUserId,
+            targetImage: params.data.targetImage,
+            targetDigest: params.data.targetDigest,
+            neverRouted: true,
+            snapshotType: "pre-upgrade",
+            schemaVersion: 2,
+            verificationStatus: "verified",
+            descriptorCommitState: "complete",
+            restoreReceiptState: "committed",
+          });
+          const [updated] = await tx
+            .update(agentSandboxes)
+            .set({
+              rollback_standby_state: "retiring",
+              rollback_standby_decision_job_id: params.decisionJobId,
+              rollback_standby_verified_backup_id: params.data.verifiedBackupId,
+              rollback_standby_restore_validation_id: params.data.restoreValidationId,
+              rollback_standby_restore_validation_aggregate_sha256:
+                params.data.restoreValidationAggregateSha256,
+              rollback_standby_restore_candidate_provider_sandbox_id:
+                params.data.restoreValidatedCandidateProviderSandboxId,
+              updated_at: new Date(),
+            })
+            .where(
+              and(
+                eq(agentSandboxes.id, params.data.agentId),
+                eq(agentSandboxes.organization_id, params.data.organizationId),
+                eq(agentSandboxes.user_id, params.data.targetOwnerUserId),
+                eq(agentSandboxes.docker_image, params.data.targetImage),
+                eq(agentSandboxes.image_digest, params.data.targetDigest),
+                eq(agentSandboxes.environment_revision, current.environment_revision),
+                eq(agentSandboxes.rollback_standby_state, "paused"),
+                eq(agentSandboxes.rollback_standby_generation, params.data.standbyGeneration),
+                sql`${agentSandboxes.rollback_standby_decision_job_id} IS NULL`,
+                sql`${agentSandboxes.rollback_standby_verified_backup_id} IS NULL`,
+                sql`${agentSandboxes.rollback_standby_restore_validation_id} IS NULL`,
+                sql`${agentSandboxes.rollback_standby_restore_validation_aggregate_sha256} IS NULL`,
+                sql`${agentSandboxes.rollback_standby_restore_candidate_provider_sandbox_id} IS NULL`,
+              ),
+            )
+            .returning();
+          return updated;
+        });
+        if (!transitioned) {
+          throw new Error("Rollback standby changed before acceptance was fenced");
+        }
+        agent = transitioned;
+      } catch (error) {
+        logger.warn("[agent-sandbox] Canary acceptance failed; restoring exact standby", {
+          agentId: params.data.agentId,
+          sourceJobId: params.data.sourceJobId,
+          decisionJobId: params.decisionJobId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return await this.rollbackToExactStandby({
+          agent,
+          data: params.data,
+          decisionJobId: params.decisionJobId,
+          onConvergedInTx: params.onConvergedInTx,
+        });
+      }
+    }
+    if (agent.rollback_standby_state === "retiring") {
+      return await this.retireAcceptedRollbackStandby({
+        agent,
+        data: params.data,
+        decisionJobId: params.decisionJobId,
+        onConvergedInTx: params.onConvergedInTx,
+      });
+    }
+    return await this.rollbackToExactStandby({
+      agent,
+      data: params.data,
+      decisionJobId: params.decisionJobId,
+      onConvergedInTx: params.onConvergedInTx,
+    });
   }
 
   /**
@@ -7483,6 +8405,32 @@ export class ElizaSandboxService {
       ? await agentSandboxesRepository.findByIdAndOrgForWrite(agentId, orgId)
       : await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
     if (!agent) return { success: false, error: "Agent not found" };
+    if (adminCanary && agent.rollback_standby_state) {
+      if (
+        agent.rollback_standby_state !== "pausing" &&
+        agent.rollback_standby_state !== "paused_pre_cutover"
+      ) {
+        return {
+          success: false,
+          rolledBack: true,
+          error: `Rollback standby generation ${agent.rollback_standby_generation} requires an explicit decision`,
+        };
+      }
+      try {
+        await this.recoverAdminCanaryPreCutoverStandby(agent, adminCanary);
+      } catch (error) {
+        return {
+          success: false,
+          rolledBack: true,
+          cleanupPending: true,
+          error: `Pre-cutover rollback standby recovery remains unresolved: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        };
+      }
+      agent = await agentSandboxesRepository.findByIdAndOrgForWrite(agentId, orgId);
+      if (!agent) return { success: false, error: "Agent not found" };
+    }
     if (this.getReplacementCleanupLocator(agent)) {
       try {
         await this.retirePersistedReplacementCleanup(agentId, orgId);
@@ -7706,6 +8654,21 @@ export class ElizaSandboxService {
       );
     }
 
+    if (adminCanary) {
+      return await this.executeAdminCanaryStandbyCutover({
+        agent,
+        provider,
+        blueHandle,
+        blueMeta,
+        policy: adminCanary,
+        toDigest,
+        oldNodeId,
+        oldContainerName,
+        oldSandboxId,
+        sourceEnvironmentRevision,
+      });
+    }
+
     // Capture a restore point on the OLD (still-live) container before the
     // cutover. This is the snapshot `executeDowngrade` replays when rolling
     // back. A missing/partial snapshot blocks the upgrade: swapping images
@@ -7749,20 +8712,10 @@ export class ElizaSandboxService {
           // (#15358). Mirror the selection/pre-provision semantics — abandon
           // only on a real repo change; the digest/node/container/sandbox legs
           // above still detect every other concurrent mutation.
-          (adminCanary
-            ? current.user_id !== adminCanary.targetOwnerUserId ||
-              current.docker_image !== adminCanary.sourceImage
-            : current.docker_image && imageRepo(current.docker_image) !== imageRepo(dockerImage))
+          (current.docker_image && imageRepo(current.docker_image) !== imageRepo(dockerImage))
         ) {
           return false;
         }
-        const exactAdminCanaryWhere = adminCanary
-          ? sql`
-              AND user_id = ${adminCanary.targetOwnerUserId}
-              AND docker_image = ${adminCanary.sourceImage}
-              AND image_digest = ${adminCanary.sourceDigest}
-            `
-          : sql``;
         const result = await tx.execute<{ id: string }>(sql`
           UPDATE ${agentSandboxes}
           SET
@@ -7774,12 +8727,10 @@ export class ElizaSandboxService {
             bridge_port = ${blueMeta.bridgePort},
             web_ui_port = ${blueMeta.webUiPort},
             headscale_ip = ${blueMeta.headscaleIp ?? null},
-            docker_image = ${adminCanary ? adminCanary.targetImage : current.docker_image},
+            docker_image = ${current.docker_image},
             image_digest = ${toDigest},
             previous_image_digest = ${fromDigest},
-            previous_docker_image = ${
-              adminCanary ? adminCanary.sourceImage : current.docker_image || dockerImage
-            },
+            previous_docker_image = ${current.docker_image || dockerImage},
             replacement_cleanup_sandbox_id = ${oldSandboxId},
             replacement_cleanup_node_id = ${oldNodeId},
             replacement_cleanup_container_name = ${oldContainerName},
@@ -7820,19 +8771,9 @@ export class ElizaSandboxService {
                 AND warm_claim_attested_environment_revision IS NOT NULL
               )
             )
-            ${exactAdminCanaryWhere}
           RETURNING id
         `);
         if (result.rows.length !== 1) return false;
-        if (adminCanary) {
-          await adminCanary.onCutoverInTx(tx, {
-            oldNodeId,
-            oldContainerName,
-            newNodeId: blueMeta.nodeId,
-            newContainerName: blueMeta.containerName,
-            newDigest: toDigest,
-          });
-        }
         return true;
       });
       if (!swapped) {
@@ -7848,22 +8789,7 @@ export class ElizaSandboxService {
     }
 
     try {
-      await this.retirePersistedReplacementCleanup(
-        agentId,
-        orgId,
-        adminCanary
-          ? {
-              targetOwnerUserId: adminCanary.targetOwnerUserId,
-              targetImage: adminCanary.targetImage,
-              targetDigest: adminCanary.targetDigest,
-              newNodeId: blueMeta.nodeId,
-              newContainerName: blueMeta.containerName,
-              oldNodeId,
-              oldContainerName,
-            }
-          : undefined,
-        adminCanary?.onConvergedInTx,
-      );
+      await this.retirePersistedReplacementCleanup(agentId, orgId, undefined, undefined);
     } catch (err) {
       logger.warn("[agent-sandbox] Old container cleanup remains pending after upgrade cutover", {
         agentId,
@@ -7921,6 +8847,8 @@ export class ElizaSandboxService {
    * blue container is created and again in the atomic cutover CAS.
    */
   async executeAdminCanaryRollback(params: {
+    sourceJobId: string;
+    rolloutId: string;
     agentId: string;
     organizationId: string;
     targetOwnerUserId: string;
@@ -7945,6 +8873,8 @@ export class ElizaSandboxService {
       params.sourceDigest,
       {
         operation: "rollback",
+        sourceJobId: params.sourceJobId,
+        rolloutId: params.rolloutId,
         targetOwnerUserId: params.targetOwnerUserId,
         sourceImage: params.sourceImage,
         sourceDigest: params.sourceDigest,

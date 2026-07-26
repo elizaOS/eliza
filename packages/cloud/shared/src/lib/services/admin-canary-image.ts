@@ -104,6 +104,13 @@ export interface AdminCanaryImageJobResult {
    * The job remains non-terminal while this flag is true.
    */
   cleanupPending?: boolean;
+  /**
+   * The image cutover is healthy, but the exact prior runtime remains paused
+   * until an actor-bound decision proves a verified v2 restore point or rolls
+   * traffic back to that standby.
+   */
+  standbyPending?: boolean;
+  standbyGeneration?: string;
   cutoverAt?: string;
   jobId: string;
   operation: AdminCanaryImageOperation;
@@ -418,6 +425,8 @@ export function isCompletedAdminCanaryJobResult(
   return (
     result.success === true &&
     result.cleanupPending !== true &&
+    ((result.standbyPending === true && typeof result.standbyGeneration === "string") ||
+      (result.standbyPending !== true && result.standbyGeneration === undefined)) &&
     typeof result.jobId === "string" &&
     (result.operation === "upgrade" || result.operation === "rollback") &&
     typeof result.rolloutId === "string" &&
