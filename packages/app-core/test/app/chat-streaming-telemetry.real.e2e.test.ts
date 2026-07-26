@@ -527,8 +527,17 @@ suite("chat streaming telemetry real e2e", () => {
       headless: true,
       args: ["--use-angle=swiftshader"],
     });
+    const videoPath = process.env.ELIZA_CHAT_TELEMETRY_VIDEO?.trim();
     const page = await browser.newPage({
       viewport: { height: 800, width: 1280 },
+      ...(videoPath
+        ? {
+            recordVideo: {
+              dir: path.dirname(videoPath),
+              size: { height: 800, width: 1280 },
+            },
+          }
+        : {}),
     });
     page.on("console", (message) => {
       process.stdout.write(
@@ -573,6 +582,12 @@ suite("chat streaming telemetry real e2e", () => {
 
   afterAll(async () => {
     if (!state) return;
+    const videoPath = process.env.ELIZA_CHAT_TELEMETRY_VIDEO?.trim();
+    const video = state.page.video();
+    await state.page.close();
+    if (videoPath && video) {
+      await video.saveAs(videoPath);
+    }
     await state.browser.close();
     await new Promise<void>((resolve) => state?.api.close(() => resolve()));
     await state.cleanupRuntime();
@@ -584,6 +599,12 @@ suite("chat streaming telemetry real e2e", () => {
 
   it("proves provider → SSE → React state → PGLite → pixels are identical", async () => {
     if (!state) throw new Error("harness not initialized");
+    if (process.env.ELIZA_CHAT_TELEMETRY_BEFORE_SCREENSHOT) {
+      await state.page.screenshot({
+        fullPage: true,
+        path: process.env.ELIZA_CHAT_TELEMETRY_BEFORE_SCREENSHOT,
+      });
+    }
     await state.page.evaluate(async () => {
       await window.__startChat("Give the deterministic telemetry reply.");
     });
