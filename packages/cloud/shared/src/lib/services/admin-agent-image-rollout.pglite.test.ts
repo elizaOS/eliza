@@ -40,6 +40,10 @@ import {
   type AdminCanaryImageJobData,
   type AdminCanaryTargetExpectation,
 } from "./admin-canary-image";
+import type {
+  AdminCanaryStandbyDecisionJobData,
+  VerifiedRestorePointReader,
+} from "./admin-canary-standby";
 import { apiKeysService } from "./api-keys";
 import { type DockerSandboxMetadata, DockerSandboxProvider } from "./docker-sandbox-provider";
 import {
@@ -48,7 +52,11 @@ import {
   SNAPSHOT_ENDPOINT_UNSUPPORTED,
 } from "./eliza-sandbox";
 import { JOB_TYPES } from "./provisioning-job-types";
-import { provisioningJobService, readAdminCanaryImageJobData } from "./provisioning-jobs";
+import {
+  provisioningJobService,
+  readAdminCanaryImageJobData,
+  readAdminCanaryStandbyDecisionJobData,
+} from "./provisioning-jobs";
 import type { SandboxCreateConfig, SandboxHandle, SandboxProvider } from "./sandbox-provider-types";
 
 const PGLITE_TIMEOUT = 60_000;
@@ -239,6 +247,111 @@ async function seedAgents(count: number): Promise<{
     });
   }
   return { actorUserId: actor.id, organizationId: org.id, targets };
+}
+
+async function seedPausedRollbackStandby(): Promise<{
+  data: Omit<
+    AdminCanaryStandbyDecisionJobData,
+    | "decision"
+    | "verifiedBackupId"
+    | "restoreValidationId"
+    | "restoreValidationAggregateSha256"
+    | "restoreValidatedCandidateProviderSandboxId"
+  >;
+  decisionJobId: string;
+}> {
+  const seeded = await seedAgents(1);
+  const agentId = seeded.targets[0]!.agentId;
+  const standbyGeneration = "10000000-0000-4000-8000-000000000001";
+  const rolloutId = "10000000-0000-4000-8000-000000000002";
+  const sourceJobId = "10000000-0000-4000-8000-000000000003";
+  const decisionJobId = "10000000-0000-4000-8000-000000000004";
+  await dbWrite.insert(dockerNodes).values([
+    {
+      node_id: "node-old",
+      hostname: "node-old.internal",
+      status: "healthy",
+      enabled: true,
+      capacity: 8,
+      allocated_count: 1,
+    },
+    {
+      node_id: "node-blue",
+      hostname: "node-blue.internal",
+      status: "healthy",
+      enabled: true,
+      capacity: 8,
+      allocated_count: 1,
+    },
+  ]);
+  await dbWrite
+    .update(agentSandboxes)
+    .set({
+      status: "running",
+      sandbox_id: "sandbox-blue",
+      bridge_url: "https://blue.example",
+      health_url: "https://blue.example/api/health",
+      node_id: "node-blue",
+      container_name: "agent-blue",
+      bridge_port: 22_137,
+      web_ui_port: 22_138,
+      headscale_ip: "100.64.0.20",
+      docker_image: TARGET_IMAGE,
+      image_digest: TARGET_DIGEST,
+      previous_docker_image: SOURCE_IMAGE,
+      previous_image_digest: SOURCE_DIGEST,
+      environment_vars: { ELIZA_API_TOKEN: "test-agent-token" },
+      environment_revision: 7,
+      rollback_standby_state: "paused",
+      rollback_standby_generation: standbyGeneration,
+      rollback_standby_rollout_id: rolloutId,
+      rollback_standby_source_job_id: sourceJobId,
+      rollback_standby_decision_job_id: null,
+      rollback_standby_verified_backup_id: null,
+      rollback_standby_sandbox_id: "sandbox-old",
+      rollback_standby_node_id: "node-old",
+      rollback_standby_container_name: "agent-old",
+      rollback_standby_container_id: "container-old",
+      rollback_standby_bridge_url: "https://old.example",
+      rollback_standby_health_url: "https://old.example/api/health",
+      rollback_standby_bridge_port: 21_137,
+      rollback_standby_web_ui_port: 21_138,
+      rollback_standby_headscale_ip: "100.64.0.10",
+      rollback_standby_vpn_node_id: "vpn-old",
+      rollback_standby_docker_image: SOURCE_IMAGE,
+      rollback_standby_image_digest: SOURCE_DIGEST,
+      rollback_standby_previous_docker_image: null,
+      rollback_standby_previous_image_digest: null,
+      rollback_standby_environment_revision: 6,
+      rollback_standby_allocation_counted: true,
+      rollback_standby_primary_sandbox_id: "sandbox-blue",
+      rollback_standby_primary_node_id: "node-blue",
+      rollback_standby_primary_container_name: "agent-blue",
+      rollback_standby_primary_container_id: "container-blue",
+      rollback_standby_primary_vpn_node_id: "vpn-blue",
+      rollback_standby_primary_replacement_attempt_id: "10000000-0000-4000-8000-000000000005",
+      rollback_standby_created_at: new Date("2026-07-23T12:00:00.000Z"),
+    })
+    .where(eq(agentSandboxes.id, agentId));
+  return {
+    decisionJobId,
+    data: {
+      requestId: "10000000-0000-4000-8000-000000000006",
+      sourceJobId,
+      standbyGeneration,
+      rolloutId,
+      actorUserId: seeded.actorUserId,
+      userId: seeded.actorUserId,
+      decisionAt: "2026-07-23T12:05:00.000Z",
+      agentId,
+      organizationId: seeded.organizationId,
+      targetOwnerUserId: seeded.actorUserId,
+      sourceImage: SOURCE_IMAGE,
+      sourceDigest: SOURCE_DIGEST,
+      targetImage: TARGET_IMAGE,
+      targetDigest: TARGET_DIGEST,
+    },
+  };
 }
 
 async function completeUpgradeJob(job: Job): Promise<void> {
@@ -2632,7 +2745,7 @@ describe("admin agent image rollout on primary PGlite", () => {
     ).rejects.toThrow("Invalid admin canary image job data");
   });
 
-  test("legacy canary rows without recovery metadata still execute and remain rollback evidence", async () => {
+  test("legacy request metadata still executes but retained standby forbids legacy rollback", async () => {
     const seeded = await seedAgents(1);
     const upgradeRequestId = nextRequestId();
     await executeUpgradeCanary({
@@ -2701,18 +2814,12 @@ describe("admin agent image rollout on primary PGlite", () => {
       adminAgentImageRolloutService.recoverRequest(seeded.actorUserId, upgradeRequestId),
     ).rejects.toMatchObject({ status: 404 });
 
-    const rollback = await executeRollbackCanary({
-      actorUserId: seeded.actorUserId,
-      source: { jobId: queuedUpgrade.id },
-    });
-    expect(rollback.targets).toEqual([
-      expect.objectContaining({
-        operation: "rollback",
-        sourceJobId: queuedUpgrade.id,
-        sourceImage: TARGET_IMAGE,
-        targetImage: SOURCE_IMAGE,
+    await expect(
+      executeRollbackCanary({
+        actorUserId: seeded.actorUserId,
+        source: { jobId: queuedUpgrade.id },
       }),
-    ]);
+    ).rejects.toMatchObject({ status: 409 });
   });
 
   test("rollback target pair comes only from one successful durable upgrade audit", async () => {
@@ -2979,11 +3086,11 @@ describe("admin agent image rollout on primary PGlite", () => {
         startedBefore: new Date("2026-07-23T00:00:00.000Z"),
         maxAttempts: 2,
       }),
-    ).toBe(0);
+    ).toBe(1);
     expect(await jobsRepository.findByIdForWrite(persisted.id)).toMatchObject({
-      status: "failed",
+      status: "pending",
       attempts: 1,
-      error: expect.stringContaining("max attempts reached"),
+      error: expect.stringContaining("recovered for retry (attempt 1/3)"),
     });
   });
 
@@ -3216,7 +3323,7 @@ describe("admin agent image rollout on primary PGlite", () => {
     }
   });
 
-  test("post-cutover cleanup failure requeues immediately, then a scheduled claim converges exactly once", async () => {
+  test("upgrade completion retains the old placement instead of entering cleanup retry", async () => {
     const seeded = await seedAgents(1);
     await dbWrite.insert(dockerNodes).values({
       node_id: "node-1",
@@ -3282,83 +3389,27 @@ describe("admin agent image rollout on primary PGlite", () => {
       const first = await provisioningJobService.processPendingJobs(1, {
         jobTypes: [JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE],
       });
-      expect(first).toMatchObject({ claimed: 1, succeeded: 0, retried: 1, failed: 0 });
+      expect(first).toMatchObject({ claimed: 1, succeeded: 1, retried: 0, failed: 0 });
       expect(execution).toHaveBeenCalledTimes(1);
 
       const [pending] = await dbWrite
         .select()
         .from(jobs)
         .where(eq(jobs.type, JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE));
-      if (!pending) throw new Error("expected requeued canary job");
+      if (!pending) throw new Error("expected completed canary job");
       expect(pending).toMatchObject({
-        status: "pending",
+        status: "completed",
         attempts: 0,
         result: {
-          success: false,
-          cleanupPending: true,
+          success: true,
+          cleanupPending: false,
+          standbyPending: true,
+          standbyGeneration: pending.id,
           oldNodeId: "node-1",
           newNodeId: "node-blue",
         },
-        error: "old placement cleanup transport unavailable",
+        error: null,
       });
-      await dbWrite
-        .update(jobs)
-        .set({ scheduled_for: new Date(0) })
-        .where(eq(jobs.id, pending.id));
-
-      const cleanupProvider = new DockerSandboxProvider();
-      const remoteCleanup = spyOn(
-        cleanupProvider,
-        "stopOnSpecificNodeForReplacement",
-      ).mockResolvedValue(undefined);
-      const cleanupService = new ElizaSandboxService(cleanupProvider as unknown as SandboxProvider);
-      const converge = spyOn(
-        elizaSandboxService,
-        "convergeReplacementCleanupFence",
-      ).mockImplementation((agentId, organizationId, expectation, onConvergedInTx) =>
-        cleanupService.convergeReplacementCleanupFence(
-          agentId,
-          organizationId,
-          expectation,
-          onConvergedInTx,
-        ),
-      );
-      try {
-        const second = await provisioningJobService.processPendingJobs(1, {
-          jobTypes: [JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE],
-        });
-        expect(second).toMatchObject({ claimed: 1, succeeded: 1, retried: 0, failed: 0 });
-        expect(execution).toHaveBeenCalledTimes(1);
-        expect(remoteCleanup).toHaveBeenCalledTimes(1);
-        expect(await jobsRepository.findByIdForWrite(pending.id)).toMatchObject({
-          status: "completed",
-          attempts: 0,
-          error: null,
-          result: {
-            success: true,
-            cleanupPending: false,
-            oldNodeId: "node-1",
-            newNodeId: "node-blue",
-          },
-        });
-        expect(
-          await agentSandboxesRepository.findByIdAndOrg(
-            seeded.targets[0]!.agentId,
-            seeded.organizationId,
-          ),
-        ).toMatchObject({
-          replacement_cleanup_sandbox_id: null,
-          replacement_cleanup_node_id: null,
-          replacement_cleanup_container_name: null,
-        });
-        expect(
-          (await dbWrite.select().from(dockerNodes).where(eq(dockerNodes.node_id, "node-1")))[0]
-            ?.allocated_count,
-        ).toBe(0);
-      } finally {
-        converge.mockRestore();
-        remoteCleanup.mockRestore();
-      }
     } finally {
       execution.mockRestore();
     }
@@ -3503,6 +3554,7 @@ describe("admin agent image rollout on primary PGlite", () => {
       await tx
         .update(jobs)
         .set({
+          max_attempts: 1,
           result: pendingCutover,
           result_storage: "inline",
           result_key: null,
@@ -4052,6 +4104,10 @@ describe("admin agent image rollout on primary PGlite", () => {
       error: "blue digest unavailable",
     });
     try {
+      await dbWrite
+        .update(jobs)
+        .set({ max_attempts: 1 })
+        .where(eq(jobs.type, JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE));
       const processed = await provisioningJobService.processPendingJobs(5, {
         jobTypes: [JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE],
       });
@@ -4168,6 +4224,10 @@ describe("admin agent image rollout on primary PGlite", () => {
       targets: seeded.targets,
     });
     let blueTornDown = false;
+    await dbWrite
+      .update(jobs)
+      .set({ max_attempts: 1 })
+      .where(eq(jobs.type, JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE));
     const execution = spyOn(elizaSandboxService, "executeAdminCanaryUpgrade").mockImplementation(
       async (params) => {
         try {
@@ -4427,5 +4487,406 @@ describe("admin agent image rollout on primary PGlite", () => {
     } finally {
       execution.mockRestore();
     }
+  });
+
+  test("standby acceptance enqueue preserves exact candidate restore authority", async () => {
+    const seeded = await seedPausedRollbackStandby();
+    const now = new Date("2026-07-23T12:04:00.000Z");
+    await dbWrite.insert(jobs).values({
+      id: seeded.data.sourceJobId,
+      type: JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
+      status: "completed",
+      organization_id: seeded.data.organizationId,
+      user_id: seeded.data.actorUserId,
+      agent_id: seeded.data.agentId,
+      data_storage: "inline",
+      data: {
+        operation: "upgrade",
+        rolloutId: seeded.data.rolloutId,
+        actorUserId: seeded.data.actorUserId,
+        userId: seeded.data.actorUserId,
+        decisionAt: now.toISOString(),
+        agentId: seeded.data.agentId,
+        organizationId: seeded.data.organizationId,
+        targetOwnerUserId: seeded.data.targetOwnerUserId,
+        sourceImage: seeded.data.sourceImage,
+        sourceDigest: seeded.data.sourceDigest,
+        targetImage: seeded.data.targetImage,
+        targetDigest: seeded.data.targetDigest,
+      },
+      result_storage: "inline",
+      result: {
+        success: true,
+        standbyPending: true,
+        standbyGeneration: seeded.data.standbyGeneration,
+        jobId: seeded.data.sourceJobId,
+        operation: "upgrade",
+        rolloutId: seeded.data.rolloutId,
+        actorUserId: seeded.data.actorUserId,
+        decisionAt: now.toISOString(),
+        agentId: seeded.data.agentId,
+        organizationId: seeded.data.organizationId,
+        targetOwnerUserId: seeded.data.targetOwnerUserId,
+        sourceImage: seeded.data.sourceImage,
+        sourceDigest: seeded.data.sourceDigest,
+        targetImage: seeded.data.targetImage,
+        targetDigest: seeded.data.targetDigest,
+        startedAt: now.toISOString(),
+        finishedAt: now.toISOString(),
+      },
+      max_attempts: 1,
+      started_at: now,
+      completed_at: now,
+    });
+    const backupId = "10000000-0000-4000-8000-000000000009";
+    const restoreValidationAggregateSha256 = "f".repeat(64);
+    const decision = await adminAgentImageRolloutService.decideStandby(
+      {
+        requestId: "10000000-0000-4000-8000-000000000010",
+        sourceJobId: seeded.data.sourceJobId,
+        decision: "accept",
+        verifiedBackupId: backupId,
+        restoreValidationId: backupId,
+        restoreValidationAggregateSha256,
+        restoreValidatedCandidateProviderSandboxId: "restore-candidate-enqueue",
+      },
+      seeded.data.actorUserId,
+    );
+
+    expect(decision.type).toBe(JOB_TYPES.AGENT_ADMIN_CANARY_STANDBY_DECISION);
+    expect(readAdminCanaryStandbyDecisionJobData(decision)).toMatchObject({
+      sourceJobId: seeded.data.sourceJobId,
+      standbyGeneration: seeded.data.standbyGeneration,
+      decision: "accept",
+      verifiedBackupId: backupId,
+      restoreValidationId: backupId,
+      restoreValidationAggregateSha256,
+      restoreValidatedCandidateProviderSandboxId: "restore-candidate-enqueue",
+      targetOwnerUserId: seeded.data.targetOwnerUserId,
+      targetImage: seeded.data.targetImage,
+      targetDigest: seeded.data.targetDigest,
+    });
+
+    const execution = spyOn(
+      elizaSandboxService,
+      "executeAdminCanaryStandbyDecision",
+    ).mockImplementation(async (params) => {
+      await dbWrite.transaction(async (tx) => {
+        await params.onConvergedInTx(tx, "accepted");
+      });
+      return "accepted";
+    });
+    try {
+      const processed = await provisioningJobService.processPendingJobs(1, {
+        jobTypes: [JOB_TYPES.AGENT_ADMIN_CANARY_STANDBY_DECISION],
+      });
+      expect(processed).toMatchObject({ succeeded: 1, failed: 0 });
+      const [completed] = await dbWrite.select().from(jobs).where(eq(jobs.id, decision.id));
+      expect(completed).toMatchObject({
+        status: "completed",
+        result_storage: "inline",
+        error: null,
+      });
+      expect(completed?.result).toMatchObject({
+        success: true,
+        decision: "accept",
+        outcome: "accepted",
+        verifiedBackupId: backupId,
+        restoreValidationId: backupId,
+        restoreValidationAggregateSha256,
+        restoreValidatedCandidateProviderSandboxId: "restore-candidate-enqueue",
+      });
+    } finally {
+      execution.mockRestore();
+    }
+  });
+
+  test("rejecting a canary resumes the exact standby before swapping and retiring blue", async () => {
+    const seeded = await seedPausedRollbackStandby();
+    const calls: string[] = [];
+    const provider: SandboxProvider = {
+      async create() {
+        throw new Error("create is not part of standby rejection");
+      },
+      async stop() {},
+      async checkHealth() {
+        return true;
+      },
+      async pauseForRollbackStandby(sandboxId) {
+        calls.push(`pause:${sandboxId}`);
+        return {
+          nodeId: "node-blue",
+          containerName: "agent-blue",
+          containerId: "container-blue",
+        };
+      },
+      async resumeRollbackStandby(locator) {
+        calls.push(`resume:${locator.nodeId}/${locator.containerName}/${locator.containerId}`);
+      },
+      async stopOnSpecificNodeForReplacement(nodeId, containerName) {
+        calls.push(`stop:${nodeId}/${containerName}`);
+      },
+    };
+    const converged: string[] = [];
+    const service = new ElizaSandboxService(provider);
+
+    expect(
+      await service.executeAdminCanaryStandbyDecision({
+        data: { ...seeded.data, decision: "reject" },
+        decisionJobId: seeded.decisionJobId,
+        onConvergedInTx: async (_tx, outcome) => {
+          converged.push(outcome);
+        },
+      }),
+    ).toBe("rolled_back");
+    expect(calls).toEqual([
+      "pause:sandbox-blue",
+      "resume:node-old/agent-old/container-old",
+      "stop:node-blue/agent-blue",
+    ]);
+    expect(converged).toEqual(["rolled_back"]);
+    expect(
+      await agentSandboxesRepository.findByIdAndOrg(
+        seeded.data.agentId,
+        seeded.data.organizationId,
+      ),
+    ).toMatchObject({
+      sandbox_id: "sandbox-old",
+      node_id: "node-old",
+      container_name: "agent-old",
+      bridge_url: "https://old.example",
+      docker_image: SOURCE_IMAGE,
+      image_digest: SOURCE_DIGEST,
+      environment_revision: 6,
+      rollback_standby_state: null,
+      rollback_standby_generation: null,
+    });
+    const nodeCapacity = await dbWrite
+      .select({
+        nodeId: dockerNodes.node_id,
+        allocatedCount: dockerNodes.allocated_count,
+      })
+      .from(dockerNodes);
+    expect(nodeCapacity).toContainEqual({ nodeId: "node-old", allocatedCount: 1 });
+    expect(nodeCapacity).toContainEqual({ nodeId: "node-blue", allocatedCount: 0 });
+  });
+
+  test("accepting a canary verifies the exact restore point and retires only the standby", async () => {
+    const seeded = await seedPausedRollbackStandby();
+    const backupId = "10000000-0000-4000-8000-000000000007";
+    const restoreValidationAggregateSha256 = "d".repeat(64);
+    const restoreValidatedCandidateProviderSandboxId = "restore-candidate-blue";
+    const calls: string[] = [];
+    const restorePointChecks: Parameters<
+      VerifiedRestorePointReader["assertVerifiedV2CandidateRestoreInTx"]
+    >[1][] = [];
+    const provider: SandboxProvider = {
+      async create() {
+        throw new Error("create is not part of standby acceptance");
+      },
+      async stop() {},
+      async checkHealth() {
+        return true;
+      },
+      async stopOnSpecificNodeForReplacement(nodeId, containerName) {
+        calls.push(`stop:${nodeId}/${containerName}`);
+      },
+    };
+    const restorePointReader: VerifiedRestorePointReader = {
+      async assertVerifiedV2CandidateRestoreInTx(_tx, params) {
+        restorePointChecks.push(params);
+      },
+    };
+    const fetchMock = spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.endsWith("/api/status")) {
+        return Response.json({
+          state: "running",
+          canRespond: true,
+          startup: { phase: "running", attempt: 1 },
+        });
+      }
+      if (url.endsWith("/api/health")) {
+        return Response.json({
+          ready: true,
+          canRespond: true,
+          runtime: "ok",
+          database: "ok",
+          plugins: { loaded: 3, failed: 0 },
+          startup: { phase: "running", attempt: 1 },
+        });
+      }
+      throw new Error(`unexpected runtime health URL ${url}`);
+    });
+    const service = new ElizaSandboxService(provider, restorePointReader);
+    const converged: string[] = [];
+    try {
+      expect(
+        await service.executeAdminCanaryStandbyDecision({
+          data: {
+            ...seeded.data,
+            decision: "accept",
+            verifiedBackupId: backupId,
+            restoreValidationId: backupId,
+            restoreValidationAggregateSha256,
+            restoreValidatedCandidateProviderSandboxId,
+          },
+          decisionJobId: seeded.decisionJobId,
+          onConvergedInTx: async (_tx, outcome) => {
+            converged.push(outcome);
+          },
+        }),
+      ).toBe("accepted");
+    } finally {
+      fetchMock.mockRestore();
+    }
+
+    expect(restorePointChecks).toEqual([
+      {
+        backupId,
+        restoreValidationId: backupId,
+        restoreValidationAggregateSha256,
+        restoreValidatedCandidateProviderSandboxId,
+        organizationId: seeded.data.organizationId,
+        sandboxRecordId: seeded.data.agentId,
+        agentId: seeded.data.agentId,
+        targetOwnerUserId: seeded.data.targetOwnerUserId,
+        targetImage: seeded.data.targetImage,
+        targetDigest: seeded.data.targetDigest,
+        neverRouted: true,
+        snapshotType: "pre-upgrade",
+        schemaVersion: 2,
+        verificationStatus: "verified",
+        descriptorCommitState: "complete",
+        restoreReceiptState: "committed",
+      },
+    ]);
+    expect(calls).toEqual(["stop:node-old/agent-old"]);
+    expect(converged).toEqual(["accepted"]);
+    expect(
+      await agentSandboxesRepository.findByIdAndOrg(
+        seeded.data.agentId,
+        seeded.data.organizationId,
+      ),
+    ).toMatchObject({
+      sandbox_id: "sandbox-blue",
+      node_id: "node-blue",
+      container_name: "agent-blue",
+      docker_image: TARGET_IMAGE,
+      image_digest: TARGET_DIGEST,
+      rollback_standby_state: null,
+      rollback_standby_generation: null,
+      rollback_standby_restore_validation_id: null,
+      rollback_standby_restore_validation_aggregate_sha256: null,
+      rollback_standby_restore_candidate_provider_sandbox_id: null,
+    });
+    const nodeCapacity = await dbWrite
+      .select({
+        nodeId: dockerNodes.node_id,
+        allocatedCount: dockerNodes.allocated_count,
+      })
+      .from(dockerNodes);
+    expect(nodeCapacity).toContainEqual({ nodeId: "node-old", allocatedCount: 0 });
+    expect(nodeCapacity).toContainEqual({ nodeId: "node-blue", allocatedCount: 1 });
+  });
+
+  test("an applying or drifted candidate restore can never cross the acceptance fence", async () => {
+    const seeded = await seedPausedRollbackStandby();
+    const backupId = "10000000-0000-4000-8000-000000000008";
+    const calls: string[] = [];
+    const provider: SandboxProvider = {
+      async create() {
+        throw new Error("create is not part of standby acceptance");
+      },
+      async stop() {},
+      async checkHealth() {
+        return true;
+      },
+      async pauseForRollbackStandby(sandboxId) {
+        calls.push(`pause:${sandboxId}`);
+        return {
+          nodeId: "node-blue",
+          containerName: "agent-blue",
+          containerId: "container-blue",
+        };
+      },
+      async resumeRollbackStandby(locator) {
+        calls.push(`resume:${locator.nodeId}/${locator.containerName}/${locator.containerId}`);
+      },
+      async stopOnSpecificNodeForReplacement(nodeId, containerName) {
+        calls.push(`stop:${nodeId}/${containerName}`);
+      },
+    };
+    const restorePointReader: VerifiedRestorePointReader = {
+      async assertVerifiedV2CandidateRestoreInTx() {
+        throw new Error("candidate restore receipt is applying");
+      },
+    };
+    const fetchMock = spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.endsWith("/api/status")) {
+        return Response.json({
+          state: "running",
+          canRespond: true,
+          startup: { phase: "running", attempt: 1 },
+        });
+      }
+      if (url.endsWith("/api/health")) {
+        return Response.json({
+          ready: true,
+          canRespond: true,
+          runtime: "ok",
+          database: "ok",
+          plugins: { loaded: 3, failed: 0 },
+          startup: { phase: "running", attempt: 1 },
+        });
+      }
+      throw new Error(`unexpected runtime health URL ${url}`);
+    });
+    const service = new ElizaSandboxService(provider, restorePointReader);
+    const converged: string[] = [];
+    try {
+      expect(
+        await service.executeAdminCanaryStandbyDecision({
+          data: {
+            ...seeded.data,
+            decision: "accept",
+            verifiedBackupId: backupId,
+            restoreValidationId: backupId,
+            restoreValidationAggregateSha256: "e".repeat(64),
+            restoreValidatedCandidateProviderSandboxId: "restore-candidate-applying",
+          },
+          decisionJobId: seeded.decisionJobId,
+          onConvergedInTx: async (_tx, outcome) => {
+            converged.push(outcome);
+          },
+        }),
+      ).toBe("rolled_back");
+    } finally {
+      fetchMock.mockRestore();
+    }
+
+    expect(calls).toEqual([
+      "pause:sandbox-blue",
+      "resume:node-old/agent-old/container-old",
+      "stop:node-blue/agent-blue",
+    ]);
+    expect(converged).toEqual(["rolled_back"]);
+    expect(
+      await agentSandboxesRepository.findByIdAndOrg(
+        seeded.data.agentId,
+        seeded.data.organizationId,
+      ),
+    ).toMatchObject({
+      sandbox_id: "sandbox-old",
+      node_id: "node-old",
+      container_name: "agent-old",
+      docker_image: SOURCE_IMAGE,
+      image_digest: SOURCE_DIGEST,
+      rollback_standby_state: null,
+      rollback_standby_restore_validation_id: null,
+      rollback_standby_restore_validation_aggregate_sha256: null,
+      rollback_standby_restore_candidate_provider_sandbox_id: null,
+    });
   });
 });

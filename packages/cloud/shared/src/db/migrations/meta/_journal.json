@@ -1310,6 +1310,13 @@
       "when": 1785528000001,
       "tag": "0187_agent_backup_cleanup_intents",
       "breakpoints": true
+    },
+    {
+      "idx": 187,
+      "version": "7",
+      "when": 1785528000002,
+      "tag": "0188_rollback_standby_state",
+      "breakpoints": true
     }
   ]
 }

@@ -6200,6 +6200,8 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
   const AGENT = "e06bb509-6c52-4c33-a9f7-66addc43e8c8";
   const ORG = "22222222-2222-4222-8222-222222222222";
   const OWNER = "33333333-3333-4333-8333-333333333333";
+  const SOURCE_JOB_ID = "55555555-5555-4555-8555-555555555555";
+  const ROLLOUT_ID = "66666666-6666-4666-8666-666666666666";
   const DOCKER_IMAGE = "ghcr.io/elizaos/eliza-agent:latest";
   const FROM_DIGEST = "sha256:0000000000000000000000000000000000000000000000000000000000000aaa";
   const TO_DIGEST = "sha256:1111111111111111111111111111111111111111111111111111111111111bbb";
@@ -6287,6 +6289,18 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
       bridgeUrl: "https://new-bridge.example",
       healthUrl: "https://new-bridge.example/health",
       metadata: blueMetadata(imageDigest, previousVpnNodeId),
+    };
+  }
+
+  function exactStandbyBlueHandle() {
+    const handle = blueHandle(TO_DIGEST, "vpn-old");
+    return {
+      ...handle,
+      metadata: {
+        ...handle.metadata,
+        containerId: "container-sandbox-new-1",
+        vpnNodeId: "vpn-new",
+      },
     };
   }
 
@@ -7028,6 +7042,8 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
     };
     try {
       const result = await new ElizaSandboxService(provider).executeAdminCanaryUpgrade({
+        sourceJobId: SOURCE_JOB_ID,
+        rolloutId: ROLLOUT_ID,
         agentId: AGENT,
         organizationId: ORG,
         targetOwnerUserId: OWNER,
@@ -7078,6 +7094,8 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
     });
     try {
       const result = await new ElizaSandboxService(provider).executeAdminCanaryUpgrade({
+        sourceJobId: SOURCE_JOB_ID,
+        rolloutId: ROLLOUT_ID,
         agentId: AGENT,
         organizationId: ORG,
         targetOwnerUserId: OWNER,
@@ -7096,7 +7114,7 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
     }
   });
 
-  test("admin canary exact CAS persists target repo+digest and exact rollback pair", async () => {
+  test("admin canary retires blue when exact rollback-standby identity is incomplete", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const SOURCE_IMAGE = "ghcr.io/elizaos/eliza:sha-production";
     const TARGET_IMAGE = `ghcr.io/elizaos/eliza-demo@${TO_DIGEST}`;
@@ -7105,37 +7123,19 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
       agent,
     );
     const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(oldNode());
-    const { provider } = await makeDockerProvider({
+    const { provider, stopOnSpecificNode } = await makeDockerProvider({
       create: async () => blueHandle(TO_DIGEST),
       checkHealth: async () => true,
     });
-    const svc = new ElizaSandboxService(provider);
-    const lockSpy = spyOn(
-      svc as unknown as { lockLifecycle: (...a: unknown[]) => Promise<void> },
-      "lockLifecycle",
-    ).mockResolvedValue(undefined);
-    const readSpy = spyOn(
-      svc as unknown as {
-        getAgentForLifecycleMutation: (...a: unknown[]) => Promise<AgentSandbox | undefined>;
-      },
-      "getAgentForLifecycleMutation",
-    ).mockResolvedValue(agent);
-    const snapshotSpy = spyOn(
-      svc as unknown as { snapshot: (...a: unknown[]) => Promise<{ success: boolean }> },
-      "snapshot",
-    ).mockResolvedValue({ success: true });
-    let executedSql: unknown;
+    let transactionCalled = false;
     upgradeTransactionImpl = async (fn) => {
-      const tx: UpgradeTx = {
-        execute: async (query: unknown) => {
-          executedSql = query;
-          return { rows: [{ id: AGENT }] };
-        },
-      };
-      return fn(tx);
+      transactionCalled = true;
+      return fn({ execute: async () => ({ rows: [] }) });
     };
     try {
-      const result = await svc.executeAdminCanaryUpgrade({
+      const result = await new ElizaSandboxService(provider).executeAdminCanaryUpgrade({
+        sourceJobId: SOURCE_JOB_ID,
+        rolloutId: ROLLOUT_ID,
         agentId: AGENT,
         organizationId: ORG,
         targetOwnerUserId: OWNER,
@@ -7146,23 +7146,28 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
         onCutoverInTx: async () => {},
         onConvergedInTx: async () => {},
       });
-      expect(result.success).toBe(true);
-      const params = sqlBoundParams(executedSql);
-      expect(params).toContain(TARGET_IMAGE);
-      expect(params).toContain(TO_DIGEST);
-      expect(params).toContain(SOURCE_IMAGE);
-      expect(params).toContain(FROM_DIGEST);
-      expect(params).toContain(OWNER);
+      expect(result).toMatchObject({
+        success: false,
+        rolledBack: true,
+        error: "Canary placement lacks exact rollback standby identity",
+      });
+      expect(stopOnSpecificNode).toHaveBeenCalledWith(
+        "node-new",
+        "agent-new-1",
+        null,
+        expect.objectContaining({
+          replacementAttemptId: expect.any(String),
+          containerId: "container-sandbox-new-1",
+        }),
+      );
+      expect(transactionCalled).toBe(false);
     } finally {
       primarySpy.mockRestore();
       nodeSpy.mockRestore();
-      lockSpy.mockRestore();
-      readSpy.mockRestore();
-      snapshotSpy.mockRestore();
     }
   });
 
-  test("admin canary audit failure rolls back cutover and tears down blue", async () => {
+  test("admin canary owner drift before standby intent retires blue without audit", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const SOURCE_IMAGE = "ghcr.io/elizaos/eliza:sha-production";
     const TARGET_IMAGE = `ghcr.io/elizaos/eliza-demo@${TO_DIGEST}`;
@@ -7172,7 +7177,7 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
     );
     const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(oldNode());
     const { provider, stop, stopOnSpecificNode } = await makeDockerProvider({
-      create: async () => blueHandle(TO_DIGEST),
+      create: async () => exactStandbyBlueHandle(),
       checkHealth: async () => true,
     });
     const svc = new ElizaSandboxService(provider);
@@ -7185,22 +7190,21 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
         getAgentForLifecycleMutation: (...a: unknown[]) => Promise<AgentSandbox | undefined>;
       },
       "getAgentForLifecycleMutation",
-    ).mockResolvedValue(agent);
-    const snapshotSpy = spyOn(
-      svc as unknown as { snapshot: (...a: unknown[]) => Promise<{ success: boolean }> },
-      "snapshot",
-    ).mockResolvedValue({ success: true });
-    const audit = mock(async () => {
-      throw new Error("durable audit write failed");
+    ).mockResolvedValue({
+      ...agent,
+      user_id: "44444444-4444-4444-8444-444444444444",
     });
+    const audit = mock(async () => {});
     upgradeTransactionImpl = async (fn) => {
       const tx: UpgradeTx = {
-        execute: async () => ({ rows: [{ id: AGENT }] }),
+        execute: async () => ({ rows: [] }),
       };
       return fn(tx);
     };
     try {
       const result = await svc.executeAdminCanaryUpgrade({
+        sourceJobId: SOURCE_JOB_ID,
+        rolloutId: ROLLOUT_ID,
         agentId: AGENT,
         organizationId: ORG,
         targetOwnerUserId: OWNER,
@@ -7212,15 +7216,16 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
         onConvergedInTx: async () => {},
       });
       expect(result.success).toBe(false);
-      expect(result.error).toContain("durable audit write failed");
-      expect(audit).toHaveBeenCalledTimes(1);
+      expect(result.error).toContain("Agent changed before rollback standby intent was persisted");
+      expect(audit).not.toHaveBeenCalled();
       expect(stopOnSpecificNode).toHaveBeenCalledWith(
         "node-new",
         "agent-new-1",
-        null,
+        "vpn-new",
         expect.objectContaining({
           replacementAttemptId: expect.any(String),
           containerId: "container-sandbox-new-1",
+          previousVpnNodeId: "vpn-old",
         }),
       );
       expect(stop).not.toHaveBeenCalled();
@@ -7229,11 +7234,10 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
       nodeSpy.mockRestore();
       lockSpy.mockRestore();
       readSpy.mockRestore();
-      snapshotSpy.mockRestore();
     }
   });
 
-  test("admin canary keeps committed success when old-container and VPN cleanup fail", async () => {
+  test("admin canary retires blue when the provider lacks exact standby operations", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const SOURCE_IMAGE = "ghcr.io/elizaos/eliza:sha-production";
     const TARGET_IMAGE = `ghcr.io/elizaos/eliza-demo@${TO_DIGEST}`;
@@ -7243,36 +7247,17 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
     );
     const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(oldNode());
     const { provider, stop, stopOnSpecificNode } = await makeDockerProvider({
-      create: async () => blueHandle(TO_DIGEST, "vpn-old"),
+      create: async () => exactStandbyBlueHandle(),
       checkHealth: async () => true,
     });
-    stopOnSpecificNode.mockImplementation(async () => {
-      throw new Error("old container teardown unavailable");
+    Object.assign(provider, {
+      pauseForRollbackStandby: undefined,
+      resumeRollbackStandby: undefined,
     });
-    const svc = new ElizaSandboxService(provider);
-    const lockSpy = spyOn(
-      svc as unknown as { lockLifecycle: (...a: unknown[]) => Promise<void> },
-      "lockLifecycle",
-    ).mockResolvedValue(undefined);
-    const readSpy = spyOn(
-      svc as unknown as {
-        getAgentForLifecycleMutation: (...a: unknown[]) => Promise<AgentSandbox | undefined>;
-      },
-      "getAgentForLifecycleMutation",
-    ).mockResolvedValue(agent);
-    const snapshotSpy = spyOn(
-      svc as unknown as { snapshot: (...a: unknown[]) => Promise<{ success: boolean }> },
-      "snapshot",
-    ).mockResolvedValue({ success: true });
-    const audit = mock(() => Promise.resolve());
-    upgradeTransactionImpl = async (fn) => {
-      const tx: UpgradeTx = {
-        execute: async () => ({ rows: [{ id: AGENT }] }),
-      };
-      return fn(tx);
-    };
     try {
-      const result = await svc.executeAdminCanaryUpgrade({
+      const result = await new ElizaSandboxService(provider).executeAdminCanaryUpgrade({
+        sourceJobId: SOURCE_JOB_ID,
+        rolloutId: ROLLOUT_ID,
         agentId: AGENT,
         organizationId: ORG,
         targetOwnerUserId: OWNER,
@@ -7280,29 +7265,29 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
         sourceDigest: FROM_DIGEST,
         targetImage: TARGET_IMAGE,
         targetDigest: TO_DIGEST,
-        onCutoverInTx: audit,
+        onCutoverInTx: async () => {},
         onConvergedInTx: async () => {},
       });
-      expect(result.success).toBe(true);
-      expect(result.cleanupPending).toBe(true);
-      expect(audit).toHaveBeenCalledTimes(1);
+      expect(result).toMatchObject({
+        success: false,
+        rolledBack: true,
+        error: "Sandbox provider does not support exact rollback standby transitions",
+      });
       expect(stopOnSpecificNode).toHaveBeenCalledTimes(1);
       expect(stopOnSpecificNode).toHaveBeenCalledWith(
-        "node-old",
-        "agent-old-1",
-        "vpn-old",
+        "node-new",
+        "agent-new-1",
+        "vpn-new",
         expect.objectContaining({
-          replacementAttemptId: null,
-          previousVpnNodeId: null,
+          replacementAttemptId: expect.any(String),
+          containerId: "container-sandbox-new-1",
+          previousVpnNodeId: "vpn-old",
         }),
       );
       expect(stop).not.toHaveBeenCalled();
     } finally {
       primarySpy.mockRestore();
       nodeSpy.mockRestore();
-      lockSpy.mockRestore();
-      readSpy.mockRestore();
-      snapshotSpy.mockRestore();
     }
   });
 });

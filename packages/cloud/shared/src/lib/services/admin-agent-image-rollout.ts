@@ -21,6 +21,11 @@ import {
   isCompletedAdminCanaryJobResult,
   parseAdminCanaryDemoImage,
 } from "./admin-canary-image";
+import {
+  type AdminCanaryStandbyDecisionInput,
+  type AdminCanaryStandbyDecisionJobData,
+  assertAdminCanaryStandbyDecisionInput,
+} from "./admin-canary-standby";
 import { elizaSandboxService } from "./eliza-sandbox";
 import { JOB_TYPES } from "./provisioning-job-types";
 import { provisioningJobService, readAdminCanaryImageJobData } from "./provisioning-jobs";
@@ -163,6 +168,11 @@ function assertRunningDedicatedAgent(
   if (!hasReadyWarmClaimCredential(agent)) {
     throw conflict(`Agent ${target.agentId} warm-claim credential handoff is not ready`);
   }
+  if (agent.rollback_standby_state) {
+    throw conflict(
+      `Agent ${target.agentId} has unresolved rollback standby generation ${agent.rollback_standby_generation}`,
+    );
+  }
   return agent;
 }
 
@@ -183,6 +193,11 @@ function readSuccessfulUpgradeAudit(job: Job): AdminCanaryImageJobData {
     throw conflict(`Canary job ${job.id} has no successful durable result`);
   }
   const result = job.result;
+  if (result.standbyPending) {
+    throw conflict(
+      `Canary job ${job.id} uses an explicit rollback-standby decision and cannot use legacy restore rollback`,
+    );
+  }
   if (
     result.jobId !== job.id ||
     result.operation !== data.operation ||
@@ -205,6 +220,83 @@ function readSuccessfulUpgradeAudit(job: Job): AdminCanaryImageJobData {
 }
 
 export class AdminAgentImageRolloutService {
+  async decideStandby(input: AdminCanaryStandbyDecisionInput, actorUserId: string): Promise<Job> {
+    assertUuid(actorUserId, "actorUserId");
+    assertAdminCanaryStandbyDecisionInput(input);
+    const sourceJob = await jobsRepository.findByIdForWrite(input.sourceJobId);
+    if (
+      !sourceJob ||
+      sourceJob.type !== JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE ||
+      sourceJob.status !== "completed" ||
+      sourceJob.user_id !== actorUserId
+    ) {
+      throw NotFoundError("Completed admin canary upgrade job not found");
+    }
+    const sourceData = readAdminCanaryImageJobData(sourceJob);
+    if (
+      sourceData.operation !== "upgrade" ||
+      sourceData.actorUserId !== actorUserId ||
+      sourceData.userId !== actorUserId ||
+      sourceData.organizationId !== sourceJob.organization_id ||
+      sourceData.agentId !== sourceJob.agent_id ||
+      !isCompletedAdminCanaryJobResult(sourceJob.result) ||
+      sourceJob.result.standbyPending !== true ||
+      !sourceJob.result.standbyGeneration
+    ) {
+      throw conflict(`Canary job ${sourceJob.id} has no retained rollback standby`);
+    }
+    const standbyGeneration = sourceJob.result.standbyGeneration;
+    const agent = await elizaSandboxService.getAgentForWrite(
+      sourceData.agentId,
+      sourceData.organizationId,
+    );
+    if (
+      !agent ||
+      agent.rollback_standby_state !== "paused" ||
+      agent.rollback_standby_generation !== standbyGeneration ||
+      agent.rollback_standby_source_job_id !== sourceJob.id ||
+      agent.rollback_standby_rollout_id !== sourceData.rolloutId ||
+      agent.user_id !== sourceData.targetOwnerUserId ||
+      agent.docker_image !== sourceData.targetImage ||
+      agent.image_digest !== sourceData.targetDigest
+    ) {
+      throw conflict(`Agent ${sourceData.agentId} no longer matches canary standby audit`);
+    }
+
+    const data: AdminCanaryStandbyDecisionJobData = {
+      requestId: input.requestId,
+      sourceJobId: sourceJob.id,
+      decision: input.decision,
+      ...(input.verifiedBackupId ? { verifiedBackupId: input.verifiedBackupId } : {}),
+      ...(input.restoreValidationId ? { restoreValidationId: input.restoreValidationId } : {}),
+      ...(input.restoreValidationAggregateSha256
+        ? {
+            restoreValidationAggregateSha256: input.restoreValidationAggregateSha256,
+          }
+        : {}),
+      ...(input.restoreValidatedCandidateProviderSandboxId
+        ? {
+            restoreValidatedCandidateProviderSandboxId:
+              input.restoreValidatedCandidateProviderSandboxId,
+          }
+        : {}),
+      standbyGeneration,
+      rolloutId: sourceData.rolloutId,
+      actorUserId,
+      userId: actorUserId,
+      decisionAt: new Date().toISOString(),
+      agentId: sourceData.agentId,
+      organizationId: sourceData.organizationId,
+      targetOwnerUserId: sourceData.targetOwnerUserId,
+      sourceImage: sourceData.sourceImage,
+      sourceDigest: sourceData.sourceDigest,
+      targetImage: sourceData.targetImage,
+      targetDigest: sourceData.targetDigest,
+    };
+    const enqueued = await provisioningJobService.enqueueAdminCanaryStandbyDecision(data);
+    return enqueued.job;
+  }
+
   private async readReplay(
     input: AdminCanaryRolloutInput,
     actorUserId: string,

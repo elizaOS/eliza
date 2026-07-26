@@ -28,6 +28,11 @@ export const JOB_TYPES = {
    */
   AGENT_ADMIN_CANARY_IMAGE: "agent_admin_canary_image",
   /**
+   * Explicit acceptance or rejection of an admin-canary placement whose prior
+   * exact container is retained as a paused rollback standby.
+   */
+  AGENT_ADMIN_CANARY_STANDBY_DECISION: "agent_admin_canary_standby_decision",
+  /**
    * Fleet-downgrade / rollback: blue/green swap an agent back onto its
    * persisted `previous_image_digest`, restoring the `pre-upgrade` snapshot
    * before cutover. The inverse of AGENT_UPGRADE — enqueued explicitly (an
@@ -168,6 +173,12 @@ export const AGENT_LIFECYCLE_JOB_METADATA = [
     type: JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
     exclusive: true,
     coldBoot: true,
+    ownsProvisioningStatus: false,
+  },
+  {
+    type: JOB_TYPES.AGENT_ADMIN_CANARY_STANDBY_DECISION,
+    exclusive: true,
+    coldBoot: false,
     ownsProvisioningStatus: false,
   },
   {
