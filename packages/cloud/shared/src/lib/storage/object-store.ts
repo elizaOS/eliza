@@ -1,5 +1,12 @@
-// Defines cloud shared object store behavior for backend service consumers.
-import { GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
+/**
+ * Object-storage boundary for heavy cloud payloads.
+ *
+ * Text and JSON helpers preserve the existing inline/offload behavior, while
+ * the binary helpers let bounded protocols move ciphertext without converting
+ * it to one process-sized string. Runtime R2 and S3-compatible storage expose
+ * the same fail-closed interface to callers.
+ */
+import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import type { ObjectNamespace } from "./object-namespace";
 import { getRuntimeR2Bucket, runtimeR2BucketConfigured } from "./r2-runtime-binding";
@@ -95,7 +102,7 @@ function objectKey(params: {
   objectId: string;
   field: string;
   createdAt: Date;
-  extension: "json" | "txt";
+  extension: "bin" | "json" | "txt";
 }): string {
   const day = params.createdAt.toISOString().slice(0, 10);
   return [
@@ -144,6 +151,41 @@ export async function putObjectText(params: {
   return key;
 }
 
+export async function putObjectBytes(params: {
+  namespace: ObjectNamespace;
+  organizationId: string;
+  objectId: string;
+  field: string;
+  createdAt: Date;
+  body: Uint8Array;
+  contentType: string;
+}): Promise<string> {
+  const key = objectKey({ ...params, extension: "bin" });
+  const runtimeBucket = getRuntimeR2Bucket();
+  if (runtimeBucket) {
+    await runtimeBucket.put(key, params.body, {
+      httpMetadata: { contentType: params.contentType },
+    });
+    return key;
+  }
+
+  const bucket = heavyPayloadBucket();
+  const client = getObjectStorageClient();
+  if (!bucket || !client) {
+    throw new Error("Object storage requested but client or bucket is not configured");
+  }
+
+  await client.send(
+    new PutObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      Body: params.body,
+      ContentType: params.contentType,
+    }),
+  );
+  return key;
+}
+
 export async function getObjectText(key: string): Promise<string | null> {
   const runtimeBucket = getRuntimeR2Bucket();
   if (runtimeBucket) {
@@ -156,6 +198,39 @@ export async function getObjectText(key: string): Promise<string | null> {
   if (!bucket || !client) return null;
   const out = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
   return (await out.Body?.transformToString()) ?? null;
+}
+
+export async function getObjectBytes(key: string): Promise<Uint8Array | null> {
+  const runtimeBucket = getRuntimeR2Bucket();
+  if (runtimeBucket) {
+    const object = await runtimeBucket.get(key);
+    if (!object) return null;
+    if (!object.arrayBuffer) {
+      throw new Error("Runtime object storage does not expose binary reads");
+    }
+    return new Uint8Array(await object.arrayBuffer());
+  }
+
+  const bucket = heavyPayloadBucket();
+  const client = getObjectStorageClient();
+  if (!bucket || !client) return null;
+  const out = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+  return out.Body ? new Uint8Array(await out.Body.transformToByteArray()) : null;
+}
+
+export async function deleteObject(key: string): Promise<void> {
+  const runtimeBucket = getRuntimeR2Bucket();
+  if (runtimeBucket) {
+    await runtimeBucket.delete(key);
+    return;
+  }
+
+  const bucket = heavyPayloadBucket();
+  const client = getObjectStorageClient();
+  if (!bucket || !client) {
+    throw new Error("Object storage delete requested but client or bucket is not configured");
+  }
+  await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
 }
 
 export async function offloadTextField(params: {
