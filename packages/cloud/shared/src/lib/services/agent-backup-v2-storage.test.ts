@@ -108,6 +108,7 @@ function row(params: {
 class FakeRepository {
   events: string[] = [];
   incomplete: StoredAgentSandboxBackup[] = [];
+  prunable: StoredAgentSandboxBackup[] = [];
   deleted = false;
   latestDescriptor = stagingDescriptor();
 
@@ -154,10 +155,23 @@ class FakeRepository {
     return this.incomplete;
   }
 
+  async claimPrunableChunkedBackups(
+    _sandboxRecordId: string,
+    _keep: number,
+  ): Promise<StoredAgentSandboxBackup[]> {
+    this.events.push("claim-prunable");
+    return this.prunable;
+  }
+
   async deleteIncompleteChunkedBackup(_backupId: string): Promise<boolean> {
     this.events.push("delete-row");
     this.deleted = true;
     return true;
+  }
+
+  async pruneBackups(_sandboxRecordId: string, _keep: number): Promise<number> {
+    this.events.push("prune-legacy");
+    return 1;
   }
 }
 
@@ -294,5 +308,53 @@ describe("AgentBackupV2StorageService", () => {
     expect(result).toEqual({ deleted: 1, retained: 1 });
     expect(repository.events).toContain(`delete-object:${objectKey}`);
     expect(repository.events).not.toContain("delete-object:unrelated/tenant/object.bin");
+  });
+
+  test("hides pruned chunked rows before removing their objects", async () => {
+    const repository = new FakeRepository();
+    repository.prunable = [
+      row({
+        descriptor: completeDescriptor(),
+        state: "cleanup-pending",
+      }),
+    ];
+    const fixture = dependencies({ repository });
+    const service = new AgentBackupV2StorageService(fixture.dependencies);
+
+    await expect(service.prune({ sandboxRecordId, keep: 1 })).resolves.toEqual({
+      legacyDeleted: 1,
+      chunkedDeleted: 1,
+      chunkedPending: 0,
+    });
+    expect(repository.events).toEqual([
+      "prune-legacy",
+      "claim-prunable",
+      `delete-object:${objectKey}`,
+      "delete-row",
+    ]);
+  });
+
+  test("keeps failed prune cleanup durable for reconciliation", async () => {
+    const repository = new FakeRepository();
+    const cleanupRow = row({
+      descriptor: completeDescriptor(),
+      state: "cleanup-pending",
+    });
+    repository.prunable = [cleanupRow];
+    const fixture = dependencies({ repository, deleteFails: true });
+    const service = new AgentBackupV2StorageService(fixture.dependencies);
+
+    await expect(service.prune({ sandboxRecordId, keep: 1 })).resolves.toEqual({
+      legacyDeleted: 1,
+      chunkedDeleted: 0,
+      chunkedPending: 1,
+    });
+    expect(repository.deleted).toBe(false);
+
+    repository.incomplete = [cleanupRow];
+    fixture.dependencies.deleteObject = async () => {};
+    await expect(
+      service.reconcileIncomplete({ before: new Date("2026-07-27T00:00:00.000Z") }),
+    ).resolves.toEqual({ deleted: 1, retained: 0 });
   });
 });
