@@ -18,6 +18,7 @@ import { JOB_TYPES } from "@/lib/services/provisioning-job-types";
 import {
   provisioningJobService,
   readAdminCanaryImageJobData,
+  readAdminCanaryStandbyDecisionJobData,
 } from "@/lib/services/provisioning-jobs";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -91,12 +92,91 @@ const requestSchema = z.union([
   rollbackPreviewSchema,
   rollbackExecuteSchema,
 ]);
+const standbyDecisionSchema = z
+  .object({
+    requestId: requestIdSchema,
+    decision: z.enum(["accept", "reject"]),
+    verifiedBackupId: z.string().uuid().optional(),
+    restoreValidationId: z.string().uuid().optional(),
+    restoreValidationAggregateSha256: z
+      .string()
+      .regex(/^[a-f0-9]{64}$/)
+      .optional(),
+    restoreValidatedCandidateProviderSandboxId: z
+      .string()
+      .trim()
+      .min(1)
+      .optional(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (value.decision === "accept" && !value.verifiedBackupId) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["verifiedBackupId"],
+        message: "accept decisions require verifiedBackupId",
+      });
+    }
+    if (value.decision === "accept" && !value.restoreValidationId) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["restoreValidationId"],
+        message: "accept decisions require restoreValidationId",
+      });
+    }
+    if (
+      value.decision === "accept" &&
+      !value.restoreValidationAggregateSha256
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["restoreValidationAggregateSha256"],
+        message: "accept decisions require restoreValidationAggregateSha256",
+      });
+    }
+    if (
+      value.decision === "accept" &&
+      !value.restoreValidatedCandidateProviderSandboxId
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["restoreValidatedCandidateProviderSandboxId"],
+        message:
+          "accept decisions require restoreValidatedCandidateProviderSandboxId",
+      });
+    }
+    if (
+      value.decision === "accept" &&
+      value.verifiedBackupId &&
+      value.restoreValidationId &&
+      value.verifiedBackupId !== value.restoreValidationId
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["restoreValidationId"],
+        message: "restoreValidationId must equal verifiedBackupId",
+      });
+    }
+    if (
+      value.decision === "reject" &&
+      (value.verifiedBackupId ||
+        value.restoreValidationId ||
+        value.restoreValidationAggregateSha256 ||
+        value.restoreValidatedCandidateProviderSandboxId)
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["verifiedBackupId"],
+        message: "reject decisions cannot include restore validation authority",
+      });
+    }
+  });
 
 interface AdminAgentImageCanaryRouteDependencies {
   requireAdmin: typeof requireAdmin;
   rolloutService: Pick<
     typeof adminAgentImageRolloutService,
-    "previewOrEnqueue" | "recoverRequest"
+    "previewOrEnqueue" | "recoverRequest" | "decideStandby"
   >;
   jobService: Pick<
     typeof provisioningJobService,
@@ -240,13 +320,17 @@ export function createAdminAgentImageCanaryRoute(
       const job = await dependencies.jobService.getJob(parsedJobId.data);
       if (
         !job ||
-        job.type !== JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE ||
+        (job.type !== JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE &&
+          job.type !== JOB_TYPES.AGENT_ADMIN_CANARY_STANDBY_DECISION) ||
         job.user_id !== user.id
       ) {
         throw NotFoundError("Canary image job not found");
       }
 
-      const data = readAdminCanaryImageJobData(job);
+      const data =
+        job.type === JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE
+          ? readAdminCanaryImageJobData(job)
+          : readAdminCanaryStandbyDecisionJobData(job);
       if (
         data.actorUserId !== user.id ||
         data.userId !== user.id ||
@@ -280,6 +364,64 @@ export function createAdminAgentImageCanaryRoute(
             ? { intervalMs: 5_000, shouldContinue: true }
             : { shouldContinue: false },
       });
+    } catch (error) {
+      // error-policy:J1 Translate route failures into the canonical API envelope.
+      return failureResponse(c, error);
+    }
+  });
+
+  app.post("/jobs/:jobId/decision", async (c) => {
+    try {
+      const { user, role } = await dependencies.requireAdmin(c);
+      if (role !== "super_admin") {
+        throw ForbiddenError("Super admin access required");
+      }
+      const parsedJobId = z.string().uuid().safeParse(c.req.param("jobId"));
+      if (!parsedJobId.success) {
+        throw ValidationError("jobId must be a UUID");
+      }
+      let body: unknown;
+      try {
+        body = await c.req.json();
+      } catch {
+        // error-policy:J3 Malformed transport input is an explicit validation failure.
+        throw ValidationError("Request body must be valid JSON");
+      }
+      const decision = standbyDecisionSchema.parse(body);
+      const job = await dependencies.rolloutService.decideStandby(
+        {
+          ...decision,
+          sourceJobId: parsedJobId.data,
+        },
+        user.id,
+      );
+      // error-policy:J5 Observe the nudge rejection here; the durable cron queue remains authoritative.
+      void dependencies.jobService.triggerImmediate(c.env).catch((error) => {
+        dependencies.logger.warn(
+          "[admin-agent-image-canary] Immediate standby-decision trigger failed",
+          {
+            jobId: job.id,
+            sourceJobId: parsedJobId.data,
+            error: error instanceof Error ? error.message : String(error),
+          },
+        );
+      });
+      return c.json(
+        {
+          success: true,
+          data: {
+            jobId: job.id,
+            sourceJobId: parsedJobId.data,
+            decision: decision.decision,
+          },
+          polling: {
+            endpoint: `/api/v1/admin/agent-image-canary/jobs/${job.id}`,
+            intervalMs: 5_000,
+            expectedDurationMs: 120_000,
+          },
+        },
+        202,
+      );
     } catch (error) {
       // error-policy:J1 Translate route failures into the canonical API envelope.
       return failureResponse(c, error);
