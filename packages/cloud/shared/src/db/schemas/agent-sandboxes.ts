@@ -89,6 +89,13 @@ export type AgentBillingStatus = "active" | "warning" | "suspended" | "shutdown_
  */
 export type AgentExecutionTier = "shared" | "dedicated-lazy" | "dedicated-always" | "custom";
 export type WarmClaimCredentialState = "pending" | "attested" | "ready" | "failed";
+export type RollbackStandbyState =
+  | "pausing"
+  | "paused_pre_cutover"
+  | "paused"
+  | "retiring"
+  | "rollback_pending"
+  | "rollback_cleanup_pending";
 
 export const agentSandboxes = pgTable(
   "agent_sandboxes",
@@ -219,6 +226,53 @@ export const agentSandboxes = pgTable(
     replacement_cleanup_created_at: timestamp("replacement_cleanup_created_at", {
       withTimezone: true,
     }),
+    /**
+     * Exact legacy runtime retained while an explicit admin canary is being
+     * accepted. This identity is deliberately separate from
+     * `replacement_cleanup_*`: cleanup is an authority to destroy a candidate,
+     * while a rollback standby is the only authority allowed to resume the
+     * prior image generation.
+     */
+    rollback_standby_state: text("rollback_standby_state").$type<RollbackStandbyState>(),
+    rollback_standby_generation: uuid("rollback_standby_generation"),
+    rollback_standby_rollout_id: uuid("rollback_standby_rollout_id"),
+    rollback_standby_source_job_id: uuid("rollback_standby_source_job_id"),
+    rollback_standby_decision_job_id: uuid("rollback_standby_decision_job_id"),
+    rollback_standby_verified_backup_id: uuid("rollback_standby_verified_backup_id"),
+    rollback_standby_restore_validation_id: uuid("rollback_standby_restore_validation_id"),
+    rollback_standby_restore_validation_aggregate_sha256: text(
+      "rollback_standby_restore_validation_aggregate_sha256",
+    ),
+    rollback_standby_restore_candidate_provider_sandbox_id: text(
+      "rollback_standby_restore_candidate_provider_sandbox_id",
+    ),
+    rollback_standby_sandbox_id: text("rollback_standby_sandbox_id"),
+    rollback_standby_node_id: text("rollback_standby_node_id"),
+    rollback_standby_container_name: text("rollback_standby_container_name"),
+    rollback_standby_container_id: text("rollback_standby_container_id"),
+    rollback_standby_bridge_url: text("rollback_standby_bridge_url"),
+    rollback_standby_health_url: text("rollback_standby_health_url"),
+    rollback_standby_bridge_port: integer("rollback_standby_bridge_port"),
+    rollback_standby_web_ui_port: integer("rollback_standby_web_ui_port"),
+    rollback_standby_headscale_ip: text("rollback_standby_headscale_ip"),
+    rollback_standby_vpn_node_id: text("rollback_standby_vpn_node_id"),
+    rollback_standby_docker_image: text("rollback_standby_docker_image"),
+    rollback_standby_image_digest: text("rollback_standby_image_digest"),
+    rollback_standby_previous_docker_image: text("rollback_standby_previous_docker_image"),
+    rollback_standby_previous_image_digest: text("rollback_standby_previous_image_digest"),
+    rollback_standby_environment_revision: integer("rollback_standby_environment_revision"),
+    rollback_standby_allocation_counted: boolean("rollback_standby_allocation_counted"),
+    rollback_standby_primary_sandbox_id: text("rollback_standby_primary_sandbox_id"),
+    rollback_standby_primary_node_id: text("rollback_standby_primary_node_id"),
+    rollback_standby_primary_container_name: text("rollback_standby_primary_container_name"),
+    rollback_standby_primary_container_id: text("rollback_standby_primary_container_id"),
+    rollback_standby_primary_vpn_node_id: text("rollback_standby_primary_vpn_node_id"),
+    rollback_standby_primary_replacement_attempt_id: uuid(
+      "rollback_standby_primary_replacement_attempt_id",
+    ),
+    rollback_standby_created_at: timestamp("rollback_standby_created_at", {
+      withTimezone: true,
+    }),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     deleted_at: timestamp("deleted_at", { withTimezone: true }),
@@ -319,6 +373,119 @@ export const agentSandboxes = pgTable(
     replacement_cleanup_pending_idx: index("agent_sandboxes_replacement_cleanup_pending_idx")
       .on(table.replacement_cleanup_created_at)
       .where(sql`${table.replacement_cleanup_sandbox_id} IS NOT NULL`),
+    rollback_standby_contract_check: check(
+      "agent_sandboxes_rollback_standby_contract_check",
+      sql`(
+        ${table.rollback_standby_state} IS NULL
+        AND ${table.rollback_standby_generation} IS NULL
+        AND ${table.rollback_standby_rollout_id} IS NULL
+        AND ${table.rollback_standby_source_job_id} IS NULL
+        AND ${table.rollback_standby_decision_job_id} IS NULL
+        AND ${table.rollback_standby_verified_backup_id} IS NULL
+        AND ${table.rollback_standby_restore_validation_id} IS NULL
+        AND ${table.rollback_standby_restore_validation_aggregate_sha256} IS NULL
+        AND ${table.rollback_standby_restore_candidate_provider_sandbox_id} IS NULL
+        AND ${table.rollback_standby_sandbox_id} IS NULL
+        AND ${table.rollback_standby_node_id} IS NULL
+        AND ${table.rollback_standby_container_name} IS NULL
+        AND ${table.rollback_standby_container_id} IS NULL
+        AND ${table.rollback_standby_bridge_url} IS NULL
+        AND ${table.rollback_standby_health_url} IS NULL
+        AND ${table.rollback_standby_bridge_port} IS NULL
+        AND ${table.rollback_standby_web_ui_port} IS NULL
+        AND ${table.rollback_standby_headscale_ip} IS NULL
+        AND ${table.rollback_standby_vpn_node_id} IS NULL
+        AND ${table.rollback_standby_docker_image} IS NULL
+        AND ${table.rollback_standby_image_digest} IS NULL
+        AND ${table.rollback_standby_previous_docker_image} IS NULL
+        AND ${table.rollback_standby_previous_image_digest} IS NULL
+        AND ${table.rollback_standby_environment_revision} IS NULL
+        AND ${table.rollback_standby_allocation_counted} IS NULL
+        AND ${table.rollback_standby_primary_sandbox_id} IS NULL
+        AND ${table.rollback_standby_primary_node_id} IS NULL
+        AND ${table.rollback_standby_primary_container_name} IS NULL
+        AND ${table.rollback_standby_primary_container_id} IS NULL
+        AND ${table.rollback_standby_primary_vpn_node_id} IS NULL
+        AND ${table.rollback_standby_primary_replacement_attempt_id} IS NULL
+        AND ${table.rollback_standby_created_at} IS NULL
+      ) OR (
+        ${table.rollback_standby_state} IN (
+          'pausing',
+          'paused_pre_cutover',
+          'paused',
+          'retiring',
+          'rollback_pending',
+          'rollback_cleanup_pending'
+        )
+        AND ${table.rollback_standby_generation} IS NOT NULL
+        AND ${table.rollback_standby_rollout_id} IS NOT NULL
+        AND ${table.rollback_standby_source_job_id} IS NOT NULL
+        AND ${table.rollback_standby_sandbox_id} IS NOT NULL
+        AND ${table.rollback_standby_node_id} IS NOT NULL
+        AND ${table.rollback_standby_container_name} IS NOT NULL
+        AND ${table.rollback_standby_bridge_url} IS NOT NULL
+        AND ${table.rollback_standby_health_url} IS NOT NULL
+        AND ${table.rollback_standby_bridge_port} IS NOT NULL
+        AND ${table.rollback_standby_web_ui_port} IS NOT NULL
+        AND ${table.rollback_standby_vpn_node_id} IS NOT NULL
+        AND ${table.rollback_standby_docker_image} IS NOT NULL
+        AND ${table.rollback_standby_image_digest} IS NOT NULL
+        AND ${table.rollback_standby_environment_revision} IS NOT NULL
+        AND ${table.rollback_standby_allocation_counted} = TRUE
+        AND ${table.rollback_standby_primary_sandbox_id} IS NOT NULL
+        AND ${table.rollback_standby_primary_node_id} IS NOT NULL
+        AND ${table.rollback_standby_primary_container_name} IS NOT NULL
+        AND ${table.rollback_standby_primary_container_id} IS NOT NULL
+        AND ${table.rollback_standby_primary_vpn_node_id} IS NOT NULL
+        AND ${table.rollback_standby_primary_replacement_attempt_id} IS NOT NULL
+        AND ${table.rollback_standby_created_at} IS NOT NULL
+        AND (
+          (
+            ${table.rollback_standby_state} = 'pausing'
+            AND ${table.rollback_standby_container_id} IS NULL
+          ) OR (
+            ${table.rollback_standby_state} <> 'pausing'
+            AND ${table.rollback_standby_container_id} IS NOT NULL
+          )
+        )
+        AND (
+          (
+            ${table.rollback_standby_state} IN ('pausing', 'paused_pre_cutover', 'paused')
+            AND ${table.rollback_standby_decision_job_id} IS NULL
+            AND ${table.rollback_standby_verified_backup_id} IS NULL
+            AND ${table.rollback_standby_restore_validation_id} IS NULL
+            AND ${table.rollback_standby_restore_validation_aggregate_sha256} IS NULL
+            AND ${table.rollback_standby_restore_candidate_provider_sandbox_id} IS NULL
+          ) OR (
+            ${table.rollback_standby_state} = 'retiring'
+            AND ${table.rollback_standby_decision_job_id} IS NOT NULL
+            AND ${table.rollback_standby_verified_backup_id} IS NOT NULL
+            AND ${table.rollback_standby_restore_validation_id} = ${table.rollback_standby_verified_backup_id}
+            AND ${table.rollback_standby_restore_validation_aggregate_sha256} ~ '^[0-9a-f]{64}$'
+            AND ${table.rollback_standby_restore_candidate_provider_sandbox_id} IS NOT NULL
+          ) OR (
+            ${table.rollback_standby_state} IN ('rollback_pending', 'rollback_cleanup_pending')
+            AND ${table.rollback_standby_decision_job_id} IS NOT NULL
+            AND ${table.rollback_standby_verified_backup_id} IS NULL
+            AND ${table.rollback_standby_restore_validation_id} IS NULL
+            AND ${table.rollback_standby_restore_validation_aggregate_sha256} IS NULL
+            AND ${table.rollback_standby_restore_candidate_provider_sandbox_id} IS NULL
+          )
+        )
+        AND (
+          (
+            ${table.rollback_standby_previous_docker_image} IS NULL
+            AND ${table.rollback_standby_previous_image_digest} IS NULL
+          ) OR (
+            ${table.rollback_standby_previous_docker_image} IS NOT NULL
+            AND ${table.rollback_standby_previous_image_digest} IS NOT NULL
+          )
+        )
+      )`,
+    ),
+    rollback_standby_pending_idx: index("agent_sandboxes_rollback_standby_pending_idx")
+      .on(table.rollback_standby_created_at)
+      .where(sql`${table.rollback_standby_state} IS NOT NULL`),
   }),
 );
 
