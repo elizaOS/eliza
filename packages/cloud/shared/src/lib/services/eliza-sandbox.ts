@@ -6,6 +6,7 @@
 import crypto from "node:crypto";
 import { isIP } from "node:net";
 import { ElizaError } from "@elizaos/core";
+import { resolveRetainableAgentBackupBytes } from "@elizaos/shared";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
 import { type Database, dbWrite } from "../../db/helpers";
@@ -505,11 +506,15 @@ const SNAPSHOT_FETCH_TIMEOUT_MS = 120_000;
  * doubled it). The raw budget is enforced WHILE streaming — bytes past it are
  * never retained — and the expanded file budgets are validated before the
  * payload is persisted. Env-overridable for staging soak.
+ *
+ * The raw budget is the RETAIN side of the v1 wire contract, so it is bounded
+ * by what restore accepts: the override may lower it, never raise it past
+ * `MAX_RESTORABLE_AGENT_BACKUP_BYTES` (#17172). Retaining more than that
+ * yields a snapshot that authorizes a cutover and can never be restored.
  */
-const SNAPSHOT_MAX_RAW_BYTES = (() => {
-  const raw = Number.parseInt(process.env.ELIZA_SNAPSHOT_MAX_RAW_BYTES ?? "", 10);
-  return Number.isFinite(raw) && raw > 0 ? raw : 256 * 1024 * 1024;
-})();
+const SNAPSHOT_MAX_RAW_BYTES = resolveRetainableAgentBackupBytes(
+  process.env.ELIZA_SNAPSHOT_MAX_RAW_BYTES,
+);
 const SNAPSHOT_MAX_FILES = (() => {
   const raw = Number.parseInt(process.env.ELIZA_SNAPSHOT_MAX_FILES ?? "", 10);
   return Number.isFinite(raw) && raw > 0 ? raw : 5_000;

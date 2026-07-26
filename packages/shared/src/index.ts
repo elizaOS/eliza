@@ -4,6 +4,11 @@
  * Public surface: barrel exports for the shared workspace contract.
  */
 
+// Agent-backup size limits — the single source of truth for the maximum
+// RESTORABLE v1 snapshot wire size, imported by every side that retains or
+// consumes a snapshot so a backup can never be retained above what restore
+// accepts (#17172).
+export * from "./agent-backup-limits.js";
 export * from "./api/agent-api-types.js";
 export * from "./api/command-transport-types.js";
 export * from "./api/http-helpers.js";
