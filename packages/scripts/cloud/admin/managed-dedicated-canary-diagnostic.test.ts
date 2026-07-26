@@ -18,8 +18,34 @@ import {
   sanitizeManagedDedicatedCanaryDiagnostic,
   writeManagedDedicatedCanaryDiagnostic,
 } from "./managed-dedicated-canary-diagnostic";
+import { toLibpqConnectionUrl } from "./libpq-connection-url";
 
 const SUFFIX = "r30081355987a1";
+
+describe("libpq connection URL", () => {
+  test("removes only the provider client compatibility hint", () => {
+    expect(
+      toLibpqConnectionUrl(
+        "postgresql://operator:p%40ss@db.example.test:5432/eliza?sslmode=require&uselibpqcompat=true&channel_binding=require",
+      ),
+    ).toBe(
+      "postgresql://operator:p%40ss@db.example.test:5432/eliza?sslmode=require&channel_binding=require",
+    );
+  });
+
+  test("preserves a URL that already contains only libpq options", () => {
+    const value =
+      "postgres://operator:secret@db.example.test/eliza?sslmode=verify-full";
+    expect(toLibpqConnectionUrl(value)).toBe(value);
+  });
+
+  test.each(["", "https://db.example.test/eliza"])(
+    "rejects a non-PostgreSQL connection URL",
+    (value) => {
+      expect(() => toLibpqConnectionUrl(value)).toThrow();
+    },
+  );
+});
 
 function failedDeleteInput(): Record<string, unknown> {
   return {
@@ -312,6 +338,12 @@ describe("managed dedicated canary diagnostic", () => {
     );
     expect(workflow).toContain("BEGIN READ ONLY;");
     expect(workflow).toContain("SET LOCAL statement_timeout = '20s';");
+    expect(workflow).toContain(
+      "bun packages/scripts/cloud/admin/libpq-connection-url.ts",
+    );
+    expect(workflow).toContain('echo "::add-mask::$PSQL_DATABASE_URL"');
+    expect(workflow).toContain('psql "$PSQL_DATABASE_URL"');
+    expect(workflow).not.toContain('psql "$DATABASE_URL"');
     expect(workflow).toContain(
       "WHERE agent_name = 'managed-dedicated-canary-' || :'suffix'",
     );
