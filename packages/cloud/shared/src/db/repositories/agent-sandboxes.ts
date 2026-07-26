@@ -2180,6 +2180,7 @@ export class AgentSandboxesRepository {
           eq(agentSandboxBackups.sandbox_record_id, params.sandboxRecordId),
           eq(agentSandboxBackups.snapshot_schema_version, 2),
           eq(agentSandboxBackups.state_data_storage, "chunked-v2"),
+          COMPLETE_BACKUP,
           eq(agentSandboxes.organization_id, params.organizationId),
         ),
       )
@@ -2359,7 +2360,7 @@ export class AgentSandboxesRepository {
         verified_at: outcome.verifiedAt,
         verification_error: outcome.error,
       })
-      .where(eq(agentSandboxBackups.id, backupId));
+      .where(and(eq(agentSandboxBackups.id, backupId), COMPLETE_BACKUP));
   }
 
   /**
