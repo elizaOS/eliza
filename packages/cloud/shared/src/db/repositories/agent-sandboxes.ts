@@ -1770,6 +1770,52 @@ export class AgentSandboxesRepository {
     return rows.length === 1;
   }
 
+  async claimPrunableChunkedBackups(
+    sandboxRecordId: string,
+    keep: number,
+  ): Promise<StoredAgentSandboxBackup[]> {
+    if (!Number.isSafeInteger(keep) || keep < 0) {
+      throw new Error("Backup retention count must be a non-negative integer");
+    }
+    return await dbWrite.transaction(async (tx) => {
+      const all = await tx
+        .select()
+        .from(agentSandboxBackups)
+        .where(and(eq(agentSandboxBackups.sandbox_record_id, sandboxRecordId), COMPLETE_BACKUP));
+      if (all.length <= keep) return [];
+      const nodes: BackupChainNode[] = all.map((backup) => ({
+        id: backup.id,
+        backupKind: backup.backup_kind,
+        parentBackupId: backup.parent_backup_id,
+        createdAtMs: backup.created_at.getTime(),
+      }));
+      const prunableIds = new Set(selectPrunableBackupIds(nodes, keep));
+      const chunkedIds = all
+        .filter(
+          (backup) =>
+            prunableIds.has(backup.id) &&
+            backup.snapshot_schema_version === 2 &&
+            backup.state_data_storage === "chunked-v2",
+        )
+        .map((backup) => backup.id);
+      if (chunkedIds.length === 0) return [];
+      return await tx
+        .update(agentSandboxBackups)
+        .set({
+          storage_commit_state: "cleanup-pending",
+          storage_commit_error: null,
+          storage_commit_updated_at: new Date(),
+        })
+        .where(
+          and(
+            inArray(agentSandboxBackups.id, chunkedIds),
+            eq(agentSandboxBackups.storage_commit_state, "complete"),
+          ),
+        )
+        .returning();
+    });
+  }
+
   /** Newest stored (still-encrypted) backup row for a sandbox, un-hydrated. */
   async getLatestStoredBackup(
     sandboxRecordId: string,
@@ -1817,6 +1863,8 @@ export class AgentSandboxesRepository {
         backupKind: agentSandboxBackups.backup_kind,
         parentBackupId: agentSandboxBackups.parent_backup_id,
         createdAt: agentSandboxBackups.created_at,
+        snapshotSchemaVersion: agentSandboxBackups.snapshot_schema_version,
+        stateDataStorage: agentSandboxBackups.state_data_storage,
       })
       .from(agentSandboxBackups)
       .where(and(eq(agentSandboxBackups.sandbox_record_id, sandboxRecordId), COMPLETE_BACKUP));
@@ -1829,9 +1877,21 @@ export class AgentSandboxesRepository {
     }));
     const ids = selectPrunableBackupIds(nodes, keep);
     if (ids.length === 0) return 0;
+    const legacyIds = all
+      .filter((backup) => ids.includes(backup.id))
+      .filter(
+        (backup) => backup.snapshotSchemaVersion === 1 && backup.stateDataStorage !== "chunked-v2",
+      )
+      .map((backup) => backup.id);
+    if (legacyIds.length === 0) return 0;
     const r = await dbWrite
       .delete(agentSandboxBackups)
-      .where(inArray(agentSandboxBackups.id, ids))
+      .where(
+        and(
+          inArray(agentSandboxBackups.id, legacyIds),
+          eq(agentSandboxBackups.storage_commit_state, "complete"),
+        ),
+      )
       .returning({ id: agentSandboxBackups.id });
     return r.length;
   }
