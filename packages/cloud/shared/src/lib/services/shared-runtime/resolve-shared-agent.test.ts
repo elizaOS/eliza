@@ -242,8 +242,27 @@ describe("resolveSharedAgent", () => {
     await Promise.all(waited);
 
     const scopeKey = CacheKeys.sharedAgentScope.resolve("keyhashpref0000", "agent-1");
-    expect(cacheStore.has(scopeKey)).toBe(false);
+    expect(cacheStore.get(scopeKey)).toEqual({
+      requiresAuthoritativeResolution: true,
+    });
     findByIdAndOrg.mockResolvedValue(agent());
+    await expect(
+      resolveSharedAgent(apiKeyContext("agent-1") as never, {
+        cacheOnly: true,
+        executionCtx: { waitUntil: (promise) => waited.push(promise) },
+      }),
+    ).resolves.toMatchObject({ agentId: "agent-1", orgId: "org-1" });
+  });
+
+  test("cache-only returns a permanent non-shared decision on the retry", async () => {
+    findByIdAndOrg.mockResolvedValue(
+      agent({
+        execution_tier: "dedicated-lazy",
+        status: "running",
+        bridge_url: "https://agent.example.test",
+      }),
+    );
+    const waited: Promise<unknown>[] = [];
     await expect(
       resolveSharedAgent(apiKeyContext("agent-1") as never, {
         cacheOnly: true,
@@ -251,19 +270,16 @@ describe("resolveSharedAgent", () => {
       }),
     ).resolves.toMatchObject({ status: 503 });
     await Promise.all(waited);
-    cacheStore.set(
-      CacheKeys.apiKey.validation(
-        createHash("sha256").update("eliza_testkey").digest("hex").substring(0, 16),
-      ),
-      { is_active: true, organization_id: "org-1", expires_at: null },
-    );
 
     await expect(
       resolveSharedAgent(apiKeyContext("agent-1") as never, {
         cacheOnly: true,
         executionCtx: { waitUntil: (promise) => waited.push(promise) },
       }),
-    ).resolves.toMatchObject({ agentId: "agent-1", orgId: "org-1" });
+    ).resolves.toEqual({
+      error: "Not a shared-runtime agent",
+      status: 404,
+    });
   });
 
   test("cache-only converges for a bootstrap-window dedicated agent: retry is served authoritatively", async () => {
@@ -308,7 +324,9 @@ describe("resolveSharedAgent", () => {
     await Promise.all(waited);
 
     const scopeKey = CacheKeys.sharedAgentScope.resolve("keyhashpref0000", "agent-1");
-    expect(cacheStore.has(scopeKey)).toBe(false);
+    expect(cacheStore.get(scopeKey)).toEqual({
+      requiresAuthoritativeResolution: true,
+    });
     requireUserOrApiKeyWithOrgLookup.mockImplementation(
       async <T>(_: unknown, lookup: (organizationId: string) => Promise<T>) => ({
         user: { organization_id: "org-1", steward_id: "steward-user-1" },
@@ -321,21 +339,32 @@ describe("resolveSharedAgent", () => {
         cacheOnly: true,
         executionCtx: { waitUntil: (promise) => waited.push(promise) },
       }),
+    ).resolves.toMatchObject({ agentId: "agent-1", orgId: "org-1" });
+  });
+
+  test("cache-only returns a permanent credential denial on the retry", async () => {
+    const { AuthenticationError } = await import("../../api/cloud-worker-errors");
+    requireUserOrApiKeyWithOrgLookup.mockImplementation(async () => {
+      throw AuthenticationError("Invalid or expired API key");
+    });
+    const waited: Promise<unknown>[] = [];
+    await expect(
+      resolveSharedAgent(apiKeyContext("agent-1") as never, {
+        cacheOnly: true,
+        executionCtx: { waitUntil: (promise) => waited.push(promise) },
+      }),
     ).resolves.toMatchObject({ status: 503 });
     await Promise.all(waited);
-    cacheStore.set(
-      CacheKeys.apiKey.validation(
-        createHash("sha256").update("eliza_testkey").digest("hex").substring(0, 16),
-      ),
-      { is_active: true, organization_id: "org-1", expires_at: null },
-    );
 
     await expect(
       resolveSharedAgent(apiKeyContext("agent-1") as never, {
         cacheOnly: true,
         executionCtx: { waitUntil: (promise) => waited.push(promise) },
       }),
-    ).resolves.toMatchObject({ agentId: "agent-1", orgId: "org-1" });
+    ).resolves.toEqual({
+      error: "Invalid or expired API key",
+      status: 401,
+    });
   });
 
   test("allows a dedicated agent only during its first bootstrap window", async () => {

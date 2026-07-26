@@ -80,6 +80,7 @@ interface BrowserTelemetry {
   doneAt?: number;
   error?: string;
   historyReloads: number;
+  mountCounts: Record<string, number>;
   mutations: Array<{ at: number; value: string }>;
   rafCallbacks: number[];
   rafScheduled: number[];
@@ -89,8 +90,14 @@ interface BrowserTelemetry {
   startedAt?: number;
   stateSnapshots: Array<{
     at: number;
-    value: Array<{ id: string; role: string; text: string }>;
+    value: Array<{
+      clientRenderId?: string;
+      id: string;
+      role: string;
+      text: string;
+    }>;
   }>;
+  unmountCounts: Record<string, number>;
 }
 
 interface HarnessState {
@@ -370,7 +377,7 @@ suite("chat streaming telemetry real e2e", () => {
       }),
       "telemetry-mock",
       10_000,
-      { streamable: false } satisfies ModelRegistrationMetadata,
+      { streamable: true } satisfies ModelRegistrationMetadata,
     );
 
     const adminEntityId = stringToUuid("chat-telemetry-admin");
@@ -631,6 +638,8 @@ suite("chat streaming telemetry real e2e", () => {
     expect(doneFrame?.messageId).toBe(assistantDbMessage?.id);
     expect(doneFrame?.userMessageId).toBe(userDbMessage?.id);
     expect(browserTelemetry.historyReloads).toBe(0);
+    expect(browserTelemetry.rafScheduled).toEqual([]);
+    expect(browserTelemetry.rafCallbacks).toEqual([]);
     await expect.poll(() => state?.wsMessages.length ?? 0).toBeGreaterThan(0);
     expect(state.wsMessages).toContainEqual(
       expect.objectContaining({
@@ -639,19 +648,38 @@ suite("chat streaming telemetry real e2e", () => {
       }),
     );
 
-    const partialAssistantStates = browserTelemetry.stateSnapshots
+    const assistantStates = browserTelemetry.stateSnapshots
       .map(
         ({ value }) =>
           value.find((message) => message.role === "assistant")?.text ?? "",
       )
-      .filter((text) => text.length > 0 && text !== REPLY_TEXT);
-    expect(partialAssistantStates.length).toBeGreaterThan(0);
-    expect(
-      browserTelemetry.mutations.some(
-        ({ value }) =>
-          value.includes(REPLY_TEXT) && value.length > REPLY_TEXT.length,
-      ),
-    ).toBe(true);
+      .filter((text, index, values) => text && text !== values[index - 1]);
+    const expectedAssistantStates = REPLY_TOKENS.map((_, index) =>
+      REPLY_TOKENS.slice(0, index + 1).join(""),
+    );
+    expect(assistantStates).toEqual(expectedAssistantStates);
+    let lastMutationIndex = -1;
+    for (const expectedText of expectedAssistantStates) {
+      const mutationIndex = browserTelemetry.mutations.findIndex(
+        ({ value }, index) =>
+          index > lastMutationIndex && value.includes(expectedText),
+      );
+      expect(mutationIndex).toBeGreaterThan(lastMutationIndex);
+      lastMutationIndex = mutationIndex;
+    }
+
+    const finalUserState = finalSnapshot.find(
+      (message) => message.role === "user",
+    );
+    expect(finalUserState?.clientRenderId).toMatch(/^temp-/);
+    expect(assistantStateMessage?.clientRenderId).toMatch(/^temp-resp-/);
+    for (const message of [finalUserState, assistantStateMessage]) {
+      const renderKey = message?.clientRenderId;
+      expect(renderKey).toBeTruthy();
+      if (!renderKey) continue;
+      expect(browserTelemetry.mountCounts[renderKey]).toBe(1);
+      expect(browserTelemetry.unmountCounts[renderKey] ?? 0).toBe(0);
+    }
 
     const startedAt = browserTelemetry.startedAt ?? 0;
     const report = {
@@ -679,6 +707,8 @@ suite("chat streaming telemetry real e2e", () => {
           elapsedMs: Number((commit.at - startedAt).toFixed(2)),
         })),
         renderCounts: browserTelemetry.renderCounts,
+        mountCounts: browserTelemetry.mountCounts,
+        unmountCounts: browserTelemetry.unmountCounts,
         stateSnapshotCount: browserTelemetry.stateSnapshots.length,
         historyReloads: browserTelemetry.historyReloads,
       },

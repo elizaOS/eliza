@@ -55,7 +55,22 @@ vi.mock("../chat-routes.ts", async () => {
       metadata: undefined,
     })),
     persistConversationMemory: vi.fn(async () => undefined),
-    persistAssistantConversationMemory: vi.fn(async () => undefined),
+    persistAssistantConversationMemory: vi.fn(
+      async (
+        runtime: { agentId: UUID },
+        roomId: UUID,
+        content: string | Record<string, unknown>,
+        _channelType: ChannelType,
+        _dedupeSinceMs?: number,
+        memoryId?: UUID,
+      ) => ({
+        id: memoryId ?? stringToUuid("assistant-persisted"),
+        entityId: runtime.agentId,
+        agentId: runtime.agentId,
+        roomId,
+        content: typeof content === "string" ? { text: content } : content,
+      }),
+    ),
     hasRecentVisibleAssistantMemorySince: vi.fn(async () => false),
     generateChatResponse: vi.fn(
       async (

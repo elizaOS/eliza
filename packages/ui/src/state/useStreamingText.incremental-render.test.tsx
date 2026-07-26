@@ -238,8 +238,8 @@ function conversationFixture(id: string, roomId: string): Conversation {
  * Minimal `useChatSend` deps: most setters are inert spies; only the
  * conversation list + the `setConversationMessages` reducer are ref-backed
  * with real state so the streaming commits land somewhere observable. The
- * `setConversationMessages` spy counts commits so the test can assert the
- * rAF throttle bounds them.
+ * `setConversationMessages` spy counts commits so the test can assert one
+ * synchronous transport burst is coalesced.
  */
 function makeChatSendDeps() {
   const conversationsRef = {
@@ -304,37 +304,20 @@ function makeChatSendDeps() {
 }
 
 /**
- * Integration proof for the streaming-commit THROTTLE (`useChatSend`'s rAF
- * token-coalescing seam, distinct from the reducer tested above). The reducer
- * tests prove a commit paints incrementally; this proves the production hook
- * does NOT commit once per token. `onToken` fires faster than the display can
- * paint (>60/sec on a fast model), so several tokens arriving within one frame
- * must collapse into AT MOST ONE commit, with the final text flushed once the
- * stream resolves.
+ * Integration proof for the streaming-commit coalescer (`useChatSend`'s
+ * microtask seam, distinct from the reducer tested above). The reducer tests
+ * prove a commit paints incrementally; this proves callbacks decoded in one
+ * synchronous transport burst collapse into one prompt commit while callbacks
+ * from later tasks remain visible without depending on browser paint cadence.
  */
-describe("streaming → useChatSend rAF token-coalescing throttle", () => {
+describe("streaming → useChatSend microtask token coalescing", () => {
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
     vi.unstubAllGlobals();
   });
 
-  it("coalesces many same-frame tokens into ≤1 commit per frame and flushes the complete text", async () => {
-    // Manual rAF queue: callbacks park here and only run when we `flushFrame()`,
-    // so "within one frame" is fully deterministic — no real timers.
-    const rafQueue: FrameRequestCallback[] = [];
-    let rafId = 0;
-    vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
-      rafQueue.push(cb);
-      rafId += 1;
-      return rafId;
-    });
-    vi.stubGlobal("cancelAnimationFrame", () => {});
-    const flushFrame = () => {
-      const pending = rafQueue.splice(0);
-      for (const cb of pending) cb(performance.now());
-    };
-
+  it("coalesces one synchronous token burst into one commit and flushes terminal text", async () => {
     // Capture the streaming `onToken` (3rd arg) and resolve the stream when we
     // decide the turn is done, so we control exactly when flushStreamingText runs.
     let onToken!: (token: string, accumulatedText?: string) => void;
@@ -369,24 +352,14 @@ describe("streaming → useChatSend rAF token-coalescing throttle", () => {
     // commit counter so we measure ONLY the streaming-token commits.
     setConversationMessages.mockClear();
 
-    // Cumulative snapshots arriving WITHIN one frame (no frame flushed yet).
+    // Cumulative snapshots decoded from one synchronous transport burst.
     const snapshots = ["He", "Hell", "Hello ", "Hello the", "Hello there"];
-    act(() => {
+    await act(async () => {
       for (const snapshot of snapshots) onToken("", snapshot);
+      await Promise.resolve();
     });
 
-    // Throttled: many tokens, but NOT one commit each (the rAF hasn't fired).
-    expect(setConversationMessages.mock.calls.length).toBeLessThan(
-      snapshots.length,
-    );
-    const beforeFrame = setConversationMessages.mock.calls.length;
-
-    // Flush the single scheduled frame → at most one additional commit lands.
-    act(() => {
-      flushFrame();
-    });
-    const afterFrame = setConversationMessages.mock.calls.length;
-    expect(afterFrame - beforeFrame).toBeLessThanOrEqual(1);
+    expect(setConversationMessages).toHaveBeenCalledTimes(1);
 
     // The streamed text painted so far is the latest parked snapshot.
     const assistantText = () =>

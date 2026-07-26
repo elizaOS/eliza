@@ -1320,29 +1320,22 @@ describe("finalizeTrajectoryRecording (running-status leak guard)", () => {
 		return JSON.parse(raw) as RecordedTrajectory;
 	}
 
-	it("waits for pre-end work before writing the terminal status", async () => {
+	it("writes terminal status independently of a never-settling background task", async () => {
 		const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
 		const id = recorder.startTrajectory({ agentId: "agent-test", rootMessage });
-		let release: (() => void) | undefined;
-		const beforeEnd = new Promise<void>((resolve) => {
-			release = resolve;
-		});
+		const neverSettles = new Promise<void>(() => undefined);
+		void neverSettles;
 
-		const finalization = finalizeTrajectoryRecording({
+		await finalizeTrajectoryRecording({
 			recorder,
 			trajectoryId: id,
 			status: "finished",
-			beforeEnd: () => beforeEnd,
 		});
 
-		expect((await recorder.load(id))?.status).toBe("running");
-		release?.();
-		await finalization;
 		expect((await readPersisted(id)).status).toBe("finished");
 	});
 
-	it("writes a terminal errored status even when the pre-end work throws", async () => {
-		const warn = vi.fn();
+	it("writes the requested errored status", async () => {
 		const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
 		const id = recorder.startTrajectory({ agentId: "agent-test", rootMessage });
 
@@ -1350,36 +1343,28 @@ describe("finalizeTrajectoryRecording (running-status leak guard)", () => {
 			recorder,
 			trajectoryId: id,
 			status: "errored",
-			beforeEnd: () => Promise.reject(new Error("facts stage exploded")),
-			logger: { warn },
 		});
 
 		const persisted = await readPersisted(id);
 		expect(persisted.status).toBe("errored");
 		expect(persisted.metrics.finalDecision).toBe("error");
-		expect(warn).toHaveBeenCalledWith(
-			expect.objectContaining({ err: "facts stage exploded" }),
-			expect.stringContaining("pre-end work failed"),
-		);
 	});
 
-	it("records the pre-end stage before ending when it completes in time", async () => {
+	it("preserves stages the caller records before entering the terminal boundary", async () => {
 		const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
 		const id = recorder.startTrajectory({ agentId: "agent-test", rootMessage });
+		await recorder.recordStage(id, {
+			stageId: "stage-facts-1",
+			kind: "factsAndRelationships",
+			startedAt: 1,
+			endedAt: 2,
+			latencyMs: 1,
+		});
 
 		await finalizeTrajectoryRecording({
 			recorder,
 			trajectoryId: id,
 			status: "finished",
-			beforeEnd: async () => {
-				await recorder.recordStage(id, {
-					stageId: "stage-facts-1",
-					kind: "factsAndRelationships",
-					startedAt: 1,
-					endedAt: 2,
-					latencyMs: 1,
-				});
-			},
 		});
 
 		const persisted = await readPersisted(id);

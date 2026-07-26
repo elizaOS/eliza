@@ -1,12 +1,13 @@
 /**
  * Streaming-text primitive for the chat reducer.
  *
- * The chat pipeline only ever does six things to an in-flight assistant
+ * The chat pipeline only ever does eight things to an in-flight assistant
  * turn while a stream is alive:
  *
  *   - append a token (delta)        → mode: "append"
  *   - replace text from a snapshot  → mode: "replace"
  *   - apply final reconciled text   → mode: "complete"
+ *   - bind a durable domain id      → mode: "rekey"
  *   - merge an inline tool-call step → mode: "tool"
  *   - stamp a server failureKind    → mode: "fail"
  *   - mark the turn as interrupted  → mode: "interrupt"
@@ -74,6 +75,12 @@ export type StreamingTextModification =
       reasoning?: string;
       /** Persisted server id replacing the optimistic temp-resp-* stream id. */
       persistedMessageId?: string;
+    }
+  | {
+      messageId: string;
+      mode: "rekey";
+      /** Durable server id replacing an optimistic client id. */
+      persistedMessageId: string;
     }
   | {
       messageId: string;
@@ -153,6 +160,10 @@ function computeNextMessage(
       }
       return next;
     }
+    case "rekey": {
+      if (message.id === mod.persistedMessageId) return null;
+      return { ...message, id: mod.persistedMessageId };
+    }
     case "tool": {
       const nextEvents = mergeChatToolEvent(
         message.toolEvents ?? [],
@@ -201,15 +212,14 @@ export function applyStreamingTextModification(
       changed = true;
       return patched;
     });
-    // Id-swap dedupe: when `complete` rebinds the streamed temp bubble to the
+    // Id-swap dedupe: when terminal reconciliation rebinds a temp bubble to the
     // persisted server id, a proactive-message WS echo carrying that same
     // persisted id may have ALREADY appended its own bubble (action-callback
     // turns persist + broadcast mid-turn, before the SSE `done` arrives). Keep
     // only the FIRST occurrence — the swapped streamed bubble at the thread
     // position the user watched (echoes append after it) — and drop the copy.
     if (
-      mod.mode === "complete" &&
-      mod.persistedMessageId &&
+      (mod.mode === "complete" || mod.mode === "rekey") &&
       mod.persistedMessageId !== mod.messageId
     ) {
       let seen = false;

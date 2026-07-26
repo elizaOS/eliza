@@ -49,10 +49,9 @@ jobs:
           node-version: "24.15.0"
 
       - name: Measure Gemma streaming
-        id: probe
-        continue-on-error: true
         shell: bash
         run: |
+          set -o pipefail
           mkdir -p reports
           node packages/scripts/cloud/chat-latency.mjs \
             --target paired \

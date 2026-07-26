@@ -41,6 +41,7 @@ interface BrowserChatTelemetry {
   error?: string;
   historyReloads: number;
   mutations: Array<TimedValue<string>>;
+  mountCounts: Record<string, number>;
   rafCallbacks: number[];
   rafScheduled: number[];
   readyAt?: number;
@@ -48,6 +49,7 @@ interface BrowserChatTelemetry {
   sseFrames: Array<TimedValue<Record<string, unknown>>>;
   startedAt?: number;
   stateSnapshots: Array<TimedValue<ConversationMessage[]>>;
+  unmountCounts: Record<string, number>;
 }
 
 declare global {
@@ -62,11 +64,13 @@ const telemetry: BrowserChatTelemetry = {
   commits: [],
   historyReloads: 0,
   mutations: [],
+  mountCounts: {},
   rafCallbacks: [],
   rafScheduled: [],
   renderCounts: {},
   sseFrames: [],
   stateSnapshots: [],
+  unmountCounts: {},
 };
 window.__chatTelemetry = telemetry;
 
@@ -126,6 +130,21 @@ window.fetch = async (...args): Promise<Response> => {
     statusText: response.statusText,
   });
 };
+
+function TrackedMessageContent({ message }: { message: ConversationMessage }) {
+  const renderKey = message.clientRenderId ?? message.id;
+  telemetry.renderCounts[renderKey] =
+    (telemetry.renderCounts[renderKey] ?? 0) + 1;
+  useEffect(() => {
+    telemetry.mountCounts[renderKey] =
+      (telemetry.mountCounts[renderKey] ?? 0) + 1;
+    return () => {
+      telemetry.unmountCounts[renderKey] =
+        (telemetry.unmountCounts[renderKey] ?? 0) + 1;
+    };
+  }, [renderKey]);
+  return <span data-message-id={message.id}>{message.text}</span>;
+}
 
 function ChatHarness() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -254,11 +273,12 @@ function ChatHarness() {
     return () => observer.disconnect();
   }, []);
 
-  const renderMessageContent = useCallback((message: ConversationMessage) => {
-    telemetry.renderCounts[message.id] =
-      (telemetry.renderCounts[message.id] ?? 0) + 1;
-    return <span data-message-id={message.id}>{message.text}</span>;
-  }, []);
+  const renderMessageContent = useCallback(
+    (message: ConversationMessage) => (
+      <TrackedMessageContent message={message} />
+    ),
+    [],
+  );
 
   const onRender = useCallback<ProfilerOnRenderCallback>(
     (_id, phase, actualDuration) => {

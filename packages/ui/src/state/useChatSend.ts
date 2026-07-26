@@ -801,7 +801,7 @@ export function useChatSend(deps: UseChatSendDeps) {
   // Commit whatever text/status/tool events are parked for the in-flight turn in
   // one pass, then clear the pending slots. Order matters: tool events merge
   // onto the same turn as the text, and the status is a sibling indicator — all
-  // three settle together so the frame reflects a single coherent stream state.
+  // three settle together so the commit reflects one coherent stream state.
   // Safe to call when nothing is pending (no-op).
   const commitStreamingBuffer = useCallback(() => {
     const buffer = streamingFlushRef.current;
@@ -902,8 +902,8 @@ export function useChatSend(deps: UseChatSendDeps) {
   );
 
   // Park a live turn-status phase for `messageId`; the latest value wins within
-  // a frame (superseded phases are never rendered). Coalesced into the same
-  // frame as text/tool events (#8813).
+  // one synchronous transport burst (superseded phases are never rendered).
+  // Coalesced with text/tool events from that burst (#8813).
   const scheduleServerTurnStatus = useCallback(
     (
       conversationId: string,
@@ -918,7 +918,7 @@ export function useChatSend(deps: UseChatSendDeps) {
   );
 
   // Park one inline tool-call step for `messageId`. Unlike text/status these
-  // ACCUMULATE within a frame — each step (call → result/error) is a distinct
+  // ACCUMULATE within a transport burst — each step (call → result/error) is a distinct
   // merge onto the turn's `toolEvents`, so none may be dropped (#13535).
   const scheduleToolEvent = useCallback(
     (conversationId: string, messageId: string, event: ChatToolCallEvent) => {
@@ -1005,7 +1005,7 @@ export function useChatSend(deps: UseChatSendDeps) {
     activeTurn?.controller.abort();
     chatAbortRef.current?.abort();
     // Commit any parked partial text (so a stopped turn keeps what the user saw)
-    // and cancel the pending frame so it can't fire after the stop.
+    // and invalidate the pending microtask so it can't fire after the stop.
     flushStreamingText();
     activeChatTurnRef.current = null;
     chatAbortRef.current = null;
@@ -1428,6 +1428,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         : undefined;
       const optimisticUserMessage: ConversationMessage = {
         id: userMsgId,
+        clientRenderId: userMsgId,
         role: "user",
         text,
         timestamp: now,
@@ -1437,6 +1438,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       };
       const optimisticAssistantMessage: ConversationMessage = {
         id: assistantMsgId,
+        clientRenderId: assistantMsgId,
         role: "assistant",
         text: "",
         timestamp: now,
@@ -1614,8 +1616,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         if (data.userMessageId) {
           applyStreamingModificationForConversation(convId, {
             messageId: userMsgId,
-            mode: "complete",
-            fullText: text,
+            mode: "rekey",
             persistedMessageId: data.userMessageId,
           });
         }
@@ -1969,7 +1970,7 @@ export function useChatSend(deps: UseChatSendDeps) {
           }
         }
       } finally {
-        // Belt-and-braces: cancel any frame still pending so it can't commit a
+        // Belt-and-braces: invalidate any microtask still pending so it cannot commit a
         // stale snapshot into the next turn (idempotent — every exit path above
         // already flushed).
         flushStreamingText();
@@ -2426,7 +2427,7 @@ export function useChatSend(deps: UseChatSendDeps) {
             });
           }
         } finally {
-          // Belt-and-braces: cancel any frame still pending (idempotent).
+          // Belt-and-braces: invalidate any pending microtask (idempotent).
           flushStreamingText();
           if (chatAbortRef.current === controller) {
             chatAbortRef.current = null;

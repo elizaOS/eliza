@@ -1466,42 +1466,26 @@ export interface FinalizeTrajectoryRecordingOptions {
 	recorder: TrajectoryRecorder;
 	trajectoryId: string;
 	status: "finished" | "errored";
-	/**
-	 * Optional best-effort work to run before the terminal write (e.g. recording
-	 * a late background stage). Failures are logged, never fatal.
-	 */
-	beforeEnd?: () => Promise<void>;
 	logger?: RecorderLogger;
 }
 
 /**
  * Lifecycle guard: every started trajectory must reach a terminal status.
  *
- * Runs `beforeEnd`, then writes the terminal status. The caller owns
- * cancellation for background model work; this layer does not invent a
- * wall-clock deadline that can truncate an otherwise valid trajectory.
+ * Writes the terminal status without depending on optional background work.
+ * Callers record already-settled stages before entering this boundary; a
+ * diagnostic task may never keep a completed turn visibly `running`.
  */
 export async function finalizeTrajectoryRecording(
 	opts: FinalizeTrajectoryRecordingOptions,
 ): Promise<void> {
 	try {
-		if (opts.beforeEnd) {
-			await opts.beforeEnd();
-		}
+		await opts.recorder.endTrajectory(opts.trajectoryId, opts.status);
 	} catch (err) {
 		opts.logger?.warn?.(
 			{ err: (err as Error).message, trajectoryId: opts.trajectoryId },
-			"[TrajectoryRecorder] finalize: pre-end work failed",
+			"[TrajectoryRecorder] endTrajectory failed",
 		);
-	} finally {
-		try {
-			await opts.recorder.endTrajectory(opts.trajectoryId, opts.status);
-		} catch (err) {
-			opts.logger?.warn?.(
-				{ err: (err as Error).message, trajectoryId: opts.trajectoryId },
-				"[TrajectoryRecorder] endTrajectory failed",
-			);
-		}
 	}
 }
 

@@ -677,12 +677,13 @@ async function ensureWorldOwnershipAndRoles(
   }
 }
 
+type PersistedAssistantMemory = Memory & { id: UUID };
+
 function findPersistedGeneratedAssistantTurn(
   runtime: AgentRuntime,
   roomId: UUID,
   result: ChatGenerationResult,
-  text: string,
-): { id: UUID; text: string } | null {
+): PersistedAssistantMemory | null {
   if (
     !Array.isArray(result.persistedResponseMessageIds) ||
     !Array.isArray(result.responseMessages)
@@ -690,16 +691,8 @@ function findPersistedGeneratedAssistantTurn(
     return null;
   }
   const persistedIds = new Set(result.persistedResponseMessageIds);
-  const normalizedText = text.trim();
   for (let index = result.responseMessages.length - 1; index >= 0; index -= 1) {
     const candidate = result.responseMessages[index];
-    const candidateText =
-      typeof candidate?.content?.text === "string"
-        ? candidate.content.text.trim()
-        : "";
-    if (candidateText !== normalizedText) {
-      continue;
-    }
     if (
       typeof candidate?.id !== "string" ||
       candidate.id.length === 0 ||
@@ -708,9 +701,9 @@ function findPersistedGeneratedAssistantTurn(
       candidate.agentId !== runtime.agentId ||
       candidate.roomId !== roomId
     ) {
-      return null;
+      continue;
     }
-    return { id: candidate.id as UUID, text: candidateText };
+    return { ...candidate, id: candidate.id as UUID };
   }
   return null;
 }
@@ -737,10 +730,26 @@ async function resolvePersistedAssistantTurn(
     runtime,
     roomId,
     result,
-    text,
   );
   if (generatedTurn) {
-    return { kind: "durable", ...generatedTurn };
+    const generatedText =
+      typeof generatedTurn.content.text === "string"
+        ? generatedTurn.content.text
+        : "";
+    if (generatedText !== text) {
+      try {
+        await runtime.updateMemory({
+          ...generatedTurn,
+          content: buildPersistedAssistantContent(text, result),
+        });
+      } catch (cause) {
+        throw new AssistantReplyPersistenceError(
+          "Failed to reconcile the persisted assistant reply",
+          cause,
+        );
+      }
+    }
+    return { kind: "durable", id: generatedTurn.id as UUID, text };
   }
 
   const content = buildPersistedAssistantContent(text, result);
@@ -762,6 +771,7 @@ async function resolvePersistedAssistantTurn(
       content,
       channelType,
       turnStartedAt,
+      crypto.randomUUID() as UUID,
     );
   } catch (cause) {
     // error-policy:J2 attach the durable-turn boundary before the route
@@ -1065,13 +1075,12 @@ export function formatConversationMessageText(
 export function buildPersistedAssistantContent(
   text: string,
   result:
-    | Pick<
-        ChatGenerationResult,
-        | "actionCallbackHistory"
-        | "responseContent"
-        | "responseMessages"
-        | "transcriptVisibility"
-      >
+    | {
+        actionCallbackHistory?: string[];
+        responseContent?: Content | null;
+        responseMessages?: Array<{ id?: string; content?: Content }>;
+        transcriptVisibility?: "internal";
+      }
     | null
     | undefined,
 ): Content {
@@ -3024,7 +3033,6 @@ export async function handleConversationRoutes(
         userMessage,
         state.agentName,
         {
-          isAborted: () => disconnectTracker.isAborted(),
           abortSignal: disconnectTracker.signal,
           onStatus: (status) => {
             if (
@@ -3097,109 +3105,97 @@ export async function handleConversationRoutes(
       generationResult = result;
       assertConversationConnectionRuntime(state.runtime, connectionDescriptor);
 
-      if (!disconnectTracker.isAborted()) {
-        conv.updatedAt = new Date().toISOString();
-        if (result.noResponseReason !== "ignored") {
-          const resolvedText = normalizeChatResponseText(
-            result.text,
-            state.logBuffer,
-            runtime,
-          );
-          if (
-            !streamedText &&
-            resolvedText &&
-            result.transcriptVisibility !== "internal"
-          ) {
-            for (const chunk of chunkVisibleTextForSse(resolvedText)) {
-              if (disconnectTracker.isAborted()) break;
-              streamedText += chunk;
-              tokenWriter.writeChunk(res, chunk, streamedText);
-              await new Promise((resolve) => setTimeout(resolve, 60));
-            }
+      conv.updatedAt = new Date().toISOString();
+      if (result.noResponseReason !== "ignored") {
+        const resolvedText = normalizeChatResponseText(
+          result.text,
+          state.logBuffer,
+          runtime,
+        );
+        if (
+          !disconnectTracker.isAborted() &&
+          !streamedText &&
+          resolvedText &&
+          result.transcriptVisibility !== "internal"
+        ) {
+          for (const chunk of chunkVisibleTextForSse(resolvedText)) {
+            if (disconnectTracker.isAborted()) break;
+            streamedText += chunk;
+            tokenWriter.writeChunk(res, chunk, streamedText);
+            await new Promise((resolve) => setTimeout(resolve, 60));
           }
-          const visibleResolvedText =
-            result.transcriptVisibility === "internal" ? "" : resolvedText;
-          assertConversationConnectionRuntime(
-            state.runtime,
-            connectionDescriptor,
-          );
-          // `done` is a commit boundary: both ids it carries already exist in
-          // storage. The common direct-reply path reuses the message service's
-          // committed response id without a second read or write; action
-          // callbacks reuse their independently committed turn; only synthetic
-          // route fallbacks need a new assistant insert.
-          const persistedAssistant = await resolvePersistedAssistantTurn(
+        }
+        const visibleResolvedText =
+          result.transcriptVisibility === "internal" ? "" : resolvedText;
+        assertConversationConnectionRuntime(
+          state.runtime,
+          connectionDescriptor,
+        );
+        // Durable completion belongs to the turn, not to the transport. A
+        // disconnected client can retry the same key and receive this exact
+        // committed outcome without executing or billing another model turn.
+        const persistedAssistant = await resolvePersistedAssistantTurn(
+          runtime,
+          conv.roomId,
+          turnStartedAt,
+          result,
+          resolvedText,
+          channelType,
+        );
+        assertConversationConnectionRuntime(
+          state.runtime,
+          connectionDescriptor,
+        );
+        const persistedAssistantId =
+          persistedAssistant.kind === "durable"
+            ? persistedAssistant.id
+            : undefined;
+        if (result.actionCallbackHistory?.length && persistedAssistantId) {
+          await persistRecentAssistantActionCallbackHistory(
             runtime,
             conv.roomId,
+            result.actionCallbackHistory,
             turnStartedAt,
-            result,
-            resolvedText,
-            channelType,
-          );
-          assertConversationConnectionRuntime(
-            state.runtime,
-            connectionDescriptor,
-          );
-          const persistedAssistantId =
-            persistedAssistant.kind === "durable"
-              ? persistedAssistant.id
-              : undefined;
-          if (result.actionCallbackHistory?.length && persistedAssistantId) {
-            await persistRecentAssistantActionCallbackHistory(
-              runtime,
-              conv.roomId,
-              result.actionCallbackHistory,
-              turnStartedAt,
-              persistedAssistantId,
-            );
-          }
-          assertConversationConnectionRuntime(
-            state.runtime,
-            connectionDescriptor,
-          );
-          const outcome = buildGenerationMessageIdOutcome(
-            result,
-            visibleResolvedText,
             persistedAssistantId,
-            {
-              userMessageId: messageToStore.id,
-              ...(persistedAssistant.kind === "ephemeral"
-                ? { assistantEphemeral: true }
-                : {}),
-              ...(result.usedActionCallbacks
-                ? { historyRefreshRequired: true }
-                : {}),
-            },
           );
-          setChatMessageIdOutcome(
-            conv.roomId,
-            clientMessageId ?? null,
-            outcome,
-          );
-          assertConversationConnectionRuntime(
-            state.runtime,
-            connectionDescriptor,
-          );
+        }
+        assertConversationConnectionRuntime(
+          state.runtime,
+          connectionDescriptor,
+        );
+        const outcome = buildGenerationMessageIdOutcome(
+          result,
+          visibleResolvedText,
+          persistedAssistantId,
+          {
+            userMessageId: messageToStore.id,
+            ...(persistedAssistant.kind === "ephemeral"
+              ? { assistantEphemeral: true }
+              : {}),
+            ...(result.usedActionCallbacks
+              ? { historyRefreshRequired: true }
+              : {}),
+          },
+        );
+        setChatMessageIdOutcome(conv.roomId, clientMessageId ?? null, outcome);
+        assertConversationConnectionRuntime(
+          state.runtime,
+          connectionDescriptor,
+        );
+        if (!disconnectTracker.isAborted()) {
           writeConversationDoneSse(res, outcome);
-        } else {
-          assertConversationConnectionRuntime(
-            state.runtime,
-            connectionDescriptor,
-          );
-          const outcome = buildGenerationMessageIdOutcome(
-            result,
-            "",
-            undefined,
-            {
-              userMessageId: messageToStore.id,
-              assistantEphemeral: true,
-            },
-          );
-          setChatMessageIdOutcome(
-            conv.roomId,
-            clientMessageId ?? null,
-            outcome,
-          );
+        }
+      } else {
+        assertConversationConnectionRuntime(
+          state.runtime,
+          connectionDescriptor,
+        );
+        const outcome = buildGenerationMessageIdOutcome(result, "", undefined, {
+          userMessageId: messageToStore.id,
+          assistantEphemeral: true,
+        });
+        setChatMessageIdOutcome(conv.roomId, clientMessageId ?? null, outcome);
+        if (!disconnectTracker.isAborted()) {
           writeConversationDoneSse(res, outcome);
         }
       }
@@ -3235,11 +3231,9 @@ export async function handleConversationRoutes(
           { conversationId: conv.id, roomId: conv.roomId },
           "[ConversationStream] generation aborted",
         );
-        // The aborted turn persisted no assistant reply — release the
-        // idempotency key so the client's blip-retry re-runs the turn
-        // instead of being suppressed into dead air (the iOS-suspend →
-        // disconnect-abort → retry-eaten scenario).
-        releaseChatMessageId(conv.roomId, clientMessageId ?? null);
+        if (!getChatMessageIdOutcome(conv.roomId, clientMessageId ?? null)) {
+          releaseChatMessageId(conv.roomId, clientMessageId ?? null);
+        }
       } else if (
         isCallbackHistoryPersistenceError(terminalError) ||
         terminalError instanceof AssistantReplyPersistenceError
@@ -3337,7 +3331,6 @@ export async function handleConversationRoutes(
                     runtime,
                     conv.roomId,
                     generationResult,
-                    generationResolvedText,
                   )
                 : null;
             assertConversationConnectionRuntime(
@@ -3350,6 +3343,17 @@ export async function handleConversationRoutes(
               exactPersistedResponse &&
               exactPersistedId
             ) {
+              if (
+                exactPersistedResponse.content.text !== generationResolvedText
+              ) {
+                await runtime.updateMemory({
+                  ...exactPersistedResponse,
+                  content: buildPersistedAssistantContent(
+                    generationResolvedText,
+                    generationResult,
+                  ),
+                });
+              }
               logger.warn(
                 {
                   err: getErrorMessage(terminalError),
@@ -3455,11 +3459,9 @@ export async function handleConversationRoutes(
           }
         }
       } else {
-        // Error after the client already disconnected: no fallback reply is
-        // persisted (the gate above skips it), so nothing was delivered for
-        // this turn — release the idempotency key so the client's
-        // reconnect-retry re-runs it instead of being eaten.
-        releaseChatMessageId(conv.roomId, clientMessageId ?? null);
+        if (!getChatMessageIdOutcome(conv.roomId, clientMessageId ?? null)) {
+          releaseChatMessageId(conv.roomId, clientMessageId ?? null);
+        }
       }
     } finally {
       if (

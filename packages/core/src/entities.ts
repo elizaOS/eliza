@@ -565,9 +565,7 @@ export async function getEntityDetails({
 		`entity-details:${runtime.agentId}:${roomId}`,
 		async () => {
 			const [room, roomEntities] = await Promise.all([
-				memoizeTurnWork(`room:${runtime.agentId}:${roomId}`, () =>
-					runtime.getRoom(roomId),
-				),
+				runtime.getRoom(roomId),
 				runtime.getEntitiesForRoom(roomId, true),
 			]);
 

@@ -219,11 +219,12 @@ export interface ChatMessageIdOutcome {
 
 interface ChatMessageIdEntry {
   firstSeenAt: number;
+  settledAt?: number;
   outcome?: ChatMessageIdOutcome;
 }
 
 const chatSeenMessageIds = new Map<string, ChatMessageIdEntry>();
-const CHAT_DEDUPE_TTL_MS = 5 * 60_000;
+const CHAT_SETTLED_OUTCOME_RETENTION_MS = 5 * 60_000;
 let chatSeenLastSweepAt = 0;
 
 /** Normalize a raw body value into a usable idempotency key, or `null` when
@@ -238,12 +239,10 @@ export function normalizeClientMessageId(value: unknown): string | null {
 }
 
 /**
- * TTL-aware O(1) duplicate check for an HTTP chat send. Returns `true` when this
- * `(scope, clientMessageId)` pair was already seen within the TTL window. When
- * `clientMessageId` is absent/invalid the result is ALWAYS `false`, so requests
- * without an idempotency key behave exactly as before (no dedupe). The first
- * sighting records the timestamp and returns `false`; a repeat within the window
- * returns `true`. After the TTL elapses the id is treated as new again.
+ * Lifecycle-aware O(1) duplicate check for an HTTP chat send. Active turns
+ * remain reserved until their owner either settles or explicitly releases the
+ * key; they must not become duplicate work merely because generation is slow.
+ * Settled outcomes remain replayable for a bounded retention period.
  *
  * `scope` is the conversation room id (dashboard chat) or the per-user room key
  * (agent-message API) so the key cannot collide across conversations/users.
@@ -256,17 +255,25 @@ export function isDuplicateChatMessage(
   if (!clientMessageId) return false;
   const key = `${scope}:${clientMessageId}`;
   const entry = chatSeenMessageIds.get(key);
-  if (entry !== undefined && now - entry.firstSeenAt <= CHAT_DEDUPE_TTL_MS) {
-    return true;
+  if (entry !== undefined) {
+    if (
+      entry.settledAt === undefined ||
+      now - entry.settledAt <= CHAT_SETTLED_OUTCOME_RETENTION_MS
+    ) {
+      return true;
+    }
+    chatSeenMessageIds.delete(key);
   }
   chatSeenMessageIds.set(key, { firstSeenAt: now });
-  // Amortized eviction: sweep expired entries at most once per TTL window
-  // rather than on every request, keeping the map bounded without a per-request
-  // O(n) scan.
-  if (now - chatSeenLastSweepAt > CHAT_DEDUPE_TTL_MS) {
+  // Active entries have an explicit owner and may not be evicted. Only settled
+  // outcomes are swept, amortizing the O(n) scan across the retention window.
+  if (now - chatSeenLastSweepAt > CHAT_SETTLED_OUTCOME_RETENTION_MS) {
     chatSeenLastSweepAt = now;
     for (const [seenKey, seenEntry] of chatSeenMessageIds) {
-      if (now - seenEntry.firstSeenAt > CHAT_DEDUPE_TTL_MS) {
+      if (
+        seenEntry.settledAt !== undefined &&
+        now - seenEntry.settledAt > CHAT_SETTLED_OUTCOME_RETENTION_MS
+      ) {
         chatSeenMessageIds.delete(seenKey);
       }
     }
@@ -330,6 +337,7 @@ export function setChatMessageIdOutcome(
   const entry = chatSeenMessageIds.get(key);
   if (!entry) return;
   entry.outcome = structuredClone(outcome);
+  entry.settledAt = Date.now();
 }
 
 /** Return the durable outcome bound to an exact idempotency key, if settled. */
@@ -352,7 +360,7 @@ export function __resetChatDedupeForTests(): void {
 /** Test-only: expose the configured dedupe window without freezing env policy
  *  into the unit fixtures. */
 export function __getChatDedupeTtlMsForTests(): number {
-  return CHAT_DEDUPE_TTL_MS;
+  return CHAT_SETTLED_OUTCOME_RETENTION_MS;
 }
 
 const ANDROID_LOCAL_DIRECT_CHAT_DENY_PATTERN =
@@ -878,13 +886,7 @@ export interface ChatGenerationResult {
   actionCallbackHistory?: string[];
   actionResults?: ChatActionResultSummary[];
   responseContent?: Content | null;
-  responseMessages?: Array<{
-    id?: string;
-    entityId?: UUID;
-    agentId?: UUID;
-    roomId?: UUID;
-    content?: Content;
-  }>;
+  responseMessages?: Memory[];
   /** Exact response IDs durably committed by the message service before return. */
   persistedResponseMessageIds?: string[];
   usage?: {
@@ -927,7 +929,6 @@ export interface ChatGenerateOptions {
    * `error`. Additive; a caller that omits it loses only the inline tool surface.
    */
   onToolEvent?: (event: ChatToolCallEvent) => void;
-  isAborted?: () => boolean;
   abortSignal?: AbortSignal;
   resolveNoResponseText?: () => string;
   preferredLanguage?: string;
@@ -2956,7 +2957,7 @@ async function generateChatResponseWithTiming(
                     undefined,
                     {},
                     async (content: Content) => {
-                      if (generationTimedOut || opts?.isAborted?.()) {
+                      if (generationTimedOut) {
                         throw createChatGenerationTimeoutError(
                           generationTimeoutMs,
                         );
@@ -3053,7 +3054,7 @@ async function generateChatResponseWithTiming(
                   runtime,
                   generationMessage,
                   async (content: Content) => {
-                    if (generationTimedOut || opts?.isAborted?.()) {
+                    if (generationTimedOut) {
                       throw createChatGenerationTimeoutError(
                         generationTimeoutMs,
                       );
@@ -3087,7 +3088,7 @@ async function generateChatResponseWithTiming(
                           _messageId?: string,
                           accumulated?: string,
                         ) => {
-                          if (generationTimedOut || opts?.isAborted?.()) {
+                          if (generationTimedOut) {
                             throw createChatGenerationTimeoutError(
                               generationTimeoutMs,
                             );
@@ -3405,13 +3406,7 @@ async function generateChatResponseWithTiming(
     );
 
     const responseMessages = Array.isArray(result?.responseMessages)
-      ? result.responseMessages.map((entry) => ({
-          ...(entry.id ? { id: entry.id } : {}),
-          ...(entry.entityId ? { entityId: entry.entityId } : {}),
-          ...(entry.agentId ? { agentId: entry.agentId } : {}),
-          ...(entry.roomId ? { roomId: entry.roomId } : {}),
-          ...(entry.content ? { content: entry.content } : {}),
-        }))
+      ? result.responseMessages
       : [];
     const persistedResponseMessageIds = Array.isArray(
       result?.persistedResponseMessageIds,
@@ -3880,9 +3875,9 @@ export async function handleChatRoutes(
 
     if (wantsStream) {
       initSse(res);
-      let aborted = false;
+      const disconnectController = new AbortController();
       req.on("close", () => {
-        aborted = true;
+        disconnectController.abort(new Error("Client disconnected"));
       });
 
       const sendChunk = (
@@ -3956,7 +3951,7 @@ export async function handleChatRoutes(
             message,
             state.agentName,
             {
-              isAborted: () => aborted,
+              abortSignal: disconnectController.signal,
               onChunk: (chunk) => {
                 fullText += chunk;
                 if (chunk) sendChunk({ content: chunk }, null);
@@ -3992,7 +3987,7 @@ export async function handleChatRoutes(
         sendChunk({}, "stop");
         writeSseData(res, "[DONE]");
       } catch (err) {
-        if (!aborted) {
+        if (!disconnectController.signal.aborted) {
           if (isLocalInferenceError(err)) {
             const { getLocalInferenceChatStatus } =
               await getLocalInferenceChatApi();
@@ -4230,9 +4225,9 @@ export async function handleChatRoutes(
 
     if (wantsStream) {
       initSse(res);
-      let aborted = false;
+      const disconnectController = new AbortController();
       req.on("close", () => {
-        aborted = true;
+        disconnectController.abort(new Error("Client disconnected"));
       });
 
       try {
@@ -4331,7 +4326,7 @@ export async function handleChatRoutes(
             message,
             state.agentName,
             {
-              isAborted: () => aborted,
+              abortSignal: disconnectController.signal,
               onChunk: onDelta,
               resolveNoResponseText: () =>
                 resolveNoResponseFallback(state.logBuffer, runtime),
@@ -4374,7 +4369,7 @@ export async function handleChatRoutes(
         );
         writeSseJson(res, { type: "message_stop" }, "message_stop");
       } catch (err) {
-        if (!aborted) {
+        if (!disconnectController.signal.aborted) {
           if (isNoProviderError(err)) {
             writeSseJson(
               res,

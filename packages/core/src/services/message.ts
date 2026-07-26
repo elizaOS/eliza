@@ -190,7 +190,6 @@ import {
 } from "../streaming-context";
 import {
 	getTrajectoryContext,
-	memoizeTurnWork,
 	runWithTrajectoryContext,
 } from "../trajectory-context";
 import type { CharacterSettings } from "../types/agent";
@@ -6983,6 +6982,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		result: FactsAndRelationshipsRunResult | null;
 		error?: unknown;
 	} | null> = Promise.resolve(null);
+	let settledFactsOutcome: Awaited<typeof factsTask> | undefined;
 	let messageHandlerStageTask: Promise<void> = Promise.resolve();
 	try {
 		const messageHandlerStartedAt = Date.now();
@@ -7425,8 +7425,9 @@ export async function runV5MessageRuntimeStage1(args: {
 		// Kick off the FACTS_AND_RELATIONSHIPS stage in parallel with whichever
 		// Stage 2 path runs (simple reply or planner). This stage is purely a
 		// side-effect: it dedups + persists user-stated facts/relationships
-		// without blocking the user reply. We DO await it in the `finally`
-		// block before `endTrajectory`, so the trajectory record is complete.
+		// without blocking the user reply. A result that settles before terminal
+		// trajectory persistence is recorded there; slower extraction remains a
+		// tracked data task but cannot leave the completed turn marked running.
 		if (
 			messageHandler.extract &&
 			((messageHandler.extract.facts?.length ?? 0) > 0 ||
@@ -7445,7 +7446,11 @@ export async function runV5MessageRuntimeStage1(args: {
 					endedAt: Date.now(),
 					result: null,
 					error,
-				}));
+				}))
+				.then((outcome) => {
+					settledFactsOutcome = outcome;
+					return outcome;
+				});
 		}
 
 		// Persist `addressedTo` as relationship edges from the speaker to each
@@ -8340,37 +8345,44 @@ export async function runV5MessageRuntimeStage1(args: {
 	} finally {
 		// Trajectory persistence is diagnostic work. Preserve stage ordering in
 		// its own task without adding filesystem latency to the user-visible turn.
-		const finalizeTrajectory = async () => {
+		const finalizeTrajectory = async (waitForFacts: boolean) => {
 			if (!recorder || !trajectoryId) return;
+			await messageHandlerStageTask;
+			const factsOutcome = waitForFacts ? await factsTask : settledFactsOutcome;
+			if (factsOutcome) {
+				await recordFactsAndRelationshipsStage({
+					recorder,
+					trajectoryId,
+					outcome: factsOutcome,
+					logger: args.runtime.logger,
+				});
+			}
 			await finalizeTrajectoryRecording({
 				recorder,
 				trajectoryId,
 				status: endStatus,
-				beforeEnd: async () => {
-					await messageHandlerStageTask;
-					const factsOutcome = await factsTask;
-					if (factsOutcome) {
-						await recordFactsAndRelationshipsStage({
-							recorder,
-							trajectoryId,
-							outcome: factsOutcome,
-							logger: args.runtime.logger,
-						});
-					}
-				},
 				logger: args.runtime.logger as {
 					warn?: (context: unknown, message?: string) => void;
 				},
 			});
 		};
 		if (process.env.ELIZA_AWAIT_FACTS_STAGE === "true") {
-			await finalizeTrajectory();
+			await finalizeTrajectory(true);
 		} else if (recorder && trajectoryId) {
 			detachPostDeliverySideEffect(
 				args.runtime,
 				"trajectory-finalization",
-				finalizeTrajectory,
+				() => finalizeTrajectory(false),
 			);
+			if (settledFactsOutcome === undefined) {
+				detachPostDeliverySideEffect(
+					args.runtime,
+					"facts-and-relationships",
+					async () => {
+						await factsTask;
+					},
+				);
+			}
 		}
 	}
 }
@@ -10659,9 +10671,7 @@ export class DefaultMessageService implements IMessageService {
 				runtime.getParticipantUserState(message.roomId, runtime.agentId),
 			),
 			timeInferenceSpan("message:ingress:room", () =>
-				memoizeTurnWork(`room:${runtime.agentId}:${message.roomId}`, () =>
-					runtime.getRoom(message.roomId),
-				),
+				runtime.getRoom(message.roomId),
 			),
 		]);
 

@@ -142,6 +142,12 @@ function createHarness(): TestHarness {
     storedMemories.push(memory);
     return memory.id ?? stringToUuid("created-memory");
   });
+  const updateMemory = vi.fn(async (memory: Partial<Memory> & { id: UUID }) => {
+    const index = storedMemories.findIndex((stored) => stored.id === memory.id);
+    if (index < 0) throw new Error("memory not found");
+    storedMemories[index] = { ...storedMemories[index], ...memory };
+    return true;
+  });
   const runtime = {
     agentId: AGENT_ID,
     character: {
@@ -167,6 +173,7 @@ function createHarness(): TestHarness {
       clearChannel: async () => undefined,
     },
     createMemory,
+    updateMemory,
     createLogs: vi.fn(async () => undefined),
     getMemories: vi.fn(async () => storedMemories),
     getMemoriesByIds: vi.fn(async (ids: UUID[]) =>
@@ -233,11 +240,13 @@ async function runRoute(
   pathname: string,
   state: ConversationRouteState,
   body: Record<string, unknown>,
+  duringRequest?: (req: http.IncomingMessage) => Promise<void> | void,
 ): Promise<{ record: MockResponseRecord; captured: CapturedJson }> {
   const { res, record } = createMockRes();
+  const req = createReq(method, pathname);
   const captured: CapturedJson = { payload: undefined };
   const ctx = {
-    req: createReq(method, pathname),
+    req,
     res,
     method,
     pathname,
@@ -256,6 +265,7 @@ async function runRoute(
 
   const done = handleConversationRoutes(ctx);
   for (let i = 0; i < 12; i++) await new Promise((r) => setImmediate(r));
+  await duringRequest?.(req);
   // Bound the wait so a route that stalls (e.g. a regression that never emits
   // the terminal frame) fails this test promptly instead of eating the full
   // 120s per-test timeout.
@@ -508,6 +518,58 @@ describe("conversation-route chat idempotency wiring", () => {
     }
   });
 
+  it("SSE: normalizes the message-service row in place instead of inserting a duplicate", async () => {
+    const { state, handleMessage, storedMemories } = createHarness();
+    const leakedPayload =
+      '"RESPOND","contexts":["simple"],"replyText":"Normalized reply","candidateActionNames":[]';
+    const persistedId = stringToUuid("normalized-existing-assistant");
+    handleMessage.mockImplementationOnce(
+      async (
+        runtime: AgentRuntime,
+        message: Memory,
+        _callback: unknown,
+        options?: { onStreamChunk?: (chunk: string) => Promise<void> | void },
+      ) => {
+        const persisted: Memory = {
+          id: persistedId,
+          entityId: runtime.agentId,
+          agentId: runtime.agentId,
+          roomId: message.roomId,
+          content: { text: leakedPayload },
+        };
+        await runtime.createMemory(persisted, "messages");
+        await options?.onStreamChunk?.(leakedPayload);
+        return {
+          didRespond: true,
+          responseContent: { text: leakedPayload },
+          responseMessages: [persisted],
+          persistedResponseMessageIds: [persistedId],
+        };
+      },
+    );
+
+    const response = await runRoute("POST", STREAM_PATH, state, {
+      text: "normalize it",
+      clientMessageId: "normalize-existing-1",
+    });
+    const done = parseDataFrames(response.record).find(
+      (frame) => frame.type === "done",
+    );
+    const assistantRows = storedMemories.filter(
+      (memory) => memory.entityId === AGENT_ID,
+    );
+
+    expect(done).toMatchObject({
+      fullText: "Normalized reply",
+      messageId: persistedId,
+    });
+    expect(assistantRows).toHaveLength(1);
+    expect(assistantRows[0]).toMatchObject({
+      id: persistedId,
+      content: { text: "Normalized reply" },
+    });
+  });
+
   it("SSE: a dupe landing while the original is still mid-turn keeps the empty ignored shape", async () => {
     const { state, handleMessage } = createHarness();
     // Simulate the original request's arrival being recorded with its turn
@@ -595,6 +657,53 @@ describe("conversation-route chat idempotency wiring", () => {
     );
     expect(secondDone?.fullText).toBe("ok");
     expect(createMemory.mock.calls.length).toBeGreaterThan(0);
+  });
+
+  it("SSE: a completed turn survives transport disconnect and the retry replays it", async () => {
+    const { state, handleMessage, createMemory } = createHarness();
+    let releaseTurn: (() => void) | undefined;
+    const turnGate = new Promise<void>((resolve) => {
+      releaseTurn = resolve;
+    });
+    handleMessage.mockImplementationOnce(
+      async (
+        _runtime: unknown,
+        _message: unknown,
+        _callback: unknown,
+        options?: { onStreamChunk?: (chunk: string) => Promise<void> | void },
+      ) => {
+        await options?.onStreamChunk?.("durable reply");
+        await turnGate;
+        return {
+          didRespond: true,
+          responseContent: { text: "durable reply" },
+          responseMessages: [],
+        };
+      },
+    );
+    const body = {
+      text: "finish even if my socket drops",
+      clientMessageId: "disconnect-after-model-1",
+    };
+
+    await runRoute("POST", STREAM_PATH, state, body, async (req) => {
+      expect(handleMessage).toHaveBeenCalledTimes(1);
+      req.emit("aborted");
+      releaseTurn?.();
+    });
+    const persistsAfterDisconnect = createMemory.mock.calls.length;
+    expect(persistsAfterDisconnect).toBeGreaterThan(0);
+
+    const retry = await runRoute("POST", STREAM_PATH, state, body);
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    expect(createMemory).toHaveBeenCalledTimes(persistsAfterDisconnect);
+    expect(parseDataFrames(retry.record)).toEqual([
+      expect.objectContaining({
+        type: "done",
+        fullText: "durable reply",
+        messageId: expect.any(String),
+      }),
+    ]);
   });
 
   it("SSE: terminal setup and persistence failures release the key for a real retry", async () => {
