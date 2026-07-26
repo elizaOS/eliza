@@ -370,7 +370,7 @@ describe("encrypted agent backup chunks", () => {
     expect(arrayBufferReads).toBe(0);
   });
 
-  test("rejects oversized producer views and a 4097th fixed chunk without residue", async () => {
+  test("rejects oversized producer views and a 5633rd fixed chunk without residue", async () => {
     const objects = new Map<string, Uint8Array>();
     setRuntimeR2Bucket(memoryBucket(objects));
     async function* oversizedView() {
@@ -387,16 +387,16 @@ describe("encrypted agent backup chunks", () => {
     expect(objects.size).toBe(0);
 
     async function* tooManyChunks() {
-      for (let index = 0; index < 4_097; index += 1) yield new Uint8Array([index % 256]);
+      for (let index = 0; index < 5_633; index += 1) yield new Uint8Array([index % 256]);
     }
     await expect(
       stageEncryptedAgentBackupChunks({
         identity,
         source: tooManyChunks(),
         chunkBytes: 1,
-        maxTotalBytes: 4_097,
+        maxTotalBytes: 5_633,
       }),
-    ).rejects.toThrow("4096-chunk limit");
+    ).rejects.toThrow("5632-chunk limit");
     expect(objects.size).toBe(0);
   });
 

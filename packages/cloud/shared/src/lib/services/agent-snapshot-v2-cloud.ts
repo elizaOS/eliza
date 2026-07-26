@@ -18,25 +18,34 @@ import {
 } from "./agent-backup-v2-storage";
 import {
   AGENT_SNAPSHOT_V2_CONTENT_TYPE,
-  AGENT_SNAPSHOT_V2_MAX_TOTAL_BYTES,
+  AGENT_SNAPSHOT_V2_MAX_WIRE_BYTES,
   AgentSnapshotV2StreamValidator,
   type AgentSnapshotV2ValidationSummary,
-  agentSnapshotV2StableJson,
   observeAgentSnapshotV2Stream,
   validateAgentSnapshotV2Stream,
 } from "./agent-snapshot-v2-stream";
 
 const MAX_ERROR_RESPONSE_BYTES = 8 * 1024;
 const MAX_SUCCESS_RESPONSE_BYTES = 16 * 1024;
+const RESTORE_BASE_TIMEOUT_MS = 10 * 60_000;
+const RESTORE_IDLE_TIMEOUT_MS = 2 * 60_000;
+const RESTORE_MIN_BYTES_PER_SECOND = 1024 * 1024;
 
 interface SnapshotV2StorageBoundary {
   create: AgentBackupV2StorageService["create"];
+}
+
+export interface AgentSnapshotV2RestoreTimeouts {
+  baseMs: number;
+  idleMs: number;
+  minBytesPerSecond: number;
 }
 
 export interface AgentSnapshotV2CloudDependencies {
   storage: SnapshotV2StorageBoundary;
   readStored: typeof readStoredChunkedBackup;
   fetch: typeof fetch;
+  restoreTimeouts?: AgentSnapshotV2RestoreTimeouts;
 }
 
 const defaultDependencies: AgentSnapshotV2CloudDependencies = {
@@ -44,6 +53,84 @@ const defaultDependencies: AgentSnapshotV2CloudDependencies = {
   readStored: readStoredChunkedBackup,
   fetch,
 };
+
+export function agentSnapshotV2RestoreTimeoutMs(
+  wireBytes: number,
+  policy: AgentSnapshotV2RestoreTimeouts = {
+    baseMs: RESTORE_BASE_TIMEOUT_MS,
+    idleMs: RESTORE_IDLE_TIMEOUT_MS,
+    minBytesPerSecond: RESTORE_MIN_BYTES_PER_SECOND,
+  },
+): number {
+  if (
+    !Number.isSafeInteger(wireBytes) ||
+    wireBytes < 0 ||
+    wireBytes > AGENT_SNAPSHOT_V2_MAX_WIRE_BYTES ||
+    !Number.isSafeInteger(policy.baseMs) ||
+    policy.baseMs <= 0 ||
+    !Number.isSafeInteger(policy.idleMs) ||
+    policy.idleMs <= 0 ||
+    !Number.isSafeInteger(policy.minBytesPerSecond) ||
+    policy.minBytesPerSecond <= 0
+  ) {
+    throw new Error("Snapshot restore timeout inputs are invalid");
+  }
+  return policy.baseMs + Math.ceil((wireBytes * 1_000) / policy.minBytesPerSecond);
+}
+
+function restoreTimeouts(
+  dependencies: AgentSnapshotV2CloudDependencies,
+): AgentSnapshotV2RestoreTimeouts {
+  return (
+    dependencies.restoreTimeouts ?? {
+      baseMs: RESTORE_BASE_TIMEOUT_MS,
+      idleMs: RESTORE_IDLE_TIMEOUT_MS,
+      minBytesPerSecond: RESTORE_MIN_BYTES_PER_SECOND,
+    }
+  );
+}
+
+function createRestoreWatchdog(params: { absoluteMs: number; idleMs: number }): {
+  close(): void;
+  markActivity(): void;
+  signal: AbortSignal;
+} {
+  const controller = new AbortController();
+  let idleTimer: ReturnType<typeof setTimeout> | undefined;
+  const abort = (message: string): void => {
+    if (!controller.signal.aborted) controller.abort(new Error(message));
+  };
+  const absoluteTimer = setTimeout(
+    () => abort(`Snapshot restore exceeded its ${params.absoluteMs}-ms transfer budget`),
+    params.absoluteMs,
+  );
+  const markActivity = (): void => {
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = setTimeout(
+      () => abort(`Snapshot restore made no upload progress for ${params.idleMs} ms`),
+      params.idleMs,
+    );
+  };
+  markActivity();
+  return {
+    close() {
+      clearTimeout(absoluteTimer);
+      if (idleTimer) clearTimeout(idleTimer);
+    },
+    markActivity,
+    signal: controller.signal,
+  };
+}
+
+async function* observeRestoreActivity(
+  source: AsyncIterable<Uint8Array>,
+  markActivity: () => void,
+): AsyncGenerator<Uint8Array> {
+  for await (const chunk of source) {
+    markActivity();
+    yield chunk;
+  }
+}
 
 function responseByteStream(response: Response): AsyncIterable<Uint8Array> {
   const body = response.body;
@@ -53,16 +140,31 @@ function responseByteStream(response: Response): AsyncIterable<Uint8Array> {
   return {
     async *[Symbol.asyncIterator]() {
       const reader = body.getReader();
+      let reachedEnd = false;
       try {
         while (true) {
           const next = await reader.read();
-          if (next.done) return;
+          if (next.done) {
+            reachedEnd = true;
+            return;
+          }
           if (!(next.value instanceof Uint8Array)) {
             throw new Error("Agent snapshot response emitted a non-binary body view");
           }
           yield next.value;
         }
       } finally {
+        if (!reachedEnd) {
+          try {
+            await reader.cancel("Snapshot stream consumer stopped before EOF");
+          } catch (error) {
+            // error-policy:J6 best-effort teardown — validation/storage already
+            // surfaced the primary failure; cancellation releases transport.
+            logger.warn("[AgentSnapshotV2Cloud] Snapshot body cancellation failed", {
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        }
         reader.releaseLock();
       }
     },
@@ -131,8 +233,11 @@ function sameCommittedStream(
 ): boolean {
   return (
     source.wireBytes === stored.wireBytes &&
-    agentSnapshotV2StableJson(source.descriptor) === agentSnapshotV2StableJson(stored.descriptor) &&
-    agentSnapshotV2StableJson(source.trailer) === agentSnapshotV2StableJson(stored.trailer)
+    source.trailer.aggregateSha256 === stored.trailer.aggregateSha256 &&
+    source.trailer.chunkCount === stored.trailer.chunkCount &&
+    source.trailer.descriptorSha256 === stored.trailer.descriptorSha256 &&
+    source.trailer.fileCount === stored.trailer.fileCount &&
+    source.trailer.totalBytes === stored.trailer.totalBytes
   );
 }
 
@@ -168,7 +273,7 @@ export async function captureAgentSnapshotV2(params: {
     },
     snapshotType: params.snapshotType ?? "pre-upgrade",
     source: observedSource,
-    maxTotalBytes: AGENT_SNAPSHOT_V2_MAX_TOTAL_BYTES,
+    maxTotalBytes: AGENT_SNAPSHOT_V2_MAX_WIRE_BYTES,
     verify: async (storedSource) => {
       const stored = await validateAgentSnapshotV2Stream({
         source: storedSource,
@@ -190,6 +295,7 @@ export async function captureAgentSnapshotV2(params: {
 interface AgentSnapshotV2RestoreResult {
   aggregateSha256: string;
   fileCount: number;
+  requiresRestart: true;
   schemaVersion: 2;
   success: true;
   totalBytes: number;
@@ -211,6 +317,7 @@ function parseRestoreResult(value: string): AgentSnapshotV2RestoreResult {
   const expected = [
     "aggregateSha256",
     "fileCount",
+    "requiresRestart",
     "schemaVersion",
     "success",
     "totalBytes",
@@ -221,6 +328,7 @@ function parseRestoreResult(value: string): AgentSnapshotV2RestoreResult {
   }
   if (
     record.success !== true ||
+    record.requiresRestart !== true ||
     record.schemaVersion !== 2 ||
     record.transfer !== "chunked-v1" ||
     typeof record.aggregateSha256 !== "string" ||
@@ -252,43 +360,70 @@ export async function restoreAgentSnapshotV2(params: {
     throw new Error(`Backup ${params.backup.id} is not a verified restore point`);
   }
   const dependencies = params.dependencies ?? defaultDependencies;
+  const storedWireBytes = params.backup.size_bytes;
+  if (
+    typeof storedWireBytes !== "number" ||
+    !Number.isSafeInteger(storedWireBytes) ||
+    storedWireBytes < 0 ||
+    storedWireBytes > AGENT_SNAPSHOT_V2_MAX_WIRE_BYTES
+  ) {
+    throw new Error(`Backup ${params.backup.id} has an invalid stored byte count`);
+  }
+  const timeoutPolicy = restoreTimeouts(dependencies);
+  const watchdog = createRestoreWatchdog({
+    absoluteMs: agentSnapshotV2RestoreTimeoutMs(storedWireBytes, timeoutPolicy),
+    idleMs: timeoutPolicy.idleMs,
+  });
   const validator = new AgentSnapshotV2StreamValidator({
     contentType: AGENT_SNAPSHOT_V2_CONTENT_TYPE,
     expectedAgentId: params.agentId,
   });
   const source = observeAgentSnapshotV2Stream({
-    source: dependencies.readStored({
-      organizationId: params.organizationId,
-      row: params.backup,
-    }),
+    source: observeRestoreActivity(
+      await dependencies.readStored({
+        organizationId: params.organizationId,
+        row: params.backup,
+      }),
+      watchdog.markActivity,
+    ),
     validator,
   });
+  const headers = new Headers(params.headers);
+  headers.set("Content-Type", AGENT_SNAPSHOT_V2_CONTENT_TYPE);
   const requestInit: RequestInit & { duplex: "half" } = {
     method: "POST",
-    headers: {
-      ...Object.fromEntries(new Headers(params.headers)),
-      "Content-Type": AGENT_SNAPSHOT_V2_CONTENT_TYPE,
-    },
+    headers,
     body: iterableBody(source),
     duplex: "half",
-    signal: AbortSignal.timeout(10 * 60_000),
+    signal: watchdog.signal,
   };
-  const response = await dependencies.fetch(params.endpoint, requestInit);
-  if (!response.ok) {
-    const detail = await readBodySnippet(response, MAX_ERROR_RESPONSE_BYTES);
-    throw new Error(`Snapshot v2 restore failed: HTTP ${response.status} ${detail}`.trimEnd());
+  try {
+    const response = await dependencies.fetch(params.endpoint, requestInit);
+    if (!response.ok) {
+      const detail = await readBodySnippet(response, MAX_ERROR_RESPONSE_BYTES);
+      throw new Error(`Snapshot v2 restore failed: HTTP ${response.status} ${detail}`.trimEnd());
+    }
+    const summary = validator.finish();
+    if (params.backup.content_hash !== summary.trailer.aggregateSha256) {
+      throw new Error(`Backup ${params.backup.id} content hash does not match its stored stream`);
+    }
+    const result = parseRestoreResult(await readBodySnippet(response, MAX_SUCCESS_RESPONSE_BYTES));
+    if (
+      result.aggregateSha256 !== summary.trailer.aggregateSha256 ||
+      result.fileCount !== summary.trailer.fileCount ||
+      result.totalBytes !== summary.trailer.totalBytes
+    ) {
+      throw new Error("Agent restore acknowledgement does not match the committed snapshot");
+    }
+    return summary;
+  } catch (error) {
+    if (watchdog.signal.aborted) {
+      throw new Error("Snapshot v2 restore timed out", {
+        cause: watchdog.signal.reason ?? error,
+      });
+    }
+    throw error;
+  } finally {
+    watchdog.close();
   }
-  const summary = validator.finish();
-  if (params.backup.content_hash !== summary.trailer.aggregateSha256) {
-    throw new Error(`Backup ${params.backup.id} content hash does not match its stored stream`);
-  }
-  const result = parseRestoreResult(await readBodySnippet(response, MAX_SUCCESS_RESPONSE_BYTES));
-  if (
-    result.aggregateSha256 !== summary.trailer.aggregateSha256 ||
-    result.fileCount !== summary.trailer.fileCount ||
-    result.totalBytes !== summary.trailer.totalBytes
-  ) {
-    throw new Error("Agent restore acknowledgement does not match the committed snapshot");
-  }
-  return summary;
 }
