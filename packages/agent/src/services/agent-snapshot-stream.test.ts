@@ -424,6 +424,38 @@ describe.sequential("agent snapshot chunked-v1 stream", () => {
     ).resolves.toMatchObject({ size });
   }, 120_000);
 
+  test("restores a chunked stream fragmented into one-byte transport views", async () => {
+    const source = await temporaryRoot("eliza-stream-fragmented-");
+    const target = await temporaryRoot("eliza-stream-fragmented-target-");
+    await writeFixture(source);
+    await fs.writeFile(
+      path.join(source, "skills", "full-chunk.bin"),
+      Buffer.alloc(AGENT_SNAPSHOT_STREAM_CHUNK_BYTES, 0x5a),
+    );
+    process.env.ELIZA_STATE_DIR = source;
+    const frames = await collectStream(runtimeStub());
+    process.env.ELIZA_STATE_DIR = target;
+
+    async function* fragmentedTransfer(): AsyncGenerator<Buffer> {
+      for (const frame of frames) {
+        for (let offset = 0; offset < frame.length; offset += 1) {
+          yield frame.subarray(offset, offset + 1);
+        }
+      }
+    }
+
+    await expect(
+      restoreAgentSnapshotStream(runtimeStub(), fragmentedTransfer()),
+    ).resolves.toMatchObject({
+      requiresRestart: true,
+      success: true,
+      transfer: "chunked-v1",
+    });
+    await expect(
+      fs.readFile(path.join(target, "skills", "full-chunk.bin")),
+    ).resolves.toEqual(Buffer.alloc(AGENT_SNAPSHOT_STREAM_CHUNK_BYTES, 0x5a));
+  }, 30_000);
+
   test("rejects a v1 source once aggregate files exceed 128 MiB", async () => {
     const source = await temporaryRoot("eliza-snapshot-v1-cap-");
     const pgliteDir = path.join(source, "pglite");
