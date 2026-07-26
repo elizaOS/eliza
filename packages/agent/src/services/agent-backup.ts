@@ -383,7 +383,7 @@ function externalPostgresIdentity(
   }
   if (parsed.protocol !== "postgres:" && parsed.protocol !== "postgresql:") {
     throw invalidExternalPostgresIdentity(
-      `POSTGRES_URL must use postgres:// or postgresql://, got ${parsed.protocol}`,
+      "POSTGRES_URL must use postgres:// or postgresql://",
     );
   }
 
@@ -1505,10 +1505,42 @@ function verifyExternalPostgresReference(
   agentId: string,
   database: AgentBackupDatabaseComponent,
 ): void {
+  const databaseKeys = Object.keys(database).sort();
+  if (
+    stableJson(databaseKeys) !==
+    stableJson(["externalPostgres", "kind", "sha256"])
+  ) {
+    throw new ElizaError(
+      "Backup external Postgres database component has unsupported fields",
+      {
+        code: "AGENT_SNAPSHOT_POSTGRES_REFERENCE_INVALID",
+        severity: "fatal",
+      },
+    );
+  }
   const reference = database.externalPostgres;
   if (!reference) {
     throw new ElizaError(
       "Backup database component is missing external Postgres identity",
+      {
+        code: "AGENT_SNAPSHOT_POSTGRES_REFERENCE_INVALID",
+        severity: "fatal",
+      },
+    );
+  }
+  const referenceKeys = Object.keys(reference).sort();
+  if (
+    stableJson(referenceKeys) !==
+    stableJson([
+      "algorithm",
+      "identitySha256",
+      "identityVersion",
+      "kind",
+      "sha256",
+    ])
+  ) {
+    throw new ElizaError(
+      "Backup external Postgres identity has unsupported fields",
       {
         code: "AGENT_SNAPSHOT_POSTGRES_REFERENCE_INVALID",
         severity: "fatal",
