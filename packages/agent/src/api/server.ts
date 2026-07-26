@@ -21,7 +21,12 @@ function tokenMatches(expected: string, provided: string): boolean {
 }
 
 const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
-const MAX_BACKUP_BODY_BYTES = 128 * 1024 * 1024; // 128 MB
+/**
+ * Restore's request-body cap IS the v1 restorable ceiling: anything retained
+ * above it can never be restored here (#17172). Shared with the retain side so
+ * the two cannot drift.
+ */
+const MAX_BACKUP_BODY_BYTES = MAX_RESTORABLE_AGENT_BACKUP_BYTES;
 
 import path from "node:path";
 import {
@@ -47,7 +52,10 @@ import type {
   FavoriteAppsStore,
 } from "@elizaos/plugin-app-manager";
 import type { WalletRouteDependencies } from "@elizaos/plugin-wallet";
-import { readAliasedEnv } from "@elizaos/shared";
+import {
+  MAX_RESTORABLE_AGENT_BACKUP_BYTES,
+  readAliasedEnv,
+} from "@elizaos/shared";
 import {
   getStylePresets,
   normalizeCharacterLanguage,

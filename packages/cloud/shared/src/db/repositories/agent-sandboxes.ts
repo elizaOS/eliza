@@ -1,5 +1,6 @@
 // Persists agent sandboxes records for cloud services through the shared DB boundary.
 import { randomUUID } from "node:crypto";
+import { MAX_RESTORABLE_AGENT_BACKUP_BYTES } from "@elizaos/shared";
 import { and, asc, desc, eq, gte, inArray, isNotNull, lt, ne, notInArray, sql } from "drizzle-orm";
 import {
   applyBackupDelta,
@@ -66,7 +67,11 @@ const EMPTY_BACKUP_STATE: AgentSandboxBackup["state_data"] = {
   workspaceFiles: {},
 };
 const MAX_RECONSTRUCTED_BACKUP_CHAIN_DEPTH = 100;
-const MAX_RECONSTRUCTED_BACKUP_CHAIN_BYTES = 128 * 1024 * 1024;
+/**
+ * A reconstructed chain has to fit the same v1 restorable ceiling as any other
+ * backup wire payload — it is what gets handed to restore (#17172).
+ */
+const MAX_RECONSTRUCTED_BACKUP_CHAIN_BYTES = MAX_RESTORABLE_AGENT_BACKUP_BYTES;
 
 async function getStoredBackupById(
   backupId: string,
