@@ -11,6 +11,7 @@
  * state directory. Restore is destructive and returns `requiresRestart`.
  */
 import crypto from "node:crypto";
+import { constants as fsConstants } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
@@ -113,15 +114,18 @@ export interface AgentBackupManifestV2 extends AgentBackupManifestBase {
 export type AgentBackupManifest = AgentBackupManifestV1 | AgentBackupManifestV2;
 
 export type AgentSnapshotPurpose = "manual" | "auto" | "pre-upgrade";
+export type AgentSnapshotTransfer = "chunked-v1";
 
 export interface AgentSnapshotRequest {
   purpose?: AgentSnapshotPurpose;
   schemaVersion?: 1 | 2;
+  transfer?: AgentSnapshotTransfer;
 }
 
 export interface ResolvedAgentSnapshotRequest {
   purpose: AgentSnapshotPurpose;
   schemaVersion: 1 | 2;
+  transfer?: AgentSnapshotTransfer;
 }
 
 function invalidSnapshotRequest(message: string): ElizaError {
@@ -179,6 +183,7 @@ const PGLITE_VOLATILE_ROOT_FILES = new Set([
   "postmaster.pid",
 ]);
 const PGLITE_DUMP_PATH = "pglite-data-dir.tar.gz";
+export const AGENT_BACKUP_V1_MAX_SOURCE_BYTES = 128 * 1024 * 1024;
 
 const POSTGRES_AGENT_ID_COLUMNS = ["agent_id", "agentId"];
 const POSTGRES_AGENT_TABLE = "agents";
@@ -232,7 +237,7 @@ export function parseAgentSnapshotRequest(
 
   const record = input as Record<string, unknown>;
   const unknownKeys = Object.keys(record).filter(
-    (key) => key !== "purpose" && key !== "schemaVersion",
+    (key) => key !== "purpose" && key !== "schemaVersion" && key !== "transfer",
   );
   if (unknownKeys.length > 0) {
     throw invalidSnapshotRequest(
@@ -265,7 +270,55 @@ export function parseAgentSnapshotRequest(
       `${purpose} snapshots require schema version 1`,
     );
   }
-  return { purpose, schemaVersion };
+  const transfer = record.transfer;
+  if (transfer !== undefined && transfer !== "chunked-v1") {
+    throw invalidSnapshotRequest(
+      `Unsupported snapshot transfer: ${String(transfer)}`,
+    );
+  }
+  if (transfer === "chunked-v1" && purpose !== "pre-upgrade") {
+    throw invalidSnapshotRequest(
+      "The chunked-v1 transfer requires a pre-upgrade snapshot",
+    );
+  }
+  return transfer
+    ? { purpose, schemaVersion, transfer }
+    : { purpose, schemaVersion };
+}
+
+class SnapshotSourceBudget {
+  private consumedBytes = 0;
+
+  constructor(private readonly maxBytes: number) {}
+
+  reserve(bytes: number, source: string): void {
+    if (!Number.isSafeInteger(bytes) || bytes < 0) {
+      throw new Error(`Invalid snapshot source size for ${source}`);
+    }
+    const next = this.consumedBytes + bytes;
+    if (!Number.isSafeInteger(next) || next > this.maxBytes) {
+      throw new ElizaError(
+        `Snapshot source exceeds the ${this.maxBytes}-byte aggregate budget`,
+        {
+          code: "AGENT_SNAPSHOT_SOURCE_TOO_LARGE",
+          context: {
+            attemptedBytes: next,
+            maxBytes: this.maxBytes,
+            source,
+          },
+          severity: "fatal",
+        },
+      );
+    }
+    this.consumedBytes = next;
+  }
+}
+
+export function assertV1SnapshotSourceBytesWithinBudget(bytes: number): void {
+  new SnapshotSourceBudget(AGENT_BACKUP_V1_MAX_SOURCE_BYTES).reserve(
+    bytes,
+    "test-boundary",
+  );
 }
 
 function getLocalBackupKmsClient(): ReturnType<typeof createKmsClient> {
@@ -451,7 +504,7 @@ function withExternalPostgresReferenceHash(
   };
 }
 
-function createExternalPostgresReference(
+export function createExternalPostgresReference(
   postgresUrl: string,
   agentId: string,
 ): AgentBackupExternalPostgresReference {
@@ -536,18 +589,49 @@ function isWithin(root: string, target: string): boolean {
 async function readFileEntry(
   root: string,
   absolutePath: string,
+  budget?: SnapshotSourceBudget,
 ): Promise<AgentBackupFileEntry> {
-  const stat = await fs.stat(absolutePath);
-  const bytes = await fs.readFile(absolutePath);
-  const relative = normalizeRelativePath(path.relative(root, absolutePath));
-  return {
-    path: relative,
-    sha256: sha256Bytes(bytes),
-    size: bytes.length,
-    mode: stat.mode,
-    mtimeMs: stat.mtimeMs,
-    bytesBase64: bytes.toString("base64"),
-  };
+  const before = await fs.lstat(absolutePath);
+  if (!before.isFile() || before.isSymbolicLink()) {
+    throw new Error(`Snapshot source is not a regular file: ${absolutePath}`);
+  }
+  const handle = await fs.open(
+    absolutePath,
+    fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW,
+  );
+  try {
+    const opened = await handle.stat();
+    if (
+      !opened.isFile() ||
+      opened.dev !== before.dev ||
+      opened.ino !== before.ino
+    ) {
+      throw new Error(`Snapshot source changed while opening: ${absolutePath}`);
+    }
+    budget?.reserve(opened.size, absolutePath);
+    const bytes = await handle.readFile();
+    const after = await handle.stat();
+    if (
+      bytes.length !== opened.size ||
+      after.size !== opened.size ||
+      after.mtimeMs !== opened.mtimeMs ||
+      after.dev !== opened.dev ||
+      after.ino !== opened.ino
+    ) {
+      throw new Error(`Snapshot source changed while reading: ${absolutePath}`);
+    }
+    const relative = normalizeRelativePath(path.relative(root, absolutePath));
+    return {
+      path: relative,
+      sha256: sha256Bytes(bytes),
+      size: bytes.length,
+      mode: opened.mode,
+      mtimeMs: opened.mtimeMs,
+      bytesBase64: bytes.toString("base64"),
+    };
+  } finally {
+    await handle.close();
+  }
 }
 
 function fileEntryFromBytes(
@@ -567,6 +651,7 @@ async function collectFileSet(params: {
   root: string;
   rootLabel: AgentBackupFileSet["rootLabel"];
   include?: (relativePath: string) => boolean;
+  budget?: SnapshotSourceBudget;
 }): Promise<AgentBackupFileSet> {
   const root = path.resolve(params.root);
   const files: AgentBackupFileEntry[] = [];
@@ -587,10 +672,17 @@ async function collectFileSet(params: {
       if (!isWithin(root, absolute)) continue;
       const relative = normalizeRelativePath(path.relative(root, absolute));
       if (params.include && !params.include(relative)) continue;
+      if (entry.isSymbolicLink()) {
+        throw new Error(
+          `Snapshot source contains a symbolic link: ${relative}`,
+        );
+      }
       if (entry.isDirectory()) {
         await visit(absolute);
       } else if (entry.isFile()) {
-        files.push(await readFileEntry(root, absolute));
+        files.push(await readFileEntry(root, absolute, params.budget));
+      } else {
+        throw new Error(`Snapshot source is not a regular file: ${relative}`);
       }
     }
   }
@@ -768,6 +860,7 @@ function getTableColumnsBucket(
 async function capturePostgresRows(
   postgresUrl: string,
   agentId: string,
+  budget?: SnapshotSourceBudget,
 ): Promise<AgentBackupPostgresDump> {
   const pgModule = await import("pg");
   const pool = new pgModule.default.Pool({
@@ -828,6 +921,10 @@ async function capturePostgresRows(
         tableName === POSTGRES_EMBEDDINGS_TABLE ||
         agentIdColumn(columnSet)
       ) {
+        budget?.reserve(
+          Buffer.byteLength(stableJson(rows)),
+          `postgres:${tableName}`,
+        );
         tables.push({ name: tableName, columns, rows });
       }
     }
@@ -875,16 +972,19 @@ function withPgliteDumpHash(
 
 function isBlobLike(value: unknown): value is {
   arrayBuffer: () => Promise<ArrayBuffer>;
+  size: number;
 } {
   return (
     value !== null &&
     typeof value === "object" &&
-    typeof (value as { arrayBuffer?: unknown }).arrayBuffer === "function"
+    typeof (value as { arrayBuffer?: unknown }).arrayBuffer === "function" &&
+    typeof (value as { size?: unknown }).size === "number"
   );
 }
 
 async function capturePgliteDump(
   runtime: IAgentRuntime | AgentRuntime,
+  budget?: SnapshotSourceBudget,
 ): Promise<AgentBackupPgliteDump | null> {
   const raw = (
     runtime.adapter as
@@ -907,6 +1007,7 @@ async function capturePgliteDump(
   if (!isBlobLike(dump)) {
     throw new Error("PGlite dumpDataDir() did not return a Blob/File");
   }
+  budget?.reserve(dump.size, PGLITE_DUMP_PATH);
   const bytes = Buffer.from(await dump.arrayBuffer());
   return withPgliteDumpHash({
     kind: "pglite-dump",
@@ -919,6 +1020,7 @@ async function capturePgliteDump(
 async function captureDatabaseComponent(
   runtime: IAgentRuntime | AgentRuntime,
   request: ResolvedAgentSnapshotRequest,
+  budget?: SnapshotSourceBudget,
 ): Promise<AgentBackupDatabaseComponent> {
   const postgresUrl = hasPostgresUrl(runtime);
   if (postgresUrl) {
@@ -933,7 +1035,11 @@ async function captureDatabaseComponent(
         sha256: externalPostgres.sha256,
       };
     }
-    const postgres = await capturePostgresRows(postgresUrl, runtime.agentId);
+    const postgres = await capturePostgresRows(
+      postgresUrl,
+      runtime.agentId,
+      budget,
+    );
     return {
       kind: "postgres-rows",
       postgres,
@@ -957,7 +1063,7 @@ async function captureDatabaseComponent(
     return { kind: "none", reason, sha256: sha256Json({ reason }) };
   }
 
-  const pgliteDump = await capturePgliteDump(runtime);
+  const pgliteDump = await capturePgliteDump(runtime, budget);
   if (pgliteDump) {
     return {
       kind: "pglite-dump",
@@ -970,6 +1076,7 @@ async function captureDatabaseComponent(
     root: pgliteDir,
     rootLabel: "pglite-dir",
     include: pgliteFileInclude,
+    budget,
   });
   return {
     kind: "pglite-files",
@@ -980,10 +1087,11 @@ async function captureDatabaseComponent(
 
 async function captureCharacterComponent(
   runtime: IAgentRuntime | AgentRuntime,
+  budget?: SnapshotSourceBudget,
 ): Promise<AgentBackupManifest["components"]["character"]> {
   const configPath = resolveConfigPath();
   const configFile = (await pathExists(configPath))
-    ? await readFileEntry(path.dirname(configPath), configPath)
+    ? await readFileEntry(path.dirname(configPath), configPath, budget)
     : undefined;
   const component = {
     runtimeCharacter: runtime.character ?? null,
@@ -1007,6 +1115,10 @@ export async function createAgentSnapshot(
   requestInput?: AgentSnapshotRequest,
 ): Promise<AgentBackupStateData> {
   const request = parseAgentSnapshotRequest(requestInput);
+  const sourceBudget =
+    request.schemaVersion === 1
+      ? new SnapshotSourceBudget(AGENT_BACKUP_V1_MAX_SOURCE_BYTES)
+      : undefined;
   const stateDir = resolveStateDir();
   const pgliteDirForStateFiles = hasPostgresUrl(runtime)
     ? null
@@ -1015,24 +1127,32 @@ export async function createAgentSnapshot(
     stateDir,
     pgliteDirForStateFiles,
   );
-  const [database, media, vault, character, stateFiles] = await Promise.all([
-    captureDatabaseComponent(runtime, request),
-    collectFileSet({
-      root: path.join(stateDir, MEDIA_DIR_NAME),
-      rootLabel: "state-dir",
-    }),
-    collectFileSet({
-      root: stateDir,
-      rootLabel: "state-dir",
-      include: vaultFileInclude,
-    }),
-    captureCharacterComponent(runtime),
-    collectFileSet({
-      root: stateDir,
-      rootLabel: "state-dir",
-      include: stateFileInclude,
-    }),
-  ]);
+  // V1 hydrates every byte into one JSON object, so capture sequentially to
+  // make the aggregate cap a real peak-memory bound rather than racing several
+  // reads that each passed the budget check.
+  const database = await captureDatabaseComponent(
+    runtime,
+    request,
+    sourceBudget,
+  );
+  const media = await collectFileSet({
+    root: path.join(stateDir, MEDIA_DIR_NAME),
+    rootLabel: "state-dir",
+    budget: sourceBudget,
+  });
+  const vault = await collectFileSet({
+    root: stateDir,
+    rootLabel: "state-dir",
+    include: vaultFileInclude,
+    budget: sourceBudget,
+  });
+  const character = await captureCharacterComponent(runtime, sourceBudget);
+  const stateFiles = await collectFileSet({
+    root: stateDir,
+    rootLabel: "state-dir",
+    include: stateFileInclude,
+    budget: sourceBudget,
+  });
 
   const componentHashes = {
     database: database.sha256,
@@ -1500,7 +1620,7 @@ async function restorePostgresRows(
   }
 }
 
-function verifyExternalPostgresReference(
+export function verifyExternalPostgresReference(
   postgresUrl: string,
   agentId: string,
   database: AgentBackupDatabaseComponent,
