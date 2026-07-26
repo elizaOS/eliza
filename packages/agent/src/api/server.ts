@@ -350,6 +350,8 @@ import {
   createAgentSnapshot,
   createLocalAgentBackup,
   listLocalAgentBackups,
+  parseAgentSnapshotRequest,
+  type ResolvedAgentSnapshotRequest,
   restoreAgentSnapshot,
   restoreLocalAgentBackup,
 } from "../services/agent-backup.ts";
@@ -823,6 +825,30 @@ function isAgentBackupStateData(value: unknown): value is AgentBackupStateData {
     isJsonRecord(value.workspaceFiles) &&
     isJsonRecord(value.manifest)
   );
+}
+
+const MAX_SNAPSHOT_REQUEST_BODY_BYTES = 4 * 1024;
+
+async function readSnapshotRequestBody(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+): Promise<ResolvedAgentSnapshotRequest | null> {
+  try {
+    const raw = await readRequestBody(req, {
+      maxBytes: MAX_SNAPSHOT_REQUEST_BODY_BYTES,
+    });
+    const parsed =
+      raw && raw.trim().length > 0 ? (JSON.parse(raw) as unknown) : undefined;
+    return parseAgentSnapshotRequest(parsed);
+  } catch (err) {
+    // error-policy:J1 The HTTP boundary translates malformed protocol input to a 400 response.
+    error(
+      res,
+      err instanceof Error ? err.message : "Invalid snapshot request body",
+      400,
+    );
+    return null;
+  }
 }
 
 async function readBackupJsonBody(
@@ -2068,8 +2094,14 @@ async function handleRequest(
       error(res, "Runtime not ready", 503);
       return;
     }
+    const snapshotRequest = await readSnapshotRequestBody(req, res);
+    if (!snapshotRequest) return;
     try {
-      const snapshot = await createAgentSnapshot(state.runtime, state.config);
+      const snapshot = await createAgentSnapshot(
+        state.runtime,
+        state.config,
+        snapshotRequest,
+      );
       json(res, snapshot);
     } catch (err) {
       logger.error(
