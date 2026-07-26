@@ -23,7 +23,7 @@ import {
 const textEncoder = new TextEncoder();
 const DEFAULT_CHUNK_BYTES = 4 * 1024 * 1024;
 const MAX_CHUNK_BYTES = 16 * 1024 * 1024;
-const MAX_CHUNK_COUNT = 4_096;
+const MAX_CHUNK_COUNT = 5_632;
 const MAX_TOTAL_BYTES = DEFAULT_CHUNK_BYTES * MAX_CHUNK_COUNT;
 const CHUNK_CONTENT_TYPE = "application/vnd.elizaos.agent-backup-chunk";
 const NONCE_BYTES = 12;

@@ -15,9 +15,13 @@ export const AGENT_SNAPSHOT_V2_FORMAT = "elizaos.agent-snapshot-stream";
 export const AGENT_SNAPSHOT_V2_TRANSFER = "chunked-v1";
 export const AGENT_SNAPSHOT_V2_CHUNK_BYTES = 256 * 1024;
 export const AGENT_SNAPSHOT_V2_MAX_TOTAL_BYTES = 16 * 1024 * 1024 * 1024;
-export const AGENT_SNAPSHOT_V2_MAX_FILES = 100_000;
-export const AGENT_SNAPSHOT_V2_MAX_LINE_BYTES = 16 * 1024 * 1024;
+export const AGENT_SNAPSHOT_V2_MAX_FILES = 16_384;
+export const AGENT_SNAPSHOT_V2_MAX_LINE_BYTES = 8 * 1024 * 1024;
 export const AGENT_SNAPSHOT_V2_MAX_PATH_BYTES = 4 * 1024;
+export const AGENT_SNAPSHOT_V2_MAX_DESCRIPTOR_PATH_BYTES = 2 * 1024 * 1024;
+// Base64 expands the 16 GiB raw payload by one third. The remaining envelope
+// covers the bounded descriptor, per-chunk JSON metadata, and trailer.
+export const AGENT_SNAPSHOT_V2_MAX_WIRE_BYTES = 22 * 1024 * 1024 * 1024;
 export const AGENT_SNAPSHOT_V2_REPACK_VIEW_BYTES = 4 * 1024 * 1024;
 
 export type AgentSnapshotV2FileComponent =
@@ -136,6 +140,7 @@ const FILE_COMPONENT_ORDER: readonly AgentSnapshotV2FileComponent[] = [
 ];
 const DIGEST_PATTERN = /^[a-f0-9]{64}$/;
 const BASE64_PATTERN = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+const MAX_ECMASCRIPT_TIMESTAMP_MS = 8_640_000_000_000_000;
 
 function invalidSnapshot(
   message: string,
@@ -210,7 +215,10 @@ function normalizeWirePath(input: string): string {
   if (
     input.length === 0 ||
     input.includes("\\") ||
-    input.includes("\0") ||
+    [...input].some((character) => {
+      const codePoint = character.codePointAt(0);
+      return codePoint !== undefined && (codePoint <= 0x1f || codePoint === 0x7f);
+    }) ||
     Buffer.byteLength(input) > AGENT_SNAPSHOT_V2_MAX_PATH_BYTES
   ) {
     throw invalidSnapshot("Snapshot file path is malformed");
@@ -254,6 +262,10 @@ export function agentSnapshotV2Sha256Json(value: unknown): string {
   return agentSnapshotV2Sha256(agentSnapshotV2StableJson(value));
 }
 
+export function compareAgentSnapshotV2Paths(left: string, right: string): number {
+  return Buffer.compare(Buffer.from(left, "utf8"), Buffer.from(right, "utf8"));
+}
+
 function fileSetSha256(files: readonly AgentSnapshotV2FileDescriptor[]): string {
   return agentSnapshotV2Sha256Json(
     files.map(({ path: filePath, sha256, size }) => ({
@@ -273,14 +285,6 @@ function characterConfigSha256(file: AgentSnapshotV2FileDescriptor | null): stri
           size: file.size,
         }
       : null,
-  });
-}
-
-function pgliteDumpSha256(file: AgentSnapshotV2FileDescriptor): string {
-  return agentSnapshotV2Sha256Json({
-    compression: "gzip",
-    file: { path: file.path, sha256: file.sha256, size: file.size },
-    kind: "pglite-dump",
   });
 }
 
@@ -345,24 +349,7 @@ function validateDatabaseDescriptor(
     return;
   }
   if (value.kind === "pglite-dump") {
-    assertExactKeys(
-      value,
-      ["compression", "fileIndex", "kind", "sha256"],
-      "PGlite dump descriptor",
-    );
-    if (value.compression !== "gzip") {
-      throw invalidSnapshot("PGlite dump compression is unsupported");
-    }
-    assertSafeInteger(value.fileIndex, "PGlite dump file index");
-    assertDigest(value.sha256, "PGlite dump hash");
-    const file = files[value.fileIndex];
-    if (!file || file.component !== "database") {
-      throw invalidSnapshot("PGlite dump file index is inconsistent");
-    }
-    if (pgliteDumpSha256(file) !== value.sha256) {
-      throw invalidSnapshot("PGlite dump hash is inconsistent");
-    }
-    return;
+    throw invalidSnapshot("PGlite dump snapshots are not a bounded-memory transfer");
   }
   if (value.kind === "pglite-files") {
     assertExactKeys(value, ["fileIndices", "kind", "sha256"], "PGlite file-set descriptor");
@@ -370,6 +357,7 @@ function validateDatabaseDescriptor(
     assertDigest(value.sha256, "PGlite file-set hash");
     const databaseFiles = files.filter((file) => file.component === "database");
     if (
+      databaseFiles.length === 0 ||
       value.fileIndices.length !== databaseFiles.length ||
       value.fileIndices.some((fileIndex, index) => fileIndex !== databaseFiles[index]?.index) ||
       fileSetSha256(databaseFiles) !== value.sha256
@@ -452,7 +440,12 @@ function validateFileDescriptor(
     throw invalidSnapshot("Snapshot file indices are duplicated or reordered");
   }
   assertSafeInteger(value.mode, "Snapshot file mode", 0, 0o777);
-  if (typeof value.mtimeMs !== "number" || !Number.isFinite(value.mtimeMs) || value.mtimeMs < 0) {
+  if (
+    typeof value.mtimeMs !== "number" ||
+    !Number.isFinite(value.mtimeMs) ||
+    value.mtimeMs < 0 ||
+    value.mtimeMs > MAX_ECMASCRIPT_TIMESTAMP_MS
+  ) {
     throw invalidSnapshot("Snapshot file mtime is malformed");
   }
   if (typeof value.path !== "string") {
@@ -463,7 +456,9 @@ function validateFileDescriptor(
   assertSafeInteger(value.size, "Snapshot file size", 0, AGENT_SNAPSHOT_V2_MAX_TOTAL_BYTES);
 }
 
-function validateDescriptor(value: unknown): asserts value is AgentSnapshotV2Descriptor {
+function assertAgentSnapshotV2Descriptor(
+  value: unknown,
+): asserts value is AgentSnapshotV2Descriptor {
   if (!isRecord(value)) {
     throw invalidSnapshot("Snapshot stream descriptor is malformed");
   }
@@ -507,21 +502,33 @@ function validateDescriptor(value: unknown): asserts value is AgentSnapshotV2Des
 
   const files = value.files;
   let totalBytes = 0;
+  let totalPathBytes = 0;
   let previousComponentRank = -1;
   let previousPath = "";
   for (let index = 0; index < files.length; index += 1) {
     const file = files[index];
     validateFileDescriptor(file, index);
     totalBytes += file.size;
+    totalPathBytes += Buffer.byteLength(file.path);
     if (!Number.isSafeInteger(totalBytes) || totalBytes > AGENT_SNAPSHOT_V2_MAX_TOTAL_BYTES) {
       throw invalidSnapshot("Snapshot stream byte total exceeds its budget");
+    }
+    if (
+      !Number.isSafeInteger(totalPathBytes) ||
+      totalPathBytes > AGENT_SNAPSHOT_V2_MAX_DESCRIPTOR_PATH_BYTES
+    ) {
+      throw invalidSnapshot("Snapshot stream descriptor paths exceed their byte budget");
     }
     const componentRank = FILE_COMPONENT_ORDER.indexOf(file.component);
     if (
       componentRank < previousComponentRank ||
-      (componentRank === previousComponentRank && file.path.localeCompare(previousPath) <= 0)
+      (componentRank === previousComponentRank &&
+        compareAgentSnapshotV2Paths(file.path, previousPath) <= 0)
     ) {
       throw invalidSnapshot("Snapshot files are not in canonical order");
+    }
+    if (componentRank === previousComponentRank && file.path.startsWith(`${previousPath}/`)) {
+      throw invalidSnapshot("Snapshot file paths conflict with a parent file");
     }
     previousComponentRank = componentRank;
     previousPath = file.path;
@@ -540,6 +547,17 @@ function validateDescriptor(value: unknown): asserts value is AgentSnapshotV2Des
   validateFileSetDescriptor(value.components.vault, "Vault", "vault", files);
   validateFileSetDescriptor(value.components.stateFiles, "State", "state", files);
   validateCharacterDescriptor(value.components.character, files);
+}
+
+export function validateAgentSnapshotV2Descriptor(value: unknown): AgentSnapshotV2Descriptor {
+  assertAgentSnapshotV2Descriptor(value);
+  return value;
+}
+
+export function assertAgentSnapshotV2WireBytes(value: number): void {
+  if (!Number.isSafeInteger(value) || value < 0 || value > AGENT_SNAPSHOT_V2_MAX_WIRE_BYTES) {
+    throw invalidSnapshot("Snapshot wire byte count exceeds its budget");
+  }
 }
 
 function validateChunkFrame(value: unknown): asserts value is AgentSnapshotV2ChunkFrame {
@@ -621,7 +639,7 @@ function assertContentType(contentType: string): void {
  */
 export class AgentSnapshotV2StreamValidator {
   readonly #expectedAgentId: string | undefined;
-  readonly #lineBuffer = Buffer.allocUnsafe(AGENT_SNAPSHOT_V2_MAX_LINE_BYTES);
+  #lineBuffer = Buffer.allocUnsafe(64 * 1024);
   #lineBytes = 0;
   #peakBufferedLineBytes = 0;
   #wireBytes = 0;
@@ -664,9 +682,7 @@ export class AgentSnapshotV2StreamValidator {
       throw invalidSnapshot("Snapshot validator is already complete");
     }
     this.#wireBytes += input.byteLength;
-    if (!Number.isSafeInteger(this.#wireBytes)) {
-      throw invalidSnapshot("Snapshot wire byte count exceeds safe bounds");
-    }
+    assertAgentSnapshotV2WireBytes(this.#wireBytes);
 
     const bytes = Buffer.from(input.buffer, input.byteOffset, input.byteLength);
     let cursor = 0;
@@ -677,6 +693,7 @@ export class AgentSnapshotV2StreamValidator {
       if (this.#lineBytes + segmentBytes > AGENT_SNAPSHOT_V2_MAX_LINE_BYTES) {
         throw invalidSnapshot("Snapshot stream line exceeds its byte budget");
       }
+      this.#ensureLineCapacity(this.#lineBytes + segmentBytes);
       bytes.copy(this.#lineBuffer, this.#lineBytes, cursor, end);
       this.#lineBytes += segmentBytes;
       this.#peakBufferedLineBytes = Math.max(this.#peakBufferedLineBytes, this.#lineBytes);
@@ -687,6 +704,17 @@ export class AgentSnapshotV2StreamValidator {
       this.#lineBytes = 0;
       cursor = newline + 1;
     }
+  }
+
+  #ensureLineCapacity(requiredBytes: number): void {
+    if (requiredBytes <= this.#lineBuffer.byteLength) return;
+    let capacity = this.#lineBuffer.byteLength;
+    while (capacity < requiredBytes) {
+      capacity = Math.min(AGENT_SNAPSHOT_V2_MAX_LINE_BYTES, capacity * 2);
+    }
+    const expanded = Buffer.allocUnsafe(capacity);
+    this.#lineBuffer.copy(expanded, 0, 0, this.#lineBytes);
+    this.#lineBuffer = expanded;
   }
 
   finish(): AgentSnapshotV2ValidationSummary {
@@ -743,8 +771,7 @@ export class AgentSnapshotV2StreamValidator {
     }
     const parsed = parseJsonLine(line);
     if (!this.#descriptor) {
-      validateDescriptor(parsed);
-      const descriptor = parsed;
+      const descriptor = validateAgentSnapshotV2Descriptor(parsed);
       assertCanonicalLine(descriptor, line);
       if (this.#expectedAgentId !== undefined && descriptor.agentId !== this.#expectedAgentId) {
         throw invalidSnapshot("Snapshot descriptor does not match the expected agent", {

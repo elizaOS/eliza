@@ -161,6 +161,7 @@ describe.sequential("agent snapshot HTTP routes", () => {
     await expect(restoreResponse.json()).resolves.toEqual({
       aggregateSha256: trailer.aggregateSha256,
       fileCount: trailer.fileCount,
+      requiresRestart: true,
       schemaVersion: 2,
       success: true,
       totalBytes: trailer.totalBytes,
