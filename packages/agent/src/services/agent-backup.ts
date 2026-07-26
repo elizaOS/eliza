@@ -1,20 +1,20 @@
 /**
  * Content-hashed agent backup and restore. Captures a full agent snapshot — the
- * database (a PGlite `dumpDataDir` archive, a PGlite file-set, or agent-scoped
- * Postgres rows), the content-addressed media store, the vault (vault.json,
- * `.vault-pglite`, audit log), the runtime character plus its config file, and
- * remaining state-dir files — into a manifest whose every component carries a
- * sha256, then restores each component verifying those hashes and refusing
- * tampered bytes. Also writes, lists, and prunes KMS-encrypted local backup
- * envelope files (`*.agent-backup.json`, AES-256-GCM via `@elizaos/security/kms`)
- * under the state dir, keeping only the most recent few. Restore is destructive
- * and returns `requiresRestart`.
+ * database (a PGlite `dumpDataDir` archive, a PGlite file-set, agent-scoped
+ * Postgres rows, or a credential-free external-Postgres identity reference),
+ * the content-addressed media store, the vault, the runtime character plus its
+ * config file, and remaining state-dir files. Manual and automatic backups keep
+ * the v1 hydrated format; pre-upgrade v2 snapshots bind shared Postgres by
+ * identity so an image replacement never copies or rewrites the same external
+ * database. Every captured component is content-hashed and restore refuses
+ * tampered bytes. Local backup files remain KMS-encrypted v1 envelopes under the
+ * state directory. Restore is destructive and returns `requiresRestart`.
  */
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 import { createKmsClient, systemKey } from "@elizaos/security/kms";
 import type { ElizaConfig } from "../config/config.ts";
 import { resolveConfigPath, resolveStateDir } from "../config/paths.ts";
@@ -52,6 +52,14 @@ export interface AgentBackupPostgresDump {
   sha256: string;
 }
 
+export interface AgentBackupExternalPostgresReference {
+  kind: "external-postgres-reference";
+  identityVersion: 1;
+  algorithm: "sha256";
+  identitySha256: string;
+  sha256: string;
+}
+
 export interface AgentBackupPgliteDump {
   kind: "pglite-dump";
   compression: "gzip";
@@ -60,7 +68,13 @@ export interface AgentBackupPgliteDump {
 }
 
 export interface AgentBackupDatabaseComponent {
-  kind: "pglite-dump" | "pglite-files" | "postgres-rows" | "none";
+  kind:
+    | "external-postgres-reference"
+    | "pglite-dump"
+    | "pglite-files"
+    | "postgres-rows"
+    | "none";
+  externalPostgres?: AgentBackupExternalPostgresReference;
   pgliteDump?: AgentBackupPgliteDump;
   pglite?: AgentBackupFileSet;
   postgres?: AgentBackupPostgresDump;
@@ -68,8 +82,7 @@ export interface AgentBackupDatabaseComponent {
   sha256: string;
 }
 
-export interface AgentBackupManifest {
-  schemaVersion: 1;
+interface AgentBackupManifestBase {
   format: "elizaos.agent-backup";
   createdAt: string;
   agentId: string;
@@ -87,6 +100,35 @@ export interface AgentBackupManifest {
   integrity: {
     componentHashes: Record<string, string>;
   };
+}
+
+export interface AgentBackupManifestV1 extends AgentBackupManifestBase {
+  schemaVersion: 1;
+}
+
+export interface AgentBackupManifestV2 extends AgentBackupManifestBase {
+  schemaVersion: 2;
+}
+
+export type AgentBackupManifest = AgentBackupManifestV1 | AgentBackupManifestV2;
+
+export type AgentSnapshotPurpose = "manual" | "auto" | "pre-upgrade";
+
+export interface AgentSnapshotRequest {
+  purpose?: AgentSnapshotPurpose;
+  schemaVersion?: 1 | 2;
+}
+
+export interface ResolvedAgentSnapshotRequest {
+  purpose: AgentSnapshotPurpose;
+  schemaVersion: 1 | 2;
+}
+
+function invalidSnapshotRequest(message: string): ElizaError {
+  return new ElizaError(message, {
+    code: "AGENT_SNAPSHOT_REQUEST_INVALID",
+    severity: "fatal",
+  });
 }
 
 export interface AgentBackupStateData {
@@ -178,6 +220,54 @@ const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 let localBackupKmsClient: ReturnType<typeof createKmsClient> | null = null;
 
+export function parseAgentSnapshotRequest(
+  input?: unknown,
+): ResolvedAgentSnapshotRequest {
+  if (input === undefined) {
+    return { purpose: "manual", schemaVersion: 1 };
+  }
+  if (input === null || typeof input !== "object" || Array.isArray(input)) {
+    throw invalidSnapshotRequest("Snapshot request must be a JSON object");
+  }
+
+  const record = input as Record<string, unknown>;
+  const unknownKeys = Object.keys(record).filter(
+    (key) => key !== "purpose" && key !== "schemaVersion",
+  );
+  if (unknownKeys.length > 0) {
+    throw invalidSnapshotRequest(
+      `Snapshot request contains unsupported fields: ${unknownKeys.sort().join(", ")}`,
+    );
+  }
+
+  const purposeValue = record.purpose;
+  const purpose = purposeValue === undefined ? "manual" : purposeValue;
+  if (purpose !== "manual" && purpose !== "auto" && purpose !== "pre-upgrade") {
+    throw invalidSnapshotRequest(
+      `Unsupported snapshot purpose: ${String(purpose)}`,
+    );
+  }
+
+  const defaultSchemaVersion = purpose === "pre-upgrade" ? 2 : 1;
+  const schemaVersion = record.schemaVersion ?? defaultSchemaVersion;
+  if (schemaVersion !== 1 && schemaVersion !== 2) {
+    throw invalidSnapshotRequest(
+      `Unsupported snapshot schema version: ${String(schemaVersion)}`,
+    );
+  }
+  if (purpose === "pre-upgrade" && schemaVersion !== 2) {
+    throw invalidSnapshotRequest(
+      "Pre-upgrade snapshots require schema version 2",
+    );
+  }
+  if (purpose !== "pre-upgrade" && schemaVersion !== 1) {
+    throw invalidSnapshotRequest(
+      `${purpose} snapshots require schema version 1`,
+    );
+  }
+  return { purpose, schemaVersion };
+}
+
 function getLocalBackupKmsClient(): ReturnType<typeof createKmsClient> {
   localBackupKmsClient ??= createKmsClient();
   return localBackupKmsClient;
@@ -205,6 +295,173 @@ function sha256Bytes(bytes: Buffer | string): string {
 
 function sha256Json(value: unknown): string {
   return sha256Bytes(stableJson(value));
+}
+
+interface ExternalPostgresIdentity {
+  identityVersion: 1;
+  backend: "postgresql";
+  host: string;
+  port: number;
+  database: string;
+  agentId: string;
+  namespace: string | null;
+}
+
+function invalidExternalPostgresIdentity(
+  message: string,
+  cause?: unknown,
+): ElizaError {
+  return new ElizaError(message, {
+    code: "AGENT_SNAPSHOT_POSTGRES_IDENTITY_INVALID",
+    cause,
+    severity: "fatal",
+  });
+}
+
+const POSTGRES_IDENTITY_QUERY_KEYS = new Set([
+  "database",
+  "dbname",
+  "host",
+  "port",
+]);
+const POSTGRES_NAMESPACE_QUERY_KEYS = new Set([
+  "currentschema",
+  "schema",
+  "search_path",
+]);
+
+function normalizePostgresNamespace(url: URL): string | null {
+  const candidates: string[] = [];
+  for (const [rawKey, rawValue] of url.searchParams) {
+    const key = rawKey.toLowerCase();
+    if (POSTGRES_IDENTITY_QUERY_KEYS.has(key)) {
+      throw invalidExternalPostgresIdentity(
+        `Postgres identity parameter ${rawKey} must be encoded in the connection URL authority/path`,
+      );
+    }
+    if (POSTGRES_NAMESPACE_QUERY_KEYS.has(key)) {
+      const value = rawValue.trim();
+      if (!value) {
+        throw invalidExternalPostgresIdentity(
+          `Postgres namespace parameter ${rawKey} is empty`,
+        );
+      }
+      candidates.push(value);
+      continue;
+    }
+    if (key !== "options") continue;
+    for (const match of rawValue.matchAll(
+      /(?:^|\s)(?:-c\s*)?search_path\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s]+))/gi,
+    )) {
+      const value = (match[1] ?? match[2] ?? match[3] ?? "").trim();
+      if (value) candidates.push(value);
+    }
+  }
+
+  const distinct = [...new Set(candidates)];
+  if (distinct.length > 1) {
+    throw invalidExternalPostgresIdentity(
+      "Postgres connection URL has conflicting namespaces",
+    );
+  }
+  return distinct[0] ?? null;
+}
+
+function externalPostgresIdentity(
+  postgresUrl: string,
+  agentId: string,
+): ExternalPostgresIdentity {
+  let parsed: URL;
+  try {
+    parsed = new URL(postgresUrl);
+  } catch (cause) {
+    // error-policy:J2 Preserve the parser failure without logging the credential-bearing URL.
+    throw invalidExternalPostgresIdentity(
+      "POSTGRES_URL is not a valid URL",
+      cause,
+    );
+  }
+  if (parsed.protocol !== "postgres:" && parsed.protocol !== "postgresql:") {
+    throw invalidExternalPostgresIdentity(
+      `POSTGRES_URL must use postgres:// or postgresql://, got ${parsed.protocol}`,
+    );
+  }
+
+  const host = parsed.hostname.toLowerCase().replace(/\.$/, "");
+  if (!host) {
+    throw invalidExternalPostgresIdentity(
+      "POSTGRES_URL must identify a database host",
+    );
+  }
+  const port = parsed.port ? Number.parseInt(parsed.port, 10) : 5432;
+  if (!Number.isSafeInteger(port) || port < 1 || port > 65_535) {
+    throw invalidExternalPostgresIdentity("POSTGRES_URL has an invalid port");
+  }
+
+  let database: string;
+  try {
+    database = decodeURIComponent(parsed.pathname.replace(/^\/+/, ""));
+  } catch (cause) {
+    // error-policy:J2 Preserve the decoder failure while withholding the source URL.
+    throw invalidExternalPostgresIdentity(
+      "POSTGRES_URL has an invalid encoded database name",
+      cause,
+    );
+  }
+  if (!database) {
+    throw invalidExternalPostgresIdentity(
+      "POSTGRES_URL must include an explicit database name for snapshot identity",
+    );
+  }
+  if (!agentId.trim()) {
+    throw invalidExternalPostgresIdentity(
+      "Agent id is required for snapshot identity",
+    );
+  }
+
+  return {
+    identityVersion: 1,
+    backend: "postgresql",
+    host,
+    port,
+    database,
+    agentId,
+    namespace: normalizePostgresNamespace(parsed),
+  };
+}
+
+function externalPostgresIdentitySha256(
+  postgresUrl: string,
+  agentId: string,
+): string {
+  return sha256Json(externalPostgresIdentity(postgresUrl, agentId));
+}
+
+function withExternalPostgresReferenceHash(
+  reference: AgentBackupExternalPostgresReference,
+): AgentBackupExternalPostgresReference {
+  return {
+    ...reference,
+    sha256: sha256Json({
+      kind: reference.kind,
+      identityVersion: reference.identityVersion,
+      algorithm: reference.algorithm,
+      identitySha256: reference.identitySha256,
+    }),
+  };
+}
+
+function createExternalPostgresReference(
+  postgresUrl: string,
+  agentId: string,
+): AgentBackupExternalPostgresReference {
+  return withExternalPostgresReferenceHash({
+    kind: "external-postgres-reference",
+    identityVersion: 1,
+    algorithm: "sha256",
+    identitySha256: externalPostgresIdentitySha256(postgresUrl, agentId),
+    sha256: "",
+  });
 }
 
 function b64encode(bytes: Uint8Array): string {
@@ -451,6 +708,9 @@ function makeStateFileInclude(
 async function resolvePgliteDir(): Promise<string> {
   const configured = process.env.PGLITE_DATA_DIR?.trim();
   if (configured) {
+    if (configured === ":memory:" || configured.includes("://")) {
+      return configured;
+    }
     return configured.startsWith("~")
       ? path.join(process.cwd(), configured.slice(1))
       : path.resolve(configured);
@@ -658,9 +918,21 @@ async function capturePgliteDump(
 
 async function captureDatabaseComponent(
   runtime: IAgentRuntime | AgentRuntime,
+  request: ResolvedAgentSnapshotRequest,
 ): Promise<AgentBackupDatabaseComponent> {
   const postgresUrl = hasPostgresUrl(runtime);
   if (postgresUrl) {
+    if (request.schemaVersion === 2) {
+      const externalPostgres = createExternalPostgresReference(
+        postgresUrl,
+        runtime.agentId,
+      );
+      return {
+        kind: "external-postgres-reference",
+        externalPostgres,
+        sha256: externalPostgres.sha256,
+      };
+    }
     const postgres = await capturePostgresRows(postgresUrl, runtime.agentId);
     return {
       kind: "postgres-rows",
@@ -672,6 +944,16 @@ async function captureDatabaseComponent(
   const pgliteDir = await resolvePgliteDir();
   if (pgliteDir === ":memory:" || pgliteDir.includes("://")) {
     const reason = `PGlite data dir ${pgliteDir} is not a filesystem directory`;
+    if (request.schemaVersion === 2) {
+      throw new ElizaError(
+        `Pre-upgrade snapshot cannot capture ${reason.toLowerCase()}`,
+        {
+          code: "AGENT_SNAPSHOT_DATABASE_UNCAPTURABLE",
+          context: { databaseKind: "pglite" },
+          severity: "fatal",
+        },
+      );
+    }
     return { kind: "none", reason, sha256: sha256Json({ reason }) };
   }
 
@@ -722,7 +1004,9 @@ function legacyConfigProjection(config: ElizaConfig): Record<string, unknown> {
 export async function createAgentSnapshot(
   runtime: IAgentRuntime | AgentRuntime,
   config: ElizaConfig,
+  requestInput?: AgentSnapshotRequest,
 ): Promise<AgentBackupStateData> {
+  const request = parseAgentSnapshotRequest(requestInput);
   const stateDir = resolveStateDir();
   const pgliteDirForStateFiles = hasPostgresUrl(runtime)
     ? null
@@ -732,7 +1016,7 @@ export async function createAgentSnapshot(
     pgliteDirForStateFiles,
   );
   const [database, media, vault, character, stateFiles] = await Promise.all([
-    captureDatabaseComponent(runtime),
+    captureDatabaseComponent(runtime, request),
     collectFileSet({
       root: path.join(stateDir, MEDIA_DIR_NAME),
       rootLabel: "state-dir",
@@ -757,9 +1041,8 @@ export async function createAgentSnapshot(
     character: character.sha256,
     stateFiles: stateFiles.sha256,
   };
-  const manifest: AgentBackupManifest = {
-    schemaVersion: 1,
-    format: "elizaos.agent-backup",
+  const manifestFields = {
+    format: "elizaos.agent-backup" as const,
     createdAt: new Date().toISOString(),
     agentId: runtime.agentId,
     components: {
@@ -771,10 +1054,16 @@ export async function createAgentSnapshot(
     },
     integrity: { componentHashes },
   };
+  const manifest: AgentBackupManifest =
+    request.schemaVersion === 1
+      ? { ...manifestFields, schemaVersion: 1 }
+      : { ...manifestFields, schemaVersion: 2 };
 
   logger.info(
     {
       agentId: runtime.agentId,
+      purpose: request.purpose,
+      schemaVersion: request.schemaVersion,
       database: database.kind,
       mediaFiles: media.files.length,
       vaultFiles: vault.files.length,
@@ -1211,13 +1500,100 @@ async function restorePostgresRows(
   }
 }
 
+function verifyExternalPostgresReference(
+  postgresUrl: string,
+  agentId: string,
+  database: AgentBackupDatabaseComponent,
+): void {
+  const reference = database.externalPostgres;
+  if (!reference) {
+    throw new ElizaError(
+      "Backup database component is missing external Postgres identity",
+      {
+        code: "AGENT_SNAPSHOT_POSTGRES_REFERENCE_INVALID",
+        severity: "fatal",
+      },
+    );
+  }
+  if (
+    reference.kind !== "external-postgres-reference" ||
+    reference.identityVersion !== 1 ||
+    reference.algorithm !== "sha256" ||
+    !/^[a-f0-9]{64}$/.test(reference.identitySha256) ||
+    !/^[a-f0-9]{64}$/.test(reference.sha256)
+  ) {
+    throw new ElizaError("Backup external Postgres identity is malformed", {
+      code: "AGENT_SNAPSHOT_POSTGRES_REFERENCE_INVALID",
+      severity: "fatal",
+    });
+  }
+
+  const expectedReference = withExternalPostgresReferenceHash({
+    ...reference,
+    sha256: "",
+  });
+  if (
+    expectedReference.sha256 !== reference.sha256 ||
+    database.sha256 !== reference.sha256
+  ) {
+    throw new ElizaError(
+      "Backup external Postgres identity hash is inconsistent",
+      {
+        code: "AGENT_SNAPSHOT_POSTGRES_REFERENCE_INVALID",
+        severity: "fatal",
+      },
+    );
+  }
+
+  const expectedIdentity = externalPostgresIdentitySha256(postgresUrl, agentId);
+  if (
+    !crypto.timingSafeEqual(
+      Buffer.from(expectedIdentity, "hex"),
+      Buffer.from(reference.identitySha256, "hex"),
+    )
+  ) {
+    throw new ElizaError(
+      "Backup external Postgres identity does not match this agent database",
+      {
+        code: "AGENT_SNAPSHOT_POSTGRES_IDENTITY_MISMATCH",
+        context: { agentId },
+        severity: "fatal",
+      },
+    );
+  }
+}
+
 function assertManifest(snapshot: AgentBackupStateData): AgentBackupManifest {
   const manifest = snapshot.manifest;
   if (
     manifest?.format !== "elizaos.agent-backup" ||
-    manifest.schemaVersion !== 1
+    (manifest.schemaVersion !== 1 && manifest.schemaVersion !== 2)
   ) {
     throw new Error("Unsupported or missing elizaOS backup manifest");
+  }
+  if (
+    manifest.schemaVersion === 1 &&
+    manifest.components.database.kind === "external-postgres-reference"
+  ) {
+    throw new ElizaError(
+      "Schema version 1 cannot contain an external Postgres reference",
+      {
+        code: "AGENT_SNAPSHOT_SCHEMA_INVALID",
+        severity: "fatal",
+      },
+    );
+  }
+  if (
+    manifest.schemaVersion === 2 &&
+    manifest.components.database.kind === "postgres-rows"
+  ) {
+    throw new ElizaError(
+      "Schema version 2 cannot contain hydrated Postgres rows",
+      {
+        code: "AGENT_SNAPSHOT_SCHEMA_INVALID",
+        severity: "fatal",
+      },
+    );
   }
   const actualHashes = {
     database: manifest.components.database.sha256,
@@ -1248,7 +1624,20 @@ export async function restoreAgentSnapshot(
   const stateDir = resolveStateDir();
   const database = manifest.components.database;
   let pgliteDirForStateFiles: string | null = null;
-  if (database.kind === "postgres-rows") {
+  if (database.kind === "external-postgres-reference") {
+    const postgresUrl = hasPostgresUrl(runtime);
+    if (!postgresUrl) {
+      throw new ElizaError(
+        "Backup references external Postgres but POSTGRES_URL is not configured",
+        {
+          code: "AGENT_SNAPSHOT_POSTGRES_CONFIG_MISSING",
+          context: { agentId: runtime.agentId },
+          severity: "fatal",
+        },
+      );
+    }
+    verifyExternalPostgresReference(postgresUrl, runtime.agentId, database);
+  } else if (database.kind === "postgres-rows") {
     const postgresUrl = hasPostgresUrl(runtime);
     if (!postgresUrl) {
       throw new Error(

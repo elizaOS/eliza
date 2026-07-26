@@ -14,6 +14,7 @@ import {
   createAgentSnapshot,
   createLocalAgentBackup,
   listLocalAgentBackups,
+  parseAgentSnapshotRequest,
   restoreAgentSnapshot,
   restoreLocalAgentBackup,
 } from "./agent-backup.ts";
@@ -46,6 +47,16 @@ function runtimeStub(agentId: string): AgentRuntime {
       close: async () => undefined,
     },
     getSetting: () => null,
+  } as unknown as AgentRuntime;
+}
+
+function postgresRuntimeStub(
+  agentId: string,
+  postgresUrl: string | null,
+): AgentRuntime {
+  return {
+    ...runtimeStub(agentId),
+    getSetting: (key: string) => (key === "POSTGRES_URL" ? postgresUrl : null),
   } as unknown as AgentRuntime;
 }
 
@@ -117,6 +128,289 @@ async function exists(filePath: string): Promise<boolean> {
 describe("agent backup manifest", () => {
   afterEach(() => {
     restoreEnv();
+  });
+
+  test("resolves only supported snapshot purpose and schema combinations", () => {
+    expect(parseAgentSnapshotRequest()).toEqual({
+      purpose: "manual",
+      schemaVersion: 1,
+    });
+    expect(parseAgentSnapshotRequest({})).toEqual({
+      purpose: "manual",
+      schemaVersion: 1,
+    });
+    expect(parseAgentSnapshotRequest({ purpose: "auto" })).toEqual({
+      purpose: "auto",
+      schemaVersion: 1,
+    });
+    expect(parseAgentSnapshotRequest({ purpose: "pre-upgrade" })).toEqual({
+      purpose: "pre-upgrade",
+      schemaVersion: 2,
+    });
+    expect(
+      parseAgentSnapshotRequest({
+        purpose: "pre-upgrade",
+        schemaVersion: 2,
+      }),
+    ).toEqual({
+      purpose: "pre-upgrade",
+      schemaVersion: 2,
+    });
+
+    for (const request of [
+      null,
+      [],
+      { purpose: "release" },
+      { purpose: "manual", schemaVersion: 2 },
+      { purpose: "auto", schemaVersion: 2 },
+      { purpose: "pre-upgrade", schemaVersion: 1 },
+      { purpose: "manual", schemaVersion: 3 },
+      { purpose: "manual", typo: true },
+    ]) {
+      expect(() => parseAgentSnapshotRequest(request)).toThrow();
+    }
+  });
+
+  test("keeps default, manual, and automatic snapshots on the v1 wire format", async () => {
+    const root = await fs.mkdtemp(
+      path.join(os.tmpdir(), "eliza-agent-backup-v1-"),
+    );
+    const pgliteDir = path.join(root, "pglite");
+    process.env.ELIZA_STATE_DIR = root;
+    process.env.PGLITE_DATA_DIR = pgliteDir;
+    delete process.env.POSTGRES_URL;
+    delete process.env.DATABASE_URL;
+    await writeFixtureState(root, pgliteDir);
+
+    const runtime = runtimeStub("10000000-0000-4000-8000-000000000001");
+    const defaultSnapshot = await createAgentSnapshot(runtime, {} as never);
+    const manualSnapshot = await createAgentSnapshot(runtime, {} as never, {
+      purpose: "manual",
+      schemaVersion: 1,
+    });
+    const automaticSnapshot = await createAgentSnapshot(runtime, {} as never, {
+      purpose: "auto",
+    });
+
+    expect(defaultSnapshot.manifest.schemaVersion).toBe(1);
+    expect(manualSnapshot.manifest.schemaVersion).toBe(1);
+    expect(automaticSnapshot.manifest.schemaVersion).toBe(1);
+    expect(manualSnapshot.manifest.components.database).toEqual(
+      defaultSnapshot.manifest.components.database,
+    );
+    expect(automaticSnapshot.manifest.components.database).toEqual(
+      defaultSnapshot.manifest.components.database,
+    );
+  });
+
+  test("uses a credential-free external Postgres identity for v2 pre-upgrade restore without SQL", async () => {
+    const root = await fs.mkdtemp(
+      path.join(os.tmpdir(), "eliza-agent-backup-v2-postgres-"),
+    );
+    process.env.ELIZA_STATE_DIR = root;
+    delete process.env.POSTGRES_URL;
+    delete process.env.DATABASE_URL;
+    await fs.mkdir(path.join(root, "media"), { recursive: true });
+    await fs.mkdir(path.join(root, "skills"), { recursive: true });
+    await fs.writeFile(path.join(root, "eliza.json"), '{"name":"external"}\n');
+    await fs.writeFile(path.join(root, "skills", "active.json"), "before");
+    await fs.writeFile(
+      path.join(root, "media", `${"b".repeat(64)}.txt`),
+      "external-media",
+    );
+
+    const agentId = "10000000-0000-4000-8000-000000000002";
+    const sourceUrl =
+      "postgresql://alice:old-password@DB.EXAMPLE.COM/app%5Fdb?schema=tenant&sslpassword=query-secret&access_token=source-token";
+    const sourceRuntime = postgresRuntimeStub(agentId, sourceUrl);
+    const snapshot = await createAgentSnapshot(sourceRuntime, {} as never, {
+      purpose: "pre-upgrade",
+      schemaVersion: 2,
+    });
+
+    expect(snapshot.manifest.schemaVersion).toBe(2);
+    expect(snapshot.manifest.components.database.kind).toBe(
+      "external-postgres-reference",
+    );
+    const reference = snapshot.manifest.components.database.externalPostgres;
+    expect(reference).toMatchObject({
+      kind: "external-postgres-reference",
+      identityVersion: 1,
+      algorithm: "sha256",
+    });
+    expect(reference?.identitySha256).toMatch(/^[a-f0-9]{64}$/);
+    const serialized = JSON.stringify(snapshot);
+    expect(serialized).not.toContain("alice");
+    expect(serialized).not.toContain("old-password");
+    expect(serialized).not.toContain("query-secret");
+    expect(serialized).not.toContain("source-token");
+
+    await fs.rm(path.join(root, "media"), { recursive: true, force: true });
+    await fs.rm(path.join(root, "skills"), { recursive: true, force: true });
+    await fs.writeFile(path.join(root, "eliza.json"), '{"name":"changed"}\n');
+
+    const rotatedRuntime = postgresRuntimeStub(
+      agentId,
+      "postgres://bob:new-password@db.example.com:5432/app_db?search_path=tenant&sslpassword=rotated&access_token=rotated-token",
+    );
+    await restoreAgentSnapshot(rotatedRuntime, snapshot);
+
+    expect(await readText(path.join(root, "skills", "active.json"))).toBe(
+      "before",
+    );
+    expect(
+      await readText(path.join(root, "media", `${"b".repeat(64)}.txt`)),
+    ).toBe("external-media");
+    expect(await readText(path.join(root, "eliza.json"))).toBe(
+      '{"name":"external"}\n',
+    );
+  });
+
+  test("rejects external Postgres host, port, database, namespace, and agent mismatches", async () => {
+    const root = await fs.mkdtemp(
+      path.join(os.tmpdir(), "eliza-agent-backup-v2-binding-"),
+    );
+    process.env.ELIZA_STATE_DIR = root;
+    delete process.env.POSTGRES_URL;
+    delete process.env.DATABASE_URL;
+    const agentId = "10000000-0000-4000-8000-000000000003";
+    const sourceRuntime = postgresRuntimeStub(
+      agentId,
+      "postgres://owner:secret@db.example.com:5432/eliza?schema=tenant",
+    );
+    const snapshot = await createAgentSnapshot(sourceRuntime, {} as never, {
+      purpose: "pre-upgrade",
+    });
+
+    for (const postgresUrl of [
+      "postgres://owner:secret@other.example.com:5432/eliza?schema=tenant",
+      "postgres://owner:secret@db.example.com:5433/eliza?schema=tenant",
+      "postgres://owner:secret@db.example.com:5432/other?schema=tenant",
+      "postgres://owner:secret@db.example.com:5432/eliza?schema=other",
+    ]) {
+      await expect(
+        restoreAgentSnapshot(
+          postgresRuntimeStub(agentId, postgresUrl),
+          snapshot,
+        ),
+      ).rejects.toThrow(/identity does not match/);
+    }
+
+    await expect(
+      restoreAgentSnapshot(postgresRuntimeStub(agentId, null), snapshot),
+    ).rejects.toThrow(/POSTGRES_URL is not configured/);
+
+    const otherAgentId = "10000000-0000-4000-8000-000000000004";
+    const reboundSnapshot = structuredClone(snapshot);
+    reboundSnapshot.manifest.agentId = otherAgentId;
+    await expect(
+      restoreAgentSnapshot(
+        postgresRuntimeStub(
+          otherAgentId,
+          "postgres://owner:secret@db.example.com:5432/eliza?schema=tenant",
+        ),
+        reboundSnapshot,
+      ),
+    ).rejects.toThrow(/identity does not match/);
+  });
+
+  test("rejects malformed external references and v1 manifests carrying v2 database semantics", async () => {
+    const root = await fs.mkdtemp(
+      path.join(os.tmpdir(), "eliza-agent-backup-v2-invalid-"),
+    );
+    process.env.ELIZA_STATE_DIR = root;
+    delete process.env.POSTGRES_URL;
+    delete process.env.DATABASE_URL;
+    const agentId = "10000000-0000-4000-8000-000000000006";
+    const postgresUrl =
+      "postgres://owner:secret@db.example.com:5432/eliza?schema=tenant";
+    const runtime = postgresRuntimeStub(agentId, postgresUrl);
+    const snapshot = await createAgentSnapshot(runtime, {} as never, {
+      purpose: "pre-upgrade",
+    });
+
+    const malformedReference = structuredClone(snapshot);
+    const reference =
+      malformedReference.manifest.components.database.externalPostgres;
+    if (!reference) {
+      throw new Error("Expected external Postgres reference");
+    }
+    reference.identitySha256 = "not-a-digest";
+    await expect(
+      restoreAgentSnapshot(runtime, malformedReference),
+    ).rejects.toThrow(/identity is malformed/);
+
+    const v1WithExternalReference = structuredClone(snapshot);
+    v1WithExternalReference.manifest.schemaVersion = 1;
+    await expect(
+      restoreAgentSnapshot(runtime, v1WithExternalReference),
+    ).rejects.toThrow(
+      /Schema version 1 cannot contain an external Postgres reference/,
+    );
+
+    const unknownSchema = structuredClone(snapshot) as unknown as {
+      manifest: { schemaVersion: number };
+    };
+    unknownSchema.manifest.schemaVersion = 3;
+    await expect(
+      restoreAgentSnapshot(
+        runtime,
+        unknownSchema as unknown as AgentBackupStateData,
+      ),
+    ).rejects.toThrow(/Unsupported or missing elizaOS backup manifest/);
+  });
+
+  test("captures and restores actual PGlite bytes for v2 pre-upgrade snapshots", async () => {
+    const root = await fs.mkdtemp(
+      path.join(os.tmpdir(), "eliza-agent-backup-v2-pglite-"),
+    );
+    const pgliteDir = path.join(root, "pglite");
+    process.env.ELIZA_STATE_DIR = root;
+    process.env.PGLITE_DATA_DIR = pgliteDir;
+    delete process.env.POSTGRES_URL;
+    delete process.env.DATABASE_URL;
+    await writeFixtureState(root, pgliteDir);
+    const runtime = runtimeStub("10000000-0000-4000-8000-000000000005");
+
+    const snapshot = await createAgentSnapshot(runtime, {} as never, {
+      purpose: "pre-upgrade",
+    });
+    expect(snapshot.manifest.schemaVersion).toBe(2);
+    expect(snapshot.manifest.components.database.kind).toBe("pglite-files");
+    expect(
+      snapshot.manifest.components.database.pglite?.files.map(
+        (file) => file.path,
+      ),
+    ).toContain("pgdata.bin");
+
+    await fs.rm(pgliteDir, { recursive: true, force: true });
+    await restoreAgentSnapshot(runtime, snapshot);
+    expect(await readText(path.join(pgliteDir, "pgdata.bin"))).toBe(
+      "database-bytes",
+    );
+  });
+
+  test("fails a v2 pre-upgrade snapshot when PGlite has no durable capture path", async () => {
+    const root = await fs.mkdtemp(
+      path.join(os.tmpdir(), "eliza-agent-backup-v2-memory-"),
+    );
+    process.env.ELIZA_STATE_DIR = root;
+    process.env.PGLITE_DATA_DIR = ":memory:";
+    delete process.env.POSTGRES_URL;
+    delete process.env.DATABASE_URL;
+    const runtime = runtimeStub("10000000-0000-4000-8000-000000000007");
+
+    await expect(
+      createAgentSnapshot(runtime, {} as never, {
+        purpose: "pre-upgrade",
+      }),
+    ).rejects.toMatchObject({
+      code: "AGENT_SNAPSHOT_DATABASE_UNCAPTURABLE",
+    });
+
+    const v1Snapshot = await createAgentSnapshot(runtime, {} as never);
+    expect(v1Snapshot.manifest.schemaVersion).toBe(1);
+    expect(v1Snapshot.manifest.components.database.kind).toBe("none");
   });
 
   test("captures and restores local PGlite, media, vault, character, and state-dir files", async () => {
