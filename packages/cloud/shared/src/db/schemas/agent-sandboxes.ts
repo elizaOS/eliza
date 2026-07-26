@@ -450,7 +450,7 @@ export type AgentBackupStoredStateData = AgentBackupPlainStateData | EncryptedAg
 
 export type AgentBackupSnapshotSchemaVersion = 1 | 2;
 export type AgentBackupStateDataStorage = "inline" | "r2" | "chunked-v2";
-export type AgentBackupStorageCommitState = "staging" | "complete" | "failed";
+export type AgentBackupStorageCommitState = "staging" | "complete" | "failed" | "cleanup-pending";
 
 export interface AgentBackupChunkStagingDescriptor {
   format: "elizaos.agent-backup-chunks";
