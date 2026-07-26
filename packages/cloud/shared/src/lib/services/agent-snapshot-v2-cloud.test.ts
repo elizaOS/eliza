@@ -7,6 +7,7 @@ import { describe, expect, test } from "bun:test";
 import type { StoredAgentSandboxBackup } from "../../db/schemas/agent-sandboxes";
 import {
   type AgentSnapshotV2CloudDependencies,
+  agentSnapshotV2RestoreTimeoutMs,
   captureAgentSnapshotV2,
   restoreAgentSnapshotV2,
 } from "./agent-snapshot-v2-cloud";
@@ -14,6 +15,7 @@ import {
   AGENT_SNAPSHOT_V2_CHUNK_BYTES,
   AGENT_SNAPSHOT_V2_CONTENT_TYPE,
   AGENT_SNAPSHOT_V2_FORMAT,
+  AGENT_SNAPSHOT_V2_MAX_WIRE_BYTES,
   AGENT_SNAPSHOT_V2_TRANSFER,
   type AgentSnapshotV2Descriptor,
   agentSnapshotV2Sha256,
@@ -172,6 +174,7 @@ describe("agent snapshot v2 Cloud adapter", () => {
       storage: {
         async create(params) {
           createCalls += 1;
+          expect(params.maxTotalBytes).toBe(AGENT_SNAPSHOT_V2_MAX_WIRE_BYTES);
           stagedBytes = await collect(params.source);
           const verification = await params.verify(replay(stagedBytes));
           return storedBackup(verification.contentHash);
@@ -211,6 +214,7 @@ describe("agent snapshot v2 Cloud adapter", () => {
         JSON.stringify({
           aggregateSha256: snapshot.aggregateSha256,
           fileCount: 0,
+          requiresRestart: true,
           schemaVersion: 2,
           success: true,
           totalBytes: 0,
@@ -233,7 +237,10 @@ describe("agent snapshot v2 Cloud adapter", () => {
       backup: storedBackup(snapshot.aggregateSha256),
       dependencies,
       endpoint: "https://agent.example/api/restore?transfer=chunked-v1",
-      headers: { Authorization: "Bearer opaque" },
+      headers: {
+        Authorization: "Bearer opaque",
+        "content-type": "application/json",
+      },
       organizationId: ORGANIZATION_ID,
     });
 
@@ -290,6 +297,7 @@ describe("agent snapshot v2 Cloud adapter", () => {
         JSON.stringify({
           aggregateSha256: "ef".repeat(32),
           fileCount: 0,
+          requiresRestart: true,
           schemaVersion: 2,
           success: true,
           totalBytes: 0,
@@ -307,5 +315,107 @@ describe("agent snapshot v2 Cloud adapter", () => {
         organizationId: ORGANIZATION_ID,
       }),
     ).rejects.toThrow("acknowledgement does not match");
+  });
+
+  test("cancels an agent response when validation rejects before EOF", async () => {
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("{}\n"));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const dependencies: AgentSnapshotV2CloudDependencies = {
+      fetch,
+      readStored: () => replay(new Uint8Array()),
+      storage: {
+        async create(params) {
+          await collect(params.source);
+          throw new Error("unreachable");
+        },
+      },
+    };
+
+    await expect(
+      captureAgentSnapshotV2({
+        agentId: AGENT_ID,
+        dependencies,
+        organizationId: ORGANIZATION_ID,
+        response: new Response(body, {
+          headers: { "Content-Type": AGENT_SNAPSHOT_V2_CONTENT_TYPE },
+        }),
+        sandboxRecordId: SANDBOX_RECORD_ID,
+      }),
+    ).rejects.toThrow("Snapshot stream descriptor");
+    expect(cancelled).toBe(true);
+  });
+
+  test("scales its absolute restore budget and aborts an idle stored stream", async () => {
+    expect(
+      agentSnapshotV2RestoreTimeoutMs(512 * 1024 * 1024, {
+        baseMs: 1_000,
+        idleMs: 50,
+        minBytesPerSecond: 1024 * 1024,
+      }),
+    ).toBe(513_000);
+
+    const snapshot = canonicalSnapshot();
+    let sourceReturned = false;
+    async function* stalledSource(): AsyncGenerator<Uint8Array> {
+      try {
+        yield snapshot.bytes.subarray(0, 1);
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        yield snapshot.bytes.subarray(1);
+      } finally {
+        sourceReturned = true;
+      }
+    }
+    const timeoutFetch: typeof fetch = async (_input, init) => {
+      if (!(init?.body instanceof ReadableStream) || !init.signal) {
+        throw new Error("restore request must carry a cancellable stream");
+      }
+      const reader = init.body.getReader();
+      await reader.read();
+      await new Promise<never>((_resolve, reject) => {
+        init.signal?.addEventListener(
+          "abort",
+          () => {
+            void reader.cancel(init.signal?.reason).then(
+              () => reject(init.signal?.reason),
+              (error) => reject(error),
+            );
+          },
+          { once: true },
+        );
+      });
+    };
+    const dependencies: AgentSnapshotV2CloudDependencies = {
+      fetch: timeoutFetch,
+      readStored: () => stalledSource(),
+      restoreTimeouts: {
+        baseMs: 100,
+        idleMs: 20,
+        minBytesPerSecond: 1024 * 1024,
+      },
+      storage: {
+        async create() {
+          throw new Error("restore must not create a backup");
+        },
+      },
+    };
+
+    await expect(
+      restoreAgentSnapshotV2({
+        agentId: AGENT_ID,
+        backup: storedBackup(snapshot.aggregateSha256),
+        dependencies,
+        endpoint: "https://agent.example/api/restore?transfer=chunked-v1",
+        headers: {},
+        organizationId: ORGANIZATION_ID,
+      }),
+    ).rejects.toThrow("Snapshot v2 restore timed out");
+    expect(sourceReturned).toBe(true);
   });
 });
