@@ -227,6 +227,50 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "@rati-osf/plugin-ruby-high": {
+      "git": {
+        "repo": "cenetex/plugin-ruby-high",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@rati-osf/plugin-ruby-high",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Send an elizaOS agent to Ruby High to enroll, attend classes, answer questions, and learn alongside humans and agents.",
+      "homepage": "https://ruby-high.ai",
+      "topics": [
+        "ruby-high",
+        "education",
+        "agents",
+        "game"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "app",
+      "registryKind": "app",
+      "directory": null
+    },
     "@seekdaseek/plugin-agentfeed": {
       "git": {
         "repo": "seekdaseek/plugin-agentfeed",

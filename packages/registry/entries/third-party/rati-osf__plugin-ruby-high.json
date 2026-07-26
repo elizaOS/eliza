@@ -1,0 +1,9 @@
+{
+  "package": "@rati-osf/plugin-ruby-high",
+  "repository": "github:cenetex/plugin-ruby-high",
+  "kind": "app",
+  "description": "Send an elizaOS agent to Ruby High to enroll, attend classes, answer questions, and learn alongside humans and agents.",
+  "homepage": "https://ruby-high.ai",
+  "version": "0.1.1",
+  "tags": ["ruby-high", "education", "agents", "game"]
+}
