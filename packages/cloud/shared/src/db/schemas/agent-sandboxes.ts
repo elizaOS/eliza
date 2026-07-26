@@ -564,6 +564,24 @@ export const agentSandboxBackups = pgTable(
   }),
 );
 
+export const agentSandboxBackupCleanupIntents = pgTable(
+  "agent_sandbox_backup_cleanup_intents",
+  {
+    backup_id: uuid("backup_id").primaryKey(),
+    organization_id: uuid("organization_id").notNull(),
+    sandbox_record_id: uuid("sandbox_record_id").notNull(),
+    descriptor: jsonb("descriptor").$type<AgentBackupStateDataDescriptor>().notNull(),
+    storage_commit_state: text("storage_commit_state")
+      .$type<AgentBackupStorageCommitState>()
+      .notNull(),
+    created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    updated_at_idx: index("agent_sandbox_backup_cleanup_intents_updated_idx").on(table.updated_at),
+  }),
+);
+
 /**
  * Machine-readable trailer appended to `agent_sandboxes.error_message` when an
  * AGENT_UPGRADE exhausts retries on a ROLLBACK-SAFE failure (the old container
@@ -580,6 +598,9 @@ export const UPGRADE_FAILURE_TARGET_MARKER_PREFIX = "[upgrade-failed-target:";
 export type AgentSandbox = InferSelectModel<typeof agentSandboxes>;
 export type NewAgentSandbox = InferInsertModel<typeof agentSandboxes>;
 export type StoredAgentSandboxBackup = InferSelectModel<typeof agentSandboxBackups>;
+export type StoredAgentSandboxBackupCleanupIntent = InferSelectModel<
+  typeof agentSandboxBackupCleanupIntents
+>;
 export type AgentSandboxBackup = Omit<StoredAgentSandboxBackup, "state_data"> & {
   state_data: AgentBackupPlainStateData;
 };
