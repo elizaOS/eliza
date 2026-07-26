@@ -35,6 +35,16 @@ export interface SandboxReplacementCleanupLocator {
 }
 
 /**
+ * Identifies the exact paused container retained as a short-lived rollback
+ * authority while a replacement image is being accepted.
+ */
+export interface SandboxRollbackStandbyLocator {
+  nodeId: string;
+  containerName: string;
+  containerId: string;
+}
+
+/**
  * Carries the exact placement that must remain fenced when a replacement
  * candidate cannot be proven absent. Callers persist this locator before
  * retrying so an unreachable node can never produce two live agent runtimes.
@@ -71,6 +81,28 @@ export class SandboxReplacementCleanupUnresolvedError extends Error {
   }
 }
 
+/**
+ * Preserves the exact standby locator when a pause/resume transition cannot be
+ * proven. Callers must retain the fence rather than infer which runtime is live.
+ */
+export class SandboxRollbackStandbyUnresolvedError extends Error {
+  readonly nodeId: string;
+  readonly containerName: string;
+  readonly containerId: string;
+
+  constructor(locator: SandboxRollbackStandbyLocator, cause: unknown) {
+    const causeMessage = cause instanceof Error ? cause.message : String(cause);
+    super(
+      `Rollback standby transition is unresolved for ${locator.containerName} on ${locator.nodeId}: ${causeMessage}`,
+      { cause },
+    );
+    this.name = "SandboxRollbackStandbyUnresolvedError";
+    this.nodeId = locator.nodeId;
+    this.containerName = locator.containerName;
+    this.containerId = locator.containerId;
+  }
+}
+
 export interface SandboxProvider {
   create(config: SandboxCreateConfig): Promise<SandboxHandle>;
   stop(sandboxId: string): Promise<void>;
@@ -81,6 +113,17 @@ export interface SandboxProvider {
    * unreachable container would create two live agents after the node returns.
    */
   stopForReplacement?(sandboxId: string): Promise<void>;
+  /**
+   * Pauses the current workload without deleting its container, volume, VPN
+   * identity, or capacity reservation. The returned Docker identity is the
+   * only locator a later resume may trust.
+   */
+  pauseForRollbackStandby?(sandboxId: string): Promise<SandboxRollbackStandbyLocator>;
+  /**
+   * Resumes only the exact paused Docker identity returned by
+   * `pauseForRollbackStandby`. A same-name replacement must fail closed.
+   */
+  resumeRollbackStandby?(locator: SandboxRollbackStandbyLocator): Promise<void>;
   /**
    * Reclaims a replacement candidate from its durable placement record. This
    * bypasses sandbox-id lookup because the routed agent row may still point at
