@@ -1,12 +1,10 @@
 /**
- * Reply-delivery ordering on the simple fast path (deliver-then-save): the
- * connector callback fires BEFORE the response-memory DB write — moving the
- * `message:delivery:persistence` span (~250-440ms live) off time-to-reply —
- * while the persist still completes before handleMessage resolves, a callback
- * failure never loses the memory, a persist failure still reaches the
- * handleMessage boundary, and a same-room follow-up fired off the delivery
- * (the racy case: concurrent handleMessage, NOT sequential) is barred from
- * composing until the reply row is stored while other rooms stay unblocked.
+ * Reply delivery and durable storage on the simple fast path run concurrently,
+ * so connector latency and the response-memory write do not add serially. Both
+ * still settle before handleMessage resolves: a callback failure never loses
+ * the memory, a persist failure reaches the boundary, and a same-room follow-up
+ * fired off delivery is barred from composing until the reply row is stored
+ * while other rooms stay unblocked.
  * Real AgentRuntime + InMemoryDatabaseAdapter end to end; only the Stage-1
  * model surface is a deterministic registered handler (no live model, no
  * network). The adapter wrapper below observes/faults/holds the storage
@@ -321,10 +319,13 @@ describe("simple-path deliver-then-persist ordering", () => {
 		expect(reported).toEqual([boom]);
 	});
 
-	it("records a time-to-reply that excludes the persistence span", async () => {
+	it("overlaps reply delivery with persistence and records reply time independently", async () => {
 		const h = await createHarness({ persistDelayMs: 150 });
 
-		await h.service.handleMessage(h.runtime, h.makeMessage(), async () => []);
+		await h.service.handleMessage(h.runtime, h.makeMessage(), async () => {
+			await new Promise((resolve) => setTimeout(resolve, 50));
+			return [];
+		});
 
 		const turn = inferenceTimingRegistry.recentTurns(1)[0];
 		expect(turn).toBeDefined();
@@ -338,10 +339,9 @@ describe("simple-path deliver-then-persist ordering", () => {
 		expect(persistSpan).toBeDefined();
 		if (!callbackSpan || !persistSpan) return;
 
-		// Delivery fully completes before the persist opens, and the derived
-		// time-to-reply lands before the (artificially slow, >=150ms) persist
-		// closes — the DB write is off the reply critical path.
-		expect(persistSpan.startMs).toBeGreaterThanOrEqual(callbackSpan.endMs);
+		// Both operations are in flight together, while the reply mark follows
+		// the callback rather than waiting for the slower durable write.
+		expect(persistSpan.startMs).toBeLessThanOrEqual(callbackSpan.endMs);
 		expect(persistSpan.durationMs).toBeGreaterThanOrEqual(140);
 		expect(turn.timeToReplyMs).not.toBeNull();
 		expect(turn.timeToReplyMs as number).toBeLessThan(persistSpan.endMs);

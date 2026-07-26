@@ -2,10 +2,10 @@
 /**
  * Measures every provider registered on a real PGLite-backed core runtime.
  *
- * Each sample composes a fresh message with the full provider inventory, so
- * providers execute through the production parallel path without state-cache
- * reuse. The JSON report ranks providers by p95 and includes aggregate wall
- * time and observed concurrency.
+ * Each sample composes a fresh message with the full provider inventory, then
+ * repeats that composition inside the same production turn context. The report
+ * separates first execution from reuse, ranks providers by p95, and includes
+ * aggregate wall time and observed concurrency.
  */
 import { randomUUID } from "node:crypto";
 import { writeFile } from "node:fs/promises";

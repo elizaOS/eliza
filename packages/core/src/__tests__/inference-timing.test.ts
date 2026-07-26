@@ -242,6 +242,56 @@ describe("exclusive inference flow breakdown", () => {
 			),
 		).toBe(80);
 	});
+
+	it("attributes Stage-1 preparation and orchestration instead of charging the message-service parent", () => {
+		const summary = {
+			turnId: "stage1-attribution",
+			label: "chat-request",
+			roomId: null,
+			modelProvider: "test",
+			t0EpochMs: 0,
+			closedAtEpochMs: 20,
+			totalMs: 20,
+			timeToFirstTokenMs: null,
+			timeToFirstVisibleMs: null,
+			timeToReplyMs: null,
+			timeToResponseFinalizedMs: 20,
+			spans: [
+				{
+					name: "chat:message-service",
+					startMs: 0,
+					endMs: 20,
+					durationMs: 20,
+				},
+				{
+					name: "message:planner",
+					startMs: 0,
+					endMs: 20,
+					durationMs: 20,
+				},
+				{
+					name: "message:stage1:preprocess",
+					startMs: 2,
+					endMs: 8,
+					durationMs: 6,
+				},
+			],
+			marks: [],
+			byName: {},
+			anomalies: [],
+		} satisfies InferenceTurnSummary;
+
+		const flow = buildInferenceFlowBreakdown(summary);
+		expect(
+			flow.stages.find((stage) => stage.stage === "model-preprocess")?.totalMs,
+		).toBe(6);
+		expect(
+			flow.stages.find((stage) => stage.stage === "planner-overhead")?.totalMs,
+		).toBe(14);
+		expect(
+			flow.stages.find((stage) => stage.stage === "message-service-overhead"),
+		).toBeUndefined();
+	});
 });
 
 describe("inference-timing ALS helpers", () => {

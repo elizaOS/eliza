@@ -7398,11 +7398,15 @@ export async function runV5MessageRuntimeStage1(args: {
 		}
 
 		if (messageHandler.processMessage === "RESPOND") {
-			const injectionGate = await runShouldRespondInjectionGate({
-				runtime: args.runtime,
-				message: args.message,
-				resolveSenderRole: () => senderRole,
-			});
+			const injectionGate = await timeInferenceSpan(
+				"evaluators:injection-risk-gate",
+				() =>
+					runShouldRespondInjectionGate({
+						runtime: args.runtime,
+						message: args.message,
+						resolveSenderRole: () => senderRole,
+					}),
+			);
 			if (injectionGate.blocked) {
 				args.runtime.logger.warn(
 					{
@@ -10935,6 +10939,7 @@ export class DefaultMessageService implements IMessageService {
 		let routedDecision: ContextRoutingDecision | null = null;
 		let strategyResult: StrategyResult | null = null;
 		let _usedV5Runtime = false;
+		let stage1RiskGateApplied = false;
 		const earlyReplyMessages: Memory[] = [];
 		const persistedEarlyReplyIds = new Set<string>();
 		const voiceResponseHandlerFastPath = isVoiceChannelMessage(message);
@@ -11076,20 +11081,25 @@ export class DefaultMessageService implements IMessageService {
 			}
 			try {
 				const [outcome] = await Promise.all([
-					runV5MessageRuntimeStage1({
-						runtime,
-						message,
-						state,
-						responseId,
-						...(callback ? { callback } : {}),
-						deliveredVisibleTexts,
-						onResponseHandlerEarlyReply: deliverResponseHandlerEarlyReply,
-					}),
-					runtime.applyPipelineHooks(
-						"parallel_with_should_respond",
-						parallelHookCtx,
+					timeInferenceSpan("message:planner", () =>
+						runV5MessageRuntimeStage1({
+							runtime,
+							message,
+							state,
+							responseId,
+							...(callback ? { callback } : {}),
+							deliveredVisibleTexts,
+							onResponseHandlerEarlyReply: deliverResponseHandlerEarlyReply,
+						}),
+					),
+					timeInferenceSpan("message:ingress:parallel-respond-hooks", () =>
+						runtime.applyPipelineHooks(
+							"parallel_with_should_respond",
+							parallelHookCtx,
+						),
 					),
 				]);
+				stage1RiskGateApplied = outcome.kind !== "terminal";
 				const routedContexts = outcome.messageHandler.plan.contexts;
 				routedDecision =
 					routedContexts.length > 0
@@ -11248,16 +11258,20 @@ export class DefaultMessageService implements IMessageService {
 		// to respond — escalate a borderline USER/GUEST message to a single
 		// TEXT_LARGE adjudication. OWNER/ADMIN bypass; benign traffic short-circuits
 		// before any model call. A blocked verdict suppresses the response.
-		if (shouldRespondToMessage) {
-			const injectionGate = await runShouldRespondInjectionGate({
-				runtime,
-				message,
-				// Per-turn role already resolved in handleMessage; fall back to a
-				// fresh lookup only outside a trajectory scope.
-				resolveSenderRole: () =>
-					getTrajectoryContext()?.userRole ??
-					resolveStage1SenderRole(runtime, message),
-			});
+		if (shouldRespondToMessage && !stage1RiskGateApplied) {
+			const injectionGate = await timeInferenceSpan(
+				"evaluators:injection-risk-gate",
+				() =>
+					runShouldRespondInjectionGate({
+						runtime,
+						message,
+						// Per-turn role already resolved in handleMessage; fall back to a
+						// fresh lookup only outside a trajectory scope.
+						resolveSenderRole: () =>
+							getTrajectoryContext()?.userRole ??
+							resolveStage1SenderRole(runtime, message),
+					}),
+			);
 			if (injectionGate.blocked) {
 				shouldRespondToMessage = false;
 				terminalDecision = null;
@@ -11473,57 +11487,53 @@ export class DefaultMessageService implements IMessageService {
 						// raw delivery error by identity (TURN_ABORTED / generation-
 						// timeout checks at the conversation route), so both failures
 						// are rethrown UNCHANGED after both operations settle.
-						let deliveryOutcome: PromiseSettledResult<unknown> = {
-							status: "fulfilled",
-							value: undefined,
-						};
-						if (callback) {
-							[deliveryOutcome] = await Promise.allSettled([
-								timeInferenceSpan("message:delivery:callback", () =>
+						const deliveryTask = callback
+							? timeInferenceSpan("message:delivery:callback", () =>
 									callback(deliverableResponseContent),
-								),
-							]);
-							if (deliveryOutcome.status === "fulfilled") {
-								markInference(INFERENCE_MARKS.replyDelivered);
-							}
-						}
-						const [persistOutcome] = await Promise.allSettled([
-							(async () => {
-								for (const responseMemory of responseMessages) {
-									if (
-										responseMemory.id &&
-										persistedEarlyReplyIds.has(responseMemory.id)
-									) {
-										continue;
-									}
-									responseMemory.content = deliverableResponseContent;
-									if (shouldSkipResponseMemoryPersistence(responseMemory)) {
-										runtime.logger.debug(
-											{ src: "service:message", memoryId: responseMemory.id },
-											"Skipping transient response memory persistence",
-										);
-										continue;
-									}
+								).then((value) => {
+									markInference(INFERENCE_MARKS.replyDelivered);
+									return value;
+								})
+							: Promise.resolve(undefined);
+						const persistTask = (async () => {
+							for (const responseMemory of responseMessages) {
+								if (
+									responseMemory.id &&
+									persistedEarlyReplyIds.has(responseMemory.id)
+								) {
+									continue;
+								}
+								responseMemory.content = deliverableResponseContent;
+								if (shouldSkipResponseMemoryPersistence(responseMemory)) {
 									runtime.logger.debug(
 										{ src: "service:message", memoryId: responseMemory.id },
-										"Saving response to memory",
+										"Skipping transient response memory persistence",
 									);
-									await timeInferenceSpan("message:delivery:persistence", () =>
-										runtime.createMemory(responseMemory, "messages"),
-									);
-									if (responseMemory.id) {
-										persistedResponseMessageIds.add(responseMemory.id);
-									}
-
-									detachPostDeliverySideEffect(runtime, "MESSAGE_SENT", () =>
-										this.emitMessageSent(
-											runtime,
-											responseMemory,
-											message.content.source ?? "messageHandler",
-										),
-									);
+									continue;
 								}
-							})(),
+								runtime.logger.debug(
+									{ src: "service:message", memoryId: responseMemory.id },
+									"Saving response to memory",
+								);
+								await timeInferenceSpan("message:delivery:persistence", () =>
+									runtime.createMemory(responseMemory, "messages"),
+								);
+								if (responseMemory.id) {
+									persistedResponseMessageIds.add(responseMemory.id);
+								}
+
+								detachPostDeliverySideEffect(runtime, "MESSAGE_SENT", () =>
+									this.emitMessageSent(
+										runtime,
+										responseMemory,
+										message.content.source ?? "messageHandler",
+									),
+								);
+							}
+						})();
+						const [deliveryOutcome, persistOutcome] = await Promise.allSettled([
+							deliveryTask,
+							persistTask,
 						]);
 						if (persistOutcome.status === "rejected") {
 							// The persist failure (data loss) outranks the delivery

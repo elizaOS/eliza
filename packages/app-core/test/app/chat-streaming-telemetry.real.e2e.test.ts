@@ -9,6 +9,8 @@ import { createServer, type Server, type ServerResponse } from "node:http";
 import { builtinModules, createRequire } from "node:module";
 import path from "node:path";
 import {
+  buildInferenceTimingDevPayload,
+  inferenceTimingRegistry,
   type ModelRegistrationMetadata,
   ModelType,
   stringToUuid,
@@ -330,6 +332,7 @@ let state: HarnessState | null = null;
 
 suite("chat streaming telemetry real e2e", () => {
   beforeAll(async () => {
+    inferenceTimingRegistry.reset();
     const harness = await listenHarness();
 
     const runtimeResult = await createTestRuntime({
@@ -657,16 +660,37 @@ suite("chat streaming telemetry real e2e", () => {
     const expectedAssistantStates = REPLY_TOKENS.map((_, index) =>
       REPLY_TOKENS.slice(0, index + 1).join(""),
     );
-    expect(assistantStates).toEqual(expectedAssistantStates);
-    let lastMutationIndex = -1;
-    for (const expectedText of expectedAssistantStates) {
-      const mutationIndex = browserTelemetry.mutations.findIndex(
-        ({ value }, index) =>
-          index > lastMutationIndex && value.includes(expectedText),
+    const stateProgression = assistantStates.map((text) =>
+      expectedAssistantStates.indexOf(text),
+    );
+    expect(stateProgression.every((index) => index >= 0)).toBe(true);
+    expect(
+      stateProgression.every(
+        (value, index) => index === 0 || value > stateProgression[index - 1],
+      ),
+    ).toBe(true);
+    expect(assistantStates.some((text) => text !== REPLY_TEXT)).toBe(true);
+    expect(assistantStates.at(-1)).toBe(REPLY_TEXT);
+
+    const mutationProgression = browserTelemetry.mutations
+      .map(({ value }) =>
+        expectedAssistantStates.findLastIndex((text) => value.includes(text)),
+      )
+      .filter(
+        (value, index, values) =>
+          value >= 0 && (index === 0 || value !== values[index - 1]),
       );
-      expect(mutationIndex).toBeGreaterThan(lastMutationIndex);
-      lastMutationIndex = mutationIndex;
-    }
+    expect(
+      mutationProgression.every(
+        (value, index) => index === 0 || value > mutationProgression[index - 1],
+      ),
+    ).toBe(true);
+    expect(
+      mutationProgression.some(
+        (index) => expectedAssistantStates[index] !== REPLY_TEXT,
+      ),
+    ).toBe(true);
+    expect(mutationProgression.at(-1)).toBe(expectedAssistantStates.length - 1);
 
     const finalUserState = finalSnapshot.find(
       (message) => message.role === "user",
@@ -682,6 +706,16 @@ suite("chat streaming telemetry real e2e", () => {
     }
 
     const startedAt = browserTelemetry.startedAt ?? 0;
+    const inferenceTelemetry = buildInferenceTimingDevPayload(10);
+    const chatTurn = inferenceTelemetry.turns.find(
+      (turn) => turn.label === "chat-request",
+    );
+    const chatFlow = inferenceTelemetry.flows.find(
+      (flow) => flow.turnId === chatTurn?.turnId,
+    );
+    expect(chatTurn).toBeDefined();
+    expect(chatFlow).toBeDefined();
+    expect(chatTurn?.byName["evaluators:injection-risk-gate"]?.count).toBe(1);
     const report = {
       tokenDelayConfiguredMs: TOKEN_DELAY_MS,
       provider: {
@@ -728,6 +762,11 @@ suite("chat streaming telemetry real e2e", () => {
       })),
       websocket: {
         messages: state.wsMessages,
+      },
+      inference: {
+        turn: chatTurn,
+        flow: chatFlow,
+        derivedHistograms: inferenceTelemetry.derivedHistograms,
       },
       equality: {
         provider: REPLY_TEXT,

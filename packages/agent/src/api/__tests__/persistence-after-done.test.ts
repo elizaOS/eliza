@@ -456,9 +456,10 @@ describe("conversation-routes streaming persistence ordering", () => {
     await handlerDone;
     expect(persistResolvedAt).not.toBeNull();
     const doneFrame = record.writes.find((w) => w.includes('"type":"done"'));
-    expect(doneFrame).toContain(
-      `"messageId":"${stringToUuid("persisted-assistant")}"`,
-    );
+    const routeOwnedAssistantId = vi.mocked(persistAssistantConversationMemory)
+      .mock.calls[0]?.[5];
+    expect(routeOwnedAssistantId).toBeDefined();
+    expect(doneFrame).toContain(`"messageId":"${routeOwnedAssistantId}"`);
     expect(doneFrame).toContain(
       `"userMessageId":"${stringToUuid("user-msg-store")}"`,
     );

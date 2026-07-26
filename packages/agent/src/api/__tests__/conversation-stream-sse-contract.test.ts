@@ -762,7 +762,10 @@ describe("conversation stream SSE contract (#10712)", () => {
     // the one returned by persistence; the user id is the already-committed
     // request memory.
     const doneMessageId = payloads[doneIndex].messageId;
-    expect(doneMessageId).toBe(stringToUuid("stream-contract-assistant"));
+    const routeOwnedAssistantId = vi.mocked(persistAssistantConversationMemory)
+      .mock.calls[0]?.[5];
+    expect(routeOwnedAssistantId).toBeDefined();
+    expect(doneMessageId).toBe(routeOwnedAssistantId);
     expect(payloads[doneIndex].userMessageId).toBe(
       stringToUuid("stream-contract-user-msg-store"),
     );
@@ -772,6 +775,7 @@ describe("conversation stream SSE contract (#10712)", () => {
       expect.objectContaining({ text: FINAL_TEXT }),
       ChannelType.DM,
       expect.any(Number),
+      routeOwnedAssistantId,
     );
     // `done` is terminal — no token frames after it.
     expect(

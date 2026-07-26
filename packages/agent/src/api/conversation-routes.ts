@@ -691,21 +691,18 @@ function findPersistedGeneratedAssistantTurn(
     return null;
   }
   const persistedIds = new Set(result.persistedResponseMessageIds);
-  for (let index = result.responseMessages.length - 1; index >= 0; index -= 1) {
-    const candidate = result.responseMessages[index];
-    if (
-      typeof candidate?.id !== "string" ||
-      candidate.id.length === 0 ||
-      !persistedIds.has(candidate.id) ||
-      candidate.entityId !== runtime.agentId ||
-      candidate.agentId !== runtime.agentId ||
-      candidate.roomId !== roomId
-    ) {
-      continue;
-    }
-    return { ...candidate, id: candidate.id as UUID };
+  const candidate = result.responseMessages.at(-1);
+  if (
+    typeof candidate?.id !== "string" ||
+    candidate.id.length === 0 ||
+    !persistedIds.has(candidate.id) ||
+    candidate.entityId !== runtime.agentId ||
+    candidate.agentId !== runtime.agentId ||
+    candidate.roomId !== roomId
+  ) {
+    return null;
   }
-  return null;
+  return { ...candidate, id: candidate.id as UUID };
 }
 
 class AssistantReplyPersistenceError extends Error {
@@ -3122,7 +3119,6 @@ export async function handleConversationRoutes(
             if (disconnectTracker.isAborted()) break;
             streamedText += chunk;
             tokenWriter.writeChunk(res, chunk, streamedText);
-            await new Promise((resolve) => setTimeout(resolve, 60));
           }
         }
         const visibleResolvedText =
