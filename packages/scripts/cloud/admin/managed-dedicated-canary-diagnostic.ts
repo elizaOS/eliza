@@ -9,8 +9,15 @@ import { chmodSync, readFileSync, writeFileSync } from "node:fs";
 type JsonRecord = Record<string, unknown>;
 
 const SUFFIX_PATTERN = /^r[1-9][0-9]{7,19}a[1-9][0-9]{0,3}$/;
-const UUID_PATTERN =
-  /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/i;
+const UUID_PATTERN_SOURCE =
+  "[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
+const UUID_PATTERN = new RegExp(`\\b${UUID_PATTERN_SOURCE}\\b`, "i");
+const EXCLUSIVE_LIFECYCLE_JOB_TYPE_PATTERN =
+  "agent_(?:provision|delete|suspend|resume|restart|downgrade|sleep|wake|upgrade|admin_canary_image)";
+const LIFECYCLE_JOB_CONFLICT_PATTERN = new RegExp(
+  `^Agent ${UUID_PATTERN_SOURCE} has conflicting ${EXCLUSIVE_LIFECYCLE_JOB_TYPE_PATTERN} job ${UUID_PATTERN_SOURCE}$`,
+  "i",
+);
 const FORBIDDEN_OUTPUT_PATTERN =
   /(?:https?:\/\/|(?:\d{1,3}\.){3}\d{1,3}|\b(?:token|secret|password|api[_-]?key)\b|managed-dedicated-canary-|sha256:)/i;
 
@@ -155,6 +162,9 @@ function classifyError(value: unknown, label: string): ErrorCode {
   }
   if (value === "Agent provisioning is in progress") {
     return "provisioning_in_progress";
+  }
+  if (LIFECYCLE_JOB_CONFLICT_PATTERN.test(value)) {
+    return "lifecycle_conflict";
   }
   if (/failed query:[\s\S]*delete from\s+"?agent_sandboxes"?/i.test(value)) {
     return "row_delete_failed";
