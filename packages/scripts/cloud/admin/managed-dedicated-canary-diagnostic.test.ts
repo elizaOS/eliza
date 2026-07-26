@@ -249,6 +249,40 @@ describe("managed dedicated canary diagnostic", () => {
     });
   });
 
+  test.each([
+    [
+      "Agent replacement cleanup is still pending",
+      "replacement_cleanup_pending",
+    ],
+    ["Agent provisioning is in progress", "provisioning_in_progress"],
+  ])(
+    "classifies the canonical delete lifecycle boundary: %s",
+    (message, expectedCode) => {
+      const input = failedDeleteInput();
+      const agent = input.agent as Record<string, unknown>;
+      const [job] = input.jobs as Record<string, unknown>[];
+      agent.errorMessage = `Deletion permanently failed after 3 attempts: ${message}`;
+      job.error = message;
+      job.result = {
+        containerStopped: false,
+        rowDeleted: false,
+        error: message,
+      };
+
+      const canonical = canonicalizeManagedDedicatedCanaryDiagnostic(
+        JSON.stringify(input),
+        SUFFIX,
+      );
+      const evidence = JSON.parse(canonical);
+      expect(evidence.sandbox.errorCode).toBe(expectedCode);
+      expect(evidence.jobs[0]).toMatchObject({
+        errorCode: expectedCode,
+        resultErrorCode: expectedCode,
+      });
+      expect(canonical).not.toContain(message);
+    },
+  );
+
   test("classifies row-delete failures without publishing the SQL text", () => {
     const input = failedDeleteInput();
     const agent = input.agent as Record<string, unknown>;
