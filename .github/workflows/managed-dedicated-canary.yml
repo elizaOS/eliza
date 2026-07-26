@@ -268,7 +268,6 @@ jobs:
     environment: staging
     timeout-minutes: 10
     env:
-      DATABASE_URL: ${{ secrets.DATABASE_URL }}
       CANARY_DIAGNOSTIC_SUFFIX: ${{ inputs.diagnose_stale_canary_suffix }}
       CANARY_RECOVERY_SUFFIX: ${{ inputs.stale_canary_suffix }}
       CANARY_DIAGNOSTIC_RAW_PATH: reports/managed-dedicated-canary-diagnostic.raw.json
@@ -290,6 +289,9 @@ jobs:
 
       - name: Query exact stale canary read-only
         shell: bash
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          PGOPTIONS: -c default_transaction_read_only=on -c statement_timeout=20000
         run: |
           set -euo pipefail
           if [[ ! "$CANARY_DIAGNOSTIC_SUFFIX" =~ ^r[1-9][0-9]{7,19}a[1-9][0-9]{0,3}$ ]]; then
@@ -334,29 +336,33 @@ jobs:
           ),
           newest_jobs AS (
             SELECT
-              jobs.status,
-              jobs.error,
-              CASE
-                WHEN jobs.result IS NULL THEN NULL
-                ELSE json_build_object(
-                  'containerStopped', jobs.result -> 'containerStopped',
-                  'rowDeleted', jobs.result -> 'rowDeleted',
-                  'error', jobs.result -> 'error'
-                )
-              END AS result,
-              jobs.attempts,
-              jobs.max_attempts AS "maxAttempts",
-              jobs.result_storage AS "resultStorage",
-              jobs.error_storage AS "errorStorage",
-              jobs.scheduled_for AS "scheduledFor",
-              jobs.started_at AS "startedAt",
-              jobs.completed_at AS "completedAt",
-              jobs.created_at AS "createdAt",
-              jobs.updated_at AS "updatedAt"
+              jobs.id AS sort_id,
+              jobs.created_at AS sort_created_at,
+              json_build_object(
+                'status', jobs.status,
+                'error', jobs.error,
+                'result', CASE
+                  WHEN jobs.result IS NULL THEN NULL
+                  ELSE json_build_object(
+                    'containerStopped', jobs.result -> 'containerStopped',
+                    'rowDeleted', jobs.result -> 'rowDeleted',
+                    'error', jobs.result -> 'error'
+                  )
+                END,
+                'attempts', jobs.attempts,
+                'maxAttempts', jobs.max_attempts,
+                'resultStorage', jobs.result_storage,
+                'errorStorage', jobs.error_storage,
+                'scheduledFor', jobs.scheduled_for,
+                'startedAt', jobs.started_at,
+                'completedAt', jobs.completed_at,
+                'createdAt', jobs.created_at,
+                'updatedAt', jobs.updated_at
+              ) AS diagnostic
             FROM jobs
             INNER JOIN target ON target.id::text = jobs.agent_id
             WHERE jobs.type = 'agent_delete'
-            ORDER BY jobs.created_at DESC
+            ORDER BY jobs.created_at DESC, jobs.id DESC
             LIMIT 3
           )
           SELECT json_build_object(
@@ -380,7 +386,10 @@ jobs:
             ),
             'jobs', COALESCE(
               (
-                SELECT json_agg(newest_jobs ORDER BY newest_jobs."createdAt" DESC)
+                SELECT json_agg(
+                  newest_jobs.diagnostic
+                  ORDER BY newest_jobs.sort_created_at DESC, newest_jobs.sort_id DESC
+                )
                 FROM newest_jobs
               ),
               '[]'::json
