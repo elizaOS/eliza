@@ -1770,25 +1770,40 @@ export class AgentSandboxesRepository {
     descriptor: AgentBackupChunkStagingDescriptor;
     snapshotType: AgentBackupSnapshotType;
   }): Promise<StoredAgentSandboxBackup> {
-    const [row] = await dbWrite
-      .insert(agentSandboxBackups)
-      .values({
-        id: params.descriptor.backupId,
-        sandbox_record_id: params.descriptor.sandboxRecordId,
-        snapshot_type: params.snapshotType,
-        snapshot_schema_version: 2,
-        state_data: EMPTY_BACKUP_STATE,
-        state_data_storage: "chunked-v2",
-        state_data_descriptor: params.descriptor,
-        storage_commit_state: "staging",
-        storage_commit_error: null,
-        storage_commit_updated_at: new Date(),
-        backup_kind: "full",
-        created_at: new Date(params.descriptor.createdAt),
-      })
-      .returning();
-    if (!row) throw new Error("Failed to create chunked backup staging row");
-    return row;
+    return await dbWrite.transaction(async (tx) => {
+      const [sandbox] = await tx
+        .select({ id: agentSandboxes.id })
+        .from(agentSandboxes)
+        .where(
+          and(
+            eq(agentSandboxes.id, params.descriptor.sandboxRecordId),
+            eq(agentSandboxes.organization_id, params.descriptor.organizationId),
+          ),
+        )
+        .limit(1);
+      if (!sandbox) {
+        throw new Error("Chunked backup sandbox does not belong to the requested organization");
+      }
+      const [row] = await tx
+        .insert(agentSandboxBackups)
+        .values({
+          id: params.descriptor.backupId,
+          sandbox_record_id: params.descriptor.sandboxRecordId,
+          snapshot_type: params.snapshotType,
+          snapshot_schema_version: 2,
+          state_data: EMPTY_BACKUP_STATE,
+          state_data_storage: "chunked-v2",
+          state_data_descriptor: params.descriptor,
+          storage_commit_state: "staging",
+          storage_commit_error: null,
+          storage_commit_updated_at: new Date(),
+          backup_kind: "full",
+          created_at: new Date(params.descriptor.createdAt),
+        })
+        .returning();
+      if (!row) throw new Error("Failed to create chunked backup staging row");
+      return row;
+    });
   }
 
   async updateChunkedBackupStaging(
@@ -1860,6 +1875,30 @@ export class AgentSandboxesRepository {
     return row;
   }
 
+  async assertChunkedBackupTenant(params: {
+    backupId: string;
+    organizationId: string;
+    sandboxRecordId: string;
+  }): Promise<void> {
+    const [row] = await dbWrite
+      .select({ id: agentSandboxBackups.id })
+      .from(agentSandboxBackups)
+      .innerJoin(agentSandboxes, eq(agentSandboxes.id, agentSandboxBackups.sandbox_record_id))
+      .where(
+        and(
+          eq(agentSandboxBackups.id, params.backupId),
+          eq(agentSandboxBackups.sandbox_record_id, params.sandboxRecordId),
+          eq(agentSandboxBackups.snapshot_schema_version, 2),
+          eq(agentSandboxBackups.state_data_storage, "chunked-v2"),
+          eq(agentSandboxes.organization_id, params.organizationId),
+        ),
+      )
+      .limit(1);
+    if (!row) {
+      throw new Error(`Chunked backup ${params.backupId} is not bound to the requested tenant`);
+    }
+  }
+
   async failChunkedBackup(
     backupId: string,
     descriptor: AgentBackupChunkStagingDescriptor,
@@ -1921,12 +1960,26 @@ export class AgentSandboxesRepository {
 
   async claimPrunableChunkedBackups(
     sandboxRecordId: string,
+    organizationId: string,
     keep: number,
   ): Promise<StoredAgentSandboxBackup[]> {
     if (!Number.isSafeInteger(keep) || keep < 0) {
       throw new Error("Backup retention count must be a non-negative integer");
     }
     return await dbWrite.transaction(async (tx) => {
+      const [sandbox] = await tx
+        .select({ id: agentSandboxes.id })
+        .from(agentSandboxes)
+        .where(
+          and(
+            eq(agentSandboxes.id, sandboxRecordId),
+            eq(agentSandboxes.organization_id, organizationId),
+          ),
+        )
+        .limit(1);
+      if (!sandbox) {
+        throw new Error("Chunked backup sandbox does not belong to the requested organization");
+      }
       const all = await tx
         .select()
         .from(agentSandboxBackups)

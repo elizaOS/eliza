@@ -48,6 +48,11 @@ interface AgentBackupV2StorageRepository {
     verifiedAt: Date;
   }): Promise<StoredAgentSandboxBackup>;
   getChunkedBackupById(backupId: string): Promise<StoredAgentSandboxBackup | undefined>;
+  assertChunkedBackupTenant(params: {
+    backupId: string;
+    organizationId: string;
+    sandboxRecordId: string;
+  }): Promise<void>;
   failChunkedBackup(
     backupId: string,
     descriptor: AgentBackupChunkStagingDescriptor,
@@ -59,6 +64,7 @@ interface AgentBackupV2StorageRepository {
   ): Promise<StoredAgentSandboxBackup[]>;
   claimPrunableChunkedBackups(
     sandboxRecordId: string,
+    organizationId: string,
     keep: number,
   ): Promise<StoredAgentSandboxBackup[]>;
   deleteIncompleteChunkedBackup(backupId: string): Promise<boolean>;
@@ -200,9 +206,11 @@ function assertCompleteObjectKeys(descriptor: AgentBackupChunkCompleteDescriptor
 }
 
 async function removePlannedObjects(
+  row: StoredAgentSandboxBackup,
   descriptor: AgentBackupChunkStagingDescriptor,
   dependencies: AgentBackupV2StorageDependencies,
 ): Promise<void> {
+  await assertTenantBoundDescriptor(row, descriptor, dependencies);
   assertPlannedObjectKeys(descriptor);
   const failures: string[] = [];
   for (const key of [...descriptor.plannedObjectKeys].reverse()) {
@@ -218,9 +226,11 @@ async function removePlannedObjects(
 }
 
 async function removeCompleteObjects(
+  row: StoredAgentSandboxBackup,
   descriptor: AgentBackupChunkCompleteDescriptor,
   dependencies: AgentBackupV2StorageDependencies,
 ): Promise<void> {
+  await assertTenantBoundDescriptor(row, descriptor, dependencies);
   assertCompleteObjectKeys(descriptor);
   const failures: string[] = [];
   for (const chunk of [...descriptor.chunks].reverse()) {
@@ -233,6 +243,21 @@ async function removeCompleteObjects(
   if (failures.length > 0) {
     throw new Error(`Failed to remove pruned backup objects: ${failures.join("; ")}`);
   }
+}
+
+async function assertTenantBoundDescriptor(
+  row: StoredAgentSandboxBackup,
+  descriptor: AgentBackupChunkStagingDescriptor | AgentBackupChunkCompleteDescriptor,
+  dependencies: AgentBackupV2StorageDependencies,
+): Promise<void> {
+  if (descriptor.backupId !== row.id || descriptor.sandboxRecordId !== row.sandbox_record_id) {
+    throw new Error(`Backup ${row.id} descriptor is not bound to its database row`);
+  }
+  await dependencies.repository.assertChunkedBackupTenant({
+    backupId: row.id,
+    organizationId: descriptor.organizationId,
+    sandboxRecordId: row.sandbox_record_id,
+  });
 }
 
 export class AgentBackupV2StorageService {
@@ -327,7 +352,7 @@ export class AgentBackupV2StorageService {
         );
       }
       try {
-        await removePlannedObjects(failed, this.dependencies);
+        await removePlannedObjects(failedRow, failed, this.dependencies);
         await this.dependencies.repository.deleteIncompleteChunkedBackup(identity.backupId);
       } catch (cleanupError) {
         throw new Error(
@@ -362,9 +387,9 @@ export class AgentBackupV2StorageService {
           row.storage_commit_state === "cleanup-pending" &&
           descriptor?.commitState === "complete"
         ) {
-          await removeCompleteObjects(descriptor, this.dependencies);
+          await removeCompleteObjects(row, descriptor, this.dependencies);
         } else {
-          await removePlannedObjects(requireStagingDescriptor(row), this.dependencies);
+          await removePlannedObjects(row, requireStagingDescriptor(row), this.dependencies);
         }
         if (await this.dependencies.repository.deleteIncompleteChunkedBackup(row.id)) {
           deleted += 1;
@@ -385,14 +410,16 @@ export class AgentBackupV2StorageService {
   }
 
   async prune(params: {
+    organizationId: string;
     sandboxRecordId: string;
     keep: number;
   }): Promise<{ legacyDeleted: number; chunkedDeleted: number; chunkedPending: number }> {
-    const legacyDeleted = await this.dependencies.repository.pruneBackups(
+    const rows = await this.dependencies.repository.claimPrunableChunkedBackups(
       params.sandboxRecordId,
+      params.organizationId,
       params.keep,
     );
-    const rows = await this.dependencies.repository.claimPrunableChunkedBackups(
+    const legacyDeleted = await this.dependencies.repository.pruneBackups(
       params.sandboxRecordId,
       params.keep,
     );
@@ -404,7 +431,7 @@ export class AgentBackupV2StorageService {
         if (!descriptor || descriptor.commitState !== "complete") {
           throw new Error(`Prunable backup ${row.id} has an invalid complete descriptor`);
         }
-        await removeCompleteObjects(descriptor, this.dependencies);
+        await removeCompleteObjects(row, descriptor, this.dependencies);
         if (await this.dependencies.repository.deleteIncompleteChunkedBackup(row.id)) {
           chunkedDeleted += 1;
         } else {
@@ -426,10 +453,10 @@ export class AgentBackupV2StorageService {
 
 export const agentBackupV2StorageService = new AgentBackupV2StorageService();
 
-export function readStoredChunkedBackup(params: {
+export async function readStoredChunkedBackup(params: {
   organizationId: string;
   row: StoredAgentSandboxBackup;
-}): AsyncIterable<Uint8Array> {
+}): Promise<AsyncIterable<Uint8Array>> {
   const descriptor = params.row.state_data_descriptor;
   if (
     params.row.snapshot_schema_version !== 2 ||
@@ -441,6 +468,11 @@ export function readStoredChunkedBackup(params: {
   ) {
     throw new Error(`Backup ${params.row.id} is not a complete schema-v2 restore point`);
   }
+  await agentSandboxesRepository.assertChunkedBackupTenant({
+    backupId: params.row.id,
+    organizationId: params.organizationId,
+    sandboxRecordId: params.row.sandbox_record_id,
+  });
   const identity: AgentBackupChunkIdentity = {
     organizationId: params.organizationId,
     sandboxRecordId: params.row.sandbox_record_id,
