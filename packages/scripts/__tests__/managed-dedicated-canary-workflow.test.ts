@@ -65,6 +65,15 @@ describe("managed dedicated staging canary workflow (#16194)", () => {
   test("is maintainer-triggered or scheduled, staging-only, serialized, and never uses Hetzner credentials", () => {
     expect(workflow.on?.schedule).toBeDefined();
     expect(workflow.on?.workflow_dispatch).toBeDefined();
+    expect(workflow.on?.workflow_dispatch).toMatchObject({
+      inputs: {
+        stale_canary_suffix: {
+          required: false,
+          type: "string",
+          default: "",
+        },
+      },
+    });
     expect(workflow.on?.pull_request).toEqual({ types: ["labeled"] });
     expect(workflow.on?.push).toBeUndefined();
     expect(job?.if).toContain("run-managed-dedicated-canary");
@@ -72,6 +81,9 @@ describe("managed dedicated staging canary workflow (#16194)", () => {
     expect(job?.["timeout-minutes"]).toBe(45);
     expect(job?.env?.CLOUD_DEDICATED_CANARY_BASE_URL).toBe(
       "https://api-staging.elizacloud.ai",
+    );
+    expect(job?.env?.CLOUD_DEDICATED_CANARY_STALE_CANARY_SUFFIX).toBe(
+      "$" + "{{ inputs.stale_canary_suffix || '' }}",
     );
     expect(workflow.concurrency).toEqual({
       group: "managed-dedicated-staging-canary",
@@ -146,6 +158,20 @@ describe("managed dedicated staging canary workflow (#16194)", () => {
     expect(step("Run bounded managed dedicated canary").run).toContain(
       "managed-dedicated-canary.ts",
     );
+  });
+
+  test("binds workflow recovery intent to the independently validated artifact", () => {
+    const intent = step("Bind stale-recovery intent");
+    expect(intent.id).toBe("recovery_intent");
+    expect(intent.run).toContain("requested=${requested");
+    expect(intent.run).not.toContain("console.log(raw)");
+    const enforce = step("Enforce live proof, deployed SHA, and cleanup");
+    expect(enforce.env?.EXPECTED_RECOVERY_REQUESTED).toBe(
+      "$" + "{{ steps.recovery_intent.outputs.requested }}",
+    );
+    expect(enforce.run).toContain("workflow_recovery_intent_mismatch");
+    expect(enforce.run).toContain("evidence.recovery.performed");
+    expect(enforce.run).toContain("evidence.recovery.confirmed");
   });
 
   test("makes missing evidence, zero paths, cleanup failure, and stale deploy ancestry red", () => {
@@ -243,6 +269,7 @@ describe("managed dedicated staging canary workflow (#16194)", () => {
     for (const name of [
       "Require real Cloud credential",
       "Require exact staging target",
+      "Bind stale-recovery intent",
       "Validate canary and failure contracts",
       "Run bounded managed dedicated canary",
       "Validate privacy-safe evidence artifact",

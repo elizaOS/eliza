@@ -14,7 +14,19 @@
  */
 
 import { ElizaError } from "@elizaos/core";
-import { and, desc, eq, inArray, isNotNull, ne, type SQL, sql } from "drizzle-orm";
+import {
+  and,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  ne,
+  notInArray,
+  or,
+  type SQL,
+  sql,
+} from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
 import { dbWrite } from "../../db/helpers";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
@@ -26,6 +38,7 @@ import {
   prepareJobInsertData,
 } from "../../db/repositories/jobs";
 import {
+  type AgentExecutionTier,
   agentSandboxes,
   UPGRADE_FAILURE_TARGET_MARKER_PREFIX,
 } from "../../db/schemas/agent-sandboxes";
@@ -713,6 +726,9 @@ export interface EnqueueAgentSnapshotResult {
 
 interface LifecycleSandboxRow {
   id: string;
+  agent_name: string | null;
+  created_at: Date;
+  execution_tier: AgentExecutionTier;
   status: string;
   updated_at: Date | null;
   claimed_at: Date | null;
@@ -730,6 +746,7 @@ interface LifecycleSandboxRow {
   image_digest: string | null;
   previous_docker_image: string | null;
   previous_image_digest: string | null;
+  replacement_cleanup_sandbox_id: string | null;
   deletion_attempt_id: string | null;
   deletion_started_at: Date | null;
 }
@@ -858,6 +875,13 @@ export const PER_JOB_TIMEOUT_MS = parsePositiveIntEnv(
  */
 const DEFAULT_STALE_JOB_THRESHOLD_MS = 5 * 60 * 1000;
 const COLD_BOOT_STALE_JOB_THRESHOLD_MS = 15 * 60 * 1000;
+/**
+ * Conditional deletion waits this long after a claimed lifecycle job leaves
+ * an active state. The outer job timeout is a promise race and cannot abort
+ * its underlying bounded SSH/HTTP work, so a recent `failed`, `cancelled`, or
+ * retry-pending row is not proof that execution is quiescent.
+ */
+const DELETE_DETACHED_EXECUTION_QUIESCENCE_MS = COLD_BOOT_STALE_JOB_THRESHOLD_MS;
 const COLD_BOOT_JOB_TYPES: ReadonlySet<ProvisioningJobType> = new Set([
   JOB_TYPES.AGENT_PROVISION,
   JOB_TYPES.AGENT_RESUME,
@@ -1071,6 +1095,9 @@ export class ProvisioningJobService {
     const [sandbox] = await tx
       .select({
         id: agentSandboxes.id,
+        agent_name: agentSandboxes.agent_name,
+        created_at: agentSandboxes.created_at,
+        execution_tier: agentSandboxes.execution_tier,
         status: agentSandboxes.status,
         updated_at: agentSandboxes.updated_at,
         claimed_at: agentSandboxes.claimed_at,
@@ -1335,7 +1362,17 @@ export class ProvisioningJobService {
     organizationId: string;
     userId: string;
     webhookUrl?: string;
+    expectedIdentity?: {
+      agentName: string;
+      createdAt: Date | string;
+      executionTier: AgentExecutionTier;
+    };
   }): Promise<EnqueueAgentDeleteResult> {
+    const expectedIdentity = params.expectedIdentity;
+    const expectedCreatedAt = expectedIdentity ? new Date(expectedIdentity.createdAt) : null;
+    if (expectedCreatedAt && !Number.isFinite(expectedCreatedAt.getTime())) {
+      throw new ApiError(400, "validation_error", "Expected agent creation timestamp is invalid");
+    }
     return this.enqueueLifecycleJob<AgentDeleteJobData>({
       jobType: JOB_TYPES.AGENT_DELETE,
       jobData: {
@@ -1353,6 +1390,21 @@ export class ProvisioningJobService {
       // sub-second. 30s matches docker-sandbox-provider.stop() timeout.
       estimatedDurationMs: 30_000,
       logName: "agent_delete",
+      validateSandbox: expectedIdentity
+        ? (sandbox) => {
+            if (
+              sandbox.agent_name !== expectedIdentity.agentName ||
+              sandbox.created_at.getTime() !== expectedCreatedAt?.getTime() ||
+              sandbox.execution_tier !== expectedIdentity.executionTier
+            ) {
+              throw new ApiError(
+                409,
+                "session_not_ready",
+                "Agent identity changed before deletion",
+              );
+            }
+          }
+        : undefined,
       // Flip status so the UI shows "deleting" and concurrent mutations
       // bail. Actual row removal happens in executeAgentDelete once SSH
       // stop() succeeds.
@@ -1362,8 +1414,80 @@ export class ProvisioningJobService {
           (sandbox.warm_claim_credential_state === "pending" ||
             sandbox.warm_claim_credential_state === "attested")
         ) {
-          throw new Error("Warm-claim credential handoff is still in progress");
+          throw new ApiError(
+            409,
+            "session_not_ready",
+            "Warm-claim credential handoff is still in progress",
+          );
         }
+        const quiescentBefore = new Date(Date.now() - DELETE_DETACHED_EXECUTION_QUIESCENCE_MS);
+
+        // Pending work that was never claimed is safe to cancel. A retry row
+        // keeps started_at from its prior claim, so it is cancelled only after
+        // the detached-work window proves the old execution has drained.
+        const cancelled = await tx
+          .update(jobs)
+          .set({ status: "cancelled", updated_at: new Date() })
+          .where(
+            and(
+              eq(jobs.organization_id, params.organizationId),
+              eq(jobs.agent_id, params.agentId),
+              ne(jobs.type, JOB_TYPES.AGENT_DELETE),
+              eq(jobs.status, "pending"),
+              or(isNull(jobs.started_at), sql`${jobs.updated_at} < ${quiescentBefore}`),
+            ),
+          )
+          .returning({ id: jobs.id });
+
+        // Never overwrite an active execution claim. Recent terminal rows for
+        // exclusive lifecycle work also remain fenced because withTimeout()
+        // releases only the awaiter; the underlying bounded operation may
+        // still be writing placement, key, or container state.
+        const [conflict] = await tx
+          .select({
+            id: jobs.id,
+            type: jobs.type,
+            status: jobs.status,
+          })
+          .from(jobs)
+          .where(
+            and(
+              eq(jobs.organization_id, params.organizationId),
+              eq(jobs.agent_id, params.agentId),
+              ne(jobs.type, JOB_TYPES.AGENT_DELETE),
+              or(
+                eq(jobs.status, "in_progress"),
+                and(eq(jobs.status, "pending"), isNotNull(jobs.started_at)),
+                and(
+                  inArray(jobs.type, [...EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES]),
+                  sql`${jobs.status} IN ('failed', 'cancelled')`,
+                  isNotNull(jobs.started_at),
+                  sql`${jobs.updated_at} >= ${quiescentBefore}`,
+                  cancelled.length > 0
+                    ? notInArray(
+                        jobs.id,
+                        cancelled.map((job) => job.id),
+                      )
+                    : undefined,
+                ),
+              ),
+            ),
+          )
+          .orderBy(desc(jobs.updated_at))
+          .limit(1);
+        if (conflict) {
+          throw new ApiError(
+            409,
+            "session_not_ready",
+            `Agent ${params.agentId} has non-quiescent ${conflict.type} job ${conflict.id}`,
+            {
+              conflictingJobId: conflict.id,
+              conflictingJobType: conflict.type,
+              conflictingJobStatus: conflict.status,
+            },
+          );
+        }
+
         // A genuine user-initiated delete (the row is not already in a deletion
         // state) starts the deletion-failure counter fresh — error_count may
         // carry a stale provisioning-error value, and a new delete should get a
@@ -1382,7 +1506,20 @@ export class ProvisioningJobService {
           isRecoveryReEnqueue && sandbox.deletion_attempt_id
             ? sandbox.deletion_attempt_id
             : crypto.randomUUID();
-        await tx
+        const identityPredicates =
+          expectedIdentity && expectedCreatedAt
+            ? [
+                eq(agentSandboxes.agent_name, expectedIdentity.agentName),
+                sql`${agentSandboxes.created_at} >= ${expectedCreatedAt}
+                AND ${agentSandboxes.created_at} < ${new Date(expectedCreatedAt.getTime() + 1)}`,
+                eq(agentSandboxes.execution_tier, expectedIdentity.executionTier),
+                isNull(agentSandboxes.deleted_at),
+                isNull(agentSandboxes.replacement_cleanup_sandbox_id),
+                sql`COALESCE(${agentSandboxes.warm_claim_credential_state}, '')
+                NOT IN ('pending', 'attested')`,
+              ]
+            : [];
+        const owned = await tx
           .update(agentSandboxes)
           .set({
             status: "deletion_pending" as const,
@@ -1394,34 +1531,27 @@ export class ProvisioningJobService {
             ...(isRecoveryReEnqueue ? {} : { error_count: 0 }),
             updated_at: new Date(),
           })
-          .where(eq(agentSandboxes.id, params.agentId));
-
-        // Cancel any OTHER lifecycle jobs still queued for this agent. Delete
-        // wins: a pending restart/wake/resume/etc. that runs after the row is
-        // flipped to deletion_pending (or deleted) would either re-provision a
-        // container we are tearing down or fail noisily. Marking them
-        // `cancelled` (a terminal status claimPendingJobs/recoverStaleJobs
-        // never touch) drops them cleanly and keeps them auditable. The
-        // agent_delete row itself is inserted right after this and is excluded
-        // by type, so it is never self-cancelled.
-        const cancelled = await tx
-          .update(jobs)
-          .set({ status: "cancelled", updated_at: new Date() })
           .where(
             and(
-              eq(jobs.organization_id, params.organizationId),
-              eq(jobs.agent_id, params.agentId),
-              ne(jobs.type, JOB_TYPES.AGENT_DELETE),
-              sql`${jobs.status} IN ('pending', 'in_progress')`,
+              eq(agentSandboxes.id, params.agentId),
+              eq(agentSandboxes.organization_id, params.organizationId),
+              ...identityPredicates,
             ),
           )
-          .returning({ id: jobs.id });
+          .returning({ id: agentSandboxes.id });
+        if (owned.length !== 1) {
+          throw new ApiError(409, "session_not_ready", "Agent identity changed before deletion");
+        }
+
         if (cancelled.length > 0) {
-          logger.info("[provisioning-jobs] Cancelled pending jobs superseded by agent_delete", {
-            agentId: params.agentId,
-            orgId: params.organizationId,
-            cancelledCount: cancelled.length,
-          });
+          logger.info(
+            "[provisioning-jobs] Cancelled quiescent pending jobs superseded by agent_delete",
+            {
+              agentId: params.agentId,
+              orgId: params.organizationId,
+              cancelledCount: cancelled.length,
+            },
+          );
         }
       },
     });

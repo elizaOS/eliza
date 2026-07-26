@@ -1,7 +1,7 @@
 /**
  * Enqueue-side delete-lifecycle hardening for ProvisioningJobService:
- *   - enqueueAgentDeleteOnce.beforeInsert cancels the agent's OTHER pending /
- *     in_progress lifecycle jobs (delete wins; never self-cancels the delete).
+ *   - enqueueAgentDeleteOnce.beforeInsert cancels only quiescent pending jobs
+ *     and never self-cancels the delete.
  *   - enqueueScheduledBackups only enqueues reachable (bridge_url IS NOT NULL)
  *     running, non-pool agents — idle agents never get an auto snapshot job.
  *   - reEnqueueFailedDeletions re-arms old `deletion_failed` rows by enqueuing a
@@ -34,7 +34,7 @@ const realOutboundUrlExports = { ...realOutboundUrl };
 
 // ---- captured query state ----
 let capturedSelectWhere: SQL | undefined;
-let capturedUpdateWhere: SQL | undefined;
+let capturedCancellationWhere: SQL | undefined;
 let selectRows: unknown[] = [];
 let cancelledReturning: Array<{ id: string }> = [];
 
@@ -64,11 +64,20 @@ const txSelect = mock(() => {
   } as Record<string, unknown>;
   return chain;
 });
-const txUpdateWhere = mock((clause: SQL) => {
-  capturedUpdateWhere = clause;
-  return { returning: mock(async () => cancelledReturning) };
-});
-const txUpdateSet = mock(() => ({ where: txUpdateWhere }));
+const txUpdateSet = mock((values: { status?: string }) => ({
+  where: mock((clause: SQL) => {
+    if (values.status === "cancelled") {
+      capturedCancellationWhere = clause;
+    }
+    const rows =
+      values.status === "deletion_pending"
+        ? [{ id: "agent" }]
+        : values.status === "cancelled"
+          ? cancelledReturning
+          : [];
+    return { returning: mock(async () => rows) };
+  }),
+}));
 const txUpdate = mock(() => ({ set: txUpdateSet }));
 const txInsertValues = mock(() => ({
   returning: mock(async () => [{ id: "job-1", type: "agent_delete", status: "pending", data: {} }]),
@@ -125,7 +134,7 @@ mock.module("../../db/repositories/jobs", () => ({
 
 afterEach(() => {
   capturedSelectWhere = undefined;
-  capturedUpdateWhere = undefined;
+  capturedCancellationWhere = undefined;
   selectRows = [];
   cancelledReturning = [];
   txSelectCall = 0;
@@ -138,7 +147,7 @@ afterAll(() => {
 });
 
 describe("enqueueAgentDeleteOnce.beforeInsert — cancels other pending jobs", () => {
-  test("marks the agent's non-delete pending/in_progress jobs cancelled", async () => {
+  test("marks only the agent's quiescent non-delete pending jobs cancelled", async () => {
     cancelledReturning = [{ id: "j-restart" }, { id: "j-snapshot" }];
     const orgId = "22222222-2222-4222-8222-222222222222";
     const agentId = "agent";
@@ -159,18 +168,19 @@ describe("enqueueAgentDeleteOnce.beforeInsert — cancels other pending jobs", (
     expect(cancelSet).toBeDefined();
 
     // The cancel WHERE is scoped to this org AND this agent, excludes
-    // agent_delete (delete never self-cancels), and only touches
-    // pending/in_progress rows (terminal jobs are never reopened). Asserting the
-    // scoping prevents a future edit from cancelling sibling agents' or other
-    // orgs' jobs.
-    if (!capturedUpdateWhere) throw new Error("cancel WHERE clause was not captured");
-    const sql = new PgDialect().sqlToQuery(capturedUpdateWhere);
-    // Status filter: only pending/in_progress, never a terminal status.
-    expect(sql.sql).toContain("pending");
-    expect(sql.sql).toContain("in_progress");
-    expect(sql.sql).not.toContain("completed");
-    expect(sql.sql).not.toContain("cancelled");
-    expect(sql.sql).not.toContain("failed");
+    // agent_delete (delete never self-cancels), and only touches pending rows
+    // whose execution is provably quiescent. Asserting the scoping prevents a
+    // future edit from cancelling sibling agents' or other orgs' jobs.
+    if (!capturedCancellationWhere) {
+      throw new Error("cancel WHERE clause was not captured");
+    }
+    const sql = new PgDialect().sqlToQuery(capturedCancellationWhere);
+    expect(sql.sql).toContain("started_at");
+    expect(sql.params).toContain("pending");
+    expect(sql.params).not.toContain("in_progress");
+    expect(sql.params).not.toContain("completed");
+    expect(sql.params).not.toContain("cancelled");
+    expect(sql.params).not.toContain("failed");
     // Type filter: excludes agent_delete (the != operator + the bound value).
     expect(sql.sql).toMatch(/<>|!=|not/i);
     expect(sql.params).toContain("agent_delete");

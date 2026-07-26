@@ -21,6 +21,18 @@ disposable identity row to leak or clean separately.
   Provision/readiness and cleanup use shared absolute deadlines; the workflow
   caps control-plane calls at 30 seconds and has a 45-minute hard cap that
   leaves room for `finally` cleanup.
+- A maintainer may recover one investigated leftover by dispatching with its
+  exact deterministic suffix (`r<run-id>a<attempt>`). Recovery requires exactly
+  one prefix match, verifies ID, full name, creation timestamp, and
+  `dedicated-always` tier with a fresh GET, then sends those immutable identity
+  fields through the normal authenticated DELETE/job path. The lifecycle
+  transaction rechecks them under the per-agent lock and atomically refuses
+  replacement-cleanup, active warm-claim, and non-quiescent lifecycle-work
+  fences. A final 404 is required before the fresh canary can be created.
+  Invalid, absent, mismatched, shared-tier, active, or multiple identities fail
+  closed without deleting anything. The privacy-safe artifact records only
+  requested/match/accepted-or-ambiguous/confirmed state; it never records the
+  suffix, name, IDs, timestamps, or job IDs.
 - Create sends top-level `alwaysOn: true`, `forceCreate: true`, and
   `autoProvision: true`. The returned and final tier must both be
   `dedicated-always`.
@@ -31,8 +43,10 @@ disposable identity row to leak or clean separately.
   Each path has at most two attempts (four top-level chat requests total). Canned,
   fallback, degraded, echo, wrong-transport, missing-token, and incomplete SSE
   responses are red.
-- `finally` re-reads and matches both the in-memory ID and unique name before
-  deleting. An asynchronous delete job is polled and a final `404` is required.
+- `finally` waits for the known provision job to complete, then re-reads and
+  matches the in-memory ID, unique name, tier, and creation timestamp before
+  deleting. It never deletes over an active or recently detached lifecycle
+  execution. An asynchronous delete job is polled and a final `404` is required.
   Cleanup failure overrides any earlier pass.
 - If the create POST may have committed before its response was lost, the
   canary retries exact-name discovery within both a wall-clock and attempt cap.

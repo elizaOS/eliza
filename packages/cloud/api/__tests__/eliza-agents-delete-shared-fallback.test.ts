@@ -1,3 +1,7 @@
+/**
+ * Verifies that agent DELETE requests preserve synchronous shared cleanup while
+ * routing dedicated and failed shared teardown through the delete-wins queue.
+ */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
 
@@ -121,15 +125,21 @@ function sharedAgent(overrides: Record<string, unknown> = {}) {
   };
 }
 
-async function deleteRequest() {
+async function deleteRequest(body?: Record<string, unknown> | string) {
   return app.fetch(
     new Request("https://api.example.test/api/v1/eliza/agents/agent-1", {
       method: "DELETE",
+      ...(body !== undefined
+        ? {
+            headers: { "content-type": "application/json" },
+            body: typeof body === "string" ? body : JSON.stringify(body),
+          }
+        : {}),
     }),
   );
 }
 
-describe("DELETE /api/v1/eliza/agents/:agentId shared-runtime fallback", () => {
+describe("DELETE /api/v1/eliza/agents/:agentId", () => {
   beforeEach(() => {
     requireUserOrApiKeyWithOrg.mockClear();
     getAgent.mockReset();
@@ -173,6 +183,91 @@ describe("DELETE /api/v1/eliza/agents/:agentId shared-runtime fallback", () => {
       expect.stringContaining("falling back to async delete job"),
       expect.objectContaining({ agentId: "agent-1", orgId: "org-1" }),
     );
+  });
+
+  test("preserves the normal provisioning conflict without an identity precondition", async () => {
+    getAgent.mockResolvedValueOnce(
+      sharedAgent({
+        status: "provisioning",
+        execution_tier: "dedicated-always",
+      }),
+    );
+
+    const response = await deleteRequest();
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      error: "Agent provisioning is in progress",
+    });
+    expect(enqueueAgentDeleteOnce).not.toHaveBeenCalled();
+  });
+
+  test("treats a whitespace-only body as the legacy no-body delete", async () => {
+    getAgent.mockResolvedValueOnce(
+      sharedAgent({
+        status: "provisioning",
+        execution_tier: "dedicated-always",
+      }),
+    );
+
+    const response = await deleteRequest(" \n\t ");
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      error: "Agent provisioning is in progress",
+    });
+    expect(enqueueAgentDeleteOnce).not.toHaveBeenCalled();
+  });
+
+  test("lets the delete-wins queue retire an exact conditionally matched provisioning agent", async () => {
+    getAgent.mockResolvedValueOnce(
+      sharedAgent({
+        status: "provisioning",
+        execution_tier: "dedicated-always",
+      }),
+    );
+
+    const response = await deleteRequest({
+      expectedAgentName: "Canary Agent",
+      expectedCreatedAt: "2026-07-07T08:00:00.000Z",
+      expectedExecutionTier: "dedicated-always",
+    });
+
+    expect(response.status).toBe(202);
+    await expect(response.json()).resolves.toMatchObject({
+      success: true,
+      created: true,
+      data: {
+        jobId: "delete-job-1",
+        agentId: "agent-1",
+        status: "pending",
+      },
+    });
+    expect(deleteAgent).not.toHaveBeenCalled();
+    expect(enqueueAgentDeleteOnce).toHaveBeenCalledWith({
+      agentId: "agent-1",
+      organizationId: "org-1",
+      userId: "user-1",
+      expectedIdentity: {
+        agentName: "Canary Agent",
+        createdAt: "2026-07-07T08:00:00.000Z",
+        executionTier: "dedicated-always",
+      },
+    });
+    expect(triggerImmediate).toHaveBeenCalledTimes(1);
+  });
+
+  test("rejects an invalid conditional delete before queueing", async () => {
+    const response = await deleteRequest({
+      expectedAgentName: "Canary Agent",
+      expectedCreatedAt: "not-a-timestamp",
+      expectedExecutionTier: "dedicated-always",
+    });
+
+    expect(response.status).toBe(400);
+    expect(enqueueAgentDeleteOnce).not.toHaveBeenCalled();
   });
 
   test("still returns terminal sync errors without queueing a doomed delete", async () => {
