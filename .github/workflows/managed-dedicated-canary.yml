@@ -309,7 +309,11 @@ jobs:
 
           mkdir -p reports
           umask 077
-          psql "$DATABASE_URL" \
+          PSQL_DATABASE_URL="$(
+            bun packages/scripts/cloud/admin/libpq-connection-url.ts
+          )"
+          echo "::add-mask::$PSQL_DATABASE_URL"
+          psql "$PSQL_DATABASE_URL" \
             --no-psqlrc \
             --no-align \
             --tuples-only \
