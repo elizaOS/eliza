@@ -13,6 +13,7 @@ import type {
   AgentBackupChunkStagingDescriptor,
   AgentBackupSnapshotType,
   StoredAgentSandboxBackup,
+  StoredAgentSandboxBackupCleanupIntent,
 } from "../../db/schemas/agent-sandboxes";
 import { deleteObject } from "../storage/object-store";
 import { logger } from "../utils/logger";
@@ -62,6 +63,11 @@ interface AgentBackupV2StorageRepository {
     before: Date,
     limit: number,
   ): Promise<StoredAgentSandboxBackup[]>;
+  listBackupObjectCleanupIntentsBefore(
+    before: Date,
+    limit: number,
+  ): Promise<StoredAgentSandboxBackupCleanupIntent[]>;
+  deleteBackupObjectCleanupIntent(backupId: string): Promise<boolean>;
   claimPrunableChunkedBackups(
     sandboxRecordId: string,
     organizationId: string,
@@ -211,6 +217,13 @@ async function removePlannedObjects(
   dependencies: AgentBackupV2StorageDependencies,
 ): Promise<void> {
   await assertTenantBoundDescriptor(row, descriptor, dependencies);
+  await deletePlannedObjectKeys(descriptor, dependencies);
+}
+
+async function deletePlannedObjectKeys(
+  descriptor: AgentBackupChunkStagingDescriptor,
+  dependencies: AgentBackupV2StorageDependencies,
+): Promise<void> {
   assertPlannedObjectKeys(descriptor);
   const failures: string[] = [];
   for (const key of [...descriptor.plannedObjectKeys].reverse()) {
@@ -231,6 +244,13 @@ async function removeCompleteObjects(
   dependencies: AgentBackupV2StorageDependencies,
 ): Promise<void> {
   await assertTenantBoundDescriptor(row, descriptor, dependencies);
+  await deleteCompleteObjectKeys(descriptor, dependencies);
+}
+
+async function deleteCompleteObjectKeys(
+  descriptor: AgentBackupChunkCompleteDescriptor,
+  dependencies: AgentBackupV2StorageDependencies,
+): Promise<void> {
   assertCompleteObjectKeys(descriptor);
   const failures: string[] = [];
   for (const chunk of [...descriptor.chunks].reverse()) {
@@ -243,6 +263,25 @@ async function removeCompleteObjects(
   if (failures.length > 0) {
     throw new Error(`Failed to remove pruned backup objects: ${failures.join("; ")}`);
   }
+}
+
+async function removeCleanupIntentObjects(
+  intent: StoredAgentSandboxBackupCleanupIntent,
+  dependencies: AgentBackupV2StorageDependencies,
+): Promise<void> {
+  const descriptor = intent.descriptor;
+  if (
+    descriptor.backupId !== intent.backup_id ||
+    descriptor.sandboxRecordId !== intent.sandbox_record_id ||
+    descriptor.organizationId !== intent.organization_id
+  ) {
+    throw new Error(`Backup cleanup intent ${intent.backup_id} is not self-consistent`);
+  }
+  if (descriptor.commitState === "complete") {
+    await deleteCompleteObjectKeys(descriptor, dependencies);
+    return;
+  }
+  await deletePlannedObjectKeys(descriptor, dependencies);
 }
 
 async function assertTenantBoundDescriptor(
@@ -401,6 +440,28 @@ export class AgentBackupV2StorageService {
         // reconciliation cycle; its stored error is the operator signal.
         logger.warn("[AgentBackupV2StorageService] Incomplete backup cleanup remains pending", {
           backupId: row.id,
+          error: errorMessage(error),
+        });
+        retained += 1;
+      }
+    }
+    const intents = await this.dependencies.repository.listBackupObjectCleanupIntentsBefore(
+      params.before,
+      limit,
+    );
+    for (const intent of intents) {
+      try {
+        await removeCleanupIntentObjects(intent, this.dependencies);
+        if (await this.dependencies.repository.deleteBackupObjectCleanupIntent(intent.backup_id)) {
+          deleted += 1;
+        } else {
+          retained += 1;
+        }
+      } catch (error) {
+        // error-policy:J7 the outbox row survives the deleted sandbox and
+        // remains visible to the next reconciliation cycle.
+        logger.warn("[AgentBackupV2StorageService] Deleted-sandbox cleanup remains pending", {
+          backupId: intent.backup_id,
           error: errorMessage(error),
         });
         retained += 1;
