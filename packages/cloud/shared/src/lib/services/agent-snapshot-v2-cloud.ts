@@ -1,0 +1,294 @@
+/**
+ * Connects the agent snapshot v2 wire protocol to durable encrypted Cloud
+ * storage and the authenticated agent restore endpoint.
+ *
+ * Both directions validate while streaming. Capture validates the source and
+ * the read-after-write copy before committing the database row; restore
+ * validates decrypted storage bytes again while the agent consumes them.
+ */
+import type {
+  AgentBackupSnapshotType,
+  StoredAgentSandboxBackup,
+} from "../../db/schemas/agent-sandboxes";
+import { logger } from "../utils/logger";
+import {
+  type AgentBackupV2StorageService,
+  agentBackupV2StorageService,
+  readStoredChunkedBackup,
+} from "./agent-backup-v2-storage";
+import {
+  AGENT_SNAPSHOT_V2_CONTENT_TYPE,
+  AGENT_SNAPSHOT_V2_MAX_TOTAL_BYTES,
+  AgentSnapshotV2StreamValidator,
+  type AgentSnapshotV2ValidationSummary,
+  agentSnapshotV2StableJson,
+  observeAgentSnapshotV2Stream,
+  validateAgentSnapshotV2Stream,
+} from "./agent-snapshot-v2-stream";
+
+const MAX_ERROR_RESPONSE_BYTES = 8 * 1024;
+const MAX_SUCCESS_RESPONSE_BYTES = 16 * 1024;
+
+interface SnapshotV2StorageBoundary {
+  create: AgentBackupV2StorageService["create"];
+}
+
+export interface AgentSnapshotV2CloudDependencies {
+  storage: SnapshotV2StorageBoundary;
+  readStored: typeof readStoredChunkedBackup;
+  fetch: typeof fetch;
+}
+
+const defaultDependencies: AgentSnapshotV2CloudDependencies = {
+  storage: agentBackupV2StorageService,
+  readStored: readStoredChunkedBackup,
+  fetch,
+};
+
+function responseByteStream(response: Response): AsyncIterable<Uint8Array> {
+  const body = response.body;
+  if (!body) {
+    throw new Error("Agent snapshot response has no body");
+  }
+  return {
+    async *[Symbol.asyncIterator]() {
+      const reader = body.getReader();
+      try {
+        while (true) {
+          const next = await reader.read();
+          if (next.done) return;
+          if (!(next.value instanceof Uint8Array)) {
+            throw new Error("Agent snapshot response emitted a non-binary body view");
+          }
+          yield next.value;
+        }
+      } finally {
+        reader.releaseLock();
+      }
+    },
+  };
+}
+
+function iterableBody(source: AsyncIterable<Uint8Array>): ReadableStream<Uint8Array> {
+  const iterator = source[Symbol.asyncIterator]();
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      const next = await iterator.next();
+      if (next.done) {
+        controller.close();
+        return;
+      }
+      controller.enqueue(next.value);
+    },
+    async cancel(reason) {
+      await iterator.return?.(reason);
+    },
+  });
+}
+
+async function readBodySnippet(response: Response, maxBytes: number): Promise<string> {
+  const body = response.body;
+  if (!body) return "";
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (total <= maxBytes) {
+      const next = await reader.read();
+      if (next.done) break;
+      const remaining = maxBytes + 1 - total;
+      const chunk = next.value.subarray(0, remaining);
+      chunks.push(chunk);
+      total += chunk.byteLength;
+      if (total > maxBytes) {
+        throw new Error(`Agent response exceeds its ${maxBytes}-byte budget`);
+      }
+    }
+  } finally {
+    try {
+      await reader.cancel();
+    } catch (error) {
+      // error-policy:J6 best-effort teardown — the bounded response body has
+      // already been consumed or rejected, so cancellation only frees transport.
+      logger.warn("[AgentSnapshotV2Cloud] Response body cancellation failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(bytes);
+}
+
+function sameCommittedStream(
+  source: AgentSnapshotV2ValidationSummary,
+  stored: AgentSnapshotV2ValidationSummary,
+): boolean {
+  return (
+    source.wireBytes === stored.wireBytes &&
+    agentSnapshotV2StableJson(source.descriptor) === agentSnapshotV2StableJson(stored.descriptor) &&
+    agentSnapshotV2StableJson(source.trailer) === agentSnapshotV2StableJson(stored.trailer)
+  );
+}
+
+export async function captureAgentSnapshotV2(params: {
+  response: Response;
+  organizationId: string;
+  sandboxRecordId: string;
+  agentId: string;
+  snapshotType?: AgentBackupSnapshotType;
+  backupId?: string;
+  dependencies?: AgentSnapshotV2CloudDependencies;
+}): Promise<{ backup: StoredAgentSandboxBackup; summary: AgentSnapshotV2ValidationSummary }> {
+  if (!params.response.ok) {
+    const detail = await readBodySnippet(params.response, MAX_ERROR_RESPONSE_BYTES);
+    throw new Error(`Snapshot v2 fetch failed: HTTP ${params.response.status} ${detail}`.trimEnd());
+  }
+  const dependencies = params.dependencies ?? defaultDependencies;
+  const contentType = params.response.headers.get("content-type") ?? "";
+  const sourceValidator = new AgentSnapshotV2StreamValidator({
+    contentType,
+    expectedAgentId: params.agentId,
+  });
+  const observedSource = observeAgentSnapshotV2Stream({
+    source: responseByteStream(params.response),
+    validator: sourceValidator,
+  });
+  const backup = await dependencies.storage.create({
+    identity: {
+      organizationId: params.organizationId,
+      sandboxRecordId: params.sandboxRecordId,
+      backupId: params.backupId,
+      backupSchemaVersion: 2,
+    },
+    snapshotType: params.snapshotType ?? "pre-upgrade",
+    source: observedSource,
+    maxTotalBytes: AGENT_SNAPSHOT_V2_MAX_TOTAL_BYTES,
+    verify: async (storedSource) => {
+      const stored = await validateAgentSnapshotV2Stream({
+        source: storedSource,
+        options: {
+          contentType: AGENT_SNAPSHOT_V2_CONTENT_TYPE,
+          expectedAgentId: params.agentId,
+        },
+      });
+      const source = sourceValidator.finish();
+      if (!sameCommittedStream(source, stored)) {
+        throw new Error("Stored snapshot v2 stream differs from its source");
+      }
+      return { contentHash: stored.trailer.aggregateSha256 };
+    },
+  });
+  return { backup, summary: sourceValidator.finish() };
+}
+
+interface AgentSnapshotV2RestoreResult {
+  aggregateSha256: string;
+  fileCount: number;
+  schemaVersion: 2;
+  success: true;
+  totalBytes: number;
+  transfer: "chunked-v1";
+}
+
+function parseRestoreResult(value: string): AgentSnapshotV2RestoreResult {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch (error) {
+    throw new Error("Agent restore response is not valid JSON", { cause: error });
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Agent restore response is not an object");
+  }
+  const record = parsed as Record<string, unknown>;
+  const keys = Object.keys(record).sort();
+  const expected = [
+    "aggregateSha256",
+    "fileCount",
+    "schemaVersion",
+    "success",
+    "totalBytes",
+    "transfer",
+  ].sort();
+  if (keys.length !== expected.length || keys.some((key, index) => key !== expected[index])) {
+    throw new Error("Agent restore response has unsupported or missing fields");
+  }
+  if (
+    record.success !== true ||
+    record.schemaVersion !== 2 ||
+    record.transfer !== "chunked-v1" ||
+    typeof record.aggregateSha256 !== "string" ||
+    !/^[a-f0-9]{64}$/.test(record.aggregateSha256) ||
+    typeof record.fileCount !== "number" ||
+    !Number.isSafeInteger(record.fileCount) ||
+    record.fileCount < 0 ||
+    typeof record.totalBytes !== "number" ||
+    !Number.isSafeInteger(record.totalBytes) ||
+    record.totalBytes < 0
+  ) {
+    throw new Error("Agent restore response is invalid");
+  }
+  return record as unknown as AgentSnapshotV2RestoreResult;
+}
+
+export async function restoreAgentSnapshotV2(params: {
+  backup: StoredAgentSandboxBackup;
+  organizationId: string;
+  agentId: string;
+  endpoint: string;
+  headers: HeadersInit;
+  dependencies?: AgentSnapshotV2CloudDependencies;
+}): Promise<AgentSnapshotV2ValidationSummary> {
+  if (
+    params.backup.verification_status !== "verified" ||
+    params.backup.storage_commit_state !== "complete"
+  ) {
+    throw new Error(`Backup ${params.backup.id} is not a verified restore point`);
+  }
+  const dependencies = params.dependencies ?? defaultDependencies;
+  const validator = new AgentSnapshotV2StreamValidator({
+    contentType: AGENT_SNAPSHOT_V2_CONTENT_TYPE,
+    expectedAgentId: params.agentId,
+  });
+  const source = observeAgentSnapshotV2Stream({
+    source: dependencies.readStored({
+      organizationId: params.organizationId,
+      row: params.backup,
+    }),
+    validator,
+  });
+  const requestInit: RequestInit & { duplex: "half" } = {
+    method: "POST",
+    headers: {
+      ...Object.fromEntries(new Headers(params.headers)),
+      "Content-Type": AGENT_SNAPSHOT_V2_CONTENT_TYPE,
+    },
+    body: iterableBody(source),
+    duplex: "half",
+    signal: AbortSignal.timeout(10 * 60_000),
+  };
+  const response = await dependencies.fetch(params.endpoint, requestInit);
+  if (!response.ok) {
+    const detail = await readBodySnippet(response, MAX_ERROR_RESPONSE_BYTES);
+    throw new Error(`Snapshot v2 restore failed: HTTP ${response.status} ${detail}`.trimEnd());
+  }
+  const summary = validator.finish();
+  if (params.backup.content_hash !== summary.trailer.aggregateSha256) {
+    throw new Error(`Backup ${params.backup.id} content hash does not match its stored stream`);
+  }
+  const result = parseRestoreResult(await readBodySnippet(response, MAX_SUCCESS_RESPONSE_BYTES));
+  if (
+    result.aggregateSha256 !== summary.trailer.aggregateSha256 ||
+    result.fileCount !== summary.trailer.fileCount ||
+    result.totalBytes !== summary.trailer.totalBytes
+  ) {
+    throw new Error("Agent restore acknowledgement does not match the committed snapshot");
+  }
+  return summary;
+}
