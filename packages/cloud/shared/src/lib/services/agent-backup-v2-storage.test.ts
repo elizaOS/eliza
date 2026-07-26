@@ -110,6 +110,8 @@ class FakeRepository {
   incomplete: StoredAgentSandboxBackup[] = [];
   prunable: StoredAgentSandboxBackup[] = [];
   deleted = false;
+  committedRow: StoredAgentSandboxBackup | undefined;
+  commitThrowsAfterWrite = false;
   latestDescriptor = stagingDescriptor();
 
   async createChunkedBackupStaging(params: {
@@ -136,16 +138,27 @@ class FakeRepository {
     verifiedAt: Date;
   }): Promise<StoredAgentSandboxBackup> {
     this.events.push(`commit:${params.contentHash}`);
-    return row({ descriptor: params.descriptor, state: "complete" });
+    this.committedRow = row({ descriptor: params.descriptor, state: "complete" });
+    if (this.commitThrowsAfterWrite) {
+      throw new Error("injected lost commit response");
+    }
+    return this.committedRow;
+  }
+
+  async getChunkedBackupById(_backupId: string): Promise<StoredAgentSandboxBackup | undefined> {
+    this.events.push("read-commit-state");
+    return this.committedRow;
   }
 
   async failChunkedBackup(
     _backupId: string,
     descriptor: AgentBackupChunkStagingDescriptor,
     _error: string,
-  ): Promise<void> {
+  ): Promise<StoredAgentSandboxBackup | undefined> {
     this.events.push("fail");
+    if (this.committedRow) return undefined;
     this.latestDescriptor = descriptor;
+    return row({ descriptor, state: "failed" });
   }
 
   async listIncompleteChunkedBackupsBefore(
@@ -264,6 +277,31 @@ describe("AgentBackupV2StorageService", () => {
       `delete-object:${objectKey}`,
       "delete-row",
     ]);
+  });
+
+  test("resolves a committed row after the database response is lost without deleting objects", async () => {
+    const repository = new FakeRepository();
+    repository.commitThrowsAfterWrite = true;
+    const fixture = dependencies({ repository });
+    const service = new AgentBackupV2StorageService(fixture.dependencies);
+
+    const result = await service.create({
+      identity: { organizationId, sandboxRecordId, backupId, backupSchemaVersion: 2 },
+      snapshotType: "pre-upgrade",
+      source: bytes(),
+      createdAt,
+      verify: async (source) => {
+        for await (const _chunk of source) {
+          repository.events.push("verify");
+        }
+        return { contentHash };
+      },
+    });
+
+    expect(result.storage_commit_state).toBe("complete");
+    expect(repository.events).toContain("read-commit-state");
+    expect(repository.events.some((event) => event.startsWith("delete-object:"))).toBe(false);
+    expect(repository.events).not.toContain("delete-row");
   });
 
   test("retains a failed row when object cleanup cannot complete", async () => {
