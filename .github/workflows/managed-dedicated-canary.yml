@@ -9,6 +9,12 @@ on:
   schedule:
     - cron: "17 8 * * *"
   workflow_dispatch:
+    inputs:
+      stale_canary_suffix:
+        description: "Exact prior workflow suffix (r<run-id>a<attempt>) to verify and delete before creating the fresh canary"
+        required: false
+        type: string
+        default: ""
   # A maintainer-applied label lets the workflow prove a new harness before it
   # reaches the default branch; the staging environment still owns secret and
   # approval policy.
@@ -34,6 +40,7 @@ jobs:
     env:
       CLOUD_DEDICATED_CANARY_BASE_URL: https://api-staging.elizacloud.ai
       CLOUD_DEDICATED_CANARY_EVIDENCE_PATH: reports/managed-dedicated-canary.json
+      CLOUD_DEDICATED_CANARY_STALE_CANARY_SUFFIX: ${{ inputs.stale_canary_suffix || '' }}
       # Keep this identical to App Live's accepted repository-secret contract.
       ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}
     steps:
@@ -73,6 +80,24 @@ jobs:
               "Managed dedicated canary is pinned to the exact staging origin without userinfo, path, query, or fragment",
             );
           }
+          NODE
+
+      - name: Bind stale-recovery intent
+        id: recovery_intent
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync } from "node:fs";
+          const raw =
+            process.env.CLOUD_DEDICATED_CANARY_STALE_CANARY_SUFFIX ?? "";
+          const requested = raw !== "";
+          if (requested && !/^r[1-9]\d{7,19}a[1-9]\d{0,3}$/.test(raw)) {
+            throw new Error("Stale-canary recovery input is invalid");
+          }
+          appendFileSync(
+            process.env.GITHUB_OUTPUT,
+            `requested=${requested ? "true" : "false"}\n`,
+          );
           NODE
 
       - name: Checkout exact run commit
@@ -150,6 +175,7 @@ jobs:
         env:
           LIVE_PROCESS_STATUS: ${{ steps.live.outputs.status }}
           PRIVACY_VALIDATED: ${{ steps.privacy.outputs.validated }}
+          EXPECTED_RECOVERY_REQUESTED: ${{ steps.recovery_intent.outputs.requested }}
           # Canonical staging rejects feature-ref deploys. A labeled PR therefore
           # proves the exact harness at its checked-out head against the deployed
           # base it proposes to extend; post-merge runs prove their own SHA.
@@ -173,6 +199,11 @@ jobs:
               import { validateManagedDedicatedCanaryEvidence } from "./packages/scripts/cloud/admin/managed-dedicated-canary.ts";
               const evidence = JSON.parse(readFileSync(process.env.CLOUD_DEDICATED_CANARY_EVIDENCE_PATH, "utf8"));
               const errors = validateManagedDedicatedCanaryEvidence(evidence);
+              const expectedRecoveryRequested =
+                process.env.EXPECTED_RECOVERY_REQUESTED === "true";
+              if (evidence.recovery?.requested !== expectedRecoveryRequested) {
+                errors.push("workflow_recovery_intent_mismatch");
+              }
               if (errors.length > 0) {
                 console.error("::error::Canary evidence rejected: " + errors.join(","));
                 process.exit(1);
@@ -210,6 +241,10 @@ jobs:
             console.log("- paths: `" + evidence.path.successfulPaths + "/2`");
             console.log("- bridge transport: `" + evidence.path.bridgeTransport + "`");
             console.log("- chat requests: `" + evidence.capacity.chatRequests + "/" + evidence.capacity.maxChatRequests + "`");
+            console.log("- recovery requested: `" + evidence.recovery.requested + "`");
+            console.log("- recovery match: `" + evidence.recovery.match + "`");
+            console.log("- recovery performed: `" + evidence.recovery.performed + "`");
+            console.log("- recovery confirmed: `" + evidence.recovery.confirmed + "`");
             console.log("- cleanup: `" + evidence.cleanup.status + "`");
             console.log("");
             console.log("| phase | ms |");

@@ -20,7 +20,7 @@
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 const AMBIENT_DATABASE_URL = process.env.DATABASE_URL ?? "";
 const CAN_USE_ISOLATED_PGLITE =
@@ -523,6 +523,355 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
     expect(suspendRows[0]?.status).toBe("cancelled");
     const deleteRows = await jobsOfType(agentId, JOB_TYPES.AGENT_DELETE);
     expect(deleteRows[0]?.status).toBe("pending");
+  });
+
+  test("conditional delete atomically owns the exact stale provisioning identity", async () => {
+    const { orgId, userId } = await seedOwner();
+    const createdAt = new Date("2026-07-13T08:17:00.000Z");
+    const agentName = "managed-dedicated-canary-r30081355987a1";
+    const [sandbox] = await dbWrite
+      .insert(agentSandboxes)
+      .values({
+        organization_id: orgId,
+        user_id: userId,
+        agent_name: agentName,
+        status: "provisioning",
+        execution_tier: "dedicated-always",
+        created_at: createdAt,
+        updated_at: createdAt,
+      })
+      .returning();
+    await dbWrite.execute(sql`
+      UPDATE ${agentSandboxes}
+      SET created_at = ${"2026-07-13T08:17:00.000123Z"}::timestamptz
+      WHERE id = ${sandbox.id}
+    `);
+    const provision = await provisioningJobService.enqueueAgentProvisionOnce({
+      agentId: sandbox.id,
+      organizationId: orgId,
+      userId,
+      agentName,
+    });
+    await dbWrite
+      .update(jobs)
+      .set({
+        status: "failed",
+        started_at: createdAt,
+        updated_at: createdAt,
+      })
+      .where(eq(jobs.id, provision.job.id));
+
+    const deletion = await provisioningJobService.enqueueAgentDeleteOnce({
+      agentId: sandbox.id,
+      organizationId: orgId,
+      userId,
+      expectedIdentity: {
+        agentName,
+        createdAt: createdAt.toISOString(),
+        executionTier: "dedicated-always",
+      },
+    });
+
+    expect(deletion.created).toBe(true);
+    const [updated] = await dbWrite
+      .select()
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.id, sandbox.id));
+    expect(updated?.status).toBe("deletion_pending");
+    const [provisionRow] = await jobsOfType(sandbox.id, JOB_TYPES.AGENT_PROVISION);
+    expect(provisionRow?.id).toBe(provision.job.id);
+    expect(provisionRow?.status).toBe("failed");
+    expect(await jobsOfType(sandbox.id, JOB_TYPES.AGENT_DELETE)).toHaveLength(1);
+  });
+
+  test("conditional delete cancels a retry-pending job only after its quiescence window", async () => {
+    const { orgId, userId } = await seedOwner();
+    const createdAt = new Date(Date.now() - 20 * 60 * 1000);
+    const agentName = "managed-dedicated-canary-r30081355987a1";
+    const [sandbox] = await dbWrite
+      .insert(agentSandboxes)
+      .values({
+        organization_id: orgId,
+        user_id: userId,
+        agent_name: agentName,
+        status: "provisioning",
+        execution_tier: "dedicated-always",
+        created_at: createdAt,
+        updated_at: createdAt,
+      })
+      .returning();
+    const provision = await provisioningJobService.enqueueAgentProvisionOnce({
+      agentId: sandbox.id,
+      organizationId: orgId,
+      userId,
+      agentName,
+    });
+    await dbWrite
+      .update(jobs)
+      .set({
+        status: "pending",
+        started_at: createdAt,
+        updated_at: createdAt,
+      })
+      .where(eq(jobs.id, provision.job.id));
+
+    const deletion = await provisioningJobService.enqueueAgentDeleteOnce({
+      agentId: sandbox.id,
+      organizationId: orgId,
+      userId,
+      expectedIdentity: {
+        agentName,
+        createdAt: createdAt.toISOString(),
+        executionTier: "dedicated-always",
+      },
+    });
+
+    expect(deletion.created).toBe(true);
+    const [provisionRow] = await jobsOfType(sandbox.id, JOB_TYPES.AGENT_PROVISION);
+    expect(provisionRow?.status).toBe("cancelled");
+    expect(await jobsOfType(sandbox.id, JOB_TYPES.AGENT_DELETE)).toHaveLength(1);
+  });
+
+  for (const activeStatus of ["pending", "in_progress", "failed", "cancelled"] as const) {
+    test(`conditional delete refuses a non-quiescent ${activeStatus} lifecycle job`, async () => {
+      const { orgId, userId } = await seedOwner();
+      const createdAt = new Date();
+      const agentName = "managed-dedicated-canary-r30081355987a1";
+      const [sandbox] = await dbWrite
+        .insert(agentSandboxes)
+        .values({
+          organization_id: orgId,
+          user_id: userId,
+          agent_name: agentName,
+          status: "provisioning",
+          execution_tier: "dedicated-always",
+          created_at: createdAt,
+          updated_at: createdAt,
+        })
+        .returning();
+      const provision = await provisioningJobService.enqueueAgentProvisionOnce({
+        agentId: sandbox.id,
+        organizationId: orgId,
+        userId,
+        agentName,
+      });
+      await dbWrite
+        .update(jobs)
+        .set({
+          status: activeStatus,
+          started_at: createdAt,
+          updated_at: createdAt,
+        })
+        .where(eq(jobs.id, provision.job.id));
+
+      await expect(
+        provisioningJobService.enqueueAgentDeleteOnce({
+          agentId: sandbox.id,
+          organizationId: orgId,
+          userId,
+          expectedIdentity: {
+            agentName,
+            createdAt: createdAt.toISOString(),
+            executionTier: "dedicated-always",
+          },
+        }),
+      ).rejects.toMatchObject({
+        status: 409,
+        code: "session_not_ready",
+      });
+
+      const [unchanged] = await dbWrite
+        .select()
+        .from(agentSandboxes)
+        .where(eq(agentSandboxes.id, sandbox.id));
+      expect(unchanged?.status).toBe("provisioning");
+      const [provisionRow] = await jobsOfType(sandbox.id, JOB_TYPES.AGENT_PROVISION);
+      expect(provisionRow?.status).toBe(activeStatus);
+      expect(await jobsOfType(sandbox.id, JOB_TYPES.AGENT_DELETE)).toHaveLength(0);
+    });
+  }
+
+  test("conditional delete rolls back when the identity changed", async () => {
+    const { orgId, userId } = await seedOwner();
+    const createdAt = new Date("2026-07-13T08:17:00.000Z");
+    const [sandbox] = await dbWrite
+      .insert(agentSandboxes)
+      .values({
+        organization_id: orgId,
+        user_id: userId,
+        agent_name: "repurposed-agent",
+        status: "provisioning",
+        execution_tier: "dedicated-always",
+        created_at: createdAt,
+        updated_at: createdAt,
+      })
+      .returning();
+
+    await expect(
+      provisioningJobService.enqueueAgentDeleteOnce({
+        agentId: sandbox.id,
+        organizationId: orgId,
+        userId,
+        expectedIdentity: {
+          agentName: "repurposed-agent",
+          createdAt: "2026-07-13T08:17:00.001Z",
+          executionTier: "dedicated-always",
+        },
+      }),
+    ).rejects.toMatchObject({
+      status: 409,
+      code: "session_not_ready",
+    });
+
+    const [unchanged] = await dbWrite
+      .select()
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.id, sandbox.id));
+    expect(unchanged?.status).toBe("provisioning");
+    expect(await jobsOfType(sandbox.id, JOB_TYPES.AGENT_DELETE)).toHaveLength(0);
+  });
+
+  for (const mismatch of ["name", "tier"] as const) {
+    test(`conditional delete rolls back on an exact ${mismatch} mismatch`, async () => {
+      const { orgId, userId } = await seedOwner();
+      const createdAt = new Date("2026-07-13T08:17:00.000Z");
+      const agentName = "managed-dedicated-canary-r30081355987a1";
+      const [sandbox] = await dbWrite
+        .insert(agentSandboxes)
+        .values({
+          organization_id: orgId,
+          user_id: userId,
+          agent_name: agentName,
+          status: "provisioning",
+          execution_tier: "dedicated-always",
+          created_at: createdAt,
+          updated_at: createdAt,
+        })
+        .returning();
+
+      await expect(
+        provisioningJobService.enqueueAgentDeleteOnce({
+          agentId: sandbox.id,
+          organizationId: orgId,
+          userId,
+          expectedIdentity: {
+            agentName: mismatch === "name" ? `${agentName}-different` : agentName,
+            createdAt: createdAt.toISOString(),
+            executionTier: mismatch === "tier" ? "dedicated-lazy" : "dedicated-always",
+          },
+        }),
+      ).rejects.toMatchObject({
+        status: 409,
+        code: "session_not_ready",
+      });
+
+      const [unchanged] = await dbWrite
+        .select()
+        .from(agentSandboxes)
+        .where(eq(agentSandboxes.id, sandbox.id));
+      expect(unchanged?.status).toBe("provisioning");
+      expect(await jobsOfType(sandbox.id, JOB_TYPES.AGENT_DELETE)).toHaveLength(0);
+    });
+  }
+
+  for (const credentialState of ["pending", "attested"] as const) {
+    test(`conditional delete preserves a ${credentialState} warm-claim handoff`, async () => {
+      const { orgId, userId } = await seedOwner();
+      const createdAt = new Date("2026-07-13T08:17:00.000Z");
+      const agentName = "managed-dedicated-canary-r30081355987a1";
+      const [sandbox] = await dbWrite
+        .insert(agentSandboxes)
+        .values({
+          organization_id: orgId,
+          user_id: userId,
+          agent_name: agentName,
+          status: "provisioning",
+          execution_tier: "dedicated-always",
+          claimed_at: createdAt,
+          warm_claim_credential_state: credentialState,
+          created_at: createdAt,
+          updated_at: createdAt,
+        })
+        .returning();
+      const provision = await provisioningJobService.enqueueAgentProvisionOnce({
+        agentId: sandbox.id,
+        organizationId: orgId,
+        userId,
+        agentName,
+      });
+
+      await expect(
+        provisioningJobService.enqueueAgentDeleteOnce({
+          agentId: sandbox.id,
+          organizationId: orgId,
+          userId,
+          expectedIdentity: {
+            agentName,
+            createdAt: createdAt.toISOString(),
+            executionTier: "dedicated-always",
+          },
+        }),
+      ).rejects.toMatchObject({
+        status: 409,
+        code: "session_not_ready",
+      });
+
+      const [unchanged] = await dbWrite
+        .select()
+        .from(agentSandboxes)
+        .where(eq(agentSandboxes.id, sandbox.id));
+      expect(unchanged?.status).toBe("provisioning");
+      const [provisionRow] = await jobsOfType(sandbox.id, JOB_TYPES.AGENT_PROVISION);
+      expect(provisionRow?.id).toBe(provision.job.id);
+      expect(provisionRow?.status).toBe("pending");
+      expect(await jobsOfType(sandbox.id, JOB_TYPES.AGENT_DELETE)).toHaveLength(0);
+    });
+  }
+
+  test("conditional delete preserves the replacement-cleanup conflict", async () => {
+    const { orgId, userId } = await seedOwner();
+    const createdAt = new Date("2026-07-13T08:17:00.000Z");
+    const agentName = "managed-dedicated-canary-r30081355987a1";
+    const [sandbox] = await dbWrite
+      .insert(agentSandboxes)
+      .values({
+        organization_id: orgId,
+        user_id: userId,
+        agent_name: agentName,
+        status: "provisioning",
+        execution_tier: "dedicated-always",
+        created_at: createdAt,
+        updated_at: createdAt,
+        replacement_cleanup_sandbox_id: "replacement-sandbox",
+        replacement_cleanup_node_id: "replacement-node",
+        replacement_cleanup_container_name: "replacement-container",
+        replacement_cleanup_attempt_id: "77777777-7777-4777-8777-777777777777",
+        replacement_cleanup_allocation_counted: false,
+        replacement_cleanup_created_at: createdAt,
+      })
+      .returning();
+
+    await expect(
+      provisioningJobService.enqueueAgentDeleteOnce({
+        agentId: sandbox.id,
+        organizationId: orgId,
+        userId,
+        expectedIdentity: {
+          agentName,
+          createdAt: createdAt.toISOString(),
+          executionTier: "dedicated-always",
+        },
+      }),
+    ).rejects.toMatchObject({
+      status: 409,
+      code: "session_not_ready",
+    });
+    const [unchanged] = await dbWrite
+      .select()
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.id, sandbox.id));
+    expect(unchanged?.status).toBe("provisioning");
+    expect(await jobsOfType(sandbox.id, JOB_TYPES.AGENT_DELETE)).toHaveLength(0);
   });
 
   test("enqueue against a missing agent throws Agent not found", async () => {
