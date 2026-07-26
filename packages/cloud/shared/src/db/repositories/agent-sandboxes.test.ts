@@ -1,5 +1,6 @@
 // Exercises cloud DB agent sandboxes behavior with deterministic repository fixtures.
 import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES, AgentSnapshotV1WireLimitError } from "@elizaos/shared";
 import type { SQL, SQLWrapper } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 import * as realHelpers from "../helpers";
@@ -672,6 +673,73 @@ describe("AgentSandboxesRepository", () => {
 
     expect(reconstructed).toEqual(nextState);
     expect(selectWhere).toHaveBeenCalledTimes(2);
+  });
+
+  test("backup reconstruction accepts exactly the v1 restorable wire ceiling", async () => {
+    const { AgentSandboxesRepository } = await import("./agent-sandboxes");
+    const backupId = "33333333-3333-4333-8333-333333333333";
+    const stateData = {
+      memories: [],
+      config: { boundary: "exact" },
+      workspaceFiles: {},
+    };
+    selectRowBatches = [
+      [
+        {
+          id: backupId,
+          sandbox_record_id: "e06bb509-6c52-4c33-a9f7-66addc43e8c8",
+          snapshot_type: "manual",
+          state_data: stateData,
+          state_data_storage: "inline",
+          state_data_key: null,
+          size_bytes: AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES,
+          backup_kind: "full",
+          parent_backup_id: null,
+          content_hash: null,
+          verification_status: null,
+          verified_at: null,
+          verification_error: null,
+          created_at: new Date("2026-07-25T00:00:00.000Z"),
+        },
+      ],
+    ];
+
+    await expect(
+      new AgentSandboxesRepository().getReconstructedBackupState(backupId),
+    ).resolves.toEqual(stateData);
+  });
+
+  test("backup reconstruction rejects one byte above the v1 restorable wire ceiling", async () => {
+    const { AgentSandboxesRepository } = await import("./agent-sandboxes");
+    const backupId = "44444444-4444-4444-8444-444444444444";
+    selectRowBatches = [
+      [
+        {
+          id: backupId,
+          sandbox_record_id: "e06bb509-6c52-4c33-a9f7-66addc43e8c8",
+          snapshot_type: "manual",
+          state_data: {
+            memories: [],
+            config: {},
+            workspaceFiles: {},
+          },
+          state_data_storage: "inline",
+          state_data_key: null,
+          size_bytes: AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES + 1,
+          backup_kind: "full",
+          parent_backup_id: null,
+          content_hash: null,
+          verification_status: null,
+          verified_at: null,
+          verification_error: null,
+          created_at: new Date("2026-07-25T00:00:00.000Z"),
+        },
+      ],
+    ];
+
+    await expect(
+      new AgentSandboxesRepository().getReconstructedBackupState(backupId),
+    ).rejects.toThrow(AgentSnapshotV1WireLimitError);
   });
 
   // C1c attribution guard (audit §C1c): claimWarmContainer must NEVER mint a

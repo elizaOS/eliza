@@ -8,6 +8,7 @@
 import { EventEmitter } from "node:events";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES } from "../../shared/src/contracts/agent-snapshot.ts";
 
 type CapturedServer = {
   handler: (req: IncomingMessage, res: ServerResponse) => void | Promise<void>;
@@ -86,6 +87,8 @@ function makeRequest(
   req.method = method;
   req.url = url;
   req.headers = headers;
+  req.destroy = vi.fn(() => req);
+  req.resume = vi.fn(() => req);
   if (body !== undefined) {
     queueMicrotask(() => {
       req.emit("data", Buffer.from(body));
@@ -292,5 +295,82 @@ describe("startCloudAgent HTTP handlers", () => {
     expect(
       (await dispatch(bridgeServer, "POST", "/missing", "", auth)).statusCode,
     ).toBe(404);
+  });
+
+  it("gives restore the full v1 wire ceiling without widening bridge RPC bodies", async () => {
+    const { startCloudAgent } = await import("./cloud-agent-shared");
+    startCloudAgent({
+      port: 0,
+      bridgePort: 0,
+      bridgeSecret: "secret",
+      maxBodyBytes: 1,
+    });
+    await Promise.resolve();
+
+    const [, bridgeServer] = capturedServers;
+    const auth = { authorization: "Bearer secret" };
+    const restoreBody = JSON.stringify({
+      memories: [],
+      config: { boundary: "exact" },
+      workspaceFiles: {},
+    });
+    const exactLimit = await dispatch(
+      bridgeServer,
+      "POST",
+      "/api/restore",
+      restoreBody,
+      {
+        ...auth,
+        "content-length": String(AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES),
+      },
+    );
+    expect(exactLimit.statusCode).toBe(200);
+    expect(parseJson(exactLimit)).toEqual({ success: true });
+    await expect(
+      dispatch(bridgeServer, "POST", "/bridge", "{}", auth),
+    ).rejects.toThrow("Request body too large");
+
+    const overLimit = await dispatch(
+      bridgeServer,
+      "POST",
+      "/api/restore",
+      restoreBody,
+      {
+        ...auth,
+        "content-length": String(AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES + 1),
+      },
+    );
+    expect(overLimit.statusCode).toBe(413);
+    expect(parseJson(overLimit)).toEqual({
+      error:
+        `Agent snapshot v1 payload exceeds the maximum restorable wire size ` +
+        `(${AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES + 1} > ` +
+        `${AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES} bytes)`,
+    });
+
+    const streamingRequest = makeRequest(
+      "POST",
+      "/api/restore",
+      undefined,
+      auth,
+    );
+    const streamingResponse = makeResponse();
+    const streamingDispatch = bridgeServer.handler(
+      streamingRequest,
+      streamingResponse,
+    );
+    streamingRequest.emit("data", {
+      length: AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES + 1,
+    });
+    await streamingDispatch;
+    expect(streamingResponse.statusCode).toBe(413);
+    expect(parseJson(streamingResponse)).toEqual({
+      error:
+        `Agent snapshot v1 payload exceeds the maximum restorable wire size ` +
+        `(${AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES + 1} > ` +
+        `${AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES} bytes)`,
+    });
+    expect(streamingRequest.destroy).not.toHaveBeenCalled();
+    expect(streamingRequest.resume).toHaveBeenCalledOnce();
   });
 });
