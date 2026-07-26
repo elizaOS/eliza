@@ -17,10 +17,10 @@ export const AGENT_SNAPSHOT_STREAM_FORMAT =
 export const AGENT_SNAPSHOT_STREAM_TRANSFER = "chunked-v1" as const;
 export const AGENT_SNAPSHOT_STREAM_CHUNK_BYTES = 256 * 1024;
 export const AGENT_SNAPSHOT_STREAM_MAX_TOTAL_BYTES = 16 * 1024 * 1024 * 1024;
-export const AGENT_SNAPSHOT_STREAM_MAX_FILES = 100_000;
-export const AGENT_SNAPSHOT_STREAM_MAX_LINE_BYTES = 16 * 1024 * 1024;
+export const AGENT_SNAPSHOT_STREAM_MAX_FILES = 16_384;
+export const AGENT_SNAPSHOT_STREAM_MAX_LINE_BYTES = 8 * 1024 * 1024;
 export const AGENT_SNAPSHOT_STREAM_MAX_PATH_BYTES = 4 * 1024;
-export const AGENT_SNAPSHOT_STREAM_MAX_DESCRIPTOR_PATH_BYTES = 8 * 1024 * 1024;
+export const AGENT_SNAPSHOT_STREAM_MAX_DESCRIPTOR_PATH_BYTES = 2 * 1024 * 1024;
 
 export type AgentSnapshotStreamFileComponent =
   | "database"
@@ -119,6 +119,7 @@ const FILE_COMPONENT_ORDER: readonly AgentSnapshotStreamFileComponent[] = [
 const DIGEST_PATTERN = /^[a-f0-9]{64}$/;
 const BASE64_PATTERN =
   /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+const MAX_ECMASCRIPT_TIMESTAMP_MS = 8_640_000_000_000_000;
 
 function invalidProtocol(message: string): ElizaError {
   return new ElizaError(message, {
@@ -233,6 +234,10 @@ export function sha256Json(value: unknown): string {
   return sha256Bytes(stableJson(value));
 }
 
+export function compareSnapshotWirePaths(left: string, right: string): number {
+  return Buffer.compare(Buffer.from(left, "utf8"), Buffer.from(right, "utf8"));
+}
+
 export function fileSetSha256(
   files: readonly AgentSnapshotStreamFileDescriptor[],
 ): string {
@@ -256,16 +261,6 @@ export function characterConfigSha256(
           size: file.size,
         }
       : null,
-  });
-}
-
-export function pgliteDumpSha256(
-  file: AgentSnapshotStreamFileDescriptor,
-): string {
-  return sha256Json({
-    compression: "gzip",
-    file: { path: file.path, sha256: file.sha256, size: file.size },
-    kind: "pglite-dump",
   });
 }
 
@@ -335,31 +330,9 @@ function validateDatabaseDescriptor(
     return;
   }
   if (value.kind === "pglite-dump") {
-    assertExactKeys(
-      value,
-      ["compression", "fileIndex", "kind", "sha256"],
-      "PGlite dump descriptor",
+    throw invalidProtocol(
+      "PGlite dump snapshots are not a bounded-memory transfer",
     );
-    if (value.compression !== "gzip") {
-      throw invalidProtocol("PGlite dump compression is unsupported");
-    }
-    assertSafeInteger(value.fileIndex, "PGlite dump file index");
-    assertDigest(value.sha256, "PGlite dump hash");
-    const file = files[value.fileIndex];
-    const databaseFiles = files.filter(
-      (entry) => entry.component === "database",
-    );
-    if (
-      file?.component !== "database" ||
-      databaseFiles.length !== 1 ||
-      databaseFiles[0]?.index !== file.index
-    ) {
-      throw invalidProtocol("PGlite dump file index is inconsistent");
-    }
-    if (pgliteDumpSha256(file) !== value.sha256) {
-      throw invalidProtocol("PGlite dump hash is inconsistent");
-    }
-    return;
   }
   if (value.kind === "pglite-files") {
     assertExactKeys(
@@ -475,7 +448,8 @@ function validateFileDescriptor(
   if (
     typeof value.mtimeMs !== "number" ||
     !Number.isFinite(value.mtimeMs) ||
-    value.mtimeMs < 0
+    value.mtimeMs < 0 ||
+    value.mtimeMs > MAX_ECMASCRIPT_TIMESTAMP_MS
   ) {
     throw invalidProtocol("Snapshot file mtime is malformed");
   }
@@ -567,7 +541,7 @@ export function validateSnapshotStreamDescriptor(
     if (
       componentRank < previousComponentRank ||
       (componentRank === previousComponentRank &&
-        file.path.localeCompare(previousPath) <= 0)
+        compareSnapshotWirePaths(file.path, previousPath) <= 0)
     ) {
       throw invalidProtocol("Snapshot files are not in canonical order");
     }

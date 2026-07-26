@@ -6,7 +6,7 @@
  * touch active state until the complete descriptor, files, and trailer verify.
  */
 import crypto from "node:crypto";
-import { constants as fsConstants, openAsBlob } from "node:fs";
+import { constants as fsConstants } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -34,10 +34,10 @@ import {
   type AgentSnapshotStreamFileSetDescriptor,
   type AgentSnapshotStreamTrailer,
   characterConfigSha256,
+  compareSnapshotWirePaths,
   encodeSnapshotStreamFrame,
   fileSetSha256,
   parseCanonicalSnapshotStreamFrame,
-  pgliteDumpSha256,
   sha256Bytes,
   stableJson,
   validateSnapshotStreamChunkFrame,
@@ -59,6 +59,7 @@ interface SnapshotStreamPlan {
 export interface AgentSnapshotStreamRestoreResult {
   aggregateSha256: string;
   fileCount: number;
+  requiresRestart: true;
   schemaVersion: 2;
   success: true;
   totalBytes: number;
@@ -71,7 +72,6 @@ const DEFAULT_PGLITE_DIR_NAME = ".elizadb";
 const VAULT_PGLITE_DIR_NAME = ".vault-pglite";
 const VAULT_AUDIT_PATH = "audit/vault.jsonl";
 const VAULT_JSON_PATH = "vault.json";
-const PGLITE_DUMP_PATH = "pglite-data-dir.tar.gz";
 const PGLITE_VOLATILE_ROOT_FILES = new Set([
   "eliza-pglite.lock",
   "postmaster.opts",
@@ -334,7 +334,9 @@ async function collectPlannedFiles(params: {
 
   async function visit(directory: string): Promise<void> {
     const entries = await fs.readdir(directory, { withFileTypes: true });
-    entries.sort((left, right) => left.name.localeCompare(right.name));
+    entries.sort((left, right) =>
+      compareSnapshotWirePaths(left.name, right.name),
+    );
     for (const entry of entries) {
       const absolutePath = path.join(directory, entry.name);
       if (!isWithin(root, absolutePath)) {
@@ -424,20 +426,12 @@ async function planSingleFile(params: {
   };
 }
 
-function isStreamableBlob(value: unknown): value is Blob {
-  return (
-    value !== null &&
-    typeof value === "object" &&
-    typeof (value as Blob).size === "number" &&
-    typeof (value as Blob).stream === "function"
-  );
-}
-
-async function capturePgliteDumpToTemporaryFile(
+async function capturePgliteFilesToTemporaryDirectory(
   runtime: IAgentRuntime | AgentRuntime,
+  pgliteDir: string,
   temporaryRoot: string,
   budget: SnapshotPlanBudget,
-): Promise<PlannedSnapshotFile | null> {
+): Promise<PlannedSnapshotFile[]> {
   const raw = (
     runtime.adapter as
       | {
@@ -445,64 +439,68 @@ async function capturePgliteDumpToTemporaryFile(
         }
       | undefined
   )?.getRawConnection?.();
-  if (!raw || typeof raw !== "object") return null;
+  if (!raw || typeof raw !== "object") {
+    throw new ElizaError(
+      "PGlite snapshot requires an exclusive database connection",
+      {
+        code: "AGENT_SNAPSHOT_DATABASE_UNCAPTURABLE",
+        severity: "fatal",
+      },
+    );
+  }
   const connection = raw as {
-    dumpDataDir?: (compression?: "gzip") => Promise<unknown>;
     runExclusive?: <T>(operation: () => Promise<T>) => Promise<T>;
   };
-  if (typeof connection.dumpDataDir !== "function") return null;
-  const dumpDataDir = connection.dumpDataDir.bind(connection);
-  const capture = () => dumpDataDir("gzip");
-  const dump = connection.runExclusive
-    ? await connection.runExclusive(capture)
-    : await capture();
-  if (!isStreamableBlob(dump)) {
-    throw invalidStream("PGlite dumpDataDir() did not return a Blob/File");
+  if (typeof connection.runExclusive !== "function") {
+    throw new ElizaError(
+      "PGlite snapshot requires an exclusive database connection",
+      {
+        code: "AGENT_SNAPSHOT_DATABASE_UNCAPTURABLE",
+        severity: "fatal",
+      },
+    );
   }
-  if (dump.size > AGENT_SNAPSHOT_STREAM_MAX_TOTAL_BYTES) {
-    throw invalidStream("PGlite dump exceeds the snapshot byte budget");
-  }
-  const destination = path.join(temporaryRoot, PGLITE_DUMP_PATH);
-  const handle = await fs.open(destination, "wx", 0o600);
-  const reader = dump.stream().getReader();
-  let offset = 0;
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (!(value instanceof Uint8Array)) {
-        throw invalidStream("PGlite dump emitted a non-byte chunk");
-      }
-      offset += value.byteLength;
-      if (offset > AGENT_SNAPSHOT_STREAM_MAX_TOTAL_BYTES) {
-        throw invalidStream("PGlite dump exceeds the snapshot byte budget");
-      }
-      let written = 0;
-      while (written < value.byteLength) {
-        const result = await handle.write(
-          value,
-          written,
-          value.byteLength - written,
-          null,
-        );
-        if (result.bytesWritten === 0) {
-          throw invalidStream("PGlite dump staging made no write progress");
-        }
-        written += result.bytesWritten;
-      }
+  const destinationRoot = path.join(temporaryRoot, "pglite");
+  await fs.mkdir(destinationRoot, { recursive: true, mode: 0o700 });
+  await connection.runExclusive(async () => {
+    const sourceFiles = await collectPlannedFiles({
+      budget: { fileCount: 0, pathBytes: 0 },
+      component: "database",
+      include: pgliteFileInclude,
+      root: pgliteDir,
+    });
+    const totalBytes = sourceFiles.reduce(
+      (total, file) => total + file.descriptor.size,
+      0,
+    );
+    if (
+      !Number.isSafeInteger(totalBytes) ||
+      totalBytes > AGENT_SNAPSHOT_STREAM_MAX_TOTAL_BYTES
+    ) {
+      throw invalidStream("PGlite files exceed the snapshot byte budget");
     }
-  } finally {
-    reader.releaseLock();
-    await handle.close();
-  }
-  if (offset !== dump.size) {
-    throw invalidStream("PGlite dump size changed during capture");
-  }
-  return planSingleFile({
-    absolutePath: destination,
+    for (const source of sourceFiles) {
+      const destination = path.join(
+        destinationRoot,
+        ...source.descriptor.path.split("/"),
+      );
+      if (!isWithin(destinationRoot, destination)) {
+        throw invalidStream(
+          `PGlite snapshot path escapes staging: ${source.descriptor.path}`,
+        );
+      }
+      await writeFileAtomically(
+        source.absolutePath,
+        destination,
+        source.descriptor,
+      );
+    }
+  });
+  return collectPlannedFiles({
     budget,
     component: "database",
-    relativePath: PGLITE_DUMP_PATH,
+    include: pgliteFileInclude,
+    root: destinationRoot,
   });
 }
 
@@ -513,7 +511,7 @@ function indexFiles(files: PlannedSnapshotFile[]): PlannedSnapshotFile[] {
       FILE_COMPONENT_ORDER.indexOf(right.descriptor.component);
     return (
       componentDelta ||
-      left.descriptor.path.localeCompare(right.descriptor.path)
+      compareSnapshotWirePaths(left.descriptor.path, right.descriptor.path)
     );
   });
   let totalBytes = 0;
@@ -570,10 +568,9 @@ async function createSnapshotStreamPlan(
     );
   }
   let temporaryRoot: string | null = null;
-  let databaseKind: "external" | "dump" | "files";
+  let databaseKind: "external" | "files";
   const files: PlannedSnapshotFile[] = [];
   const budget: SnapshotPlanBudget = { fileCount: 0, pathBytes: 0 };
-  let databaseFile: PlannedSnapshotFile | null = null;
 
   try {
     if (postgresUrl) {
@@ -582,25 +579,15 @@ async function createSnapshotStreamPlan(
       temporaryRoot = await fs.mkdtemp(
         path.join(os.tmpdir(), "eliza-agent-snapshot-capture-"),
       );
-      databaseFile = await capturePgliteDumpToTemporaryFile(
-        runtime,
-        temporaryRoot,
-        budget,
+      files.push(
+        ...(await capturePgliteFilesToTemporaryDirectory(
+          runtime,
+          pgliteDir as string,
+          temporaryRoot,
+          budget,
+        )),
       );
-      if (databaseFile) {
-        databaseKind = "dump";
-        files.push(databaseFile);
-      } else {
-        databaseKind = "files";
-        files.push(
-          ...(await collectPlannedFiles({
-            budget,
-            component: "database",
-            include: pgliteFileInclude,
-            root: pgliteDir as string,
-          })),
-        );
-      }
+      databaseKind = "files";
     }
 
     files.push(
@@ -662,15 +649,6 @@ async function createSnapshotStreamPlan(
         externalPostgres,
         kind: "external-postgres-reference",
         sha256: externalPostgres.sha256,
-      };
-    } else if (databaseKind === "dump") {
-      const descriptor = databaseFile?.descriptor;
-      if (!descriptor) throw invalidStream("PGlite dump file is missing");
-      database = {
-        compression: "gzip",
-        fileIndex: descriptor.index,
-        kind: "pglite-dump",
-        sha256: pgliteDumpSha256(descriptor),
       };
     } else {
       const databaseFiles = files
@@ -901,11 +879,7 @@ async function preflightSnapshotDestinations(params: {
   });
   for (const file of descriptor.files) {
     if (file.component === "database") {
-      if (
-        descriptor.components.database.kind === "pglite-dump"
-          ? file.path !== PGLITE_DUMP_PATH
-          : !pgliteFileInclude(file.path)
-      ) {
+      if (!pgliteFileInclude(file.path)) {
         throw invalidStream(
           `Snapshot database path is unsupported: ${file.path}`,
         );
@@ -1046,37 +1020,6 @@ async function applySharedRootFileSet(params: {
   await pruneExtraFiles(params.root, params.include, keepPaths);
 }
 
-async function restorePgliteDumpFromFile(
-  pgliteDir: string,
-  stagedFile: string,
-): Promise<void> {
-  await fs.mkdir(path.dirname(pgliteDir), { recursive: true });
-  await replaceDirectory(pgliteDir, async (candidate) => {
-    const dump = await openAsBlob(stagedFile, {
-      type: "application/gzip",
-    });
-    const { PGlite } = await import("@electric-sql/pglite");
-    const database = new PGlite({
-      dataDir: candidate,
-      loadDataDir: dump,
-    });
-    try {
-      await database.waitReady;
-    } finally {
-      await database.close();
-    }
-    await Promise.all(
-      [...PGLITE_VOLATILE_ROOT_FILES].map((fileName) =>
-        fs.rm(path.join(candidate, fileName), { force: true }),
-      ),
-    );
-    await fs.rm(path.join(candidate, "pg_stat_tmp"), {
-      force: true,
-      recursive: true,
-    });
-  });
-}
-
 async function applyVerifiedSnapshotStream(params: {
   descriptor: AgentSnapshotStreamDescriptor;
   runtime: IAgentRuntime | AgentRuntime;
@@ -1121,20 +1064,19 @@ async function applyVerifiedSnapshotStream(params: {
     ) {
       await (runtime.adapter as { close: () => Promise<void> }).close();
     }
-    if (database.kind === "pglite-dump") {
-      const stagedFile = stagedFiles[database.fileIndex];
-      if (!stagedFile) throw invalidStream("PGlite dump staging is missing");
-      await restorePgliteDumpFromFile(pgliteDir, stagedFile);
-    } else {
-      const databaseFiles = descriptor.files.filter(
-        (file) => file.component === "database",
+    if (database.kind !== "pglite-files") {
+      throw invalidStream(
+        "PGlite dump snapshots are not bounded-memory restores",
       );
-      await applyDirectoryFileSet({
-        descriptors: databaseFiles,
-        root: pgliteDir,
-        stagedFiles,
-      });
     }
+    const databaseFiles = descriptor.files.filter(
+      (file) => file.component === "database",
+    );
+    await applyDirectoryFileSet({
+      descriptors: databaseFiles,
+      root: pgliteDir,
+      stagedFiles,
+    });
   }
 
   await applyDirectoryFileSet({
@@ -1383,6 +1325,7 @@ export async function restoreAgentSnapshotStream(
     return {
       aggregateSha256: verifiedTrailer.aggregateSha256,
       fileCount: verifiedTrailer.fileCount,
+      requiresRestart: true,
       schemaVersion: 2,
       success: true,
       totalBytes: verifiedTrailer.totalBytes,
