@@ -46,6 +46,7 @@ type ErrorCode =
   | "agent_not_found"
   | "replacement_cleanup_pending"
   | "provisioning_in_progress"
+  | "worker_restart_interrupted"
   | "lifecycle_conflict"
   | "credential_revoke_failed"
   | "row_delete_failed"
@@ -165,6 +166,13 @@ function classifyError(value: unknown, label: string): ErrorCode {
   }
   if (LIFECYCLE_JOB_CONFLICT_PATTERN.test(value)) {
     return "lifecycle_conflict";
+  }
+  if (
+    /^Job interrupted by worker restart (?:[1-9][0-9]* times - max attempts reached|- recovered for retry \(attempt [1-9][0-9]*\/[1-9][0-9]*\))$/.test(
+      value,
+    )
+  ) {
+    return "worker_restart_interrupted";
   }
   if (/failed query:[\s\S]*delete from\s+"?agent_sandboxes"?/i.test(value)) {
     return "row_delete_failed";

@@ -347,6 +347,71 @@ describe("managed dedicated canary diagnostic", () => {
     ).toThrow("privacy-safe classifier");
   });
 
+  test("classifies a terminal worker-restart interruption without publishing raw text", () => {
+    const input = failedDeleteInput();
+    const agent = input.agent as Record<string, unknown>;
+    const [job] = input.jobs as Record<string, unknown>[];
+    const error =
+      "Job interrupted by worker restart 3 times - max attempts reached";
+    agent.errorMessage = `Deletion permanently failed after 3 attempts: ${error}`;
+    job.error = error;
+    job.result = null;
+
+    const canonical = canonicalizeManagedDedicatedCanaryDiagnostic(
+      JSON.stringify(input),
+      SUFFIX,
+    );
+    const evidence = JSON.parse(canonical);
+    expect(evidence.sandbox.errorCode).toBe("worker_restart_interrupted");
+    expect(evidence.jobs[0]).toMatchObject({
+      errorCode: "worker_restart_interrupted",
+      resultErrorCode: "none",
+      containerStopped: null,
+      rowDeleted: null,
+    });
+    expect(canonical).not.toContain("worker restart");
+    expect(canonical).not.toContain("max attempts");
+  });
+
+  test("classifies a retryable worker-restart interruption by status, not as success", () => {
+    const input = failedDeleteInput();
+    const agent = input.agent as Record<string, unknown>;
+    const [job] = input.jobs as Record<string, unknown>[];
+    agent.status = "deletion_pending";
+    agent.errorMessage = null;
+    agent.errorCount = 0;
+    job.status = "pending";
+    job.error =
+      "Job interrupted by worker restart - recovered for retry (attempt 1/3)";
+    job.result = null;
+    job.attempts = 1;
+    job.completedAt = null;
+
+    const evidence = sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX);
+    expect(evidence.sandbox.errorCode).toBe("none");
+    expect(evidence.jobs[0]).toMatchObject({
+      status: "pending",
+      errorCode: "worker_restart_interrupted",
+      resultErrorCode: "none",
+    });
+  });
+
+  test.each([
+    "Job interrupted by worker restart 0 times - max attempts reached",
+    "Job interrupted by worker restart 3 times - max attempts reached trailing",
+    "Job interrupted by worker restart - recovered for retry (attempt 0/3)",
+  ])("rejects a noncanonical worker-restart message", (error) => {
+    const input = failedDeleteInput();
+    const agent = input.agent as Record<string, unknown>;
+    const [job] = input.jobs as Record<string, unknown>[];
+    agent.errorMessage = `Deletion permanently failed after 3 attempts: ${error}`;
+    job.error = error;
+    job.result = null;
+    expect(() =>
+      sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX),
+    ).toThrow("privacy-safe classifier");
+  });
+
   test("classifies row-delete failures without publishing the SQL text", () => {
     const input = failedDeleteInput();
     const agent = input.agent as Record<string, unknown>;
