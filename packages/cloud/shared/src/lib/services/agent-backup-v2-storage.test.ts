@@ -8,6 +8,7 @@ import type {
   AgentBackupChunkStagingDescriptor,
   AgentBackupSnapshotType,
   StoredAgentSandboxBackup,
+  StoredAgentSandboxBackupCleanupIntent,
 } from "../../db/schemas/agent-sandboxes";
 import type {
   AgentBackupChunkDescriptor,
@@ -108,6 +109,7 @@ function row(params: {
 class FakeRepository {
   events: string[] = [];
   incomplete: StoredAgentSandboxBackup[] = [];
+  cleanupIntents: StoredAgentSandboxBackupCleanupIntent[] = [];
   prunable: StoredAgentSandboxBackup[] = [];
   deleted = false;
   committedRow: StoredAgentSandboxBackup | undefined;
@@ -174,6 +176,18 @@ class FakeRepository {
     _limit: number,
   ): Promise<StoredAgentSandboxBackup[]> {
     return this.incomplete;
+  }
+
+  async listBackupObjectCleanupIntentsBefore(
+    _before: Date,
+    _limit: number,
+  ): Promise<StoredAgentSandboxBackupCleanupIntent[]> {
+    return this.cleanupIntents;
+  }
+
+  async deleteBackupObjectCleanupIntent(_backupId: string): Promise<boolean> {
+    this.events.push("delete-cleanup-intent");
+    return true;
   }
 
   async claimPrunableChunkedBackups(
@@ -356,6 +370,28 @@ describe("AgentBackupV2StorageService", () => {
     expect(result).toEqual({ deleted: 1, retained: 1 });
     expect(repository.events).toContain(`delete-object:${objectKey}`);
     expect(repository.events).not.toContain("delete-object:unrelated/tenant/object.bin");
+  });
+
+  test("reconciles object cleanup intents after the sandbox backup rows are gone", async () => {
+    const repository = new FakeRepository();
+    repository.cleanupIntents = [
+      {
+        backup_id: backupId,
+        organization_id: organizationId,
+        sandbox_record_id: sandboxRecordId,
+        descriptor: completeDescriptor(),
+        storage_commit_state: "complete",
+        created_at: createdAt,
+        updated_at: createdAt,
+      },
+    ];
+    const fixture = dependencies({ repository });
+    const service = new AgentBackupV2StorageService(fixture.dependencies);
+
+    await expect(
+      service.reconcileIncomplete({ before: new Date("2026-07-27T00:00:00.000Z") }),
+    ).resolves.toEqual({ deleted: 1, retained: 0 });
+    expect(repository.events).toEqual([`delete-object:${objectKey}`, "delete-cleanup-intent"]);
   });
 
   test("hides pruned chunked rows before removing their objects", async () => {

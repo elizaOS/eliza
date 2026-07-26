@@ -14,10 +14,17 @@ process.env.MOCK_REDIS = "1";
 process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
 
 import { pushSchema } from "drizzle-kit/api";
+import {
+  readEncryptedAgentBackupChunks,
+  stageEncryptedAgentBackupChunks,
+} from "../../lib/services/agent-backup-chunks";
+import { AgentBackupV2StorageService } from "../../lib/services/agent-backup-v2-storage";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../client";
+import { ensureAgentSandboxBackupCleanupIntentSchema } from "../ensure-agent-sandbox-schema";
 import {
   type AgentBackupChunkCompleteDescriptor,
   type AgentBackupChunkStagingDescriptor,
+  agentSandboxBackupCleanupIntents,
   agentSandboxBackups,
   agentSandboxes,
 } from "../schemas/agent-sandboxes";
@@ -135,9 +142,11 @@ beforeAll(async () => {
       userCharacters,
       agentSandboxes,
       agentSandboxBackups,
+      agentSandboxBackupCleanupIntents,
     };
     const { apply } = await pushSchema(schema as never, dbWrite as never);
     await apply();
+    await ensureAgentSandboxBackupCleanupIntentSchema();
   } catch {
     pgliteReady = false;
   }
@@ -145,6 +154,7 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   expect(pgliteReady).toBe(true);
+  await dbWrite.delete(agentSandboxBackupCleanupIntents);
   await dbWrite.delete(agentSandboxBackups);
   await dbWrite.delete(agentSandboxes);
   await dbWrite.delete(users);
@@ -231,5 +241,48 @@ describe("schema-v2 backup repository transitions", () => {
     await expect(
       repository.claimPrunableChunkedBackups(sandboxRecordId, otherOrganizationId, 0),
     ).rejects.toThrow("does not belong");
+  });
+
+  test("preserves and reconciles chunk cleanup after sandbox deletion cascades backup rows", async () => {
+    const { organizationId, sandboxRecordId } = await seedSandbox();
+    const backupId = "00000000-0000-4000-8000-000000000013";
+    const staging = stagingDescriptor({ organizationId, sandboxRecordId, backupId });
+    const complete = completeDescriptor(staging);
+    await repository.createChunkedBackupStaging({
+      descriptor: staging,
+      snapshotType: "pre-upgrade",
+    });
+    await repository.commitChunkedBackup({
+      backupId,
+      contentHash: "d".repeat(64),
+      descriptor: complete,
+      verifiedAt: new Date("2026-07-26T12:01:00.000Z"),
+    });
+
+    expect(await repository.delete(sandboxRecordId, organizationId)).toBe(true);
+    expect(
+      await dbWrite.select().from(agentSandboxBackups).where(eq(agentSandboxBackups.id, backupId)),
+    ).toHaveLength(0);
+    expect(
+      await dbWrite
+        .select()
+        .from(agentSandboxBackupCleanupIntents)
+        .where(eq(agentSandboxBackupCleanupIntents.backup_id, backupId)),
+    ).toHaveLength(1);
+
+    const deletedObjects: string[] = [];
+    const service = new AgentBackupV2StorageService({
+      repository,
+      stageChunks: stageEncryptedAgentBackupChunks,
+      readChunks: readEncryptedAgentBackupChunks,
+      deleteObject: async (key) => {
+        deletedObjects.push(key);
+      },
+    });
+    await expect(
+      service.reconcileIncomplete({ before: new Date("2026-07-27T00:00:00.000Z") }),
+    ).resolves.toEqual({ deleted: 1, retained: 0 });
+    expect(deletedObjects).toEqual([complete.chunks[0]?.objectKey]);
+    expect(await dbWrite.select().from(agentSandboxBackupCleanupIntents)).toHaveLength(0);
   });
 });

@@ -31,11 +31,13 @@ import {
   type AgentSandbox,
   type AgentSandboxBackup,
   type AgentSandboxStatus,
+  agentSandboxBackupCleanupIntents,
   agentSandboxBackups,
   agentSandboxes,
   type NewAgentSandbox,
   type NewAgentSandboxBackup,
   type StoredAgentSandboxBackup,
+  type StoredAgentSandboxBackupCleanupIntent,
   UPGRADE_FAILURE_TARGET_MARKER_PREFIX,
   WARM_POOL_ORG_ID,
   WARM_POOL_USER_ID,
@@ -1809,6 +1811,26 @@ export class AgentSandboxesRepository {
       )
       .orderBy(asc(agentSandboxBackups.storage_commit_updated_at))
       .limit(limit);
+  }
+
+  async listBackupObjectCleanupIntentsBefore(
+    before: Date,
+    limit: number,
+  ): Promise<StoredAgentSandboxBackupCleanupIntent[]> {
+    return await dbRead
+      .select()
+      .from(agentSandboxBackupCleanupIntents)
+      .where(lt(agentSandboxBackupCleanupIntents.updated_at, before))
+      .orderBy(asc(agentSandboxBackupCleanupIntents.updated_at))
+      .limit(limit);
+  }
+
+  async deleteBackupObjectCleanupIntent(backupId: string): Promise<boolean> {
+    const rows = await dbWrite
+      .delete(agentSandboxBackupCleanupIntents)
+      .where(eq(agentSandboxBackupCleanupIntents.backup_id, backupId))
+      .returning({ backupId: agentSandboxBackupCleanupIntents.backup_id });
+    return rows.length === 1;
   }
 
   async deleteIncompleteChunkedBackup(backupId: string): Promise<boolean> {
