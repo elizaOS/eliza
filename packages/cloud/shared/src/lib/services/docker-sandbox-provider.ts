@@ -65,10 +65,14 @@ import type {
   SandboxHealthOutcome,
   SandboxProvider,
   SandboxReplacementCleanupLocator,
+  SandboxRollbackStandbyLocator,
   SandboxSnapshotRestoreBindingSeed,
   SandboxSnapshotSourceAttestationSeed,
 } from "./sandbox-provider-types";
-import { SandboxReplacementCleanupUnresolvedError } from "./sandbox-provider-types";
+import {
+  SandboxReplacementCleanupUnresolvedError,
+  SandboxRollbackStandbyUnresolvedError,
+} from "./sandbox-provider-types";
 import {
   ensureStewardTenant,
   resolveStewardTenantCredentials,
@@ -138,6 +142,12 @@ interface ContainerMeta {
   sshPort: number;
   sshUser: string;
   hostKeyFingerprint?: string;
+}
+
+interface DockerContainerRuntimeState {
+  containerId: string;
+  running: boolean;
+  paused: boolean;
 }
 
 type DockerNodeConnection = Pick<
@@ -2376,6 +2386,141 @@ export class DockerSandboxProvider implements SandboxProvider {
       throw new Error(
         `[docker-sandbox] Cannot prove VPN registration settled for ${locator.containerName}`,
       );
+    }
+  }
+
+  private async inspectRollbackStandbyState(
+    node: DockerNodeConnection,
+    containerName: string,
+  ): Promise<DockerContainerRuntimeState> {
+    const ssh = DockerSSHClient.getClient(
+      node.hostname,
+      node.ssh_port ?? DEFAULT_SSH_PORT,
+      node.host_key_fingerprint ?? undefined,
+      node.ssh_user ?? DEFAULT_SSH_USERNAME,
+    );
+    const format = "{{.Id}}|{{.State.Running}}|{{.State.Paused}}";
+    const output = await ssh.exec(
+      `docker inspect --format ${shellQuote(format)} ${shellQuote(containerName)}`,
+      DOCKER_CMD_TIMEOUT_MS,
+    );
+    const lines = output
+      .trim()
+      .split(/\r?\n/)
+      .filter((line) => line.length > 0);
+    if (lines.length !== 1) {
+      throw new Error(
+        `[docker-sandbox] Cannot verify rollback standby ${containerName}: expected one inspect record`,
+      );
+    }
+    const [containerId, running, paused, ...extra] = lines[0]!.split("|");
+    if (
+      extra.length > 0 ||
+      !containerId ||
+      !/^[a-f0-9]{12,64}$/i.test(containerId) ||
+      (running !== "true" && running !== "false") ||
+      (paused !== "true" && paused !== "false")
+    ) {
+      throw new Error(
+        `[docker-sandbox] Cannot verify rollback standby ${containerName}: malformed inspect record`,
+      );
+    }
+    return {
+      containerId,
+      running: running === "true",
+      paused: paused === "true",
+    };
+  }
+
+  /**
+   * Docker pause is the compatibility bridge for an image that cannot consume
+   * the replacement's snapshot protocol. It preserves process memory, local
+   * volumes, VPN identity, and capacity while preventing a second writer.
+   */
+  async pauseForRollbackStandby(sandboxId: string): Promise<SandboxRollbackStandbyLocator> {
+    const meta = await this.resolveContainer(sandboxId);
+    const node: DockerNodeConnection = {
+      node_id: meta.nodeId,
+      hostname: meta.hostname,
+      ssh_port: meta.sshPort,
+      ssh_user: meta.sshUser,
+      host_key_fingerprint: meta.hostKeyFingerprint ?? null,
+    };
+    const initial = await this.inspectRollbackStandbyState(node, meta.containerName);
+    const locator: SandboxRollbackStandbyLocator = {
+      nodeId: meta.nodeId,
+      containerName: meta.containerName,
+      containerId: initial.containerId,
+    };
+    if (initial.paused) return locator;
+    if (!initial.running) {
+      throw new SandboxRollbackStandbyUnresolvedError(
+        locator,
+        new Error("container is not running and cannot become a live rollback standby"),
+      );
+    }
+
+    const ssh = DockerSSHClient.getClient(
+      meta.hostname,
+      meta.sshPort,
+      meta.hostKeyFingerprint,
+      meta.sshUser,
+    );
+    try {
+      await ssh.exec(`docker pause ${shellQuote(initial.containerId)}`, DOCKER_CMD_TIMEOUT_MS);
+      const paused = await this.inspectRollbackStandbyState(node, meta.containerName);
+      if (
+        !dockerContainerIdsMatch(initial.containerId, paused.containerId) ||
+        !paused.running ||
+        !paused.paused
+      ) {
+        throw new Error("Docker did not confirm the exact container as paused");
+      }
+      return locator;
+    } catch (error) {
+      // error-policy:J2 context-adding rethrow — callers need the exact Docker
+      // identity to retain the standby fence after an ambiguous SSH outcome.
+      throw new SandboxRollbackStandbyUnresolvedError(locator, error);
+    }
+  }
+
+  async resumeRollbackStandby(locator: SandboxRollbackStandbyLocator): Promise<void> {
+    const node = await dockerNodesRepository.findByNodeId(locator.nodeId);
+    if (!node) {
+      throw new SandboxRollbackStandbyUnresolvedError(
+        locator,
+        new Error(`Docker node ${locator.nodeId} is not registered`),
+      );
+    }
+    try {
+      const initial = await this.inspectRollbackStandbyState(node, locator.containerName);
+      if (!dockerContainerIdsMatch(locator.containerId, initial.containerId)) {
+        throw new Error("persisted rollback standby Docker id no longer matches");
+      }
+      if (initial.running && !initial.paused) return;
+      if (!initial.running || !initial.paused) {
+        throw new Error("container is not an exact paused rollback standby");
+      }
+
+      const ssh = DockerSSHClient.getClient(
+        node.hostname,
+        node.ssh_port ?? DEFAULT_SSH_PORT,
+        node.host_key_fingerprint ?? undefined,
+        node.ssh_user ?? DEFAULT_SSH_USERNAME,
+      );
+      await ssh.exec(`docker unpause ${shellQuote(initial.containerId)}`, DOCKER_CMD_TIMEOUT_MS);
+      const resumed = await this.inspectRollbackStandbyState(node, locator.containerName);
+      if (
+        !dockerContainerIdsMatch(locator.containerId, resumed.containerId) ||
+        !resumed.running ||
+        resumed.paused
+      ) {
+        throw new Error("Docker did not confirm the exact standby as resumed");
+      }
+    } catch (error) {
+      // error-policy:J2 context-adding rethrow — an ambiguous resume must keep
+      // both placements fenced until an operator can prove which is live.
+      throw new SandboxRollbackStandbyUnresolvedError(locator, error);
     }
   }
 
