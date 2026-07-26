@@ -1,8 +1,8 @@
 /**
  * Tests for the agent-backup service: snapshot capture + restore and the
  * KMS-encrypted local backup envelope. Exercised against a real tmpdir
- * filesystem, a real in-memory KMS backend, and the real PGlite `dumpDataDir`
- * path via a stub adapter — deterministic, no network.
+ * filesystem, a real in-memory KMS backend, and a live PGlite database through
+ * its native `dumpDataDir` path — deterministic, no network.
  */
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -168,6 +168,35 @@ describe("agent backup manifest", () => {
       { purpose: "manual", typo: true },
     ]) {
       expect(() => parseAgentSnapshotRequest(request)).toThrow();
+    }
+  });
+
+  test("does not expose invalid connection URL content in identity errors", async () => {
+    const root = await fs.mkdtemp(
+      path.join(os.tmpdir(), "eliza-agent-backup-v2-url-privacy-"),
+    );
+    process.env.ELIZA_STATE_DIR = root;
+    delete process.env.POSTGRES_URL;
+    delete process.env.DATABASE_URL;
+    const agentId = "10000000-0000-4000-8000-000000000009";
+    const secretProtocol = "credential-secret";
+    const runtime = postgresRuntimeStub(
+      agentId,
+      `${secretProtocol}://owner:password@db.example.com/eliza`,
+    );
+
+    try {
+      await createAgentSnapshot(runtime, {} as never, {
+        purpose: "pre-upgrade",
+      });
+      throw new Error("Expected invalid Postgres URL to fail");
+    } catch (error) {
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toBe(
+        "POSTGRES_URL must use postgres:// or postgresql://",
+      );
+      expect((error as Error).message).not.toContain(secretProtocol);
+      expect((error as Error).message).not.toContain("password");
     }
   });
 
@@ -340,6 +369,26 @@ describe("agent backup manifest", () => {
       restoreAgentSnapshot(runtime, malformedReference),
     ).rejects.toThrow(/identity is malformed/);
 
+    const referenceWithCredentialResidue = structuredClone(snapshot);
+    const residueReference =
+      referenceWithCredentialResidue.manifest.components.database
+        .externalPostgres;
+    if (!residueReference) {
+      throw new Error("Expected external Postgres reference");
+    }
+    Object.assign(residueReference, { password: "must-not-be-accepted" });
+    await expect(
+      restoreAgentSnapshot(runtime, referenceWithCredentialResidue),
+    ).rejects.toThrow(/identity has unsupported fields/);
+
+    const componentWithHydratedResidue = structuredClone(snapshot);
+    Object.assign(componentWithHydratedResidue.manifest.components.database, {
+      postgres: { tables: [], sha256: "0".repeat(64) },
+    });
+    await expect(
+      restoreAgentSnapshot(runtime, componentWithHydratedResidue),
+    ).rejects.toThrow(/database component has unsupported fields/);
+
     const v1WithExternalReference = structuredClone(snapshot);
     v1WithExternalReference.manifest.schemaVersion = 1;
     await expect(
@@ -388,6 +437,64 @@ describe("agent backup manifest", () => {
     expect(await readText(path.join(pgliteDir, "pgdata.bin"))).toBe(
       "database-bytes",
     );
+  });
+
+  test("round-trips a live PGlite database through a v2 pre-upgrade snapshot", async () => {
+    const root = await fs.mkdtemp(
+      path.join(os.tmpdir(), "eliza-agent-backup-v2-live-pglite-"),
+    );
+    const pgliteDir = path.join(root, "pglite");
+    process.env.ELIZA_STATE_DIR = root;
+    process.env.PGLITE_DATA_DIR = pgliteDir;
+    delete process.env.POSTGRES_URL;
+    delete process.env.DATABASE_URL;
+
+    const { PGlite } = await import("@electric-sql/pglite");
+    const database = new PGlite(pgliteDir);
+    await database.waitReady;
+    await database.exec(`
+      CREATE TABLE snapshot_probe (
+        id INTEGER PRIMARY KEY,
+        payload TEXT NOT NULL
+      );
+      INSERT INTO snapshot_probe (id, payload) VALUES (1, 'captured');
+    `);
+
+    let closed = false;
+    const runtime = {
+      ...runtimeStub("10000000-0000-4000-8000-000000000008"),
+      adapter: {
+        getRawConnection: () => database,
+        close: async () => {
+          if (closed) return;
+          closed = true;
+          await database.close();
+        },
+      },
+    } as unknown as AgentRuntime;
+
+    const snapshot = await createAgentSnapshot(runtime, {} as never, {
+      purpose: "pre-upgrade",
+    });
+    expect(snapshot.manifest.schemaVersion).toBe(2);
+    expect(snapshot.manifest.components.database.kind).toBe("pglite-dump");
+
+    await database.exec(
+      "INSERT INTO snapshot_probe (id, payload) VALUES (2, 'after-snapshot');",
+    );
+    await restoreAgentSnapshot(runtime, snapshot);
+
+    const restored = new PGlite(pgliteDir);
+    try {
+      await restored.waitReady;
+      const result = await restored.query<{
+        id: number;
+        payload: string;
+      }>("SELECT id, payload FROM snapshot_probe ORDER BY id");
+      expect(result.rows).toEqual([{ id: 1, payload: "captured" }]);
+    } finally {
+      await restored.close();
+    }
   });
 
   test("fails a v2 pre-upgrade snapshot when PGlite has no durable capture path", async () => {
