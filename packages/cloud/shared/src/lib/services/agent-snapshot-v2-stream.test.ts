@@ -5,13 +5,16 @@
 
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+import { validateSnapshotStreamDescriptor } from "../../../../../agent/src/services/agent-snapshot-stream-protocol";
 import {
   AGENT_SNAPSHOT_V2_CHUNK_BYTES,
   AGENT_SNAPSHOT_V2_CONTENT_TYPE,
   AGENT_SNAPSHOT_V2_FORMAT,
+  AGENT_SNAPSHOT_V2_MAX_DESCRIPTOR_PATH_BYTES,
   AGENT_SNAPSHOT_V2_MAX_LINE_BYTES,
   AGENT_SNAPSHOT_V2_MAX_PATH_BYTES,
   AGENT_SNAPSHOT_V2_MAX_TOTAL_BYTES,
+  AGENT_SNAPSHOT_V2_MAX_WIRE_BYTES,
   AGENT_SNAPSHOT_V2_REPACK_VIEW_BYTES,
   AGENT_SNAPSHOT_V2_TRANSFER,
   type AgentSnapshotV2ChunkFrame,
@@ -25,7 +28,10 @@ import {
   agentSnapshotV2Sha256,
   agentSnapshotV2Sha256Json,
   agentSnapshotV2StableJson,
+  assertAgentSnapshotV2WireBytes,
+  compareAgentSnapshotV2Paths,
   observeAgentSnapshotV2Stream,
+  validateAgentSnapshotV2Descriptor,
   validateAgentSnapshotV2Stream,
 } from "./agent-snapshot-v2-stream";
 
@@ -196,6 +202,29 @@ async function validateFrames(
 
 async function expectInvalid(frames: readonly unknown[], message: string): Promise<void> {
   await expect(validateFrames(frames)).rejects.toThrow(message);
+}
+
+function expectDescriptorParity(value: unknown, accepted: boolean): void {
+  const cloudAccepted = (() => {
+    try {
+      validateAgentSnapshotV2Descriptor(value);
+      return true;
+    } catch {
+      return false;
+    }
+  })();
+  const agentAccepted = (() => {
+    try {
+      validateSnapshotStreamDescriptor(value);
+      return true;
+    } catch {
+      return false;
+    }
+  })();
+  expect({ agentAccepted, cloudAccepted }).toEqual({
+    agentAccepted: accepted,
+    cloudAccepted: accepted,
+  });
 }
 
 describe("agent snapshot v2 Cloud stream validator", () => {
@@ -406,6 +435,76 @@ describe("agent snapshot v2 Cloud stream validator", () => {
     );
   });
 
+  test("matches the agent descriptor grammar for valid and adversarial snapshots", () => {
+    expectDescriptorParity(descriptorFor(), true);
+
+    const unicodePaths = ["é", "e\u0301", "a", "_", "A"].sort(compareAgentSnapshotV2Paths);
+    expectDescriptorParity(
+      descriptorFor(
+        unicodePaths.map((filePath, index) => fileDescriptor(index, filePath, Buffer.alloc(0))),
+      ),
+      true,
+    );
+    const maximumTimestamp = fileDescriptor(0, "maximum-timestamp", Buffer.alloc(0));
+    maximumTimestamp.mtimeMs = 8_640_000_000_000_000;
+    expectDescriptorParity(descriptorFor([maximumTimestamp]), true);
+
+    expectDescriptorParity(descriptorFor([fileDescriptor(0, "a\u0001b", Buffer.alloc(0))]), false);
+    for (const invalidTimestamp of [8_640_000_000_000_001, 1e308]) {
+      const invalid = fileDescriptor(0, `invalid-timestamp-${invalidTimestamp}`, Buffer.alloc(0));
+      invalid.mtimeMs = invalidTimestamp;
+      expectDescriptorParity(descriptorFor([invalid]), false);
+    }
+    expectDescriptorParity(
+      descriptorFor([
+        fileDescriptor(0, "a", Buffer.alloc(0)),
+        fileDescriptor(1, "a/b", Buffer.alloc(0)),
+      ]),
+      false,
+    );
+
+    expectDescriptorParity(
+      descriptorFor([], {
+        fileIndices: [],
+        kind: "pglite-files",
+        sha256: agentSnapshotV2Sha256Json([]),
+      }),
+      false,
+    );
+
+    const dump = fileDescriptor(0, "database.sql.gz", Buffer.alloc(0), "database");
+    const extra = fileDescriptor(1, "extra.bin", Buffer.alloc(0), "database");
+    expectDescriptorParity(
+      descriptorFor([dump, extra], {
+        compression: "gzip",
+        fileIndex: 0,
+        kind: "pglite-dump",
+        sha256: agentSnapshotV2Sha256Json({
+          compression: "gzip",
+          file: { path: dump.path, sha256: dump.sha256, size: dump.size },
+          kind: "pglite-dump",
+        }),
+      }),
+      false,
+    );
+
+    const overPathBudget = Array.from(
+      {
+        length:
+          Math.floor(
+            AGENT_SNAPSHOT_V2_MAX_DESCRIPTOR_PATH_BYTES / AGENT_SNAPSHOT_V2_MAX_PATH_BYTES,
+          ) + 1,
+      },
+      (_, index) =>
+        fileDescriptor(
+          index,
+          `${String(index).padStart(4, "0")}-${"x".repeat(AGENT_SNAPSHOT_V2_MAX_PATH_BYTES - 5)}`,
+          Buffer.alloc(0),
+        ),
+    );
+    expectDescriptorParity(descriptorFor(overPathBudget), false);
+  });
+
   test("rejects external Postgres database bytes and inconsistent identity hashes", async () => {
     const databaseFile = fileDescriptor(
       0,
@@ -561,5 +660,12 @@ describe("agent snapshot v2 Cloud stream validator", () => {
       files: new Array(100_001).fill(null),
     };
     await expectInvalid([tooManyFiles], "file count exceeds its budget");
+  });
+
+  test("enforces the base64 NDJSON wire envelope without allocating it", () => {
+    expect(() => assertAgentSnapshotV2WireBytes(AGENT_SNAPSHOT_V2_MAX_WIRE_BYTES)).not.toThrow();
+    expect(() => assertAgentSnapshotV2WireBytes(AGENT_SNAPSHOT_V2_MAX_WIRE_BYTES + 1)).toThrow(
+      "wire byte count exceeds its budget",
+    );
   });
 });
