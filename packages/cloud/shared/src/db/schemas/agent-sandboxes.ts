@@ -427,6 +427,54 @@ export interface EncryptedAgentBackupStateData {
 
 export type AgentBackupStoredStateData = AgentBackupPlainStateData | EncryptedAgentBackupStateData;
 
+export type AgentBackupSnapshotSchemaVersion = 1 | 2;
+export type AgentBackupStateDataStorage = "inline" | "r2" | "chunked-v2";
+export type AgentBackupStorageCommitState = "staging" | "complete" | "failed";
+
+export interface AgentBackupChunkStagingDescriptor {
+  format: "elizaos.agent-backup-chunks";
+  descriptorVersion: 1;
+  backupSchemaVersion: 2;
+  commitState: "staging" | "failed";
+  organizationId: string;
+  sandboxRecordId: string;
+  backupId: string;
+  createdAt: string;
+  plannedObjectKeys: string[];
+  failure: string | null;
+}
+
+export interface AgentBackupChunkCompleteDescriptor {
+  format: "elizaos.agent-backup-chunks";
+  descriptorVersion: 1;
+  backupSchemaVersion: 2;
+  commitState: "complete";
+  organizationId: string;
+  sandboxRecordId: string;
+  backupId: string;
+  createdAt: string;
+  objectSetId: string;
+  chunkBytes: number;
+  totalPlaintextBytes: number;
+  totalPlaintextSha256: string;
+  chunks: Array<{
+    index: number;
+    objectKey: string;
+    plaintextBytes: number;
+    ciphertextBytes: number;
+    plaintextSha256: string;
+    ciphertextSha256: string;
+    nonceBase64: string;
+    authTagBase64: string;
+    kmsKeyId: string;
+    kmsKeyVersion: number;
+  }>;
+}
+
+export type AgentBackupStateDataDescriptor =
+  | AgentBackupChunkStagingDescriptor
+  | AgentBackupChunkCompleteDescriptor;
+
 export const agentSandboxBackups = pgTable(
   "agent_sandbox_backups",
   {
@@ -442,8 +490,26 @@ export const agentSandboxBackups = pgTable(
      * returning an AgentSandboxBackup to callers.
      */
     state_data: jsonb("state_data").$type<AgentBackupStoredStateData>().notNull(),
-    state_data_storage: text("state_data_storage").notNull().default("inline"),
+    snapshot_schema_version: integer("snapshot_schema_version")
+      .$type<AgentBackupSnapshotSchemaVersion>()
+      .notNull()
+      .default(1),
+    state_data_storage: text("state_data_storage")
+      .$type<AgentBackupStateDataStorage>()
+      .notNull()
+      .default("inline"),
     state_data_key: text("state_data_key"),
+    state_data_descriptor: jsonb("state_data_descriptor").$type<AgentBackupStateDataDescriptor>(),
+    storage_commit_state: text("storage_commit_state")
+      .$type<AgentBackupStorageCommitState>()
+      .notNull()
+      .default("complete"),
+    storage_commit_error: text("storage_commit_error"),
+    storage_commit_updated_at: timestamp("storage_commit_updated_at", {
+      withTimezone: true,
+    })
+      .notNull()
+      .defaultNow(),
     size_bytes: bigint("size_bytes", { mode: "number" }),
     backup_kind: text("backup_kind").$type<AgentBackupKind>().notNull().default("full"),
     /** Set only on `incremental` rows: the backup this delta builds on. */
@@ -477,6 +543,9 @@ export const agentSandboxBackups = pgTable(
       table.created_at.desc(),
     ),
     parent_backup_idx: index("agent_sandbox_backups_parent_idx").on(table.parent_backup_id),
+    storage_reconcile_idx: index("agent_sandbox_backups_storage_reconcile_idx")
+      .on(table.storage_commit_updated_at)
+      .where(sql`${table.storage_commit_state} <> 'complete'`),
   }),
 );
 
