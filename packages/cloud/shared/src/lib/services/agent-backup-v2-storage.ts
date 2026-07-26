@@ -47,11 +47,12 @@ interface AgentBackupV2StorageRepository {
     descriptor: AgentBackupChunkCompleteDescriptor;
     verifiedAt: Date;
   }): Promise<StoredAgentSandboxBackup>;
+  getChunkedBackupById(backupId: string): Promise<StoredAgentSandboxBackup | undefined>;
   failChunkedBackup(
     backupId: string,
     descriptor: AgentBackupChunkStagingDescriptor,
     error: string,
-  ): Promise<void>;
+  ): Promise<StoredAgentSandboxBackup | undefined>;
   listIncompleteChunkedBackupsBefore(
     before: Date,
     limit: number,
@@ -124,6 +125,24 @@ function requireStagingDescriptor(
     throw new Error(`Incomplete backup ${row.id} has an invalid staging descriptor`);
   }
   return descriptor;
+}
+
+function isMatchingCompleteBackup(
+  row: StoredAgentSandboxBackup | undefined,
+  identity: AgentBackupChunkIdentity,
+): row is StoredAgentSandboxBackup {
+  const descriptor = row?.state_data_descriptor;
+  return (
+    row?.id === identity.backupId &&
+    row.sandbox_record_id === identity.sandboxRecordId &&
+    row.snapshot_schema_version === 2 &&
+    row.state_data_storage === "chunked-v2" &&
+    row.storage_commit_state === "complete" &&
+    descriptor?.commitState === "complete" &&
+    descriptor.organizationId === identity.organizationId &&
+    descriptor.sandboxRecordId === identity.sandboxRecordId &&
+    descriptor.backupId === identity.backupId
+  );
 }
 
 function assertPlannedObjectKeys(descriptor: AgentBackupChunkStagingDescriptor): void {
@@ -292,7 +311,21 @@ export class AgentBackupV2StorageService {
     } catch (error) {
       const message = errorMessage(error);
       const failed = failedDescriptor(stagingDescriptor, message);
-      await this.dependencies.repository.failChunkedBackup(identity.backupId, failed, message);
+      const failedRow = await this.dependencies.repository.failChunkedBackup(
+        identity.backupId,
+        failed,
+        message,
+      );
+      if (!failedRow) {
+        const resolved = await this.dependencies.repository.getChunkedBackupById(identity.backupId);
+        if (isMatchingCompleteBackup(resolved, identity)) {
+          return resolved;
+        }
+        throw new Error(
+          `Chunked backup failed (${message}) but its durable commit outcome could not be resolved; cleanup remains pending`,
+          { cause: error },
+        );
+      }
       try {
         await removePlannedObjects(failed, this.dependencies);
         await this.dependencies.repository.deleteIncompleteChunkedBackup(identity.backupId);

@@ -2133,12 +2133,27 @@ export class AgentSandboxesRepository {
     return row;
   }
 
+  async getChunkedBackupById(backupId: string): Promise<StoredAgentSandboxBackup | undefined> {
+    const [row] = await dbWrite
+      .select()
+      .from(agentSandboxBackups)
+      .where(
+        and(
+          eq(agentSandboxBackups.id, backupId),
+          eq(agentSandboxBackups.snapshot_schema_version, 2),
+          eq(agentSandboxBackups.state_data_storage, "chunked-v2"),
+        ),
+      )
+      .limit(1);
+    return row;
+  }
+
   async failChunkedBackup(
     backupId: string,
     descriptor: AgentBackupChunkStagingDescriptor,
     error: string,
-  ): Promise<void> {
-    await dbWrite
+  ): Promise<StoredAgentSandboxBackup | undefined> {
+    const [row] = await dbWrite
       .update(agentSandboxBackups)
       .set({
         state_data_descriptor: descriptor,
@@ -2151,9 +2166,11 @@ export class AgentSandboxesRepository {
           eq(agentSandboxBackups.id, backupId),
           eq(agentSandboxBackups.snapshot_schema_version, 2),
           eq(agentSandboxBackups.state_data_storage, "chunked-v2"),
-          ne(agentSandboxBackups.storage_commit_state, "complete"),
+          eq(agentSandboxBackups.storage_commit_state, "staging"),
         ),
-      );
+      )
+      .returning();
+    return row;
   }
 
   async listIncompleteChunkedBackupsBefore(
