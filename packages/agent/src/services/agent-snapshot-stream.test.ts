@@ -184,6 +184,7 @@ describe.sequential("agent snapshot chunked-v1 stream", () => {
     ).resolves.toMatchObject({
       aggregateSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
       fileCount: expect.any(Number),
+      requiresRestart: true,
       schemaVersion: 2,
       success: true,
       totalBytes: expect.any(Number),
