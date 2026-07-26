@@ -1,5 +1,6 @@
 // Persists agent sandboxes records for cloud services through the shared DB boundary.
 import { randomUUID } from "node:crypto";
+import { assertAgentSnapshotV1WireByteLength } from "@elizaos/shared";
 import {
   and,
   asc,
@@ -86,7 +87,6 @@ const EMPTY_BACKUP_STATE: AgentSandboxBackup["state_data"] = {
   workspaceFiles: {},
 };
 const MAX_RECONSTRUCTED_BACKUP_CHAIN_DEPTH = 100;
-const MAX_RECONSTRUCTED_BACKUP_CHAIN_BYTES = 128 * 1024 * 1024;
 
 /**
  * Correlates a sandbox row with the queue operations that legitimately own its
@@ -1838,11 +1838,7 @@ export class AgentSandboxesRepository {
       }
       chainBytes +=
         cursor.size_bytes ?? Buffer.byteLength(JSON.stringify(cursor.state_data), "utf8");
-      if (chainBytes > MAX_RECONSTRUCTED_BACKUP_CHAIN_BYTES) {
-        throw new Error(
-          `Backup chain for ${backupId} exceeds ${MAX_RECONSTRUCTED_BACKUP_CHAIN_BYTES} bytes`,
-        );
-      }
+      assertAgentSnapshotV1WireByteLength(chainBytes);
       chain.push(await hydrateAgentSandboxBackup(cursor));
       if (cursor.backup_kind === "full") break;
       if (!cursor.parent_backup_id) {

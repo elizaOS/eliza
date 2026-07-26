@@ -6,6 +6,11 @@
 import crypto from "node:crypto";
 import { isIP } from "node:net";
 import { ElizaError } from "@elizaos/core";
+import {
+  AgentSnapshotV1WireLimitError,
+  assertAgentSnapshotV1WireByteLength,
+  resolveAgentSnapshotV1MaxWireBytes,
+} from "@elizaos/shared";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
 import { type Database, dbWrite } from "../../db/helpers";
@@ -504,12 +509,13 @@ const SNAPSHOT_FETCH_TIMEOUT_MS = 120_000;
  * snapshot bodies (`res.json()` retained everything, then a re-stringify
  * doubled it). The raw budget is enforced WHILE streaming — bytes past it are
  * never retained — and the expanded file budgets are validated before the
- * payload is persisted. Env-overridable for staging soak.
+ * payload is persisted. Constrained deployments may lower the env override,
+ * while the shared v1 contract clamps every attempted increase.
  */
-const SNAPSHOT_MAX_RAW_BYTES = (() => {
-  const raw = Number.parseInt(process.env.ELIZA_SNAPSHOT_MAX_RAW_BYTES ?? "", 10);
-  return Number.isFinite(raw) && raw > 0 ? raw : 256 * 1024 * 1024;
-})();
+export function resolveSnapshotMaxRawBytes(env: NodeJS.ProcessEnv = process.env): number {
+  return resolveAgentSnapshotV1MaxWireBytes(env.ELIZA_SNAPSHOT_MAX_RAW_BYTES);
+}
+const SNAPSHOT_MAX_RAW_BYTES = resolveSnapshotMaxRawBytes();
 const SNAPSHOT_MAX_FILES = (() => {
   const raw = Number.parseInt(process.env.ELIZA_SNAPSHOT_MAX_FILES ?? "", 10);
   return Number.isFinite(raw) && raw > 0 ? raw : 5_000;
@@ -647,11 +653,7 @@ export async function readBodyWithinBudget(res: Response, maxBytes: number): Pro
   const reader = res.body?.getReader();
   if (!reader) {
     const text = await res.text();
-    if (Buffer.byteLength(text, "utf-8") > maxBytes) {
-      throw new Error(
-        `Snapshot payload exceeds the raw hydration budget (${maxBytes} bytes) — refusing to retain it`,
-      );
-    }
+    assertAgentSnapshotV1WireByteLength(Buffer.byteLength(text, "utf-8"), maxBytes);
     return text;
   }
   const chunks: Uint8Array[] = [];
@@ -663,9 +665,7 @@ export async function readBodyWithinBudget(res: Response, maxBytes: number): Pro
       if (value) {
         received += value.byteLength;
         if (received > maxBytes) {
-          throw new Error(
-            `Snapshot payload exceeds the raw hydration budget (${maxBytes} bytes) — refusing to retain it`,
-          );
+          throw new AgentSnapshotV1WireLimitError(received, maxBytes);
         }
         chunks.push(value);
       }
