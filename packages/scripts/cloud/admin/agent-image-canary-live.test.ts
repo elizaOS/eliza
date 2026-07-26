@@ -1407,7 +1407,14 @@ describe("admin agent image canary workflow", () => {
       import.meta.dir,
       "../../../../.github/workflows/admin-agent-image-canary.yml",
     );
+    const bunVersionConfigPath = resolve(
+      import.meta.dir,
+      "../../../../.github/ci-bun-version.json",
+    );
     const source = readFileSync(workflowPath, "utf8");
+    const bunVersionConfig = JSON.parse(
+      readFileSync(bunVersionConfigPath, "utf8"),
+    ) as { version?: string };
     const workflow = Bun.YAML.parse(source) as {
       on?: Record<string, unknown>;
       concurrency?: { group?: string; "cancel-in-progress"?: boolean };
@@ -1512,6 +1519,12 @@ describe("admin agent image canary workflow", () => {
     expect(steps[postDeployIndex]?.run).toContain(
       'if [ "$(git rev-parse origin/main)" != "$GITHUB_SHA" ]; then',
     );
+    const setupBunStep = steps.find((step) => step.name === "Setup Bun");
+    expect(bunVersionConfig.version).toMatch(
+      /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)*$/,
+    );
+    expect(setupBunStep).toBeDefined();
+    expect(setupBunStep?.with?.["bun-version"]).toBe(bunVersionConfig.version);
     expect(source).toContain(
       'git merge-base --is-ancestor "$deployed_commit" "origin/main"',
     );
@@ -1534,7 +1547,6 @@ describe("admin agent image canary workflow", () => {
     expect(source).toContain(
       "Recovery requires one lowercase prior request UUID.",
     );
-    expect(source).toContain("bun-version: 1.4.0");
     expect(source).toContain("agent-image-canary-live.test.ts");
     expect(source).toContain("agent-image-canary-live.ts");
   });

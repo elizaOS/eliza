@@ -28,6 +28,8 @@
  */
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import type { SQL } from "drizzle-orm";
+import { PgDialect } from "drizzle-orm/pg-core";
 
 const WARM_POOL_ORG_ID = "00000000-0000-4000-8000-000000077001";
 const AGENT_ID = "e06bb509-6c52-4c33-a9f7-66addc43e8c8";
@@ -90,86 +92,113 @@ let databaseRow: ReturnType<typeof buildInitialDbRow>;
 let rearmFingerprint: string | null = null;
 let remintedKeyOverride: string | null = null;
 
-const transaction = mock(async (callback: (tx: { execute: () => Promise<unknown> }) => unknown) => {
-  let executeCount = 0;
-  return await callback({
-    execute: async () => {
-      executeCount += 1;
-      if (executeCount === 1) return { rows: [] };
-      if (executeCount === 2) return { rows: [databaseRow] };
+const transaction = mock(
+  async (callback: (tx: { execute: (query: SQL) => Promise<unknown> }) => unknown) => {
+    return await callback({
+      execute: async (query) => {
+        const { sql: text } = new PgDialect().sqlToQuery(query);
+        const normalized = text.replaceAll('"', "").replaceAll(/\s+/g, " ").trim().toLowerCase();
+        if (normalized.includes("set_config") || normalized.includes("pg_advisory_xact_lock")) {
+          return { rows: [] };
+        }
+        if (
+          normalized.includes("select * from agent_sandboxes") &&
+          normalized.includes("for update")
+        ) {
+          return { rows: [databaseRow] };
+        }
+        if (!normalized.startsWith("update agent_sandboxes set")) {
+          throw new Error(`Unexpected warm-claim lifecycle SQL in test transaction: ${text}`);
+        }
 
-      if (
-        databaseRow.warm_claim_credential_state === "pending" &&
-        databaseRow.warm_claim_key_fingerprint === null
-      ) {
-        const persistedKey = remintedKeyOverride ?? MINTED_KEY;
-        const persistedFingerprint = rearmFingerprint ?? MINTED_KEY_FINGERPRINT;
+        if (
+          databaseRow.warm_claim_credential_state === "pending" &&
+          databaseRow.warm_claim_key_fingerprint === null
+        ) {
+          if (!normalized.includes("environment_vars = environment_vars ||")) {
+            throw new Error(`Expected warm-claim credential persistence SQL, received: ${text}`);
+          }
+          const persistedKey = remintedKeyOverride ?? MINTED_KEY;
+          const persistedFingerprint = rearmFingerprint ?? MINTED_KEY_FINGERPRINT;
+          databaseRow = {
+            ...databaseRow,
+            environment_revision: databaseRow.environment_revision + 1,
+            warm_claim_key_fingerprint: persistedFingerprint,
+            environment_vars: {
+              ...databaseRow.environment_vars,
+              ELIZAOS_CLOUD_API_KEY: persistedKey,
+              ELIZAOS_CLOUD_ENABLED: "true",
+            },
+          };
+          await update(AGENT_ID, {
+            environment_vars: databaseRow.environment_vars,
+            warm_claim_key_fingerprint: persistedFingerprint,
+          });
+          rearmFingerprint = null;
+          remintedKeyOverride = null;
+          return { rows: [databaseRow] };
+        }
+
+        if (rearmFingerprint) {
+          if (!normalized.includes("warm_claim_key_fingerprint = null")) {
+            throw new Error(`Expected warm-claim credential re-arm SQL, received: ${text}`);
+          }
+          databaseRow = {
+            ...databaseRow,
+            warm_claim_credential_state: "pending",
+            warm_claim_key_fingerprint: null,
+            warm_claim_attested_at: null,
+            warm_claim_attested_environment_revision: null,
+          };
+          await update(AGENT_ID, {
+            warm_claim_credential_state: "pending",
+            warm_claim_key_fingerprint: null,
+            warm_claim_attested_at: null,
+            warm_claim_attested_environment_revision: null,
+          });
+          return { rows: [databaseRow] };
+        }
+
+        if (databaseRow.warm_claim_credential_state === "pending") {
+          if (!normalized.includes("warm_claim_credential_state = 'attested'")) {
+            throw new Error(`Expected warm-claim attestation SQL, received: ${text}`);
+          }
+          databaseRow = {
+            ...databaseRow,
+            warm_claim_credential_state: "attested",
+            warm_claim_attested_at: new Date("2026-07-23T00:00:01.000Z"),
+            warm_claim_attested_environment_revision: databaseRow.environment_revision,
+          };
+          await update(AGENT_ID, {
+            warm_claim_credential_state: "attested",
+            warm_claim_attested_at: databaseRow.warm_claim_attested_at,
+            warm_claim_attested_environment_revision: databaseRow.environment_revision,
+          });
+          return { rows: [{ environment_revision: databaseRow.environment_revision }] };
+        }
+
+        if (
+          !normalized.includes("status = 'running'") ||
+          !normalized.includes("warm_claim_credential_state = 'ready'")
+        ) {
+          throw new Error(`Expected warm-claim finalization SQL, received: ${text}`);
+        }
         databaseRow = {
           ...databaseRow,
-          environment_revision: databaseRow.environment_revision + 1,
-          warm_claim_key_fingerprint: persistedFingerprint,
-          environment_vars: {
-            ...databaseRow.environment_vars,
-            ELIZAOS_CLOUD_API_KEY: persistedKey,
-            ELIZAOS_CLOUD_ENABLED: "true",
-          },
+          status: "running",
+          warm_claim_credential_state: "ready",
+          warm_claim_source_pool_id: null,
         };
         await update(AGENT_ID, {
-          environment_vars: databaseRow.environment_vars,
-          warm_claim_key_fingerprint: persistedFingerprint,
+          status: "running",
+          warm_claim_credential_state: "ready",
+          warm_claim_source_pool_id: null,
         });
-        rearmFingerprint = null;
-        remintedKeyOverride = null;
-        return { rows: [databaseRow] };
-      }
-
-      if (rearmFingerprint) {
-        databaseRow = {
-          ...databaseRow,
-          warm_claim_credential_state: "pending",
-          warm_claim_key_fingerprint: null,
-          warm_claim_attested_at: null,
-          warm_claim_attested_environment_revision: null,
-        };
-        await update(AGENT_ID, {
-          warm_claim_credential_state: "pending",
-          warm_claim_key_fingerprint: null,
-          warm_claim_attested_at: null,
-          warm_claim_attested_environment_revision: null,
-        });
-        return { rows: [databaseRow] };
-      }
-
-      if (databaseRow.warm_claim_credential_state === "pending") {
-        databaseRow = {
-          ...databaseRow,
-          warm_claim_credential_state: "attested",
-          warm_claim_attested_at: new Date("2026-07-23T00:00:01.000Z"),
-          warm_claim_attested_environment_revision: databaseRow.environment_revision,
-        };
-        await update(AGENT_ID, {
-          warm_claim_credential_state: "attested",
-          warm_claim_attested_at: databaseRow.warm_claim_attested_at,
-          warm_claim_attested_environment_revision: databaseRow.environment_revision,
-        });
-        return { rows: [{ environment_revision: databaseRow.environment_revision }] };
-      }
-
-      databaseRow = {
-        ...databaseRow,
-        status: "running",
-        warm_claim_credential_state: "ready",
-        warm_claim_source_pool_id: null,
-      };
-      await update(AGENT_ID, {
-        status: "running",
-        warm_claim_credential_state: "ready",
-        warm_claim_source_pool_id: null,
-      });
-      return { rows: [{ id: AGENT_ID }] };
-    },
-  });
-});
+        return { rows: [{ id: AGENT_ID }] };
+      },
+    });
+  },
+);
 mock.module("../../db/helpers", () => ({
   dbWrite: { transaction },
   dbRead: {},

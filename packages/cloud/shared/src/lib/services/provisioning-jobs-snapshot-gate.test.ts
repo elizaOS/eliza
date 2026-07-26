@@ -33,6 +33,10 @@ describe("claim path", () => {
   test("gate off: agent_snapshot is never claimed; every other lane still is", async () => {
     delete process.env.ELIZA_SNAPSHOT_JOBS_ENABLED;
     const claimSpy = spyOn(jobsRepository, "claimPendingJobs").mockResolvedValue([]);
+    const sharedClaimSpy = spyOn(
+      jobsRepository,
+      "claimPendingJobsWithinSharedRunningLimit",
+    ).mockResolvedValue([]);
     const recoverSpy = spyOn(jobsRepository, "recoverStaleJobs").mockResolvedValue(0);
     try {
       await provisioningJobService.processPendingJobs(1);
@@ -42,6 +46,7 @@ describe("claim path", () => {
       expect(claimedTypes).toContain(JOB_TYPES.AGENT_DELETE);
     } finally {
       claimSpy.mockRestore();
+      sharedClaimSpy.mockRestore();
       recoverSpy.mockRestore();
     }
   });
@@ -49,6 +54,10 @@ describe("claim path", () => {
   test("gate on: agent_snapshot is claimed with batch forced to 1 (sequential)", async () => {
     process.env.ELIZA_SNAPSHOT_JOBS_ENABLED = "true";
     const claimSpy = spyOn(jobsRepository, "claimPendingJobs").mockResolvedValue([]);
+    const sharedClaimSpy = spyOn(
+      jobsRepository,
+      "claimPendingJobsWithinSharedRunningLimit",
+    ).mockResolvedValue([]);
     const recoverSpy = spyOn(jobsRepository, "recoverStaleJobs").mockResolvedValue(0);
     try {
       await provisioningJobService.processPendingJobs(5);
@@ -62,6 +71,7 @@ describe("claim path", () => {
       expect(provisionCall?.[0].limit).toBe(5);
     } finally {
       claimSpy.mockRestore();
+      sharedClaimSpy.mockRestore();
       recoverSpy.mockRestore();
     }
   });
