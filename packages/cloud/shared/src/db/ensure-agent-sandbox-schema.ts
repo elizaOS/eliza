@@ -158,8 +158,13 @@ async function runEnsureAgentSandboxSchema(): Promise<void> {
       "sandbox_record_id" uuid NOT NULL REFERENCES "agent_sandboxes"("id") ON DELETE CASCADE,
       "snapshot_type" text NOT NULL,
       "state_data" jsonb NOT NULL,
+      "snapshot_schema_version" integer NOT NULL DEFAULT 1,
       "state_data_storage" text NOT NULL DEFAULT 'inline',
       "state_data_key" text,
+      "state_data_descriptor" jsonb,
+      "storage_commit_state" text NOT NULL DEFAULT 'complete',
+      "storage_commit_error" text,
+      "storage_commit_updated_at" timestamptz NOT NULL DEFAULT now(),
       "size_bytes" bigint,
       "created_at" timestamptz NOT NULL DEFAULT now()
     )
@@ -167,8 +172,13 @@ async function runEnsureAgentSandboxSchema(): Promise<void> {
 
   await dbWrite.execute(sql`
     ALTER TABLE "agent_sandbox_backups"
+      ADD COLUMN IF NOT EXISTS "snapshot_schema_version" integer NOT NULL DEFAULT 1,
       ADD COLUMN IF NOT EXISTS "state_data_storage" text NOT NULL DEFAULT 'inline',
       ADD COLUMN IF NOT EXISTS "state_data_key" text,
+      ADD COLUMN IF NOT EXISTS "state_data_descriptor" jsonb,
+      ADD COLUMN IF NOT EXISTS "storage_commit_state" text NOT NULL DEFAULT 'complete',
+      ADD COLUMN IF NOT EXISTS "storage_commit_error" text,
+      ADD COLUMN IF NOT EXISTS "storage_commit_updated_at" timestamptz NOT NULL DEFAULT now(),
       ADD COLUMN IF NOT EXISTS "size_bytes" bigint,
       ADD COLUMN IF NOT EXISTS "backup_kind" text NOT NULL DEFAULT 'full',
       ADD COLUMN IF NOT EXISTS "parent_backup_id" uuid,
@@ -201,6 +211,12 @@ async function runEnsureAgentSandboxSchema(): Promise<void> {
   await dbWrite.execute(sql`
     CREATE INDEX IF NOT EXISTS "agent_sandbox_backups_sandbox_latest_idx"
       ON "agent_sandbox_backups" ("sandbox_record_id", "created_at" DESC)
+  `);
+
+  await dbWrite.execute(sql`
+    CREATE INDEX IF NOT EXISTS "agent_sandbox_backups_storage_reconcile_idx"
+      ON "agent_sandbox_backups" ("storage_commit_updated_at")
+      WHERE "storage_commit_state" <> 'complete'
   `);
 
   await dbWrite.execute(sql`
