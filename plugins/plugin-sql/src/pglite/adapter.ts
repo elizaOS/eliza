@@ -140,6 +140,10 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
     await this.manager.close();
   }
 
+  async checkpointAndCloseForSnapshot(): Promise<void> {
+    await this.manager.checkpointAndCloseForSnapshot();
+  }
+
   async getConnection(): Promise<PgliteDatabase> {
     const managerWithInit = this.manager as PGliteClientManager & {
       initialize?: () => Promise<void>;
