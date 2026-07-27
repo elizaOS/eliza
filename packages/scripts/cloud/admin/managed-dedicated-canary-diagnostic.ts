@@ -21,8 +21,9 @@ const LIFECYCLE_JOB_CONFLICT_PATTERN = new RegExp(
 const FORBIDDEN_OUTPUT_PATTERN =
   /(?:https?:\/\/|(?:\d{1,3}\.){3}\d{1,3}|\b(?:token|secret|password|api[_-]?key)\b|managed-dedicated-canary-|sha256:)/i;
 const TIMEOUT_ERROR_PATTERN = /(?:timed out|timeout)/i;
+const PERMANENT_DELETE_PREFIX = "Deletion permanently failed";
 const PERMANENT_DELETE_PATTERN =
-  /^Deletion permanently failed after [1-9][0-9]* attempts: (.+)$/;
+  /^Deletion permanently failed after ([1-9][0-9]{0,2}) attempts: ([\s\S]+)$/;
 const WORKER_RESTART_TERMINAL_PATTERN =
   /^Job interrupted by worker restart ([1-9][0-9]{0,2}) times - max attempts reached$/;
 const TIMEOUT_TERMINAL_PATTERN =
@@ -90,6 +91,16 @@ interface UnclassifiedErrorProfile {
 interface JobErrorClassification {
   code: ErrorCode;
   unclassifiedProfile: UnclassifiedErrorProfile | null;
+}
+
+interface PermanentDeleteEnvelope {
+  attempts: number;
+  cause: string;
+}
+
+interface ClassifiedJobSource {
+  diagnostic: ManagedDedicatedCanaryDiagnostic["jobs"][number];
+  rawError: unknown;
 }
 
 const RECOVERY_PARTIAL_RESULT_ERRORS = new Map<string, ErrorCode>([
@@ -204,6 +215,14 @@ function isReservedRecoveryNamespace(value: string): boolean {
   );
 }
 
+function isReservedPermanentDeleteNamespace(value: string): boolean {
+  return value
+    .normalize("NFKD")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "")
+    .startsWith("deletionpermanentlyfailed");
+}
+
 function classifyTerminalFailure(
   value: string,
 ): TerminalFailureClassification | null {
@@ -302,13 +321,11 @@ function classifyError(
   if (typeof value !== "string" || value.length === 0 || value.length > 2_000) {
     throw new Error(`${label} must be a bounded string or null`);
   }
-  const permanentDelete = PERMANENT_DELETE_PATTERN.exec(value);
-  if (permanentDelete)
-    return classifyError(
-      permanentDelete[1],
-      `${label} cause`,
-      allowUnclassified,
+  if (isReservedPermanentDeleteNamespace(value)) {
+    throw new Error(
+      `${label} permanent-delete envelope requires source correlation`,
     );
+  }
   const terminalFailure = classifyTerminalFailure(value);
   if (terminalFailure) return terminalFailure.code;
   if (
@@ -327,6 +344,9 @@ function classifyError(
   }
   if (LIFECYCLE_JOB_CONFLICT_PATTERN.test(value)) {
     return "lifecycle_conflict";
+  }
+  if (value.startsWith("Agent ") && value.includes(" has conflicting ")) {
+    throw new Error(`${label} is not covered by the privacy-safe classifier`);
   }
   if (/failed query:[\s\S]*delete from\s+"?agent_sandboxes"?/i.test(value)) {
     return "row_delete_failed";
@@ -354,6 +374,123 @@ function classifyError(
   if (TIMEOUT_ERROR_PATTERN.test(value)) return "timeout";
   if (allowUnclassified) return "unclassified";
   throw new Error(`${label} is not covered by the privacy-safe classifier`);
+}
+
+function parsePermanentDeleteEnvelope(
+  value: string,
+  label: string,
+): PermanentDeleteEnvelope | null {
+  if (!value.startsWith(PERMANENT_DELETE_PREFIX)) {
+    if (isReservedPermanentDeleteNamespace(value)) {
+      throw new Error(`${label} has a malformed permanent-delete envelope`);
+    }
+    return null;
+  }
+  const match = PERMANENT_DELETE_PATTERN.exec(value);
+  if (!match) {
+    throw new Error(`${label} has a malformed permanent-delete envelope`);
+  }
+  const attempts = integer(Number(match[1]), `${label} attempts`, 1, 100);
+  const cause = match[2];
+  if (cause.startsWith(PERMANENT_DELETE_PREFIX)) {
+    throw new Error(`${label} has a nested permanent-delete envelope`);
+  }
+  return { attempts, cause };
+}
+
+function classifySandboxError(
+  value: unknown,
+  status: string,
+  deletionOwned: boolean,
+  errorCount: number,
+  jobs: ClassifiedJobSource[],
+): ErrorCode {
+  const label = "agent.errorMessage";
+  if (value === null) return "none";
+  if (typeof value !== "string" || value.length === 0 || value.length > 2_000) {
+    throw new Error(`${label} must be a bounded string or null`);
+  }
+
+  const envelope = parsePermanentDeleteEnvelope(value, label);
+  if (!envelope) {
+    const code = classifyError(value, label);
+    if (status === "deletion_failed") {
+      throw new Error(
+        `${label} must use the canonical permanent-delete envelope`,
+      );
+    }
+    return code;
+  }
+  if (
+    (status !== "deletion_failed" && status !== "deletion_pending") ||
+    !deletionOwned ||
+    errorCount < 1
+  ) {
+    throw new Error(`${label} has inconsistent deletion lifecycle state`);
+  }
+
+  // Recovery preserves the last permanent failure while adding newer jobs, so
+  // raw equality and counters identify its writer without exposing another
+  // arbitrary-text profile or assuming the retained writer is still newest.
+  const sourceIndex = jobs.findIndex(
+    ({ diagnostic, rawError }) =>
+      typeof rawError === "string" &&
+      classifyTerminalFailure(rawError) === null &&
+      rawError === envelope.cause &&
+      diagnostic.status === "failed" &&
+      diagnostic.attempts === envelope.attempts &&
+      diagnostic.maxAttempts === envelope.attempts,
+  );
+  if (sourceIndex === -1) {
+    throw new Error(
+      `${label} does not correlate with bounded failed-job history`,
+    );
+  }
+  if (status === "deletion_failed") {
+    if (sourceIndex !== 0) {
+      throw new Error(
+        `${label} does not correlate with the latest failed deletion job`,
+      );
+    }
+  } else {
+    if (sourceIndex === 0) {
+      throw new Error(
+        `${label} retained failure has no newer recovery lifecycle`,
+      );
+    }
+    let activeRecoveryCount = 0;
+    for (const [index, job] of jobs.slice(0, sourceIndex).entries()) {
+      if (
+        job.diagnostic.status === "pending" ||
+        job.diagnostic.status === "in_progress"
+      ) {
+        activeRecoveryCount += 1;
+        if (
+          index !== 0 ||
+          activeRecoveryCount > 1 ||
+          job.diagnostic.attempts >= job.diagnostic.maxAttempts ||
+          job.diagnostic.completedAt !== null ||
+          (job.diagnostic.status === "in_progress" &&
+            job.diagnostic.startedAt === null)
+        ) {
+          throw new Error(
+            `${label} retained failure has invalid active recovery ordering`,
+          );
+        }
+        continue;
+      }
+      if (
+        job.diagnostic.status !== "failed" ||
+        typeof job.rawError !== "string" ||
+        classifyTerminalFailure(job.rawError) === null
+      ) {
+        throw new Error(
+          `${label} retained failure crosses an unrelated newer job`,
+        );
+      }
+    }
+  }
+  return jobs[sourceIndex].diagnostic.errorCode;
 }
 
 function classifyJobError(
@@ -481,6 +618,7 @@ export function sanitizeManagedDedicatedCanaryDiagnostic(
   }
 
   let previousCreatedAt = Number.POSITIVE_INFINITY;
+  const rawJobErrors: unknown[] = [];
   const jobs = root.jobs.map((value, index) => {
     const job = record(value, `jobs[${index}]`);
     exactKeys(
@@ -671,6 +809,7 @@ export function sanitizeManagedDedicatedCanaryDiagnostic(
         : null);
     elapsedMs(createdAt, updatedAt);
 
+    rawJobErrors.push(job.error);
     return {
       status: job.status,
       attempts,
@@ -690,10 +829,18 @@ export function sanitizeManagedDedicatedCanaryDiagnostic(
       queueDurationMs: elapsedMs(createdAt, startedAt),
     };
   });
+  const classifiedJobs = jobs.map((diagnostic, index) => ({
+    diagnostic,
+    rawError: rawJobErrors[index],
+  }));
 
-  const sandboxErrorCode = classifyError(
+  const errorCount = integer(agent.errorCount, "agent.errorCount", 0, 1_000);
+  const sandboxErrorCode = classifySandboxError(
     agent.errorMessage,
-    "agent.errorMessage",
+    agent.status,
+    deletionOwned,
+    errorCount,
+    classifiedJobs,
   );
   if (
     agent.status === "deletion_failed" &&
@@ -710,7 +857,7 @@ export function sanitizeManagedDedicatedCanaryDiagnostic(
     sandbox: {
       status: agent.status,
       errorCode: sandboxErrorCode,
-      errorCount: integer(agent.errorCount, "agent.errorCount", 0, 1_000),
+      errorCount,
       deletionStartedAt,
       updatedAt: timestamp(agent.updatedAt, "agent.updatedAt") as string,
     },
