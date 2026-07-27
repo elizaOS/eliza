@@ -26,10 +26,12 @@ import {
   commitCandidateSnapshotRestore,
   resolveCandidateSnapshotRestoreBinding,
   verifyCandidateSnapshotRestoreHeaders,
+  verifyCandidateSnapshotRestoreReplay,
 } from "../services/agent-snapshot-restore-binding.ts";
 import {
   createAgentSnapshotStream,
   restoreAgentSnapshotStream,
+  validateAgentSnapshotStream,
 } from "../services/agent-snapshot-stream.ts";
 import {
   AGENT_SNAPSHOT_STREAM_CONTENT_TYPE,
@@ -57,6 +59,7 @@ function protocolStatus(error: unknown): number {
   if (
     error instanceof ElizaError &&
     (error.code === "AGENT_SNAPSHOT_RECEIPT_CONFLICT" ||
+      error.code === "AGENT_SNAPSHOT_SOURCE_ATTESTATION_MISMATCH" ||
       error.code === "AGENT_SNAPSHOT_RESTORE_INDETERMINATE" ||
       error.code === "AGENT_SNAPSHOT_RESTORE_NOT_ENABLED")
   ) {
@@ -282,7 +285,12 @@ export async function handleAgentSnapshotRoutes(args: {
       verifyCandidateSnapshotRestoreHeaders(req.headers, binding);
       const committed = await beginCandidateSnapshotRestore(binding);
       if (committed) {
-        req.resume();
+        const replayed = await validateAgentSnapshotStream(
+          runtime,
+          req,
+          binding,
+        );
+        verifyCandidateSnapshotRestoreReplay(committed, replayed);
         sendJson(res, committed);
         return true;
       }
