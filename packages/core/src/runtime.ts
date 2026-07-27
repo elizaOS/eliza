@@ -144,6 +144,7 @@ import {
 } from "./streaming-context";
 import {
 	getTrajectoryContext,
+	invalidateTurnMemoPrefix,
 	setTrajectoryPurpose,
 } from "./trajectory-context";
 import {
@@ -343,7 +344,6 @@ const DEFAULT_FAST_SERVICE_STOP_TIMEOUT_MS = 500;
 // recent and in-flight turns while bounding memory.
 const STATE_CACHE_LIMIT = 512;
 const PROVIDERS_PROMPT_MARKER = "__ELIZA_PROMPT_SEGMENT_PROVIDERS__";
-const SLOW_PROVIDER_WARN_MS = 100;
 
 type ProviderExecutionOutcome =
 	| "success"
@@ -1019,6 +1019,12 @@ export class AgentRuntime implements IAgentRuntime {
 		AgentRuntime.READ_MEMO_TTL_MS,
 		AgentRuntime.READ_MEMO_MAX_ENTRIES,
 	);
+	private invalidateTurnEntityDetails(): void {
+		invalidateTurnMemoPrefix(`entity-details:${this.agentId}:`);
+	}
+	private invalidateTurnIdentityClusters(): void {
+		invalidateTurnMemoPrefix(`identity-cluster:${this.agentId}:`);
+	}
 	readonly fetch = fetch;
 	promptBatcher: PromptBatcher;
 	services = new Map<ServiceTypeName, Service[]>();
@@ -4043,6 +4049,7 @@ export class AgentRuntime implements IAgentRuntime {
 		// invariant — otherwise a concurrent compose could be served a memoized null (for
 		// a just-created room) or a <=1s-stale Room after a metadata upsert.
 		this.roomReadMemo.invalidate(params.roomId);
+		this.invalidateTurnEntityDetails();
 		if (result.createdRoomParticipants > 0) {
 			this.logger.debug(
 				{
@@ -4141,6 +4148,7 @@ export class AgentRuntime implements IAgentRuntime {
 
 	async addParticipant(entityId: UUID, roomId: UUID): Promise<boolean> {
 		const ids = await this.adapter.createRoomParticipants([entityId], roomId);
+		this.invalidateTurnEntityDetails();
 		return ids.length > 0;
 	}
 
@@ -4148,7 +4156,9 @@ export class AgentRuntime implements IAgentRuntime {
 		entityIds: UUID[],
 		roomId: UUID,
 	): Promise<UUID[]> {
-		return this.adapter.createRoomParticipants(entityIds, roomId);
+		const ids = await this.adapter.createRoomParticipants(entityIds, roomId);
+		this.invalidateTurnEntityDetails();
+		return ids;
 	}
 
 	/**
@@ -4416,18 +4426,6 @@ export class AgentRuntime implements IAgentRuntime {
 						coalesced: providerCoalesced,
 					});
 
-					if (duration > SLOW_PROVIDER_WARN_MS) {
-						this.logger.warn(
-							{
-								src: "agent",
-								agentId: this.agentId,
-								provider: provider.name,
-								durationMs: duration,
-								coalesced: providerCoalesced,
-							},
-							"Slow provider",
-						);
-					}
 					return {
 						...result,
 						providerName: provider.name,
@@ -9434,6 +9432,7 @@ ${section_end}`;
 			e.agentId = this.agentId;
 		});
 		const result = await this.adapter.createEntities(entities);
+		this.invalidateTurnEntityDetails();
 		// Some adapters (e.g. plugin-sql) return boolean instead of UUID[].
 		// Normalize to UUID[] so callers and wrappers get a consistent contract.
 		if (Array.isArray(result)) return result;
@@ -9444,7 +9443,8 @@ ${section_end}`;
 		entities.forEach((e) => {
 			e.agentId = this.agentId;
 		});
-		return this.adapter.upsertEntities(entities);
+		await this.adapter.upsertEntities(entities);
+		this.invalidateTurnEntityDetails();
 	}
 
 	async getComponents(
@@ -10306,11 +10306,14 @@ ${section_end}`;
 	}
 
 	async updateEntities(entities: Entity[]): Promise<void> {
-		return this.adapter.updateEntities(entities);
+		await this.adapter.updateEntities(entities);
+		this.invalidateTurnEntityDetails();
 	}
 
 	async deleteEntities(entityIds: UUID[]): Promise<void> {
-		return this.adapter.deleteEntities(entityIds);
+		await this.adapter.deleteEntities(entityIds);
+		this.invalidateTurnEntityDetails();
+		this.invalidateTurnIdentityClusters();
 	}
 	async searchEntitiesByName(params: {
 		query: string;
@@ -10335,12 +10338,15 @@ ${section_end}`;
 
 	// Single-item entity wrapper
 	async updateEntity(entity: Entity): Promise<void> {
-		return this.adapter.updateEntities([entity]);
+		await this.adapter.updateEntities([entity]);
+		this.invalidateTurnEntityDetails();
 	}
 
 	// Batch component methods
 	async createComponents(components: Component[]): Promise<UUID[]> {
-		return this.adapter.createComponents(components);
+		const ids = await this.adapter.createComponents(components);
+		this.invalidateTurnEntityDetails();
+		return ids;
 	}
 
 	async getComponentsByIds(componentIds: UUID[]): Promise<Component[]> {
@@ -10348,16 +10354,19 @@ ${section_end}`;
 	}
 
 	async updateComponents(components: Component[]): Promise<void> {
-		return this.adapter.updateComponents(components);
+		await this.adapter.updateComponents(components);
+		this.invalidateTurnEntityDetails();
 	}
 
 	async deleteComponents(componentIds: UUID[]): Promise<void> {
-		return this.adapter.deleteComponents(componentIds);
+		await this.adapter.deleteComponents(componentIds);
+		this.invalidateTurnEntityDetails();
 	}
 
 	// Single-item component wrappers
 	async createComponent(component: Component): Promise<boolean> {
 		const ids = await this.adapter.createComponents([component]);
+		this.invalidateTurnEntityDetails();
 		return ids.length > 0;
 	}
 
@@ -10376,22 +10385,26 @@ ${section_end}`;
 	}
 
 	async updateComponent(component: Component): Promise<void> {
-		return this.adapter.updateComponents([component]);
+		await this.adapter.updateComponents([component]);
+		this.invalidateTurnEntityDetails();
 	}
 
 	async deleteComponent(componentId: UUID): Promise<void> {
-		return this.adapter.deleteComponents([componentId]);
+		await this.adapter.deleteComponents([componentId]);
+		this.invalidateTurnEntityDetails();
 	}
 
 	async upsertComponent(component: Component): Promise<void> {
-		return this.adapter.upsertComponents([component]);
+		await this.adapter.upsertComponents([component]);
+		this.invalidateTurnEntityDetails();
 	}
 
 	async upsertComponents(
 		components: Component[],
 		options?: { entityContext?: UUID },
 	): Promise<void> {
-		return this.adapter.upsertComponents(components, options);
+		await this.adapter.upsertComponents(components, options);
+		this.invalidateTurnEntityDetails();
 	}
 
 	async patchComponent(
@@ -10399,14 +10412,16 @@ ${section_end}`;
 		ops: PatchOp[],
 		options?: { entityContext?: UUID },
 	): Promise<void> {
-		return this.adapter.patchComponents([{ componentId, ops }], options);
+		await this.adapter.patchComponents([{ componentId, ops }], options);
+		this.invalidateTurnEntityDetails();
 	}
 
 	async patchComponents(
 		updates: Array<{ componentId: UUID; ops: PatchOp[] }>,
 		options?: { entityContext?: UUID },
 	): Promise<void> {
-		return this.adapter.patchComponents(updates, options);
+		await this.adapter.patchComponents(updates, options);
+		this.invalidateTurnEntityDetails();
 	}
 
 	async patchComponentField(
@@ -10414,7 +10429,8 @@ ${section_end}`;
 		op: PatchOp,
 		options?: { entityContext?: UUID },
 	): Promise<void> {
-		return this.adapter.patchComponents([{ componentId, ops: [op] }], options);
+		await this.adapter.patchComponents([{ componentId, ops: [op] }], options);
+		this.invalidateTurnEntityDetails();
 	}
 
 	async getComponentsByType(
@@ -10480,7 +10496,9 @@ ${section_end}`;
 			metadata?: Metadata;
 		}>,
 	): Promise<UUID[]> {
-		return this.adapter.createRelationships(relationships);
+		const ids = await this.adapter.createRelationships(relationships);
+		this.invalidateTurnIdentityClusters();
+		return ids;
 	}
 
 	async getRelationshipsByIds(
@@ -10496,11 +10514,13 @@ ${section_end}`;
 	}
 
 	async updateRelationships(relationships: Relationship[]): Promise<void> {
-		return this.adapter.updateRelationships(relationships);
+		await this.adapter.updateRelationships(relationships);
+		this.invalidateTurnIdentityClusters();
 	}
 
 	async deleteRelationships(relationshipIds: UUID[]): Promise<void> {
-		return this.adapter.deleteRelationships(relationshipIds);
+		await this.adapter.deleteRelationships(relationshipIds);
+		this.invalidateTurnIdentityClusters();
 	}
 
 	// Single-item relationship wrappers
@@ -10511,6 +10531,7 @@ ${section_end}`;
 		metadata?: Metadata;
 	}): Promise<boolean> {
 		const ids = await this.adapter.createRelationships([params]);
+		this.invalidateTurnIdentityClusters();
 		return ids.length > 0;
 	}
 
@@ -10525,7 +10546,8 @@ ${section_end}`;
 	}
 
 	async updateRelationship(relationship: Relationship): Promise<void> {
-		return this.adapter.updateRelationships([relationship]);
+		await this.adapter.updateRelationships([relationship]);
+		this.invalidateTurnIdentityClusters();
 	}
 
 	// ── Batch memory passthroughs ────────────────────────────────────────
@@ -10649,7 +10671,9 @@ ${section_end}`;
 	async deleteParticipants(
 		participants: Array<{ entityId: UUID; roomId: UUID }>,
 	): Promise<boolean> {
-		return this.adapter.deleteParticipants(participants);
+		const deleted = await this.adapter.deleteParticipants(participants);
+		this.invalidateTurnEntityDetails();
+		return deleted;
 	}
 
 	async updateParticipants(
@@ -10659,11 +10683,16 @@ ${section_end}`;
 			updates: Partial<Participant>;
 		}>,
 	): Promise<void> {
-		return this.adapter.updateParticipants(participants);
+		await this.adapter.updateParticipants(participants);
+		this.invalidateTurnEntityDetails();
 	}
 
 	async removeParticipant(entityId: UUID, roomId: UUID): Promise<boolean> {
-		return this.adapter.deleteParticipants([{ entityId, roomId }]);
+		const deleted = await this.adapter.deleteParticipants([
+			{ entityId, roomId },
+		]);
+		this.invalidateTurnEntityDetails();
+		return deleted;
 	}
 
 	// ── Room passthroughs & wrappers ────────────────────────────────────

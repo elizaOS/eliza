@@ -87,6 +87,9 @@ type StreamChatEvent = {
   transcriptVisibility?: "internal";
   agentName?: string;
   messageId?: string;
+  userMessageId?: string;
+  assistantEphemeral?: boolean;
+  historyRefreshRequired?: boolean;
   message?: string;
   thought?: string;
   noResponseReason?: string;
@@ -214,6 +217,9 @@ type StreamChatState = {
   doneTranscriptVisibility: "internal" | undefined;
   doneAgentName: string | null;
   doneMessageId: string | null;
+  doneUserMessageId: string | null;
+  doneAssistantEphemeral: boolean;
+  doneHistoryRefreshRequired: boolean;
   doneThought: string | null;
   doneNoResponseReason: "ignored" | null;
   doneUsage: ChatTokenUsage | undefined;
@@ -333,6 +339,15 @@ function applyStreamChatDoneEvent(
   }
   if (typeof parsed.messageId === "string" && parsed.messageId.trim()) {
     state.doneMessageId = parsed.messageId;
+  }
+  if (typeof parsed.userMessageId === "string" && parsed.userMessageId.trim()) {
+    state.doneUserMessageId = parsed.userMessageId;
+  }
+  if (parsed.assistantEphemeral === true) {
+    state.doneAssistantEphemeral = true;
+  }
+  if (parsed.historyRefreshRequired === true) {
+    state.doneHistoryRefreshRequired = true;
   }
   if (typeof parsed.thought === "string" && parsed.thought.trim()) {
     state.doneThought = parsed.thought;
@@ -1836,6 +1851,9 @@ export class ElizaClient {
     localInference?: LocalInferenceChatMetadata;
     actionResults?: ChatActionResultSummary[];
     messageId?: string;
+    userMessageId?: string;
+    assistantEphemeral?: boolean;
+    historyRefreshRequired?: boolean;
   }> {
     // Idempotency key for the chat send. The HTTP chat path (POST
     // /api/chat[/:conversationId]/stream) lives in
@@ -1887,6 +1905,9 @@ export class ElizaClient {
       doneTranscriptVisibility: undefined,
       doneAgentName: null,
       doneMessageId: null,
+      doneUserMessageId: null,
+      doneAssistantEphemeral: false,
+      doneHistoryRefreshRequired: false,
       doneThought: null,
       doneNoResponseReason: null,
       doneUsage: undefined,
@@ -1897,15 +1918,15 @@ export class ElizaClient {
       receivedDone: false,
     };
 
-    // Contract: the API must emit `data: {"type":"done",...}` or
-    // `data: {"type":"error",...}` and then end the response. If the server
-    // stalls mid-stream (e.g. LLM provider timeout without error propagation),
-    // the idle timeout below aborts the read so the UI doesn't hang forever.
-    const SSE_IDLE_TIMEOUT_MS = 60_000;
+    // Contract: the API emits a terminal done/error frame and supports explicit
+    // cancellation through the caller's AbortSignal. Do not infer failure from
+    // wall-clock silence: local inference, tool execution, and provider streams
+    // have different legitimate gaps, while server heartbeats keep the channel
+    // observable.
     while (true) {
       // Client-side abort (user Stop / navigation away) must stop consuming the
       // body IMMEDIATELY — not wait for the separate server-abort POST to close
-      // the stream, nor for the 60s idle timeout to fire. `rawRequestOnce`
+      // the stream. `rawRequestOnce`
       // detaches its request-phase abort listener the moment response headers
       // arrive, so the caller's `signal` is no longer wired to the fetch during
       // the body read; honour it here by cancelling the reader (which closes the
@@ -1918,13 +1939,12 @@ export class ElizaClient {
       }
       let done = false;
       let value: Uint8Array | undefined;
-      let idleTimedOut = false;
       try {
         const readPromise = reader.read();
         // Reject the in-flight read the instant the caller aborts, so a stream
         // stalled between tokens tears down at once instead of blocking on the
-        // pending read until the idle timeout. The listener is removed when the
-        // read settles so it never leaks across loop iterations.
+        // pending read. The listener is removed when the read settles so it
+        // never leaks across loop iterations.
         const abortPromise = new Promise<never>((_, reject) => {
           if (!signal) return;
           const onAbort = () => {
@@ -1937,19 +1957,7 @@ export class ElizaClient {
             signal.removeEventListener("abort", onAbort),
           );
         });
-        const timeoutPromise = new Promise<never>((_, reject) => {
-          const id = setTimeout(() => {
-            idleTimedOut = true;
-            reject(new Error("SSE idle timeout — no data for 60s"));
-          }, SSE_IDLE_TIMEOUT_MS);
-          // Clear timeout if the read resolves first
-          void readPromise.finally(() => clearTimeout(id));
-        });
-        ({ done, value } = await Promise.race([
-          readPromise,
-          abortPromise,
-          timeoutPromise,
-        ]));
+        ({ done, value } = await Promise.race([readPromise, abortPromise]));
       } catch {
         // A client abort wins over everything else: cancel the reader and stop —
         // the partial streamed so far is returned as an interrupted turn.
@@ -1958,19 +1966,10 @@ export class ElizaClient {
           void reader.cancel("elizaos-sse-client-abort").catch(() => undefined);
           break;
         }
-        // Only the 60s idle timeout sets `idleTimedOut`; a mid-stream network
-        // drop rejects the read without it. Stamp the stall as a transient
-        // provider issue so the consumer carries `failureKind` onto the turn and
-        // the renderer shows a Retry affordance instead of a bare, ambiguous
-        // "interrupted" badge that locks the partial text. Network-drop stays
-        // failureKind-less (genuine interrupt).
-        if (idleTimedOut) {
-          streamState.doneFailureKind =
-            streamState.doneFailureKind ?? "provider_issue";
-        }
-        // error-policy:J6 best-effort reader teardown; the stall itself is
-        // already stamped on the turn above.
-        void reader.cancel("elizaos-sse-idle-timeout").catch(() => undefined);
+        // A rejected read is a genuine transport interruption. Provider errors
+        // arrive as structured SSE error frames from the server.
+        // error-policy:J6 best-effort reader teardown after transport failure.
+        void reader.cancel("elizaos-sse-read-failed").catch(() => undefined);
         break;
       }
       if (done || !value) break;
@@ -2037,6 +2036,15 @@ export class ElizaClient {
         : {}),
       ...(streamState.doneMessageId
         ? { messageId: streamState.doneMessageId }
+        : {}),
+      ...(streamState.doneUserMessageId
+        ? { userMessageId: streamState.doneUserMessageId }
+        : {}),
+      ...(streamState.doneAssistantEphemeral
+        ? { assistantEphemeral: true }
+        : {}),
+      ...(streamState.doneHistoryRefreshRequired
+        ? { historyRefreshRequired: true }
         : {}),
       ...(streamState.doneNoResponseReason
         ? { noResponseReason: streamState.doneNoResponseReason }

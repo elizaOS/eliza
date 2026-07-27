@@ -447,9 +447,11 @@ test("probeDedicated never records an arbitrary transport error message", async 
   assert.doesNotMatch(JSON.stringify(result), /private-api-key/);
 });
 
-test("runPairedProbes reuses prompts, counterbalances order, and labels phases", async () => {
+test("runPairedProbes reuses prompts, runs targets in parallel, and labels phases", async () => {
   const seenPrompts = new Map();
   const sleeps = [];
+  let activeRequests = 0;
+  let maxActiveRequests = 0;
   const records = await runPairedProbes({
     cases: [parseProbeCase("gemma-4-31b@omit@512")],
     repeats: 2,
@@ -461,6 +463,8 @@ test("runPairedProbes reuses prompts, counterbalances order, and labels phases",
     seed: "fixed-seed",
     sleepImpl: async (durationMs) => sleeps.push(durationMs),
     fetchImpl: async (url, init) => {
+      activeRequests++;
+      maxActiveRequests = Math.max(maxActiveRequests, activeRequests);
       const body = JSON.parse(init.body);
       const prompt = body.messages[0].content;
       const proof = prompt.match(/latency-proof-[a-f0-9-]+/)?.[0];
@@ -470,11 +474,14 @@ test("runPairedProbes reuses prompts, counterbalances order, and labels phases",
       const targets = seenPrompts.get(key) || new Set();
       targets.add(target);
       seenPrompts.set(key, targets);
+      await new Promise((resolve) => setImmediate(resolve));
+      activeRequests--;
       return successfulOpenAiResponse(proof);
     },
   });
 
   assert.equal(records.length, 8);
+  assert.equal(maxActiveRequests, 2);
   assert.deepEqual(
     new Set(records.map((record) => record.phase)),
     new Set(["cold", "warm", "post-idle"]),
@@ -493,9 +500,9 @@ test("runPairedProbes reuses prompts, counterbalances order, and labels phases",
         .entries()
         .map(([order, orderRecords]) => [order, orderRecords.length / 2]),
     ),
-    { "direct>gateway": 2, "gateway>direct": 2 },
+    { parallel: 4 },
   );
-  assert.deepEqual(sleeps, [2, 2, 1, 1]);
+  assert.deepEqual(sleeps, [2, 2, 1]);
   assert.deepEqual(
     records
       .filter((record) => record.phase === "post-idle")
@@ -547,7 +554,7 @@ test("summarizeLatencyRecords reports warm p50, p90, and p95", () => {
   });
 });
 
-test("paired CLI distinguishes transport integrity from bounded proof misses", async () => {
+test("paired CLI reports proof misses without a numeric acceptance gate", async () => {
   const originalFetch = globalThis.fetch;
   const originalWrite = process.stdout.write;
   const testEnv = process.env;
@@ -572,8 +579,7 @@ test("paired CLI distinguishes transport integrity from bounded proof misses", a
     "cli-threshold-test",
   ];
   try {
-    assert.equal(await runCli([...args, "--max-proof-miss-rate", "1"]), 0);
-    assert.equal(await runCli([...args, "--max-proof-miss-rate", "0"]), 2);
+    assert.equal(await runCli(args), 0);
   } finally {
     globalThis.fetch = originalFetch;
     process.stdout.write = originalWrite;

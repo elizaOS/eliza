@@ -56,6 +56,9 @@ const cacheGet = mock(async (key: string) => (cacheStore.has(key) ? cacheStore.g
 const cacheSet = mock(async (key: string, value: unknown, _ttlSeconds?: number) => {
   cacheStore.set(key, value);
 });
+const cacheDel = mock(async (key: string) => {
+  cacheStore.delete(key);
+});
 // Single-flight double: an in-process lock so N concurrent misses run the loader
 // EXACTLY ONCE (the real getOrSet uses a distributed SET NX lock). Waiters await
 // the in-flight loader and reuse its result — the property the stampede fix relies
@@ -82,7 +85,7 @@ const cacheGetOrSet = mock(async (key: string, _ttl: number, loader: () => Promi
   }
 });
 mock.module("../../cache/client", () => ({
-  cache: { get: cacheGet, set: cacheSet, getOrSet: cacheGetOrSet },
+  cache: { get: cacheGet, set: cacheSet, del: cacheDel, getOrSet: cacheGetOrSet },
 }));
 
 // validateApiKey double for the cache-HIT re-validation gate.
@@ -155,6 +158,7 @@ beforeEach(() => {
   findByIdAndOrg.mockResolvedValue(null);
   cacheGet.mockClear();
   cacheSet.mockClear();
+  cacheDel.mockClear();
   cacheGetOrSet.mockClear();
   inFlight.clear();
   validateApiKey.mockClear();
@@ -220,7 +224,7 @@ describe("resolveSharedAgent", () => {
     expect(validateApiKey).not.toHaveBeenCalled();
   });
 
-  test("cache-only converges for a non-shared agent: negative entry routes retries to the authoritative 404", async () => {
+  test("cache-only does not freeze a non-shared decision after the agent becomes shared", async () => {
     findByIdAndOrg.mockResolvedValue(
       agent({
         execution_tier: "dedicated-lazy",
@@ -237,14 +241,45 @@ describe("resolveSharedAgent", () => {
     ).resolves.toMatchObject({ status: 503 });
     await Promise.all(waited);
 
-    // The retry must NOT loop the warming 503: the stored negative entry sends
-    // it through the inline authoritative gate, which produces the real 404.
+    const scopeKey = CacheKeys.sharedAgentScope.resolve("keyhashpref0000", "agent-1");
+    expect(cacheStore.get(scopeKey)).toEqual({
+      requiresAuthoritativeResolution: true,
+    });
+    findByIdAndOrg.mockResolvedValue(agent());
     await expect(
       resolveSharedAgent(apiKeyContext("agent-1") as never, {
         cacheOnly: true,
         executionCtx: { waitUntil: (promise) => waited.push(promise) },
       }),
-    ).resolves.toEqual({ error: "Not a shared-runtime agent", status: 404 });
+    ).resolves.toMatchObject({ agentId: "agent-1", orgId: "org-1" });
+  });
+
+  test("cache-only returns a permanent non-shared decision on the retry", async () => {
+    findByIdAndOrg.mockResolvedValue(
+      agent({
+        execution_tier: "dedicated-lazy",
+        status: "running",
+        bridge_url: "https://agent.example.test",
+      }),
+    );
+    const waited: Promise<unknown>[] = [];
+    await expect(
+      resolveSharedAgent(apiKeyContext("agent-1") as never, {
+        cacheOnly: true,
+        executionCtx: { waitUntil: (promise) => waited.push(promise) },
+      }),
+    ).resolves.toMatchObject({ status: 503 });
+    await Promise.all(waited);
+
+    await expect(
+      resolveSharedAgent(apiKeyContext("agent-1") as never, {
+        cacheOnly: true,
+        executionCtx: { waitUntil: (promise) => waited.push(promise) },
+      }),
+    ).resolves.toEqual({
+      error: "Not a shared-runtime agent",
+      status: 404,
+    });
   });
 
   test("cache-only converges for a bootstrap-window dedicated agent: retry is served authoritatively", async () => {
@@ -274,7 +309,40 @@ describe("resolveSharedAgent", () => {
     ).resolves.toMatchObject({ agentId: "agent-1", orgId: "org-1" });
   });
 
-  test("cache-only converges for a rejected credential: retry surfaces the authoritative 401", async () => {
+  test("cache-only does not freeze a rejected credential after it becomes valid", async () => {
+    const { AuthenticationError } = await import("../../api/cloud-worker-errors");
+    requireUserOrApiKeyWithOrgLookup.mockImplementation(async () => {
+      throw AuthenticationError("Invalid or expired API key");
+    });
+    const waited: Promise<unknown>[] = [];
+    await expect(
+      resolveSharedAgent(apiKeyContext("agent-1") as never, {
+        cacheOnly: true,
+        executionCtx: { waitUntil: (promise) => waited.push(promise) },
+      }),
+    ).resolves.toMatchObject({ status: 503 });
+    await Promise.all(waited);
+
+    const scopeKey = CacheKeys.sharedAgentScope.resolve("keyhashpref0000", "agent-1");
+    expect(cacheStore.get(scopeKey)).toEqual({
+      requiresAuthoritativeResolution: true,
+    });
+    requireUserOrApiKeyWithOrgLookup.mockImplementation(
+      async <T>(_: unknown, lookup: (organizationId: string) => Promise<T>) => ({
+        user: { organization_id: "org-1", steward_id: "steward-user-1" },
+        orgLookupResult: await lookup("org-1"),
+      }),
+    );
+    findByIdAndOrg.mockResolvedValue(agent());
+    await expect(
+      resolveSharedAgent(apiKeyContext("agent-1") as never, {
+        cacheOnly: true,
+        executionCtx: { waitUntil: (promise) => waited.push(promise) },
+      }),
+    ).resolves.toMatchObject({ agentId: "agent-1", orgId: "org-1" });
+  });
+
+  test("cache-only returns a permanent credential denial on the retry", async () => {
     const { AuthenticationError } = await import("../../api/cloud-worker-errors");
     requireUserOrApiKeyWithOrgLookup.mockImplementation(async () => {
       throw AuthenticationError("Invalid or expired API key");

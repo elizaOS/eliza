@@ -49,6 +49,12 @@ export interface MessageProcessingResult {
 	didRespond: boolean;
 	responseContent?: Content | null;
 	responseMessages: Memory[];
+	/**
+	 * IDs from `responseMessages` that this service durably committed before
+	 * returning. Transport layers use this instead of guessing persistence from
+	 * the strategy mode; transient replies may deliberately skip storage.
+	 */
+	persistedResponseMessageIds?: UUID[];
 	/** Results executed during this turn, preserved across planner/cache cleanup. */
 	actionResults?: ActionResult[];
 	state?: State;

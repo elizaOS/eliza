@@ -169,6 +169,29 @@ describe("applyStreamingTextModification", () => {
     expect(harness.current[1].text).toBe("hello there");
   });
 
+  it("rekey binds a durable user id without abusing assistant completion state", () => {
+    const initial = [
+      userMsg("temp-user-1", "hi"),
+      assistantMsg("temp-resp-1", ""),
+    ];
+    initial[0].clientRenderId = "temp-user-1";
+    const harness = makeSetter(initial);
+
+    applyStreamingTextModification(harness.setter, {
+      messageId: "temp-user-1",
+      mode: "rekey",
+      persistedMessageId: "server-user-1",
+    });
+
+    expect(harness.current[0]).toMatchObject({
+      id: "server-user-1",
+      clientRenderId: "temp-user-1",
+      role: "user",
+      text: "hi",
+    });
+    expect(harness.current[1]).toBe(initial[1]);
+  });
+
   it("complete id-swap drops an already-appended WS echo bubble carrying the persisted id", () => {
     // Action-callback turns persist + broadcast mid-turn, so the
     // proactive-message echo can land BEFORE the SSE `done` id-swap. The swap

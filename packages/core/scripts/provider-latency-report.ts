@@ -2,10 +2,10 @@
 /**
  * Measures every provider registered on a real PGLite-backed core runtime.
  *
- * Each sample composes a fresh message with the full provider inventory, so
- * providers execute through the production parallel path without state-cache
- * reuse. The JSON report ranks providers by p95 and includes aggregate wall
- * time and observed concurrency.
+ * Each sample composes a fresh message with the full provider inventory, then
+ * repeats that composition inside the same production turn context. The report
+ * separates first execution from reuse, ranks providers by p95, and includes
+ * aggregate wall time and observed concurrency.
  */
 import { randomUUID } from "node:crypto";
 import { writeFile } from "node:fs/promises";
@@ -14,6 +14,7 @@ import {
 	runWithInferenceTiming,
 } from "../src/inference-timing";
 import { createTestRuntime } from "../src/testing/pglite-runtime";
+import { runWithTrajectoryContext } from "../src/trajectory-context";
 import type { Memory, UUID } from "../src/types";
 import { ChannelType } from "../src/types";
 
@@ -119,21 +120,29 @@ async function main(): Promise<void> {
 				turnId: `provider-audit-${iteration}`,
 				label: "provider-latency-audit",
 			});
-			const startedAt = performance.now();
-			await runWithInferenceTiming(timer, () =>
-				runtime.composeState(message, providerNames, true),
-			);
-			const wallMs = performance.now() - startedAt;
-			const summary = timer.close();
 			const cachedTimer = new InferenceTurnTimer({
 				turnId: `provider-audit-cached-${iteration}`,
 				label: "provider-latency-audit-cached",
 			});
-			const cachedStartedAt = performance.now();
-			await runWithInferenceTiming(cachedTimer, () =>
-				runtime.composeState(message, providerNames, true, false, []),
+			let wallMs = 0;
+			let cachedWallMs = 0;
+			await runWithTrajectoryContext(
+				{ turnMemo: new Map<string, Promise<unknown>>() },
+				async () => {
+					const startedAt = performance.now();
+					await runWithInferenceTiming(timer, () =>
+						runtime.composeState(message, providerNames, true),
+					);
+					wallMs = performance.now() - startedAt;
+
+					const cachedStartedAt = performance.now();
+					await runWithInferenceTiming(cachedTimer, () =>
+						runtime.composeState(message, providerNames, true, false, []),
+					);
+					cachedWallMs = performance.now() - cachedStartedAt;
+				},
 			);
-			const cachedWallMs = performance.now() - cachedStartedAt;
+			const summary = timer.close();
 			const cachedSummary = cachedTimer.close();
 			if (iteration < warmupCount) continue;
 
@@ -169,13 +178,14 @@ async function main(): Promise<void> {
 		const output = {
 			generatedAt: new Date().toISOString(),
 			runtime: "AgentRuntime + plugin-sql/PGLite",
-			execution: "all registered providers via parallel composeState",
+			execution:
+				"all registered providers via parallel composeState in one production turn context per sample",
 			warmups: warmupCount,
 			samples: sampleCount,
 			providerCount: providerNames.length,
 			freshComposeWallMs: distribution(wallSamples),
-			maxCachedComposeWallMs: distribution(cachedWallSamples),
-			cachedProvidersPerSample: distribution(cachedProviderCounts),
+			reusedComposeWallMs: distribution(cachedWallSamples),
+			reusedProviderResultsPerSample: distribution(cachedProviderCounts),
 			effectiveParallelism: distribution(concurrencySamples),
 			providers,
 		};

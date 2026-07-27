@@ -101,6 +101,8 @@ export interface ChatVoiceSpeaker {
 
 export interface ChatMessageData {
   avatarUrl?: string;
+  /** Stable UI row identity across optimistic-to-durable id reconciliation. */
+  clientRenderId?: string;
   from?: string;
   fromUserName?: string;
   id: string;

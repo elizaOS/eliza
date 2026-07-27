@@ -302,6 +302,11 @@ export interface AccountConnectRequest {
 
 export interface ConversationMessage {
   id: string;
+  /**
+   * UI-local row identity preserved when an optimistic id is rebound to its
+   * durable server id. Never sent as the domain message identifier.
+   */
+  clientRenderId?: string;
   role: "user" | "assistant";
   text: string;
   timestamp: number;

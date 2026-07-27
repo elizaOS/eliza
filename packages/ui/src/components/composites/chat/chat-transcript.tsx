@@ -1,7 +1,8 @@
 /**
- * Renders the ordered list of chat messages, keying rows by stable message id
- * and wrapping each in memoized ChatMessage so streaming a token into the last
- * row re-renders only that row (perf lock in chat-transcript.render-count.test).
+ * Renders the ordered list of chat messages, keying rows by stable render
+ * identity and wrapping each in memoized ChatMessage so streaming a token into
+ * the last row re-renders only that row (perf lock in
+ * chat-transcript.render-count.test).
  * Supports carryover (faded prior-turn) messages and proactive suggestion
  * bubbles with accept/dismiss handlers.
  */
@@ -43,6 +44,10 @@ function renderTranscriptMessageContent(
   renderMessageContent?: (message: ChatMessageData) => React.ReactNode,
 ) {
   return renderMessageContent?.(message) ?? message.text;
+}
+
+function messageRenderKey(message: ChatMessageData): string {
+  return message.clientRenderId ?? message.id;
 }
 
 const LEGACY_REPLY_REFERENCE_RE =
@@ -169,7 +174,8 @@ export const ChatTranscript = memo(function ChatTranscript({
   // — and reloaded history (first render, empty seen set) never animates.
   const seenIdsRef = useRef<Set<string>>(new Set());
   const animatedIdsRef = useRef<Set<string>>(new Set());
-  const lastMessageId = normalizedMessages.at(-1)?.id ?? null;
+  const lastMessage = normalizedMessages.at(-1);
+  const lastMessageId = lastMessage ? messageRenderKey(lastMessage) : null;
   if (
     lastMessageId != null &&
     seenIdsRef.current.size > 0 &&
@@ -178,7 +184,7 @@ export const ChatTranscript = memo(function ChatTranscript({
     animatedIdsRef.current.add(lastMessageId);
   }
   useEffect(() => {
-    seenIdsRef.current = new Set(normalizedMessages.map((m) => m.id));
+    seenIdsRef.current = new Set(normalizedMessages.map(messageRenderKey));
   }, [normalizedMessages]);
 
   if (variant === "game-modal") {
@@ -188,7 +194,7 @@ export const ChatTranscript = memo(function ChatTranscript({
           const isUser = message.role === "user";
           return (
             <div
-              key={`carryover-${message.id}`}
+              key={`carryover-${messageRenderKey(message)}`}
               data-testid="companion-message-row"
               data-companion-carryover="true"
               className={`flex w-full ${isUser ? "justify-end" : "justify-start"}`}
@@ -217,7 +223,7 @@ export const ChatTranscript = memo(function ChatTranscript({
           const isUser = message.role === "user";
           return (
             <div
-              key={message.id}
+              key={messageRenderKey(message)}
               data-testid="companion-message-row"
               className={`flex w-full ${isUser ? "justify-end" : "justify-start"}`}
             >
@@ -263,10 +269,10 @@ export const ChatTranscript = memo(function ChatTranscript({
 
         return (
           <ChatMessage
-            key={message.id}
+            key={messageRenderKey(message)}
             message={message}
             isGrouped={isGrouped}
-            enterOnMount={animatedIdsRef.current.has(message.id)}
+            enterOnMount={animatedIdsRef.current.has(messageRenderKey(message))}
             agentName={agentName}
             labels={labels}
             onCopy={onCopy}

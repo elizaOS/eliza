@@ -83,7 +83,7 @@ jobs:
       - name: Validate benchmark helpers
         run: bunx vitest run packages/agent/scripts/cerebras-chat-flow-latency.test.ts --coverage.enabled=false
 
-      - name: Measure every provider in parallel and max-cached
+      - name: Measure every provider in parallel and reused
         env:
           CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
         run: |
@@ -133,11 +133,11 @@ jobs:
           );
           console.log("");
           console.log(
-            `Max-cached compose p50/p95: ${providers.maxCachedComposeWallMs.p50} / ${providers.maxCachedComposeWallMs.p95} ms`,
+            `Reused compose p50/p95: ${providers.reusedComposeWallMs.p50} / ${providers.reusedComposeWallMs.p95} ms`,
           );
           console.log("");
           console.log(
-            `Cached providers per sample: ${providers.cachedProvidersPerSample.p50}/${providers.providerCount}`,
+            `Reused provider results per sample: ${providers.reusedProviderResultsPerSample.p50}/${providers.providerCount}`,
           );
           NODE
 

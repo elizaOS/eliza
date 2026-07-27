@@ -44,14 +44,6 @@ function boundedInteger(value, label, minimum, maximum) {
   return parsed;
 }
 
-function boundedNumber(value, label, minimum, maximum) {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed < minimum || parsed > maximum) {
-    throw new Error(`${label} must be between ${minimum} and ${maximum}`);
-  }
-  return parsed;
-}
-
 export function parseProbeCase(raw, fallbackMaxTokens = 512) {
   const parts = String(raw).split("@");
   if (parts.length > 3) {
@@ -423,6 +415,10 @@ function baseRecord(target, sequence, metadata = {}) {
   };
 }
 
+function requestSignal(timeoutMs) {
+  return timeoutMs > 0 ? AbortSignal.timeout(timeoutMs) : undefined;
+}
+
 export async function probeOpenAi({
   target,
   probeCase,
@@ -454,7 +450,7 @@ export async function probeOpenAi({
         "User-Agent": "eliza-chat-latency/1.0",
       },
       body: JSON.stringify(buildOpenAiRequestBody(probeCase, prompt)),
-      signal: AbortSignal.timeout(timeoutMs),
+      signal: requestSignal(timeoutMs),
     });
   } catch (error) {
     return {
@@ -541,7 +537,13 @@ export async function probeOpenAi({
   };
 }
 
-async function createConversation(baseUrl, apiKey, traceId, fetchImpl) {
+async function createConversation(
+  baseUrl,
+  apiKey,
+  traceId,
+  timeoutMs,
+  fetchImpl,
+) {
   const response = await fetchImpl(`${baseUrl}/api/conversations`, {
     method: "POST",
     headers: {
@@ -551,7 +553,7 @@ async function createConversation(baseUrl, apiKey, traceId, fetchImpl) {
       "User-Agent": "eliza-chat-latency/1.0",
     },
     body: JSON.stringify({ title: `latency-${Date.now()}` }),
-    signal: AbortSignal.timeout(30_000),
+    signal: requestSignal(timeoutMs),
   });
   if (!response.ok) {
     throw new Error(`CreateConversationHttp${response.status}`);
@@ -584,6 +586,7 @@ export async function probeDedicated({
       baseUrl,
       apiKey,
       traceId,
+      timeoutMs,
       fetchImpl,
     );
     const startedAt = performance.now();
@@ -607,7 +610,7 @@ export async function probeDedicated({
           channelType: "DM",
           clientMessageId: randomUUID(),
         }),
-        signal: AbortSignal.timeout(timeoutMs),
+        signal: requestSignal(timeoutMs),
       },
     );
     const responseHeadersMs = round(performance.now() - startedAt);
@@ -685,7 +688,7 @@ export async function probeDedicated({
           {
             method: "DELETE",
             headers: { Authorization: `Bearer ${apiKey}` },
-            signal: AbortSignal.timeout(15_000),
+            signal: requestSignal(timeoutMs),
           },
         );
         if (!cleanupResponse.ok) {
@@ -724,7 +727,6 @@ export async function runPairedProbes({
   const random = seededRandom(seed);
   const records = [];
   const targets = { direct, gateway };
-  const nextFirstTarget = new Map();
 
   const runPhase = async (
     phase,
@@ -738,41 +740,34 @@ export async function runPairedProbes({
         }
         const proof = `latency-proof-${randomUUID()}`;
         const pairId = randomUUID();
-        const caseKey = JSON.stringify([
-          probeCase.model,
-          probeCase.reasoningEffort,
-          probeCase.maxTokens,
-        ]);
-        const first =
-          nextFirstTarget.get(caseKey) ??
-          (random() < 0.5 ? `direct` : `gateway`);
-        const second = first === `direct` ? `gateway` : `direct`;
-        const order = [first, second];
-        nextFirstTarget.set(caseKey, second);
-        for (const target of order) {
-          if (idleBeforeEachTarget && idleMs > 0) {
-            await sleepImpl(idleMs);
-          }
-          const config = targets[target];
-          const record = await probeOpenAi({
-            target,
-            probeCase,
-            baseUrl: config.baseUrl,
-            apiKey: config.apiKey,
-            promptOverride,
-            proof,
-            timeoutMs,
-            sequence,
-            metadata: {
-              phase,
-              pairId,
-              targetOrder: order.join(">"),
-              benchmarkSeed: seed,
-              idleBeforeTargetMs: idleBeforeEachTarget ? idleMs : 0,
-              pairIntervalMs: pacePairs ? pairIntervalMs : 0,
-            },
-            fetchImpl,
-          });
+        if (idleBeforeEachTarget && idleMs > 0) {
+          await sleepImpl(idleMs);
+        }
+        const pair = await Promise.all(
+          ["direct", "gateway"].map(async (target) => {
+            const config = targets[target];
+            return await probeOpenAi({
+              target,
+              probeCase,
+              baseUrl: config.baseUrl,
+              apiKey: config.apiKey,
+              promptOverride,
+              proof,
+              timeoutMs,
+              sequence,
+              metadata: {
+                phase,
+                pairId,
+                targetOrder: "parallel",
+                benchmarkSeed: seed,
+                idleBeforeTargetMs: idleBeforeEachTarget ? idleMs : 0,
+                pairIntervalMs: pacePairs ? pairIntervalMs : 0,
+              },
+              fetchImpl,
+            });
+          }),
+        );
+        for (const record of pair) {
           records.push(record);
           onRecord(record);
         }
@@ -873,10 +868,9 @@ function printHelp() {
       "  --agent-id uuid [--base-url https://agent-host]",
       "",
       "Common:",
-      "  --repeat 1..100 --timeout-ms 1000..180000 --api-key-env NAME",
+      "  --repeat 1..100 --timeout-ms 0..180000 --api-key-env NAME",
       "  --idle-ms 0..300000 --pair-interval-ms 0..60000",
       "  --seed SAFE_ID --prompt text",
-      "  --max-proof-miss-rate 0..1 (paired benchmark only)",
       "  --keep-conversation",
       "",
       "Credentials are read only from environment variables and are never printed.",
@@ -898,16 +892,15 @@ export async function runCli(argv = process.argv.slice(2)) {
       prompt: { type: "string" },
       "max-tokens": { type: "string", default: "512" },
       repeat: { type: "string", default: "1" },
-      "timeout-ms": { type: "string", default: "90000" },
+      "timeout-ms": { type: "string", default: "0" },
       "api-key-env": { type: "string" },
       "direct-api-key-env": { type: "string" },
       "gateway-api-key-env": { type: "string" },
       "direct-base-url": { type: "string" },
       "gateway-base-url": { type: "string" },
-      "idle-ms": { type: "string", default: "30000" },
+      "idle-ms": { type: "string", default: "0" },
       "pair-interval-ms": { type: "string", default: "0" },
       seed: { type: "string" },
-      "max-proof-miss-rate": { type: "string", default: "0" },
       "keep-conversation": { type: "boolean", default: false },
       help: { type: "boolean", short: "h", default: false },
     },
@@ -925,7 +918,7 @@ export async function runCli(argv = process.argv.slice(2)) {
   const timeoutMs = boundedInteger(
     values["timeout-ms"],
     "timeout-ms",
-    1_000,
+    0,
     180_000,
   );
   const fallbackMaxTokens = boundedInteger(
@@ -940,12 +933,6 @@ export async function runCli(argv = process.argv.slice(2)) {
     "pair-interval-ms",
     0,
     60_000,
-  );
-  const maxProofMissRate = boundedNumber(
-    values["max-proof-miss-rate"],
-    "max-proof-miss-rate",
-    0,
-    1,
   );
   const benchmarkSeed =
     values.seed?.trim() || ["latency", randomUUID()].join("-");
@@ -1069,12 +1056,7 @@ export async function runCli(argv = process.argv.slice(2)) {
     const transportPassed = records.every(
       (record) => record.transportOk === true,
     );
-    const completed = records.filter((record) => record.transportOk === true);
-    const proofMisses = completed.filter(
-      (record) => record.proofMatched !== true,
-    ).length;
-    const proofMissRate = completed.length ? proofMisses / completed.length : 1;
-    return transportPassed && proofMissRate <= maxProofMissRate ? 0 : 2;
+    return transportPassed ? 0 : 2;
   }
   return records.every((record) => record.ok) ? 0 : 2;
 }

@@ -41,6 +41,7 @@ export const inspect = (value: unknown) => {
 
 export const format = (...args: unknown[]) =>
   args.map((a) => inspect(a)).join(" ");
+export const debuglog = () => () => {};
 export const deprecate = <T extends AnyFn>(fn: T): T => fn;
 export const isDeepStrictEqual = (a: unknown, b: unknown) => a === b;
 export const TextEncoder = globalThis.TextEncoder;
@@ -57,6 +58,7 @@ export default {
   inherits,
   inspect,
   format,
+  debuglog,
   deprecate,
   isDeepStrictEqual,
   TextEncoder,
