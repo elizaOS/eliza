@@ -5,6 +5,7 @@ import {
 } from "../types";
 
 import { SolanaParsedTransaction } from "../helius";
+import { collectProgramIdsFromTransaction } from "../parsers/instructions";
 
 export function analyzeWalletDeFi(
   parsedTransactions: SolanaParsedTransaction[],
@@ -12,17 +13,10 @@ export function analyzeWalletDeFi(
   const protocolMap = new Map<string, WalletDeFiProtocol>();
 
   for (const transaction of parsedTransactions) {
-    const instructions =
-    transaction.instructions ?? [];
+    const programIds =
+      collectProgramIdsFromTransaction(transaction);
 
-    for (const instruction of instructions) {
-      const programId =
-      instruction.programId ?? null;
-
-      if (typeof programId !== "string") {
-        continue;
-      }
-
+    for (const programId of programIds) {
       const protocol = lookupSolanaProtocol(programId);
 
       if (!protocol) {
