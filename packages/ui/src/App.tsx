@@ -1565,6 +1565,27 @@ function renderViewRouterContent({
   settingsNavigatePayload?: unknown;
   settingsNavigateSequence?: number;
 }): ReactNode {
+  // Path ownership is more specific than tab affinity. Wallet-family plugins
+  // intentionally share the `inventory` tab, but their exact routes must mount
+  // their own registrations before that affinity resolves to the wallet root.
+  const walletNav = isWalletSectionPath(navigationPath) ? (
+    <WalletSectionNav activePath={navigationPath} />
+  ) : undefined;
+  const appShellPageForRoute = findAppShellPageForRoute(navigationPath);
+  if (
+    appShellPageForRoute &&
+    isViewVisible(appShellPageForRoute, enabledKinds)
+  ) {
+    return (
+      <TabContentView
+        nav={walletNav}
+        reserveChatClearance={!surfaceOwnsViewport(appShellPageForRoute)}
+      >
+        <RegisteredAppShellPage registration={appShellPageForRoute} />
+      </TabContentView>
+    );
+  }
+
   if (visibleDynamicPage(dynamicPage, enabledKinds)) {
     return (
       <TabContentView
@@ -1583,11 +1604,6 @@ function renderViewRouterContent({
       </TabContentView>
     );
   }
-  // Wallet-family routes share one sub-nav rendered in the workspace chrome
-  // nav slot. Plugins join it by registering app-shell pages with group=wallet.
-  const walletNav = isWalletSectionPath(navigationPath) ? (
-    <WalletSectionNav activePath={navigationPath} />
-  ) : undefined;
 
   // Character-family routes (Personality/Relationships/Skills/Experience) share
   // one "Character" header + section strip in the same nav slot (#13591). Unlike
@@ -1596,20 +1612,6 @@ function renderViewRouterContent({
     <CharacterSectionNav activePath={navigationPath} />
   ) : undefined;
 
-  const appShellPageForRoute = findAppShellPageForRoute(navigationPath);
-  if (
-    appShellPageForRoute &&
-    isViewVisible(appShellPageForRoute, enabledKinds)
-  ) {
-    return (
-      <TabContentView
-        nav={walletNav}
-        reserveChatClearance={!surfaceOwnsViewport(appShellPageForRoute)}
-      >
-        <RegisteredAppShellPage registration={appShellPageForRoute} />
-      </TabContentView>
-    );
-  }
   const remoteView = findRemoteViewForRoute(
     availableViews,
     navigationPath,

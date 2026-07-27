@@ -165,19 +165,20 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
     readyChecks: [{ selector: "#root" }],
   },
   {
-    name: "apps catalog",
+    name: "my apps",
     path: "/apps",
-    // /apps renders the launcher grid (HomeScreenMount initialPage="launcher");
-    // the old text probes ("Views" / "No views available") predate that surface
-    // and never match it — anchor on the launcher's own testid.
-    readyChecks: [{ selector: '[data-testid="launcher"]' }],
+    // `/apps` is the canonical My Apps management surface. The launcher grid
+    // remains available at `/views`.
+    readyChecks: [{ text: "Install, create, and run your elizaOS apps." }],
     timeoutMs: 60_000,
+    requireViewHeader: true,
+    viewHeaderTitle: "My Apps",
   },
   {
     name: "automations",
     path: "/automations",
     readyChecks: [{ selector: '[data-testid="automations-shell"]' }],
-    viewHeaderWithin: '[data-testid="automations-shell"]',
+    viewHeaderTitle: "Automations",
     timeoutMs: 60_000,
     requireViewHeader: true,
   },
@@ -206,7 +207,7 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
     name: "wallet",
     path: "/wallet",
     readyChecks: [{ selector: '[data-testid="wallet-shell"]' }],
-    viewHeaderWithin: '[data-testid="wallet-shell"]',
+    viewHeaderTitle: "Wallet",
     timeoutMs: 60_000,
     requireViewHeader: true,
   },
@@ -228,7 +229,7 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
     name: "settings",
     path: "/settings",
     readyChecks: [{ selector: '[data-testid="settings-shell"]' }],
-    viewHeaderWithin: '[data-testid="settings-shell"]',
+    viewHeaderTitle: "Settings",
     timeoutMs: 60_000,
     requireViewHeader: true,
   },
@@ -281,35 +282,37 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
   {
     name: "character documents deep link",
     path: "/character/documents",
-    readyChecks: [{ selector: '[data-testid="character-editor-view"]' }],
+    readyChecks: [{ selector: '[data-testid="documents-view"]' }],
     timeoutMs: 60_000,
+    requireViewHeader: true,
+    viewHeaderWithin: '[data-testid="documents-view"]',
+    viewHeaderTitle: "Knowledge",
   },
   {
-    // Promoted top-level character tabs (character-skills / experience) render
-    // dedicated views with a standard ViewHeader — anchor on the header shell
-    // plus the view title.
+    // Character Skills and Experience are headerless bodies under the shared
+    // Character section nav; the section header is the canonical route chrome.
     name: "character skills deep link",
     path: "/character/skills",
     readyChecks: [
-      { selector: '[data-testid="view-header"]' },
-      { text: "Skills" },
+      { selector: '[data-testid="section-nav-character"]' },
+      { text: "Character" },
     ],
     mode: "all",
     timeoutMs: 60_000,
     requireViewHeader: true,
-    viewHeaderTitle: "Skills",
+    viewHeaderTitle: "Character",
   },
   {
     name: "character experience deep link",
     path: "/character/experience",
     readyChecks: [
-      { selector: '[data-testid="view-header"]' },
-      { text: "Experience" },
+      { selector: '[data-testid="section-nav-character"]' },
+      { text: "Character" },
     ],
     mode: "all",
     timeoutMs: 60_000,
     requireViewHeader: true,
-    viewHeaderTitle: "Experience",
+    viewHeaderTitle: "Character",
   },
   {
     name: "automation node catalog deep link",
@@ -1595,7 +1598,7 @@ async function clickSafeAllowlist(
   ).toBeVisible({ timeout: 60_000 });
   await expectNoPageIssues(issues, "chat safe toggle");
 
-  await probeRoute(page, coreRouteProbe("apps catalog"));
+  await probeRoute(page, coreRouteProbe("views catalog deep link"));
   const favoriteButton = page.getByRole("button", {
     name: "Add to favorites",
   });
@@ -1695,7 +1698,7 @@ test("visible safe app tiles and allowlisted buttons are click-safe", async ({
 
   for (const tile of SAFE_VIEW_TILES) {
     await test.step(tile.name, async () => {
-      await probeRoute(page, coreRouteProbe("apps catalog"));
+      await probeRoute(page, coreRouteProbe("views catalog deep link"));
       // A view may appear in both the "Pinned & recent" strip and a section
       // grid, so target the first matching card.
       const card = page.getByTestId(tile.testId).first();
