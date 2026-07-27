@@ -383,6 +383,39 @@ describe("managed dedicated canary diagnostic", () => {
     expect(canonical).not.toContain("max attempts");
   });
 
+  test("classifies a terminal timeout without publishing raw text", () => {
+    const input = failedDeleteInput();
+    const agent = input.agent as Record<string, unknown>;
+    const [job] = input.jobs as Record<string, unknown>[];
+    const error = "Job timed out 3 times - max attempts reached";
+    agent.status = "deletion_pending";
+    agent.errorMessage = null;
+    agent.errorCount = 0;
+    job.error = error;
+    job.result = null;
+
+    const canonical = canonicalizeManagedDedicatedCanaryDiagnostic(
+      JSON.stringify(input),
+      SUFFIX,
+    );
+    const evidence = JSON.parse(canonical);
+    expect(evidence.sandbox).toMatchObject({
+      status: "deletion_pending",
+      errorCode: "none",
+      errorCount: 0,
+    });
+    expect(evidence.jobs[0]).toMatchObject({
+      status: "failed",
+      attempts: 3,
+      maxAttempts: 3,
+      errorCode: "timeout",
+      recoveryCode: "none",
+      resultErrorCode: "none",
+    });
+    expect(canonical).not.toContain("timed out");
+    expect(canonical).not.toContain("max attempts");
+  });
+
   test.each([
     "Job interrupted by worker restart 0 times - max attempts reached",
     "Job interrupted by worker restart 1000 times - max attempts reached",
@@ -398,6 +431,37 @@ describe("managed dedicated canary diagnostic", () => {
       sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX),
     ).toThrow("malformed recovery provenance");
   });
+
+  test.each([
+    [
+      "Job interrupted by worker restart 1 times - max attempts reached",
+      3,
+      3,
+      "failed",
+    ],
+    ["Job timed out 2 times - max attempts reached", 3, 3, "failed"],
+    ["Job timed out 3 times - max attempts reached", 3, 4, "failed"],
+    ["Job timed out 3 times - max attempts reached", 3, 3, "in_progress"],
+  ])(
+    "rejects terminal lifecycle counters that disagree with the persisted job",
+    (error, attempts, maxAttempts, status) => {
+      const input = failedDeleteInput();
+      const agent = input.agent as Record<string, unknown>;
+      const [job] = input.jobs as Record<string, unknown>[];
+      agent.status = "deletion_pending";
+      agent.errorMessage = null;
+      agent.errorCount = 0;
+      job.error = error;
+      job.result = null;
+      job.attempts = attempts;
+      job.maxAttempts = maxAttempts;
+      job.status = status;
+
+      expect(() =>
+        sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX),
+      ).toThrow("terminal counters disagree");
+    },
+  );
 
   test.each([
     [

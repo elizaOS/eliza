@@ -22,7 +22,9 @@ const FORBIDDEN_OUTPUT_PATTERN =
   /(?:https?:\/\/|(?:\d{1,3}\.){3}\d{1,3}|\b(?:token|secret|password|api[_-]?key)\b|managed-dedicated-canary-|sha256:)/i;
 const TIMEOUT_ERROR_PATTERN = /(?:timed out|timeout)/i;
 const WORKER_RESTART_TERMINAL_PATTERN =
-  /^Job interrupted by worker restart [1-9][0-9]{0,2} times - max attempts reached$/;
+  /^Job interrupted by worker restart ([1-9][0-9]{0,2}) times - max attempts reached$/;
+const TIMEOUT_TERMINAL_PATTERN =
+  /^Job timed out ([1-9][0-9]{0,2}) times - max attempts reached$/;
 
 const SANDBOX_STATUSES = new Set([
   "pending",
@@ -65,6 +67,11 @@ interface RecoveryClassification {
   code: Exclude<RecoveryCode, "none">;
   attempt: number;
   maxAttempts: number;
+}
+
+interface TerminalFailureClassification {
+  code: Extract<ErrorCode, "timeout" | "worker_restart_interrupted">;
+  attempts: number;
 }
 
 const RECOVERY_PARTIAL_RESULT_ERRORS = new Map<string, ErrorCode>([
@@ -181,6 +188,21 @@ function isReservedRecoveryNamespace(value: string): boolean {
   );
 }
 
+function classifyTerminalFailure(
+  value: string,
+): TerminalFailureClassification | null {
+  const timeout = TIMEOUT_TERMINAL_PATTERN.exec(value);
+  if (timeout) return { code: "timeout", attempts: Number(timeout[1]) };
+  const workerRestart = WORKER_RESTART_TERMINAL_PATTERN.exec(value);
+  if (workerRestart) {
+    return {
+      code: "worker_restart_interrupted",
+      attempts: Number(workerRestart[1]),
+    };
+  }
+  return null;
+}
+
 function timestamp(
   value: unknown,
   label: string,
@@ -206,9 +228,8 @@ function classifyError(value: unknown, label: string): ErrorCode {
     );
   if (permanentDelete)
     return classifyError(permanentDelete[1], `${label} cause`);
-  if (WORKER_RESTART_TERMINAL_PATTERN.test(value)) {
-    return "worker_restart_interrupted";
-  }
+  const terminalFailure = classifyTerminalFailure(value);
+  if (terminalFailure) return terminalFailure.code;
   if (
     isReservedRecoveryNamespace(value) ||
     looksLikeRecoveryProvenance(value)
@@ -285,7 +306,7 @@ function classifyRecovery(
       maxAttempts: Number(match[2]),
     };
   }
-  if (WORKER_RESTART_TERMINAL_PATTERN.test(value)) return null;
+  if (classifyTerminalFailure(value)) return null;
   if (
     isReservedRecoveryNamespace(value) ||
     looksLikeRecoveryProvenance(value)
@@ -389,6 +410,10 @@ export function sanitizeManagedDedicatedCanaryDiagnostic(
       throw new Error(`jobs[${index}] has non-inline diagnostic payloads`);
     }
 
+    const terminalFailure =
+      typeof job.error === "string"
+        ? classifyTerminalFailure(job.error)
+        : null;
     const recovery = classifyRecovery(job.error, `jobs[${index}].error`);
     const jobErrorCode = recovery
       ? "none"
@@ -455,6 +480,14 @@ export function sanitizeManagedDedicatedCanaryDiagnostic(
     );
     if (attempts > maxAttempts) {
       throw new Error(`jobs[${index}] attempts exceed maxAttempts`);
+    }
+    if (
+      terminalFailure &&
+      (job.status !== "failed" ||
+        terminalFailure.attempts !== attempts ||
+        terminalFailure.attempts !== maxAttempts)
+    ) {
+      throw new Error(`jobs[${index}] terminal counters disagree`);
     }
     if (
       recovery &&
