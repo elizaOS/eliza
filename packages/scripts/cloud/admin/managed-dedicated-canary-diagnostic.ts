@@ -419,10 +419,12 @@ export function sanitizeManagedDedicatedCanaryDiagnostic(
     if (
       recovery &&
       job.status !== "pending" &&
-      job.status !== "in_progress" &&
-      job.status !== "completed"
+      job.status !== "in_progress"
     ) {
-      throw new Error(`jobs[${index}] has recovery provenance after failure`);
+      throw new Error(`jobs[${index}] recovery status is invalid`);
+    }
+    if (recovery && (startedAt === null || completedAt !== null)) {
+      throw new Error(`jobs[${index}] recovery timestamps disagree`);
     }
     if (rowDeleted === true && containerStopped !== true) {
       throw new Error(

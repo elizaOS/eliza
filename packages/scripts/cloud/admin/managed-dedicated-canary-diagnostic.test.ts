@@ -409,9 +409,9 @@ describe("managed dedicated canary diagnostic", () => {
       "Job timed out - recovered for retry (attempt 1/3)",
     ],
   ])(
-    "keeps %s separate from terminal errors for pending, running, and completed jobs",
+    "keeps %s separate from terminal errors for pending and running jobs",
     (expectedCode, message) => {
-      for (const status of ["pending", "in_progress", "completed"]) {
+      for (const status of ["pending", "in_progress"]) {
         const input = failedDeleteInput();
         const agent = input.agent as Record<string, unknown>;
         const [job] = input.jobs as Record<string, unknown>[];
@@ -423,16 +423,8 @@ describe("managed dedicated canary diagnostic", () => {
         job.attempts = 1;
         job.maxAttempts = 3;
         job.startedAt = "2026-07-26T23:10:31.000Z";
-        job.completedAt =
-          status === "completed" ? "2026-07-26T23:11:30.000Z" : null;
-        job.result =
-          status === "completed"
-            ? {
-                containerStopped: true,
-                rowDeleted: true,
-                error: null,
-              }
-            : null;
+        job.completedAt = null;
+        job.result = null;
 
         const canonical = canonicalizeManagedDedicatedCanaryDiagnostic(
           JSON.stringify(input),
@@ -504,7 +496,7 @@ describe("managed dedicated canary diagnostic", () => {
       "Job interrupted by worker restart - recovered for retry (attempt 1/3)",
       1,
       3,
-      "recovery provenance after failure",
+      "recovery status is invalid",
     ],
     [
       "timeout mismatched attempt",
@@ -525,7 +517,7 @@ describe("managed dedicated canary diagnostic", () => {
       "Job timed out - recovered for retry (attempt 1/3)",
       1,
       3,
-      "recovery provenance after failure",
+      "recovery status is invalid",
     ],
   ])(
     "rejects %s for a nonterminal recovery breadcrumb",
@@ -543,6 +535,65 @@ describe("managed dedicated canary diagnostic", () => {
       if (_name !== "failed status" && _name !== "timeout failed status") {
         job.status = "pending";
       }
+
+      expect(() =>
+        sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX),
+      ).toThrow(expectedError);
+    },
+  );
+
+  test.each([
+    [
+      "pending without its preserved claim timestamp",
+      "pending",
+      null,
+      null,
+      "recovery timestamps disagree",
+    ],
+    [
+      "pending with a terminal timestamp",
+      "pending",
+      "2026-07-26T23:10:31.000Z",
+      "2026-07-26T23:11:30.000Z",
+      "recovery timestamps disagree",
+    ],
+    [
+      "running with a terminal timestamp",
+      "in_progress",
+      "2026-07-26T23:10:31.000Z",
+      "2026-07-26T23:11:30.000Z",
+      "recovery timestamps disagree",
+    ],
+    [
+      "completed while the diagnostic target still exists",
+      "completed",
+      "2026-07-26T23:10:31.000Z",
+      "2026-07-26T23:11:30.000Z",
+      "recovery status is invalid",
+    ],
+  ])(
+    "rejects %s",
+    (_name, status, startedAt, completedAt, expectedError) => {
+      const input = failedDeleteInput();
+      const agent = input.agent as Record<string, unknown>;
+      const [job] = input.jobs as Record<string, unknown>[];
+      agent.status = "deletion_pending";
+      agent.errorMessage = null;
+      agent.errorCount = 0;
+      job.status = status;
+      job.error =
+        "Job interrupted by worker restart - recovered for retry (attempt 1/3)";
+      job.result =
+        status === "completed"
+          ? {
+              containerStopped: true,
+              rowDeleted: true,
+              error: null,
+            }
+          : null;
+      job.attempts = 1;
+      job.startedAt = startedAt;
+      job.completedAt = completedAt;
 
       expect(() =>
         sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX),
