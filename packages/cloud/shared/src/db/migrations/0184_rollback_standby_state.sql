@@ -8,6 +8,7 @@ ALTER TABLE "agent_sandboxes"
   ADD COLUMN IF NOT EXISTS "rollback_standby_restore_validation_id" uuid,
   ADD COLUMN IF NOT EXISTS "rollback_standby_restore_validation_aggregate_sha256" text,
   ADD COLUMN IF NOT EXISTS "rollback_standby_restore_candidate_provider_sandbox_id" text,
+  ADD COLUMN IF NOT EXISTS "rollback_standby_restore_candidate_replacement_attempt_id" uuid,
   ADD COLUMN IF NOT EXISTS "rollback_standby_sandbox_id" text,
   ADD COLUMN IF NOT EXISTS "rollback_standby_node_id" text,
   ADD COLUMN IF NOT EXISTS "rollback_standby_container_name" text,
@@ -45,6 +46,7 @@ ALTER TABLE "agent_sandboxes"
       AND "rollback_standby_restore_validation_id" IS NULL
       AND "rollback_standby_restore_validation_aggregate_sha256" IS NULL
       AND "rollback_standby_restore_candidate_provider_sandbox_id" IS NULL
+      AND "rollback_standby_restore_candidate_replacement_attempt_id" IS NULL
       AND "rollback_standby_sandbox_id" IS NULL
       AND "rollback_standby_node_id" IS NULL
       AND "rollback_standby_container_name" IS NULL
@@ -101,6 +103,9 @@ ALTER TABLE "agent_sandboxes"
       AND "rollback_standby_primary_vpn_node_id" IS NOT NULL
       AND "rollback_standby_primary_replacement_attempt_id" IS NOT NULL
       AND "rollback_standby_created_at" IS NOT NULL
+      AND "deletion_attempt_id" IS NULL
+      AND "deletion_started_at" IS NULL
+      AND "status" NOT IN ('deletion_pending', 'deletion_failed')
       AND (
         (
           "rollback_standby_state" = 'pausing'
@@ -120,15 +125,17 @@ ALTER TABLE "agent_sandboxes"
           AND "rollback_standby_restore_validation_id" IS NULL
           AND "rollback_standby_restore_validation_aggregate_sha256" IS NULL
           AND "rollback_standby_restore_candidate_provider_sandbox_id" IS NULL
+          AND "rollback_standby_restore_candidate_replacement_attempt_id" IS NULL
         )
         OR
         (
           "rollback_standby_state" = 'retiring'
           AND "rollback_standby_decision_job_id" IS NOT NULL
           AND "rollback_standby_verified_backup_id" IS NOT NULL
-          AND "rollback_standby_restore_validation_id" = "rollback_standby_verified_backup_id"
+          AND "rollback_standby_restore_validation_id" IS NOT NULL
           AND "rollback_standby_restore_validation_aggregate_sha256" ~ '^[0-9a-f]{64}$'
           AND "rollback_standby_restore_candidate_provider_sandbox_id" IS NOT NULL
+          AND "rollback_standby_restore_candidate_replacement_attempt_id" IS NOT NULL
         )
         OR
         (
@@ -138,6 +145,7 @@ ALTER TABLE "agent_sandboxes"
           AND "rollback_standby_restore_validation_id" IS NULL
           AND "rollback_standby_restore_validation_aggregate_sha256" IS NULL
           AND "rollback_standby_restore_candidate_provider_sandbox_id" IS NULL
+          AND "rollback_standby_restore_candidate_replacement_attempt_id" IS NULL
         )
       )
       AND (

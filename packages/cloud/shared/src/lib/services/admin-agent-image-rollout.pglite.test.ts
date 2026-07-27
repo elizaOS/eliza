@@ -1,7 +1,8 @@
 /**
  * Drives the admin canary planner and atomic enqueue against real PGlite DDL.
  * The suite proves zero-write preview, five-target atomicity, durable rollback
- * derivation, and fleet-reconciler exclusion for the distinct demo repository.
+ * derivation, delete-versus-standby fencing, and fleet-reconciler exclusion
+ * for the distinct demo repository.
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
@@ -61,6 +62,7 @@ const TARGET_IMAGE = `ghcr.io/elizaos/eliza-demo@${TARGET_DIGEST}`;
 const SAME_REPO_TARGET_IMAGE = `ghcr.io/elizaos/eliza@${TARGET_DIGEST}`;
 const NEXT_DIGEST = `sha256:${"c".repeat(64)}`;
 const REPLACEMENT_ATTEMPT_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const RESTORE_CANDIDATE_REPLACEMENT_ATTEMPT_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const REPLACEMENT_STARTED_AT = "2026-07-23T12:00:00.000Z";
 let pgliteReady = true;
 let seq = 0;
@@ -391,6 +393,35 @@ async function insertCompletedStandbySourceJob(
     started_at: now,
     completed_at: now,
   });
+}
+
+async function insertAgentDeleteJob(
+  seeded: Awaited<ReturnType<typeof seedPausedRollbackStandby>>,
+  status: "pending" | "in_progress",
+  maxAttempts = 3,
+): Promise<Job> {
+  const [job] = await dbWrite
+    .insert(jobs)
+    .values({
+      type: JOB_TYPES.AGENT_DELETE,
+      status,
+      organization_id: seeded.data.organizationId,
+      user_id: seeded.data.targetOwnerUserId,
+      agent_id: seeded.data.agentId,
+      data_storage: "inline",
+      data: {
+        agentId: seeded.data.agentId,
+        organizationId: seeded.data.organizationId,
+        userId: seeded.data.targetOwnerUserId,
+      },
+      max_attempts: maxAttempts,
+      ...(status === "in_progress" ? { started_at: new Date("2026-07-23T12:06:00.000Z") } : {}),
+    })
+    .returning();
+  if (!job) {
+    throw new Error("Failed to seed agent_delete job");
+  }
+  return job;
 }
 
 async function completeUpgradeJob(job: Job): Promise<void> {
@@ -4510,6 +4541,7 @@ describe("admin agent image rollout on primary PGlite", () => {
     const seeded = await seedPausedRollbackStandby();
     await insertCompletedStandbySourceJob(seeded);
     const backupId = "10000000-0000-4000-8000-000000000009";
+    const restoreValidationId = "10000000-0000-4000-8000-000000000011";
     const restoreValidationAggregateSha256 = "f".repeat(64);
     const decision = await adminAgentImageRolloutService.decideStandby(
       {
@@ -4517,9 +4549,10 @@ describe("admin agent image rollout on primary PGlite", () => {
         sourceJobId: seeded.data.sourceJobId,
         decision: "accept",
         verifiedBackupId: backupId,
-        restoreValidationId: backupId,
+        restoreValidationId,
         restoreValidationAggregateSha256,
         restoreValidatedCandidateProviderSandboxId: "restore-candidate-enqueue",
+        restoreValidatedCandidateReplacementAttemptId: RESTORE_CANDIDATE_REPLACEMENT_ATTEMPT_ID,
       },
       seeded.data.actorUserId,
     );
@@ -4530,9 +4563,10 @@ describe("admin agent image rollout on primary PGlite", () => {
       standbyGeneration: seeded.data.standbyGeneration,
       decision: "accept",
       verifiedBackupId: backupId,
-      restoreValidationId: backupId,
+      restoreValidationId,
       restoreValidationAggregateSha256,
       restoreValidatedCandidateProviderSandboxId: "restore-candidate-enqueue",
+      restoreValidatedCandidateReplacementAttemptId: RESTORE_CANDIDATE_REPLACEMENT_ATTEMPT_ID,
       targetOwnerUserId: seeded.data.targetOwnerUserId,
       targetImage: seeded.data.targetImage,
       targetDigest: seeded.data.targetDigest,
@@ -4544,9 +4578,10 @@ describe("admin agent image rollout on primary PGlite", () => {
           sourceJobId: seeded.data.sourceJobId,
           decision: "accept",
           verifiedBackupId: backupId,
-          restoreValidationId: backupId,
+          restoreValidationId,
           restoreValidationAggregateSha256,
           restoreValidatedCandidateProviderSandboxId: "restore-candidate-enqueue",
+          restoreValidatedCandidateReplacementAttemptId: RESTORE_CANDIDATE_REPLACEMENT_ATTEMPT_ID,
         },
         seeded.data.actorUserId,
       ),
@@ -4558,9 +4593,10 @@ describe("admin agent image rollout on primary PGlite", () => {
           sourceJobId: seeded.data.sourceJobId,
           decision: "accept",
           verifiedBackupId: backupId,
-          restoreValidationId: backupId,
+          restoreValidationId,
           restoreValidationAggregateSha256: "e".repeat(64),
           restoreValidatedCandidateProviderSandboxId: "restore-candidate-enqueue",
+          restoreValidatedCandidateReplacementAttemptId: RESTORE_CANDIDATE_REPLACEMENT_ATTEMPT_ID,
         },
         seeded.data.actorUserId,
       ),
@@ -4591,9 +4627,10 @@ describe("admin agent image rollout on primary PGlite", () => {
         decision: "accept",
         outcome: "accepted",
         verifiedBackupId: backupId,
-        restoreValidationId: backupId,
+        restoreValidationId,
         restoreValidationAggregateSha256,
         restoreValidatedCandidateProviderSandboxId: "restore-candidate-enqueue",
+        restoreValidatedCandidateReplacementAttemptId: RESTORE_CANDIDATE_REPLACEMENT_ATTEMPT_ID,
       });
     } finally {
       execution.mockRestore();
@@ -4604,14 +4641,16 @@ describe("admin agent image rollout on primary PGlite", () => {
     const seeded = await seedPausedRollbackStandby();
     await insertCompletedStandbySourceJob(seeded);
     const backupId = "20000000-0000-4000-8000-000000000001";
+    const restoreValidationId = "20000000-0000-4000-8000-000000000005";
     const acceptInput = {
       requestId: "20000000-0000-4000-8000-000000000002",
       sourceJobId: seeded.data.sourceJobId,
       decision: "accept" as const,
       verifiedBackupId: backupId,
-      restoreValidationId: backupId,
+      restoreValidationId,
       restoreValidationAggregateSha256: "a".repeat(64),
       restoreValidatedCandidateProviderSandboxId: "candidate-single-flight",
+      restoreValidatedCandidateReplacementAttemptId: RESTORE_CANDIDATE_REPLACEMENT_ATTEMPT_ID,
     };
     const rejectInput = {
       requestId: "20000000-0000-4000-8000-000000000003",
@@ -4719,6 +4758,221 @@ describe("admin agent image rollout on primary PGlite", () => {
     } finally {
       execution.mockRestore();
     }
+  });
+
+  test("paused rollback standby rejects delete enqueue without mutating sandbox or jobs", async () => {
+    const seeded = await seedPausedRollbackStandby();
+    await dbWrite.insert(jobs).values({
+      type: JOB_TYPES.AGENT_RESTART,
+      status: "pending",
+      organization_id: seeded.data.organizationId,
+      user_id: seeded.data.targetOwnerUserId,
+      agent_id: seeded.data.agentId,
+      data_storage: "inline",
+      data: {
+        agentId: seeded.data.agentId,
+        organizationId: seeded.data.organizationId,
+        userId: seeded.data.targetOwnerUserId,
+      },
+    });
+    const beforeSandbox = await agentSandboxesRepository.findByIdAndOrgForWrite(
+      seeded.data.agentId,
+      seeded.data.organizationId,
+    );
+    const beforeJobs = await dbWrite
+      .select()
+      .from(jobs)
+      .where(eq(jobs.agent_id, seeded.data.agentId));
+
+    await expect(
+      provisioningJobService.enqueueAgentDeleteOnce({
+        agentId: seeded.data.agentId,
+        organizationId: seeded.data.organizationId,
+        userId: seeded.data.targetOwnerUserId,
+      }),
+    ).rejects.toMatchObject({ status: 409 });
+
+    expect(
+      await agentSandboxesRepository.findByIdAndOrgForWrite(
+        seeded.data.agentId,
+        seeded.data.organizationId,
+      ),
+    ).toEqual(beforeSandbox);
+    expect(await dbWrite.select().from(jobs).where(eq(jobs.agent_id, seeded.data.agentId))).toEqual(
+      beforeJobs,
+    );
+    expect(beforeJobs).toHaveLength(1);
+    expect(beforeJobs[0]).toMatchObject({
+      type: JOB_TYPES.AGENT_RESTART,
+      status: "pending",
+    });
+  });
+
+  for (const decisionStatus of ["pending", "in_progress"] as const) {
+    test(`${decisionStatus} standby decision blocks delete without cancellation`, async () => {
+      const seeded = await seedPausedRollbackStandby();
+      await insertCompletedStandbySourceJob(seeded);
+      const decision = await adminAgentImageRolloutService.decideStandby(
+        {
+          requestId:
+            decisionStatus === "pending"
+              ? "40000000-0000-4000-8000-000000000001"
+              : "40000000-0000-4000-8000-000000000002",
+          sourceJobId: seeded.data.sourceJobId,
+          decision: "reject",
+        },
+        seeded.data.actorUserId,
+      );
+      if (decisionStatus === "in_progress") {
+        await dbWrite
+          .update(jobs)
+          .set({
+            status: "in_progress",
+            started_at: new Date("2026-07-23T12:06:00.000Z"),
+          })
+          .where(eq(jobs.id, decision.id));
+      }
+
+      await expect(
+        provisioningJobService.enqueueAgentDeleteOnce({
+          agentId: seeded.data.agentId,
+          organizationId: seeded.data.organizationId,
+          userId: seeded.data.targetOwnerUserId,
+        }),
+      ).rejects.toMatchObject({ status: 409 });
+
+      expect(await jobsRepository.findByIdForWrite(decision.id)).toMatchObject({
+        type: JOB_TYPES.AGENT_ADMIN_CANARY_STANDBY_DECISION,
+        status: decisionStatus,
+      });
+      expect(
+        await dbWrite.select().from(jobs).where(eq(jobs.type, JOB_TYPES.AGENT_DELETE)),
+      ).toHaveLength(0);
+      expect(
+        await agentSandboxesRepository.findByIdAndOrgForWrite(
+          seeded.data.agentId,
+          seeded.data.organizationId,
+        ),
+      ).toMatchObject({
+        status: "running",
+        deletion_attempt_id: null,
+        deletion_started_at: null,
+        rollback_standby_state: "paused",
+        rollback_standby_generation: seeded.data.standbyGeneration,
+      });
+    });
+  }
+
+  for (const deleteStatus of ["pending", "in_progress"] as const) {
+    test(`${deleteStatus} delete blocks standby decision and remains authoritative`, async () => {
+      const seeded = await seedPausedRollbackStandby();
+      await insertCompletedStandbySourceJob(seeded);
+      const deleteJob = await insertAgentDeleteJob(seeded, deleteStatus);
+
+      await expect(
+        adminAgentImageRolloutService.decideStandby(
+          {
+            requestId:
+              deleteStatus === "pending"
+                ? "50000000-0000-4000-8000-000000000001"
+                : "50000000-0000-4000-8000-000000000002",
+            sourceJobId: seeded.data.sourceJobId,
+            decision: "reject",
+          },
+          seeded.data.actorUserId,
+        ),
+      ).rejects.toMatchObject({
+        status: 409,
+        details: {
+          conflictingJobId: deleteJob.id,
+          conflictingJobType: JOB_TYPES.AGENT_DELETE,
+          conflictingJobStatus: deleteStatus,
+        },
+      });
+
+      expect(await jobsRepository.findByIdForWrite(deleteJob.id)).toMatchObject({
+        type: JOB_TYPES.AGENT_DELETE,
+        status: deleteStatus,
+      });
+      expect(
+        await dbWrite
+          .select()
+          .from(jobs)
+          .where(eq(jobs.type, JOB_TYPES.AGENT_ADMIN_CANARY_STANDBY_DECISION)),
+      ).toHaveLength(0);
+      expect(
+        await agentSandboxesRepository.findByIdAndOrgForWrite(
+          seeded.data.agentId,
+          seeded.data.organizationId,
+        ),
+      ).toMatchObject({
+        status: "running",
+        rollback_standby_state: "paused",
+        rollback_standby_generation: seeded.data.standbyGeneration,
+      });
+    });
+  }
+
+  test("stale delete execution and permanent failure cannot cross a paused standby", async () => {
+    const seeded = await seedPausedRollbackStandby();
+    const deleteJob = await insertAgentDeleteJob(seeded, "pending", 1);
+    const before = await agentSandboxesRepository.findByIdAndOrgForWrite(
+      seeded.data.agentId,
+      seeded.data.organizationId,
+    );
+    const providerCalls: string[] = [];
+    const provider: SandboxProvider = {
+      async create() {
+        providerCalls.push("create");
+        throw new Error("provider create must stay behind the standby fence");
+      },
+      async stop() {
+        providerCalls.push("stop");
+        throw new Error("provider stop must stay behind the standby fence");
+      },
+      async checkHealth() {
+        providerCalls.push("health");
+        return true;
+      },
+    };
+    const singleton = elizaSandboxService as unknown as {
+      _provider?: SandboxProvider;
+      _providerPromise?: Promise<SandboxProvider>;
+    };
+    const previousProvider = singleton._provider;
+    const previousProviderPromise = singleton._providerPromise;
+    const revoke = spyOn(apiKeysService, "revokeForAgent").mockResolvedValue(undefined);
+    singleton._provider = provider;
+    singleton._providerPromise = undefined;
+    try {
+      expect(
+        await provisioningJobService.processPendingJobs(1, {
+          jobTypes: [JOB_TYPES.AGENT_DELETE],
+        }),
+      ).toMatchObject({
+        claimed: 1,
+        succeeded: 0,
+        retried: 0,
+        failed: 1,
+      });
+      expect(revoke).not.toHaveBeenCalled();
+    } finally {
+      singleton._provider = previousProvider;
+      singleton._providerPromise = previousProviderPromise;
+      revoke.mockRestore();
+    }
+
+    expect(providerCalls).toEqual([]);
+    expect(await jobsRepository.findByIdForWrite(deleteJob.id)).toMatchObject({
+      status: "failed",
+      attempts: 1,
+    });
+    expect(
+      await agentSandboxesRepository.findByIdAndOrgForWrite(
+        seeded.data.agentId,
+        seeded.data.organizationId,
+      ),
+    ).toEqual(before);
   });
 
   test("standby state blocks config, environment, and ordinary image mutation before writes", async () => {
@@ -4923,13 +5177,36 @@ describe("admin agent image rollout on primary PGlite", () => {
       .from(dockerNodes);
     expect(nodeCapacity).toContainEqual({ nodeId: "node-old", allocatedCount: 1 });
     expect(nodeCapacity).toContainEqual({ nodeId: "node-blue", allocatedCount: 0 });
+    expect(
+      await provisioningJobService.enqueueAgentDeleteOnce({
+        agentId: seeded.data.agentId,
+        organizationId: seeded.data.organizationId,
+        userId: seeded.data.targetOwnerUserId,
+      }),
+    ).toMatchObject({
+      created: true,
+      job: { type: JOB_TYPES.AGENT_DELETE, status: "pending" },
+    });
+    expect(
+      await agentSandboxesRepository.findByIdAndOrgForWrite(
+        seeded.data.agentId,
+        seeded.data.organizationId,
+      ),
+    ).toMatchObject({
+      status: "deletion_pending",
+      rollback_standby_state: null,
+      deletion_attempt_id: expect.any(String),
+      deletion_started_at: expect.any(Date),
+    });
   });
 
   test("accepting a canary verifies the exact restore point and retires only the standby", async () => {
     const seeded = await seedPausedRollbackStandby();
     const backupId = "10000000-0000-4000-8000-000000000007";
+    const restoreValidationId = "10000000-0000-4000-8000-000000000011";
     const restoreValidationAggregateSha256 = "d".repeat(64);
     const restoreValidatedCandidateProviderSandboxId = "restore-candidate-blue";
+    const restoreValidatedCandidateReplacementAttemptId = RESTORE_CANDIDATE_REPLACEMENT_ATTEMPT_ID;
     const calls: string[] = [];
     const restorePointChecks: Parameters<
       VerifiedRestorePointReader["assertVerifiedV2CandidateRestoreInTx"]
@@ -4981,9 +5258,10 @@ describe("admin agent image rollout on primary PGlite", () => {
             ...seeded.data,
             decision: "accept",
             verifiedBackupId: backupId,
-            restoreValidationId: backupId,
+            restoreValidationId,
             restoreValidationAggregateSha256,
             restoreValidatedCandidateProviderSandboxId,
+            restoreValidatedCandidateReplacementAttemptId,
           },
           decisionJobId: seeded.decisionJobId,
           onConvergedInTx: async (_tx, outcome) => {
@@ -4998,21 +5276,16 @@ describe("admin agent image rollout on primary PGlite", () => {
     expect(restorePointChecks).toEqual([
       {
         backupId,
-        restoreValidationId: backupId,
+        restoreValidationId,
         restoreValidationAggregateSha256,
         restoreValidatedCandidateProviderSandboxId,
+        restoreValidatedCandidateReplacementAttemptId,
         organizationId: seeded.data.organizationId,
         sandboxRecordId: seeded.data.agentId,
         agentId: seeded.data.agentId,
         targetOwnerUserId: seeded.data.targetOwnerUserId,
         targetImage: seeded.data.targetImage,
         targetDigest: seeded.data.targetDigest,
-        neverRouted: true,
-        snapshotType: "pre-upgrade",
-        schemaVersion: 2,
-        verificationStatus: "verified",
-        descriptorCommitState: "complete",
-        restoreReceiptState: "committed",
       },
     ]);
     expect(calls).toEqual(["stop:node-old/agent-old"]);
@@ -5042,11 +5315,33 @@ describe("admin agent image rollout on primary PGlite", () => {
       .from(dockerNodes);
     expect(nodeCapacity).toContainEqual({ nodeId: "node-old", allocatedCount: 0 });
     expect(nodeCapacity).toContainEqual({ nodeId: "node-blue", allocatedCount: 1 });
+    expect(
+      await provisioningJobService.enqueueAgentDeleteOnce({
+        agentId: seeded.data.agentId,
+        organizationId: seeded.data.organizationId,
+        userId: seeded.data.targetOwnerUserId,
+      }),
+    ).toMatchObject({
+      created: true,
+      job: { type: JOB_TYPES.AGENT_DELETE, status: "pending" },
+    });
+    expect(
+      await agentSandboxesRepository.findByIdAndOrgForWrite(
+        seeded.data.agentId,
+        seeded.data.organizationId,
+      ),
+    ).toMatchObject({
+      status: "deletion_pending",
+      rollback_standby_state: null,
+      deletion_attempt_id: expect.any(String),
+      deletion_started_at: expect.any(Date),
+    });
   });
 
   test("an applying or drifted candidate restore can never cross the acceptance fence", async () => {
     const seeded = await seedPausedRollbackStandby();
     const backupId = "10000000-0000-4000-8000-000000000008";
+    const restoreValidationId = "10000000-0000-4000-8000-000000000012";
     const calls: string[] = [];
     const provider: SandboxProvider = {
       async create() {
@@ -5106,9 +5401,10 @@ describe("admin agent image rollout on primary PGlite", () => {
             ...seeded.data,
             decision: "accept",
             verifiedBackupId: backupId,
-            restoreValidationId: backupId,
+            restoreValidationId,
             restoreValidationAggregateSha256: "e".repeat(64),
             restoreValidatedCandidateProviderSandboxId: "restore-candidate-applying",
+            restoreValidatedCandidateReplacementAttemptId: RESTORE_CANDIDATE_REPLACEMENT_ATTEMPT_ID,
           },
           decisionJobId: seeded.decisionJobId,
           onConvergedInTx: async (_tx, outcome) => {
