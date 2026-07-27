@@ -439,6 +439,42 @@ describe("agent backup manifest", () => {
     );
   });
 
+  test("prefers runtime PGlite state over an inherited DATABASE_URL", async () => {
+    const root = await fs.mkdtemp(
+      path.join(os.tmpdir(), "eliza-agent-backup-database-precedence-"),
+    );
+    const runtimePglite = path.join(root, "runtime-pglite");
+    const environmentPglite = path.join(root, "environment-pglite");
+    await fs.mkdir(runtimePglite, { recursive: true });
+    await fs.mkdir(environmentPglite, { recursive: true });
+    await fs.writeFile(path.join(runtimePglite, "runtime.bin"), "runtime");
+    await fs.writeFile(
+      path.join(environmentPglite, "environment.bin"),
+      "environment",
+    );
+    process.env.ELIZA_STATE_DIR = root;
+    process.env.PGLITE_DATA_DIR = environmentPglite;
+    process.env.DATABASE_URL =
+      "postgres://inherited:secret@db.example.com:5432/eliza";
+    delete process.env.POSTGRES_URL;
+    const runtime = {
+      ...runtimeStub("10000000-0000-4000-8000-000000000018"),
+      getSetting: (key: string) =>
+        key === "PGLITE_DATA_DIR" ? runtimePglite : null,
+    } as unknown as AgentRuntime;
+
+    const snapshot = await createAgentSnapshot(runtime, {} as never, {
+      purpose: "pre-upgrade",
+    });
+
+    expect(snapshot.manifest.components.database.kind).toBe("pglite-files");
+    expect(
+      snapshot.manifest.components.database.pglite?.files.map(
+        (file) => file.path,
+      ),
+    ).toEqual(["runtime.bin"]);
+  });
+
   test("round-trips a live PGlite database through a v2 pre-upgrade snapshot", async () => {
     const root = await fs.mkdtemp(
       path.join(os.tmpdir(), "eliza-agent-backup-v2-live-pglite-"),

@@ -211,19 +211,46 @@ function assertStoredByteLength(key: string, value: unknown, maxBytes: number): 
   return byteLength;
 }
 
-export async function getObjectBytes(key: string, maxBytes: number): Promise<Uint8Array | null> {
+function abortReason(signal: AbortSignal): Error {
+  return signal.reason instanceof Error ? signal.reason : new Error("Object byte read was aborted");
+}
+
+function raceWithAbort<T>(operation: PromiseLike<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return Promise.resolve(operation);
+  if (signal.aborted) return Promise.reject(abortReason(signal));
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = (): void => reject(abortReason(signal));
+    signal.addEventListener("abort", onAbort, { once: true });
+    Promise.resolve(operation).then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (error: unknown) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      },
+    );
+  });
+}
+
+export async function getObjectBytes(
+  key: string,
+  maxBytes: number,
+  signal?: AbortSignal,
+): Promise<Uint8Array | null> {
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) {
     throw new Error("Object byte-read budget must be a positive safe integer");
   }
   const runtimeBucket = getRuntimeR2Bucket();
   if (runtimeBucket) {
-    const object = await runtimeBucket.get(key);
+    const object = await raceWithAbort(runtimeBucket.get(key), signal);
     if (!object) return null;
     if (!object.arrayBuffer) {
       throw new Error("Runtime object storage does not expose binary reads");
     }
     const expectedBytes = assertStoredByteLength(key, Reflect.get(object, "size"), maxBytes);
-    const bytes = new Uint8Array(await object.arrayBuffer());
+    const bytes = new Uint8Array(await raceWithAbort(object.arrayBuffer(), signal));
     if (bytes.byteLength !== expectedBytes || bytes.byteLength > maxBytes) {
       throw new Error(`Object ${key} changed size while it was being read`);
     }
@@ -233,10 +260,16 @@ export async function getObjectBytes(key: string, maxBytes: number): Promise<Uin
   const bucket = heavyPayloadBucket();
   const client = getObjectStorageClient();
   if (!bucket || !client) return null;
-  const out = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+  const out = await raceWithAbort(
+    client.send(
+      new GetObjectCommand({ Bucket: bucket, Key: key }),
+      signal ? { abortSignal: signal } : undefined,
+    ),
+    signal,
+  );
   if (!out.Body) return null;
   const expectedBytes = assertStoredByteLength(key, out.ContentLength, maxBytes);
-  const bytes = new Uint8Array(await out.Body.transformToByteArray());
+  const bytes = new Uint8Array(await raceWithAbort(out.Body.transformToByteArray(), signal));
   if (bytes.byteLength !== expectedBytes || bytes.byteLength > maxBytes) {
     throw new Error(`Object ${key} changed size while it was being read`);
   }
