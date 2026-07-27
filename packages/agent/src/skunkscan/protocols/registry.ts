@@ -1,4 +1,6 @@
 import { SOLANA_DEX_PROTOCOLS } from "./solana/dex";
+import { SOLANA_LENDING_PROTOCOLS } from "./solana/lending";
+import { SOLANA_STAKING_PROTOCOLS } from "./solana/staking";
 
 export type SolanaProtocol = {
   programId: string;
@@ -40,6 +42,8 @@ export type SolanaProtocol = {
 
 const SOLANA_PROTOCOLS: Readonly<Record<string, SolanaProtocol>> = {
   ...SOLANA_DEX_PROTOCOLS,
+  ...SOLANA_LENDING_PROTOCOLS,
+  ...SOLANA_STAKING_PROTOCOLS,
 };
 
 export function lookupSolanaProtocol(

@@ -80,4 +80,25 @@ export const SOLANA_DEX_PROTOCOLS: Readonly<
       "solana",
     ],
   },
+
+  "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8": {
+    programId: "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
+    name: "Raydium AMM V4",
+    category: "dex",
+    reputation: "medium",
+    verified: true,
+    custodial: false,
+    deprecated: false,
+    website: "https://raydium.io",
+    notes:
+      "Raydium's older constant-product AMM V4 program, alongside the newer Raydium CLMM program above. Program ID sourced from an internal dead-code file, not yet independently confirmed; reputation set to medium pending verification.",
+    tags: [
+      "raydium",
+      "amm-v4",
+      "amm",
+      "dex",
+      "liquidity",
+      "solana",
+    ],
+  },
 };
