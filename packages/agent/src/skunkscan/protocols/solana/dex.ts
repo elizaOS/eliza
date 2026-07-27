@@ -91,7 +91,7 @@ export const SOLANA_DEX_PROTOCOLS: Readonly<
     deprecated: false,
     website: "https://raydium.io",
     notes:
-      "Raydium's older constant-product AMM V4 program, alongside the newer Raydium CLMM program above. This program ID is unverified beyond the now-deleted, orphaned registry/protocolRegistry.ts — it needs independent confirmation against Raydium's own docs/on-chain records before this entry's \"high\" reputation should be relied on.",
+      "Raydium's older constant-product AMM V4 program, alongside the newer Raydium CLMM program above. Program ID sourced from an internal dead-code file, not yet independently confirmed; reputation set to medium pending verification.",
     tags: [
       "raydium",
       "amm-v4",
