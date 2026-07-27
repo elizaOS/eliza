@@ -359,13 +359,12 @@ function classifyError(
 function classifyJobError(
   value: unknown,
   label: string,
-  allowUnclassified: boolean,
 ): JobErrorClassification {
   if (value === null) return { code: "none", unclassifiedProfile: null };
   if (typeof value !== "string" || value.length === 0 || value.length > 2_000) {
     throw new Error(`${label} must be a bounded string or null`);
   }
-  const code = classifyError(value, label, allowUnclassified);
+  const code = classifyError(value, label, true);
   return {
     code,
     unclassifiedProfile:
@@ -476,9 +475,9 @@ export function sanitizeManagedDedicatedCanaryDiagnostic(
   if (
     !Array.isArray(root.jobs) ||
     root.jobs.length < 1 ||
-    root.jobs.length > 5
+    root.jobs.length > 3
   ) {
-    throw new Error("jobs must contain one to five newest-first records");
+    throw new Error("jobs must contain one to three newest-first records");
   }
 
   let previousCreatedAt = Number.POSITIVE_INFINITY;
@@ -514,7 +513,7 @@ export function sanitizeManagedDedicatedCanaryDiagnostic(
     const recovery = classifyRecovery(job.error, `jobs[${index}].error`);
     const jobError = recovery
       ? { code: "none" as const, unclassifiedProfile: null }
-      : classifyJobError(job.error, `jobs[${index}].error`, index === 0);
+      : classifyJobError(job.error, `jobs[${index}].error`);
     const jobErrorCode = jobError.code;
     let containerStopped: boolean | null = null;
     let rowDeleted: boolean | null = null;

@@ -113,6 +113,28 @@ function unclassifiedLatestJobInput(error: unknown): Record<string, unknown> {
   return input;
 }
 
+function boundedHistoryInput(errors: unknown[]): Record<string, unknown> {
+  if (errors.length === 0) {
+    return { ...failedDeleteInput(), jobs: [] };
+  }
+  const input = unclassifiedLatestJobInput(errors[0]);
+  const [template] = input.jobs as Record<string, unknown>[];
+  input.jobs = errors.map((error, index) => {
+    const offset = index * 60_000;
+    const shift = (value: string) =>
+      new Date(Date.parse(value) - offset).toISOString();
+    return {
+      ...template,
+      error,
+      scheduledFor: shift(template.scheduledFor as string),
+      startedAt: shift(template.startedAt as string),
+      createdAt: shift(template.createdAt as string),
+      updatedAt: shift(template.updatedAt as string),
+    };
+  });
+  return input;
+}
+
 describe("managed dedicated canary diagnostic", () => {
   test("emits only the classified lifecycle facts needed for retry decisions", () => {
     const evidence = sanitizeManagedDedicatedCanaryDiagnostic(
@@ -392,6 +414,73 @@ describe("managed dedicated canary diagnostic", () => {
     }
   });
 
+  test("never publishes malicious input from any bounded history position", () => {
+    const malicious = [
+      "opaque https://u:p@example.test/a?q=secret#frag 192.0.2.44 ",
+      "55f332f8-da54-4c53-952c-a38f5f01287b Bearer eyJ.abc.sig ",
+      `${SUFFIX} sha256:deadbeef api_key=password ::error::`,
+      "$" + "{{secrets.X}}\r\n\t\u0000\u001b[31m\u202e\u200b\u0301\u0430\ud800",
+    ].join("");
+    const canonical = canonicalizeManagedDedicatedCanaryDiagnostic(
+      JSON.stringify(boundedHistoryInput([malicious, malicious, malicious])),
+      SUFFIX,
+    );
+    const evidence = JSON.parse(canonical);
+
+    expect(evidence.jobs).toHaveLength(3);
+    expect(
+      evidence.jobs.every(
+        (job: Record<string, unknown>) =>
+          job.errorCode === "unclassified" && job.unclassifiedProfile !== null,
+      ),
+    ).toBe(true);
+    for (const forbidden of [
+      "example.test",
+      "192.0.2.44",
+      "55f332f8",
+      "Bearer",
+      SUFFIX,
+      "sha256",
+      "deadbeef",
+      "api_key",
+      "::error::",
+      "secrets.X",
+      "opaque",
+    ]) {
+      expect(canonical).not.toContain(forbidden);
+    }
+  });
+
+  test.each([0, 1, 2])(
+    "keeps equal-shape secrets indistinguishable at history index %i",
+    (index) => {
+      const leftErrors = ["opaque neutral", "opaque neutral", "opaque neutral"];
+      const rightErrors = [...leftErrors];
+      leftErrors[index] = "job agent_delete secret-AAAA";
+      rightErrors[index] = "job agent_delete secret-BBBB";
+      const left = sanitizeManagedDedicatedCanaryDiagnostic(
+        boundedHistoryInput(leftErrors),
+        SUFFIX,
+      ).jobs[index]?.unclassifiedProfile;
+      const right = sanitizeManagedDedicatedCanaryDiagnostic(
+        boundedHistoryInput(rightErrors),
+        SUFFIX,
+      ).jobs[index]?.unclassifiedProfile;
+
+      expect(JSON.stringify(left)).toBe(JSON.stringify(right));
+    },
+  );
+
+  test("uses fixed UTF-16 buckets at nonzero history positions", () => {
+    const evidence = sanitizeManagedDedicatedCanaryDiagnostic(
+      boundedHistoryInput(["x".repeat(64), "x".repeat(65), "😀".repeat(257)]),
+      SUFFIX,
+    );
+    expect(
+      evidence.jobs.map((job) => job.unclassifiedProfile?.lengthBucket ?? null),
+    ).toEqual(["1_64", "65_128", "513_2000"]);
+  });
+
   test.each([
     [
       "completed status",
@@ -517,43 +606,111 @@ describe("managed dedicated canary diagnostic", () => {
     ).toThrow();
   });
 
-  test("keeps older unknown job errors fail-closed", () => {
-    const input = failedDeleteInput();
-    const [latest] = input.jobs as Record<string, unknown>[];
-    input.jobs = [
-      latest,
-      {
-        ...latest,
-        error: "opaque older failure",
-        result: null,
-        completedAt: null,
-        createdAt: "2026-07-26T23:07:09.000Z",
-      },
-    ];
-    expect(() =>
-      sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX),
-    ).toThrow("privacy-safe classifier");
+  test.each([0, 1, 2])(
+    "keeps an unknown result error fail-closed at history index %i",
+    (index) => {
+      const input = boundedHistoryInput([
+        "opaque failure",
+        "opaque failure",
+        "opaque failure",
+      ]);
+      (input.jobs as Record<string, unknown>[])[index].result = {
+        containerStopped: false,
+        rowDeleted: false,
+        error: "opaque result",
+      };
+      expect(() =>
+        sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX),
+      ).toThrow("privacy-safe classifier");
+    },
+  );
+
+  test.each([1, 2])(
+    "rejects malformed recovery provenance at history index %i",
+    (index) => {
+      const errors = [
+        "opaque latest failure",
+        "opaque historical failure",
+        "opaque oldest failure",
+      ];
+      errors[index] = "Job timed out - recovered  for retry (attempt 1/3)";
+      const input = boundedHistoryInput(errors);
+      const job = (input.jobs as Record<string, unknown>[])[index];
+      job.status = "pending";
+      job.attempts = 1;
+
+      expect(() =>
+        sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX),
+      ).toThrow("malformed recovery provenance");
+    },
+  );
+
+  test.each([
+    [["opaque 0", "Failed to delete sandbox", "Failed to delete sandbox"], [0]],
+    [["Failed to delete sandbox", "opaque 1", "Failed to delete sandbox"], [1]],
+    [["Failed to delete sandbox", "Failed to delete sandbox", "opaque 2"], [2]],
+    [
+      ["opaque 0", "opaque 1", "Failed to delete sandbox"],
+      [0, 1],
+    ],
+    [
+      ["opaque 0", "Failed to delete sandbox", "opaque 2"],
+      [0, 2],
+    ],
+    [
+      ["Failed to delete sandbox", "opaque 1", "opaque 2"],
+      [1, 2],
+    ],
+    [
+      ["opaque 0", "opaque 1", "opaque 2"],
+      [0, 1, 2],
+    ],
+  ])(
+    "profiles only the unknown errors in a bounded history: %j",
+    (errors, expectedIndexes) => {
+      const evidence = sanitizeManagedDedicatedCanaryDiagnostic(
+        boundedHistoryInput(errors),
+        SUFFIX,
+      );
+      expect(evidence.jobs).toHaveLength(3);
+      for (const [index, job] of evidence.jobs.entries()) {
+        const isUnclassified = expectedIndexes.includes(index);
+        expect(job.errorCode).toBe(
+          isUnclassified ? "unclassified" : "sandbox_stop_failed",
+        );
+        expect(job.unclassifiedProfile === null).toBe(!isUnclassified);
+      }
+    },
+  );
+
+  test("keeps all known historical errors classified without profiles", () => {
+    const evidence = sanitizeManagedDedicatedCanaryDiagnostic(
+      boundedHistoryInput([
+        "Failed to delete sandbox",
+        "Agent provisioning is in progress",
+        "database connection failed",
+      ]),
+      SUFFIX,
+    );
+    expect(
+      evidence.jobs.map(({ errorCode, unclassifiedProfile }) => ({
+        errorCode,
+        unclassifiedProfile,
+      })),
+    ).toEqual([
+      { errorCode: "sandbox_stop_failed", unclassifiedProfile: null },
+      { errorCode: "provisioning_in_progress", unclassifiedProfile: null },
+      { errorCode: "database_failed", unclassifiedProfile: null },
+    ]);
   });
 
-  test("emits at most one profile when older jobs are classified", () => {
-    const input = unclassifiedLatestJobInput("opaque latest failure");
-    const [latest] = input.jobs as Record<string, unknown>[];
-    input.jobs = [
-      latest,
-      {
-        ...latest,
-        error: "Failed to delete sandbox",
-        result: {
-          containerStopped: false,
-          rowDeleted: false,
-          error: "Failed to delete sandbox",
-        },
-        createdAt: "2026-07-26T23:07:09.000Z",
-      },
-    ];
-    const evidence = sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX);
-    expect(evidence.jobs[0]?.unclassifiedProfile).not.toBeNull();
-    expect(evidence.jobs[1]?.unclassifiedProfile).toBeNull();
+  test.each([0, 4])("rejects a %i-job history", (count) => {
+    expect(() =>
+      sanitizeManagedDedicatedCanaryDiagnostic(
+        boundedHistoryInput(Array.from({ length: count }, () => "opaque")),
+        SUFFIX,
+      ),
+    ).toThrow("one to three");
   });
 
   test("keeps an unknown sandbox error fail-closed", () => {
@@ -1386,6 +1543,38 @@ describe("managed dedicated canary diagnostic", () => {
     expect(workflow).toContain(
       "WHERE agent_name = 'managed-dedicated-canary-' || :'suffix'",
     );
+    expect(workflow).toContain("ORDER BY jobs.created_at DESC, jobs.id DESC");
+    expect(workflow).toContain("LIMIT 3");
+    expect(workflow).toContain("trap cleanup_incomplete_raw EXIT");
+    expect(workflow).toContain(
+      "trap 'rm -f -- \"$CANARY_DIAGNOSTIC_RAW_PATH\"' EXIT",
+    );
+    const queryCleanupFunction = workflow.indexOf("cleanup_incomplete_raw() {");
+    const queryCleanupTrap = workflow.indexOf(
+      "trap cleanup_incomplete_raw EXIT",
+    );
+    const queryExecution = workflow.indexOf('psql "$PSQL_DATABASE_URL"');
+    const queryCompletion = workflow.indexOf("raw_ready=true");
+    const classifyStep = workflow.indexOf(
+      "- name: Classify privacy-safe diagnostic",
+    );
+    const classifyCleanupTrap = workflow.indexOf(
+      "trap 'rm -f -- \"$CANARY_DIAGNOSTIC_RAW_PATH\"' EXIT",
+    );
+    const classifierExecution = workflow.indexOf(
+      "bun run packages/scripts/cloud/admin/managed-dedicated-canary-diagnostic.ts",
+    );
+    const uploadStep = workflow.indexOf(
+      "- name: Upload privacy-safe diagnostic",
+    );
+    expect(queryCleanupFunction).toBeGreaterThanOrEqual(0);
+    expect(queryCleanupFunction).toBeLessThan(queryCleanupTrap);
+    expect(queryCleanupTrap).toBeLessThan(queryExecution);
+    expect(queryExecution).toBeLessThan(queryCompletion);
+    expect(queryCompletion).toBeLessThan(classifyStep);
+    expect(classifyStep).toBeLessThan(classifyCleanupTrap);
+    expect(classifyCleanupTrap).toBeLessThan(classifierExecution);
+    expect(classifierExecution).toBeLessThan(uploadStep);
     expect(workflow).toContain("inputs.diagnose_stale_canary_suffix == ''");
     expect(workflow).toContain(
       "bun run packages/scripts/cloud/admin/managed-dedicated-canary.ts",

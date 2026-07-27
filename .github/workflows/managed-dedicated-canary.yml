@@ -294,6 +294,13 @@ jobs:
           PGOPTIONS: -c default_transaction_read_only=on -c statement_timeout=20000
         run: |
           set -euo pipefail
+          raw_ready=false
+          cleanup_incomplete_raw() {
+            if [[ "$raw_ready" != true ]]; then
+              rm -f -- "$CANARY_DIAGNOSTIC_RAW_PATH"
+            fi
+          }
+          trap cleanup_incomplete_raw EXIT
           if [[ ! "$CANARY_DIAGNOSTIC_SUFFIX" =~ ^r[1-9][0-9]{7,19}a[1-9][0-9]{0,3}$ ]]; then
             echo "::error::Diagnostic suffix is invalid."
             exit 1
@@ -401,16 +408,17 @@ jobs:
           );
           COMMIT;
           SQL
+          raw_ready=true
 
       - name: Classify privacy-safe diagnostic
         shell: bash
         run: |
           set -euo pipefail
+          trap 'rm -f -- "$CANARY_DIAGNOSTIC_RAW_PATH"' EXIT
           bun run packages/scripts/cloud/admin/managed-dedicated-canary-diagnostic.ts \
             "$CANARY_DIAGNOSTIC_SUFFIX" \
             "$CANARY_DIAGNOSTIC_RAW_PATH" \
             "$CANARY_DIAGNOSTIC_EVIDENCE_PATH"
-          rm -f "$CANARY_DIAGNOSTIC_RAW_PATH"
 
       - name: Upload privacy-safe diagnostic
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
