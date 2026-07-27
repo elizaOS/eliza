@@ -45,6 +45,7 @@ import {
   mousePointerDrag,
   readLeakedEvents,
 } from "./helpers/gesture-inputs";
+import { navigateHomeLauncher } from "./helpers/launcher-navigation";
 import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
 
 const REPO_ROOT = process.cwd().endsWith(path.join("packages", "app"))
@@ -85,27 +86,13 @@ async function openHome(page: Page): Promise<void> {
   });
 }
 
-/** Bring the embedded launcher grid into view (setup, not the gesture under
- *  test). Home and apps share one combined surface — the grid lives under the
- *  "Apps" region on the home column; scrolling it into view is what a user
- *  does, there is no separate launcher page to navigate to. */
-async function revealLauncherGrid(page: Page): Promise<void> {
-  const appsRegion = page.getByTestId("home-apps-scroll");
-  await expect(appsRegion).toBeVisible({ timeout: 15_000 });
-  const settingsTile = appsRegion.getByTestId("launcher-tile-settings");
-  await settingsTile.scrollIntoViewIfNeeded();
-  await expect(settingsTile).toBeVisible({ timeout: 15_000 });
-}
-
 test("launcher tile: tap launches, long press does NOT ghost-launch on release", async ({
   page,
 }) => {
   await openHome(page);
-  await revealLauncherGrid(page);
+  const grid = await navigateHomeLauncher(page, "launcher");
 
-  const settingsTile = page
-    .getByTestId("home-apps-scroll")
-    .getByTestId("launcher-tile-settings");
+  const settingsTile = grid.getByTestId("launcher-tile-settings");
   await expect(settingsTile).toBeVisible({ timeout: 15_000 });
   const tileButton = settingsTile.getByRole("button").first();
   await evidenceShot(page, "tile-press-before");
@@ -124,7 +111,7 @@ test("launcher tile: tap launches, long press does NOT ghost-launch on release",
   await expect(page.getByTestId("settings-shell")).toHaveCount(0);
   await expect(page.getByTestId("home-launcher-surface")).toHaveAttribute(
     "data-page",
-    "home",
+    "launcher",
   );
   await evidenceShot(page, "tile-longpress-no-launch");
 
@@ -476,7 +463,7 @@ test("chat sheet: fast flick snaps open, slow sub-threshold drag stays closed, a
 });
 
 test.describe("real touch (hasTouch project)", () => {
-  test("horizontal flick over the launcher grid via CDP touch does not ghost-launch the tile under the finger", async ({
+  test("rail flick via CDP touch does not ghost-launch the tile under the finger", async ({
     page,
     browserName,
   }, testInfo) => {
@@ -489,31 +476,24 @@ test.describe("real touch (hasTouch project)", () => {
 
     await openHome(page);
     const surface = page.getByTestId("home-launcher-surface");
-    await revealLauncherGrid(page);
-    const appsRegion = page.getByTestId("home-apps-scroll");
 
-    // Genuine touch flick LEFT across the embedded grid. Home and apps share
-    // one combined surface: there is no rail to pan, so the flick must be a
-    // no-op navigation-wise…
-    await cdpTouchDrag(page, appsRegion, -220, 4, 10);
-    await evidenceShot(page, "touch-grid-flick");
+    // The shared helper uses genuine CDP touch and refuses a mouse fallback.
+    await navigateHomeLauncher(page, "launcher", { input: "touch" });
+    await evidenceShot(page, "touch-rail-flick-to-launcher");
 
-    // …and, GHOST-CLICK: the release must not tap-launch whatever tile ended
-    // up under the finger — no view opened, the combined home still showing.
+    // GHOST-CLICK: release must not launch the tile under the finger.
     await page.waitForTimeout(500);
     await expect(page.getByTestId("settings-shell")).toHaveCount(0);
-    await expect(surface).toHaveAttribute("data-page", "home");
+    await expect(surface).toHaveAttribute("data-page", "launcher");
     await expect(page.getByTestId("chat-overlay")).not.toHaveAttribute(
       "data-open",
       "true",
     );
 
-    // The paired opposite flick is equally inert.
-    await cdpTouchDrag(page, appsRegion, 220, 4, 10);
-    await page.waitForTimeout(500);
+    await navigateHomeLauncher(page, "home", { input: "touch" });
     await expect(page.getByTestId("settings-shell")).toHaveCount(0);
     await expect(surface).toHaveAttribute("data-page", "home");
-    await evidenceShot(page, "touch-grid-flick-back");
+    await evidenceShot(page, "touch-rail-flick-back-home");
   });
 
   test("vertical pan over the notification list is contained — no rail flip, no home scroll, no ghost row-tap", async ({
