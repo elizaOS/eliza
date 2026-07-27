@@ -2366,49 +2366,57 @@ export class ProvisioningJobService {
     data: AdminCanaryStandbyDecisionJobData,
   ): Promise<{ job: Job; created: boolean }> {
     assertAdminCanaryStandbyDecisionJobData(data);
-    return await this.enqueueLifecycleJob<AdminCanaryStandbyDecisionJobData>({
-      jobType: JOB_TYPES.AGENT_ADMIN_CANARY_STANDBY_DECISION,
-      jobData: data,
-      toRecord: adminCanaryStandbyDecisionJobDataToRecord,
-      agentId: data.agentId,
-      organizationId: data.organizationId,
-      userId: data.actorUserId,
-      maxAttempts: 10,
-      estimatedDurationMs: 120_000,
-      logName: "agent_admin_canary_standby_decision",
-      logExtras: {
-        sourceJobId: data.sourceJobId,
-        rolloutId: data.rolloutId,
-        standbyGeneration: data.standbyGeneration,
-        decision: data.decision,
-      },
-      idempotencyPredicates: [
-        sql`${jobs.data}->>'sourceJobId' = ${data.sourceJobId}`,
-        sql`${jobs.data}->>'standbyGeneration' = ${data.standbyGeneration}`,
-        sql`${jobs.data}->>'decision' = ${data.decision}`,
-      ],
-      validateSandbox: (sandbox) => {
-        if (
-          sandbox.status !== "running" ||
-          sandbox.user_id !== data.targetOwnerUserId ||
-          sandbox.rollback_standby_state !== "paused" ||
-          sandbox.rollback_standby_generation !== data.standbyGeneration ||
-          sandbox.rollback_standby_source_job_id !== data.sourceJobId ||
-          sandbox.docker_image !== data.targetImage ||
-          sandbox.image_digest !== data.targetDigest
-        ) {
-          throw new ApiError(
-            409,
-            "session_not_ready",
-            `Agent ${data.agentId} no longer matches the retained rollback standby`,
-          );
-        }
-      },
-      validateReuse: (existing) => {
+    return await dbWrite.transaction(async (tx) => {
+      await configureElizaLifecycleTransaction(tx);
+      await tx.execute(elizaProvisionAdvisoryLockSql(data.organizationId, data.agentId));
+
+      const existingRows = await tx
+        .select()
+        .from(jobs)
+        .where(
+          and(
+            eq(jobs.type, JOB_TYPES.AGENT_ADMIN_CANARY_STANDBY_DECISION),
+            eq(jobs.organization_id, data.organizationId),
+            eq(jobs.agent_id, data.agentId),
+            sql`${jobs.data}->>'sourceJobId' = ${data.sourceJobId}`,
+            sql`${jobs.data}->>'standbyGeneration' = ${data.standbyGeneration}`,
+          ),
+        )
+        .orderBy(jobs.created_at, jobs.id);
+      if (existingRows.length > 1) {
+        throw new ElizaError(
+          `Rollback standby generation ${data.standbyGeneration} has multiple decision jobs`,
+          {
+            code: "ROLLBACK_STANDBY_DECISION_INVARIANT",
+            context: {
+              agentId: data.agentId,
+              organizationId: data.organizationId,
+              sourceJobId: data.sourceJobId,
+              standbyGeneration: data.standbyGeneration,
+              decisionJobIds: existingRows.map((row) => row.id),
+            },
+            severity: "fatal",
+          },
+        );
+      }
+      const existingRow = existingRows[0];
+      if (existingRow) {
+        const existing = await hydrateJob(existingRow);
         const existingData = readAdminCanaryStandbyDecisionJobData(existing);
         if (
+          existingData.requestId !== data.requestId ||
           existingData.sourceJobId !== data.sourceJobId ||
           existingData.standbyGeneration !== data.standbyGeneration ||
+          existingData.rolloutId !== data.rolloutId ||
+          existingData.actorUserId !== data.actorUserId ||
+          existingData.userId !== data.userId ||
+          existingData.agentId !== data.agentId ||
+          existingData.organizationId !== data.organizationId ||
+          existingData.targetOwnerUserId !== data.targetOwnerUserId ||
+          existingData.sourceImage !== data.sourceImage ||
+          existingData.sourceDigest !== data.sourceDigest ||
+          existingData.targetImage !== data.targetImage ||
+          existingData.targetDigest !== data.targetDigest ||
           existingData.decision !== data.decision ||
           existingData.verifiedBackupId !== data.verifiedBackupId ||
           existingData.restoreValidationId !== data.restoreValidationId ||
@@ -2422,7 +2430,92 @@ export class ProvisioningJobService {
             `Rollback standby already has a different decision job ${existing.id}`,
           );
         }
-      },
+        logger.info("[provisioning-jobs] Replaying durable standby decision job", {
+          jobId: existing.id,
+          sourceJobId: data.sourceJobId,
+          rolloutId: data.rolloutId,
+          standbyGeneration: data.standbyGeneration,
+          decision: data.decision,
+          status: existing.status,
+        });
+        return { job: existing, created: false };
+      }
+
+      const [sandbox] = await tx
+        .select()
+        .from(agentSandboxes)
+        .where(
+          and(
+            eq(agentSandboxes.id, data.agentId),
+            eq(agentSandboxes.organization_id, data.organizationId),
+          ),
+        )
+        .limit(1);
+      if (
+        !sandbox ||
+        sandbox.status !== "running" ||
+        sandbox.user_id !== data.targetOwnerUserId ||
+        sandbox.rollback_standby_state !== "paused" ||
+        sandbox.rollback_standby_generation !== data.standbyGeneration ||
+        sandbox.rollback_standby_source_job_id !== data.sourceJobId ||
+        sandbox.rollback_standby_rollout_id !== data.rolloutId ||
+        sandbox.sandbox_id !== sandbox.rollback_standby_primary_sandbox_id ||
+        sandbox.node_id !== sandbox.rollback_standby_primary_node_id ||
+        sandbox.container_name !== sandbox.rollback_standby_primary_container_name ||
+        sandbox.docker_image !== data.targetImage ||
+        sandbox.image_digest !== data.targetDigest ||
+        sandbox.rollback_standby_environment_revision === null ||
+        sandbox.environment_revision !== sandbox.rollback_standby_environment_revision
+      ) {
+        throw new ApiError(
+          409,
+          "session_not_ready",
+          `Agent ${data.agentId} no longer matches the retained rollback standby`,
+        );
+      }
+
+      const [inserted] = await tx
+        .insert(jobs)
+        .values(
+          await prepareJobInsertData({
+            type: JOB_TYPES.AGENT_ADMIN_CANARY_STANDBY_DECISION,
+            status: "pending",
+            data: adminCanaryStandbyDecisionJobDataToRecord(data),
+            data_storage: "inline",
+            organization_id: data.organizationId,
+            user_id: data.actorUserId,
+            agent_id: data.agentId,
+            max_attempts: 10,
+            estimated_completion_at: new Date(Date.now() + 120_000),
+          }),
+        )
+        .returning();
+      if (!inserted) {
+        throw new ElizaError(
+          `Failed to enqueue standby decision for generation ${data.standbyGeneration}`,
+          {
+            code: "ROLLBACK_STANDBY_DECISION_ENQUEUE_FAILED",
+            context: {
+              agentId: data.agentId,
+              organizationId: data.organizationId,
+              sourceJobId: data.sourceJobId,
+              standbyGeneration: data.standbyGeneration,
+            },
+            severity: "fatal",
+          },
+        );
+      }
+      const job = await hydrateJob(inserted);
+      logger.info("[provisioning-jobs] Enqueued agent_admin_canary_standby_decision job", {
+        jobId: job.id,
+        agentId: data.agentId,
+        orgId: data.organizationId,
+        sourceJobId: data.sourceJobId,
+        rolloutId: data.rolloutId,
+        standbyGeneration: data.standbyGeneration,
+        decision: data.decision,
+      });
+      return { job, created: true };
     });
   }
 
