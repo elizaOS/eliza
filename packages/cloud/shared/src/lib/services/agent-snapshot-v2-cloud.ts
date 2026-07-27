@@ -30,6 +30,10 @@ import {
 
 const MAX_ERROR_RESPONSE_BYTES = 8 * 1024;
 const MAX_SUCCESS_RESPONSE_BYTES = 16 * 1024;
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
+const CAPTURE_BASE_TIMEOUT_MS = 10 * 60_000;
+const CAPTURE_MIN_BYTES_PER_SECOND = 1024 * 1024;
+const CAPTURE_TRANSFER_PASSES = 2;
 const RESTORE_BASE_TIMEOUT_MS = 10 * 60_000;
 const RESTORE_IDLE_TIMEOUT_MS = 2 * 60_000;
 const RESTORE_MIN_BYTES_PER_SECOND = 1024 * 1024;
@@ -55,6 +59,11 @@ export interface AgentSnapshotV2RestoreTimeouts {
   minBytesPerSecond: number;
 }
 
+export interface AgentSnapshotV2CaptureTimeouts {
+  baseMs: number;
+  minBytesPerSecond: number;
+}
+
 export interface AgentSnapshotV2CloudDependencies {
   storage: SnapshotV2StorageBoundary;
   readStored: typeof readStoredChunkedBackup;
@@ -67,6 +76,44 @@ const defaultDependencies: AgentSnapshotV2CloudDependencies = {
   readStored: readStoredChunkedBackup,
   fetch,
 };
+
+function assertTimerDelay(value: number, message: string): number {
+  if (!Number.isSafeInteger(value) || value <= 0 || value > MAX_TIMER_DELAY_MS) {
+    throw new Error(message);
+  }
+  return value;
+}
+
+/**
+ * Capture consumes the source once while committing it and a second time for
+ * the durable read-after-write verification. The timeout therefore budgets
+ * both complete transfers at the protocol's minimum supported throughput.
+ */
+export function agentSnapshotV2CaptureTimeoutMs(
+  wireBytes: number,
+  policy: AgentSnapshotV2CaptureTimeouts = {
+    baseMs: CAPTURE_BASE_TIMEOUT_MS,
+    minBytesPerSecond: CAPTURE_MIN_BYTES_PER_SECOND,
+  },
+): number {
+  if (
+    !Number.isSafeInteger(wireBytes) ||
+    wireBytes < 0 ||
+    wireBytes > AGENT_SNAPSHOT_V2_MAX_WIRE_BYTES ||
+    !Number.isSafeInteger(policy.baseMs) ||
+    policy.baseMs <= 0 ||
+    !Number.isSafeInteger(policy.minBytesPerSecond) ||
+    policy.minBytesPerSecond <= 0
+  ) {
+    throw new Error("Snapshot capture timeout inputs are invalid");
+  }
+  const transferMs =
+    Math.ceil((wireBytes * 1_000) / policy.minBytesPerSecond) * CAPTURE_TRANSFER_PASSES;
+  return assertTimerDelay(
+    policy.baseMs + transferMs,
+    "Snapshot capture timeout exceeds the platform timer limit",
+  );
+}
 
 export function agentSnapshotV2RestoreTimeoutMs(
   wireBytes: number,
@@ -89,7 +136,10 @@ export function agentSnapshotV2RestoreTimeoutMs(
   ) {
     throw new Error("Snapshot restore timeout inputs are invalid");
   }
-  return policy.baseMs + Math.ceil((wireBytes * 1_000) / policy.minBytesPerSecond);
+  return assertTimerDelay(
+    policy.baseMs + Math.ceil((wireBytes * 1_000) / policy.minBytesPerSecond),
+    "Snapshot restore timeout exceeds the platform timer limit",
+  );
 }
 
 function restoreTimeouts(
@@ -422,7 +472,7 @@ export async function captureAgentSnapshotV2(params: {
   }
 }
 
-interface AgentSnapshotV2RestoreResult {
+export interface AgentSnapshotV2RestoreReceipt {
   aggregateSha256: string;
   binding: AgentSnapshotV2UpgradeBinding;
   fileCount: number;
@@ -434,7 +484,7 @@ interface AgentSnapshotV2RestoreResult {
   transfer: "chunked-v1";
 }
 
-function parseRestoreResult(value: string): AgentSnapshotV2RestoreResult {
+function parseRestoreResult(value: string): AgentSnapshotV2RestoreReceipt {
   let parsed: unknown;
   try {
     parsed = JSON.parse(value);
@@ -478,7 +528,7 @@ function parseRestoreResult(value: string): AgentSnapshotV2RestoreResult {
     throw new Error("Agent restore response is invalid");
   }
   validateAgentSnapshotV2UpgradeBinding(record.binding);
-  return record as unknown as AgentSnapshotV2RestoreResult;
+  return record as unknown as AgentSnapshotV2RestoreReceipt;
 }
 
 export async function restoreAgentSnapshotV2(params: {
@@ -489,7 +539,10 @@ export async function restoreAgentSnapshotV2(params: {
   headers: HeadersInit;
   binding: AgentSnapshotV2UpgradeBinding;
   dependencies?: AgentSnapshotV2CloudDependencies;
-}): Promise<AgentSnapshotV2ValidationSummary> {
+}): Promise<{
+  receipt: AgentSnapshotV2RestoreReceipt;
+  summary: AgentSnapshotV2ValidationSummary;
+}> {
   if (
     params.backup.verification_status !== "verified" ||
     params.backup.storage_commit_state !== "complete"
@@ -580,7 +633,7 @@ export async function restoreAgentSnapshotV2(params: {
     ) {
       throw new Error("Agent restore acknowledgement does not match the committed snapshot");
     }
-    return summary;
+    return { receipt: result, summary };
   } catch (error) {
     if (watchdog.signal.aborted) {
       throw new Error("Snapshot v2 restore timed out", {
