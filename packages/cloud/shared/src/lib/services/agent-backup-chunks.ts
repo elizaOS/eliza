@@ -79,6 +79,31 @@ function backupChunkError(code: string, message: string, context?: Record<string
   });
 }
 
+function abortReason(signal: AbortSignal): Error {
+  return signal.reason instanceof Error
+    ? signal.reason
+    : new Error("Backup chunk read was aborted");
+}
+
+function raceWithAbort<T>(operation: PromiseLike<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return Promise.resolve(operation);
+  if (signal.aborted) return Promise.reject(abortReason(signal));
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = (): void => reject(abortReason(signal));
+    signal.addEventListener("abort", onAbort, { once: true });
+    Promise.resolve(operation).then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (error: unknown) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      },
+    );
+  });
+}
+
 function assertPositiveInteger(value: number, name: string, max: number): void {
   if (!Number.isSafeInteger(value) || value < 1 || value > max) {
     throw backupChunkError(
@@ -467,6 +492,7 @@ function validateChunkMetadata(params: {
 export async function* readEncryptedAgentBackupChunks(params: {
   identity: AgentBackupChunkIdentity;
   descriptor: AgentBackupChunkDescriptor;
+  signal?: AbortSignal;
 }): AsyncGenerator<Uint8Array> {
   validateDescriptor(params.descriptor, params.identity);
   const kms = getKmsClient();
@@ -499,7 +525,7 @@ export async function* readEncryptedAgentBackupChunks(params: {
         `Backup chunk descriptor is invalid at index ${position}`,
       );
     }
-    const ciphertext = await getObjectBytes(chunk.objectKey, chunk.ciphertextBytes);
+    const ciphertext = await getObjectBytes(chunk.objectKey, chunk.ciphertextBytes, params.signal);
     if (!ciphertext) {
       throw backupChunkError(
         "AGENT_BACKUP_CHUNK_MISSING",
@@ -516,13 +542,16 @@ export async function* readEncryptedAgentBackupChunks(params: {
       );
     }
     const plaintext = new Uint8Array(
-      await kms.decrypt(
-        chunk.kmsKeyId,
-        ciphertext,
-        validated.nonce,
-        validated.authTag,
-        chunkAad(params.identity, position, chunk.plaintextBytes),
-        chunk.kmsKeyVersion,
+      await raceWithAbort(
+        kms.decrypt(
+          chunk.kmsKeyId,
+          ciphertext,
+          validated.nonce,
+          validated.authTag,
+          chunkAad(params.identity, position, chunk.plaintextBytes),
+          chunk.kmsKeyVersion,
+        ),
+        params.signal,
       ),
     );
     if (

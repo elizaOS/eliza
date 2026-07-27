@@ -141,6 +141,7 @@ const FILE_COMPONENT_ORDER: readonly AgentSnapshotV2FileComponent[] = [
 const DIGEST_PATTERN = /^[a-f0-9]{64}$/;
 const BASE64_PATTERN = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
 const MAX_ECMASCRIPT_TIMESTAMP_MS = 8_640_000_000_000_000;
+const FATAL_UTF8_DECODER = new TextDecoder("utf-8", { fatal: true });
 
 function invalidSnapshot(
   message: string,
@@ -609,7 +610,13 @@ function parseJsonLine(line: Buffer): unknown {
   if (line.length === 0 || line.includes(0x0d)) {
     throw invalidSnapshot("Snapshot stream line is not canonical");
   }
-  const text = line.toString("utf8");
+  let text: string;
+  try {
+    text = FATAL_UTF8_DECODER.decode(line);
+  } catch (cause) {
+    // error-policy:J3 malformed UTF-8 is an explicit invalid wire frame.
+    throw invalidSnapshot("Snapshot stream line is not valid UTF-8", undefined, cause);
+  }
   try {
     return JSON.parse(text);
   } catch (cause) {
@@ -619,7 +626,14 @@ function parseJsonLine(line: Buffer): unknown {
 }
 
 function assertCanonicalLine(value: unknown, line: Buffer): void {
-  if (agentSnapshotV2StableJson(value) !== line.toString("utf8")) {
+  let text: string;
+  try {
+    text = FATAL_UTF8_DECODER.decode(line);
+  } catch (cause) {
+    // parseJsonLine rejects this first; retain the guard for direct callers.
+    throw invalidSnapshot("Snapshot stream line is not valid UTF-8", undefined, cause);
+  }
+  if (agentSnapshotV2StableJson(value) !== text) {
     throw invalidSnapshot("Snapshot stream line is not canonical JSON");
   }
 }
