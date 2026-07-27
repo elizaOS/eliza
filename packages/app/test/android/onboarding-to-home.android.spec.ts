@@ -73,8 +73,8 @@ test.describe
       });
 
       try {
-        // `?reset` clears shell-owned first-run state through the privileged
-        // storage channel before the deep link arrives.
+        // The command clears Android app data before launch, so both WebView
+        // storage and Capacitor Preferences start from a real first-run state.
         await page.goto(`${ORIGIN}/?reset`, {
           waitUntil: "domcontentloaded",
           timeout: 60_000,
