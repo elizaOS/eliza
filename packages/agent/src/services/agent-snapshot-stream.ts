@@ -14,6 +14,7 @@ import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
 import { ElizaError, logger } from "@elizaos/core";
 import { resolveConfigPath, resolveStateDir } from "../config/paths.ts";
 import {
+  type AgentSnapshotUpgradeBinding,
   createExternalPostgresReference,
   verifyExternalPostgresReference,
 } from "./agent-backup.ts";
@@ -620,6 +621,7 @@ function fileSetDescriptor(
 
 async function createSnapshotStreamPlan(
   runtime: IAgentRuntime | AgentRuntime,
+  binding: AgentSnapshotUpgradeBinding,
 ): Promise<SnapshotStreamPlan> {
   const stateDir = resolveStateDir();
   const configPath = resolveConfigPath();
@@ -732,6 +734,7 @@ async function createSnapshotStreamPlan(
         ?.descriptor ?? null;
     const descriptor: AgentSnapshotStreamDescriptor = {
       agentId: runtime.agentId,
+      binding,
       chunkSize: AGENT_SNAPSHOT_STREAM_CHUNK_BYTES,
       components: {
         character: {
@@ -764,8 +767,9 @@ async function createSnapshotStreamPlan(
 
 export async function* createAgentSnapshotStream(
   runtime: IAgentRuntime | AgentRuntime,
+  binding: AgentSnapshotUpgradeBinding,
 ): AsyncGenerator<Buffer> {
-  const plan = await createSnapshotStreamPlan(runtime);
+  const plan = await createSnapshotStreamPlan(runtime, binding);
   const aggregateHash = crypto.createHash("sha256");
   let chunkCount = 0;
   let totalBytes = 0;
@@ -1226,6 +1230,7 @@ function decodeChunkBytes(frame: AgentSnapshotStreamChunkFrame): Buffer {
 export async function restoreAgentSnapshotStream(
   runtime: IAgentRuntime | AgentRuntime,
   input: AsyncIterable<Uint8Array | string>,
+  expectedBinding: AgentSnapshotUpgradeBinding,
 ): Promise<AgentSnapshotStreamRestoreResult> {
   const stagingRoot = await fs.mkdtemp(
     path.join(os.tmpdir(), RESTORE_STAGING_PREFIX),
@@ -1298,6 +1303,11 @@ export async function restoreAgentSnapshotStream(
       if (descriptor.agentId !== runtime.agentId) {
         throw invalidStream(
           `Snapshot belongs to agent ${descriptor.agentId}, not ${runtime.agentId}`,
+        );
+      }
+      if (stableJson(descriptor.binding) !== stableJson(expectedBinding)) {
+        throw invalidStream(
+          "Snapshot does not match this replacement candidate",
         );
       }
       await advanceEmptyFiles();
