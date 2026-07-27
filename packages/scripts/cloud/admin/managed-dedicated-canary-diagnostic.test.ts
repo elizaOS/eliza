@@ -347,6 +347,58 @@ describe("managed dedicated canary diagnostic", () => {
     ).toThrow("privacy-safe classifier");
   });
 
+  test("classifies a terminal worker-restart interruption without publishing raw text", () => {
+    const input = failedDeleteInput();
+    const agent = input.agent as Record<string, unknown>;
+    const [job] = input.jobs as Record<string, unknown>[];
+    const error =
+      "Job interrupted by worker restart 3 times - max attempts reached";
+    agent.status = "deletion_pending";
+    agent.errorMessage = null;
+    agent.errorCount = 0;
+    job.error = error;
+    job.result = null;
+
+    const canonical = canonicalizeManagedDedicatedCanaryDiagnostic(
+      JSON.stringify(input),
+      SUFFIX,
+    );
+    const evidence = JSON.parse(canonical);
+    expect(evidence.sandbox).toMatchObject({
+      status: "deletion_pending",
+      errorCode: "none",
+      errorCount: 0,
+    });
+    expect(evidence.jobs[0]).toMatchObject({
+      status: "failed",
+      attempts: 3,
+      maxAttempts: 3,
+      errorCode: "worker_restart_interrupted",
+      resultErrorCode: "none",
+      containerStopped: null,
+      rowDeleted: null,
+    });
+    expect(canonical).not.toContain("worker restart");
+    expect(canonical).not.toContain("max attempts");
+  });
+
+  test.each([
+    "Job interrupted by worker restart 0 times - max attempts reached",
+    "Job interrupted by worker restart 1000 times - max attempts reached",
+    "Job interrupted by worker restart 3 times - max attempts reached trailing",
+    "Job interrupted by worker restart - recovered for retry (attempt 1/3)",
+  ])("rejects a noncanonical worker-restart message", (error) => {
+    const input = failedDeleteInput();
+    const agent = input.agent as Record<string, unknown>;
+    const [job] = input.jobs as Record<string, unknown>[];
+    agent.errorMessage = `Deletion permanently failed after 3 attempts: ${error}`;
+    job.error = error;
+    job.result = null;
+    expect(() =>
+      sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX),
+    ).toThrow("privacy-safe classifier");
+  });
+
   test("classifies row-delete failures without publishing the SQL text", () => {
     const input = failedDeleteInput();
     const agent = input.agent as Record<string, unknown>;
