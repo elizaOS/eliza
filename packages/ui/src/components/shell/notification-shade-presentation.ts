@@ -267,8 +267,9 @@ export function applyNotificationPullPresentation(
     const content = group.querySelector<HTMLElement>(
       ":scope > [data-notification-group-content]",
     );
+    const contentVisibility = pullRevealed || !rested ? groupVisibility : 1;
+    const preservesCardMaterial = shadeExpanded && pullPx < 0 && !shadeClosing;
     if (content) {
-      const contentVisibility = pullRevealed || !rested ? groupVisibility : 1;
       const contentPullOffset = pullRevealed
         ? (1 - groupVisibility) * -8
         : rested
@@ -279,7 +280,17 @@ export function applyNotificationPullPresentation(
               shadeClosing,
               groupVisibility,
             );
-      content.style.opacity = String(contentVisibility);
+      content.style.opacity = String(
+        preservesCardMaterial ? 1 : contentVisibility,
+      );
+      if (preservesCardMaterial) {
+        content.style.setProperty(
+          "--eliza-notif-group-content-visibility",
+          String(contentVisibility),
+        );
+      } else if (!shadeClosing) {
+        content.style.removeProperty("--eliza-notif-group-content-visibility");
+      }
       content.style.transform = `translate3d(0, ${
         containerOffset + contentPullOffset + presentation.pullOvershootOffset
       }px, 0)`;
@@ -310,7 +321,17 @@ export function applyNotificationPullPresentation(
     for (const row of group.querySelectorAll<HTMLElement>(
       "[data-notification-disposable-row]",
     )) {
-      row.style.opacity = String(presentation.disposableContentVisibility);
+      row.style.opacity = String(
+        preservesCardMaterial ? 1 : presentation.disposableContentVisibility,
+      );
+      if (preservesCardMaterial) {
+        row.style.setProperty(
+          "--eliza-notif-row-content-visibility",
+          String(contentVisibility * presentation.disposableContentVisibility),
+        );
+      } else if (!shadeClosing) {
+        row.style.removeProperty("--eliza-notif-row-content-visibility");
+      }
       row.style.transform = `translate3d(0, ${(1 - presentation.disposableContentVisibility) * -8}px, 0)`;
     }
     for (const peek of group.querySelectorAll<HTMLElement>(
@@ -324,7 +345,11 @@ export function applyNotificationPullPresentation(
           : mode === "disposable"
             ? presentation.pullContentVisibility
             : 1;
-      peek.style.opacity = String(baseOpacity * visibility);
+      peek.style.opacity = String(
+        preservesCardMaterial && mode === "disposable"
+          ? baseOpacity
+          : baseOpacity * visibility,
+      );
     }
   }
 }
