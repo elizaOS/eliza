@@ -44,7 +44,7 @@ export interface WalletPipelineInput {
   oldestTransactionId?: string;
   oldestTransactionTimestamp?: number;
   firstParsedTransaction: SolanaParsedTransaction | null;
-  parsedTransactions: SolanaParsedTransaction[];
+  recentParsedTransactions: SolanaParsedTransaction[];
   tokenPrices: Record<string, number>;
 }
 
