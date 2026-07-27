@@ -28,6 +28,7 @@ import {
   type AgentSnapshotV2Frame,
   AgentSnapshotV2StreamValidator,
   type AgentSnapshotV2Trailer,
+  type AgentSnapshotV2UpgradeBinding,
   agentSnapshotV2Sha256,
   agentSnapshotV2Sha256Json,
   agentSnapshotV2StableJson,
@@ -41,6 +42,16 @@ import {
 const EMPTY_SHA256 = agentSnapshotV2Sha256(Buffer.alloc(0));
 const CREATED_AT = "2026-07-26T12:00:00.000Z";
 const AGENT_ID = "00000000-0000-4000-8000-000000000001";
+const BINDING: AgentSnapshotV2UpgradeBinding = {
+  backupId: "00000000-0000-4000-8000-000000000002",
+  captureNonce: "01".repeat(32),
+  sourceEnvironmentRevision: 7,
+  sourceImageDigest: `sha256:${"02".repeat(32)}`,
+  sourceSandboxId: "source-sandbox",
+  targetImageDigest: `sha256:${"03".repeat(32)}`,
+  targetReplacementAttemptId: "00000000-0000-4000-8000-000000000003",
+  targetSandboxId: "target-sandbox",
+};
 
 function encodeFrame(frame: unknown): Buffer {
   return Buffer.from(`${agentSnapshotV2StableJson(frame)}\n`);
@@ -88,6 +99,7 @@ function descriptorFor(
   const characterFile = files.find((file) => file.component === "character-config") ?? null;
   return {
     agentId: AGENT_ID,
+    binding: BINDING,
     chunkSize: AGENT_SNAPSHOT_V2_CHUNK_BYTES,
     components: {
       character: {
@@ -198,7 +210,11 @@ async function validateFrames(
   contentType = AGENT_SNAPSHOT_V2_CONTENT_TYPE,
 ) {
   return await validateAgentSnapshotV2Stream({
-    options: { contentType, expectedAgentId: AGENT_ID },
+    options: {
+      contentType,
+      expectedAgentId: AGENT_ID,
+      expectedBinding: BINDING,
+    },
     source: encodedFrames(frames),
   });
 }
@@ -249,6 +265,26 @@ describe("agent snapshot v2 Cloud stream validator", () => {
     await expect(
       validateFrames(frames, `${AGENT_SNAPSHOT_V2_CONTENT_TYPE}; charset=utf-8`),
     ).rejects.toThrow("content type is unsupported");
+    expect(() =>
+      validateAgentSnapshotV2Descriptor({
+        ...descriptor,
+        binding: {
+          ...descriptor.binding,
+          sourceImageDigest: "02".repeat(32),
+        },
+      }),
+    ).toThrow("canonical OCI image digest");
+
+    const wrongCandidate = {
+      ...descriptor,
+      binding: {
+        ...descriptor.binding,
+        targetSandboxId: "different-target",
+      },
+    };
+    await expect(validateFrames(completeFrames(wrongCandidate, []))).rejects.toThrow(
+      "does not match the expected upgrade binding",
+    );
   });
 
   test("accepts canonical multi-component ordering and zero-byte files", async () => {

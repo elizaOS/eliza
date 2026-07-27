@@ -125,6 +125,15 @@ export interface SandboxContainerLaunchConfig {
   healthCheckPath?: string;
 }
 
+export interface SandboxSnapshotRestoreBindingSeed {
+  backupId: string;
+  captureNonce: string;
+  sourceEnvironmentRevision: number;
+  sourceImageDigest: string;
+  sourceSandboxId: string;
+  targetImageDigest: string;
+}
+
 export interface SandboxCreateConfig {
   agentId: string;
   agentName: string;
@@ -147,6 +156,12 @@ export interface SandboxCreateConfig {
    */
   routeAgentId?: string | null;
   snapshotId?: string;
+  /**
+   * Candidate-only restore identity. Providers add the placement's generated
+   * replacement attempt and sandbox id before injecting the complete binding
+   * into the new runtime.
+   */
+  snapshotRestoreBinding?: SandboxSnapshotRestoreBindingSeed;
   resources?: { vcpus?: number; memoryMb?: number };
   timeout?: number;
   dockerImage?: string;
