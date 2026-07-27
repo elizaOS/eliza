@@ -517,6 +517,7 @@ export const agentBackupV2StorageService = new AgentBackupV2StorageService();
 export async function readStoredChunkedBackup(params: {
   organizationId: string;
   row: StoredAgentSandboxBackup;
+  signal?: AbortSignal;
 }): Promise<AsyncIterable<Uint8Array>> {
   const descriptor = params.row.state_data_descriptor;
   if (
@@ -543,5 +544,6 @@ export async function readStoredChunkedBackup(params: {
   return readEncryptedAgentBackupChunks({
     identity,
     descriptor: descriptor as AgentBackupChunkDescriptor,
+    signal: params.signal,
   });
 }

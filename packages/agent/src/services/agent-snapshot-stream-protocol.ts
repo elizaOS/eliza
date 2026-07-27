@@ -120,6 +120,7 @@ const DIGEST_PATTERN = /^[a-f0-9]{64}$/;
 const BASE64_PATTERN =
   /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
 const MAX_ECMASCRIPT_TIMESTAMP_MS = 8_640_000_000_000_000;
+const FATAL_UTF8_DECODER = new TextDecoder("utf-8", { fatal: true });
 
 function invalidProtocol(message: string): ElizaError {
   return new ElizaError(message, {
@@ -588,9 +589,20 @@ export function parseCanonicalSnapshotStreamFrame(line: Buffer): unknown {
   ) {
     throw invalidProtocol("Snapshot stream line exceeds its canonical budget");
   }
+  let text: string;
+  try {
+    text = FATAL_UTF8_DECODER.decode(line);
+  } catch (cause) {
+    // error-policy:J3 malformed UTF-8 is an explicit invalid wire frame.
+    throw new ElizaError("Snapshot stream line is not valid UTF-8", {
+      code: "AGENT_SNAPSHOT_STREAM_INVALID",
+      cause,
+      severity: "fatal",
+    });
+  }
   let parsed: unknown;
   try {
-    parsed = JSON.parse(line.toString("utf8"));
+    parsed = JSON.parse(text);
   } catch (cause) {
     // error-policy:J3 Untrusted NDJSON becomes an explicit invalid-protocol error.
     throw new ElizaError("Snapshot stream line is not valid JSON", {
@@ -599,7 +611,7 @@ export function parseCanonicalSnapshotStreamFrame(line: Buffer): unknown {
       severity: "fatal",
     });
   }
-  if (stableJson(parsed) !== line.toString("utf8")) {
+  if (stableJson(parsed) !== text) {
     throw invalidProtocol("Snapshot stream line is not canonical JSON");
   }
   return parsed;

@@ -797,8 +797,13 @@ function makeStateFileInclude(
   };
 }
 
-async function resolvePgliteDir(): Promise<string> {
-  const configured = process.env.PGLITE_DATA_DIR?.trim();
+async function resolvePgliteDir(
+  runtime?: IAgentRuntime | AgentRuntime | null,
+): Promise<string> {
+  const runtimeSetting = runtime?.getSetting?.("PGLITE_DATA_DIR");
+  const configured =
+    (typeof runtimeSetting === "string" ? runtimeSetting.trim() : "") ||
+    process.env.PGLITE_DATA_DIR?.trim();
   if (configured) {
     if (configured === ":memory:" || configured.includes("://")) {
       return configured;
@@ -827,9 +832,16 @@ function hasPostgresUrl(
   if (typeof runtimeSetting === "string" && runtimeSetting.trim()) {
     return runtimeSetting.trim();
   }
-  return (
-    process.env.POSTGRES_URL?.trim() || process.env.DATABASE_URL?.trim() || null
-  );
+  const postgresUrl = process.env.POSTGRES_URL?.trim();
+  if (postgresUrl) return postgresUrl;
+  const runtimePglite = runtime?.getSetting?.("PGLITE_DATA_DIR");
+  if (
+    (typeof runtimePglite === "string" && runtimePglite.trim()) ||
+    process.env.PGLITE_DATA_DIR?.trim()
+  ) {
+    return null;
+  }
+  return process.env.DATABASE_URL?.trim() || null;
 }
 
 function quoteIdentifier(identifier: string): string {
@@ -1047,7 +1059,7 @@ async function captureDatabaseComponent(
     };
   }
 
-  const pgliteDir = await resolvePgliteDir();
+  const pgliteDir = await resolvePgliteDir(runtime);
   if (pgliteDir === ":memory:" || pgliteDir.includes("://")) {
     const reason = `PGlite data dir ${pgliteDir} is not a filesystem directory`;
     if (request.schemaVersion === 2) {
@@ -1122,7 +1134,7 @@ export async function createAgentSnapshot(
   const stateDir = resolveStateDir();
   const pgliteDirForStateFiles = hasPostgresUrl(runtime)
     ? null
-    : await resolvePgliteDir();
+    : await resolvePgliteDir(runtime);
   const stateFileInclude = makeStateFileInclude(
     stateDir,
     pgliteDirForStateFiles,
@@ -1804,7 +1816,7 @@ export async function restoreAgentSnapshot(
     if (!database.pgliteDump) {
       throw new Error("Backup database component is missing PGlite dump");
     }
-    const pgliteDir = await resolvePgliteDir();
+    const pgliteDir = await resolvePgliteDir(runtime);
     pgliteDirForStateFiles = pgliteDir;
     if (pgliteDir === ":memory:" || pgliteDir.includes("://")) {
       throw new Error(
@@ -1822,7 +1834,7 @@ export async function restoreAgentSnapshot(
     if (!database.pglite) {
       throw new Error("Backup database component is missing PGlite files");
     }
-    const pgliteDir = await resolvePgliteDir();
+    const pgliteDir = await resolvePgliteDir(runtime);
     pgliteDirForStateFiles = pgliteDir;
     if (pgliteDir === ":memory:" || pgliteDir.includes("://")) {
       throw new Error(
