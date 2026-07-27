@@ -73,7 +73,7 @@ const balance = {
 
 const recentTransactionsResult =
   await connector.getTransactions(walletAddress, {
-    limit: 10,
+    limit: 50,
   });
 
 if (
@@ -86,6 +86,13 @@ if (
       "Unable to retrieve the wallet transactions.",
   );
 }
+
+const recentParsedTransactions =
+  await getSolanaParsedTransactions(
+    recentTransactionsResult.data.transactions.map(
+      (transaction) => transaction.transactionId,
+    ),
+  );
 
 if (!connector.getOldestTransaction) {
   throw new Error(
@@ -112,7 +119,7 @@ if (
 const oldestKnownTransaction =
   oldestTransactionResult.data;
 
-const parsedTransactions =
+const oldestParsedTransactions =
   oldestKnownTransaction.transactionId
     ? await getSolanaParsedTransactions([
         oldestKnownTransaction.transactionId,
@@ -120,8 +127,8 @@ const parsedTransactions =
     : [];
 
 const firstParsedTransaction =
-  parsedTransactions.length > 0
-    ? parsedTransactions[0]
+  oldestParsedTransactions.length > 0
+    ? oldestParsedTransactions[0]
     : null;
 
 const tokenBalancesResult =
@@ -216,7 +223,7 @@ const tokenHoldings: WalletTokenHolding[] =
   oldestTransactionTimestamp:
     oldestKnownTransaction.timestamp,
   firstParsedTransaction,
-  parsedTransactions,
+  recentParsedTransactions,
   tokenPrices,
 });
 

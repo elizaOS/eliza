@@ -84,11 +84,11 @@ export async function runWalletPipeline(
   );
 
   const defi = analyzeWalletDeFi(
-    input.parsedTransactions,
+    input.recentParsedTransactions,
   );
 
   const protocols = analyzeWalletProtocols(
-    input.parsedTransactions,
+    input.recentParsedTransactions,
   );
 
   const protocolIntelligence =
@@ -111,7 +111,7 @@ export async function runWalletPipeline(
   const relationships = analyzeWalletRelationships(
     funding,
     input.address,
-    input.parsedTransactions,
+    input.recentParsedTransactions,
   );
 
   const custodyProfile = analyzeWalletCustodyProfile(

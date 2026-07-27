@@ -13,9 +13,9 @@ export function analyzeWalletActivity(
   const activityLevel =
     recentTransactions.length === 0
       ? "none"
-      : recentTransactions.length <= 3
+      : recentTransactions.length <= 5
         ? "low"
-        : recentTransactions.length <= 10
+        : recentTransactions.length <= 20
           ? "medium"
           : "high";
 
