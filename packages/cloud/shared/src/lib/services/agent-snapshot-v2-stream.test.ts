@@ -5,7 +5,10 @@
 
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { validateSnapshotStreamDescriptor } from "../../../../../agent/src/services/agent-snapshot-stream-protocol";
+import {
+  parseCanonicalSnapshotStreamFrame,
+  validateSnapshotStreamDescriptor,
+} from "../../../../../agent/src/services/agent-snapshot-stream-protocol";
 import {
   AGENT_SNAPSHOT_V2_CHUNK_BYTES,
   AGENT_SNAPSHOT_V2_CONTENT_TYPE,
@@ -635,6 +638,20 @@ describe("agent snapshot v2 Cloud stream validator", () => {
     expect(() => oversized.push(Buffer.alloc(AGENT_SNAPSHOT_V2_MAX_LINE_BYTES + 1, 0x20))).toThrow(
       "line exceeds its byte budget",
     );
+  });
+
+  test("rejects malformed UTF-8 identically at the agent and Cloud parsers", () => {
+    const encoded = encodeFrame(descriptorFor());
+    const agentIdOffset = encoded.indexOf(Buffer.from(AGENT_ID));
+    if (agentIdOffset < 0) throw new Error("descriptor agent id is missing");
+    encoded[agentIdOffset] = 0xff;
+    const line = encoded.subarray(0, -1);
+
+    expect(() => parseCanonicalSnapshotStreamFrame(line)).toThrow("not valid UTF-8");
+    const validator = new AgentSnapshotV2StreamValidator({
+      contentType: AGENT_SNAPSHOT_V2_CONTENT_TYPE,
+    });
+    expect(() => validator.push(encoded)).toThrow("not valid UTF-8");
   });
 
   test("enforces the 16 GiB descriptor byte budget before accepting frames", async () => {
