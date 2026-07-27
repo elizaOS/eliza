@@ -208,10 +208,6 @@ export function verifyCandidateSnapshotRestoreHeaders(
   }
 }
 
-function receiptPath(binding: AgentSnapshotUpgradeBinding): string {
-  return path.join(resolveStateDir(), RECEIPT_DIR, `${binding.backupId}.json`);
-}
-
 async function fsyncDirectory(directory: string): Promise<void> {
   const handle = await fs.open(directory, "r");
   try {
@@ -219,6 +215,44 @@ async function fsyncDirectory(directory: string): Promise<void> {
   } finally {
     await handle.close();
   }
+}
+
+async function ensureReceiptDirectoryDurable(): Promise<string> {
+  const stateRoot = path.resolve(resolveStateDir());
+  const rootStat = await fs.lstat(stateRoot);
+  if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) {
+    throw bindingError(
+      "Snapshot restore state root is not a durable directory",
+      "AGENT_SNAPSHOT_RECEIPT_INVALID",
+    );
+  }
+  let current = stateRoot;
+  for (const segment of RECEIPT_DIR.split(path.sep)) {
+    const next = path.join(current, segment);
+    try {
+      await fs.mkdir(next, { mode: 0o700 });
+      await fsyncDirectory(next);
+      await fsyncDirectory(current);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      const stat = await fs.lstat(next);
+      if (!stat.isDirectory() || stat.isSymbolicLink()) {
+        throw bindingError(
+          "Snapshot restore receipt path traverses a non-directory",
+          "AGENT_SNAPSHOT_RECEIPT_INVALID",
+        );
+      }
+    }
+    current = next;
+  }
+  return current;
+}
+
+function receiptPath(
+  directory: string,
+  binding: AgentSnapshotUpgradeBinding,
+): string {
+  return path.join(directory, `${binding.backupId}.json`);
 }
 
 async function readReceipt(target: string): Promise<RestoreReceipt> {
@@ -324,9 +358,8 @@ async function readReceipt(target: string): Promise<RestoreReceipt> {
 export async function beginCandidateSnapshotRestore(
   binding: AgentSnapshotUpgradeBinding,
 ): Promise<AgentCandidateSnapshotRestoreResult | null> {
-  const target = receiptPath(binding);
-  const directory = path.dirname(target);
-  await fs.mkdir(directory, { mode: 0o700, recursive: true });
+  const directory = await ensureReceiptDirectoryDurable();
+  const target = receiptPath(directory, binding);
   const receipt: ApplyingReceipt = {
     binding,
     status: "applying",
@@ -343,17 +376,21 @@ export async function beginCandidateSnapshotRestore(
   } finally {
     await handle.close();
   }
+  let linked = false;
   try {
     // A hard link publishes the already-fsynced receipt with no empty-file
     // visibility window and fails rather than replacing a competing attempt.
     await fs.link(temporary, target);
-    await fsyncDirectory(directory);
-    return null;
+    linked = true;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
   } finally {
     await fs.rm(temporary, { force: true });
+    // Persist both the target link and removal of the temporary directory
+    // entry before admission or replay returns to the HTTP boundary.
+    await fsyncDirectory(directory);
   }
+  if (linked) return null;
   const existing = await readReceipt(target);
   if (stableJson(existing.binding) !== stableJson(binding)) {
     throw bindingError(
@@ -374,8 +411,8 @@ export async function commitCandidateSnapshotRestore(
   binding: AgentSnapshotUpgradeBinding,
   streamResult: AgentSnapshotStreamRestoreResult,
 ): Promise<AgentCandidateSnapshotRestoreResult> {
-  const target = receiptPath(binding);
-  const directory = path.dirname(target);
+  const directory = await ensureReceiptDirectoryDurable();
+  const target = receiptPath(directory, binding);
   const result: AgentCandidateSnapshotRestoreResult = {
     ...streamResult,
     binding,
@@ -416,9 +453,32 @@ export async function commitCandidateSnapshotRestore(
   }
   try {
     await fs.rename(temporary, target);
-    await fsyncDirectory(directory);
-  } finally {
+  } catch (error) {
     await fs.rm(temporary, { force: true });
+    await fsyncDirectory(directory);
+    throw error;
   }
+  await fsyncDirectory(directory);
   return result;
+}
+
+export function verifyCandidateSnapshotRestoreReplay(
+  committed: AgentCandidateSnapshotRestoreResult,
+  replayed: AgentSnapshotStreamRestoreResult,
+): void {
+  const expected: AgentSnapshotStreamRestoreResult = {
+    aggregateSha256: committed.aggregateSha256,
+    fileCount: committed.fileCount,
+    requiresRestart: committed.requiresRestart,
+    schemaVersion: committed.schemaVersion,
+    success: committed.success,
+    totalBytes: committed.totalBytes,
+    transfer: committed.transfer,
+  };
+  if (stableJson(expected) !== stableJson(replayed)) {
+    throw bindingError(
+      "Snapshot restore replay does not match the committed transfer",
+      "AGENT_SNAPSHOT_RECEIPT_CONFLICT",
+    );
+  }
 }
