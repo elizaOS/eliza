@@ -1570,6 +1570,9 @@ export async function restoreLocalAgentBackup(
 }
 
 function verifyFileEntry(entry: AgentBackupFileEntry): Buffer {
+  if (normalizeRelativePath(entry.path) !== entry.path) {
+    throw new Error(`Backup file path is not canonical: ${entry.path}`);
+  }
   const bytes = Buffer.from(entry.bytesBase64, "base64");
   const actual = sha256Bytes(bytes);
   if (actual !== entry.sha256) {
@@ -1590,7 +1593,14 @@ function verifyFileSet(fileSet: AgentBackupFileSet): void {
   if (expected !== fileSet.sha256) {
     throw new Error(`Backup file-set hash mismatch for ${fileSet.rootLabel}`);
   }
-  for (const file of fileSet.files) verifyFileEntry(file);
+  const paths = new Set<string>();
+  for (const file of fileSet.files) {
+    verifyFileEntry(file);
+    if (paths.has(file.path)) {
+      throw new Error(`Backup file-set contains duplicate path: ${file.path}`);
+    }
+    paths.add(file.path);
+  }
 }
 
 function verifyPgliteDump(dump: AgentBackupPgliteDump): Buffer {
@@ -1936,16 +1946,150 @@ function assertManifest(snapshot: AgentBackupStateData): AgentBackupManifest {
   return manifest;
 }
 
-export async function restoreAgentSnapshot(
+function invalidRestorePayload(cause: unknown): ElizaError {
+  return new ElizaError("Invalid backup snapshot payload", {
+    cause,
+    code: "AGENT_SNAPSHOT_REQUEST_INVALID",
+    severity: "fatal",
+  });
+}
+
+async function assertAgentSnapshotRestorable(
   runtime: IAgentRuntime | AgentRuntime,
-  snapshot: AgentBackupStateData,
-): Promise<{ restored: true; requiresRestart: true }> {
+  input: unknown,
+): Promise<AgentBackupStateData> {
+  if (
+    input === null ||
+    typeof input !== "object" ||
+    Array.isArray(input) ||
+    !Array.isArray((input as { memories?: unknown }).memories) ||
+    (input as { config?: unknown }).config === null ||
+    typeof (input as { config?: unknown }).config !== "object" ||
+    Array.isArray((input as { config?: unknown }).config) ||
+    (input as { workspaceFiles?: unknown }).workspaceFiles === null ||
+    typeof (input as { workspaceFiles?: unknown }).workspaceFiles !==
+      "object" ||
+    Array.isArray((input as { workspaceFiles?: unknown }).workspaceFiles) ||
+    (input as { manifest?: unknown }).manifest === null ||
+    typeof (input as { manifest?: unknown }).manifest !== "object" ||
+    Array.isArray((input as { manifest?: unknown }).manifest)
+  ) {
+    throw new Error("Backup snapshot has an invalid outer shape");
+  }
+  const snapshot = input as AgentBackupStateData;
   const manifest = assertManifest(snapshot);
   if (manifest.agentId !== runtime.agentId) {
     throw new Error(
       `Backup belongs to agent ${manifest.agentId}, not ${runtime.agentId}`,
     );
   }
+
+  verifyFileSet(manifest.components.media);
+  verifyFileSet(manifest.components.vault);
+  verifyFileSet(manifest.components.stateFiles);
+  const character = manifest.components.character;
+  if (character.configFile) verifyFileEntry(character.configFile);
+  const characterSha256 = sha256Json({
+    runtimeCharacter: character.runtimeCharacter,
+    configFile: character.configFile,
+  });
+  if (characterSha256 !== character.sha256) {
+    throw new Error("Backup character component hash is inconsistent");
+  }
+
+  const database = manifest.components.database;
+  const postgresUrl = hasPostgresUrl(runtime);
+  if (database.kind === "external-postgres-reference") {
+    if (!postgresUrl) {
+      throw new Error(
+        "Backup references external Postgres but POSTGRES_URL is not configured",
+      );
+    }
+    verifyExternalPostgresReference(postgresUrl, runtime.agentId, database);
+  } else if (database.kind === "postgres-rows") {
+    if (!postgresUrl || !database.postgres) {
+      throw new Error(
+        "Backup Postgres rows require POSTGRES_URL and a database payload",
+      );
+    }
+    const expected = withPostgresHash({
+      ...database.postgres,
+      sha256: "",
+    }).sha256;
+    if (
+      expected !== database.postgres.sha256 ||
+      database.sha256 !== database.postgres.sha256
+    ) {
+      throw new Error("Backup Postgres component hash is inconsistent");
+    }
+  } else if (database.kind === "pglite-dump") {
+    if (postgresUrl) {
+      throw new Error(
+        "PGlite backup cannot be restored into an external Postgres target",
+      );
+    }
+    if (!database.pgliteDump) {
+      throw new Error("Backup database component is missing PGlite dump");
+    }
+    verifyPgliteDump(database.pgliteDump);
+    if (database.sha256 !== database.pgliteDump.sha256) {
+      throw new Error("Backup PGlite dump component hash is inconsistent");
+    }
+  } else if (database.kind === "pglite-files") {
+    if (postgresUrl) {
+      throw new Error(
+        "PGlite backup cannot be restored into an external Postgres target",
+      );
+    }
+    if (!database.pglite) {
+      throw new Error("Backup database component is missing PGlite files");
+    }
+    verifyFileSet(database.pglite);
+    if (database.sha256 !== database.pglite.sha256) {
+      throw new Error("Backup PGlite file component hash is inconsistent");
+    }
+  } else {
+    throw new Error(
+      database.reason ?? "Backup did not capture a database component",
+    );
+  }
+
+  if (!postgresUrl) {
+    const pgliteDir = await resolvePgliteDir(runtime);
+    if (pgliteDir === ":memory:" || pgliteDir.includes("://")) {
+      throw new Error(
+        `Cannot restore PGlite backup into non-filesystem data dir ${pgliteDir}`,
+      );
+    }
+  }
+  return snapshot;
+}
+
+export async function validateAgentSnapshotForRestore(
+  runtime: IAgentRuntime | AgentRuntime,
+  input: unknown,
+): Promise<AgentBackupStateData> {
+  try {
+    return await assertAgentSnapshotRestorable(runtime, input);
+  } catch (cause) {
+    // error-policy:J3 Legacy backup bytes are untrusted; validation returns a
+    // typed invalid-request error before restore can stop the live runtime.
+    if (
+      cause instanceof ElizaError &&
+      cause.code === "AGENT_SNAPSHOT_REQUEST_INVALID"
+    ) {
+      throw cause;
+    }
+    throw invalidRestorePayload(cause);
+  }
+}
+
+export async function restoreAgentSnapshot(
+  runtime: IAgentRuntime | AgentRuntime,
+  snapshot: AgentBackupStateData,
+): Promise<{ restored: true; requiresRestart: true }> {
+  const manifest = (await assertAgentSnapshotRestorable(runtime, snapshot))
+    .manifest;
 
   const stateDir = resolveStateDir();
   const database = manifest.components.database;

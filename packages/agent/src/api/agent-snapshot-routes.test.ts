@@ -7,8 +7,8 @@ import fs from "node:fs/promises";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
-import type { AgentRuntime } from "@elizaos/core";
-import { afterEach, describe, expect, test } from "vitest";
+import { type AgentRuntime, getSnapshotCaptureBarrier } from "@elizaos/core";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import type { AgentSnapshotUpgradeBinding } from "../services/agent-backup.ts";
 import {
   AGENT_SNAPSHOT_STREAM_CONTENT_TYPE,
@@ -106,10 +106,11 @@ function enableSourceAttestation(): void {
 
 function runtimeStub(): AgentRuntime {
   return {
-    adapter: {},
+    adapter: { close: async () => undefined },
     agentId: AGENT_ID,
     character: { name: "Route Test Agent" },
     getSetting: (key: string) => (key === "POSTGRES_URL" ? POSTGRES_URL : null),
+    stop: async () => undefined,
   } as unknown as AgentRuntime;
 }
 
@@ -243,9 +244,9 @@ describe.sequential("agent snapshot HTTP routes", () => {
     delete process.env.POSTGRES_URL;
     delete process.env.DATABASE_URL;
     enableSourceAttestation();
-    const baseUrl = await startServer(runtimeStub());
+    const sourceUrl = await startServer(runtimeStub());
 
-    const snapshotResponse = await fetch(`${baseUrl}/api/snapshot`, {
+    const snapshotResponse = await fetch(`${sourceUrl}/api/snapshot`, {
       body: JSON.stringify({
         binding: UPGRADE_BINDING,
         purpose: "pre-upgrade",
@@ -283,8 +284,9 @@ describe.sequential("agent snapshot HTTP routes", () => {
 
     process.env.ELIZA_STATE_DIR = target;
     enableCandidateRestore();
+    const targetUrl = await startServer(runtimeStub());
     const restoreResponse = await fetch(
-      `${baseUrl}/api/restore?transfer=chunked-v1`,
+      `${targetUrl}/api/restore?transfer=chunked-v1`,
       {
         body,
         headers: candidateRestoreHeaders(),
@@ -304,7 +306,7 @@ describe.sequential("agent snapshot HTTP routes", () => {
       transfer: "chunked-v1",
     });
     const replayResponse = await postSlowBody(
-      `${baseUrl}/api/restore?transfer=chunked-v1`,
+      `${targetUrl}/api/restore?transfer=chunked-v1`,
       candidateRestoreHeaders(),
       body,
     );
@@ -316,7 +318,7 @@ describe.sequential("agent snapshot HTTP routes", () => {
       receiptStatus: "committed",
     });
     const truncatedReplay = await fetch(
-      `${baseUrl}/api/restore?transfer=chunked-v1`,
+      `${targetUrl}/api/restore?transfer=chunked-v1`,
       {
         body: body.subarray(0, -1),
         headers: candidateRestoreHeaders(),
@@ -338,21 +340,25 @@ describe.sequential("agent snapshot HTTP routes", () => {
       '{"captured":"different"}\n',
     );
     process.env.ELIZA_STATE_DIR = divergentSource;
-    const divergentSnapshot = await fetch(`${baseUrl}/api/snapshot`, {
-      body: JSON.stringify({
-        binding: UPGRADE_BINDING,
-        purpose: "pre-upgrade",
-        schemaVersion: 2,
-        transfer: "chunked-v1",
-      }),
-      headers: { "content-type": "application/json" },
-      method: "POST",
-    });
+    const divergentSourceUrl = await startServer(runtimeStub());
+    const divergentSnapshot = await fetch(
+      `${divergentSourceUrl}/api/snapshot`,
+      {
+        body: JSON.stringify({
+          binding: UPGRADE_BINDING,
+          purpose: "pre-upgrade",
+          schemaVersion: 2,
+          transfer: "chunked-v1",
+        }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      },
+    );
     expect(divergentSnapshot.status).toBe(200);
     const divergentBody = Buffer.from(await divergentSnapshot.arrayBuffer());
     process.env.ELIZA_STATE_DIR = target;
     const divergentReplay = await fetch(
-      `${baseUrl}/api/restore?transfer=chunked-v1`,
+      `${targetUrl}/api/restore?transfer=chunked-v1`,
       {
         body: divergentBody,
         headers: candidateRestoreHeaders(),
@@ -390,6 +396,129 @@ describe.sequential("agent snapshot HTTP routes", () => {
     await expect(response.json()).resolves.toMatchObject({
       error: expect.stringContaining("does not match this source placement"),
     });
+  });
+
+  test("rejects a malformed legacy manifest before stopping the runtime", async () => {
+    const target = await temporaryRoot("eliza-route-legacy-invalid-");
+    process.env.ELIZA_STATE_DIR = target;
+    delete process.env.POSTGRES_URL;
+    delete process.env.DATABASE_URL;
+    const runtime = runtimeStub();
+    const stop = vi.fn(async () => undefined);
+    const close = vi.fn(async () => undefined);
+    runtime.stop = stop;
+    runtime.adapter = { close } as never;
+    const baseUrl = await startServer(runtime);
+
+    const response = await fetch(`${baseUrl}/api/restore`, {
+      body: JSON.stringify({
+        memories: [],
+        config: {},
+        workspaceFiles: {},
+        manifest: {
+          format: "elizaos.agent-backup",
+          schemaVersion: 1,
+          createdAt: new Date().toISOString(),
+          agentId: AGENT_ID,
+          components: {
+            database: { kind: "none", reason: "invalid", sha256: "bad" },
+            media: {
+              kind: "file-set",
+              rootLabel: "state-dir",
+              files: [],
+              sha256: "bad",
+            },
+            vault: {
+              kind: "file-set",
+              rootLabel: "state-dir",
+              files: [],
+              sha256: "bad",
+            },
+            character: { runtimeCharacter: null, sha256: "bad" },
+            stateFiles: {
+              kind: "file-set",
+              rootLabel: "state-dir",
+              files: [],
+              sha256: "bad",
+            },
+          },
+          integrity: {
+            componentHashes: {
+              database: "bad",
+              media: "bad",
+              vault: "bad",
+              character: "bad",
+              stateFiles: "bad",
+            },
+          },
+        },
+      }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    });
+
+    expect(response.status).toBe(400);
+    expect(stop).not.toHaveBeenCalled();
+    expect(close).not.toHaveBeenCalled();
+    expect(getSnapshotCaptureBarrier(runtime).status().phase).toBe("accepting");
+  });
+
+  test("returns 400 for a PGlite stream targeting external Postgres before stopping", async () => {
+    const source = await temporaryRoot("eliza-route-pglite-source-");
+    const target = await temporaryRoot("eliza-route-pglite-target-");
+    const pgliteDir = path.join(source, "pglite");
+    await fs.mkdir(path.join(pgliteDir, "base"), { recursive: true });
+    await fs.writeFile(path.join(pgliteDir, "base", "1"), "pglite-page");
+    process.env.ELIZA_STATE_DIR = source;
+    process.env.PGLITE_DATA_DIR = pgliteDir;
+    delete process.env.POSTGRES_URL;
+    delete process.env.DATABASE_URL;
+    enableSourceAttestation();
+    const sourceRuntime = runtimeStub();
+    sourceRuntime.getSetting = () => null;
+    sourceRuntime.adapter = {
+      checkpointAndCloseForSnapshot: async () => undefined,
+    } as never;
+    const sourceUrl = await startServer(sourceRuntime);
+    const snapshotResponse = await fetch(`${sourceUrl}/api/snapshot`, {
+      body: JSON.stringify({
+        binding: UPGRADE_BINDING,
+        purpose: "pre-upgrade",
+        schemaVersion: 2,
+        transfer: "chunked-v1",
+      }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    });
+    expect(snapshotResponse.status).toBe(200);
+    const snapshotBody = Buffer.from(await snapshotResponse.arrayBuffer());
+
+    process.env.ELIZA_STATE_DIR = target;
+    enableCandidateRestore();
+    const targetRuntime = runtimeStub();
+    const stop = vi.fn(async () => undefined);
+    const close = vi.fn(async () => undefined);
+    targetRuntime.stop = stop;
+    targetRuntime.adapter = { close } as never;
+    const targetUrl = await startServer(targetRuntime);
+    const restoreResponse = await fetch(
+      `${targetUrl}/api/restore?transfer=chunked-v1`,
+      {
+        body: snapshotBody,
+        headers: candidateRestoreHeaders(),
+        method: "POST",
+      },
+    );
+
+    expect(restoreResponse.status).toBe(400);
+    expect(await restoreResponse.text()).toContain(
+      "PGlite snapshot cannot be restored",
+    );
+    expect(stop).not.toHaveBeenCalled();
+    expect(close).not.toHaveBeenCalled();
+    expect(getSnapshotCaptureBarrier(targetRuntime).status().phase).toBe(
+      "accepting",
+    );
   });
 
   test("rejects transfer ambiguity and corrupt input without applying state", async () => {
@@ -446,5 +575,27 @@ describe.sequential("agent snapshot HTTP routes", () => {
       "backups",
       "sentinel.txt",
     ]);
+  });
+
+  test("rejects legacy capture after the runtime has committed standby", async () => {
+    const root = await temporaryRoot("eliza-route-standby-");
+    process.env.ELIZA_STATE_DIR = root;
+    const runtime = runtimeStub();
+    const barrier = getSnapshotCaptureBarrier(runtime);
+    barrier.beginDraining();
+    await barrier.waitForDrain();
+    barrier.beginCapturing();
+    barrier.enterStandby();
+    const baseUrl = await startServer(runtime);
+
+    const response = await fetch(`${baseUrl}/api/snapshot`, {
+      body: "{}",
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    });
+    expect(response.status).toBe(503);
+    expect(await response.text()).toContain(
+      "unavailable while snapshot capture is standby",
+    );
   });
 });
