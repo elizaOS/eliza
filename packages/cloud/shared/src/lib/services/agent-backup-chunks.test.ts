@@ -3,7 +3,7 @@
  * and the real test KMS, including cleanup and adversarial restore failures.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { resetKmsClientForTests } from "../../db/crypto/kms-client";
+import { getKmsClient, resetKmsClientForTests, setKmsClient } from "../../db/crypto/kms-client";
 import { type RuntimeR2Bucket, setRuntimeR2Bucket } from "../storage/r2-runtime-binding";
 import { resetObjectStorageClientForTests } from "../storage/s3-compatible-client";
 import {
@@ -199,6 +199,65 @@ describe("encrypted agent backup chunks", () => {
     const wrongSize = structuredClone(descriptor);
     wrongSize.totalPlaintextBytes += 1;
     await expect(collect(wrongSize)).rejects.toThrow("invalid at index 0");
+  });
+
+  test("aborts an object-store read that never settles", async () => {
+    const objects = new Map<string, Uint8Array>();
+    const bucket = memoryBucket(objects);
+    setRuntimeR2Bucket(bucket);
+    const descriptor = await stageEncryptedAgentBackupChunks({
+      identity,
+      source: source("never-settling-object-read"),
+      chunkBytes: 32,
+      maxTotalBytes: 64,
+    });
+    setRuntimeR2Bucket({
+      ...bucket,
+      get: () => new Promise(() => undefined),
+    });
+    const controller = new AbortController();
+    const iterator = readEncryptedAgentBackupChunks({
+      descriptor,
+      identity,
+      signal: controller.signal,
+    });
+    const pending = iterator.next();
+    controller.abort(new Error("object read watchdog fired"));
+
+    await expect(pending).rejects.toThrow("object read watchdog fired");
+  });
+
+  test("aborts a KMS decrypt that never settles", async () => {
+    const objects = new Map<string, Uint8Array>();
+    setRuntimeR2Bucket(memoryBucket(objects));
+    const descriptor = await stageEncryptedAgentBackupChunks({
+      identity,
+      source: source("never-settling-kms-read"),
+      chunkBytes: 32,
+      maxTotalBytes: 64,
+    });
+    const kms = getKmsClient();
+    setKmsClient(
+      new Proxy(kms, {
+        get(target, property) {
+          if (property === "decrypt") {
+            return () => new Promise<Uint8Array>(() => undefined);
+          }
+          const value = Reflect.get(target, property);
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      }),
+    );
+    const controller = new AbortController();
+    const iterator = readEncryptedAgentBackupChunks({
+      descriptor,
+      identity,
+      signal: controller.signal,
+    });
+    const pending = iterator.next();
+    controller.abort(new Error("KMS watchdog fired"));
+
+    await expect(pending).rejects.toThrow("KMS watchdog fired");
   });
 
   test("removes staged objects when a later upload or byte budget fails", async () => {

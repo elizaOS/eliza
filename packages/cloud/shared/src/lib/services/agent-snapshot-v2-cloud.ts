@@ -122,30 +122,104 @@ function createRestoreWatchdog(params: { absoluteMs: number; idleMs: number }): 
   };
 }
 
+function abortReason(signal: AbortSignal): Error {
+  return signal.reason instanceof Error ? signal.reason : new Error("Snapshot restore was aborted");
+}
+
+function raceWithAbort<T>(operation: PromiseLike<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) return Promise.reject(abortReason(signal));
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = (): void => reject(abortReason(signal));
+    signal.addEventListener("abort", onAbort, { once: true });
+    Promise.resolve(operation).then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (error: unknown) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      },
+    );
+  });
+}
+
 async function* observeRestoreActivity(
   source: AsyncIterable<Uint8Array>,
   markActivity: () => void,
+  signal: AbortSignal,
 ): AsyncGenerator<Uint8Array> {
-  for await (const chunk of source) {
-    markActivity();
-    yield chunk;
+  const iterator = source[Symbol.asyncIterator]();
+  let reachedEnd = false;
+  try {
+    while (true) {
+      const next = await raceWithAbort(iterator.next(), signal);
+      if (next.done) {
+        reachedEnd = true;
+        return;
+      }
+      markActivity();
+      yield next.value;
+    }
+  } finally {
+    if (!reachedEnd && iterator.return) {
+      const cleanup = Promise.resolve(iterator.return());
+      if (signal.aborted) {
+        void cleanup.catch((error: unknown) => {
+          logger.warn("[AgentSnapshotV2Cloud] Stored stream cancellation failed", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        });
+      } else {
+        await cleanup;
+      }
+    }
   }
 }
 
-function responseByteStream(response: Response): AsyncIterable<Uint8Array> {
+interface CancellableResponseByteStream {
+  cancel(reason: unknown): Promise<void>;
+  source: AsyncIterable<Uint8Array>;
+}
+
+function responseByteStream(response: Response): CancellableResponseByteStream {
   const body = response.body;
   if (!body) {
     throw new Error("Agent snapshot response has no body");
   }
-  return {
+  const reader = body.getReader();
+  let ended = false;
+  let iteratorStarted = false;
+  let lockReleased = false;
+  const releaseLock = (): void => {
+    if (lockReleased) return;
+    lockReleased = true;
+    reader.releaseLock();
+  };
+  const cancel = async (reason: unknown): Promise<void> => {
+    if (ended) {
+      releaseLock();
+      return;
+    }
+    ended = true;
+    try {
+      await reader.cancel(reason);
+    } finally {
+      releaseLock();
+    }
+  };
+  const source: AsyncIterable<Uint8Array> = {
     async *[Symbol.asyncIterator]() {
-      const reader = body.getReader();
-      let reachedEnd = false;
+      if (iteratorStarted) {
+        throw new Error("Agent snapshot response body may only be consumed once");
+      }
+      iteratorStarted = true;
       try {
         while (true) {
           const next = await reader.read();
           if (next.done) {
-            reachedEnd = true;
+            ended = true;
+            releaseLock();
             return;
           }
           if (!(next.value instanceof Uint8Array)) {
@@ -154,9 +228,9 @@ function responseByteStream(response: Response): AsyncIterable<Uint8Array> {
           yield next.value;
         }
       } finally {
-        if (!reachedEnd) {
+        if (!ended) {
           try {
-            await reader.cancel("Snapshot stream consumer stopped before EOF");
+            await cancel("Snapshot stream consumer stopped before EOF");
           } catch (error) {
             // error-policy:J6 best-effort teardown — validation/storage already
             // surfaced the primary failure; cancellation releases transport.
@@ -165,17 +239,20 @@ function responseByteStream(response: Response): AsyncIterable<Uint8Array> {
             });
           }
         }
-        reader.releaseLock();
       }
     },
   };
+  return { cancel, source };
 }
 
-function iterableBody(source: AsyncIterable<Uint8Array>): ReadableStream<Uint8Array> {
+function iterableBody(
+  source: AsyncIterable<Uint8Array>,
+  signal: AbortSignal,
+): ReadableStream<Uint8Array> {
   const iterator = source[Symbol.asyncIterator]();
   return new ReadableStream<Uint8Array>({
     async pull(controller) {
-      const next = await iterator.next();
+      const next = await raceWithAbort(iterator.next(), signal);
       if (next.done) {
         controller.close();
         return;
@@ -183,12 +260,28 @@ function iterableBody(source: AsyncIterable<Uint8Array>): ReadableStream<Uint8Ar
       controller.enqueue(next.value);
     },
     async cancel(reason) {
-      await iterator.return?.(reason);
+      const cleanup = iterator.return?.(reason);
+      if (!cleanup) return;
+      if (signal.aborted) {
+        // error-policy:J6 the watchdog already surfaced the transfer failure;
+        // iterator cleanup must not keep the request body alive indefinitely.
+        void Promise.resolve(cleanup).catch((error: unknown) => {
+          logger.warn("[AgentSnapshotV2Cloud] Request body cancellation failed", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        });
+        return;
+      }
+      await cleanup;
     },
   });
 }
 
-async function readBodySnippet(response: Response, maxBytes: number): Promise<string> {
+async function readBodySnippet(
+  response: Response,
+  maxBytes: number,
+  signal?: AbortSignal,
+): Promise<string> {
   const body = response.body;
   if (!body) return "";
   const reader = body.getReader();
@@ -196,7 +289,7 @@ async function readBodySnippet(response: Response, maxBytes: number): Promise<st
   let total = 0;
   try {
     while (total <= maxBytes) {
-      const next = await reader.read();
+      const next = signal ? await raceWithAbort(reader.read(), signal) : await reader.read();
       if (next.done) break;
       const remaining = maxBytes + 1 - total;
       const chunk = next.value.subarray(0, remaining);
@@ -208,7 +301,11 @@ async function readBodySnippet(response: Response, maxBytes: number): Promise<st
     }
   } finally {
     try {
-      await reader.cancel();
+      if (signal) {
+        await raceWithAbort(reader.cancel(), signal);
+      } else {
+        await reader.cancel();
+      }
     } catch (error) {
       // error-policy:J6 best-effort teardown — the bounded response body has
       // already been consumed or rejected, so cancellation only frees transport.
@@ -260,36 +357,49 @@ export async function captureAgentSnapshotV2(params: {
     contentType,
     expectedAgentId: params.agentId,
   });
+  const responseStream = responseByteStream(params.response);
   const observedSource = observeAgentSnapshotV2Stream({
-    source: responseByteStream(params.response),
+    source: responseStream.source,
     validator: sourceValidator,
   });
-  const backup = await dependencies.storage.create({
-    identity: {
-      organizationId: params.organizationId,
-      sandboxRecordId: params.sandboxRecordId,
-      backupId: params.backupId,
-      backupSchemaVersion: 2,
-    },
-    snapshotType: params.snapshotType ?? "pre-upgrade",
-    source: observedSource,
-    maxTotalBytes: AGENT_SNAPSHOT_V2_MAX_WIRE_BYTES,
-    verify: async (storedSource) => {
-      const stored = await validateAgentSnapshotV2Stream({
-        source: storedSource,
-        options: {
-          contentType: AGENT_SNAPSHOT_V2_CONTENT_TYPE,
-          expectedAgentId: params.agentId,
-        },
+  try {
+    const backup = await dependencies.storage.create({
+      identity: {
+        organizationId: params.organizationId,
+        sandboxRecordId: params.sandboxRecordId,
+        backupId: params.backupId,
+        backupSchemaVersion: 2,
+      },
+      snapshotType: params.snapshotType ?? "pre-upgrade",
+      source: observedSource,
+      maxTotalBytes: AGENT_SNAPSHOT_V2_MAX_WIRE_BYTES,
+      verify: async (storedSource) => {
+        const stored = await validateAgentSnapshotV2Stream({
+          source: storedSource,
+          options: {
+            contentType: AGENT_SNAPSHOT_V2_CONTENT_TYPE,
+            expectedAgentId: params.agentId,
+          },
+        });
+        const source = sourceValidator.finish();
+        if (!sameCommittedStream(source, stored)) {
+          throw new Error("Stored snapshot v2 stream differs from its source");
+        }
+        return { contentHash: stored.trailer.aggregateSha256 };
+      },
+    });
+    return { backup, summary: sourceValidator.finish() };
+  } catch (error) {
+    try {
+      await responseStream.cancel(error);
+    } catch (cancelError) {
+      // error-policy:J6 the storage/validation failure remains primary.
+      logger.warn("[AgentSnapshotV2Cloud] Snapshot body cancellation failed", {
+        error: cancelError instanceof Error ? cancelError.message : String(cancelError),
       });
-      const source = sourceValidator.finish();
-      if (!sameCommittedStream(source, stored)) {
-        throw new Error("Stored snapshot v2 stream differs from its source");
-      }
-      return { contentHash: stored.trailer.aggregateSha256 };
-    },
-  });
-  return { backup, summary: sourceValidator.finish() };
+    }
+    throw error;
+  }
 }
 
 interface AgentSnapshotV2RestoreResult {
@@ -374,40 +484,47 @@ export async function restoreAgentSnapshotV2(params: {
     absoluteMs: agentSnapshotV2RestoreTimeoutMs(storedWireBytes, timeoutPolicy),
     idleMs: timeoutPolicy.idleMs,
   });
-  const validator = new AgentSnapshotV2StreamValidator({
-    contentType: AGENT_SNAPSHOT_V2_CONTENT_TYPE,
-    expectedAgentId: params.agentId,
-  });
-  const source = observeAgentSnapshotV2Stream({
-    source: observeRestoreActivity(
-      await dependencies.readStored({
+  try {
+    const validator = new AgentSnapshotV2StreamValidator({
+      contentType: AGENT_SNAPSHOT_V2_CONTENT_TYPE,
+      expectedAgentId: params.agentId,
+    });
+    const storedSource = await raceWithAbort(
+      dependencies.readStored({
         organizationId: params.organizationId,
         row: params.backup,
+        signal: watchdog.signal,
       }),
-      watchdog.markActivity,
-    ),
-    validator,
-  });
-  const headers = new Headers(params.headers);
-  headers.set("Content-Type", AGENT_SNAPSHOT_V2_CONTENT_TYPE);
-  const requestInit: RequestInit & { duplex: "half" } = {
-    method: "POST",
-    headers,
-    body: iterableBody(source),
-    duplex: "half",
-    signal: watchdog.signal,
-  };
-  try {
-    const response = await dependencies.fetch(params.endpoint, requestInit);
+      watchdog.signal,
+    );
+    const source = observeAgentSnapshotV2Stream({
+      source: observeRestoreActivity(storedSource, watchdog.markActivity, watchdog.signal),
+      validator,
+    });
+    const headers = new Headers(params.headers);
+    headers.set("Content-Type", AGENT_SNAPSHOT_V2_CONTENT_TYPE);
+    const requestInit: RequestInit & { duplex: "half" } = {
+      method: "POST",
+      headers,
+      body: iterableBody(source, watchdog.signal),
+      duplex: "half",
+      signal: watchdog.signal,
+    };
+    const response = await raceWithAbort(
+      dependencies.fetch(params.endpoint, requestInit),
+      watchdog.signal,
+    );
     if (!response.ok) {
-      const detail = await readBodySnippet(response, MAX_ERROR_RESPONSE_BYTES);
+      const detail = await readBodySnippet(response, MAX_ERROR_RESPONSE_BYTES, watchdog.signal);
       throw new Error(`Snapshot v2 restore failed: HTTP ${response.status} ${detail}`.trimEnd());
     }
     const summary = validator.finish();
     if (params.backup.content_hash !== summary.trailer.aggregateSha256) {
       throw new Error(`Backup ${params.backup.id} content hash does not match its stored stream`);
     }
-    const result = parseRestoreResult(await readBodySnippet(response, MAX_SUCCESS_RESPONSE_BYTES));
+    const result = parseRestoreResult(
+      await readBodySnippet(response, MAX_SUCCESS_RESPONSE_BYTES, watchdog.signal),
+    );
     if (
       result.aggregateSha256 !== summary.trailer.aggregateSha256 ||
       result.fileCount !== summary.trailer.fileCount ||

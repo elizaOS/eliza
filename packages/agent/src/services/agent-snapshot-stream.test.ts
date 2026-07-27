@@ -7,7 +7,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   AGENT_BACKUP_V1_MAX_SOURCE_BYTES,
   createAgentSnapshot,
@@ -19,6 +19,8 @@ import {
 } from "./agent-snapshot-stream.ts";
 import {
   AGENT_SNAPSHOT_STREAM_CHUNK_BYTES,
+  AGENT_SNAPSHOT_STREAM_MAX_DESCRIPTOR_PATH_BYTES,
+  AGENT_SNAPSHOT_STREAM_MAX_FILES,
   type AgentSnapshotStreamDescriptor,
   encodeSnapshotStreamFrame,
   parseCanonicalSnapshotStreamFrame,
@@ -66,6 +68,27 @@ function runtimeStub(
     agentId: AGENT_ID,
     character: { name: "Stream Test Agent" },
     getSetting: (key: string) => (key === "POSTGRES_URL" ? postgresUrl : null),
+  } as unknown as AgentRuntime;
+}
+
+function pgliteRuntimeStub(
+  pgliteDir: string,
+  postgresUrl: string | null = null,
+): AgentRuntime {
+  return {
+    adapter: {
+      close: async () => undefined,
+      getRawConnection: () => ({
+        runExclusive: async <T>(operation: () => Promise<T>) => operation(),
+      }),
+    },
+    agentId: AGENT_ID,
+    character: { name: "Stream PGlite Test Agent" },
+    getSetting: (key: string) => {
+      if (key === "PGLITE_DATA_DIR") return pgliteDir;
+      if (key === "POSTGRES_URL") return postgresUrl;
+      return null;
+    },
   } as unknown as AgentRuntime;
 }
 
@@ -211,6 +234,83 @@ describe.sequential("agent snapshot chunked-v1 stream", () => {
     ).rejects.toMatchObject({ code: "ENOENT" });
   });
 
+  test("does not acknowledge restore before staged files and destination directories are durable", async () => {
+    const source = await temporaryRoot("eliza-stream-durable-source-");
+    const target = await temporaryRoot("eliza-stream-durable-target-");
+    await writeFixture(source);
+    process.env.ELIZA_STATE_DIR = source;
+    const frames = await collectStream(runtimeStub());
+    process.env.ELIZA_STATE_DIR = target;
+
+    const originalOpen = fs.open.bind(fs);
+    const syncedTargets: string[] = [];
+    let releaseDestinationSync: (() => void) | undefined;
+    const destinationSyncGate = new Promise<void>((resolve) => {
+      releaseDestinationSync = resolve;
+    });
+    let reachedDestinationSync: (() => void) | undefined;
+    const destinationSyncReached = new Promise<void>((resolve) => {
+      reachedDestinationSync = resolve;
+    });
+    let destinationSyncBlocked = false;
+    const openSpy = vi.spyOn(fs, "open").mockImplementation(async (...args) => {
+      const handle = await originalOpen(...args);
+      const openedPath = String(args[0]);
+      return new Proxy(handle, {
+        get(targetHandle, property) {
+          if (property === "sync") {
+            return async () => {
+              syncedTargets.push(openedPath);
+              if (
+                !destinationSyncBlocked &&
+                openedPath.startsWith(target) &&
+                openedPath.includes(".snapshot-")
+              ) {
+                destinationSyncBlocked = true;
+                reachedDestinationSync?.();
+                await destinationSyncGate;
+              }
+              await targetHandle.sync();
+            };
+          }
+          const value = Reflect.get(targetHandle, property, targetHandle);
+          return typeof value === "function" ? value.bind(targetHandle) : value;
+        },
+      });
+    });
+
+    try {
+      let settled = false;
+      const restore = restoreAgentSnapshotStream(
+        runtimeStub(),
+        asInput(frames),
+      ).finally(() => {
+        settled = true;
+      });
+      await destinationSyncReached;
+      await Promise.resolve();
+      expect(settled).toBe(false);
+      releaseDestinationSync?.();
+      await expect(restore).resolves.toMatchObject({ success: true });
+    } finally {
+      releaseDestinationSync?.();
+      openSpy.mockRestore();
+    }
+
+    expect(
+      syncedTargets.some((targetPath) =>
+        targetPath.includes("eliza-agent-snapshot-restore-"),
+      ),
+    ).toBe(true);
+    expect(
+      syncedTargets.some(
+        (targetPath) =>
+          targetPath.startsWith(target) && targetPath.includes(".snapshot-"),
+      ),
+    ).toBe(true);
+    expect(syncedTargets).toContain(target);
+  });
+
   test("external Postgres capture contains identity only and reads zero SQL bytes", async () => {
     const source = await temporaryRoot("eliza-stream-postgres-");
     await writeFixture(source);
@@ -238,6 +338,131 @@ describe.sequential("agent snapshot chunked-v1 stream", () => {
         (file) => file.component === "database",
       ),
     ).toBe(false);
+  });
+
+  test("gives explicit PGlite configuration precedence over inherited DATABASE_URL", async () => {
+    const source = await temporaryRoot("eliza-stream-database-precedence-");
+    const runtimePglite = path.join(source, "runtime-pglite");
+    const environmentPglite = path.join(source, "environment-pglite");
+    await fs.mkdir(path.join(source, "media"), { recursive: true });
+    await fs.mkdir(runtimePglite, { recursive: true });
+    await fs.mkdir(environmentPglite, { recursive: true });
+    await fs.writeFile(path.join(source, "eliza.json"), "{}\n");
+    await fs.writeFile(path.join(runtimePglite, "runtime.bin"), "runtime");
+    await fs.writeFile(
+      path.join(environmentPglite, "environment.bin"),
+      "environment",
+    );
+    process.env.ELIZA_STATE_DIR = source;
+    process.env.PGLITE_DATA_DIR = environmentPglite;
+    process.env.DATABASE_URL = POSTGRES_URL;
+    delete process.env.POSTGRES_URL;
+
+    const pgliteFrames = await collectStream(pgliteRuntimeStub(runtimePglite));
+    const pgliteDescriptor = decodeFrame(
+      pgliteFrames[0] as Buffer,
+    ) as unknown as AgentSnapshotStreamDescriptor;
+    expect(pgliteDescriptor.components.database.kind).toBe("pglite-files");
+    expect(
+      pgliteDescriptor.files
+        .filter((file) => file.component === "database")
+        .map((file) => file.path),
+    ).toEqual(["runtime.bin"]);
+
+    process.env.POSTGRES_URL = POSTGRES_URL;
+    const environmentPostgresDescriptor = decodeFrame(
+      (await collectStream(pgliteRuntimeStub(runtimePglite)))[0] as Buffer,
+    ) as unknown as AgentSnapshotStreamDescriptor;
+    expect(environmentPostgresDescriptor.components.database.kind).toBe(
+      "external-postgres-reference",
+    );
+
+    delete process.env.POSTGRES_URL;
+    const runtimePostgresDescriptor = decodeFrame(
+      (
+        await collectStream(pgliteRuntimeStub(runtimePglite, POSTGRES_URL))
+      )[0] as Buffer,
+    ) as unknown as AgentSnapshotStreamDescriptor;
+    expect(runtimePostgresDescriptor.components.database.kind).toBe(
+      "external-postgres-reference",
+    );
+
+    delete process.env.PGLITE_DATA_DIR;
+    const inheritedDatabaseDescriptor = decodeFrame(
+      (await collectStream(runtimeStub("")))[0] as Buffer,
+    ) as unknown as AgentSnapshotStreamDescriptor;
+    expect(inheritedDatabaseDescriptor.components.database.kind).toBe(
+      "external-postgres-reference",
+    );
+  });
+
+  test("stops directory traversal at the entry and path metadata budgets", async () => {
+    const source = await temporaryRoot("eliza-stream-traversal-budget-");
+    const mediaRoot = path.join(source, "media");
+    await fs.mkdir(mediaRoot, { recursive: true });
+    await fs.writeFile(path.join(source, "eliza.json"), "{}\n");
+    process.env.ELIZA_STATE_DIR = source;
+    const originalOpendir = fs.opendir.bind(fs);
+
+    async function expectTraversalFailure(params: {
+      entryCount: number;
+      nameAt(index: number): string;
+      maximumYielded?: number;
+    }): Promise<number> {
+      let yielded = 0;
+      const spy = vi
+        .spyOn(fs, "opendir")
+        .mockImplementation(async (directory) => {
+          if (path.resolve(String(directory)) !== path.resolve(mediaRoot)) {
+            return originalOpendir(directory);
+          }
+          return {
+            async *[Symbol.asyncIterator]() {
+              for (let index = 0; index < params.entryCount; index += 1) {
+                yielded += 1;
+                yield {
+                  isDirectory: () => false,
+                  isFile: () => true,
+                  isSymbolicLink: () => false,
+                  name: params.nameAt(index),
+                };
+              }
+            },
+          } as Awaited<ReturnType<typeof fs.opendir>>;
+        });
+      try {
+        await expect(collectStream(runtimeStub())).rejects.toThrow(
+          "Snapshot traversal exceeds its metadata budget",
+        );
+      } finally {
+        spy.mockRestore();
+      }
+      if (params.maximumYielded !== undefined) {
+        expect(yielded).toBeLessThanOrEqual(params.maximumYielded);
+      }
+      return yielded;
+    }
+
+    expect(
+      await expectTraversalFailure({
+        entryCount: AGENT_SNAPSHOT_STREAM_MAX_FILES + 100,
+        maximumYielded: AGENT_SNAPSHOT_STREAM_MAX_FILES + 1,
+        nameAt: (index) => `entry-${index.toString().padStart(5, "0")}`,
+      }),
+    ).toBe(AGENT_SNAPSHOT_STREAM_MAX_FILES + 1);
+
+    const longNameBytes = 4_090;
+    const pathBudgetEntries =
+      Math.floor(
+        AGENT_SNAPSHOT_STREAM_MAX_DESCRIPTOR_PATH_BYTES / longNameBytes,
+      ) + 2;
+    const pathYielded = await expectTraversalFailure({
+      entryCount: pathBudgetEntries + 100,
+      maximumYielded: pathBudgetEntries,
+      nameAt: (index) =>
+        `${index.toString().padStart(4, "0")}-${"x".repeat(longNameBytes - 5)}`,
+    });
+    expect(pathYielded).toBeLessThan(AGENT_SNAPSHOT_STREAM_MAX_FILES);
   });
 
   test("rejects corrupt, truncated, reordered, and non-canonical streams before apply", async () => {
