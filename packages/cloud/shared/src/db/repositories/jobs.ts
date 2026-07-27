@@ -680,9 +680,9 @@ export class JobsRepository {
   }
 
   /**
-   * Claims one image-change job type while enforcing a shared running budget
-   * across every listed type. The transaction-scoped advisory lock makes the
-   * count and claim one decision even when cron invocations overlap.
+   * Claims one job type while enforcing a shared running budget across every
+   * listed type. The transaction-scoped advisory lock makes the count and
+   * claim one decision even when cron invocations overlap.
    */
   async claimPendingJobsWithinSharedRunningLimit(filters: {
     type: string;
@@ -867,12 +867,19 @@ export class JobsRepository {
     staleThresholdMs: number;
     maxAttempts?: number;
   }): Promise<number> {
-    const staleThreshold = new Date(Date.now() - filters.staleThresholdMs);
+    if (!Number.isSafeInteger(filters.staleThresholdMs) || filters.staleThresholdMs <= 0) {
+      throw new Error("Stale job threshold must be a positive safe integer");
+    }
+    // Claim timestamps and recovery age must share the database clock. Worker
+    // hosts may be skewed, and a fast host must never expire another worker's
+    // valid claim early.
+    const startedBeforeCondition = sql`${jobs.started_at} <
+      NOW() - (${filters.staleThresholdMs}::bigint * INTERVAL '1 millisecond')`;
     const conditions = [
       eq(jobs.type, filters.type),
       eq(jobs.status, "in_progress"),
       sql`${jobs.started_at} IS NOT NULL`,
-      lt(jobs.started_at, staleThreshold),
+      startedBeforeCondition,
     ];
     if (hasDetachedProvisioningExecution(filters.type)) {
       conditions.push(
@@ -910,7 +917,7 @@ export class JobsRepository {
       const recoveryFence = resumeCommittedCanary ? adminCanaryRecoveryFence(job) : sql`TRUE`;
       const updated = await this.recoverJobFromSnapshot({
         job,
-        startedBefore: staleThreshold,
+        startedBeforeCondition,
         isFailed,
         newAttempts,
         error: timeoutError,
@@ -971,7 +978,7 @@ export class JobsRepository {
       const recoveryFence = resumeCommittedCanary ? adminCanaryRecoveryFence(job) : sql`TRUE`;
       const updated = await this.recoverJobFromSnapshot({
         job,
-        startedBefore: filters.startedBefore,
+        startedBeforeCondition: lt(jobs.started_at, filters.startedBefore),
         isFailed,
         newAttempts,
         error,
@@ -987,7 +994,7 @@ export class JobsRepository {
 
   private async recoverJobFromSnapshot(params: {
     job: Job;
-    startedBefore: Date;
+    startedBeforeCondition: SQL;
     isFailed: boolean;
     newAttempts: number;
     error: string;
@@ -1015,7 +1022,7 @@ export class JobsRepository {
             eq(jobs.attempts, params.job.attempts),
             sql`${jobs.execution_generation} IS NOT DISTINCT FROM ${params.job.execution_generation}`,
             sql`${jobs.execution_quiesced_at} IS NOT DISTINCT FROM ${normalizedTimestamp(params.job.execution_quiesced_at)}`,
-            lt(jobs.started_at, params.startedBefore),
+            params.startedBeforeCondition,
             params.recoveryFence,
           ),
         )
@@ -1053,7 +1060,7 @@ export class JobsRepository {
             eq(jobs.attempts, params.job.attempts),
             sql`${jobs.execution_generation} IS NOT DISTINCT FROM ${params.job.execution_generation}`,
             sql`${jobs.execution_quiesced_at} IS NOT DISTINCT FROM ${normalizedTimestamp(params.job.execution_quiesced_at)}`,
-            lt(jobs.started_at, params.startedBefore),
+            params.startedBeforeCondition,
             params.recoveryFence,
             requiresExecutionLease && params.job.execution_generation
               ? sql`NOT EXISTS (

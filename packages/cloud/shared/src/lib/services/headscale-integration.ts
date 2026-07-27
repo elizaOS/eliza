@@ -20,6 +20,22 @@ const POLL_INTERVAL_INITIAL_MS = 1_000;
 
 /** Maximum polling interval after exponential backoff (ms). */
 const POLL_INTERVAL_MAX_MS = 8_000;
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
+const FALLBACK_REGISTRATION_TIMEOUT_MS = 180_000;
+
+/** Parses the VPN registration window without masking invalid operator input. */
+export function parseVpnRegistrationTimeoutMs(value: string | undefined): number {
+  if (value === undefined) return FALLBACK_REGISTRATION_TIMEOUT_MS;
+  const normalized = value.trim();
+  if (!/^[1-9]\d*$/.test(normalized)) {
+    throw new Error("VPN_REGISTRATION_TIMEOUT_MS must be a positive integer");
+  }
+  const parsed = Number(normalized);
+  if (!Number.isSafeInteger(parsed) || parsed > MAX_TIMER_DELAY_MS) {
+    throw new Error("VPN_REGISTRATION_TIMEOUT_MS exceeds the platform timer limit");
+  }
+  return parsed;
+}
 
 /**
  * Default timeout for VPN/headscale registration (ms), env-overridable via
@@ -34,11 +50,9 @@ const POLL_INTERVAL_MAX_MS = 8_000;
  * redeploy. Exported so the docker-sandbox provider shares this single source
  * of truth instead of hardcoding its own timeout at the call site.
  */
-export const DEFAULT_REGISTRATION_TIMEOUT_MS = (() => {
-  const raw = process.env.VPN_REGISTRATION_TIMEOUT_MS;
-  const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 180_000;
-})();
+export const DEFAULT_REGISTRATION_TIMEOUT_MS = parseVpnRegistrationTimeoutMs(
+  process.env.VPN_REGISTRATION_TIMEOUT_MS,
+);
 
 function headscalePublicUrl(): string {
   return (
