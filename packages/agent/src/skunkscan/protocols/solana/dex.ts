@@ -85,7 +85,7 @@ export const SOLANA_DEX_PROTOCOLS: Readonly<
     programId: "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
     name: "Raydium AMM V4",
     category: "dex",
-    reputation: "high",
+    reputation: "medium",
     verified: true,
     custodial: false,
     deprecated: false,
