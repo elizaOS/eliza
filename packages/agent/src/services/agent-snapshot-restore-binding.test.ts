@@ -5,7 +5,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import type { AgentSnapshotUpgradeBinding } from "./agent-backup.ts";
 import {
   beginCandidateSnapshotRestore,
@@ -21,7 +21,7 @@ const BINDING: AgentSnapshotUpgradeBinding = {
   captureNonce: "01".repeat(32),
   sourceEnvironmentRevision: 7,
   sourceImageDigest: `sha256:${"02".repeat(32)}`,
-  sourceSandboxId: "source-sandbox",
+  sourceSandboxId: "33333333-3333-4333-8333-333333333333",
   targetImageDigest: `sha256:${"03".repeat(32)}`,
   targetReplacementAttemptId: "22222222-2222-4222-8222-222222222222",
   targetSandboxId: "target-sandbox",
@@ -99,7 +99,7 @@ describe.sequential("candidate snapshot restore binding", () => {
           sourceImageDigest: "02".repeat(32),
         }),
       ),
-    ).toThrow("image digest binding is malformed");
+    ).toThrow("source image digest is not canonical");
     expect(() =>
       verifyCandidateSnapshotRestoreHeaders(
         {
@@ -112,6 +112,51 @@ describe.sequential("candidate snapshot restore binding", () => {
     expect(() =>
       verifyCandidateSnapshotRestoreHeaders(headersFor(), BINDING),
     ).not.toThrow();
+  });
+
+  test("durably creates every receipt ancestor through the stable state root", async () => {
+    const stateRoot = await temporaryStateDir();
+    const backups = path.join(stateRoot, "backups");
+    const receipts = path.join(backups, "restore-receipts");
+    const originalOpen = fs.open.bind(fs);
+    const syncedTargets: string[] = [];
+    const openSpy = vi.spyOn(fs, "open").mockImplementation(async (...args) => {
+      const handle = await originalOpen(...args);
+      const openedPath = String(args[0]);
+      return new Proxy(handle, {
+        get(targetHandle, property) {
+          if (property === "sync") {
+            return async () => {
+              syncedTargets.push(openedPath);
+              await targetHandle.sync();
+            };
+          }
+          const value = Reflect.get(targetHandle, property, targetHandle);
+          return typeof value === "function" ? value.bind(targetHandle) : value;
+        },
+      });
+    });
+    try {
+      await expect(beginCandidateSnapshotRestore(BINDING)).resolves.toBeNull();
+    } finally {
+      openSpy.mockRestore();
+    }
+
+    const backupsSync = syncedTargets.indexOf(backups);
+    const stateRootSync = syncedTargets.indexOf(stateRoot);
+    const receiptsSync = syncedTargets.indexOf(receipts);
+    expect(backupsSync).toBeGreaterThanOrEqual(0);
+    expect(stateRootSync).toBeGreaterThan(backupsSync);
+    expect(receiptsSync).toBeGreaterThan(stateRootSync);
+    expect(syncedTargets.at(-1)).toBe(receipts);
+    await expect(fs.stat(backups)).resolves.toMatchObject({
+      mode: expect.any(Number),
+    });
+    expect((await fs.stat(backups)).mode & 0o777).toBe(0o700);
+    expect((await fs.stat(receipts)).mode & 0o777).toBe(0o700);
+    await expect(
+      fs.readFile(path.join(receipts, `${BINDING.backupId}.json`), "utf8"),
+    ).resolves.toContain('"status":"applying"');
   });
 
   test("admits exactly one concurrent apply and fails closed after a crash", async () => {

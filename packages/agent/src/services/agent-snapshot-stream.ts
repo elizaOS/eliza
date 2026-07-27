@@ -14,10 +14,15 @@ import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
 import { ElizaError, logger } from "@elizaos/core";
 import { resolveConfigPath, resolveStateDir } from "../config/paths.ts";
 import {
+  type AgentSnapshotSourceAttestation,
   type AgentSnapshotUpgradeBinding,
   createExternalPostgresReference,
   verifyExternalPostgresReference,
 } from "./agent-backup.ts";
+import {
+  resolveAgentSnapshotSourceAttestation,
+  verifyAgentSnapshotSourceAttestation,
+} from "./agent-snapshot-source-attestation.ts";
 import {
   AGENT_SNAPSHOT_STREAM_CHUNK_BYTES,
   AGENT_SNAPSHOT_STREAM_FORMAT,
@@ -148,6 +153,43 @@ async function syncDirectory(target: string): Promise<void> {
     await handle.sync();
   } finally {
     await handle.close();
+  }
+}
+
+async function ensureDirectoryDurable(directory: string): Promise<void> {
+  const resolved = path.resolve(directory);
+  const missing: string[] = [];
+  let current = resolved;
+  while (!(await pathExists(current))) {
+    missing.unshift(path.basename(current));
+    const parent = path.dirname(current);
+    if (parent === current) {
+      throw invalidStream(`Snapshot durability root is missing: ${directory}`);
+    }
+    current = parent;
+  }
+  const ancestorStat = await fs.lstat(current);
+  if (!ancestorStat.isDirectory() || ancestorStat.isSymbolicLink()) {
+    throw invalidStream(
+      `Snapshot durability path traverses a non-directory: ${directory}`,
+    );
+  }
+  for (const segment of missing) {
+    const next = path.join(current, segment);
+    try {
+      await fs.mkdir(next, { mode: 0o700 });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      const stat = await fs.lstat(next);
+      if (!stat.isDirectory() || stat.isSymbolicLink()) {
+        throw invalidStream(
+          `Snapshot durability path traverses a non-directory: ${directory}`,
+        );
+      }
+    }
+    await syncDirectory(next);
+    await syncDirectory(current);
+    current = next;
   }
 }
 
@@ -768,7 +810,9 @@ async function createSnapshotStreamPlan(
 export async function* createAgentSnapshotStream(
   runtime: IAgentRuntime | AgentRuntime,
   binding: AgentSnapshotUpgradeBinding,
+  sourceAttestation: AgentSnapshotSourceAttestation | null = resolveAgentSnapshotSourceAttestation(),
 ): AsyncGenerator<Buffer> {
+  verifyAgentSnapshotSourceAttestation(binding, sourceAttestation);
   const plan = await createSnapshotStreamPlan(runtime, binding);
   const aggregateHash = crypto.createHash("sha256");
   let chunkCount = 0;
@@ -856,7 +900,7 @@ async function writeFileAtomically(
   descriptor: AgentSnapshotStreamFileDescriptor,
   durabilityRoot = path.dirname(destination),
 ): Promise<void> {
-  await fs.mkdir(path.dirname(destination), { recursive: true });
+  await ensureDirectoryDurable(path.dirname(destination));
   const temporary = `${destination}.snapshot-${crypto.randomUUID()}`;
   try {
     await fs.copyFile(source, temporary, fsConstants.COPYFILE_EXCL);
@@ -1030,9 +1074,11 @@ async function replaceDirectory(
   populate: (candidate: string) => Promise<void>,
 ): Promise<void> {
   const parent = path.dirname(target);
+  await ensureDirectoryDurable(parent);
   const candidate = await fs.mkdtemp(
     path.join(parent, `.${path.basename(target)}.snapshot-candidate-`),
   );
+  await syncDirectory(parent);
   const previous = path.join(
     parent,
     `.${path.basename(target)}.snapshot-previous-${crypto.randomUUID()}`,
@@ -1062,7 +1108,10 @@ async function replaceDirectory(
       await syncDirectory(parent);
     }
   } finally {
-    await fs.rm(candidate, { force: true, recursive: true });
+    if (await pathExists(candidate)) {
+      await fs.rm(candidate, { force: true, recursive: true });
+      await syncDirectory(parent);
+    }
   }
 }
 
@@ -1071,7 +1120,6 @@ async function applyDirectoryFileSet(params: {
   root: string;
   stagedFiles: string[];
 }): Promise<void> {
-  await fs.mkdir(path.dirname(params.root), { recursive: true });
   await replaceDirectory(params.root, async (candidate) => {
     for (const descriptor of params.descriptors) {
       const destination = path.resolve(candidate, descriptor.path);
@@ -1227,10 +1275,11 @@ function decodeChunkBytes(frame: AgentSnapshotStreamChunkFrame): Buffer {
   return bytes;
 }
 
-export async function restoreAgentSnapshotStream(
+async function consumeAgentSnapshotStream(
   runtime: IAgentRuntime | AgentRuntime,
   input: AsyncIterable<Uint8Array | string>,
   expectedBinding: AgentSnapshotUpgradeBinding,
+  apply: boolean,
 ): Promise<AgentSnapshotStreamRestoreResult> {
   const stagingRoot = await fs.mkdtemp(
     path.join(os.tmpdir(), RESTORE_STAGING_PREFIX),
@@ -1432,11 +1481,13 @@ export async function restoreAgentSnapshotStream(
       throw invalidStream("Snapshot stream is truncated");
     }
     const verifiedTrailer = validateSnapshotStreamTrailer(trailer);
-    await applyVerifiedSnapshotStream({
-      descriptor,
-      runtime,
-      stagedFiles,
-    });
+    if (apply) {
+      await applyVerifiedSnapshotStream({
+        descriptor,
+        runtime,
+        stagedFiles,
+      });
+    }
     return {
       aggregateSha256: verifiedTrailer.aggregateSha256,
       fileCount: verifiedTrailer.fileCount,
@@ -1449,4 +1500,20 @@ export async function restoreAgentSnapshotStream(
   } finally {
     await fs.rm(stagingRoot, { force: true, recursive: true });
   }
+}
+
+export async function restoreAgentSnapshotStream(
+  runtime: IAgentRuntime | AgentRuntime,
+  input: AsyncIterable<Uint8Array | string>,
+  expectedBinding: AgentSnapshotUpgradeBinding,
+): Promise<AgentSnapshotStreamRestoreResult> {
+  return consumeAgentSnapshotStream(runtime, input, expectedBinding, true);
+}
+
+export async function validateAgentSnapshotStream(
+  runtime: IAgentRuntime | AgentRuntime,
+  input: AsyncIterable<Uint8Array | string>,
+  expectedBinding: AgentSnapshotUpgradeBinding,
+): Promise<AgentSnapshotStreamRestoreResult> {
+  return consumeAgentSnapshotStream(runtime, input, expectedBinding, false);
 }
