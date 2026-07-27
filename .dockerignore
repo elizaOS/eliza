@@ -14,6 +14,16 @@ packages/os
 packages/os-homepage
 packages/benchmarks/*
 !packages/benchmarks/lib
+!packages/benchmarks/interrupt-bench
+!packages/benchmarks/eliza-1
+!packages/benchmarks/evm
+!packages/benchmarks/three-agent-dialogue
+!packages/benchmarks/solana
+!packages/benchmarks/skillsbench
+packages/benchmarks/skillsbench/*
+!packages/benchmarks/skillsbench/experiments
+packages/benchmarks/skillsbench/experiments/*
+!packages/benchmarks/skillsbench/experiments/metrics-dashboard
 packages/examples
 packages/cloud-frontend
 packages/cloud-infra
