@@ -34,7 +34,7 @@ const SNAPSHOT_BINDING: AgentSnapshotV2UpgradeBinding = {
   captureNonce: "01".repeat(32),
   sourceEnvironmentRevision: 7,
   sourceImageDigest: `sha256:${"02".repeat(32)}`,
-  sourceSandboxId: "source-sandbox",
+  sourceSandboxId: "33333333-3333-4333-8333-333333333333",
   targetImageDigest: `sha256:${"03".repeat(32)}`,
   targetReplacementAttemptId: "00000000-0000-4000-8000-000000000006",
   targetSandboxId: "target-sandbox",

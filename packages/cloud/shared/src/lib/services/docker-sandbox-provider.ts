@@ -66,6 +66,7 @@ import type {
   SandboxProvider,
   SandboxReplacementCleanupLocator,
   SandboxSnapshotRestoreBindingSeed,
+  SandboxSnapshotSourceAttestationSeed,
 } from "./sandbox-provider-types";
 import { SandboxReplacementCleanupUnresolvedError } from "./sandbox-provider-types";
 import {
@@ -164,6 +165,21 @@ const SNAPSHOT_BINDING_ENV_KEYS = [
   "ELIZA_SNAPSHOT_RESTORE_SOURCE_SANDBOX_ID",
   "ELIZA_SNAPSHOT_RESTORE_TARGET_IMAGE_DIGEST",
 ] as const;
+const SNAPSHOT_SOURCE_ATTESTATION_ENV_KEYS = [
+  "ELIZA_SNAPSHOT_SOURCE_ENVIRONMENT_REVISION",
+  "ELIZA_SNAPSHOT_SOURCE_IMAGE_DIGEST",
+  "ELIZA_SNAPSHOT_SOURCE_SANDBOX_ID",
+] as const;
+
+function assertProviderOwnedSnapshotEnvironment(environmentVars: Record<string, string>): void {
+  for (const key of [...SNAPSHOT_BINDING_ENV_KEYS, ...SNAPSHOT_SOURCE_ATTESTATION_ENV_KEYS]) {
+    if (Object.hasOwn(environmentVars, key)) {
+      throw new Error(
+        `[docker-sandbox] ${key} is provider-owned and cannot be supplied as an agent environment variable`,
+      );
+    }
+  }
+}
 
 export function buildSnapshotRestoreBindingEnvironment(params: {
   environmentVars: Record<string, string>;
@@ -171,13 +187,7 @@ export function buildSnapshotRestoreBindingEnvironment(params: {
   seed: SandboxSnapshotRestoreBindingSeed | undefined;
   targetSandboxId: string;
 }): Record<string, string> {
-  for (const key of SNAPSHOT_BINDING_ENV_KEYS) {
-    if (Object.hasOwn(params.environmentVars, key)) {
-      throw new Error(
-        `[docker-sandbox] ${key} is provider-owned and cannot be supplied as an agent environment variable`,
-      );
-    }
-  }
+  assertProviderOwnedSnapshotEnvironment(params.environmentVars);
   const seed = params.seed;
   if (!seed) return {};
   if (
@@ -186,7 +196,7 @@ export function buildSnapshotRestoreBindingEnvironment(params: {
     !Number.isSafeInteger(seed.sourceEnvironmentRevision) ||
     seed.sourceEnvironmentRevision < 0 ||
     !SNAPSHOT_BINDING_DIGEST_PATTERN.test(seed.sourceImageDigest) ||
-    !SNAPSHOT_BINDING_SANDBOX_PATTERN.test(seed.sourceSandboxId) ||
+    !SNAPSHOT_BINDING_UUID_PATTERN.test(seed.sourceSandboxId) ||
     !SNAPSHOT_BINDING_DIGEST_PATTERN.test(seed.targetImageDigest) ||
     !SNAPSHOT_BINDING_UUID_PATTERN.test(params.replacementAttemptId) ||
     !SNAPSHOT_BINDING_SANDBOX_PATTERN.test(params.targetSandboxId)
@@ -202,6 +212,35 @@ export function buildSnapshotRestoreBindingEnvironment(params: {
     ELIZA_SNAPSHOT_RESTORE_SOURCE_IMAGE_DIGEST: seed.sourceImageDigest,
     ELIZA_SNAPSHOT_RESTORE_SOURCE_SANDBOX_ID: seed.sourceSandboxId,
     ELIZA_SNAPSHOT_RESTORE_TARGET_IMAGE_DIGEST: seed.targetImageDigest,
+  };
+}
+
+export function buildSnapshotSourceAttestationEnvironment(params: {
+  environmentVars: Record<string, string>;
+  placementId: string;
+  resolvedImage: string;
+  seed: SandboxSnapshotSourceAttestationSeed | undefined;
+}): Record<string, string> {
+  assertProviderOwnedSnapshotEnvironment(params.environmentVars);
+  const seed = params.seed;
+  if (!seed) return {};
+  const pinnedDigest = params.resolvedImage.match(/@(?<digest>sha256:[a-f0-9]{64})$/)?.groups
+    ?.digest;
+  if (
+    !Number.isSafeInteger(seed.environmentRevision) ||
+    seed.environmentRevision < 0 ||
+    !SNAPSHOT_BINDING_DIGEST_PATTERN.test(seed.imageDigest) ||
+    !SNAPSHOT_BINDING_UUID_PATTERN.test(params.placementId) ||
+    pinnedDigest !== seed.imageDigest
+  ) {
+    throw new Error(
+      "[docker-sandbox] Snapshot source attestation does not match the pinned launch placement",
+    );
+  }
+  return {
+    ELIZA_SNAPSHOT_SOURCE_ENVIRONMENT_REVISION: String(seed.environmentRevision),
+    ELIZA_SNAPSHOT_SOURCE_IMAGE_DIGEST: seed.imageDigest,
+    ELIZA_SNAPSHOT_SOURCE_SANDBOX_ID: params.placementId,
   };
 }
 const DOCKER_NETWORK = containersEnv.dockerNetwork();
@@ -1167,6 +1206,12 @@ export class DockerSandboxProvider implements SandboxProvider {
       seed: config.snapshotRestoreBinding,
       targetSandboxId: containerName,
     });
+    const snapshotSourceAttestationEnv = buildSnapshotSourceAttestationEnvironment({
+      environmentVars,
+      placementId: replacementAttemptId,
+      resolvedImage,
+      seed: config.snapshotSourceAttestation,
+    });
     // Auto-provision the Steward tenant for this org if it doesn't have one
     // yet. Without this step, fresh organizations fall through to
     // `DEFAULT_STEWARD_TENANT_ID` ("elizacloud") — and if that default tenant
@@ -1255,6 +1300,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     const baseEnv: Record<string, string> = {
       ...kmsEnv,
       ...environmentVars,
+      ...snapshotSourceAttestationEnv,
       ...snapshotBindingEnv,
       ...vpnEnvVars,
       ...proxyEnv,

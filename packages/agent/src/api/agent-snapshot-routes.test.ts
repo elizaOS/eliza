@@ -19,6 +19,12 @@ import { handleAgentSnapshotRoutes } from "./agent-snapshot-routes.ts";
 const ORIGINAL_ENV = {
   DATABASE_URL: process.env.DATABASE_URL,
   ELIZA_STATE_DIR: process.env.ELIZA_STATE_DIR,
+  ELIZA_SNAPSHOT_SOURCE_ENVIRONMENT_REVISION:
+    process.env.ELIZA_SNAPSHOT_SOURCE_ENVIRONMENT_REVISION,
+  ELIZA_SNAPSHOT_SOURCE_IMAGE_DIGEST:
+    process.env.ELIZA_SNAPSHOT_SOURCE_IMAGE_DIGEST,
+  ELIZA_SNAPSHOT_SOURCE_SANDBOX_ID:
+    process.env.ELIZA_SNAPSHOT_SOURCE_SANDBOX_ID,
   ELIZA_SNAPSHOT_RESTORE_BACKUP_ID:
     process.env.ELIZA_SNAPSHOT_RESTORE_BACKUP_ID,
   ELIZA_SNAPSHOT_RESTORE_CANDIDATE_ATTEMPT_ID:
@@ -47,7 +53,7 @@ const UPGRADE_BINDING: AgentSnapshotUpgradeBinding = {
   captureNonce: "a".repeat(64),
   sourceEnvironmentRevision: 7,
   sourceImageDigest: `sha256:${"b".repeat(64)}`,
-  sourceSandboxId: "agent-source",
+  sourceSandboxId: "33333333-3333-4333-8333-333333333333",
   targetImageDigest: `sha256:${"c".repeat(64)}`,
   targetReplacementAttemptId: "22222222-2222-4222-8222-222222222222",
   targetSandboxId: "agent-target",
@@ -86,6 +92,16 @@ function enableCandidateRestore(): void {
     UPGRADE_BINDING.sourceSandboxId;
   process.env.ELIZA_SNAPSHOT_RESTORE_TARGET_IMAGE_DIGEST =
     UPGRADE_BINDING.targetImageDigest;
+}
+
+function enableSourceAttestation(): void {
+  process.env.ELIZA_SNAPSHOT_SOURCE_ENVIRONMENT_REVISION = String(
+    UPGRADE_BINDING.sourceEnvironmentRevision,
+  );
+  process.env.ELIZA_SNAPSHOT_SOURCE_IMAGE_DIGEST =
+    UPGRADE_BINDING.sourceImageDigest;
+  process.env.ELIZA_SNAPSHOT_SOURCE_SANDBOX_ID =
+    UPGRADE_BINDING.sourceSandboxId;
 }
 
 function runtimeStub(): AgentRuntime {
@@ -136,6 +152,59 @@ async function temporaryRoot(label: string): Promise<string> {
   return root;
 }
 
+async function postSlowBody(
+  url: string,
+  headers: Record<string, string>,
+  body: Buffer,
+): Promise<{
+  body: string;
+  responseBeforeFinalChunk: boolean;
+  status: number;
+}> {
+  let responseStarted = false;
+  let resolveResponse:
+    | ((value: { body: string; status: number }) => void)
+    | undefined;
+  let rejectResponse: ((reason?: unknown) => void) | undefined;
+  const responsePromise = new Promise<{ body: string; status: number }>(
+    (resolve, reject) => {
+      resolveResponse = resolve;
+      rejectResponse = reject;
+    },
+  );
+  const request = http.request(
+    url,
+    {
+      headers: {
+        ...headers,
+        "content-length": String(body.byteLength),
+      },
+      method: "POST",
+    },
+    (response) => {
+      responseStarted = true;
+      const chunks: Buffer[] = [];
+      response.on("data", (chunk: Buffer) => chunks.push(chunk));
+      response.on("end", () =>
+        resolveResponse?.({
+          body: Buffer.concat(chunks).toString(),
+          status: response.statusCode ?? 0,
+        }),
+      );
+    },
+  );
+  request.on("error", (error) => rejectResponse?.(error));
+  const split = Math.max(1, body.byteLength - 1);
+  request.write(body.subarray(0, split));
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  const responseBeforeFinalChunk = responseStarted;
+  request.end(body.subarray(split));
+  return {
+    ...(await responsePromise),
+    responseBeforeFinalChunk,
+  };
+}
+
 function restoreEnv(): void {
   for (const [key, value] of Object.entries(ORIGINAL_ENV)) {
     if (value === undefined) delete process.env[key];
@@ -173,6 +242,7 @@ describe.sequential("agent snapshot HTTP routes", () => {
     process.env.ELIZA_STATE_DIR = source;
     delete process.env.POSTGRES_URL;
     delete process.env.DATABASE_URL;
+    enableSourceAttestation();
     const baseUrl = await startServer(runtimeStub());
 
     const snapshotResponse = await fetch(`${baseUrl}/api/snapshot`, {
@@ -233,23 +303,93 @@ describe.sequential("agent snapshot HTTP routes", () => {
       totalBytes: trailer.totalBytes,
       transfer: "chunked-v1",
     });
-    const replayResponse = await fetch(
+    const replayResponse = await postSlowBody(
       `${baseUrl}/api/restore?transfer=chunked-v1`,
-      {
-        body,
-        headers: candidateRestoreHeaders(),
-        method: "POST",
-      },
+      candidateRestoreHeaders(),
+      body,
     );
+    expect(replayResponse.responseBeforeFinalChunk).toBe(false);
     expect(replayResponse.status).toBe(200);
-    await expect(replayResponse.json()).resolves.toMatchObject({
+    expect(JSON.parse(replayResponse.body)).toMatchObject({
       aggregateSha256: trailer.aggregateSha256,
       binding: UPGRADE_BINDING,
       receiptStatus: "committed",
     });
+    const truncatedReplay = await fetch(
+      `${baseUrl}/api/restore?transfer=chunked-v1`,
+      {
+        body: body.subarray(0, -1),
+        headers: candidateRestoreHeaders(),
+        method: "POST",
+      },
+    );
+    expect(truncatedReplay.status).toBe(400);
+
+    const divergentSource = await temporaryRoot(
+      "eliza-route-divergent-source-",
+    );
+    await fs.mkdir(path.join(divergentSource, "skills"), { recursive: true });
+    await fs.writeFile(
+      path.join(divergentSource, "eliza.json"),
+      '{"route":"divergent"}\n',
+    );
+    await fs.writeFile(
+      path.join(divergentSource, "skills", "route.json"),
+      '{"captured":"different"}\n',
+    );
+    process.env.ELIZA_STATE_DIR = divergentSource;
+    const divergentSnapshot = await fetch(`${baseUrl}/api/snapshot`, {
+      body: JSON.stringify({
+        binding: UPGRADE_BINDING,
+        purpose: "pre-upgrade",
+        schemaVersion: 2,
+        transfer: "chunked-v1",
+      }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    });
+    expect(divergentSnapshot.status).toBe(200);
+    const divergentBody = Buffer.from(await divergentSnapshot.arrayBuffer());
+    process.env.ELIZA_STATE_DIR = target;
+    const divergentReplay = await fetch(
+      `${baseUrl}/api/restore?transfer=chunked-v1`,
+      {
+        body: divergentBody,
+        headers: candidateRestoreHeaders(),
+        method: "POST",
+      },
+    );
+    expect(divergentReplay.status).toBe(409);
     await expect(
       fs.readFile(path.join(target, "skills", "route.json"), "utf8"),
     ).resolves.toBe('{"captured":true}\n');
+  });
+
+  test("rejects a source claim that differs from provider launch attestation", async () => {
+    const source = await temporaryRoot("eliza-route-confused-source-");
+    process.env.ELIZA_STATE_DIR = source;
+    delete process.env.POSTGRES_URL;
+    delete process.env.DATABASE_URL;
+    enableSourceAttestation();
+    const baseUrl = await startServer(runtimeStub());
+
+    const response = await fetch(`${baseUrl}/api/snapshot`, {
+      body: JSON.stringify({
+        binding: {
+          ...UPGRADE_BINDING,
+          sourceSandboxId: "55555555-5555-4555-8555-555555555555",
+        },
+        purpose: "pre-upgrade",
+        schemaVersion: 2,
+        transfer: "chunked-v1",
+      }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    });
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      error: expect.stringContaining("does not match this source placement"),
+    });
   });
 
   test("rejects transfer ambiguity and corrupt input without applying state", async () => {

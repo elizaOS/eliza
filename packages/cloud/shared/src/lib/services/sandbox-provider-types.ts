@@ -134,6 +134,11 @@ export interface SandboxSnapshotRestoreBindingSeed {
   targetImageDigest: string;
 }
 
+export interface SandboxSnapshotSourceAttestationSeed {
+  environmentRevision: number;
+  imageDigest: string;
+}
+
 export interface SandboxCreateConfig {
   agentId: string;
   agentName: string;
@@ -162,6 +167,12 @@ export interface SandboxCreateConfig {
    * into the new runtime.
    */
   snapshotRestoreBinding?: SandboxSnapshotRestoreBindingSeed;
+  /**
+   * Provider-owned identity material for future snapshot capture. The provider
+   * verifies the digest against the pinned launch image and contributes its own
+   * placement UUID before exposing the attestation to the runtime.
+   */
+  snapshotSourceAttestation?: SandboxSnapshotSourceAttestationSeed;
   resources?: { vcpus?: number; memoryMb?: number };
   timeout?: number;
   dockerImage?: string;
