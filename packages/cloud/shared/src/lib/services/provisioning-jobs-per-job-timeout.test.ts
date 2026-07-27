@@ -23,15 +23,29 @@
  * (oldCeiling < coldPull < newCeiling < hung), so the test proves the behavior
  * change without waiting minutes of real wall-clock.
  */
-import { describe, expect, test } from "bun:test";
+import { describe, expect, jest, test } from "bun:test";
 
 import { withTimeout } from "../utils/with-timeout";
+import {
+  agentSnapshotV2CaptureTimeoutMs,
+  agentSnapshotV2RestoreTimeoutMs,
+} from "./agent-snapshot-v2-cloud";
+import { AGENT_SNAPSHOT_V2_MAX_WIRE_BYTES } from "./agent-snapshot-v2-stream";
 // Import the provider's REAL pull ceiling so this test tracks the production
 // constant (and goes red if either drifts), rather than asserting against a
 // hand-copied literal that can silently diverge.
 import { HEALTH_CHECK_TIMEOUT_MS, PULL_TIMEOUT_MS } from "./docker-sandbox-provider";
+import { DEFAULT_REGISTRATION_TIMEOUT_MS } from "./headscale-integration";
 import { JOB_TYPES } from "./provisioning-job-types";
-import { PER_JOB_TIMEOUT_MS, resolvePerJobTimeoutMs } from "./provisioning-jobs";
+import {
+  ADMIN_CANARY_RESTORE_VALIDATION_OPERATION_TIMEOUT_MS,
+  awaitProvisioningJobExecution,
+  PER_JOB_TIMEOUT_MS,
+  parseProvisionJobTimeoutMs,
+  RESTORE_VALIDATION_CANDIDATE_CREATE_BUDGET_MS,
+  RESTORE_VALIDATION_RETIREMENT_BUDGET_MS,
+  resolvePerJobTimeoutMs,
+} from "./provisioning-jobs";
 
 /** A cold `docker pull` of a freshly-pinned image takes ~2.5 min on the node. */
 const COLD_PULL_MS = 150_000;
@@ -142,7 +156,7 @@ describe("resolvePerJobTimeoutMs — cold-boot job types outlast a full boot (#1
     expect(resolvePerJobTimeoutMs("some_other_job")).toBe(PER_JOB_TIMEOUT_MS);
   });
 
-  test("EVERY non-cold-boot job type resolves to exactly the flat ceiling — the budget split is complete", () => {
+  test("EVERY job outside the extended tiers resolves to the flat ceiling — the budget split is complete", () => {
     // Set-completeness over the whole JOB_TYPES surface (the spot checks above
     // can't catch it): a future type accidentally classified cold-boot would
     // let a hung job monopolize a worker slot for ~11 min; a cold-boot type
@@ -156,11 +170,83 @@ describe("resolvePerJobTimeoutMs — cold-boot job types outlast a full boot (#1
       JOB_TYPES.AGENT_RESTART,
       JOB_TYPES.AGENT_UPGRADE,
       JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
+      JOB_TYPES.AGENT_ADMIN_CANARY_RESTORE_VALIDATION,
       JOB_TYPES.AGENT_DOWNGRADE,
     ]);
     for (const type of Object.values(JOB_TYPES)) {
       if (coldBoot.has(type)) continue;
       expect(resolvePerJobTimeoutMs(type)).toBe(PER_JOB_TIMEOUT_MS);
     }
+  });
+});
+
+describe("restore-validation operation watchdog", () => {
+  const FULL_LEAF_BUDGET_MS =
+    RESTORE_VALIDATION_CANDIDATE_CREATE_BUDGET_MS +
+    agentSnapshotV2CaptureTimeoutMs(AGENT_SNAPSHOT_V2_MAX_WIRE_BYTES) +
+    agentSnapshotV2RestoreTimeoutMs(AGENT_SNAPSHOT_V2_MAX_WIRE_BYTES) +
+    RESTORE_VALIDATION_RETIREMENT_BUDGET_MS;
+
+  test("the operation budget includes size-derived two-pass capture, restore, actual VPN, and cleanup bounds", () => {
+    expect(RESTORE_VALIDATION_RETIREMENT_BUDGET_MS).toBeGreaterThan(
+      DEFAULT_REGISTRATION_TIMEOUT_MS + 30_000 + 422_250,
+    );
+    expect(RESTORE_VALIDATION_CANDIDATE_CREATE_BUDGET_MS).toBeGreaterThan(
+      13 * 60 * 1000 + DEFAULT_REGISTRATION_TIMEOUT_MS + RESTORE_VALIDATION_RETIREMENT_BUDGET_MS,
+    );
+    expect(ADMIN_CANARY_RESTORE_VALIDATION_OPERATION_TIMEOUT_MS).toBeGreaterThan(
+      FULL_LEAF_BUDGET_MS,
+    );
+    expect(resolvePerJobTimeoutMs(JOB_TYPES.AGENT_ADMIN_CANARY_RESTORE_VALIDATION)).toBe(
+      Math.max(PER_JOB_TIMEOUT_MS, ADMIN_CANARY_RESTORE_VALIDATION_OPERATION_TIMEOUT_MS),
+    );
+  });
+
+  test("does not abandon and requeue restore validation while its bounded remote execution is still running", async () => {
+    jest.useFakeTimers();
+    try {
+      let resolveOperation!: (value: "completed") => void;
+      let outcome: "running" | "resolved" | "rejected" = "running";
+      const operation = new Promise<"completed">((resolve) => {
+        resolveOperation = resolve;
+      });
+      const execution = awaitProvisioningJobExecution(
+        JOB_TYPES.AGENT_ADMIN_CANARY_RESTORE_VALIDATION,
+        operation,
+      );
+      void execution.then(
+        () => {
+          outcome = "resolved";
+        },
+        () => {
+          outcome = "rejected";
+        },
+      );
+
+      jest.advanceTimersByTime(ADMIN_CANARY_RESTORE_VALIDATION_OPERATION_TIMEOUT_MS);
+      await Promise.resolve();
+      expect(outcome).toBe("running");
+
+      resolveOperation("completed");
+      await Promise.resolve();
+      expect(await execution).toBe("completed");
+      expect(outcome).toBe("resolved");
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test("rejects malformed and platform-unsafe job timeout configuration", () => {
+    expect(parseProvisionJobTimeoutMs(undefined)).toBe(300_000);
+    expect(parseProvisionJobTimeoutMs(" 450000 ")).toBe(450_000);
+    for (const value of ["", "0", "-1", "1.5", "120000ms", "2147483648"]) {
+      expect(() => parseProvisionJobTimeoutMs(value)).toThrow(
+        /positive integer|platform timer limit/,
+      );
+    }
+    expect(() => parseProvisionJobTimeoutMs(undefined, 0)).toThrow(/positive integer/);
+    expect(() => parseProvisionJobTimeoutMs(undefined, 2_147_483_648)).toThrow(
+      /platform timer limit/,
+    );
   });
 });

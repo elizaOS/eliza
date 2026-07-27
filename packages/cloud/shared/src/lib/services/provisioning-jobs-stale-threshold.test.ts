@@ -13,8 +13,15 @@
 import { describe, expect, spyOn, test } from "bun:test";
 
 import { jobsRepository } from "../../db/repositories/jobs";
+import type { Job } from "../../db/schemas/jobs";
+import { elizaSandboxService, RestoreValidationRetryLaterError } from "./eliza-sandbox";
 import { JOB_TYPES, type ProvisioningJobType } from "./provisioning-job-types";
-import { provisioningJobService } from "./provisioning-jobs";
+import {
+  ADMIN_CANARY_RESTORE_VALIDATION_STALE_LEASE_MARGIN_MS,
+  provisioningJobService,
+  resolvePerJobTimeoutMs,
+  resolveStaleJobThresholdMs,
+} from "./provisioning-jobs";
 
 const COLD_BOOT_TYPES = [
   JOB_TYPES.AGENT_PROVISION,
@@ -92,6 +99,143 @@ describe("recoverStaleJobs threshold by job type", () => {
       claimSpy.mockRestore();
       sharedClaimSpy.mockRestore();
       recoverSpy.mockRestore();
+    }
+  });
+
+  test("restore validation is claimed through the global limit-one lane with its finite stale lease", async () => {
+    const type = JOB_TYPES.AGENT_ADMIN_CANARY_RESTORE_VALIDATION;
+    const watchdogMs = resolvePerJobTimeoutMs(type);
+    const staleLeaseMs = resolveStaleJobThresholdMs(type);
+    const claimSpy = spyOn(jobsRepository, "claimPendingJobs").mockResolvedValue([]);
+    const sharedClaimSpy = spyOn(
+      jobsRepository,
+      "claimPendingJobsWithinSharedRunningLimit",
+    ).mockResolvedValue([]);
+    const recoverSpy = spyOn(jobsRepository, "recoverStaleJobs").mockImplementation(
+      async (filters: { type: string; staleThresholdMs: number }) => {
+        expect(filters).toEqual({ type, staleThresholdMs: staleLeaseMs });
+        return 0;
+      },
+    );
+
+    try {
+      expect(staleLeaseMs).toBe(watchdogMs + ADMIN_CANARY_RESTORE_VALIDATION_STALE_LEASE_MARGIN_MS);
+      await provisioningJobService.processPendingJobs(9, { jobTypes: [type] });
+      expect(claimSpy).not.toHaveBeenCalled();
+      expect(sharedClaimSpy).toHaveBeenCalledTimes(1);
+      expect(sharedClaimSpy).toHaveBeenCalledWith({
+        type,
+        sharedTypes: [type],
+        maxRunning: 1,
+        limit: 1,
+      });
+      expect(recoverSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      claimSpy.mockRestore();
+      sharedClaimSpy.mockRestore();
+      recoverSpy.mockRestore();
+    }
+  });
+
+  test("an applying restore candidate requeues without consuming its attempt budget", async () => {
+    const type = JOB_TYPES.AGENT_ADMIN_CANARY_RESTORE_VALIDATION;
+    const now = new Date("2026-07-27T12:00:00.000Z");
+    const restoreValidationId = "00000000-0000-4000-8000-000000000001";
+    const organizationId = "00000000-0000-4000-8000-000000000002";
+    const agentId = "00000000-0000-4000-8000-000000000003";
+    const actorUserId = "00000000-0000-4000-8000-000000000004";
+    const digest = `sha256:${"a".repeat(64)}`;
+    const job = {
+      id: "00000000-0000-4000-8000-000000000005",
+      type,
+      status: "in_progress",
+      data: {
+        restoreValidationId,
+        backupId: "00000000-0000-4000-8000-000000000006",
+        captureNonce: "b".repeat(64),
+        sourceJobId: "00000000-0000-4000-8000-000000000007",
+        rolloutId: "00000000-0000-4000-8000-000000000008",
+        standbyGeneration: "00000000-0000-4000-8000-000000000009",
+        actorUserId,
+        agentId,
+        organizationId,
+        targetOwnerUserId: actorUserId,
+        sourceEnvironmentRevision: 1,
+        sourceImageDigest: digest,
+        sourceSandboxId: "00000000-0000-4000-8000-000000000010",
+        targetImage: `ghcr.io/elizaos/eliza-demo@${digest}`,
+        targetDigest: digest,
+        primaryNodeId: "node-primary",
+        rollbackStandbyNodeId: "node-standby",
+        plannedAt: now.toISOString(),
+      },
+      data_storage: "inline",
+      data_key: null,
+      agent_id: agentId,
+      character_id: null,
+      result: null,
+      result_storage: "inline",
+      result_key: null,
+      error: null,
+      error_storage: "inline",
+      error_key: null,
+      attempts: 4,
+      max_attempts: 10,
+      organization_id: organizationId,
+      user_id: actorUserId,
+      api_key_id: null,
+      generation_id: null,
+      webhook_url: null,
+      webhook_status: null,
+      estimated_completion_at: null,
+      scheduled_for: now,
+      started_at: now,
+      completed_at: null,
+      created_at: now,
+      updated_at: now,
+    } satisfies Job;
+    const ordinaryClaimSpy = spyOn(jobsRepository, "claimPendingJobs").mockResolvedValue([]);
+    const sharedClaimSpy = spyOn(
+      jobsRepository,
+      "claimPendingJobsWithinSharedRunningLimit",
+    ).mockResolvedValue([job]);
+    const recoverSpy = spyOn(jobsRepository, "recoverStaleJobs").mockResolvedValue(0);
+    const retrySpy = spyOn(
+      jobsRepository,
+      "retryLaterWithoutIncrementingAttempts",
+    ).mockResolvedValue(job);
+    const incrementSpy = spyOn(jobsRepository, "incrementAttempt").mockResolvedValue(undefined);
+    const executeSpy = spyOn(
+      elizaSandboxService,
+      "executeAdminCanaryRestoreValidation",
+    ).mockRejectedValue(new RestoreValidationRetryLaterError(restoreValidationId));
+    const serviceInternals = provisioningJobService as unknown as {
+      assertNoConflictingLifecycleExecution: (claimedJob: Job) => Promise<void>;
+    };
+    const conflictSpy = spyOn(
+      serviceInternals,
+      "assertNoConflictingLifecycleExecution",
+    ).mockResolvedValue();
+
+    try {
+      const result = await provisioningJobService.processPendingJobs(8, {
+        jobTypes: [type],
+      });
+      expect(result).toMatchObject({ claimed: 1, succeeded: 0, retried: 1, failed: 0 });
+      expect(retrySpy).toHaveBeenCalledWith(
+        job,
+        `Restore validation ${restoreValidationId} is still applying; retry later`,
+        2 * 60 * 1000,
+      );
+      expect(incrementSpy).not.toHaveBeenCalled();
+    } finally {
+      conflictSpy.mockRestore();
+      executeSpy.mockRestore();
+      incrementSpy.mockRestore();
+      retrySpy.mockRestore();
+      recoverSpy.mockRestore();
+      sharedClaimSpy.mockRestore();
+      ordinaryClaimSpy.mockRestore();
     }
   });
 });

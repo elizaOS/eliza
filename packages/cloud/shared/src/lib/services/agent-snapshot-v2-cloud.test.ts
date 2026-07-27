@@ -7,6 +7,7 @@ import { describe, expect, test } from "bun:test";
 import type { StoredAgentSandboxBackup } from "../../db/schemas/agent-sandboxes";
 import {
   type AgentSnapshotV2CloudDependencies,
+  agentSnapshotV2CaptureTimeoutMs,
   agentSnapshotV2RestoreTimeoutMs,
   captureAgentSnapshotV2,
   restoreAgentSnapshotV2,
@@ -282,7 +283,18 @@ describe("agent snapshot v2 Cloud adapter", () => {
     });
 
     expect(requestBytes).toEqual(snapshot.bytes);
-    expect(result.trailer.aggregateSha256).toBe(snapshot.aggregateSha256);
+    expect(result.summary.trailer.aggregateSha256).toBe(snapshot.aggregateSha256);
+    expect(result.receipt).toEqual({
+      aggregateSha256: snapshot.aggregateSha256,
+      binding: SNAPSHOT_BINDING,
+      fileCount: 0,
+      receiptStatus: "committed",
+      requiresRestart: true,
+      schemaVersion: 2,
+      success: true,
+      totalBytes: 0,
+      transfer: "chunked-v1",
+    });
   });
 
   test("rejects source corruption, unverified rows, and mismatched restore acknowledgements", async () => {
@@ -415,6 +427,7 @@ describe("agent snapshot v2 Cloud adapter", () => {
     await expect(
       captureAgentSnapshotV2({
         agentId: AGENT_ID,
+        binding: SNAPSHOT_BINDING,
         dependencies,
         organizationId: ORGANIZATION_ID,
         response: new Response(body, {
@@ -451,6 +464,7 @@ describe("agent snapshot v2 Cloud adapter", () => {
       restoreAgentSnapshotV2({
         agentId: AGENT_ID,
         backup: storedBackup(snapshot.aggregateSha256),
+        binding: SNAPSHOT_BINDING,
         dependencies,
         endpoint: "https://agent.example/api/restore?transfer=chunked-v1",
         headers: {},
@@ -510,6 +524,7 @@ describe("agent snapshot v2 Cloud adapter", () => {
       restoreAgentSnapshotV2({
         agentId: AGENT_ID,
         backup: storedBackup(snapshot.aggregateSha256),
+        binding: SNAPSHOT_BINDING,
         dependencies,
         endpoint: "https://agent.example/api/restore?transfer=chunked-v1",
         headers: {},
@@ -587,5 +602,28 @@ describe("agent snapshot v2 Cloud adapter", () => {
     ).rejects.toThrow("Snapshot v2 restore timed out");
     await new Promise((resolve) => setTimeout(resolve, 60));
     expect(sourceReturned).toBe(true);
+  });
+
+  test("sizes capture for source plus read-after-write verification and rejects unsafe timers", () => {
+    expect(
+      agentSnapshotV2CaptureTimeoutMs(512 * 1024 * 1024, {
+        baseMs: 1_000,
+        minBytesPerSecond: 1024 * 1024,
+      }),
+    ).toBe(1_025_000);
+    expect(agentSnapshotV2CaptureTimeoutMs(AGENT_SNAPSHOT_V2_MAX_WIRE_BYTES)).toBe(45_656_000);
+    expect(() =>
+      agentSnapshotV2CaptureTimeoutMs(1, {
+        baseMs: 2_147_483_647,
+        minBytesPerSecond: 1,
+      }),
+    ).toThrow("Snapshot capture timeout exceeds the platform timer limit");
+    expect(() =>
+      agentSnapshotV2RestoreTimeoutMs(1, {
+        baseMs: 2_147_483_647,
+        idleMs: 1,
+        minBytesPerSecond: 1,
+      }),
+    ).toThrow("Snapshot restore timeout exceeds the platform timer limit");
   });
 });
