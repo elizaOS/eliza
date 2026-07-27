@@ -246,22 +246,6 @@ export class AdminAgentImageRolloutService {
       throw conflict(`Canary job ${sourceJob.id} has no retained rollback standby`);
     }
     const standbyGeneration = sourceJob.result.standbyGeneration;
-    const agent = await elizaSandboxService.getAgentForWrite(
-      sourceData.agentId,
-      sourceData.organizationId,
-    );
-    if (
-      !agent ||
-      agent.rollback_standby_state !== "paused" ||
-      agent.rollback_standby_generation !== standbyGeneration ||
-      agent.rollback_standby_source_job_id !== sourceJob.id ||
-      agent.rollback_standby_rollout_id !== sourceData.rolloutId ||
-      agent.user_id !== sourceData.targetOwnerUserId ||
-      agent.docker_image !== sourceData.targetImage ||
-      agent.image_digest !== sourceData.targetDigest
-    ) {
-      throw conflict(`Agent ${sourceData.agentId} no longer matches canary standby audit`);
-    }
 
     const data: AdminCanaryStandbyDecisionJobData = {
       requestId: input.requestId,

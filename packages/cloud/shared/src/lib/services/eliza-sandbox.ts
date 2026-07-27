@@ -1516,6 +1516,19 @@ export class ElizaSandboxService {
     return agentSandboxesRepository.findById(agentId);
   }
 
+  private assertRollbackStandbyAllowsNoMutation(
+    rec: AgentSandbox,
+    mutation: "environment" | "profile" | "managed launch",
+  ): void {
+    if (rec.rollback_standby_state) {
+      throw new ApiError(
+        409,
+        "session_not_ready",
+        `Agent rollback standby generation ${rec.rollback_standby_generation} blocks ${mutation} changes`,
+      );
+    }
+  }
+
   async updateAgentEnvironment(
     agentId: string,
     orgId: string,
@@ -1532,6 +1545,7 @@ export class ElizaSandboxService {
       if (rec.deletion_attempt_id) {
         throw new ApiError(409, "session_not_ready", "Agent deletion is in progress");
       }
+      this.assertRollbackStandbyAllowsNoMutation(rec, "environment");
       const [row] = await tx
         .update(agentSandboxes)
         .set({
@@ -1576,6 +1590,7 @@ export class ElizaSandboxService {
             eq(agentSandboxes.id, agentId),
             eq(agentSandboxes.organization_id, orgId),
             sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
+            sql`${agentSandboxes.rollback_standby_state} IS NULL`,
             sql`COALESCE(${agentSandboxes.warm_claim_credential_state}, '') NOT IN ('pending', 'attested')`,
           ),
         )
@@ -1622,6 +1637,7 @@ export class ElizaSandboxService {
         );
         if (rec?.deletion_attempt_id || rec?.claimed_at) return undefined;
         if (!rec) return undefined;
+        this.assertRollbackStandbyAllowsNoMutation(rec, "managed launch");
 
         const environment = await prepareManagedElizaSharedEnvironment({
           existingEnv: rec.environment_vars,
@@ -1648,6 +1664,7 @@ export class ElizaSandboxService {
               eq(agentSandboxes.environment_revision, rec.environment_revision),
               eq(agentSandboxes.updated_at, rec.updated_at),
               sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
+              sql`${agentSandboxes.rollback_standby_state} IS NULL`,
               sql`${agentSandboxes.claimed_at} IS NULL`,
             ),
           )
@@ -1706,6 +1723,7 @@ export class ElizaSandboxService {
       if (rec.deletion_attempt_id) {
         throw new ApiError(409, "session_not_ready", "Agent deletion is in progress");
       }
+      this.assertRollbackStandbyAllowsNoMutation(rec, "profile");
 
       const updates: { agent_name?: string; agent_config?: Record<string, unknown> } = {};
       if (input.agentName !== undefined) updates.agent_name = input.agentName;
@@ -1728,6 +1746,7 @@ export class ElizaSandboxService {
             eq(agentSandboxes.id, agentId),
             eq(agentSandboxes.organization_id, orgId),
             sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
+            sql`${agentSandboxes.rollback_standby_state} IS NULL`,
           ),
         )
         .returning();
@@ -7622,7 +7641,15 @@ export class ElizaSandboxService {
     if (
       agent.rollback_standby_source_job_id !== policy.sourceJobId ||
       agent.rollback_standby_rollout_id !== policy.rolloutId ||
-      agent.rollback_standby_generation !== policy.sourceJobId
+      agent.rollback_standby_generation !== policy.sourceJobId ||
+      agent.user_id !== policy.targetOwnerUserId ||
+      agent.sandbox_id !== agent.rollback_standby_sandbox_id ||
+      agent.node_id !== agent.rollback_standby_node_id ||
+      agent.container_name !== agent.rollback_standby_container_name ||
+      agent.docker_image !== policy.sourceImage ||
+      agent.image_digest !== policy.sourceDigest ||
+      agent.rollback_standby_environment_revision === null ||
+      agent.environment_revision !== agent.rollback_standby_environment_revision
     ) {
       throw new Error("Rollback standby belongs to a different canary job");
     }
@@ -7661,10 +7688,15 @@ export class ElizaSandboxService {
             eq(agentSandboxes.organization_id, agent.organization_id),
             eq(agentSandboxes.rollback_standby_generation, policy.sourceJobId),
             eq(agentSandboxes.rollback_standby_source_job_id, policy.sourceJobId),
+            eq(agentSandboxes.rollback_standby_rollout_id, policy.rolloutId),
             inArray(agentSandboxes.rollback_standby_state, ["pausing", "paused_pre_cutover"]),
+            eq(agentSandboxes.user_id, policy.targetOwnerUserId),
             eq(agentSandboxes.sandbox_id, agent.rollback_standby_sandbox_id!),
             eq(agentSandboxes.node_id, agent.rollback_standby_node_id!),
             eq(agentSandboxes.container_name, agent.rollback_standby_container_name!),
+            eq(agentSandboxes.docker_image, policy.sourceImage),
+            eq(agentSandboxes.image_digest, policy.sourceDigest),
+            eq(agentSandboxes.environment_revision, agent.rollback_standby_environment_revision!),
             sql`${agentSandboxes.replacement_cleanup_sandbox_id} IS NULL`,
           ),
         )
@@ -8040,8 +8072,13 @@ export class ElizaSandboxService {
       agent.rollback_standby_rollout_id !== data.rolloutId ||
       agent.rollback_standby_source_job_id !== data.sourceJobId ||
       agent.user_id !== data.targetOwnerUserId ||
+      agent.environment_revision !== agent.rollback_standby_environment_revision ||
       (!rollbackCommitted &&
-        (agent.docker_image !== data.targetImage || agent.image_digest !== data.targetDigest)) ||
+        (agent.docker_image !== data.targetImage ||
+          agent.image_digest !== data.targetDigest ||
+          agent.sandbox_id !== agent.rollback_standby_primary_sandbox_id ||
+          agent.node_id !== agent.rollback_standby_primary_node_id ||
+          agent.container_name !== agent.rollback_standby_primary_container_name)) ||
       (rollbackCommitted &&
         (agent.docker_image !== data.sourceImage ||
           agent.image_digest !== data.sourceDigest ||
@@ -8151,6 +8188,8 @@ export class ElizaSandboxService {
             eq(agentSandboxes.organization_id, data.organizationId),
             eq(agentSandboxes.rollback_standby_state, "retiring"),
             eq(agentSandboxes.rollback_standby_generation, data.standbyGeneration),
+            eq(agentSandboxes.rollback_standby_rollout_id, data.rolloutId),
+            eq(agentSandboxes.rollback_standby_source_job_id, data.sourceJobId),
             eq(agentSandboxes.rollback_standby_decision_job_id, decisionJobId),
             eq(agentSandboxes.rollback_standby_verified_backup_id, data.verifiedBackupId!),
             eq(agentSandboxes.rollback_standby_restore_validation_id, data.restoreValidationId!),
@@ -8163,9 +8202,12 @@ export class ElizaSandboxService {
               data.restoreValidatedCandidateProviderSandboxId!,
             ),
             eq(agentSandboxes.user_id, data.targetOwnerUserId),
+            eq(agentSandboxes.sandbox_id, current.rollback_standby_primary_sandbox_id!),
+            eq(agentSandboxes.node_id, current.rollback_standby_primary_node_id!),
+            eq(agentSandboxes.container_name, current.rollback_standby_primary_container_name!),
             eq(agentSandboxes.docker_image, data.targetImage),
             eq(agentSandboxes.image_digest, data.targetDigest),
-            eq(agentSandboxes.environment_revision, current.environment_revision),
+            eq(agentSandboxes.environment_revision, current.rollback_standby_environment_revision!),
           ),
         )
         .returning({ id: agentSandboxes.id });
@@ -8217,6 +8259,15 @@ export class ElizaSandboxService {
             eq(agentSandboxes.organization_id, data.organizationId),
             eq(agentSandboxes.rollback_standby_state, "paused"),
             eq(agentSandboxes.rollback_standby_generation, data.standbyGeneration),
+            eq(agentSandboxes.rollback_standby_rollout_id, data.rolloutId),
+            eq(agentSandboxes.rollback_standby_source_job_id, data.sourceJobId),
+            eq(agentSandboxes.user_id, data.targetOwnerUserId),
+            eq(agentSandboxes.sandbox_id, agent.rollback_standby_primary_sandbox_id!),
+            eq(agentSandboxes.node_id, agent.rollback_standby_primary_node_id!),
+            eq(agentSandboxes.container_name, agent.rollback_standby_primary_container_name!),
+            eq(agentSandboxes.docker_image, data.targetImage),
+            eq(agentSandboxes.image_digest, data.targetDigest),
+            eq(agentSandboxes.environment_revision, agent.rollback_standby_environment_revision!),
             sql`${agentSandboxes.rollback_standby_decision_job_id} IS NULL`,
           ),
         )
@@ -8305,11 +8356,16 @@ export class ElizaSandboxService {
               eq(agentSandboxes.organization_id, data.organizationId),
               eq(agentSandboxes.rollback_standby_state, "rollback_pending"),
               eq(agentSandboxes.rollback_standby_generation, data.standbyGeneration),
+              eq(agentSandboxes.rollback_standby_rollout_id, data.rolloutId),
+              eq(agentSandboxes.rollback_standby_source_job_id, data.sourceJobId),
               eq(agentSandboxes.rollback_standby_decision_job_id, decisionJobId),
+              eq(agentSandboxes.user_id, data.targetOwnerUserId),
               eq(agentSandboxes.sandbox_id, agent.sandbox_id!),
               eq(agentSandboxes.node_id, agent.node_id!),
               eq(agentSandboxes.container_name, agent.container_name!),
+              eq(agentSandboxes.docker_image, data.targetImage),
               eq(agentSandboxes.image_digest, data.targetDigest),
+              eq(agentSandboxes.environment_revision, agent.rollback_standby_environment_revision!),
             ),
           )
           .returning();
@@ -8370,7 +8426,16 @@ export class ElizaSandboxService {
             eq(agentSandboxes.organization_id, data.organizationId),
             eq(agentSandboxes.rollback_standby_state, "rollback_cleanup_pending"),
             eq(agentSandboxes.rollback_standby_generation, data.standbyGeneration),
+            eq(agentSandboxes.rollback_standby_rollout_id, data.rolloutId),
+            eq(agentSandboxes.rollback_standby_source_job_id, data.sourceJobId),
             eq(agentSandboxes.rollback_standby_decision_job_id, decisionJobId),
+            eq(agentSandboxes.user_id, data.targetOwnerUserId),
+            eq(agentSandboxes.sandbox_id, current.rollback_standby_sandbox_id!),
+            eq(agentSandboxes.node_id, current.rollback_standby_node_id!),
+            eq(agentSandboxes.container_name, current.rollback_standby_container_name!),
+            eq(agentSandboxes.docker_image, data.sourceImage),
+            eq(agentSandboxes.image_digest, data.sourceDigest),
+            eq(agentSandboxes.environment_revision, current.rollback_standby_environment_revision!),
           ),
         )
         .returning({ id: agentSandboxes.id });
@@ -8470,11 +8535,19 @@ export class ElizaSandboxService {
                 eq(agentSandboxes.id, params.data.agentId),
                 eq(agentSandboxes.organization_id, params.data.organizationId),
                 eq(agentSandboxes.user_id, params.data.targetOwnerUserId),
+                eq(agentSandboxes.sandbox_id, current.rollback_standby_primary_sandbox_id!),
+                eq(agentSandboxes.node_id, current.rollback_standby_primary_node_id!),
+                eq(agentSandboxes.container_name, current.rollback_standby_primary_container_name!),
                 eq(agentSandboxes.docker_image, params.data.targetImage),
                 eq(agentSandboxes.image_digest, params.data.targetDigest),
-                eq(agentSandboxes.environment_revision, current.environment_revision),
+                eq(
+                  agentSandboxes.environment_revision,
+                  current.rollback_standby_environment_revision!,
+                ),
                 eq(agentSandboxes.rollback_standby_state, "paused"),
                 eq(agentSandboxes.rollback_standby_generation, params.data.standbyGeneration),
+                eq(agentSandboxes.rollback_standby_rollout_id, params.data.rolloutId),
+                eq(agentSandboxes.rollback_standby_source_job_id, params.data.sourceJobId),
                 sql`${agentSandboxes.rollback_standby_decision_job_id} IS NULL`,
                 sql`${agentSandboxes.rollback_standby_verified_backup_id} IS NULL`,
                 sql`${agentSandboxes.rollback_standby_restore_validation_id} IS NULL`,
@@ -8553,6 +8626,12 @@ export class ElizaSandboxService {
       ? await agentSandboxesRepository.findByIdAndOrgForWrite(agentId, orgId)
       : await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
     if (!agent) return { success: false, error: "Agent not found" };
+    if (!adminCanary && agent.rollback_standby_state) {
+      return {
+        success: false,
+        error: `Rollback standby generation ${agent.rollback_standby_generation} requires an explicit decision`,
+      };
+    }
     if (adminCanary && agent.rollback_standby_state) {
       if (
         agent.rollback_standby_state !== "pausing" &&
@@ -9071,6 +9150,12 @@ export class ElizaSandboxService {
       ? await agentSandboxesRepository.findByIdAndOrgForWrite(agentId, orgId)
       : await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
     if (!agent) return { success: false, error: "Agent not found" };
+    if (agent.rollback_standby_state) {
+      return {
+        success: false,
+        error: `Rollback standby generation ${agent.rollback_standby_generation} requires an explicit decision`,
+      };
+    }
     if (this.getReplacementCleanupLocator(agent)) {
       try {
         await this.retirePersistedReplacementCleanup(agentId, orgId);

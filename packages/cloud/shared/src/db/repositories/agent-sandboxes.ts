@@ -1709,6 +1709,7 @@ export class AgentSandboxesRepository {
       if (userRow.claimed_at !== null || userRow.warm_claim_credential_state !== null) {
         return null;
       }
+      if (userRow.rollback_standby_state) return null;
 
       if (params.expectedUpdatedAt) {
         const expectedMs = new Date(params.expectedUpdatedAt).getTime();
@@ -1770,6 +1771,7 @@ export class AgentSandboxesRepository {
             eq(agentSandboxes.id, params.userAgentId),
             eq(agentSandboxes.organization_id, params.organizationId),
             sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
+            sql`${agentSandboxes.rollback_standby_state} IS NULL`,
             sql`${agentSandboxes.status} NOT IN ('deletion_pending', 'deletion_failed')`,
           ),
         )
