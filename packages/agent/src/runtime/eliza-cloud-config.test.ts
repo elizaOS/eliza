@@ -509,6 +509,36 @@ describe("provisioned cloud container topology (#9887)", () => {
     expect(process.env.ELIZAOS_CLOUD_USE_INFERENCE).toBe("false");
   });
 
+  it("honors canonical capability routes without a legacy cloud block", () => {
+    const config: ElizaConfig = {
+      deploymentTarget: {
+        runtime: "cloud",
+        provider: "elizacloud",
+      },
+      serviceRouting: {
+        llmText: {
+          backend: "cerebras",
+          transport: "direct",
+        },
+        media: {
+          backend: "elizacloud",
+          transport: "cloud-proxy",
+        },
+        embeddings: {
+          backend: "local-inference",
+          transport: "direct",
+        },
+      },
+    } as ElizaConfig;
+
+    applyCloudConfigToEnv(config);
+
+    expect(process.env.ELIZAOS_CLOUD_USE_INFERENCE).toBe("false");
+    expect(process.env.ELIZAOS_CLOUD_USE_MEDIA).toBe("true");
+    expect(process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS).toBe("false");
+    expect(process.env.ELIZAOS_CLOUD_ENABLED).toBeUndefined();
+  });
+
   it("still scrubs a leaked [REDACTED] placeholder from the env (#10819)", () => {
     process.env.ELIZAOS_CLOUD_API_KEY = "[REDACTED]";
     const config: ElizaConfig = {
