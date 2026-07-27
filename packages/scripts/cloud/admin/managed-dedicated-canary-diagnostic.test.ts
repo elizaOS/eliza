@@ -506,6 +506,27 @@ describe("managed dedicated canary diagnostic", () => {
       3,
       "recovery provenance after failure",
     ],
+    [
+      "timeout mismatched attempt",
+      "Job timed out - recovered for retry (attempt 2/3)",
+      1,
+      3,
+      "recovery counters disagree",
+    ],
+    [
+      "timeout maxed retry",
+      "Job timed out - recovered for retry (attempt 3/3)",
+      3,
+      3,
+      "recovery counters disagree",
+    ],
+    [
+      "timeout failed status",
+      "Job timed out - recovered for retry (attempt 1/3)",
+      1,
+      3,
+      "recovery provenance after failure",
+    ],
   ])(
     "rejects %s for a nonterminal recovery breadcrumb",
     (_name, message, attempts, maxAttempts, expectedError) => {
@@ -519,7 +540,9 @@ describe("managed dedicated canary diagnostic", () => {
       job.result = null;
       job.attempts = attempts;
       job.maxAttempts = maxAttempts;
-      if (_name !== "failed status") job.status = "pending";
+      if (_name !== "failed status" && _name !== "timeout failed status") {
+        job.status = "pending";
+      }
 
       expect(() =>
         sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX),
@@ -531,6 +554,10 @@ describe("managed dedicated canary diagnostic", () => {
     "Job interrupted by worker restart - recovered for retry (attempt 0/3)",
     "Job interrupted by worker restart - recovered for retry (attempt 1/1000)",
     "Job interrupted by worker restart - recovered for retry (attempt 1/3) trailing",
+    "Job timed out - recovered for retry (attempt 0/3)",
+    "Job timed out - recovered for retry (attempt 1/1000)",
+    "Job timed out - recovered for retry (attempt 1/3) trailing",
+    "Job timed out - Recovered for Retry (attempt 1/3)",
   ])("rejects malformed recovery provenance", (message) => {
     const input = failedDeleteInput();
     const agent = input.agent as Record<string, unknown>;
@@ -545,7 +572,7 @@ describe("managed dedicated canary diagnostic", () => {
 
     expect(() =>
       sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX),
-    ).toThrow("privacy-safe classifier");
+    ).toThrow("malformed recovery provenance");
   });
 
   test("classifies row-delete failures without publishing the SQL text", () => {

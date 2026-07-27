@@ -243,6 +243,9 @@ function classifyRecovery(
       maxAttempts: Number(match[2]),
     };
   }
+  if (/recovered for retry/i.test(value)) {
+    throw new Error(`${label} has malformed recovery provenance`);
+  }
   return null;
 }
 
