@@ -140,10 +140,17 @@ describe("processPendingJobs — lane scoping", () => {
       await provisioningJobService.recoverInterruptedJobsOnStartup(startedBefore, AGENT_JOB_TYPES);
 
       const recoveredTypes = recoverSpy.mock.calls.map((c) => c[0].type);
-      // Startup recovery excludes the gated snapshot lane (#16639): a restart
-      // must not resurrect snapshot jobs before operators re-enable them.
+      // Startup recovery excludes the gated snapshot lane (#16639) and
+      // restore validation. Another worker may still own the globally-limited
+      // restore lane, so only its DB-clock stale lease may requeue it.
       expect(new Set(recoveredTypes)).toEqual(
-        new Set(AGENT_JOB_TYPES.filter((t) => t !== JOB_TYPES.AGENT_SNAPSHOT)),
+        new Set(
+          AGENT_JOB_TYPES.filter(
+            (t) =>
+              t !== JOB_TYPES.AGENT_SNAPSHOT &&
+              t !== JOB_TYPES.AGENT_ADMIN_CANARY_RESTORE_VALIDATION,
+          ),
+        ),
       );
       for (const appsType of APPS_JOB_TYPES) {
         expect(recoveredTypes).not.toContain(appsType);
