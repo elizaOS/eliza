@@ -61,10 +61,7 @@ type ErrorCode =
   | "database_failed"
   | "timeout";
 
-type RecoveryCode =
-  | "none"
-  | "worker_restart_recovered"
-  | "timeout_recovered";
+type RecoveryCode = "none" | "worker_restart_recovered" | "timeout_recovered";
 
 interface RecoveryClassification {
   code: Exclude<RecoveryCode, "none">;
@@ -77,12 +74,7 @@ interface TerminalFailureClassification {
   attempts: number;
 }
 
-type ErrorLengthBucket =
-  | "1_64"
-  | "65_128"
-  | "129_256"
-  | "257_512"
-  | "513_2000";
+type ErrorLengthBucket = "1_64" | "65_128" | "129_256" | "257_512" | "513_2000";
 
 interface UnclassifiedErrorProfile {
   lengthBucket: ErrorLengthBucket;
@@ -102,10 +94,7 @@ interface JobErrorClassification {
 
 const RECOVERY_PARTIAL_RESULT_ERRORS = new Map<string, ErrorCode>([
   ["Failed to delete sandbox", "sandbox_stop_failed"],
-  [
-    "Agent replacement cleanup is still pending",
-    "replacement_cleanup_pending",
-  ],
+  ["Agent replacement cleanup is still pending", "replacement_cleanup_pending"],
   ["Agent provisioning is in progress", "provisioning_in_progress"],
   ["Agent deletion ownership changed", "lifecycle_conflict"],
 ]);
@@ -372,8 +361,7 @@ function classifyJobError(
   label: string,
   allowUnclassified: boolean,
 ): JobErrorClassification {
-  if (value === null)
-    return { code: "none", unclassifiedProfile: null };
+  if (value === null) return { code: "none", unclassifiedProfile: null };
   if (typeof value !== "string" || value.length === 0 || value.length > 2_000) {
     throw new Error(`${label} must be a bounded string or null`);
   }
@@ -381,9 +369,7 @@ function classifyJobError(
   return {
     code,
     unclassifiedProfile:
-      code === "unclassified"
-        ? buildUnclassifiedErrorProfile(value)
-        : null,
+      code === "unclassified" ? buildUnclassifiedErrorProfile(value) : null,
   };
 }
 
@@ -524,17 +510,11 @@ export function sanitizeManagedDedicatedCanaryDiagnostic(
     }
 
     const terminalFailure =
-      typeof job.error === "string"
-        ? classifyTerminalFailure(job.error)
-        : null;
+      typeof job.error === "string" ? classifyTerminalFailure(job.error) : null;
     const recovery = classifyRecovery(job.error, `jobs[${index}].error`);
     const jobError = recovery
       ? { code: "none" as const, unclassifiedProfile: null }
-      : classifyJobError(
-          job.error,
-          `jobs[${index}].error`,
-          index === 0,
-        );
+      : classifyJobError(job.error, `jobs[${index}].error`, index === 0);
     const jobErrorCode = jobError.code;
     let containerStopped: boolean | null = null;
     let rowDeleted: boolean | null = null;
@@ -615,11 +595,7 @@ export function sanitizeManagedDedicatedCanaryDiagnostic(
     ) {
       throw new Error(`jobs[${index}] recovery counters disagree`);
     }
-    if (
-      recovery &&
-      job.status !== "pending" &&
-      job.status !== "in_progress"
-    ) {
+    if (recovery && job.status !== "pending" && job.status !== "in_progress") {
       throw new Error(`jobs[${index}] recovery status is invalid`);
     }
     if (
@@ -637,7 +613,9 @@ export function sanitizeManagedDedicatedCanaryDiagnostic(
         RECOVERY_PARTIAL_RESULT_ERRORS.get(resultErrorValue) !==
           resultErrorCode)
     ) {
-      throw new Error(`jobs[${index}] recovery result is not a partial failure`);
+      throw new Error(
+        `jobs[${index}] recovery result is not a partial failure`,
+      );
     }
     if (
       jobErrorCode === "unclassified" &&

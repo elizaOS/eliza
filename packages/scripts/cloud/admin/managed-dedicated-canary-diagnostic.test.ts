@@ -13,12 +13,12 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { toLibpqConnectionUrl } from "./libpq-connection-url";
 import {
   canonicalizeManagedDedicatedCanaryDiagnostic,
   sanitizeManagedDedicatedCanaryDiagnostic,
   writeManagedDedicatedCanaryDiagnostic,
 } from "./managed-dedicated-canary-diagnostic";
-import { toLibpqConnectionUrl } from "./libpq-connection-url";
 
 const SUFFIX = "r30081355987a1";
 
@@ -355,7 +355,8 @@ describe("managed dedicated canary diagnostic", () => {
       "opaque https://u:p@example.test/a?q=secret#frag 192.0.2.44 user@example.test " +
       "Bearer eyJhbGciOiJIUzI1NiJ9.abc.sig ghp_1234567890 AWS_SECRET_ACCESS_KEY " +
       "api_key=password -----BEGIN PRIVATE KEY----- sha256:deadbeef " +
-      '{"x":"::error::${{secrets.X}}"}\r\n\t\u0000\u001b[31m\u202e\u200b\u0301\u0430\ud800';
+      '{"x":"::error::$' +
+      '{{secrets.X}}"}\r\n\t\u0000\u001b[31m\u202e\u200b\u0301\u0430\ud800';
     const canonical = canonicalizeManagedDedicatedCanaryDiagnostic(
       JSON.stringify(unclassifiedLatestJobInput(error)),
       SUFFIX,
@@ -802,25 +803,22 @@ describe("managed dedicated canary diagnostic", () => {
       "2026-07-26T23:10:31.000Z",
       "2026-07-26T23:11:31.000Z",
     ],
-  ])(
-    "rejects terminal recovery with %s",
-    (_name, startedAt, completedAt) => {
-      const input = failedDeleteInput();
-      const agent = input.agent as Record<string, unknown>;
-      const [job] = input.jobs as Record<string, unknown>[];
-      agent.status = "deletion_pending";
-      agent.errorMessage = null;
-      agent.errorCount = 0;
-      job.error = "Job timed out 3 times - max attempts reached";
-      job.result = null;
-      job.startedAt = startedAt;
-      job.completedAt = completedAt;
+  ])("rejects terminal recovery with %s", (_name, startedAt, completedAt) => {
+    const input = failedDeleteInput();
+    const agent = input.agent as Record<string, unknown>;
+    const [job] = input.jobs as Record<string, unknown>[];
+    agent.status = "deletion_pending";
+    agent.errorMessage = null;
+    agent.errorCount = 0;
+    job.error = "Job timed out 3 times - max attempts reached";
+    job.result = null;
+    job.startedAt = startedAt;
+    job.completedAt = completedAt;
 
-      expect(() =>
-        sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX),
-      ).toThrow("recovery timestamps disagree");
-    },
-  );
+    expect(() =>
+      sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX),
+    ).toThrow("recovery timestamps disagree");
+  });
 
   test.each([
     [
@@ -857,10 +855,7 @@ describe("managed dedicated canary diagnostic", () => {
       "worker_restart_recovered",
       "Job interrupted by worker restart - recovered for retry (attempt 1/3)",
     ],
-    [
-      "timeout_recovered",
-      "Job timed out - recovered for retry (attempt 1/3)",
-    ],
+    ["timeout_recovered", "Job timed out - recovered for retry (attempt 1/3)"],
   ])(
     "keeps %s separate from terminal errors for pending and running jobs",
     (expectedCode, message) => {
@@ -1024,35 +1019,32 @@ describe("managed dedicated canary diagnostic", () => {
       "2026-07-26T23:11:30.000Z",
       "recovery status is invalid",
     ],
-  ])(
-    "rejects %s",
-    (_name, status, startedAt, completedAt, expectedError) => {
-      const input = failedDeleteInput();
-      const agent = input.agent as Record<string, unknown>;
-      const [job] = input.jobs as Record<string, unknown>[];
-      agent.status = "deletion_pending";
-      agent.errorMessage = null;
-      agent.errorCount = 0;
-      job.status = status;
-      job.error =
-        "Job interrupted by worker restart - recovered for retry (attempt 1/3)";
-      job.result =
-        status === "completed"
-          ? {
-              containerStopped: true,
-              rowDeleted: true,
-              error: null,
-            }
-          : null;
-      job.attempts = 1;
-      job.startedAt = startedAt;
-      job.completedAt = completedAt;
+  ])("rejects %s", (_name, status, startedAt, completedAt, expectedError) => {
+    const input = failedDeleteInput();
+    const agent = input.agent as Record<string, unknown>;
+    const [job] = input.jobs as Record<string, unknown>[];
+    agent.status = "deletion_pending";
+    agent.errorMessage = null;
+    agent.errorCount = 0;
+    job.status = status;
+    job.error =
+      "Job interrupted by worker restart - recovered for retry (attempt 1/3)";
+    job.result =
+      status === "completed"
+        ? {
+            containerStopped: true,
+            rowDeleted: true,
+            error: null,
+          }
+        : null;
+    job.attempts = 1;
+    job.startedAt = startedAt;
+    job.completedAt = completedAt;
 
-      expect(() =>
-        sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX),
-      ).toThrow(expectedError);
-    },
-  );
+    expect(() =>
+      sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX),
+    ).toThrow(expectedError);
+  });
 
   test.each([
     "Job interrupted by worker restart - recovered for retry (attempt 0/3)",
@@ -1101,8 +1093,7 @@ describe("managed dedicated canary diagnostic", () => {
       const input = failedDeleteInput();
       const agent = input.agent as Record<string, unknown>;
       const [job] = input.jobs as Record<string, unknown>[];
-      const malformed =
-        "Job timed out - recovered  for retry (attempt 1/3)";
+      const malformed = "Job timed out - recovered  for retry (attempt 1/3)";
       if (boundary === "agent") {
         agent.errorMessage = `Deletion permanently failed after 3 attempts: ${malformed}`;
       } else {
