@@ -416,6 +416,24 @@ ${liquidGlassRimCss(".eliza-notif-glass")}
 .eliza-notif-scroll[data-shade-dragging] .eliza-notif-count-transition {
   transition: none;
 }
+/* Direct manipulation keeps each glass card as one stable physical surface.
+   Only its information fades toward the committed resting projection; fading
+   an ancestor would dim the specular rim and make the border flicker. */
+.eliza-notif-scroll:is([data-shade-dragging], [data-shade-settling]) [data-notification-group-content] .eliza-notif-row-content {
+  opacity: var(
+    --eliza-notif-row-content-visibility,
+    var(--eliza-notif-group-content-visibility, 1)
+  );
+}
+.eliza-notif-scroll[data-shade-dragging] [data-notification-group-content] .eliza-notif-row-content {
+  transition: none;
+}
+/* A cancelled pull reverses the information fade on the same presentation
+   clock while the unchanged glass shell stays in place. */
+[data-notification-shade-cancelling] .eliza-notif-row-content {
+  opacity: 1;
+  transition: opacity var(--eliza-notif-settle-duration, ${SHADE_SETTLE_MS}ms) ${SHADE_EASING};
+}
 /* Bulk clear keeps its right edge aligned with each producer's X. Touch-first
    surfaces reveal the destructive command after the first tap; precise
    pointers can preview it leftward on hover or keyboard focus before the
@@ -1150,6 +1168,9 @@ export function NotificationsHomeCenter({
 
   const setPullPx = useCallback(
     (px: number, preserveDirectionAtZero = false) => {
+      // A fresh non-zero sample owns direct manipulation immediately. Cancel
+      // any prior cancelled-pull settle so easing cannot lag behind this finger.
+      if (px !== 0) cancelPullCancellation();
       pullPxRef.current = px;
       const nextDirection =
         px > 0
@@ -1204,6 +1225,7 @@ export function NotificationsHomeCenter({
     },
     [
       applyPullPresentation,
+      cancelPullCancellation,
       cancelPullReleaseSettle,
       cancelScheduledPullPresentation,
       schedulePullPresentation,
@@ -2825,6 +2847,15 @@ export function NotificationsHomeCenter({
             : groupWasRested
               ? 1
               : groupVisibility;
+          // A card follows the finger as one physical surface. Fading its
+          // ancestor during direct manipulation also fades the glass rim,
+          // which makes the outline flicker between bright and dull while the
+          // user reverses a swipe. The committed/cancelled settle may fade the
+          // group after release; the in-hand material stays visually stable.
+          const groupPresentationVisibility =
+            shadeExpanded && pullDirection === "collapse"
+              ? 1
+              : groupContentVisibility;
           const groupContentPullOffset = pullRevealed
             ? (1 - revealProgress) * -8
             : groupWasRested
@@ -2949,7 +2980,7 @@ export function NotificationsHomeCenter({
                     : stacked
                       ? stackTailPx
                       : 0,
-                  opacity: groupContentVisibility,
+                  opacity: groupPresentationVisibility,
                   transform: `translate3d(0, ${groupContentOffset}px, 0)`,
                   transition: isPulling ? "none" : undefined,
                 }}
