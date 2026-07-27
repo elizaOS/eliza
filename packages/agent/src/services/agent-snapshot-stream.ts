@@ -132,18 +132,66 @@ async function pathExists(target: string): Promise<boolean> {
   }
 }
 
+async function syncFile(target: string): Promise<void> {
+  const handle = await fs.open(target, "r");
+  try {
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+}
+
+async function syncDirectory(target: string): Promise<void> {
+  const handle = await fs.open(target, fsConstants.O_RDONLY);
+  try {
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+}
+
+async function syncDirectoryHierarchy(
+  directory: string,
+  boundary: string,
+): Promise<void> {
+  const resolvedBoundary = path.resolve(boundary);
+  let current = path.resolve(directory);
+  if (!isWithin(resolvedBoundary, current)) {
+    throw invalidStream(
+      `Snapshot durability path escapes its root: ${directory}`,
+    );
+  }
+  while (true) {
+    await syncDirectory(current);
+    if (current === resolvedBoundary) return;
+    current = path.dirname(current);
+  }
+}
+
 function hasPostgresUrl(runtime: IAgentRuntime | AgentRuntime): string | null {
   const runtimeSetting = runtime.getSetting?.("POSTGRES_URL");
   if (typeof runtimeSetting === "string" && runtimeSetting.trim()) {
     return runtimeSetting.trim();
   }
-  return (
-    process.env.POSTGRES_URL?.trim() || process.env.DATABASE_URL?.trim() || null
-  );
+  const postgresUrl = process.env.POSTGRES_URL?.trim();
+  if (postgresUrl) return postgresUrl;
+  const runtimePglite = runtime.getSetting?.("PGLITE_DATA_DIR");
+  if (
+    (typeof runtimePglite === "string" && runtimePglite.trim()) ||
+    process.env.PGLITE_DATA_DIR?.trim()
+  ) {
+    return null;
+  }
+  return process.env.DATABASE_URL?.trim() || null;
 }
 
-async function resolvePgliteDir(): Promise<string> {
-  const configured = process.env.PGLITE_DATA_DIR?.trim();
+async function resolvePgliteDir(
+  runtime?: IAgentRuntime | AgentRuntime,
+): Promise<string> {
+  const runtimeSetting = runtime?.getSetting?.("PGLITE_DATA_DIR");
+  const configured =
+    (typeof runtimeSetting === "string" ? runtimeSetting.trim() : "") ||
+    process.env.PGLITE_DATA_DIR?.trim();
   if (configured) {
     if (configured === ":memory:" || configured.includes("://")) {
       return configured;
@@ -331,9 +379,27 @@ async function collectPlannedFiles(params: {
     throw invalidStream(`Snapshot source root is not a directory: ${root}`);
   }
   const result: PlannedSnapshotFile[] = [];
+  const traversalBudget = { entryCount: 0, pathBytes: 0 };
 
   async function visit(directory: string): Promise<void> {
-    const entries = await fs.readdir(directory, { withFileTypes: true });
+    const entries = [];
+    const handle = await fs.opendir(directory);
+    for await (const entry of handle) {
+      const absolutePath = path.join(directory, entry.name);
+      const relativePath = normalizeRelativePath(
+        path.relative(root, absolutePath),
+      );
+      traversalBudget.entryCount += 1;
+      traversalBudget.pathBytes += Buffer.byteLength(relativePath);
+      if (
+        traversalBudget.entryCount > AGENT_SNAPSHOT_STREAM_MAX_FILES ||
+        traversalBudget.pathBytes >
+          AGENT_SNAPSHOT_STREAM_MAX_DESCRIPTOR_PATH_BYTES
+      ) {
+        throw invalidStream("Snapshot traversal exceeds its metadata budget");
+      }
+      entries.push(entry);
+    }
     entries.sort((left, right) =>
       compareSnapshotWirePaths(left.name, right.name),
     );
@@ -493,6 +559,7 @@ async function capturePgliteFilesToTemporaryDirectory(
         source.absolutePath,
         destination,
         source.descriptor,
+        destinationRoot,
       );
     }
   });
@@ -557,7 +624,7 @@ async function createSnapshotStreamPlan(
   const stateDir = resolveStateDir();
   const configPath = resolveConfigPath();
   const postgresUrl = hasPostgresUrl(runtime);
-  const pgliteDir = postgresUrl ? null : await resolvePgliteDir();
+  const pgliteDir = postgresUrl ? null : await resolvePgliteDir(runtime);
   if (pgliteDir && (pgliteDir === ":memory:" || pgliteDir.includes("://"))) {
     throw new ElizaError(
       `Pre-upgrade snapshot cannot capture PGlite data dir ${pgliteDir}`,
@@ -783,6 +850,7 @@ async function writeFileAtomically(
   source: string,
   destination: string,
   descriptor: AgentSnapshotStreamFileDescriptor,
+  durabilityRoot = path.dirname(destination),
 ): Promise<void> {
   await fs.mkdir(path.dirname(destination), { recursive: true });
   const temporary = `${destination}.snapshot-${crypto.randomUUID()}`;
@@ -791,7 +859,9 @@ async function writeFileAtomically(
     await fs.chmod(temporary, descriptor.mode);
     const mtime = new Date(descriptor.mtimeMs);
     await fs.utimes(temporary, mtime, mtime);
+    await syncFile(temporary);
     await fs.rename(temporary, destination);
+    await syncDirectoryHierarchy(path.dirname(destination), durabilityRoot);
   } finally {
     await fs.rm(temporary, { force: true });
   }
@@ -929,13 +999,22 @@ async function pruneExtraFiles(
       if (!include(relativePath)) continue;
       if (entry.isDirectory()) {
         await visit(absolutePath);
-        await fs.rmdir(absolutePath).catch((error: NodeJS.ErrnoException) => {
+        try {
+          await fs.rmdir(absolutePath);
+          await syncDirectory(directory);
+        } catch (error) {
           // error-policy:J3 Concurrent absence/non-empty state is an explicit no-prune result.
-          if (error.code === "ENOENT" || error.code === "ENOTEMPTY") return;
+          if (
+            (error as NodeJS.ErrnoException).code === "ENOENT" ||
+            (error as NodeJS.ErrnoException).code === "ENOTEMPTY"
+          ) {
+            continue;
+          }
           throw error;
-        });
+        }
       } else if (entry.isFile() && !keepPaths.has(relativePath)) {
         await fs.rm(absolutePath, { force: true });
+        await syncDirectory(directory);
       }
     }
   }
@@ -957,19 +1036,26 @@ async function replaceDirectory(
   let movedPrevious = false;
   try {
     await populate(candidate);
+    await syncDirectory(candidate);
     if (await pathExists(target)) {
       await fs.rename(target, previous);
+      await syncDirectory(parent);
       movedPrevious = true;
     }
     try {
       await fs.rename(candidate, target);
+      await syncDirectory(parent);
     } catch (error) {
       // error-policy:J6 A failed directory swap restores the pre-apply directory.
-      if (movedPrevious) await fs.rename(previous, target);
+      if (movedPrevious) {
+        await fs.rename(previous, target);
+        await syncDirectory(parent);
+      }
       throw error;
     }
     if (movedPrevious) {
       await fs.rm(previous, { force: true, recursive: true });
+      await syncDirectory(parent);
     }
   } finally {
     await fs.rm(candidate, { force: true, recursive: true });
@@ -993,7 +1079,7 @@ async function applyDirectoryFileSet(params: {
       const source = params.stagedFiles[descriptor.index];
       if (!source) throw invalidStream("Snapshot staged file is missing");
       await assertSafeDestination(candidate, descriptor.path);
-      await writeFileAtomically(source, destination, descriptor);
+      await writeFileAtomically(source, destination, descriptor, candidate);
     }
   });
 }
@@ -1015,7 +1101,7 @@ async function applySharedRootFileSet(params: {
     const source = params.stagedFiles[descriptor.index];
     if (!source) throw invalidStream("Snapshot staged file is missing");
     await assertSafeDestination(params.root, descriptor.path);
-    await writeFileAtomically(source, destination, descriptor);
+    await writeFileAtomically(source, destination, descriptor, params.root);
   }
   await pruneExtraFiles(params.root, params.include, keepPaths);
 }
@@ -1031,7 +1117,7 @@ async function applyVerifiedSnapshotStream(params: {
   const database = descriptor.components.database;
   let pgliteDir: string | null = null;
   if (database.kind !== "external-postgres-reference") {
-    pgliteDir = await resolvePgliteDir();
+    pgliteDir = await resolvePgliteDir(runtime);
     if (pgliteDir === ":memory:" || pgliteDir.includes("://")) {
       throw invalidStream(
         `Cannot restore PGlite snapshot into non-filesystem data dir ${pgliteDir}`,
@@ -1104,13 +1190,19 @@ async function applyVerifiedSnapshotStream(params: {
   const configIndex = descriptor.components.character.configFileIndex;
   if (configIndex === null) {
     await fs.rm(configPath, { force: true });
+    await syncDirectory(path.dirname(configPath));
   } else {
     const configDescriptor = descriptor.files[configIndex];
     const stagedFile = stagedFiles[configIndex];
     if (!configDescriptor || !stagedFile) {
       throw invalidStream("Character config staging is missing");
     }
-    await writeFileAtomically(stagedFile, configPath, configDescriptor);
+    await writeFileAtomically(
+      stagedFile,
+      configPath,
+      configDescriptor,
+      path.dirname(configPath),
+    );
   }
 
   logger.info(
@@ -1141,6 +1233,8 @@ export async function restoreAgentSnapshotStream(
   await fs.chmod(stagingRoot, 0o700);
   const filesRoot = path.join(stagingRoot, "files");
   await fs.mkdir(filesRoot, { recursive: true, mode: 0o700 });
+  await syncDirectory(filesRoot);
+  await syncDirectory(stagingRoot);
 
   let pendingBuffer = Buffer.allocUnsafe(
     Math.min(64 * 1024, AGENT_SNAPSHOT_STREAM_MAX_LINE_BYTES),
@@ -1175,6 +1269,8 @@ export async function restoreAgentSnapshotStream(
         mode: 0o600,
       });
     }
+    await syncFile(stagedPath);
+    await syncDirectory(filesRoot);
     stagedFiles[file.index] = stagedPath;
     currentFileIndex += 1;
     currentFileOffset = 0;
