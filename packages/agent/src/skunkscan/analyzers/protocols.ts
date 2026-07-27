@@ -1,4 +1,5 @@
 import { SolanaParsedTransaction } from "../helius";
+import { collectProgramIdsFromTransaction } from "../parsers/instructions";
 import { SolanaProtocol, lookupSolanaProtocol } from "../protocols/registry";
 
 export interface WalletProtocol {
@@ -28,14 +29,9 @@ export function analyzeWalletProtocols(
 
   for (const transaction of parsedTransactions) {
     const timestamp = transaction.timestamp ?? null;
+    const programIds = collectProgramIdsFromTransaction(transaction);
 
-    for (const instruction of transaction.instructions ?? []) {
-      const programId = instruction.programId;
-
-      if (!programId) {
-        continue;
-      }
-
+    for (const programId of programIds) {
       const protocol = lookupSolanaProtocol(programId);
 
       if (!protocol) {
