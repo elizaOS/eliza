@@ -27,7 +27,6 @@ packages/benchmarks/skillsbench/experiments/*
 packages/examples
 packages/cloud-frontend
 packages/cloud-infra
-packages/scenario-runner
 packages/sweagent
 packages/soc2-verify
 packages/native
