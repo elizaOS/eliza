@@ -21,6 +21,8 @@ const LIFECYCLE_JOB_CONFLICT_PATTERN = new RegExp(
 const FORBIDDEN_OUTPUT_PATTERN =
   /(?:https?:\/\/|(?:\d{1,3}\.){3}\d{1,3}|\b(?:token|secret|password|api[_-]?key)\b|managed-dedicated-canary-|sha256:)/i;
 const TIMEOUT_ERROR_PATTERN = /(?:timed out|timeout)/i;
+const PERMANENT_DELETE_PATTERN =
+  /^Deletion permanently failed after [1-9][0-9]* attempts: (.+)$/;
 const WORKER_RESTART_TERMINAL_PATTERN =
   /^Job interrupted by worker restart ([1-9][0-9]{0,2}) times - max attempts reached$/;
 const TIMEOUT_TERMINAL_PATTERN =
@@ -47,6 +49,7 @@ const JOB_STATUSES = new Set([
 
 type ErrorCode =
   | "none"
+  | "unclassified"
   | "sandbox_stop_failed"
   | "agent_not_found"
   | "replacement_cleanup_pending"
@@ -74,6 +77,29 @@ interface TerminalFailureClassification {
   attempts: number;
 }
 
+type ErrorLengthBucket =
+  | "1_64"
+  | "65_128"
+  | "129_256"
+  | "257_512"
+  | "513_2000";
+
+interface UnclassifiedErrorProfile {
+  lengthBucket: ErrorLengthBucket;
+  writerHints: {
+    jobRunnerLike: boolean;
+    deleteLifecycleLike: boolean;
+    persistenceLike: boolean;
+    containerRuntimeLike: boolean;
+    transportLike: boolean;
+  };
+}
+
+interface JobErrorClassification {
+  code: ErrorCode;
+  unclassifiedProfile: UnclassifiedErrorProfile | null;
+}
+
 const RECOVERY_PARTIAL_RESULT_ERRORS = new Map<string, ErrorCode>([
   ["Failed to delete sandbox", "sandbox_stop_failed"],
   [
@@ -85,7 +111,7 @@ const RECOVERY_PARTIAL_RESULT_ERRORS = new Map<string, ErrorCode>([
 ]);
 
 export interface ManagedDedicatedCanaryDiagnostic {
-  schemaVersion: 2;
+  schemaVersion: 3;
   targetCount: 1;
   sandbox: {
     status: string;
@@ -103,6 +129,7 @@ export interface ManagedDedicatedCanaryDiagnostic {
     errorCode: ErrorCode;
     recoveryCode: RecoveryCode;
     resultErrorCode: ErrorCode;
+    unclassifiedProfile: UnclassifiedErrorProfile | null;
     scheduledFor: string;
     startedAt: string | null;
     completedAt: string | null;
@@ -203,6 +230,66 @@ function classifyTerminalFailure(
   return null;
 }
 
+function buildUnclassifiedErrorProfile(
+  value: string,
+): UnclassifiedErrorProfile {
+  const lengthBucket: ErrorLengthBucket =
+    value.length <= 64
+      ? "1_64"
+      : value.length <= 128
+        ? "65_128"
+        : value.length <= 256
+          ? "129_256"
+          : value.length <= 512
+            ? "257_512"
+            : "513_2000";
+  const writerHints = {
+    jobRunnerLike: false,
+    deleteLifecycleLike: false,
+    persistenceLike: false,
+    containerRuntimeLike: false,
+    transportLike: false,
+  };
+  // Exact prefixes and first-match precedence keep this diagnostic useful
+  // without turning arbitrary operator text into a fingerprinting channel.
+  if (
+    /^job agent_delete\b/.test(value) ||
+    /^Invalid agent delete job data for job /.test(value) ||
+    /^Organization ID mismatch: job\.data\.organizationId /.test(value) ||
+    /^Job not found: /.test(value)
+  ) {
+    writerHints.jobRunnerLike = true;
+  } else if (
+    /^(?:Agent deletion intent was not persisted|Deletion |Failed to delete\b|Unknown agent_delete failure$)/.test(
+      value,
+    )
+  ) {
+    writerHints.deleteLifecycleLike = true;
+  } else if (
+    /^(?:Failed query:|Database |PGlite |Postgres |PostgresError:|PostgreSQL |SQL |Transaction |Deadlock )/.test(
+      value,
+    )
+  ) {
+    writerHints.persistenceLike = true;
+  } else if (
+    /^(?:Docker |SSH |Headscale |Sandbox provider |Container runtime )/.test(
+      value,
+    )
+  ) {
+    writerHints.containerRuntimeLike = true;
+  } else if (
+    /^(?:fetch |Fetch |connect |Connect |connection |Connection |getaddrinfo |socket |Socket |ECONNRESET\b|ECONNREFUSED\b|ENETDOWN\b|ENETUNREACH\b|EHOSTUNREACH\b|ETIMEDOUT\b)/.test(
+      value,
+    )
+  ) {
+    writerHints.transportLike = true;
+  }
+  return {
+    lengthBucket,
+    writerHints,
+  };
+}
+
 function timestamp(
   value: unknown,
   label: string,
@@ -217,17 +304,22 @@ function timestamp(
   return new Date(value).toISOString();
 }
 
-function classifyError(value: unknown, label: string): ErrorCode {
+function classifyError(
+  value: unknown,
+  label: string,
+  allowUnclassified = false,
+): ErrorCode {
   if (value === null) return "none";
   if (typeof value !== "string" || value.length === 0 || value.length > 2_000) {
     throw new Error(`${label} must be a bounded string or null`);
   }
-  const permanentDelete =
-    /^Deletion permanently failed after [1-9][0-9]* attempts: (.+)$/.exec(
-      value,
-    );
+  const permanentDelete = PERMANENT_DELETE_PATTERN.exec(value);
   if (permanentDelete)
-    return classifyError(permanentDelete[1], `${label} cause`);
+    return classifyError(
+      permanentDelete[1],
+      `${label} cause`,
+      allowUnclassified,
+    );
   const terminalFailure = classifyTerminalFailure(value);
   if (terminalFailure) return terminalFailure.code;
   if (
@@ -271,7 +363,28 @@ function classifyError(value: unknown, label: string): ErrorCode {
     return "database_failed";
   }
   if (TIMEOUT_ERROR_PATTERN.test(value)) return "timeout";
+  if (allowUnclassified) return "unclassified";
   throw new Error(`${label} is not covered by the privacy-safe classifier`);
+}
+
+function classifyJobError(
+  value: unknown,
+  label: string,
+  allowUnclassified: boolean,
+): JobErrorClassification {
+  if (value === null)
+    return { code: "none", unclassifiedProfile: null };
+  if (typeof value !== "string" || value.length === 0 || value.length > 2_000) {
+    throw new Error(`${label} must be a bounded string or null`);
+  }
+  const code = classifyError(value, label, allowUnclassified);
+  return {
+    code,
+    unclassifiedProfile:
+      code === "unclassified"
+        ? buildUnclassifiedErrorProfile(value)
+        : null,
+  };
 }
 
 function classifyRecovery(
@@ -415,9 +528,14 @@ export function sanitizeManagedDedicatedCanaryDiagnostic(
         ? classifyTerminalFailure(job.error)
         : null;
     const recovery = classifyRecovery(job.error, `jobs[${index}].error`);
-    const jobErrorCode = recovery
-      ? "none"
-      : classifyError(job.error, `jobs[${index}].error`);
+    const jobError = recovery
+      ? { code: "none" as const, unclassifiedProfile: null }
+      : classifyJobError(
+          job.error,
+          `jobs[${index}].error`,
+          index === 0,
+        );
+    const jobErrorCode = jobError.code;
     let containerStopped: boolean | null = null;
     let rowDeleted: boolean | null = null;
     let resultErrorCode: ErrorCode = "none";
@@ -521,6 +639,32 @@ export function sanitizeManagedDedicatedCanaryDiagnostic(
     ) {
       throw new Error(`jobs[${index}] recovery result is not a partial failure`);
     }
+    if (
+      jobErrorCode === "unclassified" &&
+      (job.status === "completed" ||
+        job.status === "cancelled" ||
+        startedAt === null ||
+        completedAt !== null ||
+        attempts === 0 ||
+        (job.status === "failed"
+          ? attempts !== maxAttempts
+          : attempts >= maxAttempts))
+    ) {
+      throw new Error(`jobs[${index}] unclassified lifecycle is inconsistent`);
+    }
+    if (
+      jobErrorCode === "unclassified" &&
+      job.result !== null &&
+      (containerStopped !== false ||
+        rowDeleted !== false ||
+        typeof resultErrorValue !== "string" ||
+        RECOVERY_PARTIAL_RESULT_ERRORS.get(resultErrorValue) !==
+          resultErrorCode)
+    ) {
+      throw new Error(
+        `jobs[${index}] unclassified result is not a partial failure`,
+      );
+    }
     if (rowDeleted === true && containerStopped !== true) {
       throw new Error(
         `jobs[${index}] deleted a row without a stopped container`,
@@ -557,6 +701,7 @@ export function sanitizeManagedDedicatedCanaryDiagnostic(
       containerStopped,
       rowDeleted,
       errorCode: jobErrorCode,
+      unclassifiedProfile: jobError.unclassifiedProfile,
       recoveryCode: recovery?.code ?? "none",
       resultErrorCode,
       scheduledFor,
@@ -583,7 +728,7 @@ export function sanitizeManagedDedicatedCanaryDiagnostic(
   }
 
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     targetCount: 1,
     sandbox: {
       status: agent.status,
