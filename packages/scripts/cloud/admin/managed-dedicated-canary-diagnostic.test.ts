@@ -13,12 +13,12 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { toLibpqConnectionUrl } from "./libpq-connection-url";
 import {
   canonicalizeManagedDedicatedCanaryDiagnostic,
   sanitizeManagedDedicatedCanaryDiagnostic,
   writeManagedDedicatedCanaryDiagnostic,
 } from "./managed-dedicated-canary-diagnostic";
-import { toLibpqConnectionUrl } from "./libpq-connection-url";
 
 const SUFFIX = "r30081355987a1";
 
@@ -100,6 +100,19 @@ function failedDeleteInput(): Record<string, unknown> {
   };
 }
 
+function unclassifiedLatestJobInput(error: unknown): Record<string, unknown> {
+  const input = failedDeleteInput();
+  const agent = input.agent as Record<string, unknown>;
+  const [job] = input.jobs as Record<string, unknown>[];
+  agent.status = "deletion_pending";
+  agent.errorMessage = null;
+  agent.errorCount = 0;
+  job.error = error;
+  job.result = null;
+  job.completedAt = null;
+  return input;
+}
+
 describe("managed dedicated canary diagnostic", () => {
   test("emits only the classified lifecycle facts needed for retry decisions", () => {
     const evidence = sanitizeManagedDedicatedCanaryDiagnostic(
@@ -108,7 +121,7 @@ describe("managed dedicated canary diagnostic", () => {
     );
 
     expect(evidence).toEqual({
-      schemaVersion: 2,
+      schemaVersion: 3,
       targetCount: 1,
       sandbox: {
         status: "deletion_failed",
@@ -125,6 +138,7 @@ describe("managed dedicated canary diagnostic", () => {
           containerStopped: false,
           rowDeleted: false,
           errorCode: "sandbox_stop_failed",
+          unclassifiedProfile: null,
           recoveryCode: "none",
           resultErrorCode: "sandbox_stop_failed",
           scheduledFor: "2026-07-26T23:10:30.000Z",
@@ -196,21 +210,6 @@ describe("managed dedicated canary diagnostic", () => {
       "non-inline",
     ],
     [
-      "unclassified operator text",
-      {
-        ...failedDeleteInput(),
-        jobs: [
-          {
-            ...(failedDeleteInput().jobs as Record<string, unknown>[])[0],
-            error: "remote execution returned an unexpected opaque failure",
-            result: null,
-          },
-        ],
-      },
-      SUFFIX,
-      "privacy-safe classifier",
-    ],
-    [
       "raw result identifier",
       {
         ...failedDeleteInput(),
@@ -233,6 +232,337 @@ describe("managed dedicated canary diagnostic", () => {
     expect(() =>
       sanitizeManagedDedicatedCanaryDiagnostic(input, suffix),
     ).toThrow(message);
+  });
+
+  test.each([
+    [1, "1_64"],
+    [64, "1_64"],
+    [65, "65_128"],
+    [128, "65_128"],
+    [129, "129_256"],
+    [256, "129_256"],
+    [257, "257_512"],
+    [512, "257_512"],
+    [513, "513_2000"],
+    [2_000, "513_2000"],
+  ])(
+    "profiles an unclassified latest job in the fixed %s-code-unit bucket",
+    (length, expectedBucket) => {
+      const evidence = sanitizeManagedDedicatedCanaryDiagnostic(
+        unclassifiedLatestJobInput("x".repeat(length)),
+        SUFFIX,
+      );
+
+      expect(evidence).toMatchObject({
+        schemaVersion: 3,
+        sandbox: {
+          errorCode: "none",
+        },
+        jobs: [
+          {
+            errorCode: "unclassified",
+            unclassifiedProfile: {
+              lengthBucket: expectedBucket,
+              writerHints: {
+                jobRunnerLike: false,
+                deleteLifecycleLike: false,
+                persistenceLike: false,
+                containerRuntimeLike: false,
+                transportLike: false,
+              },
+            },
+          },
+        ],
+      });
+    },
+  );
+
+  test.each([
+    ["empty", ""],
+    ["over-limit", "x".repeat(2_001)],
+    ["non-string", 17],
+  ])("rejects an invalid unclassified %s value", (_name, error) => {
+    expect(() =>
+      sanitizeManagedDedicatedCanaryDiagnostic(
+        unclassifiedLatestJobInput(error),
+        SUFFIX,
+      ),
+    ).toThrow("bounded string");
+  });
+
+  test.each([
+    ["32 surrogate pairs", "😀".repeat(32), "1_64"],
+    ["33 surrogate pairs", "😀".repeat(33), "65_128"],
+    ["unpaired surrogate", "\ud800", "1_64"],
+  ])("uses JavaScript UTF-16 units for %s", (_name, error, lengthBucket) => {
+    const profile = sanitizeManagedDedicatedCanaryDiagnostic(
+      unclassifiedLatestJobInput(error),
+      SUFFIX,
+    ).jobs[0]?.unclassifiedProfile;
+    expect(profile?.lengthBucket).toBe(lengthBucket);
+  });
+
+  test.each([
+    ["job agent_delete returned an opaque failure", "jobRunnerLike"],
+    ["Agent deletion intent was not persisted", "deleteLifecycleLike"],
+    ["PGlite driver returned an opaque failure", "persistenceLike"],
+    ["SSH executor returned an opaque failure", "containerRuntimeLike"],
+    ["getaddrinfo returned an opaque failure", "transportLike"],
+  ])("emits one anchored %s hint", (error, expectedHint) => {
+    const hints = sanitizeManagedDedicatedCanaryDiagnostic(
+      unclassifiedLatestJobInput(error),
+      SUFFIX,
+    ).jobs[0]?.unclassifiedProfile?.writerHints;
+    expect(hints).toEqual({
+      jobRunnerLike: expectedHint === "jobRunnerLike",
+      deleteLifecycleLike: expectedHint === "deleteLifecycleLike",
+      persistenceLike: expectedHint === "persistenceLike",
+      containerRuntimeLike: expectedHint === "containerRuntimeLike",
+      transportLike: expectedHint === "transportLike",
+    });
+  });
+
+  test("uses fixed precedence when one value carries every family marker", () => {
+    const error =
+      "job agent_delete Agent deletion intent PGlite SSH getaddrinfo";
+    const hints = sanitizeManagedDedicatedCanaryDiagnostic(
+      unclassifiedLatestJobInput(error),
+      SUFFIX,
+    ).jobs[0]?.unclassifiedProfile?.writerHints;
+    expect(hints).toEqual({
+      jobRunnerLike: true,
+      deleteLifecycleLike: false,
+      persistenceLike: false,
+      containerRuntimeLike: false,
+      transportLike: false,
+    });
+  });
+
+  test("equal-length same-family secrets produce byte-identical profiles", () => {
+    const left = sanitizeManagedDedicatedCanaryDiagnostic(
+      unclassifiedLatestJobInput("job agent_delete secret-AAAA"),
+      SUFFIX,
+    ).jobs[0]?.unclassifiedProfile;
+    const right = sanitizeManagedDedicatedCanaryDiagnostic(
+      unclassifiedLatestJobInput("job agent_delete secret-BBBB"),
+      SUFFIX,
+    ).jobs[0]?.unclassifiedProfile;
+    expect(JSON.stringify(left)).toBe(JSON.stringify(right));
+  });
+
+  test("canonical output never includes malicious unclassified input", () => {
+    const error =
+      "opaque https://u:p@example.test/a?q=secret#frag 192.0.2.44 user@example.test " +
+      "Bearer eyJhbGciOiJIUzI1NiJ9.abc.sig ghp_1234567890 AWS_SECRET_ACCESS_KEY " +
+      "api_key=password -----BEGIN PRIVATE KEY----- sha256:deadbeef " +
+      '{"x":"::error::$' +
+      '{{secrets.X}}"}\r\n\t\u0000\u001b[31m\u202e\u200b\u0301\u0430\ud800';
+    const canonical = canonicalizeManagedDedicatedCanaryDiagnostic(
+      JSON.stringify(unclassifiedLatestJobInput(error)),
+      SUFFIX,
+    );
+    const evidence = JSON.parse(canonical);
+    expect(evidence.jobs[0]).toMatchObject({
+      errorCode: "unclassified",
+      unclassifiedProfile: {
+        writerHints: {
+          jobRunnerLike: false,
+          deleteLifecycleLike: false,
+          persistenceLike: false,
+          containerRuntimeLike: false,
+          transportLike: false,
+        },
+      },
+    });
+    for (const forbidden of [
+      "example.test",
+      "192.0.2.44",
+      "Bearer",
+      "ghp_",
+      "AWS_",
+      "api_key",
+      "PRIVATE KEY",
+      "sha256",
+      "deadbeef",
+      "::error::",
+      "secrets.X",
+      "opaque",
+    ]) {
+      expect(canonical).not.toContain(forbidden);
+    }
+  });
+
+  test.each([
+    [
+      "completed status",
+      (job: Record<string, unknown>) => {
+        job.status = "completed";
+        job.result = {
+          containerStopped: true,
+          rowDeleted: true,
+          error: null,
+        };
+      },
+    ],
+    [
+      "cancelled status",
+      (job: Record<string, unknown>) => {
+        job.status = "cancelled";
+      },
+    ],
+    [
+      "missing claim timestamp",
+      (job: Record<string, unknown>) => {
+        job.startedAt = null;
+      },
+    ],
+    [
+      "terminal timestamp",
+      (job: Record<string, unknown>) => {
+        job.completedAt = "2026-07-26T23:11:30.000Z";
+      },
+    ],
+    [
+      "zero attempts",
+      (job: Record<string, unknown>) => {
+        job.attempts = 0;
+      },
+    ],
+    [
+      "failed below max attempts",
+      (job: Record<string, unknown>) => {
+        job.attempts = 2;
+      },
+    ],
+    [
+      "pending at max attempts",
+      (job: Record<string, unknown>) => {
+        job.status = "pending";
+      },
+    ],
+  ])("rejects an unclassified job with %s", (_name, mutate) => {
+    const input = unclassifiedLatestJobInput("opaque failure");
+    mutate((input.jobs as Record<string, unknown>[])[0]);
+    expect(() =>
+      sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX),
+    ).toThrow("unclassified lifecycle is inconsistent");
+  });
+
+  test.each(["pending", "in_progress"])(
+    "accepts a claimed nonterminal unclassified %s job below max attempts",
+    (status) => {
+      const input = unclassifiedLatestJobInput("opaque failure");
+      const [job] = input.jobs as Record<string, unknown>[];
+      job.status = status;
+      job.attempts = 1;
+      expect(
+        sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX).jobs[0],
+      ).toMatchObject({
+        status,
+        attempts: 1,
+        maxAttempts: 3,
+        errorCode: "unclassified",
+      });
+    },
+  );
+
+  test.each([
+    "Failed to delete sandbox",
+    "Agent replacement cleanup is still pending",
+    "Agent provisioning is in progress",
+    "Agent deletion ownership changed",
+  ])("accepts an exact partial result for unclassified text: %s", (error) => {
+    const input = unclassifiedLatestJobInput("opaque failure");
+    const [job] = input.jobs as Record<string, unknown>[];
+    job.result = {
+      containerStopped: false,
+      rowDeleted: false,
+      error,
+    };
+    expect(
+      sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX).jobs[0],
+    ).toMatchObject({
+      errorCode: "unclassified",
+      containerStopped: false,
+      rowDeleted: false,
+    });
+  });
+
+  test.each([
+    [
+      "successful-looking",
+      { containerStopped: true, rowDeleted: true, error: null },
+    ],
+    [
+      "null flags",
+      {
+        containerStopped: null,
+        rowDeleted: null,
+        error: "Failed to delete sandbox",
+      },
+    ],
+    [
+      "unknown result",
+      {
+        containerStopped: false,
+        rowDeleted: false,
+        error: "opaque result",
+      },
+    ],
+  ])("rejects an unclassified job with %s result", (_name, result) => {
+    const input = unclassifiedLatestJobInput("opaque failure");
+    (input.jobs as Record<string, unknown>[])[0].result = result;
+    expect(() =>
+      sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX),
+    ).toThrow();
+  });
+
+  test("keeps older unknown job errors fail-closed", () => {
+    const input = failedDeleteInput();
+    const [latest] = input.jobs as Record<string, unknown>[];
+    input.jobs = [
+      latest,
+      {
+        ...latest,
+        error: "opaque older failure",
+        result: null,
+        completedAt: null,
+        createdAt: "2026-07-26T23:07:09.000Z",
+      },
+    ];
+    expect(() =>
+      sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX),
+    ).toThrow("privacy-safe classifier");
+  });
+
+  test("emits at most one profile when older jobs are classified", () => {
+    const input = unclassifiedLatestJobInput("opaque latest failure");
+    const [latest] = input.jobs as Record<string, unknown>[];
+    input.jobs = [
+      latest,
+      {
+        ...latest,
+        error: "Failed to delete sandbox",
+        result: {
+          containerStopped: false,
+          rowDeleted: false,
+          error: "Failed to delete sandbox",
+        },
+        createdAt: "2026-07-26T23:07:09.000Z",
+      },
+    ];
+    const evidence = sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX);
+    expect(evidence.jobs[0]?.unclassifiedProfile).not.toBeNull();
+    expect(evidence.jobs[1]?.unclassifiedProfile).toBeNull();
+  });
+
+  test("keeps an unknown sandbox error fail-closed", () => {
+    const input = failedDeleteInput();
+    (input.agent as Record<string, unknown>).errorMessage =
+      "opaque sandbox failure";
+    expect(() =>
+      sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX),
+    ).toThrow("privacy-safe classifier");
   });
 
   test("preserves distinct terminal and prior-attempt result classifications", () => {
@@ -473,25 +803,22 @@ describe("managed dedicated canary diagnostic", () => {
       "2026-07-26T23:10:31.000Z",
       "2026-07-26T23:11:31.000Z",
     ],
-  ])(
-    "rejects terminal recovery with %s",
-    (_name, startedAt, completedAt) => {
-      const input = failedDeleteInput();
-      const agent = input.agent as Record<string, unknown>;
-      const [job] = input.jobs as Record<string, unknown>[];
-      agent.status = "deletion_pending";
-      agent.errorMessage = null;
-      agent.errorCount = 0;
-      job.error = "Job timed out 3 times - max attempts reached";
-      job.result = null;
-      job.startedAt = startedAt;
-      job.completedAt = completedAt;
+  ])("rejects terminal recovery with %s", (_name, startedAt, completedAt) => {
+    const input = failedDeleteInput();
+    const agent = input.agent as Record<string, unknown>;
+    const [job] = input.jobs as Record<string, unknown>[];
+    agent.status = "deletion_pending";
+    agent.errorMessage = null;
+    agent.errorCount = 0;
+    job.error = "Job timed out 3 times - max attempts reached";
+    job.result = null;
+    job.startedAt = startedAt;
+    job.completedAt = completedAt;
 
-      expect(() =>
-        sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX),
-      ).toThrow("recovery timestamps disagree");
-    },
-  );
+    expect(() =>
+      sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX),
+    ).toThrow("recovery timestamps disagree");
+  });
 
   test.each([
     [
@@ -528,10 +855,7 @@ describe("managed dedicated canary diagnostic", () => {
       "worker_restart_recovered",
       "Job interrupted by worker restart - recovered for retry (attempt 1/3)",
     ],
-    [
-      "timeout_recovered",
-      "Job timed out - recovered for retry (attempt 1/3)",
-    ],
+    ["timeout_recovered", "Job timed out - recovered for retry (attempt 1/3)"],
   ])(
     "keeps %s separate from terminal errors for pending and running jobs",
     (expectedCode, message) => {
@@ -695,35 +1019,32 @@ describe("managed dedicated canary diagnostic", () => {
       "2026-07-26T23:11:30.000Z",
       "recovery status is invalid",
     ],
-  ])(
-    "rejects %s",
-    (_name, status, startedAt, completedAt, expectedError) => {
-      const input = failedDeleteInput();
-      const agent = input.agent as Record<string, unknown>;
-      const [job] = input.jobs as Record<string, unknown>[];
-      agent.status = "deletion_pending";
-      agent.errorMessage = null;
-      agent.errorCount = 0;
-      job.status = status;
-      job.error =
-        "Job interrupted by worker restart - recovered for retry (attempt 1/3)";
-      job.result =
-        status === "completed"
-          ? {
-              containerStopped: true,
-              rowDeleted: true,
-              error: null,
-            }
-          : null;
-      job.attempts = 1;
-      job.startedAt = startedAt;
-      job.completedAt = completedAt;
+  ])("rejects %s", (_name, status, startedAt, completedAt, expectedError) => {
+    const input = failedDeleteInput();
+    const agent = input.agent as Record<string, unknown>;
+    const [job] = input.jobs as Record<string, unknown>[];
+    agent.status = "deletion_pending";
+    agent.errorMessage = null;
+    agent.errorCount = 0;
+    job.status = status;
+    job.error =
+      "Job interrupted by worker restart - recovered for retry (attempt 1/3)";
+    job.result =
+      status === "completed"
+        ? {
+            containerStopped: true,
+            rowDeleted: true,
+            error: null,
+          }
+        : null;
+    job.attempts = 1;
+    job.startedAt = startedAt;
+    job.completedAt = completedAt;
 
-      expect(() =>
-        sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX),
-      ).toThrow(expectedError);
-    },
-  );
+    expect(() =>
+      sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX),
+    ).toThrow(expectedError);
+  });
 
   test.each([
     "Job interrupted by worker restart - recovered for retry (attempt 0/3)",
@@ -772,8 +1093,7 @@ describe("managed dedicated canary diagnostic", () => {
       const input = failedDeleteInput();
       const agent = input.agent as Record<string, unknown>;
       const [job] = input.jobs as Record<string, unknown>[];
-      const malformed =
-        "Job timed out - recovered  for retry (attempt 1/3)";
+      const malformed = "Job timed out - recovered  for retry (attempt 1/3)";
       if (boundary === "agent") {
         agent.errorMessage = `Deletion permanently failed after 3 attempts: ${malformed}`;
       } else {
