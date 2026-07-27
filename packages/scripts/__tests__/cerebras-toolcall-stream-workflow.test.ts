@@ -133,7 +133,7 @@ describe("Eliza Cloud plugin tool-call stream workflow (#16997)", () => {
     expect(evidenceJob?.env?.CEREBRAS_API_KEY).toBeUndefined();
     expect(evidenceJob?.env?.ELIZAOS_CLOUD_API_KEY).toBeUndefined();
     expect(stepsWithSecret(runtimeJob, cerebrasSecret)).toEqual([
-      "Measure every provider in parallel and max-cached",
+      "Measure every provider in parallel and reused",
       "Measure live Cerebras Gemma 4 production chat flow",
     ]);
     expect(stepsWithSecret(evidenceJob, cloudSecret)).toEqual([
