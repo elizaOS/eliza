@@ -12,8 +12,14 @@ packages/app
 packages/steward
 packages/os
 packages/os-homepage
-# packages/benchmarks/*
+packages/benchmarks/*
 !packages/benchmarks/lib
+packages/examples
+packages/cloud-frontend
+packages/cloud-infra
+packages/scenario-runner
+packages/sweagent
+packages/soc2-verify
 packages/native
 packages/robot
 packages/chip
