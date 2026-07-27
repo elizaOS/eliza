@@ -274,9 +274,8 @@ export function useStartupShellController(): StartupShellController {
 
   const handleBootstrapAdvance = useCallback(() => {
     setShowBootstrap(false);
-    setState("firstRunComplete", true);
-    coordinatorDispatchRef.current({ type: "FIRST_RUN_COMPLETE" });
-  }, [setState]);
+    retryStartup();
+  }, [retryStartup]);
 
   let startupErrorState: StartupErrorState | null = null;
   if (phase === "error") {
