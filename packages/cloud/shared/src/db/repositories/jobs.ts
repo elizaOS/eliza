@@ -230,6 +230,39 @@ function sameRetrySnapshot(left: Job, right: Job): boolean {
   );
 }
 
+function sameClaimEpoch(left: Job, right: Job): boolean {
+  return (
+    left.id === right.id &&
+    left.status === "in_progress" &&
+    right.status === "in_progress" &&
+    left.type === right.type &&
+    left.organization_id === right.organization_id &&
+    left.user_id === right.user_id &&
+    left.agent_id === right.agent_id &&
+    left.character_id === right.character_id &&
+    left.attempts === right.attempts &&
+    left.max_attempts === right.max_attempts &&
+    left.started_at !== null &&
+    sameTimestamp(left.started_at, right.started_at) &&
+    left.completed_at === null &&
+    right.completed_at === null
+  );
+}
+
+function claimEpochFence(job: Job) {
+  return sql`
+    ${jobs.type} = ${job.type}
+    AND ${jobs.organization_id} = ${job.organization_id}
+    AND ${jobs.user_id} IS NOT DISTINCT FROM ${job.user_id}
+    AND ${jobs.agent_id} IS NOT DISTINCT FROM ${job.agent_id}
+    AND ${jobs.character_id} IS NOT DISTINCT FROM ${job.character_id}
+    AND ${jobs.attempts} = ${job.attempts}
+    AND ${jobs.max_attempts} = ${job.max_attempts}
+    AND ${jobs.started_at} IS NOT DISTINCT FROM ${normalizedTimestamp(job.started_at)}
+    AND ${jobs.completed_at} IS NULL
+  `;
+}
+
 export async function hydrateJob(job: Job): Promise<Job> {
   const [data, result, error] = await Promise.all([
     hydrateJsonField<Record<string, unknown>>({
@@ -602,9 +635,9 @@ export class JobsRepository {
   }
 
   /**
-   * Claims one image-change job type while enforcing a shared running budget
-   * across every listed type. The transaction-scoped advisory lock makes the
-   * count and claim one decision even when cron invocations overlap.
+   * Claims one job type while enforcing a shared running budget across every
+   * listed type. The transaction-scoped advisory lock makes the count and
+   * claim one decision even when cron invocations overlap.
    */
   async claimPendingJobsWithinSharedRunningLimit(filters: {
     type: string;
@@ -678,12 +711,19 @@ export class JobsRepository {
     staleThresholdMs: number;
     maxAttempts?: number;
   }): Promise<number> {
-    const staleThreshold = new Date(Date.now() - filters.staleThresholdMs);
+    if (!Number.isSafeInteger(filters.staleThresholdMs) || filters.staleThresholdMs <= 0) {
+      throw new Error("Stale job threshold must be a positive safe integer");
+    }
+    // Claim timestamps and recovery age must share the database clock. Worker
+    // hosts may be skewed, and a fast host must never expire another worker's
+    // valid claim early.
+    const startedBeforeCondition = sql`${jobs.started_at} <
+      NOW() - (${filters.staleThresholdMs}::bigint * INTERVAL '1 millisecond')`;
     const conditions = [
       eq(jobs.type, filters.type),
       eq(jobs.status, "in_progress"),
       sql`${jobs.started_at} IS NOT NULL`,
-      lt(jobs.started_at, staleThreshold),
+      startedBeforeCondition,
     ];
 
     if (filters.organizationId) {
@@ -712,7 +752,7 @@ export class JobsRepository {
       const recoveryFence = resumeCommittedCanary ? adminCanaryRecoveryFence(job) : sql`TRUE`;
       const updated = await this.recoverJobFromSnapshot({
         job,
-        startedBefore: staleThreshold,
+        startedBeforeCondition,
         isFailed,
         newAttempts,
         error: timeoutError,
@@ -771,7 +811,7 @@ export class JobsRepository {
       const recoveryFence = resumeCommittedCanary ? adminCanaryRecoveryFence(job) : sql`TRUE`;
       const updated = await this.recoverJobFromSnapshot({
         job,
-        startedBefore: filters.startedBefore,
+        startedBeforeCondition: lt(jobs.started_at, filters.startedBefore),
         isFailed,
         newAttempts,
         error,
@@ -787,7 +827,7 @@ export class JobsRepository {
 
   private async recoverJobFromSnapshot(params: {
     job: Job;
-    startedBefore: Date;
+    startedBeforeCondition: SQL;
     isFailed: boolean;
     newAttempts: number;
     error: string;
@@ -806,7 +846,7 @@ export class JobsRepository {
           eq(jobs.id, params.job.id),
           eq(jobs.status, "in_progress"),
           eq(jobs.attempts, params.job.attempts),
-          lt(jobs.started_at, params.startedBefore),
+          params.startedBeforeCondition,
           params.recoveryFence,
         ),
       )
@@ -818,7 +858,8 @@ export class JobsRepository {
    * Updates a job with partial data.
    * Generic update method for any job fields.
    *
-   * @param id - Job ID to update.
+   * @param claimedJobOrId - Exact claimed row when the caller executes durable
+   *   work, or a job ID for callers that do not own a claim snapshot.
    * @param updates - Partial job data to update.
    * @returns Updated job record.
    */
@@ -894,13 +935,17 @@ export class JobsRepository {
    * @returns Updated job record or undefined if not found.
    */
   async incrementAttempt(
-    id: string,
+    claimedJobOrId: Job | string,
     error: string,
     maxAttempts: number,
     onFailedInTx?: (tx: DbTransaction, job: Job) => Promise<void>,
   ): Promise<Job | undefined> {
+    const id = typeof claimedJobOrId === "string" ? claimedJobOrId : claimedJobOrId.id;
     const job = await this.findByIdForWrite(id);
     if (!job) return undefined;
+    if (typeof claimedJobOrId !== "string" && !sameClaimEpoch(claimedJobOrId, job)) {
+      return undefined;
+    }
 
     const newAttempts = (job.attempts || 0) + 1;
     const isFailed = newAttempts >= maxAttempts;
@@ -929,7 +974,12 @@ export class JobsRepository {
           scheduled_for: isFailed ? job.scheduled_for : scheduledFor,
         })
         .where(
-          and(eq(jobs.id, id), eq(jobs.status, "in_progress"), eq(jobs.attempts, job.attempts)),
+          and(
+            eq(jobs.id, id),
+            eq(jobs.status, "in_progress"),
+            eq(jobs.attempts, job.attempts),
+            typeof claimedJobOrId === "string" ? sql`TRUE` : claimEpochFence(claimedJobOrId),
+          ),
         )
         .returning();
 
