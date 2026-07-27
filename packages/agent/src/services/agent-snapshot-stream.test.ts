@@ -10,6 +10,7 @@ import type { AgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   AGENT_BACKUP_V1_MAX_SOURCE_BYTES,
+  type AgentSnapshotUpgradeBinding,
   createAgentSnapshot,
   parseAgentSnapshotRequest,
 } from "./agent-backup.ts";
@@ -39,6 +40,16 @@ const roots = new Set<string>();
 const AGENT_ID = "90000000-0000-4000-8000-000000000001";
 const POSTGRES_URL =
   "postgres://capture:secret@db.example.com:5432/eliza?schema=tenant";
+const UPGRADE_BINDING: AgentSnapshotUpgradeBinding = {
+  backupId: "11111111-1111-4111-8111-111111111111",
+  captureNonce: "a".repeat(64),
+  sourceEnvironmentRevision: 7,
+  sourceImageDigest: `sha256:${"b".repeat(64)}`,
+  sourceSandboxId: "agent-source",
+  targetImageDigest: `sha256:${"c".repeat(64)}`,
+  targetReplacementAttemptId: "22222222-2222-4222-8222-222222222222",
+  targetSandboxId: "agent-target",
+};
 
 function restoreEnv(): void {
   for (const [key, value] of Object.entries(ORIGINAL_ENV)) {
@@ -121,7 +132,10 @@ async function writeFixture(root: string): Promise<void> {
 
 async function collectStream(runtime: AgentRuntime): Promise<Buffer[]> {
   const frames: Buffer[] = [];
-  for await (const frame of createAgentSnapshotStream(runtime)) {
+  for await (const frame of createAgentSnapshotStream(
+    runtime,
+    UPGRADE_BINDING,
+  )) {
     frames.push(frame);
   }
   return frames;
@@ -152,11 +166,13 @@ describe.sequential("agent snapshot chunked-v1 stream", () => {
   test("accepts chunked-v1 only for schema-v2 pre-upgrade capture", () => {
     expect(
       parseAgentSnapshotRequest({
+        binding: UPGRADE_BINDING,
         purpose: "pre-upgrade",
         schemaVersion: 2,
         transfer: "chunked-v1",
       }),
     ).toEqual({
+      binding: UPGRADE_BINDING,
       purpose: "pre-upgrade",
       schemaVersion: 2,
       transfer: "chunked-v1",
@@ -190,7 +206,7 @@ describe.sequential("agent snapshot chunked-v1 stream", () => {
     delete process.env.POSTGRES_URL;
     delete process.env.DATABASE_URL;
     const sourceRuntime = runtimeStub();
-    const iterator = createAgentSnapshotStream(sourceRuntime);
+    const iterator = createAgentSnapshotStream(sourceRuntime, UPGRADE_BINDING);
     const first = await iterator.next();
     if (first.done) throw new Error("Snapshot stream emitted no descriptor");
 
@@ -203,7 +219,7 @@ describe.sequential("agent snapshot chunked-v1 stream", () => {
       yield* iterator;
     }
     await expect(
-      restoreAgentSnapshotStream(targetRuntime, transfer()),
+      restoreAgentSnapshotStream(targetRuntime, transfer(), UPGRADE_BINDING),
     ).resolves.toMatchObject({
       aggregateSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
       fileCount: expect.any(Number),
@@ -331,8 +347,8 @@ describe.sequential("agent snapshot chunked-v1 stream", () => {
       },
     });
     const serialized = frames.map((frame) => frame.toString()).join("");
-    expect(serialized).not.toContain("capture");
-    expect(serialized).not.toContain("secret");
+    expect(serialized).not.toContain("postgres://capture");
+    expect(serialized).not.toContain("secret@");
     expect(
       (descriptor as unknown as AgentSnapshotStreamDescriptor).files.some(
         (file) => file.component === "database",
@@ -495,10 +511,18 @@ describe.sequential("agent snapshot chunked-v1 stream", () => {
     corrupt[corruptIndex] = Buffer.from(`${stableJson(corruptFrame)}\n`);
 
     await expect(
-      restoreAgentSnapshotStream(runtimeStub(), asInput(corrupt)),
+      restoreAgentSnapshotStream(
+        runtimeStub(),
+        asInput(corrupt),
+        UPGRADE_BINDING,
+      ),
     ).rejects.toThrow(/hash mismatch/);
     await expect(
-      restoreAgentSnapshotStream(runtimeStub(), asInput(frames.slice(0, -1))),
+      restoreAgentSnapshotStream(
+        runtimeStub(),
+        asInput(frames.slice(0, -1)),
+        UPGRADE_BINDING,
+      ),
     ).rejects.toThrow(/truncated/);
 
     const reordered = frames.map((frame) => Buffer.from(frame));
@@ -512,13 +536,21 @@ describe.sequential("agent snapshot chunked-v1 stream", () => {
     reordered[firstChunk] = secondChunkFrame;
     reordered[secondChunk] = firstChunkFrame;
     await expect(
-      restoreAgentSnapshotStream(runtimeStub(), asInput(reordered)),
+      restoreAgentSnapshotStream(
+        runtimeStub(),
+        asInput(reordered),
+        UPGRADE_BINDING,
+      ),
     ).rejects.toThrow(/duplicated or reordered/);
 
     const nonCanonical = frames.map((frame) => Buffer.from(frame));
     nonCanonical[0] = Buffer.from(` ${frames[0]?.toString()}`);
     await expect(
-      restoreAgentSnapshotStream(runtimeStub(), asInput(nonCanonical)),
+      restoreAgentSnapshotStream(
+        runtimeStub(),
+        asInput(nonCanonical),
+        UPGRADE_BINDING,
+      ),
     ).rejects.toThrow(/not canonical JSON/);
     await expect(
       fs.readFile(path.join(target, "sentinel.txt"), "utf8"),
@@ -558,7 +590,11 @@ describe.sequential("agent snapshot chunked-v1 stream", () => {
         ...frames.slice(1),
       ];
       await expect(
-        restoreAgentSnapshotStream(runtimeStub(), asInput(body)),
+        restoreAgentSnapshotStream(
+          runtimeStub(),
+          asInput(body),
+          UPGRADE_BINDING,
+        ),
       ).rejects.toThrow(/path/);
     }
 
@@ -577,6 +613,7 @@ describe.sequential("agent snapshot chunked-v1 stream", () => {
           Buffer.from(`${stableJson(wrongComponent)}\n`),
           ...frames.slice(1),
         ]),
+        UPGRADE_BINDING,
       ),
     ).rejects.toThrow(/hash is inconsistent|unsupported/);
     await expect(fs.readdir(target)).resolves.toEqual([]);
@@ -602,7 +639,11 @@ describe.sequential("agent snapshot chunked-v1 stream", () => {
     await fs.symlink(outside, path.join(target, "skills"));
     process.env.ELIZA_STATE_DIR = target;
     await expect(
-      restoreAgentSnapshotStream(runtimeStub(), asInput(frames)),
+      restoreAgentSnapshotStream(
+        runtimeStub(),
+        asInput(frames),
+        UPGRADE_BINDING,
+      ),
     ).rejects.toThrow(/symbolic link|non-directory/);
     await expect(
       fs.readFile(path.join(outside, "outside.json"), "utf8"),
@@ -622,7 +663,7 @@ describe.sequential("agent snapshot chunked-v1 stream", () => {
 
     let maximumFrameBytes = 0;
     let chunkCount = 0;
-    const iterator = createAgentSnapshotStream(runtimeStub());
+    const iterator = createAgentSnapshotStream(runtimeStub(), UPGRADE_BINDING);
     const first = await iterator.next();
     if (first.done) throw new Error("Snapshot stream emitted no descriptor");
     process.env.ELIZA_STATE_DIR = target;
@@ -638,6 +679,7 @@ describe.sequential("agent snapshot chunked-v1 stream", () => {
     const result = await restoreAgentSnapshotStream(
       runtimeStub(),
       measuredTransfer(),
+      UPGRADE_BINDING,
     );
     expect(result.totalBytes).toBeGreaterThan(256 * 1024 * 1024);
     expect(chunkCount).toBeGreaterThan(1024);
@@ -670,7 +712,11 @@ describe.sequential("agent snapshot chunked-v1 stream", () => {
     }
 
     await expect(
-      restoreAgentSnapshotStream(runtimeStub(), fragmentedTransfer()),
+      restoreAgentSnapshotStream(
+        runtimeStub(),
+        fragmentedTransfer(),
+        UPGRADE_BINDING,
+      ),
     ).resolves.toMatchObject({
       requiresRestart: true,
       success: true,

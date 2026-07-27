@@ -16,10 +16,17 @@ import {
 import type { ElizaConfig } from "../config/config.ts";
 import {
   type AgentBackupStateData,
+  type AgentSnapshotUpgradeBinding,
   createAgentSnapshot,
   parseAgentSnapshotRequest,
   restoreAgentSnapshot,
 } from "../services/agent-backup.ts";
+import {
+  beginCandidateSnapshotRestore,
+  commitCandidateSnapshotRestore,
+  resolveCandidateSnapshotRestoreBinding,
+  verifyCandidateSnapshotRestoreHeaders,
+} from "../services/agent-snapshot-restore-binding.ts";
 import {
   createAgentSnapshotStream,
   restoreAgentSnapshotStream,
@@ -47,9 +54,19 @@ function isAgentBackupStateData(value: unknown): value is AgentBackupStateData {
 }
 
 function protocolStatus(error: unknown): number {
+  if (
+    error instanceof ElizaError &&
+    (error.code === "AGENT_SNAPSHOT_RECEIPT_CONFLICT" ||
+      error.code === "AGENT_SNAPSHOT_RESTORE_INDETERMINATE" ||
+      error.code === "AGENT_SNAPSHOT_RESTORE_NOT_ENABLED")
+  ) {
+    return 409;
+  }
   return error instanceof ElizaError &&
     (error.code === "AGENT_SNAPSHOT_STREAM_INVALID" ||
-      error.code === "AGENT_SNAPSHOT_REQUEST_INVALID")
+      error.code === "AGENT_SNAPSHOT_REQUEST_INVALID" ||
+      error.code === "AGENT_SNAPSHOT_BINDING_INVALID" ||
+      error.code === "AGENT_SNAPSHOT_RECEIPT_INVALID")
     ? 400
     : 500;
 }
@@ -142,8 +159,9 @@ async function sendSnapshotStream(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   runtime: IAgentRuntime | AgentRuntime,
+  binding: AgentSnapshotUpgradeBinding,
 ): Promise<void> {
-  const iterator = createAgentSnapshotStream(runtime);
+  const iterator = createAgentSnapshotStream(runtime, binding);
   try {
     // Planning can fail before a byte is committed, preserving an ordinary
     // structured HTTP error instead of a misleading partial 200 response.
@@ -221,7 +239,13 @@ export async function handleAgentSnapshotRoutes(args: {
     try {
       const request = parseAgentSnapshotRequest(await readSnapshotRequest(req));
       if (request.transfer === AGENT_SNAPSHOT_STREAM_TRANSFER) {
-        await sendSnapshotStream(req, res, runtime);
+        if (!request.binding) {
+          throw new ElizaError("Snapshot upgrade binding is missing", {
+            code: "AGENT_SNAPSHOT_REQUEST_INVALID",
+            severity: "fatal",
+          });
+        }
+        await sendSnapshotStream(req, res, runtime, request.binding);
       } else {
         sendJson(res, await createAgentSnapshot(runtime, config, request));
       }
@@ -245,7 +269,32 @@ export async function handleAgentSnapshotRoutes(args: {
   try {
     if (url.searchParams.has("transfer")) {
       assertChunkedRestoreRequest(req, url);
-      sendJson(res, await restoreAgentSnapshotStream(runtime, req));
+      const binding = resolveCandidateSnapshotRestoreBinding();
+      if (!binding) {
+        throw new ElizaError(
+          "This runtime is not a snapshot restore candidate",
+          {
+            code: "AGENT_SNAPSHOT_RESTORE_NOT_ENABLED",
+            severity: "fatal",
+          },
+        );
+      }
+      verifyCandidateSnapshotRestoreHeaders(req.headers, binding);
+      const committed = await beginCandidateSnapshotRestore(binding);
+      if (committed) {
+        req.resume();
+        sendJson(res, committed);
+        return true;
+      }
+      const streamResult = await restoreAgentSnapshotStream(
+        runtime,
+        req,
+        binding,
+      );
+      sendJson(
+        res,
+        await commitCandidateSnapshotRestore(binding, streamResult),
+      );
       return true;
     }
     if ([...url.searchParams.keys()].length !== 0) {
