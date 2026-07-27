@@ -1134,6 +1134,9 @@ export class AgentRuntime implements IAgentRuntime {
 	public companionUrl?: string;
 	/** Set when stop() has been called; prevents new service starts and use-after-stop. */
 	private stopped = false;
+	private strictShutdown = false;
+	private stopPromise: Promise<void> | null = null;
+	private stopMode: RuntimeStopOptions | null = null;
 
 	constructor(opts: {
 		conversationLength?: number;
@@ -2284,6 +2287,34 @@ export class AgentRuntime implements IAgentRuntime {
 	 * For full teardown (including DB/adapter connection), call close() after stop().
 	 */
 	async stop(options?: RuntimeStopOptions): Promise<void> {
+		const fast = options?.fast === true;
+		const strict = options?.strict === true;
+		if (fast && strict) {
+			throw new ElizaError(
+				"Fast and strict runtime shutdown are incompatible",
+				{
+					code: "RUNTIME_STOP_OPTIONS_INVALID",
+					context: { fast, strict },
+					severity: "fatal",
+				},
+			);
+		}
+		if (this.stopPromise) {
+			if (strict && this.stopMode?.strict !== true) {
+				throw new ElizaError(
+					"Strict runtime shutdown cannot rely on an earlier non-strict teardown",
+					{
+						code: "RUNTIME_STRICT_STOP_AFTER_NON_STRICT",
+						context: {
+							previousFast: this.stopMode?.fast === true,
+							previousStrict: this.stopMode?.strict ?? false,
+						},
+						severity: "fatal",
+					},
+				);
+			}
+			return this.stopPromise;
+		}
 		if (this.stopped) {
 			this.logger.debug(
 				{ src: "agent", agentId: this.agentId },
@@ -2291,7 +2322,12 @@ export class AgentRuntime implements IAgentRuntime {
 			);
 			return;
 		}
-		const fast = options?.fast === true;
+		this.stopMode = { fast, strict };
+		this.stopPromise = this._runStop(fast, strict);
+		return this.stopPromise;
+	}
+
+	private async _runStop(fast: boolean, strict: boolean): Promise<void> {
 		if (!fast) {
 			const pending = pendingPostDeliveryTaskCount(this);
 			if (pending > 0) {
@@ -2307,7 +2343,7 @@ export class AgentRuntime implements IAgentRuntime {
 			process.env.ELIZA_FAST_SHUTDOWN = "1";
 		}
 		try {
-			await this._stopServices(fast);
+			await this._stopServices(fast, strict);
 		} finally {
 			if (fast) {
 				if (previousFastShutdown === undefined) {
@@ -2319,10 +2355,12 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 	}
 
-	private async _stopServices(fast: boolean): Promise<void> {
+	private async _stopServices(fast: boolean, strict = false): Promise<void> {
 		this.stopped = true;
+		this.strictShutdown = strict;
+		const strictFailures: Error[] = [];
 		this.logger.debug(
-			{ src: "agent", agentId: this.agentId, fast },
+			{ src: "agent", agentId: this.agentId, fast, strict },
 			"Stopping runtime",
 		);
 
@@ -2336,6 +2374,27 @@ export class AgentRuntime implements IAgentRuntime {
 					"Fast shutdown: skipping wait for in-flight service starts",
 				);
 				this.startingServices.clear();
+			} else if (strict) {
+				this.logger.info(
+					{
+						src: "agent",
+						agentId: this.agentId,
+						count: inFlight.length,
+						serviceTypes,
+					},
+					"Waiting for every in-flight service start before strict shutdown",
+				);
+				const results = await Promise.allSettled(inFlight);
+				for (const [index, result] of results.entries()) {
+					if (result.status === "rejected") {
+						strictFailures.push(
+							new Error(
+								`Service ${String(serviceTypes[index])} failed while starting`,
+								{ cause: result.reason },
+							),
+						);
+					}
+				}
 			} else {
 				const timeoutMs = resolveShutdownTimeoutMs(
 					"ELIZA_SHUTDOWN_SERVICE_START_TIMEOUT_MS",
@@ -2391,6 +2450,21 @@ export class AgentRuntime implements IAgentRuntime {
 					fastStopTasks.push(
 						this._stopServiceInstance(serviceType, service, "fast shutdown"),
 					);
+				} else if (strict) {
+					try {
+						await this._stopServiceInstance(
+							serviceType,
+							service,
+							"strict snapshot shutdown",
+							true,
+						);
+					} catch (error) {
+						// error-policy:J1 strict snapshot shutdown boundary accumulates
+						// every teardown failure so sibling services still stop.
+						strictFailures.push(
+							error instanceof Error ? error : new Error(String(error)),
+						);
+					}
 				} else {
 					await this._stopServiceInstance(serviceType, service, "shutdown");
 				}
@@ -2435,12 +2509,19 @@ export class AgentRuntime implements IAgentRuntime {
 		this.servicePromises.clear();
 		this.servicePromiseHandlers.clear();
 		this.startingServices.clear();
+		if (strictFailures.length > 0) {
+			throw new AggregateError(
+				strictFailures,
+				"Strict runtime shutdown did not stop every service cleanly",
+			);
+		}
 	}
 
 	private async _stopServiceInstance(
 		serviceType: string,
 		service: Service | null | undefined,
 		reason: string,
+		strict = false,
 	): Promise<void> {
 		const maybe = service as { stop?: () => Promise<void> | void } | null;
 		if (maybe && typeof maybe.stop === "function") {
@@ -2457,17 +2538,30 @@ export class AgentRuntime implements IAgentRuntime {
 					},
 					"Service stop() threw; continuing",
 				);
+				if (strict) {
+					throw new Error(`Service ${serviceType} failed to stop`, {
+						cause: err,
+					});
+				}
 			}
 		} else if (!maybe) {
 			this.logger.warn(
 				{ src: "agent", agentId: this.agentId, serviceType, reason },
 				"Null service instance during stop; skipping",
 			);
+			if (strict) {
+				throw new Error(`Service ${serviceType} is null during strict stop`);
+			}
 		} else {
 			this.logger.warn(
 				{ src: "agent", agentId: this.agentId, serviceType, reason },
 				"Service instance is missing stop(); skipping",
 			);
+			if (strict) {
+				throw new Error(
+					`Service ${serviceType} is missing stop() during strict shutdown`,
+				);
+			}
 		}
 	}
 
@@ -4852,6 +4946,7 @@ export class AgentRuntime implements IAgentRuntime {
 					key,
 					serviceInstance,
 					"late service start after runtime stop",
+					this.strictShutdown,
 				);
 				this.serviceRegistrationStatus.set(key, "failed");
 				return null;
@@ -4892,6 +4987,9 @@ export class AgentRuntime implements IAgentRuntime {
 				this.servicePromises.delete(serviceType);
 			}
 			this.serviceRegistrationStatus.set(key, "failed");
+			if (this.strictShutdown && this.stopped) {
+				throw error;
+			}
 			return null;
 		}
 	}

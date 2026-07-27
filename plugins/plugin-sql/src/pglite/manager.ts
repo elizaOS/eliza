@@ -23,7 +23,7 @@ import { fuzzystrmatch } from "@electric-sql/pglite/contrib/fuzzystrmatch";
 import { live } from "@electric-sql/pglite/live";
 import { vector } from "@electric-sql/pglite/vector";
 import { electricSync } from "@electric-sql/pglite-sync";
-import { logger } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 import type { IDatabaseClientManager } from "../types";
 import { WriteBackService } from "../write-back";
 import { createPgliteInitError, PGLITE_ERROR_CODES } from "./errors";
@@ -298,6 +298,42 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
       }
     }
     this.releaseDataDirLock();
+  }
+
+  /**
+   * Quiesces every PGlite writer, checkpoints durable pages, and closes the
+   * embedded database without best-effort fallbacks. Snapshot capture must
+   * abort on any failure so it never copies a database that may still be live.
+   */
+  public async checkpointAndCloseForSnapshot(): Promise<void> {
+    this.shuttingDown = true;
+    if (this.writeBack.enabled) {
+      await this.writeBack.flush();
+    }
+    if (this.startSyncMutex) {
+      await this.startSyncMutex;
+    }
+    if (this.forceResyncMutex) {
+      await this.forceResyncMutex;
+    }
+    if (this.syncUnsubscribe) {
+      throw new ElizaError(
+        "Snapshot capture cannot prove Electric Sync has stopped every PGlite write",
+        {
+          code: "PGLITE_SNAPSHOT_ELECTRIC_SYNC_ACTIVE",
+          context: {
+            agentId: this.agentId,
+            syncStatus: this.syncStatus,
+          },
+          severity: "fatal",
+        }
+      );
+    }
+
+    await this.client.exec("CHECKPOINT");
+    await this.client.close();
+    this.initialized = false;
+    this.releaseDataDirLock(true);
   }
 
   private setupShutdownHandlers() {}
@@ -613,14 +649,22 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
     throw this.createActiveLockError(dataDir, new Error("Could not acquire PGlite lock file"));
   }
 
-  private releaseDataDirLock(): void {
+  private releaseDataDirLock(strict = false): void {
+    const failures: Error[] = [];
     if (this.lockFd !== null) {
       try {
         closeSync(this.lockFd);
       } catch (error) {
-        // error-policy:J6 best-effort teardown — a stale fd or double-close is
-        // harmless during lock release; drop the handle regardless.
+        // error-policy:J6 ordinary teardown is best-effort; strict snapshot
+        // teardown records the same failure below and aborts capture.
         logger.debug({ src: "plugin:sql", error: String(error) }, "lock: closeSync failed");
+        if (strict) {
+          failures.push(
+            new Error("Failed to close the PGlite data-directory lock", {
+              cause: error,
+            })
+          );
+        }
       }
       this.lockFd = null;
     }
@@ -629,11 +673,21 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
       try {
         unlinkSync(this.lockPath);
       } catch (error) {
-        // error-policy:J6 best-effort teardown — an already-removed lock file is
-        // fine; clear the path regardless.
+        // error-policy:J6 ordinary teardown is best-effort; strict snapshot
+        // teardown accepts only an already-absent lock path.
         logger.debug({ src: "plugin:sql", error: String(error) }, "lock: unlinkSync failed");
+        if (strict && (error as NodeJS.ErrnoException).code !== "ENOENT") {
+          failures.push(
+            new Error("Failed to remove the PGlite data-directory lock", {
+              cause: error,
+            })
+          );
+        }
       }
       this.lockPath = null;
+    }
+    if (failures.length > 0) {
+      throw new AggregateError(failures, "Strict PGlite lock release did not complete cleanly");
     }
   }
 

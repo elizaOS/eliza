@@ -15,6 +15,7 @@
 import type http from "node:http";
 import type { AgentRuntime } from "@elizaos/core";
 import {
+  getSnapshotCaptureBarrier,
   getSwarmCoordinatorService,
   hasTextGenerationHandler,
 } from "@elizaos/core";
@@ -464,6 +465,9 @@ export function computeCanRespond(
   if (!runtime || agentState !== "running") {
     return false;
   }
+  if (getSnapshotCaptureBarrier(runtime).status().phase !== "accepting") {
+    return false;
+  }
   try {
     return hasTextGenerationHandler(runtime);
   } catch {
@@ -508,6 +512,9 @@ export async function handleHealthRoutes(
       state.model ??
       activeLocalModel ??
       detectRuntimeModel(state.runtime ?? null, state.config);
+    const snapshotCapture = state.runtime
+      ? getSnapshotCaptureBarrier(state.runtime).status()
+      : null;
     // Cloud health is optional status info under the same resilience contract:
     // a missing/unloadable @elizaos/plugin-elizacloud must degrade to
     // "disconnected", not 500 the status endpoint.
@@ -544,6 +551,7 @@ export async function handleHealthRoutes(
       uptime,
       startup: state.startup,
       cloud: cloudStatus,
+      snapshotCapture,
       pendingRestart: state.pendingRestartReasons.length > 0,
       pendingRestartReasons: state.pendingRestartReasons,
     });
@@ -554,6 +562,11 @@ export async function handleHealthRoutes(
   // Structured health check endpoint returning subsystem status.
   if (method === "GET" && pathname === "/api/health") {
     const runtime = state.runtime;
+    const snapshotCapture = runtime
+      ? getSnapshotCaptureBarrier(runtime).status()
+      : null;
+    const snapshotUnavailable =
+      snapshotCapture !== null && snapshotCapture.phase !== "accepting";
     const uptime = state.startedAt
       ? Math.floor((Date.now() - state.startedAt) / 1000)
       : 0;
@@ -587,25 +600,41 @@ export async function handleHealthRoutes(
       }
     }
 
-    const databaseLiveness = await probeRuntimeDatabaseLiveness(runtime);
+    const databaseLiveness = snapshotUnavailable
+      ? {
+          status: "unknown" as const,
+          ok: false,
+          terminal: false,
+          message: `Database is intentionally closed while snapshot capture is ${snapshotCapture.phase}`,
+        }
+      : await probeRuntimeDatabaseLiveness(runtime);
     const ready =
+      !snapshotUnavailable &&
       state.agentState !== "starting" &&
       state.agentState !== "restarting" &&
       !databaseLiveness.terminal;
+    const snapshotFailed = snapshotCapture?.phase === "failed";
 
     json(
       res,
       {
         ready,
-        canRespond: databaseLiveness.terminal
-          ? false
-          : computeCanRespond(runtime, state.agentState),
-        runtime: runtime ? "ok" : "not_initialized",
-        database: databaseLiveness.ok
-          ? runtime
+        canRespond:
+          databaseLiveness.terminal || snapshotUnavailable
+            ? false
+            : computeCanRespond(runtime, state.agentState),
+        runtime: snapshotUnavailable
+          ? snapshotCapture.phase
+          : runtime
             ? "ok"
-            : "unknown"
-          : databaseLiveness.status,
+            : "not_initialized",
+        database: snapshotUnavailable
+          ? snapshotCapture.phase
+          : databaseLiveness.ok
+            ? runtime
+              ? "ok"
+              : "unknown"
+            : databaseLiveness.status,
         databaseLiveness,
         plugins: {
           loaded: loadedPluginCount,
@@ -615,13 +644,14 @@ export async function handleHealthRoutes(
         connectors,
         uptime,
         agentState: state.agentState,
+        snapshotCapture,
         startup: state.startup,
         // Deferred capabilities (feature routes, connectors, non-essential
         // plugins) register AFTER `ready` flips. Poll `deferredBoot.settled`
         // before hitting feature routes right after boot instead of sleeping.
         deferredBoot: getDeferredBootStatus(),
       },
-      databaseLiveness.terminal ? 503 : 200,
+      databaseLiveness.terminal || snapshotFailed ? 503 : 200,
     );
     return true;
   }
