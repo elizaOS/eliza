@@ -47,6 +47,17 @@ export interface AgentSnapshotV2FileSetDescriptor {
   sha256: string;
 }
 
+export interface AgentSnapshotV2UpgradeBinding {
+  backupId: string;
+  captureNonce: string;
+  sourceEnvironmentRevision: number;
+  sourceImageDigest: string;
+  sourceSandboxId: string;
+  targetImageDigest: string;
+  targetReplacementAttemptId: string;
+  targetSandboxId: string;
+}
+
 export interface AgentSnapshotV2ExternalPostgresReference {
   algorithm: "sha256";
   identitySha256: string;
@@ -75,6 +86,7 @@ export type AgentSnapshotV2DatabaseDescriptor =
 
 export interface AgentSnapshotV2Descriptor {
   agentId: string;
+  binding: AgentSnapshotV2UpgradeBinding;
   chunkSize: number;
   components: {
     character: {
@@ -129,6 +141,7 @@ export interface AgentSnapshotV2ValidationSummary {
 export interface AgentSnapshotV2ValidatorOptions {
   contentType: string;
   expectedAgentId?: string;
+  expectedBinding?: AgentSnapshotV2UpgradeBinding;
 }
 
 const FILE_COMPONENT_ORDER: readonly AgentSnapshotV2FileComponent[] = [
@@ -139,6 +152,10 @@ const FILE_COMPONENT_ORDER: readonly AgentSnapshotV2FileComponent[] = [
   "state",
 ];
 const DIGEST_PATTERN = /^[a-f0-9]{64}$/;
+const IMAGE_DIGEST_PATTERN = /^sha256:[a-f0-9]{64}$/;
+const NONCE_PATTERN = /^[a-f0-9]{64}$/;
+const SANDBOX_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const BASE64_PATTERN = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
 const MAX_ECMASCRIPT_TIMESTAMP_MS = 8_640_000_000_000_000;
 const FATAL_UTF8_DECODER = new TextDecoder("utf-8", { fatal: true });
@@ -182,6 +199,12 @@ function assertDigest(value: unknown, label: string): asserts value is string {
   }
 }
 
+function assertImageDigest(value: unknown, label: string): asserts value is string {
+  if (typeof value !== "string" || !IMAGE_DIGEST_PATTERN.test(value)) {
+    throw invalidSnapshot(`${label} is not a canonical OCI image digest`);
+  }
+}
+
 function assertSafeInteger(
   value: unknown,
   label: string,
@@ -196,6 +219,52 @@ function assertSafeInteger(
   ) {
     throw invalidSnapshot(`${label} is outside its integer budget`);
   }
+}
+
+export function validateAgentSnapshotV2UpgradeBinding(
+  value: unknown,
+): AgentSnapshotV2UpgradeBinding {
+  if (!isRecord(value)) {
+    throw invalidSnapshot("Snapshot upgrade binding is malformed");
+  }
+  assertExactKeys(
+    value,
+    [
+      "backupId",
+      "captureNonce",
+      "sourceEnvironmentRevision",
+      "sourceImageDigest",
+      "sourceSandboxId",
+      "targetImageDigest",
+      "targetReplacementAttemptId",
+      "targetSandboxId",
+    ],
+    "Snapshot upgrade binding",
+  );
+  if (typeof value.backupId !== "string" || !UUID_PATTERN.test(value.backupId)) {
+    throw invalidSnapshot("Snapshot backup id is malformed");
+  }
+  if (typeof value.captureNonce !== "string" || !NONCE_PATTERN.test(value.captureNonce)) {
+    throw invalidSnapshot("Snapshot capture nonce is malformed");
+  }
+  assertSafeInteger(value.sourceEnvironmentRevision, "Snapshot source environment revision");
+  assertImageDigest(value.sourceImageDigest, "Snapshot source image digest");
+  assertImageDigest(value.targetImageDigest, "Snapshot target image digest");
+  if (
+    typeof value.sourceSandboxId !== "string" ||
+    !SANDBOX_PATTERN.test(value.sourceSandboxId) ||
+    typeof value.targetSandboxId !== "string" ||
+    !SANDBOX_PATTERN.test(value.targetSandboxId)
+  ) {
+    throw invalidSnapshot("Snapshot sandbox binding is malformed");
+  }
+  if (
+    typeof value.targetReplacementAttemptId !== "string" ||
+    !UUID_PATTERN.test(value.targetReplacementAttemptId)
+  ) {
+    throw invalidSnapshot("Snapshot replacement attempt binding is malformed");
+  }
+  return value as unknown as AgentSnapshotV2UpgradeBinding;
 }
 
 function assertIndexArray(value: unknown, label: string): asserts value is number[] {
@@ -467,6 +536,7 @@ function assertAgentSnapshotV2Descriptor(
     value,
     [
       "agentId",
+      "binding",
       "chunkSize",
       "components",
       "createdAt",
@@ -490,6 +560,7 @@ function assertAgentSnapshotV2Descriptor(
   if (typeof value.agentId !== "string" || value.agentId.trim().length === 0) {
     throw invalidSnapshot("Snapshot stream agent id is missing");
   }
+  validateAgentSnapshotV2UpgradeBinding(value.binding);
   if (
     typeof value.createdAt !== "string" ||
     Number.isNaN(Date.parse(value.createdAt)) ||
@@ -653,6 +724,7 @@ function assertContentType(contentType: string): void {
  */
 export class AgentSnapshotV2StreamValidator {
   readonly #expectedAgentId: string | undefined;
+  readonly #expectedBinding: AgentSnapshotV2UpgradeBinding | undefined;
   #lineBuffer = Buffer.allocUnsafe(64 * 1024);
   #lineBytes = 0;
   #peakBufferedLineBytes = 0;
@@ -674,6 +746,10 @@ export class AgentSnapshotV2StreamValidator {
       throw invalidSnapshot("Expected snapshot agent id is empty");
     }
     this.#expectedAgentId = options.expectedAgentId;
+    this.#expectedBinding =
+      options.expectedBinding === undefined
+        ? undefined
+        : validateAgentSnapshotV2UpgradeBinding(options.expectedBinding);
   }
 
   get bufferedLineBytes(): number {
@@ -792,6 +868,13 @@ export class AgentSnapshotV2StreamValidator {
           actualAgentId: descriptor.agentId,
           expectedAgentId: this.#expectedAgentId,
         });
+      }
+      if (
+        this.#expectedBinding !== undefined &&
+        agentSnapshotV2StableJson(descriptor.binding) !==
+          agentSnapshotV2StableJson(this.#expectedBinding)
+      ) {
+        throw invalidSnapshot("Snapshot descriptor does not match the expected upgrade binding");
       }
       this.#descriptor = descriptor;
       this.#advanceEmptyFiles();

@@ -217,6 +217,16 @@ function snapshotV2Wire(agentId: string): {
   });
   const descriptor = {
     agentId,
+    binding: {
+      backupId: "00000000-0000-4000-8000-000000000010",
+      captureNonce: "01".repeat(32),
+      sourceEnvironmentRevision: 7,
+      sourceImageDigest: `sha256:${"02".repeat(32)}`,
+      sourceSandboxId: "source-sandbox",
+      targetImageDigest: `sha256:${"03".repeat(32)}`,
+      targetReplacementAttemptId: "00000000-0000-4000-8000-000000000011",
+      targetSandboxId: "target-sandbox",
+    },
     chunkSize: AGENT_SNAPSHOT_V2_CHUNK_BYTES,
     components: {
       character: {

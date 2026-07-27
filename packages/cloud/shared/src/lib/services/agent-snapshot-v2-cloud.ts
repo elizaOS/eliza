@@ -20,9 +20,12 @@ import {
   AGENT_SNAPSHOT_V2_CONTENT_TYPE,
   AGENT_SNAPSHOT_V2_MAX_WIRE_BYTES,
   AgentSnapshotV2StreamValidator,
+  type AgentSnapshotV2UpgradeBinding,
   type AgentSnapshotV2ValidationSummary,
+  agentSnapshotV2StableJson,
   observeAgentSnapshotV2Stream,
   validateAgentSnapshotV2Stream,
+  validateAgentSnapshotV2UpgradeBinding,
 } from "./agent-snapshot-v2-stream";
 
 const MAX_ERROR_RESPONSE_BYTES = 8 * 1024;
@@ -30,6 +33,17 @@ const MAX_SUCCESS_RESPONSE_BYTES = 16 * 1024;
 const RESTORE_BASE_TIMEOUT_MS = 10 * 60_000;
 const RESTORE_IDLE_TIMEOUT_MS = 2 * 60_000;
 const RESTORE_MIN_BYTES_PER_SECOND = 1024 * 1024;
+
+const SNAPSHOT_BINDING_HEADERS = {
+  backupId: "X-Eliza-Snapshot-Backup-Id",
+  captureNonce: "X-Eliza-Snapshot-Capture-Nonce",
+  sourceEnvironmentRevision: "X-Eliza-Snapshot-Source-Environment-Revision",
+  sourceImageDigest: "X-Eliza-Snapshot-Source-Image-Digest",
+  sourceSandboxId: "X-Eliza-Snapshot-Source-Sandbox-Id",
+  targetImageDigest: "X-Eliza-Snapshot-Target-Image-Digest",
+  targetReplacementAttemptId: "X-Eliza-Snapshot-Target-Replacement-Attempt-Id",
+  targetSandboxId: "X-Eliza-Snapshot-Target-Sandbox-Id",
+} as const;
 
 interface SnapshotV2StorageBoundary {
   create: AgentBackupV2StorageService["create"];
@@ -343,8 +357,8 @@ export async function captureAgentSnapshotV2(params: {
   organizationId: string;
   sandboxRecordId: string;
   agentId: string;
+  binding: AgentSnapshotV2UpgradeBinding;
   snapshotType?: AgentBackupSnapshotType;
-  backupId?: string;
   dependencies?: AgentSnapshotV2CloudDependencies;
 }): Promise<{ backup: StoredAgentSandboxBackup; summary: AgentSnapshotV2ValidationSummary }> {
   if (!params.response.ok) {
@@ -352,10 +366,15 @@ export async function captureAgentSnapshotV2(params: {
     throw new Error(`Snapshot v2 fetch failed: HTTP ${params.response.status} ${detail}`.trimEnd());
   }
   const dependencies = params.dependencies ?? defaultDependencies;
+  const binding = validateAgentSnapshotV2UpgradeBinding(params.binding);
+  if (params.snapshotType !== undefined && params.snapshotType !== "pre-upgrade") {
+    throw new Error("Snapshot v2 upgrade binding is reserved for pre-upgrade restore points");
+  }
   const contentType = params.response.headers.get("content-type") ?? "";
   const sourceValidator = new AgentSnapshotV2StreamValidator({
     contentType,
     expectedAgentId: params.agentId,
+    expectedBinding: binding,
   });
   const responseStream = responseByteStream(params.response);
   const observedSource = observeAgentSnapshotV2Stream({
@@ -367,7 +386,7 @@ export async function captureAgentSnapshotV2(params: {
       identity: {
         organizationId: params.organizationId,
         sandboxRecordId: params.sandboxRecordId,
-        backupId: params.backupId,
+        backupId: binding.backupId,
         backupSchemaVersion: 2,
       },
       snapshotType: params.snapshotType ?? "pre-upgrade",
@@ -379,6 +398,7 @@ export async function captureAgentSnapshotV2(params: {
           options: {
             contentType: AGENT_SNAPSHOT_V2_CONTENT_TYPE,
             expectedAgentId: params.agentId,
+            expectedBinding: binding,
           },
         });
         const source = sourceValidator.finish();
@@ -404,7 +424,9 @@ export async function captureAgentSnapshotV2(params: {
 
 interface AgentSnapshotV2RestoreResult {
   aggregateSha256: string;
+  binding: AgentSnapshotV2UpgradeBinding;
   fileCount: number;
+  receiptStatus: "committed";
   requiresRestart: true;
   schemaVersion: 2;
   success: true;
@@ -426,7 +448,9 @@ function parseRestoreResult(value: string): AgentSnapshotV2RestoreResult {
   const keys = Object.keys(record).sort();
   const expected = [
     "aggregateSha256",
+    "binding",
     "fileCount",
+    "receiptStatus",
     "requiresRestart",
     "schemaVersion",
     "success",
@@ -441,6 +465,7 @@ function parseRestoreResult(value: string): AgentSnapshotV2RestoreResult {
     record.requiresRestart !== true ||
     record.schemaVersion !== 2 ||
     record.transfer !== "chunked-v1" ||
+    record.receiptStatus !== "committed" ||
     typeof record.aggregateSha256 !== "string" ||
     !/^[a-f0-9]{64}$/.test(record.aggregateSha256) ||
     typeof record.fileCount !== "number" ||
@@ -452,6 +477,7 @@ function parseRestoreResult(value: string): AgentSnapshotV2RestoreResult {
   ) {
     throw new Error("Agent restore response is invalid");
   }
+  validateAgentSnapshotV2UpgradeBinding(record.binding);
   return record as unknown as AgentSnapshotV2RestoreResult;
 }
 
@@ -461,6 +487,7 @@ export async function restoreAgentSnapshotV2(params: {
   agentId: string;
   endpoint: string;
   headers: HeadersInit;
+  binding: AgentSnapshotV2UpgradeBinding;
   dependencies?: AgentSnapshotV2CloudDependencies;
 }): Promise<AgentSnapshotV2ValidationSummary> {
   if (
@@ -470,6 +497,10 @@ export async function restoreAgentSnapshotV2(params: {
     throw new Error(`Backup ${params.backup.id} is not a verified restore point`);
   }
   const dependencies = params.dependencies ?? defaultDependencies;
+  const binding = validateAgentSnapshotV2UpgradeBinding(params.binding);
+  if (params.backup.id !== binding.backupId) {
+    throw new Error(`Backup ${params.backup.id} does not match its upgrade binding`);
+  }
   const storedWireBytes = params.backup.size_bytes;
   if (
     typeof storedWireBytes !== "number" ||
@@ -488,6 +519,7 @@ export async function restoreAgentSnapshotV2(params: {
     const validator = new AgentSnapshotV2StreamValidator({
       contentType: AGENT_SNAPSHOT_V2_CONTENT_TYPE,
       expectedAgentId: params.agentId,
+      expectedBinding: binding,
     });
     const storedSource = await raceWithAbort(
       dependencies.readStored({
@@ -503,11 +535,26 @@ export async function restoreAgentSnapshotV2(params: {
     });
     const headers = new Headers(params.headers);
     headers.set("Content-Type", AGENT_SNAPSHOT_V2_CONTENT_TYPE);
+    headers.set(SNAPSHOT_BINDING_HEADERS.backupId, binding.backupId);
+    headers.set(SNAPSHOT_BINDING_HEADERS.captureNonce, binding.captureNonce);
+    headers.set(
+      SNAPSHOT_BINDING_HEADERS.sourceEnvironmentRevision,
+      String(binding.sourceEnvironmentRevision),
+    );
+    headers.set(SNAPSHOT_BINDING_HEADERS.sourceImageDigest, binding.sourceImageDigest);
+    headers.set(SNAPSHOT_BINDING_HEADERS.sourceSandboxId, binding.sourceSandboxId);
+    headers.set(SNAPSHOT_BINDING_HEADERS.targetImageDigest, binding.targetImageDigest);
+    headers.set(
+      SNAPSHOT_BINDING_HEADERS.targetReplacementAttemptId,
+      binding.targetReplacementAttemptId,
+    );
+    headers.set(SNAPSHOT_BINDING_HEADERS.targetSandboxId, binding.targetSandboxId);
     const requestInit: RequestInit & { duplex: "half" } = {
       method: "POST",
       headers,
       body: iterableBody(source, watchdog.signal),
       duplex: "half",
+      redirect: "error",
       signal: watchdog.signal,
     };
     const response = await raceWithAbort(
@@ -528,7 +575,8 @@ export async function restoreAgentSnapshotV2(params: {
     if (
       result.aggregateSha256 !== summary.trailer.aggregateSha256 ||
       result.fileCount !== summary.trailer.fileCount ||
-      result.totalBytes !== summary.trailer.totalBytes
+      result.totalBytes !== summary.trailer.totalBytes ||
+      agentSnapshotV2StableJson(result.binding) !== agentSnapshotV2StableJson(binding)
     ) {
       throw new Error("Agent restore acknowledgement does not match the committed snapshot");
     }

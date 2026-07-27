@@ -9,6 +9,7 @@ import os from "node:os";
 import path from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, test } from "vitest";
+import type { AgentSnapshotUpgradeBinding } from "../services/agent-backup.ts";
 import {
   AGENT_SNAPSHOT_STREAM_CONTENT_TYPE,
   parseCanonicalSnapshotStreamFrame,
@@ -18,6 +19,21 @@ import { handleAgentSnapshotRoutes } from "./agent-snapshot-routes.ts";
 const ORIGINAL_ENV = {
   DATABASE_URL: process.env.DATABASE_URL,
   ELIZA_STATE_DIR: process.env.ELIZA_STATE_DIR,
+  ELIZA_SNAPSHOT_RESTORE_BACKUP_ID:
+    process.env.ELIZA_SNAPSHOT_RESTORE_BACKUP_ID,
+  ELIZA_SNAPSHOT_RESTORE_CANDIDATE_ATTEMPT_ID:
+    process.env.ELIZA_SNAPSHOT_RESTORE_CANDIDATE_ATTEMPT_ID,
+  ELIZA_SNAPSHOT_RESTORE_NONCE: process.env.ELIZA_SNAPSHOT_RESTORE_NONCE,
+  ELIZA_SNAPSHOT_RESTORE_PROVIDER_SANDBOX_ID:
+    process.env.ELIZA_SNAPSHOT_RESTORE_PROVIDER_SANDBOX_ID,
+  ELIZA_SNAPSHOT_RESTORE_SOURCE_ENVIRONMENT_REVISION:
+    process.env.ELIZA_SNAPSHOT_RESTORE_SOURCE_ENVIRONMENT_REVISION,
+  ELIZA_SNAPSHOT_RESTORE_SOURCE_IMAGE_DIGEST:
+    process.env.ELIZA_SNAPSHOT_RESTORE_SOURCE_IMAGE_DIGEST,
+  ELIZA_SNAPSHOT_RESTORE_SOURCE_SANDBOX_ID:
+    process.env.ELIZA_SNAPSHOT_RESTORE_SOURCE_SANDBOX_ID,
+  ELIZA_SNAPSHOT_RESTORE_TARGET_IMAGE_DIGEST:
+    process.env.ELIZA_SNAPSHOT_RESTORE_TARGET_IMAGE_DIGEST,
   PGLITE_DATA_DIR: process.env.PGLITE_DATA_DIR,
   POSTGRES_URL: process.env.POSTGRES_URL,
 };
@@ -26,6 +42,51 @@ const servers = new Set<http.Server>();
 const AGENT_ID = "91000000-0000-4000-8000-000000000001";
 const POSTGRES_URL =
   "postgres://owner:secret@db.example.com:5432/eliza?schema=tenant";
+const UPGRADE_BINDING: AgentSnapshotUpgradeBinding = {
+  backupId: "11111111-1111-4111-8111-111111111111",
+  captureNonce: "a".repeat(64),
+  sourceEnvironmentRevision: 7,
+  sourceImageDigest: `sha256:${"b".repeat(64)}`,
+  sourceSandboxId: "agent-source",
+  targetImageDigest: `sha256:${"c".repeat(64)}`,
+  targetReplacementAttemptId: "22222222-2222-4222-8222-222222222222",
+  targetSandboxId: "agent-target",
+};
+
+function candidateRestoreHeaders(): Record<string, string> {
+  return {
+    "content-type": AGENT_SNAPSHOT_STREAM_CONTENT_TYPE,
+    "x-eliza-snapshot-backup-id": UPGRADE_BINDING.backupId,
+    "x-eliza-snapshot-capture-nonce": UPGRADE_BINDING.captureNonce,
+    "x-eliza-snapshot-source-environment-revision": String(
+      UPGRADE_BINDING.sourceEnvironmentRevision,
+    ),
+    "x-eliza-snapshot-source-image-digest": UPGRADE_BINDING.sourceImageDigest,
+    "x-eliza-snapshot-source-sandbox-id": UPGRADE_BINDING.sourceSandboxId,
+    "x-eliza-snapshot-target-image-digest": UPGRADE_BINDING.targetImageDigest,
+    "x-eliza-snapshot-target-replacement-attempt-id":
+      UPGRADE_BINDING.targetReplacementAttemptId,
+    "x-eliza-snapshot-target-sandbox-id": UPGRADE_BINDING.targetSandboxId,
+  };
+}
+
+function enableCandidateRestore(): void {
+  process.env.ELIZA_SNAPSHOT_RESTORE_BACKUP_ID = UPGRADE_BINDING.backupId;
+  process.env.ELIZA_SNAPSHOT_RESTORE_CANDIDATE_ATTEMPT_ID =
+    UPGRADE_BINDING.targetReplacementAttemptId;
+  process.env.ELIZA_SNAPSHOT_RESTORE_NONCE = UPGRADE_BINDING.captureNonce;
+  process.env.ELIZA_SNAPSHOT_RESTORE_PROVIDER_SANDBOX_ID =
+    UPGRADE_BINDING.targetSandboxId;
+  process.env.ELIZA_SNAPSHOT_RESTORE_SOURCE_ENVIRONMENT_REVISION = String(
+    UPGRADE_BINDING.sourceEnvironmentRevision,
+  );
+  process.env.ELIZA_SNAPSHOT_RESTORE_SOURCE_IMAGE_DIGEST =
+    UPGRADE_BINDING.sourceImageDigest;
+  process.env.ELIZA_SNAPSHOT_RESTORE_SOURCE_SANDBOX_ID =
+    UPGRADE_BINDING.sourceSandboxId;
+  process.env.ELIZA_SNAPSHOT_RESTORE_TARGET_IMAGE_DIGEST =
+    UPGRADE_BINDING.targetImageDigest;
+}
 
 function runtimeStub(): AgentRuntime {
   return {
@@ -116,6 +177,7 @@ describe.sequential("agent snapshot HTTP routes", () => {
 
     const snapshotResponse = await fetch(`${baseUrl}/api/snapshot`, {
       body: JSON.stringify({
+        binding: UPGRADE_BINDING,
         purpose: "pre-upgrade",
         schemaVersion: 2,
         transfer: "chunked-v1",
@@ -133,6 +195,7 @@ describe.sequential("agent snapshot HTTP routes", () => {
     expect(
       parseCanonicalSnapshotStreamFrame(Buffer.from(lines[0] as string)),
     ).toMatchObject({
+      binding: UPGRADE_BINDING,
       format: "elizaos.agent-snapshot-stream",
       schemaVersion: 2,
       transfer: "chunked-v1",
@@ -149,23 +212,40 @@ describe.sequential("agent snapshot HTTP routes", () => {
     expect(trailer).toMatchObject({ type: "trailer" });
 
     process.env.ELIZA_STATE_DIR = target;
+    enableCandidateRestore();
     const restoreResponse = await fetch(
       `${baseUrl}/api/restore?transfer=chunked-v1`,
       {
         body,
-        headers: { "content-type": AGENT_SNAPSHOT_STREAM_CONTENT_TYPE },
+        headers: candidateRestoreHeaders(),
         method: "POST",
       },
     );
     expect(restoreResponse.status).toBe(200);
     await expect(restoreResponse.json()).resolves.toEqual({
       aggregateSha256: trailer.aggregateSha256,
+      binding: UPGRADE_BINDING,
       fileCount: trailer.fileCount,
+      receiptStatus: "committed",
       requiresRestart: true,
       schemaVersion: 2,
       success: true,
       totalBytes: trailer.totalBytes,
       transfer: "chunked-v1",
+    });
+    const replayResponse = await fetch(
+      `${baseUrl}/api/restore?transfer=chunked-v1`,
+      {
+        body,
+        headers: candidateRestoreHeaders(),
+        method: "POST",
+      },
+    );
+    expect(replayResponse.status).toBe(200);
+    await expect(replayResponse.json()).resolves.toMatchObject({
+      aggregateSha256: trailer.aggregateSha256,
+      binding: UPGRADE_BINDING,
+      receiptStatus: "committed",
     });
     await expect(
       fs.readFile(path.join(target, "skills", "route.json"), "utf8"),
@@ -175,6 +255,7 @@ describe.sequential("agent snapshot HTTP routes", () => {
   test("rejects transfer ambiguity and corrupt input without applying state", async () => {
     const target = await temporaryRoot("eliza-route-invalid-");
     process.env.ELIZA_STATE_DIR = target;
+    enableCandidateRestore();
     const baseUrl = await startServer(runtimeStub());
     await fs.writeFile(path.join(target, "sentinel.txt"), "unchanged");
 
@@ -182,7 +263,7 @@ describe.sequential("agent snapshot HTTP routes", () => {
       `${baseUrl}/api/restore?transfer=chunked-v1&transfer=chunked-v1`,
       {
         body: "{}\n",
-        headers: { "content-type": AGENT_SNAPSHOT_STREAM_CONTENT_TYPE },
+        headers: candidateRestoreHeaders(),
         method: "POST",
       },
     );
@@ -203,6 +284,7 @@ describe.sequential("agent snapshot HTTP routes", () => {
       {
         body: `${JSON.stringify({
           agentId: AGENT_ID,
+          binding: UPGRADE_BINDING,
           chunkSize: 262144,
           components: {},
           createdAt: new Date().toISOString(),
@@ -212,7 +294,7 @@ describe.sequential("agent snapshot HTTP routes", () => {
           transfer: "chunked-v1",
           type: "descriptor",
         })}\n`,
-        headers: { "content-type": AGENT_SNAPSHOT_STREAM_CONTENT_TYPE },
+        headers: candidateRestoreHeaders(),
         method: "POST",
       },
     );
@@ -220,6 +302,9 @@ describe.sequential("agent snapshot HTTP routes", () => {
     await expect(
       fs.readFile(path.join(target, "sentinel.txt"), "utf8"),
     ).resolves.toBe("unchanged");
-    await expect(fs.readdir(target)).resolves.toEqual(["sentinel.txt"]);
+    await expect(fs.readdir(target)).resolves.toEqual([
+      "backups",
+      "sentinel.txt",
+    ]);
   });
 });
