@@ -2187,8 +2187,14 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
   const cloud = config.cloud;
 
   const isCloudContainer = isProvisionedCloudContainer();
-  if (!cloud && !isCloudContainer) return;
   const topology = resolveElizaCloudTopology(config as Record<string, unknown>);
+  const serviceRouting = resolveServiceRoutingInConfig(
+    config as Record<string, unknown>,
+  );
+  // Canonical per-capability routes can load Cloud without the deprecated
+  // config.cloud block. They still need the tri-state usage flags below so a
+  // direct text provider is not displaced by Cloud's higher-priority models.
+  if (!cloud && !isCloudContainer && !topology.shouldLoadPlugin) return;
 
   // Cloud inference is selected from the canonical first-run connection, not
   // just from raw cloud flags. This keeps linked cloud auth from re-enabling
@@ -2246,6 +2252,9 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
   // because plugin-elizacloud registers cloud embedding handlers when the flag
   // is unset.
   const hasByoEmbeddingProvider = hasExplicitEmbeddingProviderConfig(config);
+  const hasExplicitNonCloudEmbeddingRoute =
+    serviceRouting?.embeddings !== undefined &&
+    serviceRouting.embeddings.transport !== "cloud-proxy";
   const cloudEmbeddingsPolicy = readEffectiveEnvValue(
     config,
     "ELIZAOS_CLOUD_USE_EMBEDDINGS",
@@ -2257,7 +2266,11 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
     // (`isTruthyEnv`) use for this same flag, so `=1`/`=yes`/`=true` all opt into
     // Cloud embeddings identically at the boot, router, and warmup call sites.
     process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS = "true";
-  } else if (cloudEmbeddingsPolicy === "false" || hasByoEmbeddingProvider) {
+  } else if (
+    cloudEmbeddingsPolicy === "false" ||
+    hasByoEmbeddingProvider ||
+    hasExplicitNonCloudEmbeddingRoute
+  ) {
     process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS = "false";
   } else {
     // The app host owns embedding policy. Leaving this unset delegates the
