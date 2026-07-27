@@ -10,6 +10,7 @@ import type { AgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   AGENT_BACKUP_V1_MAX_SOURCE_BYTES,
+  type AgentSnapshotSourceAttestation,
   type AgentSnapshotUpgradeBinding,
   createAgentSnapshot,
   parseAgentSnapshotRequest,
@@ -45,10 +46,15 @@ const UPGRADE_BINDING: AgentSnapshotUpgradeBinding = {
   captureNonce: "a".repeat(64),
   sourceEnvironmentRevision: 7,
   sourceImageDigest: `sha256:${"b".repeat(64)}`,
-  sourceSandboxId: "agent-source",
+  sourceSandboxId: "33333333-3333-4333-8333-333333333333",
   targetImageDigest: `sha256:${"c".repeat(64)}`,
   targetReplacementAttemptId: "22222222-2222-4222-8222-222222222222",
   targetSandboxId: "agent-target",
+};
+const SOURCE_ATTESTATION: AgentSnapshotSourceAttestation = {
+  sourceEnvironmentRevision: UPGRADE_BINDING.sourceEnvironmentRevision,
+  sourceImageDigest: UPGRADE_BINDING.sourceImageDigest,
+  sourceSandboxId: UPGRADE_BINDING.sourceSandboxId,
 };
 
 function restoreEnv(): void {
@@ -135,6 +141,7 @@ async function collectStream(runtime: AgentRuntime): Promise<Buffer[]> {
   for await (const frame of createAgentSnapshotStream(
     runtime,
     UPGRADE_BINDING,
+    SOURCE_ATTESTATION,
   )) {
     frames.push(frame);
   }
@@ -206,7 +213,11 @@ describe.sequential("agent snapshot chunked-v1 stream", () => {
     delete process.env.POSTGRES_URL;
     delete process.env.DATABASE_URL;
     const sourceRuntime = runtimeStub();
-    const iterator = createAgentSnapshotStream(sourceRuntime, UPGRADE_BINDING);
+    const iterator = createAgentSnapshotStream(
+      sourceRuntime,
+      UPGRADE_BINDING,
+      SOURCE_ATTESTATION,
+    );
     const first = await iterator.next();
     if (first.done) throw new Error("Snapshot stream emitted no descriptor");
 
@@ -300,6 +311,7 @@ describe.sequential("agent snapshot chunked-v1 stream", () => {
       const restore = restoreAgentSnapshotStream(
         runtimeStub(),
         asInput(frames),
+        UPGRADE_BINDING,
       ).finally(() => {
         settled = true;
       });
@@ -663,7 +675,11 @@ describe.sequential("agent snapshot chunked-v1 stream", () => {
 
     let maximumFrameBytes = 0;
     let chunkCount = 0;
-    const iterator = createAgentSnapshotStream(runtimeStub(), UPGRADE_BINDING);
+    const iterator = createAgentSnapshotStream(
+      runtimeStub(),
+      UPGRADE_BINDING,
+      SOURCE_ATTESTATION,
+    );
     const first = await iterator.next();
     if (first.done) throw new Error("Snapshot stream emitted no descriptor");
     process.env.ELIZA_STATE_DIR = target;
