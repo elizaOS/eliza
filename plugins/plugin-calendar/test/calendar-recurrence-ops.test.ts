@@ -6,11 +6,11 @@
  * `recurringEventId` → the series master. The mutation contract under test:
  *
  *   - update/delete of a recurring occurrence with NO instance-vs-series
- *     intent → clarification round-trip, NO mutation call
- *   - "just this …" phrasing / recurrenceScope=instance → mutation targets the
+ *     intent → clarification round-trip, no approval
+ *   - "just this …" phrasing / recurrenceScope=instance → approval binds the
  *     occurrence id with scope "instance"
- *   - "whole series" phrasing / recurrenceScope=series → ONE mutation call with
- *     scope "series" (never an iteration over flattened occurrences)
+ *   - "whole series" phrasing / recurrenceScope=series → one series-scoped
+ *     approval (never an iteration over flattened occurrences)
  *   - non-recurring events keep the old behavior (no scope round-trip)
  *   - create_event carries structured RRULE recurrence through to the service
  *
@@ -27,11 +27,16 @@ import {
   createCalendarActionRunner,
 } from "../src/index.js";
 
-function fakeDeps(): CalendarActionDeps {
+function fakeDeps(service: StubService): CalendarActionDeps {
   return {
     runTextModel: vi.fn(async () => null),
     runJsonModel: vi.fn(async () => null),
     recentConversationTexts: vi.fn(async () => []),
+    mutationGateway: {
+      schedule: service.scheduleApproval,
+      modify: service.modifyApproval,
+      cancel: service.cancelApproval,
+    },
   };
 }
 
@@ -93,10 +98,30 @@ function stubService(feedEvents: LifeOpsCalendarEvent[]) {
       calendarId: "all",
       events: feedEvents,
       source: "cache" as const,
+      state: "complete" as const,
+      sources: [{ status: "fresh" as const }],
       timeMin: "2026-07-01T00:00:00.000Z",
       timeMax: "2026-07-31T00:00:00.000Z",
       syncedAt: null,
     })),
+    prepareCalendarEventCreate: vi.fn(
+      async (_url: URL, request: Record<string, unknown>) => ({
+        ...request,
+        side: "owner" as const,
+        grantId: "connector-account:acct-a",
+        calendarId: "primary",
+        startAt: request.startAt as string,
+        endAt:
+          (request.endAt as string | undefined) ?? "2026-07-06T14:00:00.000Z",
+        timeZone: (request.timeZone as string | undefined) ?? "UTC",
+      }),
+    ),
+    getConditionalCalendarMutationTarget: vi.fn(
+      async (_url: URL, request: { eventId: string }) =>
+        feedEvents.find(
+          (candidate) => candidate.externalId === request.eventId,
+        ) ?? STANDUP_OCCURRENCE,
+    ),
     createCalendarEvent: vi.fn(async () =>
       event({
         externalId: "evt-created",
@@ -108,6 +133,24 @@ function stubService(feedEvents: LifeOpsCalendarEvent[]) {
     updateCalendarEvent: vi.fn(async () => ({
       ...STANDUP_OCCURRENCE,
       title: "Team Standup (moved)",
+    })),
+    scheduleApproval: vi.fn(async () => ({
+      requestId: "approval-schedule",
+      action: "schedule_event" as const,
+      state: "pending" as const,
+      text: "schedule approval queued",
+    })),
+    modifyApproval: vi.fn(async () => ({
+      requestId: "approval-modify",
+      action: "modify_event" as const,
+      state: "pending" as const,
+      text: "modify approval queued",
+    })),
+    cancelApproval: vi.fn(async () => ({
+      requestId: "approval-cancel",
+      action: "cancel_event" as const,
+      state: "pending" as const,
+      text: "cancel approval queued",
     })),
   };
 }
@@ -143,7 +186,7 @@ async function runHandler(args: {
   text: string;
   parameters: Record<string, unknown>;
 }) {
-  const action = createCalendarActionRunner(fakeDeps());
+  const action = createCalendarActionRunner(fakeDeps(args.service));
   return (await action.handler(
     fakeRuntime(args.service),
     message(args.text),
@@ -173,6 +216,7 @@ describe("CALENDAR update_event on a recurring occurrence", () => {
       requiresInput: true,
       missing: ["recurrenceScope"],
     });
+    expect(service.modifyApproval).not.toHaveBeenCalled();
     expect(service.updateCalendarEvent).not.toHaveBeenCalled();
   });
 
@@ -183,14 +227,13 @@ describe("CALENDAR update_event on a recurring occurrence", () => {
       parameters: { subaction: "update_event", query: "standup" },
     });
     expect(result.success).toBe(true);
-    expect(service.updateCalendarEvent).toHaveBeenCalledTimes(1);
-    const request = service.updateCalendarEvent.mock.calls[0]?.[1] as Record<
-      string,
-      unknown
-    >;
+    expect(service.modifyApproval).toHaveBeenCalledTimes(1);
+    const request = service.modifyApproval.mock.calls[0]?.[0]
+      ?.request as Record<string, unknown>;
     expect(request.eventId).toBe("standup_20260708T170000Z");
     expect(request.recurrenceScope).toBe("instance");
-    expect(result.text).toContain("this occurrence only");
+    expect(result.text).toContain("approval queued");
+    expect(service.updateCalendarEvent).not.toHaveBeenCalled();
   });
 
   it('"whole series" phrasing → one series-scoped patch', async () => {
@@ -204,14 +247,12 @@ describe("CALENDAR update_event on a recurring occurrence", () => {
       },
     });
     expect(result.success).toBe(true);
-    expect(service.updateCalendarEvent).toHaveBeenCalledTimes(1);
-    const request = service.updateCalendarEvent.mock.calls[0]?.[1] as Record<
-      string,
-      unknown
-    >;
+    expect(service.modifyApproval).toHaveBeenCalledTimes(1);
+    const request = service.modifyApproval.mock.calls[0]?.[0]
+      ?.request as Record<string, unknown>;
     expect(request.recurrenceScope).toBe("series");
     expect(request.title).toBe("Daily Sync");
-    expect(result.text).toContain("whole series");
+    expect(service.updateCalendarEvent).not.toHaveBeenCalled();
   });
 
   it("explicit recurrenceScope detail wins without special phrasing", async () => {
@@ -225,10 +266,8 @@ describe("CALENDAR update_event on a recurring occurrence", () => {
       },
     });
     expect(result.success).toBe(true);
-    const request = service.updateCalendarEvent.mock.calls[0]?.[1] as Record<
-      string,
-      unknown
-    >;
+    const request = service.modifyApproval.mock.calls[0]?.[0]
+      ?.request as Record<string, unknown>;
     expect(request.recurrenceScope).toBe("series");
   });
 
@@ -243,10 +282,8 @@ describe("CALENDAR update_event on a recurring occurrence", () => {
       },
     });
     expect(result.success).toBe(true);
-    const request = service.updateCalendarEvent.mock.calls[0]?.[1] as Record<
-      string,
-      unknown
-    >;
+    const request = service.modifyApproval.mock.calls[0]?.[0]
+      ?.request as Record<string, unknown>;
     expect(request.recurrence).toEqual(["RRULE:FREQ=WEEKLY;BYDAY=TU"]);
     expect(request.recurrenceScope).toBe("series");
   });
@@ -262,13 +299,12 @@ describe("CALENDAR update_event on a recurring occurrence", () => {
       },
     });
     expect(result.success).toBe(true);
-    expect(service.updateCalendarEvent).toHaveBeenCalledTimes(1);
-    const request = service.updateCalendarEvent.mock.calls[0]?.[1] as Record<
-      string,
-      unknown
-    >;
+    expect(service.modifyApproval).toHaveBeenCalledTimes(1);
+    const request = service.modifyApproval.mock.calls[0]?.[0]
+      ?.request as Record<string, unknown>;
     expect(request.eventId).toBe("evt-lunch");
     expect(request.recurrenceScope).toBeUndefined();
+    expect(service.updateCalendarEvent).not.toHaveBeenCalled();
   });
 });
 
@@ -288,6 +324,7 @@ describe("CALENDAR delete_event on a recurring occurrence", () => {
     expect(result.success).toBe(false);
     expect(result.text).toContain("occurrence");
     expect(result.text).toContain("series");
+    expect(service.cancelApproval).not.toHaveBeenCalled();
     expect(service.deleteCalendarEvent).not.toHaveBeenCalled();
   });
 
@@ -298,13 +335,12 @@ describe("CALENDAR delete_event on a recurring occurrence", () => {
       parameters: { subaction: "delete_event", query: "standup" },
     });
     expect(result.success).toBe(true);
-    expect(service.deleteCalendarEvent).toHaveBeenCalledTimes(1);
-    const request = service.deleteCalendarEvent.mock.calls[0]?.[1] as Record<
-      string,
-      unknown
-    >;
+    expect(service.cancelApproval).toHaveBeenCalledTimes(1);
+    const request = service.cancelApproval.mock.calls[0]?.[0]
+      ?.request as Record<string, unknown>;
     expect(request.eventId).toBe("standup_20260708T170000Z");
     expect(request.recurrenceScope).toBe("instance");
+    expect(service.deleteCalendarEvent).not.toHaveBeenCalled();
   });
 
   it('"whole series" phrasing → exactly one series-scoped delete call', async () => {
@@ -314,13 +350,12 @@ describe("CALENDAR delete_event on a recurring occurrence", () => {
       parameters: { subaction: "delete_event", query: "standup" },
     });
     expect(result.success).toBe(true);
-    // One call with series scope — never an iteration over occurrences.
-    expect(service.deleteCalendarEvent).toHaveBeenCalledTimes(1);
-    const request = service.deleteCalendarEvent.mock.calls[0]?.[1] as Record<
-      string,
-      unknown
-    >;
+    // One approval with series scope — never an iteration over occurrences.
+    expect(service.cancelApproval).toHaveBeenCalledTimes(1);
+    const request = service.cancelApproval.mock.calls[0]?.[0]
+      ?.request as Record<string, unknown>;
     expect(request.recurrenceScope).toBe("series");
+    expect(service.deleteCalendarEvent).not.toHaveBeenCalled();
   });
 
   it("explicit eventId path forwards a structured recurrenceScope", async () => {
@@ -336,13 +371,12 @@ describe("CALENDAR delete_event on a recurring occurrence", () => {
       },
     });
     expect(result.success).toBe(true);
-    expect(service.deleteCalendarEvent).toHaveBeenCalledTimes(1);
-    const request = service.deleteCalendarEvent.mock.calls[0]?.[1] as Record<
-      string,
-      unknown
-    >;
+    expect(service.cancelApproval).toHaveBeenCalledTimes(1);
+    const request = service.cancelApproval.mock.calls[0]?.[0]
+      ?.request as Record<string, unknown>;
     expect(request.eventId).toBe("standup_20260708T170000Z");
     expect(request.recurrenceScope).toBe("series");
+    expect(service.deleteCalendarEvent).not.toHaveBeenCalled();
   });
 
   it("non-recurring events delete without a scope round-trip", async () => {
@@ -352,13 +386,12 @@ describe("CALENDAR delete_event on a recurring occurrence", () => {
       parameters: { subaction: "delete_event", query: "lunch" },
     });
     expect(result.success).toBe(true);
-    expect(service.deleteCalendarEvent).toHaveBeenCalledTimes(1);
-    const request = service.deleteCalendarEvent.mock.calls[0]?.[1] as Record<
-      string,
-      unknown
-    >;
+    expect(service.cancelApproval).toHaveBeenCalledTimes(1);
+    const request = service.cancelApproval.mock.calls[0]?.[0]
+      ?.request as Record<string, unknown>;
     expect(request.eventId).toBe("evt-lunch");
     expect(request.recurrenceScope).toBeUndefined();
+    expect(service.deleteCalendarEvent).not.toHaveBeenCalled();
   });
 });
 
@@ -380,14 +413,12 @@ describe("CALENDAR create_event with recurrence", () => {
       },
     });
     expect(result.success).toBe(true);
-    expect(service.createCalendarEvent).toHaveBeenCalledTimes(1);
-    const request = service.createCalendarEvent.mock.calls[0]?.[1] as Record<
-      string,
-      unknown
-    >;
+    expect(service.scheduleApproval).toHaveBeenCalledTimes(1);
+    const request = service.scheduleApproval.mock.calls[0]?.[0]
+      ?.request as Record<string, unknown>;
     expect(request.recurrence).toEqual(["RRULE:FREQ=WEEKLY;BYDAY=MO"]);
-    // The grounded fallback reply names the repetition.
-    expect(result.text).toContain("repeats weekly on Monday");
+    expect(result.text).toContain("approval queued");
+    expect(service.createCalendarEvent).not.toHaveBeenCalled();
   });
 
   it("accepts recurrence via the rrule alias detail key", async () => {
@@ -404,10 +435,8 @@ describe("CALENDAR create_event with recurrence", () => {
         },
       },
     });
-    const request = service.createCalendarEvent.mock.calls[0]?.[1] as Record<
-      string,
-      unknown
-    >;
+    const request = service.scheduleApproval.mock.calls[0]?.[0]
+      ?.request as Record<string, unknown>;
     expect(request.recurrence).toEqual(["RRULE:FREQ=WEEKLY;BYDAY=MO"]);
   });
 
@@ -422,10 +451,8 @@ describe("CALENDAR create_event with recurrence", () => {
         details: { startAt: "2026-07-06T13:00:00.000Z" },
       },
     });
-    const request = service.createCalendarEvent.mock.calls[0]?.[1] as Record<
-      string,
-      unknown
-    >;
+    const request = service.scheduleApproval.mock.calls[0]?.[0]
+      ?.request as Record<string, unknown>;
     expect(request.recurrence).toBeUndefined();
   });
 });

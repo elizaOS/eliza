@@ -85,6 +85,7 @@ export function isPermissionId(value: unknown): value is PermissionId {
 
 export type PermissionStatus =
   | "granted"
+  | "limited"
   | "denied"
   | "not-determined"
   | "restricted"

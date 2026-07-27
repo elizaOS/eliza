@@ -64,9 +64,9 @@ describe("LifeOps persona catalog coverage", () => {
     expect(output).toContain("E1 29 authored (target 28, +1)");
     expect(output).toContain("F1 35 authored (target 32, +3)");
     expect(output).toContain(
-      "Total: 300 authored (target 296), 163/300 verified, 137 unverified",
+      "Total: 348 authored (target 344), 162/348 verified, 186 unverified",
     );
-    expect(output).not.toContain("300/296 authored");
+    expect(output).not.toContain("348/344 authored");
   });
 
   test("--unverified prints a board-triage list without hiding surface blockers", () => {
@@ -77,8 +77,9 @@ describe("LifeOps persona catalog coverage", () => {
     expect(output).toContain(
       "J1 10/10 unverified (lifeops-bench:3, scenario-runner:7)",
     );
+    expect(output).toContain("M1 48/48 unverified (lifeops-bench:48)");
     expect(output).toContain(
-      "Total: 137/300 authored rows still need verification",
+      "Total: 186/348 authored rows still need verification",
     );
   });
 
@@ -120,6 +121,45 @@ describe("LifeOps persona catalog coverage", () => {
       expect(result.stderr).toBe("");
       expect(result.status).toBe(0);
     }
+  });
+
+  test("M1 resolves exactly one executable scenario for every G1-G48 capability", () => {
+    const report = JSON.parse(runCoverage("--pack", "M1", "--json"));
+
+    expect(report).toMatchObject({
+      target: 48,
+      authored: 48,
+      verified: 0,
+      errors: [],
+    });
+    expect(report.packs[0]).toMatchObject({
+      pack: "M1",
+      file: "world-traveling-coparent.catalog.json",
+      unverified: 48,
+      unverifiedBySurface: {
+        "lifeops-bench": 48,
+      },
+    });
+  });
+
+  test("M1 rejects a missing or out-of-order capability id", () => {
+    const catalogDir = join(
+      import.meta.dirname,
+      "../../../plugins/plugin-personal-assistant/test/scenarios/_catalogs",
+    );
+    const tampered = mkdtempSync(join(tmpdir(), "lifeops-catalogs-"));
+    cpSync(catalogDir, tampered, { recursive: true });
+    const m1File = join(tampered, "world-traveling-coparent.catalog.json");
+    const m1 = JSON.parse(readFileSync(m1File, "utf8"));
+    m1.scenarios[0].capabilityId = "G2";
+    writeFileSync(m1File, JSON.stringify(m1));
+
+    const result = spawnSync(process.execPath, [scriptPath, "--pack", "M1"], {
+      encoding: "utf8",
+      env: { ...process.env, LIFEOPS_CATALOG_DIR: tampered },
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("scenarios[0].capabilityId=G2 expected G1");
   });
 
   test("strict-evidence packs reject a verified row whose evidence receipt is missing", () => {

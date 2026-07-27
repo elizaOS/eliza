@@ -969,11 +969,13 @@ describe("google plugin", () => {
     expect(fakeCalendar.events.patch).toHaveBeenCalledWith({
       calendarId: "primary",
       eventId: "event_1",
+      sendUpdates: "none",
       requestBody: { summary: "Updated Planning" },
     });
     expect(fakeCalendar.events.delete).toHaveBeenCalledWith({
       calendarId: "primary",
       eventId: "event_1",
+      sendUpdates: "none",
     });
     expect(fakeDrive.files.list).toHaveBeenCalledWith({
       q: "(name contains 'Plan') and trashed = false",

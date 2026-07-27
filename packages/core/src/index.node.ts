@@ -160,6 +160,7 @@ export {
 export { paymentsPlugin } from "./features/payments/index.ts";
 export { PluginManagerService } from "./features/plugin-manager/services/pluginManagerService.ts";
 export {
+	isSerializedSecretHandle,
 	SECRETS_SERVICE_TYPE,
 	type SecretsManagerPluginConfig,
 	secretsManagerPlugin,

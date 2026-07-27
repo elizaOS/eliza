@@ -6,7 +6,12 @@
  */
 import { randomUUID } from "node:crypto";
 import { getAgentEventService, resolveApprovalService } from "@elizaos/agent";
-import { type IAgentRuntime, logger, ServiceType } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  logger,
+  ServiceType,
+  stableStringify,
+} from "@elizaos/core";
 import {
   getScheduledTaskRunner,
   type ScheduledTaskInput,
@@ -15,6 +20,7 @@ import {
   type ApprovalAction,
   type ApprovalChannel,
   type ApprovalEnqueueInput,
+  ApprovalIdempotencyConflictError,
   type ApprovalListFilter,
   ApprovalNotFoundError,
   type ApprovalPayload,
@@ -27,12 +33,15 @@ import {
 } from "./approval-queue.types.js";
 import { getChannelRegistry } from "./channels/index.js";
 import { buildApprovalChoiceText } from "./choice-markers.js";
+import { readSchedulingApprovalCorrelation } from "./scheduling-approval.js";
 import {
   executeRawSql,
+  executeRawSqlTx,
   parseJsonRecord,
   sqlInteger,
   sqlJson,
   sqlText,
+  type TransactionalDb,
   toText,
 } from "./sql.js";
 
@@ -54,7 +63,7 @@ const ALLOWED_TRANSITIONS: Readonly<
   Record<ApprovalRequestState, ReadonlyArray<ApprovalRequestState>>
 > = {
   pending: ["approved", "rejected", "expired"],
-  approved: ["executing", "rejected"],
+  approved: ["executing", "rejected", "expired"],
   executing: ["done"],
   done: [],
   rejected: [],
@@ -96,6 +105,8 @@ const VALID_ACTIONS: ReadonlySet<ApprovalAction> = new Set([
 const VALID_CHANNELS: ReadonlySet<ApprovalChannel> = new Set([
   "telegram",
   "discord",
+  "signal",
+  "whatsapp",
   "slack",
   "imessage",
   "sms",
@@ -247,6 +258,17 @@ function requireNullableFiniteNumberField(
   }
 }
 
+function requireOptionalNullableFiniteNumberField(
+  record: Record<string, unknown>,
+  field: string,
+  label: string,
+): void {
+  if (record[field] === undefined) {
+    return;
+  }
+  requireNullableFiniteNumberField(record, field, label);
+}
+
 function requireBooleanField(
   record: Record<string, unknown>,
   field: string,
@@ -257,6 +279,61 @@ function requireBooleanField(
       `[ApprovalQueue] invalid ${label}.${field}: expected boolean`,
     );
   }
+}
+
+function requireOptionalBooleanField(
+  record: Record<string, unknown>,
+  field: string,
+  label: string,
+): void {
+  if (record[field] === undefined) return;
+  requireBooleanField(record, field, label);
+}
+
+function requireOptionalNullableStringArrayField(
+  record: Record<string, unknown>,
+  field: string,
+  label: string,
+): void {
+  const value = record[field];
+  if (value === undefined || value === null) return;
+  requireStringArrayField(record, field, label);
+}
+
+function requireCalendarApprovalAttendees(
+  value: unknown,
+  label: string,
+  nullable: boolean,
+): void {
+  if (nullable && value === null) return;
+  if (!Array.isArray(value)) {
+    throw new Error(
+      `[ApprovalQueue] invalid ${label}: expected calendar attendee array${nullable ? " or null" : ""}`,
+    );
+  }
+  value.forEach((entry, index) => {
+    if (typeof entry === "string") return;
+    const attendee = requireRecord(entry, `${label}[${index}]`);
+    requireStringField(attendee, "email", `${label}[${index}]`);
+    requireOptionalNullableStringField(
+      attendee,
+      "displayName",
+      `${label}[${index}]`,
+    );
+    requireOptionalBooleanField(attendee, "optional", `${label}[${index}]`);
+  });
+}
+
+function requireOptionalCalendarSeriesMasterBinding(
+  record: Record<string, unknown>,
+  label: string,
+): void {
+  if (record.seriesMaster === undefined || record.seriesMaster === null) return;
+  const binding = requireRecord(record.seriesMaster, `${label}.seriesMaster`);
+  requireStringField(binding, "externalId", `${label}.seriesMaster`);
+  requireFiniteNumberField(binding, "startAtMs", `${label}.seriesMaster`);
+  requireStringField(binding, "updatedAt", `${label}.seriesMaster`);
+  requireStringField(binding, "etag", `${label}.seriesMaster`);
 }
 
 function requireOptionalRecordField(
@@ -288,6 +365,62 @@ function requirePrimitiveRecordField(
         `[ApprovalQueue] invalid ${label}.${field}.${key}: expected string, number, or boolean`,
       );
     }
+  }
+}
+
+function requireCalendarMutationSourceBinding(
+  record: Record<string, unknown>,
+  label: string,
+): void {
+  requireOptionalNullableStringField(record, "grantId", label);
+  requireOptionalNullableStringField(record, "side", label);
+  if (
+    record.side !== undefined &&
+    record.side !== null &&
+    record.side !== "owner" &&
+    record.side !== "agent"
+  ) {
+    throw new Error(
+      `[ApprovalQueue] invalid ${label}.side: expected owner, agent, or null`,
+    );
+  }
+}
+
+function requireCalendarMutationTargetVersion(
+  record: Record<string, unknown>,
+  label: string,
+): void {
+  requireCalendarMutationSourceBinding(record, label);
+  requireOptionalNullableStringField(record, "expectedProvider", label);
+  requireOptionalNullableStringField(record, "expectedProviderVersion", label);
+  requireOptionalNullableStringField(record, "expectedEventUpdatedAt", label);
+  requireOptionalNullableFiniteNumberField(
+    record,
+    "expectedEventStartAtMs",
+    label,
+  );
+  requireOptionalNullableStringField(record, "recurrenceScope", label);
+  requireOptionalCalendarSeriesMasterBinding(record, label);
+  if (
+    record.expectedProvider !== undefined &&
+    record.expectedProvider !== null &&
+    !["google", "microsoft", "apple_calendar", "ics"].includes(
+      String(record.expectedProvider),
+    )
+  ) {
+    throw new Error(
+      `[ApprovalQueue] invalid ${label}.expectedProvider: unsupported provider`,
+    );
+  }
+  if (
+    record.recurrenceScope !== undefined &&
+    record.recurrenceScope !== null &&
+    record.recurrenceScope !== "instance" &&
+    record.recurrenceScope !== "series"
+  ) {
+    throw new Error(
+      `[ApprovalQueue] invalid ${label}.recurrenceScope: expected instance, series, or null`,
+    );
   }
 }
 
@@ -410,6 +543,12 @@ function assertApprovalPayload(
       requireStringField(record, "recipient", label);
       requireStringField(record, "body", label);
       requireNullableStringField(record, "replyToMessageId", label);
+      if (record.scheduling !== undefined) {
+        readSchedulingApprovalCorrelation(
+          record as ApprovalPayload,
+          `${label}.scheduling`,
+        );
+      }
       break;
     case "send_email":
       requireStringArrayField(record, "to", label);
@@ -419,41 +558,119 @@ function assertApprovalPayload(
       requireStringField(record, "body", label);
       requireNullableStringField(record, "threadId", label);
       requireOptionalNullableStringField(record, "replyToMessageId", label);
+      if (record.scheduling !== undefined) {
+        readSchedulingApprovalCorrelation(
+          record as ApprovalPayload,
+          `${label}.scheduling`,
+        );
+      }
       break;
     case "schedule_event":
       requireStringField(record, "calendarId", label);
       requireStringField(record, "title", label);
       requireFiniteNumberField(record, "startsAtMs", label);
       requireFiniteNumberField(record, "endsAtMs", label);
-      requireStringArrayField(record, "attendees", label);
+      requireCalendarApprovalAttendees(
+        record.attendees,
+        `${label}.attendees`,
+        false,
+      );
       requireNullableStringField(record, "location", label);
       requireNullableStringField(record, "description", label);
+      requireOptionalNullableStringField(record, "timeZone", label);
+      requireOptionalNullableFiniteNumberField(
+        record,
+        "durationMinutes",
+        label,
+      );
+      requireOptionalNullableStringField(record, "windowPreset", label);
+      if (
+        record.windowPreset !== undefined &&
+        record.windowPreset !== null &&
+        record.windowPreset !== "tomorrow_morning" &&
+        record.windowPreset !== "tomorrow_afternoon" &&
+        record.windowPreset !== "tomorrow_evening"
+      ) {
+        throw new Error(
+          `[ApprovalQueue] invalid ${label}.windowPreset: unsupported preset`,
+        );
+      }
+      requireOptionalNullableStringArrayField(record, "recurrence", label);
+      requireOptionalBooleanField(record, "notifyAttendees", label);
+      if (record.editorRequestSha256 !== undefined) {
+        requireStringField(record, "editorRequestSha256", label);
+      }
+      if (record.travelBuffer !== undefined && record.travelBuffer !== null) {
+        const travelBuffer = requireRecord(
+          record.travelBuffer,
+          `${label}.travelBuffer`,
+        );
+        requireFiniteNumberField(
+          travelBuffer,
+          "bufferMinutes",
+          `${label}.travelBuffer`,
+        );
+        requireStringField(travelBuffer, "method", `${label}.travelBuffer`);
+        requireNullableStringField(
+          travelBuffer,
+          "originAddress",
+          `${label}.travelBuffer`,
+        );
+        requireNullableStringField(
+          travelBuffer,
+          "destinationAddress",
+          `${label}.travelBuffer`,
+        );
+      }
+      requireCalendarMutationSourceBinding(record, label);
       break;
     case "modify_event": {
       requireStringField(record, "calendarId", label);
       requireStringField(record, "eventId", label);
+      requireCalendarMutationTargetVersion(record, label);
       const patch = requireRecord(record.patch, `${label}.patch`);
       requireNullableStringField(patch, "title", `${label}.patch`);
       requireNullableFiniteNumberField(patch, "startsAtMs", `${label}.patch`);
       requireNullableFiniteNumberField(patch, "endsAtMs", `${label}.patch`);
-      const attendees = patch.attendees;
-      if (
-        attendees !== null &&
-        (!Array.isArray(attendees) ||
-          attendees.some((entry) => typeof entry !== "string"))
-      ) {
-        throw new Error(
-          `[ApprovalQueue] invalid ${label}.patch.attendees: expected string[] or null`,
-        );
-      }
+      requireCalendarApprovalAttendees(
+        patch.attendees,
+        `${label}.patch.attendees`,
+        true,
+      );
       requireNullableStringField(patch, "location", `${label}.patch`);
       requireNullableStringField(patch, "description", `${label}.patch`);
+      requireOptionalNullableStringField(patch, "timeZone", `${label}.patch`);
+      requireOptionalNullableStringArrayField(
+        patch,
+        "recurrence",
+        `${label}.patch`,
+      );
+      requireOptionalBooleanField(record, "notifyAttendees", label);
+      if (record.editorRequestSha256 !== undefined) {
+        requireStringField(record, "editorRequestSha256", label);
+      }
       break;
     }
     case "cancel_event":
       requireStringField(record, "calendarId", label);
       requireStringField(record, "eventId", label);
       requireBooleanField(record, "notifyAttendees", label);
+      requireCalendarMutationTargetVersion(record, label);
+      requireOptionalNullableStringField(record, "cancellationMode", label);
+      if (record.editorRequestSha256 !== undefined) {
+        requireStringField(record, "editorRequestSha256", label);
+      }
+      if (
+        record.cancellationMode !== undefined &&
+        record.cancellationMode !== null &&
+        record.cancellationMode !== "organizer_cancel" &&
+        record.cancellationMode !== "decline_invitation" &&
+        record.cancellationMode !== "remove_private_copy"
+      ) {
+        throw new Error(
+          `[ApprovalQueue] invalid ${label}.cancellationMode: unsupported cancellation mode`,
+        );
+      }
       break;
     case "book_travel":
       if (
@@ -540,6 +757,7 @@ function rowToRequest(row: Record<string, unknown>): ApprovalRequest {
     payload,
     channel: parseChannel(row.channel),
     reason: toText(row.reason),
+    idempotencyKey: parseOptionalText(row.idempotency_key),
     expiresAt: parseTimestamp(row.expires_at),
     resolvedAt: parseOptionalTimestamp(row.resolved_at),
     resolvedBy: parseOptionalText(row.resolved_by),
@@ -548,7 +766,23 @@ function rowToRequest(row: Record<string, unknown>): ApprovalRequest {
 }
 
 const SELECT_COLUMNS =
-  "id, state, requested_by, subject_user_id, action, payload, channel, reason, expires_at, resolved_at, resolved_by, resolution_reason, created_at, updated_at";
+  "id, state, requested_by, subject_user_id, action, payload, channel, reason, idempotency_key, expires_at, resolved_at, resolved_by, resolution_reason, created_at, updated_at";
+
+function sameIdempotentApproval(
+  existing: ApprovalRequest,
+  input: ApprovalEnqueueInput,
+  payload: ApprovalPayload,
+): boolean {
+  return (
+    existing.requestedBy === input.requestedBy &&
+    existing.subjectUserId === input.subjectUserId &&
+    existing.action === input.action &&
+    existing.channel === input.channel &&
+    existing.reason === input.reason &&
+    existing.expiresAt.getTime() === input.expiresAt.getTime() &&
+    stableStringify(existing.payload) === stableStringify(payload)
+  );
+}
 
 function timestampLiteral(date: Date): string {
   return sqlText(date.toISOString());
@@ -695,6 +929,11 @@ export interface ApprovalQueueOptions {
   readonly agentId: string;
 }
 
+export interface TransactionalApprovalEnqueueResult {
+  readonly request: ApprovalRequest;
+  readonly reused: boolean;
+}
+
 export class PgApprovalQueue implements ApprovalQueue {
   private readonly runtime: IAgentRuntime;
   private readonly agentId: string;
@@ -705,6 +944,121 @@ export class PgApprovalQueue implements ApprovalQueue {
   }
 
   async enqueue(input: ApprovalEnqueueInput): Promise<ApprovalRequest> {
+    const inserted = await this.insertApproval(input);
+    if (inserted.reused) {
+      return inserted.request;
+    }
+    try {
+      await this.surfaceEnqueuedApproval(inserted.request);
+    } catch (error) {
+      // error-policy:J2 The approval row and ScheduledTask must be atomic from
+      // the caller's perspective on the legacy enqueue path. Transactional
+      // scheduling callers commit the approval with their domain mutation and
+      // report a failed side-channel separately instead of deleting either.
+      await executeRawSql(
+        this.runtime,
+        `DELETE FROM approval_requests WHERE id = ${sqlText(inserted.request.id)} AND agent_id = ${sqlText(this.agentId)}`,
+      );
+      throw new Error(
+        `[ApprovalQueue] failed to schedule approval task for ${inserted.request.id}; rolled back approval row`,
+        { cause: error },
+      );
+    }
+    return inserted.request;
+  }
+
+  async enqueueConfirmed(
+    input: ApprovalEnqueueInput,
+    resolution: ApprovalResolution,
+  ): Promise<ApprovalRequest> {
+    const inserted = await this.insertApproval(input, undefined, resolution);
+    if (inserted.request.state === "pending") {
+      try {
+        return await this.approve(inserted.request.id, resolution);
+      } catch (error) {
+        if (!(error instanceof ApprovalTransitionConflictError)) throw error;
+        const current = await this.byId(inserted.request.id);
+        if (!current) throw new ApprovalNotFoundError(inserted.request.id);
+        if (
+          current.state === "approved" ||
+          current.state === "executing" ||
+          current.state === "done"
+        ) {
+          return current;
+        }
+        throw error;
+      }
+    }
+    return inserted.request;
+  }
+
+  /**
+   * Insert or reuse an approval inside the caller's database transaction.
+   * This is the same `approval_requests` queue, not an auxiliary queue; it lets
+   * a domain mutation and its owner gate commit or roll back together.
+   * User-facing task/notification side-channels run only after commit via
+   * {@link surfaceEnqueuedApproval}.
+   */
+  async enqueueTransactional(
+    input: ApprovalEnqueueInput,
+    tx: TransactionalDb,
+  ): Promise<TransactionalApprovalEnqueueResult> {
+    return this.insertApproval(input, tx);
+  }
+
+  async surfaceEnqueuedApproval(request: ApprovalRequest): Promise<void> {
+    await scheduleApprovalTask(this.runtime, {
+      agentId: this.agentId,
+      requestId: request.id,
+      subjectUserId: request.subjectUserId,
+      action: request.action,
+      channel: request.channel,
+      reason: request.reason,
+      requestedBy: request.requestedBy,
+      createdAt: request.createdAt,
+    });
+    try {
+      emitApprovalChoiceEvent(this.runtime, {
+        requestId: request.id,
+        reason: request.reason,
+        action: request.action,
+      });
+    } catch (err) {
+      // error-policy:J7 chat choice emission is a non-blocking side-channel,
+      // but reportError keeps stranded approval prompts observable.
+      this.runtime.reportError("ApprovalQueue.chatChoice", err, {
+        requestId: request.id,
+        action: request.action,
+      });
+    }
+    void getNotifier(this.runtime)
+      ?.notify({
+        title: "Approval needed",
+        body: request.reason.slice(0, 200),
+        category: "approval",
+        priority: "high",
+        source: "lifeops",
+        deepLink: "/chat",
+        groupKey: `approval:${request.id}`,
+        data: { requestId: request.id, kind: request.action },
+      })
+      // error-policy:J7 notify is a side-channel that must not block the
+      // enqueue, but a swallowed failure means the owner is never told an
+      // approval is pending — surface it so repeated notify-rail failures are
+      // observable instead of silently stranding approvals.
+      .catch((err) => {
+        this.runtime.reportError("ApprovalQueue.notify", err, {
+          requestId: request.id,
+          action: request.action,
+        });
+      });
+  }
+
+  private async insertApproval(
+    input: ApprovalEnqueueInput,
+    tx?: TransactionalDb,
+    confirmedResolution?: ApprovalResolution,
+  ): Promise<TransactionalApprovalEnqueueResult> {
     const payload = validateApprovalPayload(input.payload, "enqueue payload");
     if (input.action !== payload.action) {
       throw new Error(
@@ -713,95 +1067,58 @@ export class PgApprovalQueue implements ApprovalQueue {
     }
     const id = randomUUID();
     const now = new Date();
+    const idempotencyKey = input.idempotencyKey?.trim() || null;
+    const initialState = confirmedResolution ? "approved" : "pending";
     const sql = `INSERT INTO approval_requests (
         id, state, requested_by, subject_user_id, action, payload, channel, reason,
-        expires_at, resolved_at, resolved_by, resolution_reason,
+        idempotency_key, expires_at, resolved_at, resolved_by, resolution_reason,
         agent_id, created_at, updated_at
       ) VALUES (
         ${sqlText(id)},
-        ${sqlText("pending")},
+        ${sqlText(initialState)},
         ${sqlText(input.requestedBy)},
         ${sqlText(input.subjectUserId)},
         ${sqlText(input.action)},
         ${sqlJson(payload)},
         ${sqlText(input.channel)},
         ${sqlText(input.reason)},
+        ${sqlText(idempotencyKey)},
         ${timestampLiteral(input.expiresAt)},
-        NULL, NULL, NULL,
+        ${confirmedResolution ? timestampLiteral(now) : "NULL"},
+        ${confirmedResolution ? sqlText(confirmedResolution.resolvedBy) : "NULL"},
+        ${confirmedResolution ? sqlText(confirmedResolution.resolutionReason) : "NULL"},
         ${sqlText(this.agentId)},
         ${timestampLiteral(now)},
         ${timestampLiteral(now)}
-      ) RETURNING ${SELECT_COLUMNS}`;
-    const rows = await executeRawSql(this.runtime, sql);
+      )
+      ${
+        idempotencyKey
+          ? "ON CONFLICT (agent_id, idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING"
+          : ""
+      }
+      RETURNING ${SELECT_COLUMNS}`;
+    const rows = tx
+      ? await executeRawSqlTx(tx, sql)
+      : await executeRawSql(this.runtime, sql);
     if (rows.length === 0) {
-      throw new Error("[ApprovalQueue] enqueue returned no rows");
+      if (!idempotencyKey) {
+        throw new Error("[ApprovalQueue] enqueue returned no rows");
+      }
+      const existing = await this.fetchByIdempotencyKey(idempotencyKey, tx);
+      if (!existing) {
+        throw new Error(
+          "[ApprovalQueue] idempotent enqueue conflict returned no existing row",
+        );
+      }
+      if (!sameIdempotentApproval(existing, input, payload)) {
+        throw new ApprovalIdempotencyConflictError(idempotencyKey);
+      }
+      return { request: existing, reused: true };
     }
     logger.info(
       `[ApprovalQueue] enqueued ${input.action} for ${input.subjectUserId} as ${id}`,
     );
-    try {
-      await scheduleApprovalTask(this.runtime, {
-        agentId: this.agentId,
-        requestId: id,
-        subjectUserId: input.subjectUserId,
-        action: input.action,
-        channel: input.channel,
-        reason: input.reason,
-        requestedBy: input.requestedBy,
-        createdAt: now,
-      });
-    } catch (error) {
-      // error-policy:J2 The approval row and ScheduledTask must be atomic from
-      // the caller's perspective: rollback the row, then rethrow with context.
-      await executeRawSql(
-        this.runtime,
-        `DELETE FROM approval_requests WHERE id = ${sqlText(id)} AND agent_id = ${sqlText(this.agentId)}`,
-      );
-      throw new Error(
-        `[ApprovalQueue] failed to schedule approval task for ${id}; rolled back approval row`,
-        { cause: error },
-      );
-    }
-    // An outbound action now needs the owner's go-ahead. Surface it directly
-    // in chat with one-tap approval chips, and also on the notification rail so
-    // the owner is interrupted even when they are not watching chat. Both
-    // side-channels are fire-and-forget; neither can block the enqueue.
-    try {
-      emitApprovalChoiceEvent(this.runtime, {
-        requestId: id,
-        reason: input.reason,
-        action: input.action,
-      });
-    } catch (err) {
-      // error-policy:J7 chat choice emission is a non-blocking side-channel,
-      // but reportError keeps stranded approval prompts observable.
-      this.runtime.reportError("ApprovalQueue.chatChoice", err, {
-        requestId: id,
-        action: input.action,
-      });
-    }
-    void getNotifier(this.runtime)
-      ?.notify({
-        title: "Approval needed",
-        body: input.reason.slice(0, 200),
-        category: "approval",
-        priority: "high",
-        source: "lifeops",
-        deepLink: "/chat",
-        groupKey: `approval:${id}`,
-        data: { requestId: id, kind: input.action },
-      })
-      // error-policy:J7 notify is a side-channel that must not block the
-      // enqueue, but a swallowed failure means the owner is never told an
-      // approval is pending — surface it so repeated notify-rail failures are
-      // observable instead of silently stranding approvals.
-      .catch((err) => {
-        this.runtime.reportError("ApprovalQueue.notify", err, {
-          requestId: id,
-          action: input.action,
-        });
-      });
-    return rowToRequest(rows[0]);
+    return { request: rowToRequest(rows[0]), reused: false };
   }
 
   async list(
@@ -828,6 +1145,16 @@ export class PgApprovalQueue implements ApprovalQueue {
   async byId(id: string): Promise<ApprovalRequest | null> {
     const rows = await this.fetchById(id);
     return rows ?? null;
+  }
+
+  async byIdempotencyKey(
+    idempotencyKey: string,
+  ): Promise<ApprovalRequest | null> {
+    const normalized = idempotencyKey.trim();
+    if (!normalized) {
+      throw new Error("[ApprovalQueue] idempotency key is required");
+    }
+    return this.fetchByIdempotencyKey(normalized);
   }
 
   async approve(
@@ -878,6 +1205,21 @@ export class PgApprovalQueue implements ApprovalQueue {
       WHERE id = ${sqlText(id)} AND agent_id = ${sqlText(this.agentId)}
       LIMIT 1`;
     const rows = await executeRawSql(this.runtime, sql);
+    if (rows.length === 0) return null;
+    return rowToRequest(rows[0]);
+  }
+
+  private async fetchByIdempotencyKey(
+    idempotencyKey: string,
+    tx?: TransactionalDb,
+  ): Promise<ApprovalRequest | null> {
+    const sql = `SELECT ${SELECT_COLUMNS} FROM approval_requests
+      WHERE idempotency_key = ${sqlText(idempotencyKey)}
+        AND agent_id = ${sqlText(this.agentId)}
+      LIMIT 1`;
+    const rows = tx
+      ? await executeRawSqlTx(tx, sql)
+      : await executeRawSql(this.runtime, sql);
     if (rows.length === 0) return null;
     return rowToRequest(rows[0]);
   }

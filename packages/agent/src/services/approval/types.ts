@@ -34,6 +34,8 @@ export type ApprovalAction =
 export type ApprovalChannel =
   | "telegram"
   | "discord"
+  | "signal"
+  | "whatsapp"
   | "slack"
   | "imessage"
   | "sms"
@@ -66,6 +68,21 @@ export interface ApprovalTravelCalendarSync {
   readonly timeZone?: string | null;
 }
 
+/** Calendar invitee metadata preserved from the authenticated editor. */
+export interface ApprovalCalendarAttendee {
+  readonly email: string;
+  readonly displayName?: string | null;
+  readonly optional?: boolean;
+}
+
+/** String entries remain readable for approvals persisted before metadata support. */
+export type ApprovalCalendarAttendeeInput = string | ApprovalCalendarAttendee;
+
+type ApprovalCalendarSourceBinding = {
+  readonly grantId?: string | null;
+  readonly side?: "owner" | "agent" | null;
+};
+
 export type ApprovalPayload =
   | {
       action: "send_message";
@@ -83,35 +100,87 @@ export type ApprovalPayload =
       threadId: string | null;
       replyToMessageId?: string | null;
     }
-  | {
+  | ({
       action: "schedule_event";
       calendarId: string;
       title: string;
       startsAtMs: number;
       endsAtMs: number;
-      attendees: ReadonlyArray<string>;
+      attendees: ReadonlyArray<ApprovalCalendarAttendeeInput>;
       location: string | null;
       description: string | null;
-    }
-  | {
+      timeZone?: string | null;
+      durationMinutes?: number | null;
+      windowPreset?:
+        | "tomorrow_morning"
+        | "tomorrow_afternoon"
+        | "tomorrow_evening"
+        | null;
+      recurrence?: ReadonlyArray<string> | null;
+      notifyAttendees?: boolean;
+      editorRequestSha256?: string;
+    } & ApprovalCalendarSourceBinding)
+  | ({
       action: "modify_event";
       calendarId: string;
       eventId: string;
+      expectedProvider?:
+        | "google"
+        | "microsoft"
+        | "apple_calendar"
+        | "ics"
+        | null;
+      expectedProviderVersion?: string | null;
+      expectedEventUpdatedAt?: string | null;
+      expectedEventStartAtMs?: number | null;
+      seriesMaster?: {
+        readonly externalId: string;
+        readonly startAtMs: number;
+        readonly updatedAt: string;
+        readonly etag: string;
+      } | null;
+      recurrenceScope?: "instance" | "series" | null;
+      notifyAttendees?: boolean;
+      editorRequestSha256?: string;
       patch: {
         title: string | null;
         startsAtMs: number | null;
         endsAtMs: number | null;
-        attendees: ReadonlyArray<string> | null;
+        attendees: ReadonlyArray<ApprovalCalendarAttendeeInput> | null;
         location: string | null;
         description: string | null;
+        timeZone?: string | null;
+        recurrence?: ReadonlyArray<string> | null;
       };
-    }
-  | {
+    } & ApprovalCalendarSourceBinding)
+  | ({
       action: "cancel_event";
       calendarId: string;
       eventId: string;
       notifyAttendees: boolean;
-    }
+      expectedProvider?:
+        | "google"
+        | "microsoft"
+        | "apple_calendar"
+        | "ics"
+        | null;
+      expectedProviderVersion?: string | null;
+      expectedEventUpdatedAt?: string | null;
+      expectedEventStartAtMs?: number | null;
+      seriesMaster?: {
+        readonly externalId: string;
+        readonly startAtMs: number;
+        readonly updatedAt: string;
+        readonly etag: string;
+      } | null;
+      recurrenceScope?: "instance" | "series" | null;
+      cancellationMode?:
+        | "organizer_cancel"
+        | "decline_invitation"
+        | "remove_private_copy"
+        | null;
+      editorRequestSha256?: string;
+    } & ApprovalCalendarSourceBinding)
   | {
       action: "book_travel";
       kind: "flight" | "hotel" | "ground";
@@ -188,6 +257,7 @@ export interface ApprovalRequest {
   readonly payload: ApprovalPayload;
   readonly channel: ApprovalChannel;
   readonly reason: string;
+  readonly idempotencyKey: string | null;
   readonly expiresAt: Date;
   readonly resolvedAt: Date | null;
   readonly resolvedBy: string | null;
@@ -202,7 +272,26 @@ export interface ApprovalEnqueueInput {
   readonly payload: ApprovalPayload;
   readonly channel: ApprovalChannel;
   readonly reason: string;
+  /**
+   * Permanently binds one caller-defined intent to its immutable request,
+   * including terminal rejection. Reconsideration requires an explicit fresh
+   * revision/nonce key; implementations never resurrect a rejected row.
+   */
+  readonly idempotencyKey?: string | null;
   readonly expiresAt: Date;
+}
+
+/** A reused idempotency key must describe the same immutable approval. */
+export class ApprovalIdempotencyConflictError extends Error {
+  public readonly idempotencyKey: string;
+
+  constructor(idempotencyKey: string) {
+    super(
+      `[ApprovalQueue] idempotency key ${idempotencyKey} already identifies a different approval request`,
+    );
+    this.name = "ApprovalIdempotencyConflictError";
+    this.idempotencyKey = idempotencyKey;
+  }
 }
 
 /** Filter for `list`. All fields combine with AND. */
@@ -260,12 +349,22 @@ export class ApprovalNotFoundError extends Error {
  */
 export interface ApprovalQueue {
   enqueue(input: ApprovalEnqueueInput): Promise<ApprovalRequest>;
+  /**
+   * Persist an owner gesture that is already confirmed at an authenticated
+   * boundary. Implementations must not emit a redundant approval prompt.
+   */
+  enqueueConfirmed(
+    input: ApprovalEnqueueInput,
+    resolution: ApprovalResolution,
+  ): Promise<ApprovalRequest>;
   list(filter: ApprovalListFilter): Promise<ReadonlyArray<ApprovalRequest>>;
   byId(id: string): Promise<ApprovalRequest | null>;
+  byIdempotencyKey(idempotencyKey: string): Promise<ApprovalRequest | null>;
   approve(id: string, resolution: ApprovalResolution): Promise<ApprovalRequest>;
   reject(id: string, resolution: ApprovalResolution): Promise<ApprovalRequest>;
   markExecuting(id: string): Promise<ApprovalRequest>;
   markDone(id: string): Promise<ApprovalRequest>;
+  /** Terminally invalidate a pending or approved request without dispatch. */
   markExpired(id: string): Promise<ApprovalRequest>;
   purgeExpired(now: Date): Promise<ReadonlyArray<string>>;
 }

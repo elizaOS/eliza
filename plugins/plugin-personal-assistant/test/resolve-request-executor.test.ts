@@ -1,17 +1,8 @@
 /**
- * Approved-request execution (issues #10723 Bug 2 and #10721).
- *
- * The old `executeApprovedRequest` flipped execute_workflow approvals through
- * markExecuting -> markDone WITHOUT invoking the workflow runner, and returned
- * `success: true, "Approved."` for executor-less actions while executing
- * nothing. These tests pin the fixes: approved execute_workflow /
- * schedule_event / make_call / sign_document requests drive their real rails
- * (`LifeOpsService.runWorkflow`, `LifeOpsService.createCalendarEvent`, Twilio
- * voice dispatch, the DocumentRequest lifecycle), rail failures surface as
- * typed failures instead of fake success, and actions with no rail at all
- * (spend_money) return an explicit NO_EXECUTOR failure.
- *
- * Run: bunx vitest run test/resolve-request-executor.test.ts
+ * Exercises approved-request dispatch across workflow, communication, document,
+ * and unavailable-rail boundaries. Calendar mutation success and recovery use
+ * a real database and HTTP provider in the calendar-mutation integration suite;
+ * this unit surface verifies that dispatch cannot bypass its durable ledger.
  */
 
 import { randomUUID } from "node:crypto";
@@ -23,8 +14,9 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { parseInteractionBlocks } from "@elizaos/core";
-import type { LifeOpsCalendarEvent } from "@elizaos/shared";
+import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { RESOURCE_CAPACITY_REVIEW_WORKFLOW_ID } from "../src/lifeops/resource-capacity/types.js";
 
 const twilioMocks = vi.hoisted(() => ({
   readTwilioCredentialsFromEnv: vi.fn<
@@ -63,16 +55,19 @@ const docMocks = vi.hoisted(() => ({
     payload: input.payload ?? {},
     channel: "internal",
     reason: "",
+    idempotencyKey: null,
     expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
     resolvedAt: null,
     resolvedBy: null,
     resolutionReason: null,
   })),
   list: vi.fn(async (): Promise<unknown[]> => []),
+  byId: vi.fn(async (_id: string): Promise<unknown | null> => null),
   approve: vi.fn(),
   reject: vi.fn(),
   markExecuting: vi.fn(),
   markDone: vi.fn(),
+  markExpired: vi.fn(),
   schedule: vi.fn(async (task: { kind: string; trigger: unknown }) => ({
     taskId: `task-${Math.random().toString(36).slice(2, 8)}`,
     kind: task.kind,
@@ -89,10 +84,12 @@ vi.mock("../src/lifeops/approval-queue.js", () => ({
   createApprovalQueue: () => ({
     enqueue: docMocks.enqueue,
     list: docMocks.list,
+    byId: docMocks.byId,
     approve: docMocks.approve,
     reject: docMocks.reject,
     markExecuting: docMocks.markExecuting,
     markDone: docMocks.markDone,
+    markExpired: docMocks.markExpired,
   }),
 }));
 
@@ -126,6 +123,7 @@ import type {
   ApprovalResolution,
 } from "../src/lifeops/approval-queue.types.js";
 import { LifeOpsRepository } from "../src/lifeops/repository.js";
+import { attachSchedulingApprovalCorrelation } from "../src/lifeops/scheduling-approval.js";
 import { LifeOpsService } from "../src/lifeops/service.js";
 
 function makeRuntime(): IAgentRuntime {
@@ -194,39 +192,11 @@ function approvedRequest(
     subjectUserId: "owner-1",
     channel: "browser",
     reason: "needs owner approval",
+    idempotencyKey: null,
     expiresAt: new Date(Date.now() + 60 * 60 * 1000),
     resolvedAt: now,
     resolvedBy: "owner-1",
     resolutionReason: "user approved",
-    ...overrides,
-  };
-}
-
-function fakeCalendarEvent(
-  overrides: Partial<LifeOpsCalendarEvent> = {},
-): LifeOpsCalendarEvent {
-  return {
-    id: "cal-evt-1",
-    externalId: "ext-cal-evt-1",
-    agentId: "agent-1",
-    provider: "google",
-    side: "owner",
-    calendarId: "primary",
-    title: "Board sync",
-    description: "",
-    location: "",
-    status: "confirmed",
-    startAt: "2026-07-02T17:00:00.000Z",
-    endAt: "2026-07-02T18:00:00.000Z",
-    isAllDay: false,
-    timezone: null,
-    htmlLink: null,
-    conferenceLink: null,
-    organizer: null,
-    attendees: [],
-    metadata: {},
-    syncedAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
     ...overrides,
   };
 }
@@ -246,10 +216,23 @@ afterEach(() => {
   docMocks.schedule.mockClear();
   docMocks.list.mockReset();
   docMocks.list.mockResolvedValue([]);
+  docMocks.byId.mockReset();
+  docMocks.byId.mockImplementation(async (id: string) => {
+    const requests = await docMocks.list();
+    return (
+      requests.find(
+        (request) =>
+          request !== null &&
+          typeof request === "object" &&
+          (request as { id?: unknown }).id === id,
+      ) ?? null
+    );
+  });
   docMocks.approve.mockReset();
   docMocks.reject.mockReset();
   docMocks.markExecuting.mockReset();
   docMocks.markDone.mockReset();
+  docMocks.markExpired.mockReset();
 });
 
 function collectTexts(): { texts: string[]; callback: HandlerCallback } {
@@ -309,6 +292,103 @@ describe("executeApprovedRequest", () => {
     expect(texts.join(" ")).toContain("run-77");
   });
 
+  it("never executes a resource-capacity review-only workflow", async () => {
+    const runtime = makeRuntime();
+    const request = approvedRequest({
+      action: "execute_workflow",
+      payload: {
+        action: "execute_workflow",
+        workflowId: RESOURCE_CAPACITY_REVIEW_WORKFLOW_ID,
+        input: {
+          proposalId: "resource-capacity-proposal-1",
+          proposalVersion: 1,
+          partyEntityId: SELF_ENTITY_ID,
+          contentSha256: "a".repeat(64),
+          noExternalEffect: true,
+        },
+      },
+    });
+    const queue = new RecordingQueue(request);
+    const runSpy = vi.spyOn(LifeOpsService.prototype, "runWorkflow");
+    const { callback } = collectTexts();
+
+    const result = await executeApprovedRequest({
+      runtime,
+      queue,
+      request,
+      callback,
+    });
+
+    expect(runSpy).not.toHaveBeenCalled();
+    expect(queue.transitions).toEqual([]);
+    expect(result).toMatchObject({
+      success: false,
+      data: {
+        error: "RESOURCE_CAPACITY_REVIEW_REQUIRES_TYPED_RESOLVER",
+        executed: false,
+      },
+    });
+  });
+
+  it("food workflow approval delegates to the receipt-owning service without double transitions", async () => {
+    const materializeApprovedShoppingHandoff = vi.fn().mockResolvedValue({
+      handoffId: "food-handoff-17",
+      state: "link_created",
+      provider: "instacart",
+      providerResultKind: "shopping_list_link",
+      providerLinkUrl:
+        "https://www.instacart.com/store/shopping-list/food-handoff-17",
+    });
+    const runtime = {
+      ...makeRuntime(),
+      getService: vi.fn(() => ({
+        food: { materializeApprovedShoppingHandoff },
+      })),
+    } as unknown as IAgentRuntime;
+    const request = approvedRequest({
+      action: "execute_workflow",
+      payload: {
+        action: "execute_workflow",
+        workflowId: "food.instacart.create_products_link",
+        input: {
+          handoffId: "food-handoff-17",
+          householdId: "household-1",
+          contentSha256: "a".repeat(64),
+        },
+      },
+    });
+    const queue = new RecordingQueue(request);
+    const runSpy = vi.spyOn(LifeOpsService.prototype, "runWorkflow");
+    const { texts, callback } = collectTexts();
+
+    const result = await executeApprovedRequest({
+      runtime,
+      queue,
+      request,
+      callback,
+    });
+
+    expect(materializeApprovedShoppingHandoff).toHaveBeenCalledWith({
+      principalEntityId: SELF_ENTITY_ID,
+      handoffId: "food-handoff-17",
+    });
+    expect(runSpy).not.toHaveBeenCalled();
+    expect(queue.transitions).toEqual([]);
+    expect(result).toMatchObject({
+      success: true,
+      verifiedUserFacing: true,
+      data: {
+        operation: "materialize_food_shopping_handoff",
+        handoffId: "food-handoff-17",
+        providerResultKind: "shopping_list_link",
+        state: "done",
+      },
+    });
+    expect(texts.join(" ")).toContain(
+      "https://www.instacart.com/store/shopping-list/food-handoff-17",
+    );
+  });
+
   it("a failing workflow surfaces the error and never reaches done", async () => {
     const runtime = makeRuntime();
     const request = approvedRequest({
@@ -330,8 +410,11 @@ describe("executeApprovedRequest", () => {
     expect(queue.transitions).toEqual(["executing"]);
   });
 
-  it("schedule_event approval creates the calendar event through LifeOpsService", async () => {
-    const runtime = makeRuntime();
+  it("calendar mutation dispatch cannot bypass the durable ledger", async () => {
+    const runtime = {
+      ...makeRuntime(),
+      adapter: { db: {} },
+    } as unknown as IAgentRuntime;
     const request = approvedRequest({
       action: "schedule_event",
       payload: {
@@ -346,62 +429,13 @@ describe("executeApprovedRequest", () => {
       },
     });
     const queue = new RecordingQueue(request);
-    const createSpy = vi
-      .spyOn(LifeOpsService.prototype, "createCalendarEvent")
-      .mockResolvedValue(fakeCalendarEvent());
-    const { texts, callback } = collectTexts();
-
-    const result = await executeApprovedRequest({
-      runtime,
-      queue,
-      request,
-      callback,
-    });
-
-    expect(createSpy).toHaveBeenCalledTimes(1);
-    expect(createSpy.mock.calls[0]?.[1]).toEqual({
-      calendarId: "primary",
-      title: "Board sync",
-      startAt: "2026-07-02T17:00:00.000Z",
-      endAt: "2026-07-02T18:00:00.000Z",
-      location: "Zoom",
-      description: "Q3 planning",
-      attendees: [{ email: "ada@example.com" }, { email: "grace@example.com" }],
-    });
-    expect(queue.transitions).toEqual(["executing", "done"]);
-    expect(result.success).toBe(true);
-    expect(result.data).toMatchObject({
-      calendarEventId: "cal-evt-1",
-      calendarId: "primary",
-      state: "done",
-    });
-    expect(texts.join(" ")).toContain("Board sync");
-  });
-
-  it("a failing calendar rail (e.g. calendar not connected) propagates and never reaches done", async () => {
-    const runtime = makeRuntime();
-    const request = approvedRequest({
-      action: "schedule_event",
-      payload: {
-        action: "schedule_event",
-        calendarId: "",
-        title: "Board sync",
-        startsAtMs: Date.parse("2026-07-02T17:00:00.000Z"),
-        endsAtMs: Date.parse("2026-07-02T18:00:00.000Z"),
-        attendees: [],
-        location: null,
-        description: null,
-      },
-    });
-    const queue = new RecordingQueue(request);
-    vi.spyOn(LifeOpsService.prototype, "createCalendarEvent").mockRejectedValue(
-      new Error("Google Calendar is not connected"),
-    );
+    const createSpy = vi.spyOn(LifeOpsService.prototype, "createCalendarEvent");
 
     await expect(
       executeApprovedRequest({ runtime, queue, request }),
-    ).rejects.toThrow("Google Calendar is not connected");
-    expect(queue.transitions).toEqual(["executing"]);
+    ).rejects.toThrow("runtime database adapter unavailable");
+    expect(createSpy).not.toHaveBeenCalled();
+    expect(queue.transitions).toEqual([]);
   });
 
   it("send_email approval projects sent-mail commitments into the ledger after delivery", async () => {
@@ -460,6 +494,54 @@ describe("executeApprovedRequest", () => {
     expect(runtime.reportError).not.toHaveBeenCalled();
     expect(result.success).toBe(true);
     expect(texts.join(" ")).toContain("mira@example.com");
+  });
+
+  it("refuses altered scheduling content before any connector or queue transition", async () => {
+    const runtime = makeRuntime();
+    const payload = attachSchedulingApprovalCorrelation(
+      {
+        action: "send_message",
+        recipient: "+15555550123",
+        body: "Would Tuesday at 4:00 PM work?",
+        replyToMessageId: null,
+      },
+      {
+        kind: "scheduling_message",
+        negotiationId: "negotiation-17",
+        proposalId: "proposal-41",
+        messageKind: "proposal",
+        transportChannel: "sms",
+        sourceUpdatedAt: "2026-07-26T18:30:00.000Z",
+        counterpartyEntityId: "co-parent-17",
+        counterpartyEntityUpdatedAt: "2026-07-26T18:20:00.000Z",
+        draftVersion: 1,
+      },
+    );
+    payload.body = "The time is now Wednesday at 9:00 AM.";
+    const request = approvedRequest({ action: "send_message", payload });
+    const queue = new RecordingQueue(request);
+    const sendSpy = vi.spyOn(LifeOpsService.prototype, "sendIMessage");
+    const { texts, callback } = collectTexts();
+
+    const result = await executeApprovedRequest({
+      runtime,
+      queue,
+      request,
+      callback,
+    });
+
+    expect(result).toMatchObject({
+      success: false,
+      data: {
+        error: "SCHEDULING_APPROVAL_CONTENT_MISMATCH",
+        requestId: request.id,
+        state: "approved",
+        sent: false,
+      },
+    });
+    expect(sendSpy).not.toHaveBeenCalled();
+    expect(queue.transitions).toEqual([]);
+    expect(texts.join(" ")).toContain("Nothing was sent");
   });
 
   it("make_call approval without Twilio credentials fails honestly and stays retriable", async () => {
@@ -664,7 +746,7 @@ describe("executeApprovedRequest", () => {
     expect(texts.join(" ")).toContain("re-issue");
   });
 
-  it("executor-less action (spend_money) fails loudly with NO_EXECUTOR", async () => {
+  it("spend_money fails closed while its execution rail is unavailable", async () => {
     const runtime = makeRuntime();
     const request = approvedRequest({
       action: "spend_money",
@@ -693,7 +775,7 @@ describe("executeApprovedRequest", () => {
 
     expect(result.success).toBe(false);
     expect(result.data).toMatchObject({
-      error: "NO_EXECUTOR",
+      error: "SPEND_RAIL_UNAVAILABLE",
       action: "spend_money",
       requestId: request.id,
     });
@@ -702,7 +784,7 @@ describe("executeApprovedRequest", () => {
     expect(calendarSpy).not.toHaveBeenCalled();
     expect(twilioMocks.sendTwilioVoiceCall).not.toHaveBeenCalled();
     expect(queue.transitions).toEqual([]);
-    expect(texts.join(" ")).toContain("nothing was executed");
+    expect(texts.join(" ")).toContain("nothing was charged or ordered");
   });
 });
 
@@ -761,6 +843,304 @@ describe("RESOLVE_REQUEST reject path", () => {
     expect(docMocks.markDone).not.toHaveBeenCalled();
     expect(result).toMatchObject({ success: true });
     expect(texts.join(" ")).toContain("Rejected");
+  });
+});
+
+describe("RESOLVE_REQUEST subject authorization", () => {
+  it("refuses an explicit approval id owned by another subject", async () => {
+    const runtime = makeRuntime();
+    const otherSubjectRequest = approvedRequest({
+      action: "send_email",
+      state: "pending",
+      subjectUserId: "owner-2",
+      resolvedAt: null,
+      resolvedBy: null,
+      resolutionReason: null,
+      payload: {
+        action: "send_email",
+        to: ["co-parent@example.com"],
+        cc: [],
+        bcc: [],
+        subject: "Private scheduling draft",
+        body: "This belongs to another household member.",
+        threadId: null,
+        replyToMessageId: null,
+      },
+    });
+    docMocks.byId.mockResolvedValue(otherSubjectRequest);
+    const { callback } = collectTexts();
+
+    const result = await resolveRequestAction.handler(
+      runtime,
+      {
+        id: randomUUID() as UUID,
+        entityId: "owner-1" as UUID,
+        roomId: randomUUID() as UUID,
+        content: { text: `approve ${otherSubjectRequest.id}` },
+      } as Memory,
+      undefined,
+      {
+        parameters: {
+          action: "approve",
+          requestId: otherSubjectRequest.id,
+        },
+      } as unknown as HandlerOptions,
+      callback,
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      data: { error: "CROSS_SUBJECT_APPROVAL_FORBIDDEN" },
+    });
+    expect(docMocks.approve).not.toHaveBeenCalled();
+    expect(docMocks.markExecuting).not.toHaveBeenCalled();
+    expect(docMocks.markDone).not.toHaveBeenCalled();
+  });
+});
+
+describe("RESOLVE_REQUEST household approval contract", () => {
+  it("terminally invalidates a malformed reserved owner-self workflow without dispatching it", async () => {
+    const runtime = makeRuntime();
+    const malformed = approvedRequest({
+      action: "execute_workflow",
+      state: "pending",
+      subjectUserId: "self",
+      resolvedAt: null,
+      resolvedBy: null,
+      resolutionReason: null,
+      payload: {
+        action: "execute_workflow",
+        workflowId: "household.schedule.proposal.approval",
+        input: {
+          proposalId: "proposal-1",
+          proposalVersion: 1,
+          coordinationId: "coordination-1",
+          partyEntityId: "self",
+          contentSha256: "not-a-sha256",
+        },
+      },
+    });
+    docMocks.byId.mockResolvedValue(malformed);
+    docMocks.list.mockImplementation(async (filter: ApprovalListFilter) =>
+      filter.subjectUserId === "self" ? [malformed] : [],
+    );
+    docMocks.markExpired.mockResolvedValue({
+      ...malformed,
+      state: "expired",
+    });
+    const runSpy = vi.spyOn(LifeOpsService.prototype, "runWorkflow");
+    const { texts, callback } = collectTexts();
+
+    const result = await resolveRequestAction.handler(
+      runtime,
+      {
+        id: randomUUID() as UUID,
+        entityId: "owner-1" as UUID,
+        roomId: randomUUID() as UUID,
+        content: { text: `approve ${malformed.id}` },
+      } as Memory,
+      undefined,
+      {
+        parameters: {
+          action: "approve",
+          requestId: malformed.id,
+        },
+      } as unknown as HandlerOptions,
+      callback,
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      data: {
+        error: "HOUSEHOLD_APPROVAL_INVALID_CONTRACT",
+        requestId: malformed.id,
+        state: "expired",
+        executed: false,
+      },
+    });
+    expect(docMocks.markExpired).toHaveBeenCalledWith(malformed.id);
+    expect(docMocks.approve).not.toHaveBeenCalled();
+    expect(docMocks.markExecuting).not.toHaveBeenCalled();
+    expect(docMocks.markDone).not.toHaveBeenCalled();
+    expect(runSpy).not.toHaveBeenCalled();
+    expect(texts.join(" ")).toContain("terminally invalidated");
+  });
+});
+
+describe("RESOLVE_REQUEST resource-capacity review contract", () => {
+  it("routes an exact owner-self review to the typed service without execution or queue bypass", async () => {
+    const pending = approvedRequest({
+      action: "execute_workflow",
+      state: "pending",
+      subjectUserId: SELF_ENTITY_ID,
+      resolvedAt: null,
+      resolvedBy: null,
+      resolutionReason: null,
+      payload: {
+        action: "execute_workflow",
+        workflowId: RESOURCE_CAPACITY_REVIEW_WORKFLOW_ID,
+        input: {
+          proposalId: "resource-capacity-proposal-typed-review",
+          proposalVersion: 1,
+          partyEntityId: SELF_ENTITY_ID,
+          contentSha256: "c".repeat(64),
+          noExternalEffect: true,
+        },
+      },
+    });
+    const updated = {
+      ...pending,
+      state: "approved" as const,
+      resolvedAt: new Date(),
+      resolvedBy: SELF_ENTITY_ID,
+      resolutionReason: "Reviewed exact capacity proposal.",
+    };
+    const respondToProposal = vi.fn().mockResolvedValue(updated);
+    const runtime = {
+      ...makeRuntime(),
+      getService: vi.fn(() => ({
+        capacity: { respondToProposal },
+      })),
+    } as unknown as IAgentRuntime;
+    docMocks.byId.mockResolvedValue(pending);
+    docMocks.list.mockImplementation(async (filter: ApprovalListFilter) =>
+      filter.subjectUserId === SELF_ENTITY_ID ? [pending] : [],
+    );
+    const runSpy = vi.spyOn(LifeOpsService.prototype, "runWorkflow");
+    const { callback } = collectTexts();
+
+    const result = await resolveRequestAction.handler(
+      runtime,
+      {
+        id: randomUUID() as UUID,
+        entityId: "owner-1" as UUID,
+        roomId: randomUUID() as UUID,
+        content: { text: `approve ${pending.id}` },
+      } as Memory,
+      undefined,
+      {
+        parameters: {
+          action: "approve",
+          requestId: pending.id,
+          reason: "Reviewed exact capacity proposal.",
+        },
+      } as unknown as HandlerOptions,
+      callback,
+    );
+
+    expect(respondToProposal).toHaveBeenCalledWith({
+      principalEntityId: SELF_ENTITY_ID,
+      proposalId: "resource-capacity-proposal-typed-review",
+      proposalVersion: 1,
+      partyEntityId: SELF_ENTITY_ID,
+      approvalRequestId: pending.id,
+      contentSha256: "c".repeat(64),
+      decision: "approve",
+      reason: "Reviewed exact capacity proposal.",
+    });
+    expect(result).toMatchObject({
+      success: true,
+      data: {
+        operation: "review_resource_capacity_proposal",
+        proposalId: "resource-capacity-proposal-typed-review",
+        executed: false,
+        reserved: false,
+        calendarMutated: false,
+        messageSent: false,
+      },
+    });
+    expect(docMocks.approve).not.toHaveBeenCalled();
+    expect(docMocks.markExecuting).not.toHaveBeenCalled();
+    expect(docMocks.markDone).not.toHaveBeenCalled();
+    expect(runSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("RESOLVE_REQUEST scheduling approval path", () => {
+  it("records owner approval but refuses a scheduling payload altered after hashing", async () => {
+    const runtime = makeRuntime();
+    const correlated = attachSchedulingApprovalCorrelation(
+      {
+        action: "send_email",
+        to: ["co-parent@example.com"],
+        cc: [],
+        bcc: [],
+        subject: "Scheduling: school conference",
+        body: "Would Tuesday at 4:00 PM work?",
+        threadId: null,
+        replyToMessageId: null,
+      },
+      {
+        kind: "scheduling_message",
+        negotiationId: "negotiation-17",
+        proposalId: "proposal-41",
+        messageKind: "proposal",
+        transportChannel: "email",
+        sourceUpdatedAt: "2026-07-26T18:30:00.000Z",
+        counterpartyEntityId: "co-parent-17",
+        counterpartyEntityUpdatedAt: "2026-07-26T18:20:00.000Z",
+        draftVersion: 1,
+      },
+    );
+    const payload = {
+      ...correlated,
+      body: `${correlated.body}\nTampered after approval hashing.`,
+    };
+    const pending = approvedRequest({
+      action: "send_email",
+      state: "pending",
+      resolvedAt: null,
+      resolvedBy: null,
+      resolutionReason: null,
+      payload,
+    });
+    const approved = {
+      ...pending,
+      state: "approved" as const,
+      resolvedAt: new Date(),
+      resolvedBy: "owner-1",
+      resolutionReason: "reviewed exact draft",
+    };
+    docMocks.list.mockResolvedValue([pending]);
+    docMocks.approve.mockResolvedValue(approved);
+    const sendSpy = vi.spyOn(LifeOpsService.prototype, "sendGmailMessage");
+    const { texts, callback } = collectTexts();
+
+    const result = await resolveRequestAction.handler(
+      runtime,
+      {
+        id: randomUUID() as UUID,
+        entityId: "owner-1" as UUID,
+        roomId: randomUUID() as UUID,
+        content: { text: `approve ${pending.id}` },
+      } as Memory,
+      undefined,
+      {
+        parameters: {
+          action: "approve",
+          requestId: pending.id,
+          reason: "reviewed exact draft",
+        },
+      } as unknown as HandlerOptions,
+      callback,
+    );
+
+    expect(docMocks.approve).toHaveBeenCalledWith(pending.id, {
+      resolvedBy: "owner-1",
+      resolutionReason: "reviewed exact draft",
+    });
+    expect(result).toMatchObject({
+      success: false,
+      data: {
+        error: "SCHEDULING_APPROVAL_CONTENT_MISMATCH",
+        requestId: pending.id,
+        sent: false,
+      },
+    });
+    expect(sendSpy).not.toHaveBeenCalled();
+    expect(docMocks.markExecuting).not.toHaveBeenCalled();
+    expect(docMocks.markDone).not.toHaveBeenCalled();
+    expect(texts.join(" ")).toContain("Nothing was sent");
   });
 });
 

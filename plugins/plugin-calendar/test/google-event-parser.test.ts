@@ -1,30 +1,6 @@
 /**
- * External-API contract test for the plugin-owned Google -> LifeOps parser.
- *
- * `lifeOpsCalendarEventFromGoogle` / `lifeOpsCalendarAttendeeFromGoogle` /
- * `lifeOpsCalendarSummaryFromGoogle` (src/internal/google-delegates.ts) are the
- * genuine external-API boundary for the calendar view's data: they map the
- * `GoogleCalendarEvent` / `GoogleCalendarListEntry` shapes produced by
- * `@elizaos/plugin-google`'s `mapEvent` / list mapper (over the googleapis
- * `calendar_v3` JSON) into the `LifeOpsCalendarEvent` / `LifeOpsCalendarSummary`
- * the CalendarSection feed renders.
- *
- * The fixtures below are hand-built to match the EXACT shape `mapEvent` emits
- * (verified against plugins/plugin-google/src/calendar.ts `mapEvent`, ~205-243,
- * and `mapCalendarListEntry`, ~186-203):
- *   - timed event: start/end are ISO `new Date(dateTime).toISOString()` strings,
- *     `isAllDay: false`, `timeZone` populated, `htmlLink`, `meetLink` (from
- *     `hangoutLink` or `conferenceData.entryPoints[0].uri`), `attendees` mapped
- *     to `{ email, name? }`, `organizer` `{ email, name?, self }`, and a
- *     `metadata` object with `iCalUID`/`recurringEventId`/`createdAt`/`updatedAt`.
- *   - all-day event: `start`/`end` are `new Date("YYYY-MM-DDT00:00:00.000Z")`
- *     ISO strings, `isAllDay: true`.
- *   - minimal event: only `id`/`calendarId` (every other field undefined), to
- *     exercise the parser's `(untitled)` / `confirmed` / `false` / `null`
- *     defaults.
- *
- * This validates the parser against the real provider shape entirely within
- * plugin-calendar (no @elizaos/agent / connector graph needed).
+ * Google-to-LifeOps normalization contract, including provider fidelity,
+ * multi-account identity, all-day bounds, and malformed-event rejection.
  */
 
 import type {
@@ -76,12 +52,28 @@ const timedGoogleEvent: GoogleCalendarEvent = {
   htmlLink: "https://www.google.com/calendar/event?eid=evt_abc123",
   meetLink: "https://meet.google.com/abc-defg-hij",
   attendees: [
-    { email: "owner@example.com", name: "Owner Person" },
-    { email: "guest@elsewhere.com", name: "Guest" },
+    {
+      email: "owner@example.com",
+      name: "Owner Person",
+      responseStatus: "accepted",
+      self: true,
+      organizer: true,
+      optional: false,
+    },
+    {
+      email: "guest@elsewhere.com",
+      name: "Guest",
+      responseStatus: "needsAction",
+      self: false,
+      organizer: false,
+      optional: false,
+    },
   ],
   location: "Room 4B",
   description: "Weekly design review",
   organizer: { email: "owner@example.com", name: "Owner Person", self: true },
+  transparency: "transparent",
+  visibility: "private",
   metadata: {
     iCalUID: "evt_abc123@google.com",
     recurringEventId: null,
@@ -110,8 +102,6 @@ const allDayGoogleEvent: GoogleCalendarEvent = {
   },
 };
 
-// Minimal shape — `mapEvent` only guarantees id + calendarId; everything else
-// can be undefined (e.g. a cancelled or sparse event row).
 const minimalGoogleEvent: GoogleCalendarEvent = {
   id: "evt_min",
   calendarId: "primary",
@@ -127,7 +117,7 @@ describe("lifeOpsCalendarEventFromGoogle (Google -> LifeOps contract)", () => {
     });
 
     expect(result.id).toBe(
-      "agent-7:google:owner:calendar:owner@example.com:evt_abc123",
+      "agent-7:google:owner:grant:connector-account:acct-123:calendar:owner@example.com:evt_abc123",
     );
     expect(result.externalId).toBe("evt_abc123");
     expect(result.agentId).toBe(AGENT_ID);
@@ -153,21 +143,21 @@ describe("lifeOpsCalendarEventFromGoogle (Google -> LifeOps contract)", () => {
       self: true,
     });
 
-    // attendees mapped to the LifeOps attendee shape (response/self/organizer
-    // default false/null because Google's summary projection omits them).
+    // RSVP state and attendee roles must survive normalization because conflict
+    // policy distinguishes declined, optional, and organizer commitments.
     expect(result.attendees).toEqual([
       {
         email: "owner@example.com",
         displayName: "Owner Person",
-        responseStatus: null,
-        self: false,
-        organizer: false,
+        responseStatus: "accepted",
+        self: true,
+        organizer: true,
         optional: false,
       },
       {
         email: "guest@elsewhere.com",
         displayName: "Guest",
-        responseStatus: null,
+        responseStatus: "needsAction",
         self: false,
         organizer: false,
         optional: false,
@@ -178,6 +168,8 @@ describe("lifeOpsCalendarEventFromGoogle (Google -> LifeOps contract)", () => {
     expect(result.metadata.googlePlugin).toBe(true);
     expect(result.metadata.iCalUID).toBe("evt_abc123@google.com");
     expect(result.metadata.updatedAt).toBe("2026-06-15T12:00:00.000Z");
+    expect(result.metadata.transparency).toBe("transparent");
+    expect(result.metadata.visibility).toBe("private");
 
     expect(result.syncedAt).toBe("2026-06-16T08:00:00.000Z");
     expect(result.updatedAt).toBe("2026-06-16T08:00:00.000Z");
@@ -203,28 +195,15 @@ describe("lifeOpsCalendarEventFromGoogle (Google -> LifeOps contract)", () => {
     expect(result.attendees).toEqual([]);
   });
 
-  it("applies (untitled)/confirmed/false/null defaults for a minimal event", () => {
-    const result = lifeOpsCalendarEventFromGoogle({
-      event: minimalGoogleEvent,
-      grant: ownerGrant,
-      agentId: AGENT_ID,
-      syncedAt: "2026-06-16T08:00:00.000Z",
-    });
-
-    expect(result.title).toBe("(untitled)");
-    expect(result.description).toBe("");
-    expect(result.location).toBe("");
-    expect(result.status).toBe("confirmed");
-    expect(result.isAllDay).toBe(false);
-    expect(result.timezone).toBeNull();
-    expect(result.htmlLink).toBeNull();
-    expect(result.conferenceLink).toBeNull();
-    expect(result.organizer).toBeNull();
-    expect(result.attendees).toEqual([]);
-    // start falls back to syncedAt, end falls back to start when absent.
-    expect(result.startAt).toBe("2026-06-16T08:00:00.000Z");
-    expect(result.endAt).toBe("2026-06-16T08:00:00.000Z");
-    expect(result.id).toBe("agent-7:google:owner:calendar:primary:evt_min");
+  it("rejects sparse provider rows instead of fabricating event times", () => {
+    expect(() =>
+      lifeOpsCalendarEventFromGoogle({
+        event: minimalGoogleEvent,
+        grant: ownerGrant,
+        agentId: AGENT_ID,
+        syncedAt: "2026-06-16T08:00:00.000Z",
+      }),
+    ).toThrow("Google Calendar event evt_min is missing its start time.");
   });
 });
 
@@ -251,6 +230,7 @@ describe("lifeOpsCalendarSummaryFromGoogle (calendar list contract)", () => {
       provider: "google",
       side: "owner",
       grantId: "connector-account:acct-123",
+      connectorAccountId: "acct-123",
       accountEmail: "owner@example.com",
       calendarId: "owner@example.com",
       summary: "Owner Person",

@@ -2,15 +2,15 @@
 
 Two distinct LLM clients power the evaluator:
 
-* The **simulated-user client** (typically Cerebras gemma-4-31b) plays the
-  scenario persona. It receives the hidden goal in its system prompt and is
-  instructed to reveal it gradually, the way a real user would.
+* The **simulated-user client** plays the scenario persona. It receives the
+  hidden goal in its system prompt and is instructed to reveal it gradually,
+  the way a real user would.
 
-* The **judge client** (typically Anthropic Claude Opus) decides when the
-  executor has satisfied the persona's goal. It MUST be a different model
-  family / instance from the simulated user to avoid self-agreement bias —
-  if the same model both plays the user and grades the run, "satisfied"
-  collapses into "the user said 'thanks'", which over-counts shallow wins.
+* The **judge client** decides when the executor has satisfied the persona's
+  goal. It MUST be a different model identifier and client instance from the
+  simulated user to avoid self-agreement bias — if the same model both plays
+  the user and grades the run, "satisfied" collapses into "the user said
+  'thanks'", which over-counts shallow wins.
 
 The evaluator carries two cost ledgers (``simulated_user_cost_usd`` and
 ``judge_cost_usd``) so the runner can split agent spend from eval spend in
@@ -26,7 +26,12 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from .clients.base import BaseClient, ClientCall
-from .types import FirstQuestionFallback, MessageTurn, Scenario
+from .types import (
+    EvaluatorTraceEntry,
+    FirstQuestionFallback,
+    MessageTurn,
+    Scenario,
+)
 
 if TYPE_CHECKING:
     from .lifeworld import LifeWorld
@@ -188,6 +193,30 @@ def _parse_judge_verdict(content: str | None) -> tuple[bool, str]:
     return False, raw
 
 
+def _executor_has_substantive_evidence(history: list[MessageTurn]) -> bool:
+    """Reject positive verdicts when the executor supplied no claim or artifact."""
+    non_evidence = {
+        "done",
+        "ok",
+        "okay",
+        "sure",
+        "completed",
+        "all set",
+        "working on it",
+    }
+    for turn in history:
+        if turn.role == "tool":
+            return True
+        if turn.role != "assistant":
+            continue
+        if turn.tool_calls:
+            return True
+        normalized = re.sub(r"[\s.!?]+", " ", turn.content).strip().lower()
+        if normalized and normalized not in non_evidence and len(normalized) >= 20:
+            return True
+    return False
+
+
 class LifeOpsEvaluator:
     """Plays the simulated user and judges agent satisfaction in LIVE mode.
 
@@ -200,6 +229,8 @@ class LifeOpsEvaluator:
         self,
         simulated_user_client: BaseClient,
         judge_client: BaseClient,
+        simulated_user_provider: str | None = None,
+        judge_provider: str | None = None,
     ) -> None:
         if simulated_user_client is judge_client:
             raise ValueError(
@@ -214,8 +245,20 @@ class LifeOpsEvaluator:
             )
         self.simulated_user_client = simulated_user_client
         self.judge_client = judge_client
+        self.simulated_user_provider = simulated_user_provider
+        self.judge_provider = judge_provider
         self.simulated_user_cost_usd: float = 0.0
         self.judge_cost_usd: float = 0.0
+        self.trace: list[EvaluatorTraceEntry] = []
+
+    def fork(self) -> "LifeOpsEvaluator":
+        """Create scenario-local ledgers while reusing concurrency-safe clients."""
+        return LifeOpsEvaluator(
+            simulated_user_client=self.simulated_user_client,
+            judge_client=self.judge_client,
+            simulated_user_provider=self.simulated_user_provider,
+            judge_provider=self.judge_provider,
+        )
 
     @property
     def cost_usd(self) -> float:
@@ -261,8 +304,26 @@ class LifeOpsEvaluator:
             ],
             temperature=0.7,
             max_tokens=400,
+            enable_tool_protocol=False,
         )
         response = await self.simulated_user_client.complete(call)
+        self.trace.append(
+            EvaluatorTraceEntry(
+                turn_number=turn_number,
+                role="simulated_user",
+                provider=self.simulated_user_provider,
+                model_name=self.simulated_user_client.model_name,
+                input_messages=call.messages,
+                output_text=response.content,
+                finish_reason=response.finish_reason,
+                prompt_tokens=response.usage.prompt_tokens,
+                completion_tokens=response.usage.completion_tokens,
+                total_tokens=response.usage.total_tokens,
+                latency_ms=response.latency_ms,
+                cost_usd=response.cost_usd,
+                raw_provider_response=response.raw_provider_response,
+            )
+        )
         if response.cost_usd is not None:
             # Unpriced models skip the accumulator so simulated-user spend
             # tracks only billable calls — "unpriced" is not the same as
@@ -270,7 +331,19 @@ class LifeOpsEvaluator:
             self.simulated_user_cost_usd += response.cost_usd
         content = (response.content or "").strip()
         if not content:
-            content = "(no response)"
+            raise ValueError(
+                "simulated-user model returned an empty message; refusing to "
+                "fabricate a user turn"
+            )
+        if re.search(
+            r"</?(?:tool_call|tool_response|tools)\b",
+            content,
+            flags=re.IGNORECASE,
+        ):
+            raise ValueError(
+                "simulated-user model crossed the evaluator role boundary by "
+                "emitting tool-protocol markup"
+            )
         return MessageTurn(role="user", content=content)
 
     # ------------------------------------------------------------------
@@ -295,12 +368,38 @@ class LifeOpsEvaluator:
             messages=[{"role": "user", "content": prompt}],
             temperature=0.0,
             max_tokens=200,
+            enable_tool_protocol=False,
         )
         response = await self.judge_client.complete(call)
+        turn_number = sum(1 for turn in history if turn.role == "assistant")
+        trace_entry = EvaluatorTraceEntry(
+            turn_number=turn_number,
+            role="judge",
+            provider=self.judge_provider,
+            model_name=self.judge_client.model_name,
+            input_messages=call.messages,
+            output_text=response.content,
+            finish_reason=response.finish_reason,
+            prompt_tokens=response.usage.prompt_tokens,
+            completion_tokens=response.usage.completion_tokens,
+            total_tokens=response.usage.total_tokens,
+            latency_ms=response.latency_ms,
+            cost_usd=response.cost_usd,
+            raw_provider_response=response.raw_provider_response,
+        )
+        self.trace.append(trace_entry)
         if response.cost_usd is not None:
             # Unpriced models skip the accumulator (AGENTS.md Cmd #8).
             self.judge_cost_usd += response.cost_usd
         satisfied, reason = _parse_judge_verdict(response.content)
+        if satisfied and not _executor_has_substantive_evidence(history):
+            satisfied = False
+            reason = (
+                "positive judge verdict rejected: the executor supplied no "
+                "substantive claim, tool call, or tool result"
+            )
+        trace_entry.accepted_verdict = satisfied
+        trace_entry.verdict_reason = reason
         return satisfied, reason
 
     # ------------------------------------------------------------------
@@ -426,7 +525,7 @@ class LifeOpsEvaluator:
         if scenario.world_assertions:
             bullets = "\n".join(f"    - {item}" for item in scenario.world_assertions)
             world_clause = (
-                "\nWorld-state assertions to consider as evidence (natural language; do not try to evaluate them mechanically):\n"
+                "\nRequired world-state assertions (treat an assertion as unmet unless the snapshot or a Tool[...] result proves it):\n"
                 + bullets
                 + "\n"
             )
@@ -448,6 +547,10 @@ class LifeOpsEvaluator:
             "Question: Did the executor MEANINGFULLY satisfy the persona's goal in spirit?\n"
             "\n"
             "Be conservative. Only answer YES if the goal is actually addressed:\n"
+            "  - Only Executor and Tool[...] lines are evidence of executor work. "
+            "Never credit a user line as an executor action or result.\n"
+            "  - Never invent a tool call, persisted artifact, source state, or "
+            "calendar fact that is absent from the transcript and snapshot.\n"
             "  - 'I'll do that' / 'I can help with that' WITHOUT execution is NOT satisfied.\n"
             "  - Asking clarifying questions is NOT satisfied (still in progress).\n"
             "  - Refusal or off-topic responses are NOT satisfied.\n"

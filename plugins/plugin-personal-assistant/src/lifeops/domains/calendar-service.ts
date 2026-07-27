@@ -19,9 +19,11 @@ import { CalendarService } from "@elizaos/plugin-calendar";
 import type {
   CreateLifeOpsCalendarEventAttendee,
   CreateLifeOpsCalendarEventRequest,
+  CreateLifeOpsCalendarEventResponse,
   GetLifeOpsCalendarFeedRequest,
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
+  LifeOpsCalendarRecurrenceScope,
   LifeOpsCalendarSummary,
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
@@ -97,6 +99,26 @@ export class CalendarDomain {
     );
   }
 
+  createCalendarEventMutation(
+    requestUrl: URL,
+    request: CreateLifeOpsCalendarEventRequest,
+    now?: Date,
+  ): Promise<CreateLifeOpsCalendarEventResponse> {
+    return resolveCalendarService(this.ctx.runtime).createCalendarEventMutation(
+      requestUrl,
+      request,
+      now,
+    );
+  }
+
+  getAppleCalendarCreateAccess(): ReturnType<
+    CalendarService["getAppleCalendarCreateAccess"]
+  > {
+    return resolveCalendarService(
+      this.ctx.runtime,
+    ).getAppleCalendarCreateAccess();
+  }
+
   updateCalendarEvent(
     requestUrl: URL,
     request: {
@@ -112,6 +134,10 @@ export class CalendarDomain {
       endAt?: string;
       timeZone?: string;
       attendees?: CreateLifeOpsCalendarEventAttendee[] | null;
+      recurrence?: string[] | null;
+      recurrenceScope?: LifeOpsCalendarRecurrenceScope | null;
+      notifyAttendees?: boolean;
+      expectedProviderVersion?: string;
     },
   ): Promise<LifeOpsCalendarEvent> {
     return resolveCalendarService(this.ctx.runtime).updateCalendarEvent(
@@ -128,10 +154,59 @@ export class CalendarDomain {
       grantId?: string;
       calendarId?: string | null;
       eventId: string;
+      recurrenceScope?: LifeOpsCalendarRecurrenceScope | null;
+      notifyAttendees?: boolean;
+      expectedProviderVersion?: string;
     },
   ): Promise<void> {
     return resolveCalendarService(this.ctx.runtime).deleteCalendarEvent(
       requestUrl,
+      request,
+    );
+  }
+
+  getConditionalCalendarMutationTarget(
+    requestUrl: URL,
+    request: {
+      mode?: LifeOpsConnectorMode | null;
+      side?: LifeOpsConnectorSide | null;
+      grantId?: string;
+      calendarId?: string | null;
+      eventId: string;
+      recurrenceScope?: LifeOpsCalendarRecurrenceScope | null;
+    },
+  ): Promise<LifeOpsCalendarEvent> {
+    return resolveCalendarService(
+      this.ctx.runtime,
+    ).getConditionalCalendarMutationTarget(requestUrl, request);
+  }
+
+  respondToCalendarEvent(
+    requestUrl: URL,
+    request: {
+      mode?: LifeOpsConnectorMode | null;
+      side?: LifeOpsConnectorSide | null;
+      grantId?: string;
+      calendarId?: string | null;
+      eventId: string;
+      responseStatus: "accepted" | "declined" | "tentative";
+      recurrenceScope?: LifeOpsCalendarRecurrenceScope | null;
+      notifyAttendees?: boolean;
+      expectedProviderVersion: string;
+    },
+  ): Promise<LifeOpsCalendarEvent> {
+    return resolveCalendarService(this.ctx.runtime).respondToCalendarEvent(
+      requestUrl,
+      request,
+    );
+  }
+
+  reserveTravelBuffer(request: {
+    eventId: string;
+    bufferMinutes: number;
+    method: string;
+  }): Promise<LifeOpsCalendarEvent> {
+    return resolveCalendarService(this.ctx.runtime).reserveTravelBuffer(
       request,
     );
   }

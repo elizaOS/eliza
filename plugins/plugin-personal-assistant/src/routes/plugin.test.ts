@@ -222,6 +222,29 @@ describe("LifeOps raw route owner/admin gate", () => {
     });
   });
 
+  it("mounts every owner calendar surface behind the same private gate", () => {
+    const calendarRoutes = [
+      ["GET", "/api/lifeops/calendar/feed"],
+      ["GET", "/api/lifeops/calendar/sources"],
+      ["POST", "/api/lifeops/calendar/sources"],
+      ["PATCH", "/api/lifeops/calendar/sources/:sourceId"],
+      ["DELETE", "/api/lifeops/calendar/sources/:sourceId"],
+      ["POST", "/api/lifeops/calendar/sources/:sourceId/sync"],
+      ["GET", "/api/lifeops/calendar/meeting-auto-join"],
+      ["PUT", "/api/lifeops/calendar/meeting-auto-join"],
+      ["GET", "/api/lifeops/calendar/calendars"],
+      ["PUT", "/api/lifeops/calendar/calendars/:id/include"],
+      ["GET", "/api/lifeops/calendar/next-context"],
+      ["POST", "/api/lifeops/calendar/events"],
+      ["PATCH", "/api/lifeops/calendar/events/:eventId"],
+      ["DELETE", "/api/lifeops/calendar/events/:eventId"],
+    ] as const;
+
+    for (const [type, path] of calendarRoutes) {
+      expect(findRoute(type, path).public).not.toBe(true);
+    }
+  });
+
   it("does not wrap public OAuth callback routes with the owner/admin gate", async () => {
     const route = findRoute("GET", "/api/connectors/google/oauth/callback");
     const res = createResponse();

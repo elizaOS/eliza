@@ -13,11 +13,21 @@
  * notice through `setActionNotice`.
  */
 
-import type { LifeOpsCalendarEvent } from "@elizaos/shared";
+import type {
+  LifeOpsCalendarEvent,
+  LifeOpsCalendarSourceHealth,
+  LifeOpsCalendarSummary,
+} from "@elizaos/shared";
 import { SpatialSurface } from "@elizaos/ui/spatial";
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
+import type { UseCalendarSourcesResult } from "../../hooks/useCalendarSources.js";
 import type { UseCalendarWeekResult } from "../../hooks/useCalendarWeek.js";
 
 const setActionNotice = vi.hoisted(() => vi.fn());
@@ -36,6 +46,10 @@ vi.mock("@elizaos/ui/state", () => ({
 const calendarState = vi.hoisted(() => ({
   current: null as UseCalendarWeekResult | null,
 }));
+const sourcePreferencesState = vi.hoisted(() => ({
+  current: null as UseCalendarSourcesResult | null,
+}));
+const openCalendarConnectorSettings = vi.hoisted(() => vi.fn());
 
 const goPrevious = vi.hoisted(() => vi.fn());
 const goNext = vi.hoisted(() => vi.fn());
@@ -45,6 +59,14 @@ const refresh = vi.hoisted(() => vi.fn(async () => {}));
 
 vi.mock("../../hooks/useCalendarWeek.js", () => ({
   useCalendarWeek: () => calendarState.current,
+}));
+
+vi.mock("../../hooks/useCalendarSources.js", () => ({
+  useCalendarSources: () => sourcePreferencesState.current,
+}));
+
+vi.mock("./source-navigation.js", () => ({
+  openCalendarConnectorSettings,
 }));
 
 import { CalendarView } from "./CalendarView.js";
@@ -88,7 +110,11 @@ function makeResult(
 ): UseCalendarWeekResult {
   return {
     events: [],
+    feedState: "complete",
+    sources: [calendarSource()],
+    status: "ready",
     loading: false,
+    refreshing: false,
     error: null,
     viewMode: "week",
     setViewMode,
@@ -103,10 +129,78 @@ function makeResult(
   };
 }
 
+function calendarSource(
+  over: Partial<LifeOpsCalendarSourceHealth> = {},
+): LifeOpsCalendarSourceHealth {
+  return {
+    key: {
+      provider: "google",
+      side: "owner",
+      grantId: "grant-work",
+      connectorAccountId: "account-work",
+      calendarId: "primary",
+    },
+    summary: "Work",
+    accessRole: "owner",
+    visibility: "details",
+    status: "fresh",
+    syncedAt: new Date().toISOString(),
+    error: null,
+    ...over,
+  };
+}
+
+function calendarSummary(
+  over: Partial<LifeOpsCalendarSummary> = {},
+): LifeOpsCalendarSummary {
+  return {
+    provider: "google",
+    side: "owner",
+    grantId: "grant-work",
+    connectorAccountId: "account-work",
+    accountEmail: "work@example.com",
+    calendarId: "primary",
+    summary: "Work",
+    description: null,
+    primary: true,
+    accessRole: "owner",
+    backgroundColor: null,
+    foregroundColor: null,
+    timeZone: "UTC",
+    selected: true,
+    includeInFeed: true,
+    ...over,
+  };
+}
+
+const refreshSourcePreferences = vi.hoisted(() => vi.fn(async () => {}));
+const setSourceIncluded = vi.hoisted(() =>
+  vi.fn(async () => "updated" as const),
+);
+
+function makeSourcePreferences(
+  over: Partial<UseCalendarSourcesResult> = {},
+): UseCalendarSourcesResult {
+  return {
+    calendars: [calendarSummary()],
+    status: "ready",
+    loading: false,
+    refreshing: false,
+    error: null,
+    refreshError: null,
+    pendingKeys: new Set(),
+    mutationErrors: {},
+    refresh: refreshSourcePreferences,
+    setIncluded: setSourceIncluded,
+    ...over,
+  };
+}
+
 describe("CalendarView (unified spatial wrapper)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     calendarState.current = makeResult();
+    sourcePreferencesState.current = makeSourcePreferences();
   });
 
   afterEach(() => {
@@ -219,8 +313,254 @@ describe("CalendarView (unified spatial wrapper)", () => {
   });
 
   it("surfaces a feed error in the spatial view", () => {
-    calendarState.current = makeResult({ error: "Calendar failed to load." });
+    calendarState.current = makeResult({
+      error: "Calendar failed to load.",
+      status: "error",
+      sources: [],
+    });
     render(<CalendarView />);
     expect(document.body.textContent).toContain("Calendar failed to load.");
+  });
+
+  it("renders complete source provenance and freshness in the spatial view", () => {
+    render(<CalendarView />);
+
+    const sources = agent("calendar-sources");
+    expect(sources.textContent).toContain("1 source current");
+    expect(sources.textContent).toContain("Google · Work");
+    expect(sources.textContent).toContain("just now");
+  });
+
+  it("renders partial stale source truth without exposing provider diagnostics", () => {
+    calendarState.current = makeResult({
+      feedState: "partial",
+      status: "partial",
+      sources: [
+        calendarSource(),
+        calendarSource({
+          key: {
+            provider: "microsoft",
+            side: "owner",
+            grantId: "grant-family",
+            connectorAccountId: "account-family",
+            calendarId: "family",
+          },
+          summary: "Family",
+          status: "stale",
+          syncedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+          error: {
+            code: "TOKEN_REFRESH_FAILED",
+            message: "Private provider diagnostic.",
+            retryable: true,
+          },
+        }),
+      ],
+    });
+
+    render(<CalendarView />);
+
+    const sources = agent("calendar-sources");
+    expect(sources.textContent).toContain(
+      "Partial calendar · 1 source needs attention",
+    );
+    expect(sources.textContent).toContain("Outlook · Family");
+    expect(sources.textContent).toContain("stale · 2h ago");
+    expect(sources.textContent).not.toContain("Private provider diagnostic");
+  });
+
+  it("renders disconnected unavailable coverage instead of a healthy empty agenda", () => {
+    calendarState.current = makeResult({
+      feedState: "unavailable",
+      status: "unavailable",
+      sources: [
+        calendarSource({
+          status: "disconnected",
+          syncedAt: null,
+          error: {
+            code: "OAUTH_REVOKED",
+            message: "Authorization revoked.",
+            retryable: true,
+          },
+        }),
+      ],
+    });
+
+    render(<CalendarView />);
+
+    expect(agent("calendar-sources").textContent).toContain(
+      "Calendar sources unavailable",
+    );
+    expect(document.body.textContent).toContain("Calendar unavailable");
+    expect(document.body.textContent).not.toContain("No events in this range");
+  });
+
+  it("renders an authoritative empty state when complete coverage has no events", () => {
+    calendarState.current = makeResult({ status: "empty" });
+
+    render(<CalendarView />);
+
+    expect(document.body.textContent).toContain("No events in this range");
+  });
+
+  it("routes source refresh through the hook and disables it while refreshing", () => {
+    const { rerender } = render(<CalendarView />);
+    fireEvent.click(agent("refresh"));
+    expect(refresh).toHaveBeenCalledTimes(1);
+
+    calendarState.current = makeResult({ loading: true, refreshing: true });
+    rerender(<CalendarView />);
+    expect(agent("refresh").hasAttribute("disabled")).toBe(true);
+    expect(agent("calendar-sources").textContent).toContain(
+      "Refreshing calendar sources",
+    );
+  });
+
+  it("expands a serializable source manager with provider, account, access, privacy, and inclusion truth", () => {
+    sourcePreferencesState.current = makeSourcePreferences({
+      calendars: [
+        calendarSummary(),
+        calendarSummary({
+          provider: "microsoft",
+          grantId: "grant-family",
+          connectorAccountId: "account-family",
+          accountEmail: "family@example.com",
+          calendarId: "family",
+          summary: "Family",
+          primary: false,
+          accessRole: "reader",
+          includeInFeed: false,
+        }),
+      ],
+    });
+    render(<CalendarView />);
+
+    fireEvent.click(agent("manage-sources"));
+
+    const manager = agent("calendar-source-manager");
+    expect(manager.textContent).toContain(
+      "New calendars are included automatically",
+    );
+    expect(manager.textContent).toContain("Google Calendar");
+    expect(manager.textContent).toContain("work@example.com");
+    expect(manager.textContent).toContain("Owner");
+    expect(manager.textContent).toContain("Event details");
+    expect(manager.textContent).toContain("Microsoft Outlook");
+    expect(manager.textContent).toContain("family@example.com");
+    expect(manager.textContent).toContain("Not in current feed");
+    expect(manager.textContent).not.toContain("Stale · stale");
+    const toggles = document.querySelectorAll(
+      '[data-agent-id^="source-toggle:calendar-source-"]',
+    );
+    expect(toggles).toHaveLength(2);
+    expect(document.body.innerHTML).not.toContain("grant-family");
+    expect(document.body.innerHTML).not.toContain("account-family");
+  });
+
+  it("routes a safe spatial source action to the exact account and refreshes feed truth", async () => {
+    render(<CalendarView />);
+    fireEvent.click(agent("manage-sources"));
+    const toggle = document.querySelector(
+      '[data-agent-id^="source-toggle:calendar-source-"]',
+    ) as HTMLElement | null;
+    expect(toggle).toBeTruthy();
+
+    fireEvent.click(toggle as HTMLElement);
+
+    await vi.waitFor(() =>
+      expect(setSourceIncluded).toHaveBeenCalledWith(
+        sourcePreferencesState.current?.calendars[0],
+        false,
+      ),
+    );
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows pending and failed source writes without changing the server-backed state", () => {
+    const work = calendarSummary();
+    const key = JSON.stringify([
+      work.provider,
+      work.side,
+      work.grantId,
+      work.connectorAccountId,
+      work.calendarId,
+    ]);
+    sourcePreferencesState.current = makeSourcePreferences({
+      calendars: [work],
+      pendingKeys: new Set([key]),
+      mutationErrors: {
+        [key]: "Couldn’t exclude “Work”. Your current setting was kept.",
+      },
+    });
+
+    render(<CalendarView />);
+    fireEvent.click(agent("manage-sources"));
+
+    const toggle = document.querySelector(
+      '[data-agent-id^="source-toggle:calendar-source-"]',
+    ) as HTMLButtonElement | null;
+    expect(toggle?.disabled).toBe(true);
+    expect(toggle?.textContent).toContain("Excluding…");
+    expect(agent("calendar-source-manager").textContent).toContain(
+      "Your current setting was kept",
+    );
+  });
+
+  it("routes only a registered Google reconnect action through the safe helper", () => {
+    sourcePreferencesState.current = makeSourcePreferences({ calendars: [] });
+    calendarState.current = makeResult({
+      status: "unavailable",
+      feedState: "unavailable",
+      sources: [
+        calendarSource({
+          key: {
+            provider: "google",
+            side: "owner",
+            grantId: "grant-retired",
+            connectorAccountId: "account-retired",
+            calendarId: "travel",
+          },
+          summary: "Travel",
+          status: "disconnected",
+          syncedAt: null,
+        }),
+        calendarSource({
+          key: {
+            provider: "microsoft",
+            side: "owner",
+            grantId: "grant-old-outlook",
+            connectorAccountId: "account-old-outlook",
+            calendarId: "archive",
+          },
+          summary: "Archive",
+          status: "disconnected",
+          syncedAt: null,
+        }),
+      ],
+    });
+
+    render(<CalendarView />);
+    fireEvent.click(agent("manage-sources"));
+    const reconnect = document.querySelector(
+      '[data-agent-id^="source-reconnect:calendar-source-"]',
+    ) as HTMLElement | null;
+    expect(reconnect).toBeTruthy();
+    fireEvent.click(reconnect as HTMLElement);
+
+    expect(openCalendarConnectorSettings).toHaveBeenCalledWith("google");
+    expect(agent("calendar-source-manager").textContent).toContain(
+      "Reconnect unavailable here.",
+    );
+  });
+
+  it("keeps event titles outside the source-health region", () => {
+    calendarState.current = makeResult({
+      events: [evt({ id: "private", title: "Private custody handoff" })],
+    });
+
+    render(<CalendarView />);
+
+    const sources = agent("calendar-sources");
+    expect(within(sources).queryByText("Private custody handoff")).toBeNull();
+    expect(screen.getByText("Private custody handoff")).toBeTruthy();
   });
 });

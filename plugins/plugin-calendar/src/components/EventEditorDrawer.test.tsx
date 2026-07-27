@@ -293,7 +293,7 @@ const editEvent: LifeOpsCalendarEvent = {
   timezone: "America/New_York",
   htmlLink: null,
   conferenceLink: null,
-  organizer: null,
+  organizer: { self: true, email: "owner@example.com" },
   attendees: [
     {
       email: "cfo@example.com",
@@ -304,7 +304,7 @@ const editEvent: LifeOpsCalendarEvent = {
       optional: false,
     },
   ],
-  metadata: {},
+  metadata: { etag: '"event-editor-v1"' },
   syncedAt: new Date(2026, 5, 16).toISOString(),
   updatedAt: new Date(2026, 5, 16).toISOString(),
   grantId: "connector-account:acct-1",
@@ -389,7 +389,7 @@ describe("EventEditorDrawer", () => {
     expect(screen.getByText("Team Calendar")).toBeTruthy();
   });
 
-  it("falls back to a 'Primary' calendar row when the calendars fetch fails", async () => {
+  it("blocks saving instead of fabricating a Primary calendar when source discovery fails", async () => {
     uiClient.getLifeOpsCalendars.mockRejectedValue(new Error("boom"));
 
     render(
@@ -402,13 +402,19 @@ describe("EventEditorDrawer", () => {
       />,
     );
 
-    await waitFor(() => expect(screen.getByText("Primary")).toBeTruthy());
-    expect(screen.getByText("boom")).toBeTruthy();
+    await waitFor(() => expect(screen.getByText("boom")).toBeTruthy());
+    expect(screen.queryByText("Primary")).toBeNull();
+    fireEvent.change(screen.getByLabelText("Event title"), {
+      target: { value: "Coffee" },
+    });
+    expect(saveButton().disabled).toBe(true);
   });
 
   it("creates an event with the trimmed title/start/end and fires onCreated", async () => {
     uiClient.createLifeOpsCalendarEvent.mockResolvedValue({
+      outcome: "event",
       event: { ...editEvent, id: "new-id", title: "Coffee" },
+      writeOnlyReceipt: null,
     });
     const onCreated = vi.fn();
     const onClose = vi.fn();
@@ -444,9 +450,95 @@ describe("EventEditorDrawer", () => {
     expect(request.startAt).toContain("2026-06-15T");
     expect(request.endAt).toContain("2026-06-15T");
     expect(typeof request.timeZone).toBe("string");
+    expect(request.idempotencyKey).toMatch(/^event-editor:/);
+    expect(request.notifyAttendees).toBe(false);
 
     await waitFor(() => expect(onCreated).toHaveBeenCalledTimes(1));
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("reuses the create idempotency key after an ambiguous client failure", async () => {
+    uiClient.createLifeOpsCalendarEvent
+      .mockRejectedValueOnce(new Error("connection closed"))
+      .mockResolvedValueOnce({
+        outcome: "event",
+        event: { ...editEvent, id: "new-id", title: "Coffee" },
+        writeOnlyReceipt: null,
+      });
+
+    render(
+      <EventEditorDrawer
+        open
+        mode="create"
+        event={null}
+        createDefaults={{ date: new Date(2026, 5, 15, 9, 0, 0), side: "owner" }}
+        onClose={vi.fn()}
+      />,
+    );
+    await waitFor(() =>
+      expect(uiClient.getLifeOpsCalendars).toHaveBeenCalled(),
+    );
+    fireEvent.change(screen.getByLabelText("Event title"), {
+      target: { value: "Coffee" },
+    });
+
+    fireEvent.click(saveButton());
+    await waitFor(() =>
+      expect(screen.getByText("connection closed")).toBeTruthy(),
+    );
+    fireEvent.click(saveButton());
+    await waitFor(() =>
+      expect(uiClient.createLifeOpsCalendarEvent).toHaveBeenCalledTimes(2),
+    );
+
+    const first = uiClient.createLifeOpsCalendarEvent.mock.calls[0]?.[0];
+    const second = uiClient.createLifeOpsCalendarEvent.mock.calls[1]?.[0];
+    expect(second?.idempotencyKey).toBe(first?.idempotencyKey);
+  });
+
+  it("rotates the create idempotency key when the owner edits a failed request", async () => {
+    uiClient.createLifeOpsCalendarEvent
+      .mockRejectedValueOnce(new Error("connection closed"))
+      .mockResolvedValueOnce({
+        outcome: "event",
+        event: { ...editEvent, id: "new-id", title: "Coffee with Sam" },
+        writeOnlyReceipt: null,
+      });
+
+    render(
+      <EventEditorDrawer
+        open
+        mode="create"
+        event={null}
+        createDefaults={{
+          date: new Date(2026, 5, 15, 9, 0, 0),
+          side: "owner",
+        }}
+        onClose={vi.fn()}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByText("Owner Calendar")).toBeTruthy(),
+    );
+    fireEvent.change(screen.getByLabelText("Event title"), {
+      target: { value: "Coffee" },
+    });
+    fireEvent.click(saveButton());
+    await waitFor(() =>
+      expect(screen.getByText("connection closed")).toBeTruthy(),
+    );
+
+    fireEvent.change(screen.getByLabelText("Event title"), {
+      target: { value: "Coffee with Sam" },
+    });
+    fireEvent.click(saveButton());
+    await waitFor(() =>
+      expect(uiClient.createLifeOpsCalendarEvent).toHaveBeenCalledTimes(2),
+    );
+
+    const first = uiClient.createLifeOpsCalendarEvent.mock.calls[0]?.[0];
+    const second = uiClient.createLifeOpsCalendarEvent.mock.calls[1]?.[0];
+    expect(second?.idempotencyKey).not.toBe(first?.idempotencyKey);
   });
 
   it("surfaces an invalid-times error when start/end are cleared", async () => {
@@ -545,12 +637,18 @@ describe("EventEditorDrawer", () => {
     expect(patch.startAt).toBeUndefined();
     expect(patch.endAt).toBeUndefined();
     expect(patch.location).toBeUndefined();
+    expect(patch.expectedProviderVersion).toBe('"event-editor-v1"');
+    expect(patch.notifyAttendees).toBe(false);
 
     await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
   });
 
   it("deletes via the confirm dialog and fires onDeleted", async () => {
-    uiClient.deleteLifeOpsCalendarEvent.mockResolvedValue(undefined);
+    uiClient.deleteLifeOpsCalendarEvent.mockResolvedValue({
+      outcome: "deleted",
+      cancellationMode: "organizer_cancel",
+      event: null,
+    });
     const onDeleted = vi.fn();
 
     render(
@@ -581,10 +679,82 @@ describe("EventEditorDrawer", () => {
           side: "owner",
           grantId: "connector-account:acct-1",
           calendarId: "owner@example.com",
+          expectedProviderVersion: '"event-editor-v1"',
+          idempotencyKey: expect.stringMatching(/^event-editor:/),
+          notifyAttendees: false,
+          cancellationMode: "organizer_cancel",
         },
       ),
     );
     await waitFor(() => expect(onDeleted).toHaveBeenCalledWith(editEvent.id));
+  });
+
+  it("declines an invited event instead of organizer-deleting it", async () => {
+    const invitedEvent: LifeOpsCalendarEvent = {
+      ...editEvent,
+      organizer: { self: false, email: "host@example.com" },
+      attendees: [
+        {
+          email: "owner@example.com",
+          displayName: "Owner",
+          responseStatus: "accepted",
+          self: true,
+          organizer: false,
+          optional: false,
+        },
+      ],
+    };
+    const declinedEvent: LifeOpsCalendarEvent = {
+      ...invitedEvent,
+      attendees: invitedEvent.attendees.map((attendee) => ({
+        ...attendee,
+        responseStatus: attendee.self ? "declined" : attendee.responseStatus,
+      })),
+    };
+    uiClient.deleteLifeOpsCalendarEvent.mockResolvedValue({
+      outcome: "invitation_declined",
+      cancellationMode: "decline_invitation",
+      event: declinedEvent,
+    });
+    const onSaved = vi.fn();
+    const onDeleted = vi.fn();
+
+    render(
+      <EventEditorDrawer
+        open
+        mode="edit"
+        event={invitedEvent}
+        onClose={vi.fn()}
+        onSaved={onSaved}
+        onDeleted={onDeleted}
+      />,
+    );
+    fireEvent.click(
+      screen
+        .getByText("Decline invitation", { selector: "span.sr-only" })
+        .closest("button") as HTMLButtonElement,
+    );
+    await screen.findByTestId("confirm-dialog");
+    expect(
+      screen.getByText(
+        "Your response will change to declined. This does not delete the organizer's event.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/cannot be undone/i)).toBeNull();
+    fireEvent.click(screen.getByTestId("confirm-delete"));
+
+    await waitFor(() =>
+      expect(uiClient.deleteLifeOpsCalendarEvent).toHaveBeenCalledWith(
+        "evt_1",
+        expect.objectContaining({
+          cancellationMode: "decline_invitation",
+          expectedProviderVersion: '"event-editor-v1"',
+          notifyAttendees: false,
+        }),
+      ),
+    );
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith(declinedEvent));
+    expect(onDeleted).not.toHaveBeenCalled();
   });
 
   it("invokes onChat with the event from the Chat action (edit mode only)", async () => {

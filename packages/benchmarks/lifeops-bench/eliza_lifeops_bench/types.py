@@ -73,6 +73,7 @@ class MessageTurn:
     latency_ms: float | None = None
     input_tokens: int | None = None
     output_tokens: int | None = None
+    model_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -284,6 +285,27 @@ class TurnResult:
 
 
 @dataclass
+class EvaluatorTraceEntry:
+    """Exact live-evaluator call inputs, outputs, telemetry, and provider payload."""
+
+    turn_number: int
+    role: Literal["simulated_user", "judge"]
+    provider: str | None
+    model_name: str
+    input_messages: list[dict[str, Any]]
+    output_text: str | None
+    finish_reason: str
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+    latency_ms: int
+    cost_usd: float | None
+    raw_provider_response: dict[str, Any]
+    accepted_verdict: bool | None = None
+    verdict_reason: str | None = None
+
+
+@dataclass
 class ScenarioResult:
     """Outcome of running a single scenario at a single seed."""
 
@@ -300,11 +322,17 @@ class ScenarioResult:
     total_cost_usd: float
     total_latency_ms: int
     error: str | None = None
+    evaluator_trace: list[EvaluatorTraceEntry] = field(default_factory=list)
 
 
 @dataclass
 class BenchmarkResult:
     """Aggregated results for a full benchmark run.
+
+    ``model_name`` names the simulated-user evaluator for compatibility with
+    existing result consumers. The acting system is identified independently
+    by ``agent_adapter``, ``agent_provider``, and ``agent_model_name`` so an
+    evaluator can never be mistaken for the model being benchmarked.
 
     ``total_cost_usd`` is the sum of agent + evaluator spend so existing
     consumers see the same headline number. ``agent_cost_usd`` and
@@ -322,6 +350,9 @@ class BenchmarkResult:
     judge_model_name: str
     timestamp: str
     seeds: int
+    agent_model_name: str | None = None
+    agent_adapter: str | None = None
+    agent_provider: str | None = None
     agent_cost_usd: float = 0.0
     eval_cost_usd: float = 0.0
     expected_run_count: int = 0
@@ -329,3 +360,5 @@ class BenchmarkResult:
     successful_run_count: int = 0
     complete: bool = False
     workload_sha256: str = ""
+    evaluator_provider: str | None = None
+    judge_provider: str | None = None

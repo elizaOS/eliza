@@ -1,7 +1,8 @@
 /**
  * Calendar Drizzle schema.
  *
- * The calendar tables (`life_calendar_events`, `life_calendar_sync_states`)
+ * The calendar tables (`life_calendar_events`, `life_calendar_sync_states`,
+ * `life_calendar_sources`)
  * were carved out of `@elizaos/plugin-personal-assistant`'s `app_lifeops`
  * schema into `app_calendar`, owned by this plugin. Table + column names are
  * preserved verbatim so the non-destructive `CalendarMigrationService` can copy
@@ -12,7 +13,14 @@
  * prefix; the bare `life_*` names do not resolve in the default search path.
  */
 
-import { boolean, pgSchema, text, unique } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  index,
+  integer,
+  pgSchema,
+  text,
+  unique,
+} from "drizzle-orm/pg-core";
 
 export const calendarPgSchema = pgSchema("app_calendar");
 
@@ -48,7 +56,14 @@ export const calendarEvents = calendarPgSchema.table(
     updatedAt: text("updated_at").notNull(),
   },
   (t) => [
-    unique().on(t.agentId, t.provider, t.side, t.calendarId, t.externalEventId),
+    unique("calendar_events_source_external_unique").on(
+      t.agentId,
+      t.provider,
+      t.side,
+      t.grantId,
+      t.calendarId,
+      t.externalEventId,
+    ),
   ],
 );
 
@@ -68,13 +83,109 @@ export const calendarSyncStates = calendarPgSchema.table(
     purgeResyncReason: text("purge_resync_reason"),
     windowStartAt: text("window_start_at").notNull(),
     windowEndAt: text("window_end_at").notNull(),
+    nextSyncToken: text("next_sync_token"),
     syncedAt: text("synced_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
-  (t) => [unique().on(t.agentId, t.provider, t.side, t.calendarId)],
+  (t) => [
+    unique("calendar_sync_states_source_unique").on(
+      t.agentId,
+      t.provider,
+      t.side,
+      t.grantId,
+      t.calendarId,
+    ),
+  ],
+);
+
+export const calendarSources = calendarPgSchema.table(
+  "life_calendar_sources",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    provider: text("provider").notNull().default("ics"),
+    side: text("side").notNull().default("owner"),
+    name: text("name").notNull(),
+    enabled: boolean("enabled").notNull().default(true),
+    secretRef: text("secret_ref").notNull(),
+    urlFingerprint: text("url_fingerprint").notNull(),
+    origin: text("origin").notNull(),
+    etag: text("etag"),
+    lastModified: text("last_modified"),
+    contentHash: text("content_hash"),
+    syncStatus: text("sync_status").notNull().default("never"),
+    lastErrorCode: text("last_error_code"),
+    lastErrorMessage: text("last_error_message"),
+    lastErrorRetryable: boolean("last_error_retryable"),
+    lastSyncedAt: text("last_synced_at"),
+    lastAttemptedAt: text("last_attempted_at"),
+    syncGeneration: integer("sync_generation").notNull().default(0),
+    leaseToken: text("lease_token"),
+    leaseExpiresAt: text("lease_expires_at"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    unique("calendar_sources_agent_fingerprint_unique").on(
+      t.agentId,
+      t.urlFingerprint,
+    ),
+  ],
+);
+
+export const googleCalendarWatchChannels = calendarPgSchema.table(
+  "google_calendar_watch_channels",
+  {
+    channelId: text("channel_id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    grantId: text("grant_id").notNull(),
+    connectorAccountId: text("connector_account_id").notNull(),
+    side: text("side").notNull(),
+    calendarId: text("calendar_id").notNull(),
+    calendarSummary: text("calendar_summary").notNull(),
+    calendarAccessRole: text("calendar_access_role").notNull(),
+    timeZone: text("time_zone").notNull(),
+    windowStartAt: text("window_start_at").notNull(),
+    windowEndAt: text("window_end_at").notNull(),
+    webhookUrl: text("webhook_url").notNull(),
+    tokenSha256: text("token_sha256").notNull(),
+    resourceId: text("resource_id"),
+    resourceUri: text("resource_uri"),
+    expirationAt: text("expiration_at"),
+    state: text("state").notNull(),
+    lastMessageNumber: text("last_message_number").notNull().default("0"),
+    pendingMessageNumber: text("pending_message_number"),
+    lastNotificationAt: text("last_notification_at"),
+    lastSyncAt: text("last_sync_at"),
+    syncLeaseToken: text("sync_lease_token"),
+    syncLeaseExpiresAt: text("sync_lease_expires_at"),
+    renewalChannelId: text("renewal_channel_id"),
+    failureCount: integer("failure_count").notNull().default(0),
+    nextRetryAt: text("next_retry_at"),
+    lastErrorCode: text("last_error_code"),
+    lastErrorMessage: text("last_error_message"),
+    lastErrorRetryable: boolean("last_error_retryable"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    index("calendar_watch_binding_idx").on(
+      t.agentId,
+      t.connectorAccountId,
+      t.grantId,
+      t.calendarId,
+    ),
+    index("calendar_watch_maintenance_idx").on(
+      t.agentId,
+      t.state,
+      t.expirationAt,
+    ),
+  ],
 );
 
 export const calendarSchema = {
   calendarEvents,
   calendarSyncStates,
+  calendarSources,
+  googleCalendarWatchChannels,
 };

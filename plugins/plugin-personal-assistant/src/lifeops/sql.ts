@@ -3,7 +3,7 @@
  * builder and exposes the small helpers (executeRawSql, sqlText, parseJsonRecord)
  * the repository uses to run parameterized queries against the local store.
  */
-import type { IAgentRuntime } from "@elizaos/core";
+import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 
 export type RawSqlQuery = {
   queryChunks: Array<{ value?: unknown }>;
@@ -185,6 +185,30 @@ export async function withTransaction<T>(
   return await fn({
     execute: (query) => db.execute(query),
   });
+}
+
+/**
+ * Run a safety-critical mutation only when the runtime adapter can guarantee
+ * a real transaction. Approval claims and provider-receipt persistence must
+ * never use {@link withTransaction}'s test-fake fallback because a partial
+ * commit can make an external send look retriable.
+ */
+export async function withRequiredTransaction<T>(
+  runtime: IAgentRuntime,
+  fn: (tx: TransactionalDb) => Promise<T>,
+): Promise<T> {
+  const db = getRuntimeDb(runtime) as DrizzleTransactionalDb;
+  if (typeof db.transaction !== "function") {
+    throw new ElizaError(
+      "[LifeOpsSql] atomic transaction support is required for approval-gated delivery",
+      {
+        code: "LIFEOPS_ATOMIC_TRANSACTION_REQUIRED",
+        context: { agentId: runtime.agentId },
+        severity: "fatal",
+      },
+    );
+  }
+  return db.transaction(async (tx) => fn(tx));
 }
 
 /**

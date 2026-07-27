@@ -69,35 +69,36 @@ def test_corpus_size_meets_minimum() -> None:
 
 
 def test_corpus_expands_current_core_by_exactly_10x() -> None:
-    # 1434 distinct base scenarios (1260 prior + 18 issue #12279 traveler
+    # 1482 distinct base scenarios (1260 prior + 18 issue #12279 traveler
     # timezone scenarios + 18 issue #12282 neurotypical-control scenarios +
     # 18 issue #12281 comms-flood scenarios + 32 issue #12278 irregular-sleep
     # scenarios + 54 issue #12280 ADHD/low-activation scenarios + 3 issue
     # #14789 co-parenting mirrors + 6 issue #14783 overdue-communications
     # scenarios + 4 issue #14784 reconnect-old-friends scenarios + 5 issue
     # #14785 relationship-type-inference scenarios + 4 issue #14786
-    # knowledge-graph live-capture scenarios, minus the 2 crisis-language-guard
-    # scenarios removed with #12284 item 9 — the guard is not being built), each
+    # knowledge-graph live-capture scenarios + 48 issue #17179 composite-parent
+    # capability scenarios, minus the 2 crisis-language-guard scenarios removed
+    # with #12284 item 9 — the guard is not being built), each
     # plus the current relationship/support packs, each re-emitted 10x under
-    # fixed prompt-prefix framings = 15774 robustness
+    # fixed prompt-prefix framings = 16302 robustness
     # runs. The legacy keys
     # (existing/added/total/multiplierAdded) stay pinned for back-compat; the
     # base/variantsPerBase/totalRuns/summary keys state the split.
     assert count_lifeops_scenarios() == {
         "suite": "lifeops-bench",
-        "existing": 1434,
-        "added": 14340,
-        "total": 15774,
+        "existing": 1482,
+        "added": 14820,
+        "total": 16302,
         "multiplierAdded": 10,
-        "base": 1434,
+        "base": 1482,
         "variantsPerBase": 10,
-        "totalRuns": 15774,
-        "summary": "1434 base scenarios; 10x prompt-prefix robustness variants = 15774 runs",
+        "totalRuns": 16302,
+        "summary": "1482 base scenarios; 10x prompt-prefix robustness variants = 16302 runs",
     }
     assert validate_lifeops_scenarios() == {
         "valid": True,
-        "total": 15774,
-        "uniqueIds": 15774,
+        "total": 16302,
+        "uniqueIds": 16302,
         "duplicateIds": [],
         "emptyInstructions": [],
         "expansionMatches": True,
@@ -232,6 +233,30 @@ def test_persona_shape_sane() -> None:
                 f"{scenario.id} persona patience_turns {persona.patience_turns} < 5"
             )
     assert not bad, "persona issues:\n" + "\n".join(bad)
+
+
+def test_world_traveling_coparent_maps_exactly_to_g1_through_g48() -> None:
+    from eliza_lifeops_bench.scenarios._personas import (
+        PERSONA_MAYA_TRAVELING_COPARENT,
+    )
+    from eliza_lifeops_bench.scenarios.world_traveling_coparent import (
+        M1_CAPABILITY_IDS,
+        WORLD_TRAVELING_COPARENT_SCENARIOS,
+    )
+    from eliza_lifeops_bench.types import ScenarioMode
+
+    assert len(WORLD_TRAVELING_COPARENT_SCENARIOS) == 48
+    assert M1_CAPABILITY_IDS == tuple(f"G{index}" for index in range(1, 49))
+    assert all(
+        scenario.persona is PERSONA_MAYA_TRAVELING_COPARENT
+        for scenario in WORLD_TRAVELING_COPARENT_SCENARIOS
+    )
+    assert all(
+        scenario.mode is ScenarioMode.LIVE
+        and scenario.success_criteria
+        and scenario.world_assertions
+        for scenario in WORLD_TRAVELING_COPARENT_SCENARIOS
+    )
 
 
 def test_description_and_instruction_non_empty() -> None:

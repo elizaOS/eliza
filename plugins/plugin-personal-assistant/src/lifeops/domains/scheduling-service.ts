@@ -1,17 +1,15 @@
 /**
- * Meeting-scheduling domain for LifeOps: drives multi-party scheduling
- * negotiations — proposing times, tracking negotiation state, and dispatching
- * proposals to counterparties over iMessage/WhatsApp/Gmail — using the owner's
- * relationship graph and schedule inspection to pick candidate slots.
+ * Meeting-scheduling domain for LifeOps: persists negotiations and proposals,
+ * resolves counterparties through the relationship graph, and produces exact
+ * outbound drafts. The owner action boundary places those drafts in the shared
+ * approval queue; this domain never dispatches connector side effects.
  */
 import crypto from "node:crypto";
 import {
   LIFEOPS_NEGOTIATION_STATES,
-  type LifeOpsConnectorSide,
   type LifeOpsSchedulingNegotiation,
   type LifeOpsSchedulingProposal,
 } from "@elizaos/shared";
-import type { SendLifeOpsGmailMessageRequest } from "../../contracts/index.js";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import {
   contactEdgeId,
@@ -24,8 +22,7 @@ import {
   readScheduleSummary,
 } from "../schedule-insight.js";
 import { fail } from "../service-normalize.js";
-import type { IMessageSendRequest } from "./imessage-service.js";
-import type { WhatsAppSendRequest } from "./whatsapp-service.js";
+import type { TransactionalDb } from "../sql.js";
 
 function isoNow(): string {
   return new Date().toISOString();
@@ -45,36 +42,29 @@ const SCHEDULING_DISPATCH_CHANNELS = [
   "imessage",
   "sms",
 ] as const;
-type SchedulingDispatchChannel = (typeof SCHEDULING_DISPATCH_CHANNELS)[number];
+export type SchedulingDispatchChannel =
+  (typeof SCHEDULING_DISPATCH_CHANNELS)[number];
 
-type CounterpartyTarget = {
+export type CounterpartyTarget = {
+  entityId: string;
+  entityUpdatedAt: string;
   channel: SchedulingDispatchChannel;
   target: string;
   name: string;
 };
 
-/**
- * Cross-domain message-dispatch methods the scheduling domain depends on.
- * These live on other domains (`withGmail`/`withTelegram`/`withWhatsApp`/
- * `withImessage`), so they are injected as typed callbacks rather than read
- * off {@link LifeOpsContext}.
- */
-export type SchedulingDeps = {
-  sendGmailMessage(
-    requestUrl: URL,
-    request: SendLifeOpsGmailMessageRequest,
-  ): Promise<{ ok: true }>;
-  sendTelegramMessage(request: {
-    side?: LifeOpsConnectorSide;
-    target: string;
-    message: string;
-  }): Promise<{ ok: true; messageId: string | null }>;
-  sendWhatsAppMessage(
-    req: WhatsAppSendRequest,
-  ): Promise<{ ok: true; messageId: string }>;
-  sendIMessage(
-    req: IMessageSendRequest,
-  ): Promise<{ ok: true; messageId?: string }>;
+export type SchedulingMessageDraft = {
+  messageKind: "opening" | "proposal" | "confirmation" | "cancellation";
+  negotiationId: string;
+  proposalId: string | null;
+  transportChannel: SchedulingDispatchChannel;
+  recipient: string;
+  recipientName: string;
+  subject: string;
+  body: string;
+  sourceUpdatedAt: string;
+  counterpartyEntityId: string;
+  counterpartyEntityUpdatedAt: string;
 };
 
 export interface LifeOpsSchedulingService {
@@ -89,19 +79,41 @@ export interface LifeOpsSchedulingService {
   resolveCounterpartyTarget(
     negotiation: LifeOpsSchedulingNegotiation,
   ): Promise<CounterpartyTarget | null>;
-  dispatchSchedulingMessage(
+  resolveCounterpartyTargetForRelationship(
+    relationshipId: string | null,
+    negotiationId?: string,
+  ): Promise<CounterpartyTarget | null>;
+  draftOpeningMessage(
     negotiation: LifeOpsSchedulingNegotiation,
-    body: string,
-    subject: string,
-  ): Promise<CounterpartyTarget>;
+    counterparty?: CounterpartyTarget | null,
+  ): Promise<SchedulingMessageDraft | null>;
+  draftProposalMessage(
+    negotiation: LifeOpsSchedulingNegotiation,
+    proposal: LifeOpsSchedulingProposal,
+    counterparty?: CounterpartyTarget | null,
+  ): Promise<SchedulingMessageDraft | null>;
+  draftConfirmationMessage(
+    negotiation: LifeOpsSchedulingNegotiation,
+    proposal: LifeOpsSchedulingProposal,
+    counterparty?: CounterpartyTarget | null,
+  ): Promise<SchedulingMessageDraft | null>;
+  draftCancellationMessage(
+    negotiation: LifeOpsSchedulingNegotiation,
+    reason?: string,
+    counterparty?: CounterpartyTarget | null,
+  ): Promise<SchedulingMessageDraft | null>;
   startNegotiation(input: {
     subject: string;
     relationshipId?: string | null;
     durationMinutes?: number;
     timezone?: string;
     metadata?: Record<string, unknown>;
+    tx?: TransactionalDb;
   }): Promise<LifeOpsSchedulingNegotiation>;
-  getNegotiation(id: string): Promise<LifeOpsSchedulingNegotiation | null>;
+  getNegotiation(
+    id: string,
+    tx?: TransactionalDb,
+  ): Promise<LifeOpsSchedulingNegotiation | null>;
   listActiveNegotiations(opts?: {
     limit?: number;
   }): Promise<LifeOpsSchedulingNegotiation[]>;
@@ -111,6 +123,7 @@ export interface LifeOpsSchedulingService {
     endAt: string;
     proposedBy: "agent" | "owner" | "counterparty";
     metadata?: Record<string, unknown>;
+    tx?: TransactionalDb;
   }): Promise<LifeOpsSchedulingProposal>;
   respondToProposal(
     proposalId: string,
@@ -119,9 +132,17 @@ export interface LifeOpsSchedulingService {
   finalizeNegotiation(
     id: string,
     acceptedProposalId: string,
+    tx?: TransactionalDb,
   ): Promise<LifeOpsSchedulingNegotiation>;
-  cancelNegotiation(id: string, reason?: string): Promise<void>;
-  listProposals(negotiationId: string): Promise<LifeOpsSchedulingProposal[]>;
+  cancelNegotiation(
+    id: string,
+    reason?: string,
+    tx?: TransactionalDb,
+  ): Promise<LifeOpsSchedulingNegotiation>;
+  listProposals(
+    negotiationId: string,
+    tx?: TransactionalDb,
+  ): Promise<LifeOpsSchedulingProposal[]>;
 }
 
 function normalizeChannel(
@@ -135,15 +156,11 @@ function normalizeChannel(
 }
 
 /**
- * Scheduling negotiation domain: schedule inspection plus the
- * negotiation/proposal lifecycle. Counterparty message dispatch is delivered
- * through cross-domain send methods injected via {@link SchedulingDeps}.
+ * Scheduling negotiation domain: schedule inspection plus the durable
+ * negotiation/proposal lifecycle and pure outbound draft construction.
  */
 export class SchedulingDomain {
-  constructor(
-    private readonly ctx: LifeOpsContext,
-    private readonly deps: SchedulingDeps,
-  ) {}
+  constructor(private readonly ctx: LifeOpsContext) {}
 
   async inspectSchedule(args: {
     timezone: string;
@@ -184,23 +201,31 @@ export class SchedulingDomain {
   async resolveCounterpartyTarget(
     negotiation: LifeOpsSchedulingNegotiation,
   ): Promise<CounterpartyTarget | null> {
-    if (!negotiation.relationshipId) {
+    return this.resolveCounterpartyTargetForRelationship(
+      negotiation.relationshipId,
+      negotiation.id,
+    );
+  }
+
+  async resolveCounterpartyTargetForRelationship(
+    relationshipId: string | null,
+    negotiationId = "new scheduling negotiation",
+  ): Promise<CounterpartyTarget | null> {
+    if (!relationshipId) {
       return null;
     }
     const agentId = this.ctx.agentId();
     const entityStore = await this.ctx.repository.entityStore(agentId);
-    const entity = await entityStore.get(negotiation.relationshipId);
+    const entity = await entityStore.get(relationshipId);
     if (!entity) {
       fail(
         404,
-        `SCHEDULING_NO_COUNTERPARTY_CONTACT: relationship ${negotiation.relationshipId} not found for negotiation ${negotiation.id}`,
+        `SCHEDULING_NO_COUNTERPARTY_CONTACT: relationship ${relationshipId} not found for negotiation ${negotiationId}`,
       );
     }
     const relationshipStore =
       await this.ctx.repository.relationshipStore(agentId);
-    const edge = await relationshipStore.get(
-      contactEdgeId(negotiation.relationshipId),
-    );
+    const edge = await relationshipStore.get(contactEdgeId(relationshipId));
     const relationship = lifeOpsRelationshipFromEntity(agentId, entity, edge);
 
     const primaryChannel = normalizeChannel(relationship.primaryChannel);
@@ -210,6 +235,8 @@ export class SchedulingDomain {
         : "";
     if (primaryChannel && primaryHandle) {
       return {
+        entityId: entity.entityId,
+        entityUpdatedAt: entity.updatedAt,
         channel: primaryChannel,
         target: primaryHandle,
         name: relationship.name,
@@ -218,12 +245,24 @@ export class SchedulingDomain {
     const email =
       typeof relationship.email === "string" ? relationship.email.trim() : "";
     if (email) {
-      return { channel: "email", target: email, name: relationship.name };
+      return {
+        entityId: entity.entityId,
+        entityUpdatedAt: entity.updatedAt,
+        channel: "email",
+        target: email,
+        name: relationship.name,
+      };
     }
     const phone =
       typeof relationship.phone === "string" ? relationship.phone.trim() : "";
     if (phone) {
-      return { channel: "sms", target: phone, name: relationship.name };
+      return {
+        entityId: entity.entityId,
+        entityUpdatedAt: entity.updatedAt,
+        channel: "sms",
+        target: phone,
+        name: relationship.name,
+      };
     }
     fail(
       409,
@@ -231,107 +270,128 @@ export class SchedulingDomain {
     );
   }
 
-  /**
-   * Dispatch a plain message to the counterparty via an existing send
-   * path. Fails (propagates the dispatch error) so the caller does not
-   * report success when delivery actually failed.
-   */
-  async dispatchSchedulingMessage(
+  private async draftMessage(
     negotiation: LifeOpsSchedulingNegotiation,
-    body: string,
-    subject: string,
-  ): Promise<CounterpartyTarget> {
-    const contact = await this.resolveCounterpartyTarget(negotiation);
+    input: {
+      messageKind: SchedulingMessageDraft["messageKind"];
+      proposalId: string | null;
+      subject: string;
+      body: string;
+      sourceUpdatedAt: string;
+    },
+    counterparty?: CounterpartyTarget | null,
+  ): Promise<SchedulingMessageDraft | null> {
+    const contact =
+      counterparty === undefined
+        ? await this.resolveCounterpartyTarget(negotiation)
+        : counterparty;
     if (!contact) {
-      fail(
-        409,
-        `SCHEDULING_NO_COUNTERPARTY_CONTACT: negotiation ${negotiation.id} has no relationshipId; cannot deliver message`,
-      );
+      return null;
     }
-    try {
-      switch (contact.channel) {
-        case "email": {
-          const requestUrl = new URL(
-            "http://internal.invalid/lifeops/gmail/send",
-          );
-          await this.deps.sendGmailMessage(requestUrl, {
-            to: [contact.target],
-            subject,
-            bodyText: body,
-            confirmSend: true,
-          });
-          break;
-        }
-        case "telegram": {
-          await this.deps.sendTelegramMessage({
-            target: contact.target,
-            message: body,
-          });
-          break;
-        }
-        case "whatsapp": {
-          await this.deps.sendWhatsAppMessage({
-            to: contact.target,
-            text: body,
-          });
-          break;
-        }
-        case "imessage": {
-          await this.deps.sendIMessage({
-            to: contact.target,
-            text: body,
-          });
-          break;
-        }
-        case "discord":
-        case "signal": {
-          if (typeof this.ctx.runtime.sendMessageToTarget !== "function") {
-            fail(
-              501,
-              `SCHEDULING_DISPATCH_UNAVAILABLE: runtime has no sendMessageToTarget for channel ${contact.channel}`,
-            );
-          }
-          await this.ctx.runtime.sendMessageToTarget(
-            {
-              source: contact.channel,
-              channelId: contact.target,
-            } as Parameters<typeof this.ctx.runtime.sendMessageToTarget>[0],
-            { text: body, source: contact.channel },
-          );
-          break;
-        }
-        case "sms": {
-          return fail(
-            501,
-            `SCHEDULING_DISPATCH_UNAVAILABLE: sms dispatch for scheduling is not wired (counterparty phone=${contact.target}). Use MESSAGE operation=send_draft for SMS.`,
-          );
-        }
-        default: {
-          return fail(
-            501,
-            `SCHEDULING_DISPATCH_UNAVAILABLE: unsupported channel ${contact.channel}`,
-          );
-        }
-      }
-    } catch (error) {
-      // Re-throw LifeOpsServiceError as-is; wrap other errors so the caller
-      // can map them to a structured failure instead of silently
-      // claiming success.
-      if (
-        error &&
-        typeof error === "object" &&
-        (error as { name?: string }).name === "LifeOpsServiceError"
-      ) {
-        throw error;
-      }
-      fail(
-        502,
-        `SCHEDULING_DISPATCH_FAILED: ${contact.channel} send to ${contact.target} failed: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-    }
-    return contact;
+    return {
+      messageKind: input.messageKind,
+      negotiationId: negotiation.id,
+      proposalId: input.proposalId,
+      transportChannel: contact.channel,
+      recipient: contact.target,
+      recipientName: contact.name,
+      subject: input.subject,
+      body: input.body,
+      sourceUpdatedAt: input.sourceUpdatedAt,
+      counterpartyEntityId: contact.entityId,
+      counterpartyEntityUpdatedAt: contact.entityUpdatedAt,
+    };
+  }
+
+  async draftOpeningMessage(
+    negotiation: LifeOpsSchedulingNegotiation,
+    counterparty?: CounterpartyTarget | null,
+  ): Promise<SchedulingMessageDraft | null> {
+    return this.draftMessage(
+      negotiation,
+      {
+        messageKind: "opening",
+        proposalId: null,
+        subject: `Scheduling: ${negotiation.subject}`,
+        body:
+          `Hi,\n\nI'd like to set up "${negotiation.subject}" ` +
+          `(roughly ${negotiation.durationMinutes} minutes, ${negotiation.timezone}). ` +
+          `I'll follow up with specific proposed times shortly.\n\n` +
+          `Reference: ${negotiation.id}`,
+        sourceUpdatedAt: negotiation.updatedAt,
+      },
+      counterparty,
+    );
+  }
+
+  async draftProposalMessage(
+    negotiation: LifeOpsSchedulingNegotiation,
+    proposal: LifeOpsSchedulingProposal,
+    counterparty?: CounterpartyTarget | null,
+  ): Promise<SchedulingMessageDraft | null> {
+    return this.draftMessage(
+      negotiation,
+      {
+        messageKind: "proposal",
+        proposalId: proposal.id,
+        subject: `Scheduling: ${negotiation.subject}`,
+        body:
+          `Proposed time for "${negotiation.subject}":\n` +
+          `  Start: ${proposal.startAt}\n` +
+          `  End:   ${proposal.endAt}\n` +
+          `  (${negotiation.durationMinutes} min, ${negotiation.timezone})\n\n` +
+          `Let me know if this works or suggest a different slot.\n\n` +
+          `Reference: ${negotiation.id} / ${proposal.id}`,
+        sourceUpdatedAt: proposal.updatedAt,
+      },
+      counterparty,
+    );
+  }
+
+  async draftConfirmationMessage(
+    negotiation: LifeOpsSchedulingNegotiation,
+    proposal: LifeOpsSchedulingProposal,
+    counterparty?: CounterpartyTarget | null,
+  ): Promise<SchedulingMessageDraft | null> {
+    return this.draftMessage(
+      negotiation,
+      {
+        messageKind: "confirmation",
+        proposalId: proposal.id,
+        subject: `Scheduling update: ${negotiation.subject}`,
+        body:
+          `Accepted time for "${negotiation.subject}":\n` +
+          `  Start: ${proposal.startAt}\n` +
+          `  End:   ${proposal.endAt}\n` +
+          `  (${negotiation.durationMinutes} min, ${negotiation.timezone})\n\n` +
+          `This message does not create or update a calendar event.\n\n` +
+          `Reference: ${negotiation.id} / ${proposal.id}`,
+        sourceUpdatedAt: negotiation.updatedAt,
+      },
+      counterparty,
+    );
+  }
+
+  async draftCancellationMessage(
+    negotiation: LifeOpsSchedulingNegotiation,
+    reason?: string,
+    counterparty?: CounterpartyTarget | null,
+  ): Promise<SchedulingMessageDraft | null> {
+    return this.draftMessage(
+      negotiation,
+      {
+        messageKind: "cancellation",
+        proposalId: negotiation.acceptedProposalId,
+        subject: `Scheduling update: ${negotiation.subject}`,
+        body:
+          `Cancelling the scheduling discussion for "${negotiation.subject}"` +
+          (reason ? ` — ${reason}.` : ".") +
+          `\n\nThis message does not change a calendar event.\n\n` +
+          `Reference: ${negotiation.id}`,
+        sourceUpdatedAt: negotiation.updatedAt,
+      },
+      counterparty,
+    );
   }
 
   async startNegotiation(input: {
@@ -340,6 +400,7 @@ export class SchedulingDomain {
     durationMinutes?: number;
     timezone?: string;
     metadata?: Record<string, unknown>;
+    tx?: TransactionalDb;
   }): Promise<LifeOpsSchedulingNegotiation> {
     const subject = input.subject.trim();
     if (!subject) {
@@ -364,23 +425,22 @@ export class SchedulingDomain {
       createdAt: now,
       updatedAt: now,
     };
-    await this.ctx.repository.upsertSchedulingNegotiation(negotiation);
-
-    const subjectLine = `Scheduling: ${negotiation.subject}`;
-    const body =
-      `Hi,\n\nI'd like to set up "${negotiation.subject}" ` +
-      `(roughly ${negotiation.durationMinutes} minutes, ${negotiation.timezone}). ` +
-      `I'll follow up with specific proposed times shortly.\n\n` +
-      `Reference: ${negotiation.id}`;
-    await this.dispatchSchedulingMessage(negotiation, body, subjectLine);
-
+    await this.ctx.repository.upsertSchedulingNegotiation(
+      negotiation,
+      input.tx,
+    );
     return negotiation;
   }
 
   async getNegotiation(
     id: string,
+    tx?: TransactionalDb,
   ): Promise<LifeOpsSchedulingNegotiation | null> {
-    return this.ctx.repository.getSchedulingNegotiation(this.ctx.agentId(), id);
+    return this.ctx.repository.getSchedulingNegotiation(
+      this.ctx.agentId(),
+      id,
+      tx,
+    );
   }
 
   async listActiveNegotiations(opts?: {
@@ -401,10 +461,12 @@ export class SchedulingDomain {
     endAt: string;
     proposedBy: "agent" | "owner" | "counterparty";
     metadata?: Record<string, unknown>;
+    tx?: TransactionalDb;
   }): Promise<LifeOpsSchedulingProposal> {
     const negotiation = await this.ctx.repository.getSchedulingNegotiation(
       this.ctx.agentId(),
       input.negotiationId,
+      input.tx,
     );
     if (!negotiation) {
       fail(404, `negotiation ${input.negotiationId} not found`);
@@ -441,7 +503,7 @@ export class SchedulingDomain {
       createdAt: now,
       updatedAt: now,
     };
-    await this.ctx.repository.upsertSchedulingProposal(proposal);
+    await this.ctx.repository.upsertSchedulingProposal(proposal, input.tx);
 
     if (
       negotiation.state === "initiated" ||
@@ -451,22 +513,9 @@ export class SchedulingDomain {
         this.ctx.agentId(),
         negotiation.id,
         "proposals_sent",
+        undefined,
+        input.tx,
       );
-    }
-
-    // Only send to the counterparty when the agent or owner is the one
-    // proposing. A proposal whose `proposedBy = counterparty` came FROM
-    // them, so echoing it back would be nonsense.
-    if (input.proposedBy !== "counterparty") {
-      const subjectLine = `Scheduling: ${negotiation.subject}`;
-      const body =
-        `Proposed time for "${negotiation.subject}":\n` +
-        `  Start: ${proposal.startAt}\n` +
-        `  End:   ${proposal.endAt}\n` +
-        `  (${negotiation.durationMinutes} min, ${negotiation.timezone})\n\n` +
-        `Let me know if this works or suggest a different slot.\n\n` +
-        `Reference: ${negotiation.id} / ${proposal.id}`;
-      await this.dispatchSchedulingMessage(negotiation, body, subjectLine);
     }
 
     return proposal;
@@ -504,10 +553,12 @@ export class SchedulingDomain {
   async finalizeNegotiation(
     id: string,
     acceptedProposalId: string,
+    tx?: TransactionalDb,
   ): Promise<LifeOpsSchedulingNegotiation> {
     const negotiation = await this.ctx.repository.getSchedulingNegotiation(
       this.ctx.agentId(),
       id,
+      tx,
     );
     if (!negotiation) {
       fail(404, `negotiation ${id} not found`);
@@ -518,6 +569,7 @@ export class SchedulingDomain {
     const proposal = await this.ctx.repository.getSchedulingProposal(
       this.ctx.agentId(),
       acceptedProposalId,
+      tx,
     );
     if (!proposal || proposal.negotiationId !== id) {
       fail(
@@ -539,25 +591,19 @@ export class SchedulingDomain {
       finalizedAt: now,
       updatedAt: now,
     };
-    await this.ctx.repository.upsertSchedulingNegotiation(updated);
-
-    const subjectLine = `Confirmed: ${updated.subject}`;
-    const body =
-      `Confirming "${updated.subject}":\n` +
-      `  Start: ${proposal.startAt}\n` +
-      `  End:   ${proposal.endAt}\n` +
-      `  (${updated.durationMinutes} min, ${updated.timezone})\n\n` +
-      `See you then.\n\n` +
-      `Reference: ${updated.id} / ${proposal.id}`;
-    await this.dispatchSchedulingMessage(updated, body, subjectLine);
-
+    await this.ctx.repository.upsertSchedulingNegotiation(updated, tx);
     return updated;
   }
 
-  async cancelNegotiation(id: string, reason?: string): Promise<void> {
+  async cancelNegotiation(
+    id: string,
+    reason?: string,
+    tx?: TransactionalDb,
+  ): Promise<LifeOpsSchedulingNegotiation> {
     const negotiation = await this.ctx.repository.getSchedulingNegotiation(
       this.ctx.agentId(),
       id,
+      tx,
     );
     if (!negotiation) {
       fail(404, `negotiation ${id} not found`);
@@ -573,22 +619,18 @@ export class SchedulingDomain {
       metadata: nextMetadata,
       updatedAt: now,
     };
-    await this.ctx.repository.upsertSchedulingNegotiation(updated);
-
-    const subjectLine = `Cancelled: ${updated.subject}`;
-    const body =
-      `Cancelling "${updated.subject}"` +
-      (reason ? ` — ${reason}.` : ".") +
-      `\n\nReference: ${updated.id}`;
-    await this.dispatchSchedulingMessage(updated, body, subjectLine);
+    await this.ctx.repository.upsertSchedulingNegotiation(updated, tx);
+    return updated;
   }
 
   async listProposals(
     negotiationId: string,
+    tx?: TransactionalDb,
   ): Promise<LifeOpsSchedulingProposal[]> {
     return this.ctx.repository.listSchedulingProposals(
       this.ctx.agentId(),
       negotiationId,
+      tx,
     );
   }
 }

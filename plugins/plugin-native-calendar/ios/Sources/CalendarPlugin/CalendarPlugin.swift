@@ -1,3 +1,8 @@
+/**
+ * Capacitor bridge for EventKit authorization and calendar-event operations.
+ * Full access supports CRUD; write-only access is isolated to fully specified
+ * creation on the system default calendar and never returns EventKit readback.
+ */
 import Foundation
 import Capacitor
 import EventKit
@@ -5,6 +10,11 @@ import UIKit
 
 @objc(AppleCalendarPlugin)
 public class AppleCalendarPlugin: CAPPlugin, CAPBridgedPlugin {
+    private enum RequestedCalendarAccess {
+        case fullAccess
+        case writeOnly
+    }
+
     public let identifier = "AppleCalendarPlugin"
     public let jsName = "AppleCalendar"
     public let pluginMethods: [CAPPluginMethod] = [
@@ -43,23 +53,43 @@ public class AppleCalendarPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc public override func requestPermissions(_ call: CAPPluginCall) {
+        guard let requestedAccess = requestedCalendarAccess(call) else {
+            call.reject("Calendar access must be either full_access or write_only.")
+            return
+        }
         let status = EKEventStore.authorizationStatus(for: .event)
-        if isGranted(status) || isDeniedOrRestricted(status) {
+        if hasRequestedAccess(requestedAccess, status: status) || isDeniedOrRestricted(status) {
             call.resolve(permissionResult())
             return
         }
 
         if #available(iOS 17.0, *) {
-            eventStore.requestFullAccessToEvents { [weak self] _, error in
-                DispatchQueue.main.async {
-                    var result = self?.permissionResult() ?? [
-                        "calendar": "restricted",
-                        "canRequest": false,
-                    ]
-                    if let error {
-                        result["reason"] = error.localizedDescription
+            switch requestedAccess {
+            case .fullAccess:
+                eventStore.requestFullAccessToEvents { [weak self] _, error in
+                    DispatchQueue.main.async {
+                        var result = self?.permissionResult() ?? [
+                            "calendar": "restricted",
+                            "canRequest": false,
+                        ]
+                        if let error {
+                            result["reason"] = error.localizedDescription
+                        }
+                        call.resolve(result)
                     }
-                    call.resolve(result)
+                }
+            case .writeOnly:
+                eventStore.requestWriteOnlyAccessToEvents { [weak self] _, error in
+                    DispatchQueue.main.async {
+                        var result = self?.permissionResult() ?? [
+                            "calendar": "restricted",
+                            "canRequest": false,
+                        ]
+                        if let error {
+                            result["reason"] = error.localizedDescription
+                        }
+                        call.resolve(result)
+                    }
                 }
             }
         } else {
@@ -80,7 +110,7 @@ public class AppleCalendarPlugin: CAPPlugin, CAPBridgedPlugin {
 
     @objc func listCalendars(_ call: CAPPluginCall) {
         guard hasFullAccess() else {
-            call.resolve(permissionError())
+            call.resolve(fullAccessError(operation: "list calendars"))
             return
         }
         let defaultCalendar = eventStore.defaultCalendarForNewEvents
@@ -92,7 +122,7 @@ public class AppleCalendarPlugin: CAPPlugin, CAPBridgedPlugin {
 
     @objc func listEvents(_ call: CAPPluginCall) {
         guard hasFullAccess() else {
-            call.resolve(permissionError())
+            call.resolve(fullAccessError(operation: "read events"))
             return
         }
         guard let timeMin = parseDate(call.getString("timeMin") ?? ""),
@@ -130,18 +160,45 @@ public class AppleCalendarPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc func createEvent(_ call: CAPPluginCall) {
-        guard hasFullAccess() else {
+        let writeOnly = hasWriteOnlyAccess()
+        guard hasFullAccess() || writeOnly else {
             call.resolve(permissionError())
             return
         }
         let event = EKEvent(eventStore: eventStore)
-        if let error = applyEventPayload(call, to: event, requireTitle: true) {
+        if let error = applyEventPayload(
+            call,
+            to: event,
+            requireTitle: true,
+            writeOnly: writeOnly
+        ) {
             call.resolve(error)
             return
         }
         do {
             try eventStore.save(event, span: .thisEvent, commit: true)
-            call.resolve(["ok": true, "event": eventJson(event)])
+            if writeOnly {
+                call.resolve([
+                    "ok": true,
+                    "receipt": [
+                        "accessLevel": "write_only",
+                        "destination": "default_calendar",
+                        "eventId": NSNull(),
+                        "readBackAvailable": false,
+                    ],
+                ])
+                return
+            }
+            call.resolve([
+                "ok": true,
+                "event": eventJson(event),
+                "receipt": [
+                    "accessLevel": "full_access",
+                    "destination": "resolved_calendar",
+                    "eventId": event.calendarItemIdentifier,
+                    "readBackAvailable": true,
+                ],
+            ])
         } catch {
             call.resolve(nativeError("Failed to create Apple Calendar event: \(error.localizedDescription)"))
         }
@@ -149,7 +206,7 @@ public class AppleCalendarPlugin: CAPPlugin, CAPBridgedPlugin {
 
     @objc func updateEvent(_ call: CAPPluginCall) {
         guard hasFullAccess() else {
-            call.resolve(permissionError())
+            call.resolve(fullAccessError(operation: "update events"))
             return
         }
         guard let eventId = nonEmptyString(call.getString("eventId")) else {
@@ -168,7 +225,12 @@ public class AppleCalendarPlugin: CAPPlugin, CAPBridgedPlugin {
             call.resolve(nativeError("Apple Calendar event is not writable."))
             return
         }
-        if let error = applyEventPayload(call, to: item, requireTitle: false) {
+        if let error = applyEventPayload(
+            call,
+            to: item,
+            requireTitle: false,
+            writeOnly: false
+        ) {
             call.resolve(error)
             return
         }
@@ -182,7 +244,7 @@ public class AppleCalendarPlugin: CAPPlugin, CAPBridgedPlugin {
 
     @objc func deleteEvent(_ call: CAPPluginCall) {
         guard hasFullAccess() else {
-            call.resolve(permissionError())
+            call.resolve(fullAccessError(operation: "delete events"))
             return
         }
         guard let eventId = nonEmptyString(call.getString("eventId")) else {
@@ -207,16 +269,23 @@ public class AppleCalendarPlugin: CAPPlugin, CAPBridgedPlugin {
 
     private func permissionResult() -> [String: Any] {
         let status = EKEventStore.authorizationStatus(for: .event)
+        let permission = permissionString(status)
+        let reason: Any = permission == "write_only"
+            ? "Write-only access can add new events to the default calendar, but cannot read or change existing events."
+            : NSNull()
         return [
-            "calendar": permissionString(status),
-            "canRequest": permissionString(status) == "prompt",
-            "reason": NSNull(),
+            "calendar": permission,
+            "canRequest": permission == "prompt" || permission == "write_only",
+            "reason": reason,
         ]
     }
 
     private func permissionString(_ status: EKAuthorizationStatus) -> String {
-        if isGranted(status) {
+        if hasFullAccess(status) {
             return "granted"
+        }
+        if hasWriteOnlyAccess(status) {
+            return "write_only"
         }
         if isDenied(status) {
             return "denied"
@@ -228,10 +297,10 @@ public class AppleCalendarPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     private func hasFullAccess() -> Bool {
-        isGranted(EKEventStore.authorizationStatus(for: .event))
+        hasFullAccess(EKEventStore.authorizationStatus(for: .event))
     }
 
-    private func isGranted(_ status: EKAuthorizationStatus) -> Bool {
+    private func hasFullAccess(_ status: EKAuthorizationStatus) -> Bool {
         if #available(iOS 17.0, *) {
             if status == .fullAccess {
                 return true
@@ -243,14 +312,22 @@ public class AppleCalendarPlugin: CAPPlugin, CAPBridgedPlugin {
         return status == .authorized
     }
 
+    private func hasWriteOnlyAccess() -> Bool {
+        hasWriteOnlyAccess(EKEventStore.authorizationStatus(for: .event))
+    }
+
+    private func hasWriteOnlyAccess(_ status: EKAuthorizationStatus) -> Bool {
+        if #available(iOS 17.0, *) {
+            return status == .writeOnly
+        }
+        return false
+    }
+
     private func isDenied(_ status: EKAuthorizationStatus) -> Bool {
         status == .denied
     }
 
     private func isRestricted(_ status: EKAuthorizationStatus) -> Bool {
-        if #available(iOS 17.0, *), status == .writeOnly {
-            return true
-        }
         return status == .restricted
     }
 
@@ -258,11 +335,52 @@ public class AppleCalendarPlugin: CAPPlugin, CAPBridgedPlugin {
         isDenied(status) || isRestricted(status)
     }
 
+    private func requestedCalendarAccess(_ call: CAPPluginCall) -> RequestedCalendarAccess? {
+        let value = (call.getString("access") ?? "full_access")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        switch value {
+        case "full_access": return .fullAccess
+        case "write_only": return .writeOnly
+        default: return nil
+        }
+    }
+
+    private func hasRequestedAccess(
+        _ requestedAccess: RequestedCalendarAccess,
+        status: EKAuthorizationStatus
+    ) -> Bool {
+        switch requestedAccess {
+        case .fullAccess:
+            return hasFullAccess(status)
+        case .writeOnly:
+            return hasFullAccess(status) || hasWriteOnlyAccess(status)
+        }
+    }
+
     private func permissionError() -> [String: Any] {
         [
             "ok": false,
             "error": "permission",
             "message": "Apple Calendar access has not been granted.",
+        ]
+    }
+
+    private func fullAccessError(operation: String) -> [String: Any] {
+        if hasWriteOnlyAccess() {
+            return [
+                "ok": false,
+                "error": "write_only_access",
+                "message": "Write-only Apple Calendar access can create events on the default calendar, but cannot \(operation).",
+            ]
+        }
+        return permissionError()
+    }
+
+    private func writeOnlyDefaultCalendarError() -> [String: Any] {
+        [
+            "ok": false,
+            "error": "write_only_default_calendar_only",
+            "message": "Write-only Apple Calendar access can create events only on the default calendar.",
         ]
     }
 
@@ -327,7 +445,7 @@ public class AppleCalendarPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     private func calendar(withIdentifier identifier: String, requireWritable: Bool) -> EKCalendar? {
-        if identifier.isEmpty || identifier == "primary" {
+        if identifier.isEmpty || identifier == "primary" || identifier == "default" {
             if let calendar = eventStore.defaultCalendarForNewEvents,
                !requireWritable || calendar.allowsContentModifications
             {
@@ -423,6 +541,17 @@ public class AppleCalendarPlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
+    private func eventAvailability(_ availability: EKEventAvailability) -> String {
+        switch availability {
+        case .notSupported: return "not_supported"
+        case .busy: return "busy"
+        case .free: return "free"
+        case .tentative: return "tentative"
+        case .unavailable: return "unavailable"
+        @unknown default: return "unknown"
+        }
+    }
+
     private func eventJson(_ event: EKEvent) -> [String: Any] {
         let identifier = event.calendarItemIdentifier
         return [
@@ -434,6 +563,7 @@ public class AppleCalendarPlugin: CAPPlugin, CAPBridgedPlugin {
             "description": event.notes ?? "",
             "location": event.location ?? "",
             "status": eventStatus(event.status),
+            "availability": eventAvailability(event.availability),
             "startAt": isoString(event.startDate),
             "endAt": isoString(event.endDate),
             "isAllDay": event.isAllDay,
@@ -448,7 +578,8 @@ public class AppleCalendarPlugin: CAPPlugin, CAPBridgedPlugin {
     private func applyEventPayload(
         _ call: CAPPluginCall,
         to event: EKEvent,
-        requireTitle: Bool
+        requireTitle: Bool,
+        writeOnly: Bool
     ) -> [String: Any]? {
         for key in unsupportedRecurrenceFields where call.options.keys.contains(key) {
             return [
@@ -520,13 +651,33 @@ public class AppleCalendarPlugin: CAPPlugin, CAPBridgedPlugin {
             event.timeZone = timeZone
         }
         if call.options.keys.contains("calendarId") {
-            guard let calendar = calendar(
-                withIdentifier: call.getString("calendarId") ?? "",
-                requireWritable: true
-            ) else {
-                return nativeError("The selected Apple Calendar is not writable or was not found.")
+            guard call.options["calendarId"] is String,
+                  let calendarId = call.getString("calendarId")
+            else {
+                return nativeError("Calendar event calendarId must be a string.")
             }
-            event.calendar = calendar
+            let requestedCalendarId = calendarId
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if writeOnly {
+                guard requestedCalendarId.isEmpty ||
+                        requestedCalendarId == "primary" ||
+                        requestedCalendarId == "default"
+                else {
+                    return writeOnlyDefaultCalendarError()
+                }
+                guard let defaultCalendar = eventStore.defaultCalendarForNewEvents else {
+                    return nativeError("No default Apple Calendar is available.")
+                }
+                event.calendar = defaultCalendar
+            } else {
+                guard let calendar = calendar(
+                    withIdentifier: requestedCalendarId,
+                    requireWritable: true
+                ) else {
+                    return nativeError("The selected Apple Calendar is not writable or was not found.")
+                }
+                event.calendar = calendar
+            }
         }
         if call.options.keys.contains("isAllDay") {
             event.isAllDay = call.getBool("isAllDay") ?? false
@@ -550,10 +701,17 @@ public class AppleCalendarPlugin: CAPPlugin, CAPBridgedPlugin {
             return nativeError("Calendar event endAt must be later than startAt.")
         }
         if event.calendar == nil {
-            guard let calendar = calendar(withIdentifier: "primary", requireWritable: true) else {
-                return nativeError("No writable Apple Calendar is available.")
+            if writeOnly {
+                guard let defaultCalendar = eventStore.defaultCalendarForNewEvents else {
+                    return nativeError("No default Apple Calendar is available.")
+                }
+                event.calendar = defaultCalendar
+            } else {
+                guard let calendar = calendar(withIdentifier: "primary", requireWritable: true) else {
+                    return nativeError("No writable Apple Calendar is available.")
+                }
+                event.calendar = calendar
             }
-            event.calendar = calendar
         }
         return nil
     }

@@ -41,6 +41,7 @@ _AGENT_CHOICES = (
     "eliza",
     "openclaw",
     "hermes",
+    "hermes-direct",
     "smithers",
     "cerebras-direct",
 )
@@ -48,6 +49,12 @@ _DOMAIN_CHOICES = tuple(d.value for d in Domain)
 _MODE_CHOICES = tuple(m.value for m in ScenarioMode)
 _MODEL_TIER_CHOICES = tuple(DEFAULT_TIERS.keys())
 _SUITE_CHOICES = tuple(SUITES.keys())
+_EVALUATOR_PROVIDER_CHOICES = (
+    "cerebras",
+    "anthropic",
+    "hermes",
+    "claude-subscription",
+)
 
 
 def _load_env_file(path: Path) -> None:
@@ -122,6 +129,16 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Backend agent under test (default: perfect)",
     )
     parser.add_argument(
+        "--evaluator-provider",
+        choices=_EVALUATOR_PROVIDER_CHOICES,
+        default=None,
+        help=(
+            "Provider used to simulate the live user. CLI wins over "
+            "LIFEOPS_BENCH_EVALUATOR_PROVIDER; default is Cerebras, or the "
+            "Claude subscription gateway during a subscription campaign."
+        ),
+    )
+    parser.add_argument(
         "--evaluator-model",
         default=None,
         help=(
@@ -130,10 +147,23 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--judge-provider",
+        choices=_EVALUATOR_PROVIDER_CHOICES,
+        default=None,
+        help=(
+            "Provider used for live satisfaction judgments. CLI wins over "
+            "LIFEOPS_BENCH_JUDGE_PROVIDER; default is Anthropic, or the "
+            "Claude subscription gateway during a subscription campaign."
+        ),
+    )
+    parser.add_argument(
         "--judge-model",
-        default="claude-opus-4-7",
-        help="LLM model used as live-mode satisfaction judge (default: claude-opus-4-7). "
-        "Intentionally different from --evaluator-model to avoid self-agreement bias.",
+        default=None,
+        help=(
+            "LLM model used as live-mode satisfaction judge. Defaults to "
+            "claude-opus-4-7 for Anthropic/subscription or gpt-oss-120b for "
+            "Cerebras. It must differ from --evaluator-model."
+        ),
     )
     parser.add_argument(
         "--model-tier",
@@ -372,7 +402,29 @@ def _build_agent_fn(name: str, *, model_override: str | None = None, base_url_ov
             raise SystemExit(
                 f"Hermes adapter unavailable: {exc}"
             ) from exc
-        return build_hermes_agent(model=model_override, base_url=base_url_override)
+        hermes_base_url = (
+            os.environ.get("HERMES_BASE_URL", "").strip()
+            or base_url_override
+        )
+        return build_hermes_agent(
+            model=model_override,
+            base_url=hermes_base_url,
+        )
+    if name == "hermes-direct":
+        try:
+            from .agents import build_hermes_direct_agent
+        except ImportError as exc:
+            raise SystemExit(
+                f"hermes-direct agent unavailable: {exc}"
+            ) from exc
+        hermes_base_url = (
+            os.environ.get("HERMES_BASE_URL", "").strip()
+            or base_url_override
+        )
+        return build_hermes_direct_agent(
+            model=model_override,
+            base_url=hermes_base_url,
+        )
     if name == "cerebras-direct":
         try:
             from .agents import build_cerebras_direct_agent  # type: ignore[attr-defined]
@@ -563,6 +615,7 @@ async def _run(args: argparse.Namespace) -> None:
 
     tier_spec = resolve_tier()
     campaign_provider = os.environ.get("BENCHMARK_MODEL_PROVIDER", "").strip().lower()
+    agent_provider = campaign_provider or tier_spec.provider
     subscription_transport = campaign_provider == "claude-subscription"
     if subscription_transport:
         gateway_base_url = (
@@ -590,6 +643,38 @@ async def _run(args: argparse.Namespace) -> None:
     # `preRelease: true` on every emitted RunMetrics + report.json.
     eliza_one_manifest, tier_spec = _apply_eliza_one_bundle_override(tier_spec)
     evaluator_model = args.evaluator_model or tier_spec.model_name
+    evaluator_provider = (
+        args.evaluator_provider
+        or os.environ.get("LIFEOPS_BENCH_EVALUATOR_PROVIDER", "").strip().lower()
+        or ("claude-subscription" if subscription_transport else "cerebras")
+    )
+    judge_provider = (
+        args.judge_provider
+        or os.environ.get("LIFEOPS_BENCH_JUDGE_PROVIDER", "").strip().lower()
+        or ("claude-subscription" if subscription_transport else "anthropic")
+    )
+    if evaluator_provider not in _EVALUATOR_PROVIDER_CHOICES:
+        raise SystemExit(
+            "Unsupported live evaluator provider "
+            f"{evaluator_provider!r}; choose one of "
+            f"{', '.join(_EVALUATOR_PROVIDER_CHOICES)}."
+        )
+    if judge_provider not in _EVALUATOR_PROVIDER_CHOICES:
+        raise SystemExit(
+            "Unsupported live judge provider "
+            f"{judge_provider!r}; choose one of "
+            f"{', '.join(_EVALUATOR_PROVIDER_CHOICES)}."
+        )
+    judge_model = args.judge_model or (
+        "gpt-oss-120b"
+        if judge_provider == "cerebras"
+        else "claude-opus-4-7"
+    )
+    if evaluator_model == judge_model:
+        raise SystemExit(
+            "LIVE evaluator and judge model identifiers must differ to prevent "
+            f"self-agreement bias; both resolved to {evaluator_model!r}."
+        )
 
     domain = Domain(args.domain) if args.domain else None
     mode = ScenarioMode(args.mode) if args.mode else None
@@ -627,7 +712,7 @@ async def _run(args: argparse.Namespace) -> None:
     if args.suite:
         print(f"Suite:           {args.suite}")
     print(f"Agent:           {args.agent}")
-    print(f"Model tier:      {tier_spec.tier} ({tier_spec.provider} → {tier_spec.model_name})")
+    print(f"Model tier:      {tier_spec.tier} ({agent_provider} → {tier_spec.model_name})")
     if eliza_one_manifest is not None:
         print(
             f"Eliza-1 bundle:  {eliza_one_manifest.bundle_id} "
@@ -636,8 +721,8 @@ async def _run(args: argparse.Namespace) -> None:
             f"final.weights={eliza_one_manifest.final.weights}, "
             f"preRelease={bundle_is_pre_release(eliza_one_manifest)})"
         )
-    print(f"Evaluator model: {evaluator_model}")
-    print(f"Judge model:     {args.judge_model}")
+    print(f"Evaluator:       {evaluator_provider} → {evaluator_model}")
+    print(f"Judge:           {judge_provider} → {judge_model}")
     print(f"Concurrency:     {args.concurrency}")
     print(f"Cost cap:        ${args.max_cost_usd:.2f}\n")
 
@@ -657,28 +742,15 @@ async def _run(args: argparse.Namespace) -> None:
                 f"import client factory: {exc}"
             ) from exc
         try:
-            evaluator_provider = (
-                "claude-subscription" if subscription_transport else "cerebras"
-            )
-            judge_provider = (
-                "claude-subscription" if subscription_transport else "anthropic"
-            )
             simulated_user_client = make_client(
                 evaluator_provider, model=evaluator_model
             )
-            judge_client = make_client(judge_provider, model=args.judge_model)
+            judge_client = make_client(judge_provider, model=judge_model)
         except ProviderError as exc:
-            if subscription_transport:
-                raise SystemExit(
-                    "LIVE mode under the subscription campaign requires "
-                    "CLAUDE_SUBSCRIPTION_GATEWAY_URL and "
-                    "CLAUDE_SUBSCRIPTION_GATEWAY_TOKEN. "
-                    f"Client setup failed: {exc}"
-                ) from exc
             raise SystemExit(
-                "LIVE mode requires CEREBRAS_API_KEY for the simulated user "
-                "and ANTHROPIC_API_KEY for the judge. "
-                f"Client setup failed: {exc}"
+                "LIVE evaluator setup failed for "
+                f"{evaluator_provider}/{evaluator_model} and "
+                f"{judge_provider}/{judge_model}: {exc}"
             ) from exc
 
     runner = LifeOpsBenchRunner(
@@ -686,7 +758,12 @@ async def _run(args: argparse.Namespace) -> None:
         agent_factory=agent_factory,
         world_factory=_build_world_factory(),
         evaluator_model=evaluator_model,
-        judge_model=args.judge_model,
+        judge_model=judge_model,
+        evaluator_provider=evaluator_provider,
+        judge_provider=judge_provider,
+        agent_model_name=tier_spec.model_name,
+        agent_adapter=args.agent,
+        agent_provider=agent_provider,
         scenarios=scenarios,
         concurrency=args.concurrency,
         seeds=args.seeds,

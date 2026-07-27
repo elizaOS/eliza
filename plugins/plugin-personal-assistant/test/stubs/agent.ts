@@ -13,6 +13,11 @@ import path from "node:path";
 // dispatch path instead of a bypass.
 export { checkRateLimit } from "../../../../packages/agent/src/api/rate-limiter.ts";
 export {
+  APPROVAL_SERVICE,
+  ApprovalService,
+  resolveApprovalService,
+} from "../../../../packages/agent/src/services/approval/index.ts";
+export {
   createGlobalPauseStore,
   GLOBAL_PAUSE_SERVICE,
   GlobalPauseService,
@@ -246,10 +251,6 @@ export function getAgentEventService(runtime?: {
       state.events.push(event);
     },
   };
-}
-
-export function resolveApprovalService(): null {
-  return null;
 }
 
 export const PERMISSIONS_REGISTRY_SERVICE = "eliza_permissions_registry";

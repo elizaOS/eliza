@@ -34,6 +34,7 @@ export { calendarAction } from "./actions/calendar.js";
 export { connectorAction } from "./actions/connector.js";
 export { credentialsAction } from "./actions/credentials.js";
 export { entityAction } from "./actions/entity.js";
+export { householdCoordinationAction } from "./actions/household-coordination.js";
 export { calendlyAction } from "./actions/lib/calendly-handler.js";
 export {
   ownerAlarmsAction,

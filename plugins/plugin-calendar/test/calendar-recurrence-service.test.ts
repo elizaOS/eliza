@@ -1,20 +1,6 @@
 /**
- * CalendarService recurring-event semantics against a real PGlite-backed
- * cache and the plugin-google service seam (spied, provider-shaped).
- *
- * Covers the RRULE lifecycle the flattened feed cannot express on its own:
- *
- *   - create: recurrence lines validated fail-closed, passed to the provider,
- *     and visible on readback (event.recurrence)
- *   - create (Apple / Apple fallback): recurring requests are rejected, never
- *     silently created as one-off events
- *   - update scope=series through an occurrence id: resolves the cached
- *     `recurringEventId` and patches the series master
- *   - update scope=instance + recurrence lines: 400 (rules are series-level)
- *   - delete scope=series: ONE provider delete against the master id and a
- *     purge of every cached occurrence of that series — while another
- *     account's rows survive (grantId isolation)
- *   - delete without scope: the addressed occurrence only
+ * Recurring-event create, instance/series mutation, and account-isolated cache
+ * semantics against real PGlite and a provider-shaped Google service seam.
  */
 
 import { PGlite } from "@electric-sql/pglite";
@@ -75,7 +61,7 @@ function cachedOccurrence(args: {
 }): LifeOpsCalendarEvent {
   const startAt = args.startAt ?? "2026-07-08T13:00:00.000Z";
   return {
-    id: `${AGENT_ID}:google:owner:calendar:primary:${args.externalId}`,
+    id: `${AGENT_ID}:google:owner:grant:${args.grantId}:calendar:primary:${args.externalId}`,
     externalId: args.externalId,
     agentId: AGENT_ID,
     provider: "google",
@@ -189,7 +175,8 @@ const CREATE_EVENTS_TABLE = `CREATE TABLE app_calendar.life_calendar_events (
   metadata_json TEXT NOT NULL DEFAULT '{}',
   synced_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
-  UNIQUE (agent_id, provider, side, calendar_id, external_event_id)
+  CONSTRAINT calendar_events_source_external_unique
+    UNIQUE (agent_id, provider, side, grant_id, calendar_id, external_event_id)
 )`;
 
 const CREATE_SYNC_TABLE = `CREATE TABLE app_calendar.life_calendar_sync_states (
@@ -204,9 +191,11 @@ const CREATE_SYNC_TABLE = `CREATE TABLE app_calendar.life_calendar_sync_states (
   purge_resync_reason TEXT,
   window_start_at TEXT NOT NULL,
   window_end_at TEXT NOT NULL,
+  next_sync_token TEXT,
   synced_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
-  UNIQUE (agent_id, provider, side, calendar_id)
+  CONSTRAINT calendar_sync_states_source_unique
+    UNIQUE (agent_id, provider, side, grant_id, calendar_id)
 )`;
 
 let pg: PGlite;

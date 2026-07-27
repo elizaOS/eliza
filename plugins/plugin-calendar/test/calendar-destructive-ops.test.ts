@@ -4,10 +4,10 @@
  * delete_event / update_event accept a fuzzy title and look events up across a
  * very wide window (−1y…+5y), so the disambiguation contract is load-bearing:
  *
- *   - explicit eventId            → proceeds directly (no feed lookup)
- *   - unique title match          → proceeds against that event
- *   - multiple title matches      → clarification round-trip, NO destructive call
- *   - no match                    → not-found reply, NO destructive call
+ *   - explicit eventId            → resolves the provider target directly
+ *   - unique title match          → queues one immutable approval
+ *   - multiple title matches      → clarification round-trip, no approval
+ *   - no match                    → not-found reply, no approval
  *
  * The CalendarService is stubbed (feed fixtures + spied mutations); the fake
  * runtime has no `useModel`, so replies deterministically use the handler's
@@ -22,11 +22,16 @@ import {
   createCalendarActionRunner,
 } from "../src/index.js";
 
-function fakeDeps(): CalendarActionDeps {
+function fakeDeps(service: StubService): CalendarActionDeps {
   return {
     runTextModel: vi.fn(async () => null),
     runJsonModel: vi.fn(async () => null),
     recentConversationTexts: vi.fn(async () => []),
+    mutationGateway: {
+      schedule: service.scheduleApproval,
+      modify: service.modifyApproval,
+      cancel: service.cancelApproval,
+    },
   };
 }
 
@@ -74,14 +79,44 @@ function stubService(feedEvents: LifeOpsCalendarEvent[]) {
       calendarId: "all",
       events: feedEvents,
       source: "cache" as const,
+      state: "complete" as const,
+      sources: [
+        {
+          status: "fresh" as const,
+        },
+      ],
       timeMin: "2026-07-01T00:00:00.000Z",
       timeMax: "2026-07-31T00:00:00.000Z",
       syncedAt: null,
     })),
+    getConditionalCalendarMutationTarget: vi.fn(
+      async (_url: URL, request: { eventId: string }) =>
+        feedEvents.find(
+          (candidate) => candidate.externalId === request.eventId,
+        ) ?? LUNCH_GRANDMA,
+    ),
     deleteCalendarEvent: vi.fn(async () => undefined),
     updateCalendarEvent: vi.fn(async () => ({
       ...LUNCH_GRANDMA,
       title: "Lunch with Grandma (moved)",
+    })),
+    scheduleApproval: vi.fn(async () => ({
+      requestId: "approval-schedule",
+      action: "schedule_event" as const,
+      state: "pending" as const,
+      text: "schedule approval queued",
+    })),
+    modifyApproval: vi.fn(async () => ({
+      requestId: "approval-modify",
+      action: "modify_event" as const,
+      state: "pending" as const,
+      text: "modify approval queued",
+    })),
+    cancelApproval: vi.fn(async () => ({
+      requestId: "approval-cancel",
+      action: "cancel_event" as const,
+      state: "pending" as const,
+      text: "cancel approval queued",
     })),
   };
 }
@@ -117,7 +152,7 @@ async function runHandler(args: {
   text: string;
   parameters: Record<string, unknown>;
 }) {
-  const action = createCalendarActionRunner(fakeDeps());
+  const action = createCalendarActionRunner(fakeDeps(args.service));
   return (await action.handler(
     fakeRuntime(args.service),
     message(args.text),
@@ -144,6 +179,7 @@ describe("CALENDAR delete_event disambiguation", () => {
     expect(result.text).toContain("multiple");
     expect(result.text).toContain("Lunch with Maya");
     expect(result.text).toContain("Lunch with Grandma");
+    expect(service.cancelApproval).not.toHaveBeenCalled();
     expect(service.deleteCalendarEvent).not.toHaveBeenCalled();
   });
 
@@ -154,15 +190,18 @@ describe("CALENDAR delete_event disambiguation", () => {
       parameters: { subaction: "delete_event", query: "grandma" },
     });
     expect(result.success).toBe(true);
-    expect(service.deleteCalendarEvent).toHaveBeenCalledTimes(1);
-    expect(service.deleteCalendarEvent).toHaveBeenCalledWith(
-      expect.any(URL),
+    expect(service.cancelApproval).toHaveBeenCalledTimes(1);
+    expect(service.cancelApproval).toHaveBeenCalledWith(
       expect.objectContaining({
-        eventId: LUNCH_GRANDMA.externalId,
-        calendarId: LUNCH_GRANDMA.calendarId,
-        grantId: LUNCH_GRANDMA.grantId,
+        targetEvent: LUNCH_GRANDMA,
+        request: expect.objectContaining({
+          eventId: LUNCH_GRANDMA.externalId,
+          calendarId: LUNCH_GRANDMA.calendarId,
+          grantId: LUNCH_GRANDMA.grantId,
+        }),
       }),
     );
+    expect(service.deleteCalendarEvent).not.toHaveBeenCalled();
   });
 
   it("explicit eventId → proceeds directly without a feed lookup", async () => {
@@ -176,11 +215,18 @@ describe("CALENDAR delete_event disambiguation", () => {
     });
     expect(result.success).toBe(true);
     expect(service.getCalendarFeed).not.toHaveBeenCalled();
-    expect(service.deleteCalendarEvent).toHaveBeenCalledTimes(1);
-    expect(service.deleteCalendarEvent).toHaveBeenCalledWith(
-      expect.any(URL),
-      expect.objectContaining({ eventId: "evt-2", calendarId: "primary" }),
+    expect(service.getConditionalCalendarMutationTarget).toHaveBeenCalledTimes(
+      1,
     );
+    expect(service.cancelApproval).toHaveBeenCalledWith(
+      expect.objectContaining({
+        request: expect.objectContaining({
+          eventId: "evt-2",
+          calendarId: "primary",
+        }),
+      }),
+    );
+    expect(service.deleteCalendarEvent).not.toHaveBeenCalled();
   });
 
   it("no match → not-found reply, and nothing is deleted", async () => {
@@ -191,6 +237,7 @@ describe("CALENDAR delete_event disambiguation", () => {
     });
     expect(result.success).toBe(false);
     expect(result.text).toContain("couldn't find");
+    expect(service.cancelApproval).not.toHaveBeenCalled();
     expect(service.deleteCalendarEvent).not.toHaveBeenCalled();
   });
 });
@@ -210,6 +257,7 @@ describe("CALENDAR update_event disambiguation", () => {
     });
     expect(result.success).toBe(false);
     expect(result.text).toContain("multiple");
+    expect(service.modifyApproval).not.toHaveBeenCalled();
     expect(service.updateCalendarEvent).not.toHaveBeenCalled();
   });
 
@@ -220,15 +268,18 @@ describe("CALENDAR update_event disambiguation", () => {
       parameters: { subaction: "update_event", query: "grandma" },
     });
     expect(result.success).toBe(true);
-    expect(service.updateCalendarEvent).toHaveBeenCalledTimes(1);
-    expect(service.updateCalendarEvent).toHaveBeenCalledWith(
-      expect.any(URL),
+    expect(service.modifyApproval).toHaveBeenCalledTimes(1);
+    expect(service.modifyApproval).toHaveBeenCalledWith(
       expect.objectContaining({
-        eventId: LUNCH_GRANDMA.externalId,
-        calendarId: LUNCH_GRANDMA.calendarId,
-        grantId: LUNCH_GRANDMA.grantId,
+        targetEvent: LUNCH_GRANDMA,
+        request: expect.objectContaining({
+          eventId: LUNCH_GRANDMA.externalId,
+          calendarId: LUNCH_GRANDMA.calendarId,
+          grantId: LUNCH_GRANDMA.grantId,
+        }),
       }),
     );
+    expect(service.updateCalendarEvent).not.toHaveBeenCalled();
   });
 
   it("explicit eventId → proceeds directly without a feed lookup", async () => {
@@ -243,10 +294,17 @@ describe("CALENDAR update_event disambiguation", () => {
     });
     expect(result.success).toBe(true);
     expect(service.getCalendarFeed).not.toHaveBeenCalled();
-    expect(service.updateCalendarEvent).toHaveBeenCalledTimes(1);
-    expect(service.updateCalendarEvent).toHaveBeenCalledWith(
-      expect.any(URL),
-      expect.objectContaining({ eventId: "evt-2", calendarId: "primary" }),
+    expect(service.getConditionalCalendarMutationTarget).toHaveBeenCalledTimes(
+      1,
     );
+    expect(service.modifyApproval).toHaveBeenCalledWith(
+      expect.objectContaining({
+        request: expect.objectContaining({
+          eventId: "evt-2",
+          calendarId: "primary",
+        }),
+      }),
+    );
+    expect(service.updateCalendarEvent).not.toHaveBeenCalled();
   });
 });

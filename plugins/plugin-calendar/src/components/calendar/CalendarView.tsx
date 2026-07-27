@@ -27,6 +27,7 @@ import { parseMeetingUrl } from "./meeting-url";
 // prototype. The `/api/meetings` methods (requestMeetingBot / listMeetings) are
 // the canonical `@elizaos/ui` ones, already installed via `@elizaos/ui/api`.
 import "../../api/client-calendar.js";
+import { useCalendarSources } from "../../hooks/useCalendarSources.js";
 import {
   type CalendarViewMode,
   useCalendarWeek,
@@ -37,6 +38,15 @@ import {
   type CalendarSnapshot,
   CalendarSpatialView,
 } from "./CalendarSpatialView.tsx";
+import {
+  calendarCoverageHeadline,
+  toCalendarSourceHealthRows,
+} from "./source-health.js";
+import {
+  calendarSourceIdentityKey,
+  toCalendarSourceManagerModel,
+} from "./source-manager.js";
+import { openCalendarConnectorSettings } from "./source-navigation.js";
 
 const ACTIVE_SESSIONS_POLL_MS = 15_000;
 
@@ -124,7 +134,9 @@ function toRows(
 export function CalendarView() {
   const setActionNotice = useAppSelector((s) => s.setActionNotice);
   const calendar = useCalendarWeek();
+  const sourcePreferences = useCalendarSources();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [sourceManagerOpen, setSourceManagerOpen] = useState(false);
   const [joiningIds, setJoiningIds] = useState<ReadonlySet<string>>(new Set());
   const [liveEventIds, setLiveEventIds] = useState<ReadonlySet<string>>(
     new Set(),
@@ -214,9 +226,69 @@ export function CalendarView() {
     () => toRows(calendar.events, selectedId, joiningIds, liveEventIds),
     [calendar.events, selectedId, joiningIds, liveEventIds],
   );
+  const calendarSources = useMemo(
+    () => toCalendarSourceHealthRows(calendar.sources),
+    [calendar.sources],
+  );
+  const sourceManagerModel = useMemo(
+    () =>
+      toCalendarSourceManagerModel(
+        sourcePreferences.calendars,
+        calendar.sources,
+      ),
+    [calendar.sources, sourcePreferences.calendars],
+  );
+  const sourceManagerRows = useMemo(
+    () =>
+      sourceManagerModel.rows.map((row) => {
+        const source = sourceManagerModel.calendarsByActionId.get(row.actionId);
+        const identityKey = source ? calendarSourceIdentityKey(source) : null;
+        return {
+          ...row,
+          pending: identityKey
+            ? sourcePreferences.pendingKeys.has(identityKey)
+            : false,
+          mutationError: identityKey
+            ? (sourcePreferences.mutationErrors[identityKey] ?? null)
+            : null,
+        };
+      }),
+    [
+      sourceManagerModel,
+      sourcePreferences.mutationErrors,
+      sourcePreferences.pendingKeys,
+    ],
+  );
+
+  const toggleCalendarSource = useCallback(
+    async (actionId: string) => {
+      const source = sourceManagerModel.calendarsByActionId.get(actionId);
+      if (!source) return;
+      const outcome = await sourcePreferences.setIncluded(
+        source,
+        !source.includeInFeed,
+      );
+      if (outcome === "updated") void calendar.refresh();
+    },
+    [calendar, sourceManagerModel.calendarsByActionId, sourcePreferences],
+  );
 
   const onAction = useCallback(
     (action: string) => {
+      if (action.startsWith("source-toggle:")) {
+        void toggleCalendarSource(action.slice("source-toggle:".length));
+        return;
+      }
+      if (action.startsWith("source-reconnect:")) {
+        const actionId = action.slice("source-reconnect:".length);
+        const row = sourceManagerModel.rows.find(
+          (candidate) => candidate.actionId === actionId,
+        );
+        if (row?.reconnectConnectorId) {
+          openCalendarConnectorSettings(row.reconnectConnectorId);
+        }
+        return;
+      }
       if (action.startsWith("join:")) {
         const id = action.slice("join:".length);
         const event = calendar.events.find((candidate) => candidate.id === id);
@@ -260,9 +332,28 @@ export function CalendarView() {
             4000,
           );
           return;
+        case "refresh":
+          void calendar.refresh();
+          return;
+        case "manage-sources":
+          setSourceManagerOpen((current) => !current);
+          return;
+        case "source-refresh":
+          void sourcePreferences.refresh();
+          return;
+        case "source-settings":
+          openCalendarConnectorSettings();
+          return;
       }
     },
-    [calendar, sendAgentToMeeting, setActionNotice],
+    [
+      calendar,
+      sendAgentToMeeting,
+      setActionNotice,
+      sourceManagerModel.rows,
+      sourcePreferences,
+      toggleCalendarSource,
+    ],
   );
 
   const snapshot: CalendarSnapshot = {
@@ -271,6 +362,22 @@ export function CalendarView() {
     mode: calendar.viewMode,
     loading: calendar.loading,
     error: calendar.error,
+    status: calendar.status,
+    sourceHeadline: calendarCoverageHeadline(
+      calendar.status,
+      calendarSources,
+      calendar.refreshing,
+    ),
+    sources: calendarSources,
+    refreshing: calendar.refreshing,
+    sourceManager: {
+      open: sourceManagerOpen,
+      status: sourcePreferences.status,
+      refreshing: sourcePreferences.refreshing,
+      error: sourcePreferences.error,
+      refreshError: sourcePreferences.refreshError,
+      rows: sourceManagerRows,
+    },
   };
 
   return <CalendarSpatialView snapshot={snapshot} onAction={onAction} />;

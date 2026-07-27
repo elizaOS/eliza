@@ -28,6 +28,20 @@ describe("AppleCalendarWeb fallback", () => {
       canRequest: false,
       reason: unsupportedResult.message,
     });
+    await expect(
+      calendar.requestPermissions({ access: "write_only" }),
+    ).resolves.toEqual({
+      calendar: "restricted",
+      canRequest: false,
+      reason: unsupportedResult.message,
+    });
+    await expect(
+      calendar.requestPermissions({ access: "full_access" }),
+    ).resolves.toEqual({
+      calendar: "restricted",
+      canRequest: false,
+      reason: unsupportedResult.message,
+    });
   });
 
   it("returns a stable unsupported result for all event operations", async () => {

@@ -290,6 +290,7 @@ export interface LifeOpsSchedulingProposal {
 
 export const LIFEOPS_CONNECTOR_PROVIDERS = [
   "google",
+  "microsoft",
   "x",
   "telegram",
   "discord",

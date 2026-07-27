@@ -76,8 +76,8 @@ Expected output (truncated) for an adapter-conformance run:
 ============================================================
   LifeOpsBench Results Summary
 ============================================================
-  Model:              gpt-oss-120b
-  Judge:              claude-opus-4-7
+  Evaluator:          cerebras → zai-glm-4.7
+  Judge:              cerebras → gpt-oss-120b
   Seeds per scenario: 1
   Scenarios run:      N
   pass@1:             1.000
@@ -90,11 +90,31 @@ Expected output (truncated) for an adapter-conformance run:
 ```
 
 Note: `--agent perfect` and `--agent wrong` use per-scenario agent
-factories, so they are valid CLI verification paths. LIVE-mode runs
-require both `CEREBRAS_API_KEY` for the simulated user and
-`ANTHROPIC_API_KEY` for the judge. A default or `--suite full` run includes
-LIVE scenarios and fails clearly when either credential is unavailable;
-pass `--mode static` when a deliberately static-only run is intended.
+factories, so they are valid CLI verification paths. LIVE-mode runs default
+to Cerebras for the simulated user and Anthropic for the judge. The provider
+pair is configurable with `--evaluator-provider` / `--judge-provider` (or
+`LIFEOPS_BENCH_EVALUATOR_PROVIDER` / `LIFEOPS_BENCH_JUDGE_PROVIDER`), and
+each selected provider requires its own credential. Keep the two model IDs
+different to prevent self-agreement bias. For example, a Cerebras-only run
+with two distinct models is:
+
+```bash
+CEREBRAS_API_KEY=... python3 -m eliza_lifeops_bench \
+  --agent cerebras-direct \
+  --mode live \
+  --evaluator-provider cerebras \
+  --evaluator-model zai-glm-4.7 \
+  --judge-provider cerebras \
+  --judge-model gpt-oss-120b
+```
+
+A default or `--suite full` run includes LIVE scenarios and fails clearly
+when a selected credential is unavailable; pass `--mode static` when a
+deliberately static-only run is intended. The result JSON records both
+provider names and both model IDs. Each LIVE `ScenarioResult` also carries a
+scenario-local `evaluator_trace` with the exact simulated-user and judge
+input messages, output text, token/latency/cost telemetry, and raw provider
+response. Traces are isolated even when scenarios run concurrently.
 
 ## Running with each backend
 
@@ -113,6 +133,18 @@ HERMES_BASE_URL=http://localhost:8080/v1 \
 HERMES_API_KEY=token \
 HERMES_MODEL=NousResearch/Hermes-3-Llama-3.1-70B \
 python3 -m eliza_lifeops_bench --agent hermes --domain mail
+```
+
+`--agent hermes` uses the native source harness. To call an already-running
+OpenAI-compatible endpoint directly—including a local Ollama, vLLM, or
+llama.cpp server—use `--agent hermes-direct`:
+
+```bash
+HERMES_BASE_URL=http://127.0.0.1:11434/v1 \
+MODEL_NAME_OVERRIDE=gemma3:latest \
+python3 -m eliza_lifeops_bench --agent hermes-direct --mode live \
+  --evaluator-provider hermes --evaluator-model llama3.2:3b \
+  --judge-provider hermes --judge-model eliza-1-0_8b-trained:latest
 ```
 
 ### Cerebras-direct (gpt-oss-120b reference)
@@ -199,9 +231,8 @@ The command exports the live elizaOS plugin action registry, then applies the
 bench-only umbrella augment from `eliza_lifeops_bench.manifest_export`.
 
 The hermetic test suite uses fake providers for normal CI coverage.
-Live network tests remain env-gated because they require
-`CEREBRAS_API_KEY` + `ANTHROPIC_API_KEY` and spend real inference
-budget.
+Live network tests remain env-gated because they require credentials for
+the selected evaluator and judge providers and spend real inference budget.
 
 ## Known gaps
 

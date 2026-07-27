@@ -25,6 +25,7 @@ import type {
   LifeOpsCalendarEventAttendee,
   LifeOpsCalendarFeed,
   LifeOpsCalendarSummary,
+  LifeOpsCalendarWriteOnlyCreateReceipt,
   LifeOpsConnectorSide,
 } from "@elizaos/shared";
 
@@ -45,6 +46,13 @@ type NativeCalendarEvent = {
   description?: string;
   location?: string;
   status?: string;
+  availability?:
+    | "not_supported"
+    | "busy"
+    | "free"
+    | "tentative"
+    | "unavailable"
+    | "unknown";
   startAt?: string;
   endAt?: string;
   isAllDay?: boolean;
@@ -74,10 +82,32 @@ type NativeCalendarPayload = {
   calendars?: NativeCalendarSummary[];
   events?: NativeCalendarEvent[];
   event?: NativeCalendarEvent;
+  receipt?: NativeCalendarCreateReceipt;
 };
+
+type NativeCalendarPermissionPayload = {
+  calendar: "granted" | "write_only" | "denied" | "prompt" | "restricted";
+  canRequest: boolean;
+  reason?: string | null;
+};
+
+type NativeCalendarCreateReceipt =
+  | {
+      accessLevel: "write_only";
+      destination: "default_calendar";
+      eventId: null;
+      readBackAvailable: false;
+    }
+  | {
+      accessLevel: "full_access";
+      destination: "resolved_calendar";
+      eventId: string;
+      readBackAvailable: true;
+    };
 
 type NativeCalendarBridge = {
   platform: string;
+  checkPermissions(): Promise<NativeCalendarPermissionPayload>;
   listCalendars(): Promise<NativeCalendarPayload>;
   listEvents(args: {
     calendarId?: string | null;
@@ -85,7 +115,7 @@ type NativeCalendarBridge = {
     timeMax: string;
   }): Promise<NativeCalendarPayload>;
   createEvent(
-    payload: NativeCalendarEventPayload,
+    payload: NativeCalendarCreateEventPayload,
   ): Promise<NativeCalendarPayload>;
   updateEvent(
     eventId: string,
@@ -94,17 +124,29 @@ type NativeCalendarBridge = {
   deleteEvent(eventId: string): Promise<NativeCalendarPayload>;
 };
 
-type NativeCalendarEventPayload = {
+type NativeCalendarCreateEventPayload = {
   calendarId?: string;
-  title?: string;
+  title: string;
   description?: string;
   location?: string;
-  startAt?: string;
-  endAt?: string;
+  startAt: string;
+  endAt: string;
   timeZone?: string;
   isAllDay?: boolean;
   attendees?: CreateLifeOpsCalendarEventAttendee[];
 };
+
+type NativeCalendarEventPayload = Partial<NativeCalendarCreateEventPayload>;
+
+export type NativeAppleCalendarCreateOutcome =
+  | {
+      kind: "event";
+      event: LifeOpsCalendarEvent;
+    }
+  | {
+      kind: "accepted_without_readback";
+      receipt: LifeOpsCalendarWriteOnlyCreateReceipt;
+    };
 
 type MacCalendarBridge = {
   listCalendars(): string | null;
@@ -304,7 +346,45 @@ function normalizeNativePayload(
       parsed.event && typeof parsed.event === "object"
         ? parsed.event
         : undefined,
+    receipt: normalizeNativeCreateReceipt(parsed.receipt),
   };
+}
+
+function normalizeNativeCreateReceipt(
+  value: unknown,
+): NativeCalendarCreateReceipt | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const receipt = value as Record<string, unknown>;
+  if (
+    receipt.accessLevel === "write_only" &&
+    receipt.destination === "default_calendar" &&
+    receipt.eventId === null &&
+    receipt.readBackAvailable === false
+  ) {
+    return {
+      accessLevel: "write_only",
+      destination: "default_calendar",
+      eventId: null,
+      readBackAvailable: false,
+    };
+  }
+  if (
+    receipt.accessLevel === "full_access" &&
+    receipt.destination === "resolved_calendar" &&
+    typeof receipt.eventId === "string" &&
+    receipt.eventId.trim().length > 0 &&
+    receipt.readBackAvailable === true
+  ) {
+    return {
+      accessLevel: "full_access",
+      destination: "resolved_calendar",
+      eventId: receipt.eventId,
+      readBackAvailable: true,
+    };
+  }
+  return undefined;
 }
 
 function epochSeconds(iso: string): number {
@@ -324,6 +404,9 @@ async function loadIosCalendarBridge(): Promise<NativeCalendarBridge | null> {
     );
     return {
       platform: "ios",
+      async checkPermissions() {
+        return AppleCalendar.checkPermissions();
+      },
       async listCalendars() {
         return normalizeNativePayload(await AppleCalendar.listCalendars());
       },
@@ -360,6 +443,9 @@ async function loadNativeCalendarBridge(): Promise<NativeCalendarBridge | null> 
   if (!macBridge) return null;
   return {
     platform: "darwin",
+    async checkPermissions() {
+      return { calendar: "granted", canRequest: false };
+    },
     async listCalendars() {
       return parseNativePayload(macBridge.listCalendars());
     },
@@ -463,6 +549,21 @@ function normalizeAttendees(
   }));
 }
 
+function normalizeAppleAvailability(
+  value: unknown,
+): NonNullable<NativeCalendarEvent["availability"]> {
+  switch (value) {
+    case "not_supported":
+    case "busy":
+    case "free":
+    case "tentative":
+    case "unavailable":
+      return value;
+    default:
+      return "unknown";
+  }
+}
+
 export function lifeOpsCalendarSummaryFromApple(args: {
   calendar: NativeCalendarSummary;
   side?: LifeOpsConnectorSide;
@@ -473,6 +574,7 @@ export function lifeOpsCalendarSummaryFromApple(args: {
     provider: APPLE_CALENDAR_PROVIDER,
     side: args.side ?? "owner",
     grantId: APPLE_CALENDAR_GRANT_ID,
+    connectorAccountId: APPLE_CALENDAR_GRANT_ID,
     accountEmail: null,
     calendarId,
     summary: calendar.summary?.trim() || "Apple Calendar",
@@ -500,6 +602,7 @@ export function lifeOpsCalendarEventFromApple(args: {
   const calendarId = event.calendarId || "primary";
   const startAt = event.startAt || syncedAt;
   const endAt = event.endAt || startAt;
+  const availability = normalizeAppleAvailability(event.availability);
   return {
     id: `${agentId}:apple_calendar:${side}:calendar:${calendarId}:${externalId}`,
     externalId,
@@ -510,7 +613,10 @@ export function lifeOpsCalendarEventFromApple(args: {
     title: event.title?.trim() || "(untitled)",
     description: event.description ?? "",
     location: event.location ?? "",
-    status: event.status ?? "confirmed",
+    status:
+      availability === "tentative"
+        ? "tentative"
+        : (event.status ?? "confirmed"),
     startAt,
     endAt,
     isAllDay: event.isAllDay === true,
@@ -521,6 +627,8 @@ export function lifeOpsCalendarEventFromApple(args: {
     attendees: normalizeAttendees(event.attendees),
     metadata: {
       appleCalendar: true,
+      appleAvailability: availability,
+      transparency: availability === "free" ? "transparent" : "opaque",
     },
     syncedAt,
     updatedAt: syncedAt,
@@ -617,6 +725,24 @@ export async function getNativeAppleCalendarFeed(args: {
       calendarId: args.calendarId ?? "all",
       events: result.data,
       source: "synced",
+      state: "complete",
+      sources: [
+        {
+          key: {
+            provider: APPLE_CALENDAR_PROVIDER,
+            side: args.side ?? "owner",
+            grantId: APPLE_CALENDAR_GRANT_ID,
+            connectorAccountId: APPLE_CALENDAR_GRANT_ID,
+            calendarId: args.calendarId ?? "all",
+          },
+          summary: APPLE_CALENDAR_ACCOUNT_LABEL,
+          accessRole: "writer",
+          visibility: "details",
+          status: "fresh",
+          syncedAt: new Date().toISOString(),
+          error: null,
+        },
+      ],
       timeMin: args.timeMin,
       timeMax: args.timeMax,
       syncedAt: new Date().toISOString(),
@@ -632,12 +758,12 @@ export async function createNativeAppleCalendarEvent(args: {
   };
   side?: LifeOpsConnectorSide;
   runtime?: IAgentRuntime | null;
-}): Promise<FeatureResult<LifeOpsCalendarEvent>> {
+}): Promise<FeatureResult<NativeAppleCalendarCreateOutcome>> {
   const bridge = await loadNativeCalendarBridge();
   if (!bridge) return unsupportedFailure();
   const payload = await bridge.createEvent({
     calendarId: args.request.calendarId,
-    title: args.request.title,
+    title: args.request.title.trim(),
     description: args.request.description,
     location: args.request.location,
     startAt: args.request.startAt,
@@ -645,16 +771,59 @@ export async function createNativeAppleCalendarEvent(args: {
     timeZone: args.request.timeZone,
     attendees: args.request.attendees,
   });
-  if (!payload.ok || !payload.event) {
+  if (!payload.ok) {
     return nativeFailure(payload, args.runtime, "calendar.create");
+  }
+  if (
+    payload.receipt?.accessLevel === "write_only" &&
+    payload.receipt.readBackAvailable === false
+  ) {
+    return {
+      ok: true,
+      data: {
+        kind: "accepted_without_readback",
+        receipt: {
+          provider: APPLE_CALENDAR_PROVIDER,
+          sourceId: APPLE_CALENDAR_GRANT_ID,
+          calendarId: args.request.calendarId ?? "primary",
+          accessLevel: "write_only",
+          destination: "default_calendar",
+          providerEventId: null,
+          readBackAvailable: false,
+          acceptedAt: new Date().toISOString(),
+        },
+      },
+    };
+  }
+  if (!payload.event) {
+    return {
+      ok: false,
+      reason: "native_error",
+      message:
+        "Apple Calendar accepted the create without a readable event or a valid write-only receipt.",
+    };
   }
   return {
     ok: true,
-    data: lifeOpsCalendarEventFromApple({
-      event: payload.event,
-      agentId: args.agentId,
-      side: args.side,
-    }),
+    data: {
+      kind: "event",
+      event: lifeOpsCalendarEventFromApple({
+        event: payload.event,
+        agentId: args.agentId,
+        side: args.side,
+      }),
+    },
+  };
+}
+
+export async function getNativeAppleCalendarPermissionStatus(): Promise<
+  FeatureResult<NativeCalendarPermissionPayload>
+> {
+  const bridge = await loadNativeCalendarBridge();
+  if (!bridge) return unsupportedFailure();
+  return {
+    ok: true,
+    data: await bridge.checkPermissions(),
   };
 }
 

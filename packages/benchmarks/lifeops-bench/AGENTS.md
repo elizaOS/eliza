@@ -16,9 +16,19 @@ python -m eliza_lifeops_bench --agent perfect --domain calendar
 # Full static run against the cerebras-direct reference backend
 CEREBRAS_API_KEY=... python -m eliza_lifeops_bench --agent cerebras-direct --mode static
 
-# Live mode (simulated user + judge) requires both keys
+# Direct local/OpenAI-compatible model endpoint (no native harness process)
+HERMES_BASE_URL=http://127.0.0.1:11434/v1 MODEL_NAME_OVERRIDE=gemma3:latest \
+  python -m eliza_lifeops_bench --agent hermes-direct --mode static
+
+# Live mode defaults to a Cerebras simulated user + Anthropic judge
 CEREBRAS_API_KEY=... ANTHROPIC_API_KEY=... \
   python -m eliza_lifeops_bench --agent hermes --mode live
+
+# One provider may supply both roles, but the model IDs must stay distinct
+CEREBRAS_API_KEY=... python -m eliza_lifeops_bench \
+  --agent cerebras-direct --mode live \
+  --evaluator-provider cerebras --evaluator-model zai-glm-4.7 \
+  --judge-provider cerebras --judge-model gpt-oss-120b
 
 # Through the suite orchestrator (resolves provider/model, stores results)
 python -m benchmarks.orchestrator run --benchmarks lifeops_bench --provider <p> --model <m>
@@ -67,7 +77,7 @@ pytest tests/ -v
 - Results write to `lifeops_bench_results/` (default; override with `--output-dir`).
 - Registry result locator looks for `lifeops_*.json` in the output dir.
 - Scored by `_score_from_lifeops_bench_json` in `registry/scores.py`.
-- LIVE mode uses `CEREBRAS_API_KEY` + `ANTHROPIC_API_KEY` for direct API runs. A `BENCHMARK_MODEL_PROVIDER=claude-subscription` campaign instead routes both evaluator roles through `CLAUDE_SUBSCRIPTION_GATEWAY_URL` + `CLAUDE_SUBSCRIPTION_GATEWAY_TOKEN`; it never requires API-billed Anthropic credentials.
+- LIVE mode defaults to Cerebras + Anthropic, but `--evaluator-provider` / `--judge-provider` and the matching `LIFEOPS_BENCH_*_PROVIDER` environment variables can select any supported pair. Each provider needs its own credential, evaluator and judge model IDs must differ, and the result JSON records the exact pair plus scenario-local raw evaluator trajectories. A `BENCHMARK_MODEL_PROVIDER=claude-subscription` campaign routes both evaluator roles through `CLAUDE_SUBSCRIPTION_GATEWAY_URL` + `CLAUDE_SUBSCRIPTION_GATEWAY_TOKEN`; it never requires API-billed Anthropic credentials.
 - Cost cap: `--max-cost-usd` (default $10). Use `--concurrency 4` for non-Cerebras providers; keep at 2 for Cerebras to avoid 429s.
 - See [SCENARIO_AUTHORING.md](SCENARIO_AUTHORING.md) to add scenarios and [ADAPTER_AUTHORING.md](ADAPTER_AUTHORING.md) to add agent adapters.
 - Full background: [README.md](README.md).

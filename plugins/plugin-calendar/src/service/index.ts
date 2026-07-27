@@ -1,4 +1,25 @@
-/** Barrel for the calendar service internals: `CalendarService`, `CalendarRepository`, the connector gate, and feed preferences. */
+/** Barrel for calendar storage, provider gates, feed preferences, and deterministic availability evaluation. */
+export {
+  buildZonedCalendarRange,
+  type CalendarAvailabilityAttendee,
+  type CalendarAvailabilityCompleteness,
+  type CalendarAvailabilityConflict,
+  type CalendarAvailabilityEvaluation,
+  type CalendarAvailabilityEvent,
+  type CalendarAvailabilityEventKind,
+  type CalendarAvailabilityPolicy,
+  type CalendarAvailabilityProposal,
+  type CalendarAvailabilityRange,
+  type CalendarAvailabilitySource,
+  type CalendarAvailabilitySourceStatus,
+  type CalendarAvailabilitySourceSummary,
+  type CalendarAvailabilityVisibility,
+  type CalendarConflictEvent,
+  type CalendarConflictReason,
+  type CalendarConflictSeverity,
+  type EvaluateCalendarAvailabilityInput,
+  evaluateCalendarAvailability,
+} from "./availability.js";
 export {
   CalendarRepository,
   createLifeOpsCalendarSyncState,
@@ -24,11 +45,15 @@ export {
 export {
   CALENDAR_MIGRATION_SERVICE_TYPE,
   CalendarMigrationService,
+  ensureGoogleCalendarWatchChannelTable,
+  ensureIcsCalendarSourceTable,
   MIGRATED_CALENDAR_TABLES,
 } from "./migration.js";
 export {
   calendarEvents,
   calendarPgSchema,
   calendarSchema,
+  calendarSources,
   calendarSyncStates,
+  googleCalendarWatchChannels,
 } from "./schema.js";

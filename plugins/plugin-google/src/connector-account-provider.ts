@@ -69,6 +69,21 @@ interface GoogleIdentity {
   locale?: string;
 }
 
+interface GoogleCalendarWatchRevocationService {
+  revokeGoogleCalendarWatchesByAccount(accountId: string): Promise<void>;
+}
+
+function isGoogleCalendarWatchRevocationService(
+  value: unknown
+): value is GoogleCalendarWatchRevocationService {
+  return (
+    Boolean(value) &&
+    typeof value === "object" &&
+    typeof (value as Partial<GoogleCalendarWatchRevocationService>)
+      .revokeGoogleCalendarWatchesByAccount === "function"
+  );
+}
+
 function createCodeVerifier(): string {
   return randomBytes(64).toString("base64url");
 }
@@ -282,14 +297,24 @@ export function createGoogleConnectorAccountProvider(
     },
 
     patchAccount: async (
-      _accountId: string,
+      accountId: string,
       patch: ConnectorAccountPatch,
       _manager: ConnectorAccountManager
     ) => {
+      if (patch.status === "revoked" || patch.status === "disabled") {
+        const calendarService = runtime.getService("calendar");
+        if (isGoogleCalendarWatchRevocationService(calendarService)) {
+          await calendarService.revokeGoogleCalendarWatchesByAccount(accountId);
+        }
+      }
       return { ...patch, provider: GOOGLE_SERVICE_NAME };
     },
 
-    deleteAccount: async (_accountId: string, _manager: ConnectorAccountManager): Promise<void> => {
+    deleteAccount: async (accountId: string, _manager: ConnectorAccountManager): Promise<void> => {
+      const calendarService = runtime.getService("calendar");
+      if (isGoogleCalendarWatchRevocationService(calendarService)) {
+        await calendarService.revokeGoogleCalendarWatchesByAccount(accountId);
+      }
       // Credential cleanup is the credential store's responsibility; the
       // manager removes the account row after this resolves.
     },

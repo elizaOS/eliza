@@ -12,6 +12,7 @@
 
 import type {
   CreateLifeOpsCalendarEventRequest,
+  CreateLifeOpsIcsCalendarSourceRequest,
   GetLifeOpsCalendarFeedRequest,
   LifeOpsCalendarEventUpdate,
   LifeOpsCalendarRecurrenceScope,
@@ -19,7 +20,9 @@ import type {
   LifeOpsConnectorSide,
   ListLifeOpsCalendarsRequest,
   SetLifeOpsCalendarIncludedRequest,
+  UpdateLifeOpsIcsCalendarSourceRequest,
 } from "@elizaos/shared";
+import type { CalendarOwnerMutationGateway } from "./mutation-gateway.js";
 
 /** The calendar method surface the route handlers invoke. */
 export interface CalendarRouteService {
@@ -57,8 +60,26 @@ export interface CalendarRouteService {
     requestUrl: URL,
     request: { eventId: string } & Record<string, unknown>,
   ): Promise<void>;
+  respondToCalendarEvent(
+    requestUrl: URL,
+    request: Record<string, unknown> & {
+      eventId: string;
+      responseStatus: "declined";
+      expectedProviderVersion: string;
+    },
+  ): Promise<unknown>;
   getMeetingAutoJoin(): Promise<unknown>;
   setMeetingAutoJoin(policy: unknown): Promise<unknown>;
+  listIcsCalendarSources(): Promise<unknown>;
+  createIcsCalendarSource(
+    request: CreateLifeOpsIcsCalendarSourceRequest,
+  ): Promise<unknown>;
+  updateIcsCalendarSource(
+    sourceId: string,
+    request: UpdateLifeOpsIcsCalendarSourceRequest,
+  ): Promise<unknown>;
+  deleteIcsCalendarSource(sourceId: string): Promise<void>;
+  syncIcsCalendarSource(sourceId: string): Promise<unknown>;
 }
 
 /** Host-provided HTTP plumbing. */
@@ -85,6 +106,7 @@ export interface CalendarRouteDeps {
   parseBoolean: (value: string | null, field: string) => boolean | undefined;
   /** Build a host service error carrying an HTTP status (e.g. LifeOpsServiceError). */
   serviceError: (status: number, message: string) => Error;
+  mutationGateway: CalendarOwnerMutationGateway;
 }
 
 /**
@@ -137,6 +159,68 @@ export async function handleCalendarRoutes(
       };
       deps.json(await service.getCalendarFeed(url, request));
     });
+  }
+
+  if (method === "GET" && pathname === "/api/lifeops/calendar/sources") {
+    if (deps.rateLimit("calendar_source_read")) return true;
+    return deps.runRoute(async (service) => {
+      deps.json({ sources: await service.listIcsCalendarSources() });
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/lifeops/calendar/sources") {
+    if (deps.rateLimit("calendar_source_write")) return true;
+    const body =
+      await deps.readJsonBody<CreateLifeOpsIcsCalendarSourceRequest>();
+    if (!body) return true;
+    return deps.runRoute(async (service) => {
+      deps.json({ source: await service.createIcsCalendarSource(body) }, 201);
+    });
+  }
+
+  const sourceSyncMatch =
+    method === "POST"
+      ? pathname.match(/^\/api\/lifeops\/calendar\/sources\/([^/]+)\/sync$/)
+      : null;
+  if (sourceSyncMatch) {
+    if (deps.rateLimit("calendar_source_sync")) return true;
+    const sourceId = deps.decodePathComponent(
+      sourceSyncMatch[1],
+      "calendar source id",
+    );
+    if (!sourceId) return true;
+    return deps.runRoute(async (service) => {
+      deps.json(await service.syncIcsCalendarSource(sourceId));
+    });
+  }
+
+  const sourceMatch = pathname.match(
+    /^\/api\/lifeops\/calendar\/sources\/([^/]+)$/,
+  );
+  if (sourceMatch) {
+    const sourceId = deps.decodePathComponent(
+      sourceMatch[1],
+      "calendar source id",
+    );
+    if (!sourceId) return true;
+    if (method === "PATCH") {
+      if (deps.rateLimit("calendar_source_write")) return true;
+      const body =
+        await deps.readJsonBody<UpdateLifeOpsIcsCalendarSourceRequest>();
+      if (!body) return true;
+      return deps.runRoute(async (service) => {
+        deps.json({
+          source: await service.updateIcsCalendarSource(sourceId, body),
+        });
+      });
+    }
+    if (method === "DELETE") {
+      if (deps.rateLimit("calendar_source_write")) return true;
+      return deps.runRoute(async (service) => {
+        await service.deleteIcsCalendarSource(sourceId);
+        deps.json({ deleted: true });
+      });
+    }
   }
 
   if (method === "GET" && pathname === "/api/lifeops/calendar/calendars") {
@@ -204,8 +288,14 @@ export async function handleCalendarRoutes(
     if (deps.rateLimit("calendar_create")) return true;
     const body = await deps.readJsonBody<CreateLifeOpsCalendarEventRequest>();
     if (!body) return true;
-    return deps.runRoute(async (service) => {
-      deps.json({ event: await service.createCalendarEvent(url, body) }, 201);
+    return deps.runRoute(async () => {
+      if (!body.idempotencyKey?.trim()) {
+        throw deps.serviceError(
+          428,
+          "Calendar event creation requires a stable idempotencyKey.",
+        );
+      }
+      deps.json(await deps.mutationGateway.create(url, body), 201);
     });
   }
 
@@ -219,8 +309,20 @@ export async function handleCalendarRoutes(
       if (deps.rateLimit("calendar_update")) return true;
       const body = await deps.readJsonBody<LifeOpsCalendarEventUpdate>();
       if (!body) return true;
-      return deps.runRoute(async (service) => {
-        const event = await service.updateCalendarEvent(url, {
+      return deps.runRoute(async () => {
+        if (!body.expectedProviderVersion?.trim()) {
+          throw deps.serviceError(
+            428,
+            "Calendar event update requires expectedProviderVersion.",
+          );
+        }
+        if (!body.idempotencyKey?.trim()) {
+          throw deps.serviceError(
+            428,
+            "Calendar event update requires a stable idempotencyKey.",
+          );
+        }
+        const event = await deps.mutationGateway.update(url, {
           eventId,
           mode: body.mode ?? deps.parseConnectorMode(q.get("mode")),
           side: body.side ?? deps.parseConnectorSide(q.get("side")),
@@ -235,15 +337,42 @@ export async function handleCalendarRoutes(
           attendees: body.attendees,
           recurrence: body.recurrence,
           recurrenceScope: body.recurrenceScope,
+          notifyAttendees: body.notifyAttendees === true,
+          expectedProviderVersion: body.expectedProviderVersion,
+          idempotencyKey: body.idempotencyKey,
         });
         deps.json({ event });
       });
     }
     if (method === "DELETE") {
       if (deps.rateLimit("calendar_delete")) return true;
-      return deps.runRoute(async (service) => {
-        await service.deleteCalendarEvent(url, {
-          eventId,
+      return deps.runRoute(async () => {
+        const expectedProviderVersion = q.get("expectedProviderVersion");
+        if (!expectedProviderVersion?.trim()) {
+          throw deps.serviceError(
+            428,
+            "Calendar event deletion requires expectedProviderVersion.",
+          );
+        }
+        const idempotencyKey = q.get("idempotencyKey");
+        if (!idempotencyKey?.trim()) {
+          throw deps.serviceError(
+            428,
+            "Calendar event deletion requires a stable idempotencyKey.",
+          );
+        }
+        const cancellationMode = q.get("cancellationMode");
+        if (
+          cancellationMode !== "organizer_cancel" &&
+          cancellationMode !== "decline_invitation" &&
+          cancellationMode !== "remove_private_copy"
+        ) {
+          throw deps.serviceError(
+            428,
+            "Calendar event deletion requires an explicit cancellationMode.",
+          );
+        }
+        const mutationRequest = {
           side: deps.parseConnectorSide(q.get("side")),
           grantId: q.get("grantId") ?? undefined,
           calendarId: q.get("calendarId") ?? undefined,
@@ -252,8 +381,18 @@ export async function handleCalendarRoutes(
           recurrenceScope: (q.get("recurrenceScope") ?? undefined) as
             | LifeOpsCalendarRecurrenceScope
             | undefined,
+          notifyAttendees:
+            deps.parseBoolean(q.get("notifyAttendees"), "notifyAttendees") ===
+            true,
+          expectedProviderVersion,
+        };
+        const result = await deps.mutationGateway.cancel(url, {
+          ...mutationRequest,
+          eventId,
+          cancellationMode,
+          idempotencyKey,
         });
-        deps.json({ deleted: true });
+        deps.json(result);
       });
     }
   }

@@ -11,6 +11,7 @@ import {
   type IAgentRuntime,
 } from "@elizaos/core";
 import type {
+  GoogleCalendarAttendee,
   GoogleCalendarEvent,
   GoogleCalendarEventInput,
   GoogleCalendarEventPatchInput,
@@ -434,8 +435,20 @@ export function accountIdForGrant(grant: LifeOpsConnectorGrant): string {
   );
 }
 
-function dateTimeValue(value: string | undefined, fallback: string): string {
-  return value?.trim() ? value : fallback;
+function requireEventDateTime(
+  value: string | undefined,
+  field: "start" | "end",
+  eventId: string,
+): string {
+  const normalized = value?.trim();
+  if (normalized) {
+    return normalized;
+  }
+  fail(
+    502,
+    `Google Calendar event ${eventId} is missing its ${field} time.`,
+    "GOOGLE_CALENDAR_INVALID_EVENT_TIME",
+  );
 }
 
 export function lifeOpsCalendarEventFromGoogle(args: {
@@ -447,10 +460,11 @@ export function lifeOpsCalendarEventFromGoogle(args: {
   const { event, grant, agentId } = args;
   const syncedAt = args.syncedAt ?? new Date().toISOString();
   const externalId = event.id;
-  const startAt = dateTimeValue(event.start, syncedAt);
-  const endAt = dateTimeValue(event.end, startAt);
+  const startAt = requireEventDateTime(event.start, "start", externalId);
+  const endAt = requireEventDateTime(event.end, "end", externalId);
+  const connectorAccountId = accountIdForGrant(grant);
   return {
-    id: `${agentId}:google:${grant.side}:calendar:${event.calendarId}:${externalId}`,
+    id: `${agentId}:google:${grant.side}:grant:${grant.id}:calendar:${event.calendarId}:${externalId}`,
     externalId,
     agentId,
     provider: "google",
@@ -471,27 +485,29 @@ export function lifeOpsCalendarEventFromGoogle(args: {
     recurrence: event.recurrence ?? null,
     recurringEventId: event.recurringEventId ?? null,
     metadata: {
-      googlePlugin: true,
       ...(event.metadata ?? {}),
+      googlePlugin: true,
+      transparency: event.transparency ?? "opaque",
+      visibility: event.visibility ?? "default",
     },
     syncedAt,
     updatedAt: syncedAt,
-    connectorAccountId: grant.connectorAccountId ?? undefined,
+    connectorAccountId,
     grantId: grant.id,
     accountEmail: grant.identityEmail ?? undefined,
   };
 }
 
 function lifeOpsCalendarAttendeeFromGoogle(
-  attendee: GoogleEmailAddress,
+  attendee: GoogleCalendarAttendee,
 ): LifeOpsCalendarEventAttendee {
   return {
     email: attendee.email,
     displayName: attendee.name ?? null,
-    responseStatus: null,
-    self: false,
-    organizer: false,
-    optional: false,
+    responseStatus: attendee.responseStatus,
+    self: attendee.self,
+    organizer: attendee.organizer,
+    optional: attendee.optional,
   };
 }
 
@@ -505,6 +521,7 @@ export function lifeOpsCalendarSummaryFromGoogle(args: {
     provider: "google",
     side: grant.side,
     grantId: grant.id,
+    connectorAccountId: accountIdForGrant(grant),
     accountEmail: grant.identityEmail ?? null,
     calendarId: entry.calendarId,
     summary: entry.summary,
@@ -532,6 +549,8 @@ export function googleCalendarEventInput(args: {
     | readonly { email?: string | null; displayName?: string | null }[]
     | null;
   recurrence?: readonly string[] | null;
+  idempotencyKey?: string;
+  notifyAttendees?: boolean;
 }): GoogleCalendarEventInput {
   return {
     accountId: args.accountId,
@@ -547,6 +566,8 @@ export function googleCalendarEventInput(args: {
       .filter(Boolean)
       .map((email) => ({ email })) as GoogleEmailAddress[] | undefined,
     recurrence: args.recurrence ? [...args.recurrence] : undefined,
+    idempotencyKey: args.idempotencyKey,
+    sendUpdates: args.notifyAttendees ? "all" : "none",
   };
 }
 
@@ -564,6 +585,8 @@ export function googleCalendarEventPatchInput(args: {
     | readonly { email?: string | null; displayName?: string | null }[]
     | null;
   recurrence?: readonly string[] | null;
+  notifyAttendees?: boolean;
+  expectedProviderVersion?: string;
 }): GoogleCalendarEventPatchInput {
   return {
     accountId: args.accountId,
@@ -580,5 +603,7 @@ export function googleCalendarEventPatchInput(args: {
       .filter(Boolean)
       .map((email) => ({ email })) as GoogleEmailAddress[] | undefined,
     recurrence: args.recurrence ? [...args.recurrence] : undefined,
+    sendUpdates: args.notifyAttendees ? "all" : "none",
+    expectedEtag: args.expectedProviderVersion,
   };
 }

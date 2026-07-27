@@ -10,9 +10,11 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { formatError } from "@elizaos/core";
 import { LifeOpsService } from "../service.js";
 import {
+  dispatchReceipt,
   errorToDispatchResult,
   isConnectorSendPayload,
   legacyStatusToConnectorStatus,
+  missingProviderReceipt,
   rejectInvalidPayload,
 } from "./_helpers.js";
 import type {
@@ -30,6 +32,7 @@ export function createTelegramConnectorContribution(
     capabilities: ["telegram.read", "telegram.send"],
     modes: ["local"],
     describe: { label: "Telegram" },
+    receiptContract: "provider_receipt_id",
     async start() {},
     async disconnect() {},
     async verify(): Promise<boolean> {
@@ -56,9 +59,16 @@ export function createTelegramConnectorContribution(
           target: payload.target,
           message: payload.message,
         });
+        const receipt = dispatchReceipt({
+          provider: "telegram",
+          providerMessageId: result.messageId,
+          payload,
+        });
+        if (!receipt) return missingProviderReceipt("Telegram");
         return {
           ok: true,
-          messageId: result.messageId ?? undefined,
+          messageId: receipt.providerMessageId,
+          receipt,
         };
       } catch (error) {
         return errorToDispatchResult(error);

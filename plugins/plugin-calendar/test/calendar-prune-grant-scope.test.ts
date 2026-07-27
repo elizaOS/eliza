@@ -79,9 +79,37 @@ const CREATE_SYNC_TABLE = `CREATE TABLE app_calendar.life_calendar_sync_states (
   purge_resync_reason TEXT,
   window_start_at TEXT NOT NULL,
   window_end_at TEXT NOT NULL,
+  next_sync_token TEXT,
   synced_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   UNIQUE (agent_id, provider, side, calendar_id)
+)`;
+
+const CREATE_SOURCES_TABLE = `CREATE TABLE app_calendar.life_calendar_sources (
+  id TEXT PRIMARY KEY,
+  agent_id TEXT NOT NULL,
+  provider TEXT NOT NULL DEFAULT 'ics',
+  side TEXT NOT NULL DEFAULT 'owner',
+  name TEXT NOT NULL,
+  enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  secret_ref TEXT NOT NULL,
+  url_fingerprint TEXT NOT NULL,
+  origin TEXT NOT NULL,
+  etag TEXT,
+  last_modified TEXT,
+  content_hash TEXT,
+  sync_status TEXT NOT NULL DEFAULT 'never',
+  last_error_code TEXT,
+  last_error_message TEXT,
+  last_error_retryable BOOLEAN,
+  last_synced_at TEXT,
+  last_attempted_at TEXT,
+  sync_generation INTEGER NOT NULL DEFAULT 0,
+  lease_token TEXT,
+  lease_expires_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE (agent_id, url_fingerprint)
 )`;
 
 function googleGrant(accountId: string): LifeOpsConnectorGrant {
@@ -208,6 +236,7 @@ beforeAll(async () => {
   await db.execute(sql.raw("CREATE SCHEMA IF NOT EXISTS app_calendar"));
   await db.execute(sql.raw(CREATE_EVENTS_TABLE));
   await db.execute(sql.raw(CREATE_SYNC_TABLE));
+  await db.execute(sql.raw(CREATE_SOURCES_TABLE));
 
   runtime = {
     agentId: AGENT_ID,
@@ -220,11 +249,15 @@ beforeAll(async () => {
     },
     getCache: async () => undefined,
     setCache: async () => undefined,
+    reportError: () => undefined,
     getService: (name: string) =>
       name === "google"
         ? {
-            listEvents: async (args: { accountId: string }) =>
-              GOOGLE_EVENTS_BY_ACCOUNT[args.accountId] ?? [],
+            listEventPage: async (args: { accountId: string }) => ({
+              events: GOOGLE_EVENTS_BY_ACCOUNT[args.accountId] ?? [],
+              nextPageToken: null,
+              nextSyncToken: null,
+            }),
           }
         : null,
   } as unknown as IAgentRuntime;

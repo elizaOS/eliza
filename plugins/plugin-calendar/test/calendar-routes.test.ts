@@ -29,8 +29,30 @@ function harness(
     createCalendarEvent: vi.fn(async () => ({ id: "evt-1" })),
     updateCalendarEvent: vi.fn(async () => ({ id: "evt-1" })),
     deleteCalendarEvent: vi.fn(async () => undefined),
+    respondToCalendarEvent: vi.fn(async () => ({ id: "evt-1" })),
+    listIcsCalendarSources: vi.fn(async () => []),
+    createIcsCalendarSource: vi.fn(async () => ({ id: "source-1" })),
+    updateIcsCalendarSource: vi.fn(async () => ({ id: "source-1" })),
+    deleteIcsCalendarSource: vi.fn(async () => undefined),
+    syncIcsCalendarSource: vi.fn(async () => ({
+      source: { id: "source-1" },
+      outcome: "complete",
+    })),
   };
   const jsonCalls: Array<{ data: unknown; status?: number }> = [];
+  const mutationGateway = {
+    create: vi.fn(async () => ({
+      outcome: "event" as const,
+      event: { id: "evt-1" },
+      writeOnlyReceipt: null,
+    })),
+    update: vi.fn(async () => ({ id: "evt-1" })),
+    cancel: vi.fn(async () => ({
+      outcome: "deleted" as const,
+      cancellationMode: "organizer_cancel" as const,
+      event: null,
+    })),
+  };
   const deps: CalendarRouteDeps = {
     method: overrides.method,
     pathname: overrides.pathname,
@@ -49,9 +71,10 @@ function harness(
     parseBoolean: () => undefined,
     serviceError: (status, message) =>
       Object.assign(new Error(message), { status }),
+    mutationGateway: mutationGateway as never,
     ...overrides,
   };
-  return { deps, service, jsonCalls };
+  return { deps, service, mutationGateway, jsonCalls };
 }
 
 describe("handleCalendarRoutes", () => {
@@ -73,6 +96,61 @@ describe("handleCalendarRoutes", () => {
     expect(await handleCalendarRoutes(deps)).toBe(true);
     expect(service.listCalendars).toHaveBeenCalledTimes(1);
     expect(jsonCalls[0]?.data).toHaveProperty("calendars");
+  });
+
+  it("routes subscription source CRUD and manual sync", async () => {
+    const listed = harness({
+      method: "GET",
+      pathname: "/api/lifeops/calendar/sources",
+    });
+    expect(await handleCalendarRoutes(listed.deps)).toBe(true);
+    expect(listed.service.listIcsCalendarSources).toHaveBeenCalledOnce();
+    expect(listed.jsonCalls[0]?.data).toEqual({ sources: [] });
+
+    const created = harness({
+      method: "POST",
+      pathname: "/api/lifeops/calendar/sources",
+      body: {
+        name: "School",
+        url: "webcal://calendar.example.test/school.ics?token=secret",
+      },
+    });
+    expect(await handleCalendarRoutes(created.deps)).toBe(true);
+    expect(created.service.createIcsCalendarSource).toHaveBeenCalledWith({
+      name: "School",
+      url: "webcal://calendar.example.test/school.ics?token=secret",
+    });
+    expect(created.jsonCalls[0]?.status).toBe(201);
+
+    const updated = harness({
+      method: "PATCH",
+      pathname: "/api/lifeops/calendar/sources/source-1",
+      body: { enabled: false },
+    });
+    expect(await handleCalendarRoutes(updated.deps)).toBe(true);
+    expect(updated.service.updateIcsCalendarSource).toHaveBeenCalledWith(
+      "source-1",
+      { enabled: false },
+    );
+
+    const synced = harness({
+      method: "POST",
+      pathname: "/api/lifeops/calendar/sources/source-1/sync",
+    });
+    expect(await handleCalendarRoutes(synced.deps)).toBe(true);
+    expect(synced.service.syncIcsCalendarSource).toHaveBeenCalledWith(
+      "source-1",
+    );
+
+    const deleted = harness({
+      method: "DELETE",
+      pathname: "/api/lifeops/calendar/sources/source-1",
+    });
+    expect(await handleCalendarRoutes(deleted.deps)).toBe(true);
+    expect(deleted.service.deleteIcsCalendarSource).toHaveBeenCalledWith(
+      "source-1",
+    );
+    expect(deleted.jsonCalls[0]?.data).toEqual({ deleted: true });
   });
 
   it("routes PUT /calendars/:id/include to setCalendarIncluded", async () => {
@@ -104,51 +182,64 @@ describe("handleCalendarRoutes", () => {
   });
 
   it("routes POST /events to createCalendarEvent with 201", async () => {
-    const { deps, service, jsonCalls } = harness({
+    const { deps, mutationGateway, jsonCalls } = harness({
       method: "POST",
       pathname: "/api/lifeops/calendar/events",
-      body: { title: "x" },
+      body: { title: "x", idempotencyKey: "editor-create-1" },
     });
     expect(await handleCalendarRoutes(deps)).toBe(true);
-    expect(service.createCalendarEvent).toHaveBeenCalledTimes(1);
+    expect(mutationGateway.create).toHaveBeenCalledTimes(1);
     expect(jsonCalls[0]?.status).toBe(201);
   });
 
   it("routes PATCH /events/:id to updateCalendarEvent", async () => {
-    const { deps, service } = harness({
+    const { deps, mutationGateway } = harness({
       method: "PATCH",
       pathname: "/api/lifeops/calendar/events/evt-1",
-      body: { title: "renamed" },
+      body: {
+        title: "renamed",
+        expectedProviderVersion: '"etag-1"',
+        idempotencyKey: "editor-update-1",
+      },
     });
     expect(await handleCalendarRoutes(deps)).toBe(true);
-    expect(service.updateCalendarEvent).toHaveBeenCalledTimes(1);
-    expect(service.updateCalendarEvent.mock.calls[0][1]).toMatchObject({
+    expect(mutationGateway.update).toHaveBeenCalledTimes(1);
+    expect(mutationGateway.update.mock.calls[0][1]).toMatchObject({
       eventId: "evt-1",
     });
   });
 
   it("routes DELETE /events/:id to deleteCalendarEvent", async () => {
-    const { deps, service, jsonCalls } = harness({
+    const { deps, mutationGateway, jsonCalls } = harness({
       method: "DELETE",
       pathname: "/api/lifeops/calendar/events/evt-1",
     });
+    deps.url = new URL(
+      "http://host/api/lifeops/calendar/events/evt-1?expectedProviderVersion=%22etag-1%22&cancellationMode=organizer_cancel&idempotencyKey=editor-delete-1",
+    );
     expect(await handleCalendarRoutes(deps)).toBe(true);
-    expect(service.deleteCalendarEvent).toHaveBeenCalledTimes(1);
-    expect(jsonCalls[0]?.data).toEqual({ deleted: true });
+    expect(mutationGateway.cancel).toHaveBeenCalledTimes(1);
+    expect(jsonCalls[0]?.data).toEqual({
+      outcome: "deleted",
+      cancellationMode: "organizer_cancel",
+      event: null,
+    });
   });
 
   it("forwards recurrence + recurrenceScope on PATCH /events/:id", async () => {
-    const { deps, service } = harness({
+    const { deps, mutationGateway } = harness({
       method: "PATCH",
       pathname: "/api/lifeops/calendar/events/standup_1",
       body: {
         title: "renamed",
         recurrence: ["RRULE:FREQ=WEEKLY;BYDAY=TU"],
         recurrenceScope: "series",
+        expectedProviderVersion: '"etag-1"',
+        idempotencyKey: "editor-update-series-1",
       },
     });
     expect(await handleCalendarRoutes(deps)).toBe(true);
-    expect(service.updateCalendarEvent.mock.calls[0][1]).toMatchObject({
+    expect(mutationGateway.update.mock.calls[0][1]).toMatchObject({
       eventId: "standup_1",
       recurrence: ["RRULE:FREQ=WEEKLY;BYDAY=TU"],
       recurrenceScope: "series",
@@ -156,18 +247,86 @@ describe("handleCalendarRoutes", () => {
   });
 
   it("forwards ?recurrenceScope on DELETE /events/:id", async () => {
-    const { deps, service } = harness({
+    const { deps, mutationGateway } = harness({
       method: "DELETE",
       pathname: "/api/lifeops/calendar/events/standup_1",
     });
     deps.url = new URL(
-      "http://host/api/lifeops/calendar/events/standup_1?recurrenceScope=series",
+      "http://host/api/lifeops/calendar/events/standup_1?recurrenceScope=series&expectedProviderVersion=%22etag-1%22&cancellationMode=organizer_cancel&idempotencyKey=editor-delete-series-1",
     );
     expect(await handleCalendarRoutes(deps)).toBe(true);
-    expect(service.deleteCalendarEvent.mock.calls[0][1]).toMatchObject({
+    expect(mutationGateway.cancel.mock.calls[0][1]).toMatchObject({
       eventId: "standup_1",
       recurrenceScope: "series",
+      expectedProviderVersion: '"etag-1"',
     });
+  });
+
+  it("routes invitee removal to a conditional decline rather than delete", async () => {
+    const { deps, mutationGateway, jsonCalls } = harness({
+      method: "DELETE",
+      pathname: "/api/lifeops/calendar/events/invite-1",
+    });
+    const declinedEvent = {
+      id: "cached-invite-1",
+      externalId: "invite-1",
+      attendees: [{ self: true, responseStatus: "declined" }],
+    };
+    mutationGateway.cancel.mockResolvedValue({
+      outcome: "invitation_declined",
+      cancellationMode: "decline_invitation",
+      event: declinedEvent,
+    });
+    deps.url = new URL(
+      "http://host/api/lifeops/calendar/events/invite-1?expectedProviderVersion=%22etag-2%22&cancellationMode=decline_invitation&notifyAttendees=false&idempotencyKey=editor-decline-1",
+    );
+
+    expect(await handleCalendarRoutes(deps)).toBe(true);
+    expect(mutationGateway.cancel).toHaveBeenCalledWith(
+      expect.any(URL),
+      expect.objectContaining({
+        eventId: "invite-1",
+        cancellationMode: "decline_invitation",
+        expectedProviderVersion: '"etag-2"',
+        notifyAttendees: false,
+      }),
+    );
+    expect(jsonCalls[0]?.data).toEqual({
+      outcome: "invitation_declined",
+      cancellationMode: "decline_invitation",
+      event: declinedEvent,
+    });
+  });
+
+  it("rejects route mutations without idempotency/precondition tokens", async () => {
+    const create = harness({
+      method: "POST",
+      pathname: "/api/lifeops/calendar/events",
+      body: { title: "unsafe" },
+    });
+    await expect(handleCalendarRoutes(create.deps)).rejects.toMatchObject({
+      status: 428,
+    });
+    expect(create.mutationGateway.create).not.toHaveBeenCalled();
+
+    const update = harness({
+      method: "PATCH",
+      pathname: "/api/lifeops/calendar/events/evt-1",
+      body: { title: "unsafe" },
+    });
+    await expect(handleCalendarRoutes(update.deps)).rejects.toMatchObject({
+      status: 428,
+    });
+    expect(update.mutationGateway.update).not.toHaveBeenCalled();
+
+    const deletion = harness({
+      method: "DELETE",
+      pathname: "/api/lifeops/calendar/events/evt-1",
+    });
+    await expect(handleCalendarRoutes(deletion.deps)).rejects.toMatchObject({
+      status: 428,
+    });
+    expect(deletion.mutationGateway.cancel).not.toHaveBeenCalled();
   });
 
   it("short-circuits when rate-limited without calling the service", async () => {

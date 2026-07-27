@@ -16,6 +16,7 @@ import pytest
 from eliza_lifeops_bench.agents import (
     OpenAICompatAgent,
     build_hermes_agent,
+    build_hermes_direct_agent,
 )
 from eliza_lifeops_bench.clients.hermes import HermesClient
 from eliza_lifeops_bench.types import MessageTurn
@@ -109,6 +110,18 @@ def test_build_hermes_agent_returns_open_ai_compat_agent(
             os.environ.pop("HERMES_BASE_URL", None)
         else:
             os.environ["HERMES_BASE_URL"] = saved
+
+
+def test_build_hermes_direct_agent_uses_configured_endpoint() -> None:
+    agent = build_hermes_direct_agent(
+        model="local-parent-model",
+        base_url="http://127.0.0.1:11434/v1",
+        api_key="local-only",
+    )
+
+    assert isinstance(agent, OpenAICompatAgent)
+    assert isinstance(agent.client, HermesClient)
+    assert agent.client.model_name == "local-parent-model"
 
 
 def test_build_hermes_agent_threads_harness_generation_options(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -19,42 +19,35 @@ import type {
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
 } from "@elizaos/shared";
+import {
+  GOOGLE_CALENDAR_WEBHOOK_PATH,
+  type GoogleCalendarNotificationHeaders,
+  type GoogleCalendarWebhookResult,
+} from "../google-watch/index.js";
 import { CalendarServiceError } from "../internal/errors.js";
 import {
   type CalendarRouteService,
   handleCalendarRoutes,
 } from "./calendar-routes.js";
-
-type HttpRouteType = Exclude<Route["type"], "STATIC">;
-
-interface CalendarRouteSpec {
-  type: HttpRouteType;
-  path: string;
-}
+import {
+  CALENDAR_OWNER_MUTATION_GATEWAY_SERVICE,
+  type CalendarOwnerMutationGateway,
+} from "./mutation-gateway.js";
 
 type CalendarRateLimitKey =
   | "google_api_read"
   | "google_api_write"
   | "calendar_create"
   | "calendar_update"
-  | "calendar_delete";
+  | "calendar_delete"
+  | "calendar_source_read"
+  | "calendar_source_write"
+  | "calendar_source_sync";
 
 interface RateLimitConfig {
   maxRequests: number;
   windowMs: number;
 }
-
-const CALENDAR_ROUTE_SPECS: readonly CalendarRouteSpec[] = [
-  { type: "GET", path: "/api/lifeops/calendar/feed" },
-  { type: "GET", path: "/api/lifeops/calendar/meeting-auto-join" },
-  { type: "PUT", path: "/api/lifeops/calendar/meeting-auto-join" },
-  { type: "GET", path: "/api/lifeops/calendar/calendars" },
-  { type: "PUT", path: "/api/lifeops/calendar/calendars/:id/include" },
-  { type: "GET", path: "/api/lifeops/calendar/next-context" },
-  { type: "POST", path: "/api/lifeops/calendar/events" },
-  { type: "PATCH", path: "/api/lifeops/calendar/events/:eventId" },
-  { type: "DELETE", path: "/api/lifeops/calendar/events/:eventId" },
-];
 
 const CALENDAR_SERVICE_TYPE = "calendar";
 
@@ -74,9 +67,29 @@ const CALENDAR_RATE_LIMITS: Record<CalendarRateLimitKey, RateLimitConfig> = {
   calendar_create: { maxRequests: 20, windowMs: 60_000 },
   calendar_update: { maxRequests: 30, windowMs: 60_000 },
   calendar_delete: { maxRequests: 20, windowMs: 60_000 },
+  calendar_source_read: { maxRequests: 120, windowMs: 60_000 },
+  calendar_source_write: { maxRequests: 20, windowMs: 60_000 },
+  calendar_source_sync: { maxRequests: 30, windowMs: 60_000 },
 };
 
 const rateLimitBuckets = new Map<string, number[]>();
+
+interface GoogleCalendarWebhookService {
+  handleGoogleCalendarNotification(
+    headers: GoogleCalendarNotificationHeaders,
+  ): Promise<GoogleCalendarWebhookResult>;
+}
+
+function isGoogleCalendarWebhookService(
+  service: unknown,
+): service is GoogleCalendarWebhookService {
+  return (
+    Boolean(service) &&
+    typeof service === "object" &&
+    typeof (service as Partial<GoogleCalendarWebhookService>)
+      .handleGoogleCalendarNotification === "function"
+  );
+}
 
 function requestBaseUrl(req: http.IncomingMessage): string {
   const host = req.headers.host ?? "localhost";
@@ -107,7 +120,20 @@ function isCalendarRouteService(
       "function" &&
     typeof (service as CalendarRouteService).updateCalendarEvent ===
       "function" &&
-    typeof (service as CalendarRouteService).deleteCalendarEvent === "function"
+    typeof (service as CalendarRouteService).deleteCalendarEvent ===
+      "function" &&
+    typeof (service as CalendarRouteService).respondToCalendarEvent ===
+      "function" &&
+    typeof (service as CalendarRouteService).listIcsCalendarSources ===
+      "function" &&
+    typeof (service as CalendarRouteService).createIcsCalendarSource ===
+      "function" &&
+    typeof (service as CalendarRouteService).updateIcsCalendarSource ===
+      "function" &&
+    typeof (service as CalendarRouteService).deleteIcsCalendarSource ===
+      "function" &&
+    typeof (service as CalendarRouteService).syncIcsCalendarSource ===
+      "function"
   );
 }
 
@@ -137,6 +163,145 @@ async function resolveCalendarService(
       cause: error,
     });
   }
+}
+
+async function resolveGoogleCalendarWebhookService(
+  runtime: IAgentRuntime | null,
+): Promise<GoogleCalendarWebhookService | null> {
+  if (!runtime) return null;
+  const existing = runtime.getService(CALENDAR_SERVICE_TYPE);
+  if (isGoogleCalendarWebhookService(existing)) return existing;
+  try {
+    const loaded = await runtime.getServiceLoadPromise(CALENDAR_SERVICE_TYPE);
+    return isGoogleCalendarWebhookService(loaded) ? loaded : null;
+  } catch (error) {
+    // error-policy:J1 This public transport boundary reports service loading
+    // and returns an explicit retryable 503 to Google's delivery worker.
+    runtime.reportError("CalendarRoutes.googleWebhookServiceLoad", error);
+    return null;
+  }
+}
+
+function singleHeader(req: http.IncomingMessage, name: string): string | null {
+  const value = req.headers[name];
+  if (Array.isArray(value)) {
+    return value.length === 1 && value[0]?.trim() ? value[0].trim() : null;
+  }
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+async function requestHasBody(req: http.IncomingMessage): Promise<boolean> {
+  const rawBody = (req as http.IncomingMessage & { rawBody?: unknown }).rawBody;
+  if (typeof rawBody === "string") return rawBody.length > 0;
+  if (Buffer.isBuffer(rawBody)) return rawBody.length > 0;
+  const parsedBody = (req as http.IncomingMessage & { body?: unknown }).body;
+  if (parsedBody !== undefined && parsedBody !== null && parsedBody !== "") {
+    return true;
+  }
+  const contentLength = req.headers["content-length"];
+  if (
+    typeof contentLength === "string" &&
+    Number.isFinite(Number(contentLength)) &&
+    Number(contentLength) > 0
+  ) {
+    return true;
+  }
+  for await (const chunk of req) {
+    const length =
+      typeof chunk === "string"
+        ? Buffer.byteLength(chunk)
+        : Buffer.isBuffer(chunk)
+          ? chunk.length
+          : 0;
+    if (length > 0) return true;
+  }
+  return false;
+}
+
+async function handleGoogleCalendarWebhook(args: {
+  runtime: IAgentRuntime | null;
+  req: http.IncomingMessage;
+  res: http.ServerResponse;
+}): Promise<void> {
+  const { runtime, req, res } = args;
+  if (await requestHasBody(req)) {
+    res.writeHead(400);
+    res.end();
+    return;
+  }
+  // error-policy:J3 Missing or duplicate provider headers become explicit
+  // invalid notification fields; lifecycle validation rejects them before I/O.
+  const headers: GoogleCalendarNotificationHeaders = {
+    channelId: singleHeader(req, "x-goog-channel-id") ?? "",
+    channelToken: singleHeader(req, "x-goog-channel-token") ?? "",
+    resourceId: singleHeader(req, "x-goog-resource-id") ?? "",
+    resourceUri: singleHeader(req, "x-goog-resource-uri") ?? "",
+    resourceState: singleHeader(req, "x-goog-resource-state") ?? "",
+    messageNumber: singleHeader(req, "x-goog-message-number") ?? "",
+  };
+  const service = await resolveGoogleCalendarWebhookService(runtime);
+  if (!service) {
+    res.writeHead(503, { "Retry-After": "60" });
+    res.end();
+    return;
+  }
+  try {
+    const result = await service.handleGoogleCalendarNotification(headers);
+    res.writeHead(
+      result.status,
+      result.retryAfterSeconds
+        ? { "Retry-After": String(result.retryAfterSeconds) }
+        : undefined,
+    );
+    res.end();
+  } catch (error) {
+    // error-policy:J1 Unexpected storage/runtime failures stay observable and
+    // ask Google to retry; the callback never fabricates a successful receipt.
+    runtime?.reportError("CalendarRoutes.googleWebhook", error);
+    res.writeHead(503, { "Retry-After": "60" });
+    res.end();
+  }
+}
+
+function isCalendarOwnerMutationGateway(
+  value: unknown,
+): value is CalendarOwnerMutationGateway {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as CalendarOwnerMutationGateway).create === "function" &&
+    typeof (value as CalendarOwnerMutationGateway).update === "function" &&
+    typeof (value as CalendarOwnerMutationGateway).cancel === "function"
+  );
+}
+
+async function requireCalendarOwnerMutationGateway(
+  runtime: IAgentRuntime | null,
+): Promise<CalendarOwnerMutationGateway> {
+  if (!runtime) {
+    throw new CalendarServiceError(
+      503,
+      "Calendar owner mutation gateway is unavailable.",
+      "CALENDAR_OWNER_MUTATION_GATEWAY_UNAVAILABLE",
+    );
+  }
+  const existing = runtime.getService(CALENDAR_OWNER_MUTATION_GATEWAY_SERVICE);
+  if (isCalendarOwnerMutationGateway(existing)) return existing;
+  try {
+    const loaded = await runtime.getServiceLoadPromise(
+      CALENDAR_OWNER_MUTATION_GATEWAY_SERVICE,
+    );
+    if (isCalendarOwnerMutationGateway(loaded)) return loaded;
+  } catch (error) {
+    runtime.reportError?.("CalendarRoutes.mutationGatewayLoad", error, {
+      serviceType: CALENDAR_OWNER_MUTATION_GATEWAY_SERVICE,
+    });
+  }
+  throw new CalendarServiceError(
+    503,
+    "Calendar writes require the host approval and durable mutation gateway.",
+    "CALENDAR_OWNER_MUTATION_GATEWAY_UNAVAILABLE",
+  );
 }
 
 function rateLimitRequest(args: {
@@ -308,6 +473,15 @@ export function calendarRouteHandler(): LegacyRouteHandler {
     const url = parseRequestUrl(httpReq);
     const operation = `${method} ${url.pathname}`;
 
+    if (method === "POST" && url.pathname === GOOGLE_CALENDAR_WEBHOOK_PATH) {
+      await handleGoogleCalendarWebhook({
+        runtime: agentRuntime,
+        req: httpReq,
+        res: httpRes,
+      });
+      return;
+    }
+
     const handled = await handleCalendarRoutes({
       method,
       pathname: url.pathname,
@@ -339,6 +513,23 @@ export function calendarRouteHandler(): LegacyRouteHandler {
       parseBoolean,
       serviceError: (status, message) =>
         new CalendarServiceError(status, message),
+      mutationGateway: {
+        async create(requestUrl, request) {
+          const gateway =
+            await requireCalendarOwnerMutationGateway(agentRuntime);
+          return gateway.create(requestUrl, request);
+        },
+        async update(requestUrl, request) {
+          const gateway =
+            await requireCalendarOwnerMutationGateway(agentRuntime);
+          return gateway.update(requestUrl, request);
+        },
+        async cancel(requestUrl, request) {
+          const gateway =
+            await requireCalendarOwnerMutationGateway(agentRuntime);
+          return gateway.cancel(requestUrl, request);
+        },
+      },
     });
 
     if (!handled && !httpRes.headersSent) {
@@ -349,11 +540,20 @@ export function calendarRouteHandler(): LegacyRouteHandler {
 
 const handler = calendarRouteHandler();
 
-export const calendarHttpRoutes: Route[] = CALENDAR_ROUTE_SPECS.map(
-  (spec): Route => ({
-    type: spec.type,
-    path: spec.path,
+export const calendarHttpRoutes: Route[] = [
+  // Owner calendar data, preferences, and mutations are mounted by the
+  // personal-assistant host after its OWNER/ADMIN role gate. The only route
+  // this provider plugin can authenticate independently is its webhook.
+  {
+    type: "POST",
+    path: "/api/lifeops/calendar/google/webhook",
     rawPath: true,
+    public: true,
+    name: "google-calendar-push-notification",
+    publicReason:
+      "Google Calendar must deliver provider-originated change notifications without a user session.",
+    publicWrite:
+      "The route verifies an unguessable per-channel capability token plus durable channel and resource bindings before it enqueues a refetch.",
     handler,
-  }),
-);
+  },
+];

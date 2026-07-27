@@ -7,6 +7,8 @@
  *   - {@link ConnectorStatus} — uniform `ok | degraded | disconnected` triple.
  *   - {@link DispatchResult}  — typed success / failure for `send`.
  */
+
+import type { DispatchReceipt } from "@elizaos/plugin-scheduling";
 import { formatError, LifeOpsServiceError } from "@elizaos/shared";
 import type { ConnectorStatus, DispatchResult } from "./contract.js";
 
@@ -73,6 +75,7 @@ export function errorToDispatchResult(error: unknown): DispatchResult {
         return {
           ok: false,
           reason: "auth_expired",
+          acceptance: "not_accepted",
           userActionable: true,
           message,
         };
@@ -80,6 +83,7 @@ export function errorToDispatchResult(error: unknown): DispatchResult {
         return {
           ok: false,
           reason: "auth_expired",
+          acceptance: "not_accepted",
           userActionable: true,
           message,
         };
@@ -87,6 +91,7 @@ export function errorToDispatchResult(error: unknown): DispatchResult {
         return {
           ok: false,
           reason: "unknown_recipient",
+          acceptance: "not_accepted",
           userActionable: true,
           message,
         };
@@ -94,6 +99,7 @@ export function errorToDispatchResult(error: unknown): DispatchResult {
         return {
           ok: false,
           reason: "disconnected",
+          acceptance: "not_accepted",
           userActionable: true,
           message,
         };
@@ -101,6 +107,7 @@ export function errorToDispatchResult(error: unknown): DispatchResult {
         return {
           ok: false,
           reason: "rate_limited",
+          acceptance: "not_accepted",
           retryAfterMinutes: 5,
           userActionable: false,
           message,
@@ -109,6 +116,7 @@ export function errorToDispatchResult(error: unknown): DispatchResult {
         return {
           ok: false,
           reason: "disconnected",
+          acceptance: "not_accepted",
           userActionable: true,
           message,
         };
@@ -116,6 +124,7 @@ export function errorToDispatchResult(error: unknown): DispatchResult {
         return {
           ok: false,
           reason: "transport_error",
+          acceptance: "unknown",
           userActionable: false,
           message,
         };
@@ -124,6 +133,7 @@ export function errorToDispatchResult(error: unknown): DispatchResult {
   return {
     ok: false,
     reason: "transport_error",
+    acceptance: "unknown",
     userActionable: false,
     message: safeFormatError(error),
   };
@@ -140,7 +150,7 @@ export function errorToDispatchResult(error: unknown): DispatchResult {
  * (`"[object Object]"`) without invoking any of the object's own coercion
  * hooks.
  */
-function safeFormatError(error: unknown): string {
+export function safeFormatError(error: unknown): string {
   try {
     return formatError(error);
   } catch {
@@ -162,8 +172,48 @@ export interface ConnectorSendPayload {
   target: string;
   /** Plain-text body to deliver. */
   message: string;
+  /**
+   * Stable logical-send key supplied by the durable approval executor.
+   * Connectors echo it in a provider receipt; transports with native
+   * idempotency should also forward it to that API.
+   */
+  idempotencyKey?: string;
   /** Optional structured metadata forwarded to the underlying mixin. */
   metadata?: Record<string, unknown>;
+}
+
+export function dispatchReceipt(args: {
+  provider: string;
+  providerMessageId: string | null | undefined;
+  payload: ConnectorSendPayload;
+  metadata?: Record<string, unknown>;
+}): DispatchReceipt | null {
+  const provider = args.provider.trim();
+  const providerMessageId = args.providerMessageId?.trim() ?? "";
+  const idempotencyKey = args.payload.idempotencyKey?.trim() ?? "";
+  if (!provider || !providerMessageId || !idempotencyKey) {
+    return null;
+  }
+  return {
+    provider,
+    providerMessageId,
+    idempotencyKey,
+    acceptedAt: new Date().toISOString(),
+    ...(args.metadata ? { metadata: args.metadata } : {}),
+  };
+}
+
+/** A provider reported success without the identifier needed to prove it. */
+export function missingProviderReceipt(
+  provider: string,
+): Extract<DispatchResult, { ok: false }> {
+  return {
+    ok: false,
+    reason: "transport_error",
+    acceptance: "unknown",
+    userActionable: false,
+    message: `${provider} accepted the send path without returning a durable provider receipt.`,
+  };
 }
 
 /**
@@ -188,6 +238,7 @@ export function rejectInvalidPayload(): DispatchResult {
   return {
     ok: false,
     reason: "transport_error",
+    acceptance: "not_accepted",
     userActionable: false,
     message:
       "ConnectorContribution.send requires { target: string; message: string } payload.",

@@ -46,6 +46,33 @@ PERSONA_MAYA_PARENT = Persona(
     patience_turns=18,
 )
 
+PERSONA_MAYA_TRAVELING_COPARENT = Persona(
+    id="maya_traveling_coparent",
+    name="Maya Reed",
+    traits=[
+        "world-traveling",
+        "co-parenting",
+        "voice-first",
+        "privacy-protective",
+        "logistics-heavy",
+    ],
+    background=(
+        "Forty-one-year-old product executive and consultant who travels across "
+        "Pacific, Eastern, European, and Asian time zones. She coordinates two "
+        "children, a stepchild, an alternating-custody baseline, school and "
+        "activity calendars, one food allergy, a recurring counseling appointment, "
+        "and coverage with a current partner, former spouse, grandmother, and paid "
+        "sitter. Her confidential work calendar and child-private records must not "
+        "leak into household coordination."
+    ),
+    communication_style=(
+        "warm but compressed, dictates noisy multi-part requests between meetings "
+        "and airports, names family members without restating their roles, expects "
+        "the assistant to surface material ambiguities and otherwise make progress"
+    ),
+    patience_turns=20,
+)
+
 PERSONA_JORDAN_COPARENT = Persona(
     id="jordan_coparent",
     name="Jordan Ellis",
@@ -342,6 +369,7 @@ ALL_PERSONAS: list[Persona] = [
     PERSONA_RIA_PM,
     PERSONA_SAM_FOUNDER,
     PERSONA_MAYA_PARENT,
+    PERSONA_MAYA_TRAVELING_COPARENT,
     PERSONA_JORDAN_COPARENT,
     PERSONA_DEV_FREELANCER,
     PERSONA_NORA_CONSULTANT,

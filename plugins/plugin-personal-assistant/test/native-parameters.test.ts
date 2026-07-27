@@ -24,6 +24,7 @@ const mocks = vi.hoisted(() => ({
   hasOwnerAccess: vi.fn(),
   queue: {
     list: vi.fn(),
+    byId: vi.fn(),
     reject: vi.fn(),
     approve: vi.fn(),
   },
@@ -115,6 +116,13 @@ describe("LifeOps native options.parameters migration", () => {
       { id: "req-1", action: "send_message", channel: "sms", reason: "one" },
       { id: "req-2", action: "send_email", channel: "gmail", reason: "two" },
     ]);
+    mocks.queue.byId.mockResolvedValue({
+      id: "req-1",
+      action: "send_message",
+      subjectUserId: "owner-1",
+      state: "pending",
+      payload: { action: "send_message" },
+    });
     mocks.queue.reject.mockResolvedValue({
       id: "req-1",
       action: "send_message",
@@ -156,6 +164,13 @@ describe("LifeOps native options.parameters migration", () => {
     mocks.queue.list.mockResolvedValue([
       { id: "req-1", action: "send_message", channel: "sms", reason: "one" },
     ]);
+    mocks.queue.byId.mockResolvedValue({
+      id: "req-1",
+      action: "send_message",
+      subjectUserId: "owner-1",
+      state: "pending",
+      payload: { action: "send_message" },
+    });
     mocks.queue.reject.mockResolvedValue({
       id: "req-1",
       action: "send_message",

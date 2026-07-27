@@ -31,6 +31,8 @@ import {
   type CalendarViewMode,
   useCalendarWeek,
 } from "../hooks/useCalendarWeek.js";
+import { CalendarSourceHealth } from "./CalendarSourceHealth.js";
+import { CalendarSourceManager } from "./CalendarSourceManager.js";
 import { EventEditorDrawer } from "./EventEditorDrawer.js";
 
 const TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
@@ -1247,6 +1249,18 @@ export function CalendarSection({
           </p>
         ) : null}
 
+        <CalendarSourceHealth
+          status={calendar.status}
+          sources={calendar.sources}
+          refreshing={calendar.refreshing}
+          onRefresh={() => void calendar.refresh()}
+        />
+
+        <CalendarSourceManager
+          sourceHealth={calendar.sources}
+          onSelectionChanged={() => void calendar.refresh()}
+        />
+
         {calendar.error ? (
           <div
             className="px-1 py-1 text-xs"
@@ -1258,13 +1272,21 @@ export function CalendarSection({
           </div>
         ) : null}
 
-        {calendar.loading && calendar.events.length === 0 ? (
+        {calendar.status === "loading" ? (
           <CalendarStatusIcon
             loading
             label={t("lifeopsCalendar.loading", {
               defaultValue: "Loading",
             })}
           />
+        ) : calendar.status === "unavailable" ? (
+          <CalendarStatusIcon label="Calendar unavailable" />
+        ) : calendar.status === "error" && calendar.events.length === 0 ? (
+          <CalendarStatusIcon label="Calendar could not load" />
+        ) : calendar.status === "empty" ? (
+          <CalendarStatusIcon label="No events in this range" />
+        ) : calendar.status === "partial" && calendar.events.length === 0 ? (
+          <CalendarStatusIcon label="No events from available sources" />
         ) : compactLayout ? (
           <AgendaView
             days={days}

@@ -14,19 +14,46 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AgentRuntime } from "@elizaos/core";
+import { KnowledgeGraphService, knowledgeGraphSchema } from "@elizaos/agent";
+import type { AgentRuntime, Plugin } from "@elizaos/core";
 import { AgentEventService, parseInteractionBlocks } from "@elizaos/core";
-import { schedulingPlugin } from "@elizaos/plugin-scheduling";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {
+  type DispatchResult,
+  schedulingPlugin,
+} from "@elizaos/plugin-scheduling";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createRealTestRuntime } from "../../../packages/test/helpers/real-runtime.ts";
-import { createApprovalQueue } from "../src/lifeops/approval-queue.js";
+import { runSchedulingNegotiationHandler } from "../src/actions/lib/scheduling-handler.js";
+import { executeApprovedRequest } from "../src/actions/resolve-request.js";
+import {
+  createApprovalQueue,
+  PgApprovalQueue,
+} from "../src/lifeops/approval-queue.js";
 import {
   type ApprovalEnqueueInput,
+  ApprovalIdempotencyConflictError,
   ApprovalNotFoundError,
   type ApprovalQueue,
+  type ApprovalRequest,
   ApprovalStateTransitionError,
+  type SchedulingApprovalTransportChannel,
 } from "../src/lifeops/approval-queue.types.js";
+import { getChannelRegistry } from "../src/lifeops/channels/index.js";
 import { LifeOpsRepository } from "../src/lifeops/repository.js";
+import {
+  attachSchedulingApprovalCorrelation,
+  readSchedulingApprovalCorrelation,
+  schedulingApprovalExpiresAt,
+  schedulingApprovalPayloadForDraft,
+  verifySchedulingApprovalContent,
+} from "../src/lifeops/scheduling-approval.js";
+import {
+  prepareSchedulingDelivery,
+  SchedulingDeliveryStore,
+  schedulingDeliveryIdempotencyKey,
+} from "../src/lifeops/scheduling-delivery.js";
+import { LifeOpsService } from "../src/lifeops/service.js";
+import { executeRawSql, withTransaction } from "../src/lifeops/sql.js";
 import { personalAssistantPlugin } from "../src/plugin.js";
 
 let runtime: AgentRuntime;
@@ -44,6 +71,13 @@ const isolatedEnvKeys = [
 ] as const;
 
 const previousEnv = new Map<string, string | undefined>();
+
+const knowledgeGraphPlugin: Plugin = {
+  name: "approval-queue-knowledge-graph",
+  description: "Contact graph required by scheduling draft resolution.",
+  schema: knowledgeGraphSchema,
+  services: [KnowledgeGraphService],
+};
 
 function setIsolatedEnv(): void {
   isolatedStateDir = mkdtempSync(join(tmpdir(), "approval-queue-state-"));
@@ -97,10 +131,108 @@ function messageInput(
   };
 }
 
+function schedulingTarget(
+  channel: SchedulingApprovalTransportChannel,
+  suffix: string,
+): string {
+  if (channel === "email") return `taylor-${suffix}@example.com`;
+  if (
+    channel === "sms" ||
+    channel === "imessage" ||
+    channel === "signal" ||
+    channel === "whatsapp"
+  ) {
+    return `+1555${suffix.replace(/\D/gu, "").padStart(7, "0").slice(-7)}`;
+  }
+  return `${channel}:taylor-${suffix}`;
+}
+
+async function createOpeningApproval(args: {
+  suffix: string;
+  channel?: SchedulingApprovalTransportChannel;
+}): Promise<{
+  request: ApprovalRequest;
+  negotiationId: string;
+}> {
+  const channel = args.channel ?? "email";
+  const service = new LifeOpsService(runtime);
+  const target = schedulingTarget(channel, args.suffix);
+  const counterparty = await service.upsertRelationship({
+    name: `Taylor ${args.suffix}`,
+    primaryChannel: channel,
+    primaryHandle: target,
+    email: channel === "email" ? target : null,
+    phone:
+      channel === "sms" ||
+      channel === "imessage" ||
+      channel === "signal" ||
+      channel === "whatsapp"
+        ? target
+        : null,
+    notes: "scheduling delivery integration test",
+    tags: ["family"],
+    relationshipType: "co_parent_of",
+    lastContactedAt: null,
+    metadata: {},
+  });
+  const message = {
+    id: runtime.agentId,
+    entityId: runtime.agentId,
+    roomId: runtime.agentId,
+    content: { text: `Coordinate school logistics ${args.suffix}` },
+  } as never;
+  const result = await runSchedulingNegotiationHandler(
+    runtime,
+    message,
+    undefined,
+    {
+      parameters: {
+        subaction: "start",
+        subject: `School logistics ${args.suffix}`,
+        relationshipId: counterparty.id,
+        durationMinutes: 30,
+        timezone: "America/Los_Angeles",
+      },
+    } as never,
+    async () => [],
+  );
+  const data = result.data as {
+    negotiation: { id: string };
+    approvalRequestId: string;
+  };
+  const request = await queue.byId(data.approvalRequestId);
+  if (!request) {
+    throw new Error("scheduling handler did not persist its approval request");
+  }
+  return { request, negotiationId: data.negotiation.id };
+}
+
+function receiptResult(
+  payload: unknown,
+  providerMessageId: string,
+): DispatchResult {
+  const idempotencyKey =
+    payload &&
+    typeof payload === "object" &&
+    typeof (payload as Record<string, unknown>).idempotencyKey === "string"
+      ? String((payload as Record<string, unknown>).idempotencyKey)
+      : "";
+  return {
+    ok: true,
+    messageId: providerMessageId,
+    receipt: {
+      provider: "integration-provider",
+      providerMessageId,
+      idempotencyKey,
+      acceptedAt: new Date().toISOString(),
+    },
+  };
+}
+
 beforeAll(async () => {
   setIsolatedEnv();
   const result = await createRealTestRuntime({
-    plugins: [schedulingPlugin, personalAssistantPlugin],
+    plugins: [knowledgeGraphPlugin, schedulingPlugin, personalAssistantPlugin],
   });
   runtime = result.runtime;
   cleanup = result.cleanup;
@@ -153,6 +285,1061 @@ describe("ApprovalQueue integration (real PGlite)", () => {
       limit: 10,
     });
     expect(pendingList.every((r) => r.id !== enqueued.id)).toBe(true);
+  }, 60_000);
+
+  it("migrates and round-trips durable approval idempotency plus the scheduling attempt ledger", async () => {
+    const approvalColumns = await executeRawSql(
+      runtime,
+      `SELECT column_name
+         FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'approval_requests'
+          AND column_name = 'idempotency_key'`,
+    );
+    expect(approvalColumns).toHaveLength(1);
+    const attemptTables = await executeRawSql(
+      runtime,
+      `SELECT table_name
+         FROM information_schema.tables
+        WHERE table_schema = 'app_lifeops'
+          AND table_name = 'life_scheduling_delivery_attempts'`,
+    );
+    expect(attemptTables).toHaveLength(1);
+
+    const input = messageInput({
+      subjectUserId: "owner-idempotency",
+      idempotencyKey: "approval-integration:same-message",
+    });
+    const [first, concurrentRetry] = await Promise.all([
+      queue.enqueue(input),
+      queue.enqueue(input),
+    ]);
+    expect(concurrentRetry.id).toBe(first.id);
+    expect(first.idempotencyKey).toBe(input.idempotencyKey);
+    const rows = await queue.list({
+      subjectUserId: "owner-idempotency",
+      state: null,
+      action: null,
+      limit: 10,
+    });
+    expect(
+      rows.filter((row) => row.idempotencyKey === input.idempotencyKey),
+    ).toHaveLength(1);
+
+    await expect(
+      queue.enqueue(
+        messageInput({
+          subjectUserId: "owner-idempotency",
+          idempotencyKey: input.idempotencyKey,
+          payload: {
+            action: "send_message",
+            recipient: "+15555551212",
+            body: "Different immutable content",
+            replyToMessageId: null,
+          },
+        }),
+      ),
+    ).rejects.toBeInstanceOf(ApprovalIdempotencyConflictError);
+    await expect(
+      queue.enqueue({
+        ...input,
+        reason: "a different immutable approval explanation",
+      }),
+    ).rejects.toBeInstanceOf(ApprovalIdempotencyConflictError);
+    await expect(
+      queue.enqueue({
+        ...input,
+        expiresAt: new Date(input.expiresAt.getTime() + 1_000),
+      }),
+    ).rejects.toBeInstanceOf(ApprovalIdempotencyConflictError);
+  }, 60_000);
+
+  it("rolls back negotiation, approval, and delivery evidence as one PGlite transaction", async () => {
+    const service = new LifeOpsService(runtime);
+    const counterparty = await service.upsertRelationship({
+      name: "Atomic Taylor",
+      primaryChannel: "email",
+      primaryHandle: "atomic-taylor@example.com",
+      email: "atomic-taylor@example.com",
+      phone: null,
+      notes: "atomic scheduling test",
+      tags: ["family"],
+      relationshipType: "co_parent_of",
+      lastContactedAt: null,
+      metadata: {},
+    });
+    const target = await service.resolveCounterpartyTargetForRelationship(
+      counterparty.id,
+    );
+    const transactionalQueue = new PgApprovalQueue(runtime, {
+      agentId: runtime.agentId,
+    });
+    let negotiationId = "";
+    let approvalRequestId = "";
+
+    await expect(
+      withTransaction(runtime, async (tx) => {
+        const negotiation = await service.startNegotiation({
+          subject: "Atomic school meeting",
+          relationshipId: counterparty.id,
+          durationMinutes: 30,
+          timezone: "America/Los_Angeles",
+          tx,
+        });
+        negotiationId = negotiation.id;
+        const draft = await service.draftOpeningMessage(negotiation, target);
+        if (!draft) throw new Error("expected an opening draft");
+        const payload = schedulingApprovalPayloadForDraft(draft);
+        const correlation = readSchedulingApprovalCorrelation(payload);
+        if (!correlation) throw new Error("expected scheduling correlation");
+        const enqueued = await transactionalQueue.enqueueTransactional(
+          {
+            requestedBy: "PERSONAL_ASSISTANT",
+            subjectUserId: String(runtime.agentId),
+            action: payload.action,
+            payload,
+            channel: draft.transportChannel,
+            reason: "atomic rollback probe",
+            idempotencyKey: schedulingDeliveryIdempotencyKey(
+              correlation.contentSha256,
+            ),
+            expiresAt: new Date(Date.now() + 60_000),
+          },
+          tx,
+        );
+        approvalRequestId = enqueued.request.id;
+        await prepareSchedulingDelivery(tx, {
+          agentId: runtime.agentId,
+          request: enqueued.request,
+          correlation,
+        });
+        throw new Error("force rollback after all three records exist");
+      }),
+    ).rejects.toThrow("force rollback");
+
+    expect(await service.getNegotiation(negotiationId)).toBeNull();
+    expect(await queue.byId(approvalRequestId)).toBeNull();
+    expect(
+      await new SchedulingDeliveryStore(runtime).byApprovalRequestId(
+        approvalRequestId,
+      ),
+    ).toBeNull();
+  }, 60_000);
+
+  it("round-trips an exact scheduling draft and typed content hash through the real queue", async () => {
+    const payload = attachSchedulingApprovalCorrelation(
+      {
+        action: "send_email",
+        to: ["co-parent@example.com"],
+        cc: [],
+        bcc: [],
+        subject: "Scheduling: school conference",
+        body: "Would Tuesday at 4:00 PM work for the school conference?",
+        threadId: null,
+        replyToMessageId: null,
+      },
+      {
+        kind: "scheduling_message",
+        negotiationId: "negotiation-17",
+        proposalId: "proposal-41",
+        messageKind: "proposal",
+        transportChannel: "email",
+        sourceUpdatedAt: "2026-07-26T18:30:00.000Z",
+        counterpartyEntityId: "co-parent-17",
+        counterpartyEntityUpdatedAt: "2026-07-26T18:20:00.000Z",
+        draftVersion: 1,
+      },
+    );
+    const enqueued = await queue.enqueue({
+      requestedBy: "PERSONAL_ASSISTANT",
+      subjectUserId: "owner-scheduling-integrity",
+      action: "send_email",
+      payload,
+      channel: "email",
+      reason: "Review exact scheduling proposal",
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+    });
+
+    const fetched = await queue.byId(enqueued.id);
+    if (!fetched) throw new Error("approval row disappeared after enqueue");
+    expect(fetched.payload).toEqual(payload);
+    expect(readSchedulingApprovalCorrelation(fetched.payload)).toMatchObject({
+      negotiationId: "negotiation-17",
+      proposalId: "proposal-41",
+      messageKind: "proposal",
+      transportChannel: "email",
+    });
+    expect(verifySchedulingApprovalContent(fetched.payload)).toMatchObject({
+      matches: true,
+      actualSha256: payload.scheduling.contentSha256,
+    });
+  }, 60_000);
+
+  it("reuses concurrent identical scheduling enqueues with source-anchored expiry", async () => {
+    const { request } = await createOpeningApproval({
+      suffix: "deterministic-expiry-1000",
+    });
+    const correlation = readSchedulingApprovalCorrelation(request.payload);
+    if (!correlation) throw new Error("expected scheduling correlation");
+    const expiresAt = schedulingApprovalExpiresAt(correlation.sourceUpdatedAt);
+    expect(expiresAt.getTime()).toBe(request.expiresAt.getTime());
+    const input: ApprovalEnqueueInput = {
+      requestedBy: request.requestedBy,
+      subjectUserId: request.subjectUserId,
+      action: request.action,
+      payload: request.payload,
+      channel: request.channel,
+      reason: request.reason,
+      idempotencyKey: request.idempotencyKey,
+      expiresAt,
+    };
+
+    const [first, second] = await Promise.all([
+      queue.enqueue(input),
+      queue.enqueue({
+        ...input,
+        expiresAt: schedulingApprovalExpiresAt(correlation.sourceUpdatedAt),
+      }),
+    ]);
+
+    expect(first.id).toBe(request.id);
+    expect(second.id).toBe(request.id);
+  }, 60_000);
+
+  it("fails fast when a persisted delivery attempt count is invalid", async () => {
+    const { request } = await createOpeningApproval({
+      suffix: "invalid-attempt-count-1000",
+    });
+    await executeRawSql(
+      runtime,
+      `UPDATE app_lifeops.life_scheduling_delivery_attempts
+          SET attempt_count = -1
+        WHERE agent_id = '${runtime.agentId}'
+          AND approval_request_id = '${request.id}'`,
+    );
+
+    await expect(
+      new SchedulingDeliveryStore(runtime).byApprovalRequestId(request.id),
+    ).rejects.toMatchObject({
+      code: "SCHEDULING_DELIVERY_PERSISTED_ROW_INVALID",
+    });
+  }, 60_000);
+
+  it("scheduling start/propose/finalize/cancel queue exact drafts without connector delivery", async () => {
+    const service = new LifeOpsService(runtime);
+    const counterparty = await service.upsertRelationship({
+      name: "Taylor",
+      primaryChannel: "email",
+      primaryHandle: "co-parent@example.com",
+      email: "co-parent@example.com",
+      phone: null,
+      notes: "co-parent",
+      tags: ["family"],
+      relationshipType: "co_parent_of",
+      lastContactedAt: null,
+      metadata: {},
+    });
+    const sendEmail = vi.spyOn(LifeOpsService.prototype, "sendGmailMessage");
+    const message = {
+      id: runtime.agentId,
+      entityId: runtime.agentId,
+      roomId: runtime.agentId,
+      content: { text: "Coordinate the school conference with Taylor" },
+    } as never;
+
+    const result = await runSchedulingNegotiationHandler(
+      runtime,
+      message,
+      undefined,
+      {
+        parameters: {
+          subaction: "start",
+          subject: "School conference",
+          relationshipId: counterparty.id,
+          durationMinutes: 30,
+          timezone: "America/Los_Angeles",
+        },
+      } as never,
+      async () => [],
+    );
+
+    expect(result).toMatchObject({
+      success: true,
+      data: {
+        approvalState: "pending",
+        deliveryStatus: "awaiting_approval",
+        sent: false,
+        calendarEventCreated: false,
+      },
+    });
+    const data = result.data as {
+      negotiation: { id: string };
+      approvalRequestId: string;
+    };
+    const approval = await queue.byId(data.approvalRequestId);
+    if (!approval) throw new Error("scheduling handler queued no approval");
+    expect(approval.state).toBe("pending");
+    expect(approval.action).toBe("send_email");
+    expect(approval.payload).toMatchObject({
+      action: "send_email",
+      to: ["co-parent@example.com"],
+      subject: "Scheduling: School conference",
+    });
+    expect(approval.reason).toContain("To: Taylor (co-parent@example.com)");
+    expect(approval.reason).toContain("Subject: Scheduling: School conference");
+    expect(approval.reason).toContain("Message:\nHi,");
+    expect(approval.reason).toContain("Content SHA-256:");
+    expect(readSchedulingApprovalCorrelation(approval.payload)).toMatchObject({
+      negotiationId: data.negotiation.id,
+      proposalId: null,
+      messageKind: "opening",
+      transportChannel: "email",
+    });
+    expect(verifySchedulingApprovalContent(approval.payload)?.matches).toBe(
+      true,
+    );
+    const openingAttempt = await new SchedulingDeliveryStore(
+      runtime,
+    ).byApprovalRequestId(approval.id);
+    expect(openingAttempt).toMatchObject({
+      approvalRequestId: approval.id,
+      negotiationId: data.negotiation.id,
+      state: "awaiting_approval",
+      attemptCount: 0,
+      idempotencyKey: approval.idempotencyKey,
+    });
+
+    const proposed = await runSchedulingNegotiationHandler(
+      runtime,
+      message,
+      undefined,
+      {
+        parameters: {
+          subaction: "propose",
+          negotiationId: data.negotiation.id,
+          startAt: "2026-08-10T23:00:00.000Z",
+          endAt: "2026-08-10T23:30:00.000Z",
+          proposedBy: "owner",
+        },
+      } as never,
+      async () => [],
+    );
+    expect(proposed).toMatchObject({
+      success: true,
+      data: {
+        approvalState: "pending",
+        deliveryStatus: "awaiting_approval",
+        sent: false,
+        calendarEventCreated: false,
+      },
+    });
+    const proposedData = proposed.data as {
+      proposal: { id: string };
+      approvalRequestId: string;
+    };
+    const proposalApproval = await queue.byId(proposedData.approvalRequestId);
+    if (!proposalApproval) {
+      throw new Error("proposal handler queued no approval");
+    }
+    expect(
+      readSchedulingApprovalCorrelation(proposalApproval.payload),
+    ).toMatchObject({
+      negotiationId: data.negotiation.id,
+      proposalId: proposedData.proposal.id,
+      messageKind: "proposal",
+    });
+    expect(
+      verifySchedulingApprovalContent(proposalApproval.payload)?.matches,
+    ).toBe(true);
+
+    const responded = await runSchedulingNegotiationHandler(
+      runtime,
+      message,
+      undefined,
+      {
+        parameters: {
+          subaction: "respond",
+          proposalId: proposedData.proposal.id,
+          response: "accepted",
+        },
+      } as never,
+      async () => [],
+    );
+    expect(responded).toMatchObject({
+      success: true,
+      data: { proposal: { status: "accepted" } },
+    });
+
+    const finalized = await runSchedulingNegotiationHandler(
+      runtime,
+      message,
+      undefined,
+      {
+        parameters: {
+          subaction: "finalize",
+          negotiationId: data.negotiation.id,
+          proposalId: proposedData.proposal.id,
+        },
+      } as never,
+      async () => [],
+    );
+    expect(finalized).toMatchObject({
+      success: true,
+      data: {
+        negotiation: {
+          state: "confirmed",
+          acceptedProposalId: proposedData.proposal.id,
+        },
+        approvalState: "pending",
+        deliveryStatus: "awaiting_approval",
+        sent: false,
+        calendarEventCreated: false,
+      },
+    });
+    const finalizedData = finalized.data as { approvalRequestId: string };
+    const confirmationApproval = await queue.byId(
+      finalizedData.approvalRequestId,
+    );
+    if (!confirmationApproval) {
+      throw new Error("finalize handler queued no approval");
+    }
+    expect(
+      readSchedulingApprovalCorrelation(confirmationApproval.payload),
+    ).toMatchObject({
+      negotiationId: data.negotiation.id,
+      proposalId: proposedData.proposal.id,
+      messageKind: "confirmation",
+    });
+    expect(
+      verifySchedulingApprovalContent(confirmationApproval.payload)?.matches,
+    ).toBe(true);
+
+    const cancelled = await runSchedulingNegotiationHandler(
+      runtime,
+      message,
+      undefined,
+      {
+        parameters: {
+          subaction: "cancel",
+          negotiationId: data.negotiation.id,
+          reason: "Conference moved to a school-managed booking portal",
+        },
+      } as never,
+      async () => [],
+    );
+    expect(cancelled).toMatchObject({
+      success: true,
+      data: {
+        negotiation: { state: "cancelled" },
+        approvalState: "pending",
+        deliveryStatus: "awaiting_approval",
+        sent: false,
+        calendarEventChanged: false,
+      },
+    });
+    const cancelledData = cancelled.data as { approvalRequestId: string };
+    const cancellationApproval = await queue.byId(
+      cancelledData.approvalRequestId,
+    );
+    if (!cancellationApproval) {
+      throw new Error("cancel handler queued no approval");
+    }
+    expect(
+      readSchedulingApprovalCorrelation(cancellationApproval.payload),
+    ).toMatchObject({
+      negotiationId: data.negotiation.id,
+      proposalId: proposedData.proposal.id,
+      messageKind: "cancellation",
+    });
+    expect(
+      verifySchedulingApprovalContent(cancellationApproval.payload)?.matches,
+    ).toBe(true);
+    expect(sendEmail).not.toHaveBeenCalled();
+  }, 60_000);
+
+  it("suppresses a concurrent duplicate send and completes only with one durable provider receipt", async () => {
+    const { request } = await createOpeningApproval({
+      suffix: "concurrent-1001",
+    });
+    const approved = await queue.approve(request.id, {
+      resolvedBy: String(runtime.agentId),
+      resolutionReason: "reviewed exact concurrent draft",
+    });
+    const email = getChannelRegistry(runtime)?.get("email");
+    if (!email?.send) throw new Error("email channel is unavailable");
+    const originalSend = email.send;
+    const send = vi.fn(async (payload: unknown) => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      return receiptResult(payload, "gmail-concurrent-1");
+    });
+    email.send = send;
+    try {
+      const [first, duplicate] = await Promise.all([
+        executeApprovedRequest({ runtime, queue, request: approved }),
+        executeApprovedRequest({ runtime, queue, request: approved }),
+      ]);
+      expect([first.success, duplicate.success].filter(Boolean)).toHaveLength(
+        1,
+      );
+      expect(
+        [first, duplicate].find((result) => !result.success),
+      ).toMatchObject({
+        data: { error: "SCHEDULING_DELIVERY_IN_FLIGHT", sent: false },
+      });
+      expect(send).toHaveBeenCalledTimes(1);
+      // A fresh queue/store instance models a worker restart with no in-memory
+      // execution state. The persisted receipt remains the dedupe authority.
+      const restartedQueue = new PgApprovalQueue(runtime, {
+        agentId: runtime.agentId,
+      });
+      const completedAfterRestart = await restartedQueue.byId(request.id);
+      if (!completedAfterRestart) {
+        throw new Error("completed approval disappeared across restart seam");
+      }
+      const replay = await executeApprovedRequest({
+        runtime,
+        queue: restartedQueue,
+        request: completedAfterRestart,
+      });
+      expect(replay).toMatchObject({
+        success: true,
+        data: { duplicateSuppressed: true, sent: true },
+      });
+      expect(send).toHaveBeenCalledTimes(1);
+
+      const persisted = await new SchedulingDeliveryStore(
+        runtime,
+      ).byApprovalRequestId(request.id);
+      expect(persisted).toMatchObject({
+        state: "succeeded",
+        attemptCount: 1,
+        provider: "integration-provider",
+        providerMessageId: "gmail-concurrent-1",
+      });
+      expect(persisted?.receipt?.idempotencyKey).toBe(request.idempotencyKey);
+      expect((await queue.byId(request.id))?.state).toBe("done");
+    } finally {
+      email.send = originalSend;
+    }
+  }, 60_000);
+
+  it("retries only a provider-declared non-acceptance, preserving the same idempotency key", async () => {
+    const { request } = await createOpeningApproval({
+      suffix: "retry-1002",
+    });
+    const approved = await queue.approve(request.id, {
+      resolvedBy: String(runtime.agentId),
+      resolutionReason: "reviewed exact retry draft",
+    });
+    const email = getChannelRegistry(runtime)?.get("email");
+    if (!email?.send) throw new Error("email channel is unavailable");
+    const originalSend = email.send;
+    const observedKeys: string[] = [];
+    const send = vi
+      .fn<(payload: unknown) => Promise<DispatchResult>>()
+      .mockImplementationOnce(async (payload) => {
+        observedKeys.push(
+          String((payload as Record<string, unknown>).idempotencyKey),
+        );
+        return {
+          ok: false,
+          reason: "rate_limited",
+          userActionable: false,
+          acceptance: "not_accepted",
+          retryAfterMinutes: 1,
+        };
+      })
+      .mockImplementationOnce(async (payload) => {
+        observedKeys.push(
+          String((payload as Record<string, unknown>).idempotencyKey),
+        );
+        return receiptResult(payload, "gmail-retry-2");
+      });
+    email.send = send;
+    try {
+      const rejected = await executeApprovedRequest({
+        runtime,
+        queue,
+        request: approved,
+      });
+      expect(rejected).toMatchObject({
+        success: false,
+        data: {
+          error: "SCHEDULING_DELIVERY_NOT_ACCEPTED",
+          state: "approved",
+          safeToRetry: true,
+        },
+      });
+      expect((await queue.byId(request.id))?.state).toBe("approved");
+
+      const restartedQueue = new PgApprovalQueue(runtime, {
+        agentId: runtime.agentId,
+      });
+      const retryableAfterRestart = await restartedQueue.byId(request.id);
+      if (!retryableAfterRestart) {
+        throw new Error("retryable approval disappeared across restart seam");
+      }
+      const retried = await executeApprovedRequest({
+        runtime,
+        queue: restartedQueue,
+        request: retryableAfterRestart,
+      });
+      expect(retried).toMatchObject({
+        success: true,
+        verifiedUserFacing: true,
+        data: { state: "done", sent: true },
+      });
+      expect(send).toHaveBeenCalledTimes(2);
+      expect(new Set(observedKeys)).toEqual(
+        new Set([String(request.idempotencyKey)]),
+      );
+      expect(
+        await new SchedulingDeliveryStore(runtime).byApprovalRequestId(
+          request.id,
+        ),
+      ).toMatchObject({
+        state: "succeeded",
+        attemptCount: 2,
+        providerMessageId: "gmail-retry-2",
+      });
+    } finally {
+      email.send = originalSend;
+    }
+  }, 60_000);
+
+  it("keeps an ambiguous provider result quarantined across worker restart", async () => {
+    const { request } = await createOpeningApproval({
+      suffix: "ambiguous-1003",
+    });
+    const approved = await queue.approve(request.id, {
+      resolvedBy: String(runtime.agentId),
+      resolutionReason: "reviewed exact ambiguous draft",
+    });
+    const email = getChannelRegistry(runtime)?.get("email");
+    if (!email?.send) throw new Error("email channel is unavailable");
+    const originalSend = email.send;
+    const send = vi.fn(
+      async (): Promise<DispatchResult> => ({
+        ok: true,
+        messageId: "provider-accepted-without-receipt",
+      }),
+    );
+    email.send = send;
+    try {
+      const ambiguous = await executeApprovedRequest({
+        runtime,
+        queue,
+        request: approved,
+      });
+      expect(ambiguous).toMatchObject({
+        success: false,
+        data: {
+          error: "SCHEDULING_DELIVERY_OUTCOME_AMBIGUOUS",
+          state: "executing",
+          sent: false,
+          safeToRetry: false,
+        },
+      });
+      const restartedQueue = new PgApprovalQueue(runtime, {
+        agentId: runtime.agentId,
+      });
+      const ambiguousAfterRestart = await restartedQueue.byId(request.id);
+      if (!ambiguousAfterRestart) {
+        throw new Error("ambiguous approval disappeared across restart seam");
+      }
+      const suppressed = await executeApprovedRequest({
+        runtime,
+        queue: restartedQueue,
+        request: ambiguousAfterRestart,
+      });
+      expect(suppressed).toMatchObject({
+        success: false,
+        data: {
+          error: "SCHEDULING_DELIVERY_OUTCOME_AMBIGUOUS",
+          sent: false,
+        },
+      });
+      expect(send).toHaveBeenCalledTimes(1);
+      expect((await queue.byId(request.id))?.state).toBe("executing");
+      expect(
+        await new SchedulingDeliveryStore(runtime).byApprovalRequestId(
+          request.id,
+        ),
+      ).toMatchObject({
+        state: "ambiguous",
+        attemptCount: 1,
+        providerMessageId: null,
+        receipt: null,
+      });
+    } finally {
+      email.send = originalSend;
+    }
+  }, 60_000);
+
+  it("quarantines a hostile thrown connector value without coercion failure", async () => {
+    const { request } = await createOpeningApproval({
+      suffix: "hostile-throw-1003",
+    });
+    const approved = await queue.approve(request.id, {
+      resolvedBy: String(runtime.agentId),
+      resolutionReason: "reviewed exact hostile throw draft",
+    });
+    const email = getChannelRegistry(runtime)?.get("email");
+    if (!email?.send) throw new Error("email channel is unavailable");
+    const originalSend = email.send;
+    const hostile = {
+      toString() {
+        throw new Error("poisoned toString");
+      },
+      [Symbol.toPrimitive]() {
+        throw new Error("poisoned Symbol.toPrimitive");
+      },
+    };
+    email.send = vi.fn(async () => {
+      throw hostile;
+    });
+    try {
+      const result = await executeApprovedRequest({
+        runtime,
+        queue,
+        request: approved,
+      });
+      expect(result).toMatchObject({
+        success: false,
+        data: {
+          error: "SCHEDULING_DELIVERY_OUTCOME_AMBIGUOUS",
+          sent: false,
+          safeToRetry: false,
+        },
+      });
+      expect(
+        await new SchedulingDeliveryStore(runtime).byApprovalRequestId(
+          request.id,
+        ),
+      ).toMatchObject({
+        state: "ambiguous",
+        lastFailure: {
+          code: "CONNECTOR_THROWN_OUTCOME_UNKNOWN",
+          message: "[object Object]",
+        },
+      });
+    } finally {
+      email.send = originalSend;
+    }
+  }, 60_000);
+
+  it("never treats a connector boolean as a provider receipt", async () => {
+    const { request } = await createOpeningApproval({
+      suffix: "boolean-1004",
+    });
+    const approved = await queue.approve(request.id, {
+      resolvedBy: String(runtime.agentId),
+      resolutionReason: "reviewed exact boolean draft",
+    });
+    const email = getChannelRegistry(runtime)?.get("email");
+    if (!email?.send) throw new Error("email channel is unavailable");
+    const originalSend = email.send;
+    const send = vi.fn(async () => true as never);
+    email.send = send;
+    try {
+      const result = await executeApprovedRequest({
+        runtime,
+        queue,
+        request: approved,
+      });
+      expect(result).toMatchObject({
+        success: false,
+        data: {
+          error: "SCHEDULING_DELIVERY_OUTCOME_AMBIGUOUS",
+          sent: false,
+        },
+      });
+      expect(
+        await new SchedulingDeliveryStore(runtime).byApprovalRequestId(
+          request.id,
+        ),
+      ).toMatchObject({ state: "ambiguous", receipt: null });
+      expect((await queue.byId(request.id))?.state).not.toBe("done");
+    } finally {
+      email.send = originalSend;
+    }
+  }, 60_000);
+
+  it.each([
+    "email",
+    "telegram",
+    "signal",
+    "whatsapp",
+    "imessage",
+    "sms",
+  ] as const)(
+    "persists a provider receipt before completing a %s scheduling approval",
+    async (channel) => {
+      const { request } = await createOpeningApproval({
+        suffix: `transport-${channel}-1005`,
+        channel,
+      });
+      const approved = await queue.approve(request.id, {
+        resolvedBy: String(runtime.agentId),
+        resolutionReason: `reviewed exact ${channel} draft`,
+      });
+      const contribution = getChannelRegistry(runtime)?.get(channel);
+      if (!contribution?.send) {
+        throw new Error(`${channel} channel is unavailable`);
+      }
+      expect(contribution.receiptContract).toBe("provider_receipt_id");
+      const originalSend = contribution.send;
+      const send = vi.fn(async (payload: unknown) =>
+        receiptResult(payload, `${channel}-receipt-1`),
+      );
+      contribution.send = send;
+      try {
+        const result = await executeApprovedRequest({
+          runtime,
+          queue,
+          request: approved,
+        });
+        expect(result).toMatchObject({
+          success: true,
+          verifiedUserFacing: true,
+          data: {
+            state: "done",
+            sent: true,
+            channel,
+            receipt: {
+              providerMessageId: `${channel}-receipt-1`,
+              idempotencyKey: request.idempotencyKey,
+            },
+          },
+        });
+        expect(send).toHaveBeenCalledTimes(1);
+      } finally {
+        contribution.send = originalSend;
+      }
+    },
+    60_000,
+  );
+
+  it("rejects a Discord scheduling draft before committing its negotiation or approval", async () => {
+    const service = new LifeOpsService(runtime);
+    const suffix = "unsupported-discord-1006";
+    const counterparty = await service.upsertRelationship({
+      name: "Discord Taylor",
+      primaryChannel: "discord",
+      primaryHandle: schedulingTarget("discord", suffix),
+      email: null,
+      phone: null,
+      notes: "unsupported receipt transport",
+      tags: ["family"],
+      relationshipType: "co_parent_of",
+      lastContactedAt: null,
+      metadata: {},
+    });
+    const message = {
+      id: runtime.agentId,
+      entityId: runtime.agentId,
+      roomId: runtime.agentId,
+      content: { text: "Coordinate over unsupported Discord" },
+    } as never;
+
+    await expect(
+      runSchedulingNegotiationHandler(
+        runtime,
+        message,
+        undefined,
+        {
+          parameters: {
+            subaction: "start",
+            subject: `School logistics ${suffix}`,
+            relationshipId: counterparty.id,
+            durationMinutes: 30,
+            timezone: "America/Los_Angeles",
+          },
+        } as never,
+        async () => [],
+      ),
+    ).rejects.toMatchObject({
+      code: "SCHEDULING_PROVIDER_RECEIPT_UNSUPPORTED",
+    });
+
+    expect(
+      (await service.listActiveNegotiations({ limit: 100 })).some(
+        (negotiation) => negotiation.subject === `School logistics ${suffix}`,
+      ),
+    ).toBe(false);
+    expect(
+      (
+        await queue.list({
+          subjectUserId: String(runtime.agentId),
+          state: null,
+          action: null,
+          limit: 100,
+        })
+      ).some((request) => request.reason.includes(suffix)),
+    ).toBe(false);
+  }, 60_000);
+
+  it("rejects tampered content and stale scheduling state before claiming delivery", async () => {
+    const tamperedSetup = await createOpeningApproval({
+      suffix: "tampered-1007",
+    });
+    const tamperedApproved = await queue.approve(tamperedSetup.request.id, {
+      resolvedBy: String(runtime.agentId),
+      resolutionReason: "reviewed exact pre-tamper draft",
+    });
+    if (tamperedApproved.payload.action !== "send_email") {
+      throw new Error("expected an email scheduling payload");
+    }
+    const tampered: ApprovalRequest = {
+      ...tamperedApproved,
+      payload: {
+        ...tamperedApproved.payload,
+        body: `${tamperedApproved.payload.body}\nSend a gift card too.`,
+      },
+    };
+    const email = getChannelRegistry(runtime)?.get("email");
+    if (!email?.send) throw new Error("email channel is unavailable");
+    const originalSend = email.send;
+    const send = vi.fn(async (payload: unknown) =>
+      receiptResult(payload, "must-not-send"),
+    );
+    email.send = send;
+    try {
+      const tamperResult = await executeApprovedRequest({
+        runtime,
+        queue,
+        request: tampered,
+      });
+      expect(tamperResult).toMatchObject({
+        success: false,
+        data: {
+          error: "SCHEDULING_APPROVAL_CONTENT_MISMATCH",
+          sent: false,
+        },
+      });
+
+      const staleSetup = await createOpeningApproval({
+        suffix: "stale-1008",
+      });
+      const staleApproved = await queue.approve(staleSetup.request.id, {
+        resolvedBy: String(runtime.agentId),
+        resolutionReason: "reviewed exact pre-stale draft",
+      });
+      await new Promise((resolve) => setTimeout(resolve, 2));
+      await new LifeOpsService(runtime).cancelNegotiation(
+        staleSetup.negotiationId,
+        "the school changed the process",
+      );
+      const staleResult = await executeApprovedRequest({
+        runtime,
+        queue,
+        request: staleApproved,
+      });
+      expect(staleResult).toMatchObject({
+        success: false,
+        data: {
+          error: expect.stringMatching(
+            /^SCHEDULING_APPROVAL_(STALE|MATERIAL_CHANGE)$/u,
+          ),
+          sent: false,
+        },
+      });
+      expect(send).not.toHaveBeenCalled();
+      expect((await queue.byId(tamperedSetup.request.id))?.state).toBe(
+        "approved",
+      );
+      expect((await queue.byId(staleSetup.request.id))?.state).toBe("expired");
+      expect(
+        await new SchedulingDeliveryStore(runtime).byApprovalRequestId(
+          staleSetup.request.id,
+        ),
+      ).toMatchObject({
+        state: "invalidated",
+        lastFailure: {
+          error: expect.stringMatching(
+            /^SCHEDULING_APPROVAL_(STALE|MATERIAL_CHANGE)$/u,
+          ),
+        },
+      });
+    } finally {
+      email.send = originalSend;
+    }
+  }, 60_000);
+
+  it("invalidates a contact mutation that lands after preflight but before the transactional claim", async () => {
+    const { request } = await createOpeningApproval({
+      suffix: "contact-race-1009",
+    });
+    const approved = await queue.approve(request.id, {
+      resolvedBy: String(runtime.agentId),
+      resolutionReason: "reviewed exact pre-contact-change draft",
+    });
+    const correlation = readSchedulingApprovalCorrelation(approved.payload);
+    if (!correlation) throw new Error("expected scheduling correlation");
+    const service = new LifeOpsService(runtime);
+    const current = await service.getRelationship(
+      correlation.counterpartyEntityId,
+    );
+    if (!current) throw new Error("counterparty disappeared before test");
+    const email = getChannelRegistry(runtime)?.get("email");
+    if (!email?.send) throw new Error("email channel is unavailable");
+    const originalSend = email.send;
+    const send = vi.fn(async (payload: unknown) =>
+      receiptResult(payload, "must-not-send-contact-race"),
+    );
+    email.send = send;
+    const originalBegin = SchedulingDeliveryStore.prototype.begin;
+    const begin = vi
+      .spyOn(SchedulingDeliveryStore.prototype, "begin")
+      .mockImplementationOnce(async function (
+        this: SchedulingDeliveryStore,
+        approvalRequest,
+        schedulingCorrelation,
+      ) {
+        await new Promise((resolve) => setTimeout(resolve, 2));
+        await service.upsertRelationship({
+          id: current.id,
+          name: current.name,
+          primaryChannel: current.primaryChannel,
+          primaryHandle: "changed-after-preflight@example.com",
+          email: "changed-after-preflight@example.com",
+          phone: current.phone,
+          notes: current.notes,
+          tags: current.tags,
+          relationshipType: current.relationshipType,
+          lastContactedAt: current.lastContactedAt,
+          metadata: current.metadata,
+        });
+        return originalBegin.call(this, approvalRequest, schedulingCorrelation);
+      });
+    try {
+      const result = await executeApprovedRequest({
+        runtime,
+        queue,
+        request: approved,
+      });
+      expect(result).toMatchObject({
+        success: false,
+        data: {
+          error: "SCHEDULING_APPROVAL_STALE",
+          state: "expired",
+          sent: false,
+        },
+      });
+      expect(send).not.toHaveBeenCalled();
+      expect((await queue.byId(request.id))?.state).toBe("expired");
+      expect(
+        await new SchedulingDeliveryStore(runtime).byApprovalRequestId(
+          request.id,
+        ),
+      ).toMatchObject({
+        state: "invalidated",
+        attemptCount: 0,
+      });
+    } finally {
+      begin.mockRestore();
+      email.send = originalSend;
+    }
   }, 60_000);
 
   it("enqueue posts the question into chat as an assistant event with approve/reject chips (#14733)", async () => {
@@ -310,6 +1497,28 @@ describe("ApprovalQueue integration (real PGlite)", () => {
     });
     expect(rejected.state).toBe("rejected");
     expect(rejected.resolutionReason).toBe("not now");
+  }, 60_000);
+
+  it("keeps a rejected idempotency key terminal until explicit fresh revision intent", async () => {
+    const base = messageInput({
+      subjectUserId: "owner-rejected-revision",
+      idempotencyKey: "approval-rejected-revision:v1",
+    });
+    const first = await queue.enqueue(base);
+    await queue.reject(first.id, {
+      resolvedBy: "owner-rejected-revision",
+      resolutionReason: "not this version",
+    });
+
+    const replay = await queue.enqueue(base);
+    expect(replay).toMatchObject({ id: first.id, state: "rejected" });
+
+    const fresh = await queue.enqueue({
+      ...base,
+      idempotencyKey: "approval-rejected-revision:v2",
+    });
+    expect(fresh.id).not.toBe(first.id);
+    expect(fresh.state).toBe("pending");
   }, 60_000);
 
   it("purgeExpired moves past-due pending rows to expired", async () => {

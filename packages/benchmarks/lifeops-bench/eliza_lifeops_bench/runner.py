@@ -3065,6 +3065,11 @@ class LifeOpsBenchRunner:
         world_factory: WorldFactory | None = None,
         evaluator_model: str = "gemma-4-31b",
         judge_model: str = "claude-opus-4-7",
+        evaluator_provider: str | None = None,
+        judge_provider: str | None = None,
+        agent_model_name: str | None = None,
+        agent_adapter: str | None = None,
+        agent_provider: str | None = None,
         scenarios: list[Scenario] | None = None,
         concurrency: int = 4,
         seeds: int = 1,
@@ -3090,6 +3095,11 @@ class LifeOpsBenchRunner:
         self.world_factory = world_factory
         self.evaluator_model = evaluator_model
         self.judge_model = judge_model
+        self.evaluator_provider = evaluator_provider
+        self.judge_provider = judge_provider
+        self.agent_model_name = agent_model_name
+        self.agent_adapter = agent_adapter
+        self.agent_provider = agent_provider
         self.concurrency = concurrency
         self.seeds = seeds
         self.max_cost_usd = max_cost_usd
@@ -3114,6 +3124,8 @@ class LifeOpsBenchRunner:
             self.evaluator = LifeOpsEvaluator(
                 simulated_user_client=simulated_user_client,
                 judge_client=judge_client,
+                simulated_user_provider=evaluator_provider,
+                judge_provider=judge_provider,
             )
         else:
             self.evaluator = None
@@ -3200,6 +3212,11 @@ class LifeOpsBenchRunner:
             and bench_result.successful_run_count == bench_result.expected_run_count
         )
         bench_result.workload_sha256 = _workload_sha256(scenarios, self.seeds)
+        bench_result.agent_model_name = self.agent_model_name
+        bench_result.agent_adapter = self.agent_adapter
+        bench_result.agent_provider = self.agent_provider
+        bench_result.evaluator_provider = self.evaluator_provider
+        bench_result.judge_provider = self.judge_provider
         return bench_result
 
     async def _run_one_guarded(
@@ -3257,6 +3274,11 @@ class LifeOpsBenchRunner:
                 f"scenario {scenario.id} is LIVE but no evaluator was wired; "
                 "construct LifeOpsBenchRunner with simulated_user_client and judge_client."
             )
+        scenario_evaluator = (
+            self.evaluator.fork()
+            if scenario.mode is ScenarioMode.LIVE and self.evaluator is not None
+            else None
+        )
 
         world = self.world_factory(seed, scenario.now_iso)
         history: list[MessageTurn] = [
@@ -3414,7 +3436,7 @@ class LifeOpsBenchRunner:
                 cache_supported=cache_supported,
                 model_tier=getattr(agent_turn, "model_tier", None),
                 prompt_cache_key=getattr(agent_turn, "prompt_cache_key", None),
-                model_name=getattr(agent_turn, "model_name", None),
+                model_name=agent_turn.model_name or self.agent_model_name,
             )
 
             # Terminal detection: assistant turn with no tool_calls signals
@@ -3445,18 +3467,18 @@ class LifeOpsBenchRunner:
                     disruptions_by_turn.get(turn_number, []), world
                 )
 
-                pre_eval_cost = self.evaluator.cost_usd  # type: ignore[union-attr]
+                pre_eval_cost = scenario_evaluator.cost_usd  # type: ignore[union-attr]
                 if turn_number >= self.live_judge_min_turn:
-                    satisfied, _reason = await self.evaluator.judge_satisfaction(  # type: ignore[union-attr]
+                    satisfied, _reason = await scenario_evaluator.judge_satisfaction(  # type: ignore[union-attr]
                         scenario, history, world
                     )
                     await self._charge(
-                        self.evaluator.cost_usd - pre_eval_cost,  # type: ignore[union-attr]
+                        scenario_evaluator.cost_usd - pre_eval_cost,  # type: ignore[union-attr]
                         scenario.id,
                         seed,
                         bucket="eval",
                     )
-                    pre_eval_cost = self.evaluator.cost_usd  # type: ignore[union-attr]
+                    pre_eval_cost = scenario_evaluator.cost_usd  # type: ignore[union-attr]
                     if satisfied:
                         terminated_reason = "satisfied"
                         turns.append(turn_result)
@@ -3464,7 +3486,7 @@ class LifeOpsBenchRunner:
 
                 # Always advance the conversation by one user turn in LIVE
                 # mode (judge said NO, or we haven't started judging yet).
-                user_turn = await self.evaluator.simulate_user_turn(  # type: ignore[union-attr]
+                user_turn = await scenario_evaluator.simulate_user_turn(  # type: ignore[union-attr]
                     scenario, history, world
                 )
                 if disruption_note:
@@ -3475,7 +3497,7 @@ class LifeOpsBenchRunner:
                 history.append(user_turn)
                 turn_result.user_response = user_turn.content
                 await self._charge(
-                    self.evaluator.cost_usd - pre_eval_cost,  # type: ignore[union-attr]
+                    scenario_evaluator.cost_usd - pre_eval_cost,  # type: ignore[union-attr]
                     scenario.id,
                     seed,
                     bucket="eval",
@@ -3516,6 +3538,11 @@ class LifeOpsBenchRunner:
                 t.latency_ms for t in turns if t.latency_ms is not None
             ),
             error=None,
+            evaluator_trace=(
+                list(scenario_evaluator.trace)
+                if scenario_evaluator is not None
+                else []
+            ),
         )
         result.total_score = score_scenario(result, scenario)
         return result
@@ -3706,9 +3733,23 @@ class LifeOpsBenchRunner:
                 "refusing to publish LifeOpsBench result with invalid completeness "
                 "or workload provenance"
             )
+        if not all(
+            (
+                result.agent_model_name,
+                result.agent_adapter,
+                result.agent_provider,
+            )
+        ):
+            raise RuntimeError(
+                "refusing to publish LifeOpsBench result without acting-agent "
+                "provenance"
+            )
         os.makedirs(output_dir, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        safe = re.sub(r"[^A-Za-z0-9_.-]+", "-", str(result.model_name)).strip("-") or "model"
+        safe = (
+            re.sub(r"[^A-Za-z0-9_.-]+", "-", result.agent_model_name).strip("-")
+            or "model"
+        )
         path = os.path.join(output_dir, f"lifeops_{safe}_{timestamp}.json")
 
         def _serialize(obj: Any) -> Any:
@@ -3733,8 +3774,26 @@ class LifeOpsBenchRunner:
         print("\n" + "=" * 60)
         print("  LifeOpsBench Results Summary")
         print("=" * 60)
-        print(f"  Model:              {result.model_name}")
-        print(f"  Judge:              {result.judge_model_name}")
+        evaluator_label = (
+            f"{result.evaluator_provider} → {result.model_name}"
+            if result.evaluator_provider
+            else result.model_name
+        )
+        judge_label = (
+            f"{result.judge_provider} → {result.judge_model_name}"
+            if result.judge_provider
+            else result.judge_model_name
+        )
+        agent_label = (
+            f"{result.agent_provider} → {result.agent_model_name}"
+            if result.agent_provider
+            else result.agent_model_name
+        )
+        if result.agent_adapter:
+            agent_label = f"{result.agent_adapter} / {agent_label}"
+        print(f"  Agent:              {agent_label}")
+        print(f"  Evaluator:          {evaluator_label}")
+        print(f"  Judge:              {judge_label}")
         print(f"  Seeds per scenario: {result.seeds}")
         print(f"  Scenarios run:      {len(result.scenarios)}")
         print(f"  pass@1:             {result.pass_at_1:.3f}")

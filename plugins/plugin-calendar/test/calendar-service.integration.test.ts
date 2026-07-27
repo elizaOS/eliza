@@ -16,7 +16,7 @@ import type { IAgentRuntime } from "@elizaos/core";
 import type { LifeOpsReminderPlan } from "@elizaos/shared";
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { __testing, APPLE_CALENDAR_GRANT_ID } from "../src/apple-calendar.js";
 import {
   type CalendarHostGate,
@@ -44,6 +44,10 @@ const APPLE_EVENT = {
 function appleBridge() {
   return {
     platform: "darwin",
+    checkPermissions: async () => ({
+      calendar: "granted" as const,
+      canRequest: false,
+    }),
     listCalendars: async () => ({
       ok: true as const,
       calendars: [
@@ -131,6 +135,7 @@ const CREATE_SYNC_TABLE = `CREATE TABLE app_calendar.life_calendar_sync_states (
   purge_resync_reason TEXT,
   window_start_at TEXT NOT NULL,
   window_end_at TEXT NOT NULL,
+  next_sync_token TEXT,
   synced_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   UNIQUE (agent_id, provider, side, calendar_id)
@@ -182,6 +187,89 @@ describe("CalendarService (real PGlite, Apple provider)", () => {
     expect(created.provider).toBe("apple_calendar");
     // The event should schedule at least one reminder plan via the gate.
     expect(reminderPlans.length).toBeGreaterThan(0);
+  });
+
+  it("fails closed before a receipt-unaware add-only write", async () => {
+    const createEvent = vi.fn(async () => ({
+      ok: true as const,
+      receipt: {
+        accessLevel: "write_only" as const,
+        destination: "default_calendar" as const,
+        eventId: null,
+        readBackAvailable: false as const,
+      },
+    }));
+    __testing.setNativeCalendarBridgeForTest({
+      ...appleBridge(),
+      checkPermissions: async () => ({
+        calendar: "write_only" as const,
+        canRequest: true,
+      }),
+      createEvent,
+    } as never);
+    try {
+      await expect(
+        calendar.createCalendarEvent(INTERNAL_URL, {
+          grantId: APPLE_CALENDAR_GRANT_ID,
+          calendarId: "primary",
+          title: "Add-only dentist",
+          startAt: "2026-05-13T17:00:00.000Z",
+          endAt: "2026-05-13T18:00:00.000Z",
+          timeZone: "UTC",
+        }),
+      ).rejects.toMatchObject({
+        code: "APPLE_CALENDAR_WRITE_ONLY_RECEIPT_REQUIRED",
+      });
+      expect(createEvent).not.toHaveBeenCalled();
+    } finally {
+      __testing.setNativeCalendarBridgeForTest(appleBridge() as never);
+    }
+  });
+
+  it("returns and preserves an add-only receipt without a fake event row", async () => {
+    __testing.setNativeCalendarBridgeForTest({
+      ...appleBridge(),
+      checkPermissions: async () => ({
+        calendar: "write_only" as const,
+        canRequest: true,
+      }),
+      createEvent: async () => ({
+        ok: true as const,
+        receipt: {
+          accessLevel: "write_only" as const,
+          destination: "default_calendar" as const,
+          eventId: null,
+          readBackAvailable: false as const,
+        },
+      }),
+    } as never);
+    try {
+      const result = await calendar.createCalendarEventMutation(INTERNAL_URL, {
+        grantId: APPLE_CALENDAR_GRANT_ID,
+        calendarId: "primary",
+        title: "Add-only dentist",
+        startAt: "2026-05-13T17:00:00.000Z",
+        endAt: "2026-05-13T18:00:00.000Z",
+        timeZone: "UTC",
+        idempotencyKey: "calendar-service-add-only-1",
+      });
+      expect(result).toMatchObject({
+        outcome: "accepted_without_readback",
+        event: null,
+        writeOnlyReceipt: {
+          provider: "apple_calendar",
+          providerEventId: null,
+          readBackAvailable: false,
+        },
+      });
+      expect(
+        await calendar.getCalendarEventById(
+          "apple-write-only:calendar-service-add-only-1",
+        ),
+      ).toBeNull();
+    } finally {
+      __testing.setNativeCalendarBridgeForTest(appleBridge() as never);
+    }
   });
 
   it("lists the Apple calendar", async () => {

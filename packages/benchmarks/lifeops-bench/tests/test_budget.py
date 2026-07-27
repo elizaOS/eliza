@@ -189,6 +189,9 @@ async def test_complete_workload_records_exact_counts_and_provenance(
         scenarios=scenarios,
         concurrency=2,
         seeds=2,
+        agent_model_name="agent-model-v1",
+        agent_adapter="test-agent",
+        agent_provider="local",
     )
 
     result = await runner.run_filtered()
@@ -207,6 +210,37 @@ async def test_complete_workload_records_exact_counts_and_provenance(
     assert persisted["completed_run_count"] == 4
     assert persisted["successful_run_count"] == 4
     assert persisted["workload_sha256"] == result.workload_sha256
+    assert persisted["agent_model_name"] == "agent-model-v1"
+    assert persisted["agent_adapter"] == "test-agent"
+    assert persisted["agent_provider"] == "local"
+    assert all(
+        turn["model_name"] == "agent-model-v1"
+        for scenario in persisted["scenarios"]
+        for turn in scenario["turns"]
+    )
+    assert "agent-model-v1" in output_path.name
+
+
+async def test_publish_rejects_missing_acting_model_provenance(tmp_path: Path) -> None:
+    async def responding_agent(
+        history: list[MessageTurn], tools: list[dict[str, Any]]
+    ) -> MessageTurn:
+        return _make_turn(content="done")
+
+    runner = LifeOpsBenchRunner(
+        agent_fn=responding_agent,
+        world_factory=_budget_world_factory,
+        scenarios=[_make_scenario("completion.missing-provenance")],
+        concurrency=1,
+        seeds=1,
+    )
+
+    result = await runner.run_filtered()
+
+    with pytest.raises(RuntimeError, match="acting-agent provenance"):
+        LifeOpsBenchRunner.save_results(
+            result, output_dir=str(tmp_path / "missing-provenance")
+        )
 
 
 # ---------------------------------------------------------------------------

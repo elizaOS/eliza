@@ -15,6 +15,20 @@
  * - `unknown_recipient` — the target identity does not resolve.
  * - `transport_error` — generic infrastructure failure (network, 5xx, timeout).
  */
+/**
+ * Provider-issued evidence that an outbound message was accepted. A caller
+ * may persist this as a mutation receipt only when every field is present;
+ * `ok: true` by itself is transport success, not proof of a durable side
+ * effect.
+ */
+export interface DispatchReceipt {
+  readonly provider: string;
+  readonly providerMessageId: string;
+  readonly idempotencyKey: string;
+  readonly acceptedAt: string;
+  readonly metadata?: Record<string, unknown>;
+}
+
 export type DispatchResult =
   | {
       ok: true;
@@ -22,6 +36,7 @@ export type DispatchResult =
       target?: string;
       channelKey?: string;
       metadata?: Record<string, unknown>;
+      receipt?: DispatchReceipt;
     }
   | {
       ok: false;
@@ -34,4 +49,10 @@ export type DispatchResult =
       retryAfterMinutes?: number;
       userActionable: boolean;
       message?: string;
+      /**
+       * Whether the provider definitively rejected the request before
+       * acceptance. Missing means unknown; unknown failures must never be
+       * automatically retried for a non-idempotent transport.
+       */
+      acceptance?: "not_accepted" | "unknown";
     };

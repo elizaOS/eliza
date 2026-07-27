@@ -65,6 +65,7 @@ class TestApprovalQueue implements ApprovalQueue {
       payload: input.payload,
       channel: input.channel,
       reason: input.reason,
+      idempotencyKey: input.idempotencyKey ?? null,
       expiresAt: input.expiresAt,
       resolvedAt: null,
       resolvedBy: null,

@@ -7,8 +7,11 @@ overview and `../../CLAUDE.md` (repo root) for monorepo-wide rules.
 
 Owns the calendar domain extracted from `@elizaos/plugin-personal-assistant`: the calendar
 event/sync store + schema, the Google + Apple calendar feed, event CRUD, the
-`CALENDAR` action and its LLM handler, `/api/calendar/*` routes, the client API
-methods augmented onto `@elizaos/ui`, and the owner-facing calendar views.
+`CALENDAR` action and its LLM handler, the shared calendar route dispatcher,
+the provider-authenticated Google webhook, the client API methods augmented
+onto `@elizaos/ui`, and the owner-facing calendar views. Private
+`/api/lifeops/calendar/*` routes are mounted by the personal-assistant host
+behind its OWNER/ADMIN role gate.
 
 ## Boundary rules
 
@@ -34,12 +37,12 @@ methods augmented onto `@elizaos/ui`, and the owner-facing calendar views.
 
 ```
 src/
-  plugin.ts          Plugin definition (action, service, routes)
+  plugin.ts          Plugin definition (action, service, provider webhook)
   index.ts           Public exports
   service/           CalendarService + connector gate + repository + schema
   apple-calendar.ts  Native Apple Calendar bridge
   actions/           CALENDAR action + handler
-  routes/            /api/calendar/* HTTP handlers
+  routes/            Shared host adapter + Google push webhook
   api/               client-calendar.ts (side-effect client augmentation)
   components/        Calendar views + event editor (React)
   hooks/             useCalendarWeek

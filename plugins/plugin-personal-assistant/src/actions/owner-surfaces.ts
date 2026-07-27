@@ -62,6 +62,7 @@ const OWNER_FINANCE_ACTIONS = [
   "list_transactions",
   "spending_summary",
   "recurring_charges",
+  "childcare_work_scenario",
   "subscription_audit",
   "subscription_cancel",
   "subscription_status",

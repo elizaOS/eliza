@@ -2,7 +2,8 @@
  * Non-destructive data migration for the calendar tables carved out of
  * @elizaos/plugin-personal-assistant.
  *
- * The two calendar tables (`life_calendar_events`, `life_calendar_sync_states`)
+ * The two legacy calendar tables (`life_calendar_events`,
+ * `life_calendar_sync_states`)
  * used to live in the `app_lifeops` PostgreSQL schema, created by
  * plugin-personal-assistant. They now live in `app_calendar`, created by this
  * plugin's drizzle schema. Existing installs still hold the owner's calendar
@@ -16,9 +17,9 @@
  *   3. Otherwise copy every source row that is not already present in the target
  *      (a doubly-safe NOT EXISTS guard on the primary key).
  *
- * The source table is NEVER dropped or altered. The source and target share the
- * exact column shape (PA's `app_lifeops` drizzle def and this plugin's
- * `app_calendar` def are column-identical), so the `SELECT s.*` copy is safe.
+ * The source table is NEVER dropped or altered. Copies name the shared columns
+ * explicitly so the calendar-owned target can add sync metadata without
+ * making older personal-assistant source tables unreadable.
  */
 
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
@@ -36,6 +37,54 @@ export const MIGRATED_CALENDAR_TABLES = [
 
 export type MigratedCalendarTable = (typeof MIGRATED_CALENDAR_TABLES)[number];
 
+const MIGRATED_CALENDAR_COLUMNS: Record<
+  MigratedCalendarTable,
+  readonly string[]
+> = {
+  life_calendar_events: [
+    "id",
+    "agent_id",
+    "provider",
+    "side",
+    "calendar_id",
+    "external_event_id",
+    "connector_account_id",
+    "purge_resync_required",
+    "purge_resync_reason",
+    "grant_id",
+    "title",
+    "description",
+    "location",
+    "status",
+    "start_at",
+    "end_at",
+    "is_all_day",
+    "timezone",
+    "html_link",
+    "conference_link",
+    "organizer_json",
+    "attendees_json",
+    "metadata_json",
+    "synced_at",
+    "updated_at",
+  ],
+  life_calendar_sync_states: [
+    "id",
+    "agent_id",
+    "provider",
+    "side",
+    "calendar_id",
+    "connector_account_id",
+    "grant_id",
+    "purge_resync_required",
+    "purge_resync_reason",
+    "window_start_at",
+    "window_end_at",
+    "synced_at",
+    "updated_at",
+  ],
+};
+
 export type SqlExecutor = (
   sql: string,
 ) => Promise<Array<Record<string, unknown>>>;
@@ -43,6 +92,217 @@ export type SqlExecutor = (
 export interface TableMigrationResult {
   table: MigratedCalendarTable;
   outcome: "copied" | "source-missing" | "target-non-empty";
+}
+
+/**
+ * Upgrades the original calendar-only uniqueness to full source identity.
+ * Every Google account exposes a `primary` calendar, so omitting the grant
+ * lets one account overwrite another even though both reads succeeded.
+ */
+export async function ensureCalendarSourceIdentity(
+  exec: SqlExecutor,
+): Promise<void> {
+  await exec(`
+    ALTER TABLE ${TARGET_SCHEMA}.life_calendar_sync_states
+      ADD COLUMN IF NOT EXISTS next_sync_token TEXT`);
+  await exec(`
+    UPDATE ${TARGET_SCHEMA}.life_calendar_events
+       SET grant_id = COALESCE(
+             grant_id,
+             connector_account_id,
+             CASE
+               WHEN provider = 'apple_calendar' THEN 'apple-calendar'
+               ELSE 'legacy:' || provider || ':' || side
+             END
+           ),
+           connector_account_id = COALESCE(
+             connector_account_id,
+             grant_id,
+             CASE
+               WHEN provider = 'apple_calendar' THEN 'apple-calendar'
+               ELSE 'legacy:' || provider || ':' || side
+             END
+           )
+     WHERE grant_id IS NULL OR connector_account_id IS NULL`);
+  await exec(`
+    UPDATE ${TARGET_SCHEMA}.life_calendar_sync_states
+       SET grant_id = COALESCE(
+             grant_id,
+             connector_account_id,
+             CASE
+               WHEN provider = 'apple_calendar' THEN 'apple-calendar'
+               ELSE 'legacy:' || provider || ':' || side
+             END
+           ),
+           connector_account_id = COALESCE(
+             connector_account_id,
+             grant_id,
+             CASE
+               WHEN provider = 'apple_calendar' THEN 'apple-calendar'
+               ELSE 'legacy:' || provider || ':' || side
+             END
+           )
+     WHERE grant_id IS NULL OR connector_account_id IS NULL`);
+  await exec(`
+    UPDATE ${TARGET_SCHEMA}.life_calendar_sync_states
+       SET id = agent_id || ':' || provider || ':' || side || ':grant:' ||
+                grant_id || ':calendar:' || calendar_id`);
+  await exec(`
+    DO $calendar_source_identity$
+    DECLARE
+      constraint_name text;
+    BEGIN
+      FOR constraint_name IN
+        SELECT c.conname
+          FROM pg_constraint AS c
+         WHERE c.conrelid = '${TARGET_SCHEMA}.life_calendar_events'::regclass
+           AND c.contype = 'u'
+           AND pg_get_constraintdef(c.oid) LIKE
+             'UNIQUE (agent_id, provider, side, calendar_id, external_event_id)%'
+      LOOP
+        EXECUTE format(
+          'ALTER TABLE ${TARGET_SCHEMA}.life_calendar_events DROP CONSTRAINT %I',
+          constraint_name
+        );
+      END LOOP;
+
+      IF NOT EXISTS (
+        SELECT 1
+          FROM pg_constraint
+         WHERE conrelid = '${TARGET_SCHEMA}.life_calendar_events'::regclass
+           AND conname = 'calendar_events_source_external_unique'
+      ) THEN
+        ALTER TABLE ${TARGET_SCHEMA}.life_calendar_events
+          ADD CONSTRAINT calendar_events_source_external_unique
+          UNIQUE (
+            agent_id, provider, side, grant_id, calendar_id, external_event_id
+          );
+      END IF;
+    END
+    $calendar_source_identity$`);
+  await exec(`
+    DO $calendar_sync_source_identity$
+    DECLARE
+      constraint_name text;
+    BEGIN
+      FOR constraint_name IN
+        SELECT c.conname
+          FROM pg_constraint AS c
+         WHERE c.conrelid = '${TARGET_SCHEMA}.life_calendar_sync_states'::regclass
+           AND c.contype = 'u'
+           AND pg_get_constraintdef(c.oid) LIKE
+             'UNIQUE (agent_id, provider, side, calendar_id)%'
+      LOOP
+        EXECUTE format(
+          'ALTER TABLE ${TARGET_SCHEMA}.life_calendar_sync_states DROP CONSTRAINT %I',
+          constraint_name
+        );
+      END LOOP;
+
+      IF NOT EXISTS (
+        SELECT 1
+          FROM pg_constraint
+         WHERE conrelid = '${TARGET_SCHEMA}.life_calendar_sync_states'::regclass
+           AND conname = 'calendar_sync_states_source_unique'
+      ) THEN
+        ALTER TABLE ${TARGET_SCHEMA}.life_calendar_sync_states
+          ADD CONSTRAINT calendar_sync_states_source_unique
+          UNIQUE (agent_id, provider, side, grant_id, calendar_id);
+      END IF;
+    END
+    $calendar_sync_source_identity$`);
+}
+
+/**
+ * Subscription sources never existed in the legacy LifeOps schema. Creating
+ * their table here as well as in Drizzle keeps direct migration callers and
+ * older plugin-sql boot orders safe without adding it to the legacy copy set.
+ */
+export async function ensureIcsCalendarSourceTable(
+  exec: SqlExecutor,
+): Promise<void> {
+  await exec(`
+    CREATE TABLE IF NOT EXISTS ${TARGET_SCHEMA}.life_calendar_sources (
+      id TEXT PRIMARY KEY,
+      agent_id TEXT NOT NULL,
+      provider TEXT NOT NULL DEFAULT 'ics',
+      side TEXT NOT NULL DEFAULT 'owner',
+      name TEXT NOT NULL,
+      enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      secret_ref TEXT NOT NULL,
+      url_fingerprint TEXT NOT NULL,
+      origin TEXT NOT NULL,
+      etag TEXT,
+      last_modified TEXT,
+      content_hash TEXT,
+      sync_status TEXT NOT NULL DEFAULT 'never',
+      last_error_code TEXT,
+      last_error_message TEXT,
+      last_error_retryable BOOLEAN,
+      last_synced_at TEXT,
+      last_attempted_at TEXT,
+      sync_generation INTEGER NOT NULL DEFAULT 0,
+      lease_token TEXT,
+      lease_expires_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      CONSTRAINT calendar_sources_agent_fingerprint_unique
+        UNIQUE (agent_id, url_fingerprint)
+    )`);
+}
+
+/**
+ * Push channels are calendar-owned state rather than connector credentials.
+ * The explicit migration path creates their table before a public callback can
+ * arrive, including direct PGlite and older plugin-sql boot orders.
+ */
+export async function ensureGoogleCalendarWatchChannelTable(
+  exec: SqlExecutor,
+): Promise<void> {
+  await exec(`
+    CREATE TABLE IF NOT EXISTS ${TARGET_SCHEMA}.google_calendar_watch_channels (
+      channel_id TEXT PRIMARY KEY,
+      agent_id TEXT NOT NULL,
+      grant_id TEXT NOT NULL,
+      connector_account_id TEXT NOT NULL,
+      side TEXT NOT NULL,
+      calendar_id TEXT NOT NULL,
+      calendar_summary TEXT NOT NULL,
+      calendar_access_role TEXT NOT NULL,
+      time_zone TEXT NOT NULL,
+      window_start_at TEXT NOT NULL,
+      window_end_at TEXT NOT NULL,
+      webhook_url TEXT NOT NULL,
+      token_sha256 TEXT NOT NULL,
+      resource_id TEXT,
+      resource_uri TEXT,
+      expiration_at TEXT,
+      state TEXT NOT NULL,
+      last_message_number TEXT NOT NULL DEFAULT '0',
+      pending_message_number TEXT,
+      last_notification_at TEXT,
+      last_sync_at TEXT,
+      sync_lease_token TEXT,
+      sync_lease_expires_at TEXT,
+      renewal_channel_id TEXT,
+      failure_count INTEGER NOT NULL DEFAULT 0,
+      next_retry_at TEXT,
+      last_error_code TEXT,
+      last_error_message TEXT,
+      last_error_retryable BOOLEAN,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`);
+  await exec(`
+    CREATE INDEX IF NOT EXISTS calendar_watch_binding_idx
+      ON ${TARGET_SCHEMA}.google_calendar_watch_channels (
+        agent_id, connector_account_id, grant_id, calendar_id
+      )`);
+  await exec(`
+    CREATE INDEX IF NOT EXISTS calendar_watch_maintenance_idx
+      ON ${TARGET_SCHEMA}.google_calendar_watch_channels (
+        agent_id, state, expiration_at
+      )`);
 }
 
 function quoteIdent(name: string): string {
@@ -82,9 +342,14 @@ export async function migrateCalendarTable(
 
   const target = `${TARGET_SCHEMA}.${quoteIdent(table)}`;
   const source = `${SOURCE_SCHEMA}.${quoteIdent(table)}`;
+  const columns = MIGRATED_CALENDAR_COLUMNS[table];
+  const targetColumns = columns.map(quoteIdent).join(", ");
+  const sourceColumns = columns
+    .map((column) => `s.${quoteIdent(column)}`)
+    .join(", ");
   await exec(
-    `INSERT INTO ${target}
-       SELECT s.* FROM ${source} AS s
+    `INSERT INTO ${target} (${targetColumns})
+       SELECT ${sourceColumns} FROM ${source} AS s
        WHERE NOT EXISTS (
          SELECT 1 FROM ${target} AS t WHERE t.id = s.id
        )`,
@@ -96,10 +361,13 @@ export async function migrateCalendarTables(
   exec: SqlExecutor,
 ): Promise<TableMigrationResult[]> {
   await exec(`CREATE SCHEMA IF NOT EXISTS ${TARGET_SCHEMA}`);
+  await ensureIcsCalendarSourceTable(exec);
+  await ensureGoogleCalendarWatchChannelTable(exec);
   const results: TableMigrationResult[] = [];
   for (const table of MIGRATED_CALENDAR_TABLES) {
     results.push(await migrateCalendarTable(exec, table));
   }
+  await ensureCalendarSourceIdentity(exec);
   return results;
 }
 

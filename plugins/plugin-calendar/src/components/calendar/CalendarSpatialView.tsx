@@ -24,6 +24,9 @@ import {
   Text,
   VStack,
 } from "@elizaos/ui/spatial";
+import type { CalendarSurfaceStatus } from "../../hooks/useCalendarWeek.js";
+import type { CalendarSourceHealthRow } from "./source-health.js";
+import type { CalendarSourceManagerSnapshot } from "./source-manager.js";
 
 /** Which range the calendar surface is currently showing. */
 export type CalendarMode = "day" | "week" | "month";
@@ -55,8 +58,13 @@ export interface CalendarSnapshot {
   periodLabel: string;
   /** Active view mode. */
   mode: CalendarMode;
-  loading?: boolean;
-  error?: string | null;
+  loading: boolean;
+  error: string | null;
+  status: CalendarSurfaceStatus;
+  sourceHeadline: string;
+  sources: CalendarSourceHealthRow[];
+  refreshing: boolean;
+  sourceManager: CalendarSourceManagerSnapshot;
 }
 
 const MODE_LABELS: Record<CalendarMode, string> = {
@@ -150,6 +158,227 @@ export function CalendarSpatialView({
         ))}
       </HStack>
 
+      <VStack
+        gap={1}
+        agent={{
+          id: "calendar-sources",
+          role: "status",
+          label: snapshot.sourceHeadline,
+        }}
+      >
+        <HStack gap={1} align="center">
+          <Text
+            style="caption"
+            bold
+            tone={
+              snapshot.status === "error" || snapshot.status === "unavailable"
+                ? "danger"
+                : snapshot.status === "partial"
+                  ? "warning"
+                  : "muted"
+            }
+            grow={1}
+          >
+            {snapshot.sourceHeadline}
+          </Text>
+          <Button
+            variant="ghost"
+            tone="default"
+            agent="refresh"
+            disabled={snapshot.refreshing}
+            onPress={dispatch("refresh")}
+          >
+            {snapshot.refreshing ? "Refreshing…" : "Refresh"}
+          </Button>
+        </HStack>
+        {snapshot.sources.length > 0 ? (
+          <List gap={0}>
+            {snapshot.sources.map((source) => (
+              <HStack key={source.id} gap={1} align="center">
+                <Text style="caption" grow={1} wrap={false}>
+                  {source.label}
+                </Text>
+                <Text style="caption" tone={source.tone} wrap={false}>
+                  {source.freshnessLabel}
+                </Text>
+              </HStack>
+            ))}
+          </List>
+        ) : snapshot.status !== "loading" && snapshot.status !== "error" ? (
+          <Text style="caption" tone="muted">
+            {snapshot.status === "unavailable"
+              ? "No connected source details are available."
+              : "No source details were reported for this view."}
+          </Text>
+        ) : null}
+      </VStack>
+
+      <VStack
+        gap={1}
+        agent={{
+          id: "calendar-source-manager",
+          role: "group",
+          label: "Manage calendar sources",
+        }}
+      >
+        <Button
+          variant="ghost"
+          tone="default"
+          agent="manage-sources"
+          onPress={dispatch("manage-sources")}
+        >
+          {snapshot.sourceManager.open
+            ? "Close source settings"
+            : "Manage calendar sources"}
+        </Button>
+
+        {snapshot.sourceManager.open ? (
+          <>
+            <Text style="caption" tone="muted">
+              New calendars are included automatically. Exclude one to remove it
+              from the combined calendar.
+            </Text>
+
+            {snapshot.sourceManager.status === "loading" ? (
+              <Text style="caption" tone="muted">
+                Loading calendar sources…
+              </Text>
+            ) : null}
+
+            {snapshot.sourceManager.error ? (
+              <HStack gap={1} align="center">
+                <Text style="caption" tone="danger" grow={1}>
+                  {snapshot.sourceManager.error}
+                </Text>
+                <Button
+                  variant="outline"
+                  tone="default"
+                  agent="source-refresh"
+                  onPress={dispatch("source-refresh")}
+                >
+                  Retry
+                </Button>
+              </HStack>
+            ) : null}
+
+            {snapshot.sourceManager.refreshError ? (
+              <Text style="caption" tone="warning">
+                {snapshot.sourceManager.refreshError}
+              </Text>
+            ) : null}
+
+            {snapshot.sourceManager.status === "empty" &&
+            snapshot.sourceManager.rows.length === 0 ? (
+              <VStack gap={1}>
+                <Text style="caption" tone="muted">
+                  No calendar sources were found.
+                </Text>
+                <Button
+                  variant="outline"
+                  tone="default"
+                  agent="source-settings"
+                  onPress={dispatch("source-settings")}
+                >
+                  Open connector settings
+                </Button>
+              </VStack>
+            ) : null}
+
+            {snapshot.sourceManager.rows.length > 0 ? (
+              <List gap={0}>
+                {snapshot.sourceManager.rows.map((source) => (
+                  <VStack
+                    key={source.actionId}
+                    gap={0}
+                    agent={{
+                      id: `source-row-${source.actionId}`,
+                      role: "group",
+                      label: `${source.providerLabel}, ${source.accountLabel}, ${source.calendarLabel}`,
+                    }}
+                  >
+                    <HStack gap={1} align="center">
+                      <VStack gap={0} grow={1}>
+                        <Text bold wrap={false}>
+                          {source.calendarLabel}
+                          {source.primary &&
+                          source.calendarLabel.trim().toLowerCase() !==
+                            "primary"
+                            ? " · Primary"
+                            : ""}
+                        </Text>
+                        <Text style="caption" tone="muted">
+                          {source.providerLabel} · {source.accountLabel}
+                        </Text>
+                      </VStack>
+                      {source.toggleAvailable ? (
+                        <Button
+                          variant="outline"
+                          tone="default"
+                          agent={`source-toggle:${source.actionId}`}
+                          disabled={source.pending}
+                          onPress={dispatch(`source-toggle:${source.actionId}`)}
+                        >
+                          {source.pending
+                            ? source.included
+                              ? "Excluding…"
+                              : "Including…"
+                            : source.included
+                              ? "Exclude"
+                              : "Include"}
+                        </Button>
+                      ) : (
+                        <Text style="caption" tone="muted">
+                          Inclusion unavailable
+                        </Text>
+                      )}
+                    </HStack>
+                    <Text style="caption" tone={source.tone}>
+                      {source.accessLabel} · {source.visibilityLabel} ·{" "}
+                      {source.statusLabel} · {source.freshnessLabel}
+                    </Text>
+                    {source.mutationError ? (
+                      <Text style="caption" tone="danger">
+                        {source.mutationError}
+                      </Text>
+                    ) : null}
+                    {source.reconnectConnectorId ? (
+                      <Button
+                        variant="ghost"
+                        tone="default"
+                        agent={`source-reconnect:${source.actionId}`}
+                        onPress={dispatch(
+                          `source-reconnect:${source.actionId}`,
+                        )}
+                      >
+                        Reconnect Google Calendar
+                      </Button>
+                    ) : source.reconnectUnavailable ? (
+                      <Text style="caption" tone="muted">
+                        Reconnect unavailable here.
+                      </Text>
+                    ) : null}
+                  </VStack>
+                ))}
+              </List>
+            ) : null}
+
+            {snapshot.sourceManager.rows.length > 0 ? (
+              <Button
+                variant="ghost"
+                tone="default"
+                agent="source-refresh"
+                disabled={snapshot.sourceManager.refreshing}
+                onPress={dispatch("source-refresh")}
+              >
+                {snapshot.sourceManager.refreshing
+                  ? "Refreshing sources…"
+                  : "Refresh sources"}
+              </Button>
+            ) : null}
+          </>
+        ) : null}
+      </VStack>
+
       {snapshot.error ? (
         <Text tone="danger" style="caption">
           {snapshot.error}
@@ -177,9 +406,17 @@ function CalendarAgendaBody({
   dispatch: (action: string) => () => void;
 }) {
   if (eventCount === 0) {
+    const emptyLabel = {
+      loading: "Loading",
+      empty: "No events in this range",
+      ready: "No events in this range",
+      partial: "No events from available sources",
+      unavailable: "Calendar unavailable",
+      error: "Calendar could not load",
+    }[snapshot.status];
     return (
       <Text tone="muted" align="center" style="caption">
-        {snapshot.loading ? "Loading" : "None"}
+        {emptyLabel}
       </Text>
     );
   }

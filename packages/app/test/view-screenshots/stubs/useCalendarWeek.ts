@@ -6,10 +6,21 @@
  */
 
 export type CalendarViewMode = "day" | "week" | "month";
+export type CalendarSurfaceStatus =
+  | "loading"
+  | "empty"
+  | "ready"
+  | "partial"
+  | "unavailable"
+  | "error";
 
 export interface UseCalendarWeekResult {
   events: unknown[];
+  feedState: "complete" | "partial" | "unavailable" | null;
+  sources: unknown[];
+  status: CalendarSurfaceStatus;
   loading: boolean;
+  refreshing: boolean;
   error: string | null;
   viewMode: CalendarViewMode;
   setViewMode: (mode: CalendarViewMode) => void;

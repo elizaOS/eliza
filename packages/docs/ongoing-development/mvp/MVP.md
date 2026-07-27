@@ -41,7 +41,7 @@ thing is verification.
 
 ## Personas & journeys
 
-Eight personas, condensed from [research/01](../research/01-mvp-product-personas.md).
+Nine personas, condensed from [research/01](../research/01-mvp-product-personas.md).
 Where a bench persona already exists
 (`packages/benchmarks/lifeops-bench/.../scenarios/_personas.py`), the name is
 reused for continuity. Each maps to a pack in the persona scenario corpus.
@@ -119,16 +119,31 @@ conservative no-reply defaults. *Struggles:* nothing structural — she is the
 best-covered persona; her risk is regression while the neurodivergent packs get
 attention. *Intuitive fix:* keep F1 green.
 
-**P8 — Jordan, 39, separated co-parent** (iMessage + Calendar; planned pack
+**P8 — Jordan, 39, separated co-parent** (iMessage + Calendar; pack
 J1). Fast-start, then connects calendar and messages when custody logistics
 become the immediate pain. First win: recurring exchange reminders and a
 neutral calendar view of the custody rhythm. Week 2: a last-minute swap request
 becomes an owner-approved, civil logistics draft without exposing child details
 or giving legal or therapy advice. *Loves:* factual language and coordination
 across both households. *Struggles:* the cross-domain handoff between scheduling,
-money, messaging, and child privacy has a planned ledger but no uniformly
-verified scenario pack. *Intuitive fix:* verify J1 end to end rather than add a
+money, messaging, and child privacy has a fully authored ledger but no uniformly
+verified live scenario pack. *Intuitive fix:* verify J1 end to end rather than add a
 co-parent-specific product mode.
+
+**P9 — Maya, 41, world-traveling working parent and co-parent** (voice-first;
+Google/Microsoft/Apple calendars, school sources, travel, household messaging;
+pack M1). Maya coordinates two children and a stepchild with a current partner,
+former spouse, grandmother, and paid sitter while traveling across US,
+European, and Asian time zones. First win: a three-week impact preview catches
+a custody handoff, school change, travel buffer, and uncovered activity without
+revealing a confidential work title. Week 2: an airline or school-source change
+invalidates only the affected approval, recomputes coverage, and expires a
+caregiver's scoped access after the trip. *Loves:* anticipatory coordination,
+source/freshness truth, privacy-minimized proposals, and completion monitoring.
+*Struggles:* today M1's 48 exact capability cases are authored but none has the
+required live-provider, live-model, and human-reviewed evidence. *Intuitive
+fix:* verify the same shared primitives end to end; never introduce a “mom
+mode” or demographic runtime branch.
 
 ## Real-life scenario matrix
 

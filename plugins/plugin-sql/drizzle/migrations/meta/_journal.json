@@ -22,6 +22,13 @@
       "when": 1778237300000,
       "tag": "0002_connector_account_policy_backfill",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1785109764000,
+      "tag": "0003_approval_request_idempotency",
+      "breakpoints": true
     }
   ]
 }

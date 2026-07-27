@@ -75,6 +75,10 @@ const APPLE_EVENT = {
 function appleBridge() {
   return {
     platform: "darwin",
+    checkPermissions: async () => ({
+      calendar: "granted" as const,
+      canRequest: false,
+    }),
     listCalendars: async () => ({
       ok: true as const,
       calendars: [
@@ -211,9 +215,12 @@ describe("CalendarRepository + CalendarService — real PGLite", () => {
       agentId: runtime.agentId,
       provider: "google",
       side: "owner",
+      grantId: "connector-account:test",
+      connectorAccountId: "test",
       calendarId: "primary",
       windowStartAt: "2026-06-01T00:00:00.000Z",
       windowEndAt: "2026-06-08T00:00:00.000Z",
+      nextSyncToken: "sync-token-1",
       syncedAt: new Date().toISOString(),
     });
     await repository.upsertCalendarSyncState(state);

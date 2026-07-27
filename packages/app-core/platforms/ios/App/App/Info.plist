@@ -113,7 +113,7 @@
 	<key>NSCalendarsUsageDescription</key>
 	<string>This app reads and updates your calendar only when you ask it to manage LifeOps scheduling.</string>
 	<key>NSCalendarsWriteOnlyAccessUsageDescription</key>
-	<string>This app needs full calendar access for LifeOps scheduling and does not use write-only calendar access.</string>
+	<string>This app adds new events to your default calendar when you ask, without reading your existing calendar.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>This app discovers and connects to your elizaOS gateway on the local network.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>

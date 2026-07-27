@@ -20,8 +20,8 @@ This is a **Capacitor bridge library**, not an elizaOS runtime plugin. It regist
 
 | Method | Input | Description |
 |--------|-------|-------------|
-| `checkPermissions()` | — | Returns current EventKit authorization state (granted/denied/prompt/restricted). |
-| `requestPermissions()` | — | Prompts the user for calendar access. iOS 17+ uses full-access API. |
+| `checkPermissions()` | — | Returns current EventKit authorization state (`granted`, `write_only`, `denied`, `prompt`, or `restricted`). |
+| `requestPermissions(options?)` | `{ access?: "full_access" \| "write_only" }` | Prompts for the requested access level. Full access is the compatibility default; older iOS uses the legacy full-access API. |
 | `listCalendars()` | — | Returns all calendars visible in EventKit. |
 | `listEvents(options)` | `{ calendarId?, timeMin, timeMax }` | Fetches events within the ISO 8601 time window. Pass `calendarId = "all"` or omit for every calendar. |
 | `createEvent(input)` | `AppleCalendarEventInput` | Creates and saves a new event. Attendees are not supported by EventKit for third-party apps. |
@@ -30,7 +30,7 @@ This is a **Capacitor bridge library**, not an elizaOS runtime plugin. It regist
 
 ### Exported types (from `src/definitions.ts`)
 
-`AppleCalendarPlugin`, `AppleCalendarPermissionStatus`, `AppleCalendarPermissionState`, `AppleCalendarSummary`, `AppleCalendarEvent`, `AppleCalendarAttendee`, `AppleCalendarEventInput`, `AppleCalendarUpdateEventInput`, `AppleCalendarDeleteEventInput`, `AppleCalendarListEventsOptions`, `AppleCalendarListResult`, `AppleCalendarEventsResult`, `AppleCalendarEventResult`, `AppleCalendarBaseResult`.
+`AppleCalendarPlugin`, `AppleCalendarPermissionStatus`, `AppleCalendarPermissionState`, `AppleCalendarRequestedAccess`, `AppleCalendarPermissionRequest`, `AppleCalendarSummary`, `AppleCalendarEvent`, `AppleCalendarAttendee`, `AppleCalendarEventInput`, `AppleCalendarUpdateEventInput`, `AppleCalendarDeleteEventInput`, `AppleCalendarListEventsOptions`, `AppleCalendarListResult`, `AppleCalendarEventsResult`, `AppleCalendarEventResult`, `AppleCalendarCreateReceipt`, `AppleCalendarCreateResult`, `AppleCalendarBaseResult`.
 
 ## Layout
 
@@ -87,7 +87,10 @@ None. This package reads no environment variables and has no runtime configurati
 - **Attendees are blocked by EventKit.** `createEvent`/`updateEvent` reject any `attendees` payload with `error: "unsupported_feature"`. EventKit does not permit third-party apps to set invitees.
 - **macOS uses the Electrobun EventKit dylib**, not this Capacitor plugin, for the desktop runtime. This Capacitor path is for the iOS/Capacitor app shell only.
 - **macOS bridge policy lives here.** Host plugins may resolve and call the Electrobun EventKit dylib, but the candidate list and expected basename belong to this package.
-- **iOS 17+ permission model.** `requestFullAccessToEvents` is used on iOS 17+; older devices fall back to `requestAccess(to:)`. `writeOnly` authorization maps to `restricted`, not `granted`.
+- **iOS 17+ permission model.** Full access and write-only are distinct states. `requestPermissions()` defaults to `requestFullAccessToEvents`; callers may request add-only access explicitly. Older devices fall back to legacy `requestAccess(to:)`, whose approved state is full access.
+- **Write-only is a narrow creation capability.** It can save a new event only to `defaultCalendarForNewEvents`. It cannot list calendars, list/read events, update, or delete, including an event created by this app.
+- **Write-only success is a receipt, not readback.** The result has `readBackAvailable: false` and `eventId: null`; only full access returns the serialized EventKit event.
+- **Creation fields are required.** TypeScript and Swift both require a non-empty title plus valid `startAt` and `endAt` values. EventKit supplies no defaults for direct saves.
 - **Dates must be ISO 8601.** The Swift layer accepts both fractional-seconds and whole-seconds variants; always pass UTC ISO strings from TypeScript.
 - **`calendarId = "primary"` or `""` resolves to `defaultCalendarForNewEvents`** in the Swift layer.
 - **Build output:** `dist/plugin.cjs.js` (CJS), `dist/esm/index.js` (ESM), `dist/plugin.js` (IIFE for unpkg). The `bun`/`development` export condition resolves directly to `src/index.ts` for source-mode development.

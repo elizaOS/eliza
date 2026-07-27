@@ -1,0 +1,482 @@
+/**
+ * Typed household coordination contracts for role-scoped access and
+ * approval-backed schedule agreements. Calendar events remain calendar-owned;
+ * these records capture who may see or change household plans and what every
+ * affected adult actually approved.
+ */
+import { ElizaError } from "@elizaos/core";
+import { isValidTimeZone } from "@elizaos/shared";
+
+export const HOUSEHOLD_ROLES = [
+  "owner",
+  "co_parent",
+  "current_partner",
+  "caregiver",
+  "child",
+  "professional",
+] as const;
+export type HouseholdRole = (typeof HOUSEHOLD_ROLES)[number];
+
+export const HOUSEHOLD_ACCESS_SCOPES = [
+  "household.visibility",
+  "calendar.freebusy",
+  "calendar.details",
+  "calendar.mutate",
+] as const;
+export type HouseholdAccessScope = (typeof HOUSEHOLD_ACCESS_SCOPES)[number];
+
+export const HOUSEHOLD_PROPOSAL_STATUSES = [
+  "pending",
+  "superseded",
+  "accepted",
+  "rejected",
+  "expired",
+  "invalidated",
+] as const;
+export type HouseholdProposalStatus =
+  (typeof HOUSEHOLD_PROPOSAL_STATUSES)[number];
+
+export interface HouseholdRoleBinding {
+  entityId: string;
+  role: HouseholdRole;
+  relationshipId: string | null;
+  subjectEntityIds: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface HouseholdAccessGrant {
+  id: string;
+  agentId: string;
+  principalEntityId: string;
+  relationshipId: string | null;
+  role: HouseholdRole;
+  subjectEntityIds: string[];
+  scopes: HouseholdAccessScope[];
+  issuedByEntityId: string;
+  expiresAt: string | null;
+  revokedAt: string | null;
+  revokedByEntityId: string | null;
+  revocationReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface HouseholdCustodyException {
+  childEntityId: string;
+  fromAt: string;
+  toAt: string;
+  normalCustodianEntityId: string;
+  substituteCustodianEntityId: string;
+  reason: string;
+}
+
+export interface HouseholdScheduleTerms {
+  summary: string;
+  startAt: string;
+  endAt: string;
+  timezone: string;
+  childEntityIds: string[];
+  location: string | null;
+  notes: string | null;
+  custodyException: HouseholdCustodyException | null;
+}
+
+export interface HouseholdScheduleProposal {
+  proposalId: string;
+  agentId: string;
+  version: number;
+  coordinationId: string;
+  baseAgreementVersion: number;
+  terms: HouseholdScheduleTerms;
+  affectedPartyEntityIds: string[];
+  requiredApproverEntityIds: string[];
+  createdByEntityId: string;
+  contentSha256: string;
+  status: HouseholdProposalStatus;
+  materialChange: boolean;
+  expiresAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface HouseholdProposalApproval {
+  id: string;
+  agentId: string;
+  proposalId: string;
+  proposalVersion: number;
+  partyEntityId: string;
+  approvalRequestId: string;
+  invalidatedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface HouseholdScheduleAgreement {
+  id: string;
+  agentId: string;
+  coordinationId: string;
+  version: number;
+  proposalId: string;
+  proposalVersion: number;
+  terms: HouseholdScheduleTerms;
+  affectedPartyEntityIds: string[];
+  approvedByEntityIds: string[];
+  activatedAt: string;
+  createdAt: string;
+  isCurrent: boolean;
+}
+
+export interface HouseholdCoordinationHead {
+  id: string;
+  agentId: string;
+  coordinationId: string;
+  currentAgreementVersion: number;
+  currentAgreementId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const HOUSEHOLD_AUDIT_KINDS = [
+  "household_role_bound",
+  "household_grant_issued",
+  "household_grant_revoked",
+  "household_proposal_created",
+  "household_proposal_revised",
+  "household_proposal_approved",
+  "household_proposal_invalidated",
+  "household_agreement_activated",
+  "household_export_read",
+] as const;
+export type HouseholdAuditKind = (typeof HOUSEHOLD_AUDIT_KINDS)[number];
+
+export interface HouseholdAuditRecord {
+  id: string;
+  kind: HouseholdAuditKind;
+  ownerId: string;
+  reason: string;
+  inputs: Record<string, unknown>;
+  decision: Record<string, unknown>;
+  actor: "agent" | "user" | "workflow";
+  createdAt: string;
+}
+
+export interface HouseholdExportScheduleEntry {
+  coordinationId: string;
+  /**
+   * Visible schedule subjects are structural authorization metadata, not
+   * inferred from summary text. Non-owner exports contain only subjects
+   * already covered by the caller's active grants.
+   */
+  subjectEntityIds: string[];
+  proposalId: string | null;
+  proposalVersion: number | null;
+  agreementId: string | null;
+  agreementVersion: number | null;
+  startAt: string;
+  endAt: string;
+  details: HouseholdScheduleTerms | null;
+  state: "proposal" | "agreement";
+}
+
+export interface HouseholdScopedExport {
+  generatedAt: string;
+  principalEntityId: string;
+  effectiveScopes: HouseholdAccessScope[];
+  visibleSubjectEntityIds: string[];
+  roles: HouseholdRoleBinding[];
+  grants: HouseholdAccessGrant[];
+  schedules: HouseholdExportScheduleEntry[];
+  audit: HouseholdAuditRecord[];
+}
+
+export type HouseholdErrorCode =
+  | "HOUSEHOLD_ACCESS_DENIED"
+  | "HOUSEHOLD_ENTITY_NOT_FOUND"
+  | "HOUSEHOLD_GRANT_EXPIRED"
+  | "HOUSEHOLD_GRANT_REVOKED"
+  | "HOUSEHOLD_INVALID_CONTRACT"
+  | "HOUSEHOLD_PROPOSAL_CONFLICT"
+  | "HOUSEHOLD_PROPOSAL_NOT_FOUND"
+  | "HOUSEHOLD_STALE_APPROVAL"
+  | "HOUSEHOLD_STALE_BASE_AGREEMENT";
+
+export class HouseholdCoordinationError extends ElizaError {
+  override readonly name = "HouseholdCoordinationError";
+
+  constructor(
+    message: string,
+    code: HouseholdErrorCode,
+    context?: Record<string, unknown>,
+    cause?: unknown,
+  ) {
+    super(message, {
+      code,
+      context,
+      cause,
+      severity:
+        code === "HOUSEHOLD_ENTITY_NOT_FOUND" ||
+        code === "HOUSEHOLD_INVALID_CONTRACT"
+          ? "fatal"
+          : "ephemeral",
+    });
+  }
+}
+
+export function isHouseholdRole(value: string): value is HouseholdRole {
+  return HOUSEHOLD_ROLES.some((role) => role === value);
+}
+
+export function isHouseholdAccessScope(
+  value: string,
+): value is HouseholdAccessScope {
+  return HOUSEHOLD_ACCESS_SCOPES.some((scope) => scope === value);
+}
+
+export function isHouseholdProposalStatus(
+  value: string,
+): value is HouseholdProposalStatus {
+  return HOUSEHOLD_PROPOSAL_STATUSES.some((status) => status === value);
+}
+
+export function isHouseholdAuditKind(
+  value: string,
+): value is HouseholdAuditKind {
+  return HOUSEHOLD_AUDIT_KINDS.some((kind) => kind === value);
+}
+
+export const ROLE_SCOPE_LIMITS: Readonly<
+  Record<HouseholdRole, readonly HouseholdAccessScope[]>
+> = {
+  owner: HOUSEHOLD_ACCESS_SCOPES,
+  co_parent: HOUSEHOLD_ACCESS_SCOPES,
+  current_partner: HOUSEHOLD_ACCESS_SCOPES,
+  caregiver: ["household.visibility", "calendar.freebusy", "calendar.details"],
+  child: ["household.visibility", "calendar.freebusy"],
+  professional: [
+    "household.visibility",
+    "calendar.freebusy",
+    "calendar.details",
+  ],
+};
+
+export function uniqueStrings(values: readonly string[]): string[] {
+  return Array.from(
+    new Set(
+      values
+        .map((value, index) => {
+          if (typeof value !== "string") {
+            throw new HouseholdCoordinationError(
+              "Household string collection contains a non-string value",
+              "HOUSEHOLD_INVALID_CONTRACT",
+              { index },
+            );
+          }
+          return value.trim();
+        })
+        .filter(Boolean),
+    ),
+  ).sort();
+}
+
+export function normalizeGrantScopes(
+  role: HouseholdRole,
+  requestedScopes: readonly HouseholdAccessScope[],
+): HouseholdAccessScope[] {
+  const maximum = ROLE_SCOPE_LIMITS[role];
+  const requested = new Set(requestedScopes);
+  if (requested.has("calendar.mutate")) {
+    requested.add("calendar.details");
+  }
+  if (requested.has("calendar.details")) {
+    requested.add("calendar.freebusy");
+  }
+  if (requested.has("calendar.freebusy")) {
+    requested.add("household.visibility");
+  }
+  const forbidden = Array.from(requested).filter(
+    (scope) => !maximum.includes(scope),
+  );
+  if (forbidden.length > 0) {
+    throw new HouseholdCoordinationError(
+      `Role ${role} cannot receive scopes: ${forbidden.join(", ")}`,
+      "HOUSEHOLD_ACCESS_DENIED",
+      { role, forbidden },
+    );
+  }
+  return HOUSEHOLD_ACCESS_SCOPES.filter((scope) => requested.has(scope));
+}
+
+function requireIso(value: string, field: string): string {
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) {
+    throw new HouseholdCoordinationError(
+      `${field} must be an ISO-8601 timestamp`,
+      "HOUSEHOLD_INVALID_CONTRACT",
+      { field, value },
+    );
+  }
+  return new Date(timestamp).toISOString();
+}
+
+function requireText(value: string, field: string): string {
+  if (typeof value !== "string") {
+    throw new HouseholdCoordinationError(
+      `${field} must be a string`,
+      "HOUSEHOLD_INVALID_CONTRACT",
+      { field },
+    );
+  }
+  const normalized = value.trim();
+  if (!normalized) {
+    throw new HouseholdCoordinationError(
+      `${field} is required`,
+      "HOUSEHOLD_INVALID_CONTRACT",
+      { field },
+    );
+  }
+  return normalized;
+}
+
+export function normalizeHouseholdIdentifier(
+  value: string,
+  field: string,
+): string {
+  const normalized = requireText(value, field);
+  const hasControlCharacter = Array.from(normalized).some((character) => {
+    const codePoint = character.codePointAt(0);
+    return codePoint !== undefined && (codePoint <= 31 || codePoint === 127);
+  });
+  if (normalized.length > 512 || hasControlCharacter) {
+    throw new HouseholdCoordinationError(
+      `${field} contains invalid identifier characters or exceeds 512 characters`,
+      "HOUSEHOLD_INVALID_CONTRACT",
+      { field },
+    );
+  }
+  return normalized;
+}
+
+export function normalizeHouseholdIdentifiers(
+  values: readonly string[],
+  field: string,
+): string[] {
+  if (!Array.isArray(values)) {
+    throw new HouseholdCoordinationError(
+      `${field} must be an array of identifiers`,
+      "HOUSEHOLD_INVALID_CONTRACT",
+      { field },
+    );
+  }
+  return uniqueStrings(
+    values.map((value, index) =>
+      normalizeHouseholdIdentifier(value, `${field}[${index}]`),
+    ),
+  );
+}
+
+export function normalizeScheduleTerms(
+  input: HouseholdScheduleTerms,
+): HouseholdScheduleTerms {
+  const startAt = requireIso(input.startAt, "startAt");
+  const endAt = requireIso(input.endAt, "endAt");
+  if (Date.parse(endAt) <= Date.parse(startAt)) {
+    throw new HouseholdCoordinationError(
+      "endAt must be after startAt",
+      "HOUSEHOLD_INVALID_CONTRACT",
+      { startAt, endAt },
+    );
+  }
+  const childEntityIds = normalizeHouseholdIdentifiers(
+    input.childEntityIds,
+    "childEntityIds",
+  );
+  let custodyException: HouseholdCustodyException | null = null;
+  if (input.custodyException) {
+    const fromAt = requireIso(input.custodyException.fromAt, "custody.fromAt");
+    const toAt = requireIso(input.custodyException.toAt, "custody.toAt");
+    const childEntityId = normalizeHouseholdIdentifier(
+      input.custodyException.childEntityId,
+      "custody.childEntityId",
+    );
+    const normalCustodianEntityId = normalizeHouseholdIdentifier(
+      input.custodyException.normalCustodianEntityId,
+      "custody.normalCustodianEntityId",
+    );
+    const substituteCustodianEntityId = normalizeHouseholdIdentifier(
+      input.custodyException.substituteCustodianEntityId,
+      "custody.substituteCustodianEntityId",
+    );
+    if (Date.parse(toAt) <= Date.parse(fromAt)) {
+      throw new HouseholdCoordinationError(
+        "custody exception toAt must be after fromAt",
+        "HOUSEHOLD_INVALID_CONTRACT",
+        { fromAt, toAt },
+      );
+    }
+    if (
+      Date.parse(fromAt) < Date.parse(startAt) ||
+      Date.parse(toAt) > Date.parse(endAt)
+    ) {
+      throw new HouseholdCoordinationError(
+        "custody exception must fit inside the proposed interval",
+        "HOUSEHOLD_INVALID_CONTRACT",
+        { startAt, endAt, fromAt, toAt },
+      );
+    }
+    if (normalCustodianEntityId === substituteCustodianEntityId) {
+      throw new HouseholdCoordinationError(
+        "custody exception requires distinct custodians",
+        "HOUSEHOLD_INVALID_CONTRACT",
+      );
+    }
+    if (!childEntityIds.includes(childEntityId)) {
+      throw new HouseholdCoordinationError(
+        "custody exception child must be listed in childEntityIds",
+        "HOUSEHOLD_INVALID_CONTRACT",
+        { childEntityId },
+      );
+    }
+    custodyException = {
+      childEntityId,
+      fromAt,
+      toAt,
+      normalCustodianEntityId,
+      substituteCustodianEntityId,
+      reason: requireText(input.custodyException.reason, "custody.reason"),
+    };
+  }
+  return {
+    summary: requireText(input.summary, "summary"),
+    startAt,
+    endAt,
+    timezone: (() => {
+      const timezone = requireText(input.timezone, "timezone");
+      if (!isValidTimeZone(timezone)) {
+        throw new HouseholdCoordinationError(
+          "timezone must be a valid IANA time zone",
+          "HOUSEHOLD_INVALID_CONTRACT",
+          { timezone },
+        );
+      }
+      return timezone;
+    })(),
+    childEntityIds,
+    location: input.location?.trim() || null,
+    notes: input.notes?.trim() || null,
+    custodyException,
+  };
+}
+
+export function materialScheduleFingerprint(
+  terms: HouseholdScheduleTerms,
+): string {
+  return JSON.stringify({
+    startAt: terms.startAt,
+    endAt: terms.endAt,
+    timezone: terms.timezone,
+    childEntityIds: terms.childEntityIds,
+    location: terms.location,
+    custodyException: terms.custodyException,
+  });
+}

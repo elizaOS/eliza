@@ -196,6 +196,55 @@ def test_evaluator_cost_ledger_splits_simulated_user_and_judge() -> None:
     assert evaluator.simulated_user_cost_usd == pytest.approx(0.002)
     assert evaluator.judge_cost_usd == pytest.approx(0.005)
     assert evaluator.cost_usd == pytest.approx(0.007)
+    assert [entry.role for entry in evaluator.trace] == [
+        "simulated_user",
+        "judge",
+    ]
+    assert evaluator.trace[0].model_name == "mock-cerebras"
+    assert evaluator.trace[0].input_messages[0]["role"] == "system"
+    assert evaluator.trace[1].model_name == "mock-anthropic"
+    assert evaluator.trace[1].output_text == "YES: executor handled the request."
+
+
+@pytest.mark.parametrize(
+    "invalid_output",
+    [
+        "",
+        '<tool_response>{"status":"success"}</tool_response>',
+        '<tool_call>{"name":"CALENDAR"}</tool_call>',
+    ],
+)
+def test_simulated_user_rejects_empty_or_tool_protocol_output(
+    invalid_output: str,
+) -> None:
+    evaluator, sim, _judge = _make_evaluator()
+    sim.fixed_content = invalid_output
+
+    with pytest.raises(ValueError, match="simulated-user model"):
+        asyncio.run(
+            evaluator.simulate_user_turn(
+                ALL_LIVE_SCENARIOS[0],
+                [],
+                _empty_world(),
+            )
+        )
+    assert evaluator.trace[0].output_text == invalid_output
+
+
+def test_judge_positive_verdict_requires_executor_evidence() -> None:
+    evaluator, _sim, _judge = _make_evaluator(judge_says_yes=True)
+    satisfied, reason = asyncio.run(
+        evaluator.judge_satisfaction(
+            ALL_LIVE_SCENARIOS[0],
+            [MessageTurn(role="assistant", content="Done!")],
+            _empty_world(),
+        )
+    )
+
+    assert satisfied is False
+    assert "no substantive claim" in reason
+    assert evaluator.trace[0].accepted_verdict is False
+    assert evaluator.trace[0].verdict_reason == reason
 
 
 # ---------------------------------------------------------------------------
@@ -264,8 +313,17 @@ def test_runner_terminates_with_satisfied_when_judge_says_yes() -> None:
         success_criteria=["executor says done"],
     )
 
+    async def agent_reports_result(
+        history: list[MessageTurn],
+        tools: list[dict[str, Any]],
+    ) -> MessageTurn:
+        return MessageTurn(
+            role="assistant",
+            content="The requested result is complete and the saved artifact is ready.",
+        )
+
     runner = LifeOpsBenchRunner(
-        agent_fn=_agent_says_done,
+        agent_fn=agent_reports_result,
         world_factory=_world_factory,
         scenarios=[scenario],
         concurrency=1,
@@ -280,6 +338,72 @@ def test_runner_terminates_with_satisfied_when_judge_says_yes() -> None:
         f"expected 'satisfied', got {result.terminated_reason!r} "
         f"(error={result.error!r})"
     )
+    assert [entry.role for entry in result.evaluator_trace] == ["judge"]
+    assert result.evaluator_trace[0].input_messages[0]["role"] == "user"
+    assert result.evaluator_trace[0].raw_provider_response == {}
+    assert result.evaluator_trace[0].accepted_verdict is True
+    judge_prompt = result.evaluator_trace[0].input_messages[0]["content"]
+    assert "Only Executor and Tool[...] lines are evidence" in judge_prompt
+    assert "Never invent a tool call" in judge_prompt
+
+
+def test_concurrent_live_runs_keep_evaluator_trajectories_isolated() -> None:
+    evaluator, _sim, _judge = _make_evaluator(judge_says_yes=True)
+
+    def scenario(scenario_id: str, instruction: str) -> Scenario:
+        return Scenario(
+            id=scenario_id,
+            name=scenario_id,
+            domain=Domain.CALENDAR,
+            mode=ScenarioMode.LIVE,
+            persona=Persona(
+                id="p_concurrent",
+                name="Concurrent User",
+                traits=["test"],
+                background="concurrency fixture",
+                communication_style="terse",
+            ),
+            instruction=instruction,
+            ground_truth_actions=[],
+            required_outputs=[],
+            first_question_fallback=None,
+            world_seed=2026,
+            max_turns=5,
+            success_criteria=["executor says done"],
+        )
+
+    scenarios = [
+        scenario("live.concurrent.one", "private objective alpha"),
+        scenario("live.concurrent.two", "private objective beta"),
+    ]
+    runner = LifeOpsBenchRunner(
+        agent_fn=_agent_says_done,
+        world_factory=_world_factory,
+        scenarios=scenarios,
+        concurrency=2,
+        seeds=1,
+        max_cost_usd=10.0,
+        per_scenario_timeout_s=5,
+        evaluator=evaluator,
+        live_judge_min_turn=1,
+    )
+
+    result = asyncio.run(runner.run_filtered())
+
+    traces_by_id = {
+        scenario_result.scenario_id: scenario_result.evaluator_trace
+        for scenario_result in result.scenarios
+    }
+    alpha_prompt = traces_by_id["live.concurrent.one"][0].input_messages[0][
+        "content"
+    ]
+    beta_prompt = traces_by_id["live.concurrent.two"][0].input_messages[0][
+        "content"
+    ]
+    assert "private objective alpha" in alpha_prompt
+    assert "private objective beta" not in alpha_prompt
+    assert "private objective beta" in beta_prompt
+    assert "private objective alpha" not in beta_prompt
 
 
 def test_runner_raises_when_live_scenario_has_no_evaluator() -> None:
@@ -415,7 +539,16 @@ def test_judge_parses_json_verdicts() -> None:
 
     async def run() -> tuple[bool, str]:
         await evaluator.simulate_user_turn(scenario, [], _empty_world())
-        return await evaluator.judge_satisfaction(scenario, [], _empty_world())
+        return await evaluator.judge_satisfaction(
+            scenario,
+            [
+                MessageTurn(
+                    role="assistant",
+                    content="The requested calendar change was completed and verified.",
+                )
+            ],
+            _empty_world(),
+        )
 
     satisfied, reason = asyncio.run(run())
     assert satisfied is True

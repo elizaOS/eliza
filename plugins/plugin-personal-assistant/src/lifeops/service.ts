@@ -58,10 +58,12 @@ import type {
 import type {
   CreateLifeOpsCalendarEventAttendee,
   CreateLifeOpsCalendarEventRequest,
+  CreateLifeOpsCalendarEventResponse,
   GetLifeOpsCalendarFeedRequest,
   GetLifeOpsInboxRequest,
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
+  LifeOpsCalendarRecurrenceScope,
   LifeOpsCalendarSummary,
   LifeOpsCapabilitiesStatus,
   LifeOpsDiscordConnectorStatus,
@@ -193,7 +195,10 @@ import {
 import { InboxDomain } from "./domains/inbox-service.js";
 import { RelationshipsDomain } from "./domains/relationships-service.js";
 import { RemindersDomain } from "./domains/reminders-service.js";
-import { SchedulingDomain } from "./domains/scheduling-service.js";
+import {
+  type CounterpartyTarget,
+  SchedulingDomain,
+} from "./domains/scheduling-service.js";
 import { ScreenTimeDomain } from "./domains/screentime-service.js";
 import { SignalDomain } from "./domains/signal-service.js";
 import { SleepDomain } from "./domains/sleep-service.js";
@@ -220,6 +225,7 @@ import type {
 } from "./schedule-insight.js";
 import { LifeOpsServiceBase } from "./service-mixin-core.js";
 import { fail, requireNonEmptyString } from "./service-normalize.js";
+import type { TransactionalDb } from "./sql.js";
 import { getZonedDateParts } from "./time.js";
 import type {
   FlightBookingExecutionResult,
@@ -549,6 +555,24 @@ export class LifeOpsService extends LifeOpsServiceBase {
     return this.calendarDomain.createCalendarEvent(requestUrl, request, now);
   }
 
+  createCalendarEventMutation(
+    requestUrl: URL,
+    request: CreateLifeOpsCalendarEventRequest,
+    now?: Date,
+  ): Promise<CreateLifeOpsCalendarEventResponse> {
+    return this.calendarDomain.createCalendarEventMutation(
+      requestUrl,
+      request,
+      now,
+    );
+  }
+
+  getAppleCalendarCreateAccess(): ReturnType<
+    CalendarDomain["getAppleCalendarCreateAccess"]
+  > {
+    return this.calendarDomain.getAppleCalendarCreateAccess();
+  }
+
   updateCalendarEvent(
     requestUrl: URL,
     request: {
@@ -564,6 +588,10 @@ export class LifeOpsService extends LifeOpsServiceBase {
       endAt?: string;
       timeZone?: string;
       attendees?: CreateLifeOpsCalendarEventAttendee[] | null;
+      recurrence?: string[] | null;
+      recurrenceScope?: LifeOpsCalendarRecurrenceScope | null;
+      notifyAttendees?: boolean;
+      expectedProviderVersion?: string;
     },
   ): Promise<LifeOpsCalendarEvent> {
     return this.calendarDomain.updateCalendarEvent(requestUrl, request);
@@ -577,9 +605,54 @@ export class LifeOpsService extends LifeOpsServiceBase {
       grantId?: string;
       calendarId?: string | null;
       eventId: string;
+      recurrenceScope?: LifeOpsCalendarRecurrenceScope | null;
+      notifyAttendees?: boolean;
+      expectedProviderVersion?: string;
     },
   ): Promise<void> {
     return this.calendarDomain.deleteCalendarEvent(requestUrl, request);
+  }
+
+  getConditionalCalendarMutationTarget(
+    requestUrl: URL,
+    request: {
+      mode?: LifeOpsConnectorMode | null;
+      side?: LifeOpsConnectorSide | null;
+      grantId?: string;
+      calendarId?: string | null;
+      eventId: string;
+      recurrenceScope?: LifeOpsCalendarRecurrenceScope | null;
+    },
+  ): Promise<LifeOpsCalendarEvent> {
+    return this.calendarDomain.getConditionalCalendarMutationTarget(
+      requestUrl,
+      request,
+    );
+  }
+
+  respondToCalendarEvent(
+    requestUrl: URL,
+    request: {
+      mode?: LifeOpsConnectorMode | null;
+      side?: LifeOpsConnectorSide | null;
+      grantId?: string;
+      calendarId?: string | null;
+      eventId: string;
+      responseStatus: "accepted" | "declined" | "tentative";
+      recurrenceScope?: LifeOpsCalendarRecurrenceScope | null;
+      notifyAttendees?: boolean;
+      expectedProviderVersion: string;
+    },
+  ): Promise<LifeOpsCalendarEvent> {
+    return this.calendarDomain.respondToCalendarEvent(requestUrl, request);
+  }
+
+  reserveTravelBuffer(request: {
+    eventId: string;
+    bufferMinutes: number;
+    method: string;
+  }): Promise<LifeOpsCalendarEvent> {
+    return this.calendarDomain.reserveTravelBuffer(request);
   }
 
   getNextCalendarEventContext(
@@ -751,7 +824,7 @@ export class LifeOpsService extends LifeOpsServiceBase {
   sendGmailMessage(
     requestUrl: URL,
     request: SendLifeOpsGmailMessageRequest,
-  ): Promise<{ ok: true }> {
+  ): Promise<{ ok: true; messageId: string; threadId: string | null }> {
     return this.gmailDomain.sendGmailMessage(requestUrl, request);
   }
 
@@ -2331,12 +2404,7 @@ export class LifeOpsService extends LifeOpsServiceBase {
 
   // `this` (a LifeOpsServiceBase subclass) satisfies LifeOpsContext.
   // Public (not private) to avoid TS4094 on the re-exported mixin class.
-  readonly schedulingDomain = new SchedulingDomain(this, {
-    sendGmailMessage: (...args) => this.sendGmailMessage(...args),
-    sendTelegramMessage: (...args) => this.sendTelegramMessage(...args),
-    sendWhatsAppMessage: (...args) => this.sendWhatsAppMessage(...args),
-    sendIMessage: (...args) => this.sendIMessage(...args),
-  });
+  readonly schedulingDomain = new SchedulingDomain(this);
 
   inspectSchedule(args: {
     timezone: string;
@@ -2358,15 +2426,56 @@ export class LifeOpsService extends LifeOpsServiceBase {
     return this.schedulingDomain.resolveCounterpartyTarget(negotiation);
   }
 
-  dispatchSchedulingMessage(
+  resolveCounterpartyTargetForRelationship(
+    relationshipId: string | null,
+    negotiationId?: string,
+  ): ReturnType<SchedulingDomain["resolveCounterpartyTargetForRelationship"]> {
+    return this.schedulingDomain.resolveCounterpartyTargetForRelationship(
+      relationshipId,
+      negotiationId,
+    );
+  }
+
+  draftOpeningMessage(
     negotiation: LifeOpsSchedulingNegotiation,
-    body: string,
-    subject: string,
-  ): ReturnType<SchedulingDomain["dispatchSchedulingMessage"]> {
-    return this.schedulingDomain.dispatchSchedulingMessage(
+    counterparty?: CounterpartyTarget | null,
+  ): ReturnType<SchedulingDomain["draftOpeningMessage"]> {
+    return this.schedulingDomain.draftOpeningMessage(negotiation, counterparty);
+  }
+
+  draftProposalMessage(
+    negotiation: LifeOpsSchedulingNegotiation,
+    proposal: LifeOpsSchedulingProposal,
+    counterparty?: CounterpartyTarget | null,
+  ): ReturnType<SchedulingDomain["draftProposalMessage"]> {
+    return this.schedulingDomain.draftProposalMessage(
       negotiation,
-      body,
-      subject,
+      proposal,
+      counterparty,
+    );
+  }
+
+  draftConfirmationMessage(
+    negotiation: LifeOpsSchedulingNegotiation,
+    proposal: LifeOpsSchedulingProposal,
+    counterparty?: CounterpartyTarget | null,
+  ): ReturnType<SchedulingDomain["draftConfirmationMessage"]> {
+    return this.schedulingDomain.draftConfirmationMessage(
+      negotiation,
+      proposal,
+      counterparty,
+    );
+  }
+
+  draftCancellationMessage(
+    negotiation: LifeOpsSchedulingNegotiation,
+    reason?: string,
+    counterparty?: CounterpartyTarget | null,
+  ): ReturnType<SchedulingDomain["draftCancellationMessage"]> {
+    return this.schedulingDomain.draftCancellationMessage(
+      negotiation,
+      reason,
+      counterparty,
     );
   }
 
@@ -2376,12 +2485,16 @@ export class LifeOpsService extends LifeOpsServiceBase {
     durationMinutes?: number;
     timezone?: string;
     metadata?: Record<string, unknown>;
+    tx?: TransactionalDb;
   }): Promise<LifeOpsSchedulingNegotiation> {
     return this.schedulingDomain.startNegotiation(input);
   }
 
-  getNegotiation(id: string): Promise<LifeOpsSchedulingNegotiation | null> {
-    return this.schedulingDomain.getNegotiation(id);
+  getNegotiation(
+    id: string,
+    tx?: TransactionalDb,
+  ): Promise<LifeOpsSchedulingNegotiation | null> {
+    return this.schedulingDomain.getNegotiation(id, tx);
   }
 
   listActiveNegotiations(opts?: {
@@ -2396,6 +2509,7 @@ export class LifeOpsService extends LifeOpsServiceBase {
     endAt: string;
     proposedBy: "agent" | "owner" | "counterparty";
     metadata?: Record<string, unknown>;
+    tx?: TransactionalDb;
   }): Promise<LifeOpsSchedulingProposal> {
     return this.schedulingDomain.proposeTime(input);
   }
@@ -2410,16 +2524,28 @@ export class LifeOpsService extends LifeOpsServiceBase {
   finalizeNegotiation(
     id: string,
     acceptedProposalId: string,
+    tx?: TransactionalDb,
   ): Promise<LifeOpsSchedulingNegotiation> {
-    return this.schedulingDomain.finalizeNegotiation(id, acceptedProposalId);
+    return this.schedulingDomain.finalizeNegotiation(
+      id,
+      acceptedProposalId,
+      tx,
+    );
   }
 
-  cancelNegotiation(id: string, reason?: string): Promise<void> {
-    return this.schedulingDomain.cancelNegotiation(id, reason);
+  cancelNegotiation(
+    id: string,
+    reason?: string,
+    tx?: TransactionalDb,
+  ): Promise<LifeOpsSchedulingNegotiation> {
+    return this.schedulingDomain.cancelNegotiation(id, reason, tx);
   }
 
-  listProposals(negotiationId: string): Promise<LifeOpsSchedulingProposal[]> {
-    return this.schedulingDomain.listProposals(negotiationId);
+  listProposals(
+    negotiationId: string,
+    tx?: TransactionalDb,
+  ): Promise<LifeOpsSchedulingProposal[]> {
+    return this.schedulingDomain.listProposals(negotiationId, tx);
   }
 
   // `this` (a LifeOpsServiceBase subclass) satisfies LifeOpsContext.

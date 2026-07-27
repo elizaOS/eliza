@@ -71,10 +71,14 @@ def test_core_types_instantiate() -> None:
         total_latency_ms=0,
         model_name="gpt-oss-120b",
         judge_model_name="claude-opus-4-7",
+        evaluator_provider="cerebras",
+        judge_provider="anthropic",
         timestamp="2026-05-10T00:00:00Z",
         seeds=1,
     )
     assert result.seeds == 1
+    assert result.evaluator_provider == "cerebras"
+    assert result.judge_provider == "anthropic"
 
 
 def test_smoke_scenarios_load() -> None:
@@ -135,6 +139,8 @@ def test_runner_instantiates_with_noop_agent_fn() -> None:
         agent_fn=noop_agent_fn,
         world_factory=world_factory,  # type: ignore[arg-type]
         scenarios=ALL_SCENARIOS,
+        evaluator_provider="cerebras",
+        judge_provider="anthropic",
         concurrency=2,
         seeds=1,
         max_cost_usd=0.01,
@@ -145,6 +151,8 @@ def test_runner_instantiates_with_noop_agent_fn() -> None:
     assert len(runner.scenarios) == len(ALL_SCENARIOS)
     assert runner.evaluator_model == "gemma-4-31b"
     assert runner.judge_model == "claude-opus-4-7"
+    assert runner.evaluator_provider == "cerebras"
+    assert runner.judge_provider == "anthropic"
 
 
 def test_runner_builds_openai_compatible_tool_manifest() -> None:

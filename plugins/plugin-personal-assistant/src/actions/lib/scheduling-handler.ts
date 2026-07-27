@@ -29,6 +29,7 @@ import type {
 } from "@elizaos/core";
 import {
   recentConversationTexts as collectRecentConversationTexts,
+  ElizaError,
   ModelType,
   parseJsonModelRecord,
   resolveOptimizedPromptForRuntime,
@@ -36,6 +37,14 @@ import {
 } from "@elizaos/core";
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import { hasLifeOpsAccess, INTERNAL_URL } from "../../lifeops/access.js";
+import { PgApprovalQueue } from "../../lifeops/approval-queue.js";
+import type {
+  ApprovalChannel,
+  ApprovalPayload,
+  ApprovalRequest,
+} from "../../lifeops/approval-queue.types.js";
+import { getChannelRegistry } from "../../lifeops/channels/index.js";
+import type { SchedulingMessageDraft } from "../../lifeops/domains/scheduling-service.js";
 import { SCHEDULE_PLAN_INSTRUCTIONS } from "../../lifeops/optimized-prompt-instructions.js";
 import {
   type LifeOpsMeetingPreferences,
@@ -45,6 +54,19 @@ import {
   readLifeOpsMeetingPreferences,
   updateLifeOpsMeetingPreferences,
 } from "../../lifeops/owner-profile.js";
+import {
+  readSchedulingApprovalCorrelation,
+  schedulingApprovalExpiresAt,
+  schedulingApprovalPayloadForDraft,
+} from "../../lifeops/scheduling-approval.js";
+import {
+  prepareSchedulingDelivery,
+  schedulingDeliveryIdempotencyKey,
+} from "../../lifeops/scheduling-delivery.js";
+import {
+  type TransactionalDb,
+  withRequiredTransaction,
+} from "../../lifeops/sql.js";
 import { inferTimeZoneFromLocationText } from "../../lifeops/time/timezone.js";
 import { getZonedDateParts } from "../../lifeops/time.js";
 import {
@@ -776,6 +798,131 @@ export async function runUpdateMeetingPreferencesHandler(
 
 // ── Multi-turn scheduling negotiation action ─────────────────────────────
 
+type SchedulingApprovalEnqueueResult = {
+  request: ApprovalRequest;
+  reused: boolean;
+  needsSurface: boolean;
+};
+
+function approvalChannelForDraft(
+  draft: SchedulingMessageDraft,
+): ApprovalChannel {
+  switch (draft.transportChannel) {
+    case "email":
+    case "telegram":
+    case "discord":
+    case "signal":
+    case "whatsapp":
+    case "imessage":
+    case "sms":
+      return draft.transportChannel;
+  }
+}
+
+function approvalPayloadForDraft(
+  draft: SchedulingMessageDraft,
+): ApprovalPayload {
+  return schedulingApprovalPayloadForDraft(draft);
+}
+
+async function enqueueSchedulingDraft(args: {
+  runtime: IAgentRuntime;
+  message: Memory;
+  draft: SchedulingMessageDraft;
+  tx: TransactionalDb;
+}): Promise<SchedulingApprovalEnqueueResult> {
+  const channel = getChannelRegistry(args.runtime)?.get(
+    args.draft.transportChannel,
+  );
+  if (!channel?.send || channel.receiptContract !== "provider_receipt_id") {
+    throw new ElizaError(
+      `[SchedulingApproval] ${args.draft.transportChannel} cannot provide a durable provider receipt`,
+      {
+        code: "SCHEDULING_PROVIDER_RECEIPT_UNSUPPORTED",
+        context: {
+          channel: args.draft.transportChannel,
+          negotiationId: args.draft.negotiationId,
+          proposalId: args.draft.proposalId,
+        },
+        severity: "ephemeral",
+      },
+    );
+  }
+  const subjectUserId =
+    typeof args.message.entityId === "string" &&
+    args.message.entityId.trim().length > 0
+      ? args.message.entityId
+      : String(args.runtime.agentId);
+  const payload = approvalPayloadForDraft(args.draft);
+  const scheduling = readSchedulingApprovalCorrelation(payload);
+  if (!scheduling) {
+    throw new ElizaError(
+      "[SchedulingApproval] scheduling draft lost its typed correlation",
+      {
+        code: "SCHEDULING_APPROVAL_CORRELATION_LOST",
+        context: {
+          negotiationId: args.draft.negotiationId,
+          proposalId: args.draft.proposalId,
+          messageKind: args.draft.messageKind,
+        },
+        severity: "fatal",
+      },
+    );
+  }
+  const reason = [
+    `Review exact ${args.draft.messageKind} scheduling draft before sending.`,
+    `Channel: ${args.draft.transportChannel}`,
+    `To: ${args.draft.recipientName} (${args.draft.recipient})`,
+    ...(payload.action === "send_email" ? [`Subject: ${payload.subject}`] : []),
+    "Message:",
+    args.draft.body,
+    `Content SHA-256: ${scheduling.contentSha256}`,
+  ].join("\n");
+  const input = {
+    requestedBy: "PERSONAL_ASSISTANT",
+    subjectUserId,
+    action: payload.action,
+    payload,
+    channel: approvalChannelForDraft(args.draft),
+    reason,
+    idempotencyKey: schedulingDeliveryIdempotencyKey(scheduling.contentSha256),
+    expiresAt: schedulingApprovalExpiresAt(scheduling.sourceUpdatedAt),
+  } as const;
+  const queue = new PgApprovalQueue(args.runtime, {
+    agentId: args.runtime.agentId,
+  });
+  const enqueued = await queue.enqueueTransactional(input, args.tx);
+  await prepareSchedulingDelivery(args.tx, {
+    agentId: args.runtime.agentId,
+    request: enqueued.request,
+    correlation: scheduling,
+  });
+  return {
+    request: enqueued.request,
+    reused: enqueued.reused,
+    needsSurface: !enqueued.reused,
+  };
+}
+
+async function surfaceSchedulingApproval(
+  runtime: IAgentRuntime,
+  approval: SchedulingApprovalEnqueueResult | null,
+): Promise<void> {
+  if (!approval?.needsSurface) return;
+  const queue = new PgApprovalQueue(runtime, { agentId: runtime.agentId });
+  try {
+    await queue.surfaceEnqueuedApproval(approval.request);
+  } catch (error) {
+    // error-policy:J7 The queue row and domain mutation are already committed
+    // atomically. Reporting preserves recovery visibility; deleting either
+    // would lose the owner's durable approval target.
+    runtime.reportError("SchedulingApproval.surface", error, {
+      requestId: approval.request.id,
+      idempotencyKey: approval.request.idempotencyKey,
+    });
+  }
+}
+
 type SchedulingSubaction =
   | "start"
   | "propose"
@@ -1044,23 +1191,58 @@ export async function runSchedulingNegotiationHandler(
           },
         });
       }
-      const neg = await service.startNegotiation({
-        subject,
-        relationshipId: params.relationshipId ?? null,
-        durationMinutes: params.durationMinutes,
-        timezone: params.timezone,
-      });
+      // Contact graph stores do not accept the PA transaction handle. Resolve
+      // the delivery target before opening the transaction so PGlite does not
+      // deadlock on a second connection while the negotiation write is open.
+      // Execution-time revalidation resolves it again and rejects any change.
+      const counterparty =
+        await service.resolveCounterpartyTargetForRelationship(
+          params.relationshipId ?? null,
+        );
+      const { neg, approval } = await withRequiredTransaction(
+        runtime,
+        async (tx) => {
+          const neg = await service.startNegotiation({
+            subject,
+            relationshipId: params.relationshipId ?? null,
+            durationMinutes: params.durationMinutes,
+            timezone: params.timezone,
+            tx,
+          });
+          const draft = await service.draftOpeningMessage(neg, counterparty);
+          const approval = draft
+            ? await enqueueSchedulingDraft({ runtime, message, draft, tx })
+            : null;
+          return { neg, approval };
+        },
+      );
+      await surfaceSchedulingApproval(runtime, approval);
+      const fallback = approval
+        ? `Started ${formatNegotiationSummary(neg)} and queued an opening message draft for owner approval. Nothing was sent.`
+        : `Started ${formatNegotiationSummary(neg)} without an attached counterparty. No message was drafted or sent.`;
       return respond({
         success: true,
         scenario: "scheduling_negotiation_started",
-        fallback: `Started ${formatNegotiationSummary(neg)} and notified the counterparty.`,
+        fallback,
         context: {
           negotiationId: neg.id,
           subject: neg.subject,
           durationMinutes: neg.durationMinutes,
           state: neg.state,
+          approvalRequestId: approval?.request.id ?? null,
+          approvalState: approval?.request.state ?? null,
+          sent: false,
+          calendarEventCreated: false,
         },
-        data: { negotiation: neg },
+        data: {
+          negotiation: neg,
+          approvalRequestId: approval?.request.id ?? null,
+          approvalState: approval?.request.state ?? null,
+          approvalReused: approval?.reused ?? false,
+          deliveryStatus: approval ? "awaiting_approval" : "not_drafted",
+          sent: false,
+          calendarEventCreated: false,
+        },
       });
     }
 
@@ -1082,16 +1264,62 @@ export async function runSchedulingNegotiationHandler(
         });
       }
       const proposedBy = params.proposedBy ?? "agent";
-      const proposal = await service.proposeTime({
-        negotiationId: params.negotiationId,
-        startAt: params.startAt,
-        endAt: params.endAt,
-        proposedBy,
-      });
+      const negotiationId = params.negotiationId;
+      const startAt = params.startAt;
+      const endAt = params.endAt;
+      const negotiationBeforeMutation =
+        await service.getNegotiation(negotiationId);
+      const counterparty = negotiationBeforeMutation
+        ? await service.resolveCounterpartyTarget(negotiationBeforeMutation)
+        : null;
+      const { proposal, approval } = await withRequiredTransaction(
+        runtime,
+        async (tx) => {
+          const proposal = await service.proposeTime({
+            negotiationId,
+            startAt,
+            endAt,
+            proposedBy,
+            tx,
+          });
+          const negotiation = await service.getNegotiation(
+            proposal.negotiationId,
+            tx,
+          );
+          if (!negotiation) {
+            throw new ElizaError(
+              `[SchedulingApproval] negotiation ${proposal.negotiationId} disappeared after proposal persistence`,
+              {
+                code: "SCHEDULING_NEGOTIATION_RELOAD_FAILED",
+                context: {
+                  negotiationId: proposal.negotiationId,
+                  proposalId: proposal.id,
+                },
+                severity: "fatal",
+              },
+            );
+          }
+          const draft =
+            proposedBy === "counterparty"
+              ? null
+              : await service.draftProposalMessage(
+                  negotiation,
+                  proposal,
+                  counterparty,
+                );
+          const approval = draft
+            ? await enqueueSchedulingDraft({ runtime, message, draft, tx })
+            : null;
+          return { proposal, approval };
+        },
+      );
+      await surfaceSchedulingApproval(runtime, approval);
       const fallback =
         proposedBy === "counterparty"
-          ? `Recorded ${formatProposalSummary(proposal)}.`
-          : `Recorded ${formatProposalSummary(proposal)} and sent it to the counterparty.`;
+          ? `Recorded the counterparty's ${formatProposalSummary(proposal)}. No outbound message was sent.`
+          : approval
+            ? `Recorded ${formatProposalSummary(proposal)} and queued the exact proposal message for owner approval. Nothing was sent.`
+            : `Recorded ${formatProposalSummary(proposal)} without an attached counterparty. No message was drafted or sent.`;
       return respond({
         success: true,
         scenario: "scheduling_negotiation_proposed",
@@ -1102,8 +1330,25 @@ export async function runSchedulingNegotiationHandler(
           endAt: proposal.endAt,
           proposedBy,
           status: proposal.status,
+          approvalRequestId: approval?.request.id ?? null,
+          approvalState: approval?.request.state ?? null,
+          sent: false,
+          calendarEventCreated: false,
         },
-        data: { proposal },
+        data: {
+          proposal,
+          approvalRequestId: approval?.request.id ?? null,
+          approvalState: approval?.request.state ?? null,
+          approvalReused: approval?.reused ?? false,
+          deliveryStatus:
+            proposedBy === "counterparty"
+              ? "not_applicable"
+              : approval
+                ? "awaiting_approval"
+                : "not_drafted",
+          sent: false,
+          calendarEventCreated: false,
+        },
       });
     }
 
@@ -1138,21 +1383,77 @@ export async function runSchedulingNegotiationHandler(
           data: { error: "MISSING_FINALIZE_FIELDS" },
         });
       }
-      const neg = await service.finalizeNegotiation(
-        params.negotiationId,
-        params.proposalId,
+      const negotiationId = params.negotiationId;
+      const proposalId = params.proposalId;
+      const negotiationBeforeMutation =
+        await service.getNegotiation(negotiationId);
+      const counterparty = negotiationBeforeMutation
+        ? await service.resolveCounterpartyTarget(negotiationBeforeMutation)
+        : null;
+      const { neg, proposal, approval } = await withRequiredTransaction(
+        runtime,
+        async (tx) => {
+          const neg = await service.finalizeNegotiation(
+            negotiationId,
+            proposalId,
+            tx,
+          );
+          const proposal = (await service.listProposals(neg.id, tx)).find(
+            (candidate) => candidate.id === proposalId,
+          );
+          if (!proposal) {
+            throw new ElizaError(
+              `[SchedulingApproval] proposal ${proposalId} disappeared after selection`,
+              {
+                code: "SCHEDULING_PROPOSAL_RELOAD_FAILED",
+                context: {
+                  negotiationId: neg.id,
+                  proposalId,
+                },
+                severity: "fatal",
+              },
+            );
+          }
+          const draft = await service.draftConfirmationMessage(
+            neg,
+            proposal,
+            counterparty,
+          );
+          const approval = draft
+            ? await enqueueSchedulingDraft({ runtime, message, draft, tx })
+            : null;
+          return { neg, proposal, approval };
+        },
       );
+      await surfaceSchedulingApproval(runtime, approval);
+      const fallback = approval
+        ? `Selected accepted proposal ${proposal.id} for ${formatNegotiationSummary(neg)} and queued a confirmation-message draft for owner approval. Nothing was sent, and no calendar event was created or changed.`
+        : `Selected accepted proposal ${proposal.id} for ${formatNegotiationSummary(neg)} without an attached counterparty. No message was sent, and no calendar event was created or changed.`;
       return respond({
         success: true,
         scenario: "scheduling_negotiation_finalized",
-        fallback: `Confirmed ${formatNegotiationSummary(neg)} and sent confirmation to the counterparty.`,
+        fallback,
         context: {
           negotiationId: neg.id,
           subject: neg.subject,
           durationMinutes: neg.durationMinutes,
           state: neg.state,
+          acceptedProposalId: proposal.id,
+          approvalRequestId: approval?.request.id ?? null,
+          approvalState: approval?.request.state ?? null,
+          sent: false,
+          calendarEventCreated: false,
         },
-        data: { negotiation: neg },
+        data: {
+          negotiation: neg,
+          acceptedProposalId: proposal.id,
+          approvalRequestId: approval?.request.id ?? null,
+          approvalState: approval?.request.state ?? null,
+          approvalReused: approval?.reused ?? false,
+          deliveryStatus: approval ? "awaiting_approval" : "not_drafted",
+          sent: false,
+          calendarEventCreated: false,
+        },
       });
     }
 
@@ -1165,13 +1466,55 @@ export async function runSchedulingNegotiationHandler(
           data: { error: "MISSING_NEGOTIATION_ID" },
         });
       }
-      await service.cancelNegotiation(params.negotiationId, params.reason);
+      const negotiationId = params.negotiationId;
+      const negotiationBeforeMutation =
+        await service.getNegotiation(negotiationId);
+      const counterparty = negotiationBeforeMutation
+        ? await service.resolveCounterpartyTarget(negotiationBeforeMutation)
+        : null;
+      const { negotiation, approval } = await withRequiredTransaction(
+        runtime,
+        async (tx) => {
+          const negotiation = await service.cancelNegotiation(
+            negotiationId,
+            params.reason,
+            tx,
+          );
+          const draft = await service.draftCancellationMessage(
+            negotiation,
+            params.reason,
+            counterparty,
+          );
+          const approval = draft
+            ? await enqueueSchedulingDraft({ runtime, message, draft, tx })
+            : null;
+          return { negotiation, approval };
+        },
+      );
+      await surfaceSchedulingApproval(runtime, approval);
+      const fallback = approval
+        ? `Cancelled local negotiation ${negotiationId} and queued a cancellation-message draft for owner approval. Nothing was sent, and no calendar event was changed.`
+        : `Cancelled local negotiation ${negotiationId} without an attached counterparty. No message was sent, and no calendar event was changed.`;
       return respond({
         success: true,
         scenario: "scheduling_negotiation_cancelled",
-        fallback: `Cancelled negotiation ${params.negotiationId} and notified the counterparty.`,
-        context: { negotiationId: params.negotiationId },
-        data: { negotiationId: params.negotiationId },
+        fallback,
+        context: {
+          negotiationId,
+          approvalRequestId: approval?.request.id ?? null,
+          approvalState: approval?.request.state ?? null,
+          sent: false,
+          calendarEventChanged: false,
+        },
+        data: {
+          negotiation,
+          approvalRequestId: approval?.request.id ?? null,
+          approvalState: approval?.request.state ?? null,
+          approvalReused: approval?.reused ?? false,
+          deliveryStatus: approval ? "awaiting_approval" : "not_drafted",
+          sent: false,
+          calendarEventChanged: false,
+        },
       });
     }
 
@@ -1216,8 +1559,8 @@ export async function runSchedulingNegotiationHandler(
     if (error instanceof LifeOpsServiceError) {
       // Selection + execution were correct: the user asked to schedule, the
       // action ran, and the lifeops service surfaced a needs-human signal
-      // (no counterparty contact, missing scheduling field, dispatch
-      // failed, etc.). Mark as awaiting-confirmation so the native planner
+      // (no counterparty contact, missing scheduling field, etc.). Mark as
+      // awaiting-confirmation so the native planner
       // stops chaining and the benchmark scorer treats this as completed.
       return respond({
         success: false,

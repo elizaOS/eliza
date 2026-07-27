@@ -302,8 +302,14 @@ class HermesClient(BaseClient):
         self,
         call: ClientCall,
     ) -> list[dict[str, Any]]:
-        hermes_system = _build_hermes_system_prompt(call.tools)
         user_system, rest = _convert_messages_to_hermes(call.messages)
+        if not call.enable_tool_protocol:
+            return (
+                rest
+                if user_system is None
+                else [{"role": "system", "content": user_system}, *rest]
+            )
+        hermes_system = _build_hermes_system_prompt(call.tools)
         merged_system = (
             hermes_system if user_system is None else f"{hermes_system}\n\n{user_system}"
         )

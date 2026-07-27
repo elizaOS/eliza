@@ -743,6 +743,41 @@ async def test_hermes_complete_full_pipeline() -> None:
 
 
 @pytest.mark.asyncio
+async def test_hermes_non_tool_call_omits_function_calling_template() -> None:
+    captured: list[dict[str, Any]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(json.loads(request.content.decode("utf-8")))
+        return httpx.Response(200, json=_hermes_response("A plain evaluator reply."))
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport) as http_client:
+        client = HermesClient(
+            base_url="https://hermes.example.com/v1",
+            api_key="sk-hermes",
+            model="NousResearch/Hermes-3-Llama-3.1-70B",
+            http_client=http_client,
+        )
+        response = await client.complete(
+            ClientCall(
+                messages=[
+                    {"role": "system", "content": "Stay in the user role."},
+                    {"role": "user", "content": "Continue naturally."},
+                ],
+                enable_tool_protocol=False,
+            )
+        )
+
+    assert response.content == "A plain evaluator reply."
+    body = captured[0]
+    assert body["messages"][0] == {
+        "role": "system",
+        "content": "Stay in the user role.",
+    }
+    assert "<tools>" not in body["messages"][0]["content"]
+
+
+@pytest.mark.asyncio
 async def test_hermes_retries_once_on_429() -> None:
     statuses = [429, 200]
     call_index = {"i": 0}
