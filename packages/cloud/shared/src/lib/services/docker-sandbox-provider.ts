@@ -65,6 +65,7 @@ import type {
   SandboxHealthOutcome,
   SandboxProvider,
   SandboxReplacementCleanupLocator,
+  SandboxSnapshotRestoreBindingSeed,
 } from "./sandbox-provider-types";
 import { SandboxReplacementCleanupUnresolvedError } from "./sandbox-provider-types";
 import {
@@ -148,6 +149,61 @@ type DockerNodeConnection = Pick<
 // ---------------------------------------------------------------------------
 
 const DOCKER_IMAGE_OVERRIDE = containersEnv.defaultAgentImageOverride();
+const SNAPSHOT_BINDING_DIGEST_PATTERN = /^sha256:[a-f0-9]{64}$/;
+const SNAPSHOT_BINDING_NONCE_PATTERN = /^[a-f0-9]{64}$/;
+const SNAPSHOT_BINDING_SANDBOX_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/;
+const SNAPSHOT_BINDING_UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const SNAPSHOT_BINDING_ENV_KEYS = [
+  "ELIZA_SNAPSHOT_RESTORE_BACKUP_ID",
+  "ELIZA_SNAPSHOT_RESTORE_CANDIDATE_ATTEMPT_ID",
+  "ELIZA_SNAPSHOT_RESTORE_NONCE",
+  "ELIZA_SNAPSHOT_RESTORE_PROVIDER_SANDBOX_ID",
+  "ELIZA_SNAPSHOT_RESTORE_SOURCE_ENVIRONMENT_REVISION",
+  "ELIZA_SNAPSHOT_RESTORE_SOURCE_IMAGE_DIGEST",
+  "ELIZA_SNAPSHOT_RESTORE_SOURCE_SANDBOX_ID",
+  "ELIZA_SNAPSHOT_RESTORE_TARGET_IMAGE_DIGEST",
+] as const;
+
+export function buildSnapshotRestoreBindingEnvironment(params: {
+  environmentVars: Record<string, string>;
+  replacementAttemptId: string;
+  seed: SandboxSnapshotRestoreBindingSeed | undefined;
+  targetSandboxId: string;
+}): Record<string, string> {
+  for (const key of SNAPSHOT_BINDING_ENV_KEYS) {
+    if (Object.hasOwn(params.environmentVars, key)) {
+      throw new Error(
+        `[docker-sandbox] ${key} is provider-owned and cannot be supplied as an agent environment variable`,
+      );
+    }
+  }
+  const seed = params.seed;
+  if (!seed) return {};
+  if (
+    !SNAPSHOT_BINDING_UUID_PATTERN.test(seed.backupId) ||
+    !SNAPSHOT_BINDING_NONCE_PATTERN.test(seed.captureNonce) ||
+    !Number.isSafeInteger(seed.sourceEnvironmentRevision) ||
+    seed.sourceEnvironmentRevision < 0 ||
+    !SNAPSHOT_BINDING_DIGEST_PATTERN.test(seed.sourceImageDigest) ||
+    !SNAPSHOT_BINDING_SANDBOX_PATTERN.test(seed.sourceSandboxId) ||
+    !SNAPSHOT_BINDING_DIGEST_PATTERN.test(seed.targetImageDigest) ||
+    !SNAPSHOT_BINDING_UUID_PATTERN.test(params.replacementAttemptId) ||
+    !SNAPSHOT_BINDING_SANDBOX_PATTERN.test(params.targetSandboxId)
+  ) {
+    throw new Error("[docker-sandbox] Snapshot restore binding seed is malformed");
+  }
+  return {
+    ELIZA_SNAPSHOT_RESTORE_BACKUP_ID: seed.backupId,
+    ELIZA_SNAPSHOT_RESTORE_CANDIDATE_ATTEMPT_ID: params.replacementAttemptId,
+    ELIZA_SNAPSHOT_RESTORE_NONCE: seed.captureNonce,
+    ELIZA_SNAPSHOT_RESTORE_PROVIDER_SANDBOX_ID: params.targetSandboxId,
+    ELIZA_SNAPSHOT_RESTORE_SOURCE_ENVIRONMENT_REVISION: String(seed.sourceEnvironmentRevision),
+    ELIZA_SNAPSHOT_RESTORE_SOURCE_IMAGE_DIGEST: seed.sourceImageDigest,
+    ELIZA_SNAPSHOT_RESTORE_SOURCE_SANDBOX_ID: seed.sourceSandboxId,
+    ELIZA_SNAPSHOT_RESTORE_TARGET_IMAGE_DIGEST: seed.targetImageDigest,
+  };
+}
 const DOCKER_NETWORK = containersEnv.dockerNetwork();
 let hasWarnedMissingStewardTenantApiKey = false;
 
@@ -1105,6 +1161,12 @@ export class DockerSandboxProvider implements SandboxProvider {
     const containerName = getContainerName(agentId);
     const volumePath = getVolumePath(agentId);
     const replacementAttemptId = crypto.randomUUID();
+    const snapshotBindingEnv = buildSnapshotRestoreBindingEnvironment({
+      environmentVars,
+      replacementAttemptId,
+      seed: config.snapshotRestoreBinding,
+      targetSandboxId: containerName,
+    });
     // Auto-provision the Steward tenant for this org if it doesn't have one
     // yet. Without this step, fresh organizations fall through to
     // `DEFAULT_STEWARD_TENANT_ID` ("elizacloud") — and if that default tenant
@@ -1193,6 +1255,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     const baseEnv: Record<string, string> = {
       ...kmsEnv,
       ...environmentVars,
+      ...snapshotBindingEnv,
       ...vpnEnvVars,
       ...proxyEnv,
       AGENT_NAME: agentName,
