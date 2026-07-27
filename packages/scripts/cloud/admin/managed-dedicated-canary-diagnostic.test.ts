@@ -6,6 +6,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   chmodSync,
+  existsSync,
   mkdtempSync,
   readFileSync,
   statSync,
@@ -132,6 +133,19 @@ function boundedHistoryInput(errors: unknown[]): Record<string, unknown> {
       updatedAt: shift(template.updatedAt as string),
     };
   });
+  return input;
+}
+
+function correlatedPermanentDeleteInput(
+  cause = "opaque delete provider failure",
+): Record<string, unknown> {
+  const input = failedDeleteInput();
+  const agent = input.agent as Record<string, unknown>;
+  const [job] = input.jobs as Record<string, unknown>[];
+  agent.errorMessage = `Deletion permanently failed after 3 attempts: ${cause}`;
+  job.error = cause;
+  job.result = null;
+  job.completedAt = null;
   return input;
 }
 
@@ -722,6 +736,437 @@ describe("managed dedicated canary diagnostic", () => {
     ).toThrow("privacy-safe classifier");
   });
 
+  test("correlates an unknown permanent-delete cause without publishing a second profile", () => {
+    const cause = "opaque delete provider failure secret-AAAA";
+    const canonical = canonicalizeManagedDedicatedCanaryDiagnostic(
+      JSON.stringify(correlatedPermanentDeleteInput(cause)),
+      SUFFIX,
+    );
+    const evidence = JSON.parse(canonical);
+
+    expect(evidence).toMatchObject({
+      schemaVersion: 3,
+      sandbox: {
+        status: "deletion_failed",
+        errorCode: "unclassified",
+        errorCount: 1,
+      },
+      jobs: [
+        {
+          status: "failed",
+          attempts: 3,
+          maxAttempts: 3,
+          errorCode: "unclassified",
+          unclassifiedProfile: {
+            lengthBucket: "1_64",
+            writerHints: {
+              deleteLifecycleLike: false,
+            },
+          },
+        },
+      ],
+    });
+    expect(Object.keys(evidence.sandbox).sort()).toEqual(
+      [
+        "status",
+        "errorCode",
+        "errorCount",
+        "deletionStartedAt",
+        "updatedAt",
+      ].sort(),
+    );
+    expect(canonical).not.toContain(cause);
+    expect(canonical).not.toContain("secret-AAAA");
+  });
+
+  test("correlates a retained failure behind a newer active recovery job", () => {
+    const cause = "opaque retained delete failure";
+    const input = boundedHistoryInput(["opaque active retry", cause]);
+    const agent = input.agent as Record<string, unknown>;
+    const [active] = input.jobs as Record<string, unknown>[];
+    agent.errorMessage = `Deletion permanently failed after 3 attempts: ${cause}`;
+    agent.errorCount = 1;
+    active.status = "pending";
+    active.attempts = 1;
+
+    const evidence = sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX);
+    expect(evidence.sandbox).toMatchObject({
+      status: "deletion_pending",
+      errorCode: "unclassified",
+      errorCount: 1,
+    });
+    expect(evidence.jobs).toMatchObject([
+      {
+        status: "pending",
+        attempts: 1,
+        errorCode: "unclassified",
+      },
+      {
+        status: "failed",
+        attempts: 3,
+        maxAttempts: 3,
+        errorCode: "unclassified",
+      },
+    ]);
+  });
+
+  test("correlates a retained failure behind later failed and active recovery jobs", () => {
+    const cause = "opaque retained source failure";
+    const input = boundedHistoryInput([
+      "opaque active retry",
+      "Job timed out 3 times - max attempts reached",
+      cause,
+    ]);
+    const agent = input.agent as Record<string, unknown>;
+    const [active] = input.jobs as Record<string, unknown>[];
+    agent.errorMessage = `Deletion permanently failed after 3 attempts: ${cause}`;
+    agent.errorCount = 2;
+    active.status = "in_progress";
+    active.attempts = 1;
+
+    const evidence = sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX);
+    expect(evidence.sandbox.errorCode).toBe("unclassified");
+    expect(evidence.jobs.map(({ status }) => status)).toEqual([
+      "in_progress",
+      "failed",
+      "failed",
+    ]);
+    expect(evidence.jobs[1]?.errorCode).toBe("timeout");
+    expect(evidence.jobs[2]?.unclassifiedProfile).not.toBeNull();
+  });
+
+  test("correlates a retained failure behind a strict terminal recovery without an active job", () => {
+    const cause = "opaque retained source failure";
+    const input = boundedHistoryInput([
+      "Job interrupted by worker restart 3 times - max attempts reached",
+      cause,
+    ]);
+    const agent = input.agent as Record<string, unknown>;
+    agent.errorMessage = `Deletion permanently failed after 3 attempts: ${cause}`;
+    agent.errorCount = 2;
+
+    const evidence = sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX);
+    expect(evidence.sandbox.errorCode).toBe("unclassified");
+    expect(evidence.jobs[0]).toMatchObject({
+      status: "failed",
+      errorCode: "worker_restart_interrupted",
+    });
+  });
+
+  test("rejects a retained wrapper across an unrelated newer failed job", () => {
+    const cause = "opaque retained source failure";
+    const input = boundedHistoryInput(["opaque ordinary failure", cause]);
+    const agent = input.agent as Record<string, unknown>;
+    agent.errorMessage = `Deletion permanently failed after 3 attempts: ${cause}`;
+    agent.errorCount = 2;
+
+    expect(() =>
+      sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX),
+    ).toThrow("unrelated newer job");
+  });
+
+  test.each([
+    "Job timed out 3 times - max attempts reached",
+    "Job interrupted by worker restart 3 times - max attempts reached",
+  ])("rejects a recovery-generated terminal job as wrapper source", (cause) => {
+    expect(() =>
+      sanitizeManagedDedicatedCanaryDiagnostic(
+        correlatedPermanentDeleteInput(cause),
+        SUFFIX,
+      ),
+    ).toThrow("does not correlate");
+  });
+
+  test("rejects coarse-code and equal-profile matches with different raw causes", () => {
+    const known = correlatedPermanentDeleteInput(
+      "database connection failed cause-A",
+    );
+    (
+      (known.jobs as Record<string, unknown>[])[0] as Record<string, unknown>
+    ).error = "database connection failed cause-B";
+    expect(() =>
+      sanitizeManagedDedicatedCanaryDiagnostic(known, SUFFIX),
+    ).toThrow("does not correlate");
+
+    const opaque = correlatedPermanentDeleteInput("SSH executor secret-AAAA");
+    (
+      (opaque.jobs as Record<string, unknown>[])[0] as Record<string, unknown>
+    ).error = "SSH executor secret-BBBB";
+    expect(() =>
+      sanitizeManagedDedicatedCanaryDiagnostic(opaque, SUFFIX),
+    ).toThrow("does not correlate");
+
+    const unicode = correlatedPermanentDeleteInput("Unicode e\u0301 secret-A");
+    (
+      (unicode.jobs as Record<string, unknown>[])[0] as Record<string, unknown>
+    ).error = "Unicode é secret-A";
+    expect(() =>
+      sanitizeManagedDedicatedCanaryDiagnostic(unicode, SUFFIX),
+    ).toThrow("does not correlate");
+  });
+
+  test.each([
+    [
+      "wrapper counter mismatch",
+      (input: Record<string, unknown>) => {
+        (input.agent as Record<string, unknown>).errorMessage =
+          "Deletion permanently failed after 2 attempts: opaque delete provider failure";
+      },
+    ],
+    [
+      "failed source below max",
+      (input: Record<string, unknown>) => {
+        (
+          (input.jobs as Record<string, unknown>[])[0] as Record<
+            string,
+            unknown
+          >
+        ).attempts = 2;
+      },
+    ],
+    [
+      "nonfailed source",
+      (input: Record<string, unknown>) => {
+        const source = (input.jobs as Record<string, unknown>[])[0] as Record<
+          string,
+          unknown
+        >;
+        source.status = "in_progress";
+        source.attempts = 2;
+      },
+    ],
+    [
+      "missing deletion ownership",
+      (input: Record<string, unknown>) => {
+        const agent = input.agent as Record<string, unknown>;
+        agent.status = "deletion_pending";
+        agent.deletionOwned = false;
+        agent.deletionStartedAt = null;
+      },
+    ],
+    [
+      "zero persisted failure count",
+      (input: Record<string, unknown>) => {
+        (input.agent as Record<string, unknown>).errorCount = 0;
+      },
+    ],
+    [
+      "nondeletion sandbox status",
+      (input: Record<string, unknown>) => {
+        (input.agent as Record<string, unknown>).status = "running";
+      },
+    ],
+  ])("rejects permanent-delete correlation with %s", (_name, mutate) => {
+    const input = correlatedPermanentDeleteInput();
+    mutate(input);
+    expect(() =>
+      sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX),
+    ).toThrow();
+  });
+
+  test("requires the latest job to source a deletion_failed wrapper", () => {
+    const cause = "opaque older permanent failure";
+    const input = boundedHistoryInput(["opaque newer failure", cause]);
+    const agent = input.agent as Record<string, unknown>;
+    agent.status = "deletion_failed";
+    agent.errorMessage = `Deletion permanently failed after 3 attempts: ${cause}`;
+    agent.errorCount = 2;
+
+    expect(() =>
+      sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX),
+    ).toThrow("latest failed deletion job");
+  });
+
+  test.each([
+    "Deletion permanently failed after 0 attempts: opaque delete provider failure",
+    "Deletion permanently failed after 03 attempts: opaque delete provider failure",
+    "Deletion permanently failed after 101 attempts: opaque delete provider failure",
+    "Deletion permanently failed after 1000 attempts: opaque delete provider failure",
+    "Deletion permanently failed after 3 attempts:",
+    "Deletion permanently failed after 3 attempts: Deletion permanently failed after 3 attempts: opaque",
+    "deletion permanently FAILED after 3 attempts: opaque delete provider failure",
+    "Deletion-permanently-failed after 3 attempts: opaque delete provider failure",
+  ])("rejects a malformed or nested permanent-delete envelope", (message) => {
+    const input = correlatedPermanentDeleteInput();
+    (input.agent as Record<string, unknown>).errorMessage = message;
+    expect(() =>
+      sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX),
+    ).toThrow();
+  });
+
+  test("correlates a multiline producer error without publishing its text", () => {
+    const cause =
+      'Failed query: DELETE FROM "agent_sandboxes"\nparams: secret-AAAA';
+    const canonical = canonicalizeManagedDedicatedCanaryDiagnostic(
+      JSON.stringify(correlatedPermanentDeleteInput(cause)),
+      SUFFIX,
+    );
+    expect(JSON.parse(canonical)).toMatchObject({
+      sandbox: { errorCode: "row_delete_failed" },
+      jobs: [{ errorCode: "row_delete_failed" }],
+    });
+    expect(canonical).not.toContain("Failed query");
+    expect(canonical).not.toContain("params:");
+    expect(canonical).not.toContain("secret-AAAA");
+  });
+
+  test("keeps correlated hostile causes out of canonical output", () => {
+    const values = [
+      "https://10.0.0.1 token secret api_key sha256:AAAA",
+      "Bearer secret-AAAA ::set-output name=x::y",
+      "55f332f8-da54-4c53-952c-a38f5f01287b secret-A",
+      "SSH executor \u0001\u0002 secret-A",
+      "Unicode e\u0301 secret-A",
+    ];
+    for (const cause of values) {
+      const canonical = canonicalizeManagedDedicatedCanaryDiagnostic(
+        JSON.stringify(correlatedPermanentDeleteInput(cause)),
+        SUFFIX,
+      );
+      expect(canonical).not.toContain(cause);
+      expect(canonical).not.toContain("secret-A");
+      expect(canonical).not.toContain("55f332f8");
+      expect(canonical).not.toContain("sha256:");
+    }
+  });
+
+  test("keeps equal-shape correlated causes byte-identical", () => {
+    const first = canonicalizeManagedDedicatedCanaryDiagnostic(
+      JSON.stringify(
+        correlatedPermanentDeleteInput("SSH executor secret-AAAA"),
+      ),
+      SUFFIX,
+    );
+    const second = canonicalizeManagedDedicatedCanaryDiagnostic(
+      JSON.stringify(
+        correlatedPermanentDeleteInput("SSH executor secret-BBBB"),
+      ),
+      SUFFIX,
+    );
+    expect(first).toBe(second);
+  });
+
+  test("does not expose which duplicate exact source was selected", () => {
+    const cause = "opaque duplicate failure";
+    const input = boundedHistoryInput(["opaque active retry", cause, cause]);
+    const agent = input.agent as Record<string, unknown>;
+    const [active] = input.jobs as Record<string, unknown>[];
+    agent.errorMessage = `Deletion permanently failed after 3 attempts: ${cause}`;
+    agent.errorCount = 2;
+    active.status = "pending";
+    active.attempts = 1;
+
+    const canonical = canonicalizeManagedDedicatedCanaryDiagnostic(
+      JSON.stringify(input),
+      SUFFIX,
+    );
+    expect(JSON.parse(canonical).sandbox.errorCode).toBe("unclassified");
+    expect(canonical).not.toContain("sourceIndex");
+    expect(canonical).not.toContain(cause);
+  });
+
+  test("rejects a retained wrapper without a newer recovery lifecycle", () => {
+    const input = correlatedPermanentDeleteInput();
+    (input.agent as Record<string, unknown>).status = "deletion_pending";
+    expect(() =>
+      sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX),
+    ).toThrow("no newer recovery lifecycle");
+  });
+
+  test.each([
+    [
+      "has exhausted its attempt budget",
+      (active: Record<string, unknown>) => {
+        active.attempts = 3;
+      },
+    ],
+    [
+      "is already completed",
+      (active: Record<string, unknown>) => {
+        active.completedAt = "2026-07-26T23:11:30.000Z";
+      },
+    ],
+    [
+      "is in progress without a start time",
+      (active: Record<string, unknown>) => {
+        active.status = "in_progress";
+        active.startedAt = null;
+      },
+    ],
+  ])("rejects an active recovery that %s", (_name, mutate) => {
+    const cause = "opaque retained source failure";
+    const input = boundedHistoryInput([
+      "Agent provisioning is in progress",
+      cause,
+    ]);
+    const agent = input.agent as Record<string, unknown>;
+    const [active] = input.jobs as Record<string, unknown>[];
+    agent.errorMessage = `Deletion permanently failed after 3 attempts: ${cause}`;
+    agent.errorCount = 2;
+    active.status = "pending";
+    active.attempts = 1;
+    mutate(active);
+
+    expect(() =>
+      sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX),
+    ).toThrow("invalid active recovery ordering");
+  });
+
+  test("rejects an active recovery below a newer terminal record", () => {
+    const cause = "opaque retained source failure";
+    const input = boundedHistoryInput([
+      "Job timed out 3 times - max attempts reached",
+      "opaque misplaced active retry",
+      cause,
+    ]);
+    const agent = input.agent as Record<string, unknown>;
+    const misplacedActive = (
+      input.jobs as Record<string, unknown>[]
+    )[1] as Record<string, unknown>;
+    agent.errorMessage = `Deletion permanently failed after 3 attempts: ${cause}`;
+    agent.errorCount = 2;
+    misplacedActive.status = "pending";
+    misplacedActive.attempts = 1;
+
+    expect(() =>
+      sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX),
+    ).toThrow("invalid active recovery ordering");
+  });
+
+  test("enforces the full wrapped-message bound before correlation", () => {
+    const prefix = "Deletion permanently failed after 3 attempts: ";
+    const accepted = "x".repeat(2_000 - prefix.length);
+    expect(() =>
+      sanitizeManagedDedicatedCanaryDiagnostic(
+        correlatedPermanentDeleteInput(accepted),
+        SUFFIX,
+      ),
+    ).not.toThrow();
+
+    const rejected = "x".repeat(2_001 - prefix.length);
+    expect(() =>
+      sanitizeManagedDedicatedCanaryDiagnostic(
+        correlatedPermanentDeleteInput(rejected),
+        SUFFIX,
+      ),
+    ).toThrow("bounded string");
+  });
+
+  test("does not create an artifact when permanent-delete correlation fails", () => {
+    const directory = mkdtempSync(join(tmpdir(), "managed-canary-diagnostic-"));
+    const rawPath = join(directory, "raw.json");
+    const evidencePath = join(directory, "evidence.json");
+    const input = correlatedPermanentDeleteInput();
+    (input.agent as Record<string, unknown>).errorMessage =
+      "Deletion permanently failed after 3 attempts: mismatched cause";
+    writeFileSync(rawPath, JSON.stringify(input), { mode: 0o600 });
+
+    expect(() =>
+      writeManagedDedicatedCanaryDiagnostic(rawPath, evidencePath, SUFFIX),
+    ).toThrow("does not correlate");
+    expect(existsSync(evidencePath)).toBe(false);
+  });
+
   test("preserves distinct terminal and prior-attempt result classifications", () => {
     const input = failedDeleteInput();
     const [job] = input.jobs as Record<string, unknown>[];
@@ -1263,7 +1708,11 @@ describe("managed dedicated canary diagnostic", () => {
 
       expect(() =>
         sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX),
-      ).toThrow("malformed recovery provenance");
+      ).toThrow(
+        boundary === "agent"
+          ? "does not correlate"
+          : "malformed recovery provenance",
+      );
     },
   );
 
