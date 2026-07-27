@@ -8,6 +8,7 @@ import type { DockerNode } from "../../../db/schemas/docker-nodes";
 import { dockerNodeManager } from "../docker-node-manager";
 import * as dockerPortAllocation from "../docker-port-allocation";
 import {
+  buildSnapshotRestoreBindingEnvironment,
   createDockerContainerAfterReplacementIntent,
   DockerSandboxProvider,
 } from "../docker-sandbox-provider";
@@ -106,6 +107,59 @@ afterEach(() => {
 });
 
 describe("DockerSandboxProvider replacement cleanup", () => {
+  test("injects an exact provider-bound restore identity and rejects caller overrides", () => {
+    const environment = buildSnapshotRestoreBindingEnvironment({
+      environmentVars: { USER_SETTING: "preserved" },
+      replacementAttemptId: ATTEMPT_ID,
+      seed: {
+        backupId: "44444444-4444-4444-8444-444444444444",
+        captureNonce: "01".repeat(32),
+        sourceEnvironmentRevision: 7,
+        sourceImageDigest: `sha256:${"02".repeat(32)}`,
+        sourceSandboxId: "source-sandbox",
+        targetImageDigest: `sha256:${"03".repeat(32)}`,
+      },
+      targetSandboxId: CONTAINER_NAME,
+    });
+
+    expect(environment).toEqual({
+      ELIZA_SNAPSHOT_RESTORE_BACKUP_ID: "44444444-4444-4444-8444-444444444444",
+      ELIZA_SNAPSHOT_RESTORE_CANDIDATE_ATTEMPT_ID: ATTEMPT_ID,
+      ELIZA_SNAPSHOT_RESTORE_NONCE: "01".repeat(32),
+      ELIZA_SNAPSHOT_RESTORE_PROVIDER_SANDBOX_ID: CONTAINER_NAME,
+      ELIZA_SNAPSHOT_RESTORE_SOURCE_ENVIRONMENT_REVISION: "7",
+      ELIZA_SNAPSHOT_RESTORE_SOURCE_IMAGE_DIGEST: `sha256:${"02".repeat(32)}`,
+      ELIZA_SNAPSHOT_RESTORE_SOURCE_SANDBOX_ID: "source-sandbox",
+      ELIZA_SNAPSHOT_RESTORE_TARGET_IMAGE_DIGEST: `sha256:${"03".repeat(32)}`,
+    });
+
+    expect(() =>
+      buildSnapshotRestoreBindingEnvironment({
+        environmentVars: {
+          ELIZA_SNAPSHOT_RESTORE_NONCE: "caller-controlled",
+        },
+        replacementAttemptId: ATTEMPT_ID,
+        seed: undefined,
+        targetSandboxId: CONTAINER_NAME,
+      }),
+    ).toThrow("is provider-owned");
+    expect(() =>
+      buildSnapshotRestoreBindingEnvironment({
+        environmentVars: {},
+        replacementAttemptId: ATTEMPT_ID,
+        seed: {
+          backupId: "44444444-4444-4444-8444-444444444444",
+          captureNonce: "01".repeat(32),
+          sourceEnvironmentRevision: 7,
+          sourceImageDigest: "02".repeat(32),
+          sourceSandboxId: "source-sandbox",
+          targetImageDigest: `sha256:${"03".repeat(32)}`,
+        },
+        targetSandboxId: CONTAINER_NAME,
+      }),
+    ).toThrow("binding seed is malformed");
+  });
+
   test("persists intent before remote create even when Docker commits without an SSH response", async () => {
     const events: string[] = [];
 

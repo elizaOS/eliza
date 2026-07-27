@@ -116,23 +116,118 @@ export type AgentBackupManifest = AgentBackupManifestV1 | AgentBackupManifestV2;
 export type AgentSnapshotPurpose = "manual" | "auto" | "pre-upgrade";
 export type AgentSnapshotTransfer = "chunked-v1";
 
+export interface AgentSnapshotUpgradeBinding {
+  backupId: string;
+  captureNonce: string;
+  sourceEnvironmentRevision: number;
+  sourceImageDigest: string;
+  sourceSandboxId: string;
+  targetImageDigest: string;
+  targetReplacementAttemptId: string;
+  targetSandboxId: string;
+}
+
 export interface AgentSnapshotRequest {
+  binding?: AgentSnapshotUpgradeBinding;
   purpose?: AgentSnapshotPurpose;
   schemaVersion?: 1 | 2;
   transfer?: AgentSnapshotTransfer;
 }
 
 export interface ResolvedAgentSnapshotRequest {
+  binding?: AgentSnapshotUpgradeBinding;
   purpose: AgentSnapshotPurpose;
   schemaVersion: 1 | 2;
   transfer?: AgentSnapshotTransfer;
 }
+
+const SNAPSHOT_BINDING_DIGEST_PATTERN = /^sha256:[a-f0-9]{64}$/;
+const SNAPSHOT_BINDING_NONCE_PATTERN = /^[a-f0-9]{64}$/;
+const SNAPSHOT_BINDING_SANDBOX_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/;
+const SNAPSHOT_BINDING_UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 function invalidSnapshotRequest(message: string): ElizaError {
   return new ElizaError(message, {
     code: "AGENT_SNAPSHOT_REQUEST_INVALID",
     severity: "fatal",
   });
+}
+
+export function validateAgentSnapshotUpgradeBinding(
+  input: unknown,
+): AgentSnapshotUpgradeBinding {
+  if (input === null || typeof input !== "object" || Array.isArray(input)) {
+    throw invalidSnapshotRequest(
+      "Pre-upgrade snapshot binding must be an object",
+    );
+  }
+  const record = input as Record<string, unknown>;
+  const expectedKeys = [
+    "backupId",
+    "captureNonce",
+    "sourceEnvironmentRevision",
+    "sourceImageDigest",
+    "sourceSandboxId",
+    "targetImageDigest",
+    "targetReplacementAttemptId",
+    "targetSandboxId",
+  ];
+  const actualKeys = Object.keys(record).sort();
+  if (
+    actualKeys.length !== expectedKeys.length ||
+    actualKeys.some((key, index) => key !== expectedKeys[index])
+  ) {
+    throw invalidSnapshotRequest(
+      "Pre-upgrade snapshot binding has unsupported or missing fields",
+    );
+  }
+  if (
+    typeof record.backupId !== "string" ||
+    !SNAPSHOT_BINDING_UUID_PATTERN.test(record.backupId)
+  ) {
+    throw invalidSnapshotRequest("Snapshot backup id is malformed");
+  }
+  if (
+    typeof record.captureNonce !== "string" ||
+    !SNAPSHOT_BINDING_NONCE_PATTERN.test(record.captureNonce)
+  ) {
+    throw invalidSnapshotRequest("Snapshot capture nonce is malformed");
+  }
+  if (
+    typeof record.sourceEnvironmentRevision !== "number" ||
+    !Number.isSafeInteger(record.sourceEnvironmentRevision) ||
+    record.sourceEnvironmentRevision < 0
+  ) {
+    throw invalidSnapshotRequest(
+      "Snapshot source environment revision is malformed",
+    );
+  }
+  if (
+    typeof record.sourceImageDigest !== "string" ||
+    !SNAPSHOT_BINDING_DIGEST_PATTERN.test(record.sourceImageDigest) ||
+    typeof record.targetImageDigest !== "string" ||
+    !SNAPSHOT_BINDING_DIGEST_PATTERN.test(record.targetImageDigest)
+  ) {
+    throw invalidSnapshotRequest("Snapshot image digest binding is malformed");
+  }
+  if (
+    typeof record.sourceSandboxId !== "string" ||
+    !SNAPSHOT_BINDING_SANDBOX_PATTERN.test(record.sourceSandboxId) ||
+    typeof record.targetSandboxId !== "string" ||
+    !SNAPSHOT_BINDING_SANDBOX_PATTERN.test(record.targetSandboxId)
+  ) {
+    throw invalidSnapshotRequest("Snapshot sandbox binding is malformed");
+  }
+  if (
+    typeof record.targetReplacementAttemptId !== "string" ||
+    !SNAPSHOT_BINDING_UUID_PATTERN.test(record.targetReplacementAttemptId)
+  ) {
+    throw invalidSnapshotRequest(
+      "Snapshot replacement attempt binding is malformed",
+    );
+  }
+  return record as unknown as AgentSnapshotUpgradeBinding;
 }
 
 export interface AgentBackupStateData {
@@ -237,7 +332,11 @@ export function parseAgentSnapshotRequest(
 
   const record = input as Record<string, unknown>;
   const unknownKeys = Object.keys(record).filter(
-    (key) => key !== "purpose" && key !== "schemaVersion" && key !== "transfer",
+    (key) =>
+      key !== "binding" &&
+      key !== "purpose" &&
+      key !== "schemaVersion" &&
+      key !== "transfer",
   );
   if (unknownKeys.length > 0) {
     throw invalidSnapshotRequest(
@@ -281,8 +380,22 @@ export function parseAgentSnapshotRequest(
       "The chunked-v1 transfer requires a pre-upgrade snapshot",
     );
   }
+  const binding =
+    record.binding === undefined
+      ? undefined
+      : validateAgentSnapshotUpgradeBinding(record.binding);
+  if (transfer === "chunked-v1" && !binding) {
+    throw invalidSnapshotRequest(
+      "The chunked-v1 transfer requires a candidate-bound upgrade identity",
+    );
+  }
+  if (transfer !== "chunked-v1" && binding) {
+    throw invalidSnapshotRequest(
+      "Snapshot upgrade binding is only valid for chunked-v1 pre-upgrade capture",
+    );
+  }
   return transfer
-    ? { purpose, schemaVersion, transfer }
+    ? { binding, purpose, schemaVersion, transfer }
     : { purpose, schemaVersion };
 }
 

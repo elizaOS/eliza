@@ -8,7 +8,11 @@
 import crypto from "node:crypto";
 import path from "node:path";
 import { ElizaError } from "@elizaos/core";
-import type { AgentBackupExternalPostgresReference } from "./agent-backup.ts";
+import {
+  type AgentBackupExternalPostgresReference,
+  type AgentSnapshotUpgradeBinding,
+  validateAgentSnapshotUpgradeBinding,
+} from "./agent-backup.ts";
 
 export const AGENT_SNAPSHOT_STREAM_CONTENT_TYPE =
   "application/x-elizaos-agent-snapshot-v2+ndjson";
@@ -65,6 +69,7 @@ export type AgentSnapshotStreamDatabaseDescriptor =
 
 export interface AgentSnapshotStreamDescriptor {
   agentId: string;
+  binding: AgentSnapshotUpgradeBinding;
   chunkSize: number;
   components: {
     character: {
@@ -477,6 +482,7 @@ export function validateSnapshotStreamDescriptor(
     value,
     [
       "agentId",
+      "binding",
       "chunkSize",
       "components",
       "createdAt",
@@ -500,6 +506,7 @@ export function validateSnapshotStreamDescriptor(
   if (typeof value.agentId !== "string" || !value.agentId.trim()) {
     throw invalidProtocol("Snapshot stream agent id is missing");
   }
+  validateAgentSnapshotUpgradeBinding(value.binding);
   if (
     typeof value.createdAt !== "string" ||
     Number.isNaN(Date.parse(value.createdAt)) ||
