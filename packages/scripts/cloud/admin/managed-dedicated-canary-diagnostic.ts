@@ -20,6 +20,11 @@ const LIFECYCLE_JOB_CONFLICT_PATTERN = new RegExp(
 );
 const FORBIDDEN_OUTPUT_PATTERN =
   /(?:https?:\/\/|(?:\d{1,3}\.){3}\d{1,3}|\b(?:token|secret|password|api[_-]?key)\b|managed-dedicated-canary-|sha256:)/i;
+const TIMEOUT_ERROR_PATTERN = /(?:timed out|timeout)/i;
+const WORKER_RESTART_TERMINAL_PATTERN =
+  /^Job interrupted by worker restart ([1-9][0-9]{0,2}) times - max attempts reached$/;
+const TIMEOUT_TERMINAL_PATTERN =
+  /^Job timed out ([1-9][0-9]{0,2}) times - max attempts reached$/;
 
 const SANDBOX_STATUSES = new Set([
   "pending",
@@ -63,6 +68,21 @@ interface RecoveryClassification {
   attempt: number;
   maxAttempts: number;
 }
+
+interface TerminalFailureClassification {
+  code: Extract<ErrorCode, "timeout" | "worker_restart_interrupted">;
+  attempts: number;
+}
+
+const RECOVERY_PARTIAL_RESULT_ERRORS = new Map<string, ErrorCode>([
+  ["Failed to delete sandbox", "sandbox_stop_failed"],
+  [
+    "Agent replacement cleanup is still pending",
+    "replacement_cleanup_pending",
+  ],
+  ["Agent provisioning is in progress", "provisioning_in_progress"],
+  ["Agent deletion ownership changed", "lifecycle_conflict"],
+]);
 
 export interface ManagedDedicatedCanaryDiagnostic {
   schemaVersion: 2;
@@ -143,6 +163,46 @@ function nullableBoolean(value: unknown, label: string): boolean | null {
   return boolean(value, label);
 }
 
+function looksLikeRecoveryProvenance(value: string): boolean {
+  const normalized = value
+    .normalize("NFKD")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+  return (
+    (normalized.includes("recover") || normalized.includes("retry")) &&
+    (TIMEOUT_ERROR_PATTERN.test(value) ||
+      normalized.includes("timeout") ||
+      normalized.includes("timedout") ||
+      normalized.includes("workerrestart"))
+  );
+}
+
+function isReservedRecoveryNamespace(value: string): boolean {
+  const normalizedPrefix = value
+    .normalize("NFKD")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+  return (
+    normalizedPrefix.startsWith("jobtimedout") ||
+    normalizedPrefix.startsWith("jobinterruptedbyworkerrestart")
+  );
+}
+
+function classifyTerminalFailure(
+  value: string,
+): TerminalFailureClassification | null {
+  const timeout = TIMEOUT_TERMINAL_PATTERN.exec(value);
+  if (timeout) return { code: "timeout", attempts: Number(timeout[1]) };
+  const workerRestart = WORKER_RESTART_TERMINAL_PATTERN.exec(value);
+  if (workerRestart) {
+    return {
+      code: "worker_restart_interrupted",
+      attempts: Number(workerRestart[1]),
+    };
+  }
+  return null;
+}
+
 function timestamp(
   value: unknown,
   label: string,
@@ -168,6 +228,14 @@ function classifyError(value: unknown, label: string): ErrorCode {
     );
   if (permanentDelete)
     return classifyError(permanentDelete[1], `${label} cause`);
+  const terminalFailure = classifyTerminalFailure(value);
+  if (terminalFailure) return terminalFailure.code;
+  if (
+    isReservedRecoveryNamespace(value) ||
+    looksLikeRecoveryProvenance(value)
+  ) {
+    throw new Error(`${label} has malformed recovery provenance`);
+  }
   if (value === "Failed to delete sandbox") return "sandbox_stop_failed";
   if (value === "Agent not found") return "agent_not_found";
   if (value === "Agent replacement cleanup is still pending") {
@@ -178,11 +246,6 @@ function classifyError(value: unknown, label: string): ErrorCode {
   }
   if (LIFECYCLE_JOB_CONFLICT_PATTERN.test(value)) {
     return "lifecycle_conflict";
-  }
-  if (
-    /^Job interrupted by worker restart [1-9][0-9]{0,2} times - max attempts reached$/.test(value)
-  ) {
-    return "worker_restart_interrupted";
   }
   if (/failed query:[\s\S]*delete from\s+"?agent_sandboxes"?/i.test(value)) {
     return "row_delete_failed";
@@ -207,7 +270,7 @@ function classifyError(value: unknown, label: string): ErrorCode {
   ) {
     return "database_failed";
   }
-  if (/(?:timed out|timeout)/i.test(value)) return "timeout";
+  if (TIMEOUT_ERROR_PATTERN.test(value)) return "timeout";
   throw new Error(`${label} is not covered by the privacy-safe classifier`);
 }
 
@@ -236,14 +299,18 @@ function classifyRecovery(
   ];
   for (const { code, pattern } of patterns) {
     const match = pattern.exec(value);
-    if (!match) continue;
+    if (!match || match[0] !== value) continue;
     return {
       code,
       attempt: Number(match[1]),
       maxAttempts: Number(match[2]),
     };
   }
-  if (/recovered for retry/i.test(value)) {
+  if (classifyTerminalFailure(value)) return null;
+  if (
+    isReservedRecoveryNamespace(value) ||
+    looksLikeRecoveryProvenance(value)
+  ) {
     throw new Error(`${label} has malformed recovery provenance`);
   }
   return null;
@@ -343,6 +410,10 @@ export function sanitizeManagedDedicatedCanaryDiagnostic(
       throw new Error(`jobs[${index}] has non-inline diagnostic payloads`);
     }
 
+    const terminalFailure =
+      typeof job.error === "string"
+        ? classifyTerminalFailure(job.error)
+        : null;
     const recovery = classifyRecovery(job.error, `jobs[${index}].error`);
     const jobErrorCode = recovery
       ? "none"
@@ -350,6 +421,7 @@ export function sanitizeManagedDedicatedCanaryDiagnostic(
     let containerStopped: boolean | null = null;
     let rowDeleted: boolean | null = null;
     let resultErrorCode: ErrorCode = "none";
+    let resultErrorValue: unknown = null;
     if (job.result !== null) {
       const result = record(job.result, `jobs[${index}].result`);
       exactKeys(
@@ -365,6 +437,7 @@ export function sanitizeManagedDedicatedCanaryDiagnostic(
         result.rowDeleted,
         `jobs[${index}].result.rowDeleted`,
       );
+      resultErrorValue = result.error;
       resultErrorCode = classifyError(
         result.error,
         `jobs[${index}].result.error`,
@@ -409,6 +482,14 @@ export function sanitizeManagedDedicatedCanaryDiagnostic(
       throw new Error(`jobs[${index}] attempts exceed maxAttempts`);
     }
     if (
+      terminalFailure &&
+      (job.status !== "failed" ||
+        terminalFailure.attempts !== attempts ||
+        terminalFailure.attempts !== maxAttempts)
+    ) {
+      throw new Error(`jobs[${index}] terminal counters disagree`);
+    }
+    if (
       recovery &&
       (recovery.attempt !== attempts ||
         recovery.maxAttempts !== maxAttempts ||
@@ -423,8 +504,22 @@ export function sanitizeManagedDedicatedCanaryDiagnostic(
     ) {
       throw new Error(`jobs[${index}] recovery status is invalid`);
     }
-    if (recovery && (startedAt === null || completedAt !== null)) {
+    if (
+      (recovery || terminalFailure) &&
+      (startedAt === null || completedAt !== null)
+    ) {
       throw new Error(`jobs[${index}] recovery timestamps disagree`);
+    }
+    if (
+      (recovery || terminalFailure) &&
+      job.result !== null &&
+      (containerStopped !== false ||
+        rowDeleted !== false ||
+        typeof resultErrorValue !== "string" ||
+        RECOVERY_PARTIAL_RESULT_ERRORS.get(resultErrorValue) !==
+          resultErrorCode)
+    ) {
+      throw new Error(`jobs[${index}] recovery result is not a partial failure`);
     }
     if (rowDeleted === true && containerStopped !== true) {
       throw new Error(
