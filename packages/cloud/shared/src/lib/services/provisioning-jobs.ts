@@ -13,6 +13,7 @@
  * - agent_restore: Restore from backup
  */
 
+import crypto from "node:crypto";
 import { ElizaError } from "@elizaos/core";
 import {
   and,
@@ -40,6 +41,7 @@ import {
 import {
   type AgentExecutionTier,
   agentSandboxes,
+  agentSnapshotRestoreValidations,
   UPGRADE_FAILURE_TARGET_MARKER_PREFIX,
 } from "../../db/schemas/agent-sandboxes";
 import { apps } from "../../db/schemas/apps";
@@ -63,11 +65,24 @@ import {
   isPendingAdminCanaryCutoverAudit,
 } from "./admin-canary-image";
 import {
+  type AdminCanaryRestoreValidationCheckpoint,
+  type AdminCanaryRestoreValidationJobData,
+  type AdminCanaryRestoreValidationJobResult,
+  assertAdminCanaryRestoreValidationCheckpoint,
+  assertAdminCanaryRestoreValidationJobData,
+  isAdminCanaryRestoreValidationJobData,
+} from "./admin-canary-restore-validation";
+import {
   type AdminCanaryStandbyDecisionJobData,
   type AdminCanaryStandbyDecisionJobResult,
   assertAdminCanaryStandbyDecisionJobData,
   isAdminCanaryStandbyDecisionJobData,
 } from "./admin-canary-standby";
+import {
+  agentSnapshotV2CaptureTimeoutMs,
+  agentSnapshotV2RestoreTimeoutMs,
+} from "./agent-snapshot-v2-cloud";
+import { AGENT_SNAPSHOT_V2_MAX_WIRE_BYTES } from "./agent-snapshot-v2-stream";
 import { dispatchAppDbDeprovisionJob } from "./app-db-deprovision-job-service";
 import { dispatchAppDeployJob, readAppDeployJobData } from "./app-deploy-job-service";
 import { appsService } from "./apps";
@@ -82,8 +97,10 @@ import {
 import {
   AdminCanaryCleanupExpectationError,
   elizaSandboxService,
+  RestoreValidationRetryLaterError,
   SNAPSHOT_ENDPOINT_UNSUPPORTED,
 } from "./eliza-sandbox";
+import { DEFAULT_REGISTRATION_TIMEOUT_MS } from "./headscale-integration";
 import {
   EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES,
   JOB_TYPES,
@@ -401,6 +418,24 @@ function adminCanaryStandbyDecisionJobResultToRecord(
   return { ...result };
 }
 
+function adminCanaryRestoreValidationJobDataToRecord(
+  data: AdminCanaryRestoreValidationJobData,
+): Record<string, unknown> {
+  return { ...data };
+}
+
+function adminCanaryRestoreValidationJobResultToRecord(
+  result: AdminCanaryRestoreValidationJobResult,
+): Record<string, unknown> {
+  return { ...result };
+}
+
+function adminCanaryRestoreValidationCheckpointToRecord(
+  checkpoint: AdminCanaryRestoreValidationCheckpoint,
+): Record<string, unknown> {
+  return { ...checkpoint };
+}
+
 function jobAuditTimestamp(value: Date | string): string {
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 }
@@ -600,6 +635,16 @@ export function readAdminCanaryStandbyDecisionJobData(job: Job): AdminCanaryStan
     throw new Error(`Invalid admin canary standby decision data for job ${job.id}`);
   }
   assertAdminCanaryStandbyDecisionJobData(job.data);
+  return job.data;
+}
+
+export function readAdminCanaryRestoreValidationJobData(
+  job: Job,
+): AdminCanaryRestoreValidationJobData {
+  if (!isAdminCanaryRestoreValidationJobData(job.data)) {
+    throw new Error(`Invalid admin canary restore validation data for job ${job.id}`);
+  }
+  assertAdminCanaryRestoreValidationJobData(job.data);
   return job.data;
 }
 
@@ -839,14 +884,39 @@ interface LifecycleJobOptions<TData extends object> {
   ) => Promise<void>;
 }
 
-/**
- * Parse a positive-integer millisecond value from an env var, falling back to
- * `fallback` when the var is unset, non-numeric, or non-positive.
- */
-function parsePositiveIntEnv(value: string | undefined, fallback: number): number {
-  if (!value) return fallback;
-  const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
+
+/** Parses the worker timeout without silently accepting partial or unsafe values. */
+export function parseProvisionJobTimeoutMs(value: string | undefined, fallback = 300_000): number {
+  if (value === undefined) {
+    if (!Number.isSafeInteger(fallback) || fallback < 1) {
+      throw new Error("PROVISION_JOB_TIMEOUT_MS fallback must be a positive integer");
+    }
+    if (fallback > MAX_TIMER_DELAY_MS) {
+      throw new Error("PROVISION_JOB_TIMEOUT_MS fallback exceeds the platform timer limit");
+    }
+    return fallback;
+  }
+  const normalized = value.trim();
+  if (!/^[1-9]\d*$/.test(normalized)) {
+    throw new Error("PROVISION_JOB_TIMEOUT_MS must be a positive integer");
+  }
+  const parsed = Number(normalized);
+  if (!Number.isSafeInteger(parsed) || parsed > MAX_TIMER_DELAY_MS) {
+    throw new Error("PROVISION_JOB_TIMEOUT_MS exceeds the platform timer limit");
+  }
+  return parsed;
+}
+
+function checkedTimerBudget(label: string, ...parts: number[]): number {
+  if (parts.some((part) => !Number.isSafeInteger(part) || part < 0)) {
+    throw new Error(`${label} contains an invalid duration`);
+  }
+  const total = parts.reduce((sum, part) => sum + part, 0);
+  if (!Number.isSafeInteger(total) || total <= 0 || total > MAX_TIMER_DELAY_MS) {
+    throw new Error(`${label} exceeds the platform timer limit`);
+  }
+  return total;
 }
 
 /**
@@ -879,10 +949,7 @@ function parsePositiveIntEnv(value: string | undefined, fallback: number): numbe
  * cannot violate the invariant — the real ceiling that matters is the leaf
  * `PULL_TIMEOUT_MS` (300s), which this matches.
  */
-export const PER_JOB_TIMEOUT_MS = parsePositiveIntEnv(
-  process.env.PROVISION_JOB_TIMEOUT_MS,
-  300_000,
-);
+export const PER_JOB_TIMEOUT_MS = parseProvisionJobTimeoutMs(process.env.PROVISION_JOB_TIMEOUT_MS);
 
 /**
  * Stale-job recovery thresholds, by job type. `recoverStaleJobs` resets a job
@@ -904,6 +971,61 @@ export const PER_JOB_TIMEOUT_MS = parsePositiveIntEnv(
  */
 const DEFAULT_STALE_JOB_THRESHOLD_MS = 5 * 60 * 1000;
 const COLD_BOOT_STALE_JOB_THRESHOLD_MS = 15 * 60 * 1000;
+const RESTORE_VALIDATION_DB_MARGIN_MS = 5 * 60 * 1000;
+// One create can spend four minutes on autoscale readiness, five minutes on
+// pull, and four bounded 60-second Docker commands before VPN registration.
+const RESTORE_VALIDATION_CANDIDATE_REMOTE_BUDGET_MS = 13 * 60 * 1000;
+// Retirement performs four 60-second Docker operations, four bounded
+// Headscale list/delete pairs, three settle gaps, and one 60-second volume
+// removal after the registration window has closed.
+const RESTORE_VALIDATION_RETIREMENT_AFTER_VPN_BUDGET_MS = 422_250;
+const RESTORE_VALIDATION_VPN_CLOCK_SKEW_MS = 30_000;
+export const RESTORE_VALIDATION_RETIREMENT_BUDGET_MS = checkedTimerBudget(
+  "Restore-validation retirement budget",
+  DEFAULT_REGISTRATION_TIMEOUT_MS,
+  RESTORE_VALIDATION_VPN_CLOCK_SKEW_MS,
+  RESTORE_VALIDATION_RETIREMENT_AFTER_VPN_BUDGET_MS,
+  RESTORE_VALIDATION_DB_MARGIN_MS,
+);
+// A failed create retires the durable candidate before surfacing. Include that
+// complete cleanup path rather than assuming the successful-create envelope.
+export const RESTORE_VALIDATION_CANDIDATE_CREATE_BUDGET_MS = checkedTimerBudget(
+  "Restore-validation candidate budget",
+  RESTORE_VALIDATION_CANDIDATE_REMOTE_BUDGET_MS,
+  DEFAULT_REGISTRATION_TIMEOUT_MS,
+  RESTORE_VALIDATION_DB_MARGIN_MS,
+  RESTORE_VALIDATION_RETIREMENT_BUDGET_MS,
+);
+const RESTORE_VALIDATION_OPERATION_MARGIN_MS = 30 * 60 * 1000;
+/**
+ * Full sequential watchdog envelope for an isolated canary restore.
+ *
+ * Unlike an ordinary cold boot, this operation creates a third placement,
+ * captures up to the v2 protocol maximum, restores that snapshot under the
+ * transfer-rate floor, then proves the container, VPN identity, and volume
+ * absent. The outer timeout cannot cancel any of those leaves, so it must sit
+ * beyond their combined bounds rather than timing out and re-queuing while the
+ * first execution is still valid.
+ */
+export const ADMIN_CANARY_RESTORE_VALIDATION_OPERATION_TIMEOUT_MS = checkedTimerBudget(
+  "Restore-validation operation budget",
+  RESTORE_VALIDATION_CANDIDATE_CREATE_BUDGET_MS,
+  agentSnapshotV2CaptureTimeoutMs(AGENT_SNAPSHOT_V2_MAX_WIRE_BYTES),
+  agentSnapshotV2RestoreTimeoutMs(AGENT_SNAPSHOT_V2_MAX_WIRE_BYTES),
+  RESTORE_VALIDATION_RETIREMENT_BUDGET_MS,
+  RESTORE_VALIDATION_OPERATION_MARGIN_MS,
+);
+/**
+ * Stale recovery is deliberately later than the outer watchdog. A strict
+ * margin prevents a recovery poll from winning the deadline tie while the
+ * watchdog awaiter is still unwinding, while keeping crashed work finite.
+ */
+export const ADMIN_CANARY_RESTORE_VALIDATION_STALE_LEASE_MARGIN_MS = 5 * 60 * 1000;
+export const ADMIN_CANARY_RESTORE_VALIDATION_STALE_LEASE_MS = checkedTimerBudget(
+  "Restore-validation stale lease",
+  ADMIN_CANARY_RESTORE_VALIDATION_OPERATION_TIMEOUT_MS,
+  ADMIN_CANARY_RESTORE_VALIDATION_STALE_LEASE_MARGIN_MS,
+);
 /**
  * Conditional deletion waits this long after a claimed lifecycle job leaves
  * an active state. The outer job timeout is a promise race and cannot abort
@@ -958,9 +1080,36 @@ const UNREACHABLE_BRIDGE_SENTINEL = "http://127.0.0.1:65535";
  * counterpart to the stale-recovery threshold — both are now cold-boot-aware.
  */
 export function resolvePerJobTimeoutMs(jobType: string): number {
+  if (jobType === JOB_TYPES.AGENT_ADMIN_CANARY_RESTORE_VALIDATION) {
+    return Math.max(PER_JOB_TIMEOUT_MS, ADMIN_CANARY_RESTORE_VALIDATION_OPERATION_TIMEOUT_MS);
+  }
   return COLD_BOOT_JOB_TYPES.has(jobType as ProvisioningJobType)
     ? Math.max(PER_JOB_TIMEOUT_MS, COLD_BOOT_STALE_JOB_THRESHOLD_MS)
     : PER_JOB_TIMEOUT_MS;
+}
+
+export function resolveStaleJobThresholdMs(jobType: string): number {
+  if (jobType === JOB_TYPES.AGENT_ADMIN_CANARY_RESTORE_VALIDATION) {
+    return ADMIN_CANARY_RESTORE_VALIDATION_STALE_LEASE_MS;
+  }
+  return COLD_BOOT_JOB_TYPES.has(jobType as ProvisioningJobType)
+    ? COLD_BOOT_STALE_JOB_THRESHOLD_MS
+    : DEFAULT_STALE_JOB_THRESHOLD_MS;
+}
+
+/**
+ * Restore validation owns real cancellable bounds at every remote leaf. A
+ * second promise-race timeout here would only abandon the awaiter, requeue the
+ * same durable placement, and let the first execution continue concurrently.
+ */
+export async function awaitProvisioningJobExecution<T>(
+  jobType: string,
+  operation: Promise<T>,
+): Promise<T> {
+  if (jobType === JOB_TYPES.AGENT_ADMIN_CANARY_RESTORE_VALIDATION) {
+    return await operation;
+  }
+  return await withTimeout(operation, resolvePerJobTimeoutMs(jobType), `job ${jobType}`);
 }
 
 /**
@@ -2379,14 +2528,7 @@ export class ProvisioningJobService {
           existingData.sourceDigest !== data.sourceDigest ||
           existingData.targetImage !== data.targetImage ||
           existingData.targetDigest !== data.targetDigest ||
-          existingData.decision !== data.decision ||
-          existingData.verifiedBackupId !== data.verifiedBackupId ||
-          existingData.restoreValidationId !== data.restoreValidationId ||
-          existingData.restoreValidationAggregateSha256 !== data.restoreValidationAggregateSha256 ||
-          existingData.restoreValidatedCandidateProviderSandboxId !==
-            data.restoreValidatedCandidateProviderSandboxId ||
-          existingData.restoreValidatedCandidateReplacementAttemptId !==
-            data.restoreValidatedCandidateReplacementAttemptId
+          existingData.decision !== data.decision
         ) {
           throw new ApiError(
             409,
@@ -2876,12 +3018,18 @@ export class ProvisioningJobService {
     // Process each job type in this daemon's lane. The memory-intensive
     // snapshot lane is gated out of CLAIMING (fail-closed, #16639) and, when
     // enabled, forced sequential (batch 1) so phases settle before another
-    // payload is allocated. The stale sweep below deliberately keeps the
-    // full lane list: flipping a stuck in_progress row back to pending is a
-    // DB-only operation with no hydration, and gated rows simply wait as
-    // pending until operators enable the lane.
+    // payload is allocated. Restore validation is also batch 1; its repository
+    // claim additionally enforces one globally-running validation across
+    // overlapping workers. The stale sweep below deliberately keeps the full
+    // lane list: flipping a stuck in_progress row back to pending is a DB-only
+    // operation with no hydration, and gated rows simply wait as pending until
+    // operators enable the lane.
     for (const jobType of this.filterSnapshotLane(jobTypes, "claim")) {
-      const laneBatch = jobType === JOB_TYPES.AGENT_SNAPSHOT ? 1 : batchSize;
+      const laneBatch =
+        jobType === JOB_TYPES.AGENT_SNAPSHOT ||
+        jobType === JOB_TYPES.AGENT_ADMIN_CANARY_RESTORE_VALIDATION
+          ? 1
+          : batchSize;
       await this.processJobType(jobType, laneBatch, result);
     }
 
@@ -2931,7 +3079,9 @@ export class ProvisioningJobService {
    * daemon replacement, rows claimed before this process started cannot still
    * be owned by this process, so the singleton worker may make them retryable
    * immediately instead of leaving agents stuck in `provisioning` until the
-   * cold-boot stale threshold expires.
+   * cold-boot stale threshold expires. Restore validation is excluded because
+   * its global lane may be owned by another worker; only its DB-clock lease and
+   * claim-epoch CAS can prove that execution abandoned.
    */
   async recoverInterruptedJobsOnStartup(
     startedBefore: Date,
@@ -2939,7 +3089,9 @@ export class ProvisioningJobService {
   ): Promise<number> {
     let totalRecovered = 0;
 
-    for (const jobType of this.filterSnapshotLane(jobTypes, "startup-recovery")) {
+    for (const jobType of this.filterSnapshotLane(jobTypes, "startup-recovery").filter(
+      (type) => type !== JOB_TYPES.AGENT_ADMIN_CANARY_RESTORE_VALIDATION,
+    )) {
       const recovered = await jobsRepository.recoverInProgressJobsStartedBefore({
         type: jobType,
         startedBefore,
@@ -2965,35 +3117,35 @@ export class ProvisioningJobService {
     const isSharedImageChange = SHARED_IMAGE_CHANGE_JOB_TYPES.includes(
       jobType as ProvisioningJobType,
     );
-    const claimedJobs = isSharedImageChange
+    const isRestoreValidation = jobType === JOB_TYPES.AGENT_ADMIN_CANARY_RESTORE_VALIDATION;
+    const claimedJobs = isRestoreValidation
       ? await jobsRepository.claimPendingJobsWithinSharedRunningLimit({
           type: jobType,
-          sharedTypes: SHARED_IMAGE_CHANGE_JOB_TYPES,
-          maxRunning: ADMIN_CANARY_MAX_RUNNING_JOBS,
-          limit: batchSize,
+          sharedTypes: [JOB_TYPES.AGENT_ADMIN_CANARY_RESTORE_VALIDATION],
+          maxRunning: 1,
+          limit: 1,
         })
-      : await jobsRepository.claimPendingJobs({
-          type: jobType,
-          limit: batchSize,
-        });
+      : isSharedImageChange
+        ? await jobsRepository.claimPendingJobsWithinSharedRunningLimit({
+            type: jobType,
+            sharedTypes: SHARED_IMAGE_CHANGE_JOB_TYPES,
+            maxRunning: ADMIN_CANARY_MAX_RUNNING_JOBS,
+            limit: batchSize,
+          })
+        : await jobsRepository.claimPendingJobs({
+            type: jobType,
+            limit: batchSize,
+          });
 
     for (const job of claimedJobs) {
       result.claimed++;
 
       try {
-        // withTimeout frees the awaiter (this cycle's job slot), not the
-        // underlying SSH/headscale I/O — those are themselves bounded. On
-        // timeout this throws → the catch below runs incrementAttempt, which
-        // flips the row to error/deletion_failed once attempts exhaust;
-        // recoverStaleJobs is the backstop. The timeout is BY JOB TYPE
-        // (resolvePerJobTimeoutMs): cold-boot types get the full ~11-min boot
-        // budget so a slow cold provision is not rejected mid-boot → no
-        // premature incrementAttempt → no re-claim → no double-provision (#10919).
-        await withTimeout(
-          this.executeJob(job),
-          resolvePerJobTimeoutMs(job.type),
-          `job ${job.type}`,
-        );
+        // Ordinary jobs retain the type-aware awaiter timeout. Restore
+        // validation deliberately bypasses it: each remote leaf is cancellably
+        // bounded, while abandoning only this awaiter would requeue the same
+        // durable placement underneath a still-running execution.
+        await awaitProvisioningJobExecution(job.type, this.executeJob(job));
         result.succeeded++;
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : String(err);
@@ -3001,7 +3153,8 @@ export class ProvisioningJobService {
 
         if (
           err instanceof RetryableProvisionTransportError ||
-          err instanceof RetryableReplacementCleanupError
+          err instanceof RetryableReplacementCleanupError ||
+          err instanceof RestoreValidationRetryLaterError
         ) {
           const retrySnapshot =
             err instanceof RetryableReplacementCleanupError ? err.retrySnapshot : job;
@@ -3044,11 +3197,17 @@ export class ProvisioningJobService {
         const upgradeFailure = err instanceof UpgradeFailedError ? err : undefined;
         const onFailedInTx = this.buildPermanentFailureWriteback(job, errorMsg, upgradeFailure);
         const updated = await jobsRepository.incrementAttempt(
-          job.id,
+          job,
           errorMsg,
           job.max_attempts,
           onFailedInTx,
         );
+        if (!updated) {
+          logger.info("[provisioning-jobs] Failed execution lost its exact job-state claim", {
+            jobId: job.id,
+            error: errorMsg,
+          });
+        }
 
         // app_deploy keeps a post-commit cache invalidation (the apps read
         // cache is invalidated outside the DB transaction); the row flip
@@ -3428,6 +3587,9 @@ export class ProvisioningJobService {
         break;
       case JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE:
         await this.executeAdminCanaryImage(job);
+        break;
+      case JOB_TYPES.AGENT_ADMIN_CANARY_RESTORE_VALIDATION:
+        await this.executeAdminCanaryRestoreValidation(job);
         break;
       case JOB_TYPES.AGENT_ADMIN_CANARY_STANDBY_DECISION:
         await this.executeAdminCanaryStandbyDecision(job);
@@ -3919,6 +4081,10 @@ export class ProvisioningJobService {
     data: AdminCanaryImageJobData,
   ): Promise<void> {
     const startedAt = jobAuditTimestamp(job.started_at ?? job.updated_at);
+    const restoreValidationId = crypto.randomUUID();
+    const validationJobId = crypto.randomUUID();
+    const backupId = crypto.randomUUID();
+    const captureNonce = crypto.randomBytes(32).toString("hex");
     let completedAudit: AdminCanaryImageJobResult | undefined;
     const onCutoverInTx = async (
       tx: DbTransaction,
@@ -4003,6 +4169,100 @@ export class ProvisioningJobService {
       if (!updated) {
         throw new Error(`Admin canary job ${job.id} changed before standby cutover audit`);
       }
+      const [sandbox] = await tx
+        .select()
+        .from(agentSandboxes)
+        .where(
+          and(
+            eq(agentSandboxes.id, data.agentId),
+            eq(agentSandboxes.organization_id, data.organizationId),
+            eq(agentSandboxes.user_id, data.targetOwnerUserId),
+          ),
+        )
+        .limit(1);
+      if (
+        !sandbox ||
+        sandbox.rollback_standby_state !== "paused" ||
+        sandbox.rollback_standby_source_job_id !== job.id ||
+        sandbox.rollback_standby_generation !== job.id ||
+        sandbox.rollback_standby_rollout_id !== data.rolloutId ||
+        !sandbox.rollback_standby_primary_sandbox_id ||
+        !sandbox.rollback_standby_primary_node_id ||
+        !sandbox.rollback_standby_primary_replacement_attempt_id ||
+        !sandbox.rollback_standby_node_id ||
+        sandbox.rollback_standby_primary_node_id === sandbox.rollback_standby_node_id ||
+        sandbox.rollback_standby_environment_revision === null ||
+        sandbox.image_digest !== data.targetDigest ||
+        sandbox.docker_image !== data.targetImage
+      ) {
+        throw new Error(
+          `Admin canary job ${job.id} cannot plan restore validation from an incomplete standby`,
+        );
+      }
+      const plannedAt = finishedAt.toISOString();
+      const validationData: AdminCanaryRestoreValidationJobData = {
+        restoreValidationId,
+        backupId,
+        captureNonce,
+        sourceJobId: job.id,
+        rolloutId: data.rolloutId,
+        standbyGeneration: job.id,
+        actorUserId: data.actorUserId,
+        agentId: data.agentId,
+        organizationId: data.organizationId,
+        targetOwnerUserId: data.targetOwnerUserId,
+        sourceEnvironmentRevision: sandbox.rollback_standby_environment_revision,
+        sourceImageDigest: data.targetDigest,
+        sourceSandboxId: sandbox.rollback_standby_primary_replacement_attempt_id,
+        targetImage: data.targetImage,
+        targetDigest: data.targetDigest,
+        primaryNodeId: sandbox.rollback_standby_primary_node_id,
+        rollbackStandbyNodeId: sandbox.rollback_standby_node_id,
+        plannedAt,
+      };
+      assertAdminCanaryRestoreValidationJobData(validationData);
+      await tx.insert(agentSnapshotRestoreValidations).values({
+        restore_validation_id: restoreValidationId,
+        validation_job_id: validationJobId,
+        source_job_id: job.id,
+        rollout_id: data.rolloutId,
+        standby_generation: job.id,
+        organization_id: data.organizationId,
+        sandbox_record_id: data.agentId,
+        agent_id: data.agentId,
+        target_owner_user_id: data.targetOwnerUserId,
+        backup_id: backupId,
+        capture_nonce: captureNonce,
+        source_environment_revision: sandbox.rollback_standby_environment_revision,
+        source_image_digest: data.targetDigest,
+        source_sandbox_id: sandbox.rollback_standby_primary_replacement_attempt_id,
+        target_image: data.targetImage,
+        target_digest: data.targetDigest,
+        candidate_route_mode: "restore_validation_private_control",
+        validation_state: "planned",
+        created_at: finishedAt,
+        updated_at: finishedAt,
+      });
+      await tx.insert(jobs).values(
+        await prepareJobInsertData({
+          id: validationJobId,
+          type: JOB_TYPES.AGENT_ADMIN_CANARY_RESTORE_VALIDATION,
+          status: "pending",
+          data: adminCanaryRestoreValidationJobDataToRecord(validationData),
+          data_storage: "inline",
+          organization_id: data.organizationId,
+          user_id: data.actorUserId,
+          agent_id: data.agentId,
+          max_attempts: 10,
+          scheduled_for: finishedAt,
+          estimated_completion_at: new Date(
+            finishedAt.getTime() +
+              resolvePerJobTimeoutMs(JOB_TYPES.AGENT_ADMIN_CANARY_RESTORE_VALIDATION),
+          ),
+          created_at: finishedAt,
+          updated_at: finishedAt,
+        }),
+      );
       completedAudit = result;
     };
     const result = await elizaSandboxService.executeAdminCanaryUpgrade({
@@ -4416,6 +4676,118 @@ export class ProvisioningJobService {
     });
   }
 
+  private async executeAdminCanaryRestoreValidation(job: Job): Promise<void> {
+    const data = readAdminCanaryRestoreValidationJobData(job);
+    const claimStartedAt = job.started_at ? new Date(jobAuditTimestamp(job.started_at)) : undefined;
+    if (
+      data.organizationId !== job.organization_id ||
+      data.agentId !== job.agent_id ||
+      data.actorUserId !== job.user_id ||
+      !claimStartedAt
+    ) {
+      throw new Error(`Admin canary restore-validation identity mismatch for job ${job.id}`);
+    }
+
+    let completed: AdminCanaryRestoreValidationJobResult | undefined;
+    const result = await elizaSandboxService.executeAdminCanaryRestoreValidation({
+      data,
+      validationJobId: job.id,
+      onRestoreCommittedInTx: async (tx, checkpoint) => {
+        assertAdminCanaryRestoreValidationCheckpoint(checkpoint);
+        const checkpointRecord = adminCanaryRestoreValidationCheckpointToRecord(checkpoint);
+        const [updated] = await tx
+          .update(jobs)
+          .set({
+            result: checkpointRecord,
+            result_storage: "inline",
+            result_key: null,
+            error: null,
+            error_storage: "inline",
+            error_key: null,
+            updated_at: new Date(),
+          })
+          .where(
+            and(
+              eq(jobs.id, job.id),
+              eq(jobs.type, JOB_TYPES.AGENT_ADMIN_CANARY_RESTORE_VALIDATION),
+              eq(jobs.status, "in_progress"),
+              eq(jobs.organization_id, data.organizationId),
+              eq(jobs.agent_id, data.agentId),
+              eq(jobs.user_id, data.actorUserId),
+              eq(jobs.attempts, job.attempts),
+              eq(jobs.max_attempts, job.max_attempts),
+              eq(jobs.started_at, claimStartedAt),
+              sql`${jobs.completed_at} IS NULL`,
+              sql`${jobs.data_storage} = 'inline'`,
+              sql`${jobs.data_key} IS NULL`,
+              sql`${jobs.data} IS NOT DISTINCT FROM ${JSON.stringify(job.data)}::jsonb`,
+              job.result == null
+                ? sql`${jobs.result} IS NULL`
+                : sql`${jobs.result} IS NOT DISTINCT FROM ${JSON.stringify(job.result)}::jsonb`,
+            ),
+          )
+          .returning({ id: jobs.id });
+        if (!updated) {
+          throw new Error(`Restore-validation job ${job.id} changed before checkpoint commit`);
+        }
+      },
+      onConvergedInTx: async (tx, converged, checkpoint) => {
+        assertAdminCanaryRestoreValidationCheckpoint(checkpoint);
+        const finishedAt = new Date();
+        const [updated] = await tx
+          .update(jobs)
+          .set({
+            status: "completed",
+            result: adminCanaryRestoreValidationJobResultToRecord(converged),
+            result_storage: "inline",
+            result_key: null,
+            error: null,
+            error_storage: "inline",
+            error_key: null,
+            completed_at: finishedAt,
+            updated_at: finishedAt,
+          })
+          .where(
+            and(
+              eq(jobs.id, job.id),
+              eq(jobs.type, JOB_TYPES.AGENT_ADMIN_CANARY_RESTORE_VALIDATION),
+              eq(jobs.status, "in_progress"),
+              eq(jobs.organization_id, data.organizationId),
+              eq(jobs.agent_id, data.agentId),
+              eq(jobs.user_id, data.actorUserId),
+              eq(jobs.attempts, job.attempts),
+              eq(jobs.max_attempts, job.max_attempts),
+              eq(jobs.started_at, claimStartedAt),
+              sql`${jobs.completed_at} IS NULL`,
+              sql`${jobs.data_storage} = 'inline'`,
+              sql`${jobs.data_key} IS NULL`,
+              sql`${jobs.data} IS NOT DISTINCT FROM ${JSON.stringify(job.data)}::jsonb`,
+              sql`${jobs.result_storage} = 'inline'`,
+              sql`${jobs.result_key} IS NULL`,
+              sql`${jobs.result} IS NOT DISTINCT FROM ${JSON.stringify(
+                adminCanaryRestoreValidationCheckpointToRecord(checkpoint),
+              )}::jsonb`,
+            ),
+          )
+          .returning({ id: jobs.id });
+        if (!updated) {
+          throw new Error(`Restore-validation job ${job.id} changed before atomic completion`);
+        }
+        completed = converged;
+      },
+    });
+    if (!completed || completed.restoreValidationId !== result.restoreValidationId) {
+      throw new Error(`Restore-validation job ${job.id} converged without durable completion`);
+    }
+    logger.info("[provisioning-jobs] Admin canary restore validation completed", {
+      jobId: job.id,
+      sourceJobId: data.sourceJobId,
+      agentId: data.agentId,
+      restoreValidationId: data.restoreValidationId,
+      backupId: data.backupId,
+    });
+  }
+
   private async executeAdminCanaryStandbyDecision(job: Job): Promise<void> {
     const data = readAdminCanaryStandbyDecisionJobData(job);
     if (
@@ -4447,17 +4819,6 @@ export class ProvisioningJobService {
           organizationId: data.organizationId,
           targetImage: data.targetImage,
           targetDigest: data.targetDigest,
-          ...(convergedOutcome === "accepted" && data.verifiedBackupId
-            ? {
-                verifiedBackupId: data.verifiedBackupId,
-                restoreValidationId: data.restoreValidationId,
-                restoreValidationAggregateSha256: data.restoreValidationAggregateSha256,
-                restoreValidatedCandidateProviderSandboxId:
-                  data.restoreValidatedCandidateProviderSandboxId,
-                restoreValidatedCandidateReplacementAttemptId:
-                  data.restoreValidatedCandidateReplacementAttemptId,
-              }
-            : {}),
           startedAt,
           finishedAt: finishedAt.toISOString(),
         };
@@ -5216,9 +5577,7 @@ export class ProvisioningJobService {
     for (const jobType of jobTypes) {
       const recovered = await jobsRepository.recoverStaleJobs({
         type: jobType,
-        staleThresholdMs: COLD_BOOT_JOB_TYPES.has(jobType)
-          ? COLD_BOOT_STALE_JOB_THRESHOLD_MS
-          : DEFAULT_STALE_JOB_THRESHOLD_MS,
+        staleThresholdMs: resolveStaleJobThresholdMs(jobType),
       });
       totalRecovered += recovered;
     }

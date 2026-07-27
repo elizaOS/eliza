@@ -7,6 +7,7 @@ import {
   inferHeadscaleUser,
   inferTailscaleHostname,
   normalizeHeadscaleSegment,
+  parseVpnRegistrationTimeoutMs,
 } from "./headscale-integration";
 
 const savedEnv = { ...process.env };
@@ -16,6 +17,20 @@ afterEach(() => {
     if (!(key in savedEnv)) delete process.env[key];
   }
   Object.assign(process.env, savedEnv);
+});
+
+describe("Headscale registration timeout configuration", () => {
+  test("uses the production default and accepts only platform-safe positive integers", () => {
+    expect(parseVpnRegistrationTimeoutMs(undefined)).toBe(180_000);
+    expect(parseVpnRegistrationTimeoutMs(" 240000 ")).toBe(240_000);
+    for (const value of ["", "0", "-1", "1.5", "120000ms", "2147483648"]) {
+      expect(() => parseVpnRegistrationTimeoutMs(value)).toThrow(
+        /positive integer|platform timer limit/,
+      );
+    }
+    expect(DEFAULT_REGISTRATION_TIMEOUT_MS).toBeGreaterThan(0);
+    expect(DEFAULT_REGISTRATION_TIMEOUT_MS).toBeLessThanOrEqual(2_147_483_647);
+  });
 });
 
 describe("Headscale identity inference", () => {
