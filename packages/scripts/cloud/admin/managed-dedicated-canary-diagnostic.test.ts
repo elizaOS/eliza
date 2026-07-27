@@ -108,7 +108,7 @@ describe("managed dedicated canary diagnostic", () => {
     );
 
     expect(evidence).toEqual({
-      schemaVersion: 1,
+      schemaVersion: 2,
       targetCount: 1,
       sandbox: {
         status: "deletion_failed",
@@ -125,6 +125,7 @@ describe("managed dedicated canary diagnostic", () => {
           containerStopped: false,
           rowDeleted: false,
           errorCode: "sandbox_stop_failed",
+          recoveryCode: "none",
           resultErrorCode: "sandbox_stop_failed",
           scheduledFor: "2026-07-26T23:10:30.000Z",
           startedAt: "2026-07-26T23:10:31.000Z",
@@ -386,7 +387,6 @@ describe("managed dedicated canary diagnostic", () => {
     "Job interrupted by worker restart 0 times - max attempts reached",
     "Job interrupted by worker restart 1000 times - max attempts reached",
     "Job interrupted by worker restart 3 times - max attempts reached trailing",
-    "Job interrupted by worker restart - recovered for retry (attempt 1/3)",
   ])("rejects a noncanonical worker-restart message", (error) => {
     const input = failedDeleteInput();
     const agent = input.agent as Record<string, unknown>;
@@ -394,6 +394,155 @@ describe("managed dedicated canary diagnostic", () => {
     agent.errorMessage = `Deletion permanently failed after 3 attempts: ${error}`;
     job.error = error;
     job.result = null;
+    expect(() =>
+      sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX),
+    ).toThrow("privacy-safe classifier");
+  });
+
+  test.each([
+    [
+      "worker_restart_recovered",
+      "Job interrupted by worker restart - recovered for retry (attempt 1/3)",
+    ],
+    [
+      "timeout_recovered",
+      "Job timed out - recovered for retry (attempt 1/3)",
+    ],
+  ])(
+    "keeps %s separate from terminal errors for pending, running, and completed jobs",
+    (expectedCode, message) => {
+      for (const status of ["pending", "in_progress", "completed"]) {
+        const input = failedDeleteInput();
+        const agent = input.agent as Record<string, unknown>;
+        const [job] = input.jobs as Record<string, unknown>[];
+        agent.status = "deletion_pending";
+        agent.errorMessage = null;
+        agent.errorCount = 0;
+        job.status = status;
+        job.error = message;
+        job.attempts = 1;
+        job.maxAttempts = 3;
+        job.startedAt = "2026-07-26T23:10:31.000Z";
+        job.completedAt =
+          status === "completed" ? "2026-07-26T23:11:30.000Z" : null;
+        job.result =
+          status === "completed"
+            ? {
+                containerStopped: true,
+                rowDeleted: true,
+                error: null,
+              }
+            : null;
+
+        const canonical = canonicalizeManagedDedicatedCanaryDiagnostic(
+          JSON.stringify(input),
+          SUFFIX,
+        );
+        expect(JSON.parse(canonical).jobs[0]).toMatchObject({
+          status,
+          attempts: 1,
+          maxAttempts: 3,
+          errorCode: "none",
+          recoveryCode: expectedCode,
+          resultErrorCode: "none",
+        });
+        expect(canonical).not.toContain(message);
+        expect(canonical).not.toContain("recovered for retry");
+      }
+    },
+  );
+
+  test("preserves a prior partial result beside recovery provenance", () => {
+    const input = failedDeleteInput();
+    const agent = input.agent as Record<string, unknown>;
+    const [job] = input.jobs as Record<string, unknown>[];
+    agent.status = "deletion_pending";
+    agent.errorMessage = null;
+    agent.errorCount = 0;
+    job.status = "pending";
+    job.error =
+      "Job interrupted by worker restart - recovered for retry (attempt 1/3)";
+    job.attempts = 1;
+    job.completedAt = null;
+
+    expect(
+      sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX).jobs[0],
+    ).toMatchObject({
+      status: "pending",
+      errorCode: "none",
+      recoveryCode: "worker_restart_recovered",
+      resultErrorCode: "sandbox_stop_failed",
+      containerStopped: false,
+      rowDeleted: false,
+    });
+  });
+
+  test.each([
+    [
+      "mismatched attempt",
+      "Job interrupted by worker restart - recovered for retry (attempt 2/3)",
+      1,
+      3,
+      "recovery counters disagree",
+    ],
+    [
+      "mismatched maximum",
+      "Job interrupted by worker restart - recovered for retry (attempt 1/4)",
+      1,
+      3,
+      "recovery counters disagree",
+    ],
+    [
+      "maxed retry",
+      "Job interrupted by worker restart - recovered for retry (attempt 3/3)",
+      3,
+      3,
+      "recovery counters disagree",
+    ],
+    [
+      "failed status",
+      "Job interrupted by worker restart - recovered for retry (attempt 1/3)",
+      1,
+      3,
+      "recovery provenance after failure",
+    ],
+  ])(
+    "rejects %s for a nonterminal recovery breadcrumb",
+    (_name, message, attempts, maxAttempts, expectedError) => {
+      const input = failedDeleteInput();
+      const agent = input.agent as Record<string, unknown>;
+      const [job] = input.jobs as Record<string, unknown>[];
+      agent.status = "deletion_pending";
+      agent.errorMessage = null;
+      agent.errorCount = 0;
+      job.error = message;
+      job.result = null;
+      job.attempts = attempts;
+      job.maxAttempts = maxAttempts;
+      if (_name !== "failed status") job.status = "pending";
+
+      expect(() =>
+        sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX),
+      ).toThrow(expectedError);
+    },
+  );
+
+  test.each([
+    "Job interrupted by worker restart - recovered for retry (attempt 0/3)",
+    "Job interrupted by worker restart - recovered for retry (attempt 1/1000)",
+    "Job interrupted by worker restart - recovered for retry (attempt 1/3) trailing",
+  ])("rejects malformed recovery provenance", (message) => {
+    const input = failedDeleteInput();
+    const agent = input.agent as Record<string, unknown>;
+    const [job] = input.jobs as Record<string, unknown>[];
+    agent.status = "deletion_pending";
+    agent.errorMessage = null;
+    agent.errorCount = 0;
+    job.status = "pending";
+    job.error = message;
+    job.result = null;
+    job.attempts = 1;
+
     expect(() =>
       sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX),
     ).toThrow("privacy-safe classifier");
@@ -514,6 +663,7 @@ describe("managed dedicated canary diagnostic", () => {
     expect(workflow).toContain(
       "bun run packages/scripts/cloud/admin/managed-dedicated-canary.ts",
     );
+    expect(workflow).toContain("latestJob.recoveryCode");
     expect(workflow).toMatch(
       /managed-dedicated-canary-diagnostic\.ts \\\n\s+"\$CANARY_DIAGNOSTIC_SUFFIX" \\\n\s+"\$CANARY_DIAGNOSTIC_RAW_PATH" \\\n\s+"\$CANARY_DIAGNOSTIC_EVIDENCE_PATH"/,
     );
