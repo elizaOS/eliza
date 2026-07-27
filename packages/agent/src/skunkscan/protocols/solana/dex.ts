@@ -101,4 +101,24 @@ export const SOLANA_DEX_PROTOCOLS: Readonly<
       "solana",
     ],
   },
+
+  LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo: {
+    programId: "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo",
+    name: "Meteora DLMM",
+    category: "dex",
+    reputation: "high",
+    verified: true,
+    custodial: false,
+    deprecated: false,
+    website: "https://meteora.ag",
+    notes: "Meteora's Dynamic Liquidity Market Maker (DLMM) program on Solana.",
+    tags: [
+      "meteora",
+      "dlmm",
+      "amm",
+      "dex",
+      "concentrated-liquidity",
+      "solana",
+    ],
+  },
 };
