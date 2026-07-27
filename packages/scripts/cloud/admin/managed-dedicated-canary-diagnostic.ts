@@ -53,8 +53,19 @@ type ErrorCode =
   | "database_failed"
   | "timeout";
 
+type RecoveryCode =
+  | "none"
+  | "worker_restart_recovered"
+  | "timeout_recovered";
+
+interface RecoveryClassification {
+  code: Exclude<RecoveryCode, "none">;
+  attempt: number;
+  maxAttempts: number;
+}
+
 export interface ManagedDedicatedCanaryDiagnostic {
-  schemaVersion: 1;
+  schemaVersion: 2;
   targetCount: 1;
   sandbox: {
     status: string;
@@ -70,6 +81,7 @@ export interface ManagedDedicatedCanaryDiagnostic {
     containerStopped: boolean | null;
     rowDeleted: boolean | null;
     errorCode: ErrorCode;
+    recoveryCode: RecoveryCode;
     resultErrorCode: ErrorCode;
     scheduledFor: string;
     startedAt: string | null;
@@ -199,6 +211,44 @@ function classifyError(value: unknown, label: string): ErrorCode {
   throw new Error(`${label} is not covered by the privacy-safe classifier`);
 }
 
+function classifyRecovery(
+  value: unknown,
+  label: string,
+): RecoveryClassification | null {
+  if (value === null) return null;
+  if (typeof value !== "string" || value.length === 0 || value.length > 2_000) {
+    throw new Error(`${label} must be a bounded string or null`);
+  }
+  const patterns: Array<{
+    code: Exclude<RecoveryCode, "none">;
+    pattern: RegExp;
+  }> = [
+    {
+      code: "worker_restart_recovered",
+      pattern:
+        /^Job interrupted by worker restart - recovered for retry \(attempt ([1-9][0-9]{0,2})\/([1-9][0-9]{0,2})\)$/,
+    },
+    {
+      code: "timeout_recovered",
+      pattern:
+        /^Job timed out - recovered for retry \(attempt ([1-9][0-9]{0,2})\/([1-9][0-9]{0,2})\)$/,
+    },
+  ];
+  for (const { code, pattern } of patterns) {
+    const match = pattern.exec(value);
+    if (!match) continue;
+    return {
+      code,
+      attempt: Number(match[1]),
+      maxAttempts: Number(match[2]),
+    };
+  }
+  if (/recovered for retry/i.test(value)) {
+    throw new Error(`${label} has malformed recovery provenance`);
+  }
+  return null;
+}
+
 function elapsedMs(start: string | null, end: string | null): number | null {
   if (!start || !end) return null;
   const elapsed = Date.parse(end) - Date.parse(start);
@@ -293,7 +343,10 @@ export function sanitizeManagedDedicatedCanaryDiagnostic(
       throw new Error(`jobs[${index}] has non-inline diagnostic payloads`);
     }
 
-    const jobErrorCode = classifyError(job.error, `jobs[${index}].error`);
+    const recovery = classifyRecovery(job.error, `jobs[${index}].error`);
+    const jobErrorCode = recovery
+      ? "none"
+      : classifyError(job.error, `jobs[${index}].error`);
     let containerStopped: boolean | null = null;
     let rowDeleted: boolean | null = null;
     let resultErrorCode: ErrorCode = "none";
@@ -355,6 +408,24 @@ export function sanitizeManagedDedicatedCanaryDiagnostic(
     if (attempts > maxAttempts) {
       throw new Error(`jobs[${index}] attempts exceed maxAttempts`);
     }
+    if (
+      recovery &&
+      (recovery.attempt !== attempts ||
+        recovery.maxAttempts !== maxAttempts ||
+        attempts >= maxAttempts)
+    ) {
+      throw new Error(`jobs[${index}] recovery counters disagree`);
+    }
+    if (
+      recovery &&
+      job.status !== "pending" &&
+      job.status !== "in_progress"
+    ) {
+      throw new Error(`jobs[${index}] recovery status is invalid`);
+    }
+    if (recovery && (startedAt === null || completedAt !== null)) {
+      throw new Error(`jobs[${index}] recovery timestamps disagree`);
+    }
     if (rowDeleted === true && containerStopped !== true) {
       throw new Error(
         `jobs[${index}] deleted a row without a stopped container`,
@@ -391,6 +462,7 @@ export function sanitizeManagedDedicatedCanaryDiagnostic(
       containerStopped,
       rowDeleted,
       errorCode: jobErrorCode,
+      recoveryCode: recovery?.code ?? "none",
       resultErrorCode,
       scheduledFor,
       startedAt,
@@ -416,7 +488,7 @@ export function sanitizeManagedDedicatedCanaryDiagnostic(
   }
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     targetCount: 1,
     sandbox: {
       status: agent.status,
