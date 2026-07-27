@@ -1,18 +1,20 @@
 export type TokenPrice = {
   mint: string;
   priceUsd: number | null;
-  source: "jupiter" | "unknown";
+  source: "jupiter" | "unknown" | "rate_limited";
 };
 
-type JupiterPriceResponse = {
-  data?: Record<
-    string,
-    {
-      id?: string;
-      price?: number;
-    }
-  >;
-};
+type JupiterPriceV3Response = Record<
+  string,
+  {
+    usdPrice?: number;
+    decimals?: number;
+    liquidity?: number;
+    priceChange24h?: number;
+    createdAt?: string;
+    blockId?: number;
+  }
+>;
 
 export async function getSolanaTokenPrices(
   mints: string[],
@@ -27,19 +29,23 @@ export async function getSolanaTokenPrices(
 
   try {
     const response = await fetch(
-      `https://price.jup.ag/v6/price?ids=${encodeURIComponent(
+      `https://api.jup.ag/price/v3?ids=${encodeURIComponent(
         uniqueMints.join(","),
       )}`,
     );
+
+    if (response.status === 429) {
+      return buildRateLimitedPrices(uniqueMints);
+    }
 
     if (!response.ok) {
       return buildUnknownPrices(uniqueMints);
     }
 
-    const data = (await response.json()) as JupiterPriceResponse;
+    const data = (await response.json()) as JupiterPriceV3Response;
 
     return uniqueMints.reduce<Record<string, TokenPrice>>((prices, mint) => {
-      const price = data.data?.[mint]?.price;
+      const price = data[mint]?.usdPrice;
 
       prices[mint] = {
         mint,
@@ -60,6 +66,18 @@ function buildUnknownPrices(mints: string[]): Record<string, TokenPrice> {
       mint,
       priceUsd: null,
       source: "unknown",
+    };
+
+    return prices;
+  }, {});
+}
+
+function buildRateLimitedPrices(mints: string[]): Record<string, TokenPrice> {
+  return mints.reduce<Record<string, TokenPrice>>((prices, mint) => {
+    prices[mint] = {
+      mint,
+      priceUsd: null,
+      source: "rate_limited",
     };
 
     return prices;
