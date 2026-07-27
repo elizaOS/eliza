@@ -168,9 +168,7 @@ function classifyError(value: unknown, label: string): ErrorCode {
     return "lifecycle_conflict";
   }
   if (
-    /^Job interrupted by worker restart (?:[1-9][0-9]* times - max attempts reached|- recovered for retry \(attempt [1-9][0-9]*\/[1-9][0-9]*\))$/.test(
-      value,
-    )
+    /^Job interrupted by worker restart [1-9][0-9]{0,2} times - max attempts reached$/.test(value)
   ) {
     return "worker_restart_interrupted";
   }

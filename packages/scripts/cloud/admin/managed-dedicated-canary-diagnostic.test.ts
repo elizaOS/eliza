@@ -353,7 +353,9 @@ describe("managed dedicated canary diagnostic", () => {
     const [job] = input.jobs as Record<string, unknown>[];
     const error =
       "Job interrupted by worker restart 3 times - max attempts reached";
-    agent.errorMessage = `Deletion permanently failed after 3 attempts: ${error}`;
+    agent.status = "deletion_pending";
+    agent.errorMessage = null;
+    agent.errorCount = 0;
     job.error = error;
     job.result = null;
 
@@ -362,8 +364,15 @@ describe("managed dedicated canary diagnostic", () => {
       SUFFIX,
     );
     const evidence = JSON.parse(canonical);
-    expect(evidence.sandbox.errorCode).toBe("worker_restart_interrupted");
+    expect(evidence.sandbox).toMatchObject({
+      status: "deletion_pending",
+      errorCode: "none",
+      errorCount: 0,
+    });
     expect(evidence.jobs[0]).toMatchObject({
+      status: "failed",
+      attempts: 3,
+      maxAttempts: 3,
       errorCode: "worker_restart_interrupted",
       resultErrorCode: "none",
       containerStopped: null,
@@ -373,33 +382,11 @@ describe("managed dedicated canary diagnostic", () => {
     expect(canonical).not.toContain("max attempts");
   });
 
-  test("classifies a retryable worker-restart interruption by status, not as success", () => {
-    const input = failedDeleteInput();
-    const agent = input.agent as Record<string, unknown>;
-    const [job] = input.jobs as Record<string, unknown>[];
-    agent.status = "deletion_pending";
-    agent.errorMessage = null;
-    agent.errorCount = 0;
-    job.status = "pending";
-    job.error =
-      "Job interrupted by worker restart - recovered for retry (attempt 1/3)";
-    job.result = null;
-    job.attempts = 1;
-    job.completedAt = null;
-
-    const evidence = sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX);
-    expect(evidence.sandbox.errorCode).toBe("none");
-    expect(evidence.jobs[0]).toMatchObject({
-      status: "pending",
-      errorCode: "worker_restart_interrupted",
-      resultErrorCode: "none",
-    });
-  });
-
   test.each([
     "Job interrupted by worker restart 0 times - max attempts reached",
+    "Job interrupted by worker restart 1000 times - max attempts reached",
     "Job interrupted by worker restart 3 times - max attempts reached trailing",
-    "Job interrupted by worker restart - recovered for retry (attempt 0/3)",
+    "Job interrupted by worker restart - recovered for retry (attempt 1/3)",
   ])("rejects a noncanonical worker-restart message", (error) => {
     const input = failedDeleteInput();
     const agent = input.agent as Record<string, unknown>;
