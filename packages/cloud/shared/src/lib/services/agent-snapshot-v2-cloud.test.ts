@@ -18,6 +18,7 @@ import {
   AGENT_SNAPSHOT_V2_MAX_WIRE_BYTES,
   AGENT_SNAPSHOT_V2_TRANSFER,
   type AgentSnapshotV2Descriptor,
+  type AgentSnapshotV2UpgradeBinding,
   agentSnapshotV2Sha256,
   agentSnapshotV2Sha256Json,
   agentSnapshotV2StableJson,
@@ -28,6 +29,16 @@ const SANDBOX_RECORD_ID = "00000000-0000-4000-8000-000000000002";
 const BACKUP_ID = "00000000-0000-4000-8000-000000000003";
 const AGENT_ID = "00000000-0000-4000-8000-000000000004";
 const CREATED_AT = new Date("2026-07-26T12:00:00.000Z");
+const SNAPSHOT_BINDING: AgentSnapshotV2UpgradeBinding = {
+  backupId: BACKUP_ID,
+  captureNonce: "01".repeat(32),
+  sourceEnvironmentRevision: 7,
+  sourceImageDigest: `sha256:${"02".repeat(32)}`,
+  sourceSandboxId: "source-sandbox",
+  targetImageDigest: `sha256:${"03".repeat(32)}`,
+  targetReplacementAttemptId: "00000000-0000-4000-8000-000000000006",
+  targetSandboxId: "target-sandbox",
+};
 
 function canonicalSnapshot(): {
   bytes: Uint8Array;
@@ -43,6 +54,7 @@ function canonicalSnapshot(): {
   });
   const descriptor: AgentSnapshotV2Descriptor = {
     agentId: AGENT_ID,
+    binding: SNAPSHOT_BINDING,
     chunkSize: AGENT_SNAPSHOT_V2_CHUNK_BYTES,
     components: {
       character: {
@@ -184,7 +196,7 @@ describe("agent snapshot v2 Cloud adapter", () => {
 
     const result = await captureAgentSnapshotV2({
       agentId: AGENT_ID,
-      backupId: BACKUP_ID,
+      binding: SNAPSHOT_BINDING,
       dependencies,
       organizationId: ORGANIZATION_ID,
       response: new Response(replay(snapshot.bytes), {
@@ -209,11 +221,35 @@ describe("agent snapshot v2 Cloud adapter", () => {
         throw new Error("restore request body is not a stream");
       }
       requestBytes = new Uint8Array(await new Response(body).arrayBuffer());
-      expect(new Headers(init.headers).get("content-type")).toBe(AGENT_SNAPSHOT_V2_CONTENT_TYPE);
+      const headers = new Headers(init.headers);
+      expect(headers.get("content-type")).toBe(AGENT_SNAPSHOT_V2_CONTENT_TYPE);
+      expect(init.redirect).toBe("error");
+      expect(headers.get("x-eliza-snapshot-backup-id")).toBe(SNAPSHOT_BINDING.backupId);
+      expect(headers.get("x-eliza-snapshot-capture-nonce")).toBe(SNAPSHOT_BINDING.captureNonce);
+      expect(headers.get("x-eliza-snapshot-source-environment-revision")).toBe(
+        String(SNAPSHOT_BINDING.sourceEnvironmentRevision),
+      );
+      expect(headers.get("x-eliza-snapshot-source-image-digest")).toBe(
+        SNAPSHOT_BINDING.sourceImageDigest,
+      );
+      expect(headers.get("x-eliza-snapshot-source-sandbox-id")).toBe(
+        SNAPSHOT_BINDING.sourceSandboxId,
+      );
+      expect(headers.get("x-eliza-snapshot-target-image-digest")).toBe(
+        SNAPSHOT_BINDING.targetImageDigest,
+      );
+      expect(headers.get("x-eliza-snapshot-target-replacement-attempt-id")).toBe(
+        SNAPSHOT_BINDING.targetReplacementAttemptId,
+      );
+      expect(headers.get("x-eliza-snapshot-target-sandbox-id")).toBe(
+        SNAPSHOT_BINDING.targetSandboxId,
+      );
       return new Response(
         JSON.stringify({
           aggregateSha256: snapshot.aggregateSha256,
+          binding: SNAPSHOT_BINDING,
           fileCount: 0,
+          receiptStatus: "committed",
           requiresRestart: true,
           schemaVersion: 2,
           success: true,
@@ -235,6 +271,7 @@ describe("agent snapshot v2 Cloud adapter", () => {
     const result = await restoreAgentSnapshotV2({
       agentId: AGENT_ID,
       backup: storedBackup(snapshot.aggregateSha256),
+      binding: SNAPSHOT_BINDING,
       dependencies,
       endpoint: "https://agent.example/api/restore?transfer=chunked-v1",
       headers: {
@@ -266,6 +303,7 @@ describe("agent snapshot v2 Cloud adapter", () => {
     await expect(
       captureAgentSnapshotV2({
         agentId: AGENT_ID,
+        binding: SNAPSHOT_BINDING,
         dependencies: captureDependencies,
         organizationId: ORGANIZATION_ID,
         response: new Response(corrupt, {
@@ -281,6 +319,7 @@ describe("agent snapshot v2 Cloud adapter", () => {
       restoreAgentSnapshotV2({
         agentId: AGENT_ID,
         backup: unverified,
+        binding: SNAPSHOT_BINDING,
         dependencies: captureDependencies,
         endpoint: "https://agent.example/api/restore?transfer=chunked-v1",
         headers: {},
@@ -296,7 +335,9 @@ describe("agent snapshot v2 Cloud adapter", () => {
       return new Response(
         JSON.stringify({
           aggregateSha256: "ef".repeat(32),
+          binding: SNAPSHOT_BINDING,
           fileCount: 0,
+          receiptStatus: "committed",
           requiresRestart: true,
           schemaVersion: 2,
           success: true,
@@ -309,6 +350,7 @@ describe("agent snapshot v2 Cloud adapter", () => {
       restoreAgentSnapshotV2({
         agentId: AGENT_ID,
         backup: storedBackup(snapshot.aggregateSha256),
+        binding: SNAPSHOT_BINDING,
         dependencies: { ...captureDependencies, fetch: mismatchFetch },
         endpoint: "https://agent.example/api/restore?transfer=chunked-v1",
         headers: {},
@@ -341,6 +383,7 @@ describe("agent snapshot v2 Cloud adapter", () => {
     await expect(
       captureAgentSnapshotV2({
         agentId: AGENT_ID,
+        binding: SNAPSHOT_BINDING,
         dependencies,
         organizationId: ORGANIZATION_ID,
         response: new Response(body, {
@@ -535,6 +578,7 @@ describe("agent snapshot v2 Cloud adapter", () => {
       restoreAgentSnapshotV2({
         agentId: AGENT_ID,
         backup: storedBackup(snapshot.aggregateSha256),
+        binding: SNAPSHOT_BINDING,
         dependencies,
         endpoint: "https://agent.example/api/restore?transfer=chunked-v1",
         headers: {},
