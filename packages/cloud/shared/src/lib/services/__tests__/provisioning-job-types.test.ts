@@ -11,7 +11,11 @@
  * tests are a follow-up.
  */
 import { describe, expect, test } from "bun:test";
-import { JOB_TYPES, type ProvisioningJobType } from "../provisioning-job-types";
+import {
+  EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES,
+  JOB_TYPES,
+  type ProvisioningJobType,
+} from "../provisioning-job-types";
 
 describe("JOB_TYPES", () => {
   test("includes every registered job type", () => {
@@ -25,6 +29,9 @@ describe("JOB_TYPES", () => {
     expect(JOB_TYPES.AGENT_SNAPSHOT).toBe("agent_snapshot");
     expect(JOB_TYPES.AGENT_UPGRADE).toBe("agent_upgrade");
     expect(JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE).toBe("agent_admin_canary_image");
+    expect(JOB_TYPES.AGENT_ADMIN_CANARY_STANDBY_DECISION).toBe(
+      "agent_admin_canary_standby_decision",
+    );
     expect(JOB_TYPES.AGENT_DOWNGRADE).toBe("agent_downgrade");
     expect(JOB_TYPES.AGENT_SLEEP).toBe("agent_sleep");
     expect(JOB_TYPES.AGENT_WAKE).toBe("agent_wake");
@@ -39,7 +46,7 @@ describe("JOB_TYPES", () => {
     expect(JOB_TYPES.CONTAINER_STOP).toBe("container_stop");
     // Lock the size so a new entry without a matching assertion above
     // fails CI instead of being silently under-covered by tests below.
-    expect(Object.keys(JOB_TYPES)).toHaveLength(21);
+    expect(Object.keys(JOB_TYPES)).toHaveLength(22);
   });
 
   test("wire values are unique (no two symbols share a string)", () => {
@@ -56,5 +63,22 @@ describe("JOB_TYPES", () => {
   test("ProvisioningJobType narrows to the registered set", () => {
     const known: ProvisioningJobType = "agent_suspend";
     expect(Object.values(JOB_TYPES)).toContain(known);
+  });
+
+  test("exclusive lifecycle jobs cover every placement owner exactly once", () => {
+    expect(EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES).toEqual([
+      JOB_TYPES.AGENT_PROVISION,
+      JOB_TYPES.AGENT_DELETE,
+      JOB_TYPES.AGENT_SUSPEND,
+      JOB_TYPES.AGENT_RESUME,
+      JOB_TYPES.AGENT_RESTART,
+      JOB_TYPES.AGENT_DOWNGRADE,
+      JOB_TYPES.AGENT_SLEEP,
+      JOB_TYPES.AGENT_WAKE,
+      JOB_TYPES.AGENT_UPGRADE,
+      JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
+      JOB_TYPES.AGENT_ADMIN_CANARY_STANDBY_DECISION,
+    ]);
+    expect(new Set(EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES).size).toBe(11);
   });
 });
