@@ -21,8 +21,10 @@ const JOB = "44444444-4444-4444-8444-444444444444";
 const ROLLOUT = "55555555-5555-4555-8555-555555555555";
 const REQUEST = "88888888-8888-4888-8888-888888888888";
 const BACKUP = "99999999-9999-4999-8999-999999999999";
+const RESTORE_VALIDATION = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const RESTORE_AGGREGATE_SHA256 = "e".repeat(64);
 const RESTORE_CANDIDATE_ID = "restore-candidate-999999";
+const RESTORE_CANDIDATE_ATTEMPT = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const SOURCE_DIGEST = `sha256:${"a".repeat(64)}`;
 const TARGET_DIGEST = `sha256:${"b".repeat(64)}`;
 const PLAN_FINGERPRINT = `sha256:${"c".repeat(64)}`;
@@ -358,9 +360,10 @@ describe("POST /api/v1/admin/agent-image-canary/jobs/:jobId/decision", () => {
       requestId: REQUEST,
       decision: "accept",
       verifiedBackupId: BACKUP,
-      restoreValidationId: BACKUP,
+      restoreValidationId: RESTORE_VALIDATION,
       restoreValidationAggregateSha256: RESTORE_AGGREGATE_SHA256,
       restoreValidatedCandidateProviderSandboxId: RESTORE_CANDIDATE_ID,
+      restoreValidatedCandidateReplacementAttemptId: RESTORE_CANDIDATE_ATTEMPT,
     };
     const response = await route.fetch(decisionRequest(body), {
       CRON_SECRET: "test",
@@ -507,9 +510,11 @@ describe("GET /api/v1/admin/agent-image-canary/jobs/:jobId", () => {
           sourceJobId: REQUEST,
           decision: "accept",
           verifiedBackupId: BACKUP,
-          restoreValidationId: BACKUP,
+          restoreValidationId: RESTORE_VALIDATION,
           restoreValidationAggregateSha256: RESTORE_AGGREGATE_SHA256,
           restoreValidatedCandidateProviderSandboxId: RESTORE_CANDIDATE_ID,
+          restoreValidatedCandidateReplacementAttemptId:
+            RESTORE_CANDIDATE_ATTEMPT,
           standbyGeneration: ROLLOUT,
           rolloutId: ROLLOUT,
           actorUserId: ACTOR,
@@ -538,9 +543,11 @@ describe("GET /api/v1/admin/agent-image-canary/jobs/:jobId", () => {
           targetImage: TARGET_IMAGE,
           targetDigest: TARGET_DIGEST,
           verifiedBackupId: BACKUP,
-          restoreValidationId: BACKUP,
+          restoreValidationId: RESTORE_VALIDATION,
           restoreValidationAggregateSha256: RESTORE_AGGREGATE_SHA256,
           restoreValidatedCandidateProviderSandboxId: RESTORE_CANDIDATE_ID,
+          restoreValidatedCandidateReplacementAttemptId:
+            RESTORE_CANDIDATE_ATTEMPT,
           startedAt: now.toISOString(),
           finishedAt: now.toISOString(),
         },
@@ -556,9 +563,10 @@ describe("GET /api/v1/admin/agent-image-canary/jobs/:jobId", () => {
     };
     expect(payload.data.result).toMatchObject({
       verifiedBackupId: BACKUP,
-      restoreValidationId: BACKUP,
+      restoreValidationId: RESTORE_VALIDATION,
       restoreValidationAggregateSha256: RESTORE_AGGREGATE_SHA256,
       restoreValidatedCandidateProviderSandboxId: RESTORE_CANDIDATE_ID,
+      restoreValidatedCandidateReplacementAttemptId: RESTORE_CANDIDATE_ATTEMPT,
     });
     expect(payload.polling.shouldContinue).toBe(false);
   });

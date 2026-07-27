@@ -22,6 +22,7 @@ export interface AdminCanaryStandbyDecisionInput {
   restoreValidationId?: string;
   restoreValidationAggregateSha256?: string;
   restoreValidatedCandidateProviderSandboxId?: string;
+  restoreValidatedCandidateReplacementAttemptId?: string;
 }
 
 export interface AdminCanaryStandbyDecisionJobData {
@@ -32,6 +33,7 @@ export interface AdminCanaryStandbyDecisionJobData {
   restoreValidationId?: string;
   restoreValidationAggregateSha256?: string;
   restoreValidatedCandidateProviderSandboxId?: string;
+  restoreValidatedCandidateReplacementAttemptId?: string;
   standbyGeneration: string;
   rolloutId: string;
   actorUserId: string;
@@ -64,6 +66,7 @@ export interface AdminCanaryStandbyDecisionJobResult {
   restoreValidationId?: string;
   restoreValidationAggregateSha256?: string;
   restoreValidatedCandidateProviderSandboxId?: string;
+  restoreValidatedCandidateReplacementAttemptId?: string;
   startedAt: string;
   finishedAt: string;
 }
@@ -76,18 +79,13 @@ export interface VerifiedRestorePointReader {
       restoreValidationId: string;
       restoreValidationAggregateSha256: string;
       restoreValidatedCandidateProviderSandboxId: string;
+      restoreValidatedCandidateReplacementAttemptId: string;
       organizationId: string;
       sandboxRecordId: string;
       agentId: string;
       targetOwnerUserId: string;
       targetImage: string;
       targetDigest: string;
-      neverRouted: true;
-      snapshotType: "pre-upgrade";
-      schemaVersion: 2;
-      verificationStatus: "verified";
-      descriptorCommitState: "complete";
-      restoreReceiptState: "committed";
     },
   ): Promise<void>;
 }
@@ -125,17 +123,24 @@ export function assertAdminCanaryStandbyDecisionInput(
     if (!input.restoreValidatedCandidateProviderSandboxId?.trim()) {
       throw ValidationError("accept decisions require restoreValidatedCandidateProviderSandboxId");
     }
+    if (!input.restoreValidatedCandidateReplacementAttemptId) {
+      throw ValidationError(
+        "accept decisions require restoreValidatedCandidateReplacementAttemptId",
+      );
+    }
     assertUuid(input.verifiedBackupId, "verifiedBackupId");
     assertUuid(input.restoreValidationId, "restoreValidationId");
-    if (input.restoreValidationId !== input.verifiedBackupId) {
-      throw ValidationError("restoreValidationId must equal verifiedBackupId");
-    }
+    assertUuid(
+      input.restoreValidatedCandidateReplacementAttemptId,
+      "restoreValidatedCandidateReplacementAttemptId",
+    );
     assertSha256Hex(input.restoreValidationAggregateSha256, "restoreValidationAggregateSha256");
   } else if (
     input.verifiedBackupId !== undefined ||
     input.restoreValidationId !== undefined ||
     input.restoreValidationAggregateSha256 !== undefined ||
-    input.restoreValidatedCandidateProviderSandboxId !== undefined
+    input.restoreValidatedCandidateProviderSandboxId !== undefined ||
+    input.restoreValidatedCandidateReplacementAttemptId !== undefined
   ) {
     throw ValidationError("reject decisions cannot include restore validation authority");
   }
@@ -170,7 +175,9 @@ export function isAdminCanaryStandbyDecisionJobData(
     (data.restoreValidationAggregateSha256 === undefined ||
       typeof data.restoreValidationAggregateSha256 === "string") &&
     (data.restoreValidatedCandidateProviderSandboxId === undefined ||
-      typeof data.restoreValidatedCandidateProviderSandboxId === "string")
+      typeof data.restoreValidatedCandidateProviderSandboxId === "string") &&
+    (data.restoreValidatedCandidateReplacementAttemptId === undefined ||
+      typeof data.restoreValidatedCandidateReplacementAttemptId === "string")
   );
 }
 
@@ -190,6 +197,12 @@ export function assertAdminCanaryStandbyDecisionJobData(
       ? {
           restoreValidatedCandidateProviderSandboxId:
             data.restoreValidatedCandidateProviderSandboxId,
+        }
+      : {}),
+    ...(data.restoreValidatedCandidateReplacementAttemptId
+      ? {
+          restoreValidatedCandidateReplacementAttemptId:
+            data.restoreValidatedCandidateReplacementAttemptId,
         }
       : {}),
   });
