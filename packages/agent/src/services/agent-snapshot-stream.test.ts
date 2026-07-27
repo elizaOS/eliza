@@ -6,7 +6,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { AgentRuntime } from "@elizaos/core";
+import { type AgentRuntime, getSnapshotCaptureBarrier } from "@elizaos/core";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   AGENT_BACKUP_V1_MAX_SOURCE_BYTES,
@@ -71,12 +71,16 @@ async function temporaryRoot(label: string): Promise<string> {
 }
 
 function runtimeStub(
-  postgresUrl = POSTGRES_URL,
+  postgresUrl: string | null = POSTGRES_URL,
   onRawConnection?: () => void,
+  lifecycle?: {
+    onClose?: () => Promise<void> | void;
+    onStop?: (options: { strict?: boolean }) => Promise<void> | void;
+  },
 ): AgentRuntime {
   return {
     adapter: {
-      close: async () => undefined,
+      close: async () => lifecycle?.onClose?.(),
       getRawConnection: () => {
         onRawConnection?.();
         throw new Error("External Postgres snapshot must not inspect SQL");
@@ -85,6 +89,7 @@ function runtimeStub(
     agentId: AGENT_ID,
     character: { name: "Stream Test Agent" },
     getSetting: (key: string) => (key === "POSTGRES_URL" ? postgresUrl : null),
+    stop: async (options: { strict?: boolean }) => lifecycle?.onStop?.(options),
   } as unknown as AgentRuntime;
 }
 
@@ -94,6 +99,7 @@ function pgliteRuntimeStub(
 ): AgentRuntime {
   return {
     adapter: {
+      checkpointAndCloseForSnapshot: async () => undefined,
       close: async () => undefined,
       getRawConnection: () => ({
         runExclusive: async <T>(operation: () => Promise<T>) => operation(),
@@ -106,6 +112,7 @@ function pgliteRuntimeStub(
       if (key === "POSTGRES_URL") return postgresUrl;
       return null;
     },
+    stop: async () => undefined,
   } as unknown as AgentRuntime;
 }
 
@@ -161,6 +168,21 @@ async function* asInput(
   for (const frame of frames) yield frame;
 }
 
+async function waitForBarrierPhase(
+  barrier: { status(): { phase: string } },
+  expectedPhase: string,
+  timeoutMs = 5_000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (barrier.status().phase === expectedPhase) return;
+    await new Promise<void>((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(
+    `Snapshot barrier did not reach ${expectedPhase}; current phase is ${barrier.status().phase}`,
+  );
+}
+
 afterEach(async () => {
   restoreEnv();
   await Promise.all(
@@ -212,7 +234,16 @@ describe.sequential("agent snapshot chunked-v1 stream", () => {
     delete process.env.PGLITE_DATA_DIR;
     delete process.env.POSTGRES_URL;
     delete process.env.DATABASE_URL;
-    const sourceRuntime = runtimeStub();
+    const lifecycle: string[] = [];
+    const sourceRuntime = runtimeStub(POSTGRES_URL, undefined, {
+      onClose: () => {
+        lifecycle.push("database-closed");
+      },
+      onStop: (options) => {
+        expect(options).toEqual({ strict: true });
+        lifecycle.push("runtime-stopped");
+      },
+    });
     const iterator = createAgentSnapshotStream(
       sourceRuntime,
       UPGRADE_BINDING,
@@ -220,6 +251,18 @@ describe.sequential("agent snapshot chunked-v1 stream", () => {
     );
     const first = await iterator.next();
     if (first.done) throw new Error("Snapshot stream emitted no descriptor");
+    expect(lifecycle).toEqual(["runtime-stopped", "database-closed"]);
+
+    // The descriptor is emitted only after every local component has moved to
+    // private staging. Subsequent source mutations cannot alter streamed bytes.
+    await fs.writeFile(
+      path.join(source, "skills", "active.json"),
+      '{"active":false}\n',
+    );
+    await fs.writeFile(
+      path.join(source, "media", `${"a".repeat(64)}.bin`),
+      "mutated-after-staging",
+    );
 
     process.env.ELIZA_STATE_DIR = target;
     const targetRuntime = runtimeStub(
@@ -491,6 +534,374 @@ describe.sequential("agent snapshot chunked-v1 stream", () => {
         `${index.toString().padStart(4, "0")}-${"x".repeat(longNameBytes - 5)}`,
     });
     expect(pathYielded).toBeLessThan(AGENT_SNAPSHOT_STREAM_MAX_FILES);
+  });
+
+  test("drains accepted mutations and rejects a concurrent capture", async () => {
+    const source = await temporaryRoot("eliza-stream-drain-");
+    await writeFixture(source);
+    process.env.ELIZA_STATE_DIR = source;
+    delete process.env.POSTGRES_URL;
+    delete process.env.DATABASE_URL;
+    let stopped = false;
+    const runtime = runtimeStub(POSTGRES_URL, undefined, {
+      onStop: () => {
+        stopped = true;
+      },
+    });
+    const barrier = getSnapshotCaptureBarrier(runtime);
+    const admitted = barrier.admitMutation();
+    const firstIterator = createAgentSnapshotStream(
+      runtime,
+      UPGRADE_BINDING,
+      SOURCE_ATTESTATION,
+    );
+    const firstFramePromise = firstIterator.next();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(barrier.status()).toMatchObject({
+      activeMutations: 1,
+      phase: "draining",
+    });
+    expect(stopped).toBe(false);
+
+    const competingIterator = createAgentSnapshotStream(
+      runtime,
+      UPGRADE_BINDING,
+      SOURCE_ATTESTATION,
+    );
+    await expect(competingIterator.next()).rejects.toMatchObject({
+      code: "AGENT_SNAPSHOT_CAPTURE_ALREADY_STARTED",
+    });
+    admitted.release();
+    const firstFrame = await firstFramePromise;
+    if (firstFrame.done)
+      throw new Error("Snapshot stream emitted no descriptor");
+    expect(stopped).toBe(true);
+    for await (const _frame of firstIterator) {
+      // Consume the trailer so the one-way barrier commits standby.
+    }
+    expect(barrier.status()).toMatchObject({
+      activeMutations: 0,
+      phase: "standby",
+    });
+    expect(() => barrier.admitMutation()).toThrowError(
+      /unavailable while snapshot capture is standby/,
+    );
+  });
+
+  test("drains target activity before a verified restore applies state", async () => {
+    const source = await temporaryRoot("eliza-stream-restore-source-");
+    const target = await temporaryRoot("eliza-stream-restore-target-");
+    await writeFixture(source);
+    process.env.ELIZA_STATE_DIR = source;
+    delete process.env.POSTGRES_URL;
+    delete process.env.DATABASE_URL;
+    const frames = await collectStream(runtimeStub());
+
+    process.env.ELIZA_STATE_DIR = target;
+    const lifecycle: string[] = [];
+    const targetRuntime = runtimeStub(
+      "postgres://restore:rotated@DB.EXAMPLE.COM/eliza?search_path=tenant",
+      undefined,
+      {
+        onClose: () => {
+          lifecycle.push("database-closed");
+        },
+        onStop: (options) => {
+          expect(options).toEqual({ strict: true });
+          lifecycle.push("runtime-stopped");
+        },
+      },
+    );
+    const barrier = getSnapshotCaptureBarrier(targetRuntime);
+    const activeRequest = barrier.admitMutation();
+    const restore = restoreAgentSnapshotStream(
+      targetRuntime,
+      asInput(frames),
+      UPGRADE_BINDING,
+    );
+
+    await waitForBarrierPhase(barrier, "draining");
+    expect(barrier.status()).toMatchObject({
+      activeMutations: 1,
+      phase: "draining",
+    });
+    expect(lifecycle).toEqual([]);
+    expect(() => barrier.admitMutation()).toThrowError(
+      /unavailable while snapshot capture is draining/,
+    );
+
+    activeRequest.release();
+    await expect(restore).resolves.toMatchObject({ success: true });
+    expect(lifecycle).toEqual(["runtime-stopped", "database-closed"]);
+    expect(barrier.status()).toMatchObject({
+      activeMutations: 0,
+      phase: "standby",
+    });
+  });
+
+  test("rejects incompatible database targets before draining the runtime", async () => {
+    const source = await temporaryRoot("eliza-stream-db-mode-source-");
+    const target = await temporaryRoot("eliza-stream-db-mode-target-");
+    const sourcePgliteDir = path.join(source, "pglite");
+    const targetPgliteDir = path.join(target, "pglite");
+    await writeFixture(source);
+    await fs.mkdir(path.join(sourcePgliteDir, "base"), { recursive: true });
+    await fs.writeFile(path.join(sourcePgliteDir, "base", "1"), "pglite-page");
+
+    process.env.ELIZA_STATE_DIR = source;
+    process.env.PGLITE_DATA_DIR = sourcePgliteDir;
+    delete process.env.POSTGRES_URL;
+    delete process.env.DATABASE_URL;
+    const pgliteFrames = await collectStream({
+      adapter: {
+        checkpointAndCloseForSnapshot: async () => undefined,
+      },
+      agentId: AGENT_ID,
+      character: { name: "PGlite Compatibility Source" },
+      getSetting: () => null,
+      stop: async () => undefined,
+    } as unknown as AgentRuntime);
+
+    process.env.ELIZA_STATE_DIR = target;
+    process.env.PGLITE_DATA_DIR = targetPgliteDir;
+    const externalLifecycle: string[] = [];
+    const externalTarget = runtimeStub(POSTGRES_URL, undefined, {
+      onClose: () => {
+        externalLifecycle.push("database-closed");
+      },
+      onStop: () => {
+        externalLifecycle.push("runtime-stopped");
+      },
+    });
+    await expect(
+      restoreAgentSnapshotStream(
+        externalTarget,
+        asInput(pgliteFrames),
+        UPGRADE_BINDING,
+      ),
+    ).rejects.toMatchObject({
+      code: "AGENT_SNAPSHOT_STREAM_INVALID",
+      message: expect.stringMatching(/PGlite snapshot cannot be restored/),
+    });
+    expect(externalLifecycle).toEqual([]);
+    expect(getSnapshotCaptureBarrier(externalTarget).status().phase).toBe(
+      "accepting",
+    );
+
+    process.env.ELIZA_STATE_DIR = source;
+    const externalFrames = await collectStream(runtimeStub());
+    process.env.ELIZA_STATE_DIR = target;
+    delete process.env.POSTGRES_URL;
+    delete process.env.DATABASE_URL;
+
+    for (const postgresUrl of [
+      null,
+      "postgres://owner:secret@other.example.com:5432/eliza?schema=tenant",
+    ]) {
+      const lifecycle: string[] = [];
+      const targetRuntime = runtimeStub(postgresUrl, undefined, {
+        onClose: () => {
+          lifecycle.push("database-closed");
+        },
+        onStop: () => {
+          lifecycle.push("runtime-stopped");
+        },
+      });
+      await expect(
+        restoreAgentSnapshotStream(
+          targetRuntime,
+          asInput(externalFrames),
+          UPGRADE_BINDING,
+        ),
+      ).rejects.toMatchObject({
+        code: "AGENT_SNAPSHOT_STREAM_INVALID",
+        message: expect.stringMatching(
+          postgresUrl ? /identity does not match/ : /POSTGRES_URL/,
+        ),
+      });
+      expect(lifecycle).toEqual([]);
+      expect(getSnapshotCaptureBarrier(targetRuntime).status().phase).toBe(
+        "accepting",
+      );
+    }
+  });
+
+  test("fails closed when strict PGlite checkpoint-and-close fails", async () => {
+    const source = await temporaryRoot("eliza-stream-checkpoint-failure-");
+    const pgliteDir = path.join(source, "pglite");
+    await writeFixture(source);
+    await fs.mkdir(pgliteDir, { recursive: true });
+    await fs.writeFile(path.join(pgliteDir, "data.bin"), "not-safe-to-copy");
+    process.env.ELIZA_STATE_DIR = source;
+    process.env.PGLITE_DATA_DIR = pgliteDir;
+    delete process.env.POSTGRES_URL;
+    delete process.env.DATABASE_URL;
+    const runtime = {
+      adapter: {
+        checkpointAndCloseForSnapshot: async () => {
+          throw new Error("checkpoint failed");
+        },
+      },
+      agentId: AGENT_ID,
+      character: { name: "PGlite Failure Test Agent" },
+      getSetting: () => null,
+      stop: async () => undefined,
+    } as unknown as AgentRuntime;
+    const barrier = getSnapshotCaptureBarrier(runtime);
+
+    await expect(
+      createAgentSnapshotStream(
+        runtime,
+        UPGRADE_BINDING,
+        SOURCE_ATTESTATION,
+      ).next(),
+    ).rejects.toThrowError("checkpoint failed");
+    expect(barrier.status()).toMatchObject({
+      failure: "checkpoint failed",
+      phase: "failed",
+    });
+    expect(() => barrier.admitMutation()).toThrowError(
+      /unavailable while snapshot capture is failed/,
+    );
+  });
+
+  test("strictly checkpoints PGlite before staging its immutable files", async () => {
+    const source = await temporaryRoot("eliza-stream-pglite-");
+    const pgliteDir = path.join(source, "pglite");
+    await writeFixture(source);
+    await fs.mkdir(path.join(pgliteDir, "base"), { recursive: true });
+    await fs.writeFile(path.join(pgliteDir, "base", "1"), "checkpointed-page");
+    process.env.ELIZA_STATE_DIR = source;
+    process.env.PGLITE_DATA_DIR = pgliteDir;
+    delete process.env.POSTGRES_URL;
+    delete process.env.DATABASE_URL;
+    const lifecycle: string[] = [];
+    const runtime = {
+      adapter: {
+        checkpointAndCloseForSnapshot: async () => {
+          lifecycle.push("database-checkpointed-and-closed");
+        },
+      },
+      agentId: AGENT_ID,
+      character: { name: "PGlite Stream Test Agent" },
+      getSetting: () => null,
+      stop: async (options: { strict?: boolean }) => {
+        expect(options).toEqual({ strict: true });
+        lifecycle.push("runtime-stopped");
+      },
+    } as unknown as AgentRuntime;
+
+    const iterator = createAgentSnapshotStream(
+      runtime,
+      UPGRADE_BINDING,
+      SOURCE_ATTESTATION,
+    );
+    const first = await iterator.next();
+    if (first.done) throw new Error("Snapshot stream emitted no descriptor");
+    expect(lifecycle).toEqual([
+      "runtime-stopped",
+      "database-checkpointed-and-closed",
+    ]);
+    const descriptor = decodeFrame(
+      first.value,
+    ) as unknown as AgentSnapshotStreamDescriptor;
+    expect(descriptor.components.database).toMatchObject({
+      kind: "pglite-files",
+    });
+
+    await fs.writeFile(path.join(pgliteDir, "base", "1"), "mutated-later");
+    const remaining: Buffer[] = [];
+    for await (const frame of iterator) remaining.push(frame);
+    const databaseFile = descriptor.files.find(
+      (file) => file.component === "database" && file.path === "base/1",
+    );
+    if (!databaseFile) throw new Error("Database fixture was not captured");
+    const captured = Buffer.concat(
+      remaining
+        .map((frame) => decodeFrame(frame))
+        .filter(
+          (frame) =>
+            frame.type === "chunk" && frame.fileIndex === databaseFile.index,
+        )
+        .map((frame) => Buffer.from(frame.bytesBase64 as string, "base64")),
+    );
+    expect(captured.toString()).toBe("checkpointed-page");
+  });
+
+  test("round-trips a real checkpointed PGlite database through the stream", async () => {
+    const source = await temporaryRoot("eliza-stream-real-pglite-source-");
+    const target = await temporaryRoot("eliza-stream-real-pglite-target-");
+    const sourcePgliteDir = path.join(source, "pglite");
+    const targetPgliteDir = path.join(target, "pglite");
+    await writeFixture(source);
+    const { PGlite } = await import("@electric-sql/pglite");
+    const sourceDatabase = new PGlite(sourcePgliteDir);
+    await sourceDatabase.waitReady;
+    await sourceDatabase.exec(`
+      CREATE TABLE snapshot_probe (
+        id INTEGER PRIMARY KEY,
+        payload TEXT NOT NULL
+      );
+      INSERT INTO snapshot_probe (id, payload) VALUES (1, 'captured');
+    `);
+
+    process.env.ELIZA_STATE_DIR = source;
+    process.env.PGLITE_DATA_DIR = sourcePgliteDir;
+    delete process.env.POSTGRES_URL;
+    delete process.env.DATABASE_URL;
+    let databaseClosed = false;
+    const sourceRuntime = {
+      adapter: {
+        checkpointAndCloseForSnapshot: async () => {
+          await sourceDatabase.exec("CHECKPOINT");
+          await sourceDatabase.close();
+          databaseClosed = true;
+        },
+      },
+      agentId: AGENT_ID,
+      character: { name: "Real PGlite Stream Test Agent" },
+      getSetting: () => null,
+      stop: async (options: { strict?: boolean }) => {
+        expect(options).toEqual({ strict: true });
+      },
+    } as unknown as AgentRuntime;
+    const frames = await collectStream(sourceRuntime);
+    expect(databaseClosed).toBe(true);
+    expect(decodeFrame(frames[0] as Buffer)).toMatchObject({
+      components: { database: { kind: "pglite-files" } },
+    });
+
+    process.env.ELIZA_STATE_DIR = target;
+    process.env.PGLITE_DATA_DIR = targetPgliteDir;
+    const targetRuntime = {
+      adapter: {
+        checkpointAndCloseForSnapshot: async () => undefined,
+      },
+      agentId: AGENT_ID,
+      character: { name: "Real PGlite Restore Test Agent" },
+      getSetting: () => null,
+      stop: async (options: { strict?: boolean }) => {
+        expect(options).toEqual({ strict: true });
+      },
+    } as unknown as AgentRuntime;
+    await expect(
+      restoreAgentSnapshotStream(
+        targetRuntime,
+        asInput(frames),
+        UPGRADE_BINDING,
+      ),
+    ).resolves.toMatchObject({ success: true });
+
+    const restored = new PGlite(targetPgliteDir);
+    try {
+      await restored.waitReady;
+      const result = await restored.query<{ id: number; payload: string }>(
+        "SELECT id, payload FROM snapshot_probe ORDER BY id",
+      );
+      expect(result.rows).toEqual([{ id: 1, payload: "captured" }]);
+    } finally {
+      await restored.close();
+    }
   });
 
   test("rejects corrupt, truncated, reordered, and non-canonical streams before apply", async () => {

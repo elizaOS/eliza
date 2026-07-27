@@ -7,6 +7,7 @@ import type http from "node:http";
 import {
   type AgentRuntime,
   ElizaError,
+  getSnapshotCaptureBarrier,
   type IAgentRuntime,
   logger,
   readRequestBody,
@@ -15,11 +16,11 @@ import {
 } from "@elizaos/core";
 import type { ElizaConfig } from "../config/config.ts";
 import {
-  type AgentBackupStateData,
   type AgentSnapshotUpgradeBinding,
   createAgentSnapshot,
   parseAgentSnapshotRequest,
   restoreAgentSnapshot,
+  validateAgentSnapshotForRestore,
 } from "../services/agent-backup.ts";
 import {
   beginCandidateSnapshotRestore,
@@ -31,6 +32,7 @@ import {
 import {
   createAgentSnapshotStream,
   restoreAgentSnapshotStream,
+  runExclusiveSnapshotRestore,
   validateAgentSnapshotStream,
 } from "../services/agent-snapshot-stream.ts";
 import {
@@ -41,20 +43,6 @@ import {
 const MAX_SNAPSHOT_REQUEST_BODY_BYTES = 4 * 1024;
 export const AGENT_BACKUP_V1_MAX_BODY_BYTES = 128 * 1024 * 1024;
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-function isAgentBackupStateData(value: unknown): value is AgentBackupStateData {
-  return (
-    isRecord(value) &&
-    Array.isArray(value.memories) &&
-    isRecord(value.config) &&
-    isRecord(value.workspaceFiles) &&
-    isRecord(value.manifest)
-  );
-}
-
 function protocolStatus(error: unknown): number {
   if (
     error instanceof ElizaError &&
@@ -64,6 +52,15 @@ function protocolStatus(error: unknown): number {
       error.code === "AGENT_SNAPSHOT_RESTORE_NOT_ENABLED")
   ) {
     return 409;
+  }
+  if (
+    error instanceof ElizaError &&
+    (error.code === "AGENT_SNAPSHOT_MUTATION_ADMISSION_CLOSED" ||
+      error.code === "AGENT_SNAPSHOT_CAPTURE_ALREADY_STARTED" ||
+      error.code === "AGENT_SNAPSHOT_DEVICE_BRIDGE_ACTIVE" ||
+      error.code === "AGENT_SNAPSHOT_DEVICE_BRIDGE_GUARD_UNAVAILABLE")
+  ) {
+    return 503;
   }
   return error instanceof ElizaError &&
     (error.code === "AGENT_SNAPSHOT_STREAM_INVALID" ||
@@ -250,7 +247,12 @@ export async function handleAgentSnapshotRoutes(args: {
         }
         await sendSnapshotStream(req, res, runtime, request.binding);
       } else {
-        sendJson(res, await createAgentSnapshot(runtime, config, request));
+        const admission = getSnapshotCaptureBarrier(runtime).admitMutation();
+        try {
+          sendJson(res, await createAgentSnapshot(runtime, config, request));
+        } finally {
+          admission.release();
+        }
       }
     } catch (error) {
       // error-policy:J1 The HTTP boundary translates capture/protocol failures
@@ -311,12 +313,16 @@ export async function handleAgentSnapshotRoutes(args: {
         severity: "fatal",
       });
     }
-    const body = await readLegacyRestoreRequest(req);
-    if (!isAgentBackupStateData(body)) {
-      sendJsonError(res, "Invalid backup snapshot payload", 400);
-      return true;
-    }
-    sendJson(res, await restoreAgentSnapshot(runtime, body));
+    const body = await validateAgentSnapshotForRestore(
+      runtime,
+      await readLegacyRestoreRequest(req),
+    );
+    sendJson(
+      res,
+      await runExclusiveSnapshotRestore(runtime, () =>
+        restoreAgentSnapshot(runtime, body),
+      ),
+    );
   } catch (error) {
     // error-policy:J1 The HTTP boundary maps malformed transfers to 400 while
     // preserving operational restore failures as observable server errors.

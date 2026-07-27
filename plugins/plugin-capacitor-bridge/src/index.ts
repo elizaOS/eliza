@@ -20,11 +20,13 @@ import type { Plugin } from "@elizaos/core";
 import { CapacitorMobileDeviceBridgeService } from "./mobile-device-bridge-bootstrap.js";
 
 export {
+	assertMobileDeviceBridgeSnapshotQuiescent,
 	attachMobileDeviceBridgeToServer,
 	CapacitorMobileDeviceBridgeService,
 	ensureMobileDeviceBridgeInferenceHandlers,
 	getMobileDeviceBridgeStatus,
 	loadMobileDeviceBridgeModel,
+	type MobileDeviceBridgeServerOptions,
 	type MobileDeviceBridgeStatus,
 	mobileDeviceBridge,
 	unloadMobileDeviceBridgeModel,

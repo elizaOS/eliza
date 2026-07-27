@@ -154,6 +154,7 @@ export * from "./services/agentEvent";
 export { AgentEventService } from "./services/agentEvent";
 export * from "./services/message";
 export * from "./services/post-delivery-task-tracker";
+export * from "./services/snapshot-capture-barrier";
 export * from "./services/trajectories";
 export * from "./settings";
 // Settings-debug sanitizers are pure functions (process access is feature-detected),

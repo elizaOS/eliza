@@ -351,6 +351,7 @@ import {
 	resolveOptimizedPromptForRuntime,
 } from "./optimized-prompt-resolver";
 import { trackPostDeliveryTask } from "./post-delivery-task-tracker.ts";
+import { getSnapshotCaptureBarrier } from "./snapshot-capture-barrier.ts";
 
 export {
 	findWebLookupActionName,
@@ -10221,6 +10222,25 @@ export class DefaultMessageService implements IMessageService {
 	 * Main message handling entry point
 	 */
 	async handleMessage(
+		runtime: IAgentRuntime,
+		message: Memory,
+		callback?: HandlerCallback,
+		options?: MessageProcessingOptions,
+	): Promise<MessageProcessingResult> {
+		const admission = getSnapshotCaptureBarrier(runtime).admitMutation();
+		try {
+			return await this.handleAdmittedMessage(
+				runtime,
+				message,
+				callback,
+				options,
+			);
+		} finally {
+			admission.release();
+		}
+	}
+
+	private async handleAdmittedMessage(
 		runtime: IAgentRuntime,
 		message: Memory,
 		callback?: HandlerCallback,

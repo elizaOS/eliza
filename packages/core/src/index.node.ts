@@ -351,6 +351,7 @@ export * from "./services/setup-cli";
 export * from "./services/setup-rpc";
 // Export setup services
 export * from "./services/setup-state";
+export * from "./services/snapshot-capture-barrier";
 // TaskService is exported so hosts and tests can `instanceof`-check the
 // runtime-registered instance; a relative src import would create a second
 // class identity against the built package and always fail that check.
