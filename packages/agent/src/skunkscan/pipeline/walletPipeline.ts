@@ -34,6 +34,7 @@ import { analyzeWalletTransactionRisk } from "../analyzers/transactionRisk";
 import { analyzeWalletTrust } from "../analyzers/trust";
 import { analyzeWalletWhaleStatus } from "../analyzers/whale";
 import { getSolanaNftHoldings } from "../helius";
+import { parseSolanaTransaction } from "../parsers/transaction";
 import { getWalletIntelligenceSources } from "../sources/registry";
 import {
   WalletPipelineInput,
@@ -55,7 +56,7 @@ export async function runWalletPipeline(
   const funding = analyzeWalletFunding(
     input.chain,
     input.address,
-    input.firstParsedTransaction,
+    parseSolanaTransaction(input.firstParsedTransaction),
   );
 
   const portfolio = analyzeWalletPortfolio(
