@@ -80,6 +80,14 @@ const STATIC_SOLANA_LABELS: Record<string, WalletLabel> = {
     confidence: "high",
     source: "static_registry",
   },
+
+  "5tzFkiKscXHK5ZXCGbXZxdw7gTjjD1mBwuoFbhUvuAi9": {
+    address: "5tzFkiKscXHK5ZXCGbXZxdw7gTjjD1mBwuoFbhUvuAi9",
+    label: "Binance 2",
+    category: "centralized_exchange",
+    confidence: "high",
+    source: "static_registry",
+  },
 };
 
 export function lookupStaticSolanaWalletLabel(

@@ -112,6 +112,7 @@ export async function runWalletPipeline(
     funding,
     input.address,
     input.recentParsedTransactions,
+    input.chain,
   );
 
   const custodyProfile = analyzeWalletCustodyProfile(

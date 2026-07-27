@@ -71,12 +71,20 @@ export function analyzeWalletEvidenceRecords(
         : [],
   });
 
+  const fundingSourceLabelName =
+    funding.fundingSourceLabel &&
+    funding.fundingSourceLabel.label !== "Unknown Wallet"
+      ? funding.fundingSourceLabel.label
+      : null;
+
   records.push({
     id: "funding-assessment",
     category: "funding",
     fact:
       funding.fundingWallet
-        ? `Initial funding was attributed to ${funding.fundingWallet} and classified as ${funding.fundingSourceType}.`
+        ? fundingSourceLabelName
+          ? `Initial funding was attributed to ${fundingSourceLabelName} and classified as ${funding.fundingSourceType}.`
+          : `Initial funding was attributed to ${funding.fundingWallet} and classified as ${funding.fundingSourceType}.`
         : "No initial incoming SOL funding transfer was identified in the first known transaction.",
     evidenceType:
       funding.fundingWallet
