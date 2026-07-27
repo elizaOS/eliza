@@ -504,11 +504,14 @@ export function sanitizeManagedDedicatedCanaryDiagnostic(
     ) {
       throw new Error(`jobs[${index}] recovery status is invalid`);
     }
-    if (recovery && (startedAt === null || completedAt !== null)) {
+    if (
+      (recovery || terminalFailure) &&
+      (startedAt === null || completedAt !== null)
+    ) {
       throw new Error(`jobs[${index}] recovery timestamps disagree`);
     }
     if (
-      recovery &&
+      (recovery || terminalFailure) &&
       job.result !== null &&
       (containerStopped !== false ||
         rowDeleted !== false ||

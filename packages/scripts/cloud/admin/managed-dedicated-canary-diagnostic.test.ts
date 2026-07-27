@@ -339,6 +339,7 @@ describe("managed dedicated canary diagnostic", () => {
     agent.errorMessage = `Deletion permanently failed after 3 attempts: ${error}`;
     job.error = error;
     job.result = null;
+    job.completedAt = null;
 
     expect(() =>
       canonicalizeManagedDedicatedCanaryDiagnostic(
@@ -359,6 +360,7 @@ describe("managed dedicated canary diagnostic", () => {
     agent.errorCount = 0;
     job.error = error;
     job.result = null;
+    job.completedAt = null;
 
     const canonical = canonicalizeManagedDedicatedCanaryDiagnostic(
       JSON.stringify(input),
@@ -393,6 +395,7 @@ describe("managed dedicated canary diagnostic", () => {
     agent.errorCount = 0;
     job.error = error;
     job.result = null;
+    job.completedAt = null;
 
     const canonical = canonicalizeManagedDedicatedCanaryDiagnostic(
       JSON.stringify(input),
@@ -462,6 +465,63 @@ describe("managed dedicated canary diagnostic", () => {
       ).toThrow("terminal counters disagree");
     },
   );
+
+  test.each([
+    ["missing startedAt", null, null],
+    [
+      "unexpected completedAt",
+      "2026-07-26T23:10:31.000Z",
+      "2026-07-26T23:11:31.000Z",
+    ],
+  ])(
+    "rejects terminal recovery with %s",
+    (_name, startedAt, completedAt) => {
+      const input = failedDeleteInput();
+      const agent = input.agent as Record<string, unknown>;
+      const [job] = input.jobs as Record<string, unknown>[];
+      agent.status = "deletion_pending";
+      agent.errorMessage = null;
+      agent.errorCount = 0;
+      job.error = "Job timed out 3 times - max attempts reached";
+      job.result = null;
+      job.startedAt = startedAt;
+      job.completedAt = completedAt;
+
+      expect(() =>
+        sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX),
+      ).toThrow("recovery timestamps disagree");
+    },
+  );
+
+  test.each([
+    [
+      "successful result",
+      { containerStopped: true, rowDeleted: true, error: null },
+    ],
+    [
+      "database failure",
+      {
+        containerStopped: false,
+        rowDeleted: false,
+        error: "database connection failed",
+      },
+    ],
+  ])("rejects terminal recovery with %s", (_name, result) => {
+    const input = failedDeleteInput();
+    const agent = input.agent as Record<string, unknown>;
+    const [job] = input.jobs as Record<string, unknown>[];
+    agent.status = "deletion_pending";
+    agent.errorMessage = null;
+    agent.errorCount = 0;
+    job.error =
+      "Job interrupted by worker restart 3 times - max attempts reached";
+    job.result = result;
+    job.completedAt = null;
+
+    expect(() =>
+      sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX),
+    ).toThrow("recovery result is not a partial failure");
+  });
 
   test.each([
     [
@@ -851,6 +911,43 @@ describe("managed dedicated canary diagnostic", () => {
         sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX).jobs[0],
       ).toMatchObject({
         recoveryCode: "worker_restart_recovered",
+        resultErrorCode: expectedCode,
+        containerStopped: false,
+        rowDeleted: false,
+      });
+    },
+  );
+
+  test.each([
+    ["Failed to delete sandbox", "sandbox_stop_failed"],
+    [
+      "Agent replacement cleanup is still pending",
+      "replacement_cleanup_pending",
+    ],
+    ["Agent provisioning is in progress", "provisioning_in_progress"],
+    ["Agent deletion ownership changed", "lifecycle_conflict"],
+  ])(
+    "accepts the source-owned partial terminal result: %s",
+    (message, expectedCode) => {
+      const input = failedDeleteInput();
+      const agent = input.agent as Record<string, unknown>;
+      const [job] = input.jobs as Record<string, unknown>[];
+      agent.status = "deletion_pending";
+      agent.errorMessage = null;
+      agent.errorCount = 0;
+      job.error = "Job timed out 3 times - max attempts reached";
+      job.result = {
+        containerStopped: false,
+        rowDeleted: false,
+        error: message,
+      };
+      job.completedAt = null;
+
+      expect(
+        sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX).jobs[0],
+      ).toMatchObject({
+        errorCode: "timeout",
+        recoveryCode: "none",
         resultErrorCode: expectedCode,
         containerStopped: false,
         rowDeleted: false,
