@@ -37,6 +37,10 @@ function todosView(page: Page): Locator {
   return page.getByText(/Today \(\d+\)/).first();
 }
 
+function walletView(page: Page): Locator {
+  return page.getByTestId("wallet-shell").first();
+}
+
 // The exact `eliza:navigate:view` detail the renderer's WS handler emits for a
 // plain `show`/navigate frame (startup-phase-hydrate.ts:417-442): a navigate
 // frame with no `action` and no `alwaysOnTop` normalizes to action:undefined,
@@ -118,11 +122,7 @@ const VIEW_SWITCH_CASES: readonly ViewSwitchCase[] = [
     command: "show my wallet",
     view: { id: "wallet", path: "/wallet", label: "Wallet" },
     expectedPath: "/wallet",
-    onView: (page) =>
-      page
-        .getByTestId("wallet-shell")
-        .first()
-        .or(page.getByRole("heading", { name: "Wallet" }).first()),
+    onView: walletView,
   },
   {
     name: 'PASSIVE: "what\'s on my calendar" opens the calendar view',
@@ -186,11 +186,7 @@ const VIEW_SWITCH_CASES: readonly ViewSwitchCase[] = [
     command: "montre-moi mon portefeuille",
     view: { id: "wallet", path: "/wallet", label: "Wallet" },
     expectedPath: "/wallet",
-    onView: (page) =>
-      page
-        .getByTestId("wallet-shell")
-        .first()
-        .or(page.getByRole("heading", { name: "Wallet" }).first()),
+    onView: walletView,
   },
   {
     name: 'PASSIVE (es): "revisa mi correo" opens the inbox',
@@ -270,11 +266,7 @@ const VIEW_SWITCH_CASES: readonly ViewSwitchCase[] = [
     command: "abra minha carteira",
     view: { id: "wallet", path: "/wallet", label: "Wallet" },
     expectedPath: "/wallet",
-    onView: (page) =>
-      page
-        .getByTestId("wallet-shell")
-        .first()
-        .or(page.getByRole("heading", { name: "Wallet" }).first()),
+    onView: walletView,
   },
   {
     name: 'ACTIVE (de): "öffne meine brieftasche" opens the wallet view',
@@ -282,11 +274,7 @@ const VIEW_SWITCH_CASES: readonly ViewSwitchCase[] = [
     command: "öffne meine brieftasche",
     view: { id: "wallet", path: "/wallet", label: "Wallet" },
     expectedPath: "/wallet",
-    onView: (page) =>
-      page
-        .getByTestId("wallet-shell")
-        .first()
-        .or(page.getByRole("heading", { name: "Wallet" }).first()),
+    onView: walletView,
   },
   {
     name: 'ACTIVE (ja): "ウォレットを開いて" opens the wallet view',
@@ -294,11 +282,7 @@ const VIEW_SWITCH_CASES: readonly ViewSwitchCase[] = [
     command: "ウォレットを開いて",
     view: { id: "wallet", path: "/wallet", label: "Wallet" },
     expectedPath: "/wallet",
-    onView: (page) =>
-      page
-        .getByTestId("wallet-shell")
-        .first()
-        .or(page.getByRole("heading", { name: "Wallet" }).first()),
+    onView: walletView,
   },
   {
     name: 'ACTIVE (ko): "지갑 열어" opens the wallet view',
@@ -306,11 +290,7 @@ const VIEW_SWITCH_CASES: readonly ViewSwitchCase[] = [
     command: "지갑 열어",
     view: { id: "wallet", path: "/wallet", label: "Wallet" },
     expectedPath: "/wallet",
-    onView: (page) =>
-      page
-        .getByTestId("wallet-shell")
-        .first()
-        .or(page.getByRole("heading", { name: "Wallet" }).first()),
+    onView: walletView,
   },
   {
     name: 'ACTIVE (vi): "mở ví" opens the wallet view',
@@ -318,11 +298,7 @@ const VIEW_SWITCH_CASES: readonly ViewSwitchCase[] = [
     command: "mở ví",
     view: { id: "wallet", path: "/wallet", label: "Wallet" },
     expectedPath: "/wallet",
-    onView: (page) =>
-      page
-        .getByTestId("wallet-shell")
-        .first()
-        .or(page.getByRole("heading", { name: "Wallet" }).first()),
+    onView: walletView,
   },
   {
     name: 'ACTIVE (tl): "buksan ang wallet" opens the wallet view',
@@ -330,11 +306,7 @@ const VIEW_SWITCH_CASES: readonly ViewSwitchCase[] = [
     command: "buksan ang wallet",
     view: { id: "wallet", path: "/wallet", label: "Wallet" },
     expectedPath: "/wallet",
-    onView: (page) =>
-      page
-        .getByTestId("wallet-shell")
-        .first()
-        .or(page.getByRole("heading", { name: "Wallet" }).first()),
+    onView: walletView,
   },
 ];
 
@@ -641,17 +613,14 @@ for (const testCase of VIEW_SWITCH_CASES) {
   });
 }
 
-// Regression guard for the navigate-event normalization contract the renderer
-// relies on: a raw agent navigate (viewId only, no viewPath) must still resolve
-// to `/apps/<viewId>` via pathForNavigateViewDetail(). This is the fallback path
-// the live agent uses when it sends only a view id. Runs in both tiers because
-// it dispatches the same DOM event the WS handler emits.
-test("agent navigate by viewId-only resolves to /apps/<viewId>", async ({
+// A viewId-only navigate must resolve through the loaded registry so plugin
+// views use their declared canonical route instead of the unknown-view fallback.
+test("agent navigate by viewId-only resolves the registered canonical path", async ({
   page,
 }) => {
   test.skip(
     LIVE_STACK,
-    "viewId-only fallback is a renderer-normalization guard; the live agent path is covered by the cases above",
+    "viewId-only registry resolution is a renderer guard; the live agent path is covered by the cases above",
   );
   await openAppPath(page, "/chat");
   await sendChatCommand(page, "open the model tester");
@@ -663,7 +632,7 @@ test("agent navigate by viewId-only resolves to /apps/<viewId>", async ({
     alwaysOnTop: false,
   });
 
-  await expect(page).toHaveURL(/\/apps\/model-tester(?:[?#]|$)/, {
+  await expect(page).toHaveURL(/\/model-tester(?:[?#]|$)/, {
     timeout: 30_000,
   });
   await expect(page.getByTestId("model-tester-shell").first()).toBeVisible({
