@@ -1579,6 +1579,7 @@ export class ProvisioningJobService {
               eq(agentSandboxes.id, params.agentId),
               eq(agentSandboxes.organization_id, params.organizationId),
               ...identityPredicates,
+              isNull(agentSandboxes.rollback_standby_state),
             ),
           )
           .returning({ id: agentSandboxes.id });
@@ -2383,7 +2384,9 @@ export class ProvisioningJobService {
           existingData.restoreValidationId !== data.restoreValidationId ||
           existingData.restoreValidationAggregateSha256 !== data.restoreValidationAggregateSha256 ||
           existingData.restoreValidatedCandidateProviderSandboxId !==
-            data.restoreValidatedCandidateProviderSandboxId
+            data.restoreValidatedCandidateProviderSandboxId ||
+          existingData.restoreValidatedCandidateReplacementAttemptId !==
+            data.restoreValidatedCandidateReplacementAttemptId
         ) {
           throw new ApiError(
             409,
@@ -2432,6 +2435,32 @@ export class ProvisioningJobService {
           409,
           "session_not_ready",
           `Agent ${data.agentId} no longer matches the retained rollback standby`,
+        );
+      }
+
+      const [conflict] = await tx
+        .select({ id: jobs.id, type: jobs.type, status: jobs.status })
+        .from(jobs)
+        .where(
+          and(
+            eq(jobs.organization_id, data.organizationId),
+            eq(jobs.agent_id, data.agentId),
+            inArray(jobs.type, EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES),
+            sql`${jobs.status} IN ('pending', 'in_progress')`,
+          ),
+        )
+        .orderBy(desc(jobs.created_at))
+        .limit(1);
+      if (conflict) {
+        throw new ApiError(
+          409,
+          "session_not_ready",
+          `Agent ${data.agentId} has conflicting ${conflict.type} job ${conflict.id}`,
+          {
+            conflictingJobId: conflict.id,
+            conflictingJobType: conflict.type,
+            conflictingJobStatus: conflict.status,
+          },
         );
       }
 
@@ -3295,7 +3324,7 @@ export class ProvisioningJobService {
           // row reaches deletion_failed the only writer of error_count is this
           // path (markError only touches `error` rows), so the count tracks
           // failed delete sweeps. A fresh user-initiated delete resets it.
-          await tx
+          const protectedRows = await tx
             .update(agentSandboxes)
             .set({
               status: "deletion_failed",
@@ -3303,11 +3332,27 @@ export class ProvisioningJobService {
               error_count: sql`${agentSandboxes.error_count} + 1`,
               updated_at: new Date(),
             })
-            .where(eq(agentSandboxes.id, agentId));
-          logger.warn(
-            "[provisioning-jobs] Marked sandbox as deletion_failed after permanent failure",
-            { jobId: job.id, agentId },
-          );
+            .where(
+              and(
+                eq(agentSandboxes.id, agentId),
+                eq(agentSandboxes.organization_id, job.organization_id),
+                isNull(agentSandboxes.rollback_standby_state),
+                isNotNull(agentSandboxes.deletion_attempt_id),
+                sql`${agentSandboxes.status} IN ('deletion_pending', 'deletion_failed')`,
+              ),
+            )
+            .returning({ id: agentSandboxes.id });
+          if (protectedRows.length === 1) {
+            logger.warn(
+              "[provisioning-jobs] Marked sandbox as deletion_failed after permanent failure",
+              { jobId: job.id, agentId },
+            );
+          } else {
+            logger.info(
+              "[provisioning-jobs] Skipped permanent delete failure writeback after ownership changed",
+              { jobId: job.id, agentId },
+            );
+          }
         };
       }
       default:
@@ -4409,6 +4454,8 @@ export class ProvisioningJobService {
                 restoreValidationAggregateSha256: data.restoreValidationAggregateSha256,
                 restoreValidatedCandidateProviderSandboxId:
                   data.restoreValidatedCandidateProviderSandboxId,
+                restoreValidatedCandidateReplacementAttemptId:
+                  data.restoreValidatedCandidateReplacementAttemptId,
               }
             : {}),
           startedAt,
@@ -5099,6 +5146,7 @@ export class ProvisioningJobService {
           // deletion_pending forever. Re-arm both; enqueueAgentDeleteOnce is
           // idempotent and re-flips the row to deletion_pending.
           sql`${agentSandboxes.status} IN ('deletion_failed', 'deletion_pending')`,
+          isNull(agentSandboxes.rollback_standby_state),
           sql`${agentSandboxes.updated_at} < ${cutoff}`,
           // REQUIRED now that deletion_pending is in scope: never re-arm a delete
           // that is legitimately in-flight. (deletion_failed rows never have an
