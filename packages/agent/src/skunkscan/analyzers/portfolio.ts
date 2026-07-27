@@ -1,5 +1,5 @@
 import { getSolanaTokenMetadata } from "../providers/tokenMetadata";
-import { TokenPrice } from "../providers/priceProvider";
+import { TokenPrice, WRAPPED_SOL_MINT } from "../providers/priceProvider";
 import {
   WalletBalance,
   WalletPortfolioSummary,
@@ -12,6 +12,13 @@ export function analyzeWalletPortfolio(
   tokenHoldings: WalletTokenHolding[],
   tokenPrices: Record<string, TokenPrice> = {},
 ): WalletPortfolioSummary {
+  const nativePriceUsd = tokenPrices[WRAPPED_SOL_MINT]?.priceUsd ?? null;
+
+  const nativeEstimatedUsdValue =
+    nativePriceUsd !== null
+      ? Number((nativeBalance.nativeAmount * nativePriceUsd).toFixed(2))
+      : null;
+
   const topTokenHoldings: WalletPortfolioToken[] = tokenHoldings
     .map((token) => {
       const metadata = getSolanaTokenMetadata(token.mint);
@@ -40,7 +47,7 @@ export function analyzeWalletPortfolio(
     })
     .slice(0, 10);
 
-  const estimatedTotalUsdValue = tokenHoldings.reduce((total, token) => {
+  const tokenEstimatedUsdValue = tokenHoldings.reduce((total, token) => {
     const price = tokenPrices[token.mint]?.priceUsd ?? null;
 
     if (price === null) {
@@ -50,9 +57,14 @@ export function analyzeWalletPortfolio(
     return total + token.amount * price;
   }, 0);
 
-  const hasAnyUsdPrice = tokenHoldings.some(
-    (token) => tokenPrices[token.mint]?.priceUsd !== null,
-  );
+  const estimatedTotalUsdValue =
+    tokenEstimatedUsdValue + (nativeEstimatedUsdValue ?? 0);
+
+  const hasAnyUsdPrice =
+    nativeEstimatedUsdValue !== null ||
+    tokenHoldings.some(
+      (token) => tokenPrices[token.mint]?.priceUsd !== null,
+    );
 
   const largestHoldingValue =
     topTokenHoldings.length > 0
@@ -97,19 +109,30 @@ export function analyzeWalletPortfolio(
 
   const notes =
     tokenHoldings.length === 0
-      ? ["No SPL token holdings were found for this wallet."]
+      ? nativeEstimatedUsdValue !== null
+        ? [
+            "No SPL token holdings were found for this wallet.",
+            "Portfolio valuation reflects the native SOL balance only.",
+          ]
+        : [
+            "No SPL token holdings were found for this wallet.",
+            "The native SOL balance could not be priced.",
+          ]
       : hasAnyUsdPrice
         ? [
-            "Portfolio valuation is estimated using available token prices.",
+            "Portfolio valuation is estimated using available token and native SOL prices.",
             "Some tokens may not have available USD pricing.",
           ]
         : [
-            "No token USD prices were available for this wallet yet.",
+            "No token or native SOL USD prices were available for this wallet yet.",
             "Portfolio concentration is estimated without USD valuation.",
           ];
 
   return {
-    nativeBalance,
+    nativeBalance: {
+      ...nativeBalance,
+      estimatedUsdValue: nativeEstimatedUsdValue,
+    },
     tokenCount: tokenHoldings.length,
     largestHoldingPercentage,
     diversityScore,

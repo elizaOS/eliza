@@ -323,6 +323,7 @@ export type WalletBalance = {
   nativeAmount: number;
   nativeSymbol: string;
   rawAmount?: number;
+  estimatedUsdValue?: number | null;
 };
 
 export type WalletRecentTransaction = {

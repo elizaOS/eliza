@@ -2,7 +2,10 @@ import {
   getSolanaParsedTransactions,
 } from "./helius";
 import { requireBlockchainConnector } from "./chains/registry";
-import { getSolanaTokenPrices } from "./providers/priceProvider";
+import {
+  getSolanaTokenPrices,
+  WRAPPED_SOL_MINT,
+} from "./providers/priceProvider";
 import { createWalletInvestigation } from "./investigations/walletIntegration";
 import { runWalletPipeline } from "./pipeline/walletPipeline";
 import {
@@ -189,9 +192,10 @@ const tokenHoldings: WalletTokenHolding[] =
     },
   );
       
-        const tokenPrices = await getSolanaTokenPrices(
-  tokenHoldings.map((token) => token.mint),
-);
+        const tokenPrices = await getSolanaTokenPrices([
+  ...tokenHoldings.map((token) => token.mint),
+  WRAPPED_SOL_MINT,
+]);
 
         const walletBalance: WalletBalance = {
           nativeAmount: balance.sol,

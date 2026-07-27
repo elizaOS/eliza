@@ -1,3 +1,6 @@
+export const WRAPPED_SOL_MINT =
+  "So11111111111111111111111111111111111111112";
+
 export type TokenPrice = {
   mint: string;
   priceUsd: number | null;
