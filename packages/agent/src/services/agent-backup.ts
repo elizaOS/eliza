@@ -116,6 +116,12 @@ export type AgentBackupManifest = AgentBackupManifestV1 | AgentBackupManifestV2;
 export type AgentSnapshotPurpose = "manual" | "auto" | "pre-upgrade";
 export type AgentSnapshotTransfer = "chunked-v1";
 
+export interface AgentSnapshotSourceAttestation {
+  sourceEnvironmentRevision: number;
+  sourceImageDigest: string;
+  sourceSandboxId: string;
+}
+
 export interface AgentSnapshotUpgradeBinding {
   backupId: string;
   captureNonce: string;
@@ -152,6 +158,57 @@ function invalidSnapshotRequest(message: string): ElizaError {
     code: "AGENT_SNAPSHOT_REQUEST_INVALID",
     severity: "fatal",
   });
+}
+
+export function validateAgentSnapshotSourceAttestation(
+  input: unknown,
+): AgentSnapshotSourceAttestation {
+  if (input === null || typeof input !== "object" || Array.isArray(input)) {
+    throw invalidSnapshotRequest(
+      "Snapshot source attestation must be an object",
+    );
+  }
+  const record = input as Record<string, unknown>;
+  const expectedKeys = [
+    "sourceEnvironmentRevision",
+    "sourceImageDigest",
+    "sourceSandboxId",
+  ];
+  const actualKeys = Object.keys(record).sort();
+  if (
+    actualKeys.length !== expectedKeys.length ||
+    actualKeys.some((key, index) => key !== expectedKeys[index])
+  ) {
+    throw invalidSnapshotRequest(
+      "Snapshot source attestation has unsupported or missing fields",
+    );
+  }
+  if (
+    typeof record.sourceEnvironmentRevision !== "number" ||
+    !Number.isSafeInteger(record.sourceEnvironmentRevision) ||
+    record.sourceEnvironmentRevision < 0
+  ) {
+    throw invalidSnapshotRequest(
+      "Snapshot source environment revision is malformed",
+    );
+  }
+  if (
+    typeof record.sourceImageDigest !== "string" ||
+    !SNAPSHOT_BINDING_DIGEST_PATTERN.test(record.sourceImageDigest)
+  ) {
+    throw invalidSnapshotRequest(
+      "Snapshot source image digest is not canonical",
+    );
+  }
+  if (
+    typeof record.sourceSandboxId !== "string" ||
+    !SNAPSHOT_BINDING_UUID_PATTERN.test(record.sourceSandboxId)
+  ) {
+    throw invalidSnapshotRequest(
+      "Snapshot source placement identity is malformed",
+    );
+  }
+  return record as unknown as AgentSnapshotSourceAttestation;
 }
 
 export function validateAgentSnapshotUpgradeBinding(
@@ -194,26 +251,18 @@ export function validateAgentSnapshotUpgradeBinding(
   ) {
     throw invalidSnapshotRequest("Snapshot capture nonce is malformed");
   }
+  validateAgentSnapshotSourceAttestation({
+    sourceEnvironmentRevision: record.sourceEnvironmentRevision,
+    sourceImageDigest: record.sourceImageDigest,
+    sourceSandboxId: record.sourceSandboxId,
+  });
   if (
-    typeof record.sourceEnvironmentRevision !== "number" ||
-    !Number.isSafeInteger(record.sourceEnvironmentRevision) ||
-    record.sourceEnvironmentRevision < 0
-  ) {
-    throw invalidSnapshotRequest(
-      "Snapshot source environment revision is malformed",
-    );
-  }
-  if (
-    typeof record.sourceImageDigest !== "string" ||
-    !SNAPSHOT_BINDING_DIGEST_PATTERN.test(record.sourceImageDigest) ||
     typeof record.targetImageDigest !== "string" ||
     !SNAPSHOT_BINDING_DIGEST_PATTERN.test(record.targetImageDigest)
   ) {
     throw invalidSnapshotRequest("Snapshot image digest binding is malformed");
   }
   if (
-    typeof record.sourceSandboxId !== "string" ||
-    !SNAPSHOT_BINDING_SANDBOX_PATTERN.test(record.sourceSandboxId) ||
     typeof record.targetSandboxId !== "string" ||
     !SNAPSHOT_BINDING_SANDBOX_PATTERN.test(record.targetSandboxId)
   ) {

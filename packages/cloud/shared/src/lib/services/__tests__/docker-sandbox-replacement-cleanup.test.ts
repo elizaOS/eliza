@@ -9,6 +9,7 @@ import { dockerNodeManager } from "../docker-node-manager";
 import * as dockerPortAllocation from "../docker-port-allocation";
 import {
   buildSnapshotRestoreBindingEnvironment,
+  buildSnapshotSourceAttestationEnvironment,
   createDockerContainerAfterReplacementIntent,
   DockerSandboxProvider,
 } from "../docker-sandbox-provider";
@@ -116,7 +117,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
         captureNonce: "01".repeat(32),
         sourceEnvironmentRevision: 7,
         sourceImageDigest: `sha256:${"02".repeat(32)}`,
-        sourceSandboxId: "source-sandbox",
+        sourceSandboxId: "33333333-3333-4333-8333-333333333333",
         targetImageDigest: `sha256:${"03".repeat(32)}`,
       },
       targetSandboxId: CONTAINER_NAME,
@@ -129,7 +130,7 @@ describe("DockerSandboxProvider replacement cleanup", () => {
       ELIZA_SNAPSHOT_RESTORE_PROVIDER_SANDBOX_ID: CONTAINER_NAME,
       ELIZA_SNAPSHOT_RESTORE_SOURCE_ENVIRONMENT_REVISION: "7",
       ELIZA_SNAPSHOT_RESTORE_SOURCE_IMAGE_DIGEST: `sha256:${"02".repeat(32)}`,
-      ELIZA_SNAPSHOT_RESTORE_SOURCE_SANDBOX_ID: "source-sandbox",
+      ELIZA_SNAPSHOT_RESTORE_SOURCE_SANDBOX_ID: "33333333-3333-4333-8333-333333333333",
       ELIZA_SNAPSHOT_RESTORE_TARGET_IMAGE_DIGEST: `sha256:${"03".repeat(32)}`,
     });
 
@@ -152,12 +153,57 @@ describe("DockerSandboxProvider replacement cleanup", () => {
           captureNonce: "01".repeat(32),
           sourceEnvironmentRevision: 7,
           sourceImageDigest: "02".repeat(32),
-          sourceSandboxId: "source-sandbox",
+          sourceSandboxId: "33333333-3333-4333-8333-333333333333",
           targetImageDigest: `sha256:${"03".repeat(32)}`,
         },
         targetSandboxId: CONTAINER_NAME,
       }),
     ).toThrow("binding seed is malformed");
+  });
+
+  test("attests the exact digest-pinned provider placement and rejects caller substitution", () => {
+    const digest = `sha256:${"04".repeat(32)}`;
+    expect(
+      buildSnapshotSourceAttestationEnvironment({
+        environmentVars: { USER_SETTING: "preserved" },
+        placementId: ATTEMPT_ID,
+        resolvedImage: `ghcr.io/elizaos/eliza@${digest}`,
+        seed: {
+          environmentRevision: 9,
+          imageDigest: digest,
+        },
+      }),
+    ).toEqual({
+      ELIZA_SNAPSHOT_SOURCE_ENVIRONMENT_REVISION: "9",
+      ELIZA_SNAPSHOT_SOURCE_IMAGE_DIGEST: digest,
+      ELIZA_SNAPSHOT_SOURCE_SANDBOX_ID: ATTEMPT_ID,
+    });
+    expect(() =>
+      buildSnapshotSourceAttestationEnvironment({
+        environmentVars: {
+          ELIZA_SNAPSHOT_SOURCE_SANDBOX_ID: "55555555-5555-4555-8555-555555555555",
+        },
+        placementId: ATTEMPT_ID,
+        resolvedImage: `ghcr.io/elizaos/eliza@${digest}`,
+        seed: undefined,
+      }),
+    ).toThrow("is provider-owned");
+    for (const resolvedImage of [
+      "ghcr.io/elizaos/eliza:develop",
+      `ghcr.io/elizaos/eliza@sha256:${"05".repeat(32)}`,
+    ]) {
+      expect(() =>
+        buildSnapshotSourceAttestationEnvironment({
+          environmentVars: {},
+          placementId: ATTEMPT_ID,
+          resolvedImage,
+          seed: {
+            environmentRevision: 9,
+            imageDigest: digest,
+          },
+        }),
+      ).toThrow("does not match the pinned launch placement");
+    }
   });
 
   test("persists intent before remote create even when Docker commits without an SSH response", async () => {
