@@ -1,17 +1,22 @@
 /**
  * Bounded producer and staged consumer for schema-v2 pre-upgrade snapshots.
- * Capture hashes regular files before emitting a canonical descriptor, then
- * re-reads them in fixed chunks and commits only with a terminal aggregate.
- * Restore writes those chunks into an isolated staging directory and does not
- * touch active state until the complete descriptor, files, and trailer verify.
+ * Capture drains mutation ingress, strictly stops the runtime and database,
+ * then copies every local component into private immutable staging. Restore
+ * does not touch active state until the descriptor, files, and trailer verify.
  */
 import crypto from "node:crypto";
 import { constants as fsConstants } from "node:fs";
+import type { FileHandle } from "node:fs/promises";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
-import { ElizaError, logger } from "@elizaos/core";
+import {
+  ElizaError,
+  getSnapshotCaptureBarrier,
+  isMobilePlatform,
+  logger,
+} from "@elizaos/core";
 import { resolveConfigPath, resolveStateDir } from "../config/paths.ts";
 import {
   type AgentSnapshotSourceAttestation,
@@ -83,6 +88,23 @@ const PGLITE_VOLATILE_ROOT_FILES = new Set([
   "postmaster.opts",
   "postmaster.pid",
 ]);
+// The stream intentionally carries regular files only. PostgreSQL still
+// requires these standard directories when they were empty at checkpoint time.
+const PGLITE_REQUIRED_DIRECTORIES = [
+  "pg_commit_ts",
+  "pg_dynshmem",
+  "pg_logical/mappings",
+  "pg_logical/snapshots",
+  "pg_notify",
+  "pg_replslot",
+  "pg_serial",
+  "pg_snapshots",
+  "pg_stat",
+  "pg_tblspc",
+  "pg_twophase",
+  "pg_wal/archive_status",
+  "pg_wal/summaries",
+] as const;
 const FILE_COMPONENT_ORDER: readonly AgentSnapshotStreamFileComponent[] = [
   "database",
   "media",
@@ -95,6 +117,10 @@ const RESTORE_STAGING_PREFIX = "eliza-agent-snapshot-restore-";
 interface SnapshotPlanBudget {
   fileCount: number;
   pathBytes: number;
+}
+
+interface SnapshotStageBudget {
+  totalBytes: number;
 }
 
 function invalidStream(message: string, cause?: unknown): ElizaError {
@@ -502,115 +528,192 @@ async function collectPlannedFiles(params: {
   return result;
 }
 
-async function planSingleFile(params: {
-  absolutePath: string;
+async function stagePlannedFileSet(params: {
   budget: SnapshotPlanBudget;
   component: AgentSnapshotStreamFileComponent;
-  relativePath: string;
-}): Promise<PlannedSnapshotFile> {
-  const relativePath = normalizeRelativePath(params.relativePath);
-  const pathBytes = Buffer.byteLength(relativePath);
-  if (
-    pathBytes > AGENT_SNAPSHOT_STREAM_MAX_PATH_BYTES ||
-    params.budget.fileCount >= AGENT_SNAPSHOT_STREAM_MAX_FILES ||
-    params.budget.pathBytes + pathBytes >
-      AGENT_SNAPSHOT_STREAM_MAX_DESCRIPTOR_PATH_BYTES
-  ) {
-    throw invalidStream("Snapshot descriptor exceeds its metadata budget");
-  }
-  const metadata = await hashRegularFile(params.absolutePath);
-  params.budget.fileCount += 1;
-  params.budget.pathBytes += pathBytes;
-  return {
-    absolutePath: params.absolutePath,
-    descriptor: {
-      component: params.component,
-      index: -1,
-      mode: metadata.mode,
-      mtimeMs: metadata.mtimeMs,
-      path: relativePath,
-      sha256: metadata.sha256,
-      size: metadata.size,
+  destinationRoot: string;
+  include?: (relativePath: string) => boolean;
+  sourceRoot: string;
+  stageBudget: SnapshotStageBudget;
+}): Promise<PlannedSnapshotFile[]> {
+  const sourceFiles = await collectPlannedFiles({
+    budget: {
+      fileCount: params.budget.fileCount,
+      pathBytes: params.budget.pathBytes,
     },
-  };
+    component: params.component,
+    include: params.include,
+    root: params.sourceRoot,
+  });
+  const componentBytes = sourceFiles.reduce(
+    (total, file) => total + file.descriptor.size,
+    0,
+  );
+  const totalBytes = params.stageBudget.totalBytes + componentBytes;
+  if (
+    !Number.isSafeInteger(totalBytes) ||
+    totalBytes > AGENT_SNAPSHOT_STREAM_MAX_TOTAL_BYTES
+  ) {
+    throw invalidStream("Snapshot source exceeds the aggregate byte budget");
+  }
+  params.stageBudget.totalBytes = totalBytes;
+  await fs.mkdir(params.destinationRoot, { recursive: true, mode: 0o700 });
+  for (const source of sourceFiles) {
+    const destination = path.join(
+      params.destinationRoot,
+      ...source.descriptor.path.split("/"),
+    );
+    if (!isWithin(params.destinationRoot, destination)) {
+      throw invalidStream(
+        `Snapshot path escapes private staging: ${source.descriptor.path}`,
+      );
+    }
+    await writeFileAtomically(
+      source.absolutePath,
+      destination,
+      source.descriptor,
+    );
+  }
+  return collectPlannedFiles({
+    budget: params.budget,
+    component: params.component,
+    root: params.destinationRoot,
+  });
+}
+
+async function closeDatabaseForSnapshot(
+  runtime: IAgentRuntime | AgentRuntime,
+  postgresUrl: string | null,
+): Promise<void> {
+  const adapter = runtime.adapter as
+    | {
+        checkpointAndCloseForSnapshot?: () => Promise<void>;
+        close?: () => Promise<void>;
+      }
+    | undefined;
+  if (!adapter) {
+    throw new ElizaError(
+      "Snapshot capture requires a registered database adapter",
+      {
+        code: "AGENT_SNAPSHOT_DATABASE_UNCAPTURABLE",
+        severity: "fatal",
+      },
+    );
+  }
+  if (postgresUrl) {
+    if (typeof adapter.close !== "function") {
+      throw new ElizaError(
+        "External PostgreSQL snapshot requires a closable database adapter",
+        {
+          code: "AGENT_SNAPSHOT_DATABASE_UNCAPTURABLE",
+          severity: "fatal",
+        },
+      );
+    }
+    await adapter.close();
+    return;
+  }
+  if (typeof adapter.checkpointAndCloseForSnapshot !== "function") {
+    throw new ElizaError(
+      "PGlite snapshot requires strict checkpoint-and-close support",
+      {
+        code: "AGENT_SNAPSHOT_DATABASE_UNCAPTURABLE",
+        severity: "fatal",
+      },
+    );
+  }
+  await adapter.checkpointAndCloseForSnapshot();
+}
+
+async function quiesceRuntimeForSnapshot(
+  runtime: IAgentRuntime | AgentRuntime,
+  postgresUrl: string | null,
+): Promise<void> {
+  await runtime.stop({ strict: true });
+  await closeDatabaseForSnapshot(runtime, postgresUrl);
+}
+
+async function assertDeviceBridgeSnapshotQuiescent(): Promise<void> {
+  if (
+    !isMobilePlatform() &&
+    process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() !== "1"
+  ) {
+    return;
+  }
+  let assertQuiescent: (() => void) | undefined;
+  try {
+    const bridgeModule = await import("@elizaos/plugin-capacitor-bridge");
+    assertQuiescent = bridgeModule.assertMobileDeviceBridgeSnapshotQuiescent;
+  } catch (cause) {
+    // error-policy:J2 Snapshot capture cannot proceed without its configured
+    // bridge guard, so retain the module failure as the structured cause.
+    throw new ElizaError("Mobile device bridge snapshot guard is unavailable", {
+      cause,
+      code: "AGENT_SNAPSHOT_DEVICE_BRIDGE_GUARD_UNAVAILABLE",
+      severity: "fatal",
+    });
+  }
+  if (typeof assertQuiescent !== "function") {
+    throw new ElizaError("Mobile device bridge snapshot guard is unavailable", {
+      code: "AGENT_SNAPSHOT_DEVICE_BRIDGE_GUARD_UNAVAILABLE",
+      severity: "fatal",
+    });
+  }
+  try {
+    assertQuiescent();
+  } catch (cause) {
+    // error-policy:J2 Preserve the bridge's concrete non-quiescent reason for
+    // the snapshot boundary and its operator-visible failure state.
+    throw new ElizaError(
+      "Snapshot capture requires the mobile device bridge to be disconnected",
+      {
+        cause,
+        code: "AGENT_SNAPSHOT_DEVICE_BRIDGE_ACTIVE",
+        severity: "fatal",
+      },
+    );
+  }
+}
+
+export async function runExclusiveSnapshotRestore<T>(
+  runtime: IAgentRuntime | AgentRuntime,
+  apply: () => Promise<T>,
+): Promise<T> {
+  const barrier = getSnapshotCaptureBarrier(runtime);
+  let ownsBarrier = false;
+  try {
+    barrier.beginDraining();
+    ownsBarrier = true;
+    await assertDeviceBridgeSnapshotQuiescent();
+    await barrier.waitForDrain();
+    await quiesceRuntimeForSnapshot(runtime, hasPostgresUrl(runtime));
+    barrier.beginCapturing();
+    const result = await apply();
+    barrier.enterStandby();
+    return result;
+  } catch (error) {
+    // error-policy:J1 restore owns the terminal transition once it closes
+    // admission; failures must keep the stopped runtime observably unavailable.
+    if (ownsBarrier && barrier.status().phase !== "failed") {
+      barrier.fail(error);
+    }
+    throw error;
+  }
 }
 
 async function capturePgliteFilesToTemporaryDirectory(
-  runtime: IAgentRuntime | AgentRuntime,
   pgliteDir: string,
   temporaryRoot: string,
   budget: SnapshotPlanBudget,
+  stageBudget: SnapshotStageBudget,
 ): Promise<PlannedSnapshotFile[]> {
-  const raw = (
-    runtime.adapter as
-      | {
-          getRawConnection?: () => unknown;
-        }
-      | undefined
-  )?.getRawConnection?.();
-  if (!raw || typeof raw !== "object") {
-    throw new ElizaError(
-      "PGlite snapshot requires an exclusive database connection",
-      {
-        code: "AGENT_SNAPSHOT_DATABASE_UNCAPTURABLE",
-        severity: "fatal",
-      },
-    );
-  }
-  const connection = raw as {
-    runExclusive?: <T>(operation: () => Promise<T>) => Promise<T>;
-  };
-  if (typeof connection.runExclusive !== "function") {
-    throw new ElizaError(
-      "PGlite snapshot requires an exclusive database connection",
-      {
-        code: "AGENT_SNAPSHOT_DATABASE_UNCAPTURABLE",
-        severity: "fatal",
-      },
-    );
-  }
-  const destinationRoot = path.join(temporaryRoot, "pglite");
-  await fs.mkdir(destinationRoot, { recursive: true, mode: 0o700 });
-  await connection.runExclusive(async () => {
-    const sourceFiles = await collectPlannedFiles({
-      budget: { fileCount: 0, pathBytes: 0 },
-      component: "database",
-      include: pgliteFileInclude,
-      root: pgliteDir,
-    });
-    const totalBytes = sourceFiles.reduce(
-      (total, file) => total + file.descriptor.size,
-      0,
-    );
-    if (
-      !Number.isSafeInteger(totalBytes) ||
-      totalBytes > AGENT_SNAPSHOT_STREAM_MAX_TOTAL_BYTES
-    ) {
-      throw invalidStream("PGlite files exceed the snapshot byte budget");
-    }
-    for (const source of sourceFiles) {
-      const destination = path.join(
-        destinationRoot,
-        ...source.descriptor.path.split("/"),
-      );
-      if (!isWithin(destinationRoot, destination)) {
-        throw invalidStream(
-          `PGlite snapshot path escapes staging: ${source.descriptor.path}`,
-        );
-      }
-      await writeFileAtomically(
-        source.absolutePath,
-        destination,
-        source.descriptor,
-        destinationRoot,
-      );
-    }
-  });
-  return collectPlannedFiles({
+  return stagePlannedFileSet({
     budget,
     component: "database",
+    destinationRoot: path.join(temporaryRoot, "database"),
     include: pgliteFileInclude,
-    root: destinationRoot,
+    sourceRoot: pgliteDir,
+    stageBudget,
   });
 }
 
@@ -682,58 +785,69 @@ async function createSnapshotStreamPlan(
   let databaseKind: "external" | "files";
   const files: PlannedSnapshotFile[] = [];
   const budget: SnapshotPlanBudget = { fileCount: 0, pathBytes: 0 };
+  const stageBudget: SnapshotStageBudget = { totalBytes: 0 };
 
   try {
+    temporaryRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "eliza-agent-snapshot-capture-"),
+    );
+    await fs.chmod(temporaryRoot, 0o700);
     if (postgresUrl) {
       databaseKind = "external";
     } else {
-      temporaryRoot = await fs.mkdtemp(
-        path.join(os.tmpdir(), "eliza-agent-snapshot-capture-"),
-      );
       files.push(
         ...(await capturePgliteFilesToTemporaryDirectory(
-          runtime,
           pgliteDir as string,
           temporaryRoot,
           budget,
+          stageBudget,
         )),
       );
       databaseKind = "files";
     }
 
     files.push(
-      ...(await collectPlannedFiles({
+      ...(await stagePlannedFileSet({
         budget,
         component: "media",
-        root: path.join(stateDir, MEDIA_DIR_NAME),
+        destinationRoot: path.join(temporaryRoot, "media"),
+        sourceRoot: path.join(stateDir, MEDIA_DIR_NAME),
+        stageBudget,
       })),
-      ...(await collectPlannedFiles({
+      ...(await stagePlannedFileSet({
         budget,
         component: "vault",
+        destinationRoot: path.join(temporaryRoot, "vault"),
         include: vaultFileInclude,
-        root: stateDir,
+        sourceRoot: stateDir,
+        stageBudget,
       })),
     );
     if (await pathExists(configPath)) {
+      const configFile = path.basename(configPath);
       files.push(
-        await planSingleFile({
-          absolutePath: configPath,
+        ...(await stagePlannedFileSet({
           budget,
           component: "character-config",
-          relativePath: path.basename(configPath),
-        }),
+          destinationRoot: path.join(temporaryRoot, "character-config"),
+          include: (relativePath) => relativePath === configFile,
+          sourceRoot: path.dirname(configPath),
+          stageBudget,
+        })),
       );
     }
     files.push(
-      ...(await collectPlannedFiles({
+      ...(await stagePlannedFileSet({
         budget,
         component: "state",
+        destinationRoot: path.join(temporaryRoot, "state"),
         include: makeStateFileInclude({
           configPath,
           pgliteDir,
           stateDir,
         }),
-        root: stateDir,
+        sourceRoot: stateDir,
+        stageBudget,
       })),
     );
     indexFiles(files);
@@ -813,11 +927,23 @@ export async function* createAgentSnapshotStream(
   sourceAttestation: AgentSnapshotSourceAttestation | null = resolveAgentSnapshotSourceAttestation(),
 ): AsyncGenerator<Buffer> {
   verifyAgentSnapshotSourceAttestation(binding, sourceAttestation);
-  const plan = await createSnapshotStreamPlan(runtime, binding);
+  const barrier = getSnapshotCaptureBarrier(runtime);
+  const postgresUrl = hasPostgresUrl(runtime);
+  let plan: SnapshotStreamPlan | null = null;
+  let committed = false;
+  let ownsBarrier = false;
+  let captureFailure: unknown = null;
   const aggregateHash = crypto.createHash("sha256");
   let chunkCount = 0;
   let totalBytes = 0;
   try {
+    barrier.beginDraining();
+    ownsBarrier = true;
+    await assertDeviceBridgeSnapshotQuiescent();
+    await barrier.waitForDrain();
+    await quiesceRuntimeForSnapshot(runtime, postgresUrl);
+    barrier.beginCapturing();
+    plan = await createSnapshotStreamPlan(runtime, binding);
     yield encodeSnapshotStreamFrame(plan.descriptor);
     for (const planned of plan.files) {
       const { before, handle } = await openRegularFileNoFollow(
@@ -887,9 +1013,47 @@ export async function* createAgentSnapshotStream(
       type: "trailer",
     };
     yield encodeSnapshotStreamFrame(trailer);
-  } finally {
     if (plan.temporaryRoot) {
       await fs.rm(plan.temporaryRoot, { force: true, recursive: true });
+      plan.temporaryRoot = null;
+    }
+    barrier.enterStandby();
+    committed = true;
+  } catch (error) {
+    // error-policy:J1 snapshot capture boundary records the terminal barrier
+    // state before propagating the structured failure to the HTTP route.
+    captureFailure = error;
+    if (ownsBarrier && barrier.status().phase !== "failed") {
+      barrier.fail(error);
+    }
+    throw error;
+  } finally {
+    if (plan?.temporaryRoot) {
+      try {
+        await fs.rm(plan.temporaryRoot, { force: true, recursive: true });
+      } catch (cleanupError) {
+        // error-policy:J6 snapshot staging is private temporary teardown; the
+        // primary capture failure remains the externally observed error.
+        logger.warn(
+          {
+            error:
+              cleanupError instanceof Error
+                ? cleanupError.message
+                : String(cleanupError),
+            src: "agent:snapshot",
+          },
+          "Failed to remove snapshot capture staging directory",
+        );
+      }
+    }
+    if (ownsBarrier && !committed && barrier.status().phase !== "failed") {
+      barrier.fail(
+        captureFailure ??
+          new ElizaError("Snapshot stream ended before its trailer committed", {
+            code: "AGENT_SNAPSHOT_STREAM_ABORTED",
+            severity: "fatal",
+          }),
+      );
     }
   }
 }
@@ -902,8 +1066,66 @@ async function writeFileAtomically(
 ): Promise<void> {
   await ensureDirectoryDurable(path.dirname(destination));
   const temporary = `${destination}.snapshot-${crypto.randomUUID()}`;
+  const { before, handle: sourceHandle } =
+    await openRegularFileNoFollow(source);
+  if (before.size !== descriptor.size) {
+    await sourceHandle.close();
+    throw invalidStream(`Snapshot source size changed: ${descriptor.path}`);
+  }
+  let destinationHandle: FileHandle | null = null;
   try {
-    await fs.copyFile(source, temporary, fsConstants.COPYFILE_EXCL);
+    destinationHandle = await fs.open(
+      temporary,
+      fsConstants.O_CREAT |
+        fsConstants.O_EXCL |
+        fsConstants.O_WRONLY |
+        fsConstants.O_NOFOLLOW,
+      descriptor.mode,
+    );
+    const hash = crypto.createHash("sha256");
+    const buffer = Buffer.allocUnsafe(AGENT_SNAPSHOT_STREAM_CHUNK_BYTES);
+    let offset = 0;
+    while (offset < before.size) {
+      const length = Math.min(buffer.length, before.size - offset);
+      const { bytesRead } = await sourceHandle.read(buffer, 0, length, offset);
+      if (bytesRead !== length) {
+        throw invalidStream(
+          `Snapshot source was truncated while copying: ${descriptor.path}`,
+        );
+      }
+      hash.update(buffer.subarray(0, bytesRead));
+      let written = 0;
+      while (written < bytesRead) {
+        const result = await destinationHandle.write(
+          buffer,
+          written,
+          bytesRead - written,
+          offset + written,
+        );
+        if (result.bytesWritten === 0) {
+          throw invalidStream(
+            `Snapshot destination stopped accepting bytes: ${descriptor.path}`,
+          );
+        }
+        written += result.bytesWritten;
+      }
+      offset += bytesRead;
+    }
+    const after = await sourceHandle.stat();
+    if (
+      after.size !== before.size ||
+      after.mtimeMs !== before.mtimeMs ||
+      after.dev !== before.dev ||
+      after.ino !== before.ino ||
+      hash.digest("hex") !== descriptor.sha256
+    ) {
+      throw invalidStream(
+        `Snapshot source changed while copying: ${descriptor.path}`,
+      );
+    }
+    await destinationHandle.sync();
+    await destinationHandle.close();
+    destinationHandle = null;
     await fs.chmod(temporary, descriptor.mode);
     const mtime = new Date(descriptor.mtimeMs);
     await fs.utimes(temporary, mtime, mtime);
@@ -911,6 +1133,8 @@ async function writeFileAtomically(
     await fs.rename(temporary, destination);
     await syncDirectoryHierarchy(path.dirname(destination), durabilityRoot);
   } finally {
+    await sourceHandle.close();
+    await destinationHandle?.close();
     await fs.rm(temporary, { force: true });
   }
 }
@@ -1029,6 +1253,14 @@ async function preflightSnapshotDestinations(params: {
     path.dirname(configPath),
     path.basename(configPath),
   );
+  if (pgliteDir) {
+    await assertSafeIncludedTree(pgliteDir, pgliteFileInclude);
+    for (const file of descriptor.files) {
+      if (file.component === "database") {
+        await assertSafeDestination(pgliteDir, file.path);
+      }
+    }
+  }
 }
 
 async function pruneExtraFiles(
@@ -1117,6 +1349,7 @@ async function replaceDirectory(
 
 async function applyDirectoryFileSet(params: {
   descriptors: readonly AgentSnapshotStreamFileDescriptor[];
+  requiredDirectories?: readonly string[];
   root: string;
   stagedFiles: string[];
 }): Promise<void> {
@@ -1132,6 +1365,15 @@ async function applyDirectoryFileSet(params: {
       if (!source) throw invalidStream("Snapshot staged file is missing");
       await assertSafeDestination(candidate, descriptor.path);
       await writeFileAtomically(source, destination, descriptor, candidate);
+    }
+    for (const relativeDirectory of params.requiredDirectories ?? []) {
+      const destination = path.resolve(candidate, relativeDirectory);
+      if (!isWithin(candidate, destination)) {
+        throw invalidStream(
+          `Snapshot directory escapes restore root: ${relativeDirectory}`,
+        );
+      }
+      await fs.mkdir(destination, { mode: 0o700, recursive: true });
     }
   });
 }
@@ -1158,17 +1400,49 @@ async function applySharedRootFileSet(params: {
   await pruneExtraFiles(params.root, params.include, keepPaths);
 }
 
-async function applyVerifiedSnapshotStream(params: {
-  descriptor: AgentSnapshotStreamDescriptor;
-  runtime: IAgentRuntime | AgentRuntime;
-  stagedFiles: string[];
-}): Promise<void> {
-  const { descriptor, runtime, stagedFiles } = params;
+async function preflightVerifiedSnapshotRestore(
+  runtime: IAgentRuntime | AgentRuntime,
+  descriptor: AgentSnapshotStreamDescriptor,
+): Promise<{
+  configPath: string;
+  pgliteDir: string | null;
+  stateDir: string;
+}> {
   const stateDir = resolveStateDir();
   const configPath = resolveConfigPath();
   const database = descriptor.components.database;
+  const postgresUrl = hasPostgresUrl(runtime);
   let pgliteDir: string | null = null;
-  if (database.kind !== "external-postgres-reference") {
+
+  if (database.kind === "external-postgres-reference") {
+    if (!postgresUrl) {
+      throw invalidStream(
+        "Snapshot references external Postgres but POSTGRES_URL is not configured",
+      );
+    }
+    try {
+      verifyExternalPostgresReference(postgresUrl, runtime.agentId, database);
+    } catch (cause) {
+      // error-policy:J2 The stream boundary preserves the identity error while
+      // classifying the untrusted snapshot as a protocol failure.
+      throw invalidStream(
+        cause instanceof Error
+          ? cause.message
+          : "Snapshot external Postgres identity is invalid",
+        cause,
+      );
+    }
+  } else {
+    if (postgresUrl) {
+      throw invalidStream(
+        "PGlite snapshot cannot be restored into an external Postgres target",
+      );
+    }
+    if (database.kind !== "pglite-files") {
+      throw invalidStream(
+        "PGlite dump snapshots are not bounded-memory restores",
+      );
+    }
     pgliteDir = await resolvePgliteDir(runtime);
     if (pgliteDir === ":memory:" || pgliteDir.includes("://")) {
       throw invalidStream(
@@ -1176,25 +1450,26 @@ async function applyVerifiedSnapshotStream(params: {
       );
     }
   }
+
   await preflightSnapshotDestinations({
     configPath,
     descriptor,
     pgliteDir,
     stateDir,
   });
-  if (database.kind === "external-postgres-reference") {
-    const postgresUrl = hasPostgresUrl(runtime);
-    if (!postgresUrl) {
-      throw new ElizaError(
-        "Snapshot references external Postgres but POSTGRES_URL is not configured",
-        {
-          code: "AGENT_SNAPSHOT_POSTGRES_CONFIG_MISSING",
-          severity: "fatal",
-        },
-      );
-    }
-    verifyExternalPostgresReference(postgresUrl, runtime.agentId, database);
-  } else {
+  return { configPath, pgliteDir, stateDir };
+}
+
+async function applyVerifiedSnapshotStream(params: {
+  descriptor: AgentSnapshotStreamDescriptor;
+  runtime: IAgentRuntime | AgentRuntime;
+  stagedFiles: string[];
+}): Promise<void> {
+  const { descriptor, runtime, stagedFiles } = params;
+  const { configPath, pgliteDir, stateDir } =
+    await preflightVerifiedSnapshotRestore(runtime, descriptor);
+  const database = descriptor.components.database;
+  if (database.kind !== "external-postgres-reference") {
     if (!pgliteDir) throw invalidStream("PGlite restore path is missing");
     if (
       typeof (runtime.adapter as { close?: () => Promise<void> }).close ===
@@ -1202,16 +1477,12 @@ async function applyVerifiedSnapshotStream(params: {
     ) {
       await (runtime.adapter as { close: () => Promise<void> }).close();
     }
-    if (database.kind !== "pglite-files") {
-      throw invalidStream(
-        "PGlite dump snapshots are not bounded-memory restores",
-      );
-    }
     const databaseFiles = descriptor.files.filter(
       (file) => file.component === "database",
     );
     await applyDirectoryFileSet({
       descriptors: databaseFiles,
+      requiredDirectories: PGLITE_REQUIRED_DIRECTORIES,
       root: pgliteDir,
       stagedFiles,
     });
@@ -1480,12 +1751,25 @@ async function consumeAgentSnapshotStream(
     if (pendingBytes !== 0 || !descriptor || !trailer) {
       throw invalidStream("Snapshot stream is truncated");
     }
+    const verifiedDescriptor = descriptor;
     const verifiedTrailer = validateSnapshotStreamTrailer(trailer);
     if (apply) {
-      await applyVerifiedSnapshotStream({
-        descriptor,
-        runtime,
-        stagedFiles,
+      await preflightVerifiedSnapshotRestore(runtime, verifiedDescriptor);
+      return await runExclusiveSnapshotRestore(runtime, async () => {
+        await applyVerifiedSnapshotStream({
+          descriptor: verifiedDescriptor,
+          runtime,
+          stagedFiles,
+        });
+        return {
+          aggregateSha256: verifiedTrailer.aggregateSha256,
+          fileCount: verifiedTrailer.fileCount,
+          requiresRestart: true as const,
+          schemaVersion: 2 as const,
+          success: true as const,
+          totalBytes: verifiedTrailer.totalBytes,
+          transfer: AGENT_SNAPSHOT_STREAM_TRANSFER,
+        };
       });
     }
     return {

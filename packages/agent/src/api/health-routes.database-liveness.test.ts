@@ -6,7 +6,7 @@
  */
 
 import { PGlite } from "@electric-sql/pglite";
-import type { AgentRuntime } from "@elizaos/core";
+import { type AgentRuntime, getSnapshotCaptureBarrier } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ElizaConfig } from "../config/config.ts";
 import {
@@ -119,6 +119,45 @@ describe("GET /api/health database liveness", () => {
         status: "transient_error",
         terminal: false,
         message: "temporary network timeout",
+      },
+    });
+  });
+
+  it("keeps standby liveness HTTP 200 while reporting non-ready and non-responsive", async () => {
+    pglite = new PGlite();
+    await pglite.waitReady;
+    const runtime = {
+      adapter: { getRawConnection: () => pglite },
+      plugins: [{ name: "sql" }],
+      getModel: () => undefined,
+    } as unknown as AgentRuntime;
+    const barrier = getSnapshotCaptureBarrier(runtime);
+    barrier.beginDraining();
+    await barrier.waitForDrain();
+    barrier.beginCapturing();
+    await pglite.close();
+    pglite = null;
+    barrier.enterStandby();
+
+    const standby = makeContext(runtime);
+    await expect(handleHealthRoutes(standby.ctx)).resolves.toBe(true);
+
+    expect(standby.responses).toHaveLength(1);
+    expect(standby.responses[0].status).toBe(200);
+    expect(standby.responses[0].data).toMatchObject({
+      ready: false,
+      canRespond: false,
+      runtime: "standby",
+      database: "standby",
+      databaseLiveness: {
+        ok: false,
+        status: "unknown",
+        terminal: false,
+      },
+      snapshotCapture: {
+        activeMutations: 0,
+        failure: null,
+        phase: "standby",
       },
     });
   });

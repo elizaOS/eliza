@@ -475,6 +475,39 @@ describe("agent backup manifest", () => {
     ).toEqual(["runtime.bin"]);
   });
 
+  test("rejects a PGlite backup targeting external Postgres before closing it", async () => {
+    const root = await fs.mkdtemp(
+      path.join(os.tmpdir(), "eliza-agent-backup-pglite-target-mode-"),
+    );
+    const pgliteDir = path.join(root, "pglite");
+    const agentId = "10000000-0000-4000-8000-000000000009";
+    process.env.ELIZA_STATE_DIR = root;
+    process.env.PGLITE_DATA_DIR = pgliteDir;
+    delete process.env.POSTGRES_URL;
+    delete process.env.DATABASE_URL;
+    await writeFixtureState(root, pgliteDir);
+    const snapshot = await createAgentSnapshot(
+      runtimeStub(agentId),
+      {} as never,
+      { purpose: "pre-upgrade" },
+    );
+
+    let databaseClosed = false;
+    const target = postgresRuntimeStub(
+      agentId,
+      "postgres://owner:secret@db.example.com:5432/eliza?schema=tenant",
+    );
+    target.adapter = {
+      close: async () => {
+        databaseClosed = true;
+      },
+    } as never;
+    await expect(restoreAgentSnapshot(target, snapshot)).rejects.toThrow(
+      /PGlite backup cannot be restored into an external Postgres target/,
+    );
+    expect(databaseClosed).toBe(false);
+  });
+
   test("round-trips a live PGlite database through a v2 pre-upgrade snapshot", async () => {
     const root = await fs.mkdtemp(
       path.join(os.tmpdir(), "eliza-agent-backup-v2-live-pglite-"),
