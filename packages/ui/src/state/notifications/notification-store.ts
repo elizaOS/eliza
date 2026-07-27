@@ -1,8 +1,8 @@
 /**
  * Client store for agent notifications: validates untrusted WS payloads into
  * typed AgentNotification records, tracks unread state, and delivers each
- * arrival to one interrupt surface, native-first (OS notification on
- * desktop/mobile, in-app glass banner as the web fallback). Subscribed via
+ * arrival to an OS notification when the host provides one. The persistent
+ * Home notification center is the only in-app surface. Subscribed via
  * useSyncExternalStore.
  */
 import {
@@ -28,7 +28,6 @@ import {
   subscribeAuthStatus,
 } from "../../hooks/useAuthStatus";
 import { protectedAgentProbesEnabled } from "../../hooks/useProtectedAgentProbesEnabled";
-import { pushNotificationBanner } from "./notification-banner-store";
 
 /**
  * Notification center store.
@@ -36,12 +35,9 @@ import { pushNotificationBanner } from "./notification-banner-store";
  * Self-contained module store (no React context) feeding the in-app
  * notification center. It hydrates the inbox from `GET /api/notifications`
  * once, subscribes to the live WS `agent_event` stream filtered to
- * `stream === "notification"`, and delivers each new notification to exactly
- * one interrupt surface, native-first: the OS notification on desktop
- * (Electrobun) and mobile (Capacitor), falling back to the in-app glass banner
- * on the web and wherever no native channel delivered. The inbox itself is
- * always updated — the center is the source-of-truth surface; the interrupt
- * surfaces are best-effort.
+ * `stream === "notification"`, and offers each new notification to an OS
+ * surface on desktop, mobile, or a hidden browser tab. The inbox itself is
+ * always updated and remains the sole in-app source-of-truth surface.
  */
 
 export interface NotificationState {
@@ -171,23 +167,21 @@ async function fireDesktopNotification(
     },
   }).catch(() => {
     // error-policy:J6 best-effort OS-interrupt sink; a failing desktop bridge
-    // reads as "no native surface" so the glass fallback takes over.
+    // reads as "no native surface" so another OS channel may be attempted.
     return null;
   });
   return result !== null;
 }
 
 /**
- * Deliver a notification to exactly one interrupt surface, native-first. The
- * inbox is updated separately in ingest; this only raises the alert.
+ * Offer a notification to an OS interrupt surface. The inbox is updated
+ * separately in ingest and remains visible even when no OS channel is
+ * available.
  *
  * Policy: platforms with an OS-native channel (Electrobun desktop, Capacitor
  * mobile) alert through it — the OS owns loudness/heads-up semantics via the
- * priority mapping, and the in-app glass banner stays out of the way (no
- * double alert). Where no native channel delivers (web, or a denied/absent
- * bridge), the glass banner is the surface while the window is visible; a
- * hidden tab falls back to the browser Notification API, and only if that also
- * fails does the banner queue so a returning user still gets the heads-up.
+ * priority mapping. A focused web app does not duplicate the Home inbox with a
+ * floating alert. A hidden tab may use the browser Notification API.
  */
 async function deliver(notification: AgentNotification): Promise<void> {
   // §C.1 Silent tier is inbox-only: no OS/native interrupt, no toast, no badge.
@@ -208,19 +202,14 @@ async function deliver(notification: AgentNotification): Promise<void> {
   };
   // error-policy:J6 best-effort OS-interrupt sink; the inbox (set separately
   // in ingest) is the source of truth, so a failed native alert must not
-  // disturb delivery — it reads as "none" and the glass fallback takes over.
+  // disturb delivery — it reads as "none" and a hidden browser tab may still
+  // raise its own OS notification.
   const nativeChannel = await showNativeNotification(request).catch(
     () => "none" as const,
   );
   if (nativeChannel !== "none") return;
 
-  if (isWindowFocused()) {
-    pushNotificationBanner(notification);
-    return;
-  }
-  if (!showWebNotification(request)) {
-    pushNotificationBanner(notification);
-  }
+  if (!isWindowFocused()) showWebNotification(request);
 }
 
 function ingest(
