@@ -151,6 +151,12 @@ export interface RuntimeStopOptions {
 	 * for signal handlers, reset/restart paths, and development shutdown.
 	 */
 	fast?: boolean;
+	/**
+	 * Wait without teardown timeouts and surface every service-start or service-stop
+	 * failure after all services have had a chance to stop. Snapshot capture uses
+	 * this mode because a partially live runtime cannot be copied safely.
+	 */
+	strict?: boolean;
 }
 
 export const ConnectorAccountPurpose = {

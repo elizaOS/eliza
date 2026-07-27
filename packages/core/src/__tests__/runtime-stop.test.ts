@@ -1,7 +1,7 @@
 /**
- * Exercises `AgentRuntime.stop` fast-shutdown paths: not hanging on an
- * unresolved service start, capping already-started stop waits, and surviving a
- * synchronously-throwing stop. Deterministic: real runtime, no database.
+ * Exercises bounded and strict `AgentRuntime.stop` paths with real services:
+ * fast teardown stays bounded, while snapshot teardown stops every sibling and
+ * surfaces any failure. Deterministic: real runtime, no database.
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { AgentRuntime } from "../runtime";
@@ -145,5 +145,142 @@ describe("AgentRuntime.stop", () => {
 		await runtime.getServiceLoadPromise(ThrowingStopService.serviceType);
 
 		await expect(runtime.stop()).resolves.toBeUndefined();
+	});
+
+	it("strict shutdown stops every sibling before surfacing failures", async () => {
+		const runtime = new AgentRuntime({ logLevel: "fatal" });
+		await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+		const stopped: string[] = [];
+
+		class FailingService extends Service {
+			static override serviceType = "shutdown-strict-failing-service";
+			capabilityDescription = "strict shutdown failure fixture";
+
+			static override async start(): Promise<FailingService> {
+				return new FailingService();
+			}
+
+			override async stop(): Promise<void> {
+				stopped.push("failing");
+				throw new Error("strict stop failed");
+			}
+		}
+
+		class HealthyService extends Service {
+			static override serviceType = "shutdown-strict-healthy-service";
+			capabilityDescription = "strict shutdown sibling fixture";
+
+			static override async start(): Promise<HealthyService> {
+				return new HealthyService();
+			}
+
+			override async stop(): Promise<void> {
+				stopped.push("healthy");
+			}
+		}
+
+		await runtime.registerService(FailingService);
+		await runtime.registerService(HealthyService);
+		await runtime.getServiceLoadPromise(FailingService.serviceType);
+		await runtime.getServiceLoadPromise(HealthyService.serviceType);
+
+		await expect(runtime.stop({ strict: true })).rejects.toThrow(
+			/Strict runtime shutdown/,
+		);
+		expect(stopped).toEqual(["failing", "healthy"]);
+	});
+
+	it("strict shutdown waits for and surfaces a failing late service stop", async () => {
+		const runtime = new AgentRuntime({ logLevel: "fatal" });
+		await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+		const start = createDeferred<LateFailingService>();
+		let stopCalls = 0;
+
+		class LateFailingService extends Service {
+			static override serviceType = "shutdown-strict-late-failing-service";
+			capabilityDescription = "strict late-start shutdown fixture";
+
+			static override async start(): Promise<LateFailingService> {
+				return start.promise;
+			}
+
+			override async stop(): Promise<void> {
+				stopCalls += 1;
+				throw new Error("late strict stop failed");
+			}
+		}
+
+		await runtime.registerService(LateFailingService);
+		const load = runtime
+			.getServiceLoadPromise(LateFailingService.serviceType)
+			.catch(() => null);
+		await Promise.resolve();
+		const stop = runtime.stop({ strict: true });
+		let settled = false;
+		void stop.then(
+			() => {
+				settled = true;
+			},
+			() => {
+				settled = true;
+			},
+		);
+		await Promise.resolve();
+		expect(settled).toBe(false);
+
+		start.resolve(new LateFailingService(runtime));
+		await expect(stop).rejects.toThrow(/Strict runtime shutdown/);
+		await load;
+		expect(stopCalls).toBe(1);
+	});
+
+	it("fails closed when strict shutdown races an earlier non-strict teardown", async () => {
+		const runtime = new AgentRuntime({ logLevel: "fatal" });
+		await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+		const enteredStop = createDeferred<void>();
+		const releaseStop = createDeferred<void>();
+
+		class DeferredStopService extends Service {
+			static override serviceType = "shutdown-deferred-stop-service";
+			capabilityDescription = "concurrent shutdown ordering fixture";
+
+			static override async start(): Promise<DeferredStopService> {
+				return new DeferredStopService();
+			}
+
+			override async stop(): Promise<void> {
+				enteredStop.resolve();
+				await releaseStop.promise;
+			}
+		}
+
+		await runtime.registerService(DeferredStopService);
+		await runtime.getServiceLoadPromise(DeferredStopService.serviceType);
+
+		const ordinaryStop = runtime.stop();
+		await enteredStop.promise;
+		await expect(runtime.stop({ strict: true })).rejects.toMatchObject({
+			code: "RUNTIME_STRICT_STOP_AFTER_NON_STRICT",
+		});
+
+		let ordinarySettled = false;
+		void ordinaryStop.then(() => {
+			ordinarySettled = true;
+		});
+		await Promise.resolve();
+		expect(ordinarySettled).toBe(false);
+
+		releaseStop.resolve();
+		await ordinaryStop;
+	});
+
+	it("rejects mutually exclusive fast and strict shutdown", async () => {
+		const runtime = new AgentRuntime({ logLevel: "fatal" });
+		await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+
+		await expect(
+			runtime.stop({ fast: true, strict: true }),
+		).rejects.toMatchObject({ code: "RUNTIME_STOP_OPTIONS_INVALID" });
+		await runtime.stop({ fast: true });
 	});
 });

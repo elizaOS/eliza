@@ -186,6 +186,10 @@ interface WssInstance {
 	on(event: "error", listener: (err: Error) => void): unknown;
 }
 
+export interface MobileDeviceBridgeServerOptions {
+	admitUpgrade?: () => { release(): void };
+}
+
 interface WsModule {
 	WebSocketServer: new (options: {
 		noServer: boolean;
@@ -340,6 +344,7 @@ export type { MobileDeviceBridgeStatus };
 
 class MobileDeviceBridge {
 	private wss: WssInstance | null = null;
+	private readonly activeSockets = new Set<MinimalWebSocket>();
 	private readonly devices = new Map<string, ConnectedDevice>();
 	private readonly attachListeners = new Set<() => void>();
 	private readonly pendingLoads = new Map<string, Pending<void>>();
@@ -371,12 +376,31 @@ class MobileDeviceBridge {
 				this.pendingLoads.size +
 				this.pendingUnloads.size +
 				this.pendingGenerates.size +
-				this.pendingEmbeds.size,
+				this.pendingEmbeds.size +
+				this.pendingFormatChats.size,
 			modelPath: resolveLocalModelPath("TEXT_LARGE"),
 		};
 	}
 
-	async attachToHttpServer(server: HttpServer): Promise<void> {
+	assertSnapshotQuiescent(): void {
+		if (
+			this.activeSockets.size > 0 ||
+			this.pendingLoads.size > 0 ||
+			this.pendingUnloads.size > 0 ||
+			this.pendingGenerates.size > 0 ||
+			this.pendingEmbeds.size > 0 ||
+			this.pendingFormatChats.size > 0
+		) {
+			throw new Error(
+				"Mobile device bridge must disconnect before snapshot capture",
+			);
+		}
+	}
+
+	async attachToHttpServer(
+		server: HttpServer,
+		options?: MobileDeviceBridgeServerOptions,
+	): Promise<void> {
 		if (!SERVICE_ENABLED || this.wss) return;
 		if (!this.expectedPairingToken) {
 			logger.warn(
@@ -402,9 +426,34 @@ class MobileDeviceBridge {
 		server.on("upgrade", (request, socket, head) => {
 			const url = new URL(request.url ?? "/", "http://localhost");
 			if (url.pathname !== DEVICE_BRIDGE_PATH) return;
-			wss.handleUpgrade(request, socket, head, (client: MinimalWebSocket) => {
-				this.handleConnection(client, ws.WebSocket, url);
-			});
+			let admission: { release(): void } | undefined;
+			try {
+				admission = options?.admitUpgrade?.();
+				wss.handleUpgrade(request, socket, head, (client: MinimalWebSocket) => {
+					try {
+						this.handleConnection(client, ws.WebSocket, url, admission);
+					} catch (error) {
+						// error-policy:J1 The WebSocket connection boundary closes a
+						// partially initialized bridge and releases its runtime lease.
+						admission?.release();
+						client.close(1011, "bridge-initialization-failed");
+						logger.warn(
+							`[mobile-device-bridge] Connection initialization failed: ${error instanceof Error ? error.message : String(error)}`,
+						);
+					}
+				});
+			} catch (error) {
+				// error-policy:J1 The HTTP upgrade boundary explicitly rejects bridge
+				// connections while runtime mutation admission is unavailable.
+				admission?.release();
+				socket.write(
+					"HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\nContent-Length: 0\r\n\r\n",
+				);
+				socket.destroy();
+				logger.warn(
+					`[mobile-device-bridge] Upgrade rejected: ${error instanceof Error ? error.message : String(error)}`,
+				);
+			}
 		});
 
 		logger.info(
@@ -416,7 +465,16 @@ class MobileDeviceBridge {
 		socket: MinimalWebSocket,
 		WsCtor: WsConstructor,
 		url: URL,
+		admission?: { release(): void },
 	) {
+		this.activeSockets.add(socket);
+		let released = false;
+		const releaseConnection = (): void => {
+			if (released) return;
+			released = true;
+			this.activeSockets.delete(socket);
+			admission?.release();
+		};
 		const queryToken = url.searchParams.get("token")?.trim();
 		if (
 			!this.expectedPairingToken ||
@@ -425,6 +483,7 @@ class MobileDeviceBridge {
 			logger.warn(
 				"[mobile-device-bridge] Rejecting connection: bad query token",
 			);
+			releaseConnection();
 			socket.close(4001, "unauthorized");
 			return;
 		}
@@ -482,6 +541,7 @@ class MobileDeviceBridge {
 		});
 
 		socket.on("close", () => {
+			releaseConnection();
 			if (!registeredDeviceId) return;
 			const current = this.devices.get(registeredDeviceId);
 			if (current?.socket === socket) {
@@ -1927,8 +1987,13 @@ export class CapacitorMobileDeviceBridgeService extends MobileDeviceBridgeServic
 
 export async function attachMobileDeviceBridgeToServer(
 	server: HttpServer,
+	options?: MobileDeviceBridgeServerOptions,
 ): Promise<void> {
-	await mobileDeviceBridge.attachToHttpServer(server);
+	await mobileDeviceBridge.attachToHttpServer(server, options);
+}
+
+export function assertMobileDeviceBridgeSnapshotQuiescent(): void {
+	mobileDeviceBridge.assertSnapshotQuiescent();
 }
 
 /** Resolve a data:/http(s)/file image URL to base64 image bytes for the host. */

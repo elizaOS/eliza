@@ -6,6 +6,7 @@ declare module "@elizaos/plugin-capacitor-bridge" {
   export type { MobileDeviceBridgeStatus };
 
   export const mobileDeviceBridge: unknown;
+  export function assertMobileDeviceBridgeSnapshotQuiescent(): void;
   export function getMobileDeviceBridgeStatus(): MobileDeviceBridgeStatus;
   export function loadMobileDeviceBridgeModel(
     modelPath: string,
@@ -14,6 +15,9 @@ declare module "@elizaos/plugin-capacitor-bridge" {
   export function unloadMobileDeviceBridgeModel(): Promise<void>;
   export function attachMobileDeviceBridgeToServer(
     server: Server,
+    options?: {
+      admitUpgrade?: () => { release(): void };
+    },
   ): Promise<void>;
   export function ensureMobileDeviceBridgeInferenceHandlers(
     runtime: AgentRuntime,

@@ -72,6 +72,7 @@ export * from "./services/runtime-capability-service";
 export * from "./services/setup-cli";
 export * from "./services/setup-rpc";
 export * from "./services/setup-state";
+export * from "./services/snapshot-capture-barrier";
 export * from "./services/tool-policy";
 export * from "./services/trajectories";
 export * from "./settings";
