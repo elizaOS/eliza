@@ -124,6 +124,7 @@ import {
 } from "./shared-runtime/run-shared-agent-turn";
 import { navIntentActionResult } from "./shared-runtime/shared-nav-intent";
 import { applyPooledCredentialsToBootstrapEnv } from "./team-credential-pool/bootstrap-env";
+import { PostgresVerifiedRestorePointReader } from "./verified-restore-point-reader";
 import {
   formatWakeRestoreIntegrityError,
   runWakeRestoreIntegrityGate,
@@ -1885,6 +1886,12 @@ export class ElizaSandboxService {
           error: "Agent replacement cleanup is still pending",
         };
       }
+      if (rec.rollback_standby_state) {
+        return {
+          ok: false as const,
+          error: `Agent ${agentId} has unresolved rollback standby generation ${rec.rollback_standby_generation}`,
+        };
+      }
 
       const hasActiveProvisionJob = await this.hasActiveProvisionJobTx(tx, agentId, orgId);
       const hasActiveReplacementJob = await this.hasActiveReplacementJobTx(tx, agentId, orgId);
@@ -1912,6 +1919,7 @@ export class ElizaSandboxService {
             eq(agentSandboxes.id, agentId),
             eq(agentSandboxes.organization_id, orgId),
             sql`${agentSandboxes.replacement_cleanup_sandbox_id} IS NULL`,
+            sql`${agentSandboxes.rollback_standby_state} IS NULL`,
           ),
         )
         .returning({
@@ -1964,6 +1972,12 @@ export class ElizaSandboxService {
           error: "Agent replacement cleanup is still pending",
         } as const;
       }
+      if (rec.rollback_standby_state) {
+        return {
+          success: false,
+          error: `Agent ${agentId} has unresolved rollback standby generation ${rec.rollback_standby_generation}`,
+        } as const;
+      }
 
       const hasActiveProvisionJob = await this.hasActiveProvisionJobTx(tx, agentId, orgId);
       // `rec` is a RAW row: its timestamptz fields are strings at runtime
@@ -1993,6 +2007,7 @@ export class ElizaSandboxService {
           AND status = 'deletion_pending'
           AND deletion_attempt_id = ${ownership.deletionAttemptId}
           AND deletion_started_at = ${ownership.deletionStartedAt}
+          AND rollback_standby_state IS NULL
           AND sandbox_id IS NOT DISTINCT FROM ${ownership.sandboxId}
           AND environment_revision = ${ownership.environmentRevision}
         RETURNING *
@@ -7466,6 +7481,7 @@ export class ElizaSandboxService {
       rollback_standby_restore_validation_id: null,
       rollback_standby_restore_validation_aggregate_sha256: null,
       rollback_standby_restore_candidate_provider_sandbox_id: null,
+      rollback_standby_restore_candidate_replacement_attempt_id: null,
       rollback_standby_sandbox_id: null,
       rollback_standby_node_id: null,
       rollback_standby_container_name: null,
@@ -7974,11 +7990,14 @@ export class ElizaSandboxService {
           agent.rollback_standby_restore_validation_aggregate_sha256 !==
             data.restoreValidationAggregateSha256 ||
           agent.rollback_standby_restore_candidate_provider_sandbox_id !==
-            data.restoreValidatedCandidateProviderSandboxId)) ||
+            data.restoreValidatedCandidateProviderSandboxId ||
+          agent.rollback_standby_restore_candidate_replacement_attempt_id !==
+            data.restoreValidatedCandidateReplacementAttemptId)) ||
       (!accepting &&
         (agent.rollback_standby_restore_validation_id !== null ||
           agent.rollback_standby_restore_validation_aggregate_sha256 !== null ||
-          agent.rollback_standby_restore_candidate_provider_sandbox_id !== null))
+          agent.rollback_standby_restore_candidate_provider_sandbox_id !== null ||
+          agent.rollback_standby_restore_candidate_replacement_attempt_id !== null))
     ) {
       throw new Error(`Agent ${data.agentId} rollback standby identity changed`);
     }
@@ -7999,7 +8018,9 @@ export class ElizaSandboxService {
       agent.rollback_standby_restore_validation_aggregate_sha256 !==
         data.restoreValidationAggregateSha256 ||
       agent.rollback_standby_restore_candidate_provider_sandbox_id !==
-        data.restoreValidatedCandidateProviderSandboxId
+        data.restoreValidatedCandidateProviderSandboxId ||
+      agent.rollback_standby_restore_candidate_replacement_attempt_id !==
+        data.restoreValidatedCandidateReplacementAttemptId
     ) {
       throw new Error("Rollback standby acceptance audit changed");
     }
@@ -8036,7 +8057,9 @@ export class ElizaSandboxService {
         current.rollback_standby_restore_validation_aggregate_sha256 !==
           data.restoreValidationAggregateSha256 ||
         current.rollback_standby_restore_candidate_provider_sandbox_id !==
-          data.restoreValidatedCandidateProviderSandboxId
+          data.restoreValidatedCandidateProviderSandboxId ||
+        current.rollback_standby_restore_candidate_replacement_attempt_id !==
+          data.restoreValidatedCandidateReplacementAttemptId
       ) {
         throw new Error("Rollback standby acceptance fence changed after remote retirement");
       }
@@ -8064,6 +8087,10 @@ export class ElizaSandboxService {
             eq(
               agentSandboxes.rollback_standby_restore_candidate_provider_sandbox_id,
               data.restoreValidatedCandidateProviderSandboxId!,
+            ),
+            eq(
+              agentSandboxes.rollback_standby_restore_candidate_replacement_attempt_id,
+              data.restoreValidatedCandidateReplacementAttemptId!,
             ),
             eq(agentSandboxes.user_id, data.targetOwnerUserId),
             eq(agentSandboxes.sandbox_id, current.rollback_standby_primary_sandbox_id!),
@@ -8356,11 +8383,10 @@ export class ElizaSandboxService {
           this.assertStandbyDecisionIdentity(current, params.data, ["paused"]);
           if (
             current.rollback_standby_decision_job_id !== null ||
-            params.data.restoreValidatedCandidateProviderSandboxId === current.sandbox_id ||
-            params.data.restoreValidatedCandidateProviderSandboxId ===
-              current.rollback_standby_sandbox_id
+            params.data.restoreValidatedCandidateReplacementAttemptId ===
+              current.rollback_standby_primary_replacement_attempt_id
           ) {
-            throw new Error("Restore validation candidate is not a distinct never-routed sandbox");
+            throw new Error("Restore validation candidate is not a distinct replacement attempt");
           }
           await this.verifiedRestorePointReader.assertVerifiedV2CandidateRestoreInTx(tx, {
             backupId: params.data.verifiedBackupId!,
@@ -8368,18 +8394,14 @@ export class ElizaSandboxService {
             restoreValidationAggregateSha256: params.data.restoreValidationAggregateSha256!,
             restoreValidatedCandidateProviderSandboxId:
               params.data.restoreValidatedCandidateProviderSandboxId!,
+            restoreValidatedCandidateReplacementAttemptId:
+              params.data.restoreValidatedCandidateReplacementAttemptId!,
             organizationId: params.data.organizationId,
             sandboxRecordId: params.data.agentId,
             agentId: params.data.agentId,
             targetOwnerUserId: params.data.targetOwnerUserId,
             targetImage: params.data.targetImage,
             targetDigest: params.data.targetDigest,
-            neverRouted: true,
-            snapshotType: "pre-upgrade",
-            schemaVersion: 2,
-            verificationStatus: "verified",
-            descriptorCommitState: "complete",
-            restoreReceiptState: "committed",
           });
           const [updated] = await tx
             .update(agentSandboxes)
@@ -8392,6 +8414,8 @@ export class ElizaSandboxService {
                 params.data.restoreValidationAggregateSha256,
               rollback_standby_restore_candidate_provider_sandbox_id:
                 params.data.restoreValidatedCandidateProviderSandboxId,
+              rollback_standby_restore_candidate_replacement_attempt_id:
+                params.data.restoreValidatedCandidateReplacementAttemptId,
               updated_at: new Date(),
             })
             .where(
@@ -8417,6 +8441,7 @@ export class ElizaSandboxService {
                 sql`${agentSandboxes.rollback_standby_restore_validation_id} IS NULL`,
                 sql`${agentSandboxes.rollback_standby_restore_validation_aggregate_sha256} IS NULL`,
                 sql`${agentSandboxes.rollback_standby_restore_candidate_provider_sandbox_id} IS NULL`,
+                sql`${agentSandboxes.rollback_standby_restore_candidate_replacement_attempt_id} IS NULL`,
               ),
             )
             .returning();
@@ -10703,4 +10728,7 @@ export class ElizaSandboxService {
   }
 }
 
-export const elizaSandboxService = new ElizaSandboxService();
+export const elizaSandboxService = new ElizaSandboxService(
+  undefined,
+  new PostgresVerifiedRestorePointReader(),
+);

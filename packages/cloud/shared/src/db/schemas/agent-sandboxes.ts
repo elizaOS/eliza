@@ -11,7 +11,8 @@
  *     a heartbeat monitor, backup snapshots, pairing tokens, and optional
  *     headscale VPN allocation.
  *   • Async multi-step provisioning via the jobs queue.
- *   • Supporting tables: `agent_sandbox_backups`, `agent_pairing_tokens`,
+ *   • Supporting tables: `agent_sandbox_backups`,
+ *     `agent_snapshot_restore_validations`, `agent_pairing_tokens`,
  *     `remote_sessions`.
  *   • Billing: hourly rate with active/warning/suspended/exempt tiers.
  *
@@ -246,6 +247,9 @@ export const agentSandboxes = pgTable(
     rollback_standby_restore_candidate_provider_sandbox_id: text(
       "rollback_standby_restore_candidate_provider_sandbox_id",
     ),
+    rollback_standby_restore_candidate_replacement_attempt_id: uuid(
+      "rollback_standby_restore_candidate_replacement_attempt_id",
+    ),
     rollback_standby_sandbox_id: text("rollback_standby_sandbox_id"),
     rollback_standby_node_id: text("rollback_standby_node_id"),
     rollback_standby_container_name: text("rollback_standby_container_name"),
@@ -385,6 +389,7 @@ export const agentSandboxes = pgTable(
         AND ${table.rollback_standby_restore_validation_id} IS NULL
         AND ${table.rollback_standby_restore_validation_aggregate_sha256} IS NULL
         AND ${table.rollback_standby_restore_candidate_provider_sandbox_id} IS NULL
+        AND ${table.rollback_standby_restore_candidate_replacement_attempt_id} IS NULL
         AND ${table.rollback_standby_sandbox_id} IS NULL
         AND ${table.rollback_standby_node_id} IS NULL
         AND ${table.rollback_standby_container_name} IS NULL
@@ -439,6 +444,9 @@ export const agentSandboxes = pgTable(
         AND ${table.rollback_standby_primary_vpn_node_id} IS NOT NULL
         AND ${table.rollback_standby_primary_replacement_attempt_id} IS NOT NULL
         AND ${table.rollback_standby_created_at} IS NOT NULL
+        AND ${table.deletion_attempt_id} IS NULL
+        AND ${table.deletion_started_at} IS NULL
+        AND ${table.status} NOT IN ('deletion_pending', 'deletion_failed')
         AND (
           (
             ${table.rollback_standby_state} = 'pausing'
@@ -456,13 +464,15 @@ export const agentSandboxes = pgTable(
             AND ${table.rollback_standby_restore_validation_id} IS NULL
             AND ${table.rollback_standby_restore_validation_aggregate_sha256} IS NULL
             AND ${table.rollback_standby_restore_candidate_provider_sandbox_id} IS NULL
+            AND ${table.rollback_standby_restore_candidate_replacement_attempt_id} IS NULL
           ) OR (
             ${table.rollback_standby_state} = 'retiring'
             AND ${table.rollback_standby_decision_job_id} IS NOT NULL
             AND ${table.rollback_standby_verified_backup_id} IS NOT NULL
-            AND ${table.rollback_standby_restore_validation_id} = ${table.rollback_standby_verified_backup_id}
+            AND ${table.rollback_standby_restore_validation_id} IS NOT NULL
             AND ${table.rollback_standby_restore_validation_aggregate_sha256} ~ '^[0-9a-f]{64}$'
             AND ${table.rollback_standby_restore_candidate_provider_sandbox_id} IS NOT NULL
+            AND ${table.rollback_standby_restore_candidate_replacement_attempt_id} IS NOT NULL
           ) OR (
             ${table.rollback_standby_state} IN ('rollback_pending', 'rollback_cleanup_pending')
             AND ${table.rollback_standby_decision_job_id} IS NOT NULL
@@ -470,6 +480,7 @@ export const agentSandboxes = pgTable(
             AND ${table.rollback_standby_restore_validation_id} IS NULL
             AND ${table.rollback_standby_restore_validation_aggregate_sha256} IS NULL
             AND ${table.rollback_standby_restore_candidate_provider_sandbox_id} IS NULL
+            AND ${table.rollback_standby_restore_candidate_replacement_attempt_id} IS NULL
           )
         )
         AND (
@@ -731,6 +742,86 @@ export const agentSandboxBackups = pgTable(
   }),
 );
 
+export type AgentSnapshotRestoreReceiptState = "committed";
+export type AgentSnapshotRestoreCandidateState = "never_routed_retired";
+
+/**
+ * Terminal, server-owned proof that one exact replacement attempt restored a
+ * verified v2 backup and was retired without ever becoming routable. Standby
+ * acceptance reads this table in its lifecycle transaction; caller assertions
+ * alone can never authorize destruction of the retained rollback placement.
+ */
+export const agentSnapshotRestoreValidations = pgTable(
+  "agent_snapshot_restore_validations",
+  {
+    restore_validation_id: uuid("restore_validation_id").primaryKey(),
+    organization_id: uuid("organization_id").notNull(),
+    sandbox_record_id: uuid("sandbox_record_id").notNull(),
+    agent_id: uuid("agent_id").notNull(),
+    target_owner_user_id: uuid("target_owner_user_id").notNull(),
+    backup_id: uuid("backup_id").notNull(),
+    aggregate_sha256: text("aggregate_sha256").notNull(),
+    capture_nonce: text("capture_nonce").notNull(),
+    source_environment_revision: integer("source_environment_revision").notNull(),
+    source_image_digest: text("source_image_digest").notNull(),
+    source_sandbox_id: uuid("source_sandbox_id").notNull(),
+    target_image: text("target_image").notNull(),
+    target_digest: text("target_digest").notNull(),
+    target_provider_sandbox_id: text("target_provider_sandbox_id").notNull(),
+    target_replacement_attempt_id: uuid("target_replacement_attempt_id").notNull(),
+    target_provider_node_id: text("target_provider_node_id"),
+    target_provider_container_name: text("target_provider_container_name"),
+    receipt_state: text("receipt_state").$type<AgentSnapshotRestoreReceiptState>().notNull(),
+    receipt_schema_version: integer("receipt_schema_version").notNull(),
+    receipt_transfer: text("receipt_transfer").notNull(),
+    receipt_file_count: integer("receipt_file_count").notNull(),
+    receipt_total_bytes: bigint("receipt_total_bytes", { mode: "number" }).notNull(),
+    receipt_requires_restart: boolean("receipt_requires_restart").notNull(),
+    receipt_success: boolean("receipt_success").notNull(),
+    receipt_committed_at: timestamp("receipt_committed_at", {
+      withTimezone: true,
+    }).notNull(),
+    candidate_state: text("candidate_state").$type<AgentSnapshotRestoreCandidateState>().notNull(),
+    route_exposed_at: timestamp("route_exposed_at", { withTimezone: true }),
+    candidate_retired_at: timestamp("candidate_retired_at", {
+      withTimezone: true,
+    }).notNull(),
+    created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    backup_idx: index("agent_snapshot_restore_validations_backup_idx").on(
+      table.organization_id,
+      table.sandbox_record_id,
+      table.backup_id,
+    ),
+    candidate_idx: index("agent_snapshot_restore_validations_candidate_idx").on(
+      table.organization_id,
+      table.agent_id,
+      table.target_replacement_attempt_id,
+    ),
+    contract_check: check(
+      "agent_snapshot_restore_validations_contract_check",
+      sql`
+        ${table.aggregate_sha256} ~ '^[0-9a-f]{64}$'
+        AND ${table.capture_nonce} ~ '^[0-9a-f]{64}$'
+        AND ${table.source_environment_revision} >= 0
+        AND ${table.source_image_digest} ~ '^sha256:[0-9a-f]{64}$'
+        AND ${table.target_digest} ~ '^sha256:[0-9a-f]{64}$'
+        AND ${table.receipt_state} = 'committed'
+        AND ${table.receipt_schema_version} = 2
+        AND ${table.receipt_transfer} = 'chunked-v1'
+        AND ${table.receipt_file_count} >= 0
+        AND ${table.receipt_total_bytes} >= 0
+        AND ${table.receipt_requires_restart} = TRUE
+        AND ${table.receipt_success} = TRUE
+        AND ${table.candidate_state} = 'never_routed_retired'
+        AND ${table.route_exposed_at} IS NULL
+        AND ${table.candidate_retired_at} >= ${table.receipt_committed_at}
+      `,
+    ),
+  }),
+);
+
 export const agentSandboxBackupCleanupIntents = pgTable(
   "agent_sandbox_backup_cleanup_intents",
   {
@@ -765,6 +856,12 @@ export const UPGRADE_FAILURE_TARGET_MARKER_PREFIX = "[upgrade-failed-target:";
 export type AgentSandbox = InferSelectModel<typeof agentSandboxes>;
 export type NewAgentSandbox = InferInsertModel<typeof agentSandboxes>;
 export type StoredAgentSandboxBackup = InferSelectModel<typeof agentSandboxBackups>;
+export type AgentSnapshotRestoreValidation = InferSelectModel<
+  typeof agentSnapshotRestoreValidations
+>;
+export type NewAgentSnapshotRestoreValidation = InferInsertModel<
+  typeof agentSnapshotRestoreValidations
+>;
 export type StoredAgentSandboxBackupCleanupIntent = InferSelectModel<
   typeof agentSandboxBackupCleanupIntents
 >;

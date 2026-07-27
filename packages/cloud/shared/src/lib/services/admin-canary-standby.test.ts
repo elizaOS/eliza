@@ -15,8 +15,10 @@ import {
 const DIGEST_A = `sha256:${"a".repeat(64)}`;
 const DIGEST_B = `sha256:${"b".repeat(64)}`;
 const BACKUP_ID = "00000000-0000-4000-8000-000000217183";
+const RESTORE_VALIDATION_ID = "00000000-0000-4000-8000-000000317183";
 const RESTORE_AGGREGATE_SHA256 = "c".repeat(64);
 const RESTORE_CANDIDATE_ID = "restore-candidate-217183";
+const RESTORE_CANDIDATE_ATTEMPT_ID = "00000000-0000-4000-8000-000000917183";
 
 function decisionJobData(
   overrides: Partial<AdminCanaryStandbyDecisionJobData> = {},
@@ -26,9 +28,10 @@ function decisionJobData(
     sourceJobId: "00000000-0000-4000-8000-000000117183",
     decision: "accept",
     verifiedBackupId: BACKUP_ID,
-    restoreValidationId: BACKUP_ID,
+    restoreValidationId: RESTORE_VALIDATION_ID,
     restoreValidationAggregateSha256: RESTORE_AGGREGATE_SHA256,
     restoreValidatedCandidateProviderSandboxId: RESTORE_CANDIDATE_ID,
+    restoreValidatedCandidateReplacementAttemptId: RESTORE_CANDIDATE_ATTEMPT_ID,
     standbyGeneration: "00000000-0000-4000-8000-000000117183",
     rolloutId: "00000000-0000-4000-8000-000000317183",
     actorUserId: "00000000-0000-4000-8000-000000417183",
@@ -70,7 +73,7 @@ describe("admin canary rollback standby decision contract", () => {
         sourceJobId: decisionJobData().sourceJobId,
         decision: "accept",
         verifiedBackupId: BACKUP_ID,
-        restoreValidationId: BACKUP_ID,
+        restoreValidationId: RESTORE_VALIDATION_ID,
       }),
     ).toThrow("accept decisions require restoreValidationAggregateSha256");
 
@@ -80,7 +83,7 @@ describe("admin canary rollback standby decision contract", () => {
         sourceJobId: decisionJobData().sourceJobId,
         decision: "accept",
         verifiedBackupId: BACKUP_ID,
-        restoreValidationId: BACKUP_ID,
+        restoreValidationId: RESTORE_VALIDATION_ID,
         restoreValidationAggregateSha256: RESTORE_AGGREGATE_SHA256,
       }),
     ).toThrow("accept decisions require restoreValidatedCandidateProviderSandboxId");
@@ -102,6 +105,7 @@ describe("admin canary rollback standby decision contract", () => {
           restoreValidationId: undefined,
           restoreValidationAggregateSha256: undefined,
           restoreValidatedCandidateProviderSandboxId: undefined,
+          restoreValidatedCandidateReplacementAttemptId: undefined,
         }),
       ),
     ).not.toThrow();
@@ -112,11 +116,24 @@ describe("admin canary rollback standby decision contract", () => {
         sourceJobId: decisionJobData().sourceJobId,
         decision: "accept",
         verifiedBackupId: BACKUP_ID,
-        restoreValidationId: "00000000-0000-4000-8000-000000317183",
+        restoreValidationId: RESTORE_VALIDATION_ID,
+        restoreValidationAggregateSha256: RESTORE_AGGREGATE_SHA256,
+        restoreValidatedCandidateProviderSandboxId: RESTORE_CANDIDATE_ID,
+        restoreValidatedCandidateReplacementAttemptId: RESTORE_CANDIDATE_ATTEMPT_ID,
+      }),
+    ).not.toThrow();
+
+    expect(() =>
+      assertAdminCanaryStandbyDecisionInput({
+        requestId: decisionJobData().requestId,
+        sourceJobId: decisionJobData().sourceJobId,
+        decision: "accept",
+        verifiedBackupId: BACKUP_ID,
+        restoreValidationId: RESTORE_VALIDATION_ID,
         restoreValidationAggregateSha256: RESTORE_AGGREGATE_SHA256,
         restoreValidatedCandidateProviderSandboxId: RESTORE_CANDIDATE_ID,
       }),
-    ).toThrow("restoreValidationId must equal verifiedBackupId");
+    ).toThrow("accept decisions require restoreValidatedCandidateReplacementAttemptId");
   });
 
   test("durable data binds actor identity, exact digests, and decision time", () => {
@@ -149,21 +166,16 @@ describe("admin canary rollback standby decision contract", () => {
         undefined as never,
         {
           backupId: BACKUP_ID,
-          restoreValidationId: BACKUP_ID,
+          restoreValidationId: RESTORE_VALIDATION_ID,
           restoreValidationAggregateSha256: RESTORE_AGGREGATE_SHA256,
           restoreValidatedCandidateProviderSandboxId: RESTORE_CANDIDATE_ID,
+          restoreValidatedCandidateReplacementAttemptId: RESTORE_CANDIDATE_ATTEMPT_ID,
           organizationId: decisionJobData().organizationId,
           sandboxRecordId: decisionJobData().agentId,
           agentId: decisionJobData().agentId,
           targetOwnerUserId: decisionJobData().targetOwnerUserId,
           targetImage: decisionJobData().targetImage,
           targetDigest: decisionJobData().targetDigest,
-          neverRouted: true,
-          snapshotType: "pre-upgrade",
-          schemaVersion: 2,
-          verificationStatus: "verified",
-          descriptorCommitState: "complete",
-          restoreReceiptState: "committed",
         },
       ),
     ).rejects.toThrow("Verified v2 candidate-restore reader is not configured");
