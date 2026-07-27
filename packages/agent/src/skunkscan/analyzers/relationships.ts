@@ -1,9 +1,11 @@
 import {
+  SupportedChain,
   WalletFundingSummary,
   WalletRelationship,
   WalletRelationshipSummary,
 } from "../types";
 import { SolanaParsedTransaction } from "../helius";
+import { lookupWalletLabel } from "../labels/labelEngine";
 import {
   createConfidenceResponse,
 } from "../confidence/framework";
@@ -68,6 +70,7 @@ export function analyzeWalletRelationships(
   funding: WalletFundingSummary,
   investigatedAddress: string,
   parsedTransactions: SolanaParsedTransaction[],
+  chain: SupportedChain,
 ): WalletRelationshipSummary {
   const normalizedInvestigatedAddress =
     investigatedAddress.trim();
@@ -210,6 +213,11 @@ export function analyzeWalletRelationships(
             : counterparty.incomingTransferCount +
               counterparty.outgoingTransferCount;
 
+        const walletLabel = lookupWalletLabel(
+          chain,
+          counterparty.address,
+        );
+
         const confidence =
           direction === "bidirectional" ||
           interactionCount >= 5
@@ -241,7 +249,7 @@ export function analyzeWalletRelationships(
         return {
           address: counterparty.address,
           relationship: relationshipType,
-          label: null,
+          label: walletLabel?.label ?? null,
           confidence,
           direction,
           interactionCount,
