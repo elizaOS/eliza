@@ -609,6 +609,16 @@ describe("managed dedicated canary diagnostic", () => {
     "Job timed out - recovered for retry (attempt 1/1000)",
     "Job timed out - recovered for retry (attempt 1/3) trailing",
     "Job timed out - Recovered for Retry (attempt 1/3)",
+    "Job timed out - recovered  for retry (attempt 1/3)",
+    " Job timed out - recovered for retry (attempt 1/3)",
+    "Job timed out: recovered for retry (attempt 1/3)",
+    "Job  timed out - recovered for retry (attempt 1/3)",
+    "Job timeouted - recovered for retry (attempt 1/3)",
+    "Job timeouts - recovered for retry (attempt 1/3)",
+    "Job timeout_foo - recovered for retry (attempt 1/3)",
+    "Job timed\tout - recovered for retry (attempt 1/3)",
+    "Job timed out - recov ered for retry (attempt 1/3)",
+    "Job interrupted by worker restart - recovered for retry (attempt 1/3)\n",
   ])("rejects malformed recovery provenance", (message) => {
     const input = failedDeleteInput();
     const agent = input.agent as Record<string, unknown>;
@@ -625,6 +635,141 @@ describe("managed dedicated canary diagnostic", () => {
       sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX),
     ).toThrow("malformed recovery provenance");
   });
+
+  test.each(["agent", "result"])(
+    "rejects recovery-looking text outside jobs.error at the %s boundary",
+    (boundary) => {
+      const input = failedDeleteInput();
+      const agent = input.agent as Record<string, unknown>;
+      const [job] = input.jobs as Record<string, unknown>[];
+      const malformed =
+        "Job timed out - recovered  for retry (attempt 1/3)";
+      if (boundary === "agent") {
+        agent.errorMessage = `Deletion permanently failed after 3 attempts: ${malformed}`;
+      } else {
+        job.result = {
+          containerStopped: false,
+          rowDeleted: false,
+          error: malformed,
+        };
+      }
+
+      expect(() =>
+        sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX),
+      ).toThrow("malformed recovery provenance");
+    },
+  );
+
+  test.each([
+    [
+      "successful deletion",
+      { containerStopped: true, rowDeleted: true, error: null },
+    ],
+    [
+      "stopped container without a classified failure",
+      { containerStopped: true, rowDeleted: false, error: null },
+    ],
+    [
+      "deleted row without a stopped container",
+      {
+        containerStopped: false,
+        rowDeleted: true,
+        error: "Failed to delete sandbox",
+      },
+    ],
+    [
+      "partial outcome without an error",
+      { containerStopped: false, rowDeleted: false, error: null },
+    ],
+    [
+      "agent-not-found error",
+      {
+        containerStopped: false,
+        rowDeleted: false,
+        error: "Agent not found",
+      },
+    ],
+    [
+      "database error",
+      {
+        containerStopped: false,
+        rowDeleted: false,
+        error: "database connection failed",
+      },
+    ],
+    [
+      "credential error",
+      {
+        containerStopped: false,
+        rowDeleted: false,
+        error: "credential revoke failed",
+      },
+    ],
+    [
+      "timeout error",
+      {
+        containerStopped: false,
+        rowDeleted: false,
+        error: "provider timed out",
+      },
+    ],
+  ])("rejects recovery with %s result", (_name, result) => {
+    const input = failedDeleteInput();
+    const agent = input.agent as Record<string, unknown>;
+    const [job] = input.jobs as Record<string, unknown>[];
+    agent.status = "deletion_pending";
+    agent.errorMessage = null;
+    agent.errorCount = 0;
+    job.status = "pending";
+    job.error =
+      "Job interrupted by worker restart - recovered for retry (attempt 1/3)";
+    job.result = result;
+    job.attempts = 1;
+    job.completedAt = null;
+
+    expect(() =>
+      sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX),
+    ).toThrow("recovery result is not a partial failure");
+  });
+
+  test.each([
+    ["Failed to delete sandbox", "sandbox_stop_failed"],
+    [
+      "Agent replacement cleanup is still pending",
+      "replacement_cleanup_pending",
+    ],
+    ["Agent provisioning is in progress", "provisioning_in_progress"],
+    ["Agent deletion ownership changed", "lifecycle_conflict"],
+  ])(
+    "accepts the source-owned partial recovery result: %s",
+    (message, expectedCode) => {
+      const input = failedDeleteInput();
+      const agent = input.agent as Record<string, unknown>;
+      const [job] = input.jobs as Record<string, unknown>[];
+      agent.status = "deletion_pending";
+      agent.errorMessage = null;
+      agent.errorCount = 0;
+      job.status = "pending";
+      job.error =
+        "Job interrupted by worker restart - recovered for retry (attempt 1/3)";
+      job.result = {
+        containerStopped: false,
+        rowDeleted: false,
+        error: message,
+      };
+      job.attempts = 1;
+      job.completedAt = null;
+
+      expect(
+        sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX).jobs[0],
+      ).toMatchObject({
+        recoveryCode: "worker_restart_recovered",
+        resultErrorCode: expectedCode,
+        containerStopped: false,
+        rowDeleted: false,
+      });
+    },
+  );
 
   test("classifies row-delete failures without publishing the SQL text", () => {
     const input = failedDeleteInput();

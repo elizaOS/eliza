@@ -20,6 +20,7 @@ const LIFECYCLE_JOB_CONFLICT_PATTERN = new RegExp(
 );
 const FORBIDDEN_OUTPUT_PATTERN =
   /(?:https?:\/\/|(?:\d{1,3}\.){3}\d{1,3}|\b(?:token|secret|password|api[_-]?key)\b|managed-dedicated-canary-|sha256:)/i;
+const TIMEOUT_ERROR_PATTERN = /(?:timed out|timeout)/i;
 
 const SANDBOX_STATUSES = new Set([
   "pending",
@@ -63,6 +64,13 @@ interface RecoveryClassification {
   attempt: number;
   maxAttempts: number;
 }
+
+const RECOVERY_PARTIAL_RESULT_ERROR_CODES = new Set<ErrorCode>([
+  "sandbox_stop_failed",
+  "replacement_cleanup_pending",
+  "provisioning_in_progress",
+  "lifecycle_conflict",
+]);
 
 export interface ManagedDedicatedCanaryDiagnostic {
   schemaVersion: 2;
@@ -143,6 +151,17 @@ function nullableBoolean(value: unknown, label: string): boolean | null {
   return boolean(value, label);
 }
 
+function looksLikeRecoveryProvenance(value: string): boolean {
+  const normalized = value.toLowerCase().replace(/[^a-z0-9]+/g, "");
+  return (
+    normalized.includes("recover") &&
+    (TIMEOUT_ERROR_PATTERN.test(value) ||
+      normalized.includes("timeout") ||
+      normalized.includes("timedout") ||
+      normalized.includes("workerrestart"))
+  );
+}
+
 function timestamp(
   value: unknown,
   label: string,
@@ -168,6 +187,9 @@ function classifyError(value: unknown, label: string): ErrorCode {
     );
   if (permanentDelete)
     return classifyError(permanentDelete[1], `${label} cause`);
+  if (looksLikeRecoveryProvenance(value)) {
+    throw new Error(`${label} has malformed recovery provenance`);
+  }
   if (value === "Failed to delete sandbox") return "sandbox_stop_failed";
   if (value === "Agent not found") return "agent_not_found";
   if (value === "Agent replacement cleanup is still pending") {
@@ -207,7 +229,7 @@ function classifyError(value: unknown, label: string): ErrorCode {
   ) {
     return "database_failed";
   }
-  if (/(?:timed out|timeout)/i.test(value)) return "timeout";
+  if (TIMEOUT_ERROR_PATTERN.test(value)) return "timeout";
   throw new Error(`${label} is not covered by the privacy-safe classifier`);
 }
 
@@ -236,14 +258,14 @@ function classifyRecovery(
   ];
   for (const { code, pattern } of patterns) {
     const match = pattern.exec(value);
-    if (!match) continue;
+    if (!match || match[0] !== value) continue;
     return {
       code,
       attempt: Number(match[1]),
       maxAttempts: Number(match[2]),
     };
   }
-  if (/recovered for retry/i.test(value)) {
+  if (looksLikeRecoveryProvenance(value)) {
     throw new Error(`${label} has malformed recovery provenance`);
   }
   return null;
@@ -425,6 +447,15 @@ export function sanitizeManagedDedicatedCanaryDiagnostic(
     }
     if (recovery && (startedAt === null || completedAt !== null)) {
       throw new Error(`jobs[${index}] recovery timestamps disagree`);
+    }
+    if (
+      recovery &&
+      job.result !== null &&
+      (containerStopped !== false ||
+        rowDeleted !== false ||
+        !RECOVERY_PARTIAL_RESULT_ERROR_CODES.has(resultErrorCode))
+    ) {
+      throw new Error(`jobs[${index}] recovery result is not a partial failure`);
     }
     if (rowDeleted === true && containerStopped !== true) {
       throw new Error(
