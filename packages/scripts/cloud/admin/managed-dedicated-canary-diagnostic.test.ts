@@ -396,7 +396,7 @@ describe("managed dedicated canary diagnostic", () => {
     job.result = null;
     expect(() =>
       sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX),
-    ).toThrow("privacy-safe classifier");
+    ).toThrow("malformed recovery provenance");
   });
 
   test.each([
@@ -618,6 +618,12 @@ describe("managed dedicated canary diagnostic", () => {
     "Job timeout_foo - recovered for retry (attempt 1/3)",
     "Job timed\tout - recovered for retry (attempt 1/3)",
     "Job timed out - recov ered for retry (attempt 1/3)",
+    "Job timed out - recovеred for retry (attempt 1/3)",
+    "Job timed out - retrying (attempt 1/3)",
+    "job  timed out - retrying (attempt 1/3)",
+    "Job timed\u200b-out - retrying (attempt 1/3)",
+    "Job timed.out - retrying (attempt 1/3)",
+    "Job interrupted by worker restart: retrying (attempt 1/3)",
     "Job interrupted by worker restart - recovered for retry (attempt 1/3)\n",
   ])("rejects malformed recovery provenance", (message) => {
     const input = failedDeleteInput();
@@ -711,6 +717,23 @@ describe("managed dedicated canary diagnostic", () => {
         containerStopped: false,
         rowDeleted: false,
         error: "provider timed out",
+      },
+    ],
+    [
+      "dynamic lifecycle-conflict error",
+      {
+        containerStopped: false,
+        rowDeleted: false,
+        error:
+          "Agent 55f332f8-da54-4c53-952c-a38f5f01287b has conflicting agent_delete job 398b3cae-4aa0-4f63-8736-ac3c7ca9ab96",
+      },
+    ],
+    [
+      "organization-mismatch lifecycle error",
+      {
+        containerStopped: false,
+        rowDeleted: false,
+        error: "Organization ID mismatch",
       },
     ],
   ])("rejects recovery with %s result", (_name, result) => {
