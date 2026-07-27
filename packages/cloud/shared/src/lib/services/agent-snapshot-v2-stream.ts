@@ -250,12 +250,10 @@ export function validateAgentSnapshotV2UpgradeBinding(
   assertSafeInteger(value.sourceEnvironmentRevision, "Snapshot source environment revision");
   assertImageDigest(value.sourceImageDigest, "Snapshot source image digest");
   assertImageDigest(value.targetImageDigest, "Snapshot target image digest");
-  if (
-    typeof value.sourceSandboxId !== "string" ||
-    !SANDBOX_PATTERN.test(value.sourceSandboxId) ||
-    typeof value.targetSandboxId !== "string" ||
-    !SANDBOX_PATTERN.test(value.targetSandboxId)
-  ) {
+  if (typeof value.sourceSandboxId !== "string" || !UUID_PATTERN.test(value.sourceSandboxId)) {
+    throw invalidSnapshot("Snapshot source placement binding is malformed");
+  }
+  if (typeof value.targetSandboxId !== "string" || !SANDBOX_PATTERN.test(value.targetSandboxId)) {
     throw invalidSnapshot("Snapshot sandbox binding is malformed");
   }
   if (
