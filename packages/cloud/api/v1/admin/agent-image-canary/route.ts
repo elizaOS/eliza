@@ -107,6 +107,7 @@ const standbyDecisionSchema = z
       .trim()
       .min(1)
       .optional(),
+    restoreValidatedCandidateReplacementAttemptId: z.string().uuid().optional(),
   })
   .strict()
   .superRefine((value, context) => {
@@ -147,14 +148,13 @@ const standbyDecisionSchema = z
     }
     if (
       value.decision === "accept" &&
-      value.verifiedBackupId &&
-      value.restoreValidationId &&
-      value.verifiedBackupId !== value.restoreValidationId
+      !value.restoreValidatedCandidateReplacementAttemptId
     ) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ["restoreValidationId"],
-        message: "restoreValidationId must equal verifiedBackupId",
+        path: ["restoreValidatedCandidateReplacementAttemptId"],
+        message:
+          "accept decisions require restoreValidatedCandidateReplacementAttemptId",
       });
     }
     if (
@@ -162,7 +162,8 @@ const standbyDecisionSchema = z
       (value.verifiedBackupId ||
         value.restoreValidationId ||
         value.restoreValidationAggregateSha256 ||
-        value.restoreValidatedCandidateProviderSandboxId)
+        value.restoreValidatedCandidateProviderSandboxId ||
+        value.restoreValidatedCandidateReplacementAttemptId)
     ) {
       context.addIssue({
         code: z.ZodIssueCode.custom,

@@ -264,6 +264,12 @@ export class AdminAgentImageRolloutService {
               input.restoreValidatedCandidateProviderSandboxId,
           }
         : {}),
+      ...(input.restoreValidatedCandidateReplacementAttemptId
+        ? {
+            restoreValidatedCandidateReplacementAttemptId:
+              input.restoreValidatedCandidateReplacementAttemptId,
+          }
+        : {}),
       standbyGeneration,
       rolloutId: sourceData.rolloutId,
       actorUserId,
