@@ -25,7 +25,9 @@ const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
 import path from "node:path";
 import {
   type AgentRuntime,
+  ElizaError,
   EventType,
+  getSnapshotCaptureBarrier,
   type IAgentRuntime,
   type IScreenCaptureService,
   isStreamingDestinationConfigured,
@@ -36,6 +38,7 @@ import {
   type Route,
   readRequestBody,
   ServiceType,
+  type SnapshotMutationLease,
   sendJson,
   sendJsonError,
   tryHandleTrajectoryReadRoutes,
@@ -65,6 +68,11 @@ import { type WebSocket, WebSocketServer } from "ws";
 import { installPlugin as installPluginDirect } from "../services/plugin-installer.ts";
 import { handleStandaloneCloudPairRoute } from "./cloud-pair-route.ts";
 import { handlePluginDirectoryRoutes } from "./plugin-directory-routes.ts";
+import {
+  admitHttpRuntimeRequest,
+  applySnapshotTransferTimeoutPolicy,
+  snapshotUpgradeUnavailableStatus,
+} from "./snapshot-capture-admission.ts";
 
 // `@elizaos/plugin-browser` and `@elizaos/plugin-x402` load lazily: X402 only
 // when runtime routes need validation, browser on the first browser route hit,
@@ -1707,6 +1715,69 @@ function wireProactiveInteractionDecider(
 }
 
 async function handleRequest(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  state: ServerState,
+  ctx?: RequestContext,
+  requestReceiveTimeoutMs = 300_000,
+): Promise<void> {
+  const method = req.method ?? "GET";
+  let pathname: string;
+  try {
+    pathname = new URL(
+      req.url ?? "/",
+      `http://${req.headers.host ?? "localhost"}`,
+    ).pathname;
+  } catch {
+    // error-policy:J3 malformed request targets become an explicit 400 before
+    // admission; no runtime operation observes the untrusted URL.
+    error(res, "Invalid request URL", 400);
+    return;
+  }
+
+  applySnapshotTransferTimeoutPolicy(
+    req,
+    res,
+    pathname,
+    requestReceiveTimeoutMs,
+  );
+
+  const runtime = state.runtime;
+  let admission: SnapshotMutationLease | undefined;
+  try {
+    admission = admitHttpRuntimeRequest(runtime, method, pathname);
+  } catch (admissionError) {
+    // error-policy:J1 HTTP admission boundary translates the closed barrier
+    // into an explicit unavailable response.
+    if (
+      !(admissionError instanceof ElizaError) ||
+      admissionError.code !== "AGENT_SNAPSHOT_MUTATION_ADMISSION_CLOSED"
+    ) {
+      throw admissionError;
+    }
+    if (!runtime) throw admissionError;
+    const snapshotCapture = getSnapshotCaptureBarrier(runtime).status();
+    json(
+      res,
+      {
+        error: {
+          code: "AGENT_SNAPSHOT_MUTATION_ADMISSION_CLOSED",
+          message: "Agent is unavailable while snapshot capture is in progress",
+        },
+        snapshotCapture,
+      },
+      503,
+    );
+    return;
+  }
+  try {
+    await handleAdmittedRequest(req, res, state, ctx);
+  } finally {
+    admission?.release();
+  }
+}
+
+async function handleAdmittedRequest(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   state: ServerState,
@@ -4056,24 +4127,31 @@ export async function startApiServer(opts?: {
     `[eliza-api] Creating http server (${Date.now() - apiStartTime}ms)`,
   );
   apiLap("pre-createServer (route imports + middleware setup done)");
+  let requestReceiveTimeoutMs = 300_000;
   const server = http.createServer(async (req, res) => {
     try {
-      await handleRequest(req, res, state, {
-        onRestart,
-        onRuntimeSwapped: () => {
-          bindRuntimeStreams(state.runtime);
-          wireModelRegistrationBroadcast(state.runtime);
-          void wireCoordinatorBridgesWhenReady(state, {
-            wireChatBridge: wireCodingAgentChatBridge,
-            wireWsBridge: wireCodingAgentWsBridge,
-            wireEventRouting: wireCoordinatorEventRouting,
-            wireSwarmSynthesis: wireCodingAgentSwarmSynthesis,
-            context: "restart",
-            logger,
-          });
+      await handleRequest(
+        req,
+        res,
+        state,
+        {
+          onRestart,
+          onRuntimeSwapped: () => {
+            bindRuntimeStreams(state.runtime);
+            wireModelRegistrationBroadcast(state.runtime);
+            void wireCoordinatorBridgesWhenReady(state, {
+              wireChatBridge: wireCodingAgentChatBridge,
+              wireWsBridge: wireCodingAgentWsBridge,
+              wireEventRouting: wireCoordinatorEventRouting,
+              wireSwarmSynthesis: wireCodingAgentSwarmSynthesis,
+              context: "restart",
+              logger,
+            });
+          },
+          getAppManager: ensureAppManager,
         },
-        getAppManager: ensureAppManager,
-      });
+        requestReceiveTimeoutMs,
+      );
     } catch (err) {
       const msg = err instanceof Error ? err.message : "internal error";
       logger.error({ err }, `[eliza-api] Request handler failed: ${msg}`);
@@ -4095,10 +4173,23 @@ export async function startApiServer(opts?: {
       void getOptionalPluginApi<{
         attachMobileDeviceBridgeToServer: (
           server: http.Server,
+          options?: {
+            admitUpgrade?: () => SnapshotMutationLease;
+          },
         ) => Promise<void>;
       }>("capacitor")
         .then(({ attachMobileDeviceBridgeToServer }) =>
-          attachMobileDeviceBridgeToServer(server),
+          attachMobileDeviceBridgeToServer(server, {
+            admitUpgrade: () => {
+              if (!state.runtime) {
+                throw new ElizaError("Agent runtime is not ready", {
+                  code: "AGENT_SNAPSHOT_MUTATION_ADMISSION_CLOSED",
+                  severity: "ephemeral",
+                });
+              }
+              return getSnapshotCaptureBarrier(state.runtime).admitMutation();
+            },
+          }),
         )
         .catch((err: unknown) => {
           logger.warn(
@@ -4110,28 +4201,11 @@ export async function startApiServer(opts?: {
   }
   logger.debug(`[eliza-api] Server created (${Date.now() - apiStartTime}ms)`);
 
-  // Node's `http.createServer` defaults are tuned for snappy web traffic:
-  //   - requestTimeout: 300_000 ms (5 min) — closes the socket if the
-  //     full request hasn't completed in 5 minutes.
-  //   - headersTimeout: 60_000 ms — closes the socket if headers
-  //     haven't arrived in 60 s.
-  //   - keepAliveTimeout: 5_000 ms — closes idle connections after 5 s.
-  //
-  // Local-inference chat completions on AOSP cuttlefish CPU routinely
-  // run 5–25 minutes per turn (planner + action evaluator + reply,
-  // each with a 9k-token prompt prefilled at ~20 tok/s). The 300 s
-  // requestTimeout aborts the response mid-generation and the client
-  // sees `fetch failed` while the agent's chat-routes timeout
-  // (ELIZA_CHAT_GENERATION_TIMEOUT_MS, default 180 s, AOSP override
-  // 1_800_000 ms = 30 min) is still ticking. The result: the device
-  // does the work, the model produces a reply, but the HTTP socket
-  // is already closed by the time the reply is ready.
-  //
-  // Read overrides from env so non-AOSP deploys keep tighter defaults,
-  // and AOSP can pass a generous bound that matches the chat-routes
-  // generation budget. ELIZA_HTTP_REQUEST_TIMEOUT_MS is the canonical
-  // override; falls back to ELIZA_CHAT_GENERATION_TIMEOUT_MS + 60 s
-  // slack so a single env var can drive the whole pipeline.
+  // Response generation may legitimately outlive Node's whole-request timer
+  // on local inference. Header receipt remains natively bounded, while the
+  // request listener applies this budget only to receiving ordinary request
+  // bodies. Snapshot transfer bodies are intentionally exempt because their
+  // integrity and size limits are enforced by the snapshot protocol.
   const requestTimeoutEnvRaw =
     process.env.ELIZA_HTTP_REQUEST_TIMEOUT_MS?.trim() ?? "";
   const chatTimeoutEnvRaw =
@@ -4150,6 +4224,7 @@ export async function startApiServer(opts?: {
     // (300_000 ms / 5 min) which matches the upstream behavior.
     return 300_000;
   })();
+  requestReceiveTimeoutMs = requestTimeoutMs;
   // headersTimeout MUST be ≤ requestTimeout per Node docs. We give it
   // a 60 s lower bound so a slow client header upload doesn't cap the
   // long-tail decode budget.
@@ -4158,16 +4233,17 @@ export async function startApiServer(opts?: {
   // it doesn't help long-running requests but keeps connections warm
   // for chat-completion clients that fire repeated turns.
   const keepAliveTimeoutMs = 60_000;
-  server.requestTimeout = requestTimeoutMs;
+  // Node has no request-scoped exception to requestTimeout. The request
+  // listener enforces the same total receive deadline for normal requests so
+  // snapshot transfer bodies alone can remain unbounded.
+  server.requestTimeout = 0;
   server.headersTimeout = headersTimeoutMs;
   server.keepAliveTimeout = keepAliveTimeoutMs;
-  // server.timeout is the IDLE socket timeout (legacy). Setting to 0
-  // disables it; we want long-running requests to ride on the
-  // requestTimeout above instead. Default in Node 22 is 0 already, but
-  // pin explicitly for clarity.
+  // The legacy idle socket timer must not terminate a response while an
+  // inference request is still producing output.
   server.timeout = 0;
   logger.debug(
-    `[eliza-api] Server timeouts: requestTimeout=${requestTimeoutMs}ms, headersTimeout=${headersTimeoutMs}ms, keepAliveTimeout=${keepAliveTimeoutMs}ms`,
+    `[eliza-api] Server timeouts: requestReceiveTimeout=${requestTimeoutMs}ms, headersTimeout=${headersTimeoutMs}ms, keepAliveTimeout=${keepAliveTimeoutMs}ms`,
   );
 
   const broadcastWs = (payload: unknown): void => {
@@ -4721,6 +4797,17 @@ export async function startApiServer(opts?: {
       if (wsUrl.pathname === "/api/local-inference/device-bridge") {
         return;
       }
+      if (state.runtime) {
+        const snapshotCapture = snapshotUpgradeUnavailableStatus(state.runtime);
+        if (snapshotCapture) {
+          rejectWebSocketUpgrade(
+            socket,
+            503,
+            `Agent snapshot capture is ${snapshotCapture.phase}`,
+          );
+          return;
+        }
+      }
       const rejection = resolveWebSocketUpgradeRejection(request, wsUrl);
       if (rejection) {
         rejectWebSocketUpgrade(socket, rejection.status, rejection.reason);
@@ -4884,6 +4971,7 @@ export async function startApiServer(opts?: {
     };
 
     ws.on("message", async (data: unknown) => {
+      let admission: SnapshotMutationLease | undefined;
       try {
         const msg = JSON.parse(String(data));
         if (!isAuthenticated) {
@@ -4905,6 +4993,34 @@ export async function startApiServer(opts?: {
         }
         if (isDuplicateWsMessage(wsClientIds.get(ws), msg.msgId)) {
           return;
+        }
+        if (msg.type !== "ping" && state.runtime) {
+          try {
+            admission = getSnapshotCaptureBarrier(
+              state.runtime,
+            ).admitMutation();
+          } catch (admissionError) {
+            // error-policy:J1 WebSocket admission boundary returns an explicit
+            // unavailable frame while the old runtime drains or remains standby.
+            if (
+              !(admissionError instanceof ElizaError) ||
+              admissionError.code !== "AGENT_SNAPSHOT_MUTATION_ADMISSION_CLOSED"
+            ) {
+              throw admissionError;
+            }
+            if (ws.readyState === 1) {
+              ws.send(
+                JSON.stringify({
+                  type: "agent-unavailable",
+                  code: "AGENT_SNAPSHOT_MUTATION_ADMISSION_CLOSED",
+                  snapshotCapture: getSnapshotCaptureBarrier(
+                    state.runtime,
+                  ).status(),
+                }),
+              );
+            }
+            return;
+          }
         }
         if (msg.type === "ping") {
           ws.send(JSON.stringify({ type: "pong" }));
@@ -5046,25 +5162,22 @@ export async function startApiServer(opts?: {
           msg.type === "view:interact:result" &&
           typeof msg.requestId === "string"
         ) {
-          void import("./views-routes.ts")
-            .then(({ resolveViewInteractResult }) => {
-              resolveViewInteractResult({
-                requestId: msg.requestId,
-                success: msg.success === true,
-                result: msg.result,
-                error: typeof msg.error === "string" ? msg.error : undefined,
-              });
-            })
-            .catch((err) => {
-              logger.error(
-                `[eliza-api] view interaction result error: ${err instanceof Error ? err.message : err}`,
-              );
-            });
+          const { resolveViewInteractResult } = await import(
+            "./views-routes.ts"
+          );
+          resolveViewInteractResult({
+            requestId: msg.requestId,
+            success: msg.success === true,
+            result: msg.result,
+            error: typeof msg.error === "string" ? msg.error : undefined,
+          });
         }
       } catch (err) {
         logger.error(
           `[eliza-api] WebSocket message error: ${err instanceof Error ? err.message : err}`,
         );
+      } finally {
+        admission?.release();
       }
     });
 
