@@ -51,6 +51,10 @@ interface Fixture {
   agentId: string;
   backupId: string;
   restoreValidationId: string;
+  validationJobId: string;
+  sourceJobId: string;
+  rolloutId: string;
+  standbyGeneration: string;
   targetProviderSandboxId: string;
   targetReplacementAttemptId: string;
   targetImage: string;
@@ -100,6 +104,10 @@ async function seedBackup(): Promise<Fixture> {
     agentId: sandbox.id,
     backupId,
     restoreValidationId: randomUUID(),
+    validationJobId: randomUUID(),
+    sourceJobId: randomUUID(),
+    rolloutId: randomUUID(),
+    standbyGeneration: randomUUID(),
     targetProviderSandboxId: `candidate-${randomUUID()}`,
     targetReplacementAttemptId: randomUUID(),
     targetImage: `ghcr.io/elizaos/eliza-demo@${TARGET_DIGEST}`,
@@ -109,6 +117,10 @@ async function seedBackup(): Promise<Fixture> {
 function validationValues(fixture: Fixture) {
   return {
     restore_validation_id: fixture.restoreValidationId,
+    validation_job_id: fixture.validationJobId,
+    source_job_id: fixture.sourceJobId,
+    rollout_id: fixture.rolloutId,
+    standby_generation: fixture.standbyGeneration,
     organization_id: fixture.organizationId,
     sandbox_record_id: fixture.sandboxRecordId,
     agent_id: fixture.agentId,
@@ -121,10 +133,22 @@ function validationValues(fixture: Fixture) {
     source_sandbox_id: randomUUID(),
     target_image: fixture.targetImage,
     target_digest: TARGET_DIGEST,
+    candidate_route_mode: "restore_validation_private_control" as const,
+    validation_state: "never_routed_retired" as const,
     target_provider_sandbox_id: fixture.targetProviderSandboxId,
     target_replacement_attempt_id: fixture.targetReplacementAttemptId,
     target_provider_node_id: "node-candidate",
     target_provider_container_name: "agent-candidate",
+    target_provider_container_id: `container-${randomUUID()}`,
+    target_provider_volume_path: `/var/lib/eliza/restore-validation/${fixture.restoreValidationId}`,
+    target_provider_bridge_url: "http://127.0.0.1:18190",
+    target_provider_health_url: "http://127.0.0.1:18190/health",
+    target_provider_bridge_port: 18190,
+    target_provider_web_ui_port: 12138,
+    target_provider_vpn_node_id: "vpn-node-candidate",
+    target_provider_vpn_node_name: `restore-validation-${fixture.restoreValidationId}`,
+    target_provider_vpn_registration_started_at: NOW,
+    target_provider_allocation_counted: false,
     receipt_state: "committed" as const,
     receipt_schema_version: 2,
     receipt_transfer: "chunked-v1",
@@ -133,8 +157,10 @@ function validationValues(fixture: Fixture) {
     receipt_requires_restart: true,
     receipt_success: true,
     receipt_committed_at: NOW,
-    candidate_state: "never_routed_retired" as const,
     route_exposed_at: null,
+    candidate_container_absent_at: RETIRED_AT,
+    candidate_vpn_absent_at: RETIRED_AT,
+    candidate_volume_absent_at: RETIRED_AT,
     candidate_retired_at: RETIRED_AT,
     created_at: RETIRED_AT,
   };
@@ -142,11 +168,9 @@ function validationValues(fixture: Fixture) {
 
 function readerParams(fixture: Fixture) {
   return {
-    backupId: fixture.backupId,
-    restoreValidationId: fixture.restoreValidationId,
-    restoreValidationAggregateSha256: AGGREGATE_SHA256,
-    restoreValidatedCandidateProviderSandboxId: fixture.targetProviderSandboxId,
-    restoreValidatedCandidateReplacementAttemptId: fixture.targetReplacementAttemptId,
+    sourceJobId: fixture.sourceJobId,
+    standbyGeneration: fixture.standbyGeneration,
+    rolloutId: fixture.rolloutId,
     organizationId: fixture.organizationId,
     sandboxRecordId: fixture.sandboxRecordId,
     agentId: fixture.agentId,
@@ -169,7 +193,7 @@ async function assertRejected(
   let thrown: unknown;
   try {
     await dbWrite.transaction((tx) =>
-      reader.assertVerifiedV2CandidateRestoreInTx(tx, {
+      reader.readVerifiedV2CandidateRestoreInTx(tx, {
         ...readerParams(fixture),
         ...overrides,
       }),
@@ -227,9 +251,20 @@ describe("PostgresVerifiedRestorePointReader", () => {
 
     await expect(
       dbWrite.transaction((tx) =>
-        reader.assertVerifiedV2CandidateRestoreInTx(tx, readerParams(fixture)),
+        reader.readVerifiedV2CandidateRestoreInTx(tx, readerParams(fixture)),
       ),
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual({
+      verifiedBackupId: fixture.backupId,
+      restoreValidationId: fixture.restoreValidationId,
+      restoreValidationAggregateSha256: AGGREGATE_SHA256,
+      restoreValidatedCandidateProviderSandboxId: fixture.targetProviderSandboxId,
+      restoreValidatedCandidateReplacementAttemptId: fixture.targetReplacementAttemptId,
+      receiptCommittedAt: NOW,
+      candidateContainerAbsentAt: RETIRED_AT,
+      candidateVpnAbsentAt: RETIRED_AT,
+      candidateVolumeAbsentAt: RETIRED_AT,
+      candidateRetiredAt: RETIRED_AT,
+    });
   });
 
   test("reads a receipt written in the same transaction and cannot outlive rollback", async () => {
@@ -240,7 +275,7 @@ describe("PostgresVerifiedRestorePointReader", () => {
     await expect(
       dbWrite.transaction(async (tx) => {
         await tx.insert(agentSnapshotRestoreValidations).values(validationValues(fixture));
-        await reader.assertVerifiedV2CandidateRestoreInTx(tx, readerParams(fixture));
+        await reader.readVerifiedV2CandidateRestoreInTx(tx, readerParams(fixture));
         throw rollbackMarker;
       }),
     ).rejects.toBe(rollbackMarker);
@@ -255,22 +290,15 @@ describe("PostgresVerifiedRestorePointReader", () => {
   });
 
   test.each([
-    ["backup_id", { backupId: randomUUID() }],
-    ["aggregate_sha256", { restoreValidationAggregateSha256: "e".repeat(64) }],
-    ["organization_id", { organizationId: randomUUID() }],
-    ["sandbox_record_id", { sandboxRecordId: randomUUID() }],
+    ["restore_validation_cardinality", { sourceJobId: randomUUID() }],
+    ["restore_validation_cardinality", { standbyGeneration: randomUUID() }],
+    ["rollout_id", { rolloutId: randomUUID() }],
+    ["restore_validation_cardinality", { organizationId: randomUUID() }],
+    ["restore_validation_cardinality", { sandboxRecordId: randomUUID() }],
     ["agent_id", { agentId: randomUUID() }],
     ["target_owner_user_id", { targetOwnerUserId: randomUUID() }],
     ["target_image", { targetImage: "ghcr.io/elizaos/eliza-demo:other" }],
     ["target_digest", { targetDigest: `sha256:${"e".repeat(64)}` }],
-    [
-      "target_provider_sandbox_id",
-      { restoreValidatedCandidateProviderSandboxId: "candidate-other" },
-    ],
-    [
-      "target_replacement_attempt_id",
-      { restoreValidatedCandidateReplacementAttemptId: randomUUID() },
-    ],
   ] as const)("rejects caller drift at %s", async (mismatch, overrides) => {
     const fixture = await seedBackup();
     await insertValidation(fixture);

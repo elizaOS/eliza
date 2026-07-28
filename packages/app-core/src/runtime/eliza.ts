@@ -44,6 +44,7 @@ import {
   startEliza as upstreamStartEliza,
 } from "@elizaos/agent";
 import { markDeferredBootPhase } from "@elizaos/agent/runtime/deferred-boot-status";
+import { assertNormalRuntimeBootMode } from "@elizaos/agent/runtime/restore-validation-mode";
 import { installAgentHostBridge } from "./install-agent-host-bridge.js";
 
 export { CHANNEL_PLUGIN_MAP } from "./channel-plugin-map.js";
@@ -1668,6 +1669,7 @@ export function getPgliteRecoveryRetrySkipPlugins(): string[] {
 export async function startEliza(
   options?: StartElizaOptionsExt,
 ): Promise<Awaited<ReturnType<typeof upstreamStartEliza>>> {
+  assertNormalRuntimeBootMode();
   // Eliza app: load PTY / coding-swarm orchestration unless explicitly opted out.
   const orchRaw = readAliasedEnv("ELIZA_AGENT_ORCHESTRATOR")?.toLowerCase();
   if (orchRaw !== "0" && orchRaw !== "false" && orchRaw !== "no") {

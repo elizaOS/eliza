@@ -41,6 +41,10 @@ function renderParams(clause: SQL): string[] {
   return params.map((p) => String(p));
 }
 
+function renderSql(clause: SQL): string {
+  return new PgDialect().sqlToQuery(clause).sql;
+}
+
 describe("countAllocatedWorkloadsOnNode — live-slot accounting (#15378)", () => {
   beforeEach(() => {
     capturedWheres.length = 0;
@@ -50,8 +54,8 @@ describe("countAllocatedWorkloadsOnNode — live-slot accounting (#15378)", () =
   test("the agent_sandboxes filter excludes every terminal status, not just stopped/error", async () => {
     await countAllocatedWorkloadsOnNode("node-under-test");
 
-    // Two queries run (containers + agent_sandboxes); the agent one is the
-    // clause whose params carry the sandbox terminal-status vocab.
+    // The canonical agent query is the clause whose params carry the sandbox
+    // terminal-status vocabulary.
     const agentParams = capturedWheres
       .map(renderParams)
       .find((params) => params.includes("sleeping"));
@@ -68,17 +72,24 @@ describe("countAllocatedWorkloadsOnNode — live-slot accounting (#15378)", () =
     expect(agentParams).not.toContain("running");
   });
 
-  test("sums container + agent counts (one row each here) into total live slots", async () => {
+  test("sums canonical, replacement, rollback-standby, and restore-validation live slots", async () => {
     const total = await countAllocatedWorkloadsOnNode("node-under-test");
-    expect(where).toHaveBeenCalledTimes(3);
-    expect(total).toBe(3);
+    expect(where).toHaveBeenCalledTimes(5);
+    expect(total).toBe(5);
   });
 
-  test("counts a durable replacement reservation as its own live slot", async () => {
+  test("counts durable replacement, rollback-standby, and restore-validation reservations", async () => {
     await countAllocatedWorkloadsOnNode("replacement-node");
 
     const rendered = capturedWheres.map(renderParams);
-    expect(rendered.filter((params) => params.includes("replacement-node"))).toHaveLength(3);
-    expect(rendered.some((params) => params.includes("true"))).toBe(true);
+    expect(rendered.filter((params) => params.includes("replacement-node"))).toHaveLength(5);
+    expect(rendered.filter((params) => params.includes("true"))).toHaveLength(3);
+    expect(capturedWheres.map(renderSql)).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('"replacement_cleanup_allocation_counted" = $2'),
+        expect.stringContaining('"rollback_standby_allocation_counted" = $2'),
+        expect.stringContaining('"target_provider_allocation_counted" = $2'),
+      ]),
+    );
   });
 });
