@@ -104,6 +104,12 @@ export interface NodeSelectionOptions {
    * if the blue landed on the same node as the old.
    */
   excludeNodeId?: string;
+  /**
+   * Skip every listed node. Restore validation uses this to keep its third
+   * placement physically separate from both the serving primary and retained
+   * rollback standby.
+   */
+  excludeNodeIds?: readonly string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -217,6 +223,10 @@ export class DockerNodeManager {
    */
   async getAvailableNode(options: NodeSelectionOptions = {}): Promise<DockerNode | null> {
     const nodes = await dockerNodesRepository.findEnabled();
+    const excludedNodeIds = new Set(options.excludeNodeIds ?? []);
+    if (options.excludeNodeId) {
+      excludedNodeIds.add(options.excludeNodeId);
+    }
     const candidates = (
       await Promise.all(
         nodes.map(async (node) => {
@@ -231,7 +241,7 @@ export class DockerNodeManager {
       )
     )
       .filter((candidate) => candidate.available > 0)
-      .filter((candidate) => candidate.node.node_id !== options.excludeNodeId)
+      .filter((candidate) => !excludedNodeIds.has(candidate.node.node_id))
       .sort((a, b) => b.available - a.available);
 
     for (const candidate of candidates) {

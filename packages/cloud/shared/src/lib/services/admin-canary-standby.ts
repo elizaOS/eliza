@@ -18,22 +18,12 @@ export interface AdminCanaryStandbyDecisionInput {
   requestId: string;
   sourceJobId: string;
   decision: AdminCanaryStandbyDecision;
-  verifiedBackupId?: string;
-  restoreValidationId?: string;
-  restoreValidationAggregateSha256?: string;
-  restoreValidatedCandidateProviderSandboxId?: string;
-  restoreValidatedCandidateReplacementAttemptId?: string;
 }
 
 export interface AdminCanaryStandbyDecisionJobData {
   requestId: string;
   sourceJobId: string;
   decision: AdminCanaryStandbyDecision;
-  verifiedBackupId?: string;
-  restoreValidationId?: string;
-  restoreValidationAggregateSha256?: string;
-  restoreValidatedCandidateProviderSandboxId?: string;
-  restoreValidatedCandidateReplacementAttemptId?: string;
   standbyGeneration: string;
   rolloutId: string;
   actorUserId: string;
@@ -62,24 +52,30 @@ export interface AdminCanaryStandbyDecisionJobResult {
   organizationId: string;
   targetImage: string;
   targetDigest: string;
-  verifiedBackupId?: string;
-  restoreValidationId?: string;
-  restoreValidationAggregateSha256?: string;
-  restoreValidatedCandidateProviderSandboxId?: string;
-  restoreValidatedCandidateReplacementAttemptId?: string;
   startedAt: string;
   finishedAt: string;
 }
 
+export interface VerifiedRestorePointAuthority {
+  verifiedBackupId: string;
+  restoreValidationId: string;
+  restoreValidationAggregateSha256: string;
+  restoreValidatedCandidateProviderSandboxId: string;
+  restoreValidatedCandidateReplacementAttemptId: string;
+  receiptCommittedAt: Date;
+  candidateContainerAbsentAt: Date;
+  candidateVpnAbsentAt: Date;
+  candidateVolumeAbsentAt: Date;
+  candidateRetiredAt: Date;
+}
+
 export interface VerifiedRestorePointReader {
-  assertVerifiedV2CandidateRestoreInTx(
+  readVerifiedV2CandidateRestoreInTx(
     tx: DbTransaction,
     params: {
-      backupId: string;
-      restoreValidationId: string;
-      restoreValidationAggregateSha256: string;
-      restoreValidatedCandidateProviderSandboxId: string;
-      restoreValidatedCandidateReplacementAttemptId: string;
+      sourceJobId: string;
+      standbyGeneration: string;
+      rolloutId: string;
       organizationId: string;
       sandboxRecordId: string;
       agentId: string;
@@ -87,18 +83,12 @@ export interface VerifiedRestorePointReader {
       targetImage: string;
       targetDigest: string;
     },
-  ): Promise<void>;
+  ): Promise<VerifiedRestorePointAuthority>;
 }
 
 export class UnconfiguredVerifiedRestorePointReader implements VerifiedRestorePointReader {
-  async assertVerifiedV2CandidateRestoreInTx(): Promise<void> {
+  async readVerifiedV2CandidateRestoreInTx(): Promise<VerifiedRestorePointAuthority> {
     throw new Error("Verified v2 candidate-restore reader is not configured");
-  }
-}
-
-function assertSha256Hex(value: string, field: string): void {
-  if (!/^[a-f0-9]{64}$/.test(value)) {
-    throw ValidationError(`${field} must be 64 lowercase hexadecimal characters`);
   }
 }
 
@@ -109,40 +99,6 @@ export function assertAdminCanaryStandbyDecisionInput(
   assertUuid(input.sourceJobId, "sourceJobId");
   if (input.decision !== "accept" && input.decision !== "reject") {
     throw ValidationError("decision must be accept or reject");
-  }
-  if (input.decision === "accept") {
-    if (!input.verifiedBackupId) {
-      throw ValidationError("accept decisions require verifiedBackupId");
-    }
-    if (!input.restoreValidationId) {
-      throw ValidationError("accept decisions require restoreValidationId");
-    }
-    if (!input.restoreValidationAggregateSha256) {
-      throw ValidationError("accept decisions require restoreValidationAggregateSha256");
-    }
-    if (!input.restoreValidatedCandidateProviderSandboxId?.trim()) {
-      throw ValidationError("accept decisions require restoreValidatedCandidateProviderSandboxId");
-    }
-    if (!input.restoreValidatedCandidateReplacementAttemptId) {
-      throw ValidationError(
-        "accept decisions require restoreValidatedCandidateReplacementAttemptId",
-      );
-    }
-    assertUuid(input.verifiedBackupId, "verifiedBackupId");
-    assertUuid(input.restoreValidationId, "restoreValidationId");
-    assertUuid(
-      input.restoreValidatedCandidateReplacementAttemptId,
-      "restoreValidatedCandidateReplacementAttemptId",
-    );
-    assertSha256Hex(input.restoreValidationAggregateSha256, "restoreValidationAggregateSha256");
-  } else if (
-    input.verifiedBackupId !== undefined ||
-    input.restoreValidationId !== undefined ||
-    input.restoreValidationAggregateSha256 !== undefined ||
-    input.restoreValidatedCandidateProviderSandboxId !== undefined ||
-    input.restoreValidatedCandidateReplacementAttemptId !== undefined
-  ) {
-    throw ValidationError("reject decisions cannot include restore validation authority");
   }
 }
 
@@ -168,17 +124,7 @@ export function isAdminCanaryStandbyDecisionJobData(
     "targetImage",
     "targetDigest",
   ] as const;
-  return (
-    requiredStrings.every((field) => typeof data[field] === "string") &&
-    (data.verifiedBackupId === undefined || typeof data.verifiedBackupId === "string") &&
-    (data.restoreValidationId === undefined || typeof data.restoreValidationId === "string") &&
-    (data.restoreValidationAggregateSha256 === undefined ||
-      typeof data.restoreValidationAggregateSha256 === "string") &&
-    (data.restoreValidatedCandidateProviderSandboxId === undefined ||
-      typeof data.restoreValidatedCandidateProviderSandboxId === "string") &&
-    (data.restoreValidatedCandidateReplacementAttemptId === undefined ||
-      typeof data.restoreValidatedCandidateReplacementAttemptId === "string")
-  );
+  return requiredStrings.every((field) => typeof data[field] === "string");
 }
 
 export function assertAdminCanaryStandbyDecisionJobData(
@@ -188,23 +134,6 @@ export function assertAdminCanaryStandbyDecisionJobData(
     requestId: data.requestId,
     sourceJobId: data.sourceJobId,
     decision: data.decision,
-    ...(data.verifiedBackupId ? { verifiedBackupId: data.verifiedBackupId } : {}),
-    ...(data.restoreValidationId ? { restoreValidationId: data.restoreValidationId } : {}),
-    ...(data.restoreValidationAggregateSha256
-      ? { restoreValidationAggregateSha256: data.restoreValidationAggregateSha256 }
-      : {}),
-    ...(data.restoreValidatedCandidateProviderSandboxId
-      ? {
-          restoreValidatedCandidateProviderSandboxId:
-            data.restoreValidatedCandidateProviderSandboxId,
-        }
-      : {}),
-    ...(data.restoreValidatedCandidateReplacementAttemptId
-      ? {
-          restoreValidatedCandidateReplacementAttemptId:
-            data.restoreValidatedCandidateReplacementAttemptId,
-        }
-      : {}),
   });
   assertUuid(data.standbyGeneration, "standbyGeneration");
   assertUuid(data.rolloutId, "rolloutId");

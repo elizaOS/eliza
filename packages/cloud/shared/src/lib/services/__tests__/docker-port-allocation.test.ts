@@ -1,5 +1,9 @@
-// Exercises docker port allocation behavior with deterministic cloud-shared lib fixtures.
-import { describe, expect, it, vi } from "vitest";
+/**
+ * Pins the public Docker port ranges; transactional reservation behavior runs
+ * against real PGlite in docker-port-allocation.pglite.test.ts.
+ */
+
+import { describe, expect, it } from "vitest";
 import * as dockerPortAllocation from "../docker-port-allocation";
 
 describe("docker-port-allocation", () => {
@@ -8,14 +12,9 @@ describe("docker-port-allocation", () => {
     expect(dockerPortAllocation.APP_CONTAINER_HOST_PORT_MAX).toBe(40000);
   });
 
-  it("allocateAppContainerHostPort skips ports already used on the node", async () => {
-    vi.spyOn(dockerPortAllocation, "getUsedDockerHostPorts").mockResolvedValue(
-      new Set([20000, 20001, 20002]),
+  it("keeps agent bridge and web ports in separate structural ranges", () => {
+    expect(dockerPortAllocation.AGENT_BRIDGE_PORT_MAX).toBeLessThanOrEqual(
+      dockerPortAllocation.AGENT_WEB_PORT_MIN,
     );
-
-    const port = await dockerPortAllocation.allocateAppContainerHostPort("node-a");
-    expect(port).toBeGreaterThanOrEqual(dockerPortAllocation.APP_CONTAINER_HOST_PORT_MIN);
-    expect(port).toBeLessThan(dockerPortAllocation.APP_CONTAINER_HOST_PORT_MAX);
-    expect([20000, 20001, 20002]).not.toContain(port);
   });
 });

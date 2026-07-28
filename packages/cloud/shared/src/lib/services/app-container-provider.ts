@@ -12,7 +12,6 @@
  */
 
 import { ElizaError } from "@elizaos/core";
-import { logger } from "../utils/logger";
 import {
   ambassadorName,
   buildEnsureAmbassadorCmds,
@@ -34,8 +33,10 @@ export interface AppContainerProviderDeps {
   ssh: AppContainerSsh;
   /** Durable scheduler identity for the SSH target. */
   nodeId: string;
-  /** Allocate an external host port to map to the container's app port. */
-  allocateHostPort: () => Promise<number>;
+  /** Atomically reserve an external host port for this app container owner. */
+  reserveHostPort: (ownerId: string) => Promise<number>;
+  /** Release the same owner's reservation after Docker absence is proven. */
+  releaseHostPort: (ownerId: string) => Promise<void>;
   /** Optional egress proxy URL routed into the container. */
   egressProxyUrl?: string;
   pidsLimit?: number;
@@ -78,20 +79,6 @@ function defaultExtractContainerId(stdout: string): string {
 
 function describeAppContainerError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-/**
- * Parse host ports already published on a node from `docker ps --format
- * '{{.Ports}}'` output — lines like `0.0.0.0:28123->3000/tcp, :::28123->3000/tcp`.
- * Used to avoid host-port collisions when placing a new app container.
- */
-export function parseUsedHostPorts(dockerPsPortsOutput: string): Set<number> {
-  const used = new Set<number>();
-  for (const match of dockerPsPortsOutput.matchAll(/:(\d{2,5})->/g)) {
-    const port = Number(match[1]);
-    if (Number.isFinite(port)) used.add(port);
-  }
-  return used;
 }
 
 export class AppContainerProvider {
@@ -180,24 +167,7 @@ export class AppContainerProvider {
       input = { ...input, environmentVars: rewritten };
     }
 
-    // Collision-safe host port: avoid ports already published on the node. The
-    // `docker ps` probe is best-effort — on failure we fall back to the blind
-    // pick (no worse than before). Re-pick a few times if the first collides.
-    const usedPorts = parseUsedHostPorts(
-      await this.deps.ssh.exec("docker ps --format '{{.Ports}}'").catch((error) => {
-        // error-policy:J4 explicit user-facing degrade; provisioning can still attempt the allocated port, but route-discovery failure must be observable.
-        logger.warn("[AppContainerProvider] Failed to read published host ports", {
-          appId: params.appId,
-          containerName: params.containerName,
-          error: describeAppContainerError(error),
-        });
-        return "";
-      }),
-    );
-    let hostPort = await this.deps.allocateHostPort();
-    for (let attempt = 0; attempt < 20 && usedPorts.has(hostPort); attempt++) {
-      hostPort = await this.deps.allocateHostPort();
-    }
+    const hostPort = await this.deps.reserveHostPort(params.containerName);
     const createCmd = buildAppDockerCreateCmd({
       appId: params.appId,
       containerName: params.containerName,
@@ -231,6 +201,7 @@ export class AppContainerProvider {
     await this.removeContainerAndConfirmAbsent(containerName);
     // Tear down the per-app DB ambassador too (best-effort; no-op if absent).
     await this.deps.ssh.exec(buildRemoveAmbassadorCmdForContainer(containerName));
+    await this.deps.releaseHostPort(containerName);
   }
 
   /** Remove one persisted Docker object without trusting its reusable app name. */
@@ -239,6 +210,7 @@ export class AppContainerProvider {
     // The ambassador name derives from the stable app-container name, not the
     // immutable Docker id of the primary container.
     await this.deps.ssh.exec(buildRemoveAmbassadorCmdForContainer(containerName));
+    await this.deps.releaseHostPort(containerName);
   }
 
   async restart(containerName: string): Promise<void> {

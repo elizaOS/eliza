@@ -28,6 +28,12 @@ export const JOB_TYPES = {
    */
   AGENT_ADMIN_CANARY_IMAGE: "agent_admin_canary_image",
   /**
+   * Restores the canary's exact v2 backup into an isolated third placement,
+   * then proves the candidate container, VPN identity, and volume absent before
+   * the retained rollback standby may be accepted.
+   */
+  AGENT_ADMIN_CANARY_RESTORE_VALIDATION: "agent_admin_canary_restore_validation",
+  /**
    * Explicit acceptance or rejection of an admin-canary placement whose prior
    * exact container is retained as a paused rollback standby.
    */
@@ -118,6 +124,7 @@ export const EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES: readonly ProvisioningJobType[]
   JOB_TYPES.AGENT_WAKE,
   JOB_TYPES.AGENT_UPGRADE,
   JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
+  JOB_TYPES.AGENT_ADMIN_CANARY_RESTORE_VALIDATION,
   JOB_TYPES.AGENT_ADMIN_CANARY_STANDBY_DECISION,
 ];
 
@@ -149,6 +156,7 @@ export const AGENT_JOB_TYPES = [
   JOB_TYPES.AGENT_SNAPSHOT,
   JOB_TYPES.AGENT_UPGRADE,
   JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
+  JOB_TYPES.AGENT_ADMIN_CANARY_RESTORE_VALIDATION,
   JOB_TYPES.AGENT_ADMIN_CANARY_STANDBY_DECISION,
   JOB_TYPES.AGENT_DOWNGRADE,
   JOB_TYPES.AGENT_SLEEP,

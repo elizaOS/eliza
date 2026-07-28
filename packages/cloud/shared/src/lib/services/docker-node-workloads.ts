@@ -1,7 +1,7 @@
 // Coordinates cloud service docker node workloads behavior behind route handlers.
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { dbRead } from "../../db/helpers";
-import { agentSandboxes } from "../../db/schemas/agent-sandboxes";
+import { agentSandboxes, agentSnapshotRestoreValidations } from "../../db/schemas/agent-sandboxes";
 import { containers } from "../../db/schemas/containers";
 import {
   countAllocatedWorkloadsOnNodeWithDatabase,
@@ -167,7 +167,7 @@ export function reconcileOrphanContainersOnNodes(): Promise<OrphanReconcileResul
  * recreate them elsewhere — so they do NOT count as retained.
  */
 export async function countRetainedWorkloadsOnNode(nodeId: string): Promise<number> {
-  const [containerCount, agentCount, replacementCount] = await Promise.all([
+  const [containerCount, agentCount, replacementCount, restoreValidationCount] = await Promise.all([
     countRows(
       dbRead
         .select({ count: sql<number>`count(*)::int` })
@@ -197,7 +197,18 @@ export async function countRetainedWorkloadsOnNode(nodeId: string): Promise<numb
         .from(agentSandboxes)
         .where(eq(agentSandboxes.replacement_cleanup_node_id, nodeId)),
     ),
+    countRows(
+      dbRead
+        .select({ count: sql<number>`count(*)::int` })
+        .from(agentSnapshotRestoreValidations)
+        .where(
+          and(
+            eq(agentSnapshotRestoreValidations.target_provider_node_id, nodeId),
+            eq(agentSnapshotRestoreValidations.target_provider_allocation_counted, true),
+          ),
+        ),
+    ),
   ]);
 
-  return containerCount + agentCount + replacementCount;
+  return containerCount + agentCount + replacementCount + restoreValidationCount;
 }

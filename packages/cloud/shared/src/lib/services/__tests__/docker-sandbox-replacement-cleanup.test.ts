@@ -6,17 +6,21 @@ import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { dockerNodesRepository } from "../../../db/repositories/docker-nodes";
 import type { DockerNode } from "../../../db/schemas/docker-nodes";
 import { dockerNodeManager } from "../docker-node-manager";
-import * as dockerPortAllocation from "../docker-port-allocation";
 import {
   buildSnapshotRestoreBindingEnvironment,
   buildSnapshotSourceAttestationEnvironment,
   createDockerContainerAfterReplacementIntent,
   DockerSandboxProvider,
+  getRestoreValidationPhysicalIdentity,
 } from "../docker-sandbox-provider";
 import { DockerSSHClient } from "../docker-ssh";
 import { type HeadscaleNode, headscaleClient } from "../headscale-client";
-import { headscaleIntegration } from "../headscale-integration";
-import { SandboxReplacementCleanupUnresolvedError } from "../sandbox-provider-types";
+import { headscaleIntegration, inferTailscaleHostname } from "../headscale-integration";
+import {
+  type SandboxCreateConfig,
+  SandboxReplacementCleanupUnresolvedError,
+  type SandboxRestoreValidationCandidateLocator,
+} from "../sandbox-provider-types";
 import * as stewardTenantConfig from "../steward-tenant-config";
 
 const NODE: DockerNode = {
@@ -40,6 +44,9 @@ const CONTAINER_NAME = "agent-11111111-1111-4111-8111-111111111111";
 const ATTEMPT_ID = "33333333-3333-4333-8333-333333333333";
 const CONTAINER_ID = "a".repeat(64);
 const REGISTRATION_STARTED_AT = "2026-07-23T00:05:00.000Z";
+const TARGET_IMAGE_DIGEST = `sha256:${"03".repeat(32)}`;
+const TARGET_IMAGE = `ghcr.io/elizaos/eliza@${TARGET_IMAGE_DIGEST}`;
+const LOGICAL_ROUTE_AGENT_ID = "55555555-5555-4555-8555-555555555555";
 
 function headscaleNode(id: string, name: string, createdAt: string): HeadscaleNode {
   return {
@@ -99,8 +106,64 @@ function replacementIdentity(overrides?: {
 function replacementProvider(options?: { now?: () => number }): DockerSandboxProvider {
   return new DockerSandboxProvider({
     replacementVpnSettleDelay: async () => {},
+    reserveHostPorts: async () => ({ bridgePort: 18790, webUiPort: 20000 }),
+    releaseHostPorts: async () => 2,
     ...(options?.now ? { now: options.now } : {}),
   });
+}
+
+function restoreValidationConfig(
+  overrides: Partial<SandboxCreateConfig> = {},
+): SandboxCreateConfig {
+  return {
+    agentId: "11111111-1111-4111-8111-111111111111",
+    agentName: "Restore validation",
+    organizationId: "22222222-2222-4222-8222-222222222222",
+    routeAgentId: LOGICAL_ROUTE_AGENT_ID,
+    environmentVars: {},
+    dockerImage: TARGET_IMAGE,
+    snapshotRestoreBinding: {
+      backupId: "44444444-4444-4444-8444-444444444444",
+      captureNonce: "01".repeat(32),
+      sourceEnvironmentRevision: 7,
+      sourceImageDigest: `sha256:${"02".repeat(32)}`,
+      sourceSandboxId: "33333333-3333-4333-8333-333333333333",
+      targetImageDigest: TARGET_IMAGE_DIGEST,
+    },
+    restoreValidationCandidate: {
+      primaryNodeId: "node-primary",
+      replacementAttemptId: ATTEMPT_ID,
+      rollbackStandbyNodeId: "node-standby",
+    },
+    onRestoreValidationPlacementIntent: async () => ({
+      bridgePort: 18790,
+      webUiPort: 20000,
+    }),
+    onReplacementCreateIntent: async () => {},
+    onReplacementCreated: async () => {},
+    onReplacementVpnRegistered: async () => {},
+    ...overrides,
+  };
+}
+
+function restoreValidationLocator(
+  overrides: Partial<SandboxRestoreValidationCandidateLocator> = {},
+): SandboxRestoreValidationCandidateLocator {
+  const identity = getRestoreValidationPhysicalIdentity(ATTEMPT_ID);
+  return {
+    sandboxId: identity.containerName,
+    nodeId: NODE.node_id,
+    containerName: identity.containerName,
+    replacementAttemptId: ATTEMPT_ID,
+    containerId: CONTAINER_ID,
+    volumePath: identity.volumePath,
+    vpnNodeId: null,
+    vpnNodeName: null,
+    previousVpnNodeId: null,
+    vpnRegistrationStartedAt: null,
+    allocationCounted: true,
+    ...overrides,
+  };
 }
 
 afterEach(() => {
@@ -206,6 +269,449 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     }
   });
 
+  test("derives unique provider-owned physical identities from restore attempts", () => {
+    const first = getRestoreValidationPhysicalIdentity(ATTEMPT_ID);
+    const second = getRestoreValidationPhysicalIdentity("66666666-6666-4666-8666-666666666666");
+
+    expect(first).toEqual({
+      containerName: "restore-validation-33333333333343338333333333333333",
+      volumePath: `/data/agents/.restore-validation/${ATTEMPT_ID}`,
+      vpnAgentId: ATTEMPT_ID,
+      vpnAgentName: "restore-validation-33333333333343338333333333333333",
+    });
+    expect(second.containerName).not.toBe(first.containerName);
+    expect(second.volumePath).not.toBe(first.volumePath);
+    expect(second.vpnAgentId).not.toBe(first.vpnAgentId);
+    expect(() => getRestoreValidationPhysicalIdentity("not-an-attempt")).toThrow(
+      "replacement attempt is malformed",
+    );
+  });
+
+  test("rejects incomplete identity, mutable-image, or caller-owned restore candidate config", async () => {
+    const provider = replacementProvider();
+    const invalidConfigs: SandboxCreateConfig[] = [
+      restoreValidationConfig({ routeAgentId: null }),
+      restoreValidationConfig({
+        restoreValidationCandidate: {
+          primaryNodeId: "same-node",
+          replacementAttemptId: ATTEMPT_ID,
+          rollbackStandbyNodeId: "same-node",
+        },
+      }),
+      restoreValidationConfig({ onRestoreValidationPlacementIntent: undefined }),
+      restoreValidationConfig({ onReplacementVpnRegistered: undefined }),
+      restoreValidationConfig({ dockerImage: "ghcr.io/elizaos/eliza:develop" }),
+      restoreValidationConfig({
+        snapshotSourceAttestation: {
+          environmentRevision: 7,
+          imageDigest: TARGET_IMAGE_DIGEST,
+        },
+      }),
+      restoreValidationConfig({ environmentVars: { SANDBOX_AGENT_ID: "caller" } }),
+      restoreValidationConfig({ environmentVars: { STEWARD_AGENT_TOKEN: "caller" } }),
+      restoreValidationConfig({
+        environmentVars: { ELIZA_RUNTIME_BOOT_MODE: "normal" },
+      }),
+      restoreValidationConfig({ environmentVars: { OPENAI_API_KEY: "user-secret" } }),
+      restoreValidationConfig({
+        environmentVars: { ELIZA_LOCAL_ROOT_KEY: "agent-root-key" },
+      }),
+    ];
+
+    for (const config of invalidConfigs) {
+      await expect(provider.create(config)).rejects.toThrow();
+    }
+  });
+
+  test("creates a never-routed candidate on neither serving node with only restore identity", async () => {
+    const savedEnvironment = process.env.ENVIRONMENT;
+    const savedHeadscaleApiKey = process.env.HEADSCALE_API_KEY;
+    const savedFallback = process.env.AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK;
+    const savedKmsBackend = process.env.ELIZA_KMS_BACKEND;
+    const savedLocalRootKey = process.env.ELIZA_LOCAL_ROOT_KEY;
+    process.env.ENVIRONMENT = "development";
+    process.env.HEADSCALE_API_KEY = "headscale-test-key";
+    process.env.AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK = "1";
+    process.env.ELIZA_KMS_BACKEND = "local";
+    process.env.ELIZA_LOCAL_ROOT_KEY = "orchestrator-root-key";
+
+    const getAvailableNode = spyOn(dockerNodeManager, "getAvailableNode").mockResolvedValue(NODE);
+    const prepareVpn = spyOn(headscaleIntegration, "prepareContainerVPN").mockResolvedValue({
+      preAuthKey: "restore-validation-auth-key",
+      envVars: {
+        HEADSCALE_URL: "https://headscale.example.test",
+        TS_AUTHKEY: "restore-validation-auth-key",
+        TS_HOSTNAME: "restore-validation-candidate",
+        TS_STATE_DIR: "/var/lib/tailscale",
+        TS_EXTRA_ARGS: "--accept-routes",
+      },
+    });
+    spyOn(headscaleIntegration, "waitForVPNRegistration").mockResolvedValue({
+      ip: "100.64.0.42",
+      nodeId: "vpn-restore-validation",
+    });
+    const ensureTenant = spyOn(stewardTenantConfig, "ensureStewardTenant");
+    const increment = spyOn(dockerNodesRepository, "incrementAllocated").mockResolvedValue();
+    const { commands } = stubSsh(async (command) =>
+      command.startsWith("docker create") ? `${CONTAINER_ID}\n` : "",
+    );
+    const persistPlacement = mock(async () => {
+      expect(prepareVpn).not.toHaveBeenCalled();
+      expect(commands).toEqual([]);
+      return {
+        bridgePort: 19_123,
+        webUiPort: 23_123,
+      };
+    });
+    const persistIntent = mock(async () => {
+      expect(commands.some((command) => command.startsWith("mkdir -p"))).toBe(false);
+      expect(commands.some((command) => command.startsWith("docker create"))).toBe(false);
+    });
+    const persistCreated = mock(async () => {});
+    const provider = replacementProvider();
+
+    try {
+      const handle = await provider.create(
+        restoreValidationConfig({
+          onRestoreValidationPlacementIntent: persistPlacement,
+          onReplacementCreateIntent: persistIntent,
+          onReplacementCreated: persistCreated,
+        }),
+      );
+      const metadata = handle.metadata as {
+        containerName: string;
+        replacementAttemptId: string;
+        volumePath: string;
+      };
+      const physicalIdentity = getRestoreValidationPhysicalIdentity(metadata.replacementAttemptId);
+      const createCommand = commands.find((command) => command.startsWith("docker create"));
+
+      expect(getAvailableNode).toHaveBeenCalledWith({
+        requiredPlatform: expect.anything(),
+        excludeNodeId: undefined,
+        excludeNodeIds: ["node-primary", "node-standby"],
+      });
+      expect(metadata).toMatchObject({
+        containerName: physicalIdentity.containerName,
+        replacementAttemptId: physicalIdentity.vpnAgentId,
+        volumePath: physicalIdentity.volumePath,
+      });
+      expect(createCommand).toContain(`--name '${physicalIdentity.containerName}'`);
+      expect(createCommand).toContain(`-v '${physicalIdentity.volumePath}':/app/data`);
+      expect(createCommand).toContain("-p 127.0.0.1:19123:");
+      expect(createCommand).toContain("-p 127.0.0.1:23123:");
+      expect(createCommand).toContain("--restart=no");
+      expect(createCommand).toContain(`-e 'ELIZA_RUNTIME_BOOT_MODE=restore-validation'`);
+      expect(createCommand).toContain(`-e 'SANDBOX_ROUTE_AGENT_ID=${LOGICAL_ROUTE_AGENT_ID}'`);
+      expect(createCommand).toContain(
+        `-e 'ELIZA_SNAPSHOT_RESTORE_TARGET_IMAGE_DIGEST=${TARGET_IMAGE_DIGEST}'`,
+      );
+      expect(createCommand).not.toContain("STEWARD_");
+      expect(createCommand).not.toContain("SANDBOX_REGISTRY_");
+      expect(createCommand).not.toContain("SANDBOX_AGENT_ID=");
+      expect(createCommand).not.toContain("SANDBOX_SERVER_NAME=");
+      expect(createCommand).not.toContain("SANDBOX_PUBLIC_URL=");
+      expect(createCommand).not.toContain("AGENT_SERVER_SHARED_SECRET=");
+      expect(createCommand).not.toContain("ELIZA_SNAPSHOT_SOURCE_");
+      expect(createCommand).not.toContain("ELIZA_KMS_BACKEND=");
+      expect(createCommand).not.toContain("ELIZA_LOCAL_ROOT_KEY=");
+      expect(createCommand).not.toContain("ELIZA_VAULT_PASSPHRASE=");
+      expect(createCommand).not.toContain("JWT_SECRET=");
+      expect(createCommand).not.toContain("OPENAI_API_KEY=");
+      expect(createCommand).toContain("-e 'ELIZA_STATE_DIR=/root/.eliza'");
+      expect(createCommand).toContain("-e 'PGLITE_DATA_DIR=/root/.eliza/.pgdata'");
+      expect(createCommand).not.toContain("--restart unless-stopped");
+      expect(ensureTenant).not.toHaveBeenCalled();
+      expect(increment).not.toHaveBeenCalled();
+      expect(persistPlacement).toHaveBeenCalledTimes(1);
+      expect(persistIntent).toHaveBeenCalledTimes(1);
+      expect(persistCreated).toHaveBeenCalledTimes(1);
+      expect(commands.findIndex((command) => command.startsWith("mkdir -p"))).toBeLessThan(
+        commands.findIndex((command) => command.startsWith("docker create")),
+      );
+    } finally {
+      if (savedEnvironment === undefined) {
+        delete process.env.ENVIRONMENT;
+      } else {
+        process.env.ENVIRONMENT = savedEnvironment;
+      }
+      if (savedHeadscaleApiKey === undefined) {
+        delete process.env.HEADSCALE_API_KEY;
+      } else {
+        process.env.HEADSCALE_API_KEY = savedHeadscaleApiKey;
+      }
+      if (savedFallback === undefined) {
+        delete process.env.AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK;
+      } else {
+        process.env.AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK = savedFallback;
+      }
+      if (savedKmsBackend === undefined) {
+        delete process.env.ELIZA_KMS_BACKEND;
+      } else {
+        process.env.ELIZA_KMS_BACKEND = savedKmsBackend;
+      }
+      if (savedLocalRootKey === undefined) {
+        delete process.env.ELIZA_LOCAL_ROOT_KEY;
+      } else {
+        process.env.ELIZA_LOCAL_ROOT_KEY = savedLocalRootKey;
+      }
+    }
+  });
+
+  test("retires the exact candidate container, VPN node, and volume with absence proof", async () => {
+    stubNodeLookup();
+    const locator = restoreValidationLocator();
+    const vpnNodeName = inferTailscaleHostname({
+      agentId: ATTEMPT_ID,
+      agentName: locator.containerName,
+    });
+    let inspectCount = 0;
+    const { commands } = stubSsh(async (command) => {
+      if (command.startsWith("docker inspect")) {
+        inspectCount += 1;
+        if (inspectCount === 1) return `${CONTAINER_ID}|${ATTEMPT_ID}\n`;
+        throw new Error(`Error response from daemon: No such object: ${locator.containerName}`);
+      }
+      return "";
+    });
+    spyOn(headscaleClient, "listNodesStrict")
+      .mockResolvedValueOnce([
+        headscaleNode("vpn-restore", vpnNodeName, "2026-07-23T00:05:01.000Z"),
+      ])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    const deleteVpn = spyOn(headscaleClient, "deleteNode").mockResolvedValue();
+    const now = Date.parse("2026-07-23T01:00:00.000Z");
+    const provider = replacementProvider({ now: () => now });
+
+    const proof = await provider.retireRestoreValidationCandidate({
+      ...locator,
+      vpnNodeId: "vpn-restore",
+      vpnNodeName,
+      vpnRegistrationStartedAt: REGISTRATION_STARTED_AT,
+    });
+
+    expect(proof).toEqual({
+      sandboxId: locator.sandboxId,
+      nodeId: NODE.node_id,
+      containerName: locator.containerName,
+      replacementAttemptId: ATTEMPT_ID,
+      containerId: CONTAINER_ID,
+      containerAbsentAt: "2026-07-23T01:00:00.000Z",
+      volumePath: locator.volumePath,
+      volumeAbsentAt: "2026-07-23T01:00:00.000Z",
+      vpnNodeId: "vpn-restore",
+      vpnNodeName,
+      vpnAbsentAt: "2026-07-23T01:00:00.000Z",
+    });
+    expect(deleteVpn).toHaveBeenCalledWith("vpn-restore");
+    expect(commands).toEqual([
+      expect.stringContaining("docker inspect --format"),
+      `docker stop -t 10 '${CONTAINER_ID}'`,
+      `docker rm -f '${CONTAINER_ID}'`,
+      expect.stringContaining("docker inspect --format"),
+      expect.stringContaining("docker inspect --format"),
+      `rm -rf -- '${locator.volumePath}' && test ! -e '${locator.volumePath}'`,
+    ]);
+  });
+
+  test("retains the locator when a late container appears after VPN settlement", async () => {
+    stubNodeLookup();
+    const locator = restoreValidationLocator();
+    const vpnNodeName = inferTailscaleHostname({
+      agentId: ATTEMPT_ID,
+      agentName: locator.containerName,
+    });
+    let inspectCount = 0;
+    const { commands } = stubSsh(async (command) => {
+      if (command.startsWith("docker inspect")) {
+        inspectCount += 1;
+        if (inspectCount <= 2) {
+          throw new Error(`Error response from daemon: No such object: ${locator.containerName}`);
+        }
+        return `${CONTAINER_ID}|${ATTEMPT_ID}\n`;
+      }
+      return "";
+    });
+    spyOn(headscaleClient, "listNodesStrict")
+      .mockResolvedValueOnce([
+        headscaleNode("vpn-restore", vpnNodeName, "2026-07-23T00:05:01.000Z"),
+      ])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    const deleteVpn = spyOn(headscaleClient, "deleteNode").mockResolvedValue();
+    const releaseHostPorts = mock(async () => 2);
+    const now = Date.parse("2026-07-23T01:00:00.000Z");
+    const provider = new DockerSandboxProvider({
+      replacementVpnSettleDelay: async () => {},
+      reserveHostPorts: async () => ({ bridgePort: 18790, webUiPort: 20000 }),
+      releaseHostPorts,
+      now: () => now,
+    });
+
+    const error = await provider
+      .retireRestoreValidationCandidate({
+        ...locator,
+        vpnNodeId: "vpn-restore",
+        vpnNodeName,
+        vpnRegistrationStartedAt: REGISTRATION_STARTED_AT,
+      })
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(SandboxReplacementCleanupUnresolvedError);
+    expect(error).toHaveProperty(
+      "message",
+      expect.stringContaining("appeared after VPN settlement"),
+    );
+    expect(error).toMatchObject({
+      replacementAttemptId: ATTEMPT_ID,
+      volumePath: locator.volumePath,
+      vpnNodeId: "vpn-restore",
+    });
+    expect(deleteVpn).toHaveBeenCalledWith("vpn-restore");
+    expect(commands.filter((command) => command.startsWith("docker inspect"))).toHaveLength(3);
+    expect(commands.every((command) => !command.startsWith("rm -rf --"))).toBe(true);
+    expect(releaseHostPorts).not.toHaveBeenCalled();
+  });
+
+  test("classifies only an exact restore candidate as running, exited, or absent", async () => {
+    stubNodeLookup();
+    const locator = restoreValidationLocator();
+    let inspection: string | Error = `${CONTAINER_ID}|${ATTEMPT_ID}|running\n`;
+    stubSsh(async (command) => {
+      expect(command).toContain("docker inspect --format");
+      if (inspection instanceof Error) throw inspection;
+      return inspection;
+    });
+    const provider = replacementProvider();
+
+    await expect(provider.inspectRestoreValidationCandidate(locator)).resolves.toBe("running");
+    inspection = `${CONTAINER_ID}|${ATTEMPT_ID}|exited\n`;
+    await expect(provider.inspectRestoreValidationCandidate(locator)).resolves.toBe("exited");
+    inspection = `${CONTAINER_ID}|different-attempt|exited\n`;
+    await expect(provider.inspectRestoreValidationCandidate(locator)).resolves.toBe("unresolved");
+    inspection = new Error(`Error response from daemon: No such object: ${locator.containerName}`);
+    await expect(provider.inspectRestoreValidationCandidate(locator)).resolves.toBe("absent");
+    inspection = new Error("SSH connection timed out");
+    await expect(provider.inspectRestoreValidationCandidate(locator)).resolves.toBe("unresolved");
+  });
+
+  test("fails before remote retirement when candidate identity or volume is not exact", async () => {
+    const findNode = stubNodeLookup();
+    const { commands } = stubSsh();
+    const provider = replacementProvider();
+
+    await expect(
+      provider.retireRestoreValidationCandidate(
+        restoreValidationLocator({ volumePath: "/data/agents/wrong" }),
+      ),
+    ).rejects.toThrow("volume path does not match");
+    await expect(
+      provider.retireRestoreValidationCandidate(
+        restoreValidationLocator({ containerName: CONTAINER_NAME }),
+      ),
+    ).rejects.toThrow("container identity does not match");
+    expect(findNode).not.toHaveBeenCalled();
+    expect(commands).toHaveLength(0);
+  });
+
+  test("does not remove the volume when VPN absence cannot be proven", async () => {
+    stubNodeLookup();
+    const locator = restoreValidationLocator();
+    const vpnNodeName = inferTailscaleHostname({
+      agentId: ATTEMPT_ID,
+      agentName: locator.containerName,
+    });
+    const { commands } = stubSsh(async () => {
+      throw new Error(`Error response from daemon: No such object: ${locator.containerName}`);
+    });
+    const vpnNode = headscaleNode("vpn-restore", vpnNodeName, "2026-07-23T00:05:01.000Z");
+    spyOn(headscaleClient, "listNodesStrict")
+      .mockResolvedValueOnce([vpnNode])
+      .mockResolvedValueOnce([vpnNode])
+      .mockResolvedValueOnce([vpnNode])
+      .mockResolvedValueOnce([vpnNode]);
+    spyOn(headscaleClient, "deleteNode").mockResolvedValue();
+    const provider = replacementProvider();
+
+    const error = await provider
+      .retireRestoreValidationCandidate({
+        ...locator,
+        vpnNodeId: vpnNode.id,
+        vpnNodeName,
+        vpnRegistrationStartedAt: REGISTRATION_STARTED_AT,
+      })
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(SandboxReplacementCleanupUnresolvedError);
+    expect(error).toMatchObject({
+      replacementAttemptId: ATTEMPT_ID,
+      volumePath: locator.volumePath,
+      vpnNodeId: vpnNode.id,
+    });
+    expect(commands.every((command) => !command.startsWith("rm -rf --"))).toBe(true);
+  });
+
+  test("fails closed when the persisted VPN id is absent but a same-name registration remains", async () => {
+    stubNodeLookup();
+    const locator = restoreValidationLocator();
+    const vpnNodeName = inferTailscaleHostname({
+      agentId: ATTEMPT_ID,
+      agentName: locator.containerName,
+    });
+    const { commands } = stubSsh(async () => {
+      throw new Error(`Error response from daemon: No such object: ${locator.containerName}`);
+    });
+    spyOn(headscaleClient, "listNodesStrict").mockResolvedValue([
+      headscaleNode("vpn-different", vpnNodeName, "2026-07-23T00:05:01.000Z"),
+    ]);
+    const deleteVpn = spyOn(headscaleClient, "deleteNode").mockResolvedValue();
+    const provider = replacementProvider();
+
+    await expect(
+      provider.retireRestoreValidationCandidate({
+        ...locator,
+        vpnNodeId: "vpn-persisted",
+        vpnNodeName,
+        vpnRegistrationStartedAt: REGISTRATION_STARTED_AT,
+      }),
+    ).rejects.toThrow("VPN identity is ambiguous");
+
+    expect(deleteVpn).not.toHaveBeenCalled();
+    expect(commands.every((command) => !command.startsWith("rm -rf --"))).toBe(true);
+  });
+
+  test("fails closed when the persisted VPN id has the wrong registration identity", async () => {
+    stubNodeLookup();
+    const locator = restoreValidationLocator();
+    const vpnNodeName = inferTailscaleHostname({
+      agentId: ATTEMPT_ID,
+      agentName: locator.containerName,
+    });
+    const { commands } = stubSsh(async () => {
+      throw new Error(`Error response from daemon: No such object: ${locator.containerName}`);
+    });
+    spyOn(headscaleClient, "listNodesStrict").mockResolvedValue([
+      headscaleNode("vpn-persisted", "unrelated-node", "2026-07-23T00:05:01.000Z"),
+    ]);
+    const deleteVpn = spyOn(headscaleClient, "deleteNode").mockResolvedValue();
+    const provider = replacementProvider();
+
+    await expect(
+      provider.retireRestoreValidationCandidate({
+        ...locator,
+        vpnNodeId: "vpn-persisted",
+        vpnNodeName,
+        vpnRegistrationStartedAt: REGISTRATION_STARTED_AT,
+      }),
+    ).rejects.toThrow("does not match its registration identity");
+
+    expect(deleteVpn).not.toHaveBeenCalled();
+    expect(commands.every((command) => !command.startsWith("rm -rf --"))).toBe(true);
+  });
+
   test("persists intent before remote create even when Docker commits without an SSH response", async () => {
     const events: string[] = [];
 
@@ -250,7 +756,6 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     delete process.env.AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK;
 
     spyOn(dockerNodeManager, "getAvailableNode").mockResolvedValue(NODE);
-    spyOn(dockerPortAllocation, "getUsedDockerHostPorts").mockResolvedValue(new Set());
     spyOn(stewardTenantConfig, "ensureStewardTenant").mockResolvedValue({
       tenantId: "tenant-test",
       isNew: false,
