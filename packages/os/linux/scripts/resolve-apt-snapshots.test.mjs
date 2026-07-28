@@ -18,6 +18,15 @@ const execFileAsync = promisify(execFile);
 const prepareSnapshotsScript = fileURLToPath(
   new URL("../tails/auto/scripts/apt-snapshots-serials", import.meta.url),
 );
+const aptPreferencesPath = fileURLToPath(
+  new URL("../tails/config/chroot_apt/preferences", import.meta.url),
+);
+const customPackagesCheckPath = fileURLToPath(
+  new URL(
+    "../tails/config/chroot_local-hooks/99-custom-packages-check",
+    import.meta.url,
+  ),
+);
 const requiredTailsPackages = [
   "apparmor",
   "apparmor-profiles",
@@ -28,7 +37,6 @@ const requiredTailsPackages = [
   "libapparmor1",
   "libevdocument3-4t64",
   "libevview3-3t64",
-  "libgcrypt20",
   "libhavege2",
   "libyelp0",
   "yelp",
@@ -222,7 +230,7 @@ test("rejects a custom suite that omits a required patched package", async () =>
   const responses = availableResponses(baseUrl, tailsRepositoryUrl);
   responses.set(
     `${tailsRepositoryUrl}/dists/7.8/main/binary-amd64/Packages`,
-    new Response(tailsPackageIndex({ omit: ["libgcrypt20"] })),
+    new Response(tailsPackageIndex({ omit: ["libapparmor1"] })),
   );
   const { fetchImpl } = deterministicFetch(responses);
 
@@ -234,8 +242,49 @@ test("rejects a custom suite that omits a required patched package", async () =>
       tailsRepositoryUrl,
       tailsSuite: "7.8",
     }),
-    /suite 7\.8 lacks required patched packages: libgcrypt20 \(missing\)/,
+    /suite 7\.8 lacks required patched packages: libapparmor1 \(missing\)/,
   );
+});
+
+test("accepts a suite after Debian security supersedes a Tails hotfix", async () => {
+  const baseUrl = "https://snapshots.test";
+  const tailsRepositoryUrl = "https://tails.test";
+  const configDir = await snapshotConfig({
+    debian: "2026072704",
+    "debian-security": "latest",
+    torproject: "2026050704",
+  });
+  const responses = availableResponses(baseUrl, tailsRepositoryUrl);
+  responses.set(
+    `${tailsRepositoryUrl}/dists/7.8/main/binary-amd64/Packages`,
+    new Response(tailsPackageIndex({ omit: ["libgcrypt20"] })),
+  );
+  const { fetchImpl } = deterministicFetch(responses);
+
+  await assert.doesNotReject(
+    resolveAptSnapshots({
+      baseUrl,
+      configDir,
+      fetchImpl,
+      tailsRepositoryUrl,
+      tailsSuite: "7.8",
+    }),
+  );
+});
+
+test("pins the superseded Tails libgcrypt hotfix out of the image", async () => {
+  const [preferences, customPackagesCheck] = await Promise.all([
+    readFile(aptPreferencesPath, "utf8"),
+    readFile(customPackagesCheckPath, "utf8"),
+  ]);
+  const libgcryptPreference = preferences
+    .split(/\n{2,}/)
+    .find((stanza) => /^Package: libgcrypt20$/m.test(stanza));
+
+  assert.ok(libgcryptPreference, "expected a libgcrypt20 APT preference");
+  assert.match(libgcryptPreference, /^Pin: origin deb\.tails\.boum\.org$/m);
+  assert.match(libgcryptPreference, /^Pin-Priority: -1$/m);
+  assert.doesNotMatch(customPackagesCheck, /^libgcrypt20$/m);
 });
 
 test("verified serial maps override frozen and latest build inputs", async () => {

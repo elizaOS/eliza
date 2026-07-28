@@ -66,13 +66,18 @@ for custom_tails_package in \
     libapparmor1 \
     libevdocument3-4t64 \
     libevview3-3t64 \
-    libgcrypt20 \
     libhavege2 \
     libyelp0 \
     yelp
 do
     grep -qx "${custom_tails_package}" tails/config/chroot_local-hooks/99-custom-packages-check
 done
+if grep -qx "libgcrypt20" tails/config/chroot_local-hooks/99-custom-packages-check; then
+    echo "Debian's security-fixed libgcrypt20 must supersede the temporary Tails hotfix." >&2
+    exit 1
+fi
+grep -Fq "Package: libgcrypt20" tails/config/chroot_apt/preferences
+grep -Fq "Pin-Priority: -1" tails/config/chroot_apt/preferences
 bash -n build.sh build-iso.sh tails/auto/build \
     scripts/build-cache-contract.test.sh \
     scripts/dev-sign-update-manifest.sh \

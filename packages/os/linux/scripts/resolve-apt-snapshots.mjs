@@ -34,7 +34,6 @@ const REQUIRED_TAILS_PACKAGES = [
   "libapparmor1",
   "libevdocument3-4t64",
   "libevview3-3t64",
-  "libgcrypt20",
   "libhavege2",
   "libyelp0",
   "yelp",
