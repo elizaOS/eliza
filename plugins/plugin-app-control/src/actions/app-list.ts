@@ -5,7 +5,7 @@
  * plus structured `data` for clients.
  */
 
-import type { ActionResult, HandlerCallback } from "@elizaos/core";
+import type { ActionResult } from "@elizaos/core";
 import type { AppControlClient } from "../client/api.js";
 import type { AppRunSummary, InstalledAppInfo } from "../types.js";
 
@@ -61,19 +61,21 @@ function formatTable(
 
 export interface RunListInput {
 	client: AppControlClient;
-	callback?: HandlerCallback;
 }
 
+// Read-only query: deliberately no visible callback (the silent read-only
+// contract of #16589). The structured table reaches the model via the
+// ActionResult and the user via the planner's single prose reply; posting
+// the raw dump made chat connectors double-post (raw "available_apps:"
+// block + the planner's prose in the same turn).
 export async function runList({
 	client,
-	callback,
 }: RunListInput): Promise<ActionResult> {
 	const [installed, runs] = await Promise.all([
 		client.listInstalledApps(),
 		client.listAppRuns(),
 	]);
 	const text = formatTable(installed, runs);
-	await callback?.({ text });
 	return {
 		success: true,
 		text,

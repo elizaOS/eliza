@@ -190,11 +190,11 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 			"scaffold",
 		],
 		description:
-			"Unified app control. action=launch starts a registered app; action=relaunch stops then launches (optionally with verify); action=list shows installed + running apps; action=load_from_directory registers apps from an absolute folder; action=create runs the multi-turn create-or-edit flow that searches existing apps, asks new/edit/cancel, scaffolds from the min-app template, and dispatches a coding agent with AppVerificationService validator.",
+			"Unified control of apps installed on this device. action=launch starts a registered app; action=relaunch stops then launches (optionally with verify); action=list shows installed + running apps; action=load_from_directory registers apps from an absolute folder; action=create runs the multi-turn create-or-edit flow that searches existing apps, asks new/edit/cancel, scaffolds from the min-app template, and dispatches a coding agent with AppVerificationService validator.",
 		descriptionCompressed:
 			"apps launch|relaunch|list|load_folder|create; create scaffolds, coding-agent, verify",
 		routingHint:
-			"Installed applications themselves -> APP. 'Show me the apps', 'list my apps', 'what apps are installed/running', launching or restarting a registered app, registering apps from a folder, or building a new app is APP (action=list|launch|relaunch|load_from_directory|create) — answer app-list requests with APP action=list, never with a UI view list. VIEWS covers UI views/panels and the apps *page*; APP covers the applications.",
+			"Installed applications themselves -> APP. 'Show me the apps', 'what apps are installed/running', launching or restarting a registered app, registering apps from a folder, or building a new app is APP (action=list|launch|relaunch|load_from_directory|create) — answer installed-app-list requests with APP action=list, never with a UI view list. VIEWS covers UI views/panels and the apps *page*; APP covers the applications. The user's own Eliza Cloud apps ('my cloud apps', hosted apps/sites created or deployed on Eliza Cloud) are LIST_CLOUD_APPS, NOT this action.",
 		suppressPostActionContinuation: true,
 
 		parameters: [
@@ -375,7 +375,7 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 						callback,
 					});
 				case "list":
-					return runList({ client, callback });
+					return runList({ client });
 				case "load_from_directory":
 					return runLoadFromDirectory({
 						runtime,
