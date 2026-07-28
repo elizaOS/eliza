@@ -1,0 +1,9 @@
+{
+  "package": "@vohlsyr/plugin-chainscope",
+  "repository": "github:Vohlsyr/plugin-chainscope",
+  "kind": "plugin",
+  "description": "Multi-chain wallet and transaction intelligence with OFAC sanctions screening via ChainScope, paid per call in USDC on Base through x402.",
+  "homepage": "https://chainsscope.duckdns.org",
+  "version": "0.1.0",
+  "tags": ["x402", "blockchain", "wallet", "multi-chain", "payments"]
+}
