@@ -9,6 +9,7 @@ import {
   type SupervisorTaskView,
   statusEmoji,
   supervisorStalenessLabel,
+  taskOldEnoughForDigest,
   TaskSupervisorService,
   taskOldEnoughForDigest,
 } from "../../src/services/task-supervisor-service.js";
