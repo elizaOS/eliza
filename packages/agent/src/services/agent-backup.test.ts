@@ -18,6 +18,7 @@ import {
   listLocalAgentBackups,
   restoreAgentSnapshot,
   restoreLocalAgentBackup,
+  SnapshotBudget,
 } from "./agent-backup.ts";
 
 const ORIGINAL_ENV = {
@@ -425,6 +426,153 @@ describe("source-side snapshot budget (#17172 §1)", () => {
     await fixtureRoot();
     const snapshot = await createAgentSnapshot(runtime(), config);
     expect(snapshot.manifest.components.media.files.length).toBeGreaterThan(0);
+  });
+
+  test("refuses an oversized PGlite dump from Blob.size, before arrayBuffer()", async () => {
+    await fixtureRoot();
+    let materialized = false;
+    const rawConnection = {
+      async dumpDataDir() {
+        return {
+          size: 256 * 1024,
+          arrayBuffer: async () => {
+            materialized = true;
+            return new ArrayBuffer(256 * 1024);
+          },
+        };
+      },
+      runExclusive: async <T>(operation: () => Promise<T>) => operation(),
+    };
+    const withDump = {
+      ...runtime(),
+      adapter: {
+        close: async () => undefined,
+        getRawConnection: () => rawConnection,
+      },
+    } as unknown as AgentRuntime;
+
+    await expect(
+      createAgentSnapshot(withDump, config, { maxRawBytes: 4096 }),
+    ).rejects.toBeInstanceOf(AgentSnapshotBudgetExceededError);
+    // The refusal must come from the declared size: the dump is transiently
+    // resident three times over (ArrayBuffer + Buffer + base64) once decoded.
+    expect(materialized).toBe(false);
+  });
+
+  test("an in-budget PGlite dump is charged, so a sibling cannot spend the same bytes", async () => {
+    const { root } = await fixtureRoot();
+    // Dump ~48 KiB + a 48 KiB media file: each fits a 96 KiB (base64) budget
+    // alone, both together do not.
+    const dumpBytes = Buffer.alloc(48 * 1024, 5);
+    await fs.writeFile(
+      path.join(root, "media", "big.bin"),
+      Buffer.alloc(48 * 1024, 7),
+    );
+    const rawConnection = {
+      async dumpDataDir() {
+        return new Blob([dumpBytes], { type: "application/gzip" });
+      },
+      runExclusive: async <T>(operation: () => Promise<T>) => operation(),
+    };
+    const withDump = {
+      ...runtime(),
+      adapter: {
+        close: async () => undefined,
+        getRawConnection: () => rawConnection,
+      },
+    } as unknown as AgentRuntime;
+
+    await expect(
+      createAgentSnapshot(withDump, config, { maxRawBytes: 96 * 1024 }),
+    ).rejects.toBeInstanceOf(AgentSnapshotBudgetExceededError);
+  });
+
+  test("refuses an oversized file on the pglite-files fallback walk", async () => {
+    const { pgliteDir } = await fixtureRoot();
+    // No getRawConnection on the stub adapter, so the capture takes the
+    // fallback file walk — which used to run with no budget at all.
+    await fs.writeFile(
+      path.join(pgliteDir, "oversized.wal"),
+      Buffer.alloc(256 * 1024, 9),
+    );
+
+    await expect(
+      createAgentSnapshot(runtime(), config, { maxRawBytes: 64 * 1024 }),
+    ).rejects.toBeInstanceOf(AgentSnapshotBudgetExceededError);
+  });
+
+  test("concurrent components cannot both pass the check and then allocate past the limit", async () => {
+    const { root, pgliteDir } = await fixtureRoot();
+    // Two 64 KiB files on two components that capture CONCURRENTLY, with a
+    // budget that fits one but not both. An observe-only reserve lets each
+    // sibling see zero charged bytes, pass, and read — the limit is then only
+    // discovered after both payloads are resident. A real reservation is
+    // synchronous, so whichever component reserves second is refused BEFORE
+    // its read, whatever the interleaving.
+    const mediaBig = path.join(root, "media", "big-a.bin");
+    const pgliteBig = path.join(pgliteDir, "big-b.wal");
+    await fs.writeFile(mediaBig, Buffer.alloc(64 * 1024, 1));
+    await fs.writeFile(pgliteBig, Buffer.alloc(64 * 1024, 2));
+
+    const realReadFile = fs.readFile;
+    const readPaths: string[] = [];
+    // biome-ignore lint/suspicious/noExplicitAny: test double for a node API
+    (fs as any).readFile = async (target: any, ...rest: any[]) => {
+      readPaths.push(String(target));
+      // biome-ignore lint/suspicious/noExplicitAny: forwarding to the real API
+      return (realReadFile as any)(target, ...rest);
+    };
+    try {
+      await expect(
+        // 128 KiB of budget: one 64 KiB file costs ~87 KiB in base64.
+        createAgentSnapshot(runtime(), config, { maxRawBytes: 128 * 1024 }),
+      ).rejects.toBeInstanceOf(AgentSnapshotBudgetExceededError);
+      const bigReads = readPaths.filter(
+        (p) => p === mediaBig || p === pgliteBig,
+      );
+      expect(bigReads.length).toBeLessThanOrEqual(1);
+    } finally {
+      // biome-ignore lint/suspicious/noExplicitAny: restoring the real API
+      (fs as any).readFile = realReadFile;
+    }
+  });
+});
+
+describe("snapshot budget reservation semantics", () => {
+  test("a hold claims capacity other reserves must count", () => {
+    const budget = new SnapshotBudget(200, 10);
+    const hold = budget.reserve(100); // holds base64Length(100) = 136
+    expect(() => budget.reserve(100)).toThrow(AgentSnapshotBudgetExceededError);
+    hold.release();
+    expect(() => budget.reserve(100)).not.toThrow();
+  });
+
+  test("commit converts the hold into a charge at the actual encoded size", () => {
+    const budget = new SnapshotBudget(200, 10);
+    const hold = budget.reserve(100);
+    hold.commit(50); // actual entry smaller than declared
+    // 50 charged, hold gone: 136 more fits again.
+    expect(() => budget.reserve(100)).not.toThrow();
+  });
+
+  test("a settled token is inert on double settle", () => {
+    const budget = new SnapshotBudget(400, 10);
+    const hold = budget.reserve(100);
+    hold.commit(50);
+    hold.release(); // must not un-charge the committed bytes
+    hold.commit(50); // must not double-charge
+    const holds = [budget.reserve(100), budget.reserve(100)];
+    for (const h of holds) h.release();
+    // Exactly 50 charged in total: a 350-byte hold still fits under 400.
+    expect(() => budget.reserve(255)).not.toThrow();
+  });
+
+  test("file count is enforced at commit time", () => {
+    const budget = new SnapshotBudget(10_000, 2);
+    budget.reserve(10).commit(10);
+    budget.reserve(10).commit(10);
+    const third = budget.reserve(10);
+    expect(() => third.commit(10)).toThrow(AgentSnapshotBudgetExceededError);
   });
 });
 
