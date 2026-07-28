@@ -1,6 +1,19 @@
 // Persists agent sandboxes records for cloud services through the shared DB boundary.
 import { randomUUID } from "node:crypto";
-import { and, asc, desc, eq, gte, inArray, isNotNull, lt, ne, notInArray, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gte,
+  inArray,
+  isNotNull,
+  lt,
+  ne,
+  notInArray,
+  type SQL,
+  sql,
+} from "drizzle-orm";
 import {
   applyBackupDelta,
   type BackupChainNode,
@@ -12,7 +25,14 @@ import { AGENT_MANAGED_DISCORD_KEY } from "../../lib/services/eliza-agent-config
 import {
   configureElizaLifecycleTransaction,
   elizaProvisionAdvisoryLockSql,
+  elizaTryProvisionAdvisoryLockSql,
 } from "../../lib/services/eliza-provision-lock";
+import {
+  JOB_TYPES,
+  PROVISIONING_RECONCILIATION_BATCH_SIZE,
+  PROVISIONING_STATUS_OWNER_JOB_TYPES,
+  type ProvisioningJobType,
+} from "../../lib/services/provisioning-job-types";
 import { mergeWarmClaimEnvironmentVars } from "../../lib/services/warm-claim-character-push";
 import { ObjectNamespaces } from "../../lib/storage/object-namespace";
 import { getObjectText, offloadJsonField } from "../../lib/storage/object-store";
@@ -67,6 +87,36 @@ const EMPTY_BACKUP_STATE: AgentSandboxBackup["state_data"] = {
 };
 const MAX_RECONSTRUCTED_BACKUP_CHAIN_DEPTH = 100;
 const MAX_RECONSTRUCTED_BACKUP_CHAIN_BYTES = 128 * 1024 * 1024;
+
+/**
+ * Correlates a sandbox row with the queue operations that legitimately own its
+ * `provisioning` state. Drizzle binds every type/status value as a parameter;
+ * the repository never assembles executable SQL from job-type strings.
+ */
+function hasNoProvisioningOwnerJob(ownerJobTypes: readonly ProvisioningJobType[]): SQL {
+  return sql`NOT EXISTS (
+    SELECT 1 FROM ${jobs}
+    WHERE  ${jobs.agent_id} = ${agentSandboxes.id}::text
+    AND    ${jobs.organization_id} = ${agentSandboxes.organization_id}
+    AND    ${inArray(jobs.type, [...ownerJobTypes])}
+    AND    (
+      ${inArray(jobs.status, ["pending", "in_progress"])}
+      OR (
+        ${jobs.execution_generation} IS NOT NULL
+        AND ${jobs.execution_quiesced_at} IS NULL
+      )
+    )
+  )`;
+}
+
+function hasNoProvisioningStatusOwnerJob(): SQL {
+  return hasNoProvisioningOwnerJob([...PROVISIONING_STATUS_OWNER_JOB_TYPES]);
+}
+
+export interface ReconciliationBatchResult<T> {
+  updated: T[];
+  deferred: number;
+}
 
 async function getStoredBackupById(
   backupId: string,
@@ -320,8 +370,8 @@ export class AgentSandboxesRepository {
    * and flips to `running` when the container is actually healthy (#15310 #6).
    *
    * Keyed on `updated_at` staleness (the provision writes bump it), and only
-   * rows with NO active `agent_provision` job — an in-flight job is still
-   * driving the provision and must not be raced. Excludes warm-pool rows
+   * rows with no active provisioning owner — an in-flight job is still driving
+   * the provision and must not be raced. Excludes warm-pool rows
    * (`pool_status IS NULL`), soft-deleted rows, and rows without a container.
    */
   async listStuckProvisioningWithContainer(
@@ -353,13 +403,7 @@ export class AgentSandboxesRepository {
           sql`${agentSandboxes.sandbox_id} IS NOT NULL`,
           sql`${agentSandboxes.pool_status} IS NULL`,
           sql`${agentSandboxes.deleted_at} IS NULL`,
-          sql`NOT EXISTS (
-            SELECT 1 FROM ${jobs}
-            WHERE  ${jobs.agent_id} = ${agentSandboxes.id}::text
-            AND    ${jobs.organization_id} = ${agentSandboxes.organization_id}
-            AND    ${jobs.type} IN ('agent_provision', 'agent_restart')
-            AND    ${jobs.status} IN ('pending', 'in_progress')
-          )`,
+          hasNoProvisioningStatusOwnerJob(),
         ),
       )
       .limit(limit);
@@ -731,7 +775,7 @@ export class AgentSandboxesRepository {
   }
 
   async markStuckProvisioningWithoutActiveJobAsError(cutoff: Date): Promise<
-    Array<{
+    ReconciliationBatchResult<{
       agentId: string;
       agentName: string | null;
       organizationId: string;
@@ -739,35 +783,68 @@ export class AgentSandboxesRepository {
     }>
   > {
     await ensureAgentSandboxSchema();
-    return dbWrite
-      .update(agentSandboxes)
-      .set({
-        status: "error",
-        error_message:
-          "Agent was stuck in provisioning state with no active provisioning job. " +
-          "This usually means a container crashed before the provisioning job could be created, " +
-          "or the job was lost. Please try starting the agent again.",
-        updated_at: new Date(),
+    const candidates = await dbWrite
+      .select({
+        agentId: agentSandboxes.id,
+        organizationId: agentSandboxes.organization_id,
       })
+      .from(agentSandboxes)
       .where(
         and(
           eq(agentSandboxes.status, "provisioning"),
           lt(agentSandboxes.updated_at, cutoff),
-          sql`NOT EXISTS (
-            SELECT 1 FROM ${jobs}
-            WHERE  ${jobs.agent_id} = ${agentSandboxes.id}::text
-            AND    ${jobs.organization_id} = ${agentSandboxes.organization_id}
-            AND    ${jobs.type} IN ('agent_provision', 'agent_restart')
-            AND    ${jobs.status} IN ('pending', 'in_progress')
-          )`,
+          hasNoProvisioningStatusOwnerJob(),
         ),
       )
-      .returning({
-        agentId: agentSandboxes.id,
-        agentName: agentSandboxes.agent_name,
-        organizationId: agentSandboxes.organization_id,
-        updatedAt: agentSandboxes.updated_at,
+      .orderBy(asc(agentSandboxes.updated_at), asc(agentSandboxes.id))
+      .limit(PROVISIONING_RECONCILIATION_BATCH_SIZE);
+
+    const swept: Array<{
+      agentId: string;
+      agentName: string | null;
+      organizationId: string;
+      updatedAt: Date | null;
+    }> = [];
+    let deferred = 0;
+    for (const candidate of candidates) {
+      const updated = await dbWrite.transaction(async (tx) => {
+        await configureElizaLifecycleTransaction(tx);
+        const [lock] = await sqlRows<{ acquired: boolean }>(
+          tx,
+          elizaTryProvisionAdvisoryLockSql(candidate.organizationId, candidate.agentId),
+        );
+        if (!lock?.acquired) return "deferred" as const;
+        const [row] = await tx
+          .update(agentSandboxes)
+          .set({
+            status: "error",
+            error_message:
+              "Agent was stuck in provisioning state with no active provisioning job. " +
+              "This usually means a container crashed before the provisioning job could be created, " +
+              "or the job was lost. Please try starting the agent again.",
+            updated_at: new Date(),
+          })
+          .where(
+            and(
+              eq(agentSandboxes.id, candidate.agentId),
+              eq(agentSandboxes.organization_id, candidate.organizationId),
+              eq(agentSandboxes.status, "provisioning"),
+              lt(agentSandboxes.updated_at, cutoff),
+              hasNoProvisioningStatusOwnerJob(),
+            ),
+          )
+          .returning({
+            agentId: agentSandboxes.id,
+            agentName: agentSandboxes.agent_name,
+            organizationId: agentSandboxes.organization_id,
+            updatedAt: agentSandboxes.updated_at,
+          });
+        return row;
       });
+      if (updated === "deferred") deferred++;
+      else if (updated) swept.push(updated);
+    }
+    return { updated: swept, deferred };
   }
 
   /**
@@ -788,7 +865,7 @@ export class AgentSandboxesRepository {
    * the honest "how long has this been stuck" signal.
    */
   async markOrphanedPendingWithoutJobAsError(cutoff: Date): Promise<
-    Array<{
+    ReconciliationBatchResult<{
       agentId: string;
       agentName: string | null;
       organizationId: string;
@@ -796,35 +873,70 @@ export class AgentSandboxesRepository {
     }>
   > {
     await ensureAgentSandboxSchema();
-    return dbWrite
-      .update(agentSandboxes)
-      .set({
-        status: "error",
-        error_message:
-          "Provisioning never started: no agent_provision job was enqueued " +
-          "(orphaned pending). Please retry.",
-        updated_at: new Date(),
+    const noProvisionJob = () => hasNoProvisioningOwnerJob([JOB_TYPES.AGENT_PROVISION]);
+    const candidates = await dbWrite
+      .select({
+        agentId: agentSandboxes.id,
+        organizationId: agentSandboxes.organization_id,
       })
+      .from(agentSandboxes)
       .where(
         and(
           eq(agentSandboxes.status, "pending"),
           sql`${agentSandboxes.pool_status} IS NULL`,
           lt(agentSandboxes.created_at, cutoff),
-          sql`NOT EXISTS (
-            SELECT 1 FROM ${jobs}
-            WHERE  ${jobs.agent_id} = ${agentSandboxes.id}::text
-            AND    ${jobs.organization_id} = ${agentSandboxes.organization_id}
-            AND    ${jobs.type} = 'agent_provision'
-            AND    ${jobs.status} IN ('pending', 'in_progress')
-          )`,
+          noProvisionJob(),
         ),
       )
-      .returning({
-        agentId: agentSandboxes.id,
-        agentName: agentSandboxes.agent_name,
-        organizationId: agentSandboxes.organization_id,
-        createdAt: agentSandboxes.created_at,
+      .orderBy(asc(agentSandboxes.created_at), asc(agentSandboxes.id))
+      .limit(PROVISIONING_RECONCILIATION_BATCH_SIZE);
+
+    const swept: Array<{
+      agentId: string;
+      agentName: string | null;
+      organizationId: string;
+      createdAt: Date | null;
+    }> = [];
+    let deferred = 0;
+    for (const candidate of candidates) {
+      const updated = await dbWrite.transaction(async (tx) => {
+        await configureElizaLifecycleTransaction(tx);
+        const [lock] = await sqlRows<{ acquired: boolean }>(
+          tx,
+          elizaTryProvisionAdvisoryLockSql(candidate.organizationId, candidate.agentId),
+        );
+        if (!lock?.acquired) return "deferred" as const;
+        const [row] = await tx
+          .update(agentSandboxes)
+          .set({
+            status: "error",
+            error_message:
+              "Provisioning never started: no agent_provision job was enqueued " +
+              "(orphaned pending). Please retry.",
+            updated_at: new Date(),
+          })
+          .where(
+            and(
+              eq(agentSandboxes.id, candidate.agentId),
+              eq(agentSandboxes.organization_id, candidate.organizationId),
+              eq(agentSandboxes.status, "pending"),
+              sql`${agentSandboxes.pool_status} IS NULL`,
+              lt(agentSandboxes.created_at, cutoff),
+              noProvisionJob(),
+            ),
+          )
+          .returning({
+            agentId: agentSandboxes.id,
+            agentName: agentSandboxes.agent_name,
+            organizationId: agentSandboxes.organization_id,
+            createdAt: agentSandboxes.created_at,
+          });
+        return row;
       });
+      if (updated === "deferred") deferred++;
+      else if (updated) swept.push(updated);
+    }
+    return { updated: swept, deferred };
   }
 
   async update(
@@ -1010,21 +1122,16 @@ export class AgentSandboxesRepository {
    * Guarded CAS that flips a WEDGED `provisioning` row to `running` after the
    * daemon reconciler re-probed its container and found it healthy (#15310 #6).
    * Only fires when the row is STILL `provisioning` with a live container
-   * (`sandbox_id` plus durable `node_id` set) and NO active provision/restart
-   * job racing it — so a concurrent job flip, delete, or stop during the
+   * (`sandbox_id` plus durable `node_id` set) and no active provisioning owner
+   * racing it — so a concurrent job flip, delete, or stop during the
    * multi-second re-probe is never clobbered. Returns undefined when the CAS
    * matched nothing.
    */
   async markRunningFromProvisioning(id: string): Promise<AgentSandbox | undefined> {
     await ensureAgentSandboxSchema();
-    const [r] = await dbWrite
-      .update(agentSandboxes)
-      .set({
-        status: "running",
-        error_message: null,
-        last_heartbeat_at: new Date(),
-        updated_at: new Date(),
-      })
+    const [candidate] = await dbWrite
+      .select({ organizationId: agentSandboxes.organization_id })
+      .from(agentSandboxes)
       .where(
         and(
           eq(agentSandboxes.id, id),
@@ -1033,17 +1140,42 @@ export class AgentSandboxesRepository {
           sql`${agentSandboxes.node_id} IS NOT NULL`,
           sql`${agentSandboxes.node_id} <> ''`,
           sql`${agentSandboxes.deleted_at} IS NULL`,
-          sql`NOT EXISTS (
-            SELECT 1 FROM ${jobs}
-            WHERE  ${jobs.agent_id} = ${agentSandboxes.id}::text
-            AND    ${jobs.organization_id} = ${agentSandboxes.organization_id}
-            AND    ${jobs.type} IN ('agent_provision', 'agent_restart')
-            AND    ${jobs.status} IN ('pending', 'in_progress')
-          )`,
+          hasNoProvisioningStatusOwnerJob(),
         ),
       )
-      .returning();
-    return r;
+      .limit(1);
+    if (!candidate) return undefined;
+
+    return dbWrite.transaction(async (tx) => {
+      await configureElizaLifecycleTransaction(tx);
+      const [lock] = await sqlRows<{ acquired: boolean }>(
+        tx,
+        elizaTryProvisionAdvisoryLockSql(candidate.organizationId, id),
+      );
+      if (!lock?.acquired) return undefined;
+      const [updated] = await tx
+        .update(agentSandboxes)
+        .set({
+          status: "running",
+          error_message: null,
+          last_heartbeat_at: new Date(),
+          updated_at: new Date(),
+        })
+        .where(
+          and(
+            eq(agentSandboxes.id, id),
+            eq(agentSandboxes.organization_id, candidate.organizationId),
+            eq(agentSandboxes.status, "provisioning"),
+            sql`${agentSandboxes.sandbox_id} IS NOT NULL`,
+            sql`${agentSandboxes.node_id} IS NOT NULL`,
+            sql`${agentSandboxes.node_id} <> ''`,
+            sql`${agentSandboxes.deleted_at} IS NULL`,
+            hasNoProvisioningStatusOwnerJob(),
+          ),
+        )
+        .returning();
+      return updated;
+    });
   }
 
   async delete(id: string, orgId: string): Promise<boolean> {

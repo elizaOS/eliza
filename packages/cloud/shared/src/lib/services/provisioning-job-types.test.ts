@@ -15,13 +15,69 @@ import { describe, expect, test } from "bun:test";
 
 import {
   AGENT_JOB_TYPES,
+  AGENT_LIFECYCLE_JOB_METADATA,
   APPS_JOB_TYPES,
+  COLD_BOOT_JOB_TYPES,
+  COLD_BOOT_STALE_JOB_THRESHOLD_MS,
+  EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES,
   JOB_TYPES,
+  ORPHAN_PENDING_THRESHOLD_MS,
+  PROVISIONING_RECONCILIATION_BATCH_SIZE,
+  PROVISIONING_STATUS_OWNER_JOB_TYPES,
   type ProvisioningJobType,
   resolveJobTypesForLanes,
+  STUCK_PROVISIONING_RECONCILIATION_GRACE_MS,
+  STUCK_PROVISIONING_THRESHOLD_MS,
 } from "./provisioning-job-types";
 
 const ALL = Object.values(JOB_TYPES) as ProvisioningJobType[];
+
+describe("provisioning status ownership", () => {
+  test("derives every lifecycle safety set from the canonical metadata", () => {
+    expect(AGENT_JOB_TYPES).toEqual(AGENT_LIFECYCLE_JOB_METADATA.map(({ type }) => type));
+    expect([...PROVISIONING_STATUS_OWNER_JOB_TYPES]).toEqual(
+      AGENT_LIFECYCLE_JOB_METADATA.filter(
+        ({ ownsProvisioningStatus }) => ownsProvisioningStatus,
+      ).map(({ type }) => type),
+    );
+    expect(EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES).toEqual(
+      AGENT_LIFECYCLE_JOB_METADATA.filter(({ exclusive }) => exclusive).map(({ type }) => type),
+    );
+    expect([...COLD_BOOT_JOB_TYPES]).toEqual(
+      AGENT_LIFECYCLE_JOB_METADATA.filter(({ coldBoot }) => coldBoot).map(({ type }) => type),
+    );
+  });
+
+  test("classifies primary-row owners separately from replacement boots", () => {
+    expect(PROVISIONING_STATUS_OWNER_JOB_TYPES).toEqual(
+      new Set([
+        JOB_TYPES.AGENT_PROVISION,
+        JOB_TYPES.AGENT_RESUME,
+        JOB_TYPES.AGENT_RESTART,
+        JOB_TYPES.AGENT_WAKE,
+      ]),
+    );
+    expect(PROVISIONING_STATUS_OWNER_JOB_TYPES.has(JOB_TYPES.AGENT_UPGRADE)).toBe(false);
+    expect(PROVISIONING_STATUS_OWNER_JOB_TYPES.has(JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE)).toBe(false);
+    expect(PROVISIONING_STATUS_OWNER_JOB_TYPES.has(JOB_TYPES.AGENT_DOWNGRADE)).toBe(false);
+  });
+});
+
+describe("lifecycle timing invariants", () => {
+  test("stuck reconciliation derives from the cold-boot budget plus explicit grace", () => {
+    expect(STUCK_PROVISIONING_THRESHOLD_MS).toBe(
+      COLD_BOOT_STALE_JOB_THRESHOLD_MS + STUCK_PROVISIONING_RECONCILIATION_GRACE_MS,
+    );
+    expect(STUCK_PROVISIONING_RECONCILIATION_GRACE_MS).toBeGreaterThan(0);
+    expect(STUCK_PROVISIONING_THRESHOLD_MS).toBeGreaterThan(COLD_BOOT_STALE_JOB_THRESHOLD_MS);
+  });
+
+  test("orphan recovery is independent and every reconciliation scan is bounded", () => {
+    expect(ORPHAN_PENDING_THRESHOLD_MS).toBeLessThan(STUCK_PROVISIONING_THRESHOLD_MS);
+    expect(PROVISIONING_RECONCILIATION_BATCH_SIZE).toBeGreaterThan(0);
+    expect(PROVISIONING_RECONCILIATION_BATCH_SIZE).toBeLessThanOrEqual(500);
+  });
+});
 
 describe("job lanes — completeness invariant", () => {
   test("agent ∪ apps covers EVERY job type (none orphaned)", () => {
