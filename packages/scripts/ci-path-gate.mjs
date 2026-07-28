@@ -1,5 +1,8 @@
 #!/usr/bin/env node
-// Drives repo automation ci path gate with explicit CLI and CI behavior.
+/**
+ * Classifies changed repository paths into CI test lanes. Pull requests use a
+ * merge-base inventory while branch-health events deliberately run all lanes.
+ */
 import { spawnSync } from "node:child_process";
 import { appendFileSync, readFileSync } from "node:fs";
 
@@ -363,7 +366,7 @@ function globToRegExp(pattern) {
     .replace(/[.+^${}()|[\]\\]/g, "\\$&")
     .replace(/\*\*/g, sentinel)
     .replace(/\*/g, "[^/]*")
-    .replaceAll(sentinel, ".*");
+    .replaceAll(sentinel, "[\\s\\S]*");
   return new RegExp(`^${escaped}$`);
 }
 
@@ -397,18 +400,49 @@ export function gitChangedFiles(base, head, cwd) {
         (mergeBaseResult.stderr ? `: ${mergeBaseResult.stderr.trim()}` : ""),
     );
   }
-  const result = spawnSync("git", ["diff", "--name-only", mergeBase, head], {
-    cwd,
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-  });
+  const result = spawnSync(
+    "git",
+    ["diff", "--name-status", "-z", "--find-renames", mergeBase, head],
+    {
+      cwd,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
   if (result.status !== 0) {
     throw new Error(result.stderr || `git diff exited with ${result.status}`);
   }
-  return result.stdout
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
+
+  return parseGitNameStatus(result.stdout);
+}
+
+export function parseGitNameStatus(output) {
+  const fields = output.split("\0");
+  if (fields.at(-1) === "") fields.pop();
+  const paths = [];
+  for (let index = 0; index < fields.length; ) {
+    const status = fields[index++];
+    if (/^[RC]\d{1,3}$/.test(status)) {
+      const source = fields[index++];
+      const destination = fields[index++];
+      if (source === undefined || destination === undefined) {
+        throw new Error(`malformed git diff record for ${status}`);
+      }
+      // Both endpoints affect lane ownership when code crosses a package
+      // boundary; classifying only the destination can hide removed coverage.
+      paths.push(source, destination);
+      continue;
+    }
+    if (!/^[ADMTUXB]$/.test(status)) {
+      throw new Error(`unsupported git diff status '${status}'`);
+    }
+    const path = fields[index++];
+    if (path === undefined) {
+      throw new Error(`malformed git diff record for ${status}`);
+    }
+    paths.push(path);
+  }
+  return [...new Set(paths)];
 }
 
 function addLane(matchesByLane, lane, source) {
