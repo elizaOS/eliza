@@ -1652,33 +1652,15 @@ function ViewRouter({
   settingsNavigateSequence?: number;
 }) {
   const activeTab = useAppSelector((s) => s.tab);
-  const setActiveTab = useAppSelector((s) => s.setTab);
   const tab = routeOverride?.tab ?? activeTab;
   // Phone / messages / contacts are AOSP-fork-only native-OS surfaces (like
   // camera + the home tiles + the launcher tiles) — never rendered on web,
   // desktop, iOS, or stock Play-Store Android, even via a deep link.
   const nativeOsSurfaceEnabled = isAospShellEnabled();
+  // AppProvider owns late path-to-tab reconciliation through setTabRaw. Doing
+  // it here through the public setTab command would rewrite exact plugin paths
+  // to a shared affinity's canonical path (for example /hyperliquid → /wallet).
   const dynamicPage = useResolvedDynamicPage(tab);
-  // Late plugin registrations can land AFTER the boot path→tab resolution: a
-  // direct deep link to a plugin-owned page (e.g. /phone-companion) resolves
-  // to the "views" fallback because registerAppShellPage runs on the deferred
-  // idle pump, after first paint. Re-derive the tab for the current path on
-  // every registry change and adopt the now-registered page. Correcting only
-  // away from the "views" fallback means user navigation is never fought —
-  // for a fixed path, tabFromPath's answer only changes when a registration
-  // lands.
-  const shellPageRegistryVersion = useAppShellPageRegistryVersion();
-  useEffect(() => {
-    // The version is the re-run trigger (same pattern as useResolvedDynamicPage).
-    void shellPageRegistryVersion;
-    if (routeOverride) return;
-    if (activeTab !== "views") return;
-    if (typeof window === "undefined") return;
-    const resolved = tabFromPath(getWindowNavigationPath());
-    if (resolved && resolved !== "views") {
-      setActiveTab(resolved);
-    }
-  }, [shellPageRegistryVersion, routeOverride, activeTab, setActiveTab]);
   const [navigationPath, setNavigationPath] = useState(
     () =>
       routeOverride?.navigationPath ??

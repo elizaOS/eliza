@@ -19,6 +19,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerAppShellPage } from "./app-shell-registry";
 import { DEFAULT_BOOT_CONFIG, setBootConfig } from "./config/boot-config";
 import type { ViewRegistryEntry } from "./hooks/useAvailableViews";
+import { resetUiRegistryHostForTests } from "./registry-host";
 
 const appState = vi.hoisted(() => ({
   firstRunComplete: true,
@@ -536,6 +537,7 @@ describe("App navigate-view event wiring", () => {
 
   afterEach(() => {
     cleanup();
+    resetUiRegistryHostForTests();
     vi.unstubAllGlobals();
   });
 
@@ -705,6 +707,51 @@ describe("App navigate-view event wiring", () => {
     ).toBe(walletMarketView.id);
     expect(queryByTestId("native-wallet-fallback")).toBeNull();
   });
+
+  it.each(["/inventory", "/hyperliquid", "/polymarket"])(
+    "does not canonicalize a cold exact wallet-family route through tab affinity: %s",
+    async (path) => {
+      appState.tab = "views";
+      window.history.replaceState(null, "", path);
+      const registrations = [
+        {
+          id: "wallet.inventory",
+          pluginId: "@elizaos/plugin-wallet-ui",
+          label: "Wallet",
+          path: "/inventory",
+        },
+        {
+          id: "hyperliquid",
+          pluginId: "@elizaos/plugin-hyperliquid",
+          label: "Perps",
+          path: "/hyperliquid",
+        },
+        {
+          id: "polymarket",
+          pluginId: "@elizaos/plugin-polymarket",
+          label: "Predictions",
+          path: "/polymarket",
+        },
+      ];
+      const owningRegistration = registrations.find(
+        (registration) => registration.path === path,
+      );
+      if (!owningRegistration) {
+        throw new Error(`Missing test registration for ${path}`);
+      }
+
+      registerAppShellPage({
+        ...owningRegistration,
+        tabAffinity: "inventory",
+        Component: () => null,
+      });
+
+      render(<App />);
+
+      expect(window.location.pathname).toBe(path);
+      expect(appState.setTab).not.toHaveBeenCalled();
+    },
+  );
 
   it("lets a fullscreen plugin view fill behind the floating composer", async () => {
     mockAvailableViews.push(simpleCalendarView);
