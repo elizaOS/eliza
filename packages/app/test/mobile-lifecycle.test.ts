@@ -6,9 +6,9 @@
  * wiring (`createMobileLifecycle`). Exercises the two device-free seams a
  * jsdom test can drive deterministically:
  *
- *   - `initializeAppLifecycle()` — `@capacitor/app` `appStateChange` /
- *     `backButton` / `appUrlOpen` listeners + the cold-launch `getLaunchUrl()`
- *     deep-link bootstrap. Asserts the events the module dispatches
+ *   - `initializeDeepLinks()` + `initializeAppLifecycle()` — early
+ *     `appUrlOpen`/cold-launch capture plus `appStateChange` / `backButton`
+ *     wiring. Asserts the events the module dispatches
  *     (`APP_RESUME_EVENT` / `APP_PAUSE_EVENT`), the shipped Android hardware
  *     back contract (#9148) — `dispatchBackIntent()` gets first crack and a
  *     handled press returns early; an unhandled press falls through to
@@ -186,6 +186,7 @@ describe("createMobileLifecycle — app lifecycle", () => {
     // The live entrypoint must route through the extracted helper — this suite
     // certifies the shipped behavior only while main.tsx actually calls it.
     expect(mainSrc).toContain("getMobileLifecycle().initializeAppLifecycle()");
+    expect(mainSrc).toContain("getMobileLifecycle().initializeDeepLinks()");
     expect(mainSrc).toContain(
       "getMobileLifecycle().initializeNetworkListener()",
     );
@@ -373,6 +374,50 @@ describe("createMobileLifecycle — app lifecycle", () => {
 
     expect(ctx.handleDeepLink).toHaveBeenCalledTimes(1);
     expect(ctx.handleDeepLink).toHaveBeenCalledWith("elizaos://chat/abc");
+  });
+
+  it("captures a warm URL before the rest of app lifecycle initializes", async () => {
+    const ctx = makeContext();
+    const lifecycle = createMobileLifecycle(ctx);
+
+    lifecycle.initializeDeepLinks();
+    await vi.waitFor(() => expect(appListeners.has("appUrlOpen")).toBe(true));
+    expect(appListeners.has("appStateChange")).toBe(false);
+    expect(appListeners.has("backButton")).toBe(false);
+
+    fireAppEvent("appUrlOpen", {
+      url: "elizaos://first-run/runtime/remote?api=http%3A%2F%2F127.0.0.1%3A31337",
+    });
+
+    expect(ctx.handleDeepLink).not.toHaveBeenCalled();
+
+    lifecycle.initializeAppLifecycle();
+    await vi.waitFor(() =>
+      expect(appListeners.has("appStateChange")).toBe(true),
+    );
+    expect(ctx.handleDeepLink).toHaveBeenCalledOnce();
+    expect(ctx.handleDeepLink).toHaveBeenCalledWith(
+      "elizaos://first-run/runtime/remote?api=http%3A%2F%2F127.0.0.1%3A31337",
+    );
+    expect(appListeners.get("appUrlOpen")?.length).toBe(1);
+  });
+
+  it("deduplicates one URL across early warm delivery and cold replay", async () => {
+    const ctx = makeContext();
+    const lifecycle = createMobileLifecycle(ctx);
+    const url =
+      "elizaos://first-run/runtime/remote?api=http%3A%2F%2F127.0.0.1%3A31337";
+
+    lifecycle.initializeDeepLinks();
+    await vi.waitFor(() => expect(appListeners.has("appUrlOpen")).toBe(true));
+    fireAppEvent("appUrlOpen", { url });
+    capacitorAppMock.__setLaunchUrl({ url });
+    lifecycle.initializeAppLifecycle();
+
+    await vi.waitFor(() =>
+      expect(capacitorAppMock.getLaunchUrl).toHaveBeenCalled(),
+    );
+    expect(ctx.handleDeepLink).toHaveBeenCalledOnce();
   });
 
   it("routes cold-launch getLaunchUrl URLs through handleDeepLink", async () => {

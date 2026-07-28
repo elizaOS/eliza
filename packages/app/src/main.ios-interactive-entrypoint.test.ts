@@ -21,6 +21,7 @@ const iosBoot = vi.hoisted(() => ({
   lifecycleDependencies: undefined as
     | { handleDeepLink: (url: string) => void }
     | undefined,
+  initializeDeepLinks: vi.fn(),
   initializeAppLifecycle: vi.fn(),
   initializeNetworkListener: vi.fn(async () => undefined),
   preferenceSet: vi.fn(async () => undefined),
@@ -82,6 +83,7 @@ vi.mock("./mobile-lifecycle", () => ({
     (dependencies: { handleDeepLink: (url: string) => void }) => {
       iosBoot.lifecycleDependencies = dependencies;
       return {
+        initializeDeepLinks: iosBoot.initializeDeepLinks,
         initializeAppLifecycle: iosBoot.initializeAppLifecycle,
         initializeNetworkListener: iosBoot.initializeNetworkListener,
       };
@@ -133,6 +135,7 @@ beforeEach(() => {
 describe("renderer interactive iOS composition", () => {
   it("mounts and routes native callbacks through the shipped handlers", async () => {
     const main = await import("./main");
+    expect(iosBoot.initializeDeepLinks).toHaveBeenCalledOnce();
     if (document.readyState === "loading") {
       document.dispatchEvent(new Event("DOMContentLoaded"));
     }

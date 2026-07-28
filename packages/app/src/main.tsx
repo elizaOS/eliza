@@ -3273,6 +3273,13 @@ function boot(): void {
   void main().catch(renderBootFailure);
 }
 
+// Android can deliver a warm ACTION_VIEW while a WebView navigation is replacing
+// the old document. Arm URL capture before DOMContentLoaded so the intent cannot
+// be sent only to the previous document's dead Capacitor callback registry.
+if (isNative) {
+  getMobileLifecycle().initializeDeepLinks();
+}
+
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", boot);
 } else {
