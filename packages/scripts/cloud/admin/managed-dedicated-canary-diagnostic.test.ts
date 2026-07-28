@@ -17,6 +17,7 @@ import { join } from "node:path";
 import { toLibpqConnectionUrl } from "./libpq-connection-url";
 import {
   canonicalizeManagedDedicatedCanaryDiagnostic,
+  projectManagedDedicatedCanaryDiagnosticV3,
   sanitizeManagedDedicatedCanaryDiagnostic,
   writeManagedDedicatedCanaryDiagnostic,
 } from "./managed-dedicated-canary-diagnostic";
@@ -63,6 +64,7 @@ describe("libpq connection URL", () => {
 
 function failedDeleteInput(): Record<string, unknown> {
   return {
+    capturedAt: "2026-07-26T23:11:31.000Z",
     targetCount: 1,
     agent: {
       status: "deletion_failed",
@@ -77,6 +79,14 @@ function failedDeleteInput(): Record<string, unknown> {
         nodeIdPresent: true,
         containerNamePresent: true,
       },
+      replacementCleanupLocator: {
+        sandboxIdPresent: false,
+        nodeIdPresent: false,
+        containerNamePresent: false,
+        createdAtPresent: false,
+        contractComplete: true,
+      },
+      rollbackStandby: null,
     },
     jobs: [
       {
@@ -149,6 +159,118 @@ function correlatedPermanentDeleteInput(
   return input;
 }
 
+type StandbyState =
+  | "pausing"
+  | "paused_pre_cutover"
+  | "paused"
+  | "retiring"
+  | "rollback_pending"
+  | "rollback_cleanup_pending";
+type ValidationState =
+  | "planned"
+  | "candidate_provisioning"
+  | "restore_committed"
+  | "never_routed_retired";
+
+function restoreValidationInput(
+  state: ValidationState,
+  authorityPointed = false,
+): Record<string, unknown> {
+  const committed =
+    state === "restore_committed" || state === "never_routed_retired";
+  const retired = state === "never_routed_retired";
+  return {
+    state,
+    routeMode: "restore_validation_private_control",
+    authorityPointed,
+    sourceIdentityMatches: true,
+    backupVerifiedV2: committed,
+    contractComplete: true,
+    receiptState: committed ? "committed" : null,
+    receiptSchemaVersion: committed ? 2 : null,
+    receiptTransfer: committed ? "chunked-v1" : null,
+    receiptCommittedAt: committed ? "2026-07-26T23:14:00.000Z" : null,
+    routeExposedAt: null,
+    candidateContainerAbsentAt: retired ? "2026-07-26T23:15:00.000Z" : null,
+    candidateVpnAbsentAt: retired ? "2026-07-26T23:15:01.000Z" : null,
+    candidateVolumeAbsentAt: retired ? "2026-07-26T23:15:02.000Z" : null,
+    candidateRetiredAt: retired ? "2026-07-26T23:15:03.000Z" : null,
+  };
+}
+
+function standbyInput(
+  state: StandbyState,
+  validationState: ValidationState = "planned",
+): Record<string, unknown> {
+  const input = failedDeleteInput();
+  input.jobs = [];
+  input.capturedAt = "2026-07-26T23:20:00.000Z";
+  const agent = input.agent as Record<string, unknown>;
+  agent.status = "running";
+  agent.errorMessage = null;
+  agent.errorCount = 0;
+  agent.deletionOwned = false;
+  agent.deletionStartedAt = null;
+  agent.updatedAt = "2026-07-26T23:16:00.000Z";
+  const beforeCutover = state === "pausing" || state === "paused_pre_cutover";
+  const decisionOwned =
+    state === "retiring" ||
+    state === "rollback_pending" ||
+    state === "rollback_cleanup_pending";
+  agent.replacementCleanupLocator = {
+    sandboxIdPresent: beforeCutover,
+    nodeIdPresent: beforeCutover,
+    containerNamePresent: beforeCutover,
+    createdAtPresent: beforeCutover,
+    contractComplete: true,
+  };
+  agent.rollbackStandby = {
+    state,
+    currentMatchesPrimary:
+      !beforeCutover && state !== "rollback_cleanup_pending",
+    currentMatchesStandby:
+      beforeCutover || state === "rollback_cleanup_pending",
+    contractComplete: true,
+    sourceJob: {
+      type: "agent_admin_canary_image",
+      status: beforeCutover ? "in_progress" : "completed",
+      outcome: beforeCutover ? "cutover_in_progress" : "standby_pending",
+      failureKind: null,
+      error: null,
+      attempts: 0,
+      maxAttempts: 3,
+      scheduledFor: "2026-07-26T23:09:00.000Z",
+      startedAt: "2026-07-26T23:09:01.000Z",
+      completedAt: beforeCutover ? null : "2026-07-26T23:10:00.000Z",
+      createdAt: "2026-07-26T23:08:59.000Z",
+      updatedAt: beforeCutover
+        ? "2026-07-26T23:09:30.000Z"
+        : "2026-07-26T23:10:00.000Z",
+    },
+    decisionJob: decisionOwned
+      ? {
+          type: "agent_admin_canary_standby_decision",
+          status: "in_progress",
+          decision: state === "retiring" ? "accept" : "reject",
+          outcome: null,
+          scheduledFor: "2026-07-26T23:15:04.000Z",
+          startedAt: "2026-07-26T23:15:05.000Z",
+          completedAt: null,
+          createdAt: "2026-07-26T23:15:04.000Z",
+          updatedAt: "2026-07-26T23:15:06.000Z",
+        }
+      : null,
+    restoreValidationCount: beforeCutover ? 0 : 1,
+    restoreValidation: beforeCutover
+      ? null
+      : restoreValidationInput(
+          state === "retiring" ? "never_routed_retired" : validationState,
+          state === "retiring",
+        ),
+  };
+  return input;
+}
+
 describe("managed dedicated canary diagnostic", () => {
   test("emits only the classified lifecycle facts needed for retry decisions", () => {
     const evidence = sanitizeManagedDedicatedCanaryDiagnostic(
@@ -157,7 +279,8 @@ describe("managed dedicated canary diagnostic", () => {
     );
 
     expect(evidence).toEqual({
-      schemaVersion: 3,
+      schemaVersion: 4,
+      capturedAt: "2026-07-26T23:11:31.000Z",
       targetCount: 1,
       sandbox: {
         status: "deletion_failed",
@@ -165,6 +288,11 @@ describe("managed dedicated canary diagnostic", () => {
         errorCount: 1,
         deletionStartedAt: "2026-07-26T23:08:09.000Z",
         updatedAt: "2026-07-26T23:11:30.000Z",
+        locator: {
+          sandboxIdPresent: true,
+          nodeIdPresent: true,
+          containerNamePresent: true,
+        },
       },
       jobs: [
         {
@@ -186,6 +314,28 @@ describe("managed dedicated canary diagnostic", () => {
           queueDurationMs: 142_000,
         },
       ],
+      lifecycle: {
+        authority: "delete",
+        deletionOwned: true,
+        replacementCleanupPending: false,
+        standbyState: null,
+        routedRuntime: "not_applicable",
+        sourceJob: null,
+        decisionJob: null,
+        restoreValidation: null,
+      },
+    });
+    expect(projectManagedDedicatedCanaryDiagnosticV3(evidence)).toEqual({
+      schemaVersion: 3,
+      targetCount: 1,
+      sandbox: {
+        status: "deletion_failed",
+        errorCode: "sandbox_stop_failed",
+        errorCount: 1,
+        deletionStartedAt: "2026-07-26T23:08:09.000Z",
+        updatedAt: "2026-07-26T23:11:30.000Z",
+      },
+      jobs: evidence.jobs,
     });
 
     const canonical = canonicalizeManagedDedicatedCanaryDiagnostic(
@@ -196,6 +346,469 @@ describe("managed dedicated canary diagnostic", () => {
     expect(canonical).not.toContain("Failed to delete sandbox");
     expect(canonical).not.toContain("managed-dedicated-canary-");
   });
+
+  test("rejects malformed JSON without echoing private input", () => {
+    const privateInput = '{"private":"MUST_NOT_ESCAPE",';
+    let message = "";
+    try {
+      canonicalizeManagedDedicatedCanaryDiagnostic(privateInput, SUFFIX);
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+    expect(message).toBe("managed canary diagnostic input is not valid JSON");
+    expect(message).not.toContain("MUST_NOT_ESCAPE");
+  });
+
+  test("preserves partial-locator observations without fabricating an invalid v3 projection", () => {
+    const input = standbyInput("paused");
+    const agent = input.agent as Record<string, unknown>;
+    agent.rollbackStandby = null;
+    agent.locator = {
+      sandboxIdPresent: true,
+      nodeIdPresent: false,
+      containerNamePresent: true,
+    };
+    const evidence = sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX);
+    expect(evidence.lifecycle).toEqual({
+      authority: "none",
+      deletionOwned: false,
+      replacementCleanupPending: false,
+      standbyState: null,
+      routedRuntime: "not_applicable",
+      sourceJob: null,
+      decisionJob: null,
+      restoreValidation: null,
+    });
+    expect(evidence.sandbox.locator).toEqual(agent.locator);
+    expect(() => projectManagedDedicatedCanaryDiagnosticV3(evidence)).toThrow(
+      "v3-compatible projection",
+    );
+  });
+
+  test.each([
+    [
+      "deletion status without ownership",
+      (input: Record<string, unknown>) => {
+        const agent = input.agent as Record<string, unknown>;
+        agent.status = "deletion_pending";
+        agent.deletionOwned = false;
+        agent.deletionStartedAt = null;
+        input.jobs = [];
+      },
+    ],
+    [
+      "deletion ownership outside a deletion status",
+      (input: Record<string, unknown>) => {
+        (input.agent as Record<string, unknown>).status = "running";
+      },
+    ],
+  ])("rejects %s", (_name, mutate) => {
+    const input = failedDeleteInput();
+    mutate(input);
+    expect(() =>
+      sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX),
+    ).toThrow("agent deletion ownership and status disagree");
+  });
+
+  test.each([
+    ["pausing", "standby", true, false],
+    ["paused_pre_cutover", "standby", true, false],
+    ["paused", "primary", false, false],
+    ["retiring", "primary", false, true],
+    ["rollback_pending", "primary", false, true],
+    ["rollback_cleanup_pending", "standby", false, true],
+  ] as const)(
+    "emits closed rollback standby state %s with exact routed authority",
+    (state, routedRuntime, cleanupPending, decisionPresent) => {
+      const evidence = sanitizeManagedDedicatedCanaryDiagnostic(
+        standbyInput(state),
+        SUFFIX,
+      );
+      expect(evidence.lifecycle).toMatchObject({
+        authority: "rollback_standby",
+        deletionOwned: false,
+        replacementCleanupPending: cleanupPending,
+        standbyState: state,
+        routedRuntime,
+      });
+      expect(evidence.lifecycle.sourceJob).not.toBeNull();
+      expect(evidence.lifecycle.decisionJob !== null).toBe(decisionPresent);
+    },
+  );
+
+  test.each([
+    "planned",
+    "candidate_provisioning",
+    "restore_committed",
+    "never_routed_retired",
+  ] as const)("emits only the closed restore-validation phase %s", (state) => {
+    const evidence = sanitizeManagedDedicatedCanaryDiagnostic(
+      standbyInput("paused", state),
+      SUFFIX,
+    );
+    expect(evidence.lifecycle.restoreValidation?.state).toBe(state);
+    expect(evidence.lifecycle.restoreValidation?.routeExposedAt).toBeNull();
+    expect(evidence.lifecycle.restoreValidation?.authorityPointed).toBe(false);
+  });
+
+  test.each([
+    [
+      "dual lifecycle authority",
+      (input: Record<string, unknown>) => {
+        const agent = input.agent as Record<string, unknown>;
+        agent.deletionOwned = true;
+        agent.deletionStartedAt = "2026-07-26T23:08:09.000Z";
+      },
+      "dual delete",
+    ],
+    [
+      "deletion status",
+      (input: Record<string, unknown>) => {
+        (input.agent as Record<string, unknown>).status = "deletion_pending";
+      },
+      "cannot coexist",
+    ],
+    [
+      "unknown standby state",
+      (input: Record<string, unknown>) => {
+        const agent = input.agent as Record<string, unknown>;
+        (agent.rollbackStandby as Record<string, unknown>).state = "Paused";
+      },
+      "state is invalid",
+    ],
+    [
+      "ambiguous routed runtime",
+      (input: Record<string, unknown>) => {
+        const standby = (input.agent as Record<string, unknown>)
+          .rollbackStandby as Record<string, unknown>;
+        standby.currentMatchesStandby = true;
+        standby.currentMatchesPrimary = true;
+      },
+      "ambiguous",
+    ],
+    [
+      "wrong routed runtime",
+      (input: Record<string, unknown>) => {
+        const standby = (input.agent as Record<string, unknown>)
+          .rollbackStandby as Record<string, unknown>;
+        standby.currentMatchesStandby = true;
+        standby.currentMatchesPrimary = false;
+      },
+      "routed runtime disagree",
+    ],
+    [
+      "partial cleanup locator",
+      (input: Record<string, unknown>) => {
+        const cleanup = (input.agent as Record<string, unknown>)
+          .replacementCleanupLocator as Record<string, unknown>;
+        cleanup.nodeIdPresent = true;
+      },
+      "partially populated",
+    ],
+    [
+      "cleanup locator that exploits a nullable CHECK",
+      (input: Record<string, unknown>) => {
+        const cleanup = (input.agent as Record<string, unknown>)
+          .replacementCleanupLocator as Record<string, unknown>;
+        cleanup.contractComplete = false;
+      },
+      "locator contract",
+    ],
+    [
+      "hidden incomplete standby row",
+      (input: Record<string, unknown>) => {
+        const standby = (input.agent as Record<string, unknown>)
+          .rollbackStandby as Record<string, unknown>;
+        standby.contractComplete = false;
+      },
+      "frozen contract",
+    ],
+  ])("rejects %s", (_label, mutate, message) => {
+    const input = standbyInput("paused");
+    mutate(input);
+    expect(() =>
+      sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX),
+    ).toThrow(message);
+  });
+
+  test.each([
+    [
+      "wrong source type",
+      (job: Record<string, unknown>) => {
+        job.type = "agent_upgrade";
+      },
+      "source job type",
+    ],
+    [
+      "unknown source outcome",
+      (job: Record<string, unknown>) => {
+        job.outcome = "complete";
+      },
+      "outcome is invalid",
+    ],
+    [
+      "missing source claim",
+      (job: Record<string, unknown>) => {
+        job.startedAt = null;
+      },
+      "completed cutover",
+    ],
+    [
+      "inverted source clocks",
+      (job: Record<string, unknown>) => {
+        job.startedAt = "2026-07-26T23:11:00.000Z";
+      },
+      "out of order",
+    ],
+    [
+      "completion after its update",
+      (job: Record<string, unknown>) => {
+        job.completedAt = "2026-07-26T23:19:00.000Z";
+      },
+      "out of order",
+    ],
+  ])("rejects pointed source job with %s", (_label, mutate, message) => {
+    const input = standbyInput("paused");
+    const standby = (input.agent as Record<string, unknown>)
+      .rollbackStandby as Record<string, unknown>;
+    mutate(standby.sourceJob as Record<string, unknown>);
+    expect(() =>
+      sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX),
+    ).toThrow(message);
+  });
+
+  test("rejects retry provenance presented as a terminal source failure", () => {
+    const input = standbyInput("paused_pre_cutover");
+    const standby = (input.agent as Record<string, unknown>)
+      .rollbackStandby as Record<string, unknown>;
+    const sourceJob = standby.sourceJob as Record<string, unknown>;
+    sourceJob.status = "failed";
+    sourceJob.outcome = "pre_cutover_failed";
+    sourceJob.failureKind = "retry";
+    sourceJob.error = "opaque retry";
+    sourceJob.attempts = 3;
+    sourceJob.maxAttempts = 3;
+    expect(() =>
+      sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX),
+    ).toThrow("source failure");
+  });
+
+  test.each([
+    [
+      "wrong decision type",
+      (job: Record<string, unknown>) => {
+        job.type = "agent_admin_canary_image";
+      },
+      "decision job type",
+    ],
+    [
+      "unknown decision",
+      (job: Record<string, unknown>) => {
+        job.decision = "approve";
+      },
+      "decision is invalid",
+    ],
+    [
+      "fabricated active outcome",
+      (job: Record<string, unknown>) => {
+        job.outcome = "accepted";
+      },
+      "outcome and clocks",
+    ],
+    [
+      "completed retained decision",
+      (job: Record<string, unknown>) => {
+        job.status = "completed";
+        job.outcome = "accepted";
+        job.completedAt = "2026-07-26T23:15:06.000Z";
+      },
+      "status is invalid",
+    ],
+    [
+      "cancelled retained decision",
+      (job: Record<string, unknown>) => {
+        job.status = "cancelled";
+      },
+      "status is invalid",
+    ],
+    [
+      "missing claimed start",
+      (job: Record<string, unknown>) => {
+        job.status = "pending";
+        job.startedAt = null;
+      },
+      "outcome and clocks",
+    ],
+    [
+      "failed completion clock",
+      (job: Record<string, unknown>) => {
+        job.status = "failed";
+        job.completedAt = "2026-07-26T23:15:06.000Z";
+      },
+      "outcome and clocks",
+    ],
+  ])("rejects pointed decision job with %s", (_label, mutate, message) => {
+    const input = standbyInput("retiring");
+    const standby = (input.agent as Record<string, unknown>)
+      .rollbackStandby as Record<string, unknown>;
+    mutate(standby.decisionJob as Record<string, unknown>);
+    expect(() =>
+      sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX),
+    ).toThrow(message);
+  });
+
+  test.each([
+    [
+      "wrong cardinality",
+      (standby: Record<string, unknown>) => {
+        standby.restoreValidationCount = 2;
+      },
+      "exactly one",
+    ],
+    [
+      "wrong private route",
+      (
+        _standby: Record<string, unknown>,
+        validation: Record<string, unknown>,
+      ) => {
+        validation.routeMode = "public";
+      },
+      "route mode",
+    ],
+    [
+      "wrong source identity",
+      (
+        _standby: Record<string, unknown>,
+        validation: Record<string, unknown>,
+      ) => {
+        validation.sourceIdentityMatches = false;
+      },
+      "source authority",
+    ],
+    [
+      "incomplete frozen row",
+      (
+        _standby: Record<string, unknown>,
+        validation: Record<string, unknown>,
+      ) => {
+        validation.contractComplete = false;
+      },
+      "frozen contract",
+    ],
+    [
+      "previously routed candidate",
+      (
+        _standby: Record<string, unknown>,
+        validation: Record<string, unknown>,
+      ) => {
+        validation.routeExposedAt = "2026-07-26T23:14:30.000Z";
+      },
+      "private source authority",
+    ],
+    [
+      "wrong receipt schema",
+      (
+        _standby: Record<string, unknown>,
+        validation: Record<string, unknown>,
+      ) => {
+        validation.receiptSchemaVersion = 1;
+      },
+      "between 2 and 2",
+    ],
+    [
+      "wrong receipt transfer",
+      (
+        _standby: Record<string, unknown>,
+        validation: Record<string, unknown>,
+      ) => {
+        validation.receiptTransfer = "archive";
+      },
+      "receiptTransfer is invalid",
+    ],
+    [
+      "unverified committed backup",
+      (
+        _standby: Record<string, unknown>,
+        validation: Record<string, unknown>,
+      ) => {
+        validation.backupVerifiedV2 = false;
+      },
+      "receipt is incomplete",
+    ],
+    [
+      "missing retirement timestamp",
+      (
+        _standby: Record<string, unknown>,
+        validation: Record<string, unknown>,
+      ) => {
+        validation.candidateVolumeAbsentAt = null;
+      },
+      "retirement proof is incomplete",
+    ],
+    [
+      "inverted retirement clock",
+      (
+        _standby: Record<string, unknown>,
+        validation: Record<string, unknown>,
+      ) => {
+        validation.candidateRetiredAt = "2026-07-26T23:14:59.000Z";
+      },
+      "out of order",
+    ],
+    [
+      "unpointed acceptance authority",
+      (
+        _standby: Record<string, unknown>,
+        validation: Record<string, unknown>,
+      ) => {
+        validation.authorityPointed = false;
+      },
+      "acceptance authority",
+    ],
+  ])("rejects restore validation with %s", (_label, mutate, message) => {
+    const input = standbyInput("retiring");
+    const standby = (input.agent as Record<string, unknown>)
+      .rollbackStandby as Record<string, unknown>;
+    const validation = standby.restoreValidation as Record<string, unknown>;
+    mutate(standby, validation);
+    expect(() =>
+      sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX),
+    ).toThrow(message);
+  });
+
+  test.each(["planned", "candidate_provisioning"] as const)(
+    "rejects an uncommitted %s row that claims a verified backup",
+    (state) => {
+      const input = standbyInput("paused", state);
+      const standby = (input.agent as Record<string, unknown>)
+        .rollbackStandby as Record<string, unknown>;
+      const validation = standby.restoreValidation as Record<string, unknown>;
+      validation.backupVerifiedV2 = true;
+      expect(() =>
+        sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX),
+      ).toThrow("receipt is incomplete");
+    },
+  );
+
+  test("rejects a capture clock before an emitted lifecycle fact", () => {
+    const input = standbyInput("retiring");
+    input.capturedAt = "2026-07-26T23:15:01.000Z";
+    expect(() =>
+      sanitizeManagedDedicatedCanaryDiagnostic(input, SUFFIX),
+    ).toThrow("out of order");
+  });
+
+  test.each(["019f1234-5678-7abc-8def-0123456789ab", "a".repeat(64)])(
+    "never publishes an identifier or aggregate-shaped value: %s",
+    (secret) => {
+      const input = unclassifiedLatestJobInput(secret);
+      const canonical = canonicalizeManagedDedicatedCanaryDiagnostic(
+        JSON.stringify(input),
+        SUFFIX,
+      );
+      expect(canonical).not.toContain(secret);
+    },
+  );
 
   test("writes the canonical artifact with owner-only permissions", () => {
     const directory = mkdtempSync(join(tmpdir(), "managed-canary-diagnostic-"));
@@ -290,7 +903,7 @@ describe("managed dedicated canary diagnostic", () => {
       );
 
       expect(evidence).toMatchObject({
-        schemaVersion: 3,
+        schemaVersion: 4,
         sandbox: {
           errorCode: "none",
         },
@@ -718,13 +1331,16 @@ describe("managed dedicated canary diagnostic", () => {
     ]);
   });
 
-  test.each([0, 4])("rejects a %i-job history", (count) => {
+  test.each([
+    [0, "deletion authority requires one"],
+    [4, "at most three"],
+  ])("rejects a %i-job history", (count, expectedMessage) => {
     expect(() =>
       sanitizeManagedDedicatedCanaryDiagnostic(
         boundedHistoryInput(Array.from({ length: count }, () => "opaque")),
         SUFFIX,
       ),
-    ).toThrow("one to three");
+    ).toThrow(expectedMessage);
   });
 
   test("keeps an unknown sandbox error fail-closed", () => {
@@ -745,7 +1361,7 @@ describe("managed dedicated canary diagnostic", () => {
     const evidence = JSON.parse(canonical);
 
     expect(evidence).toMatchObject({
-      schemaVersion: 3,
+      schemaVersion: 4,
       sandbox: {
         status: "deletion_failed",
         errorCode: "unclassified",
@@ -773,6 +1389,7 @@ describe("managed dedicated canary diagnostic", () => {
         "errorCount",
         "deletionStartedAt",
         "updatedAt",
+        "locator",
       ].sort(),
     );
     expect(canonical).not.toContain(cause);
@@ -1981,7 +2598,9 @@ describe("managed dedicated canary diagnostic", () => {
       ),
       "utf8",
     );
-    expect(workflow).toContain("BEGIN READ ONLY;");
+    expect(workflow).toContain(
+      "BEGIN READ ONLY, ISOLATION LEVEL REPEATABLE READ;",
+    );
     expect(workflow).toContain("SET LOCAL statement_timeout = '20s';");
     expect(workflow).toContain(
       "bun packages/scripts/cloud/admin/libpq-connection-url.ts",
