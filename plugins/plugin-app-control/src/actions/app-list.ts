@@ -68,7 +68,13 @@ export interface RunListInput {
 // ActionResult and the user via the planner's single prose reply; posting
 // the raw dump made chat connectors double-post (raw "available_apps:"
 // block + the planner's prose in the same turn).
+<<<<<<< HEAD
 export async function runList({ client }: RunListInput): Promise<ActionResult> {
+=======
+export async function runList({
+	client,
+}: RunListInput): Promise<ActionResult> {
+>>>>>>> f60bbf500d3 (fix(apps): route 'list my cloud apps' to LIST_CLOUD_APPS + stop the APP-list double-post)
 	const [installed, runs] = await Promise.all([
 		client.listInstalledApps(),
 		client.listAppRuns(),
