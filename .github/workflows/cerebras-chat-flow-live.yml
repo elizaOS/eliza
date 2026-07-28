@@ -84,6 +84,7 @@ jobs:
         run: bunx vitest run packages/agent/scripts/cerebras-chat-flow-latency.test.ts --coverage.enabled=false
 
       - name: Measure every provider in parallel and reused
+        id: provider_latency_live
         env:
           CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
         run: |
@@ -91,6 +92,7 @@ jobs:
           bun run --cwd packages/core perf:providers > reports/provider-latency.log
 
       - name: Measure live Cerebras Gemma 4 production chat flow
+        id: cerebras_chat_flow_live
         env:
           CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
         run: bun run --cwd packages/agent perf:cerebras-chat > reports/cerebras-gemma-4-chat-flow.log
@@ -214,6 +216,7 @@ jobs:
         run: node packages/shared/scripts/generate-keywords.mjs
 
       - name: Run live plugin tool-call stream evidence
+        id: plugin_toolcall_stream_live
         env:
           ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZACLOUD_API_KEY }}
           ELIZA_TOOLCALL_STREAM_LIVE: "1"

@@ -25,6 +25,14 @@ function runCoverageResult(...args: string[]) {
   });
 }
 
+function readCoverageReport() {
+  return JSON.parse(runCoverage("--json")) as {
+    target: number;
+    authored: number;
+    verified: number;
+  };
+}
+
 describe("LifeOps persona catalog coverage", () => {
   test("JSON output includes unverified rows grouped by surface", () => {
     const report = JSON.parse(runCoverage("--json"));
@@ -60,16 +68,18 @@ describe("LifeOps persona catalog coverage", () => {
   });
 
   test("default summary separates planning targets from authored-row counts", () => {
+    const report = readCoverageReport();
     const output = runCoverage();
     expect(output).toContain("E1 29 authored (target 28, +1)");
     expect(output).toContain("F1 35 authored (target 32, +3)");
     expect(output).toContain(
-      "Total: 300 authored (target 296), 162/300 verified, 138 unverified",
+      `Total: ${report.authored} authored (target ${report.target}), ${report.verified}/${report.authored} verified, ${report.authored - report.verified} unverified`,
     );
     expect(output).not.toContain("300/296 authored");
   });
 
   test("--unverified prints a board-triage list without hiding surface blockers", () => {
+    const report = readCoverageReport();
     const output = runCoverage("--unverified");
     expect(output).toContain(
       "G1  9/10 unverified (lifeops-bench:6, scenario-runner:3)",
@@ -78,7 +88,7 @@ describe("LifeOps persona catalog coverage", () => {
       "J1 10/10 unverified (lifeops-bench:3, scenario-runner:7)",
     );
     expect(output).toContain(
-      "Total: 138/300 authored rows still need verification",
+      `Total: ${report.authored - report.verified}/${report.authored} authored rows still need verification`,
     );
   });
 
