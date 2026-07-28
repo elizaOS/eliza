@@ -317,6 +317,11 @@ describe("resolveBackupChainBytes (#17172 retained-implies-restorable)", () => {
     expect(resolveBackupChainBytes(nodes, "b")).toBeNull();
   });
 
+  test("returns null when the target delta has an unrecorded size", () => {
+    const nodes = [sized("a", "full", null, 100), sized("b", "incremental", "a", null)];
+    expect(resolveBackupChainBytes(nodes, "b")).toBeNull();
+  });
+
   test("ignores rows outside the target's chain", () => {
     const nodes = [
       sized("a", "full", null, 100),
@@ -324,5 +329,17 @@ describe("resolveBackupChainBytes (#17172 retained-implies-restorable)", () => {
       sized("other", "full", null, 999_999),
     ];
     expect(resolveBackupChainBytes(nodes, "b")).toBe(120);
+  });
+
+  test("rejects broken and cyclic chains instead of returning partial totals", () => {
+    expect(() =>
+      resolveBackupChainBytes([sized("delta", "incremental", "missing", 20)], "delta"),
+    ).toThrow(/missing/);
+    expect(() =>
+      resolveBackupChainBytes(
+        [sized("a", "incremental", "b", 10), sized("b", "incremental", "a", 20)],
+        "a",
+      ),
+    ).toThrow(/cycle/);
   });
 });

@@ -28,6 +28,8 @@ import type { DockerNode } from "../../db/repositories/docker-nodes";
 import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
 import { sharedRuntimeHistoryRepository } from "../../db/repositories/shared-runtime-history";
 import {
+  type AgentBackupStateData,
+  type NewAgentSandboxBackup,
   type StoredAgentSandboxBackup,
   WARM_POOL_ORG_ID,
   WARM_POOL_USER_ID,
@@ -1943,6 +1945,111 @@ describe("ElizaSandboxService provision — node attribution guard (C1b)", () =>
       expect((runningUpdate[1] as { node_id?: string }).node_id).toBe("node-1");
     },
   );
+});
+
+describe("ElizaSandboxService snapshot — incremental chain wire budget", () => {
+  const sandboxRecordId = "e06bb509-6c52-4c33-a9f7-66addc43e8c8";
+  const baseState: AgentBackupStateData = {
+    memories: [],
+    config: { stable: "x".repeat(8 * 1024) },
+    workspaceFiles: {},
+  };
+  const nextState: AgentBackupStateData = {
+    memories: [],
+    config: { stable: "x".repeat(8 * 1024), changed: true },
+    workspaceFiles: {},
+  };
+
+  function backupRow(sizeBytes: number | null): AgentSandboxBackup {
+    const createdAt = new Date("2026-07-28T00:00:00.000Z");
+    return {
+      id: "11111111-1111-4111-8111-111111111111",
+      sandbox_record_id: sandboxRecordId,
+      snapshot_type: "auto",
+      state_data: baseState,
+      snapshot_schema_version: 1,
+      state_data_storage: "inline",
+      state_data_key: null,
+      state_data_descriptor: null,
+      storage_commit_state: "complete",
+      storage_commit_error: null,
+      storage_commit_updated_at: createdAt,
+      size_bytes: sizeBytes,
+      backup_kind: "full",
+      parent_backup_id: null,
+      content_hash: null,
+      created_at: createdAt,
+      verification_status: null,
+      verified_at: null,
+      verification_error: null,
+    };
+  }
+
+  async function buildInput(latest: AgentSandboxBackup): Promise<NewAgentSandboxBackup> {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const latestSpy = spyOn(agentSandboxesRepository, "getLatestBackup").mockResolvedValue(latest);
+    const reconstructSpy = spyOn(
+      agentSandboxesRepository,
+      "getReconstructedBackupState",
+    ).mockResolvedValue(baseState);
+    const listSpy = spyOn(agentSandboxesRepository, "listBackups").mockResolvedValue([latest]);
+
+    try {
+      return await (
+        new ElizaSandboxService() as unknown as {
+          buildBackupInput(
+            sandboxId: string,
+            type: "auto",
+            stateData: AgentBackupStateData,
+            sizeBytes: number,
+          ): Promise<NewAgentSandboxBackup>;
+        }
+      ).buildBackupInput(
+        sandboxRecordId,
+        "auto",
+        nextState,
+        Buffer.byteLength(JSON.stringify(nextState), "utf8"),
+      );
+    } finally {
+      latestSpy.mockRestore();
+      reconstructSpy.mockRestore();
+      listSpy.mockRestore();
+    }
+  }
+
+  test("retains an incremental only while projected chain inputs fit", async () => {
+    const result = await buildInput(backupRow(1024));
+
+    expect(result).toMatchObject({
+      backup_kind: "incremental",
+      parent_backup_id: "11111111-1111-4111-8111-111111111111",
+    });
+    expect(result.size_bytes).toBeGreaterThan(0);
+  });
+
+  test("forces a full backup when the next delta would exceed 128 MiB", async () => {
+    const { MAX_RESTORABLE_AGENT_BACKUP_BYTES } = await import(
+      "@elizaos/shared/agent-backup-limits"
+    );
+    const result = await buildInput(backupRow(MAX_RESTORABLE_AGENT_BACKUP_BYTES));
+
+    expect(result).toMatchObject({
+      backup_kind: "full",
+      state_data: nextState,
+      size_bytes: Buffer.byteLength(JSON.stringify(nextState), "utf8"),
+    });
+    expect(result.parent_backup_id).toBeUndefined();
+  });
+
+  test("forces a full backup when an ancestor size is unrecorded", async () => {
+    const result = await buildInput(backupRow(null));
+
+    expect(result).toMatchObject({
+      backup_kind: "full",
+      state_data: nextState,
+    });
+    expect(result.parent_backup_id).toBeUndefined();
+  });
 });
 
 describe("ElizaSandboxService snapshot — endpoint capability", () => {
