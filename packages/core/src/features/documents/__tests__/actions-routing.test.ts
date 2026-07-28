@@ -15,7 +15,7 @@ import type {
 	UUID,
 } from "../../../types";
 import { documentAction } from "../actions";
-import { DocumentService } from "../service";
+import { type DocumentListResult, DocumentService } from "../service";
 
 // ── Structured-routing tests ───────────────────────────────────────────────
 //
@@ -33,6 +33,23 @@ const USER_ID = "00000000-0000-0000-0000-00000000c0de" as UUID;
 const ROOM_ID = "00000000-0000-0000-0000-00000000d00d" as UUID;
 const DOC_ID = "11111111-2222-3333-4444-555555555555" as UUID;
 
+function listResult(
+	overrides: Partial<DocumentListResult> = {},
+): DocumentListResult {
+	return {
+		status: "empty_store",
+		documents: [],
+		availableDocuments: [],
+		limit: 25,
+		offset: 0,
+		totalVisible: 0,
+		totalAvailable: 0,
+		totalMatched: 0,
+		hasMore: false,
+		...overrides,
+	};
+}
+
 function makeMessage(text: string): Memory {
 	return {
 		id: "00000000-0000-0000-0000-0000000000aa" as UUID,
@@ -46,7 +63,7 @@ function makeMessage(text: string): Memory {
 
 function makeService() {
 	return {
-		listDocuments: vi.fn(async () => []),
+		listDocumentsDetailed: vi.fn(async () => listResult()),
 		searchDocuments: vi.fn(async () => []),
 		getDocumentById: vi.fn(async () => null),
 		addDocument: vi.fn(async () => ({
@@ -139,7 +156,7 @@ describe("documentAction.handler structured routing", () => {
 			options({ action: "list" }),
 		);
 		expect(useModel).not.toHaveBeenCalled();
-		expect(service.listDocuments).toHaveBeenCalledTimes(1);
+		expect(service.listDocumentsDetailed).toHaveBeenCalledTimes(1);
 		expect(service.deleteDocument).not.toHaveBeenCalled();
 		expect(res?.data).toMatchObject({
 			actionName: "DOCUMENT",
@@ -149,7 +166,7 @@ describe("documentAction.handler structured routing", () => {
 
 	it.each([
 		["search", "searchDocuments"],
-		["list", "listDocuments"],
+		["list", "listDocumentsDetailed"],
 	] as const)(
 		"routes the %s subaction to the matching service call",
 		async (action, method) => {
@@ -166,6 +183,96 @@ describe("documentAction.handler structured routing", () => {
 			expect(service[method]).toHaveBeenCalledTimes(1);
 		},
 	);
+
+	it("keeps query-miss fallback documents separate from matched documents", async () => {
+		const service = makeService();
+		const document = {
+			id: DOC_ID,
+			content: { text: "Launch is Friday." },
+			metadata: { title: "Launch Notes" },
+		} as Memory;
+		service.listDocumentsDetailed.mockResolvedValueOnce(
+			listResult({
+				status: "query_miss",
+				query: "list all",
+				availableDocuments: [document],
+				totalVisible: 1,
+				totalAvailable: 1,
+			}),
+		);
+		const { runtime } = makeRuntime(service);
+
+		const res = await documentAction.handler?.(
+			runtime,
+			makeMessage("list all documents"),
+			undefined,
+			options({ action: "list", query: "list all" }),
+		);
+
+		expect(res?.text).toBe(
+			`No documents matched "list all". Showing available documents instead:\nAvailable documents:\n1. Launch Notes (${DOC_ID})`,
+		);
+		expect(res?.data).toMatchObject({
+			status: "query_miss",
+			query: "list all",
+			documents: [],
+			availableDocuments: [document],
+			totalMatched: 0,
+		});
+	});
+
+	it("reports an exhausted page without calling the store empty", async () => {
+		const service = makeService();
+		service.listDocumentsDetailed.mockResolvedValueOnce(
+			listResult({
+				status: "page_exhausted",
+				query: "launch",
+				offset: 2,
+				totalVisible: 2,
+				totalAvailable: 2,
+				totalMatched: 2,
+			}),
+		);
+		const { runtime } = makeRuntime(service);
+
+		const res = await documentAction.handler?.(
+			runtime,
+			makeMessage("list launch documents"),
+			undefined,
+			options({ action: "list", query: "launch", offset: 2 }),
+		);
+
+		expect(res?.text).toBe(
+			'Offset 2 is past the 2 documents matching "launch".',
+		);
+		expect(res?.data).toMatchObject({
+			status: "page_exhausted",
+			documents: [],
+			availableDocuments: [],
+			offset: 2,
+			totalMatched: 2,
+		});
+	});
+
+	it("uses empty-store semantics only when no visible documents exist", async () => {
+		const service = makeService();
+		const { runtime } = makeRuntime(service);
+
+		const res = await documentAction.handler?.(
+			runtime,
+			makeMessage("list all documents"),
+			undefined,
+			options({ action: "list" }),
+		);
+
+		expect(res?.text).toBe("No documents are available.");
+		expect(res?.data).toMatchObject({
+			status: "empty_store",
+			totalVisible: 0,
+			documents: [],
+			availableDocuments: [],
+		});
+	});
 
 	it("extracts a missing search query instead of stripping English prose in the handler", async () => {
 		const service = makeService();

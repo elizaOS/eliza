@@ -826,12 +826,26 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		accessContext?: AccessContext;
 	}): Promise<Memory[]> {
 		const effectiveLimit = params.limit ?? params.count ?? Infinity;
-		const roomId = params.roomId ?? DEFAULT_UUID;
 		const tableName = params.tableName;
-		let all = this.memoriesByRoom.get(roomTableKey(tableName, roomId)) ?? [];
+		let all =
+			params.roomId !== undefined
+				? (this.memoriesByRoom.get(roomTableKey(tableName, params.roomId)) ??
+					[])
+				: Array.from(this.memoriesByRoom.entries())
+						.filter(([key]) => key.startsWith(`${tableName}:`))
+						.flatMap(([, memories]) => memories);
 
 		if (params.worldId) {
 			all = all.filter((memory) => memory.worldId === params.worldId);
+		}
+		if (params.entityId) {
+			all = all.filter((memory) => memory.entityId === params.entityId);
+		}
+		if (params.agentId) {
+			all = all.filter((memory) => memory.agentId === params.agentId);
+		}
+		if (params.unique) {
+			all = all.filter((memory) => memory.unique);
 		}
 
 		// Filter by timestamp range (start/end are timestamps in milliseconds)

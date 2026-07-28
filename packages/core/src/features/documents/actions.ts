@@ -31,7 +31,11 @@ import type {
 	UUID,
 } from "../../types";
 import { addDocumentFromFilePath } from "./docs-loader.ts";
-import { DocumentService, type SearchMode } from "./service.ts";
+import {
+	type DocumentListResult,
+	DocumentService,
+	type SearchMode,
+} from "./service.ts";
 import type {
 	DocumentAddedByRole,
 	DocumentAddedFrom,
@@ -775,6 +779,40 @@ function parseTimestampParam(value: unknown): number | undefined {
 	return undefined;
 }
 
+function formatDocumentList(documents: Memory[]): string {
+	return `Available documents:\n${documents
+		.map((document, index) => {
+			const metadata = document.metadata as Record<string, unknown> | undefined;
+			const title =
+				typeof metadata?.title === "string"
+					? metadata.title
+					: typeof metadata?.filename === "string"
+						? metadata.filename
+						: `Document ${index + 1}`;
+			return `${index + 1}. ${title} (${document.id})`;
+		})
+		.join("\n")}`;
+}
+
+function formatDocumentListResult(result: DocumentListResult): string {
+	switch (result.status) {
+		case "empty_store":
+			return "No documents are available.";
+		case "filter_miss":
+			return "No documents matched the requested filters.";
+		case "query_miss":
+			return `No documents matched ${JSON.stringify(result.query)}. Showing available documents instead:\n${formatDocumentList(result.availableDocuments)}`;
+		case "page_exhausted": {
+			const matchDescription = result.query
+				? `documents matching ${JSON.stringify(result.query)}`
+				: "available documents";
+			return `Offset ${result.offset} is past the ${result.totalMatched} ${matchDescription}.`;
+		}
+		case "ok":
+			return formatDocumentList(result.documents);
+	}
+}
+
 async function handleList(
 	service: DocumentService,
 	message: Memory,
@@ -802,7 +840,7 @@ async function handleList(
 			? Math.floor(params.offset)
 			: undefined;
 
-	const documents = await service.listDocuments(message, {
+	const listResult = await service.listDocumentsDetailed(message, {
 		limit: getLimit(params.limit, 25),
 		offset,
 		query: params.query,
@@ -813,27 +851,23 @@ async function handleList(
 		timeRangeEnd,
 		tags: Array.isArray(params.tags) ? params.tags : undefined,
 	});
-	const text =
-		documents.length === 0
-			? "No documents are available."
-			: `Available documents:\n${documents
-					.map((document, index) => {
-						const metadata = document.metadata as
-							| Record<string, unknown>
-							| undefined;
-						const title =
-							typeof metadata?.title === "string"
-								? metadata.title
-								: typeof metadata?.filename === "string"
-									? metadata.filename
-									: `Document ${index + 1}`;
-						return `${index + 1}. ${title} (${document.id})`;
-					})
-					.join("\n")}`;
+	const text = formatDocumentListResult(listResult);
+	const listData = {
+		documents: listResult.documents,
+		availableDocuments: listResult.availableDocuments,
+		status: listResult.status,
+		...(listResult.query ? { query: listResult.query } : {}),
+		limit: listResult.limit,
+		offset: listResult.offset,
+		totalVisible: listResult.totalVisible,
+		totalAvailable: listResult.totalAvailable,
+		totalMatched: listResult.totalMatched,
+		hasMore: listResult.hasMore,
+	};
 	await emit(callback, { text, actions: ["DOCUMENT"] });
 	return result(true, text, "list", {
-		values: { documents },
-		data: { documents },
+		values: listData,
+		data: listData,
 	});
 }
 

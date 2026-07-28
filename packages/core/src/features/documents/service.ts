@@ -19,6 +19,7 @@
 import { existsSync, statSync } from "node:fs";
 import { filterByAccessContext } from "../../access-control/filter";
 import { createUniqueUuid } from "../../entities";
+import { ElizaError } from "../../errors";
 import { logger } from "../../logger";
 import { checkSenderRole } from "../../roles";
 import {
@@ -75,6 +76,41 @@ import {
  */
 export type SearchMode = "hybrid" | "vector" | "keyword";
 
+/** Filters and pagination accepted by document list operations. */
+export interface DocumentListOptions {
+	limit?: number;
+	offset?: number;
+	query?: string;
+	scope?: DocumentVisibilityScope;
+	scopedToEntityId?: UUID;
+	addedBy?: UUID;
+	timeRangeStart?: number;
+	timeRangeEnd?: number;
+	tags?: string[];
+}
+
+/** Machine-readable outcome of a document list request. */
+export type DocumentListStatus =
+	| "ok"
+	| "query_miss"
+	| "filter_miss"
+	| "page_exhausted"
+	| "empty_store";
+
+/** Complete document-list semantics after visibility, filtering, and pagination. */
+export interface DocumentListResult {
+	status: DocumentListStatus;
+	documents: Memory[];
+	availableDocuments: Memory[];
+	query?: string;
+	limit: number;
+	offset: number;
+	totalVisible: number;
+	totalAvailable: number;
+	totalMatched: number;
+	hasMore: boolean;
+}
+
 /** Weight given to the normalized vector score in hybrid mode. */
 const HYBRID_VECTOR_WEIGHT = 0.6;
 /** Weight given to the normalized BM25 score in hybrid mode. */
@@ -82,6 +118,7 @@ const HYBRID_BM25_WEIGHT = 1 - HYBRID_VECTOR_WEIGHT;
 const DOCUMENTS_TABLE = "documents";
 const DOCUMENT_FRAGMENTS_TABLE = "document_fragments";
 const PRE_DOCUMENTS_TABLE = "knowledge";
+const DOCUMENT_LIST_SCAN_PAGE_SIZE = 50;
 const CHARACTER_DOCUMENT_EMBEDDING_WAIT_TIMEOUT_MS = 120_000;
 const CHARACTER_DOCUMENT_EMBEDDING_WAIT_INTERVAL_MS = 1_000;
 const DOCUMENT_SCOPES = new Set<DocumentVisibilityScope>([
@@ -380,33 +417,84 @@ export class DocumentService extends Service {
 		return (await this.canAccessDocument(memory, message)) ? memory : null;
 	}
 
+	private async scanDocumentMemories(): Promise<Memory[]> {
+		const documents = new Map<UUID, Memory>();
+		let end: number | undefined;
+
+		const addPage = (page: Memory[]): void => {
+			for (const memory of page) {
+				if (!this.isDocumentMemory(memory)) continue;
+				if (!memory.id) {
+					throw new ElizaError("Stored document is missing its memory id", {
+						code: "DOCUMENT_LIST_INVALID_MEMORY",
+						context: { agentId: this.runtime.agentId },
+						severity: "fatal",
+					});
+				}
+				documents.set(memory.id, memory);
+			}
+		};
+
+		while (true) {
+			const page = await this.runtime.getMemories({
+				tableName: DOCUMENTS_TABLE,
+				agentId: this.runtime.agentId,
+				limit: DOCUMENT_LIST_SCAN_PAGE_SIZE,
+				end,
+				orderBy: "createdAt",
+				orderDirection: "desc",
+				includeEmbedding: false,
+			});
+			addPage(page);
+
+			if (page.length < DOCUMENT_LIST_SCAN_PAGE_SIZE) break;
+
+			// Read the complete timestamp group at the page boundary before moving the
+			// cursor. Created-at alone is not unique, so decrementing immediately could
+			// skip documents when more than one page shares the same millisecond.
+			const cursorTimestamp = page.at(-1)?.createdAt ?? 0;
+			const cursorGroup = await this.runtime.getMemories({
+				tableName: DOCUMENTS_TABLE,
+				agentId: this.runtime.agentId,
+				start: cursorTimestamp,
+				end: cursorTimestamp,
+				orderBy: "createdAt",
+				orderDirection: "desc",
+				includeEmbedding: false,
+			});
+			addPage(cursorGroup);
+
+			if (cursorTimestamp <= 0) break;
+			end = cursorTimestamp - 1;
+		}
+
+		return Array.from(documents.values());
+	}
+
 	async listDocuments(
 		message?: Memory,
-		options: {
-			limit?: number;
-			offset?: number;
-			query?: string;
-			scope?: DocumentVisibilityScope;
-			scopedToEntityId?: UUID;
-			addedBy?: UUID;
-			timeRangeStart?: number;
-			timeRangeEnd?: number;
-			tags?: string[];
-		} = {},
+		options: DocumentListOptions = {},
 	): Promise<Memory[]> {
-		const limit = Math.max(1, Math.min(options.limit ?? 25, 100));
-		const offset = Math.max(0, options.offset ?? 0);
-		const memories = await this.runtime.getMemories({
-			tableName: DOCUMENTS_TABLE,
-			agentId: this.runtime.agentId,
-			count: Math.max((limit + offset) * 4, 50),
-		});
-		const documents = await this.filterVisibleMemories(
-			memories.filter((memory) => this.isDocumentMemory(memory)),
+		return (await this.listDocumentsDetailed(message, options)).documents;
+	}
+
+	async listDocumentsDetailed(
+		message?: Memory,
+		options: DocumentListOptions = {},
+	): Promise<DocumentListResult> {
+		const limit =
+			typeof options.limit === "number" && Number.isFinite(options.limit)
+				? Math.max(1, Math.min(Math.floor(options.limit), 100))
+				: 25;
+		const offset =
+			typeof options.offset === "number" && Number.isFinite(options.offset)
+				? Math.max(0, Math.floor(options.offset))
+				: 0;
+		const visibleDocuments = await this.filterVisibleMemories(
+			await this.scanDocumentMemories(),
 			message,
 		);
-		const query = options.query?.trim().toLowerCase();
-		const filtered = documents.filter((memory) => {
+		const availableDocuments = visibleDocuments.filter((memory) => {
 			const metadata = (memory.metadata ?? {}) as Record<string, unknown>;
 			if (options.scope && metadata.scope !== options.scope) return false;
 			if (
@@ -446,23 +534,51 @@ export class DocumentService extends Service {
 				return false;
 			}
 
-			if (query) {
-				const haystack = [
-					memory.content.text,
-					metadata.title,
-					metadata.filename,
-					metadata.originalFilename,
-					metadata.source,
-				]
-					.filter((value): value is string => typeof value === "string")
-					.join("\n")
-					.toLowerCase();
-				if (!haystack.includes(query)) return false;
-			}
-
 			return true;
 		});
-		return filtered.slice(offset, offset + limit);
+		const query = options.query?.trim();
+		const normalizedQuery = query?.toLowerCase();
+		const matchedDocuments = normalizedQuery
+			? availableDocuments.filter((memory) => {
+					const metadata = (memory.metadata ?? {}) as Record<string, unknown>;
+					const haystack = [
+						memory.content.text,
+						metadata.title,
+						metadata.filename,
+						metadata.originalFilename,
+						metadata.source,
+					]
+						.filter((value): value is string => typeof value === "string")
+						.join("\n")
+						.toLowerCase();
+					return haystack.includes(normalizedQuery);
+				})
+			: availableDocuments;
+		const documents = matchedDocuments.slice(offset, offset + limit);
+		const status: DocumentListStatus =
+			visibleDocuments.length === 0
+				? "empty_store"
+				: availableDocuments.length === 0
+					? "filter_miss"
+					: normalizedQuery && matchedDocuments.length === 0
+						? "query_miss"
+						: documents.length === 0
+							? "page_exhausted"
+							: "ok";
+
+		return {
+			status,
+			documents,
+			availableDocuments:
+				status === "query_miss" ? availableDocuments.slice(0, limit) : [],
+			query,
+			limit,
+			offset,
+			totalVisible: visibleDocuments.length,
+			totalAvailable: availableDocuments.length,
+			totalMatched: matchedDocuments.length,
+			hasMore: offset + documents.length < matchedDocuments.length,
+		};
 	}
 
 	async deleteDocument(documentId: UUID, message?: Memory): Promise<void> {
