@@ -20,11 +20,6 @@ const ACTOR_ORG = "77777777-7777-4777-8777-777777777777";
 const JOB = "44444444-4444-4444-8444-444444444444";
 const ROLLOUT = "55555555-5555-4555-8555-555555555555";
 const REQUEST = "88888888-8888-4888-8888-888888888888";
-const BACKUP = "99999999-9999-4999-8999-999999999999";
-const RESTORE_VALIDATION = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-const RESTORE_AGGREGATE_SHA256 = "e".repeat(64);
-const RESTORE_CANDIDATE_ID = "restore-candidate-999999";
-const RESTORE_CANDIDATE_ATTEMPT = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const SOURCE_DIGEST = `sha256:${"a".repeat(64)}`;
 const TARGET_DIGEST = `sha256:${"b".repeat(64)}`;
 const PLAN_FINGERPRINT = `sha256:${"c".repeat(64)}`;
@@ -359,11 +354,6 @@ describe("POST /api/v1/admin/agent-image-canary/jobs/:jobId/decision", () => {
     const body = {
       requestId: REQUEST,
       decision: "accept",
-      verifiedBackupId: BACKUP,
-      restoreValidationId: RESTORE_VALIDATION,
-      restoreValidationAggregateSha256: RESTORE_AGGREGATE_SHA256,
-      restoreValidatedCandidateProviderSandboxId: RESTORE_CANDIDATE_ID,
-      restoreValidatedCandidateReplacementAttemptId: RESTORE_CANDIDATE_ATTEMPT,
     };
     const response = await route.fetch(decisionRequest(body), {
       CRON_SECRET: "test",
@@ -391,30 +381,32 @@ describe("POST /api/v1/admin/agent-image-canary/jobs/:jobId/decision", () => {
     );
   });
 
-  test("reject forbids backup authority and accept requires it", async () => {
+  test("rejects caller-supplied restore authority while both decisions remain minimal", async () => {
     expect(
       (
         await route.fetch(
           decisionRequest({
             requestId: REQUEST,
             decision: "reject",
-            verifiedBackupId: BACKUP,
+            verifiedBackupId: "99999999-9999-4999-8999-999999999999",
           }),
         )
       ).status,
     ).toBe(400);
-    expect(
-      (
-        await route.fetch(
-          decisionRequest({
-            requestId: REQUEST,
-            decision: "accept",
-          }),
-        )
-      ).status,
-    ).toBe(400);
-    expect(decideStandby).not.toHaveBeenCalled();
-    expect(triggerImmediate).not.toHaveBeenCalled();
+
+    const rejectBody = {
+      requestId: REQUEST,
+      decision: "reject",
+    };
+    expect((await route.fetch(decisionRequest(rejectBody))).status).toBe(202);
+    expect(decideStandby).toHaveBeenCalledWith(
+      {
+        ...rejectBody,
+        sourceJobId: JOB,
+      },
+      ACTOR,
+    );
+    expect(triggerImmediate).toHaveBeenCalledTimes(1);
   });
 
   test("rejects non-super-admins and malformed source job IDs before enqueue", async () => {
@@ -499,7 +491,7 @@ describe("GET /api/v1/admin/agent-image-canary/jobs/:jobId", () => {
     expect(payload.polling.shouldContinue).toBe(true);
   });
 
-  test("polling a completed standby acceptance preserves exact restore proof", async () => {
+  test("polling a completed standby acceptance returns the intent-only writer shape", async () => {
     const now = new Date("2026-07-23T00:00:00.000Z");
     getJob.mockResolvedValue(
       canaryJob({
@@ -509,12 +501,6 @@ describe("GET /api/v1/admin/agent-image-canary/jobs/:jobId", () => {
           requestId: REQUEST,
           sourceJobId: REQUEST,
           decision: "accept",
-          verifiedBackupId: BACKUP,
-          restoreValidationId: RESTORE_VALIDATION,
-          restoreValidationAggregateSha256: RESTORE_AGGREGATE_SHA256,
-          restoreValidatedCandidateProviderSandboxId: RESTORE_CANDIDATE_ID,
-          restoreValidatedCandidateReplacementAttemptId:
-            RESTORE_CANDIDATE_ATTEMPT,
           standbyGeneration: ROLLOUT,
           rolloutId: ROLLOUT,
           actorUserId: ACTOR,
@@ -542,12 +528,6 @@ describe("GET /api/v1/admin/agent-image-canary/jobs/:jobId", () => {
           organizationId: ORG,
           targetImage: TARGET_IMAGE,
           targetDigest: TARGET_DIGEST,
-          verifiedBackupId: BACKUP,
-          restoreValidationId: RESTORE_VALIDATION,
-          restoreValidationAggregateSha256: RESTORE_AGGREGATE_SHA256,
-          restoreValidatedCandidateProviderSandboxId: RESTORE_CANDIDATE_ID,
-          restoreValidatedCandidateReplacementAttemptId:
-            RESTORE_CANDIDATE_ATTEMPT,
           startedAt: now.toISOString(),
           finishedAt: now.toISOString(),
         },
@@ -561,13 +541,17 @@ describe("GET /api/v1/admin/agent-image-canary/jobs/:jobId", () => {
       data: { result: Record<string, unknown> };
       polling: { shouldContinue: boolean };
     };
-    expect(payload.data.result).toMatchObject({
-      verifiedBackupId: BACKUP,
-      restoreValidationId: RESTORE_VALIDATION,
-      restoreValidationAggregateSha256: RESTORE_AGGREGATE_SHA256,
-      restoreValidatedCandidateProviderSandboxId: RESTORE_CANDIDATE_ID,
-      restoreValidatedCandidateReplacementAttemptId: RESTORE_CANDIDATE_ATTEMPT,
-    });
+    expect(payload.data.result).not.toHaveProperty("verifiedBackupId");
+    expect(payload.data.result).not.toHaveProperty("restoreValidationId");
+    expect(payload.data.result).not.toHaveProperty(
+      "restoreValidationAggregateSha256",
+    );
+    expect(payload.data.result).not.toHaveProperty(
+      "restoreValidatedCandidateProviderSandboxId",
+    );
+    expect(payload.data.result).not.toHaveProperty(
+      "restoreValidatedCandidateReplacementAttemptId",
+    );
     expect(payload.polling.shouldContinue).toBe(false);
   });
 
