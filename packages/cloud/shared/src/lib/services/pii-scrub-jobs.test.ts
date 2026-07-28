@@ -578,7 +578,7 @@ describe("processPendingPiiScrubJobs — retry and failure classification", () =
 
     const recovered = await jobsRepo.recoverStaleJobs({
       type: svc.PII_SCRUB_JOB_TYPE,
-      staleThresholdMs: 0,
+      staleThresholdMs: 1,
     });
     expect(recovered).toBe(0);
     expect((await jobRow(job.id))?.status).toBe("completed");
