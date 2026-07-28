@@ -1,5 +1,5 @@
 // Coordinates cloud service docker node workloads behavior behind route handlers.
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { dbRead } from "../../db/helpers";
 import { agentSandboxes } from "../../db/schemas/agent-sandboxes";
 import { containers } from "../../db/schemas/containers";
@@ -95,12 +95,23 @@ export function agentIdFromContainerName(name: string): string | null {
  * ids. A replacement fence owns a second real container until its exact remote
  * retirement and capacity release complete, so both primary and replacement
  * nodes must protect that key from the orphan reaper.
+ *
+ * A key seen on a node is matched against `warm_claim_source_pool_id` as well
+ * as the primary key: a container claimed from the warm pool keeps the name it
+ * was born with — `agent-<pool id>` — while the pool row it points at is
+ * deleted at claim time. Matching only `id` maps every claimed customer
+ * container to a deleted row, and the sweep reaps it as `no_db_row` while the
+ * customer is talking to it.
  */
-async function loadSandboxStatusesByIds(agentIds: readonly string[]): Promise<LiveContainerRef[]> {
+export async function loadSandboxStatusesByIds(
+  agentIds: readonly string[],
+): Promise<LiveContainerRef[]> {
   if (agentIds.length === 0) return [];
+  const queriedIds = new Set(agentIds);
   const rows = await dbRead
     .select({
       key: agentSandboxes.id,
+      warmClaimSourcePoolId: agentSandboxes.warm_claim_source_pool_id,
       status: agentSandboxes.status,
       nodeId: agentSandboxes.node_id,
       updatedAt: agentSandboxes.updated_at,
@@ -108,7 +119,12 @@ async function loadSandboxStatusesByIds(agentIds: readonly string[]): Promise<Li
       replacementCreatedAt: agentSandboxes.replacement_cleanup_created_at,
     })
     .from(agentSandboxes)
-    .where(inArray(agentSandboxes.id, agentIds as string[]));
+    .where(
+      or(
+        inArray(agentSandboxes.id, agentIds as string[]),
+        inArray(agentSandboxes.warm_claim_source_pool_id, agentIds as string[]),
+      ),
+    );
   return rows.flatMap((row) => {
     const placements: LiveContainerRef[] = [
       {
@@ -127,6 +143,13 @@ async function loadSandboxStatusesByIds(agentIds: readonly string[]): Promise<Li
           ? new Date(row.replacementCreatedAt).getTime()
           : undefined,
       });
+    }
+    if (row.warmClaimSourcePoolId && queriedIds.has(row.warmClaimSourcePoolId)) {
+      // The physical container carries the POOL id in its name: every
+      // placement protecting this row must protect that key too.
+      for (const placement of [...placements]) {
+        placements.push({ ...placement, key: row.warmClaimSourcePoolId });
+      }
     }
     return placements;
   });

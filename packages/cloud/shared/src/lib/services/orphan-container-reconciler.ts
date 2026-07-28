@@ -246,6 +246,15 @@ export function computeOrphanContainersToReap(
 
     const rows = rowsByKey.get(key);
     if (rows === undefined || rows.length === 0) {
+      // A key with no row is what an orphan looks like — and ALSO what an
+      // in-flight creation looks like from the wrong side of a commit, and
+      // what a key-resolution gap looks like from the wrong side of a rename.
+      // Same rule wrong_node learned from the prod dry-run below: the
+      // CONTAINER itself must be older than the grace window, and an unknown
+      // container age never reaps. An orphan is permanent; it can wait five
+      // minutes to be provably one.
+      if (container.createdAtMs === undefined) continue;
+      if (nowMs === undefined || nowMs - container.createdAtMs < graceMs) continue;
       orphans.push({ name: container.name, id: container.id, key, reason: "no_db_row" });
       continue;
     }

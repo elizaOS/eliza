@@ -26,7 +26,15 @@ import {
   type OrphanReconcilerConfig,
 } from "./orphan-container-reconciler";
 
-const container = (name: string, id: string): NodeContainerRef => ({ name, id });
+// Containers are born aged (created at epoch) so the no_db_row grace window —
+// which exists to spare in-flight creations — never masks the decision under
+// test. Grace behavior itself is pinned in docker-node-workloads.test.ts.
+const AGED_NOW_MS = 10 * 60_000;
+const container = (name: string, id: string): NodeContainerRef => ({
+  name,
+  id,
+  createdAtMs: 0,
+});
 const live = (key: string, status: string): LiveContainerRef => ({ key, status });
 
 describe("shared diff — UNIQUE-key mode (agent, group-by-key ≡ last-write-wins)", () => {
@@ -49,7 +57,13 @@ describe("shared diff — UNIQUE-key mode (agent, group-by-key ≡ last-write-wi
   for (const status of [undefined, "running", "stopped", "error", "pending"] as const) {
     test(`status=${String(status)} → matches single-status check`, () => {
       const rows = status === undefined ? [] : [live("id1", status)];
-      const orphans = computeOrphanContainersToReap([container("k-id1", "c1")], rows, diff);
+      const orphans = computeOrphanContainersToReap(
+        [container("k-id1", "c1")],
+        rows,
+        diff,
+        undefined,
+        AGED_NOW_MS,
+      );
       const expected = singleStatusReference(status);
       if (expected === null) {
         expect(orphans).toEqual([]);
@@ -64,6 +78,8 @@ describe("shared diff — UNIQUE-key mode (agent, group-by-key ≡ last-write-wi
       [container("k-a", "ca"), container("k-b", "cb"), container("k-c", "cc")],
       [live("a", "running"), live("b", "stopped")],
       diff,
+      undefined,
+      AGED_NOW_MS,
     );
     // a=running → keep; b=stopped → reap; c=missing → reap.
     expect(orphans.map((o) => `${o.key}:${o.reason}`).sort()).toEqual([

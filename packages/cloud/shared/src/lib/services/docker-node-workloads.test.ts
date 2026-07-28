@@ -48,13 +48,45 @@ describe("agentIdFromContainerName", () => {
 
 describe("computeOrphanContainersToReap (agent diff)", () => {
   const live = (key: string, status: string): LiveContainerRef => ({ key, status });
-  const container = (name: string, id: string): NodeContainerRef => ({ name, id });
+  // Containers age 10 minutes by default — past the 5-minute grace window, so
+  // the historical reaping decisions hold. Grace behavior gets its own tests.
+  const NOW_MS = 10 * 60_000;
+  const container = (name: string, id: string): NodeContainerRef => ({
+    name,
+    id,
+    createdAtMs: 0,
+  });
   const compute = (containers: readonly NodeContainerRef[], rows: readonly LiveContainerRef[]) =>
-    computeOrphanContainersToReap(containers, rows, AGENT_DIFF);
+    computeOrphanContainersToReap(containers, rows, AGENT_DIFF, undefined, NOW_MS);
 
   test("reaps a container whose agent id has NO db row", () => {
     const orphans = compute([container("agent-gone", "c1")], []);
     expect(orphans).toEqual([{ name: "agent-gone", id: "c1", key: "gone", reason: "no_db_row" }]);
+  });
+
+  test("no_db_row waits out the grace window: a young container is never reaped", () => {
+    // What an orphan looks like is ALSO what an in-flight creation looks like
+    // from the wrong side of a commit. An orphan is permanent — it can wait
+    // five minutes to be provably one.
+    const young: NodeContainerRef = {
+      name: "agent-gone",
+      id: "c1",
+      createdAtMs: NOW_MS - 1_000,
+    };
+    expect(computeOrphanContainersToReap([young], [], AGENT_DIFF, undefined, NOW_MS)).toEqual([]);
+  });
+
+  test("no_db_row with an UNKNOWN container age is never reaped", () => {
+    const unknownAge: NodeContainerRef = { name: "agent-gone", id: "c1" };
+    expect(computeOrphanContainersToReap([unknownAge], [], AGENT_DIFF, undefined, NOW_MS)).toEqual(
+      [],
+    );
+  });
+
+  test("no_db_row without a clock is never reaped", () => {
+    expect(computeOrphanContainersToReap([container("agent-gone", "c1")], [], AGENT_DIFF)).toEqual(
+      [],
+    );
   });
 
   test("reaps a container whose db row is in a terminal state", () => {
@@ -180,8 +212,8 @@ describe("reconcileOrphanContainers (agent orchestration)", () => {
     const removeContainer = mock(async () => {});
     const node = makeNode({
       listContainers: mock(async () => [
-        { name: "agent-orphan", id: "c-orph" },
-        { name: "agent-live", id: "c-live" },
+        { name: "agent-orphan", id: "c-orph", createdAtMs: 0 },
+        { name: "agent-live", id: "c-live", createdAtMs: 0 },
       ]),
       removeContainer,
     });
@@ -224,8 +256,8 @@ describe("reconcileOrphanContainers (agent orchestration)", () => {
   test("counts a failed removal as reapFailed without aborting the rest", async () => {
     const node = makeNode({
       listContainers: mock(async () => [
-        { name: "agent-a", id: "ca" },
-        { name: "agent-b", id: "cb" },
+        { name: "agent-a", id: "ca", createdAtMs: 0 },
+        { name: "agent-b", id: "cb", createdAtMs: 0 },
       ]),
       removeContainer: mock(async (id: string) => {
         if (id === "ca") throw new Error("ssh broke");
