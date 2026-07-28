@@ -40,8 +40,8 @@ jobs:
         with:
           bun-version: "1.3.14" # pinned: floating canary writes lockfileVersion 2 and breaks --frozen-lockfile (#11184/#9454)
           install-command: bun install
-          # The broad fallback is larger than a fresh install and can consume
-          # this bounded audit job before the audit itself starts.
+          # This cache can exceed a fresh install even on an exact key and
+          # consume the bounded job before the audit itself starts.
           cache-bun-install: "false"
 
       - name: Env audit check
