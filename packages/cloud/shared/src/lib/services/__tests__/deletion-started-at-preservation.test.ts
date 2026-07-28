@@ -1,20 +1,9 @@
 /**
- * Real-DB proof for the `deletion_started_at` write on the delete re-enqueue
- * path (#17249).
- *
- * A retry of a failed deletion must keep the ORIGINAL start time — that is the
- * whole point of the column, it measures how long the agent has been stuck
- * deleting rather than how long the current attempt has run. The re-enqueue
- * used to preserve it by reading the stored value off the row and writing it
- * straight back, which changed nothing in the row while making the write depend
- * on the read having produced a `Date`. In production every one of the 37
- * `deletion_failed` agents had both `deletion_started_at` and
- * `deletion_attempt_id` set, so every retry took exactly that branch.
- *
- * The column is now simply left untouched when continuing a deletion, so these
- * tests pin the observable contract that made the read-back look necessary:
- *   - a FRESH deletion stamps a start time,
- *   - a CONTINUED deletion preserves the original one, to the millisecond.
+ * Characterization tests for `deletion_started_at` on the delete re-enqueue
+ * path (#17249): a fresh deletion stamps a start time, a re-enqueued one keeps
+ * the original to the millisecond and preserves its attempt id. The column
+ * measures how long the agent has been stuck deleting, not how long the
+ * current attempt has run — these pin that contract against refactors.
  *
  * Drives the REAL ProvisioningJobService.enqueueAgentDeleteOnce against
  * in-process PGlite (real Drizzle schema via pushSchema) with NOTHING mocked.
@@ -77,20 +66,22 @@ async function seedAgent(): Promise<{ agentId: string; orgId: string; userId: st
 }
 
 /**
- * Put the row in the state every stranded production agent was in: a deletion
- * that already started, already has an attempt id, and already failed.
+ * Put the row in the retryable state: a deletion that already started, already
+ * has an attempt id, and already failed.
  */
-async function markDeletionAlreadyStarted(agentId: string): Promise<void> {
+async function markDeletionAlreadyStarted(agentId: string): Promise<string> {
+  const attemptId = crypto.randomUUID();
   await dbWrite
     .update(agentSandboxes)
     .set({
       status: "deletion_failed",
       deletion_started_at: ORIGINAL_START,
-      deletion_attempt_id: crypto.randomUUID(),
+      deletion_attempt_id: attemptId,
       error_message: "Deletion permanently failed after 3 attempts: SSH connect timed out",
       updated_at: new Date(),
     })
     .where(eq(agentSandboxes.id, agentId));
+  return attemptId;
 }
 
 async function readDeletionStartedAt(agentId: string): Promise<Date | null> {
@@ -139,15 +130,12 @@ afterAll(async () => {
 });
 
 describe("deletion_started_at is stamped once and never re-written", () => {
-  test("PGlite harness came up", () => {
-    expect(pgliteReady).toBe(true);
-  });
-
   test(
     "enqueueAgentDeleteOnce preserves the original start time when re-enqueueing a failed deletion",
     async () => {
+      expect(pgliteReady).toBe(true);
       const { agentId, orgId, userId } = await seedAgent();
-      await markDeletionAlreadyStarted(agentId);
+      const originalAttemptId = await markDeletionAlreadyStarted(agentId);
 
       await new ProvisioningJobService().enqueueAgentDeleteOnce({
         agentId,
@@ -159,6 +147,8 @@ describe("deletion_started_at is stamped once and never re-written", () => {
       const row = await dbWrite.query.agentSandboxes.findFirst({
         where: eq(agentSandboxes.id, agentId),
       });
+      // The other half of the pair the daemon's ownership fence keys on.
+      expect(row?.deletion_attempt_id).toBe(originalAttemptId);
       // The re-enqueue still has to arm the retry, otherwise "preserved" would
       // be trivially true because nothing ran.
       expect(row?.status).toBe("deletion_pending");
@@ -169,6 +159,7 @@ describe("deletion_started_at is stamped once and never re-written", () => {
   test(
     "enqueueAgentDeleteOnce stamps a start time on a FRESH deletion",
     async () => {
+      expect(pgliteReady).toBe(true);
       const { agentId, orgId, userId } = await seedAgent();
       expect(await readDeletionStartedAt(agentId)).toBeNull();
 
@@ -181,9 +172,11 @@ describe("deletion_started_at is stamped once and never re-written", () => {
       const after = Date.now();
 
       const stamped = await readDeletionStartedAt(agentId);
-      expect(stamped).toBeInstanceOf(Date);
-      expect(stamped!.getTime()).toBeGreaterThanOrEqual(before);
-      expect(stamped!.getTime()).toBeLessThanOrEqual(after);
+      if (!(stamped instanceof Date)) {
+        throw new Error(`deletion_started_at was not stamped: ${String(stamped)}`);
+      }
+      expect(stamped.getTime()).toBeGreaterThanOrEqual(before);
+      expect(stamped.getTime()).toBeLessThanOrEqual(after);
     },
     PGLITE_TIMEOUT,
   );
