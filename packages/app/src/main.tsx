@@ -94,9 +94,9 @@ import {
 import {
   AGENT_READY_EVENT,
   COMMAND_PALETTE_EVENT,
-  CONNECT_EVENT,
   createNavigateViewEvent,
   dispatchAppEvent,
+  dispatchConnectRequest,
   MOBILE_RUNTIME_MODE_CHANGED_EVENT,
   SHARE_TARGET_EVENT,
   TRAY_ACTION_EVENT,
@@ -1828,7 +1828,7 @@ function connectFirstRunRemoteDeepLink(rawApiBase: string): void {
     token: null,
   });
   const dispatchConnect = () => {
-    dispatchAppEvent(CONNECT_EVENT, {
+    dispatchConnectRequest({
       gatewayUrl: connection.apiBase,
       completeFirstRun: true,
     });
@@ -2107,7 +2107,7 @@ function handleDeepLink(url: string): void {
             apiBase: validatedUrl.href,
             token: null,
           });
-          dispatchAppEvent(CONNECT_EVENT, {
+          dispatchConnectRequest({
             gatewayUrl: connection.apiBase,
             token: connection.token ?? undefined,
           });

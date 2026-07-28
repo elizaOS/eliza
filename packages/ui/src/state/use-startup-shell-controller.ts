@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../api";
 import type { StartupShellView } from "../components/shell/startup-shell-types";
-import { CONNECT_EVENT } from "../events";
+import { listenForConnectRequests } from "../events";
 import { adoptRemoteAgentFirstRun } from "../first-run/adopt-remote-first-run";
 import { ensureStoreBuildWorkspaceFolder } from "../first-run/ensure-store-build-workspace-folder";
 import { persistMobileRuntimeModeForServerTarget } from "../first-run/mobile-runtime-mode";
@@ -113,6 +113,7 @@ export function useStartupShellController(): StartupShellController {
     retryStartup,
     setActionNotice,
     setState,
+    completeFirstRun,
     t,
     uiLanguage,
   } = useAppSelectorShallow((s) => ({
@@ -122,6 +123,7 @@ export function useStartupShellController(): StartupShellController {
     retryStartup: s.retryStartup,
     setActionNotice: s.setActionNotice,
     setState: s.setState,
+    completeFirstRun: s.completeFirstRun,
     t: s.t,
     uiLanguage: s.uiLanguage,
   }));
@@ -135,25 +137,16 @@ export function useStartupShellController(): StartupShellController {
   coordinatorStateRef.current = startupCoordinator.state;
 
   useEffect(() => {
-    const handleConnect = async (event: Event): Promise<void> => {
-      const detail = (event as CustomEvent<unknown>).detail;
-      const payload =
-        detail && typeof detail === "object" && !Array.isArray(detail)
-          ? (detail as {
-              gatewayUrl?: unknown;
-              token?: unknown;
-              completeFirstRun?: unknown;
-              skipConfirm?: unknown;
-            })
-          : null;
-      if (typeof payload?.gatewayUrl !== "string") {
-        return;
-      }
-
+    const handleConnect = async (payload: {
+      gatewayUrl: string;
+      token?: string;
+      completeFirstRun?: boolean;
+      skipConfirm?: boolean;
+    }): Promise<void> => {
       // `completeFirstRun` marks the connected remote as this device's finished
       // first-run target (device/desktop remote-connect-at-URL onboarding), so
       // it lands on home instead of re-showing onboarding on the next launch.
-      const completeFirstRun = payload.completeFirstRun === true;
+      const shouldCompleteFirstRun = payload.completeFirstRun === true;
       // `skipConfirm` is set ONLY by trusted in-app callers (the Settings
       // "Connect a remote agent" entry, where the user just typed the URL).
       // OS-delivered deep links never set it, so they keep the confirmation.
@@ -193,7 +186,7 @@ export function useStartupShellController(): StartupShellController {
         setState("firstRunRemoteToken", connection.token ?? "");
         setState("firstRunRemoteConnected", true);
         setState("firstRunRemoteError", null);
-        if (completeFirstRun) {
+        if (shouldCompleteFirstRun) {
           // Adopt the remote as this device's completed first-run target. Probes
           // first, so an already-configured host is used as-is (no clobber) and
           // a fresh host is marked complete — either way the startup re-poll
@@ -203,8 +196,7 @@ export function useStartupShellController(): StartupShellController {
             token: connection.token,
             uiLanguage,
           });
-          setState("firstRunComplete", true);
-          coordinatorDispatchRef.current({ type: "FIRST_RUN_COMPLETE" });
+          completeFirstRun();
         }
         setActionNotice("Connected to remote backend.", "success", 4200);
         retryStartup();
@@ -219,9 +211,8 @@ export function useStartupShellController(): StartupShellController {
       }
     };
 
-    document.addEventListener(CONNECT_EVENT, handleConnect);
-    return () => document.removeEventListener(CONNECT_EVENT, handleConnect);
-  }, [retryStartup, setActionNotice, setState, uiLanguage]);
+    return listenForConnectRequests(handleConnect);
+  }, [completeFirstRun, retryStartup, setActionNotice, setState, uiLanguage]);
 
   useEffect(() => {
     void ensureStoreBuildWorkspaceFolder();
