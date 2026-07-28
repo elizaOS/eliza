@@ -934,6 +934,45 @@ describe("generateChatResponse usage reporting", () => {
     expect(result.usedActionCallbacks).toBe(true);
   });
 
+  it.each([
+    ["buy ETH with USDC", "The purchase swap was submitted."],
+    ["sell ETH for USDC", "The sale swap was submitted."],
+  ])(
+    "matches a successful WALLET swap for %s",
+    async (prompt, responseText) => {
+      const runtime = createRuntime({
+        actions: [{ name: "WALLET", similes: ["SWAP"] }],
+        messageService: {
+          handleMessage: vi.fn(async () => ({
+            didRespond: true,
+            mode: "actions",
+            responseContent: {
+              text: responseText,
+              actions: ["SWAP"],
+            },
+            responseMessages: [],
+            actionResults: [
+              {
+                success: true,
+                data: { actionName: "WALLET", subaction: "swap" },
+              },
+            ],
+          })),
+        } as NonNullable<AgentRuntime["messageService"]>,
+      });
+
+      const result = await generateChatResponse(
+        runtime,
+        createChatMessage(prompt),
+        "Chat Agent",
+        { timeoutDuration: 5_000 },
+      );
+
+      expect(result.text).toBe(responseText);
+      expect(result.usedActionCallbacks).toBe(true);
+    },
+  );
+
   it("matches a successful WALLET governance execution", async () => {
     const runtime = createRuntime({
       actions: [{ name: "WALLET", similes: ["WALLET_GOV"] }],
