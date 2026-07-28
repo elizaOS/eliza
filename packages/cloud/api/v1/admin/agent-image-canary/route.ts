@@ -96,82 +96,8 @@ const standbyDecisionSchema = z
   .object({
     requestId: requestIdSchema,
     decision: z.enum(["accept", "reject"]),
-    verifiedBackupId: z.string().uuid().optional(),
-    restoreValidationId: z.string().uuid().optional(),
-    restoreValidationAggregateSha256: z
-      .string()
-      .regex(/^[a-f0-9]{64}$/)
-      .optional(),
-    restoreValidatedCandidateProviderSandboxId: z
-      .string()
-      .trim()
-      .min(1)
-      .optional(),
-    restoreValidatedCandidateReplacementAttemptId: z.string().uuid().optional(),
   })
-  .strict()
-  .superRefine((value, context) => {
-    if (value.decision === "accept" && !value.verifiedBackupId) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["verifiedBackupId"],
-        message: "accept decisions require verifiedBackupId",
-      });
-    }
-    if (value.decision === "accept" && !value.restoreValidationId) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["restoreValidationId"],
-        message: "accept decisions require restoreValidationId",
-      });
-    }
-    if (
-      value.decision === "accept" &&
-      !value.restoreValidationAggregateSha256
-    ) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["restoreValidationAggregateSha256"],
-        message: "accept decisions require restoreValidationAggregateSha256",
-      });
-    }
-    if (
-      value.decision === "accept" &&
-      !value.restoreValidatedCandidateProviderSandboxId
-    ) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["restoreValidatedCandidateProviderSandboxId"],
-        message:
-          "accept decisions require restoreValidatedCandidateProviderSandboxId",
-      });
-    }
-    if (
-      value.decision === "accept" &&
-      !value.restoreValidatedCandidateReplacementAttemptId
-    ) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["restoreValidatedCandidateReplacementAttemptId"],
-        message:
-          "accept decisions require restoreValidatedCandidateReplacementAttemptId",
-      });
-    }
-    if (
-      value.decision === "reject" &&
-      (value.verifiedBackupId ||
-        value.restoreValidationId ||
-        value.restoreValidationAggregateSha256 ||
-        value.restoreValidatedCandidateProviderSandboxId ||
-        value.restoreValidatedCandidateReplacementAttemptId)
-    ) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["verifiedBackupId"],
-        message: "reject decisions cannot include restore validation authority",
-      });
-    }
-  });
+  .strict();
 
 interface AdminAgentImageCanaryRouteDependencies {
   requireAdmin: typeof requireAdmin;
