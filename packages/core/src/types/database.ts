@@ -1027,8 +1027,8 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	/**
 	 * Query visible documents with filtering, exact counts, and bounded pages.
 	 * Adapters advertise `documentListQueryCapability: 1` only when this method
-	 * implements the complete native contract. Older adapters remain compatible
-	 * through the bounded core fallback.
+	 * implements the complete native contract. Callers fail before reading when
+	 * an adapter omits the capability or advertises a different version.
 	 */
 	readonly documentListQueryCapability?: 1;
 	queryDocuments?(

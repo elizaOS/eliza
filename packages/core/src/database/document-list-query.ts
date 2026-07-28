@@ -1,8 +1,8 @@
 /**
  * Shared document-list contract enforcement and in-memory execution for
  * database adapters. Native adapters advertise the versioned capability;
- * older adapters use a bounded compatibility scan that returns exact results
- * or fails before an incomplete corpus can impersonate a complete one.
+ * adapters without that exact contract fail before reading because pagination
+ * APIs cannot prove complete, duplicate-free, snapshot-coherent results.
  */
 import { ElizaError } from "../errors";
 import {
@@ -22,7 +22,6 @@ export const DOCUMENT_LIST_MAX_QUERY_LENGTH = 512;
 export const DOCUMENT_LIST_MAX_TAGS = 32;
 export const DOCUMENT_LIST_MAX_TAG_LENGTH = 128;
 export const DOCUMENT_LIST_MAX_REQUESTER_ROOMS = 1_000;
-export const DOCUMENT_LIST_COMPATIBILITY_SCAN_LIMIT = 10_000;
 
 export interface DocumentListQueryCapableAdapter {
 	readonly documentListQueryCapability: typeof DOCUMENT_LIST_QUERY_CAPABILITY_VERSION;
@@ -62,8 +61,21 @@ function isUuid(value: unknown): value is UUID {
 }
 
 function documentCreatedAt(memory: Memory): number {
-	const createdAt = memory.createdAt ?? 0;
-	return Number.isFinite(createdAt) ? Math.trunc(createdAt) : 0;
+	if (
+		typeof memory.createdAt !== "number" ||
+		!Number.isSafeInteger(memory.createdAt)
+	) {
+		throw new ElizaError("Stored document is missing a valid creation time", {
+			code: "DOCUMENT_LIST_INVALID_MEMORY",
+			context: {
+				agentId: memory.agentId,
+				documentId: memory.id,
+				createdAt: memory.createdAt,
+			},
+			severity: "fatal",
+		});
+	}
+	return memory.createdAt;
 }
 
 function compareDocumentOrder(left: Memory, right: Memory): number {
@@ -102,18 +114,20 @@ function isDocumentMemory(memory: Memory): boolean {
 	return memory.metadata?.type === MemoryType.DOCUMENT;
 }
 
+export function documentRoleHasGlobalVisibility(
+	role: DocumentListQueryParams["requesterRole"],
+): boolean {
+	return role === "OWNER" || role === "AGENT" || role === "RUNTIME";
+}
+
 function isDocumentVisible(
 	memory: Memory,
 	params: DocumentListQueryParams,
 ): boolean {
-	if (!params.requesterRoomIds.includes(memory.roomId)) return false;
-	if (
-		params.requesterRole === "OWNER" ||
-		params.requesterRole === "AGENT" ||
-		params.requesterRole === "RUNTIME"
-	) {
+	if (documentRoleHasGlobalVisibility(params.requesterRole)) {
 		return true;
 	}
+	if (!params.requesterRoomIds.includes(memory.roomId)) return false;
 
 	const metadata = (memory.metadata ?? {}) as Record<string, unknown>;
 	const scope = typeof metadata.scope === "string" ? metadata.scope : "global";
@@ -166,19 +180,51 @@ function matchesDocumentFilters(
 	return true;
 }
 
+function documentSearchLexemes(value: string): string[] {
+	return value.toLocaleLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+}
+
 function matchesDocumentQuery(memory: Memory, query: string): boolean {
 	const metadata = (memory.metadata ?? {}) as Record<string, unknown>;
-	const haystack = [
-		memory.content.text,
-		metadata.title,
-		metadata.filename,
-		metadata.originalFilename,
-		metadata.source,
-	]
-		.filter((value): value is string => typeof value === "string")
-		.join("\n")
-		.toLowerCase();
-	return haystack.includes(query);
+	const haystack = new Set(
+		documentSearchLexemes(
+			[
+				memory.content.text,
+				metadata.title,
+				metadata.filename,
+				metadata.originalFilename,
+				metadata.source,
+			]
+				.filter((value): value is string => typeof value === "string")
+				.join("\n"),
+		),
+	);
+	const queryLexemes = documentSearchLexemes(query);
+	return (
+		queryLexemes.length > 0 &&
+		queryLexemes.every((lexeme) => haystack.has(lexeme))
+	);
+}
+
+function assertUniqueDocumentIds(memories: Memory[]): void {
+	const ids = new Set<UUID>();
+	for (const memory of memories) {
+		if (!isUuid(memory.id)) {
+			throw new ElizaError("Stored document is missing a valid UUID", {
+				code: "DOCUMENT_LIST_INVALID_MEMORY",
+				context: { agentId: memory.agentId, documentId: memory.id },
+				severity: "fatal",
+			});
+		}
+		if (ids.has(memory.id)) {
+			throw new ElizaError("Document list adapter returned a duplicate UUID", {
+				code: "DOCUMENT_LIST_DUPLICATE_MEMORY",
+				context: { agentId: memory.agentId, documentId: memory.id },
+				severity: "fatal",
+			});
+		}
+		ids.add(memory.id);
+	}
 }
 
 function paginateDocuments(
@@ -328,6 +374,7 @@ export function queryDocumentsInMemory(
 	params: DocumentListQueryParams,
 ): DocumentListQueryResult {
 	validateDocumentListQueryParams(params);
+	assertUniqueDocumentIds(memories);
 	const visibleDocuments = memories
 		.filter(
 			(memory) =>
@@ -371,68 +418,37 @@ export function queryDocumentsInMemory(
 export function hasDocumentListQueryCapability(
 	adapter: IDatabaseAdapter,
 ): adapter is IDatabaseAdapter & DocumentListQueryCapableAdapter {
-	const candidate = adapter as IDatabaseAdapter &
-		Partial<DocumentListQueryCapableAdapter>;
 	return (
-		candidate.documentListQueryCapability ===
+		adapter.documentListQueryCapability ===
 			DOCUMENT_LIST_QUERY_CAPABILITY_VERSION &&
-		typeof candidate.queryDocuments === "function"
+		typeof adapter.queryDocuments === "function"
 	);
 }
 
-async function queryDocumentsCompatibility(
+function requireDocumentListQueryCapability(
 	adapter: IDatabaseAdapter,
-	params: DocumentListQueryParams,
-): Promise<DocumentListQueryResult> {
-	const memories: Memory[] = [];
-	const batchSize = DOCUMENT_LIST_MAX_LIMIT;
-	for (
-		let offset = 0;
-		offset < DOCUMENT_LIST_COMPATIBILITY_SCAN_LIMIT;
-		offset += batchSize
-	) {
-		const page = await adapter.getMemories({
-			tableName: "documents",
-			agentId: params.agentId,
-			limit: batchSize,
-			offset,
-			includeEmbedding: false,
-		});
-		memories.push(...page);
-		if (page.length < batchSize) {
-			return queryDocumentsInMemory(memories, params);
-		}
-	}
-
-	const overflow = await adapter.getMemories({
-		tableName: "documents",
-		agentId: params.agentId,
-		limit: 1,
-		offset: DOCUMENT_LIST_COMPATIBILITY_SCAN_LIMIT,
-		includeEmbedding: false,
-	});
-	if (overflow.length > 0) {
-		throw new ElizaError(
-			"Database adapter must implement native document listing for this corpus",
-			{
-				code: "DOCUMENT_LIST_QUERY_CAPABILITY_REQUIRED",
-				context: {
-					adapter: adapter.constructor.name,
-					scanLimit: DOCUMENT_LIST_COMPATIBILITY_SCAN_LIMIT,
-				},
-				severity: "fatal",
+): asserts adapter is IDatabaseAdapter & DocumentListQueryCapableAdapter {
+	if (hasDocumentListQueryCapability(adapter)) return;
+	throw new ElizaError(
+		"Database adapter must implement the exact document-list query capability",
+		{
+			code: "DOCUMENT_LIST_QUERY_CAPABILITY_REQUIRED",
+			context: {
+				adapter: adapter.constructor.name,
+				expectedVersion: DOCUMENT_LIST_QUERY_CAPABILITY_VERSION,
+				advertisedVersion: adapter.documentListQueryCapability,
+				hasQueryMethod: typeof adapter.queryDocuments === "function",
 			},
-		);
-	}
-	return queryDocumentsInMemory(memories, params);
+			severity: "fatal",
+		},
+	);
 }
 
-export async function queryDocumentsWithCompatibility(
+export async function queryDocumentsWithCapability(
 	adapter: IDatabaseAdapter,
 	params: DocumentListQueryParams,
 ): Promise<DocumentListQueryResult> {
 	validateDocumentListQueryParams(params);
-	return hasDocumentListQueryCapability(adapter)
-		? adapter.queryDocuments(params)
-		: queryDocumentsCompatibility(adapter, params);
+	requireDocumentListQueryCapability(adapter);
+	return adapter.queryDocuments(params);
 }

@@ -264,7 +264,7 @@ describe("DocumentService list semantics", () => {
 		expect(getWorld).toHaveBeenCalledTimes(1);
 	});
 
-	it("uses the bounded compatibility path for adapters without the native capability", async () => {
+	it("fails fast for adapters without the exact native capability", async () => {
 		const { adapter, runtime, service } = await makeHarness();
 		await seedDocuments(
 			runtime,
@@ -277,21 +277,67 @@ describe("DocumentService list semantics", () => {
 		const nativeQuery = vi.spyOn(adapter, "queryDocuments");
 		const getMemories = vi.spyOn(adapter, "getMemories");
 
-		const result = await service.listDocumentsDetailed(undefined, {
-			limit: 25,
-			offset: 100,
+		await expect(
+			service.listDocumentsDetailed(undefined, {
+				limit: 25,
+				offset: 100,
+			}),
+		).rejects.toMatchObject({
+			code: "DOCUMENT_LIST_QUERY_CAPABILITY_REQUIRED",
+		});
+		expect(nativeQuery).not.toHaveBeenCalled();
+		expect(getMemories).not.toHaveBeenCalled();
+	});
+
+	it("keeps privileged roles global while USER remains room-limited", async () => {
+		const { adapter, runtime, service } = await makeHarness();
+		await adapter.deleteParticipants([{ entityId: USER_ID, roomId: ROOM_B }]);
+		const roomADocument = documentMemory(2);
+		const roomBDocument = documentMemory(3);
+		await seedDocuments(runtime, [roomADocument, roomBDocument]);
+		const getRoomsForParticipants = vi.spyOn(
+			runtime,
+			"getRoomsForParticipants",
+		);
+		vi.spyOn(runtime, "getRoom").mockResolvedValue({
+			id: ROOM_A,
+			agentId: AGENT_ID,
+			worldId: WORLD_ID,
+		} as Room);
+		const getWorld = vi.spyOn(runtime, "getWorld");
+
+		getWorld.mockResolvedValue({
+			id: WORLD_ID,
+			agentId: AGENT_ID,
+			metadata: { roles: { [USER_ID]: "USER" } },
+		} as World);
+		const userResult = await service.listDocumentsDetailed(userMessage());
+
+		getWorld.mockResolvedValue({
+			id: WORLD_ID,
+			agentId: AGENT_ID,
+			metadata: {
+				roles: { [USER_ID]: "OWNER" },
+				roleSources: { [USER_ID]: "manual" },
+			},
+		} as World);
+		const ownerResult = await service.listDocumentsDetailed(userMessage());
+		const runtimeResult = await service.listDocumentsDetailed();
+		const agentResult = await service.listDocumentsDetailed({
+			...userMessage(),
+			entityId: AGENT_ID,
 		});
 
-		expect(result).toMatchObject({
-			status: "ok",
-			totalVisible: 125,
-			totalAvailable: 125,
-			totalMatched: 125,
-			hasMore: false,
-		});
-		expect(result.documents).toHaveLength(25);
-		expect(nativeQuery).not.toHaveBeenCalled();
-		expect(getMemories).toHaveBeenCalledTimes(2);
+		expect(userResult.documents.map((memory) => memory.id)).toEqual([
+			roomADocument.id,
+		]);
+		for (const result of [ownerResult, runtimeResult, agentResult]) {
+			expect(new Set(result.documents.map((memory) => memory.id))).toEqual(
+				new Set([roomADocument.id, roomBDocument.id]),
+			);
+			expect(result.totalVisible).toBe(2);
+		}
+		expect(getRoomsForParticipants).toHaveBeenCalledTimes(1);
 	});
 
 	it("matches room-scoped RLS semantics and ignores non-document rows", async () => {
@@ -379,7 +425,20 @@ describe("DocumentService list semantics", () => {
 			new Error("participant storage unavailable"),
 		);
 
-		await expect(service.listDocumentsDetailed()).rejects.toMatchObject({
+		vi.spyOn(runtime, "getRoom").mockResolvedValue({
+			id: ROOM_A,
+			agentId: AGENT_ID,
+			worldId: WORLD_ID,
+		} as Room);
+		vi.spyOn(runtime, "getWorld").mockResolvedValue({
+			id: WORLD_ID,
+			agentId: AGENT_ID,
+			metadata: { roles: { [USER_ID]: "USER" } },
+		} as World);
+
+		await expect(
+			service.listDocumentsDetailed(userMessage()),
+		).rejects.toMatchObject({
 			name: "ElizaError",
 			code: "DOCUMENT_ROOM_LOOKUP_FAILED",
 			cause: expect.any(Error),

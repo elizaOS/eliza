@@ -6,7 +6,7 @@
  * `fragment` and `document` metadata kinds without a dedicated column per
  * kind. Relations are defined in `embedding.ts` to avoid a circular import.
  */
-import { sql } from "drizzle-orm";
+import { type SQL, type SQLWrapper, sql } from "drizzle-orm";
 import {
   boolean,
   check,
@@ -21,6 +21,17 @@ import {
 import { agentTable } from "./agent";
 import { entityTable } from "./entity";
 import { roomTable } from "./room";
+
+export function documentSearchVectorExpression(content: SQLWrapper, metadata: SQLWrapper): SQL {
+  return sql`to_tsvector(
+    'simple',
+    COALESCE(${content}->>'text', '') || E'\n' ||
+    COALESCE(${metadata}->>'title', '') || E'\n' ||
+    COALESCE(${metadata}->>'filename', '') || E'\n' ||
+    COALESCE(${metadata}->>'originalFilename', '') || E'\n' ||
+    COALESCE(${metadata}->>'source', '')
+  )`;
+}
 
 export const memoryTable = pgTable(
   "memories",
@@ -71,6 +82,9 @@ export const memoryTable = pgTable(
       sql`date_trunc('milliseconds', ${table.createdAt})`,
       table.id
     ),
+    index("idx_memories_document_search")
+      .using("gin", documentSearchVectorExpression(table.content, table.metadata))
+      .where(sql`${table.type} = 'documents' AND ${table.metadata}->>'type' = 'document'`),
     index("idx_fragments_order").on(
       sql`((metadata->>'documentId'))`,
       sql`((metadata->>'position'))`

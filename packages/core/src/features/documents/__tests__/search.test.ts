@@ -147,6 +147,20 @@ function buildRuntime(opts: { hasEmbedding: boolean; fragments?: Memory[] }) {
 		}),
 		searchMemories: vi.fn(async (_params: unknown) => fragments),
 		getMemories: vi.fn(async (_params: unknown) => fragments),
+		getRoom: vi.fn(async () => ({
+			id: "room-1" as UUID,
+			agentId,
+			worldId: "world-1" as UUID,
+		})),
+		getWorld: vi.fn(async () => ({
+			id: "world-1" as UUID,
+			agentId,
+			metadata: {
+				roles: { "user-1": "USER", "user-2": "USER" },
+				roleSources: { "user-1": "manual", "user-2": "manual" },
+			},
+		})),
+		reportError: vi.fn(),
 	};
 }
 
