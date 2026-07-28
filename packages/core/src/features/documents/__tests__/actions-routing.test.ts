@@ -46,6 +46,8 @@ function listResult(
 		totalAvailable: 0,
 		totalMatched: 0,
 		hasMore: false,
+		availableOffset: 0,
+		availableHasMore: false,
 		...overrides,
 	};
 }
@@ -102,6 +104,8 @@ function makeRuntime(service: ReturnType<typeof makeService>): {
 			return found;
 		}),
 		getSetting: vi.fn(() => undefined),
+		getRoom: vi.fn(async () => null),
+		reportError: vi.fn(),
 		useModel,
 	} as unknown as IAgentRuntime;
 	return { runtime, useModel };
@@ -218,6 +222,44 @@ describe("documentAction.handler structured routing", () => {
 			documents: [],
 			availableDocuments: [document],
 			totalMatched: 0,
+			availableOffset: 0,
+			availableHasMore: false,
+		});
+	});
+
+	it("reports fallback pagination independently from query matches", async () => {
+		const service = makeService();
+		const document = {
+			id: DOC_ID,
+			content: { text: "Launch is Friday." },
+			metadata: { title: "Launch Notes" },
+		} as Memory;
+		service.listDocumentsDetailed.mockResolvedValueOnce(
+			listResult({
+				status: "query_miss",
+				query: "missing",
+				offset: 5,
+				availableOffset: 5,
+				availableDocuments: [document],
+				totalVisible: 10,
+				totalAvailable: 10,
+				availableHasMore: true,
+			}),
+		);
+		const { runtime } = makeRuntime(service);
+
+		const res = await documentAction.handler?.(
+			runtime,
+			makeMessage("list missing documents"),
+			undefined,
+			options({ action: "list", query: "missing", offset: 5 }),
+		);
+
+		expect(res?.text).toContain("available documents from offset 5");
+		expect(res?.data).toMatchObject({
+			hasMore: false,
+			availableOffset: 5,
+			availableHasMore: true,
 		});
 	});
 

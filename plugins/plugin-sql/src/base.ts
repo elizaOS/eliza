@@ -25,6 +25,9 @@ import {
   type CreateOAuthFlowStateParams,
   DatabaseAdapter,
   type DeleteConnectorAccountParams,
+  type DocumentListCursor,
+  type DocumentListQueryParams,
+  type DocumentListQueryResult,
   ElizaError,
   type EntitiesForRoomsResult,
   type Entity,
@@ -170,6 +173,54 @@ function normalizeAgentBio(value: unknown): string[] | undefined {
 /** Escape an ILIKE literal so user keywords match literally (no `%`/`_` wildcards). */
 function escapeIlikeLiteral(value: string): string {
   return value.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_");
+}
+
+function documentVisibilityCondition(params: DocumentListQueryParams): SQL | undefined {
+  if (
+    params.requesterRole === "OWNER" ||
+    params.requesterRole === "AGENT" ||
+    params.requesterRole === "RUNTIME"
+  ) {
+    return undefined;
+  }
+
+  const requesterEntityId = params.requesterEntityId;
+  if (!requesterEntityId) {
+    return sql`COALESCE(${memoryTable.metadata}->>'scope', 'global') = 'global'`;
+  }
+
+  return sql`(
+    COALESCE(${memoryTable.metadata}->>'scope', 'global') = 'global'
+    OR (
+      ${memoryTable.metadata}->>'scope' = 'user-private'
+      AND (
+        ${memoryTable.metadata}->>'scopedToEntityId' = ${requesterEntityId}
+        OR ${memoryTable.metadata}->>'addedBy' = ${requesterEntityId}
+        OR ${memoryTable.entityId} = ${requesterEntityId}
+      )
+    )
+  )`;
+}
+
+function documentTimestampExpression(): SQL {
+  return sql`COALESCE(
+    CASE
+      WHEN ${memoryTable.metadata}->>'timestamp' ~ '^-?[0-9]+([.][0-9]+)?$'
+      THEN (${memoryTable.metadata}->>'timestamp')::double precision
+    END,
+    EXTRACT(EPOCH FROM ${memoryTable.createdAt}) * 1000
+  )`;
+}
+
+function documentCursorCondition(cursor: DocumentListCursor): SQL {
+  const cursorDate = new Date(cursor.createdAt);
+  return sql`(
+    ${memoryTable.createdAt} < ${cursorDate}
+    OR (
+      ${memoryTable.createdAt} = ${cursorDate}
+      AND ${memoryTable.id} < ${cursor.id}
+    )
+  )`;
 }
 
 function isMessageSearchObjectsMissing(error: unknown): boolean {
@@ -1554,6 +1605,208 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   async deleteComponent(componentId: UUID): Promise<void> {
     return this.withDatabase(async () => {
       await this.db.delete(componentTable).where(eq(componentTable.id, componentId));
+    });
+  }
+
+  async queryDocuments(params: DocumentListQueryParams): Promise<DocumentListQueryResult> {
+    if (!Number.isInteger(params.limit) || params.limit < 1 || params.limit > 100) {
+      throw new ElizaError("Document list limit must be an integer between 1 and 100", {
+        code: "DOCUMENT_LIST_INVALID_PAGINATION",
+        context: { limit: params.limit },
+      });
+    }
+    if (!Number.isInteger(params.offset) || params.offset < 0) {
+      throw new ElizaError("Document list offset must be a non-negative integer", {
+        code: "DOCUMENT_LIST_INVALID_PAGINATION",
+        context: { offset: params.offset },
+      });
+    }
+    if (
+      params.cursor &&
+      (!Number.isFinite(params.cursor.createdAt) ||
+        typeof params.cursor.id !== "string" ||
+        params.cursor.id.length === 0)
+    ) {
+      throw new ElizaError("Document list cursor is invalid", {
+        code: "DOCUMENT_LIST_INVALID_PAGINATION",
+        context: { cursor: params.cursor },
+      });
+    }
+    if (params.cursor && params.offset !== 0) {
+      throw new ElizaError("Document list cursor cannot be combined with a non-zero offset", {
+        code: "DOCUMENT_LIST_INVALID_PAGINATION",
+        context: { offset: params.offset },
+      });
+    }
+
+    return this.withEntityContext(params.requesterEntityId ?? null, async (tx) => {
+      const visibleConditions: SQL[] = [
+        eq(memoryTable.type, "documents"),
+        eq(memoryTable.agentId, params.agentId),
+      ];
+      const visibility = documentVisibilityCondition(params);
+      if (visibility) visibleConditions.push(visibility);
+
+      const availableConditions = [...visibleConditions];
+      if (params.scope) {
+        availableConditions.push(
+          sql`COALESCE(${memoryTable.metadata}->>'scope', 'global') = ${params.scope}`
+        );
+      }
+      if (params.scopedToEntityId) {
+        availableConditions.push(
+          sql`${memoryTable.metadata}->>'scopedToEntityId' = ${params.scopedToEntityId}`
+        );
+      }
+      if (params.addedBy) {
+        availableConditions.push(sql`${memoryTable.metadata}->>'addedBy' = ${params.addedBy}`);
+      }
+      if (params.timeRangeStart !== undefined) {
+        availableConditions.push(sql`${documentTimestampExpression()} >= ${params.timeRangeStart}`);
+      }
+      if (params.timeRangeEnd !== undefined) {
+        availableConditions.push(sql`${documentTimestampExpression()} <= ${params.timeRangeEnd}`);
+      }
+      if (params.tags?.length) {
+        availableConditions.push(
+          sql`COALESCE(${memoryTable.metadata}->'tags', '[]'::jsonb) @> ${JSON.stringify(
+            params.tags
+          )}::jsonb`
+        );
+      }
+
+      const normalizedQuery = params.query?.trim();
+      const matchedConditions = [...availableConditions];
+      if (normalizedQuery) {
+        const pattern = `%${escapeIlikeLiteral(normalizedQuery)}%`;
+        matchedConditions.push(
+          sql`CONCAT_WS(
+            E'\n',
+            COALESCE(${memoryTable.content}->>'text', ''),
+            COALESCE(${memoryTable.metadata}->>'title', ''),
+            COALESCE(${memoryTable.metadata}->>'filename', ''),
+            COALESCE(${memoryTable.metadata}->>'originalFilename', ''),
+            COALESCE(${memoryTable.metadata}->>'source', '')
+          ) ILIKE ${pattern} ESCAPE '\\'`
+        );
+      }
+
+      const readCount = async (conditions: SQL[], label: string): Promise<number> => {
+        const rows = await tx
+          .select({ value: count() })
+          .from(memoryTable)
+          .where(and(...conditions));
+        const row = rows[0];
+        if (!row) {
+          throw new ElizaError("Document list count query returned no row", {
+            code: "DOCUMENT_LIST_COUNT_MISSING",
+            context: { agentId: params.agentId, label },
+            severity: "fatal",
+          });
+        }
+        const value = Number(row.value);
+        if (!Number.isFinite(value)) {
+          throw new ElizaError("Document list count query returned a non-numeric value", {
+            code: "DOCUMENT_LIST_COUNT_INVALID",
+            context: { agentId: params.agentId, label, value: String(row.value) },
+            severity: "fatal",
+          });
+        }
+        return value;
+      };
+
+      type DocumentRow = {
+        id: string;
+        type: string;
+        createdAt: Date;
+        content: unknown;
+        entityId: string | null;
+        agentId: string;
+        roomId: string | null;
+        worldId: string | null;
+        unique: boolean;
+        metadata: unknown;
+      };
+      const selection = {
+        id: memoryTable.id,
+        type: memoryTable.type,
+        createdAt: memoryTable.createdAt,
+        content: memoryTable.content,
+        entityId: memoryTable.entityId,
+        agentId: memoryTable.agentId,
+        roomId: memoryTable.roomId,
+        worldId: memoryTable.worldId,
+        unique: memoryTable.unique,
+        metadata: memoryTable.metadata,
+      };
+      const mapDocument = (row: DocumentRow): Memory => ({
+        id: row.id as UUID,
+        createdAt: row.createdAt.getTime(),
+        content:
+          typeof row.content === "string"
+            ? JSON.parse(row.content)
+            : (row.content as Memory["content"]),
+        entityId: row.entityId as UUID,
+        agentId: row.agentId as UUID,
+        roomId: row.roomId as UUID,
+        worldId: (row.worldId ?? undefined) as UUID | undefined,
+        unique: row.unique,
+        metadata: row.metadata as MemoryMetadata,
+      });
+      const readPage = async (
+        conditions: SQL[]
+      ): Promise<{
+        documents: Memory[];
+        hasMore: boolean;
+        nextCursor?: DocumentListCursor;
+      }> => {
+        const pageConditions = params.cursor
+          ? [...conditions, documentCursorCondition(params.cursor)]
+          : conditions;
+        const baseQuery = tx
+          .select(selection)
+          .from(memoryTable)
+          .where(and(...pageConditions))
+          .orderBy(desc(memoryTable.createdAt), desc(memoryTable.id));
+        const rows =
+          !params.cursor && params.offset > 0
+            ? await baseQuery.limit(params.limit + 1).offset(params.offset)
+            : await baseQuery.limit(params.limit + 1);
+        const hasMore = rows.length > params.limit;
+        const documents = rows.slice(0, params.limit).map((row) => mapDocument(row as DocumentRow));
+        const last = documents.at(-1);
+        return {
+          documents,
+          hasMore,
+          ...(hasMore && last?.id
+            ? { nextCursor: { createdAt: last.createdAt ?? 0, id: last.id } }
+            : {}),
+        };
+      };
+
+      const totalVisible = await readCount(visibleConditions, "visible");
+      const totalAvailable = await readCount(availableConditions, "available");
+      const totalMatched = normalizedQuery
+        ? await readCount(matchedConditions, "matched")
+        : totalAvailable;
+      const matchedPage =
+        totalMatched > 0 ? await readPage(matchedConditions) : { documents: [], hasMore: false };
+      const availablePage =
+        normalizedQuery && totalMatched === 0 && totalAvailable > 0
+          ? await readPage(availableConditions)
+          : { documents: [], hasMore: false };
+
+      return {
+        documents: matchedPage.documents,
+        availableDocuments: availablePage.documents,
+        totalVisible,
+        totalAvailable,
+        totalMatched,
+        hasMore: matchedPage.hasMore,
+        availableHasMore: availablePage.hasMore,
+        ...(matchedPage.nextCursor ? { nextCursor: matchedPage.nextCursor } : {}),
+        ...(availablePage.nextCursor ? { availableNextCursor: availablePage.nextCursor } : {}),
+      };
     });
   }
 

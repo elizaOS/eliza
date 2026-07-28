@@ -60,9 +60,10 @@ export type {
 	DocumentListOptions,
 	DocumentListResult,
 	DocumentListStatus,
+	DocumentRequester,
 	SearchMode,
 } from "./service";
-export { DocumentService } from "./service";
+export { DocumentService, resolveDocumentRequester } from "./service";
 export * from "./types";
 export type {
 	FetchDocumentFromUrlOptions,

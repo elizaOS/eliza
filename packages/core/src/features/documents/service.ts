@@ -26,6 +26,9 @@ import {
 	type AccessContext,
 	type Content,
 	type CustomMetadata,
+	type DocumentListCursor,
+	type DocumentListQueryParams,
+	type DocumentListRequesterRole,
 	type IAgentRuntime,
 	type Memory,
 	MemoryType,
@@ -80,6 +83,7 @@ export type SearchMode = "hybrid" | "vector" | "keyword";
 export interface DocumentListOptions {
 	limit?: number;
 	offset?: number;
+	cursor?: DocumentListCursor;
 	query?: string;
 	scope?: DocumentVisibilityScope;
 	scopedToEntityId?: UUID;
@@ -105,10 +109,15 @@ export interface DocumentListResult {
 	query?: string;
 	limit: number;
 	offset: number;
+	cursor?: DocumentListCursor;
 	totalVisible: number;
 	totalAvailable: number;
 	totalMatched: number;
 	hasMore: boolean;
+	availableOffset: number;
+	availableHasMore: boolean;
+	nextCursor?: DocumentListCursor;
+	availableNextCursor?: DocumentListCursor;
 }
 
 /** Weight given to the normalized vector score in hybrid mode. */
@@ -118,7 +127,6 @@ const HYBRID_BM25_WEIGHT = 1 - HYBRID_VECTOR_WEIGHT;
 const DOCUMENTS_TABLE = "documents";
 const DOCUMENT_FRAGMENTS_TABLE = "document_fragments";
 const PRE_DOCUMENTS_TABLE = "knowledge";
-const DOCUMENT_LIST_SCAN_PAGE_SIZE = 50;
 const CHARACTER_DOCUMENT_EMBEDDING_WAIT_TIMEOUT_MS = 120_000;
 const CHARACTER_DOCUMENT_EMBEDDING_WAIT_INTERVAL_MS = 1_000;
 const DOCUMENT_SCOPES = new Set<DocumentVisibilityScope>([
@@ -139,6 +147,51 @@ const DOCUMENT_ADDED_FROM_VALUES = new Set<DocumentAddedFrom>([
 	"default-seed",
 	"character",
 ]);
+
+/** Requester identity and role resolved once for document authorization. */
+export interface DocumentRequester {
+	entityId?: UUID;
+	role: DocumentListRequesterRole;
+}
+
+export async function resolveDocumentRequester(
+	runtime: IAgentRuntime,
+	message?: Memory,
+): Promise<DocumentRequester> {
+	if (!message?.entityId) return { role: "RUNTIME" };
+	if (message.entityId === runtime.agentId) {
+		return { entityId: runtime.agentId, role: "AGENT" };
+	}
+
+	try {
+		const result = await checkSenderRole(runtime, message);
+		return {
+			entityId: message.entityId,
+			role:
+				result?.role === "OWNER" || result?.role === "ADMIN"
+					? result.role
+					: "USER",
+		};
+	} catch (cause) {
+		// error-policy:J2 Preserve role-resolution context and fail the read/write.
+		const error = new ElizaError("Document requester role lookup failed", {
+			code: "DOCUMENT_ROLE_LOOKUP_FAILED",
+			cause,
+			context: {
+				agentId: runtime.agentId,
+				entityId: message.entityId,
+				roomId: message.roomId,
+			},
+			severity: "ephemeral",
+		});
+		runtime.reportError("DocumentService.resolveRequesterRole", error, {
+			agentId: runtime.agentId,
+			entityId: message.entityId,
+			roomId: message.roomId,
+		});
+		throw error;
+	}
+}
 
 function normalizeDocumentScope(
 	scope: AddDocumentOptions["scope"] | undefined,
@@ -334,31 +387,15 @@ export class DocumentService extends Service {
 		return memory.metadata?.type === MemoryType.FRAGMENT;
 	}
 
-	private async getSenderDocumentRole(
-		message?: Memory,
-	): Promise<"OWNER" | "ADMIN" | "USER" | "AGENT" | "RUNTIME"> {
-		if (!message?.entityId) {
-			return "RUNTIME";
-		}
-		if (message.entityId === this.runtime.agentId) {
-			return "AGENT";
-		}
-
-		const role = await checkSenderRole(this.runtime, message).catch(() => null);
-		// Record OWNER/ADMIN provenance verbatim (the comparison narrows the return
-		// type to the DocumentAddedByRole subset); everyone else is a plain USER.
-		if (role?.role === "OWNER" || role?.role === "ADMIN") {
-			return role.role;
-		}
-		return "USER";
-	}
-
 	async canAccessDocument(memory: Memory, message?: Memory): Promise<boolean> {
 		if (!message?.entityId || message.entityId === this.runtime.agentId) {
 			return true;
 		}
 
-		const senderRole = await this.getSenderDocumentRole(message);
+		const { role: senderRole } = await resolveDocumentRequester(
+			this.runtime,
+			message,
+		);
 		if (senderRole === "OWNER") return true;
 
 		const metadata = (memory.metadata ?? {}) as Record<string, unknown>;
@@ -417,60 +454,6 @@ export class DocumentService extends Service {
 		return (await this.canAccessDocument(memory, message)) ? memory : null;
 	}
 
-	private async scanDocumentMemories(): Promise<Memory[]> {
-		const documents = new Map<UUID, Memory>();
-		let end: number | undefined;
-
-		const addPage = (page: Memory[]): void => {
-			for (const memory of page) {
-				if (!this.isDocumentMemory(memory)) continue;
-				if (!memory.id) {
-					throw new ElizaError("Stored document is missing its memory id", {
-						code: "DOCUMENT_LIST_INVALID_MEMORY",
-						context: { agentId: this.runtime.agentId },
-						severity: "fatal",
-					});
-				}
-				documents.set(memory.id, memory);
-			}
-		};
-
-		while (true) {
-			const page = await this.runtime.getMemories({
-				tableName: DOCUMENTS_TABLE,
-				agentId: this.runtime.agentId,
-				limit: DOCUMENT_LIST_SCAN_PAGE_SIZE,
-				end,
-				orderBy: "createdAt",
-				orderDirection: "desc",
-				includeEmbedding: false,
-			});
-			addPage(page);
-
-			if (page.length < DOCUMENT_LIST_SCAN_PAGE_SIZE) break;
-
-			// Read the complete timestamp group at the page boundary before moving the
-			// cursor. Created-at alone is not unique, so decrementing immediately could
-			// skip documents when more than one page shares the same millisecond.
-			const cursorTimestamp = page.at(-1)?.createdAt ?? 0;
-			const cursorGroup = await this.runtime.getMemories({
-				tableName: DOCUMENTS_TABLE,
-				agentId: this.runtime.agentId,
-				start: cursorTimestamp,
-				end: cursorTimestamp,
-				orderBy: "createdAt",
-				orderDirection: "desc",
-				includeEmbedding: false,
-			});
-			addPage(cursorGroup);
-
-			if (cursorTimestamp <= 0) break;
-			end = cursorTimestamp - 1;
-		}
-
-		return Array.from(documents.values());
-	}
-
 	async listDocuments(
 		message?: Memory,
 		options: DocumentListOptions = {},
@@ -490,94 +473,87 @@ export class DocumentService extends Service {
 			typeof options.offset === "number" && Number.isFinite(options.offset)
 				? Math.max(0, Math.floor(options.offset))
 				: 0;
-		const visibleDocuments = await this.filterVisibleMemories(
-			await this.scanDocumentMemories(),
-			message,
-		);
-		const availableDocuments = visibleDocuments.filter((memory) => {
-			const metadata = (memory.metadata ?? {}) as Record<string, unknown>;
-			if (options.scope && metadata.scope !== options.scope) return false;
-			if (
-				options.scopedToEntityId &&
-				metadata.scopedToEntityId !== options.scopedToEntityId
-			) {
-				return false;
-			}
-			if (options.addedBy && metadata.addedBy !== options.addedBy) return false;
+		if (options.cursor && offset !== 0) {
+			throw new ElizaError(
+				"Document list cursor cannot be combined with a non-zero offset",
+				{
+					code: "DOCUMENT_LIST_INVALID_PAGINATION",
+					context: { offset },
+				},
+			);
+		}
 
-			if (options.tags && options.tags.length > 0) {
-				const docTags = Array.isArray(metadata.tags)
-					? (metadata.tags as unknown[]).filter(
-							(value): value is string => typeof value === "string",
-						)
-					: [];
-				const wanted = options.tags;
-				if (!wanted.every((tag) => docTags.includes(tag))) return false;
-			}
+		const queryDocuments = this.runtime.adapter.queryDocuments;
+		if (typeof queryDocuments !== "function") {
+			throw new ElizaError(
+				"Database adapter does not implement bounded document listing",
+				{
+					code: "DOCUMENT_LIST_QUERY_UNSUPPORTED",
+					context: {
+						adapter: this.runtime.adapter.constructor.name,
+						agentId: this.runtime.agentId,
+					},
+					severity: "fatal",
+				},
+			);
+		}
 
-			const docTimestamp =
-				typeof metadata.timestamp === "number"
-					? metadata.timestamp
-					: typeof memory.createdAt === "number"
-						? memory.createdAt
-						: 0;
-			if (
-				typeof options.timeRangeStart === "number" &&
-				docTimestamp < options.timeRangeStart
-			) {
-				return false;
-			}
-			if (
-				typeof options.timeRangeEnd === "number" &&
-				docTimestamp > options.timeRangeEnd
-			) {
-				return false;
-			}
-
-			return true;
-		});
+		const requester = await resolveDocumentRequester(this.runtime, message);
 		const query = options.query?.trim();
 		const normalizedQuery = query?.toLowerCase();
-		const matchedDocuments = normalizedQuery
-			? availableDocuments.filter((memory) => {
-					const metadata = (memory.metadata ?? {}) as Record<string, unknown>;
-					const haystack = [
-						memory.content.text,
-						metadata.title,
-						metadata.filename,
-						metadata.originalFilename,
-						metadata.source,
-					]
-						.filter((value): value is string => typeof value === "string")
-						.join("\n")
-						.toLowerCase();
-					return haystack.includes(normalizedQuery);
-				})
-			: availableDocuments;
-		const documents = matchedDocuments.slice(offset, offset + limit);
+		const queryParams: DocumentListQueryParams = {
+			agentId: this.runtime.agentId,
+			requesterRole: requester.role,
+			limit,
+			offset,
+			...(requester.entityId ? { requesterEntityId: requester.entityId } : {}),
+			...(options.cursor ? { cursor: options.cursor } : {}),
+			...(normalizedQuery ? { query: normalizedQuery } : {}),
+			...(options.scope ? { scope: options.scope } : {}),
+			...(options.scopedToEntityId
+				? { scopedToEntityId: options.scopedToEntityId }
+				: {}),
+			...(options.addedBy ? { addedBy: options.addedBy } : {}),
+			...(options.timeRangeStart !== undefined
+				? { timeRangeStart: options.timeRangeStart }
+				: {}),
+			...(options.timeRangeEnd !== undefined
+				? { timeRangeEnd: options.timeRangeEnd }
+				: {}),
+			...(options.tags?.length ? { tags: options.tags } : {}),
+		};
+		const stored = await queryDocuments.call(this.runtime.adapter, queryParams);
 		const status: DocumentListStatus =
-			visibleDocuments.length === 0
+			stored.totalVisible === 0
 				? "empty_store"
-				: availableDocuments.length === 0
+				: stored.totalAvailable === 0
 					? "filter_miss"
-					: normalizedQuery && matchedDocuments.length === 0
+					: normalizedQuery && stored.totalMatched === 0
 						? "query_miss"
-						: documents.length === 0
+						: stored.documents.length === 0
 							? "page_exhausted"
 							: "ok";
 
 		return {
 			status,
-			documents,
+			documents: stored.documents,
 			availableDocuments:
-				status === "query_miss" ? availableDocuments.slice(0, limit) : [],
+				status === "query_miss" ? stored.availableDocuments : [],
 			query,
 			limit,
 			offset,
-			totalVisible: visibleDocuments.length,
-			totalAvailable: availableDocuments.length,
-			totalMatched: matchedDocuments.length,
-			hasMore: offset + documents.length < matchedDocuments.length,
+			...(options.cursor ? { cursor: options.cursor } : {}),
+			totalVisible: stored.totalVisible,
+			totalAvailable: stored.totalAvailable,
+			totalMatched: stored.totalMatched,
+			hasMore: stored.hasMore,
+			availableOffset: offset,
+			availableHasMore:
+				status === "query_miss" ? stored.availableHasMore : false,
+			...(stored.nextCursor ? { nextCursor: stored.nextCursor } : {}),
+			...(status === "query_miss" && stored.availableNextCursor
+				? { availableNextCursor: stored.availableNextCursor }
+				: {}),
 		};
 	}
 

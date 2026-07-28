@@ -2,14 +2,16 @@
  * Exercises document-list filtering and pagination through a real AgentRuntime,
  * DocumentService, and InMemoryDatabaseAdapter with persisted memory records.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { AgentRuntime } from "../../runtime";
 import {
 	type Character,
 	type Memory,
 	MemoryType,
+	type Room,
 	type UUID,
+	type World,
 } from "../../types";
 import { DocumentService } from "./service";
 
@@ -96,7 +98,7 @@ function userMessage(): Memory {
 }
 
 describe("DocumentService list semantics", () => {
-	it("filters the complete adapter result before paginating more than 50 records", async () => {
+	it("filters and paginates through one bounded adapter query", async () => {
 		const { runtime, service } = await makeHarness();
 		const documents = Array.from({ length: 75 }, (_, index) =>
 			documentMemory(
@@ -158,10 +160,10 @@ describe("DocumentService list semantics", () => {
 
 	it("returns query alternatives separately from matched documents", async () => {
 		const { runtime, service } = await makeHarness();
-		await seedDocuments(
-			runtime,
-			Array.from({ length: 60 }, (_, index) => documentMemory(index)),
+		const documents = Array.from({ length: 60 }, (_, index) =>
+			documentMemory(index),
 		);
+		await seedDocuments(runtime, documents);
 
 		const result = await service.listDocumentsDetailed(undefined, {
 			query: "does-not-exist",
@@ -175,8 +177,15 @@ describe("DocumentService list semantics", () => {
 			totalMatched: 0,
 			offset: 55,
 			documents: [],
+			availableOffset: 55,
+			availableHasMore: false,
 		});
-		expect(result.availableDocuments).toHaveLength(5);
+		expect(result.availableDocuments.map((document) => document.id)).toEqual(
+			documents
+				.slice(0, 5)
+				.reverse()
+				.map((document) => document.id),
+		);
 		await expect(
 			service.listDocuments(undefined, {
 				query: "does-not-exist",
@@ -184,6 +193,94 @@ describe("DocumentService list semantics", () => {
 				offset: 55,
 			}),
 		).resolves.toEqual([]);
+	});
+
+	it("uses id as the keyset tiebreaker when timestamps are equal", async () => {
+		const { runtime, service } = await makeHarness();
+		const documents = Array.from({ length: 151 }, (_, index) =>
+			documentMemory(index),
+		);
+		await seedDocuments(runtime, documents);
+
+		const seen: UUID[] = [];
+		let cursor: Awaited<
+			ReturnType<DocumentService["listDocumentsDetailed"]>
+		>["nextCursor"];
+		do {
+			const page = await service.listDocumentsDetailed(undefined, {
+				limit: 37,
+				...(cursor ? { cursor } : {}),
+			});
+			seen.push(
+				...page.documents
+					.map((document) => document.id)
+					.filter((id): id is UUID => typeof id === "string"),
+			);
+			cursor = page.nextCursor;
+			if (!page.hasMore) break;
+			expect(cursor).toBeDefined();
+		} while (cursor);
+
+		expect(seen).toHaveLength(151);
+		expect(new Set(seen).size).toBe(151);
+		expect(seen).toEqual(
+			documents
+				.map((document) => document.id)
+				.filter((id): id is UUID => typeof id === "string")
+				.sort((a, b) => b.localeCompare(a)),
+		);
+	});
+
+	it("keeps large-corpus work inside one adapter query and resolves role once", async () => {
+		const { adapter, runtime, service } = await makeHarness();
+		await seedDocuments(
+			runtime,
+			Array.from({ length: 1_000 }, (_, index) => documentMemory(index)),
+		);
+		const getMemories = vi.spyOn(adapter, "getMemories");
+		const queryDocuments = vi.spyOn(adapter, "queryDocuments");
+		const getRoom = vi.spyOn(runtime, "getRoom").mockResolvedValue({
+			id: ROOM_A,
+			agentId: AGENT_ID,
+			worldId: WORLD_ID,
+		} as Room);
+		const getWorld = vi.spyOn(runtime, "getWorld").mockResolvedValue({
+			id: WORLD_ID,
+			agentId: AGENT_ID,
+			metadata: { roles: { [USER_ID]: "USER" } },
+		} as World);
+
+		const result = await service.listDocumentsDetailed(userMessage(), {
+			limit: 25,
+		});
+
+		expect(result.documents).toHaveLength(25);
+		expect(result.totalVisible).toBe(1_000);
+		expect(queryDocuments).toHaveBeenCalledTimes(1);
+		expect(getMemories).not.toHaveBeenCalled();
+		expect(getRoom).toHaveBeenCalledTimes(1);
+		expect(getWorld).toHaveBeenCalledTimes(1);
+	});
+
+	it("reports and throws a typed role lookup failure", async () => {
+		const { runtime, service } = await makeHarness();
+		vi.spyOn(runtime, "getRoom").mockRejectedValue(
+			new Error("role storage unavailable"),
+		);
+
+		await expect(
+			service.listDocumentsDetailed(userMessage()),
+		).rejects.toMatchObject({
+			name: "ElizaError",
+			code: "DOCUMENT_ROLE_LOOKUP_FAILED",
+			cause: expect.any(Error),
+		});
+		expect(runtime.getRecentReportedErrors()).toContainEqual(
+			expect.objectContaining({
+				scope: "DocumentService.resolveRequesterRole",
+				code: "DOCUMENT_ROLE_LOOKUP_FAILED",
+			}),
+		);
 	});
 
 	it("applies visibility before classifying filter misses", async () => {

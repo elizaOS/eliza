@@ -16,7 +16,7 @@ import {
 	type SubactionsMap,
 } from "../../actions/resolve-action-args";
 import { logger } from "../../logger";
-import { checkSenderRole, hasRoleAccess, isAgentSelf } from "../../roles";
+import { hasRoleAccess, isAgentSelf } from "../../roles";
 import type {
 	Action,
 	ActionExample,
@@ -34,6 +34,7 @@ import { addDocumentFromFilePath } from "./docs-loader.ts";
 import {
 	type DocumentListResult,
 	DocumentService,
+	resolveDocumentRequester,
 	type SearchMode,
 } from "./service.ts";
 import type {
@@ -288,12 +289,7 @@ async function getAddedByRole(
 	runtime: IAgentRuntime,
 	message: Memory,
 ): Promise<DocumentAddedByRole> {
-	if (!message.entityId) return "RUNTIME";
-	if (message.entityId === runtime.agentId) return "AGENT";
-	const role = await checkSenderRole(runtime, message).catch(() => null);
-	// The comparison narrows role.role to the returned union subset (OWNER|ADMIN).
-	if (role?.role === "OWNER" || role?.role === "ADMIN") return role.role;
-	return "USER";
+	return (await resolveDocumentRequester(runtime, message)).role;
 }
 
 async function ensureWriteAccess(
@@ -801,7 +797,10 @@ function formatDocumentListResult(result: DocumentListResult): string {
 		case "filter_miss":
 			return "No documents matched the requested filters.";
 		case "query_miss":
-			return `No documents matched ${JSON.stringify(result.query)}. Showing available documents instead:\n${formatDocumentList(result.availableDocuments)}`;
+			if (result.availableDocuments.length === 0) {
+				return `No documents matched ${JSON.stringify(result.query)}. Available-document offset ${result.availableOffset} is past the ${result.totalAvailable} documents allowed by the requested filters.`;
+			}
+			return `No documents matched ${JSON.stringify(result.query)}. Showing available documents${result.availableOffset > 0 ? ` from offset ${result.availableOffset}` : ""} instead:\n${formatDocumentList(result.availableDocuments)}`;
 		case "page_exhausted": {
 			const matchDescription = result.query
 				? `documents matching ${JSON.stringify(result.query)}`
@@ -863,6 +862,12 @@ async function handleList(
 		totalAvailable: listResult.totalAvailable,
 		totalMatched: listResult.totalMatched,
 		hasMore: listResult.hasMore,
+		availableOffset: listResult.availableOffset,
+		availableHasMore: listResult.availableHasMore,
+		...(listResult.nextCursor ? { nextCursor: listResult.nextCursor } : {}),
+		...(listResult.availableNextCursor
+			? { availableNextCursor: listResult.availableNextCursor }
+			: {}),
 	};
 	await emit(callback, { text, actions: ["DOCUMENT"] });
 	return result(true, text, "list", {
