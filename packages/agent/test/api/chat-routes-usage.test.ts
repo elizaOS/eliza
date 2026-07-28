@@ -195,6 +195,7 @@ describe("generateChatResponse usage reporting", () => {
           await callback?.({ text: "callback reply", actions: ["REPLY"] });
           return {
             didRespond: true,
+            mode: "actions",
             responseContent: { actions: ["REPLY"], text: "callback reply" },
             responseMessages: [],
           };
@@ -223,6 +224,7 @@ describe("generateChatResponse usage reporting", () => {
           await callback?.({ actions: ["SEARCHING"] });
           return {
             didRespond: true,
+            mode: "actions",
             responseContent: { text: "final reply" },
             responseMessages: [],
           };
