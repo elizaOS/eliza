@@ -49,12 +49,38 @@ describe("agent-backup limits", () => {
     );
   });
 
-  it("falls back to the canonical ceiling on malformed or non-positive overrides", () => {
-    for (const raw of ["", "   ", "not-a-number", "0", "-1", "NaN"]) {
+  it("treats an absent or blank override as unset and defaults", () => {
+    // Blank is indistinguishable from unset in a systemd EnvironmentFile, so it
+    // stays a default rather than a hard failure.
+    for (const raw of [undefined, "", "   "]) {
       expect(resolveRetainableAgentBackupBytes(raw)).toBe(
         MAX_RESTORABLE_AGENT_BACKUP_BYTES,
       );
     }
+  });
+
+  it("fails fast on a configured-but-invalid override instead of defaulting", () => {
+    // An operator who set the variable meant to change the budget. Silently
+    // running on the canonical limit would hide the misconfiguration behind
+    // behavior that looks deliberate.
+    for (const raw of ["not-a-number", "0", "-1", "NaN", "1e9", " 12 34 "]) {
+      expect(() => resolveRetainableAgentBackupBytes(raw)).toThrow(
+        /Invalid snapshot retain budget/,
+      );
+    }
+  });
+
+  it("rejects a malformed numeric PREFIX rather than silently misreading it", () => {
+    // `Number.parseInt` reads all three of these as 128 — the silent misread
+    // this parser exists to prevent (an operator writing a unit suffix would
+    // get a 128-BYTE budget without a word).
+    for (const raw of ["128MiB", "128abc", "128_000", "0x80"]) {
+      expect(() => resolveRetainableAgentBackupBytes(raw)).toThrow(
+        /Invalid snapshot retain budget/,
+      );
+    }
+    // Surrounding whitespace is only formatting, so it is trimmed, not rejected.
+    expect(resolveRetainableAgentBackupBytes("  1048576  ")).toBe(1048576);
   });
 
   it("accepts the exact limit and clamps limit+1 (boundary)", () => {
