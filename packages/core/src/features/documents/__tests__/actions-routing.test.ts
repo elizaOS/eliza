@@ -105,6 +105,9 @@ function makeRuntime(service: ReturnType<typeof makeService>): {
 		}),
 		getSetting: vi.fn(() => undefined),
 		getRoom: vi.fn(async () => null),
+		getRoomsForParticipants: vi.fn(async () => {
+			throw new Error("room lookup is unavailable");
+		}),
 		reportError: vi.fn(),
 		useModel,
 	} as unknown as IAgentRuntime;
@@ -369,7 +372,9 @@ describe("documentAction.handler structured routing", () => {
 		expect(service.addDocument).toHaveBeenCalledTimes(1);
 		expect(service.addDocument.mock.calls[0]?.[0]).toMatchObject({
 			content: "Launch is Friday.",
+			addedByRole: "USER",
 		});
+		expect(runtime.getRoomsForParticipants).not.toHaveBeenCalled();
 		expect(res?.data).toMatchObject({ subaction: "write" });
 	});
 

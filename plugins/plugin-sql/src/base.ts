@@ -29,6 +29,7 @@ import {
   type DocumentListCursor,
   type DocumentListQueryParams,
   type DocumentListQueryResult,
+  documentRoleHasGlobalVisibility,
   ElizaError,
   type EntitiesForRoomsResult,
   type Entity,
@@ -178,11 +179,7 @@ function escapeIlikeLiteral(value: string): string {
 }
 
 function documentVisibilityCondition(params: DocumentListQueryParams): SQL | undefined {
-  if (
-    params.requesterRole === "OWNER" ||
-    params.requesterRole === "AGENT" ||
-    params.requesterRole === "RUNTIME"
-  ) {
+  if (documentRoleHasGlobalVisibility(params.requesterRole)) {
     return undefined;
   }
 
@@ -310,6 +307,7 @@ import {
   taskTable,
   worldTable,
 } from "./schema/index";
+import { documentSearchVectorExpression } from "./schema/memory";
 
 type AgentRow = typeof agentTable.$inferSelect;
 type AgentMessageExamples = NonNullable<Agent["messageExamples"]>;
@@ -1597,15 +1595,21 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
   async queryDocuments(params: DocumentListQueryParams): Promise<DocumentListQueryResult> {
     validateDocumentListQueryParams(params);
-    return this.withEntityContext(params.requesterEntityId, async (tx) => {
+    const hasGlobalVisibility = documentRoleHasGlobalVisibility(params.requesterRole);
+    const entityContext = hasGlobalVisibility ? params.agentId : params.requesterEntityId;
+    return this.withEntityContext(entityContext, async (tx) => {
       const visibleConditions: SQL[] = [
         eq(memoryTable.type, "documents"),
         eq(memoryTable.agentId, params.agentId),
         sql`${memoryTable.metadata}->>'type' = 'document'`,
-        params.requesterRoomIds.length > 0
-          ? inArray(memoryTable.roomId, params.requesterRoomIds)
-          : sql`false`,
       ];
+      if (!hasGlobalVisibility) {
+        visibleConditions.push(
+          params.requesterRoomIds.length > 0
+            ? inArray(memoryTable.roomId, params.requesterRoomIds)
+            : sql`false`
+        );
+      }
       const visibility = documentVisibilityCondition(params);
       if (visibility) visibleConditions.push(visibility);
 
@@ -1642,15 +1646,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       const normalizedQuery = params.query?.trim();
       let queryCondition: SQL = sql`true`;
       if (normalizedQuery) {
-        const pattern = `%${escapeIlikeLiteral(normalizedQuery)}%`;
-        queryCondition = sql`CONCAT_WS(
-            E'\n',
-            COALESCE(${memoryTable.content}->>'text', ''),
-            COALESCE(${memoryTable.metadata}->>'title', ''),
-            COALESCE(${memoryTable.metadata}->>'filename', ''),
-            COALESCE(${memoryTable.metadata}->>'originalFilename', ''),
-            COALESCE(${memoryTable.metadata}->>'source', '')
-          ) ILIKE ${pattern} ESCAPE '\\'`;
+        queryCondition = sql`${documentSearchVectorExpression(
+          memoryTable.content,
+          memoryTable.metadata
+        )} @@ plainto_tsquery('simple', ${normalizedQuery})`;
       }
 
       type DocumentRow = {
@@ -1724,28 +1723,50 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         };
       };
 
+      const cursorCreatedAt = sql`date_trunc('milliseconds', ${memoryTable.createdAt})`;
       const cursorCondition = params.cursor
         ? sql`(
-            cursor_created_at < (
+            ${cursorCreatedAt} < (
               timestamp 'epoch' + ${params.cursor.createdAt} * interval '1 millisecond'
             )
             OR (
-              cursor_created_at = (
+              ${cursorCreatedAt} = (
                 timestamp 'epoch' + ${params.cursor.createdAt} * interval '1 millisecond'
               )
-              AND id < ${params.cursor.id}::uuid
+              AND ${memoryTable.id} < ${params.cursor.id}::uuid
             )
           )`
         : sql`true`;
       const offsetClause = params.cursor ? sql`` : sql`OFFSET ${params.offset}`;
       const pageSize = params.limit + 1;
       const result = await tx.execute(sql`
-        WITH visible AS MATERIALIZED (
+        WITH counts AS MATERIALIZED (
+          SELECT
+            (
+              SELECT COUNT(*)
+              FROM ${memoryTable}
+              WHERE ${and(...visibleConditions)}
+            ) AS total_visible,
+            (
+              SELECT COUNT(*)
+              FROM ${memoryTable}
+              WHERE ${and(...visibleConditions)} AND ${availableCondition}
+            ) AS total_available,
+            (
+              SELECT COUNT(*)
+              FROM ${memoryTable}
+              WHERE
+                ${and(...visibleConditions)}
+                AND ${availableCondition}
+                AND ${queryCondition}
+            ) AS total_matched
+        ),
+        matched_page AS MATERIALIZED (
           SELECT
             ${memoryTable.id} AS id,
             ${memoryTable.type} AS type,
             ${memoryTable.createdAt} AS created_at,
-            date_trunc('milliseconds', ${memoryTable.createdAt}) AS cursor_created_at,
+            ${cursorCreatedAt} AS cursor_created_at,
             ${memoryTable.content} AS content,
             ${memoryTable.entityId} AS entity_id,
             ${memoryTable.agentId} AS agent_id,
@@ -1753,36 +1774,40 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
             ${memoryTable.worldId} AS world_id,
             ${memoryTable.unique} AS unique,
             ${memoryTable.metadata} AS metadata,
-            (${availableCondition}) AS is_available,
-            ((${availableCondition}) AND (${queryCondition})) AS is_matched
+            'matched'::text AS page_kind
           FROM ${memoryTable}
-          WHERE ${and(...visibleConditions)}
-        ),
-        counts AS MATERIALIZED (
-          SELECT
-            COUNT(*) AS total_visible,
-            COUNT(*) FILTER (WHERE is_available) AS total_available,
-            COUNT(*) FILTER (WHERE is_matched) AS total_matched
-          FROM visible
-        ),
-        matched_page AS MATERIALIZED (
-          SELECT visible.*, 'matched'::text AS page_kind
-          FROM visible
-          WHERE is_matched AND ${cursorCondition}
-          ORDER BY cursor_created_at DESC, id DESC
+          WHERE
+            ${and(...visibleConditions)}
+            AND ${availableCondition}
+            AND ${queryCondition}
+            AND ${cursorCondition}
+          ORDER BY ${cursorCreatedAt} DESC, ${memoryTable.id} DESC
           LIMIT ${pageSize}
           ${offsetClause}
         ),
         available_page AS MATERIALIZED (
-          SELECT visible.*, 'available'::text AS page_kind
-          FROM visible
+          SELECT
+            ${memoryTable.id} AS id,
+            ${memoryTable.type} AS type,
+            ${memoryTable.createdAt} AS created_at,
+            ${cursorCreatedAt} AS cursor_created_at,
+            ${memoryTable.content} AS content,
+            ${memoryTable.entityId} AS entity_id,
+            ${memoryTable.agentId} AS agent_id,
+            ${memoryTable.roomId} AS room_id,
+            ${memoryTable.worldId} AS world_id,
+            ${memoryTable.unique} AS unique,
+            ${memoryTable.metadata} AS metadata,
+            'available'::text AS page_kind
+          FROM ${memoryTable}
           CROSS JOIN counts
           WHERE
             ${Boolean(normalizedQuery)}
             AND counts.total_matched = 0
-            AND is_available
+            AND ${and(...visibleConditions)}
+            AND ${availableCondition}
             AND ${cursorCondition}
-          ORDER BY cursor_created_at DESC, id DESC
+          ORDER BY ${cursorCreatedAt} DESC, ${memoryTable.id} DESC
           LIMIT ${pageSize}
           ${offsetClause}
         ),

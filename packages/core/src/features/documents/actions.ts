@@ -34,7 +34,7 @@ import { addDocumentFromFilePath } from "./docs-loader.ts";
 import {
 	type DocumentListResult,
 	DocumentService,
-	resolveDocumentRequester,
+	resolveDocumentRequesterRole,
 	type SearchMode,
 } from "./service.ts";
 import type {
@@ -289,7 +289,7 @@ async function getAddedByRole(
 	runtime: IAgentRuntime,
 	message: Memory,
 ): Promise<DocumentAddedByRole> {
-	return (await resolveDocumentRequester(runtime, message)).role;
+	return (await resolveDocumentRequesterRole(runtime, message)).role;
 }
 
 async function ensureWriteAccess(

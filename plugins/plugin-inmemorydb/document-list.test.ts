@@ -88,6 +88,21 @@ describe("InMemoryDatabaseAdapter document list capability", () => {
 
     expect(result.totalVisible).toBe(1);
     expect(result.documents.map((document) => document.id)).toEqual([roomADocument.id]);
+
+    for (const requesterRole of ["OWNER", "RUNTIME", "AGENT"] as const) {
+      const privileged = await adapter.queryDocuments({
+        agentId: AGENT_ID,
+        requesterEntityId: REQUESTER_ID,
+        requesterRoomIds: [],
+        requesterRole,
+        limit: 10,
+        offset: 0,
+      });
+      expect(new Set(privileged.documents.map((document) => document.id))).toEqual(
+        new Set([roomADocument.id, roomBDocument.id])
+      );
+      expect(privileged.totalVisible).toBe(2);
+    }
   });
 
   it("uses the id tiebreaker across complete keyset traversal", async () => {

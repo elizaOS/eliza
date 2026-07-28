@@ -17,14 +17,16 @@ import {
 import { sql } from "drizzle-orm";
 import { v4 } from "uuid";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { PgDatabaseAdapter } from "../../pg/adapter";
+import { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
 import { embeddingTable, memoryTable } from "../../schema";
+import { documentSearchVectorExpression } from "../../schema/memory";
 import type { DrizzleDatabase } from "../../types";
 import { createIsolatedTestDatabase } from "../test-helpers";
 
 const REQUESTER_ID = "10000000-0000-0000-0000-000000000001" as UUID;
 const OTHER_ENTITY_ID = "10000000-0000-0000-0000-000000000002" as UUID;
+const postgresIt = process.env.POSTGRES_URL ? it : it.skip;
 
 describe("document list query (real SQL parity)", () => {
   let adapter: PgliteDatabaseAdapter | PgDatabaseAdapter;
@@ -238,6 +240,48 @@ describe("document list query (real SQL parity)", () => {
     });
   });
 
+  it("keeps OWNER, RUNTIME, and AGENT global while USER remains room-limited", async () => {
+    const otherRoomId = v4() as UUID;
+    await adapter.createRooms([
+      {
+        id: otherRoomId,
+        agentId,
+        worldId,
+        name: "other-documents",
+        source: "test",
+        type: ChannelType.DM,
+      } as Room,
+    ]);
+    const documents = [document(1), document(2, { roomId: otherRoomId })];
+    await seedSql(documents);
+    const inMemory = await seedInMemory(documents);
+    const baseParams: Omit<DocumentListQueryParams, "requesterRole"> = {
+      agentId,
+      requesterEntityId: REQUESTER_ID,
+      requesterRoomIds: [roomId],
+      limit: 10,
+      offset: 0,
+    };
+
+    const userSql = await adapter.queryDocuments({ ...baseParams, requesterRole: "USER" });
+    const userMemory = await inMemory.queryDocuments({ ...baseParams, requesterRole: "USER" });
+    expect(userSql).toEqual(userMemory);
+    expect(ids(userSql.documents)).toEqual([documents[0]?.id]);
+
+    for (const requesterRole of ["OWNER", "RUNTIME", "AGENT"] as const) {
+      const roleParams = {
+        ...baseParams,
+        requesterRoomIds: [],
+        requesterRole,
+      };
+      const sqlResult = await adapter.queryDocuments(roleParams);
+      const memoryResult = await inMemory.queryDocuments(roleParams);
+      expect(sqlResult).toEqual(memoryResult);
+      expect(new Set(ids(sqlResult.documents))).toEqual(new Set(ids(documents)));
+      expect(sqlResult.totalVisible).toBe(2);
+    }
+  });
+
   it("does not skip or duplicate equal-timestamp rows across keyset pages", async () => {
     const documents = Array.from({ length: 151 }, (_, index) => document(index));
     await seedSql(documents);
@@ -388,20 +432,96 @@ describe("document list query (real SQL parity)", () => {
     });
   });
 
-  it("installs the composite index supporting document keyset order", async () => {
+  it("installs the document keyset and full-text indexes", async () => {
     const db = adapter.getDatabase() as DrizzleDatabase;
     const result = await db.execute(sql`
-      SELECT indexdef
+      SELECT indexname, indexdef
       FROM pg_indexes
-      WHERE indexname = 'idx_memories_document_list_order'
+      WHERE indexname IN (
+        'idx_memories_document_list_order',
+        'idx_memories_document_search'
+      )
+      ORDER BY indexname
     `);
-    const definition = String(result.rows[0]?.indexdef ?? "");
+    const definitions = new Map(
+      result.rows.map((row) => [String(row.indexname), String(row.indexdef)])
+    );
 
-    expect(result.rows).toHaveLength(1);
-    expect(definition).toContain("date_trunc");
-    expect(definition).toContain("metadata");
-    expect(definition).toContain("type");
+    expect(definitions.get("idx_memories_document_list_order")).toContain("date_trunc");
+    expect(definitions.get("idx_memories_document_list_order")).toContain("metadata");
+    expect(definitions.get("idx_memories_document_search")).toContain("USING gin");
+    expect(definitions.get("idx_memories_document_search")).toContain("to_tsvector");
   });
+
+  postgresIt(
+    "uses the document GIN index at 20k rows with bounded search latency",
+    async () => {
+      expect(adapter).toBeInstanceOf(PgDatabaseAdapter);
+      const db = adapter.getDatabase() as DrizzleDatabase;
+      await db.execute(sql`
+      INSERT INTO ${memoryTable} (
+        id,
+        type,
+        created_at,
+        content,
+        entity_id,
+        agent_id,
+        room_id,
+        world_id,
+        "unique",
+        metadata
+      )
+      SELECT
+        gen_random_uuid(),
+        'documents',
+        NOW() - (series.value * interval '1 millisecond'),
+        jsonb_build_object(
+          'text',
+          CASE
+            WHEN series.value = 19_999 THEN 'rareplanmarker release evidence'
+            ELSE 'ordinary archived document ' || series.value::text
+          END
+        ),
+        ${REQUESTER_ID}::uuid,
+        ${agentId}::uuid,
+        ${roomId}::uuid,
+        ${worldId}::uuid,
+        true,
+        jsonb_build_object(
+          'type',
+          'document',
+          'documentId',
+          gen_random_uuid()::text,
+          'timestamp',
+          series.value
+        )
+      FROM generate_series(1, 20_000) AS series(value)
+    `);
+      await db.execute(sql`ANALYZE ${memoryTable}`);
+
+      const explain = await db.execute(sql`
+      EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
+      SELECT COUNT(*)
+      FROM ${memoryTable}
+      WHERE
+        ${memoryTable.type} = 'documents'
+        AND ${memoryTable.agentId} = ${agentId}
+        AND ${memoryTable.metadata}->>'type' = 'document'
+        AND ${documentSearchVectorExpression(
+          memoryTable.content,
+          memoryTable.metadata
+        )} @@ plainto_tsquery('simple', 'rareplanmarker')
+    `);
+      const plan = JSON.stringify(explain.rows[0]);
+      const executionTime = plan.match(/"Execution Time":\s*([0-9.]+)/)?.[1];
+
+      expect(plan).toContain("idx_memories_document_search");
+      expect(plan).toMatch(/Bitmap Index Scan|Index Scan/);
+      expect(executionTime).toBeDefined();
+      expect(Number(executionTime)).toBeLessThan(1_000);
+    },
+    120_000
+  );
 
   it("pushes metadata, text, and document timestamp filters down with parity", async () => {
     const documents = [

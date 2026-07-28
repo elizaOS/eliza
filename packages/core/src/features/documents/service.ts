@@ -21,7 +21,8 @@ import { filterByAccessContext } from "../../access-control/filter";
 import {
 	DOCUMENT_LIST_MAX_LIMIT,
 	DOCUMENT_LIST_MAX_OFFSET,
-	queryDocumentsWithCompatibility,
+	documentRoleHasGlobalVisibility,
+	queryDocumentsWithCapability,
 } from "../../database/document-list-query";
 import { createUniqueUuid } from "../../entities";
 import { ElizaError } from "../../errors";
@@ -160,7 +161,7 @@ export interface DocumentRequester {
 	role: DocumentListRequesterRole;
 }
 
-async function resolveDocumentRequesterRole(
+export async function resolveDocumentRequesterRole(
 	runtime: IAgentRuntime,
 	message?: Memory,
 ): Promise<Pick<DocumentRequester, "entityId" | "role">> {
@@ -206,6 +207,9 @@ export async function resolveDocumentRequester(
 	message?: Memory,
 ): Promise<DocumentRequester> {
 	const requester = await resolveDocumentRequesterRole(runtime, message);
+	if (documentRoleHasGlobalVisibility(requester.role)) {
+		return { ...requester, roomIds: [] };
+	}
 	try {
 		const roomIds = await runtime.getRoomsForParticipants([requester.entityId]);
 		return {
@@ -561,7 +565,7 @@ export class DocumentService extends Service {
 				: {}),
 			...(options.tags?.length ? { tags: options.tags } : {}),
 		};
-		const stored = await queryDocumentsWithCompatibility(
+		const stored = await queryDocumentsWithCapability(
 			this.runtime.adapter,
 			queryParams,
 		);

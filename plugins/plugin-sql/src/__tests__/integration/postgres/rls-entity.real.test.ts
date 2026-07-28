@@ -85,7 +85,8 @@ describe.skipIf(!process.env.POSTGRES_URL)("PostgreSQL RLS Entity Integration", 
          VALUES
            ($1, $4, ARRAY['Alice'], '{}'::jsonb, NOW()),
            ($2, $4, ARRAY['Bob'], '{}'::jsonb, NOW()),
-           ($3, $4, ARRAY['Charlie'], '{}'::jsonb, NOW())
+           ($3, $4, ARRAY['Charlie'], '{}'::jsonb, NOW()),
+           ($4, $4, ARRAY['Agent'], '{}'::jsonb, NOW())
          ON CONFLICT (id) DO UPDATE SET names = EXCLUDED.names
          RETURNING id`,
         [aliceId, bobId, charlieId, agentId]
@@ -110,8 +111,8 @@ describe.skipIf(!process.env.POSTGRES_URL)("PostgreSQL RLS Entity Integration", 
     );
 
     // Create participants (server_id is added dynamically by RLS)
-    // Room1: Alice + Bob
-    // Room2: Bob + Charlie
+    // The agent principal belongs to every room so trusted runtime/owner reads
+    // remain global without weakening STRICT entity RLS.
     try {
       const participantResult = await superuserClient.query(
         `INSERT INTO participants (id, entity_id, room_id, agent_id, created_at)
@@ -119,7 +120,9 @@ describe.skipIf(!process.env.POSTGRES_URL)("PostgreSQL RLS Entity Integration", 
            (gen_random_uuid(), $1, $2, $4, NOW()),
            (gen_random_uuid(), $3, $2, $4, NOW()),
            (gen_random_uuid(), $3, $5, $4, NOW()),
-           (gen_random_uuid(), $6, $5, $4, NOW())
+           (gen_random_uuid(), $6, $5, $4, NOW()),
+           (gen_random_uuid(), $4, $2, $4, NOW()),
+           (gen_random_uuid(), $4, $5, $4, NOW())
          ON CONFLICT DO NOTHING
          RETURNING id, entity_id`,
         [aliceId, room1Id, bobId, agentId, room2Id, charlieId]
@@ -176,10 +179,11 @@ describe.skipIf(!process.env.POSTGRES_URL)("PostgreSQL RLS Entity Integration", 
         room2Id,
       ]);
       await superuserClient.query(`DELETE FROM rooms WHERE id IN ($1, $2)`, [room1Id, room2Id]);
-      await superuserClient.query(`DELETE FROM entities WHERE id IN ($1, $2, $3)`, [
+      await superuserClient.query(`DELETE FROM entities WHERE id IN ($1, $2, $3, $4)`, [
         aliceId,
         bobId,
         charlieId,
+        agentId,
       ]);
       await superuserClient.query(`DELETE FROM agents WHERE id = $1`, [agentId]);
       await superuserClient.query(`DELETE FROM servers WHERE id = $1`, [serverId]);
@@ -260,20 +264,32 @@ describe.skipIf(!process.env.POSTGRES_URL)("PostgreSQL RLS Entity Integration", 
       const aliceOwner = await adapter.queryDocuments({
         ...base,
         requesterEntityId: aliceId as UUID,
-        requesterRoomIds: [room1Id as UUID, room2Id as UUID],
+        requesterRoomIds: [],
         requesterRole: "OWNER",
+      });
+      const runtime = await adapter.queryDocuments({
+        ...base,
+        requesterEntityId: agentId as UUID,
+        requesterRoomIds: [],
+        requesterRole: "RUNTIME",
       });
 
       expect(alice.documents.map((memory) => memory.id)).toEqual([room1DocumentId]);
       expect(bob.documents.map((memory) => memory.id).sort()).toEqual(
         [room1DocumentId, room2DocumentId].sort()
       );
-      expect(aliceOwner.documents.map((memory) => memory.id)).toEqual([room1DocumentId]);
+      expect(aliceOwner.documents.map((memory) => memory.id).sort()).toEqual(
+        [room1DocumentId, room2DocumentId].sort()
+      );
+      expect(runtime.documents.map((memory) => memory.id).sort()).toEqual(
+        [room1DocumentId, room2DocumentId].sort()
+      );
       expect(aliceRooms).toEqual([room1Id]);
       expect(bobRooms.sort()).toEqual([room1Id, room2Id].sort());
       expect(alice.totalVisible).toBe(1);
       expect(bob.totalVisible).toBe(2);
-      expect(aliceOwner.totalVisible).toBe(1);
+      expect(aliceOwner.totalVisible).toBe(2);
+      expect(runtime.totalVisible).toBe(2);
       expect(alice.documents[0]?.metadata?.type).toBe(MemoryType.DOCUMENT);
     } finally {
       await superuserClient.query(`DELETE FROM memories WHERE id IN ($1, $2)`, [
