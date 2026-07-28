@@ -14,7 +14,7 @@
 
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 
-import { jobsRepository } from "../../db/repositories/jobs";
+import { jobsRepository, StaleJobExecutionError } from "../../db/repositories/jobs";
 import type { Job } from "../../db/schemas/jobs";
 import { elizaSandboxService } from "./eliza-sandbox";
 import { JOB_TYPES, type ProvisioningJobType } from "./provisioning-job-types";
@@ -88,6 +88,8 @@ function harness(job: Job) {
   const ordinaryClaimSpy = spyOn(jobsRepository, "claimPendingJobs").mockImplementation(
     async (f: { type: string }) => (f.type === job.type ? [job] : []),
   );
+  const leaseSpy = spyOn(jobsRepository, "assertExecutionLease").mockResolvedValue(undefined);
+  const renewLeaseSpy = spyOn(jobsRepository, "renewExecutionLease").mockResolvedValue(false);
   const sharedClaimSpy = spyOn(
     jobsRepository,
     "claimPendingJobsWithinSharedRunningLimit",
@@ -97,6 +99,8 @@ function harness(job: Job) {
       conflictSpy.mockRestore();
       ordinaryClaimSpy.mockRestore();
       sharedClaimSpy.mockRestore();
+      leaseSpy.mockRestore();
+      renewLeaseSpy.mockRestore();
     },
   };
   const recoverSpy = spyOn(jobsRepository, "recoverStaleJobs").mockResolvedValue(0);
@@ -109,7 +113,17 @@ function harness(job: Job) {
     jobsRepository,
     "retryLaterWithoutIncrementingAttempts",
   ).mockResolvedValue(job);
-  return { job, claimSpy, recoverSpy, updateStatusSpy, updateSpy, incrementSpy, retryLaterSpy };
+  return {
+    job,
+    claimSpy,
+    leaseSpy,
+    renewLeaseSpy,
+    recoverSpy,
+    updateStatusSpy,
+    updateSpy,
+    incrementSpy,
+    retryLaterSpy,
+  };
 }
 
 const serviceSpies: Array<{ mockRestore: () => void }> = [];
@@ -580,6 +594,7 @@ describe("executeJob dispatch — failure path per job type retries (increments 
         expect.objectContaining({
           result: expect.objectContaining({ error: "bridge unreachable" }),
         }),
+        expect.any(String),
       );
       expect(ctx.incrementSpy).toHaveBeenCalledTimes(1);
     } finally {
@@ -636,6 +651,7 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
         ctx.job,
         "readiness probe transport_unresolved",
         expect.any(Number),
+        expect.any(String),
       );
       expect(ctx.incrementSpy).not.toHaveBeenCalled();
     } finally {
@@ -846,6 +862,73 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
       expect(ctx.incrementSpy).toHaveBeenCalledTimes(1);
     } finally {
       svcSpy.mockRestore();
+      ctx.claimSpy.mockRestore();
+      ctx.recoverSpy.mockRestore();
+      ctx.updateStatusSpy.mockRestore();
+      ctx.updateSpy.mockRestore();
+      ctx.incrementSpy.mockRestore();
+      ctx.retryLaterSpy.mockRestore();
+    }
+  });
+
+  test("a stale generation cannot enter the lifecycle mutation boundary", async () => {
+    const job = makeJob(JOB_TYPES.AGENT_SUSPEND);
+    const ctx = harness(job);
+    ctx.leaseSpy.mockRejectedValueOnce(new StaleJobExecutionError(job.id));
+    const suspendSpy = spyOn(elizaSandboxService, "executeSuspend").mockResolvedValue({
+      success: true,
+      containerStopped: true,
+    });
+    try {
+      const res = await run(JOB_TYPES.AGENT_SUSPEND);
+      expect(res.failed).toBe(1);
+      expect(suspendSpy).not.toHaveBeenCalled();
+      expect(ctx.incrementSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      suspendSpy.mockRestore();
+      ctx.claimSpy.mockRestore();
+      ctx.recoverSpy.mockRestore();
+      ctx.updateStatusSpy.mockRestore();
+      ctx.updateSpy.mockRestore();
+      ctx.incrementSpy.mockRestore();
+      ctx.retryLaterSpy.mockRestore();
+    }
+  });
+
+  test("transient completion settlement failure is supervised without reclaiming the job", async () => {
+    const ctx = harness(makeJob(JOB_TYPES.AGENT_SUSPEND));
+    stub("executeSuspend", { success: true, containerStopped: true });
+    ctx.updateStatusSpy
+      .mockRejectedValueOnce(new Error("temporary database disconnect"))
+      .mockResolvedValue(undefined);
+    try {
+      const res = await run(JOB_TYPES.AGENT_SUSPEND);
+      expect(res.succeeded).toBe(1);
+      expect(res.failed).toBe(0);
+      expect(ctx.updateStatusSpy).toHaveBeenCalledTimes(2);
+      expect(ctx.incrementSpy).not.toHaveBeenCalled();
+    } finally {
+      ctx.claimSpy.mockRestore();
+      ctx.recoverSpy.mockRestore();
+      ctx.updateStatusSpy.mockRestore();
+      ctx.updateSpy.mockRestore();
+      ctx.incrementSpy.mockRestore();
+      ctx.retryLaterSpy.mockRestore();
+    }
+  });
+
+  test("transient attempt settlement failure retries in-process without startup recovery", async () => {
+    const ctx = harness(makeJob(JOB_TYPES.AGENT_SUSPEND));
+    stub("executeSuspend", { success: false, containerStopped: false, error: "provider failed" });
+    ctx.incrementSpy
+      .mockRejectedValueOnce(new Error("temporary database disconnect"))
+      .mockResolvedValue(undefined);
+    try {
+      const res = await run(JOB_TYPES.AGENT_SUSPEND);
+      expect(res.failed).toBe(1);
+      expect(ctx.incrementSpy).toHaveBeenCalledTimes(2);
+      expect(ctx.recoverSpy).toHaveBeenCalledTimes(1);
+    } finally {
       ctx.claimSpy.mockRestore();
       ctx.recoverSpy.mockRestore();
       ctx.updateStatusSpy.mockRestore();

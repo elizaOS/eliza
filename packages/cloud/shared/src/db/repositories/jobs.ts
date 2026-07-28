@@ -23,10 +23,41 @@ import type { DbTransaction } from "../client";
 import { sqlRows } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";
 import { agentSandboxes } from "../schemas/agent-sandboxes";
+import { jobExecutionLeases } from "../schemas/job-execution-leases";
 import type { Job, NewJob } from "../schemas/jobs";
 import { jobs } from "../schemas/jobs";
 
 export type { Job, NewJob };
+
+export const DEFAULT_JOB_EXECUTION_LEASE_MS = 60_000;
+export const JOB_EXECUTION_RECOVERY_GRACE_MS = 30_000;
+
+function executionLeaseDuration(filters: { executionLeaseMs?: number }): number {
+  const duration = filters.executionLeaseMs ?? DEFAULT_JOB_EXECUTION_LEASE_MS;
+  if (!Number.isFinite(duration) || duration < 1) {
+    throw new Error(`Execution lease duration must be positive, received ${duration}`);
+  }
+  return Math.ceil(duration);
+}
+
+function executionOwnerId(filters: { executionOwnerId?: string }): string {
+  return filters.executionOwnerId ?? randomUUID();
+}
+
+function hasRecoveryProtectedExecutionLease(): SQL {
+  return sql`EXISTS (
+    SELECT 1
+    FROM ${jobExecutionLeases}
+    WHERE ${jobExecutionLeases.job_id} = ${jobs.id}
+      AND ${jobExecutionLeases.execution_generation} = ${jobs.execution_generation}
+      AND ${jobExecutionLeases.expires_at} >
+        NOW() - (${JOB_EXECUTION_RECOVERY_GRACE_MS} * INTERVAL '1 millisecond')
+  )`;
+}
+
+function lacksRecoveryProtectedExecutionLease(): SQL {
+  return sql`NOT (${hasRecoveryProtectedExecutionLease()})`;
+}
 
 function hasPayloadUpdates(updates: Partial<Job> | Partial<NewJob>): boolean {
   return updates.data !== undefined || updates.result !== undefined || updates.error !== undefined;
@@ -602,6 +633,8 @@ export class JobsRepository {
     type: string;
     organizationId?: string;
     limit: number;
+    executionOwnerId?: string;
+    executionLeaseMs?: number;
   }): Promise<Job[]> {
     // Use CTE with FOR UPDATE SKIP LOCKED for proper row-level locking.
     // The CTE locks the rows first, then the UPDATE operates on locked rows.
@@ -610,30 +643,38 @@ export class JobsRepository {
       ? sql`AND organization_id = ${filters.organizationId}`
       : sql``;
 
-    const rows = await sqlRows<Job>(
-      dbWrite,
-      sql`
-      WITH claimed AS (
-        SELECT id FROM ${jobs}
-        WHERE type = ${filters.type}
-          AND status = 'pending'
-          ${orgFilter}
-          AND scheduled_for <= NOW()
-        ORDER BY ${jobs.scheduled_for} ASC, ${jobs.created_at} ASC
-        LIMIT ${filters.limit}
-        FOR UPDATE SKIP LOCKED
-      )
-      UPDATE ${jobs}
-      SET 
-        status = 'in_progress',
-        started_at = NOW(),
-        execution_generation = gen_random_uuid(),
-        execution_quiesced_at = NULL,
-        updated_at = NOW()
-      WHERE id IN (SELECT id FROM claimed)
-      RETURNING *
-    `,
-    );
+    const ownerId = executionOwnerId(filters);
+    const leaseMs = executionLeaseDuration(filters);
+    const rows = await dbWrite.transaction(async (tx) => {
+      const claimedRows = await sqlRows<Job>(
+        tx,
+        sql`
+        WITH claimed AS (
+          SELECT id FROM ${jobs}
+          WHERE type = ${filters.type}
+            AND status = 'pending'
+            ${orgFilter}
+            AND scheduled_for <= NOW()
+          ORDER BY ${jobs.scheduled_for} ASC, ${jobs.created_at} ASC
+          LIMIT ${filters.limit}
+          FOR UPDATE SKIP LOCKED
+        )
+        UPDATE ${jobs}
+        SET
+          status = 'in_progress',
+          started_at = NOW(),
+          execution_generation = gen_random_uuid(),
+          execution_quiesced_at = NULL,
+          updated_at = NOW()
+        WHERE id IN (SELECT id FROM claimed)
+        RETURNING *
+      `,
+      );
+      if (hasDetachedProvisioningExecution(filters.type)) {
+        await this.installExecutionLeases(tx, claimedRows, ownerId, leaseMs);
+      }
+      return claimedRows;
+    });
 
     return await Promise.all(rows.map(hydrateJob));
   }
@@ -649,12 +690,16 @@ export class JobsRepository {
     maxRunning: number;
     limit: number;
     organizationId?: string;
+    executionOwnerId?: string;
+    executionLeaseMs?: number;
   }): Promise<Job[]> {
     if (filters.sharedTypes.length === 0 || filters.maxRunning < 1 || filters.limit < 1) {
       return [];
     }
 
-    return await dbWrite.transaction(async (tx) => {
+    const ownerId = executionOwnerId(filters);
+    const leaseMs = executionLeaseDuration(filters);
+    const rows = await dbWrite.transaction(async (tx) => {
       await configureElizaLifecycleTransaction(tx);
       await tx.execute(
         sql`SELECT pg_advisory_xact_lock(hashtextextended('eliza:image-change-capacity:v1', 0))`,
@@ -696,15 +741,119 @@ export class JobsRepository {
           RETURNING *
         `,
       );
-      return await Promise.all(rows.map(hydrateJob));
+      if (hasDetachedProvisioningExecution(filters.type)) {
+        await this.installExecutionLeases(tx, rows, ownerId, leaseMs);
+      }
+      return rows;
+    });
+    return await Promise.all(rows.map(hydrateJob));
+  }
+
+  private async installExecutionLeases(
+    tx: DbTransaction,
+    claimedJobs: Job[],
+    ownerId: string,
+    leaseMs: number,
+  ): Promise<void> {
+    if (claimedJobs.length === 0) return;
+    const leaseRows = claimedJobs.map((job) => {
+      const generation = requireExecutionGeneration(job);
+      return {
+        job_id: job.id,
+        execution_generation: generation,
+        owner_id: ownerId,
+        expires_at: sql<Date>`NOW() + (${leaseMs} * INTERVAL '1 millisecond')`,
+        heartbeat_at: new Date(),
+      };
+    });
+    await tx
+      .insert(jobExecutionLeases)
+      .values(leaseRows)
+      .onConflictDoUpdate({
+        target: jobExecutionLeases.job_id,
+        set: {
+          execution_generation: sql`excluded.execution_generation`,
+          owner_id: sql`excluded.owner_id`,
+          expires_at: sql`excluded.expires_at`,
+          heartbeat_at: sql`excluded.heartbeat_at`,
+        },
+      });
+  }
+
+  /**
+   * Renews the exact process claim while the job generation is still active.
+   * Locking the jobs row serializes renewal with expired-lease recovery.
+   */
+  async renewExecutionLease(
+    claimedJob: Job,
+    ownerId: string,
+    executionLeaseMs = DEFAULT_JOB_EXECUTION_LEASE_MS,
+  ): Promise<boolean> {
+    const generation = requireExecutionGeneration(claimedJob);
+    const leaseMs = executionLeaseDuration({ executionLeaseMs });
+    return await dbWrite.transaction(async (tx) => {
+      const [current] = await tx
+        .select({ id: jobs.id })
+        .from(jobs)
+        .where(
+          and(
+            eq(jobs.id, claimedJob.id),
+            eq(jobs.status, "in_progress"),
+            eq(jobs.execution_generation, generation),
+            sql`${jobs.execution_quiesced_at} IS NULL`,
+          ),
+        )
+        .for("update")
+        .limit(1);
+      if (!current) return false;
+      const [renewed] = await tx
+        .update(jobExecutionLeases)
+        .set({
+          expires_at: sql`NOW() + (${leaseMs} * INTERVAL '1 millisecond')`,
+          heartbeat_at: new Date(),
+        })
+        .where(
+          and(
+            eq(jobExecutionLeases.job_id, claimedJob.id),
+            eq(jobExecutionLeases.execution_generation, generation),
+            eq(jobExecutionLeases.owner_id, ownerId),
+          ),
+        )
+        .returning({ jobId: jobExecutionLeases.job_id });
+      return Boolean(renewed);
     });
   }
 
   /**
+   * Verifies that a destructive resource mutation is still owned by this
+   * process and generation. Expired leases fail closed.
+   */
+  async assertExecutionLease(claimedJob: Job, ownerId: string): Promise<void> {
+    const generation = requireExecutionGeneration(claimedJob);
+    const [owned] = await dbWrite
+      .select({ jobId: jobExecutionLeases.job_id })
+      .from(jobExecutionLeases)
+      .innerJoin(jobs, eq(jobs.id, jobExecutionLeases.job_id))
+      .where(
+        and(
+          eq(jobs.id, claimedJob.id),
+          eq(jobs.status, "in_progress"),
+          eq(jobs.execution_generation, generation),
+          sql`${jobs.execution_quiesced_at} IS NULL`,
+          eq(jobExecutionLeases.execution_generation, generation),
+          eq(jobExecutionLeases.owner_id, ownerId),
+          sql`${jobExecutionLeases.expires_at} > NOW()`,
+        ),
+      )
+      .limit(1);
+    if (!owned) throw new StaleJobExecutionError(claimedJob.id);
+  }
+
+  /**
    * Recovers stale jobs that have been stuck in in_progress status. Provisioning
-   * jobs with a generated execution remain owned until their executor
-   * acknowledges quiescence; worker startup recovery handles process death.
-   * Other job families retain elapsed-time recovery.
+   * jobs with a generated execution remain owned while their renewable lease
+   * and takeover grace are current. Other job families retain elapsed-time
+   * recovery.
    *
    * Increments attempts counter to prevent infinite retry loops.
    * Jobs exceeding maxAttempts are marked as failed instead of pending.
@@ -727,7 +876,11 @@ export class JobsRepository {
     ];
     if (hasDetachedProvisioningExecution(filters.type)) {
       conditions.push(
-        sql`(${jobs.execution_generation} IS NULL OR ${jobs.execution_quiesced_at} IS NOT NULL)`,
+        sql`(
+          ${jobs.execution_generation} IS NULL
+          OR ${jobs.execution_quiesced_at} IS NOT NULL
+          OR ${lacksRecoveryProtectedExecutionLease()}
+        )`,
       );
     }
 
@@ -772,12 +925,9 @@ export class JobsRepository {
   }
 
   /**
-   * Recovers in-progress jobs that were already claimed before a replacement
-   * worker process started. This is intentionally separate from
-   * `recoverStaleJobs`: the stale threshold protects slow cold boots during
-   * normal operation, while daemon startup is the one point where the previous
-   * process is known to have been replaced by systemd and its claims need to be
-   * made visible again immediately.
+   * Recovers pre-start claims only after their renewable owner lease and
+   * takeover grace have expired. Process start time scopes the scan but is not
+   * ownership evidence: overlapping workers may both be live during rollout.
    */
   async recoverInProgressJobsStartedBefore(filters: {
     type: string;
@@ -790,6 +940,11 @@ export class JobsRepository {
       eq(jobs.status, "in_progress"),
       sql`${jobs.started_at} IS NOT NULL`,
       lt(jobs.started_at, filters.startedBefore),
+      sql`(
+        ${jobs.execution_generation} IS NULL
+        OR ${jobs.execution_quiesced_at} IS NOT NULL
+        OR ${lacksRecoveryProtectedExecutionLease()}
+      )`,
     ];
 
     if (filters.organizationId) {
@@ -839,6 +994,7 @@ export class JobsRepository {
     recoveryFence: SQL;
   }): Promise<boolean> {
     const payload = await prepareJobPayload({ error: params.error }, params.job);
+    const requiresExecutionLease = hasDetachedProvisioningExecution(params.job.type);
     return dbWrite.transaction(async (tx) => {
       if (hasAgentLifecycleFence(params.job)) {
         await configureElizaLifecycleTransaction(tx);
@@ -848,6 +1004,38 @@ export class JobsRepository {
             hashtext(${params.job.agent_id})
           )`,
         );
+      }
+      const [lockedJob] = await tx
+        .select({ id: jobs.id })
+        .from(jobs)
+        .where(
+          and(
+            eq(jobs.id, params.job.id),
+            eq(jobs.status, "in_progress"),
+            eq(jobs.attempts, params.job.attempts),
+            sql`${jobs.execution_generation} IS NOT DISTINCT FROM ${params.job.execution_generation}`,
+            sql`${jobs.execution_quiesced_at} IS NOT DISTINCT FROM ${normalizedTimestamp(params.job.execution_quiesced_at)}`,
+            lt(jobs.started_at, params.startedBefore),
+            params.recoveryFence,
+          ),
+        )
+        .for("update")
+        .limit(1);
+      if (!lockedJob) return false;
+      if (requiresExecutionLease && params.job.execution_generation) {
+        const [liveLease] = await tx
+          .select({ jobId: jobExecutionLeases.job_id })
+          .from(jobExecutionLeases)
+          .where(
+            and(
+              eq(jobExecutionLeases.job_id, params.job.id),
+              eq(jobExecutionLeases.execution_generation, params.job.execution_generation),
+              sql`${jobExecutionLeases.expires_at} >
+                NOW() - (${JOB_EXECUTION_RECOVERY_GRACE_MS} * INTERVAL '1 millisecond')`,
+            ),
+          )
+          .limit(1);
+        if (liveLease) return false;
       }
       const [updated] = await tx
         .update(jobs)
@@ -867,10 +1055,32 @@ export class JobsRepository {
             sql`${jobs.execution_quiesced_at} IS NOT DISTINCT FROM ${normalizedTimestamp(params.job.execution_quiesced_at)}`,
             lt(jobs.started_at, params.startedBefore),
             params.recoveryFence,
+            requiresExecutionLease && params.job.execution_generation
+              ? sql`NOT EXISTS (
+                  SELECT 1
+                  FROM ${jobExecutionLeases}
+                  WHERE ${jobExecutionLeases.job_id} = ${params.job.id}
+                    AND ${jobExecutionLeases.execution_generation} = ${params.job.execution_generation}
+                    AND ${jobExecutionLeases.expires_at} >
+                      NOW() - (${JOB_EXECUTION_RECOVERY_GRACE_MS} * INTERVAL '1 millisecond')
+                )`
+              : sql`TRUE`,
           ),
         )
         .returning({ id: jobs.id });
       if (!updated) return false;
+      if (requiresExecutionLease) {
+        await tx
+          .delete(jobExecutionLeases)
+          .where(
+            and(
+              eq(jobExecutionLeases.job_id, params.job.id),
+              ...(params.job.execution_generation
+                ? [eq(jobExecutionLeases.execution_generation, params.job.execution_generation)]
+                : []),
+            ),
+          );
+      }
       if (hasAgentLifecycleFence(params.job) && params.job.execution_generation) {
         await tx
           .update(agentSandboxes)
@@ -922,7 +1132,11 @@ export class JobsRepository {
    * claimed execution. A timed-out or recovered attempt cannot overwrite the
    * payload belonging to a newer generation.
    */
-  async updateForExecution(claimedJob: Job, updates: Partial<Job>): Promise<Job> {
+  async updateForExecution(
+    claimedJob: Job,
+    updates: Partial<Job>,
+    executionOwnerId: string,
+  ): Promise<Job> {
     const generation = requireExecutionGeneration(claimedJob);
     const prepared = hasPayloadUpdates(updates)
       ? await prepareJobPayload(updates, claimedJob)
@@ -936,6 +1150,14 @@ export class JobsRepository {
           eq(jobs.status, "in_progress"),
           eq(jobs.execution_generation, generation),
           sql`${jobs.execution_quiesced_at} IS NULL`,
+          sql`EXISTS (
+            SELECT 1
+            FROM ${jobExecutionLeases}
+            WHERE ${jobExecutionLeases.job_id} = ${claimedJob.id}
+              AND ${jobExecutionLeases.execution_generation} = ${generation}
+              AND ${jobExecutionLeases.owner_id} = ${executionOwnerId}
+              AND ${jobExecutionLeases.expires_at} > NOW()
+          )`,
         ),
       )
       .returning();
@@ -984,8 +1206,12 @@ export class JobsRepository {
     claimedJob: Job,
     status: "completed" | "cancelled",
     additionalFields?: Partial<Job>,
+    executionOwnerId?: string,
   ): Promise<void> {
     const generation = requireExecutionGeneration(claimedJob);
+    if (!executionOwnerId) {
+      throw new Error(`Execution owner is required to settle claimed job ${claimedJob.id}`);
+    }
     let updates: Partial<Job> = {
       status,
       completed_at: status === "completed" ? new Date() : claimedJob.completed_at,
@@ -1035,10 +1261,28 @@ export class JobsRepository {
             eq(jobs.status, "in_progress"),
             eq(jobs.execution_generation, generation),
             sql`${jobs.execution_quiesced_at} IS NULL`,
+            sql`EXISTS (
+              SELECT 1
+              FROM ${jobExecutionLeases}
+              WHERE ${jobExecutionLeases.job_id} = ${claimedJob.id}
+                AND ${jobExecutionLeases.execution_generation} = ${generation}
+                AND ${jobExecutionLeases.owner_id} = ${executionOwnerId}
+                AND ${jobExecutionLeases.expires_at} > NOW()
+            )`,
           ),
         )
         .returning({ id: jobs.id });
       if (!updated) throw new StaleJobExecutionError(claimedJob.id);
+
+      await tx
+        .delete(jobExecutionLeases)
+        .where(
+          and(
+            eq(jobExecutionLeases.job_id, claimedJob.id),
+            eq(jobExecutionLeases.execution_generation, generation),
+            eq(jobExecutionLeases.owner_id, executionOwnerId),
+          ),
+        );
 
       if (hasAgentLifecycleFence(claimedJob)) {
         await tx
@@ -1086,7 +1330,11 @@ export class JobsRepository {
     maxAttempts: number,
     onFailedInTx?: (tx: DbTransaction, job: Job) => Promise<void>,
     expectedExecutionGeneration?: string,
+    expectedExecutionOwnerId?: string,
   ): Promise<Job | undefined> {
+    if (expectedExecutionGeneration && !expectedExecutionOwnerId) {
+      throw new Error(`Execution owner is required to retry claimed job ${id}`);
+    }
     const job = await this.findByIdForWrite(id);
     if (!job) return undefined;
 
@@ -1156,6 +1404,14 @@ export class JobsRepository {
               ? [
                   eq(jobs.execution_generation, expectedExecutionGeneration),
                   sql`${jobs.execution_quiesced_at} IS NULL`,
+                  sql`EXISTS (
+                    SELECT 1
+                    FROM ${jobExecutionLeases}
+                    WHERE ${jobExecutionLeases.job_id} = ${id}
+                      AND ${jobExecutionLeases.execution_generation} = ${expectedExecutionGeneration}
+                      AND ${jobExecutionLeases.owner_id} = ${expectedExecutionOwnerId}
+                      AND ${jobExecutionLeases.expires_at} > NOW()
+                  )`,
                 ]
               : []),
           ),
@@ -1163,6 +1419,18 @@ export class JobsRepository {
         .returning();
 
       if (!updated) return undefined;
+
+      if (expectedExecutionGeneration && expectedExecutionOwnerId) {
+        await tx
+          .delete(jobExecutionLeases)
+          .where(
+            and(
+              eq(jobExecutionLeases.job_id, id),
+              eq(jobExecutionLeases.execution_generation, expectedExecutionGeneration),
+              eq(jobExecutionLeases.owner_id, expectedExecutionOwnerId),
+            ),
+          );
+      }
 
       const result = await hydrateJob(updated);
 
@@ -1205,7 +1473,12 @@ export class JobsRepository {
     claimedJob: Job,
     error: string,
     delayMs: number,
+    executionOwnerId?: string,
   ): Promise<Job | undefined> {
+    const requiresExecutionLease = hasDetachedProvisioningExecution(claimedJob.type);
+    if (requiresExecutionLease && !executionOwnerId) {
+      throw new Error(`Execution owner is required to requeue claimed job ${claimedJob.id}`);
+    }
     const current = await this.findByIdForWrite(claimedJob.id);
     if (!current) return undefined;
     if (!sameRetrySnapshot(claimedJob, current)) {
@@ -1267,11 +1540,34 @@ export class JobsRepository {
             eq(jobs.status, "in_progress"),
             eq(jobs.execution_generation, generation),
             sql`${jobs.execution_quiesced_at} IS NULL`,
+            ...(requiresExecutionLease
+              ? [
+                  sql`EXISTS (
+                    SELECT 1
+                    FROM ${jobExecutionLeases}
+                    WHERE ${jobExecutionLeases.job_id} = ${claimedJob.id}
+                      AND ${jobExecutionLeases.execution_generation} = ${generation}
+                      AND ${jobExecutionLeases.owner_id} = ${executionOwnerId}
+                      AND ${jobExecutionLeases.expires_at} > NOW()
+                  )`,
+                ]
+              : []),
             retryPayloadFence(claimedJob),
           ),
         )
         .returning();
       if (!row) return undefined;
+      if (requiresExecutionLease && executionOwnerId) {
+        await tx
+          .delete(jobExecutionLeases)
+          .where(
+            and(
+              eq(jobExecutionLeases.job_id, claimedJob.id),
+              eq(jobExecutionLeases.execution_generation, generation),
+              eq(jobExecutionLeases.owner_id, executionOwnerId),
+            ),
+          );
+      }
       if (hasAgentLifecycleFence(claimedJob)) {
         await tx
           .update(agentSandboxes)

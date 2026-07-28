@@ -28,6 +28,7 @@ import {
 import { agentSandboxes } from "../../schemas/agent-sandboxes";
 import { apiKeys } from "../../schemas/api-keys";
 import { generations } from "../../schemas/generations";
+import { jobExecutionLeases } from "../../schemas/job-execution-leases";
 import { jobs } from "../../schemas/jobs";
 import { organizations } from "../../schemas/organizations";
 import { usageRecords } from "../../schemas/usage-records";
@@ -41,6 +42,7 @@ const [
 ] = await Promise.all([import("../../client"), import("../agent-sandboxes"), import("../jobs")]);
 
 const PGLITE_TIMEOUT = 60_000;
+const EXECUTION_OWNER_ID = "00000000-0000-4000-8000-00000000a711";
 const SWEEP_CUTOFF = new Date("2026-07-28T12:20:00.000Z");
 const BEFORE_CUTOFF = new Date(SWEEP_CUTOFF.getTime() - 1);
 const EXACTLY_AT_CUTOFF = new Date(SWEEP_CUTOFF);
@@ -128,6 +130,7 @@ async function seedAndClaimJob(params: {
     type: params.type,
     organizationId: params.organizationId,
     limit: 1,
+    executionOwnerId: EXECUTION_OWNER_ID,
   });
   expect(claimed).toHaveLength(1);
   expect(claimed[0]?.id).toBe(inserted.id);
@@ -188,6 +191,7 @@ beforeAll(async () => {
       usageRecords,
       generations,
       jobs,
+      jobExecutionLeases,
     };
     const { apply } = await pushSchema(schema as never, dbWrite as never);
     await apply();
@@ -329,6 +333,7 @@ describe("stuck-provisioning owner predicates", () => {
       firstClaim.max_attempts,
       undefined,
       firstClaim.execution_generation ?? undefined,
+      EXECUTION_OWNER_ID,
     );
     expect(requeued?.status).toBe("pending");
     expect(requeued?.execution_quiesced_at).not.toBeNull();
@@ -341,6 +346,7 @@ describe("stuck-provisioning owner predicates", () => {
       type: JOB_TYPES.AGENT_WAKE,
       organizationId,
       limit: 1,
+      executionOwnerId: EXECUTION_OWNER_ID,
     });
     expect(secondClaim?.id).toBe(firstClaim.id);
     expect(secondClaim?.execution_generation).not.toBe(firstClaim.execution_generation);
@@ -348,9 +354,14 @@ describe("stuck-provisioning owner predicates", () => {
     expect(secondClaim?.started_at).not.toBeNull();
     expect(Number.isNaN(new Date(secondClaim!.started_at!).getTime())).toBe(false);
     await expect(
-      jobsRepository.settleExecution(firstClaim, "completed", {
-        result: { stale: true },
-      }),
+      jobsRepository.settleExecution(
+        firstClaim,
+        "completed",
+        {
+          result: { stale: true },
+        },
+        EXECUTION_OWNER_ID,
+      ),
     ).rejects.toThrow(/generation is no longer current/);
     expect(await jobStatus(firstClaim.id)).toMatchObject({
       status: "in_progress",
@@ -369,6 +380,7 @@ describe("stuck-provisioning owner predicates", () => {
       secondClaim!.max_attempts,
       undefined,
       secondClaim!.execution_generation ?? undefined,
+      EXECUTION_OWNER_ID,
     );
     expect(failed?.status).toBe("failed");
     expect(failed?.execution_quiesced_at).not.toBeNull();
@@ -389,9 +401,14 @@ describe("stuck-provisioning owner predicates", () => {
       type: JOB_TYPES.AGENT_RESTART,
     });
     await activateLifecycleExecution(agentId, job);
-    await jobsRepository.settleExecution(job, "cancelled", {
-      error: "awaiter cancelled while executor unwinds",
-    });
+    await jobsRepository.settleExecution(
+      job,
+      "cancelled",
+      {
+        error: "awaiter cancelled while executor unwinds",
+      },
+      EXECUTION_OWNER_ID,
+    );
 
     const swept = await repo.markStuckProvisioningWithoutActiveJobAsError(SWEEP_CUTOFF);
 
@@ -415,7 +432,7 @@ describe("stuck-provisioning owner predicates", () => {
     ).not.toContain(agentId);
     expect(await repo.markRunningFromProvisioning(agentId)).toBeUndefined();
 
-    await jobsRepository.settleExecution(job, "completed");
+    await jobsRepository.settleExecution(job, "completed", undefined, EXECUTION_OWNER_ID);
 
     expect(
       (await repo.listStuckProvisioningWithContainer(SWEEP_CUTOFF, 500)).map((row) => row.id),

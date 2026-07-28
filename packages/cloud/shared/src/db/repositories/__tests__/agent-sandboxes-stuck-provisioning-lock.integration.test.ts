@@ -17,6 +17,7 @@ import {
 import { agentSandboxes } from "../../schemas/agent-sandboxes";
 import { apiKeys } from "../../schemas/api-keys";
 import { generations } from "../../schemas/generations";
+import { jobExecutionLeases } from "../../schemas/job-execution-leases";
 import { jobs } from "../../schemas/jobs";
 import { organizations } from "../../schemas/organizations";
 import { usageRecords } from "../../schemas/usage-records";
@@ -34,6 +35,7 @@ const ORIGINAL_ENV = {
 };
 const SWEEP_CUTOFF = new Date("2026-07-28T12:20:00.000Z");
 const STALE_UPDATED_AT = new Date(SWEEP_CUTOFF.getTime() - 1);
+const EXECUTION_OWNER_ID = "00000000-0000-4000-8000-00000000a712";
 
 let postgres: EphemeralPostgres | null = await acquireEphemeralPostgres();
 let isolatedDatabaseName: string | null = null;
@@ -157,6 +159,7 @@ realPostgres("stuck provisioning lifecycle lock", () => {
       usageRecords,
       generations,
       jobs,
+      jobExecutionLeases,
     };
     const { apply } = await pushSchema(schema as never, dbWrite as never);
     await apply();
@@ -470,6 +473,7 @@ realPostgres("stuck provisioning lifecycle lock", () => {
     let firstClaim: typeof jobs.$inferSelect | undefined;
     let secondClaim: typeof jobs.$inferSelect | undefined;
     const service = new ProvisioningJobService({
+      executionOwnerId: EXECUTION_OWNER_ID,
       executionTimeoutMs: () => (++timeoutResolution === 1 ? 20 : 5_000),
       executeJob: async (job) => {
         call++;
@@ -479,9 +483,14 @@ realPostgres("stuck provisioning lifecycle lock", () => {
           throw new Error("late detached failure");
         }
         secondClaim = job;
-        await jobsRepository!.settleExecution(job, "completed", {
-          result: { generation: job.execution_generation },
-        });
+        await jobsRepository!.settleExecution(
+          job,
+          "completed",
+          {
+            result: { generation: job.execution_generation },
+          },
+          EXECUTION_OWNER_ID,
+        );
       },
     });
     expect(
@@ -540,9 +549,14 @@ realPostgres("stuck provisioning lifecycle lock", () => {
     expect(secondClaim?.execution_generation).toBeTruthy();
     expect(secondClaim?.execution_generation).not.toBe(firstClaim?.execution_generation);
     await expect(
-      jobsRepository.settleExecution(firstClaim!, "completed", {
-        result: { stale: true },
-      }),
+      jobsRepository.settleExecution(
+        firstClaim!,
+        "completed",
+        {
+          result: { stale: true },
+        },
+        EXECUTION_OWNER_ID,
+      ),
     ).rejects.toThrow(/generation is no longer current/);
     expect(await jobsRepository.findByIdForWrite(firstClaim!.id)).toMatchObject({
       status: "completed",
