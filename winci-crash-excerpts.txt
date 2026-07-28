@@ -1,0 +1,28 @@
+=== Windows CI run 30398014310 attempt 2, shard build-and-helper-smokes — 0xC0000142 crash signature ===
+2026-07-28T22:03:49.5834158Z [36;1m  Write-Host "::endgroup::"[0m
+2026-07-28T22:03:49.5834393Z [36;1m  if ($code -ne 0) {[0m
+2026-07-28T22:03:49.5834700Z [36;1m    Write-Error "Command failed with exit code $code`: $command"[0m
+2026-07-28T22:03:49.5835041Z [36;1m    exit $code[0m
+2026-07-28T22:03:49.5835455Z [36;1m  }[0m
+2026-07-28T22:05:51.0148636Z @elizaos/plugin-local-inference:build: cache miss, executing cb4e4924a7f51a38
+2026-07-28T22:05:51.0215619Z @elizaos/plugin-agent-orchestrator:build: cache miss, executing 544ed8b2097420d7
+2026-07-28T22:05:51.6237469Z ##[error]command (D:\a\eliza\eliza\plugins\plugin-coding-tools) C:\Users\runneradmin\.bun\bin\bun.exe run build exited (-1073741502)
+2026-07-28T22:05:51.6247380Z @elizaos/plugin-coding-tools#build:  ERROR  command (D:\a\eliza\eliza\plugins\plugin-coding-tools) C:\Users\runneradmin\.bun\bin\bun.exe run build exited (-1073741502)
+2026-07-28T22:05:51.6248503Z 
+2026-07-28T22:05:51.0215619Z @elizaos/plugin-agent-orchestrator:build: cache miss, executing 544ed8b2097420d7
+2026-07-28T22:05:51.6237469Z ##[error]command (D:\a\eliza\eliza\plugins\plugin-coding-tools) C:\Users\runneradmin\.bun\bin\bun.exe run build exited (-1073741502)
+2026-07-28T22:05:51.6247380Z @elizaos/plugin-coding-tools#build:  ERROR  command (D:\a\eliza\eliza\plugins\plugin-coding-tools) C:\Users\runneradmin\.bun\bin\bun.exe run build exited (-1073741502)
+2026-07-28T22:05:51.6248503Z 
+2026-07-28T22:05:51.6248638Z  Tasks:    40 successful, 49 total
+2026-07-28T22:05:51.6249662Z Failed:    @elizaos/plugin-coding-tools#build
+2026-07-28T22:05:51.6249981Z 
+2026-07-28T22:05:51.6569188Z  ERROR  run failed: command  exited (-1073741502)
+2026-07-28T22:05:51.6803664Z ##[endgroup]
+2026-07-28T22:05:52.3325214Z [31;1mWrite-Error: [31;1mCommand failed with exit code -1073741502: node packages/scripts/run-turbo.mjs run build --filter=@elizaos/core --filter=@elizaos/shared --filter=@elizaos/agent --concurrency=4[0m
+2026-07-28T22:05:51.6569188Z  ERROR  run failed: command  exited (-1073741502)
+2026-07-28T22:05:51.6803664Z ##[endgroup]
+2026-07-28T22:05:52.3325214Z [31;1mWrite-Error: [31;1mCommand failed with exit code -1073741502: node packages/scripts/run-turbo.mjs run build --filter=@elizaos/core --filter=@elizaos/shared --filter=@elizaos/agent --concurrency=4[0m
+2026-07-28T22:05:52.3544554Z ##[error]Process completed with exit code 1.
+2026-07-28T22:05:52.3819541Z Post job cleanup.
+
+=== attempt 2, shard core-runtime — silent typecheck death (last task output then failure, no turbo summary) ===
