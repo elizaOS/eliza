@@ -1151,17 +1151,19 @@ function findRemoteViewForRoute(
 ): ViewRegistryEntry | undefined {
   const normalizedPath = trimmedNavigationPath(navigationPath);
   if (SHELL_RESERVED_PATHS.has(normalizedPath)) return undefined;
+  // Exact plugin paths own their route even when they share a reserved tab
+  // affinity such as Wallet. This lets web/desktop mount the agent-served
+  // bundle while native shells still fall back to their in-process page.
+  const exactMatch = views.find(
+    (view) => remoteViewAvailable(view) && view.path === normalizedPath,
+  );
+  if (exactMatch) return exactMatch;
   if (tab !== "views" && tab !== "apps" && SHELL_RESERVED_TABS.has(tab)) {
     return undefined;
   }
-  return (
-    views.find(
-      (view) => remoteViewAvailable(view) && view.path === normalizedPath,
-    ) ??
-    views.find(
-      (view) =>
-        remoteViewAvailable(view) && remoteViewMatchesTab(view, tab, appSlug),
-    )
+  return views.find(
+    (view) =>
+      remoteViewAvailable(view) && remoteViewMatchesTab(view, tab, appSlug),
   );
 }
 
@@ -1571,6 +1573,15 @@ function renderViewRouterContent({
   const walletNav = isWalletSectionPath(navigationPath) ? (
     <WalletSectionNav activePath={navigationPath} />
   ) : undefined;
+  const remoteView = findRemoteViewForRoute(
+    availableViews,
+    navigationPath,
+    tab,
+    appSlug,
+  );
+  if (remoteView?.bundleUrl || remoteView?.frameUrl) {
+    return renderRemoteView(remoteView, walletNav);
+  }
   const appShellPageForRoute = findAppShellPageForRoute(navigationPath);
   if (
     appShellPageForRoute &&
@@ -1612,15 +1623,6 @@ function renderViewRouterContent({
     <CharacterSectionNav activePath={navigationPath} />
   ) : undefined;
 
-  const remoteView = findRemoteViewForRoute(
-    availableViews,
-    navigationPath,
-    tab,
-    appSlug,
-  );
-  if (remoteView?.bundleUrl || remoteView?.frameUrl) {
-    return renderRemoteView(remoteView, walletNav);
-  }
   return renderStaticViewRouterTab({
     tab,
     nativeOsSurfaceEnabled,

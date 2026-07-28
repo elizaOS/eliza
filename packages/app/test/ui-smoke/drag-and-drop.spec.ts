@@ -502,7 +502,10 @@ test.describe("chat overlay — real DataTransfer file drop", () => {
 
     // The dropped file lands in the SAME pending-attachment strip that paste
     // and the attach button feed (alt = file name).
-    const pendingThumb = page.locator('img[alt="dropped.png"]');
+    const pendingThumb = page
+      .getByRole("button", { name: "remove dropped.png" })
+      .locator("..")
+      .getByRole("img", { name: "dropped.png" });
     await expect(pendingThumb).toBeVisible({ timeout: 10_000 });
     await evidenceShot(page, "chat-01-dropped-pending-thumbnail");
 
@@ -537,7 +540,9 @@ test.describe("chat overlay — real DataTransfer file drop", () => {
       }),
     );
 
-    // Send clears the pending strip.
+    // Send clears the composer strip while the same image remains visible in
+    // the sent message. Scope this assertion through the remove control so the
+    // delivered attachment cannot be mistaken for pending state.
     await expect(pendingThumb).toHaveCount(0, { timeout: 10_000 });
     await evidenceShot(page, "chat-02-sent-after-drop");
     expect(pageErrors).toEqual([]);

@@ -1,3 +1,8 @@
+/**
+ * Vector Browser view for inspecting memory rows and their embedding geometry.
+ * The list, search, detail, and graph controls register with the host agent
+ * surface so chat and voice can drive the same interactions as pointer input.
+ */
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { client, type QueryResult, type TableInfo } from "@elizaos/ui/api";
 import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
@@ -122,6 +127,67 @@ function formatMemoryDate(value: string | null | undefined): string {
     month: "short",
     day: "numeric",
   });
+}
+
+function MemoryListRow({
+  memory,
+  active,
+  createdLabel,
+  onOpen,
+}: {
+  memory: MemoryRecord;
+  active: boolean;
+  createdLabel: string;
+  onOpen: (memory: MemoryRecord) => void;
+}) {
+  const identity =
+    memory.id || `${memory.createdAt ?? "undated"}:${memory.content}`;
+  const openControl = useAgentElement<HTMLButtonElement>({
+    id: `vector-memory:${encodeURIComponent(identity)}`,
+    role: "button",
+    label: `Open memory: ${memory.content || "(empty)"}`,
+    group: "vector-browser-memories",
+    status: active ? "active" : "inactive",
+    description: "Open this memory in the detail panel",
+    onActivate: () => onOpen(memory),
+  });
+
+  return (
+    <button
+      ref={openControl.ref}
+      {...openControl.agentProps}
+      type="button"
+      onClick={() => onOpen(memory)}
+      className={`flex w-full items-center gap-3 px-2 py-2 text-left transition-colors ${
+        active ? "bg-accent/12 text-txt" : "hover:bg-bg-hover"
+      }`}
+    >
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center text-xs font-semibold uppercase text-muted">
+        {memory.type && memory.type !== "undefined"
+          ? memory.type.slice(0, 1)
+          : "M"}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="line-clamp-1 block text-sm font-medium text-txt">
+          {memory.content || "(empty)"}
+        </span>
+        <span className="mt-1 flex flex-wrap gap-1.5 text-2xs text-muted">
+          {memory.embedding ? (
+            <span className="inline-flex items-center gap-1 px-1 py-0.5">
+              <Layers3 className="h-3 w-3" aria-hidden />
+              {memory.embedding.length}D
+            </span>
+          ) : null}
+          {createdLabel ? (
+            <span className="inline-flex items-center gap-1 px-1 py-0.5">
+              <Clock3 className="h-3 w-3" aria-hidden />
+              {createdLabel}
+            </span>
+          ) : null}
+        </span>
+      </span>
+    </button>
+  );
 }
 
 function VectorMetric({
@@ -1343,10 +1409,10 @@ export function VectorBrowserRichView({
   });
 
   // Selecting a record in list mode swaps the single column over to its detail.
-  const openDetail = (mem: MemoryRecord) => {
+  const openDetail = useCallback((mem: MemoryRecord) => {
     setSelectedMemory(mem);
     setDetailOpen(true);
-  };
+  }, []);
 
   const summaryHeader = (
     <div className="flex flex-col gap-2">
@@ -1525,39 +1591,13 @@ export function VectorBrowserRichView({
           const isActive = selectedMemory?.id === mem.id;
           const createdLabel = formatMemoryDate(mem.createdAt);
           return (
-            <button
-              type="button"
+            <MemoryListRow
               key={mem.id || `${mem.content.slice(0, 30)}-${mem.createdAt}`}
-              onClick={() => openDetail(mem)}
-              className={`flex w-full items-center gap-3 px-2 py-2 text-left transition-colors ${
-                isActive ? "bg-accent/12 text-txt" : "hover:bg-bg-hover"
-              }`}
-            >
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center text-xs font-semibold uppercase text-muted">
-                {mem.type && mem.type !== "undefined"
-                  ? mem.type.slice(0, 1)
-                  : "M"}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="line-clamp-1 block text-sm font-medium text-txt">
-                  {mem.content || "(empty)"}
-                </span>
-                <span className="mt-1 flex flex-wrap gap-1.5 text-2xs text-muted">
-                  {mem.embedding ? (
-                    <span className="inline-flex items-center gap-1 px-1 py-0.5">
-                      <Layers3 className="h-3 w-3" aria-hidden />
-                      {mem.embedding.length}D
-                    </span>
-                  ) : null}
-                  {createdLabel ? (
-                    <span className="inline-flex items-center gap-1 px-1 py-0.5">
-                      <Clock3 className="h-3 w-3" aria-hidden />
-                      {createdLabel}
-                    </span>
-                  ) : null}
-                </span>
-              </span>
-            </button>
+              memory={mem}
+              active={isActive}
+              createdLabel={createdLabel}
+              onOpen={openDetail}
+            />
           );
         })
       )}

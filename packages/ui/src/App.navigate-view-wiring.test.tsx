@@ -16,6 +16,7 @@ import {
 } from "@testing-library/react";
 import type * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { registerAppShellPage } from "./app-shell-registry";
 import { DEFAULT_BOOT_CONFIG, setBootConfig } from "./config/boot-config";
 import type { ViewRegistryEntry } from "./hooks/useAvailableViews";
 
@@ -187,6 +188,16 @@ const documentsView = {
   pluginName: "@elizaos/plugin-documents",
   path: "/documents",
   bundleUrl: "/api/views/documents/bundle.js",
+  viewType: "gui" as const,
+};
+
+const walletMarketView = {
+  id: "wallet-market-test",
+  label: "Wallet Market Test",
+  available: true,
+  pluginName: "@local/plugin-wallet-market",
+  path: "/wallet-market-test",
+  bundleUrl: "/api/views/wallet-market-test/bundle.js",
   viewType: "gui" as const,
 };
 
@@ -671,6 +682,28 @@ describe("App navigate-view event wiring", () => {
     ).toBe(true);
     expect(getByTestId("app-opaque-background")).toBeTruthy();
     expect(queryByTestId("app-background-shader")).toBeNull();
+  });
+
+  it("prefers an exact remote plugin route over its native wallet fallback", async () => {
+    mockAvailableViews.push(walletMarketView);
+    registerAppShellPage({
+      id: walletMarketView.id,
+      pluginId: walletMarketView.pluginName,
+      label: walletMarketView.label,
+      path: walletMarketView.path,
+      tabAffinity: "inventory",
+      Component: () => <div data-testid="native-wallet-fallback" />,
+    });
+    appState.tab = "inventory";
+    window.history.replaceState(null, "", walletMarketView.path);
+
+    const { getByTestId, queryByTestId } = render(<App />);
+
+    await waitFor(() => getByTestId("dynamic-view-loader"));
+    expect(
+      getByTestId("dynamic-view-loader").getAttribute("data-view-id"),
+    ).toBe(walletMarketView.id);
+    expect(queryByTestId("native-wallet-fallback")).toBeNull();
   });
 
   it("lets a fullscreen plugin view fill behind the floating composer", async () => {
