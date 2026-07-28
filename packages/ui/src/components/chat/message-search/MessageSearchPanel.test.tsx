@@ -96,10 +96,15 @@ describe("MessageSearchPanel", () => {
 
     const scroller = screen.getByTestId("message-search-scroll");
     const list = screen.getByTestId("message-search-results");
+    const input = screen.getByTestId("message-search-input");
     expect(scroller.hasAttribute("data-chat-sheet-scroll-region")).toBe(true);
     expect(scroller.className).toContain("touch-pan-y");
     expect(scroller.className).toContain("overflow-y-auto");
     expect(scroller.className).not.toContain("justify-end");
+    expect(input.className).not.toContain("backdrop-blur");
+    for (const searchResult of screen.getAllByTestId("message-search-result")) {
+      expect(searchResult.className).not.toContain("backdrop-blur");
+    }
     // Auto margin bottom-aligns a short list, but collapses to zero once the
     // list overflows so its first result remains reachable by native scrolling.
     expect(list.className).toContain("mt-auto");
