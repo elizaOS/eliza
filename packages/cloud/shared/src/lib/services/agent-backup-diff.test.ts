@@ -14,6 +14,7 @@ import {
   planIncrementalBackup,
   reconstructFromChain,
   resolveBackupChain,
+  resolveBackupChainBytes,
   selectPrunableBackupIds,
 } from "./agent-backup-diff";
 
@@ -286,5 +287,59 @@ describe("backup chains", () => {
 
   test("selectPrunableBackupIds returns nothing when under the keep count", () => {
     expect(selectPrunableBackupIds(nodes, 10)).toEqual([]);
+  });
+});
+
+describe("resolveBackupChainBytes", () => {
+  const sized = (
+    id: string,
+    backupKind: "full" | "incremental",
+    parentBackupId: string | null,
+    sizeBytes: number | null,
+  ) => ({
+    id,
+    backupKind,
+    parentBackupId,
+    createdAtMs: 0,
+    sizeBytes,
+  });
+
+  test("sums only the stored plaintext inputs required by the target chain", () => {
+    const nodes = [
+      sized("base", "full", null, 100),
+      sized("delta-1", "incremental", "base", 20),
+      sized("delta-2", "incremental", "delta-1", 5),
+      sized("unrelated", "full", null, 999_999),
+    ];
+
+    expect(resolveBackupChainBytes(nodes, "delta-2")).toBe(125);
+    expect(resolveBackupChainBytes(nodes, "delta-1")).toBe(120);
+    expect(resolveBackupChainBytes(nodes, "base")).toBe(100);
+  });
+
+  test("returns null when any required row has no recorded size", () => {
+    const missingBaseSize = [
+      sized("base", "full", null, null),
+      sized("delta", "incremental", "base", 20),
+    ];
+    const missingDeltaSize = [
+      sized("base", "full", null, 100),
+      sized("delta", "incremental", "base", null),
+    ];
+
+    expect(resolveBackupChainBytes(missingBaseSize, "delta")).toBeNull();
+    expect(resolveBackupChainBytes(missingDeltaSize, "delta")).toBeNull();
+  });
+
+  test("still rejects broken and cyclic target chains instead of returning a partial total", () => {
+    expect(() =>
+      resolveBackupChainBytes([sized("delta", "incremental", "missing", 20)], "delta"),
+    ).toThrow(/missing/);
+    expect(() =>
+      resolveBackupChainBytes(
+        [sized("a", "incremental", "b", 10), sized("b", "incremental", "a", 20)],
+        "a",
+      ),
+    ).toThrow(/cycle/);
   });
 });
