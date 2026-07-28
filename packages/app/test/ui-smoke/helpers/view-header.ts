@@ -1,11 +1,8 @@
-// Real-browser assertion of the shared ViewHeader contract (#13586 / #13451).
-// The `headerPolicy` field on the view registry (ViewHeaderPolicy in
-// packages/ui/src/app-shell-registry.ts) declares which views must render the
-// shared header, and ViewHeader.test.tsx guards the header's structure over a
-// jsdom subtree. This drives the SAME contract against the real rendered app so
-// a header-requiring view that drops its shared header — or reintroduces a
-// chromed/labelled back button — fails a Playwright sweep, not just the unit
-// test. Consumed by all-pages-clicksafe.spec.ts per route.
+/**
+ * Real-browser assertions for the shared ViewHeader contract. Registry-owned
+ * headers are checked against the rendered app, including title scoping when
+ * ambient and routed headers coexist.
+ */
 
 import { expect, type Page } from "@playwright/test";
 
@@ -89,11 +86,12 @@ export async function assertSharedViewHeaderContract(
  */
 export async function clickViewHeaderBack(
   page: Page,
-  { within }: { within?: string } = {},
+  { within, title }: { within?: string; title?: string } = {},
 ): Promise<void> {
-  const header = within
-    ? page.locator(within).getByTestId(VIEW_HEADER_TESTID).first()
-    : page.getByTestId(VIEW_HEADER_TESTID).first();
+  const scoped = within
+    ? page.locator(within).getByTestId(VIEW_HEADER_TESTID)
+    : page.getByTestId(VIEW_HEADER_TESTID);
+  const header = (title ? scoped.filter({ hasText: title }) : scoped).first();
   await expect(header).toBeVisible({ timeout: 30_000 });
   const back = header.getByRole("button").first();
   const urlBefore = page.url();

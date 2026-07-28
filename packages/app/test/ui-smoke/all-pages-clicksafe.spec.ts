@@ -229,9 +229,7 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
     name: "settings",
     path: "/settings",
     readyChecks: [{ selector: '[data-testid="settings-shell"]' }],
-    viewHeaderTitle: "Settings",
     timeoutMs: 60_000,
-    requireViewHeader: true,
   },
   // Phone / Messages / Contacts are `androidOnly: true` overlay apps. Their
   // side-effect registrations only fire when `isElizaOS()` is true (an AOSP
@@ -437,7 +435,7 @@ const SETTING_SECTIONS_TO_CLICK: readonly {
   { label: /^Background$/, expectedHash: "background" },
   { label: /^Wallet & RPC\b/, expectedHash: "wallet-rpc" },
   { label: /^Updates$/, expectedHash: "updates" },
-  { label: /^Backup & Reset$/, expectedHash: "advanced" },
+  { label: /^Backups$/, expectedHash: "advanced" },
   { label: /^Overview$/, expectedHash: "cloud-overview" },
   { label: /^Agents$/, expectedHash: "cloud-agents" },
 ];
@@ -1662,7 +1660,10 @@ test.beforeEach(async ({ page }) => {
   // pops over a routed view mid-sweep (it renders above the shell and its buttons
   // would otherwise be the first ones a header probe reaches). first-run is
   // already complete via DEFAULT_APP_STORAGE; this closes the other gate.
-  await seedAppStorage(page, { "eliza:permissions-primed": "1" });
+  await seedAppStorage(page, {
+    "eliza:permissions-primed": "1",
+    "eliza:developerMode": "1",
+  });
   await installSupplementalSafeRoutes(page);
   await installDefaultAppRoutes(page);
 });
@@ -1718,14 +1719,10 @@ test("shared ViewHeader back control navigates away without crashing (#13586)", 
   const issues = installPageIssueGuards(page);
   await page.setViewportSize(DESKTOP_PROBE.size);
 
-  // Settings is a canonical `normal` view with the shared ViewHeader. Open it,
-  // assert the icon-only-back contract on the SETTINGS shell's header (the route
-  // floats over the ambient home, which can carry its own header), then click
-  // back and assert the shell survives the navigation (no crash, no 404) and
-  // leaves the view.
-  const SETTINGS_SHELL = '[data-testid="settings-shell"]';
-  await probeRoute(page, coreRouteProbe("settings"));
-  await assertSharedViewHeaderContract(page, { within: SETTINGS_SHELL });
-  await clickViewHeaderBack(page, { within: SETTINGS_SHELL });
-  await expectNoPageIssues(issues, "settings view-header back");
+  // Wallet is a canonical shared-header view. Settings owns split-pane chrome
+  // and its sidebar back control, so it is intentionally outside this contract.
+  await probeRoute(page, coreRouteProbe("wallet"));
+  await assertSharedViewHeaderContract(page, { title: "Wallet" });
+  await clickViewHeaderBack(page, { title: "Wallet" });
+  await expectNoPageIssues(issues, "wallet view-header back");
 });

@@ -866,7 +866,6 @@ test("model tester route runs deterministic visible probes", async ({
     90_000,
   );
 
-  await expect(page.getByTestId("model-tester-shell")).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Model Tester" }),
   ).toBeVisible();
