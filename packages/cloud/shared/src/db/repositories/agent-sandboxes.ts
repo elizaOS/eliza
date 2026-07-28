@@ -1,7 +1,21 @@
 // Persists agent sandboxes records for cloud services through the shared DB boundary.
 import { randomUUID } from "node:crypto";
 import { assertAgentSnapshotV1WireByteLength } from "@elizaos/shared";
-import { and, asc, desc, eq, gte, inArray, isNotNull, lt, ne, notInArray, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  getTableColumns,
+  gte,
+  inArray,
+  isNotNull,
+  lt,
+  ne,
+  notInArray,
+  or,
+  sql,
+} from "drizzle-orm";
 import {
   applyBackupDelta,
   type BackupChainNode,
@@ -55,6 +69,12 @@ export type {
 };
 
 export type AgentSandboxBackupMetadata = Omit<StoredAgentSandboxBackup, "state_data">;
+export type AgentSandboxBackupReconcileCandidate = StoredAgentSandboxBackup & {
+  reconcileVersion: string;
+};
+export type AgentSandboxBackupCleanupReconcileCandidate = StoredAgentSandboxBackupCleanupIntent & {
+  reconcileVersion: string;
+};
 
 /**
  * A user sandbox row freshly claimed from the warm pool. `warm_pool_row_id`
@@ -1680,8 +1700,12 @@ export class AgentSandboxesRepository {
 
   async updateChunkedBackupStaging(
     backupId: string,
+    writeEpoch: string,
     descriptor: AgentBackupChunkStagingDescriptor,
   ): Promise<void> {
+    if (descriptor.objectSetId !== writeEpoch || descriptor.writeQuiescedAt !== null) {
+      throw new Error(`Chunked backup staging row ${backupId} has an invalid write epoch`);
+    }
     const [row] = await dbWrite
       .update(agentSandboxBackups)
       .set({
@@ -1694,6 +1718,9 @@ export class AgentSandboxesRepository {
           eq(agentSandboxBackups.snapshot_schema_version, 2),
           eq(agentSandboxBackups.state_data_storage, "chunked-v2"),
           eq(agentSandboxBackups.storage_commit_state, "staging"),
+          sql`${agentSandboxBackups.state_data_descriptor} ->> 'objectSetId' = ${writeEpoch}`,
+          sql`(${agentSandboxBackups.state_data_descriptor} ->> 'writeLeaseExpiresAt')::timestamptz > NOW()`,
+          sql`${agentSandboxBackups.state_data_descriptor} -> 'writeQuiescedAt' = 'null'::jsonb`,
         ),
       )
       .returning({ id: agentSandboxBackups.id });
@@ -1702,10 +1729,14 @@ export class AgentSandboxesRepository {
 
   async commitChunkedBackup(params: {
     backupId: string;
+    writeEpoch: string;
     contentHash: string;
     descriptor: AgentBackupChunkCompleteDescriptor;
     verifiedAt: Date;
   }): Promise<StoredAgentSandboxBackup> {
+    if (params.descriptor.objectSetId !== params.writeEpoch) {
+      throw new Error(`Chunked backup staging row ${params.backupId} changed write epoch`);
+    }
     const [row] = await dbWrite
       .update(agentSandboxBackups)
       .set({
@@ -1725,6 +1756,9 @@ export class AgentSandboxesRepository {
           eq(agentSandboxBackups.snapshot_schema_version, 2),
           eq(agentSandboxBackups.state_data_storage, "chunked-v2"),
           eq(agentSandboxBackups.storage_commit_state, "staging"),
+          sql`${agentSandboxBackups.state_data_descriptor} ->> 'objectSetId' = ${params.writeEpoch}`,
+          sql`(${agentSandboxBackups.state_data_descriptor} ->> 'writeLeaseExpiresAt')::timestamptz > NOW()`,
+          sql`${agentSandboxBackups.state_data_descriptor} -> 'writeQuiescedAt' = 'null'::jsonb`,
         ),
       )
       .returning();
@@ -1762,7 +1796,6 @@ export class AgentSandboxesRepository {
           eq(agentSandboxBackups.sandbox_record_id, params.sandboxRecordId),
           eq(agentSandboxBackups.snapshot_schema_version, 2),
           eq(agentSandboxBackups.state_data_storage, "chunked-v2"),
-          COMPLETE_BACKUP,
           eq(agentSandboxes.organization_id, params.organizationId),
         ),
       )
@@ -1774,9 +1807,13 @@ export class AgentSandboxesRepository {
 
   async failChunkedBackup(
     backupId: string,
+    writeEpoch: string,
     descriptor: AgentBackupChunkStagingDescriptor,
     error: string,
   ): Promise<StoredAgentSandboxBackup | undefined> {
+    if (descriptor.objectSetId !== writeEpoch || descriptor.writeQuiescedAt === null) {
+      throw new Error(`Chunked backup staging row ${backupId} lacks quiescence proof`);
+    }
     const [row] = await dbWrite
       .update(agentSandboxBackups)
       .set({
@@ -1791,6 +1828,60 @@ export class AgentSandboxesRepository {
           eq(agentSandboxBackups.snapshot_schema_version, 2),
           eq(agentSandboxBackups.state_data_storage, "chunked-v2"),
           eq(agentSandboxBackups.storage_commit_state, "staging"),
+          sql`${agentSandboxBackups.state_data_descriptor} ->> 'objectSetId' = ${writeEpoch}`,
+          sql`${agentSandboxBackups.state_data_descriptor} -> 'writeQuiescedAt' = 'null'::jsonb`,
+        ),
+      )
+      .returning();
+    return row;
+  }
+
+  async quiesceExpiredEmptyChunkedBackup(
+    backupId: string,
+    writeEpoch: string,
+    error: string,
+  ): Promise<StoredAgentSandboxBackup | undefined> {
+    const [row] = await dbWrite
+      .update(agentSandboxBackups)
+      .set({
+        state_data_descriptor: sql`
+          jsonb_set(
+            jsonb_set(
+              jsonb_set(
+                ${agentSandboxBackups.state_data_descriptor},
+                '{commitState}',
+                '"failed"'::jsonb,
+                true
+              ),
+              '{failure}',
+              to_jsonb(${error}::text),
+              true
+            ),
+            '{writeQuiescedAt}',
+            to_jsonb(
+              to_char(
+                NOW() AT TIME ZONE 'UTC',
+                'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'
+              )
+            ),
+            true
+          )
+        `,
+        storage_commit_state: "failed",
+        storage_commit_error: error,
+        storage_commit_updated_at: sql`NOW()`,
+      })
+      .where(
+        and(
+          eq(agentSandboxBackups.id, backupId),
+          eq(agentSandboxBackups.snapshot_schema_version, 2),
+          eq(agentSandboxBackups.state_data_storage, "chunked-v2"),
+          inArray(agentSandboxBackups.storage_commit_state, ["staging", "failed"]),
+          sql`${agentSandboxBackups.state_data_descriptor} ->> 'objectSetId' = ${writeEpoch}`,
+          sql`${agentSandboxBackups.state_data_descriptor} -> 'writeQuiescedAt' = 'null'::jsonb`,
+          sql`jsonb_typeof(${agentSandboxBackups.state_data_descriptor} -> 'plannedObjectKeys') = 'array'`,
+          sql`jsonb_array_length(${agentSandboxBackups.state_data_descriptor} -> 'plannedObjectKeys') = 0`,
+          sql`(${agentSandboxBackups.state_data_descriptor} ->> 'writeLeaseExpiresAt')::timestamptz <= NOW()`,
         ),
       )
       .returning();
@@ -1800,9 +1891,17 @@ export class AgentSandboxesRepository {
   async listIncompleteChunkedBackupsBefore(
     before: Date,
     limit: number,
-  ): Promise<StoredAgentSandboxBackup[]> {
+  ): Promise<AgentSandboxBackupReconcileCandidate[]> {
     return await dbRead
-      .select()
+      .select({
+        ...getTableColumns(agentSandboxBackups),
+        reconcileVersion: sql<string>`
+          to_char(
+            ${agentSandboxBackups.storage_commit_updated_at} AT TIME ZONE 'UTC',
+            'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'
+          )
+        `,
+      })
       .from(agentSandboxBackups)
       .where(
         and(
@@ -1810,6 +1909,45 @@ export class AgentSandboxesRepository {
           eq(agentSandboxBackups.state_data_storage, "chunked-v2"),
           ne(agentSandboxBackups.storage_commit_state, "complete"),
           lt(agentSandboxBackups.storage_commit_updated_at, before),
+          or(
+            eq(agentSandboxBackups.storage_commit_state, "cleanup-pending"),
+            sql`
+              CASE
+                WHEN
+                  jsonb_typeof(${agentSandboxBackups.state_data_descriptor}) = 'object'
+                  AND ${agentSandboxBackups.state_data_descriptor} ->> 'commitState'
+                    IN ('staging', 'failed')
+                  AND (
+                    ${agentSandboxBackups.state_data_descriptor} ->> 'objectSetId'
+                  ) ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+                  AND jsonb_typeof(
+                    ${agentSandboxBackups.state_data_descriptor} -> 'plannedObjectKeys'
+                  ) = 'array'
+                  AND ${agentSandboxBackups.state_data_descriptor} ? 'writeQuiescedAt'
+                THEN
+                  (
+                    jsonb_typeof(
+                      ${agentSandboxBackups.state_data_descriptor} -> 'writeQuiescedAt'
+                    ) = 'string'
+                    AND (
+                      ${agentSandboxBackups.state_data_descriptor} ->> 'writeQuiescedAt'
+                    ) ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'
+                  )
+                  OR
+                  (
+                    ${agentSandboxBackups.state_data_descriptor} -> 'writeQuiescedAt' =
+                      'null'::jsonb
+                    AND (
+                      ${agentSandboxBackups.state_data_descriptor} ->> 'writeLeaseExpiresAt'
+                    ) ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'
+                    AND (
+                      ${agentSandboxBackups.state_data_descriptor} ->> 'writeLeaseExpiresAt'
+                    )::timestamptz <= NOW()
+                  )
+                ELSE FALSE
+              END
+            `,
+          ),
         ),
       )
       .orderBy(asc(agentSandboxBackups.storage_commit_updated_at))
@@ -1819,13 +1957,58 @@ export class AgentSandboxesRepository {
   async listBackupObjectCleanupIntentsBefore(
     before: Date,
     limit: number,
-  ): Promise<StoredAgentSandboxBackupCleanupIntent[]> {
+  ): Promise<AgentSandboxBackupCleanupReconcileCandidate[]> {
     return await dbRead
-      .select()
+      .select({
+        ...getTableColumns(agentSandboxBackupCleanupIntents),
+        reconcileVersion: sql<string>`
+          to_char(
+            ${agentSandboxBackupCleanupIntents.updated_at} AT TIME ZONE 'UTC',
+            'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'
+          )
+        `,
+      })
       .from(agentSandboxBackupCleanupIntents)
       .where(lt(agentSandboxBackupCleanupIntents.updated_at, before))
       .orderBy(asc(agentSandboxBackupCleanupIntents.updated_at))
       .limit(limit);
+  }
+
+  async rescheduleIncompleteChunkedBackup(
+    backupId: string,
+    expectedVersion: string,
+  ): Promise<boolean> {
+    const rows = await dbWrite
+      .update(agentSandboxBackups)
+      .set({ storage_commit_updated_at: sql`NOW()` })
+      .where(
+        and(
+          eq(agentSandboxBackups.id, backupId),
+          eq(agentSandboxBackups.snapshot_schema_version, 2),
+          eq(agentSandboxBackups.state_data_storage, "chunked-v2"),
+          ne(agentSandboxBackups.storage_commit_state, "complete"),
+          sql`${agentSandboxBackups.storage_commit_updated_at} = ${expectedVersion}::timestamptz`,
+        ),
+      )
+      .returning({ id: agentSandboxBackups.id });
+    return rows.length === 1;
+  }
+
+  async rescheduleBackupObjectCleanupIntent(
+    backupId: string,
+    expectedVersion: string,
+  ): Promise<boolean> {
+    const rows = await dbWrite
+      .update(agentSandboxBackupCleanupIntents)
+      .set({ updated_at: sql`NOW()` })
+      .where(
+        and(
+          eq(agentSandboxBackupCleanupIntents.backup_id, backupId),
+          sql`${agentSandboxBackupCleanupIntents.updated_at} = ${expectedVersion}::timestamptz`,
+        ),
+      )
+      .returning({ id: agentSandboxBackupCleanupIntents.backup_id });
+    return rows.length === 1;
   }
 
   async deleteBackupObjectCleanupIntent(backupId: string): Promise<boolean> {
@@ -1845,6 +2028,10 @@ export class AgentSandboxesRepository {
           eq(agentSandboxBackups.snapshot_schema_version, 2),
           eq(agentSandboxBackups.state_data_storage, "chunked-v2"),
           ne(agentSandboxBackups.storage_commit_state, "complete"),
+          or(
+            eq(agentSandboxBackups.storage_commit_state, "cleanup-pending"),
+            sql`${agentSandboxBackups.state_data_descriptor} ->> 'writeQuiescedAt' IS NOT NULL`,
+          ),
         ),
       )
       .returning({ id: agentSandboxBackups.id });

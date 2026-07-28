@@ -27,12 +27,48 @@ export interface SandboxReplacementCleanupLocator {
   containerName: string;
   replacementAttemptId?: string | null;
   containerId?: string | null;
+  volumePath?: string | null;
   vpnNodeId?: string | null;
   vpnNodeName?: string | null;
   previousVpnNodeId?: string | null;
   vpnRegistrationStartedAt?: string | null;
   allocationCounted?: boolean | null;
 }
+
+/**
+ * Exact physical placement of a restore-validation candidate. Every identity
+ * is provider-generated from the replacement attempt; the logical agent ID is
+ * deliberately absent so retirement can never target a serving placement.
+ */
+export interface SandboxRestoreValidationCandidateLocator extends SandboxReplacementCleanupLocator {
+  replacementAttemptId: string;
+  volumePath: string;
+}
+
+/**
+ * Positive provider evidence that every physical resource belonging to one
+ * never-routed restore candidate is absent.
+ */
+export interface SandboxRestoreValidationRetirementProof {
+  sandboxId: string;
+  nodeId: string;
+  containerName: string;
+  replacementAttemptId: string;
+  containerId: string | null;
+  containerAbsentAt: string;
+  volumePath: string;
+  volumeAbsentAt: string;
+  vpnNodeId: string | null;
+  vpnNodeName: string | null;
+  vpnAbsentAt: string;
+}
+
+/**
+ * Exact provider observation for a restore-only candidate whose HTTP health
+ * surface cannot supply a trusted phase. Only exited/absent observations permit
+ * retirement; running/unresolved preserve every ownership fence.
+ */
+export type SandboxRestoreValidationRuntimeState = "running" | "exited" | "absent" | "unresolved";
 
 /**
  * Identifies the exact paused container retained as a short-lived rollback
@@ -55,6 +91,7 @@ export class SandboxReplacementCleanupUnresolvedError extends Error {
   readonly containerName: string;
   readonly replacementAttemptId: string | null;
   readonly containerId: string | null;
+  readonly volumePath: string | null;
   readonly vpnNodeId: string | null;
   readonly vpnNodeName: string | null;
   readonly previousVpnNodeId: string | null;
@@ -73,6 +110,7 @@ export class SandboxReplacementCleanupUnresolvedError extends Error {
     this.containerName = locator.containerName;
     this.replacementAttemptId = locator.replacementAttemptId ?? null;
     this.containerId = locator.containerId ?? null;
+    this.volumePath = locator.volumePath ?? null;
     this.vpnNodeId = locator.vpnNodeId ?? null;
     this.vpnNodeName = locator.vpnNodeName ?? null;
     this.previousVpnNodeId = locator.previousVpnNodeId ?? null;
@@ -138,6 +176,16 @@ export interface SandboxProvider {
       "sandboxId" | "nodeId" | "containerName" | "vpnNodeId"
     >,
   ): Promise<void>;
+  /**
+   * Retires the isolated physical resources of a never-routed restore
+   * candidate and returns positive absence evidence for all three resources.
+   */
+  retireRestoreValidationCandidate?(
+    locator: SandboxRestoreValidationCandidateLocator,
+  ): Promise<SandboxRestoreValidationRetirementProof>;
+  inspectRestoreValidationCandidate?(
+    locator: SandboxRestoreValidationCandidateLocator,
+  ): Promise<SandboxRestoreValidationRuntimeState>;
   checkHealth(handle: SandboxHandle): Promise<boolean>;
   /**
    * Richer readiness probe that distinguishes a genuine `not_ready` from a
@@ -182,6 +230,30 @@ export interface SandboxSnapshotSourceAttestationSeed {
   imageDigest: string;
 }
 
+/**
+ * Provider-selected restore placement before any host-visible side effect.
+ * The caller atomically reserves its ports, capacity, and durable lifecycle
+ * row, then returns the exact pair Docker is allowed to publish.
+ */
+export interface SandboxRestoreValidationPlacementIntent {
+  agentId: string;
+  containerName: string;
+  containerPort: number;
+  healthPath: string;
+  hostname: string;
+  nodeId: string;
+  replacementAttemptId: string;
+  sandboxId: string;
+  volumePath: string;
+  vpnNodeName: string;
+  vpnRegistrationStartedAt: string;
+}
+
+export interface SandboxRestoreValidationPlacementReservation {
+  bridgePort: number;
+  webUiPort: number;
+}
+
 export interface SandboxCreateConfig {
   agentId: string;
   agentName: string;
@@ -205,7 +277,7 @@ export interface SandboxCreateConfig {
   routeAgentId?: string | null;
   snapshotId?: string;
   /**
-   * Candidate-only restore identity. Providers add the placement's generated
+   * Candidate-only restore identity. Providers add the placement's durable
    * replacement attempt and sandbox id before injecting the complete binding
    * into the new runtime.
    */
@@ -216,6 +288,17 @@ export interface SandboxCreateConfig {
    * placement UUID before exposing the attestation to the runtime.
    */
   snapshotSourceAttestation?: SandboxSnapshotSourceAttestationSeed;
+  /**
+   * Launches a third, never-routed placement solely to validate a snapshot
+   * restore. The provider excludes both live authorities, owns every physical
+   * identity, and injects the logical route identity without publishing it.
+   */
+  restoreValidationCandidate?: {
+    primaryNodeId: string;
+    /** Durable restore authority reused by every crash/retry attempt. */
+    replacementAttemptId: string;
+    rollbackStandbyNodeId: string;
+  };
   resources?: { vcpus?: number; memoryMb?: number };
   timeout?: number;
   dockerImage?: string;
@@ -242,6 +325,13 @@ export interface SandboxCreateConfig {
    * SSH response carrying Docker's container id is lost.
    */
   onReplacementCreateIntent?: (handle: SandboxHandle) => Promise<void>;
+  /**
+   * Commits restore placement, capacity, and both host-port reservations in one
+   * transaction before Headscale, volume, or Docker can create remote state.
+   */
+  onRestoreValidationPlacementIntent?: (
+    intent: SandboxRestoreValidationPlacementIntent,
+  ) => Promise<SandboxRestoreValidationPlacementReservation>;
   /** CAS-enriches a persisted intent with Docker's exact container id. */
   onReplacementCreated?: (handle: SandboxHandle) => Promise<void>;
   /**
