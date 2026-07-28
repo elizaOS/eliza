@@ -98,6 +98,23 @@ export function getAcpService(
     undefined) as AcpActionService | undefined;
 }
 
+export async function getReadyAcpService(
+  runtime: IAgentRuntime,
+): Promise<AcpActionService | undefined> {
+  const existing = getAcpService(runtime);
+  if (existing) return existing;
+  if (!runtime.hasService("ACP_SUBPROCESS_SERVICE")) return undefined;
+
+  try {
+    return (await runtime.getServiceLoadPromise(
+      "ACP_SUBPROCESS_SERVICE",
+    )) as unknown as AcpActionService;
+  } catch {
+    // error-policy:J4 validation hides a capability whose registered service failed to start; the runtime reports the start failure.
+    return undefined;
+  }
+}
+
 export function logger(runtime: IAgentRuntime): IAgentRuntime["logger"] {
   return runtime.logger;
 }

@@ -4874,15 +4874,9 @@ export class AgentRuntime implements IAgentRuntime {
 			this.serviceRegistrationStatus.set(key, "registered");
 			return serviceInstance;
 		} catch (error) {
-			this.logger.error(
-				{
-					src: "agent",
-					agentId: this.agentId,
-					serviceType,
-					error: error instanceof Error ? error.message : String(error),
-				},
-				"Service start failed",
-			);
+			this.reportError("AgentRuntime.serviceStart", error, {
+				serviceType,
+			});
 			const handler = this.servicePromiseHandlers.get(serviceType);
 			if (handler) {
 				handler.reject(
