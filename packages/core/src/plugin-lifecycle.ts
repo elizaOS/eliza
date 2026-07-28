@@ -81,6 +81,15 @@ type RuntimeServiceRegistrationStatus =
 	| "registered"
 	| "failed";
 
+type RuntimeServiceImplementationHealth = {
+	serviceType: string;
+	serviceClass: string;
+	plugin?: string;
+	critical: boolean;
+	status: RuntimeServiceRegistrationStatus;
+	error?: { code: string; message: string };
+};
+
 type RuntimeServicePromiseHandler = {
 	resolve: (service: Service) => void;
 	reject: (error: Error) => void;
@@ -100,6 +109,7 @@ type RuntimeModelHandlerRecord = {
 type RuntimePluginRegistrationCapture = {
 	ownership: PluginOwnership;
 	adapterBefore: IAgentRuntime["adapter"] | null | undefined;
+	serviceCountsBefore: Map<ServiceTypeName, number>;
 };
 
 type RuntimePluginServiceStartCapture = {
@@ -135,6 +145,12 @@ type RuntimePrivateState = {
 		ServiceTypeName,
 		RuntimeServiceRegistrationStatus
 	>;
+	serviceImplementationHealth: Map<
+		RuntimeServiceClass,
+		RuntimeServiceImplementationHealth
+	>;
+	serviceInstancesByClass: Map<RuntimeServiceClass, Service>;
+	servicePluginNames: WeakMap<RuntimeServiceClass, string>;
 	sendHandlers: Map<string, RuntimeSendHandler>;
 	models: Map<string, RuntimeModelHandlerRecord[]>;
 	_runServiceStart?: (
@@ -519,6 +535,33 @@ function pushUniqueService(
 	items.push(next);
 }
 
+function trackRegisteredServiceClasses(
+	privateState: RuntimePrivateState,
+	capture: RuntimePluginRegistrationCapture,
+): void {
+	for (const [serviceType, classes] of privateState.serviceTypes) {
+		const before = capture.serviceCountsBefore.get(serviceType) ?? 0;
+		for (const serviceClass of classes.slice(before)) {
+			serviceClassOwners.set(serviceClass, capture.ownership.pluginName);
+			privateState.servicePluginNames.set(
+				serviceClass,
+				capture.ownership.pluginName,
+			);
+			const health = privateState.serviceImplementationHealth.get(serviceClass);
+			if (health) {
+				privateState.serviceImplementationHealth.set(serviceClass, {
+					...health,
+					plugin: capture.ownership.pluginName,
+				});
+			}
+			pushUniqueService(capture.ownership.services, {
+				serviceType,
+				serviceClass,
+			});
+		}
+	}
+}
+
 function createEmptyOwnership(plugin: Plugin): PluginOwnership {
 	return {
 		pluginName: plugin.name,
@@ -581,20 +624,19 @@ async function stopOwnedServices(
 		}
 
 		const ownedClassSet = new Set(ownedClasses);
-		const removalIndices: number[] = [];
-		currentClasses.forEach((serviceClass, index) => {
-			if (ownedClassSet.has(serviceClass)) {
-				removalIndices.push(index);
-			}
-		});
-
 		const instances = runtime.services.get(key) ?? [];
-		for (const removalIndex of [...removalIndices].sort((a, b) => b - a)) {
-			const instance = instances[removalIndex];
+		for (const ownedClass of ownedClasses) {
+			const instance = privateState.serviceInstancesByClass.get(ownedClass);
 			if (instance && typeof instance.stop === "function") {
 				await instance.stop();
 			}
-			instances.splice(removalIndex, 1);
+			if (instance) {
+				const instanceIndex = instances.indexOf(instance);
+				if (instanceIndex >= 0) {
+					instances.splice(instanceIndex, 1);
+				}
+			}
+			privateState.serviceInstancesByClass.delete(ownedClass);
 		}
 
 		for (const ownedClass of ownedClasses) {
@@ -602,6 +644,8 @@ async function stopOwnedServices(
 				await ownedClass.stopRuntime(runtime);
 			}
 			serviceClassOwners.delete(ownedClass);
+			privateState.serviceImplementationHealth.delete(ownedClass);
+			privateState.servicePluginNames.delete(ownedClass);
 		}
 
 		const remainingClasses = currentClasses.filter(
@@ -1013,6 +1057,18 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 		const nextClasses = privateState.serviceTypes.get(serviceType) ?? [];
 		for (const registeredClass of nextClasses.slice(serviceTypesBefore)) {
 			serviceClassOwners.set(registeredClass, capture.ownership.pluginName);
+			privateState.servicePluginNames.set(
+				registeredClass,
+				capture.ownership.pluginName,
+			);
+			const health =
+				privateState.serviceImplementationHealth.get(registeredClass);
+			if (health) {
+				privateState.serviceImplementationHealth.set(registeredClass, {
+					...health,
+					plugin: capture.ownership.pluginName,
+				});
+			}
 			pushUniqueService(capture.ownership.services, {
 				serviceType,
 				serviceClass: registeredClass,
@@ -1073,12 +1129,19 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 		const capture: RuntimePluginRegistrationCapture = {
 			ownership: createEmptyOwnership(plugin),
 			adapterBefore: runtimeWithLifecycle.adapter,
+			serviceCountsBefore: new Map(
+				Array.from(privateState.serviceTypes, ([serviceType, classes]) => [
+					serviceType,
+					classes.length,
+				]),
+			),
 		};
 
 		try {
 			await pluginRegistrationContext.run(capture, async () => {
 				await originalRegisterPlugin(plugin);
 			});
+			trackRegisteredServiceClasses(privateState, capture);
 			trackRoutesAndPluginRef(
 				runtimeWithLifecycle,
 				capture.ownership,
@@ -1104,6 +1167,7 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 				);
 			}
 		} catch (error) {
+			trackRegisteredServiceClasses(privateState, capture);
 			trackRoutesAndPluginRef(
 				runtimeWithLifecycle,
 				capture.ownership,
