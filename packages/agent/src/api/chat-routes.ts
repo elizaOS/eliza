@@ -3067,12 +3067,12 @@ async function generateChatResponseWithTiming(
                     const visibleChunk = isInternalStructuredStreamText(chunk)
                       ? ""
                       : chunk;
-                    if (!visibleChunk) return [];
-                    if (!claimStreamSource("callback")) return [];
                     recordActionCallback(
                       extractCallbackActionTag(content),
-                      true,
+                      Boolean(visibleChunk),
                     );
+                    if (!visibleChunk) return [];
+                    if (!claimStreamSource("callback")) return [];
                     applyCallbackTextUpdate(content, visibleChunk);
                     return [];
                   },
@@ -3487,7 +3487,9 @@ async function generateChatResponseWithTiming(
       ...(failureKind ? { failureKind } : {}),
       ...(accountConnect ? { accountConnect } : {}),
       ...(localInference ? { localInference } : {}),
-      ...(result?.mode === "actions" ? { usedActionCallbacks: true } : {}),
+      ...(actionCallbacksSeen > 0 || result?.mode === "actions"
+        ? { usedActionCallbacks: true }
+        : {}),
       ...(actionCallbackHistory.length > 0
         ? { actionCallbackHistory: [...actionCallbackHistory] }
         : {}),
