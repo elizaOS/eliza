@@ -59,6 +59,7 @@ import {
   estimateDeltaBytes,
   incrementalChainDepth,
   planIncrementalBackup,
+  resolveBackupChainBytes,
 } from "./agent-backup-diff";
 import { decryptAgentEnvVars, encryptAgentEnvVarsForStorage } from "./agent-env-crypto";
 import {
@@ -5980,20 +5981,46 @@ export class ElizaSandboxService {
             backupKind: b.backup_kind,
             parentBackupId: b.parent_backup_id,
             createdAtMs: b.created_at.getTime(),
+            // Kept so the projected chain sum below needs no extra query.
+            sizeBytes: b.size_bytes ?? null,
           }));
           const chainDepth = incrementalChainDepth(nodes, latest.id);
           const plan = planIncrementalBackup({ base: baseState, next: stateData, chainDepth });
           if (plan.kind === "incremental") {
-            return {
-              sandbox_record_id: sandboxRecordId,
-              snapshot_type: type,
-              // The state_data jsonb holds a BackupDelta for incremental rows.
-              state_data: plan.delta,
-              size_bytes: estimateDeltaBytes(plan.delta),
-              backup_kind: "incremental",
-              parent_backup_id: latest.id,
-              content_hash: contentHash,
-            };
+            // retained-implies-restorable (#17172): reconstruction budgets the
+            // SUM of the chain's stored inputs, so appending a delta that
+            // pushes that sum past the ceiling would make this row canonical
+            // AND unreconstructable in the same write — the invariant this PR
+            // exists to hold. A full backup is always reconstructable, so it is
+            // the correct fail-closed outcome, both when the projection
+            // breaches and when it cannot be computed (an ancestor with an
+            // unrecorded size_bytes).
+            const deltaBytes = estimateDeltaBytes(plan.delta);
+            const existingChainBytes = resolveBackupChainBytes(nodes, latest.id);
+            if (
+              existingChainBytes !== null &&
+              existingChainBytes + deltaBytes <= MAX_RESTORABLE_AGENT_BACKUP_BYTES
+            ) {
+              return {
+                sandbox_record_id: sandboxRecordId,
+                snapshot_type: type,
+                // The state_data jsonb holds a BackupDelta for incremental rows.
+                state_data: plan.delta,
+                size_bytes: deltaBytes,
+                backup_kind: "incremental",
+                parent_backup_id: latest.id,
+                content_hash: contentHash,
+              };
+            }
+            logger.info(
+              "[agent-sandbox] Storing a full backup: an incremental would exceed the restorable chain budget",
+              {
+                sandboxRecordId,
+                existingChainBytes,
+                deltaBytes,
+                limitBytes: MAX_RESTORABLE_AGENT_BACKUP_BYTES,
+              },
+            );
           }
         }
       } catch (error) {
