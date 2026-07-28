@@ -19,6 +19,7 @@ import {
   ApprovalNotFoundError,
   type ApprovalPayload,
   type ApprovalQueue,
+  ApprovalQueueCompatibilityError,
   type ApprovalRequest,
   type ApprovalRequestState,
   type ApprovalResolution,
@@ -996,7 +997,25 @@ export function createApprovalQueue(
 ): ApprovalQueue {
   const service = resolveApprovalService(runtime);
   if (service) {
-    return service.getQueue(options.agentId) as unknown as ApprovalQueue;
+    const queue = service.getQueue(options.agentId) as unknown;
+    const requiredMethods: ReadonlyArray<keyof ApprovalQueue> = [
+      "list",
+      "byId",
+      "approve",
+      "reject",
+      "markExecuting",
+      "markDone",
+    ];
+    const missingMethods = requiredMethods.filter(
+      (method) =>
+        !queue ||
+        typeof queue !== "object" ||
+        typeof (queue as Record<string, unknown>)[method] !== "function",
+    );
+    if (missingMethods.length > 0) {
+      throw new ApprovalQueueCompatibilityError(missingMethods);
+    }
+    return queue as ApprovalQueue;
   }
   return new PgApprovalQueue(runtime, options);
 }

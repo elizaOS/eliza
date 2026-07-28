@@ -239,6 +239,19 @@ export class ApprovalNotFoundError extends Error {
   }
 }
 
+/** Thrown before resolution when a registered queue predates required methods. */
+export class ApprovalQueueCompatibilityError extends Error {
+  public readonly missingMethods: ReadonlyArray<keyof ApprovalQueue>;
+
+  constructor(missingMethods: ReadonlyArray<keyof ApprovalQueue>) {
+    super(
+      `[ApprovalQueue] registered queue is incompatible; missing methods: ${missingMethods.join(", ")}`,
+    );
+    this.name = "ApprovalQueueCompatibilityError";
+    this.missingMethods = missingMethods;
+  }
+}
+
 /**
  * Queue interface. Implementations must:
  *  - Reject invalid state transitions by throwing `ApprovalStateTransitionError`.
