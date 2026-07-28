@@ -40,6 +40,8 @@ async function makeHarness(): Promise<{
 		adapter,
 		logLevel: "fatal",
 	});
+	await adapter.createRoomParticipants([AGENT_ID, USER_ID], ROOM_A);
+	await adapter.createRoomParticipants([AGENT_ID, USER_ID], ROOM_B);
 	return {
 		adapter,
 		runtime,
@@ -262,6 +264,94 @@ describe("DocumentService list semantics", () => {
 		expect(getWorld).toHaveBeenCalledTimes(1);
 	});
 
+	it("uses the bounded compatibility path for adapters without the native capability", async () => {
+		const { adapter, runtime, service } = await makeHarness();
+		await seedDocuments(
+			runtime,
+			Array.from({ length: 125 }, (_, index) => documentMemory(index)),
+		);
+		Object.defineProperty(adapter, "documentListQueryCapability", {
+			configurable: true,
+			value: undefined,
+		});
+		const nativeQuery = vi.spyOn(adapter, "queryDocuments");
+		const getMemories = vi.spyOn(adapter, "getMemories");
+
+		const result = await service.listDocumentsDetailed(undefined, {
+			limit: 25,
+			offset: 100,
+		});
+
+		expect(result).toMatchObject({
+			status: "ok",
+			totalVisible: 125,
+			totalAvailable: 125,
+			totalMatched: 125,
+			hasMore: false,
+		});
+		expect(result.documents).toHaveLength(25);
+		expect(nativeQuery).not.toHaveBeenCalled();
+		expect(getMemories).toHaveBeenCalledTimes(2);
+	});
+
+	it("matches room-scoped RLS semantics and ignores non-document rows", async () => {
+		const { adapter, runtime, service } = await makeHarness();
+		await adapter.deleteParticipants([{ entityId: USER_ID, roomId: ROOM_B }]);
+		const roomADocument = documentMemory(2);
+		const roomBDocument = documentMemory(3);
+		const fragment = documentMemory(4, {
+			metadata: {
+				type: MemoryType.FRAGMENT,
+				documentId: roomADocument.id,
+				position: 0,
+			},
+		});
+		await seedDocuments(runtime, [roomADocument, roomBDocument, fragment]);
+		vi.spyOn(runtime, "getRoom").mockResolvedValue({
+			id: ROOM_A,
+			agentId: AGENT_ID,
+			worldId: WORLD_ID,
+		} as Room);
+		vi.spyOn(runtime, "getWorld").mockResolvedValue({
+			id: WORLD_ID,
+			agentId: AGENT_ID,
+			metadata: { roles: { [USER_ID]: "USER" } },
+		} as World);
+
+		const userResult = await service.listDocumentsDetailed(userMessage());
+		const runtimeResult = await service.listDocumentsDetailed();
+
+		expect(userResult.totalVisible).toBe(1);
+		expect(userResult.documents.map((document) => document.id)).toEqual([
+			roomADocument.id,
+		]);
+		expect(runtimeResult.totalVisible).toBe(2);
+		expect(runtimeResult.documents.map((document) => document.id)).toEqual([
+			roomBDocument.id,
+			roomADocument.id,
+		]);
+	});
+
+	it("rejects offsets and query inputs outside the bounded contract", async () => {
+		const { service } = await makeHarness();
+
+		await expect(
+			service.listDocumentsDetailed(undefined, { offset: 10_001 }),
+		).rejects.toMatchObject({
+			code: "DOCUMENT_LIST_INVALID_PAGINATION",
+		});
+		await expect(
+			service.listDocumentsDetailed(undefined, { offset: 1.5 }),
+		).rejects.toMatchObject({
+			code: "DOCUMENT_LIST_INVALID_PAGINATION",
+		});
+		await expect(
+			service.listDocumentsDetailed(undefined, { query: "x".repeat(513) }),
+		).rejects.toMatchObject({
+			code: "DOCUMENT_LIST_INVALID_PAGINATION",
+		});
+	});
+
 	it("reports and throws a typed role lookup failure", async () => {
 		const { runtime, service } = await makeHarness();
 		vi.spyOn(runtime, "getRoom").mockRejectedValue(
@@ -279,6 +369,25 @@ describe("DocumentService list semantics", () => {
 			expect.objectContaining({
 				scope: "DocumentService.resolveRequesterRole",
 				code: "DOCUMENT_ROLE_LOOKUP_FAILED",
+			}),
+		);
+	});
+
+	it("reports and throws a typed participant-room lookup failure", async () => {
+		const { runtime, service } = await makeHarness();
+		vi.spyOn(runtime, "getRoomsForParticipants").mockRejectedValue(
+			new Error("participant storage unavailable"),
+		);
+
+		await expect(service.listDocumentsDetailed()).rejects.toMatchObject({
+			name: "ElizaError",
+			code: "DOCUMENT_ROOM_LOOKUP_FAILED",
+			cause: expect.any(Error),
+		});
+		expect(runtime.getRecentReportedErrors()).toContainEqual(
+			expect.objectContaining({
+				scope: "DocumentService.resolveRequesterRooms",
+				code: "DOCUMENT_ROOM_LOOKUP_FAILED",
 			}),
 		);
 	});

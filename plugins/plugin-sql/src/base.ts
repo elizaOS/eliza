@@ -25,6 +25,7 @@ import {
   type CreateOAuthFlowStateParams,
   DatabaseAdapter,
   type DeleteConnectorAccountParams,
+  DOCUMENT_LIST_QUERY_CAPABILITY_VERSION,
   type DocumentListCursor,
   type DocumentListQueryParams,
   type DocumentListQueryResult,
@@ -63,6 +64,7 @@ import {
   type TaskMetadata,
   type UpsertConnectorAccountParams,
   type UUID,
+  validateDocumentListQueryParams,
   type World,
 } from "@elizaos/core";
 
@@ -184,19 +186,14 @@ function documentVisibilityCondition(params: DocumentListQueryParams): SQL | und
     return undefined;
   }
 
-  const requesterEntityId = params.requesterEntityId;
-  if (!requesterEntityId) {
-    return sql`COALESCE(${memoryTable.metadata}->>'scope', 'global') = 'global'`;
-  }
-
   return sql`(
     COALESCE(${memoryTable.metadata}->>'scope', 'global') = 'global'
     OR (
       ${memoryTable.metadata}->>'scope' = 'user-private'
       AND (
-        ${memoryTable.metadata}->>'scopedToEntityId' = ${requesterEntityId}
-        OR ${memoryTable.metadata}->>'addedBy' = ${requesterEntityId}
-        OR ${memoryTable.entityId} = ${requesterEntityId}
+        ${memoryTable.metadata}->>'scopedToEntityId' = ${params.requesterEntityId}
+        OR ${memoryTable.metadata}->>'addedBy' = ${params.requesterEntityId}
+        OR ${memoryTable.entityId} = ${params.requesterEntityId}
       )
     )
   )`;
@@ -205,21 +202,10 @@ function documentVisibilityCondition(params: DocumentListQueryParams): SQL | und
 function documentTimestampExpression(): SQL {
   return sql`COALESCE(
     CASE
-      WHEN ${memoryTable.metadata}->>'timestamp' ~ '^-?[0-9]+([.][0-9]+)?$'
+      WHEN jsonb_typeof(${memoryTable.metadata}->'timestamp') = 'number'
       THEN (${memoryTable.metadata}->>'timestamp')::double precision
     END,
     EXTRACT(EPOCH FROM ${memoryTable.createdAt}) * 1000
-  )`;
-}
-
-function documentCursorCondition(cursor: DocumentListCursor): SQL {
-  const cursorDate = new Date(cursor.createdAt);
-  return sql`(
-    ${memoryTable.createdAt} < ${cursorDate}
-    OR (
-      ${memoryTable.createdAt} = ${cursorDate}
-      AND ${memoryTable.id} < ${cursor.id}
-    )
   )`;
 }
 
@@ -384,6 +370,7 @@ import type { StoreContext } from "./stores/types";
 import type { DrizzleDatabase } from "./types";
 
 export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase> {
+  readonly documentListQueryCapability = DOCUMENT_LIST_QUERY_CAPABILITY_VERSION;
   protected readonly maxRetries: number = 3;
   protected readonly baseDelay: number = 1000;
   protected readonly maxDelay: number = 10000;
@@ -1609,45 +1596,20 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   }
 
   async queryDocuments(params: DocumentListQueryParams): Promise<DocumentListQueryResult> {
-    if (!Number.isInteger(params.limit) || params.limit < 1 || params.limit > 100) {
-      throw new ElizaError("Document list limit must be an integer between 1 and 100", {
-        code: "DOCUMENT_LIST_INVALID_PAGINATION",
-        context: { limit: params.limit },
-      });
-    }
-    if (!Number.isInteger(params.offset) || params.offset < 0) {
-      throw new ElizaError("Document list offset must be a non-negative integer", {
-        code: "DOCUMENT_LIST_INVALID_PAGINATION",
-        context: { offset: params.offset },
-      });
-    }
-    if (
-      params.cursor &&
-      (!Number.isFinite(params.cursor.createdAt) ||
-        typeof params.cursor.id !== "string" ||
-        params.cursor.id.length === 0)
-    ) {
-      throw new ElizaError("Document list cursor is invalid", {
-        code: "DOCUMENT_LIST_INVALID_PAGINATION",
-        context: { cursor: params.cursor },
-      });
-    }
-    if (params.cursor && params.offset !== 0) {
-      throw new ElizaError("Document list cursor cannot be combined with a non-zero offset", {
-        code: "DOCUMENT_LIST_INVALID_PAGINATION",
-        context: { offset: params.offset },
-      });
-    }
-
-    return this.withEntityContext(params.requesterEntityId ?? null, async (tx) => {
+    validateDocumentListQueryParams(params);
+    return this.withEntityContext(params.requesterEntityId, async (tx) => {
       const visibleConditions: SQL[] = [
         eq(memoryTable.type, "documents"),
         eq(memoryTable.agentId, params.agentId),
+        sql`${memoryTable.metadata}->>'type' = 'document'`,
+        params.requesterRoomIds.length > 0
+          ? inArray(memoryTable.roomId, params.requesterRoomIds)
+          : sql`false`,
       ];
       const visibility = documentVisibilityCondition(params);
       if (visibility) visibleConditions.push(visibility);
 
-      const availableConditions = [...visibleConditions];
+      const availableConditions: SQL[] = [];
       if (params.scope) {
         availableConditions.push(
           sql`COALESCE(${memoryTable.metadata}->>'scope', 'global') = ${params.scope}`
@@ -1674,51 +1636,28 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           )}::jsonb`
         );
       }
+      const availableCondition =
+        availableConditions.length > 0 ? and(...availableConditions) : sql`true`;
 
       const normalizedQuery = params.query?.trim();
-      const matchedConditions = [...availableConditions];
+      let queryCondition: SQL = sql`true`;
       if (normalizedQuery) {
         const pattern = `%${escapeIlikeLiteral(normalizedQuery)}%`;
-        matchedConditions.push(
-          sql`CONCAT_WS(
+        queryCondition = sql`CONCAT_WS(
             E'\n',
             COALESCE(${memoryTable.content}->>'text', ''),
             COALESCE(${memoryTable.metadata}->>'title', ''),
             COALESCE(${memoryTable.metadata}->>'filename', ''),
             COALESCE(${memoryTable.metadata}->>'originalFilename', ''),
             COALESCE(${memoryTable.metadata}->>'source', '')
-          ) ILIKE ${pattern} ESCAPE '\\'`
-        );
+          ) ILIKE ${pattern} ESCAPE '\\'`;
       }
-
-      const readCount = async (conditions: SQL[], label: string): Promise<number> => {
-        const rows = await tx
-          .select({ value: count() })
-          .from(memoryTable)
-          .where(and(...conditions));
-        const row = rows[0];
-        if (!row) {
-          throw new ElizaError("Document list count query returned no row", {
-            code: "DOCUMENT_LIST_COUNT_MISSING",
-            context: { agentId: params.agentId, label },
-            severity: "fatal",
-          });
-        }
-        const value = Number(row.value);
-        if (!Number.isFinite(value)) {
-          throw new ElizaError("Document list count query returned a non-numeric value", {
-            code: "DOCUMENT_LIST_COUNT_INVALID",
-            context: { agentId: params.agentId, label, value: String(row.value) },
-            severity: "fatal",
-          });
-        }
-        return value;
-      };
 
       type DocumentRow = {
         id: string;
         type: string;
-        createdAt: Date;
+        createdAt: Date | string;
+        cursorCreatedAt: Date | string;
         content: unknown;
         entityId: string | null;
         agentId: string;
@@ -1727,21 +1666,25 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         unique: boolean;
         metadata: unknown;
       };
-      const selection = {
-        id: memoryTable.id,
-        type: memoryTable.type,
-        createdAt: memoryTable.createdAt,
-        content: memoryTable.content,
-        entityId: memoryTable.entityId,
-        agentId: memoryTable.agentId,
-        roomId: memoryTable.roomId,
-        worldId: memoryTable.worldId,
-        unique: memoryTable.unique,
-        metadata: memoryTable.metadata,
+      const databaseTimestampToMs = (value: Date | string): number => {
+        const milliseconds =
+          value instanceof Date
+            ? value.getTime()
+            : Date.parse(
+                /(?:Z|[+-]\d{2}(?::?\d{2})?)$/i.test(value) ? value : `${value.replace(" ", "T")}Z`
+              );
+        if (!Number.isFinite(milliseconds)) {
+          throw new ElizaError("Document list query returned an invalid timestamp", {
+            code: "DOCUMENT_LIST_TIMESTAMP_INVALID",
+            context: { agentId: params.agentId, value },
+            severity: "fatal",
+          });
+        }
+        return milliseconds;
       };
       const mapDocument = (row: DocumentRow): Memory => ({
         id: row.id as UUID,
-        createdAt: row.createdAt.getTime(),
+        createdAt: databaseTimestampToMs(row.createdAt),
         content:
           typeof row.content === "string"
             ? JSON.parse(row.content)
@@ -1751,50 +1694,163 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         roomId: row.roomId as UUID,
         worldId: (row.worldId ?? undefined) as UUID | undefined,
         unique: row.unique,
-        metadata: row.metadata as MemoryMetadata,
+        metadata:
+          typeof row.metadata === "string"
+            ? JSON.parse(row.metadata)
+            : (row.metadata as MemoryMetadata),
       });
-      const readPage = async (
-        conditions: SQL[]
-      ): Promise<{
+
+      type Page = {
         documents: Memory[];
         hasMore: boolean;
         nextCursor?: DocumentListCursor;
-      }> => {
-        const pageConditions = params.cursor
-          ? [...conditions, documentCursorCondition(params.cursor)]
-          : conditions;
-        const baseQuery = tx
-          .select(selection)
-          .from(memoryTable)
-          .where(and(...pageConditions))
-          .orderBy(desc(memoryTable.createdAt), desc(memoryTable.id));
-        const rows =
-          !params.cursor && params.offset > 0
-            ? await baseQuery.limit(params.limit + 1).offset(params.offset)
-            : await baseQuery.limit(params.limit + 1);
+      };
+      const buildPage = (rows: DocumentRow[]): Page => {
         const hasMore = rows.length > params.limit;
-        const documents = rows.slice(0, params.limit).map((row) => mapDocument(row as DocumentRow));
-        const last = documents.at(-1);
+        const pageRows = rows.slice(0, params.limit);
+        const documents = pageRows.map(mapDocument);
+        const last = pageRows.at(-1);
         return {
           documents,
           hasMore,
-          ...(hasMore && last?.id
-            ? { nextCursor: { createdAt: last.createdAt ?? 0, id: last.id } }
+          ...(hasMore && last
+            ? {
+                nextCursor: {
+                  createdAt: databaseTimestampToMs(last.cursorCreatedAt),
+                  id: last.id as UUID,
+                },
+              }
             : {}),
         };
       };
 
-      const totalVisible = await readCount(visibleConditions, "visible");
-      const totalAvailable = await readCount(availableConditions, "available");
-      const totalMatched = normalizedQuery
-        ? await readCount(matchedConditions, "matched")
-        : totalAvailable;
-      const matchedPage =
-        totalMatched > 0 ? await readPage(matchedConditions) : { documents: [], hasMore: false };
-      const availablePage =
-        normalizedQuery && totalMatched === 0 && totalAvailable > 0
-          ? await readPage(availableConditions)
-          : { documents: [], hasMore: false };
+      const cursorCondition = params.cursor
+        ? sql`(
+            cursor_created_at < (
+              timestamp 'epoch' + ${params.cursor.createdAt} * interval '1 millisecond'
+            )
+            OR (
+              cursor_created_at = (
+                timestamp 'epoch' + ${params.cursor.createdAt} * interval '1 millisecond'
+              )
+              AND id < ${params.cursor.id}::uuid
+            )
+          )`
+        : sql`true`;
+      const offsetClause = params.cursor ? sql`` : sql`OFFSET ${params.offset}`;
+      const pageSize = params.limit + 1;
+      const result = await tx.execute(sql`
+        WITH visible AS MATERIALIZED (
+          SELECT
+            ${memoryTable.id} AS id,
+            ${memoryTable.type} AS type,
+            ${memoryTable.createdAt} AS created_at,
+            date_trunc('milliseconds', ${memoryTable.createdAt}) AS cursor_created_at,
+            ${memoryTable.content} AS content,
+            ${memoryTable.entityId} AS entity_id,
+            ${memoryTable.agentId} AS agent_id,
+            ${memoryTable.roomId} AS room_id,
+            ${memoryTable.worldId} AS world_id,
+            ${memoryTable.unique} AS unique,
+            ${memoryTable.metadata} AS metadata,
+            (${availableCondition}) AS is_available,
+            ((${availableCondition}) AND (${queryCondition})) AS is_matched
+          FROM ${memoryTable}
+          WHERE ${and(...visibleConditions)}
+        ),
+        counts AS MATERIALIZED (
+          SELECT
+            COUNT(*) AS total_visible,
+            COUNT(*) FILTER (WHERE is_available) AS total_available,
+            COUNT(*) FILTER (WHERE is_matched) AS total_matched
+          FROM visible
+        ),
+        matched_page AS MATERIALIZED (
+          SELECT visible.*, 'matched'::text AS page_kind
+          FROM visible
+          WHERE is_matched AND ${cursorCondition}
+          ORDER BY cursor_created_at DESC, id DESC
+          LIMIT ${pageSize}
+          ${offsetClause}
+        ),
+        available_page AS MATERIALIZED (
+          SELECT visible.*, 'available'::text AS page_kind
+          FROM visible
+          CROSS JOIN counts
+          WHERE
+            ${Boolean(normalizedQuery)}
+            AND counts.total_matched = 0
+            AND is_available
+            AND ${cursorCondition}
+          ORDER BY cursor_created_at DESC, id DESC
+          LIMIT ${pageSize}
+          ${offsetClause}
+        ),
+        page_rows AS (
+          SELECT * FROM matched_page
+          UNION ALL
+          SELECT * FROM available_page
+        )
+        SELECT
+          counts.total_visible AS "totalVisible",
+          counts.total_available AS "totalAvailable",
+          counts.total_matched AS "totalMatched",
+          page_rows.page_kind AS "pageKind",
+          page_rows.id,
+          page_rows.type,
+          page_rows.created_at AS "createdAt",
+          page_rows.cursor_created_at AS "cursorCreatedAt",
+          page_rows.content,
+          page_rows.entity_id AS "entityId",
+          page_rows.agent_id AS "agentId",
+          page_rows.room_id AS "roomId",
+          page_rows.world_id AS "worldId",
+          page_rows.unique,
+          page_rows.metadata
+        FROM counts
+        LEFT JOIN page_rows ON true
+        ORDER BY
+          CASE page_rows.page_kind WHEN 'matched' THEN 0 ELSE 1 END,
+          page_rows.cursor_created_at DESC,
+          page_rows.id DESC
+      `);
+      type QueryRow = Partial<DocumentRow> & {
+        totalVisible: unknown;
+        totalAvailable: unknown;
+        totalMatched: unknown;
+        pageKind: "matched" | "available" | null;
+      };
+      const rows = result.rows as QueryRow[];
+      const countRow = rows[0];
+      if (!countRow) {
+        throw new ElizaError("Document list query returned no count row", {
+          code: "DOCUMENT_LIST_COUNT_MISSING",
+          context: { agentId: params.agentId },
+          severity: "fatal",
+        });
+      }
+      const parseCount = (value: unknown, label: string): number => {
+        const parsed = Number(value);
+        if (!Number.isSafeInteger(parsed) || parsed < 0) {
+          throw new ElizaError("Document list query returned an invalid count", {
+            code: "DOCUMENT_LIST_COUNT_INVALID",
+            context: { agentId: params.agentId, label, value: String(value) },
+            severity: "fatal",
+          });
+        }
+        return parsed;
+      };
+      const totalVisible = parseCount(countRow.totalVisible, "visible");
+      const totalAvailable = parseCount(countRow.totalAvailable, "available");
+      const totalMatched = parseCount(countRow.totalMatched, "matched");
+      const matchedRows = rows.filter(
+        (row): row is QueryRow & DocumentRow => row.pageKind === "matched"
+      );
+      const availableRows = rows.filter(
+        (row): row is QueryRow & DocumentRow => row.pageKind === "available"
+      );
+      const matchedPage = buildPage(matchedRows);
+      const availablePage = buildPage(availableRows);
 
       return {
         documents: matchedPage.documents,
@@ -3586,17 +3642,18 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
    * @returns {Promise<UUID[]>} A Promise that resolves to an array of room IDs.
    */
   async getRoomsForParticipants(entityIds: UUID[]): Promise<UUID[]> {
-    return this.withDatabase(async () => {
-      const result = await this.db
-        .selectDistinct({ roomId: participantTable.roomId })
-        .from(participantTable)
-        .innerJoin(roomTable, eq(participantTable.roomId, roomTable.id))
-        .where(
-          and(inArray(participantTable.entityId, entityIds), eq(roomTable.agentId, this.agentId))
-        );
-
-      return result.map((row) => row.roomId as UUID);
-    });
+    const roomIds = new Set<UUID>();
+    for (const entityId of entityIds) {
+      const result = await this.withEntityContext(entityId, async (tx) =>
+        tx
+          .selectDistinct({ roomId: participantTable.roomId })
+          .from(participantTable)
+          .innerJoin(roomTable, eq(participantTable.roomId, roomTable.id))
+          .where(and(eq(participantTable.entityId, entityId), eq(roomTable.agentId, this.agentId)))
+      );
+      for (const row of result) roomIds.add(row.roomId as UUID);
+    }
+    return [...roomIds];
   }
 
   /**

@@ -19,6 +19,9 @@ import {
   type Component,
   type Content,
   DatabaseAdapter,
+  DOCUMENT_LIST_QUERY_CAPABILITY_VERSION,
+  type DocumentListQueryParams,
+  type DocumentListQueryResult,
   type EntitiesForRoomsResult,
   type Entity,
   type IDatabaseAdapter,
@@ -28,7 +31,6 @@ import {
   logger,
   type Memory,
   type MemoryMetadata,
-  type MemoryTypeAlias,
   type MessageSearchHit,
   type Metadata,
   type PairingAllowlistEntry,
@@ -41,6 +43,7 @@ import {
   type ParticipantUpdateFields,
   type ParticipantUserState,
   type PatchOp,
+  queryDocumentsInMemory,
   type Relationship,
   type Room,
   rankMessageSearch,
@@ -66,6 +69,7 @@ interface StoredParticipant {
 
 interface StoredMemory {
   id?: string;
+  tableName?: string;
   entityId: string;
   agentId?: string;
   createdAt?: number;
@@ -111,6 +115,10 @@ function toMemory(stored: StoredMemory): Memory {
     similarity: stored.similarity,
     metadata: stored.metadata,
   };
+}
+
+function storedMemoryTableName(memory: StoredMemory): string | undefined {
+  return memory.tableName ?? memory.metadata?.type;
 }
 
 function relationshipFromStored(r: StoredRelationship, fallbackAgentId: UUID): Relationship {
@@ -199,6 +207,7 @@ function levenshtein(a: string, b: string): number {
 // ────────────────────────────────────────────────────────────────────────────
 
 export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
+  readonly documentListQueryCapability = DOCUMENT_LIST_QUERY_CAPABILITY_VERSION;
   private storage: IStorage;
   private vectorIndex: EphemeralHNSW;
   private embeddingDimension = 384;
@@ -572,6 +581,14 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
 
   // ── Memory CRUD ───────────────────────────────────────────────────────
 
+  async queryDocuments(params: DocumentListQueryParams): Promise<DocumentListQueryResult> {
+    const memories = await this.storage.getWhere<StoredMemory>(
+      COLLECTIONS.MEMORIES,
+      (memory) => storedMemoryTableName(memory) === "documents"
+    );
+    return queryDocumentsInMemory(memories.map(toMemory), params);
+  }
+
   async getMemories(params: {
     entityId?: UUID;
     agentId?: UUID;
@@ -597,7 +614,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       if (params.agentId && m.agentId !== params.agentId) return false;
       if (params.roomId && m.roomId !== params.roomId) return false;
       if (params.worldId && m.worldId !== params.worldId) return false;
-      if (params.tableName && m.metadata?.type !== params.tableName) return false;
+      if (params.tableName && storedMemoryTableName(m) !== params.tableName) return false;
       if (params.start && m.createdAt && m.createdAt < params.start) return false;
       if (params.end && m.createdAt && m.createdAt > params.end) return false;
       if (params.unique && !m.unique) return false;
@@ -648,7 +665,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     const textContains = params.textContains?.trim().toLowerCase();
     const memories = await this.storage.getWhere<StoredMemory>(COLLECTIONS.MEMORIES, (m) => {
       if (!roomSet.has(m.roomId as UUID)) return false;
-      if (params.tableName && m.metadata?.type !== params.tableName) return false;
+      if (params.tableName && storedMemoryTableName(m) !== params.tableName) return false;
       // Same case-insensitive `includes` semantics the SQL adapter pushes
       // down as ILIKE.
       if (
@@ -683,7 +700,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     const tableName = params.tableName ?? "messages";
     const stored = await this.storage.getWhere<StoredMemory>(
       COLLECTIONS.MEMORIES,
-      (m) => roomSet.has(m.roomId as UUID) && m.metadata?.type === tableName
+      (m) => roomSet.has(m.roomId as UUID) && storedMemoryTableName(m) === tableName
     );
     // The window is applied before ranking + LIMIT/OFFSET, mirroring the SQL
     // adapters' created_at range conditions.
@@ -711,7 +728,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     for (const id of memoryIds) {
       const m = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, id);
       if (!m) continue;
-      if (tableName && m.metadata?.type !== tableName) continue;
+      if (tableName && storedMemoryTableName(m) !== tableName) continue;
       memories.push(toMemory(m));
     }
     return memories;
@@ -727,7 +744,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   }): Promise<{ embedding: number[]; levenshtein_score: number }[]> {
     const memories = await this.storage.getWhere<StoredMemory>(
       COLLECTIONS.MEMORIES,
-      (m) => m.metadata?.type === params.query_table_name && !!m.embedding
+      (m) => storedMemoryTableName(m) === params.query_table_name && !!m.embedding
     );
 
     const results: { embedding: number[]; levenshtein_score: number }[] = [];
@@ -767,7 +784,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     for (const result of results) {
       const memory = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, result.id);
       if (!memory) continue;
-      if (params.tableName && memory.metadata?.type !== params.tableName) continue;
+      if (params.tableName && storedMemoryTableName(memory) !== params.tableName) continue;
       if (params.roomId && memory.roomId !== params.roomId) continue;
       if (params.worldId && memory.worldId !== params.worldId) continue;
       if (params.entityId && memory.entityId !== params.entityId) continue;
@@ -787,13 +804,11 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       const stored: StoredMemory = {
         ...memory,
         id,
+        tableName,
         agentId: memory.agentId ?? this.agentId,
         unique: unique || memory.unique,
         createdAt: memory.createdAt ?? Date.now(),
-        metadata: {
-          ...(memory.metadata ?? {}),
-          type: tableName as MemoryTypeAlias,
-        } as MemoryMetadata,
+        metadata: { ...(memory.metadata ?? {}) } as MemoryMetadata,
       };
       await this.storage.set(COLLECTIONS.MEMORIES, id, stored);
       if (memory.embedding && memory.embedding.length > 0) {
@@ -838,12 +853,12 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       const stored: StoredMemory = {
         ...(existing ?? {}),
         ...memory,
+        tableName,
         agentId: memory.agentId ?? existing?.agentId ?? this.agentId,
         createdAt: memory.createdAt ?? existing?.createdAt ?? Date.now(),
         metadata: {
           ...(existing?.metadata ?? {}),
           ...(memory.metadata ?? {}),
-          type: tableName as MemoryTypeAlias,
         } as MemoryMetadata,
       };
       await this.storage.set(COLLECTIONS.MEMORIES, memory.id, stored);
@@ -865,7 +880,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     const roomSet = new Set(roomIds);
     const memories = await this.storage.getWhere<StoredMemory>(
       COLLECTIONS.MEMORIES,
-      (m) => roomSet.has(m.roomId as UUID) && (tableName ? m.metadata?.type === tableName : true)
+      (m) =>
+        roomSet.has(m.roomId as UUID) && (tableName ? storedMemoryTableName(m) === tableName : true)
     );
     const ids = memories.map((m) => m.id).filter((id): id is string => id !== undefined) as UUID[];
     await this.deleteMemories(ids);
@@ -883,7 +899,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     return this.storage.count<StoredMemory>(COLLECTIONS.MEMORIES, (m) => {
       if (roomSet && !roomSet.has(m.roomId as UUID)) return false;
       if (params.unique && !m.unique) return false;
-      if (params.tableName && m.metadata?.type !== params.tableName) return false;
+      if (params.tableName && storedMemoryTableName(m) !== params.tableName) return false;
       if (params.entityId && m.entityId !== params.entityId) return false;
       if (params.agentId && m.agentId !== params.agentId) return false;
       if (params.metadata) {
@@ -906,7 +922,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       COLLECTIONS.MEMORIES,
       (m) =>
         (!worldSet || (m.worldId ? worldSet.has(m.worldId as UUID) : false)) &&
-        (params.tableName ? m.metadata?.type === params.tableName : true)
+        (params.tableName ? storedMemoryTableName(m) === params.tableName : true)
     );
     memories.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
     const sliced = params.limit ? memories.slice(0, params.limit) : memories;

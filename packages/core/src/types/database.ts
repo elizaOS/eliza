@@ -63,7 +63,8 @@ export type DocumentListRequesterRole =
  */
 export interface DocumentListQueryParams {
 	agentId: UUID;
-	requesterEntityId?: UUID;
+	requesterEntityId: UUID;
+	requesterRoomIds: UUID[];
 	requesterRole: DocumentListRequesterRole;
 	limit: number;
 	offset: number;
@@ -1025,9 +1026,11 @@ export interface IDatabaseAdapter<DB extends object = object> {
 
 	/**
 	 * Query visible documents with filtering, exact counts, and bounded pages.
-	 * Optional so third-party adapters compile unchanged; document listing fails
-	 * explicitly when an adapter has not implemented this production query.
+	 * Adapters advertise `documentListQueryCapability: 1` only when this method
+	 * implements the complete native contract. Older adapters remain compatible
+	 * through the bounded core fallback.
 	 */
+	readonly documentListQueryCapability?: 1;
 	queryDocuments?(
 		params: DocumentListQueryParams,
 	): Promise<DocumentListQueryResult>;

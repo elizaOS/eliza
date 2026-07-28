@@ -14,6 +14,7 @@ import {
   type UUID,
   type World,
 } from "@elizaos/core";
+import { sql } from "drizzle-orm";
 import { v4 } from "uuid";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
@@ -169,6 +170,7 @@ describe("document list query (real SQL parity)", () => {
     const params: DocumentListQueryParams = {
       agentId,
       requesterEntityId: REQUESTER_ID,
+      requesterRoomIds: [roomId],
       requesterRole: "USER",
       query: "missing",
       limit: 1,
@@ -224,6 +226,7 @@ describe("document list query (real SQL parity)", () => {
     const ownerResult = await adapter.queryDocuments({
       agentId,
       requesterEntityId: REQUESTER_ID,
+      requesterRoomIds: [roomId],
       requesterRole: "OWNER",
       limit: 10,
       offset: 0,
@@ -241,6 +244,8 @@ describe("document list query (real SQL parity)", () => {
     const inMemory = await seedInMemory(documents);
     const baseParams: DocumentListQueryParams = {
       agentId,
+      requesterEntityId: REQUESTER_ID,
+      requesterRoomIds: [roomId],
       requesterRole: "RUNTIME",
       limit: 37,
       offset: 0,
@@ -272,6 +277,130 @@ describe("document list query (real SQL parity)", () => {
     expect(sqlIds).toHaveLength(151);
     expect(new Set(sqlIds).size).toBe(151);
     expect(sqlIds).toEqual(inMemoryIds);
+  });
+
+  it("normalizes microsecond database timestamps before applying keyset cursors", async () => {
+    const documents = [document(1), document(2), document(3)];
+    await seedSql(documents);
+    const db = adapter.getDatabase() as DrizzleDatabase;
+    await db.execute(
+      sql`UPDATE ${memoryTable}
+          SET created_at = CASE id
+            WHEN ${documents[0]?.id}::uuid THEN '2026-01-01 00:00:00.123900'::timestamp
+            WHEN ${documents[1]?.id}::uuid THEN '2026-01-01 00:00:00.123800'::timestamp
+            ELSE '2026-01-01 00:00:00.123700'::timestamp
+          END`
+    );
+    const params: DocumentListQueryParams = {
+      agentId,
+      requesterEntityId: REQUESTER_ID,
+      requesterRoomIds: [roomId],
+      requesterRole: "RUNTIME",
+      limit: 1,
+      offset: 0,
+    };
+    const seen: UUID[] = [];
+    let cursor: DocumentListCursor | undefined;
+    do {
+      const page = await adapter.queryDocuments({
+        ...params,
+        ...(cursor ? { cursor } : {}),
+      });
+      seen.push(...ids(page.documents));
+      cursor = page.nextCursor;
+      if (!page.hasMore) break;
+    } while (cursor);
+
+    expect(seen).toEqual(ids(documents).sort((left, right) => right.localeCompare(left)));
+    expect(new Set(seen).size).toBe(3);
+  });
+
+  it("excludes fragments stored in the documents table across adapters", async () => {
+    const canonical = document(1);
+    const fragment = document(2, {
+      metadata: {
+        type: MemoryType.FRAGMENT,
+        documentId: canonical.id,
+        position: 0,
+        timestamp: 10_000,
+      },
+    });
+    await seedSql([canonical, fragment]);
+    const inMemory = await seedInMemory([canonical, fragment]);
+    const params: DocumentListQueryParams = {
+      agentId,
+      requesterEntityId: REQUESTER_ID,
+      requesterRoomIds: [roomId],
+      requesterRole: "RUNTIME",
+      limit: 10,
+      offset: 0,
+    };
+
+    const sqlResult = await adapter.queryDocuments(params);
+    const inMemoryResult = await inMemory.queryDocuments(params);
+
+    expect(ids(sqlResult.documents)).toEqual([canonical.id]);
+    expect(sqlResult).toEqual(inMemoryResult);
+    expect(sqlResult.totalVisible).toBe(1);
+  });
+
+  it("keeps each count and page coherent while writes race the query", async () => {
+    await seedSql(Array.from({ length: 10 }, (_, index) => document(index)));
+    const params: DocumentListQueryParams = {
+      agentId,
+      requesterEntityId: REQUESTER_ID,
+      requesterRoomIds: [roomId],
+      requesterRole: "RUNTIME",
+      limit: 100,
+      offset: 0,
+    };
+
+    const reads = await Promise.all(
+      Array.from({ length: 8 }, async (_, index) => {
+        const [result] = await Promise.all([
+          adapter.queryDocuments(params),
+          seedSql([document(100 + index)]),
+        ]);
+        return result;
+      })
+    );
+
+    for (const result of reads) {
+      expect(result.totalVisible).toBe(result.documents.length);
+      expect(result.totalAvailable).toBe(result.documents.length);
+      expect(result.totalMatched).toBe(result.documents.length);
+      expect(result.hasMore).toBe(false);
+    }
+  });
+
+  it("rejects unbounded offsets before issuing a database query", async () => {
+    await expect(
+      adapter.queryDocuments({
+        agentId,
+        requesterEntityId: REQUESTER_ID,
+        requesterRoomIds: [roomId],
+        requesterRole: "RUNTIME",
+        limit: 10,
+        offset: 10_001,
+      })
+    ).rejects.toMatchObject({
+      code: "DOCUMENT_LIST_INVALID_PAGINATION",
+    });
+  });
+
+  it("installs the composite index supporting document keyset order", async () => {
+    const db = adapter.getDatabase() as DrizzleDatabase;
+    const result = await db.execute(sql`
+      SELECT indexdef
+      FROM pg_indexes
+      WHERE indexname = 'idx_memories_document_list_order'
+    `);
+    const definition = String(result.rows[0]?.indexdef ?? "");
+
+    expect(result.rows).toHaveLength(1);
+    expect(definition).toContain("date_trunc");
+    expect(definition).toContain("metadata");
+    expect(definition).toContain("type");
   });
 
   it("pushes metadata, text, and document timestamp filters down with parity", async () => {
@@ -311,6 +440,8 @@ describe("document list query (real SQL parity)", () => {
     const inMemory = await seedInMemory(documents);
     const params: DocumentListQueryParams = {
       agentId,
+      requesterEntityId: REQUESTER_ID,
+      requesterRoomIds: [roomId],
       requesterRole: "RUNTIME",
       query: "launch needle",
       scope: "global",

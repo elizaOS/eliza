@@ -14,7 +14,6 @@
  * lost on restart.
  */
 import { DatabaseAdapter } from "../database";
-import { ElizaError } from "../errors";
 import { rankMessageSearch, withinCreatedAtWindow } from "../search";
 import type {
 	AccessContext,
@@ -30,7 +29,6 @@ import type {
 	CreateOAuthFlowStateParams,
 	DeleteConnectorAccountParams,
 	DeleteOAuthFlowStateParams,
-	DocumentListCursor,
 	DocumentListQueryParams,
 	DocumentListQueryResult,
 	EntitiesForRoomsResult,
@@ -70,6 +68,10 @@ import type {
 } from "../types";
 import { DEFAULT_UUID } from "../types/primitives";
 import { isPlainObject } from "../utils/type-guards";
+import {
+	DOCUMENT_LIST_QUERY_CAPABILITY_VERSION,
+	queryDocumentsInMemory,
+} from "./document-list-query";
 
 function asUuid(id: string): UUID {
 	return id as UUID;
@@ -85,130 +87,6 @@ function randomUuid(): UUID {
 
 function roomTableKey(tableName: string, roomId: UUID): string {
 	return `${tableName}:${String(roomId)}`;
-}
-
-function documentCursor(memory: Memory): DocumentListCursor {
-	if (!memory.id) {
-		throw new ElizaError("Stored document is missing its memory id", {
-			code: "DOCUMENT_LIST_INVALID_MEMORY",
-			context: { agentId: memory.agentId },
-			severity: "fatal",
-		});
-	}
-	return { createdAt: memory.createdAt ?? 0, id: memory.id };
-}
-
-function isAfterDocumentCursor(
-	memory: Memory,
-	cursor: DocumentListCursor,
-): boolean {
-	const createdAt = memory.createdAt ?? 0;
-	return (
-		createdAt < cursor.createdAt ||
-		(createdAt === cursor.createdAt &&
-			(memory.id ? memory.id.localeCompare(cursor.id) < 0 : false))
-	);
-}
-
-function isDocumentVisible(
-	memory: Memory,
-	params: DocumentListQueryParams,
-): boolean {
-	if (
-		params.requesterRole === "OWNER" ||
-		params.requesterRole === "AGENT" ||
-		params.requesterRole === "RUNTIME"
-	) {
-		return true;
-	}
-
-	const metadata = (memory.metadata ?? {}) as Record<string, unknown>;
-	const scope = typeof metadata.scope === "string" ? metadata.scope : "global";
-	if (scope === "global") return true;
-	if (scope !== "user-private" || !params.requesterEntityId) return false;
-
-	return (
-		metadata.scopedToEntityId === params.requesterEntityId ||
-		metadata.addedBy === params.requesterEntityId ||
-		memory.entityId === params.requesterEntityId
-	);
-}
-
-function matchesDocumentFilters(
-	memory: Memory,
-	params: DocumentListQueryParams,
-): boolean {
-	const metadata = (memory.metadata ?? {}) as Record<string, unknown>;
-	if (params.scope && (metadata.scope ?? "global") !== params.scope)
-		return false;
-	if (
-		params.scopedToEntityId &&
-		metadata.scopedToEntityId !== params.scopedToEntityId
-	) {
-		return false;
-	}
-	if (params.addedBy && metadata.addedBy !== params.addedBy) return false;
-
-	const createdAt =
-		typeof metadata.timestamp === "number"
-			? metadata.timestamp
-			: (memory.createdAt ?? 0);
-	if (
-		params.timeRangeStart !== undefined &&
-		createdAt < params.timeRangeStart
-	) {
-		return false;
-	}
-	if (params.timeRangeEnd !== undefined && createdAt > params.timeRangeEnd) {
-		return false;
-	}
-
-	if (params.tags?.length) {
-		const tags = Array.isArray(metadata.tags)
-			? metadata.tags.filter((tag): tag is string => typeof tag === "string")
-			: [];
-		if (!params.tags.every((tag) => tags.includes(tag))) return false;
-	}
-	return true;
-}
-
-function matchesDocumentQuery(memory: Memory, query: string): boolean {
-	const metadata = (memory.metadata ?? {}) as Record<string, unknown>;
-	const haystack = [
-		memory.content.text,
-		metadata.title,
-		metadata.filename,
-		metadata.originalFilename,
-		metadata.source,
-	]
-		.filter((value): value is string => typeof value === "string")
-		.join("\n")
-		.toLowerCase();
-	return haystack.includes(query);
-}
-
-function paginateDocuments(
-	memories: Memory[],
-	params: DocumentListQueryParams,
-): {
-	documents: Memory[];
-	hasMore: boolean;
-	nextCursor?: DocumentListCursor;
-} {
-	const cursor = params.cursor;
-	const cursorFiltered = cursor
-		? memories.filter((memory) => isAfterDocumentCursor(memory, cursor))
-		: memories;
-	const offset = cursor ? 0 : params.offset;
-	const page = cursorFiltered.slice(offset, offset + params.limit + 1);
-	const hasMore = page.length > params.limit;
-	const documents = page.slice(0, params.limit);
-	const last = documents.at(-1);
-	return {
-		documents,
-		hasMore,
-		...(hasMore && last ? { nextCursor: documentCursor(last) } : {}),
-	};
 }
 
 function connectorAccountKey(params: {
@@ -379,6 +257,7 @@ function dataContainsFilter(
 export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	Record<string, never>
 > {
+	readonly documentListQueryCapability = DOCUMENT_LIST_QUERY_CAPABILITY_VERSION;
 	db: Record<string, never> = {};
 
 	private ready = false;
@@ -937,82 +816,10 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	async queryDocuments(
 		params: DocumentListQueryParams,
 	): Promise<DocumentListQueryResult> {
-		if (
-			!Number.isInteger(params.limit) ||
-			params.limit < 1 ||
-			params.limit > 100 ||
-			!Number.isInteger(params.offset) ||
-			params.offset < 0
-		) {
-			throw new ElizaError("Document list pagination is invalid", {
-				code: "DOCUMENT_LIST_INVALID_PAGINATION",
-				context: { limit: params.limit, offset: params.offset },
-			});
-		}
-		if (
-			params.cursor &&
-			(!Number.isFinite(params.cursor.createdAt) ||
-				typeof params.cursor.id !== "string" ||
-				params.cursor.id.length === 0)
-		) {
-			throw new ElizaError("Document list cursor is invalid", {
-				code: "DOCUMENT_LIST_INVALID_PAGINATION",
-				context: { cursor: params.cursor },
-			});
-		}
-		if (params.cursor && params.offset !== 0) {
-			throw new ElizaError(
-				"Document list cursor cannot be combined with a non-zero offset",
-				{
-					code: "DOCUMENT_LIST_INVALID_PAGINATION",
-					context: { offset: params.offset },
-				},
-			);
-		}
-
-		const visibleDocuments = Array.from(this.memoriesByRoom.entries())
+		const documents = Array.from(this.memoriesByRoom.entries())
 			.filter(([key]) => key.startsWith("documents:"))
-			.flatMap(([, memories]) => memories)
-			.filter(
-				(memory) =>
-					memory.agentId === params.agentId &&
-					isDocumentVisible(memory, params),
-			)
-			.sort((a, b) => {
-				const timeDifference = (b.createdAt ?? 0) - (a.createdAt ?? 0);
-				if (timeDifference !== 0) return timeDifference;
-				return (b.id ?? "").localeCompare(a.id ?? "");
-			});
-		const availableDocuments = visibleDocuments.filter((memory) =>
-			matchesDocumentFilters(memory, params),
-		);
-		const normalizedQuery = params.query?.trim().toLowerCase();
-		const matchedDocuments = normalizedQuery
-			? availableDocuments.filter((memory) =>
-					matchesDocumentQuery(memory, normalizedQuery),
-				)
-			: availableDocuments;
-		const matchedPage = paginateDocuments(matchedDocuments, params);
-		const availablePage =
-			normalizedQuery &&
-			matchedDocuments.length === 0 &&
-			availableDocuments.length > 0
-				? paginateDocuments(availableDocuments, params)
-				: { documents: [], hasMore: false };
-
-		return {
-			documents: matchedPage.documents,
-			availableDocuments: availablePage.documents,
-			totalVisible: visibleDocuments.length,
-			totalAvailable: availableDocuments.length,
-			totalMatched: matchedDocuments.length,
-			hasMore: matchedPage.hasMore,
-			availableHasMore: availablePage.hasMore,
-			...(matchedPage.nextCursor ? { nextCursor: matchedPage.nextCursor } : {}),
-			...(availablePage.nextCursor
-				? { availableNextCursor: availablePage.nextCursor }
-				: {}),
-		};
+			.flatMap(([, memories]) => memories);
+		return queryDocumentsInMemory(documents, params);
 	}
 
 	async getMemories(params: {

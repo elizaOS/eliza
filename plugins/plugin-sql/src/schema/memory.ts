@@ -64,6 +64,13 @@ export const memoryTable = pgTable(
     }).onDelete("cascade"),
     index("idx_memories_metadata_type").on(sql`((metadata->>'type'))`),
     index("idx_memories_document_id").on(sql`((metadata->>'documentId'))`),
+    index("idx_memories_document_list_order").on(
+      table.agentId,
+      table.type,
+      sql`((metadata->>'type'))`,
+      sql`date_trunc('milliseconds', ${table.createdAt})`,
+      table.id
+    ),
     index("idx_fragments_order").on(
       sql`((metadata->>'documentId'))`,
       sql`((metadata->>'position'))`

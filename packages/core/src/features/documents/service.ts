@@ -18,6 +18,11 @@
  */
 import { existsSync, statSync } from "node:fs";
 import { filterByAccessContext } from "../../access-control/filter";
+import {
+	DOCUMENT_LIST_MAX_LIMIT,
+	DOCUMENT_LIST_MAX_OFFSET,
+	queryDocumentsWithCompatibility,
+} from "../../database/document-list-query";
 import { createUniqueUuid } from "../../entities";
 import { ElizaError } from "../../errors";
 import { logger } from "../../logger";
@@ -150,15 +155,18 @@ const DOCUMENT_ADDED_FROM_VALUES = new Set<DocumentAddedFrom>([
 
 /** Requester identity and role resolved once for document authorization. */
 export interface DocumentRequester {
-	entityId?: UUID;
+	entityId: UUID;
+	roomIds: UUID[];
 	role: DocumentListRequesterRole;
 }
 
-export async function resolveDocumentRequester(
+async function resolveDocumentRequesterRole(
 	runtime: IAgentRuntime,
 	message?: Memory,
-): Promise<DocumentRequester> {
-	if (!message?.entityId) return { role: "RUNTIME" };
+): Promise<Pick<DocumentRequester, "entityId" | "role">> {
+	if (!message?.entityId) {
+		return { entityId: runtime.agentId, role: "RUNTIME" };
+	}
 	if (message.entityId === runtime.agentId) {
 		return { entityId: runtime.agentId, role: "AGENT" };
 	}
@@ -188,6 +196,38 @@ export async function resolveDocumentRequester(
 			agentId: runtime.agentId,
 			entityId: message.entityId,
 			roomId: message.roomId,
+		});
+		throw error;
+	}
+}
+
+export async function resolveDocumentRequester(
+	runtime: IAgentRuntime,
+	message?: Memory,
+): Promise<DocumentRequester> {
+	const requester = await resolveDocumentRequesterRole(runtime, message);
+	try {
+		const roomIds = await runtime.getRoomsForParticipants([requester.entityId]);
+		return {
+			...requester,
+			roomIds: [...new Set(roomIds)],
+		};
+	} catch (cause) {
+		// error-policy:J2 Preserve room-resolution context and fail the read.
+		const error = new ElizaError("Document requester room lookup failed", {
+			code: "DOCUMENT_ROOM_LOOKUP_FAILED",
+			cause,
+			context: {
+				agentId: runtime.agentId,
+				entityId: requester.entityId,
+				roomId: message?.roomId,
+			},
+			severity: "ephemeral",
+		});
+		runtime.reportError("DocumentService.resolveRequesterRooms", error, {
+			agentId: runtime.agentId,
+			entityId: requester.entityId,
+			roomId: message?.roomId,
 		});
 		throw error;
 	}
@@ -392,7 +432,7 @@ export class DocumentService extends Service {
 			return true;
 		}
 
-		const { role: senderRole } = await resolveDocumentRequester(
+		const { role: senderRole } = await resolveDocumentRequesterRole(
 			this.runtime,
 			message,
 		);
@@ -467,12 +507,25 @@ export class DocumentService extends Service {
 	): Promise<DocumentListResult> {
 		const limit =
 			typeof options.limit === "number" && Number.isFinite(options.limit)
-				? Math.max(1, Math.min(Math.floor(options.limit), 100))
+				? Math.max(
+						1,
+						Math.min(Math.floor(options.limit), DOCUMENT_LIST_MAX_LIMIT),
+					)
 				: 25;
-		const offset =
-			typeof options.offset === "number" && Number.isFinite(options.offset)
-				? Math.max(0, Math.floor(options.offset))
-				: 0;
+		const offset = options.offset ?? 0;
+		if (
+			!Number.isSafeInteger(offset) ||
+			offset < 0 ||
+			offset > DOCUMENT_LIST_MAX_OFFSET
+		) {
+			throw new ElizaError(
+				`Document list offset must be an integer between 0 and ${DOCUMENT_LIST_MAX_OFFSET}`,
+				{
+					code: "DOCUMENT_LIST_INVALID_PAGINATION",
+					context: { offset },
+				},
+			);
+		}
 		if (options.cursor && offset !== 0) {
 			throw new ElizaError(
 				"Document list cursor cannot be combined with a non-zero offset",
@@ -483,30 +536,16 @@ export class DocumentService extends Service {
 			);
 		}
 
-		const queryDocuments = this.runtime.adapter.queryDocuments;
-		if (typeof queryDocuments !== "function") {
-			throw new ElizaError(
-				"Database adapter does not implement bounded document listing",
-				{
-					code: "DOCUMENT_LIST_QUERY_UNSUPPORTED",
-					context: {
-						adapter: this.runtime.adapter.constructor.name,
-						agentId: this.runtime.agentId,
-					},
-					severity: "fatal",
-				},
-			);
-		}
-
 		const requester = await resolveDocumentRequester(this.runtime, message);
 		const query = options.query?.trim();
 		const normalizedQuery = query?.toLowerCase();
 		const queryParams: DocumentListQueryParams = {
 			agentId: this.runtime.agentId,
+			requesterEntityId: requester.entityId,
+			requesterRoomIds: requester.roomIds,
 			requesterRole: requester.role,
 			limit,
 			offset,
-			...(requester.entityId ? { requesterEntityId: requester.entityId } : {}),
 			...(options.cursor ? { cursor: options.cursor } : {}),
 			...(normalizedQuery ? { query: normalizedQuery } : {}),
 			...(options.scope ? { scope: options.scope } : {}),
@@ -522,7 +561,10 @@ export class DocumentService extends Service {
 				: {}),
 			...(options.tags?.length ? { tags: options.tags } : {}),
 		};
-		const stored = await queryDocuments.call(this.runtime.adapter, queryParams);
+		const stored = await queryDocumentsWithCompatibility(
+			this.runtime.adapter,
+			queryParams,
+		);
 		const status: DocumentListStatus =
 			stored.totalVisible === 0
 				? "empty_store"
