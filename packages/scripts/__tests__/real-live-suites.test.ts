@@ -182,6 +182,15 @@ describe("real/live guarded-suite manifest (#9310 §E)", () => {
 
     expect(workflow).toContain("pgvector/pgvector:pg16");
     expect(workflow).not.toMatch(/-p 127[.]0[.]0[.]1:5433:5432 postgres:/);
+    expect(workflow).toContain(
+      "-e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres",
+    );
+    expect(workflow).toContain(
+      "-c \"CREATE ROLE eliza_test LOGIN PASSWORD 'test123'\"",
+    );
+    expect(workflow).toContain(
+      "POSTGRES_URL=postgresql://eliza_test:test123@127.0.0.1:5433/eliza_test",
+    );
   });
 
   test("Eliza Cloud streamed tool-call proof requires an explicit credentialed live run", () => {
