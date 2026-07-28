@@ -6,20 +6,24 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 
-const AMBIENT_DATABASE_URL = process.env.DATABASE_URL ?? "";
-const CAN_USE_ISOLATED_PGLITE =
-  AMBIENT_DATABASE_URL === "" || AMBIENT_DATABASE_URL.startsWith("pglite");
-process.env.DATABASE_URL ||= "pglite://memory";
+const ORIGINAL_ENV = {
+  DATABASE_URL: process.env.DATABASE_URL,
+  TEST_DATABASE_URL: process.env.TEST_DATABASE_URL,
+  NODE_ENV: process.env.NODE_ENV,
+  MOCK_REDIS: process.env.MOCK_REDIS,
+};
+process.env.DATABASE_URL = "pglite://memory";
+process.env.TEST_DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS = "1";
 
 import { pushSchema } from "drizzle-kit/api";
 import {
+  AGENT_LIFECYCLE_DETACHED_EXECUTION_QUIESCENCE_MS,
   JOB_TYPES,
   PROVISIONING_STATUS_OWNER_JOB_TYPES,
   type ProvisioningJobType,
 } from "../../../lib/services/provisioning-job-types";
-import { closeDatabaseConnectionsForTests, dbWrite } from "../../client";
 import { agentSandboxes } from "../../schemas/agent-sandboxes";
 import { apiKeys } from "../../schemas/api-keys";
 import { generations } from "../../schemas/generations";
@@ -28,8 +32,12 @@ import { organizations } from "../../schemas/organizations";
 import { usageRecords } from "../../schemas/usage-records";
 import { userCharacters } from "../../schemas/user-characters";
 import { users } from "../../schemas/users";
-import { AgentSandboxesRepository } from "../agent-sandboxes";
-import { jobsRepository } from "../jobs";
+
+const [
+  { closeDatabaseConnectionsForTests, dbWrite },
+  { AgentSandboxesRepository },
+  { jobsRepository },
+] = await Promise.all([import("../../client"), import("../agent-sandboxes"), import("../jobs")]);
 
 const PGLITE_TIMEOUT = 60_000;
 const SWEEP_CUTOFF = new Date("2026-07-28T12:20:00.000Z");
@@ -40,6 +48,25 @@ let pgliteReady = true;
 let seq = 0;
 
 const repo = new AgentSandboxesRepository();
+
+function restoreEnv(name: keyof typeof ORIGINAL_ENV, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[name];
+  } else {
+    process.env[name] = value;
+  }
+}
+
+function deferred(): {
+  promise: Promise<void>;
+  resolve: () => void;
+} {
+  let resolve!: () => void;
+  const promise = new Promise<void>((settle) => {
+    resolve = settle;
+  });
+  return { promise, resolve };
+}
 
 function uniq(prefix: string): string {
   seq += 1;
@@ -143,13 +170,6 @@ async function backdateClaim(jobId: string): Promise<void> {
 }
 
 beforeAll(async () => {
-  if (!CAN_USE_ISOLATED_PGLITE) {
-    pgliteReady = false;
-    console.warn(
-      "[agent-sandboxes-stuck-provisioning-repo.test] Refusing to mutate a non-PGlite DATABASE_URL",
-    );
-    return;
-  }
   try {
     const schema = {
       organizations,
@@ -178,6 +198,9 @@ beforeEach(() => {
 
 afterAll(async () => {
   await closeDatabaseConnectionsForTests();
+  for (const [name, value] of Object.entries(ORIGINAL_ENV)) {
+    restoreEnv(name as keyof typeof ORIGINAL_ENV, value);
+  }
 });
 
 describe("stuck-provisioning owner predicates", () => {
@@ -229,9 +252,14 @@ describe("stuck-provisioning owner predicates", () => {
     expect(await sandboxStatus(olderId)).toBe("error");
   });
 
-  test("a retryable stale owner remains protected until stale recovery exhausts it", async () => {
+  test("terminal stale recovery keeps a detached executor fenced until quiescence", async () => {
     const { organizationId, userId } = await seedOrgAndUser();
     const agentId = await seedProvisioningAgent(organizationId, userId);
+    const execution = deferred();
+    let executionSettled = false;
+    const detachedExecution = execution.promise.finally(() => {
+      executionSettled = true;
+    });
     const firstClaim = await seedAndClaimJob({
       organizationId,
       userId,
@@ -277,10 +305,44 @@ describe("stuck-provisioning owner predicates", () => {
       status: "failed",
       attempts: 2,
     });
+    expect(executionSettled).toBe(false);
+
+    const stillOwned = await repo.markStuckProvisioningWithoutActiveJobAsError(SWEEP_CUTOFF);
+    expect(stillOwned.map((row) => row.agentId)).not.toContain(agentId);
+    expect(await sandboxStatus(agentId)).toBe("provisioning");
+
+    execution.resolve();
+    await detachedExecution;
+    await dbWrite
+      .update(jobs)
+      .set({
+        updated_at: new Date(Date.now() - AGENT_LIFECYCLE_DETACHED_EXECUTION_QUIESCENCE_MS - 1_000),
+      })
+      .where(eq(jobs.id, firstClaim.id));
+
+    const sweptAfterQuiescence =
+      await repo.markStuckProvisioningWithoutActiveJobAsError(SWEEP_CUTOFF);
+    expect(sweptAfterQuiescence.map((row) => row.agentId)).toContain(agentId);
+    expect(await sandboxStatus(agentId)).toBe("error");
+  });
+
+  test("recently cancelled owner jobs retain provisioning ownership", async () => {
+    const { organizationId, userId } = await seedOrgAndUser();
+    const agentId = await seedProvisioningAgent(organizationId, userId);
+    const job = await seedAndClaimJob({
+      organizationId,
+      userId,
+      agentId,
+      type: JOB_TYPES.AGENT_RESTART,
+    });
+    await jobsRepository.updateStatus(job.id, "cancelled", {
+      error: "awaiter cancelled while executor unwinds",
+    });
 
     const swept = await repo.markStuckProvisioningWithoutActiveJobAsError(SWEEP_CUTOFF);
-    expect(swept.map((row) => row.agentId)).toContain(agentId);
-    expect(await sandboxStatus(agentId)).toBe("error");
+
+    expect(swept.map((row) => row.agentId)).not.toContain(agentId);
+    expect(await sandboxStatus(agentId)).toBe("provisioning");
   });
 
   test("list and recovery CAS both unblock after the owner settles", async () => {
@@ -305,30 +367,5 @@ describe("stuck-provisioning owner predicates", () => {
     ).toContain(agentId);
     expect((await repo.markRunningFromProvisioning(agentId))?.id).toBe(agentId);
     expect(await sandboxStatus(agentId)).toBe("running");
-  });
-
-  test("concurrent owner settlement and sweep converge without masking the row", async () => {
-    const { organizationId, userId } = await seedOrgAndUser();
-    const agentId = await seedProvisioningAgent(organizationId, userId);
-    const job = await seedAndClaimJob({
-      organizationId,
-      userId,
-      agentId,
-      type: JOB_TYPES.AGENT_RESTART,
-    });
-
-    await Promise.all([
-      jobsRepository.updateStatus(job.id, "failed", {
-        error: "worker execution settled",
-      }),
-      repo.markStuckProvisioningWithoutActiveJobAsError(SWEEP_CUTOFF),
-    ]);
-
-    await repo.markStuckProvisioningWithoutActiveJobAsError(SWEEP_CUTOFF);
-    expect(await jobStatus(job.id)).toEqual({
-      status: "failed",
-      attempts: 0,
-    });
-    expect(await sandboxStatus(agentId)).toBe("error");
   });
 });

@@ -15,7 +15,10 @@ import { describe, expect, test } from "bun:test";
 
 import {
   AGENT_JOB_TYPES,
+  AGENT_LIFECYCLE_JOB_METADATA,
   APPS_JOB_TYPES,
+  COLD_BOOT_JOB_TYPES,
+  EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES,
   JOB_TYPES,
   PROVISIONING_STATUS_OWNER_JOB_TYPES,
   type ProvisioningJobType,
@@ -25,13 +28,30 @@ import {
 const ALL = Object.values(JOB_TYPES) as ProvisioningJobType[];
 
 describe("provisioning status ownership", () => {
-  test("contains only executors that park the primary sandbox row in provisioning", () => {
-    expect([...PROVISIONING_STATUS_OWNER_JOB_TYPES]).toEqual([
-      JOB_TYPES.AGENT_PROVISION,
-      JOB_TYPES.AGENT_RESUME,
-      JOB_TYPES.AGENT_WAKE,
-      JOB_TYPES.AGENT_RESTART,
-    ]);
+  test("derives every lifecycle safety set from the canonical metadata", () => {
+    expect(AGENT_JOB_TYPES).toEqual(AGENT_LIFECYCLE_JOB_METADATA.map(({ type }) => type));
+    expect([...PROVISIONING_STATUS_OWNER_JOB_TYPES]).toEqual(
+      AGENT_LIFECYCLE_JOB_METADATA.filter(
+        ({ ownsProvisioningStatus }) => ownsProvisioningStatus,
+      ).map(({ type }) => type),
+    );
+    expect(EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES).toEqual(
+      AGENT_LIFECYCLE_JOB_METADATA.filter(({ exclusive }) => exclusive).map(({ type }) => type),
+    );
+    expect([...COLD_BOOT_JOB_TYPES]).toEqual(
+      AGENT_LIFECYCLE_JOB_METADATA.filter(({ coldBoot }) => coldBoot).map(({ type }) => type),
+    );
+  });
+
+  test("classifies primary-row owners separately from replacement boots", () => {
+    expect(PROVISIONING_STATUS_OWNER_JOB_TYPES).toEqual(
+      new Set([
+        JOB_TYPES.AGENT_PROVISION,
+        JOB_TYPES.AGENT_RESUME,
+        JOB_TYPES.AGENT_RESTART,
+        JOB_TYPES.AGENT_WAKE,
+      ]),
+    );
     expect(PROVISIONING_STATUS_OWNER_JOB_TYPES.has(JOB_TYPES.AGENT_UPGRADE)).toBe(false);
     expect(PROVISIONING_STATUS_OWNER_JOB_TYPES.has(JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE)).toBe(false);
     expect(PROVISIONING_STATUS_OWNER_JOB_TYPES.has(JOB_TYPES.AGENT_DOWNGRADE)).toBe(false);

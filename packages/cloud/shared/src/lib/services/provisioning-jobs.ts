@@ -79,6 +79,10 @@ import {
   SNAPSHOT_ENDPOINT_UNSUPPORTED,
 } from "./eliza-sandbox";
 import {
+  AGENT_LIFECYCLE_DETACHED_EXECUTION_QUIESCENCE_MS,
+  COLD_BOOT_JOB_TYPES,
+  COLD_BOOT_STALE_JOB_THRESHOLD_MS,
+  DEFAULT_STALE_JOB_THRESHOLD_MS,
   EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES,
   JOB_TYPES,
   type ProvisioningJobType,
@@ -873,24 +877,6 @@ export const PER_JOB_TIMEOUT_MS = parsePositiveIntEnv(
  * deliberately admits a `provisioning` row and defers to this as the time gate,
  * so this threshold is the single source of truth for "provision is stuck".)
  */
-const DEFAULT_STALE_JOB_THRESHOLD_MS = 5 * 60 * 1000;
-const COLD_BOOT_STALE_JOB_THRESHOLD_MS = 15 * 60 * 1000;
-/**
- * Conditional deletion waits this long after a claimed lifecycle job leaves
- * an active state. The outer job timeout is a promise race and cannot abort
- * its underlying bounded SSH/HTTP work, so a recent `failed`, `cancelled`, or
- * retry-pending row is not proof that execution is quiescent.
- */
-const DELETE_DETACHED_EXECUTION_QUIESCENCE_MS = COLD_BOOT_STALE_JOB_THRESHOLD_MS;
-const COLD_BOOT_JOB_TYPES: ReadonlySet<ProvisioningJobType> = new Set([
-  JOB_TYPES.AGENT_PROVISION,
-  JOB_TYPES.AGENT_RESUME,
-  JOB_TYPES.AGENT_WAKE,
-  JOB_TYPES.AGENT_RESTART,
-  JOB_TYPES.AGENT_UPGRADE,
-  JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
-  JOB_TYPES.AGENT_DOWNGRADE,
-]);
 /** Re-schedule delay for snapshot jobs claimed while the lane gate is off
  *  (#16639) — long enough not to spin, short enough to drain promptly once
  *  operators enable the lane. */
@@ -1420,7 +1406,9 @@ export class ProvisioningJobService {
             "Warm-claim credential handoff is still in progress",
           );
         }
-        const quiescentBefore = new Date(Date.now() - DELETE_DETACHED_EXECUTION_QUIESCENCE_MS);
+        const quiescentBefore = new Date(
+          Date.now() - AGENT_LIFECYCLE_DETACHED_EXECUTION_QUIESCENCE_MS,
+        );
 
         // Pending work that was never claimed is safe to cancel. A retry row
         // keeps started_at from its prior claim, so it is cancelled only after

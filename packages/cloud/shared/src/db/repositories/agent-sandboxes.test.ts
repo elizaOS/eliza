@@ -94,7 +94,9 @@ function makeTx() {
         })),
       })),
     })),
-    update: mock(() => ({ set: warmClaimUpdateSet })),
+    update: mock(() => ({
+      set: useRepositoryTransactionUpdate ? set : warmClaimUpdateSet,
+    })),
     delete: mock(() => ({ where: warmClaimDeleteWhere })),
   };
 }
@@ -103,6 +105,8 @@ const transaction = mock(async (fn: (tx: ReturnType<typeof makeTx>) => Promise<u
 );
 let useRepositoryMocks = false;
 let useTransactionMock = false;
+let useWriteSelectMock = false;
+let useRepositoryTransactionUpdate = false;
 
 const warnLog = mock((..._args: unknown[]) => {});
 const dbReadMock = new Proxy(realHelpers.dbRead as unknown as Record<PropertyKey, unknown>, {
@@ -114,6 +118,7 @@ const dbReadMock = new Proxy(realHelpers.dbRead as unknown as Record<PropertyKey
 const dbWriteMock = new Proxy(realHelpers.dbWrite as unknown as Record<PropertyKey, unknown>, {
   get(target, prop, receiver) {
     if (prop === "update" && useRepositoryMocks) return update;
+    if (prop === "select" && useWriteSelectMock) return select;
     if (prop === "transaction" && useTransactionMock) return transaction;
     return Reflect.get(target, prop, receiver);
   },
@@ -149,6 +154,8 @@ describe("AgentSandboxesRepository", () => {
   afterEach(() => {
     useRepositoryMocks = false;
     useTransactionMock = false;
+    useWriteSelectMock = false;
+    useRepositoryTransactionUpdate = false;
   });
 
   test("allows sleeping agents to take the provisioning lock for wake", async () => {
@@ -337,6 +344,15 @@ describe("AgentSandboxesRepository", () => {
   test("marks only orphaned user-owned pending rows with no provision job as error", async () => {
     capturedWhere = undefined;
     set.mockClear();
+    useWriteSelectMock = true;
+    useTransactionMock = true;
+    useRepositoryTransactionUpdate = true;
+    selectRows = [
+      {
+        agentId: "e06bb509-6c52-4c33-a9f7-66addc43e8c8",
+        organizationId: "22222222-2222-4222-8222-222222222222",
+      },
+    ];
 
     const { AgentSandboxesRepository } = await import("./agent-sandboxes");
 
@@ -346,9 +362,10 @@ describe("AgentSandboxesRepository", () => {
     expect(ensureAgentSandboxSchema).toHaveBeenCalled();
     if (!capturedWhere)
       throw new Error("markOrphanedPendingWithoutJobAsError did not build a where clause");
-    const sql = new PgDialect().sqlToQuery(capturedWhere).sql.toLowerCase();
+    const query = new PgDialect().sqlToQuery(capturedWhere);
+    const sql = query.sql.toLowerCase();
     // Only `pending` rows are targeted...
-    expect(sql).toContain("'pending'");
+    expect(query.params).toContain("pending");
     // ...that are user-owned (warm-pool rows carry a pool_status, so skip them)...
     expect(sql).toContain("pool_status");
     expect(sql).toContain("is null");
@@ -356,13 +373,13 @@ describe("AgentSandboxesRepository", () => {
     expect(sql).toContain("created_at");
     // ...and have NO live agent_provision job.
     expect(sql).toContain("not exists");
-    expect(sql).toContain("agent_provision");
-    // The job predicate is load-bearing: only LIVE jobs ('pending'/'in_progress')
-    // count, so a row whose only agent_provision job is completed/error is still
-    // reclaimed. Assert the live-state filter is present and dead states are not.
-    expect(sql).toContain("'pending', 'in_progress'");
-    expect(sql).not.toContain("'completed'");
-    expect(sql).not.toContain("'error'");
+    expect(query.params).toContain("agent_provision");
+    // Active jobs and recently-terminal claimed jobs both retain ownership:
+    // timeout/cancellation releases the awaiter without aborting its executor.
+    expect(query.params).toEqual(
+      expect.arrayContaining(["pending", "in_progress", "failed", "cancelled"]),
+    );
+    expect(query.params).not.toContain("completed");
 
     // It MARKS ERROR (it never re-enqueues) with a clear, retry-able message.
     const capturedSet = set.mock.calls.at(-1)?.[0];
@@ -415,6 +432,10 @@ describe("AgentSandboxesRepository", () => {
 
   test("markRunningFromProvisioning refuses rows without durable node attribution", async () => {
     capturedWhere = undefined;
+    useWriteSelectMock = true;
+    useTransactionMock = true;
+    useRepositoryTransactionUpdate = true;
+    selectRows = [{ organizationId: "22222222-2222-4222-8222-222222222222" }];
 
     const { AgentSandboxesRepository } = await import("./agent-sandboxes");
     await new AgentSandboxesRepository().markRunningFromProvisioning(
