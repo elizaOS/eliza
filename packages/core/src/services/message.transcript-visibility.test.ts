@@ -94,13 +94,17 @@ interface Harness {
 	actionHandler: ReturnType<typeof vi.fn>;
 	callback: HandlerCallback;
 	callbacks: Content[];
+	callbackActionNames: Array<string | undefined>;
 	sent: Content[];
 	voiceHandler: ReturnType<typeof vi.fn>;
 }
 
 const activeRuntimes: AgentRuntime[] = [];
 
-async function createHarness(finalText: string): Promise<Harness> {
+async function createHarness(
+	finalText: string,
+	actionCallbackText?: string,
+): Promise<Harness> {
 	const runtime = new AgentRuntime({
 		character: createCharacter({
 			id: AGENT_ID,
@@ -127,12 +131,28 @@ async function createHarness(finalText: string): Promise<Harness> {
 		} as State;
 	}) as AgentRuntime["composeState"];
 
-	const actionHandler = vi.fn(async () => ({
-		success: true,
-		text: INTERNAL_DIAGNOSTIC,
-		transcriptVisibility: "internal" as const,
-		data: { views: [] },
-	}));
+	const actionHandler = vi.fn(
+		async (
+			_runtime,
+			_message,
+			_state,
+			_options,
+			actionCallback?: HandlerCallback,
+		) => {
+			if (actionCallbackText) {
+				await actionCallback?.({
+					text: actionCallbackText,
+					actions: ["VIEWS"],
+				});
+			}
+			return {
+				success: true,
+				text: INTERNAL_DIAGNOSTIC,
+				transcriptVisibility: "internal" as const,
+				data: { views: [] },
+			};
+		},
+	);
 	const viewsAction: Action = {
 		name: "VIEWS",
 		description: "Lists the available application views.",
@@ -186,6 +206,7 @@ async function createHarness(finalText: string): Promise<Harness> {
 	);
 
 	const callbacks: Content[] = [];
+	const callbackActionNames: Array<string | undefined> = [];
 	const sent: Content[] = [];
 	runtime.registerSendHandler(
 		"client_chat",
@@ -195,8 +216,9 @@ async function createHarness(finalText: string): Promise<Harness> {
 		},
 	);
 
-	const callback: HandlerCallback = async (content: Content) => {
+	const callback: HandlerCallback = async (content: Content, actionName) => {
 		callbacks.push(content);
+		callbackActionNames.push(actionName);
 		await runtime.sendMessageToTarget(
 			{ source: "client_chat", roomId: runtime.agentId },
 			content,
@@ -209,6 +231,7 @@ async function createHarness(finalText: string): Promise<Harness> {
 		actionHandler,
 		callback,
 		callbacks,
+		callbackActionNames,
 		sent,
 		voiceHandler,
 	};
@@ -301,8 +324,28 @@ describe("DefaultMessageService transcript visibility integration", () => {
 		expect(persisted[0]?.content.transcriptVisibility).toBeUndefined();
 		expect(harness.callbacks).toHaveLength(1);
 		expect(harness.callbacks[0]?.text).toBe(visibleSummary);
+		expect(harness.callbackActionNames).toEqual([undefined]);
 		expect(harness.sent).toHaveLength(1);
 		expect(harness.sent[0]?.text).toBe(visibleSummary);
 		expect(harness.voiceHandler).toHaveBeenCalledTimes(1);
+	});
+
+	it("preserves action attribution through the real message-service callback", async () => {
+		const visibleSummary = "The available views are ready.";
+		const harness = await createHarness(visibleSummary, visibleSummary);
+		const result = await new DefaultMessageService().handleMessage(
+			harness.runtime,
+			makeMessage(harness.runtime, "List the available apps."),
+			harness.callback,
+		);
+
+		expect(result.actionResults).toEqual([
+			expect.objectContaining({
+				success: true,
+				data: expect.objectContaining({ actionName: "VIEWS" }),
+			}),
+		]);
+		expect(harness.callbacks).not.toHaveLength(0);
+		expect(harness.callbackActionNames).toContain("VIEWS");
 	});
 });
