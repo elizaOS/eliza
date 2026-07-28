@@ -6,7 +6,7 @@
 import { createHash } from "node:crypto";
 import {
 	attestDeliveryAudienceFromCanonicalRoom,
-	ChannelType,
+	type ChannelType,
 	type Content,
 	ContentType,
 	createUniqueUuid,
@@ -278,7 +278,16 @@ const ACTIVE_TASK_AGENT_STATUSES = new Set([
 const DISCORD_OUTBOUND_DEDUPE_WINDOW_MS = 2000;
 const DISCORD_OUTBOUND_DEDUPE_MAX_KEYS = 512;
 
-const recentOutboundDiscordDeliveries = new Map<string, number>();
+export interface DiscordOutboundDeliveryState {
+	status: "in_flight" | "delivered";
+	startedAt: number;
+	providerMessageId?: string;
+}
+
+const recentOutboundDiscordDeliveries = new Map<
+	string,
+	DiscordOutboundDeliveryState
+>();
 
 function asRecord(value: unknown): Record<string, unknown> | null {
 	return value && typeof value === "object" && !Array.isArray(value)
@@ -336,12 +345,20 @@ export function shouldSuppressTimeoutForInFlightDispatchForTests({
 }
 
 export interface DiscordOutboundDeliveryReservation {
-	commit(): void;
+	commit(providerMessageId: string): void;
 	release(): void;
 }
 
 export type BeginDiscordOutboundDeliveryResult =
-	| { kind: "duplicate" }
+	| {
+			kind: "duplicate";
+			priorDelivery: "in_flight";
+	  }
+	| {
+			kind: "duplicate";
+			priorDelivery: "delivered";
+			providerMessageId: string;
+	  }
 	| { kind: "deliver"; reservation: DiscordOutboundDeliveryReservation };
 
 export interface DiscordOutboundDeliveryParams {
@@ -352,7 +369,7 @@ export interface DiscordOutboundDeliveryParams {
 	attachmentUrls?: readonly string[];
 	now?: number;
 	windowMs?: number;
-	state?: Map<string, number>;
+	state?: Map<string, DiscordOutboundDeliveryState>;
 }
 
 function normalizeOutboundText(text: string | undefined): string {
@@ -368,12 +385,12 @@ function outboundAttachmentIdentity(
 }
 
 function pruneOutboundDedupeState(
-	state: Map<string, number>,
+	state: Map<string, DiscordOutboundDeliveryState>,
 	now: number,
 	windowMs: number,
 ): void {
-	for (const [key, timestamp] of state) {
-		if (now - Math.abs(timestamp) > windowMs) {
+	for (const [key, delivery] of state) {
+		if (now - delivery.startedAt > windowMs) {
 			state.delete(key);
 		}
 	}
@@ -401,7 +418,7 @@ export function beginDiscordOutboundDelivery(
 	if (!text && !attachments) {
 		return {
 			kind: "deliver",
-			reservation: { commit() {}, release() {} },
+			reservation: { commit(_providerMessageId: string) {}, release() {} },
 		};
 	}
 
@@ -418,27 +435,42 @@ export function beginDiscordOutboundDelivery(
 
 	pruneOutboundDedupeState(state, now, windowMs);
 	const previous = state.get(key);
-	if (
-		previous !== undefined &&
-		Math.abs(now - Math.abs(previous)) <= windowMs
-	) {
-		return { kind: "duplicate" };
+	if (previous !== undefined && now - previous.startedAt <= windowMs) {
+		if (
+			previous.status === "delivered" &&
+			typeof previous.providerMessageId === "string"
+		) {
+			return {
+				kind: "duplicate",
+				priorDelivery: "delivered",
+				providerMessageId: previous.providerMessageId,
+			};
+		}
+		return { kind: "duplicate", priorDelivery: "in_flight" };
 	}
 
-	state.set(key, -now);
+	const reservationState: DiscordOutboundDeliveryState = {
+		status: "in_flight",
+		startedAt: now,
+	};
+	state.set(key, reservationState);
 	let settled = false;
 	return {
 		kind: "deliver",
 		reservation: {
-			commit() {
+			commit(providerMessageId: string) {
 				if (settled) return;
 				settled = true;
-				state.set(key, now);
+				state.set(key, {
+					status: "delivered",
+					startedAt: now,
+					providerMessageId,
+				});
 			},
 			release() {
 				if (settled) return;
 				settled = true;
-				if (state.get(key) === -now) {
+				if (state.get(key) === reservationState) {
 					state.delete(key);
 				}
 			},
@@ -1767,7 +1799,13 @@ export class MessageManager {
 						);
 					}
 					if (messages.length > 0) {
-						outboundReservation.commit();
+						const committedMessage = messages.at(-1);
+						if (!committedMessage) {
+							throw new Error(
+								"Discord response callback completed without a provider receipt",
+							);
+						}
+						outboundReservation.commit(committedMessage.id);
 						outboundReservation = undefined;
 					}
 

@@ -14,6 +14,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	beginDiscordOutboundDelivery,
 	createDiscordMessageMemoryOnce,
+	type DiscordOutboundDeliveryState,
 	hasActiveTaskAgentWorkForMessage,
 	MessageManager,
 	shouldSuppressTimeoutForInFlightDispatchForTests,
@@ -302,7 +303,7 @@ describe("createDiscordMessageMemoryOnce", () => {
 
 describe("beginDiscordOutboundDelivery dedupe window", () => {
 	it("suppresses the same committed logical send inside the window and frees it on release", () => {
-		const state = new Map<string, number>();
+		const state = new Map<string, DiscordOutboundDeliveryState>();
 		const base = {
 			channelId: "123",
 			text: "The answer is 42.",
@@ -314,13 +315,19 @@ describe("beginDiscordOutboundDelivery dedupe window", () => {
 		const first = beginDiscordOutboundDelivery(base);
 		expect(first.kind).toBe("deliver");
 		if (first.kind !== "deliver") throw new Error("unreachable");
-		first.reservation.commit();
+		expect(beginDiscordOutboundDelivery({ ...base, now: 2_000 })).toEqual({
+			kind: "duplicate",
+			priorDelivery: "in_flight",
+		});
+		first.reservation.commit("provider-message-1");
 
 		// Same account/channel/text inside the window → duplicate (this is the
 		// callback-vs-connector-send double-delivery guard).
-		expect(beginDiscordOutboundDelivery({ ...base, now: 3_000 }).kind).toBe(
-			"duplicate",
-		);
+		expect(beginDiscordOutboundDelivery({ ...base, now: 3_000 })).toEqual({
+			kind: "duplicate",
+			priorDelivery: "delivered",
+			providerMessageId: "provider-message-1",
+		});
 
 		// A different channel is a different logical send.
 		expect(
@@ -335,7 +342,7 @@ describe("beginDiscordOutboundDelivery dedupe window", () => {
 	});
 
 	it("released (failed) sends do not block a retry, and empty payloads bypass dedupe", () => {
-		const state = new Map<string, number>();
+		const state = new Map<string, DiscordOutboundDeliveryState>();
 		const params = {
 			channelId: "123",
 			text: "retry me",

@@ -340,9 +340,7 @@ export async function listMicrosoftCalendarAccounts(args: {
     );
 }
 
-function credentialTimestamp(
-  value: unknown,
-): number | string | Date | null {
+function credentialTimestamp(value: unknown): number | string | Date | null {
   if (
     typeof value === "number" ||
     typeof value === "string" ||

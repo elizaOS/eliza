@@ -4,12 +4,14 @@
  * createMockRuntime with deterministic mock connectors — no live model, no DB.
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createMockRuntime } from "../../../testing/mock-runtime";
 import type {
 	ActionResult,
 	IAgentRuntime,
 	Memory,
+	SendHandlerOutcome,
+	SendHandlerResult,
 } from "../../../types/index.ts";
 import { inferOp, messageAction } from "./message.ts";
 
@@ -443,6 +445,142 @@ describe("MESSAGE op=send owner-binding gate", () => {
 		const result = await send(runtime);
 		expect(result.success).toBe(true);
 		expect(sent.called).toBe(true);
+	});
+});
+
+describe("MESSAGE op=send delivery evidence", () => {
+	const recipient = "00000000-0000-0000-0000-0000000000dd";
+
+	function runtimeForOutcome(
+		outcome: Awaited<SendHandlerResult>,
+	): {
+		runtime: IAgentRuntime;
+		upsertMemory: ReturnType<typeof vi.fn>;
+		createMemory: ReturnType<typeof vi.fn>;
+	} {
+		const upsertMemory = vi.fn(async () => undefined);
+		const createMemory = vi.fn(async () => undefined);
+		const runtime = createMockRuntime({
+			agentId: "00000000-0000-0000-0000-000000000001",
+			logger: { debug() {}, info() {}, warn() {}, error() {} },
+			getMessageConnectors: () => [
+				{
+					source: "discord",
+					label: "Discord",
+					capabilities: [],
+					supportedTargetKinds: ["user"],
+					contexts: [],
+				},
+			],
+			sendMessageToTarget: async () => outcome,
+			upsertMemory,
+			createMemory,
+		});
+		return { runtime, upsertMemory, createMemory };
+	}
+
+	async function sendWithOutcome(
+		outcome: Awaited<SendHandlerResult>,
+	): Promise<{
+		result: ActionResult;
+		upsertMemory: ReturnType<typeof vi.fn>;
+		createMemory: ReturnType<typeof vi.fn>;
+	}> {
+		const { runtime, upsertMemory, createMemory } =
+			runtimeForOutcome(outcome);
+		const result = await messageAction.handler(
+			runtime,
+			{
+				...message,
+				content: { text: "send a status update", source: "discord" },
+			} as Memory,
+			undefined,
+			{
+				parameters: {
+					action: "send",
+					source: "discord",
+					target: recipient,
+					targetKind: "user",
+					message: "status update",
+				},
+			},
+			undefined,
+			undefined,
+		);
+		if (!result) throw new Error("no result");
+		return { result, upsertMemory, createMemory };
+	}
+
+	const unconfirmedCases: Array<{
+		name: string;
+		outcome: SendHandlerOutcome | undefined;
+		error: string;
+		text: RegExp;
+	}> = [
+		{
+			name: "duplicate still in flight",
+			outcome: { kind: "duplicate", priorDelivery: "in_flight" },
+			error: "MESSAGE_DELIVERY_IN_FLIGHT",
+			text: /not yet confirmed/i,
+		},
+		{
+			name: "committed duplicate without a replayable receipt",
+			outcome: { kind: "duplicate", priorDelivery: "delivered" },
+			error: "MESSAGE_DELIVERY_UNKNOWN",
+			text: /not provide enough receipt evidence/i,
+		},
+		{
+			name: "explicit connector refusal",
+			outcome: {
+				kind: "not_delivered",
+				code: "CHANNEL_NOT_ALLOWED",
+				message: "Target channel is not allowed.",
+			},
+			error: "MESSAGE_NOT_DELIVERED",
+			text: /was not delivered/i,
+		},
+		{
+			name: "legacy connector ambiguity",
+			outcome: undefined,
+			error: "MESSAGE_DELIVERY_UNKNOWN",
+			text: /returned no delivery receipt/i,
+		},
+	];
+
+	for (const testCase of unconfirmedCases) {
+		it(`does not persist or narrate success for ${testCase.name}`, async () => {
+			const { result, upsertMemory, createMemory } = await sendWithOutcome(
+				testCase.outcome,
+			);
+			expect(result.success).toBe(false);
+			expect(result.data).toMatchObject({ error: testCase.error });
+			expect(result.text).toMatch(testCase.text);
+			expect(result.text).not.toContain("Message sent via");
+			expect(upsertMemory).not.toHaveBeenCalled();
+			expect(createMemory).not.toHaveBeenCalled();
+		});
+	}
+
+	it("reports a committed duplicate only with the replayed provider receipt", async () => {
+		const { result, upsertMemory, createMemory } = await sendWithOutcome({
+			kind: "duplicate",
+			priorDelivery: "delivered",
+			providerMessageId: "discord-message-123",
+		});
+		expect(result).toMatchObject({
+			success: true,
+			data: {
+				deliveryStatus: "duplicate",
+				priorDelivery: "delivered",
+				responseMessageId: "discord-message-123",
+				newDelivery: false,
+				persisted: false,
+			},
+		});
+		expect(result.text).toContain("had already been delivered");
+		expect(result.text).not.toContain("Message sent via");
+		expect(upsertMemory).not.toHaveBeenCalled();
+		expect(createMemory).not.toHaveBeenCalled();
 	});
 });
 

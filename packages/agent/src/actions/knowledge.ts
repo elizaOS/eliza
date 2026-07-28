@@ -26,6 +26,7 @@ import {
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
+  isSendHandlerOutcome,
   logger,
   type Media,
   type Memory,
@@ -788,7 +789,42 @@ async function dispatchToRoom(
   }
   try {
     const sent = await runtime.sendMessageToTarget(target, content);
-    return { ok: true, ...(sent?.id ? { messageId: sent.id } : {}) };
+    if (isSendHandlerOutcome(sent)) {
+      if (sent.kind === "delivered") {
+        return {
+          ok: true,
+          messageId: sent.memory?.id ?? sent.providerMessageId,
+        };
+      }
+      if (
+        sent.kind === "duplicate" &&
+        sent.priorDelivery === "delivered" &&
+        sent.providerMessageId
+      ) {
+        return { ok: true, messageId: sent.providerMessageId };
+      }
+      return {
+        ok: false,
+        reason: "transport_error",
+        userActionable: sent.kind !== "duplicate",
+        message:
+          sent.kind === "not_delivered"
+            ? sent.message
+            : sent.priorDelivery === "in_flight"
+              ? "A matching connector delivery is still in flight."
+              : "The connector suppressed the delivery without a committed receipt.",
+      };
+    }
+    if (!sent) {
+      return {
+        ok: false,
+        reason: "transport_error",
+        userActionable: true,
+        message:
+          "The connector returned no delivery receipt; acceptance is unknown.",
+      };
+    }
+    return { ok: true, ...(sent.id ? { messageId: sent.id } : {}) };
   } catch (err) {
     // error-policy:J1 boundary translation — connector dispatch failures become
     // a structured DispatchResult the action surfaces to the model/user.

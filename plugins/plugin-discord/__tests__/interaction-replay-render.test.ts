@@ -141,9 +141,12 @@ function makeCodecButtonInteraction(channel: unknown, follows: CapturedSend[]) {
 
 describe("#14527 button-tap replay renders link-out blocks natively", () => {
 	it("attaches an Open task link button to a post-tap task reply", async () => {
-		const { service, channel, messageService } = makeService("https://app.test", {
-			channelSendable: true,
-		});
+		const { service, channel, messageService } = makeService(
+			"https://app.test",
+			{
+				channelSendable: true,
+			},
+		);
 		const follows: CapturedSend[] = [];
 		const interaction = makeCodecButtonInteraction(channel, follows);
 
@@ -196,9 +199,12 @@ describe("#14527 button-tap replay renders link-out blocks natively", () => {
 	it("delivers via followUp in a group DM where channel.send is unavailable", async () => {
 		// The live 2026-07-16 bug: a group-DM button tap ran the turn but the
 		// reply used channel.send (the bot is not a member) and vanished.
-		const { service, channel, messageService } = makeService("https://app.test", {
-			channelSendable: false,
-		});
+		const { service, channel, messageService } = makeService(
+			"https://app.test",
+			{
+				channelSendable: false,
+			},
+		);
 		const follows: CapturedSend[] = [];
 		const interaction = makeCodecButtonInteraction(channel, follows);
 

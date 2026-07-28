@@ -29,6 +29,7 @@ import {
 	type MessageConnectorUserContext,
 	parseBooleanFromText,
 	type Room,
+	type SendHandlerOutcome,
 	Service,
 	setConnectorAdminWhitelist,
 	stringToUuid,
@@ -1691,7 +1692,7 @@ export class DiscordService extends Service implements IDiscordService {
 		runtime: IAgentRuntime,
 		target: TargetInfo,
 		content: Content,
-	): Promise<Memory | undefined> {
+	): Promise<Memory | SendHandlerOutcome | undefined> {
 		let outboundReservation: DiscordOutboundDeliveryReservation | undefined;
 		// Resolve the connector account this outbound message must use.
 		// Priority: explicit target.accountId > this service instance's default.
@@ -1802,7 +1803,11 @@ export class DiscordService extends Service implements IDiscordService {
 				runtime.logger.warn(
 					`Channel ${targetChannel.id}${resolvedFromText} not in allowed list, skipping send`,
 				);
-				return;
+				return {
+					kind: "not_delivered",
+					code: "DISCORD_CHANNEL_NOT_ALLOWED",
+					message: `Discord channel ${targetChannel.id} is not in the configured allowlist.`,
+				};
 			}
 
 			if (targetChannel.isTextBased() && !targetChannel.isVoiceBased()) {
@@ -1889,7 +1894,15 @@ export class DiscordService extends Service implements IDiscordService {
 								},
 								"Suppressing duplicate Discord connector delivery",
 							);
-							return;
+							return {
+								kind: "duplicate",
+								priorDelivery: outboundDedupe.priorDelivery,
+								...("providerMessageId" in outboundDedupe
+									? {
+											providerMessageId: outboundDedupe.providerMessageId,
+										}
+									: {}),
+							};
 						}
 						outboundReservation = outboundDedupe.reservation;
 						if (textContent) {
@@ -1948,7 +1961,13 @@ export class DiscordService extends Service implements IDiscordService {
 							sentMessages.push(sent);
 						}
 						if (sentMessages.length > 0) {
-							outboundReservation.commit();
+							const committedMessage = sentMessages.at(-1);
+							if (!committedMessage) {
+								throw new Error(
+									"Discord send completed without a provider message receipt.",
+								);
+							}
+							outboundReservation.commit(committedMessage.id);
 							outboundReservation = undefined;
 						}
 					} else {
@@ -1978,7 +1997,7 @@ export class DiscordService extends Service implements IDiscordService {
 						},
 					});
 
-					let lastPersistedMemory: Memory | undefined;
+					let lastDeliveredMemory: Memory | undefined;
 					for (const sentMsg of sentMessages) {
 						try {
 							const hasAttachments = sentMsg.attachments.size > 0;
@@ -2013,12 +2032,12 @@ export class DiscordService extends Service implements IDiscordService {
 								},
 								createdAt: sentMsg.createdTimestamp || Date.now(),
 							};
+							lastDeliveredMemory = memory;
 
 							await createDiscordMessageMemoryOnce(runtime, memory, {
 								operation: "discord-connector-send",
 								platformMessageId: sentMsg.id,
 							});
-							lastPersistedMemory = memory;
 							runtime.logger.debug(
 								{
 									src: "plugin:discord",
@@ -2033,7 +2052,19 @@ export class DiscordService extends Service implements IDiscordService {
 							);
 						}
 					}
-					return lastPersistedMemory;
+					const lastSentMessage = sentMessages.at(-1);
+					if (!lastSentMessage) {
+						return {
+							kind: "not_delivered",
+							code: "DISCORD_EMPTY_MESSAGE",
+							message: "Discord received no text or attachment to send.",
+						};
+					}
+					return {
+						kind: "delivered",
+						providerMessageId: lastSentMessage.id,
+						...(lastDeliveredMemory ? { memory: lastDeliveredMemory } : {}),
+					};
 				} else {
 					throw new Error(
 						`Target channel ${targetChannel.id} does not have a send method.`,

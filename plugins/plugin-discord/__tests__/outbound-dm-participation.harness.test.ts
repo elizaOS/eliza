@@ -1,8 +1,16 @@
 /**
- * Real-PGlite proof that entity-targeted Discord DMs establish canonical
- * recipient participation before sending and persist into that discoverable room.
+ * Real-PGlite proof that generic MESSAGE dispatch into an entity-targeted
+ * Discord DM establishes canonical participation, persists provider evidence,
+ * and reports a repeated send as a no-op without fabricating another record.
  */
-import { createUniqueUuid, type AgentRuntime, type UUID } from "@elizaos/core";
+import {
+	type ActionResult,
+	type AgentRuntime,
+	createUniqueUuid,
+	type Memory,
+	messageAction,
+	type UUID,
+} from "@elizaos/core";
 import { Collection, ChannelType as DiscordChannelType } from "discord.js";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
@@ -32,7 +40,7 @@ describe("Discord outbound DM participation", () => {
 		await cleanup();
 	});
 
-	it("stores the sent message in a room discoverable by the exact recipient", async () => {
+	it("persists one provider-backed send and truthfully reports a committed duplicate", async () => {
 		const recipient = "11111111-1111-1111-1111-111111111111" as UUID;
 		const discordUserId = "222222222222222222";
 		const dmChannel = {
@@ -102,34 +110,106 @@ describe("Discord outbound DM participation", () => {
 		service.accountPool = accountPool;
 		service.defaultAccountId = "default";
 		service.resolveDiscordTargetUserId = vi.fn(async () => discordUserId);
-
-		const sent = await service.handleSendMessage(
-			runtime,
-			{ source: "discord", accountId: "default", entityId: recipient },
-			{ text: "real persistence canary" },
-		);
+		runtime.registerMessageConnector({
+			source: "discord",
+			accountId: "default",
+			label: "Discord",
+			capabilities: [],
+			supportedTargetKinds: ["user"],
+			contexts: ["messaging"],
+			sendHandler: (sendRuntime, target, content) =>
+				service.handleSendMessage(sendRuntime, target, content),
+		});
 
 		const roomId = createUniqueUuid(runtime, dmChannel.id);
-		expect(sent?.roomId).toBe(roomId);
+		const inboundMessage = {
+			id: "66666666-6666-6666-6666-666666666666" as UUID,
+			entityId: recipient,
+			agentId: runtime.agentId,
+			roomId,
+			content: { text: "send the persistence canary", source: "discord" },
+			metadata: { type: "message", source: "discord", accountId: "default" },
+			createdAt: Date.now(),
+		} as Memory;
+		const dispatch = async (): Promise<ActionResult> => {
+			const result = await messageAction.handler(
+				runtime,
+				inboundMessage,
+				undefined,
+				{
+					parameters: {
+						action: "send",
+						source: "discord",
+						accountId: "default",
+						target: recipient,
+						targetKind: "user",
+						message: "real persistence canary",
+					},
+				},
+				undefined,
+				undefined,
+			);
+			if (!result) throw new Error("MESSAGE returned no result");
+			return result;
+		};
+
+		const first = await dispatch();
+		expect(first).toMatchObject({
+			success: true,
+			data: {
+				deliveryStatus: "delivered",
+				responseMessageId: "444444444444444444",
+			},
+		});
+		expect(first.text).toContain("Message sent via Discord");
+
 		expect(new Set(await runtime.getParticipantsForRoom(roomId))).toEqual(
 			new Set([recipient, runtime.agentId]),
 		);
 		expect(await runtime.getRoomsForParticipant(recipient)).toContain(roomId);
-		const stored = await runtime.getMemories({
+		const storedAfterFirst = await runtime.getMemories({
 			roomId,
 			tableName: "messages",
 			count: 10,
 		});
-		expect(stored).toEqual(
+		expect(storedAfterFirst).toEqual(
 			expect.arrayContaining([
 				expect.objectContaining({
-					id: sent?.id,
 					entityId: runtime.agentId,
 					content: expect.objectContaining({
 						text: "real persistence canary",
 					}),
+					metadata: expect.objectContaining({
+						platformMessageId: "444444444444444444",
+					}),
 				}),
 			]),
+		);
+		const storedIdsAfterFirst = storedAfterFirst
+			.map((memory) => memory.id)
+			.sort();
+
+		const second = await dispatch();
+		expect(second).toMatchObject({
+			success: true,
+			data: {
+				deliveryStatus: "duplicate",
+				priorDelivery: "delivered",
+				responseMessageId: "444444444444444444",
+				newDelivery: false,
+				persisted: false,
+			},
+		});
+		expect(second.text).toContain("had already been delivered");
+		expect(second.text).not.toContain("Message sent");
+		expect(dmChannel.send).toHaveBeenCalledTimes(1);
+		const storedAfterSecond = await runtime.getMemories({
+			roomId,
+			tableName: "messages",
+			count: 10,
+		});
+		expect(storedAfterSecond.map((memory) => memory.id).sort()).toEqual(
+			storedIdsAfterFirst,
 		);
 	});
 });

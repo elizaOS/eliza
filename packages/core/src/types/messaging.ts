@@ -34,10 +34,58 @@ export interface TargetInfo {
 }
 
 /**
- * Function signature for handlers responsible for sending messages to specific platforms.
+ * A connector's structural delivery outcome when a bare `Memory` cannot express
+ * what happened. `delivered` requires provider acceptance evidence;
+ * `duplicate` distinguishes a committed earlier delivery from work that is
+ * merely in flight; `not_delivered` is an explicit refusal rather than an
+ * ambiguous `undefined`.
+ */
+export type SendHandlerOutcome =
+	| {
+			kind: "delivered";
+			providerMessageId: string;
+			memory?: Memory;
+	  }
+	| {
+			kind: "duplicate";
+			priorDelivery: "in_flight" | "delivered" | "unknown";
+			/** Present when the connector can replay the committed provider receipt. */
+			providerMessageId?: string;
+	  }
+	| {
+			kind: "not_delivered";
+			code: string;
+			message: string;
+	  };
+
+/**
+ * Function result for platform sends. Returning a `Memory` remains the legacy
+ * delivered receipt. Connectors that suppress, reject, or accept without a
+ * persisted `Memory` return a structural outcome; `undefined` remains supported
+ * for legacy connectors but carries no delivery evidence.
  */
 // biome-ignore lint/suspicious/noConfusingVoidType: legacy connectors return Promise<void>; new connectors may return Memory for persistence.
-export type SendHandlerResult = Promise<Memory | undefined | void>;
+export type SendHandlerResult = Promise<
+	Memory | SendHandlerOutcome | undefined | void
+>;
+
+/** Public-feed handlers retain the legacy Memory-or-void contract. */
+// biome-ignore lint/suspicious/noConfusingVoidType: legacy post connectors return Promise<void>.
+export type PostHandlerResult = Promise<Memory | undefined | void>;
+
+/** Narrow a send-handler return to its structural delivery outcome. */
+export function isSendHandlerOutcome(
+	value: Awaited<SendHandlerResult>,
+): value is SendHandlerOutcome {
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		"kind" in value &&
+		(value.kind === "delivered" ||
+			value.kind === "duplicate" ||
+			value.kind === "not_delivered")
+	);
+}
 
 export type SendHandlerFunction = (
 	runtime: IAgentRuntime,

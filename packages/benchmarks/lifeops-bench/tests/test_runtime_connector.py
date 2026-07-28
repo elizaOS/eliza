@@ -162,6 +162,8 @@ def _runtime_server(
     result: dict[str, object] | None = None,
     evidence_provenance: dict[str, object] | None = None,
     release_evidence: bool = False,
+    runtime_extra: dict[str, object] | None = None,
+    omit_runtime_field: str | None = None,
 ) -> Iterator[str]:
     class Handler(BaseHTTPRequestHandler):
         def do_POST(self) -> None:
@@ -176,6 +178,23 @@ def _runtime_server(
                     "snapshot": _snapshot(),
                 },
             }
+            runtime: dict[str, object] = {
+                "native_runtime_class": "@elizaos/core.AgentRuntime",
+                "native_runtime_api": "Action.handler",
+                "transport": "trusted_runtime_http",
+                "stand_in": stand_in,
+                "release_evidence": release_evidence,
+                "evidence_provenance": (
+                    evidence_provenance
+                    if evidence_provenance is not None
+                    else _local_provenance()
+                ),
+                "action_tags": ["domain:calendar", "capability:read"],
+            }
+            if runtime_extra is not None:
+                runtime.update(runtime_extra)
+            if omit_runtime_field is not None:
+                runtime.pop(omit_runtime_field, None)
             response = {
                 "schema": TRUSTED_RUNTIME_ACTION_SCHEMA,
                 "ok": action_result["success"],
@@ -185,19 +204,7 @@ def _runtime_server(
                 "risk": request["risk"],
                 "requested_at": request["requested_at"],
                 "observed_at": observed_at,
-                "runtime": {
-                    "native_runtime_class": "@elizaos/core.AgentRuntime",
-                    "native_runtime_api": "Action.handler",
-                    "transport": "trusted_runtime_http",
-                    "stand_in": stand_in,
-                    "release_evidence": release_evidence,
-                    "evidence_provenance": (
-                        evidence_provenance
-                        if evidence_provenance is not None
-                        else _local_provenance()
-                    ),
-                    "action_tags": ["domain:calendar", "capability:read"],
-                },
+                "runtime": runtime,
                 "result": action_result,
             }
             body = json.dumps(response).encode()
@@ -326,6 +333,35 @@ def test_explicit_provider_configuration_cannot_set_release_evidence() -> None:
         with pytest.raises(
             TrustedExecutorHttpError,
             match="native runtime protocol",
+        ):
+            connector.execute(
+                _request().action,
+                idempotency_key=_IDEMPOTENCY_KEY,
+                request=_request(),
+                policy=_read_policy(),
+            )
+
+
+@pytest.mark.parametrize(
+    ("runtime_extra", "omit_runtime_field"),
+    [
+        ({"operator_verified": True}, None),
+        (None, "action_tags"),
+    ],
+    ids=["extra", "missing"],
+)
+def test_native_runtime_connector_requires_exact_runtime_fields(
+    runtime_extra: dict[str, object] | None,
+    omit_runtime_field: str | None,
+) -> None:
+    with _runtime_server(
+        runtime_extra=runtime_extra,
+        omit_runtime_field=omit_runtime_field,
+    ) as url:
+        connector = ElizaRuntimeActionConnector(url, _TOKEN)
+        with pytest.raises(
+            TrustedExecutorHttpError,
+            match="runtime provenance fields",
         ):
             connector.execute(
                 _request().action,

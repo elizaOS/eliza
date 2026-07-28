@@ -19,6 +19,7 @@ import type {
   UUID,
 } from "@elizaos/core";
 import {
+  isSendHandlerOutcome,
   MESSAGE_SOURCE_TRIGGER_PROMPT,
   ServiceType,
   stringToUuid,
@@ -375,6 +376,9 @@ async function dispatchPrompt(
           { source: connectorSource, roomId: originRoomId },
           { ...content, agentVoiced: true },
         );
+        if (isSendHandlerOutcome(sent)) {
+          return sent.kind === "delivered" && sent.memory ? [sent.memory] : [];
+        }
         return sent ? [sent] : [];
       };
     }

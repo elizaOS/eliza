@@ -70,6 +70,21 @@ regexes = [
   '''unit-probe-token:[0-9a-f]{32}''',
 ]
 
+# The resource-capacity action-effect tests pin a literal proposal
+# idempotency key so replay assertions are readable; the fixed fixture name
+# crosses the generic-api-key entropy threshold. Scope the exact literal to
+# the one test file so every other token in it stays scanned.
+[[allowlists]]
+description = "Resource-capacity proposal test fixture idempotency key (synthetic literal)"
+condition = "AND"
+paths = [
+  '''(^|/)plugins/plugin-personal-assistant/src/lifeops/action-effect-result\.test\.ts$''',
+]
+regexTarget = "line"
+regexes = [
+  '''capacity-proposal-key-1''',
+]
+
 [[allowlists]]
 description = "Headscale DEPLOY.md CLI examples (`headscale apikeys create` — not a credential)"
 paths = [

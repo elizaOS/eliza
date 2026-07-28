@@ -44,6 +44,7 @@ import type { Memory, MemoryMetadata } from "./memory";
 import type { IMessageService } from "./message-service";
 import type {
 	IMessagingAdapter,
+	PostHandlerResult,
 	SendHandlerFunction,
 	SendHandlerResult,
 	TargetInfo,
@@ -513,7 +514,7 @@ export interface PostConnector {
 		runtime: IAgentRuntime,
 		content: Content,
 		context?: PostConnectorQueryContext,
-	) => SendHandlerResult;
+	) => PostHandlerResult;
 	fetchFeed?: (
 		context: PostConnectorQueryContext,
 		params: PostConnectorFeedParams,
@@ -1194,7 +1195,7 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	sendMessageToTarget(
 		target: TargetInfo,
 		content: Content,
-	): Promise<Memory | undefined>;
+	): SendHandlerResult;
 	editMessageOnTarget(
 		target: TargetInfo,
 		messageId: string,

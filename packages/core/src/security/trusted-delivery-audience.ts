@@ -8,8 +8,8 @@
  * host-principal attestor.
  */
 
-import { resolveCanonicalOwnerIdForMessage } from "../roles";
 import { ElizaError } from "../errors";
+import { resolveCanonicalOwnerIdForMessage } from "../roles";
 import type { DisclosureGate } from "../types/components";
 import type { Memory } from "../types/memory";
 import { ChannelType, type UUID } from "../types/primitives";

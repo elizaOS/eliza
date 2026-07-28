@@ -44,6 +44,7 @@ import type {
 import {
 	CANONICAL_MESSAGE_TARGET_KINDS,
 	ChannelType,
+	isSendHandlerOutcome,
 	ModelType,
 } from "../../../types/index.ts";
 import { MESSAGE_SOURCE_CLIENT_CHAT } from "../../../types/message-source.ts";
@@ -1783,6 +1784,7 @@ async function persistOutboundMemory(params: {
 	kind?: MessageTargetKind;
 	content: Content;
 	sentMemory?: Memory;
+	providerMessageId?: string;
 	persist: boolean;
 }): Promise<Memory | undefined> {
 	if (!params.persist) return params.sentMemory ?? undefined;
@@ -1795,10 +1797,17 @@ async function persistOutboundMemory(params: {
 			label,
 			kind,
 		);
-		const platformMessageId =
-			typeof sentMemory?.metadata === "object"
-				? (sentMemory.metadata as { messageIdFull?: string }).messageIdFull
+		const sentMetadata =
+			typeof sentMemory?.metadata === "object" && sentMemory.metadata !== null
+				? (sentMemory.metadata as Record<string, unknown>)
 				: undefined;
+		const platformMessageId =
+			params.providerMessageId ??
+			(typeof sentMetadata?.platformMessageId === "string"
+				? sentMetadata.platformMessageId
+				: typeof sentMetadata?.messageIdFull === "string"
+					? sentMetadata.messageIdFull
+					: undefined);
 		const memory: Memory = {
 			...(sentMemory ?? {}),
 			id:
@@ -1824,7 +1833,12 @@ async function persistOutboundMemory(params: {
 				type: "message",
 				source,
 				provider: source,
-				...(platformMessageId ? { messageIdFull: platformMessageId } : {}),
+				...(platformMessageId
+					? {
+							messageIdFull: platformMessageId,
+							platformMessageId,
+						}
+					: {}),
 			},
 			createdAt: sentMemory?.createdAt ?? Date.now(),
 		};
@@ -2060,8 +2074,100 @@ async function handleSend(
 	);
 
 	let persisted: Memory | undefined;
+	let providerMessageId: string | undefined;
 	try {
-		const sent = await runtime.sendMessageToTarget(target, content);
+		const sendResult = await runtime.sendMessageToTarget(target, content);
+		let sentMemory: Memory | undefined;
+		if (isSendHandlerOutcome(sendResult)) {
+			if (sendResult.kind === "duplicate") {
+				const duplicateData = {
+					source: selected.connector.source,
+					target,
+					targetLabel: selected.label,
+					targetKind: selected.kind,
+					sourceResolution: resolution.sourceResolution,
+					deliveryStatus: "duplicate",
+					priorDelivery: sendResult.priorDelivery,
+					responseMessageId: sendResult.providerMessageId,
+					newDelivery: false,
+					persisted: false,
+				};
+				if (
+					sendResult.priorDelivery === "delivered" &&
+					sendResult.providerMessageId
+				) {
+					return opSuccess(
+						"send",
+						`A matching message had already been delivered via ${selected.connector.label} to ${selected.label}; this attempt sent and persisted nothing new.`,
+						duplicateData,
+					);
+				}
+				if (sendResult.priorDelivery === "in_flight") {
+					return opFailure(
+						"send",
+						"MESSAGE_DELIVERY_IN_FLIGHT",
+						`A matching message is already being delivered via ${selected.connector.label} to ${selected.label}. This attempt sent and persisted nothing, and delivery is not yet confirmed.`,
+						duplicateData,
+					);
+				}
+				return opFailure(
+					"send",
+					"MESSAGE_DELIVERY_UNKNOWN",
+					`The connector suppressed a matching message via ${selected.connector.label}, but did not provide enough receipt evidence to establish a completed earlier delivery. This attempt persisted no success record.`,
+					duplicateData,
+				);
+			}
+			if (sendResult.kind === "not_delivered") {
+				return opFailure(
+					"send",
+					"MESSAGE_NOT_DELIVERED",
+					`Message was not delivered via ${selected.connector.label}: ${sendResult.message}`,
+					{
+						source: selected.connector.source,
+						target,
+						targetKind: selected.kind,
+						sourceResolution: resolution.sourceResolution,
+						deliveryStatus: "not_delivered",
+						connectorCode: sendResult.code,
+						newDelivery: false,
+						persisted: false,
+					},
+				);
+			}
+			sentMemory = sendResult.memory;
+			providerMessageId = sendResult.providerMessageId;
+		} else if (sendResult) {
+			sentMemory = sendResult;
+			const sentMetadata =
+				typeof sentMemory.metadata === "object" &&
+				sentMemory.metadata !== null
+					? (sentMemory.metadata as Record<string, unknown>)
+					: undefined;
+			providerMessageId =
+				typeof sentMetadata?.platformMessageId === "string"
+					? sentMetadata.platformMessageId
+					: typeof sentMetadata?.messageIdFull === "string"
+						? sentMetadata.messageIdFull
+						: undefined;
+		} else {
+			logger.warn(
+				`[MESSAGE/send] ${selected.connector.source} returned no delivery evidence`,
+			);
+			return opFailure(
+				"send",
+				"MESSAGE_DELIVERY_UNKNOWN",
+				`${selected.connector.label} returned no delivery receipt. The message may or may not have been accepted; no success record was persisted.`,
+				{
+					source: selected.connector.source,
+					target,
+					targetKind: selected.kind,
+					sourceResolution: resolution.sourceResolution,
+					deliveryStatus: "unknown",
+					acceptance: "unknown",
+					persisted: false,
+				},
+			);
+		}
 		persisted = await persistOutboundMemory({
 			runtime,
 			source: selected.connector.source,
@@ -2069,7 +2175,8 @@ async function handleSend(
 			label: selected.label,
 			kind: selected.kind,
 			content,
-			sentMemory: sent,
+			sentMemory,
+			providerMessageId,
 			persist: boolParam(params.persist) !== false,
 		});
 	} catch (error) {
@@ -2090,10 +2197,15 @@ async function handleSend(
 		);
 	}
 
-	const platformMessageId =
-		typeof persisted?.metadata === "object"
-			? (persisted.metadata as { messageIdFull?: string }).messageIdFull
-			: undefined;
+	if (!providerMessageId && typeof persisted?.metadata === "object") {
+		const persistedMetadata = persisted.metadata as Record<string, unknown>;
+		providerMessageId =
+			typeof persistedMetadata.platformMessageId === "string"
+				? persistedMetadata.platformMessageId
+				: typeof persistedMetadata.messageIdFull === "string"
+					? persistedMetadata.messageIdFull
+					: undefined;
+	}
 	await persistCurrentChatMemory({
 		runtime,
 		message,
@@ -2101,7 +2213,7 @@ async function handleSend(
 		label: selected.label,
 		kind: selected.kind,
 		targetMemory: persisted,
-		platformMessageId,
+		platformMessageId: providerMessageId,
 	});
 
 	return opSuccess(
@@ -2117,7 +2229,8 @@ async function handleSend(
 			thread: normalized.thread,
 			urgency: normalized.urgency,
 			memoryId: persisted?.id,
-			responseMessageId: platformMessageId,
+			responseMessageId: providerMessageId,
+			deliveryStatus: "delivered",
 		},
 	);
 }

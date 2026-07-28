@@ -244,6 +244,7 @@ import {
 	type RuntimeSettings,
 	type RuntimeStopOptions,
 	type SendHandlerFunction,
+	type SendHandlerResult,
 	type Service,
 	type ServiceClass,
 	ServiceType,
@@ -11222,7 +11223,7 @@ ${section_end}`;
 	async sendMessageToTarget(
 		target: TargetInfo,
 		content: Content,
-	): Promise<Memory | undefined> {
+	): SendHandlerResult {
 		const source =
 			typeof target.source === "string" ? target.source.trim() : "";
 		const accountId = normalizeConnectorAccountId(target.accountId);
@@ -11258,8 +11259,7 @@ ${section_end}`;
 			typeof voicedContent.text === "string"
 				? { ...voicedContent, text: sanitizeOutboundText(voicedContent.text) }
 				: voicedContent;
-		const result = await handler(this, target, outboundContent);
-		return result as Memory | undefined;
+		return handler(this, target, outboundContent);
 	}
 
 	private resolveMessageConnector(target: TargetInfo): {

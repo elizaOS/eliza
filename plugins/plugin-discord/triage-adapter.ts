@@ -21,6 +21,7 @@ import {
 	type DraftRequest,
 	getDefaultTriageService,
 	type IAgentRuntime,
+	isSendHandlerOutcome,
 	type ListOptions,
 	logger,
 	type Memory,
@@ -29,6 +30,7 @@ import {
 	type MessageConnectorTarget,
 	type MessageRef,
 	type MessageSource,
+	type SendHandlerOutcome,
 	type TargetInfo,
 } from "@elizaos/core";
 import { DISCORD_SERVICE_NAME } from "./constants";
@@ -66,7 +68,7 @@ interface DiscordTriageCapableService {
 		runtime: IAgentRuntime,
 		target: TargetInfo,
 		content: Content,
-	): Promise<Memory | undefined>;
+	): Promise<Memory | SendHandlerOutcome | undefined>;
 }
 
 const REQUIRED_SERVICE_METHODS = [
@@ -299,12 +301,41 @@ export class DiscordTriageAdapter extends BaseMessageAdapter {
 			source: "discord",
 		};
 		const sent = await service.handleSendMessage(runtime, target, content);
-		this.draftCache.delete(draftId);
-		const sentMeta = (sent?.metadata ?? {}) as Record<string, unknown>;
-		return {
-			externalId:
+		let externalId: string | undefined;
+		if (isSendHandlerOutcome(sent)) {
+			if (sent.kind === "delivered") {
+				externalId = sent.providerMessageId;
+			} else if (
+				sent.kind === "duplicate" &&
+				sent.priorDelivery === "delivered" &&
+				sent.providerMessageId
+			) {
+				externalId = sent.providerMessageId;
+			} else if (sent.kind === "not_delivered") {
+				throw new Error(
+					`[DiscordTriageAdapter] Discord did not deliver draft ${draftId}: ${sent.message}`,
+				);
+			} else {
+				throw new Error(
+					`[DiscordTriageAdapter] Discord delivery for draft ${draftId} is not confirmed.`,
+				);
+			}
+		} else if (sent) {
+			const sentMeta = (sent.metadata ?? {}) as Record<string, unknown>;
+			externalId =
+				metaString(sentMeta, "platformMessageId") ??
 				metaString(sentMeta, "discordMessageId") ??
-				`discord-sent:${draft.channelId}:${Date.now()}`,
+				metaString(sentMeta, "messageIdFull") ??
+				sent.id;
+		}
+		if (!externalId) {
+			throw new Error(
+				`[DiscordTriageAdapter] Discord returned no delivery receipt for draft ${draftId}.`,
+			);
+		}
+		this.draftCache.delete(draftId);
+		return {
+			externalId,
 		};
 	}
 

@@ -1,9 +1,10 @@
-"""Production-backed connector and exact postcondition evaluators.
+"""Release-gated runtime connector and exact postcondition evaluators.
 
 The connector calls the dedicated elizaOS runtime process, validates native
 runtime provenance and canonical effect receipts, and exposes only structured
-action results to the signing server. Registered contract evaluators inspect
-provider-backed result data; they never infer assertions from prose.
+action results to the signing server. The closed v1 provenance union remains
+nonpublishable until server-owned provider readback exists. Registered contract
+evaluators inspect structured result data; they never infer assertions from prose.
 """
 
 from __future__ import annotations
@@ -542,6 +543,8 @@ class ElizaRuntimeActionConnector:
                 "trusted runtime observation predates the connector request",
             )
         canonical_json_bytes(payload)
+        # The closed v1 union has no verified-readback variant. A later protocol
+        # must add one explicitly after the server owns the verification boundary.
         raise TrustedExecutorHttpError(
             502,
             (
