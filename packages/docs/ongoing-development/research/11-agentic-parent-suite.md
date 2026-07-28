@@ -135,15 +135,15 @@ row to complete.
 | Append-only household audit and scoped export | Transactional LifeOps audit rows plus owner, details, and free/busy-only export policies implemented in #17178 | Real PGlite unrelated-child isolation and secret-redaction cases pass; external principal delivery pending | Automated artifacts reviewed; live export delivery pending | Evidence pending |
 | Microsoft and ICS/webcal calendar sources | Microsoft Graph calendar/delta/free-busy reads and idempotent one-off creation are implemented with exact writable-target resolution, delegated `Calendars.ReadWrite`, deterministic transaction IDs, explicit attendee-notification approval, and persisted provider receipts. Update/delete remain fail-closed without an atomic provider precondition, recurrence remains fail-closed until lossless mapping, and push/watch ingestion remains absent. Guarded ICS/webcal lifecycle and atomic source selection are implemented | Graph loopback HTTP plus real-PGlite creation/restart/cursor/410/privacy tests and ICS real-PGlite lifecycle/rollback tests pass; live tenant and external subscription proof pending | Automated artifacts reviewed; live provider logs pending | Partial |
 | School and activity-source ingestion | Versioned source facts, authority/contradiction/supersession, snapshot integrity, prompt-injection isolation, action bundles, and correction reconciliation are implemented; raw Gmail/Drive/PDF/photo/portal adapters and downstream materializers remain absent | Real PGlite restart, ambiguity, correction, cancellation, replay, concurrency, and provenance cases pass; live school-source journey pending | Automated artifacts reviewed; raw source and downstream receipts pending | Partial |
-| Owner-private destination, disclosure, and truthful send boundary | A process-local `TrustedDeliveryAudience` is attested from canonical room/principal state, cannot be minted through request content or JSON, and binds owner, actor, agent, room, membership, room type, principal provenance, and expiry. Owner-exclusive disclosure gates cannot be loosened by action role policy. Providers, actions, cached state, callbacks, streams, tool results, emitted events, persisted/returned memories, and final response egress fail closed and revalidate the audience. Service-token/API gateways remain external; personal-assistant and inbox private surfaces require owner-exclusive evidence; Discord GroupDM is shared and entity-targeted DM participation is established before delivery reservation. The canonical send result now distinguishes complete delivery, accepted-prefix partial delivery, exact settled replay, in-flight work, explicit refusal, local-persistence failure, and legacy unknown. Concurrent Discord senders join the active attempt and replay every provider ID; accepted provider effects are never relabeled as unsent after a local write failure | Discord passes 481 unit tests and ten harness tests, including a real-PGlite concurrent-send case with one provider call and one canonical provider-backed row. Focused delivery-result suites pass 26 core, 97 agent, 22 app-core, 38 personal-assistant, and 55 orchestrator cases; all six package typechecks pass. Earlier audience suites cover forged request labels, stale membership, GroupDM classification, and recipient participation. A live multi-principal connector/API journey, sibling/group disclosure capture, and provider payload/log review remain pending. Outbound dedupe is process-local: a crash after provider acceptance but before settlement remains ambiguous, so provider-level exactly-once is not claimed | Automated artifacts reviewed; live external-principal, recipient, and provider-readback proof pending | Partial |
+| Owner-private destination, disclosure, and truthful send boundary | A process-local `TrustedDeliveryAudience` is attested from canonical room/principal state, cannot be minted through request content or JSON, and binds owner, actor, agent, room, membership, room type, principal provenance, and expiry. Owner-exclusive disclosure gates cannot be loosened by action role policy. Providers, actions, cached state, callbacks, streams, tool results, emitted events, persisted/returned memories, and final response egress fail closed and revalidate the audience. Service-token/API gateways remain external; personal-assistant and inbox private surfaces require owner-exclusive evidence; Discord GroupDM is shared and entity-targeted DM participation is established before delivery reservation. The canonical send result now distinguishes complete delivery, accepted-prefix partial delivery, exact settled replay, in-flight work, explicit refusal, local-persistence failure, and legacy unknown. Concurrent Discord senders join the active attempt and replay every provider ID; accepted provider effects are never relabeled as unsent after a local write failure | Discord passes 481 unit tests and ten harness tests, including a real-PGlite concurrent-send case with one test-double provider call and one row classified as provider-backed by the harness. Focused delivery-result suites pass 26 core, 97 agent, 22 app-core, 38 personal-assistant, and 55 orchestrator cases; all six package typechecks pass. Earlier audience suites cover forged request labels, stale membership, GroupDM classification, and recipient participation. These tests establish typed local outcomes and same-process replay, not provider delivery or readback. A live multi-principal connector/API journey, sibling/group disclosure capture, and provider payload/log review remain pending. Outbound dedupe is process-local: a crash after provider acceptance but before settlement remains ambiguous, so provider-level exactly-once is not claimed | Automated artifacts reviewed; live external-principal, recipient, and provider-readback proof pending | Partial |
 | Authenticated family communication and child-safe week | Connector-stamped identity must resolve to one verified household entity before family proposals or child-week projection; short-lived message attestations, proposal quarantine, privacy omissions, co-parent response state, and the shared scheduler SLA watcher are implemented. Raw acoustic speaker identity, rich calendar/school projection, and provider delivery/read/reply event bridges remain absent | Real PGlite family, identity-spoof, ambiguity, scope, privacy, replay, restart, and watcher cases pass; authenticated voice hardware and live co-parent provider journey pending | Automated artifacts reviewed; voice, provider-event, and child-surface evidence pending | Partial |
-| Action bundles, responsibility ownership, and weekly brief | Household operations model actionable context, C/P/E/M ownership, non-use, vendor history, seasonal windows, and weekly briefs. Assignment acceptance, calendar checks, non-use, and provider-completion references remain structurally typed but caller-attested; automatic source composition, assignment delivery/acceptance, renegotiation, and closure are absent | Real-PGlite service tests cover persistence, graph visibility, source-shape policy, non-use, brief shape, and explicit two-household/cross-principal rejection. Action authorization is dependency-injection tested rather than a production-principal E2E. Trusted source readback and a live assignment/delivery/closure journey remain pending | Automated artifacts reviewed; connector and closure evidence pending | Partial |
+| Action bundles, responsibility ownership, and weekly brief | Household operations model actionable context, C/P/E/M ownership, non-use, vendor history, seasonal windows, and weekly briefs. Assignment acceptance, calendar checks, non-use, and provider-completion references remain structurally typed but caller-attested; automatic source composition, assignment delivery/acceptance, renegotiation, and closure are absent | Real-PGlite service tests cover persistence, graph visibility, source-shape policy, non-use, brief shape, and explicit two-household/cross-principal isolation and rejection. Action authorization is dependency-injection tested rather than through the production principal boundary. Trusted source readback and a live assignment/delivery/closure journey remain pending | Automated artifacts reviewed; connector and closure evidence pending | Partial |
 | Weather, maps, and local-activity sources | Typed NWS, Google Routes v2, and Ticketmaster adapters with provenance, freshness, partial/unavailable health, and constrained curation are registered; production planning consumers remain absent | Loopback HTTP contract and failure-semantics tests pass; live NWS/credentialed provider evidence pending | Automated artifacts reviewed; live source logs pending | Partial |
 | Household items, vendors, and seasonal almanac | Typed item observations/confidence, child size history, vendors/service records, seasonal opportunity windows, responsibility ownership, and visibility policy are implemented; receipt/photo/barcode capture and approved outreach/registration remain absent | Real PGlite restart and policy tests pass; live capture and provider effects pending | Automated artifacts reviewed; external receipts pending | Partial |
 | Food constraints, inventory, cart, and order recovery | Hard allergy/diet constraints, custody headcount, inventory confidence, leftovers, meal planning, immutable shopping handoffs, and approval-bound Instacart Products Link creation are implemented; cart, checkout, order, substitution, delivery, refund, and recovery are not | Real PGlite approval/restart/idempotency plus loopback Products Link tests pass; live retailer journey pending | Automated artifacts reviewed; real cart/order receipts pending | Partial - L2 only |
 | Childcare/work scenario model | Versioned assumptions, household-wide deterministic calculations, missing-input disclosure, sensitivity, and ranges are exposed through the finance action | Deterministic formula/action tests pass; live payroll/benefits/childcare acquisition and persona journey pending | Automated artifacts reviewed; live input provenance pending | Partial |
-| Source-grounded parenting guidance and handoff | The registered `PARENTING_GUIDANCE` action enforces graph authorization before model exposure, uses reviewed source/edition records, cites each offered option, aggregates simultaneous risk categories, applies a deterministic high-recall backstop to model classification, and fails closed on unavailable evidence. Exact US handoff records exist. Resource routing now requires a fresh, tenant- and child-bound graph assertion whose verifier has the correct role and active child-specific scope; owner profile/travel and planner parameters cannot select jurisdiction. Exact G35/G36 native evaluators read registered action output plus household, graph, and owner state. A production subject-location acquisition/confirmation surface, multilingual/international resources, durable decision audit, and a host-issued sensitive-disclosure attestation remain incomplete | Thirty-five focused parenting tests, fifteen real-PGlite production-composition tests, four Python parenting-runtime cases, and seven trusted-runtime TypeScript cases cover traveling-owner/child-elsewhere, stale/missing/untrusted location, planner injection, verifier-role, cross-child, cross-tenant, ordinary guidance, teen privacy, and multi-risk stopping. They are deterministic registered-model evidence, not a live-model or real-handoff journey | Automated artifacts reviewed; acquisition UX, adversarial live trajectory, professional review, and real handoff evidence pending | Partial |
-| World-traveling co-parent persona and G1-G48 corpus | The corpus contains 48 base G cases plus five uninstructed v2 variants, giving 53 registry version/hash keys. Seven base cases—G10, G15, G30, G34, G35, G36, and G38—have native server-side evaluators over structured runtime/PGlite result shapes; the other 41 base cases and all five variants are typed-terminal-snapshot-only. The trusted connector rejects action-authored snapshots and currently lacks server-owned provider readback. STATIC natural-language criteria now run through an independent semantic judge by default; literal conformance is an explicit offline mode | Focused native contract/policy/connector checks pass 59 Python tests; focused STATIC semantic-judge checks pass 33. Protocol tests cover tampering, final-state supersession, contract drift, duplicate IDs, restart persistence, concurrent retry, and bounded transport. They prove evaluator and harness behavior, not release-qualified execution, missing production emissions, or any complete domain journey. None of the 48 base cases is release-qualified | Diagnostic live-model and protocol artifacts reviewed; provider receipts, successful trajectories, screenshots, and video pending | Evidence pending |
+| Source-grounded parenting guidance and handoff | The registered `PARENTING_GUIDANCE` action enforces graph authorization before model exposure, uses reviewed source/edition records, cites each offered option, aggregates simultaneous risk categories, applies a deterministic high-recall backstop to model classification, and fails closed on unavailable evidence. Exact US handoff records exist. Resource routing now requires a fresh, tenant- and child-bound graph assertion whose verifier has the correct role and active child-specific scope; owner profile/travel and planner parameters cannot select jurisdiction. G35/G36 have native evaluator implementations exercised over structured registered-action, household, graph, and owner test state. A production subject-location acquisition/confirmation surface, multilingual/international resources, durable decision audit, and a host-issued sensitive-disclosure attestation remain incomplete | Thirty-five focused parenting tests, fifteen real-PGlite production-composition tests, four Python parenting-runtime cases, and seven trusted-runtime TypeScript cases cover traveling-owner/child-elsewhere, stale/missing/untrusted location, planner injection, verifier-role, cross-child, cross-tenant, ordinary guidance, teen privacy, and multi-risk stopping. They are deterministic registered-model and synthetic evaluator evidence, not a live-model, provider-qualified, or real-handoff journey | Automated artifacts reviewed; acquisition UX, adversarial live trajectory, professional review, and real handoff evidence pending | Partial |
+| World-traveling co-parent persona and G1-G48 corpus | The corpus contains 48 base G cases plus five uninstructed v2 variants, giving 53 registry version/hash keys. Seven base cases—G10, G15, G30, G34, G35, G36, and G38—have native server-side evaluator implementations covered by synthetic structured action-result/PGlite fixtures; the other 41 base cases and all five variants are typed-terminal-snapshot-only. This is evaluator coverage, not live or provider-qualified execution. The trusted connector rejects action-authored snapshots and currently lacks server-owned provider readback. STATIC natural-language criteria now run through an independent semantic judge by default; literal conformance is an explicit offline mode | Focused native contract/policy/connector checks pass 59 Python tests; focused STATIC semantic-judge checks pass 33. Protocol tests cover tampering, final-state supersession, contract drift, duplicate IDs, restart persistence, concurrent retry, and bounded transport. They prove evaluator and harness behavior, not release-qualified execution, missing production emissions, or any complete domain journey. None of the 48 base cases is release-qualified | Diagnostic live-model and protocol artifacts reviewed; provider receipts, successful trajectories, screenshots, and video pending | Evidence pending |
 | Existing J1 co-parenting corpus | All 21 J1 rows remain authored—eight LifeOpsBench and thirteen scenario-runner—against a diagnostic target of ten; none is provider-qualified or verified. The worktree adds provider-qualified manifest, observer, trajectory, and qualification primitives, but the in-process executor deliberately refuses qualification. No J1 definition declares that profile, no external controller is included, and no live provider evidence exists | Existing scenario-runner execution uses a mocked LifeOps environment, fake connector grants, a disabled scheduler, one shared runtime, and payload-inferred effects; LifeOpsBench uses deterministic LifeWorld and no J1 `TrustedEvidenceRequirement` | No qualifying artifacts reviewed | Evidence pending |
 
 Every incomplete row is a release blocker for the complete suite. Individual
@@ -190,6 +190,12 @@ does not advance a persona case to complete because the current
 provenance-valid live-model trajectory failed and no required real-provider
 journey has been captured:
 
+- screenshots, video, logs, OCR output, simulator capture, and verification
+  logs previously attached to the draft were produced on earlier heads or
+  deterministic fixture surfaces. They remain historical diagnostics and are
+  excluded from the current-head evidence gate. Exact-head artifacts must name
+  their commit, source boundary, content hash, manual-review result, and
+  secret-scan result before the draft may cite them as current proof;
 - the complete calendar plugin lane passed 484 tests with two explicitly
   skipped live-provider cases across 50 passing and one skipped files. That
   includes cross-runtime exact-source CAS, stale UI and agent conflict
@@ -320,9 +326,10 @@ journey has been captured:
   snapshot, retains inspectable artifacts, and re-verifies them during scoring.
   The 48 base cases plus five uninstructed variants have 53 registered
   evaluator version/hash keys. G10, G15, G30, G34, G35, G36, and G38 have
-  native evaluator implementations exercised against structured action-result/
-  PGlite shapes; the other 41 base cases and all five variants are
-  typed-terminal-snapshot-only. The trusted connector rejects action-authored
+  native evaluator implementations exercised against synthetic structured
+  action-result/PGlite fixtures; the other 41 base cases and all five variants
+  are typed-terminal-snapshot-only. This is evaluator coverage, not live or
+  provider-qualified execution. The trusted connector rejects action-authored
   snapshots and lacks server-owned provider readback. The native contract/
   policy/connector lane passes 59 focused Python tests.
   STATIC prose criteria now use an independent semantic judge by default,
@@ -722,6 +729,21 @@ Ticketmaster activity adapters are also implemented. Calendly supplies
 scheduled-event, event-type, availability, booking-link, and cancellation
 capabilities. Duffel supports flight search and approval-gated booking.
 
+Household routing now carries an exact connector account through readiness,
+send, and inbound identity resolution for Telegram, Discord, Signal, WhatsApp,
+X, and Gmail. A connector must echo the requested account and report a healthy
+account-specific state; an unknown account cannot silently fall back to the
+default. The same handle may belong to different verified entities on
+different accounts, while multiple viable account routes for one party are
+treated as ambiguous and skipped. iMessage and SMS household routes remain
+fail-closed because their current connector surfaces cannot prove
+account-specific readiness. The production schema migration maps pre-account
+identity rows to the literal `default` account and permits the same
+platform/handle on another account. That constraint replacement needs a
+controlled deployment migration with backup and rollback authorization.
+Real-PGlite and connector test-double suites establish routing, persistence,
+and rejection semantics; they are not provider delivery or readback proof.
+
 Related product substrate includes:
 
 - contacts and relationship edges such as `co_parent_of`;
@@ -784,16 +806,16 @@ complete manually reviewed artifact bundle.
 The parent suite adds 48 base scenario contracts and five uninstructed v2
 variants around the composite persona, giving 53 registry version/hash keys.
 Seven base cases—G10, G15, G30, G34, G35, G36, and G38—have native evaluator
-implementations exercised against structured action-result/PGlite shapes. The
-remaining 41 base cases and all five variants rely on exact
+implementations exercised against synthetic structured action-result/PGlite
+fixtures. The remaining 41 base cases and all five variants rely on exact
 content-addressed, lineage-bound terminal snapshots. The trusted connector
 rejects action-authored snapshots and lacks server-owned provider readback, so
-registration is not release-qualified execution and all 48 base cases remain
-incomplete. The frequent-traveler corpus remains useful for absolute versus
-wall-clock semantics, ambiguous time zones, re-anchoring, lighter pre-trip
-load, biological-night conflicts, messy itineraries, and time-zone history.
-The missing proof is native production emission plus a composite, live,
-real-connector family journey.
+this evaluator coverage is not live or provider-qualified execution and all 48
+base cases remain incomplete. The frequent-traveler corpus remains useful for
+absolute versus wall-clock semantics, ambiguous time zones, re-anchoring,
+lighter pre-trip load, biological-night conflicts, messy itineraries, and
+time-zone history. The missing proof is native production emission plus a
+composite, live, real-connector family journey.
 
 The separate A1/A2/B2 catalogs contain 74 rows against targets 28/24/22:
 21 are catalog-marked verified and 53 remain authored (20/17/16). None of the
@@ -2254,14 +2276,14 @@ separate adapters does not prove that journey.
 The 48 base G cases plus five uninstructed variants have 53 registered,
 server-owned typed evaluator contracts. Registration is fail-closed protocol
 coverage, not a completed production evaluator path. G10, G15, G30, G34, G35,
-G36, and G38 have native evaluator implementations exercised against
-structured action-result/PGlite shapes; the other 41 base cases and all five
-variants are typed-terminal-snapshot-only. The trusted connector rejects
-action-authored snapshots and lacks server-owned provider readback. A
-scenario-side declaration, model-reported assertion, or synthetic terminal
-snapshot cannot substitute for that observation. Each production path must
-give its registered evaluator the trusted final provider/database state needed
-to reject:
+G36, and G38 have native evaluator implementations exercised against synthetic
+structured action-result/PGlite fixtures; the other 41 base cases and all five
+variants are typed-terminal-snapshot-only. This is evaluator coverage, not live
+or provider-qualified execution. The trusted connector rejects action-authored
+snapshots and lacks server-owned provider readback. A scenario-side
+declaration, model-reported assertion, or synthetic terminal snapshot cannot
+substitute for that observation. Each production path must give its registered
+evaluator the trusted final provider/database state needed to reject:
 
 - an action name or argument outside the versioned policy;
 - an approval that does not resolve to the exact principal, tenant, account,

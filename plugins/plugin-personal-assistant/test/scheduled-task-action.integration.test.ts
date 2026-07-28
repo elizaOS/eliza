@@ -15,7 +15,10 @@ import type {
   Memory,
   UUID,
 } from "@elizaos/core";
-import { executePlannedToolCall } from "@elizaos/core";
+import {
+  attestDeliveryAudienceFromCanonicalRoom,
+  executePlannedToolCall,
+} from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { scheduledTaskAction } from "../src/actions/scheduled-task.ts";
 import type { ScheduledTask } from "../src/lifeops/scheduled-task/index.ts";
@@ -337,6 +340,14 @@ describe("SCHEDULED_TASK action", () => {
       runtime.agentId,
       "create an executor receipt task",
     );
+    // Owner-private actions require an attested delivery audience
+    // (disclosureGate stamped by ownerPrivateAction at plugin assembly).
+    // Production always attests before the executor runs — handleMessage
+    // attests every inbound turn from canonical room state — so mirror that
+    // seam here. The runtime provisions its own SELF room (id = agentId, agent
+    // as sole participant) at initialize, and the agent-actor turn clears the
+    // gate via the internal_agent_turn basis.
+    await attestDeliveryAudienceFromCanonicalRoom(runtime, message);
     const result = await executePlannedToolCall(
       runtime,
       {
