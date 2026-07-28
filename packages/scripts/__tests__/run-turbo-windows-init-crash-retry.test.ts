@@ -94,7 +94,9 @@ describe("run-turbo Windows init-crash retry", () => {
     expect(await attempts(attemptsFile)).toBe(2);
     expect(result.stderr).toContain("STATUS_DLL_INIT_FAILED");
     expect(result.stderr).toContain("Retrying once");
-  });
+    // Real sequential node subprocesses (up to 2 per invoke) overrun bun's
+    // 5s default under CI/AV load — every test in this file gets 30s.
+  }, 30_000);
 
   test("a persistent crash still fails after the single retry", async () => {
     const { fakeTurbo, attemptsFile } = await fixture(["crash", "crash"]);
@@ -103,7 +105,7 @@ describe("run-turbo Windows init-crash retry", () => {
 
     expect(result.exitCode).toBe(1);
     expect(await attempts(attemptsFile)).toBe(2);
-  });
+  }, 30_000);
 
   test("an ordinary failure without the signature is never retried", async () => {
     const { fakeTurbo, attemptsFile } = await fixture(["fail", "ok"]);
@@ -113,7 +115,7 @@ describe("run-turbo Windows init-crash retry", () => {
     expect(result.exitCode).toBe(1);
     expect(await attempts(attemptsFile)).toBe(1);
     expect(result.stderr).not.toContain("Retrying once");
-  });
+  }, 30_000);
 
   test("success passes through on the first attempt", async () => {
     const { fakeTurbo, attemptsFile } = await fixture(["ok"]);
@@ -122,7 +124,7 @@ describe("run-turbo Windows init-crash retry", () => {
 
     expect(result.exitCode).toBe(0);
     expect(await attempts(attemptsFile)).toBe(1);
-  });
+  }, 30_000);
 
   test("turbo output still streams through to the caller", async () => {
     const { fakeTurbo } = await fixture(["fail"]);
@@ -130,7 +132,7 @@ describe("run-turbo Windows init-crash retry", () => {
     const result = await invoke(fakeTurbo);
 
     expect(result.stdout).toContain("real compile error");
-  });
+  }, 30_000);
 
   test("RUN_TURBO_NO_INIT_CRASH_RETRY=1 disables the retry entirely", async () => {
     const { fakeTurbo, attemptsFile } = await fixture(["crash", "ok"]);
@@ -141,7 +143,7 @@ describe("run-turbo Windows init-crash retry", () => {
 
     expect(result.exitCode).toBe(1);
     expect(await attempts(attemptsFile)).toBe(1);
-  });
+  }, 30_000);
 
   test("without the force flag the retry stays Windows-only", async () => {
     const { fakeTurbo, attemptsFile } = await fixture(["crash", "ok"]);
@@ -161,5 +163,5 @@ describe("run-turbo Windows init-crash retry", () => {
       expect(child.exitCode).toBe(1);
       expect(await attempts(attemptsFile)).toBe(1);
     }
-  });
+  }, 30_000);
 });
