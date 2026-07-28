@@ -17,11 +17,26 @@ import {
   AGENT_JOB_TYPES,
   APPS_JOB_TYPES,
   JOB_TYPES,
+  PROVISIONING_STATUS_OWNER_JOB_TYPES,
   type ProvisioningJobType,
   resolveJobTypesForLanes,
 } from "./provisioning-job-types";
 
 const ALL = Object.values(JOB_TYPES) as ProvisioningJobType[];
+
+describe("provisioning status ownership", () => {
+  test("contains only executors that park the primary sandbox row in provisioning", () => {
+    expect([...PROVISIONING_STATUS_OWNER_JOB_TYPES]).toEqual([
+      JOB_TYPES.AGENT_PROVISION,
+      JOB_TYPES.AGENT_RESUME,
+      JOB_TYPES.AGENT_WAKE,
+      JOB_TYPES.AGENT_RESTART,
+    ]);
+    expect(PROVISIONING_STATUS_OWNER_JOB_TYPES.has(JOB_TYPES.AGENT_UPGRADE)).toBe(false);
+    expect(PROVISIONING_STATUS_OWNER_JOB_TYPES.has(JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE)).toBe(false);
+    expect(PROVISIONING_STATUS_OWNER_JOB_TYPES.has(JOB_TYPES.AGENT_DOWNGRADE)).toBe(false);
+  });
+});
 
 describe("job lanes — completeness invariant", () => {
   test("agent ∪ apps covers EVERY job type (none orphaned)", () => {

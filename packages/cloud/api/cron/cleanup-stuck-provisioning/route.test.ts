@@ -6,9 +6,9 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
  *
  * The handler runs two scans on the write path: stuck-provisioning rows and
  * orphaned-`pending` rows (committed by createAgent but never enqueued). This
- * test pins the orphaned-pending scan: it must be called with the SAME
- * NOW−10min cutoff the stuck scan uses, and the recovered rows must surface in
- * the JSON response (count + agents) under the field names the route emits.
+ * test pins their independent clocks: provisioning waits past the daemon's
+ * cold-boot budget, while a pending row that never got a job keeps the shorter
+ * recovery window.
  */
 
 const markStuckProvisioningWithoutActiveJobAsError = mock(
@@ -52,7 +52,8 @@ mock.module("@/lib/utils/logger", () => ({
 
 const { default: app } = await import("./route");
 
-const STUCK_THRESHOLD_MS = 10 * 60 * 1000;
+const STUCK_PROVISIONING_THRESHOLD_MS = 20 * 60 * 1000;
+const ORPHAN_PENDING_THRESHOLD_MS = 10 * 60 * 1000;
 
 function postCron() {
   return app.fetch(
@@ -64,7 +65,7 @@ function postCron() {
   );
 }
 
-describe("cleanup-stuck-provisioning cron — orphaned pending scan", () => {
+describe("cleanup-stuck-provisioning cron", () => {
   beforeEach(() => {
     markStuckProvisioningWithoutActiveJobAsError.mockClear();
     markOrphanedPendingWithoutJobAsError.mockClear();
@@ -81,35 +82,46 @@ describe("cleanup-stuck-provisioning cron — orphaned pending scan", () => {
     ]);
   });
 
-  test("reconciles orphaned pending rows with a NOW−10min cutoff and exposes them", async () => {
+  test("uses independent provisioning and orphan-pending cutoffs", async () => {
     const before = Date.now();
     const response = await postCron();
     const after = Date.now();
 
     expect(response.status).toBe(200);
 
-    // (a) The orphaned-pending scan ran with the same NOW−10min cutoff the
-    // stuck scan uses (a Date roughly 10 minutes in the past).
+    expect(markStuckProvisioningWithoutActiveJobAsError).toHaveBeenCalledTimes(
+      1,
+    );
     expect(markOrphanedPendingWithoutJobAsError).toHaveBeenCalledTimes(1);
-    const cutoff = markOrphanedPendingWithoutJobAsError.mock
+    const stuckCutoff = markStuckProvisioningWithoutActiveJobAsError.mock
       .calls[0]?.[0] as Date;
-    expect(cutoff).toBeInstanceOf(Date);
-    expect(cutoff.getTime()).toBeGreaterThanOrEqual(
-      before - STUCK_THRESHOLD_MS - 1000,
+    const orphanCutoff = markOrphanedPendingWithoutJobAsError.mock
+      .calls[0]?.[0] as Date;
+    expect(stuckCutoff).toBeInstanceOf(Date);
+    expect(orphanCutoff).toBeInstanceOf(Date);
+    expect(stuckCutoff.getTime()).toBeGreaterThanOrEqual(
+      before - STUCK_PROVISIONING_THRESHOLD_MS - 1000,
     );
-    expect(cutoff.getTime()).toBeLessThanOrEqual(
-      after - STUCK_THRESHOLD_MS + 1000,
+    expect(stuckCutoff.getTime()).toBeLessThanOrEqual(
+      after - STUCK_PROVISIONING_THRESHOLD_MS + 1000,
     );
-    // Both scans share the exact same cutoff instance.
-    const stuckCutoff =
-      markStuckProvisioningWithoutActiveJobAsError.mock.calls[0]?.[0];
-    expect(stuckCutoff).toBe(cutoff);
+    expect(orphanCutoff.getTime()).toBeGreaterThanOrEqual(
+      before - ORPHAN_PENDING_THRESHOLD_MS - 1000,
+    );
+    expect(orphanCutoff.getTime()).toBeLessThanOrEqual(
+      after - ORPHAN_PENDING_THRESHOLD_MS + 1000,
+    );
+    expect(
+      orphanCutoff.getTime() - stuckCutoff.getTime(),
+    ).toBeGreaterThanOrEqual(9 * 60 * 1000);
 
-    // (b) The response exposes the orphaned count + the recovered agent.
     const body = (await response.json()) as {
       success: boolean;
       data: {
         cleanedOrphanedPending: number;
+        thresholdMinutes: number;
+        stuckProvisioningThresholdMinutes: number;
+        orphanPendingThresholdMinutes: number;
         orphanedPendingAgents: Array<{
           agentId: string;
           agentName: string;
@@ -119,6 +131,9 @@ describe("cleanup-stuck-provisioning cron — orphaned pending scan", () => {
     };
     expect(body.success).toBe(true);
     expect(body.data.cleanedOrphanedPending).toBe(1);
+    expect(body.data.thresholdMinutes).toBe(20);
+    expect(body.data.stuckProvisioningThresholdMinutes).toBe(20);
+    expect(body.data.orphanPendingThresholdMinutes).toBe(10);
     expect(body.data.orphanedPendingAgents).toEqual([
       {
         agentId: "sandbox-orphan-1",

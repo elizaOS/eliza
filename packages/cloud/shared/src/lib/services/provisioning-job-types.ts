@@ -115,6 +115,22 @@ export const EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES: readonly ProvisioningJobType[]
   JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
 ];
 
+/**
+ * Job types whose executor owns `agent_sandboxes.status = 'provisioning'`
+ * while a container boot is in flight. Every member calls `provision()` and
+ * leaves the row in that state until readiness succeeds or failure settles.
+ *
+ * Image upgrade, canary, and downgrade jobs are deliberately absent: they
+ * cold-boot a replacement while the primary row remains `running`, so their
+ * timeout class is not a provisioning-row ownership claim.
+ */
+export const PROVISIONING_STATUS_OWNER_JOB_TYPES: ReadonlySet<ProvisioningJobType> = new Set([
+  JOB_TYPES.AGENT_PROVISION,
+  JOB_TYPES.AGENT_RESUME,
+  JOB_TYPES.AGENT_WAKE,
+  JOB_TYPES.AGENT_RESTART,
+]);
+
 // ── Lanes (which daemon claims which jobs) ──────────────────────────────────
 // The one `jobs` table + ProvisioningJobService codepath is shared, but the
 // rows split into two INDEPENDENT lanes that can be claimed by SEPARATE daemons:

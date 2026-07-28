@@ -1,6 +1,19 @@
 // Persists agent sandboxes records for cloud services through the shared DB boundary.
 import { randomUUID } from "node:crypto";
-import { and, asc, desc, eq, gte, inArray, isNotNull, lt, ne, notInArray, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gte,
+  inArray,
+  isNotNull,
+  lt,
+  ne,
+  notInArray,
+  type SQL,
+  sql,
+} from "drizzle-orm";
 import {
   applyBackupDelta,
   type BackupChainNode,
@@ -13,6 +26,7 @@ import {
   configureElizaLifecycleTransaction,
   elizaProvisionAdvisoryLockSql,
 } from "../../lib/services/eliza-provision-lock";
+import { PROVISIONING_STATUS_OWNER_JOB_TYPES } from "../../lib/services/provisioning-job-types";
 import { mergeWarmClaimEnvironmentVars } from "../../lib/services/warm-claim-character-push";
 import { ObjectNamespaces } from "../../lib/storage/object-namespace";
 import { getObjectText, offloadJsonField } from "../../lib/storage/object-store";
@@ -67,6 +81,21 @@ const EMPTY_BACKUP_STATE: AgentSandboxBackup["state_data"] = {
 };
 const MAX_RECONSTRUCTED_BACKUP_CHAIN_DEPTH = 100;
 const MAX_RECONSTRUCTED_BACKUP_CHAIN_BYTES = 128 * 1024 * 1024;
+
+/**
+ * Correlates a sandbox row with the queue operations that legitimately own its
+ * `provisioning` state. Drizzle binds every type/status value as a parameter;
+ * the repository never assembles executable SQL from job-type strings.
+ */
+function hasNoActiveProvisioningOwnerJob(): SQL {
+  return sql`NOT EXISTS (
+    SELECT 1 FROM ${jobs}
+    WHERE  ${jobs.agent_id} = ${agentSandboxes.id}::text
+    AND    ${jobs.organization_id} = ${agentSandboxes.organization_id}
+    AND    ${inArray(jobs.type, [...PROVISIONING_STATUS_OWNER_JOB_TYPES])}
+    AND    ${inArray(jobs.status, ["pending", "in_progress"])}
+  )`;
+}
 
 async function getStoredBackupById(
   backupId: string,
@@ -320,8 +349,8 @@ export class AgentSandboxesRepository {
    * and flips to `running` when the container is actually healthy (#15310 #6).
    *
    * Keyed on `updated_at` staleness (the provision writes bump it), and only
-   * rows with NO active `agent_provision` job — an in-flight job is still
-   * driving the provision and must not be raced. Excludes warm-pool rows
+   * rows with no active provisioning owner — an in-flight job is still driving
+   * the provision and must not be raced. Excludes warm-pool rows
    * (`pool_status IS NULL`), soft-deleted rows, and rows without a container.
    */
   async listStuckProvisioningWithContainer(
@@ -353,13 +382,7 @@ export class AgentSandboxesRepository {
           sql`${agentSandboxes.sandbox_id} IS NOT NULL`,
           sql`${agentSandboxes.pool_status} IS NULL`,
           sql`${agentSandboxes.deleted_at} IS NULL`,
-          sql`NOT EXISTS (
-            SELECT 1 FROM ${jobs}
-            WHERE  ${jobs.agent_id} = ${agentSandboxes.id}::text
-            AND    ${jobs.organization_id} = ${agentSandboxes.organization_id}
-            AND    ${jobs.type} IN ('agent_provision', 'agent_restart')
-            AND    ${jobs.status} IN ('pending', 'in_progress')
-          )`,
+          hasNoActiveProvisioningOwnerJob(),
         ),
       )
       .limit(limit);
@@ -753,13 +776,7 @@ export class AgentSandboxesRepository {
         and(
           eq(agentSandboxes.status, "provisioning"),
           lt(agentSandboxes.updated_at, cutoff),
-          sql`NOT EXISTS (
-            SELECT 1 FROM ${jobs}
-            WHERE  ${jobs.agent_id} = ${agentSandboxes.id}::text
-            AND    ${jobs.organization_id} = ${agentSandboxes.organization_id}
-            AND    ${jobs.type} IN ('agent_provision', 'agent_restart')
-            AND    ${jobs.status} IN ('pending', 'in_progress')
-          )`,
+          hasNoActiveProvisioningOwnerJob(),
         ),
       )
       .returning({
@@ -1010,8 +1027,8 @@ export class AgentSandboxesRepository {
    * Guarded CAS that flips a WEDGED `provisioning` row to `running` after the
    * daemon reconciler re-probed its container and found it healthy (#15310 #6).
    * Only fires when the row is STILL `provisioning` with a live container
-   * (`sandbox_id` plus durable `node_id` set) and NO active provision/restart
-   * job racing it — so a concurrent job flip, delete, or stop during the
+   * (`sandbox_id` plus durable `node_id` set) and no active provisioning owner
+   * racing it — so a concurrent job flip, delete, or stop during the
    * multi-second re-probe is never clobbered. Returns undefined when the CAS
    * matched nothing.
    */
@@ -1033,13 +1050,7 @@ export class AgentSandboxesRepository {
           sql`${agentSandboxes.node_id} IS NOT NULL`,
           sql`${agentSandboxes.node_id} <> ''`,
           sql`${agentSandboxes.deleted_at} IS NULL`,
-          sql`NOT EXISTS (
-            SELECT 1 FROM ${jobs}
-            WHERE  ${jobs.agent_id} = ${agentSandboxes.id}::text
-            AND    ${jobs.organization_id} = ${agentSandboxes.organization_id}
-            AND    ${jobs.type} IN ('agent_provision', 'agent_restart')
-            AND    ${jobs.status} IN ('pending', 'in_progress')
-          )`,
+          hasNoActiveProvisioningOwnerJob(),
         ),
       )
       .returning();
