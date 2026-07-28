@@ -233,6 +233,13 @@ jobs:
       - name: Run type-duplication finder self-test
         run: bun run audit:type-duplication:self-test
 
+      # Behavioral: renders the units and settles every claim through the REAL
+      # prune tool (effective flags, unknown-flag rejection, an actual
+      # stale-vs-fresh reclaim in a temp tree). A string-compare version of this
+      # let a flag the tool never accepted ship as "configured" (#15398).
+      - name: Run runner-workspace cleanup smoke
+        run: ./packages/deploy/runner-workspace-cleanup/smoke-test.sh
+
       - name: Run biome format check
         run: bun run format:check
 

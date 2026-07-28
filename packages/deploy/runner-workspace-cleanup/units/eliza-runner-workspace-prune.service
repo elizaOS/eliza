@@ -1,0 +1,49 @@
+[Unit]
+Description=Eliza — prune stale workspaces of IDLE GitHub Actions runners (#15398)
+Documentation=https://github.com/elizaOS/eliza/issues/15398
+# Only run where self-hosted runners actually live; a non-runner host is a no-op.
+ConditionPathExists=__RUNNER_ROOT__
+
+[Service]
+Type=oneshot
+# Prunes ONLY runners whose unit is inactive (see the helper): an inactive
+# runner cannot accept a job, so there is no check/use race. Runners that ARE
+# active are covered race-free by their own job-completed hook instead.
+EnvironmentFile=__ENV_FILE__
+ExecStart=__HELPER__
+SyslogIdentifier=eliza-runner-workspace-prune
+# Reclaim is maintenance, not latency-sensitive: stay out of the way of agents
+# and any concurrent CI I/O.
+Nice=10
+IOSchedulingClass=idle
+
+# --- containment ------------------------------------------------------------
+# This unit deletes as root, so restrict it to exactly what it needs: the runner
+# root read-write, and nothing else.
+NoNewPrivileges=yes
+ProtectSystem=strict
+# read-only, not `yes`: the bun runtime commonly lives under /root or /home on
+# these hosts, and `yes` would make it unreachable.
+ProtectHome=read-only
+ReadWritePaths=__RUNNER_ROOT__
+PrivateTmp=yes
+PrivateDevices=yes
+PrivateNetwork=yes
+# systemd/D-Bus queries (`systemctl is-active`) travel over AF_UNIX; no network
+# family is needed, so allow only that.
+RestrictAddressFamilies=AF_UNIX
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+CapabilityBoundingSet=CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH
