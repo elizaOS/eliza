@@ -112,7 +112,7 @@ jobs:
             docker rm -f develop-live-postgres 2>/dev/null || true
             docker run -d --name develop-live-postgres \
               -e POSTGRES_USER=eliza_test -e POSTGRES_PASSWORD=test123 -e POSTGRES_DB=eliza_test \
-              -p 127.0.0.1:5433:5432 postgres:17
+              -p 127.0.0.1:5433:5432 pgvector/pgvector:pg16
             echo "POSTGRES_URL=postgresql://eliza_test:test123@127.0.0.1:5433/eliza_test" >> "$GITHUB_ENV"
           else
             echo "docker unavailable; plugin-sql Postgres real suites will self-skip"

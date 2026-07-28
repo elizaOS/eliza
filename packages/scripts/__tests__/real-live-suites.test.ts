@@ -174,6 +174,16 @@ describe("real/live guarded-suite manifest (#9310 §E)", () => {
     expect(workflow).toContain("runner.temp }}/develop-live-evidence");
   });
 
+  test("the live PostgreSQL proof provisions the vector extension required by migrations", () => {
+    const workflow = fs.readFileSync(
+      path.join(repoRoot, ".github/workflows/develop-live.yml"),
+      "utf8",
+    );
+
+    expect(workflow).toContain("pgvector/pgvector:pg16");
+    expect(workflow).not.toMatch(/-p 127[.]0[.]0[.]1:5433:5432 postgres:/);
+  });
+
   test("Eliza Cloud streamed tool-call proof requires an explicit credentialed live run", () => {
     expect(
       manifest.find(
