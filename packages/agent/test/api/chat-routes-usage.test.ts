@@ -186,6 +186,8 @@ describe("generateChatResponse usage reporting", () => {
       isEstimated: true,
       llmCalls: 0,
     });
+    expect(result.usedActionCallbacks).toBeUndefined();
+    expect(result.actionCallbackHistory).toBeUndefined();
   });
 
   it("marks visible action callbacks even when handlers only set actions", async () => {
@@ -488,10 +490,44 @@ describe("generateChatResponse usage reporting", () => {
     );
 
     expect(result.text).toBe("Action completed by core.");
+    expect(result.usedActionCallbacks).toBe(true);
+    expect(result.actionCallbackHistory).toBeUndefined();
     expect(runtime.logger.error).not.toHaveBeenCalledWith(
       expect.anything(),
       "[eliza-api] Unexecuted action payload detected; failing closed",
     );
+  });
+
+  it("reports mixed callback and core action execution once", async () => {
+    const runtime = createRuntime({
+      messageService: {
+        handleMessage: vi.fn(async (_runtime, _message, callback) => {
+          await callback?.({
+            text: "Mixed action reply",
+            actions: ["SENSITIVE_ACTION"],
+          });
+          return {
+            didRespond: true,
+            mode: "actions",
+            responseContent: {
+              text: "Mixed action reply",
+              actions: ["SENSITIVE_ACTION"],
+            },
+            responseMessages: [],
+          };
+        }),
+      } as NonNullable<AgentRuntime["messageService"]>,
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("run the mixed action"),
+      "Chat Agent",
+      { timeoutDuration: 5_000 },
+    );
+
+    expect(result.usedActionCallbacks).toBe(true);
+    expect(result.actionCallbackHistory).toEqual(["Mixed action reply"]);
   });
 
   it("does not fail closed when action result records an alias for the runtime action", async () => {
