@@ -33,6 +33,14 @@ export interface SharedTurnMessage {
   content: string;
   /** Epoch-ms timestamp used by REST chat clients to reconcile persisted turns. */
   createdAt?: number;
+  /**
+   * True when this assistant turn was cut short (voice barge-in, client
+   * disconnect, upstream stream drop) and `content` is therefore a prefix of
+   * what the model was generating. Persisting the fragment keeps the user's
+   * utterance in memory; this flag stops a later turn from treating the
+   * fragment as a complete thing the agent finished saying.
+   */
+  interrupted?: boolean;
 }
 
 export interface SharedAgentCharacter {

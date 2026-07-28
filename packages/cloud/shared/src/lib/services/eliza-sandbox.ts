@@ -3461,6 +3461,50 @@ export class ElizaSandboxService {
         start: async (controller) => {
           let reply = "";
           let finished = false;
+          // Persist-once guard shared by the normal `finish` path and the
+          // interrupted path below, so a barge-in that races the final part can
+          // never write the turn twice.
+          let historyPersisted = false;
+          /**
+           * Persist a turn that was cut short (voice barge-in, client
+           * disconnect, upstream drop). The user's utterance is the thing that
+           * MUST survive: a voice user who asks a question, hears the first few
+           * words, and interrupts has still said it — dropping the turn erased
+           * it from the SAME memory text chat reads, so the next turn (voice or
+           * typed) had no idea the exchange happened. The partial reply is kept
+           * as an explicitly `interrupted` assistant turn so context is honest
+           * rather than either absent or falsely complete.
+           */
+          const persistInterruptedTurn = async (): Promise<void> => {
+            if (historyPersisted || finished) return;
+            historyPersisted = true;
+            const sentAt = Date.now();
+            const partial = reply.trim();
+            const nextHistory: SharedTurnMessage[] = [
+              ...history,
+              { role: "user", content: text.trim(), createdAt: sentAt },
+              ...(partial
+                ? [
+                    {
+                      role: "assistant" as const,
+                      content: partial,
+                      createdAt: sentAt + 1,
+                      interrupted: true,
+                    },
+                  ]
+                : []),
+            ];
+            try {
+              await this.saveSharedRuntimeHistory(rec.id, channelId, nextHistory);
+            } catch (persistError) {
+              // error-policy:J6 best-effort recovery write — the turn was
+              // already interrupted; a failed persist must not mask that.
+              logger.error("[shared-runtime] interrupted-turn persist failed", {
+                error: persistError instanceof Error ? persistError.message : String(persistError),
+                agentId: rec.id,
+              });
+            }
+          };
           // Once the billing tail is registered it owns settlement end-to-end
           // (success settles at totalCost, failure refunds). The stream catch
           // below must then leave the reservation alone: a client cancel makes
@@ -3496,6 +3540,7 @@ export class ElizaSandboxService {
                 { role: "assistant", content: finalReply, createdAt: sentAt + 1 },
               ];
               await this.saveSharedRuntimeHistory(rec.id, channelId, nextHistory);
+              historyPersisted = true;
               // A deterministic navigation turn ran NO model, so it must not be
               // billed — just refund the upfront hold. Only real LLM turns meter.
               if (turn.navIntent) {
@@ -3598,6 +3643,10 @@ export class ElizaSandboxService {
               );
             }
             if (!finished) {
+              // The model stream ended without a `finish` part. Keep the user's
+              // utterance (and any partial reply) in shared memory before
+              // reporting the failure.
+              await persistInterruptedTurn();
               await settleReservation(0);
               controller.enqueue(
                 encoder.encode(
@@ -3610,6 +3659,10 @@ export class ElizaSandboxService {
             // cannot become HTTP errors, so emit a terminal error frame. The
             // refund only runs while the reservation is still this scope's to
             // settle — once the billing tail is registered it owns the hold.
+            // A cancelled consumer (voice barge-in) surfaces here as an enqueue
+            // throw, and an upstream drop as an iteration throw. Either way the
+            // human already spoke, so persist before unwinding.
+            await persistInterruptedTurn();
             if (!billingTailOwnsSettlement) {
               await settleReservation(0);
             }
