@@ -1,3 +1,14 @@
+-- Deploys apply ordered migrations before the runtime's idempotent schema
+-- repair. Carry the backup-v2 columns here so a database created entirely from
+-- migration history has the same contract before write-epoch SQL references it.
+ALTER TABLE "agent_sandbox_backups"
+  ADD COLUMN IF NOT EXISTS "snapshot_schema_version" integer NOT NULL DEFAULT 1,
+  ADD COLUMN IF NOT EXISTS "state_data_descriptor" jsonb,
+  ADD COLUMN IF NOT EXISTS "storage_commit_state" text NOT NULL DEFAULT 'complete',
+  ADD COLUMN IF NOT EXISTS "storage_commit_error" text,
+  ADD COLUMN IF NOT EXISTS "storage_commit_updated_at" timestamptz NOT NULL DEFAULT now();
+--> statement-breakpoint
+
 -- Bind every schema-v2 object upload to one durable epoch before its first
 -- remote side effect. Pre-epoch staging rows remain fail-closed because their
 -- remote outcome cannot be reconstructed after a process crash.
