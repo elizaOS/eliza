@@ -1,16 +1,18 @@
 /**
- * Audience-scoped egress policy for LifeOps model context.
+ * Shared audience authorization for owner-private Personal Assistant reads.
  *
- * The gate binds the requesting entity, requested source persona, destination
- * room, stored room type, and current participant snapshot before any private
- * LifeOps data is loaded. Callers receive a serializable receipt for every
- * source so denied data can be audited without placing the payload in logs,
- * receipts, or model context.
+ * This module deliberately separates actor authorization (the owner) from
+ * destination authorization (the audience that will receive the result).  All
+ * private providers/actions call the same boundary before loading data.  The
+ * resulting envelope is attached to the inbound message and is revalidated by
+ * the production outgoing/stream hooks immediately before delivery.
  */
+import { hasOwnerAccess } from "@elizaos/agent";
 import {
   ChannelType,
   type IAgentRuntime,
   type Memory,
+  type PipelineHookContext,
   type UUID,
 } from "@elizaos/core";
 
@@ -18,45 +20,44 @@ export const LIFEOPS_AUDIENCE_SOURCE_KINDS = [
   "gmail",
   "calendar",
   "private_memory",
-  "public_memory",
+  "approvals",
 ] as const;
 
 export type LifeOpsAudienceSourceKind =
   (typeof LIFEOPS_AUDIENCE_SOURCE_KINDS)[number];
 
-export const LIFEOPS_AUDIENCE_CLASSIFICATIONS = [
-  "private",
-  "persona_scoped",
-  "public",
-] as const;
-
-export type LifeOpsAudienceClassification =
-  (typeof LIFEOPS_AUDIENCE_CLASSIFICATIONS)[number];
+/** A callsite may name a loader, but may not assert its persona/security scope. */
+export interface LifeOpsAudienceSource {
+  kind: LifeOpsAudienceSourceKind;
+  id: string;
+}
 
 export type LifeOpsAudienceDecision = "include" | "exclude";
-
 export type LifeOpsAudienceReason =
-  | "included_private_dm"
-  | "included_public_group"
-  | "included_public_dm"
+  | "included_private_audience"
   | "excluded_non_owner_requester"
   | "excluded_missing_room"
   | "excluded_missing_participants"
   | "excluded_metadata_lookup_failed"
-  | "excluded_channel_type_mismatch"
+  | "excluded_untrusted_loader_identity"
+  | "excluded_audience_class_mismatch"
   | "excluded_requester_not_participant"
   | "excluded_agent_not_participant"
   | "excluded_unexpected_participants"
   | "excluded_group_destination"
-  | "excluded_missing_source_persona"
-  | "excluded_cross_persona"
-  | "excluded_unknown_source_classification";
+  | "excluded_audience_changed";
 
-export interface LifeOpsAudienceSource {
-  kind: LifeOpsAudienceSourceKind;
-  id: string;
-  classification: LifeOpsAudienceClassification;
-  persona?: string | null;
+export type LifeOpsAudienceClass = "private" | "group" | "unknown";
+
+export interface LifeOpsAudienceEnvelope {
+  roomId: string;
+  requestEntityId: string;
+  trustedAgentId: string;
+  roomAudienceClass: LifeOpsAudienceClass;
+  messageAudienceClass: LifeOpsAudienceClass;
+  participantEntityIds: string[];
+  /** Deterministic membership/version token re-read at every delivery seam. */
+  audienceVersion: string;
 }
 
 export interface LifeOpsAudienceReceipt {
@@ -64,14 +65,16 @@ export interface LifeOpsAudienceReceipt {
   destinationRoomId: string;
   destinationRoomType: string | null;
   messageChannelType: string | null;
+  roomAudienceClass: LifeOpsAudienceClass;
+  messageAudienceClass: LifeOpsAudienceClass;
   participantEntityIds: string[];
+  audienceVersion: string | null;
   source: {
     kind: LifeOpsAudienceSourceKind;
     id: string;
-    classification: LifeOpsAudienceClassification;
-    persona: string | null;
+    /** Loaded from the persisted Agent record, never character.name/content. */
+    trustedAgentId: string | null;
   };
-  requestingPersona: string | null;
   decision: LifeOpsAudienceDecision;
   reason: LifeOpsAudienceReason;
 }
@@ -80,242 +83,394 @@ export interface LifeOpsAudienceGateResult {
   receipts: LifeOpsAudienceReceipt[];
   includedSources: LifeOpsAudienceSource[];
   canLoadPrivateContext: boolean;
+  envelope: LifeOpsAudienceEnvelope | null;
 }
 
-const PRIVATE_ROOM_TYPES = new Set<string>([
+const PRIVATE_TYPES = new Set<string>([
   ChannelType.DM,
   ChannelType.VOICE_DM,
+  ChannelType.SELF,
+  ChannelType.API,
 ]);
-const SOURCE_CLASSIFICATIONS = new Set<string>(
-  LIFEOPS_AUDIENCE_CLASSIFICATIONS,
-);
-function readRequestingPersona(runtime: IAgentRuntime): string | null {
-  const raw = runtime.character.name;
-  return typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : null;
+const GROUP_TYPES = new Set<string>([
+  ChannelType.GROUP,
+  ChannelType.VOICE_GROUP,
+  ChannelType.FEED,
+  ChannelType.THREAD,
+  ChannelType.WORLD,
+  ChannelType.FORUM,
+]);
+const ENVELOPE_METADATA_KEY = "lifeOpsAudienceEnvelope";
+const activeEnvelopeByRuntime = new WeakMap<
+  IAgentRuntime,
+  Map<string, LifeOpsAudienceEnvelope>
+>();
+
+export class LifeOpsAudienceDeliveryDeniedError extends Error {
+  constructor() {
+    super(
+      "Private context delivery cancelled because the destination audience changed",
+    );
+    this.name = "LifeOpsAudienceDeliveryDeniedError";
+  }
+}
+
+export function classifyLifeOpsAudience(
+  channelType: string | null | undefined,
+): LifeOpsAudienceClass {
+  if (!channelType) return "unknown";
+  if (PRIVATE_TYPES.has(channelType)) return "private";
+  if (GROUP_TYPES.has(channelType)) return "group";
+  return "unknown";
 }
 
 function sortedParticipants(participants: readonly string[]): string[] {
-  return [
-    ...new Set(participants.map((participant) => String(participant))),
-  ].sort();
+  return [...new Set(participants.map(String))].sort();
 }
 
-function baseReceipt(args: {
-  message: Memory;
-  source: LifeOpsAudienceSource;
-  requestingPersona: string | null;
+function audienceVersion(args: {
+  roomId: string;
   roomType: string | null;
   participants: readonly string[];
-  reason: LifeOpsAudienceReason;
+}): string {
+  return `${args.roomId}|${args.roomType ?? "unknown"}|${args.participants.join(",")}`;
+}
+
+function activeEnvelopes(
+  runtime: IAgentRuntime,
+): Map<string, LifeOpsAudienceEnvelope> {
+  let envelopes = activeEnvelopeByRuntime.get(runtime);
+  if (!envelopes) {
+    envelopes = new Map();
+    activeEnvelopeByRuntime.set(runtime, envelopes);
+  }
+  return envelopes;
+}
+
+function attachEnvelope(
+  runtime: IAgentRuntime,
+  message: Memory,
+  envelope: LifeOpsAudienceEnvelope,
+): void {
+  message.metadata = {
+    ...(message.metadata ?? { type: "message" }),
+    [ENVELOPE_METADATA_KEY]: envelope,
+  } as Memory["metadata"];
+  activeEnvelopes(runtime).set(message.roomId, envelope);
+}
+
+function readEnvelope(
+  message: Memory | undefined,
+): LifeOpsAudienceEnvelope | null {
+  if (!message?.metadata || typeof message.metadata !== "object") return null;
+  const candidate = (message.metadata as Record<string, unknown>)[
+    ENVELOPE_METADATA_KEY
+  ];
+  if (!candidate || typeof candidate !== "object") return null;
+  const envelope = candidate as Partial<LifeOpsAudienceEnvelope>;
+  return typeof envelope.roomId === "string" &&
+    typeof envelope.audienceVersion === "string" &&
+    Array.isArray(envelope.participantEntityIds)
+    ? (envelope as LifeOpsAudienceEnvelope)
+    : null;
+}
+
+function receipt(args: {
+  message: Memory;
+  source: LifeOpsAudienceSource;
+  trustedAgentId: string | null;
+  roomType: string | null;
+  roomClass: LifeOpsAudienceClass;
+  messageClass: LifeOpsAudienceClass;
+  participants: string[];
+  version: string | null;
   decision: LifeOpsAudienceDecision;
+  reason: LifeOpsAudienceReason;
 }): LifeOpsAudienceReceipt {
-  const messageChannelType =
-    typeof args.message.content.channelType === "string"
-      ? args.message.content.channelType
-      : null;
   return {
     requestEntityId: args.message.entityId,
     destinationRoomId: args.message.roomId,
     destinationRoomType: args.roomType,
-    messageChannelType,
-    participantEntityIds: [...args.participants],
+    messageChannelType:
+      typeof args.message.content.channelType === "string"
+        ? args.message.content.channelType
+        : null,
+    roomAudienceClass: args.roomClass,
+    messageAudienceClass: args.messageClass,
+    participantEntityIds: args.participants,
+    audienceVersion: args.version,
     source: {
       kind: args.source.kind,
       id: args.source.id,
-      classification: args.source.classification,
-      persona: args.source.persona?.trim() || null,
+      trustedAgentId: args.trustedAgentId,
     },
-    requestingPersona: args.requestingPersona,
     decision: args.decision,
     reason: args.reason,
   };
 }
 
-function sourcePersonaReason(
-  source: LifeOpsAudienceSource,
-  requestingPersona: string | null,
-): LifeOpsAudienceReason | null {
-  if (!SOURCE_CLASSIFICATIONS.has(source.classification)) {
-    return "excluded_unknown_source_classification";
-  }
-  if (source.classification === "public") {
-    return null;
-  }
-  const sourcePersona = source.persona?.trim();
-  if (!sourcePersona || !requestingPersona) {
-    return "excluded_missing_source_persona";
-  }
-  return sourcePersona === requestingPersona ? null : "excluded_cross_persona";
-}
-
-function classifyDestination(args: {
-  runtime: IAgentRuntime;
-  message: Memory;
-  roomType: string;
-  participants: readonly string[];
-}): LifeOpsAudienceReason | null {
-  const messageChannelType =
-    typeof args.message.content.channelType === "string"
-      ? args.message.content.channelType
-      : null;
-  if (!messageChannelType) {
-    return "excluded_channel_type_mismatch";
-  }
-  if (args.roomType !== messageChannelType) {
-    return "excluded_channel_type_mismatch";
-  }
-  if (!args.participants.includes(args.message.entityId)) {
-    return "excluded_requester_not_participant";
-  }
-  if (!args.participants.includes(args.runtime.agentId)) {
-    return "excluded_agent_not_participant";
-  }
-  if (PRIVATE_ROOM_TYPES.has(args.roomType)) {
-    const expected = sortedParticipants([
-      args.message.entityId,
-      args.runtime.agentId,
-    ]);
-    return args.participants.length === expected.length &&
-      args.participants.every(
-        (participant, index) => participant === expected[index],
-      )
-      ? null
-      : "excluded_unexpected_participants";
-  }
-  return "excluded_group_destination";
-}
-
+/**
+ * Authorize private retrieval and bind its provenance to the persisted Agent
+ * identity loaded by the runtime.  Display names and message-supplied persona
+ * fields are intentionally ignored.
+ */
 export async function evaluateLifeOpsAudiencePolicy(args: {
   runtime: IAgentRuntime;
   message: Memory;
   sources: readonly LifeOpsAudienceSource[];
   hasOwnerAccess: (runtime: IAgentRuntime, message: Memory) => Promise<boolean>;
 }): Promise<LifeOpsAudienceGateResult> {
-  const requestingPersona = readRequestingPersona(args.runtime);
-  let metadataLookupFailed = false;
   let room: Awaited<ReturnType<IAgentRuntime["getRoom"]>> = null;
+  let participants: string[] = [];
+  let trustedAgentId: string | null = null;
+  let metadataFailure = false;
+
   try {
     room = await args.runtime.getRoom(args.message.roomId as UUID);
-  } catch {
-    // error-policy:J4 audience metadata must fail closed before private context loads.
-    metadataLookupFailed = true;
-  }
-  const roomType = room?.type ?? null;
-  let participantIds: string[] = [];
-  if (room) {
-    try {
-      const participants = await args.runtime.getParticipantsForRoom(
+    if (room) {
+      const values = await args.runtime.getParticipantsForRoom(
         args.message.roomId as UUID,
       );
-      participantIds = Array.isArray(participants)
-        ? sortedParticipants(participants)
-        : [];
-    } catch {
-      // error-policy:J4 audience metadata must fail closed before private context loads.
-      metadataLookupFailed = true;
+      participants = Array.isArray(values) ? sortedParticipants(values) : [];
+    }
+  } catch (error) {
+    metadataFailure = true;
+    args.runtime.reportError("LifeOpsAudience.metadata", error, {
+      roomId: args.message.roomId,
+    });
+  }
+
+  try {
+    const persistedAgent = await args.runtime.getAgent(args.runtime.agentId);
+    trustedAgentId = persistedAgent?.id ?? null;
+  } catch (error) {
+    metadataFailure = true;
+    args.runtime.reportError("LifeOpsAudience.loaderIdentity", error, {
+      agentId: args.runtime.agentId,
+    });
+  }
+
+  let isOwner = false;
+  try {
+    isOwner = await args.hasOwnerAccess(args.runtime, args.message);
+  } catch (error) {
+    args.runtime.reportError("LifeOpsAudience.ownerAccess", error, {
+      entityId: args.message.entityId,
+      roomId: args.message.roomId,
+    });
+  }
+
+  const roomType = room?.type ?? null;
+  const messageType =
+    typeof args.message.content.channelType === "string"
+      ? args.message.content.channelType
+      : null;
+  const roomClass = classifyLifeOpsAudience(roomType);
+  const messageClass = classifyLifeOpsAudience(messageType);
+  const version = room
+    ? audienceVersion({
+        roomId: args.message.roomId,
+        roomType,
+        participants,
+      })
+    : null;
+
+  let reason: LifeOpsAudienceReason | null = null;
+  if (!isOwner) reason = "excluded_non_owner_requester";
+  else if (metadataFailure) reason = "excluded_metadata_lookup_failed";
+  else if (!trustedAgentId || trustedAgentId !== args.runtime.agentId)
+    reason = "excluded_untrusted_loader_identity";
+  else if (!room || !roomType) reason = "excluded_missing_room";
+  else if (participants.length === 0) reason = "excluded_missing_participants";
+  else if (roomClass === "group" || messageClass === "group")
+    reason = "excluded_group_destination";
+  else if (roomClass !== "private" || messageClass !== "private")
+    reason = "excluded_audience_class_mismatch";
+  else if (!participants.includes(args.message.entityId))
+    reason = "excluded_requester_not_participant";
+  else if (!participants.includes(args.runtime.agentId))
+    reason = "excluded_agent_not_participant";
+  else {
+    const expected = sortedParticipants([
+      args.message.entityId,
+      args.runtime.agentId,
+    ]);
+    if (
+      participants.length !== expected.length ||
+      !participants.every(
+        (participant, index) => participant === expected[index],
+      )
+    ) {
+      reason = "excluded_unexpected_participants";
     }
   }
-  const includedSources: LifeOpsAudienceSource[] = [];
 
-  const denyAll = (
-    reason: LifeOpsAudienceReason,
-  ): LifeOpsAudienceGateResult => ({
-    receipts: args.sources.map((source) =>
-      baseReceipt({
-        message: args.message,
-        source,
-        requestingPersona,
-        roomType,
-        participants: participantIds,
-        reason,
-        decision: "exclude",
-      }),
-    ),
-    includedSources,
-    canLoadPrivateContext: false,
-  });
-
-  const hasRequesterOwnerAccess = await args
-    .hasOwnerAccess(args.runtime, args.message)
-    .catch(() => {
-      // error-policy:J4 owner-access resolution failure must deny private context.
-      return false;
-    });
-  if (!hasRequesterOwnerAccess) {
-    return denyAll("excluded_non_owner_requester");
-  }
-  if (metadataLookupFailed) {
-    return denyAll("excluded_metadata_lookup_failed");
-  }
-  if (!room || !roomType) {
-    return denyAll("excluded_missing_room");
-  }
-  if (participantIds.length === 0) {
-    return denyAll("excluded_missing_participants");
-  }
-
-  const destinationReason = classifyDestination({
-    runtime: args.runtime,
-    message: args.message,
-    roomType,
-    participants: participantIds,
-  });
-
-  const receipts = args.sources.map((source) => {
-    const personaReason = sourcePersonaReason(source, requestingPersona);
-    const reason = personaReason ?? destinationReason;
-    if (reason) {
-      if (
-        source.classification === "public" &&
-        reason === "excluded_group_destination"
-      ) {
-        includedSources.push(source);
-        return baseReceipt({
+  if (reason) {
+    return {
+      receipts: args.sources.map((source) =>
+        receipt({
           message: args.message,
           source,
-          requestingPersona,
+          trustedAgentId,
           roomType,
-          participants: participantIds,
-          reason: "included_public_group",
-          decision: "include",
-        });
-      }
-      return baseReceipt({
+          roomClass,
+          messageClass,
+          participants,
+          version,
+          decision: "exclude",
+          reason,
+        }),
+      ),
+      includedSources: [],
+      canLoadPrivateContext: false,
+      envelope: null,
+    };
+  }
+
+  const envelope: LifeOpsAudienceEnvelope = {
+    roomId: args.message.roomId,
+    requestEntityId: args.message.entityId,
+    trustedAgentId: trustedAgentId as string,
+    roomAudienceClass: roomClass,
+    messageAudienceClass: messageClass,
+    participantEntityIds: participants,
+    audienceVersion: version as string,
+  };
+  attachEnvelope(args.runtime, args.message, envelope);
+  return {
+    receipts: args.sources.map((source) =>
+      receipt({
         message: args.message,
         source,
-        requestingPersona,
+        trustedAgentId,
         roomType,
-        participants: participantIds,
-        reason,
-        decision: "exclude",
-      });
-    }
-    includedSources.push(source);
-    const includeReason =
-      source.classification === "public"
-        ? "included_public_dm"
-        : PRIVATE_ROOM_TYPES.has(roomType)
-          ? "included_private_dm"
-          : "included_public_group";
-    return baseReceipt({
-      message: args.message,
-      source,
-      requestingPersona,
-      roomType,
-      participants: participantIds,
-      reason: includeReason,
-      decision: "include",
-    });
-  });
-
-  return {
-    receipts,
-    includedSources,
-    canLoadPrivateContext:
-      receipts.some(
-        (receipt) =>
-          receipt.decision === "include" &&
-          receipt.source.classification !== "public",
-      ) && receipts.every((receipt) => receipt.decision === "include"),
+        roomClass,
+        messageClass,
+        participants,
+        version,
+        decision: "include",
+        reason: "included_private_audience",
+      }),
+    ),
+    includedSources: [...args.sources],
+    canLoadPrivateContext: true,
+    envelope,
   };
+}
+
+/** Shared production retrieval boundary used by private providers/actions. */
+export async function authorizeLifeOpsPrivateContext(args: {
+  runtime: IAgentRuntime;
+  message: Memory;
+  sources: readonly LifeOpsAudienceSource[];
+}): Promise<LifeOpsAudienceGateResult> {
+  return evaluateLifeOpsAudiencePolicy({
+    ...args,
+    hasOwnerAccess,
+  });
+}
+
+/** Re-read the authoritative room and participants immediately before send. */
+export async function revalidateLifeOpsAudienceEnvelope(
+  runtime: IAgentRuntime,
+  envelope: LifeOpsAudienceEnvelope,
+): Promise<boolean> {
+  try {
+    const room = await runtime.getRoom(envelope.roomId as UUID);
+    if (!room) return false;
+    const participants = sortedParticipants(
+      await runtime.getParticipantsForRoom(envelope.roomId as UUID),
+    );
+    const currentVersion = audienceVersion({
+      roomId: envelope.roomId,
+      roomType: room.type,
+      participants,
+    });
+    return (
+      currentVersion === envelope.audienceVersion &&
+      classifyLifeOpsAudience(room.type) === "private" &&
+      participants.includes(envelope.requestEntityId) &&
+      participants.includes(envelope.trustedAgentId)
+    );
+  } catch (error) {
+    runtime.reportError("LifeOpsAudience.deliveryRevalidation", error, {
+      roomId: envelope.roomId,
+    });
+    return false;
+  }
+}
+
+export async function assertLifeOpsAudienceAtDelivery(
+  runtime: IAgentRuntime,
+  message: Memory,
+  envelope?: LifeOpsAudienceEnvelope | null,
+): Promise<void> {
+  const bound = envelope ?? readEnvelope(message);
+  if (!bound) return;
+  if (!(await revalidateLifeOpsAudienceEnvelope(runtime, bound))) {
+    activeEnvelopes(runtime).delete(bound.roomId);
+    throw new LifeOpsAudienceDeliveryDeniedError();
+  }
+}
+
+/**
+ * Production delivery boundary.  Final callback delivery and every streamed
+ * model chunk pass through these core pipeline phases before reaching a client.
+ */
+export function registerLifeOpsAudienceDeliveryHook(
+  runtime: IAgentRuntime,
+): void {
+  for (const id of [
+    "lifeops:audience-stream-delivery",
+    "lifeops:audience-final-delivery",
+  ]) {
+    runtime.unregisterPipelineHook(id);
+  }
+  runtime.registerPipelineHook({
+    id: "lifeops:audience-stream-delivery",
+    phase: "model_stream_chunk",
+    schedule: "serial",
+    mutatesPrimary: true,
+    async handler(hookRuntime, context: PipelineHookContext) {
+      if (context.phase !== "model_stream_chunk" || !context.roomId) return;
+      const envelope = activeEnvelopes(hookRuntime).get(context.roomId);
+      if (!envelope) return;
+      if (!(await revalidateLifeOpsAudienceEnvelope(hookRuntime, envelope))) {
+        activeEnvelopes(hookRuntime).delete(envelope.roomId);
+        // Pipeline hooks are diagnostics-safe and intentionally swallow throws.
+        // Mutating the primary chunk is therefore the enforceable send boundary.
+        context.chunk = "";
+        if (context.accumulated !== undefined) context.accumulated = "";
+      }
+    },
+  });
+  runtime.registerPipelineHook({
+    id: "lifeops:audience-final-delivery",
+    phase: "outgoing_before_deliver",
+    schedule: "serial",
+    mutatesPrimary: true,
+    async handler(hookRuntime, context: PipelineHookContext) {
+      if (context.phase !== "outgoing_before_deliver") return;
+      const envelope = readEnvelope(context.message);
+      if (!envelope) return;
+      const stillAuthorized = await revalidateLifeOpsAudienceEnvelope(
+        hookRuntime,
+        envelope,
+      );
+      activeEnvelopes(hookRuntime).delete(envelope.roomId);
+      if (!stillAuthorized) {
+        const responseId = context.content.responseId;
+        const inReplyTo = context.content.inReplyTo;
+        for (const key of Object.keys(context.content)) {
+          delete (context.content as Record<string, unknown>)[key];
+        }
+        Object.assign(context.content, {
+          text: "Private context delivery was cancelled because the destination audience changed.",
+          actions: ["REPLY"],
+          ...(responseId ? { responseId } : {}),
+          ...(inReplyTo ? { inReplyTo } : {}),
+        });
+      }
+    },
+  });
 }

@@ -26,9 +26,8 @@ import type {
   LifeOpsGoalDefinition,
   LifeOpsNextCalendarEventContext,
 } from "../contracts/index.js";
-import { hasLifeOpsAccess } from "../lifeops/access.js";
 import {
-  evaluateLifeOpsAudiencePolicy,
+  authorizeLifeOpsPrivateContext,
   type LifeOpsAudienceGateResult,
   type LifeOpsAudienceSource,
 } from "../lifeops/audience-policy.js";
@@ -61,45 +60,20 @@ const GOAL_TITLE_MAX_LENGTH = 80;
 const GOAL_TITLES_MAX_DISPLAYED = 5;
 const MAX_ACCOUNT_LINES = 5;
 
-function lifeOpsPrivateContextSources(
-  runtime: IAgentRuntime,
-): LifeOpsAudienceSource[] {
-  const persona = runtime.character.name;
+function lifeOpsPrivateContextSources(): LifeOpsAudienceSource[] {
   return [
-    {
-      kind: "private_memory",
-      id: "lifeops.owner_profile",
-      classification: "persona_scoped",
-      persona,
-    },
-    {
-      kind: "calendar",
-      id: "lifeops.calendar",
-      classification: "persona_scoped",
-      persona,
-    },
-    {
-      kind: "gmail",
-      id: "lifeops.gmail",
-      classification: "persona_scoped",
-      persona,
-    },
+    { kind: "private_memory", id: "lifeops.owner_profile" },
+    { kind: "calendar", id: "lifeops.calendar" },
+    { kind: "gmail", id: "lifeops.gmail" },
   ];
 }
 
 export async function resolveLifeOpsProviderAudienceGate(
   runtime: IAgentRuntime,
   message: Memory,
-  sources: readonly LifeOpsAudienceSource[] = lifeOpsPrivateContextSources(
-    runtime,
-  ),
+  sources: readonly LifeOpsAudienceSource[] = lifeOpsPrivateContextSources(),
 ): Promise<LifeOpsAudienceGateResult> {
-  return evaluateLifeOpsAudiencePolicy({
-    runtime,
-    message,
-    sources,
-    hasOwnerAccess: hasLifeOpsAccess,
-  });
+  return authorizeLifeOpsPrivateContext({ runtime, message, sources });
 }
 
 function formatCount(label: string, count: number): string {
@@ -125,6 +99,9 @@ async function summarizeConnectorDegradation(
         const status = await contribution.status();
         return { contribution, status };
       } catch (error) {
+        runtime.reportError("LifeOpsProvider.connectorStatus", error, {
+          connectorId: contribution.kind,
+        });
         const message = error instanceof Error ? error.message : String(error);
         return {
           contribution,
@@ -424,9 +401,17 @@ export const lifeOpsProvider: Provider = {
         entityId: message.entityId,
       });
       const accountManager = getConnectorAccountManager(runtime);
-      const connectorAccounts = await accountManager
-        .listAccounts("google")
-        .catch(() => []);
+      let connectorAccounts: Awaited<
+        ReturnType<typeof accountManager.listAccounts>
+      >;
+      try {
+        connectorAccounts = await accountManager.listAccounts("google");
+      } catch (error) {
+        runtime.reportError("LifeOpsProvider.connectorAccounts", error, {
+          provider: "google",
+        });
+        throw error;
+      }
       const privacyByAccountKey = new Map<
         string,
         ReturnType<typeof getAccountPrivacy>
@@ -472,6 +457,9 @@ export const lifeOpsProvider: Provider = {
           ),
         );
       } catch (cause) {
+        runtime.reportError("LifeOpsProvider.accountPrivacy", cause, {
+          agentId: runtime.agentId,
+        });
         logger.debug(
           { err: cause },
           "[LifeOpsProvider] account privacy table unavailable — defaulting to owner-only context",
@@ -606,6 +594,9 @@ export const lifeOpsProvider: Provider = {
                   await service.getNextCalendarEventContext(INTERNAL_URL);
                 calendarLines.push(...summarizeNextEvent(nextEventContext));
               } catch (cause) {
+                runtime.reportError("LifeOpsProvider.calendar", cause, {
+                  roomId: message.roomId,
+                });
                 logger.warn(
                   { err: cause },
                   "[LifeOpsProvider] calendar fetch failed — omitting calendar context",
@@ -638,6 +629,9 @@ export const lifeOpsProvider: Provider = {
                 gmailSummary = triage.summary;
                 emailLines.push(...summarizeGmailTriage(triage.summary));
               } catch (cause) {
+                runtime.reportError("LifeOpsProvider.gmail", cause, {
+                  roomId: message.roomId,
+                });
                 logger.warn(
                   { err: cause },
                   "[LifeOpsProvider] gmail triage fetch failed — omitting email context",
@@ -656,6 +650,9 @@ export const lifeOpsProvider: Provider = {
               await service.getNextCalendarEventContext(INTERNAL_URL);
             calendarLines.push(...summarizeNextEvent(nextEventContext));
           } catch (cause) {
+            runtime.reportError("LifeOpsProvider.nativeCalendar", cause, {
+              roomId: message.roomId,
+            });
             logger.debug(
               { err: cause },
               "[LifeOpsProvider] native calendar context unavailable — omitting calendar context",
@@ -663,6 +660,9 @@ export const lifeOpsProvider: Provider = {
           }
         }
       } catch (cause) {
+        runtime.reportError("LifeOpsProvider.googleConnector", cause, {
+          roomId: message.roomId,
+        });
         logger.debug(
           { err: cause },
           "[LifeOpsProvider] Google connector unavailable — skipping calendar/email context",
@@ -785,12 +785,14 @@ export const lifeOpsProvider: Provider = {
         },
       };
     } catch (error) {
+      runtime.reportError("LifeOpsProvider.get", error, {
+        roomId: message.roomId,
+        entityId: message.entityId,
+      });
       return {
         text: "LifeOps overview unavailable.",
-        values: { ownerOpenOccurrences: 0, ownerActiveGoals: 0 },
-        data: {
-          error: error instanceof Error ? error.message : String(error),
-        },
+        values: { lifeOpsUnavailable: true },
+        data: { lifeOpsError: true },
       };
     }
   },

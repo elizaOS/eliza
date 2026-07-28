@@ -1,17 +1,18 @@
 /**
- * Integration coverage for the LifeOps audience egress gate.
+ * Production-path integration coverage for audience-scoped private context.
  *
- * A real PGlite-backed AgentRuntime owns room, participant, and role metadata;
- * the only seam is a canary-bearing loader used after the exported provider
- * gate, proving denied destinations are filtered before private context can be
- * read or composed for a model prompt.
+ * Uses the real PGlite AgentRuntime, provider/action implementations and core
+ * pipeline-hook delivery registry.  No canary loader wrapper is used: denied
+ * reads are asserted at the provider/action entrypoints that production calls.
  */
 import {
   AgentRuntime,
   ChannelType,
   type Character,
+  type Content,
   createMessageMemory,
-  type Memory,
+  outgoingPipelineHookContext,
+  type State,
   type UUID,
 } from "@elizaos/core";
 import {
@@ -28,119 +29,57 @@ import { PgliteDatabaseAdapter } from "../../../plugin-sql/src/pglite/adapter.js
 import { PGliteClientManager } from "../../../plugin-sql/src/pglite/manager.js";
 import * as schema from "../../../plugin-sql/src/schema/index.js";
 import type { DrizzleDatabase } from "../../../plugin-sql/src/types.js";
+import { calendarAction } from "../actions/calendar.js";
+import { crossChannelContextProvider } from "../providers/cross-channel-context.js";
+import { lifeOpsProvider } from "../providers/lifeops.js";
+import { pendingApprovalsProvider } from "../providers/pending-approvals.js";
 import {
-  lifeOpsProvider,
-  resolveLifeOpsProviderAudienceGate,
-} from "../providers/lifeops.js";
-import {
+  authorizeLifeOpsPrivateContext,
   evaluateLifeOpsAudiencePolicy,
-  type LifeOpsAudienceGateResult,
-  type LifeOpsAudienceReason,
-  type LifeOpsAudienceSource,
+  registerLifeOpsAudienceDeliveryHook,
 } from "./audience-policy.js";
 import { LifeOpsService } from "./service.js";
 
-const OWNER_CANARY = "OWNER_SECRET_CORPUS_ALPINE_7421";
-const LEAK_CORPUS = {
-  gmail: "GMAIL_CANARY_INBOX_QUARTZ_8123",
-  calendar: "CALENDAR_CANARY_EVENT_ONYX_4772",
-  privateMemory: "PRIVATE_MEMORY_CANARY_VAULT_1936",
-} as const;
-const AGENT_PERSONA = "persona-alpha";
-const OTHER_PERSONA = "persona-beta";
-
-const PRIVATE_SOURCE: LifeOpsAudienceSource = {
-  kind: "private_memory",
-  id: "private-canary",
-  classification: "persona_scoped",
-  persona: AGENT_PERSONA,
-};
-
-const PUBLIC_SOURCE: LifeOpsAudienceSource = {
-  kind: "public_memory",
-  id: "public-release-note",
-  classification: "public",
-  persona: null,
-};
-
-const CROSS_PERSONA_CALENDAR_SOURCE: LifeOpsAudienceSource = {
-  kind: "calendar",
-  id: "calendar-beta",
-  classification: "persona_scoped",
-  persona: OTHER_PERSONA,
-};
-
-const CROSS_PERSONA_GMAIL_SOURCE: LifeOpsAudienceSource = {
-  kind: "gmail",
-  id: "gmail-beta",
-  classification: "persona_scoped",
-  persona: OTHER_PERSONA,
-};
-
-async function loadAfterGate(
-  gate: LifeOpsAudienceGateResult,
-  loader: () => Promise<string>,
-): Promise<string> {
-  return gate.canLoadPrivateContext ? loader() : "";
-}
+const AGENT_DISPLAY_NAME = "mutable-display-name";
+const PRIVATE_SOURCES = [
+  { kind: "private_memory" as const, id: "owner-memory" },
+  { kind: "calendar" as const, id: "owner-calendar" },
+  { kind: "gmail" as const, id: "owner-gmail" },
+];
+const EMPTY_STATE: State = { text: "", values: {}, data: {} };
 
 function uuid(): UUID {
   return crypto.randomUUID() as UUID;
 }
 
-function message(args: {
-  entityId: UUID;
-  roomId: UUID;
-  channelType: ChannelType;
-  requestingPersona?: string;
-  persona?: string;
-}): Memory {
-  return createMessageMemory({
-    id: uuid(),
-    entityId: args.entityId,
-    roomId: args.roomId,
-    content: {
-      text: "read my LifeOps context",
-      source: "test",
-      channelType: args.channelType,
-      ...(args.requestingPersona
-        ? { requestingPersona: args.requestingPersona }
-        : {}),
-      ...(args.persona ? { persona: args.persona } : {}),
-    },
-  });
-}
-
-describe("LifeOps audience policy (real runtime + PGlite)", () => {
+describe("shared LifeOps audience boundary (production provider/action paths)", () => {
   let manager: PGliteClientManager;
   let adapter: PgliteDatabaseAdapter;
   let runtime: AgentRuntime;
   let ownerId: UUID;
   let otherId: UUID;
-  let outsiderId: UUID;
   let worldId: UUID;
 
   beforeAll(async () => {
     ownerId = uuid();
     otherId = uuid();
-    outsiderId = uuid();
     const agentId = uuid();
     manager = new PGliteClientManager({});
     await manager.initialize();
     adapter = new PgliteDatabaseAdapter(agentId, manager);
     await adapter.init();
-    const migrationService = new DatabaseMigrationService();
-    await migrationService.initializeWithDatabase(
+    const migrations = new DatabaseMigrationService();
+    await migrations.initializeWithDatabase(
       adapter.getDatabase() as DrizzleDatabase,
     );
-    migrationService.discoverAndRegisterPluginSchemas([
+    migrations.discoverAndRegisterPluginSchemas([
       { name: "@elizaos/plugin-sql", description: "SQL plugin", schema },
     ]);
-    await migrationService.runAllPluginMigrations();
+    await migrations.runAllPluginMigrations();
     await adapter.createAgent({
       id: agentId,
-      name: AGENT_PERSONA,
-      bio: ["Test audience-policy agent"],
+      name: "persisted-loader-identity",
+      bio: ["Audience integration agent"],
       createdAt: Date.now(),
       updatedAt: Date.now(),
     });
@@ -148,7 +87,7 @@ describe("LifeOps audience policy (real runtime + PGlite)", () => {
       agentId,
       character: {
         id: agentId,
-        name: AGENT_PERSONA,
+        name: AGENT_DISPLAY_NAME,
       } as Character,
       adapter,
     });
@@ -156,21 +95,18 @@ describe("LifeOps audience policy (real runtime + PGlite)", () => {
     worldId = uuid();
     await runtime.ensureWorldExists({
       id: worldId,
-      name: "audience-policy-world",
-      agentId: runtime.agentId,
-    } as Parameters<typeof runtime.ensureWorldExists>[0]);
-    for (const entityId of [
-      runtime.agentId as UUID,
-      ownerId,
-      otherId,
-      outsiderId,
-    ]) {
+      name: "audience-world",
+      agentId,
+      metadata: { ownership: { ownerId } },
+    });
+    for (const entityId of [agentId, ownerId, otherId]) {
       await runtime.createEntity({
         id: entityId,
         names: [entityId],
-        agentId: runtime.agentId,
+        agentId,
       });
     }
+    registerLifeOpsAudienceDeliveryHook(runtime);
   }, 180_000);
 
   afterAll(async () => {
@@ -180,485 +116,222 @@ describe("LifeOps audience policy (real runtime + PGlite)", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    runtime.character.name = AGENT_DISPLAY_NAME;
   });
 
-  async function ensureRoom(args: {
-    type: ChannelType;
-    participants: UUID[];
-  }): Promise<UUID> {
+  async function room(type: ChannelType, participants: UUID[]): Promise<UUID> {
     const roomId = uuid();
     await runtime.createRoom({
       id: roomId,
       name: `room-${roomId}`,
       source: "test",
-      type: args.type,
+      type,
       channelId: roomId,
       worldId,
     });
-    for (const participant of args.participants) {
+    for (const participant of participants) {
       await runtime.ensureParticipantInRoom(participant, roomId);
     }
     return roomId;
   }
 
-  async function expectReason(args: {
-    roomId: UUID;
-    requester: UUID;
-    messageType: ChannelType;
-    source?: LifeOpsAudienceSource;
-    reason: LifeOpsAudienceReason;
-    decision?: "include" | "exclude";
-    requestingPersona?: string;
-  }) {
-    const gate = await evaluateLifeOpsAudiencePolicy({
-      runtime,
-      message: message({
-        entityId: args.requester,
-        roomId: args.roomId,
-        channelType: args.messageType,
-        requestingPersona: args.requestingPersona ?? AGENT_PERSONA,
-      }),
-      sources: [args.source ?? PRIVATE_SOURCE],
-      hasOwnerAccess: async (_runtime, request) => request.entityId === ownerId,
+  function message(
+    roomId: UUID,
+    channelType: ChannelType,
+    text = "owner request",
+  ) {
+    return createMessageMemory({
+      id: uuid(),
+      entityId: ownerId,
+      agentId: runtime.agentId,
+      roomId,
+      content: { text, source: "test", channelType },
     });
-    expect(gate.receipts).toHaveLength(1);
-    expect(gate.receipts[0]).toMatchObject({
-      decision: args.decision ?? "exclude",
-      reason: args.reason,
-      requestEntityId: args.requester,
-      destinationRoomId: args.roomId,
-    });
-    expect(gate.receipts[0].participantEntityIds).toEqual(
-      [...gate.receipts[0].participantEntityIds].sort(),
-    );
-    return gate;
   }
 
-  function wrapRuntime(
-    overrides: Partial<
-      Pick<AgentRuntime, "getRoom" | "getParticipantsForRoom">
-    >,
-  ): AgentRuntime {
-    const wrapped = Object.create(runtime) as AgentRuntime;
-    Object.assign(wrapped, overrides);
-    return wrapped;
-  }
+  it.each([
+    [ChannelType.DM, ChannelType.DM],
+    // Production web/OpenAI/Anthropic compatibility routes persist DM rooms
+    // while stamping their messages API. Both belong to one private class.
+    [ChannelType.DM, ChannelType.API],
+    [ChannelType.DM, ChannelType.VOICE_DM],
+    [ChannelType.SELF, ChannelType.SELF],
+  ])(
+    "allows private stored room %s with private message surface %s",
+    async (roomType, messageType) => {
+      const roomId = await room(roomType, [runtime.agentId, ownerId]);
+      const gate = await authorizeLifeOpsPrivateContext({
+        runtime,
+        message: message(roomId, messageType),
+        sources: PRIVATE_SOURCES,
+      });
+      expect(gate.canLoadPrivateContext).toBe(true);
+      expect(gate.receipts.every((row) => row.decision === "include")).toBe(
+        true,
+      );
+      expect(gate.receipts[0]).toMatchObject({
+        roomAudienceClass: "private",
+        messageAudienceClass: "private",
+        reason: "included_private_audience",
+        source: { trustedAgentId: runtime.agentId },
+      });
+    },
+  );
 
-  it("allows owner DM private context and returns an inclusion receipt", async () => {
-    const roomId = await ensureRoom({
-      type: ChannelType.DM,
-      participants: [runtime.agentId as UUID, ownerId],
-    });
-    const gate = await expectReason({
-      roomId,
-      requester: ownerId,
-      messageType: ChannelType.DM,
-      reason: "included_private_dm",
-      decision: "include",
-    });
-    let reads = 0;
-    const text = await loadAfterGate(gate, async () => {
-      reads += 1;
-      return OWNER_CANARY;
-    });
-    expect(reads).toBe(1);
-    expect(text).toBe(OWNER_CANARY);
-  });
-
-  it("allows public memory in an owner DM with an explicit public-DM receipt", async () => {
-    const roomId = await ensureRoom({
-      type: ChannelType.DM,
-      participants: [runtime.agentId as UUID, ownerId],
-    });
-    await expectReason({
-      roomId,
-      requester: ownerId,
-      messageType: ChannelType.DM,
-      source: PUBLIC_SOURCE,
-      reason: "included_public_dm",
-      decision: "include",
-    });
-  });
-
-  it("denies owner private context in groups before loader or provider reads", async () => {
-    const roomId = await ensureRoom({
-      type: ChannelType.GROUP,
-      participants: [runtime.agentId as UUID, ownerId, otherId],
-    });
-    const gate = await expectReason({
-      roomId,
-      requester: ownerId,
-      messageType: ChannelType.GROUP,
-      reason: "excluded_group_destination",
-    });
-    let reads = 0;
-    const text = await loadAfterGate(gate, async () => {
-      reads += 1;
-      return Object.values(LEAK_CORPUS).join("\n");
-    });
-    expect(reads).toBe(0);
-    for (const canary of Object.values(LEAK_CORPUS)) {
-      expect(text).not.toContain(canary);
-    }
-
-    const overviewSpy = vi
-      .spyOn(LifeOpsService.prototype, "getOverview")
-      .mockRejectedValue(new Error(LEAK_CORPUS.privateMemory));
-    const calendarSpy = vi
-      .spyOn(LifeOpsService.prototype, "getNextCalendarEventContext")
-      .mockRejectedValue(new Error(LEAK_CORPUS.calendar));
-    const gmailSpy = vi
-      .spyOn(LifeOpsService.prototype, "getGmailTriage")
-      .mockRejectedValue(new Error(LEAK_CORPUS.gmail));
-
-    const providerResult = await lifeOpsProvider.get(
+  it("binds provenance to the persisted agent id, ignoring mutable display/message persona", async () => {
+    const roomId = await room(ChannelType.DM, [runtime.agentId, ownerId]);
+    const request = message(roomId, ChannelType.API);
+    request.content.requestingPersona = "attacker-selected-persona";
+    runtime.character.name = "changed-after-loader-start";
+    const gate = await authorizeLifeOpsPrivateContext({
       runtime,
-      message({
-        entityId: ownerId,
-        roomId,
-        channelType: ChannelType.GROUP,
-        requestingPersona: AGENT_PERSONA,
-      }),
-      { values: {}, data: {}, text: "" },
+      message: request,
+      sources: [{ kind: "gmail", id: "loader-selected-account" }],
+    });
+    expect(gate.canLoadPrivateContext).toBe(true);
+    expect(gate.receipts[0].source.trustedAgentId).toBe(runtime.agentId);
+    expect(JSON.stringify(gate.receipts)).not.toContain(
+      "attacker-selected-persona",
     );
-    expect(overviewSpy).not.toHaveBeenCalled();
-    expect(calendarSpy).not.toHaveBeenCalled();
-    expect(gmailSpy).not.toHaveBeenCalled();
-    const serializedProviderResult = JSON.stringify(providerResult);
-    for (const canary of Object.values(LEAK_CORPUS)) {
-      expect(providerResult.text).not.toContain(canary);
-      expect(serializedProviderResult).not.toContain(canary);
-    }
-    expect(providerResult.text).not.toContain("Owner profile:");
-    expect(providerResult.text).not.toContain("Inbox:");
-    expect(providerResult.text).not.toContain("Next event:");
-    expect(providerResult.data?.lifeOpsAudienceReceipts).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          decision: "exclude",
-          reason: "excluded_group_destination",
-        }),
-      ]),
+    expect(JSON.stringify(gate.receipts)).not.toContain(
+      "changed-after-loader-start",
     );
   });
 
-  it("denies missing room metadata", async () => {
-    await expectReason({
-      roomId: uuid(),
-      requester: ownerId,
-      messageType: ChannelType.DM,
-      reason: "excluded_missing_room",
-    });
-  });
-
-  it("distinguishes room metadata lookup failures without leaking exception payloads", async () => {
-    const roomId = uuid();
-    const failureCanary = "ROOM_LOOKUP_FAILURE_PAYLOAD_EMERALD_6331";
-    const gate = await evaluateLifeOpsAudiencePolicy({
-      runtime: wrapRuntime({
-        getRoom: async () => {
-          throw new Error(failureCanary);
-        },
-      }),
-      message: message({
-        entityId: ownerId,
-        roomId,
-        channelType: ChannelType.DM,
-      }),
-      sources: [PRIVATE_SOURCE],
-      hasOwnerAccess: async (_runtime, request) => request.entityId === ownerId,
-    });
-    expect(gate.receipts[0]).toMatchObject({
-      decision: "exclude",
-      reason: "excluded_metadata_lookup_failed",
-      destinationRoomType: null,
-      participantEntityIds: [],
-    });
-    expect(JSON.stringify(gate)).not.toContain(failureCanary);
-  });
-
-  it("denies missing or empty participant metadata", async () => {
-    const roomId = await ensureRoom({ type: ChannelType.DM, participants: [] });
-    await expectReason({
-      roomId,
-      requester: ownerId,
-      messageType: ChannelType.DM,
-      reason: "excluded_missing_participants",
-    });
-  });
-
-  it("distinguishes participant metadata lookup failures without leaking exception payloads", async () => {
-    const roomId = await ensureRoom({
-      type: ChannelType.DM,
-      participants: [runtime.agentId as UUID, ownerId],
-    });
-    const failureCanary = "PARTICIPANT_LOOKUP_FAILURE_PAYLOAD_TOPAZ_9214";
-    const gate = await evaluateLifeOpsAudiencePolicy({
-      runtime: wrapRuntime({
-        getParticipantsForRoom: async () => {
-          throw new Error(failureCanary);
-        },
-      }),
-      message: message({
-        entityId: ownerId,
-        roomId,
-        channelType: ChannelType.DM,
-      }),
-      sources: [PRIVATE_SOURCE],
-      hasOwnerAccess: async (_runtime, request) => request.entityId === ownerId,
-    });
-    expect(gate.receipts[0]).toMatchObject({
-      decision: "exclude",
-      reason: "excluded_metadata_lookup_failed",
-      destinationRoomType: ChannelType.DM,
-      participantEntityIds: [],
-    });
-    expect(JSON.stringify(gate)).not.toContain(failureCanary);
-  });
-
-  it("denies null-ish participant responses", async () => {
-    const roomId = await ensureRoom({
-      type: ChannelType.DM,
-      participants: [runtime.agentId as UUID, ownerId],
-    });
-    const gate = await evaluateLifeOpsAudiencePolicy({
-      runtime: wrapRuntime({
-        getParticipantsForRoom: async () => null as unknown as UUID[],
-      }),
-      message: message({
-        entityId: ownerId,
-        roomId,
-        channelType: ChannelType.DM,
-      }),
-      sources: [PRIVATE_SOURCE],
-      hasOwnerAccess: async (_runtime, request) => request.entityId === ownerId,
-    });
-    expect(gate.receipts[0]).toMatchObject({
-      decision: "exclude",
-      reason: "excluded_missing_participants",
-    });
-  });
-
-  it("denies stale private participant sets", async () => {
-    const roomId = await ensureRoom({
-      type: ChannelType.DM,
-      participants: [runtime.agentId as UUID, ownerId, otherId],
-    });
-    await expectReason({
-      roomId,
-      requester: ownerId,
-      messageType: ChannelType.DM,
-      reason: "excluded_unexpected_participants",
-    });
-  });
-
-  it("denies private destinations when the agent is not an authoritative participant", async () => {
-    const roomId = await ensureRoom({
-      type: ChannelType.DM,
-      participants: [ownerId],
-    });
-    await expectReason({
-      roomId,
-      requester: ownerId,
-      messageType: ChannelType.DM,
-      reason: "excluded_agent_not_participant",
-    });
-  });
-
-  it("denies cross-persona sources without hardcoded names", async () => {
-    const roomId = await ensureRoom({
-      type: ChannelType.DM,
-      participants: [runtime.agentId as UUID, ownerId],
-    });
-    await expectReason({
-      roomId,
-      requester: ownerId,
-      messageType: ChannelType.DM,
-      source: { ...PRIVATE_SOURCE, persona: OTHER_PERSONA },
-      requestingPersona: AGENT_PERSONA,
-      reason: "excluded_cross_persona",
-    });
-  });
-
-  it("does not let message content spoof the authoritative requesting persona", async () => {
-    const roomId = await ensureRoom({
-      type: ChannelType.DM,
-      participants: [runtime.agentId as UUID, ownerId],
-    });
-    const gate = await evaluateLifeOpsAudiencePolicy({
-      runtime,
-      message: message({
-        entityId: ownerId,
-        roomId,
-        channelType: ChannelType.DM,
-        requestingPersona: OTHER_PERSONA,
-        persona: OTHER_PERSONA,
-      }),
-      sources: [{ ...PRIVATE_SOURCE, persona: OTHER_PERSONA }],
-      hasOwnerAccess: async (_runtime, request) => request.entityId === ownerId,
-    });
-    expect(gate.receipts[0]).toMatchObject({
-      decision: "exclude",
-      reason: "excluded_cross_persona",
-      requestingPersona: AGENT_PERSONA,
-    });
-    expect(gate.canLoadPrivateContext).toBe(false);
-  });
-
-  it("allows explicitly public memory in an authoritative group", async () => {
-    const roomId = await ensureRoom({
-      type: ChannelType.GROUP,
-      participants: [runtime.agentId as UUID, ownerId, otherId],
-    });
-    await expectReason({
-      roomId,
-      requester: ownerId,
-      messageType: ChannelType.GROUP,
-      source: PUBLIC_SOURCE,
-      reason: "included_public_group",
-      decision: "include",
-    });
-    const gate = await resolveLifeOpsProviderAudienceGate(
-      runtime,
-      message({
-        entityId: ownerId,
-        roomId,
-        channelType: ChannelType.GROUP,
-        requestingPersona: AGENT_PERSONA,
-      }),
-      [PUBLIC_SOURCE],
-    );
-    expect(gate.canLoadPrivateContext).toBe(false);
-  });
-
-  it("denies explicitly public group memory when the agent is not an authoritative participant", async () => {
-    const roomId = await ensureRoom({
-      type: ChannelType.GROUP,
-      participants: [ownerId, otherId],
-    });
-    await expectReason({
-      roomId,
-      requester: ownerId,
-      messageType: ChannelType.GROUP,
-      source: PUBLIC_SOURCE,
-      reason: "excluded_agent_not_participant",
-    });
-  });
-
-  it("keeps bundled private context closed when any requested private source is denied", async () => {
-    const roomId = await ensureRoom({
-      type: ChannelType.DM,
-      participants: [runtime.agentId as UUID, ownerId],
-    });
-    const gate = await evaluateLifeOpsAudiencePolicy({
-      runtime,
-      message: message({
-        entityId: ownerId,
-        roomId,
-        channelType: ChannelType.DM,
-        requestingPersona: AGENT_PERSONA,
-      }),
-      sources: [
-        PRIVATE_SOURCE,
-        CROSS_PERSONA_CALENDAR_SOURCE,
-        CROSS_PERSONA_GMAIL_SOURCE,
-      ],
-      hasOwnerAccess: async (_runtime, request) => request.entityId === ownerId,
-    });
-    expect(gate.canLoadPrivateContext).toBe(false);
-    expect(gate.receipts.map((receipt) => receipt.reason)).toEqual([
-      "included_private_dm",
-      "excluded_cross_persona",
-      "excluded_cross_persona",
+  it("denies all private provider retrieval paths in a group before their loaders run", async () => {
+    const roomId = await room(ChannelType.GROUP, [
+      runtime.agentId,
+      ownerId,
+      otherId,
     ]);
-    let reads = 0;
-    const text = await loadAfterGate(gate, async () => {
-      reads += 1;
-      return Object.values(LEAK_CORPUS).join("\n");
-    });
-    expect(reads).toBe(0);
-    for (const canary of Object.values(LEAK_CORPUS)) {
-      expect(text).not.toContain(canary);
-    }
-  });
+    const request = message(roomId, ChannelType.GROUP);
 
-  it("denies when the requester is not a room participant", async () => {
-    const roomId = await ensureRoom({
-      type: ChannelType.GROUP,
-      participants: [runtime.agentId as UUID, otherId],
-    });
-    await expectReason({
-      roomId,
-      requester: ownerId,
-      messageType: ChannelType.GROUP,
-      reason: "excluded_requester_not_participant",
-    });
-  });
+    const overview = vi.spyOn(LifeOpsService.prototype, "getOverview");
+    const lifeOps = await lifeOpsProvider.get(runtime, request, EMPTY_STATE);
+    expect(overview).not.toHaveBeenCalled();
+    expect(lifeOps.text).toBe("");
+    expect(lifeOps.data?.lifeOpsAudienceReceipts).toBeDefined();
 
-  it("denies channel-type mismatch between message and stored room", async () => {
-    const roomId = await ensureRoom({
-      type: ChannelType.DM,
-      participants: [runtime.agentId as UUID, ownerId],
-    });
-    await expectReason({
-      roomId,
-      requester: ownerId,
-      messageType: ChannelType.GROUP,
-      reason: "excluded_channel_type_mismatch",
-    });
-  });
-
-  it("does not let SELF or API message types relax mismatched stored room metadata", async () => {
-    const roomId = await ensureRoom({
-      type: ChannelType.DM,
-      participants: [runtime.agentId as UUID, ownerId],
-    });
-    await expectReason({
-      roomId,
-      requester: ownerId,
-      messageType: ChannelType.SELF,
-      reason: "excluded_channel_type_mismatch",
-    });
-    await expectReason({
-      roomId,
-      requester: ownerId,
-      messageType: ChannelType.API,
-      reason: "excluded_channel_type_mismatch",
-    });
-  });
-
-  it("denies non-owner requesters with receipts", async () => {
-    const roomId = await ensureRoom({
-      type: ChannelType.DM,
-      participants: [runtime.agentId as UUID, otherId],
-    });
-    await expectReason({
-      roomId,
-      requester: otherId,
-      messageType: ChannelType.DM,
-      reason: "excluded_non_owner_requester",
-    });
-  });
-
-  it("uses the same exported gate as the live provider", async () => {
-    const roomId = await ensureRoom({
-      type: ChannelType.GROUP,
-      participants: [runtime.agentId as UUID, ownerId, otherId],
-    });
-    const gate = await resolveLifeOpsProviderAudienceGate(
+    const crossChannel = await crossChannelContextProvider.get(
       runtime,
-      message({
-        entityId: ownerId,
+      request,
+      {
+        ...EMPTY_STATE,
+        crossChannelContextRequest: { query: "secret gmail project" },
+      } as State,
+    );
+    expect(crossChannel.text).toBe("");
+    expect(crossChannel.values?.crossChannelUnavailable).toBe(true);
+    expect(crossChannel.data?.lifeOpsAudienceReceipts).toBeDefined();
+
+    const approvals = await pendingApprovalsProvider.get(
+      runtime,
+      request,
+      EMPTY_STATE,
+    );
+    expect(approvals.text).toBe("");
+    expect(approvals.values?.pendingApprovalsUnavailable).toBe(true);
+    expect(approvals.data?.lifeOpsAudienceReceipts).toBeDefined();
+  });
+
+  it("denies the real calendar action path in a group without delivering detail", async () => {
+    const roomId = await room(ChannelType.GROUP, [
+      runtime.agentId,
+      ownerId,
+      otherId,
+    ]);
+    const callback = vi.fn(async (_content: Content) => []);
+    const result = await calendarAction.handler(
+      runtime,
+      message(roomId, ChannelType.GROUP, "show my calendar"),
+      EMPTY_STATE,
+      { parameters: { action: "feed" } },
+      callback,
+    );
+    expect(callback).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      success: false,
+      data: { error: "AUDIENCE_DENIED" },
+    });
+  });
+
+  it("revalidates a real DB membership version at the production outgoing hook", async () => {
+    const roomId = await room(ChannelType.DM, [runtime.agentId, ownerId]);
+    const request = message(roomId, ChannelType.API);
+    const gate = await authorizeLifeOpsPrivateContext({
+      runtime,
+      message: request,
+      sources: PRIVATE_SOURCES,
+    });
+    expect(gate.canLoadPrivateContext).toBe(true);
+
+    // Concurrent membership mutation after private retrieval authorization.
+    await runtime.ensureParticipantInRoom(otherId, roomId);
+
+    const deliver = vi.fn(async (_content: Content) => []);
+    const content: Content = { text: "PRIVATE_CALENDAR_CANARY" };
+    await runtime.applyPipelineHooks(
+      "outgoing_before_deliver",
+      outgoingPipelineHookContext(content, {
+        source: "simple",
         roomId,
-        channelType: ChannelType.GROUP,
-        requestingPersona: AGENT_PERSONA,
+        message: request,
       }),
     );
+    await deliver(content);
+    expect(deliver).toHaveBeenCalledOnce();
+    expect(content.text).toContain("delivery was cancelled");
+    expect(content.text).not.toContain("PRIVATE_CALENDAR_CANARY");
+  });
+
+  it("revalidates membership before every streamed chunk delivery", async () => {
+    const roomId = await room(ChannelType.DM, [runtime.agentId, ownerId]);
+    const request = message(roomId, ChannelType.VOICE_DM);
+    await authorizeLifeOpsPrivateContext({
+      runtime,
+      message: request,
+      sources: [{ kind: "calendar", id: "voice.calendar" }],
+    });
+    await runtime.ensureParticipantInRoom(otherId, roomId);
+    const streamContext = {
+      phase: "model_stream_chunk" as const,
+      source: "message_service" as const,
+      chunk: "PRIVATE_VOICE_CANARY",
+      roomId,
+    };
+    await runtime.applyPipelineHooks("model_stream_chunk", streamContext);
+    expect(streamContext.chunk).toBe("");
+  });
+
+  it("reports authorization and metadata failures and fails closed", async () => {
+    const roomId = await room(ChannelType.DM, [runtime.agentId, ownerId]);
+    const reportError = vi.spyOn(runtime, "reportError");
+    const broken = Object.create(runtime) as AgentRuntime;
+    broken.getRoom = vi.fn(async () => {
+      throw new Error("DB_AUTH_CANARY");
+    });
+    broken.reportError = runtime.reportError.bind(runtime);
+    const gate = await evaluateLifeOpsAudiencePolicy({
+      runtime: broken,
+      message: message(roomId, ChannelType.DM),
+      sources: PRIVATE_SOURCES,
+      hasOwnerAccess: async () => {
+        throw new Error("ROLE_AUTH_CANARY");
+      },
+    });
     expect(gate.canLoadPrivateContext).toBe(false);
-    expect(gate.receipts.map((receipt) => receipt.reason)).toEqual([
-      "excluded_group_destination",
-      "excluded_group_destination",
-      "excluded_group_destination",
-    ]);
+    expect(gate.receipts[0].reason).toBe("excluded_non_owner_requester");
+    expect(reportError).toHaveBeenCalledWith(
+      "LifeOpsAudience.metadata",
+      expect.any(Error),
+      expect.any(Object),
+    );
+    expect(reportError).toHaveBeenCalledWith(
+      "LifeOpsAudience.ownerAccess",
+      expect.any(Error),
+      expect.any(Object),
+    );
+    expect(JSON.stringify(gate.receipts)).not.toContain("DB_AUTH_CANARY");
+    expect(JSON.stringify(gate.receipts)).not.toContain("ROLE_AUTH_CANARY");
   });
 });

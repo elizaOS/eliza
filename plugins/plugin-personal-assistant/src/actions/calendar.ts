@@ -37,7 +37,11 @@ import {
   createCalendarActionRunner,
 } from "@elizaos/plugin-calendar";
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
-import { hasLifeOpsAccess, INTERNAL_URL } from "../lifeops/access.js";
+import { INTERNAL_URL } from "../lifeops/access.js";
+import {
+  assertLifeOpsAudienceAtDelivery,
+  authorizeLifeOpsPrivateContext,
+} from "../lifeops/audience-policy.js";
 import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
 import {
   formatCalendarEventDateTime,
@@ -817,7 +821,12 @@ export const calendarAction: Action & {
     runtime: IAgentRuntime,
     message: Memory,
   ): Promise<boolean> => {
-    return hasLifeOpsAccess(runtime, message);
+    const gate = await authorizeLifeOpsPrivateContext({
+      runtime,
+      message,
+      sources: [{ kind: "calendar", id: "calendar.action" }],
+    });
+    return gate.canLoadPrivateContext;
   },
   handler: async (
     runtime: IAgentRuntime,
@@ -826,11 +835,32 @@ export const calendarAction: Action & {
     options,
     callback,
   ): Promise<ActionResult> => {
-    if (!(await hasLifeOpsAccess(runtime, message))) {
-      const text = "Calendar actions are restricted to the owner.";
-      await callback?.({ text });
-      return { text, success: false, data: { error: "PERMISSION_DENIED" } };
+    const audienceGate = await authorizeLifeOpsPrivateContext({
+      runtime,
+      message,
+      sources: [{ kind: "calendar", id: "calendar.action" }],
+    });
+    if (!audienceGate.canLoadPrivateContext) {
+      const text = "Calendar actions require an owner-only private chat.";
+      return {
+        text,
+        success: false,
+        data: {
+          error: "AUDIENCE_DENIED",
+          lifeOpsAudienceReceipts: audienceGate.receipts,
+        },
+      };
     }
+    const deliveryCheckedCallback: HandlerCallback | undefined = callback
+      ? async (content, actionName) => {
+          await assertLifeOpsAudienceAtDelivery(
+            runtime,
+            message,
+            audienceGate.envelope,
+          );
+          return callback(content, actionName);
+        }
+      : undefined;
     const resolved = await resolveActionArgs<
       OwnerCalendarSubaction,
       OwnerCalendarParameters
@@ -846,7 +876,7 @@ export const calendarAction: Action & {
       const text =
         resolved.clarification ||
         "Tell me whether you want to view your calendar, create an event, check availability, propose times, or adjust scheduling preferences.";
-      await callback?.({ text });
+      await deliveryCheckedCallback?.({ text });
       return {
         text,
         success: false,
@@ -861,7 +891,7 @@ export const calendarAction: Action & {
     if (!subaction) {
       const text =
         "Tell me whether you want to view your calendar, create an event, check availability, propose times, or adjust scheduling preferences.";
-      await callback?.({ text });
+      await deliveryCheckedCallback?.({ text });
       return {
         text,
         success: false,
@@ -872,7 +902,14 @@ export const calendarAction: Action & {
       ...(options ?? {}),
       parameters: resolved.params as HandlerOptions["parameters"],
     };
-    return route(subaction, runtime, message, state, mergedOptions, callback);
+    return route(
+      subaction,
+      runtime,
+      message,
+      state,
+      mergedOptions,
+      deliveryCheckedCallback,
+    );
   },
   parameters: [
     {
