@@ -2,15 +2,13 @@
 # Contract test for build.sh's Docker builder-cache switch. Uses a fake Docker
 # binary so the test proves command construction without building an image.
 #
-# Arch-parametric: build.sh derives its platform/tag strings from ELIZAOS_ARCH,
-# and the CI job env exports it (arm64 on the arm64 leg) — so the expected
-# invocations below must be built from the same variable, not amd64 literals.
-# Hardcoded amd64 expectations made this test fail (silently, inside the
-# static-smoke set -e chain) on every non-amd64 runner.
+# The canonical Tails-derived builder is amd64-only. This test also proves
+# unsupported architectures fail before Docker is invoked.
 
 set -euo pipefail
 
-ARCH="${ELIZAOS_ARCH:-amd64}"
+ARCH="amd64"
+SNAPSHOT_JSON='{"debian":"2026072704","debian-security":"2026072704","torproject":"2026050704"}'
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP="$(mktemp -d)"
 CREATED_OUT=0
@@ -26,8 +24,13 @@ cleanup() {
 }
 trap cleanup EXIT
 
-mkdir -p "${TMP}/bin" "${TMP}/tails/config" "${TMP}/tails/submodules/live-build"
+mkdir -p \
+    "${TMP}/bin" \
+    "${TMP}/tails/config" \
+    "${TMP}/tails/debian" \
+    "${TMP}/tails/submodules/live-build"
 printf 'fake live-build checkout\n' >"${TMP}/tails/submodules/live-build/README"
+printf 'tails (7.8) UNRELEASED; urgency=medium\n' >"${TMP}/tails/debian/changelog"
 
 cat >"${TMP}/bin/docker" <<'SH'
 #!/usr/bin/env bash
@@ -73,6 +76,7 @@ run_build_with_log() {
             PATH="${TMP}/bin:${PATH}" \
             TAILS_SRC="${TMP}/tails" \
             DOCKER_LOG="${log}" \
+            APT_SNAPSHOTS_SERIALS="${SNAPSHOT_JSON}" \
             "$@" \
             ./build.sh config
     ) >/dev/null
@@ -97,5 +101,37 @@ run_build_with_log \
     ELIZAOS_DOCKER_BUILDX_CACHE_SCOPE=contract-scope
 grep -Fqx "buildx version" "${cache_log}"
 grep -Fqx "buildx build --platform linux/${ARCH} --build-arg TARGETARCH=${ARCH} -t elizaos-builder-${ARCH} --load --cache-from type=gha,scope=contract-scope --cache-to type=gha,scope=contract-scope,mode=max ${ROOT}" "${cache_log}"
+
+grep -Fq -- "-e APT_SNAPSHOTS_SERIALS=${SNAPSHOT_JSON}" "${plain_log}"
+grep -Fq -- "-e TAILS_CUSTOM_APT_SUITE=7.8" "${plain_log}"
+
+custom_apt_sources="$(
+    cd "${ROOT}/tails"
+    TAILS_CUSTOM_APT_SUITE=7.8 auto/scripts/tails-custom-apt-sources
+)"
+grep -Fqx "deb http://deb.tails.boum.org/ 7.8 main contrib non-free" \
+    <<<"${custom_apt_sources}"
+if grep -Fq " stable " <<<"${custom_apt_sources}"; then
+    echo "explicit custom package suite unexpectedly retained moving stable" >&2
+    exit 1
+fi
+
+unsupported_log="${TMP}/unsupported-docker.log"
+unsupported_output="${TMP}/unsupported-output.log"
+: >"${unsupported_log}"
+if (
+    cd "${ROOT}"
+    env \
+        PATH="${TMP}/bin:${PATH}" \
+        TAILS_SRC="${TMP}/tails" \
+        DOCKER_LOG="${unsupported_log}" \
+        ELIZAOS_ARCH=arm64 \
+        ./build.sh config
+) >"${unsupported_output}" 2>&1; then
+    echo "build.sh accepted unsupported arm64 ISO target" >&2
+    exit 1
+fi
+grep -Fq "canonical Tails-derived ISO currently supports amd64 only" "${unsupported_output}"
+test ! -s "${unsupported_log}"
 
 echo "build.sh Docker cache contract OK"

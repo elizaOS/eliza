@@ -1,9 +1,9 @@
 name: Build elizaOS Linux ISO
 
-# One canonical live distro at packages/os/linux. The build
-# runs inside that Tails-derived Docker builder. riscv64 support is verified as
-# a native artifact + GUI contract until full riscv64 ISO boot evidence is
-# produced for this canonical distro.
+# One canonical live distro at packages/os/linux. Tails' live-build fork is
+# amd64-only, so this workflow publishes only the architecture it can build and
+# boot-test. Non-amd64 package experiments remain static development contracts;
+# they are not advertised as ISO artifacts.
 
 on:
   workflow_call:
@@ -37,23 +37,6 @@ jobs:
   build-iso:
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 240
-    # arm64 builds run under qemu-user-static + binfmt_misc emulation on
-    # the amd64 runner. They are 3-5× slower than native, so they are
-    # gated behind `continue-on-error: true` while the path stabilizes —
-    # the amd64 nightly is the only required check today, so an arm64
-    # failure should not turn the workflow red. The per-arch experimental
-    # flag is read by `continue-on-error` below + by per-step `if:`s
-    # downstream that only run their amd64-only steps when arch == amd64.
-    continue-on-error: ${{ matrix.experimental }}
-    strategy:
-      fail-fast: false
-      matrix:
-        arch: [amd64, arm64]
-        include:
-          - arch: amd64
-            experimental: false
-          - arch: arm64
-            experimental: true
     permissions:
       # contents: write covers softprops/action-gh-release (release upload)
       #   and anchore/sbom-action (artifact attachment). The workflow-level
@@ -68,11 +51,8 @@ jobs:
     env:
       CHANNEL: ${{ inputs.channel || (github.event_name == 'release' && 'stable') || 'nightly' }}
       LINUX_DIR: packages/os/linux
-      # Picked up by packages/os/linux/build.sh + tails/auto/config to
-      # drive --platform / TARGETARCH / --architecture / --linux-flavours
-      # and the per-arch bootloader package set. Defaults to amd64 inside
-      # build.sh too, so a bare run still works.
-      ELIZAOS_ARCH: ${{ matrix.arch }}
+      # The inherited Tails live-build fork rejects every other architecture.
+      ELIZAOS_ARCH: amd64
 
     steps:
       - name: Checkout
@@ -85,27 +65,16 @@ jobs:
         with:
           path: |
             ${{ env.LINUX_DIR }}/cache
-          key: elizaos-iso-${{ matrix.arch }}-${{ hashFiles('packages/os/linux/tails/auto/config', 'packages/os/linux/tails/config/chroot_local-packageslists/**', 'packages/os/linux/Dockerfile') }}
-          restore-keys: elizaos-iso-${{ matrix.arch }}-
+          key: elizaos-iso-${{ env.ELIZAOS_ARCH }}-${{ hashFiles('packages/os/linux/tails/auto/config', 'packages/os/linux/tails/config/chroot_local-packageslists/**', 'packages/os/linux/Dockerfile') }}
+          restore-keys: elizaos-iso-${{ env.ELIZAOS_ARCH }}-
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c
 
-      - name: Detect KVM acceleration
-        id: kvm
-        run: |
-          if [ -e /dev/kvm ]; then
-            echo "have_kvm=true" >> "$GITHUB_OUTPUT"
-          else
-              echo "have_kvm=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Install just + ripgrep
         # ripgrep (rg) is a hard dependency of packages/os/linux/scripts/static-smoke.sh
-        # (the "Verify riscv64 contract" step). It is no longer pre-installed on the
-        # ubuntu-24.04 runner image, so the step used to build every riscv64 target
-        # successfully and then exit 1 with the opaque "ripgrep (rg) is required …"
-        # line. Install it explicitly here so the smoke check can run.
+        # (the static cross-architecture contract step). It is not guaranteed on
+        # every runner image, so install it explicitly before the smoke check.
         run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends just ripgrep
 
       - name: Setup Bun
@@ -119,31 +88,21 @@ jobs:
         with:
           bun-version: "1.3.14"
 
-      - name: Register qemu-user-static binfmt (non-amd64 only)
-        if: matrix.arch != 'amd64'
-        # tonistiigi/binfmt is the canonical container image for registering
-        # qemu-user-static handlers with the kernel's binfmt_misc on the
-        # GitHub Actions amd64 runner. After this step, `docker run
-        # --platform linux/${arch}` transparently emulates the target arch
-        # for everything in the container, which is what packages/os/linux/
-        # build.sh does via `docker build --platform linux/${ARCH}`.
-        # Emulated builds are 3-5× slower than native; that is why this
-        # job is gated on continue-on-error: true while it stabilizes.
+      - name: Resolve available Tails APT snapshots
         run: |
-          docker run --rm --privileged tonistiigi/binfmt --install all
-          # Verify the handler we actually need is registered, fail fast
-          # if registration silently no-op'd.
-          test -e "/proc/sys/fs/binfmt_misc/qemu-${{ matrix.arch == 'arm64' && 'aarch64' || matrix.arch }}"
-          echo "✓ qemu-user-static registered for ${{ matrix.arch }}"
+          set -euo pipefail
+          SNAPSHOTS=$(node "${LINUX_DIR}/scripts/resolve-apt-snapshots.mjs")
+          echo "APT_SNAPSHOTS_SERIALS=${SNAPSHOTS}" >> "$GITHUB_ENV"
+          echo "::notice::Using verified Tails APT snapshots ${SNAPSHOTS}"
 
-      - name: Verify riscv64 contract
+      - name: Verify non-amd64 static contracts
         run: |
           set -euo pipefail
           bash scripts/verify-riscv64-buildpaths.sh
           cd "${LINUX_DIR}"
           ELIZAOS_STATIC_SOURCE_ONLY=1 ./scripts/static-smoke.sh
 
-      - name: Build ISO (${{ matrix.arch }})
+      - name: Build ISO (amd64)
         working-directory: ${{ env.LINUX_DIR }}
         # ELIZAOS_BUILD_APP=1 lets `just elizaos-app` (the dependency of
         # `just build`) compile the Electrobun desktop artifact in-CI when
@@ -158,7 +117,7 @@ jobs:
         env:
           ELIZAOS_BUILD_APP: 1
           ELIZAOS_DOCKER_BUILDX_GHA_CACHE: 1
-          ELIZAOS_DOCKER_BUILDX_CACHE_SCOPE: elizaos-linux-iso-${{ matrix.arch }}
+          ELIZAOS_DOCKER_BUILDX_CACHE_SCOPE: elizaos-linux-iso-${{ env.ELIZAOS_ARCH }}
           NODE_OPTIONS: --max-old-space-size=12288
         run: just build
         timeout-minutes: 180
@@ -173,13 +132,13 @@ jobs:
           ISO_MAX_BYTES: ${{ env.ELIZAOS_ISO_MAX_BYTES || '3221225472' }}
         run: |
           set -euo pipefail
-          ISO=$(find "${LINUX_DIR}/out" \( -name "binary.iso" -o -name "elizaos-live-${{ matrix.arch }}-*.iso" -o -name "elizaos-linux-${{ matrix.arch }}-*.iso" \) | sort | tail -1)
+          ISO=$(find "${LINUX_DIR}/out" \( -name "binary.iso" -o -name "tails-${ELIZAOS_ARCH}-*.iso" -o -name "elizaos-live-${ELIZAOS_ARCH}-*.iso" -o -name "elizaos-linux-${ELIZAOS_ARCH}-*.iso" \) | sort | tail -1)
           if [ -z "$ISO" ]; then
             echo "ERROR: ISO not found after build"
             exit 1
           fi
           DATE=$(date +%Y.%m.%d)
-          DEST="elizaos-live-${CHANNEL}-${DATE}-${{ matrix.arch }}.iso"
+          DEST="elizaos-live-${CHANNEL}-${DATE}-${ELIZAOS_ARCH}.iso"
           cp "$ISO" "$DEST"
           SIZE=$(stat --format=%s "$DEST")
           if [ "$SIZE" -gt "$ISO_MAX_BYTES" ]; then
@@ -194,67 +153,26 @@ jobs:
             echo "size=$SIZE"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Smoke test ISO (headless QEMU, amd64 only)
-        if: matrix.arch == 'amd64' && steps.kvm.outputs.have_kvm == 'true'
+      - name: Smoke test ISO (headless QEMU)
+        timeout-minutes: 10
+        env:
+          ELIZAOS_ISO_SMOKE_TIMEOUT_SECONDS: 420
         run: |
           set -euo pipefail
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends qemu-system-x86 ovmf
-          SERIAL_LOG=$(mktemp)
-          timeout 180 qemu-system-x86_64 \
-            -enable-kvm -cdrom "${{ steps.iso.outputs.path }}" -boot d \
-            -m 2G -smp 2 -display none -vga none \
-            -serial "file:$SERIAL_LOG" -no-reboot -nographic 2>/dev/null || true
-          # Tiered match: a strong signal proves elizaOS-specific services
-          # came up; a generic match proves the kernel/userspace booted but
-          # the agent stack did not (surfaced as a warning so the build
-          # doesn't regress while the issue is investigated).
-          #
-          # Strong regex covers two formats:
-          #   1. Description-based "(Starting|Started) elizaOS <word>..."
-          #      — what modern systemd (v245+, Debian trixie ships v257)
-          #      prints because every elizaos-*.service has
-          #      Description=elizaOS <...>.
-          #   2. Unit-name "elizaos-<name>.service" — appears in service
-          #      exit / failure lines and on older systemd.
-          #
-          # Note: elizaos-launcher and elizaos-chat-overlay are user-scope
-          # services (WantedBy=graphical-session.target) and will not start
-          # in this headless QEMU run (-display none). The system-scope
-          # services (agent, first-boot) are the
-          # meaningful signals in this headless smoke test.
-          if grep -qE '(Starting|Started) elizaOS [A-Za-z]|elizaos-(agent|launcher|first-boot|chat-overlay)\.service' "$SERIAL_LOG" 2>/dev/null; then
-            echo "ISO smoke test: elizaOS service markers detected"
-          elif grep -qi 'elizaOS\|eliza\|login:' "$SERIAL_LOG" 2>/dev/null; then
-            echo "::warning::Boot reached generic strings but no elizaos-*.service marker detected — verify the agent stack started."
-            echo "ISO smoke test: weak match (boot OK, elizaOS service markers missing)"
-          else
-            echo "ERROR: boot strings not detected"
-            tail -200 "$SERIAL_LOG" || true
-            exit 1
-          fi
-          rm -f "$SERIAL_LOG"
-
-      - name: Smoke test skipped (no KVM)
-        if: steps.kvm.outputs.have_kvm != 'true'
-        run: echo "::notice::Boot smoke test runs only on amd64 with KVM; skipped for ${{ matrix.arch }}."
+          sudo apt-get install -y --no-install-recommends qemu-system-x86 xorriso
+          bash "${LINUX_DIR}/scripts/smoke-test-iso.sh" "${{ steps.iso.outputs.path }}"
 
       - name: Attest SLSA build provenance for ISO
         # Mints a Sigstore-signed in-toto/SLSA provenance attestation
         # tied to this repo + workflow + commit, via GitHub OIDC.
         # No long-lived secrets. Users verify with:
         #   gh attestation verify <iso-file> --owner elizaOS
-        # Gated on amd64 because that's the only arch with a validated
-        # artifact today — same gate as the QEMU smoke test.
-        if: matrix.arch == 'amd64'
         uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373
         with:
           subject-path: ${{ steps.iso.outputs.path }}
 
       - name: Install squashfs-tools (for SBOM extraction)
-        # Only amd64 produces an SBOM; arm64/riscv64 are continue-on-error
-        # builds with no validated artifact yet.
-        if: matrix.arch == 'amd64'
         run: sudo apt-get install -y --no-install-recommends squashfs-tools
 
       - name: Extract Debian package database from ISO
@@ -263,7 +181,6 @@ jobs:
         # root would cost ~7 GB and ~5 min; the dpkg dir alone is ~50 MB and
         # lets syft enumerate every installed Debian package with name +
         # version.
-        if: matrix.arch == 'amd64'
         id: sbom-extract
         run: |
           set -euo pipefail
@@ -291,7 +208,7 @@ jobs:
         # JSON by default. upload-artifact and upload-release-assets are
         # disabled here; we attach the file ourselves below so that it lands
         # in the same named artifact as the ISO and SHA-256 checksum.
-        if: matrix.arch == 'amd64' && steps.sbom-extract.outputs.extracted == 'true'
+        if: steps.sbom-extract.outputs.extracted == 'true'
         uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610
         with:
           path: ${{ steps.sbom-extract.outputs.root }}
@@ -301,7 +218,7 @@ jobs:
           upload-release-assets: false
 
       - name: Report SBOM package count
-        if: matrix.arch == 'amd64' && steps.sbom-extract.outputs.extracted == 'true'
+        if: steps.sbom-extract.outputs.extracted == 'true'
         run: |
           set -euo pipefail
           SBOM="${{ steps.iso.outputs.filename }}.spdx.json"
@@ -316,7 +233,7 @@ jobs:
       - name: Upload ISO artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: elizaos-live-iso-${{ env.CHANNEL }}-${{ matrix.arch }}
+          name: elizaos-live-iso-${{ env.CHANNEL }}-${{ env.ELIZAOS_ARCH }}
           path: |
             ${{ steps.iso.outputs.path }}
             ${{ steps.iso.outputs.filename }}.sha256
@@ -339,7 +256,7 @@ jobs:
       - name: Write ISO metadata to summary
         run: |
           {
-            echo "## elizaOS Live ISO (${{ matrix.arch }})"
+            echo "## elizaOS Live ISO (${ELIZAOS_ARCH})"
             echo "| Field | Value |"
             echo "| ----- | ----- |"
             echo "| File | \`${{ steps.iso.outputs.filename }}\` |"

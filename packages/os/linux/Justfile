@@ -281,19 +281,16 @@ cache-clean:
     docker volume rm elizaos-acng elizaos-acng 2>/dev/null || true
     @echo "apt-cacher-ng cache volume removed."
 
-# Fast per-arch smoke. First validates the per-arch bootloader package
-# case in a tiny Docker build, then runs the real build.sh config path so
-# ELIZAOS_ARCH plumbing reaches live-build's architecture/kernel settings.
-# Use this when iterating on the multi-arch parameterization in
-# Dockerfile / build.sh — catches "Unable to locate package grub-pc-bin"
-# on arm64 / riscv64 in minutes instead of waiting hours for a real ISO
-# build to fail at the same step.
+# Fast architecture package smoke. This validates bootloader package
+# availability in a tiny Docker build. Only amd64 continues through the
+# canonical Tails config path; non-amd64 targets are development contracts,
+# not publishable ISO builds.
 #
 #   just smoke-arch                 # default amd64, no emulation, ~2 min
 #   just smoke-arch arm64           # qemu-aarch64 emulation, ~3 min
 #   just smoke-arch riscv64         # qemu-riscv64 emulation, ~5 min
 #
-# arm64 + riscv64 require qemu-user-static + binfmt_misc registered:
+# Package smokes for arm64 + riscv64 require qemu-user-static + binfmt_misc:
 #   docker run --rm --privileged tonistiigi/binfmt --install all
 #
 # Update the inline Dockerfile here whenever the real Dockerfile's
@@ -335,9 +332,14 @@ smoke-arch arch="amd64":
         --build-arg "TARGETARCH={{arch}}" \
         -t "elizaos-smoke-{{arch}}" \
         "$tmp"
-    echo
-    echo "=== config smoke {{arch}} (real build.sh/live-build path) ==="
-    ELIZAOS_ARCH="{{arch}}" ./build.sh config
-    echo
-    echo "✅ smoke passed for {{arch}}. To run the full ISO build:"
-    echo "    ELIZAOS_ARCH={{arch}} just build"
+    if [ "{{arch}}" = "amd64" ]; then
+        echo
+        echo "=== config smoke amd64 (canonical Tails build path) ==="
+        ELIZAOS_ARCH=amd64 ./build.sh config
+        echo
+        echo "smoke passed for the publishable amd64 ISO path"
+    else
+        echo
+        echo "package smoke passed for experimental {{arch}} inputs"
+        echo "the canonical Tails-derived ISO remains amd64-only"
+    fi

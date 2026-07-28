@@ -85,9 +85,13 @@ acceptance matrix.
 
 This is the active Linux distro path. The old usbeliza prototype and the
 intermediate nested distro wrapper were removed from this branch so the Linux
-tree has one source of truth: `packages/os/linux/`. Multi-architecture support
-is expressed by build targets and package contracts, not by separate distro
-directories.
+tree has one source of truth: `packages/os/linux/`.
+
+The publishable Tails-derived ISO is currently **amd64 only**. The inherited
+Tails live-build fork rejects arm64 and riscv64 defaults and has no bootable
+grub-efi ISO assembly path for those targets. Non-amd64 package and GUI work
+remains an experimental development contract until the canonical builder can
+produce and boot-validate equivalent artifacts.
 
 This is the only elizaOS Linux distribution in the repo. The inherited
 upstream tree remains at `tails/` because that name is part of the Tails
