@@ -59,6 +59,14 @@ function createChatMessage(text: string) {
   });
 }
 
+function actionResult(actionName: string, success = true, text?: string) {
+  return {
+    success,
+    ...(text ? { text } : {}),
+    data: { actionName },
+  };
+}
+
 describe("generateChatResponse usage reporting", () => {
   it("returns actual provider usage when a provider event is emitted", async () => {
     let runtime: AgentRuntime;
@@ -186,9 +194,11 @@ describe("generateChatResponse usage reporting", () => {
       isEstimated: true,
       llmCalls: 0,
     });
+    expect(result.usedActionCallbacks).toBeUndefined();
+    expect(result.actionCallbackHistory).toBeUndefined();
   });
 
-  it("marks visible action callbacks even when handlers only set actions", async () => {
+  it("does not attribute generic simple delivery callbacks from content actions", async () => {
     const runtime = createRuntime({
       messageService: {
         handleMessage: vi.fn(async (_runtime, _message, callback) => {
@@ -211,20 +221,28 @@ describe("generateChatResponse usage reporting", () => {
 
     expect(result).toMatchObject({
       text: "callback reply",
-      usedActionCallbacks: true,
-      actionCallbackHistory: ["callback reply"],
     });
+    expect(result.usedActionCallbacks).toBeUndefined();
+    expect(result.actionCallbackHistory).toBeUndefined();
   });
 
-  it("counts action-only callbacks without adding visible callback history", async () => {
+  it("records an attributed visible callback only when its action succeeded", async () => {
     const runtime = createRuntime({
       messageService: {
         handleMessage: vi.fn(async (_runtime, _message, callback) => {
-          await callback?.({ actions: ["SEARCHING"] });
+          await callback?.(
+            { text: "callback reply", actions: ["SENSITIVE_ACTION"] },
+            "SENSITIVE_ACTION",
+          );
           return {
             didRespond: true,
-            responseContent: { text: "final reply" },
+            mode: "actions",
+            responseContent: {
+              text: "callback reply",
+              actions: ["SENSITIVE_ACTION"],
+            },
             responseMessages: [],
+            actionResults: [actionResult("SENSITIVE_ACTION")],
           };
         }),
       } as NonNullable<AgentRuntime["messageService"]>,
@@ -238,11 +256,176 @@ describe("generateChatResponse usage reporting", () => {
     );
 
     expect(result).toMatchObject({
-      text: "final reply",
+      text: "callback reply",
       usedActionCallbacks: true,
+      actionCallbackHistory: ["callback reply"],
     });
+  });
+
+  it("does not count an attributed textless callback as delivered execution evidence", async () => {
+    const runtime = createRuntime({
+      messageService: {
+        handleMessage: vi.fn(async (_runtime, _message, callback) => {
+          await callback?.({ actions: ["SEARCHING"] }, "SEARCHING");
+          return {
+            didRespond: true,
+            responseContent: { text: "final reply" },
+            responseMessages: [],
+            actionResults: [actionResult("SEARCHING")],
+          };
+        }),
+      } as NonNullable<AgentRuntime["messageService"]>,
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("hello"),
+      "Chat Agent",
+      { timeoutDuration: 5_000 },
+    );
+
+    expect(result.text).toBe("final reply");
+    expect(result.usedActionCallbacks).toBeUndefined();
     expect(result.actionCallbackHistory).toBeUndefined();
   });
+
+  it("keeps early, terminal, attachment, and voice deliveries generic", async () => {
+    const runtime = createRuntime({
+      messageService: {
+        handleMessage: vi.fn(async (_runtime, _message, callback) => {
+          await callback?.({ text: "early reply", actions: ["REPLY"] });
+          await callback?.({ actions: ["IGNORE"] });
+          await callback?.({ attachments: [] });
+          await callback?.({ text: "", attachments: [], source: "voice" });
+          await callback?.({ text: "final reply", actions: ["REPLY"] });
+          return {
+            didRespond: true,
+            responseContent: { text: "final reply", actions: ["REPLY"] },
+            responseMessages: [],
+          };
+        }),
+      } as NonNullable<AgentRuntime["messageService"]>,
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("hello"),
+      "Chat Agent",
+      { timeoutDuration: 5_000 },
+    );
+
+    expect(result.text).toBe("final reply");
+    expect(result.usedActionCallbacks).toBeUndefined();
+    expect(result.actionCallbackHistory).toBeUndefined();
+  });
+
+  it("does not treat a losing attributed callback as delivered action evidence", async () => {
+    const onChunk = vi.fn();
+    const runtime = createRuntime({
+      messageService: {
+        handleMessage: vi.fn(async (_runtime, _message, callback, options) => {
+          await options?.onStreamChunk?.(
+            "streamed final",
+            undefined,
+            "streamed final",
+          );
+          await callback?.(
+            { text: "losing callback", actions: ["SEARCH"] },
+            "SEARCH",
+          );
+          return {
+            didRespond: true,
+            responseContent: { text: "streamed final" },
+            responseMessages: [],
+            actionResults: [actionResult("SEARCH")],
+          };
+        }),
+      } as NonNullable<AgentRuntime["messageService"]>,
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("search"),
+      "Chat Agent",
+      { timeoutDuration: 5_000, onChunk },
+    );
+
+    expect(result.text).toBe("streamed final");
+    expect(onChunk).toHaveBeenCalledWith("streamed final");
+    expect(result.usedActionCallbacks).toBeUndefined();
+    expect(result.actionCallbackHistory).toBeUndefined();
+  });
+
+  it("replaces progress delivery with the final result without action evidence", async () => {
+    const onSnapshot = vi.fn();
+    const runtime = createRuntime({
+      messageService: {
+        handleMessage: vi.fn(async (_runtime, _message, callback) => {
+          await callback?.(
+            {
+              text: "Searching...",
+              actions: ["SEARCH"],
+              actionStatus: "in_progress",
+            },
+            "SEARCH",
+          );
+          return {
+            didRespond: true,
+            responseContent: { text: "Search complete." },
+            responseMessages: [],
+            actionResults: [actionResult("SEARCH")],
+          };
+        }),
+      } as NonNullable<AgentRuntime["messageService"]>,
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("search"),
+      "Chat Agent",
+      { timeoutDuration: 5_000, onSnapshot },
+    );
+
+    expect(result.text).toBe("Search complete.");
+    expect(onSnapshot).toHaveBeenLastCalledWith("Search complete.");
+    expect(result.usedActionCallbacks).toBeUndefined();
+    expect(result.actionCallbackHistory).toBeUndefined();
+  });
+
+  it.each([
+    ["a failed action result", actionResult("SENSITIVE_ACTION", false)],
+    ["an unrelated successful result", actionResult("OTHER_ACTION")],
+  ])(
+    "drops callback history when an attributed callback is followed by %s",
+    async (_label, executionResult) => {
+      const runtime = createRuntime({
+        messageService: {
+          handleMessage: vi.fn(async (_runtime, _message, callback) => {
+            await callback?.(
+              { text: "claimed success", actions: ["SENSITIVE_ACTION"] },
+              "SENSITIVE_ACTION",
+            );
+            return {
+              didRespond: true,
+              responseContent: { text: "claimed success" },
+              responseMessages: [],
+              actionResults: [executionResult],
+            };
+          }),
+        } as NonNullable<AgentRuntime["messageService"]>,
+      });
+
+      const result = await generateChatResponse(
+        runtime,
+        createChatMessage("run it"),
+        "Chat Agent",
+        { timeoutDuration: 5_000 },
+      );
+
+      expect(result.usedActionCallbacks).toBeUndefined();
+      expect(result.actionCallbackHistory).toBeUndefined();
+    },
+  );
 
   it("keeps an exact internal action inventory out of chat while retaining diagnostics", async () => {
     const inventory = "available_views:\nviews[1]{id,label}: notes,Notes";
@@ -439,7 +622,10 @@ describe("generateChatResponse usage reporting", () => {
       actions: [{ name: "SENSITIVE_ACTION" }],
       messageService: {
         handleMessage: vi.fn(async (_runtime, _message, callback) => {
-          await callback?.({ actions: ["SEARCHING"] });
+          await callback?.(
+            { text: "Searching...", actions: ["SEARCHING"] },
+            "SEARCHING",
+          );
           return {
             didRespond: true,
             responseContent: {
@@ -464,7 +650,46 @@ describe("generateChatResponse usage reporting", () => {
     expect(result.text).not.toContain("sent the funds");
   });
 
-  it("does not fail closed when core reports actions mode", async () => {
+  it("fails closed when a matching attributed callback is followed by failure", async () => {
+    const runtime = createRuntime({
+      actions: [{ name: "SENSITIVE_ACTION" }],
+      messageService: {
+        handleMessage: vi.fn(async (_runtime, _message, callback) => {
+          await callback?.(
+            {
+              text: "Attempting the sensitive action.",
+              actions: ["SENSITIVE_ACTION"],
+            },
+            "SENSITIVE_ACTION",
+          );
+          return {
+            didRespond: true,
+            mode: "actions",
+            responseContent: {
+              text: "Done, I sent the funds.",
+              actions: ["SENSITIVE_ACTION"],
+            },
+            responseMessages: [],
+            actionResults: [actionResult("SENSITIVE_ACTION", false)],
+          };
+        }),
+      } as NonNullable<AgentRuntime["messageService"]>,
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("send funds"),
+      "Chat Agent",
+      { timeoutDuration: 5_000 },
+    );
+
+    expect(result.text).toContain("actions that were not executed");
+    expect(result.text).toContain("SENSITIVE_ACTION");
+    expect(result.usedActionCallbacks).toBeUndefined();
+    expect(result.actionCallbackHistory).toBeUndefined();
+  });
+
+  it("does not fail closed when actions mode has a matching successful result", async () => {
     const runtime = createRuntime({
       actions: [{ name: "SENSITIVE_ACTION" }],
       messageService: {
@@ -476,6 +701,7 @@ describe("generateChatResponse usage reporting", () => {
             actions: ["SENSITIVE_ACTION"],
           },
           responseMessages: [],
+          actionResults: [actionResult("SENSITIVE_ACTION")],
         })),
       } as NonNullable<AgentRuntime["messageService"]>,
     });
@@ -488,17 +714,91 @@ describe("generateChatResponse usage reporting", () => {
     );
 
     expect(result.text).toBe("Action completed by core.");
+    expect(result.usedActionCallbacks).toBe(true);
+    expect(result.actionCallbackHistory).toBeUndefined();
     expect(runtime.logger.error).not.toHaveBeenCalledWith(
       expect.anything(),
       "[eliza-api] Unexecuted action payload detected; failing closed",
     );
   });
 
+  it.each([
+    ["no result", []],
+    ["a failed result", [actionResult("SENSITIVE_ACTION", false)]],
+    ["an unrelated result", [actionResult("OTHER_ACTION")]],
+  ])("fails closed when actions mode has %s", async (_label, actionResults) => {
+    const runtime = createRuntime({
+      actions: [{ name: "SENSITIVE_ACTION" }],
+      messageService: {
+        handleMessage: vi.fn(async () => ({
+          didRespond: true,
+          mode: "actions",
+          responseContent: {
+            text: "Action completed by core.",
+            actions: ["SENSITIVE_ACTION"],
+          },
+          responseMessages: [],
+          actionResults,
+        })),
+      } as NonNullable<AgentRuntime["messageService"]>,
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("send funds"),
+      "Chat Agent",
+      { timeoutDuration: 5_000 },
+    );
+
+    expect(result.text).toContain("actions that were not executed");
+    expect(result.usedActionCallbacks).toBeUndefined();
+    expect(result.actionCallbackHistory).toBeUndefined();
+  });
+
+  it("reports mixed callback and core action execution once", async () => {
+    const runtime = createRuntime({
+      actions: [{ name: "SENSITIVE_ACTION" }],
+      messageService: {
+        handleMessage: vi.fn(async (_runtime, _message, callback) => {
+          await callback?.(
+            {
+              text: "Mixed action reply",
+              actions: ["SENSITIVE_ACTION"],
+            },
+            "SENSITIVE_ACTION",
+          );
+          return {
+            didRespond: true,
+            mode: "actions",
+            responseContent: {
+              text: "Mixed action reply",
+              actions: ["SENSITIVE_ACTION"],
+            },
+            responseMessages: [],
+            actionResults: [actionResult("SENSITIVE_ACTION")],
+          };
+        }),
+      } as NonNullable<AgentRuntime["messageService"]>,
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("run the mixed action"),
+      "Chat Agent",
+      { timeoutDuration: 5_000 },
+    );
+
+    expect(result.usedActionCallbacks).toBe(true);
+    expect(result.actionCallbackHistory).toEqual(["Mixed action reply"]);
+  });
+
   it("does not fail closed when action result records an alias for the runtime action", async () => {
     const message = createChatMessage("send funds");
     const runtime = createRuntime({
       actions: [{ name: "SENSITIVE_ACTION", similes: ["TRANSFER_FUNDS"] }],
-      getActionResults: vi.fn(() => [{ actionName: "TRANSFER_FUNDS" }]),
+      getActionResults: vi.fn(() => [
+        { success: true, actionName: "TRANSFER_FUNDS" },
+      ]),
       messageService: {
         handleMessage: vi.fn(async () => ({
           didRespond: true,
@@ -526,7 +826,9 @@ describe("generateChatResponse usage reporting", () => {
     const message = createChatMessage("send funds");
     const runtime = createRuntime({
       actions: [{ name: "SENSITIVE_ACTION" }],
-      getActionResults: vi.fn(() => [{ actionName: "SENSITIVE_ACTION" }]),
+      getActionResults: vi.fn(() => [
+        { success: true, actionName: "SENSITIVE_ACTION" },
+      ]),
       messageService: {
         handleMessage: vi.fn(async () => ({
           didRespond: true,
@@ -550,6 +852,367 @@ describe("generateChatResponse usage reporting", () => {
       "[eliza-api] Unexecuted action payload detected; failing closed",
     );
   });
+
+  it("accepts a wallet reply only when a matching wallet action succeeded", async () => {
+    const persistedId = stringToUuid("wallet-balance-response");
+    const runtime = createRuntime({
+      actions: [{ name: "CHECK_BALANCE" }],
+      messageService: {
+        handleMessage: vi.fn(async () => ({
+          didRespond: true,
+          mode: "actions",
+          responseContent: {
+            text: "Your wallet balance is 4 SOL.",
+            actions: ["CHECK_BALANCE"],
+          },
+          responseMessages: [],
+          persistedResponseMessageIds: [persistedId],
+          actionResults: [
+            actionResult("CHECK_BALANCE", true, "Balance loaded."),
+          ],
+        })),
+      } as NonNullable<AgentRuntime["messageService"]>,
+    });
+    const message = createChatMessage("check my wallet balance");
+
+    const result = await generateChatResponse(runtime, message, "Chat Agent", {
+      timeoutDuration: 5_000,
+    });
+
+    expect(result.text).toBe("Your wallet balance is 4 SOL.");
+    expect(result.persistedResponseMessageIds).toEqual([persistedId]);
+    expect(result.actionResults).toEqual([
+      expect.objectContaining({
+        actionName: "CHECK_BALANCE",
+        success: true,
+        text: "Balance loaded.",
+      }),
+    ]);
+    expect(result.usage).toMatchObject({
+      promptTokens: estimateTokenCount("check my wallet balance"),
+      completionTokens: estimateTokenCount("Your wallet balance is 4 SOL."),
+      isEstimated: true,
+      llmCalls: 0,
+    });
+  });
+
+  it("matches a successful WALLET router subaction to the requested operation", async () => {
+    const runtime = createRuntime({
+      actions: [
+        {
+          name: "WALLET",
+          similes: ["TRANSFER", "SWAP"],
+        },
+      ],
+      messageService: {
+        handleMessage: vi.fn(async () => ({
+          didRespond: true,
+          mode: "actions",
+          responseContent: {
+            text: "The transfer was submitted.",
+            actions: ["TRANSFER"],
+          },
+          responseMessages: [],
+          actionResults: [
+            {
+              success: true,
+              data: { actionName: "WALLET", subaction: "transfer" },
+            },
+          ],
+        })),
+      } as NonNullable<AgentRuntime["messageService"]>,
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("send 1 SOL to this wallet"),
+      "Chat Agent",
+      { timeoutDuration: 5_000 },
+    );
+
+    expect(result.text).toBe("The transfer was submitted.");
+    expect(result.usedActionCallbacks).toBe(true);
+  });
+
+  it.each([
+    ["buy ETH with USDC", "The purchase swap was submitted."],
+    ["sell ETH for USDC", "The sale swap was submitted."],
+  ])(
+    "matches a successful WALLET swap for %s",
+    async (prompt, responseText) => {
+      const runtime = createRuntime({
+        actions: [{ name: "WALLET", similes: ["SWAP"] }],
+        messageService: {
+          handleMessage: vi.fn(async () => ({
+            didRespond: true,
+            mode: "actions",
+            responseContent: {
+              text: responseText,
+              actions: ["SWAP"],
+            },
+            responseMessages: [],
+            actionResults: [
+              {
+                success: true,
+                data: { actionName: "WALLET", subaction: "swap" },
+              },
+            ],
+          })),
+        } as NonNullable<AgentRuntime["messageService"]>,
+      });
+
+      const result = await generateChatResponse(
+        runtime,
+        createChatMessage(prompt),
+        "Chat Agent",
+        { timeoutDuration: 5_000 },
+      );
+
+      expect(result.text).toBe(responseText);
+      expect(result.usedActionCallbacks).toBe(true);
+    },
+  );
+
+  it("rejects a successful TRADE inspection as evidence that an order ran", async () => {
+    const runtime = createRuntime({
+      actions: [{ name: "TRADE" }],
+      messageService: {
+        handleMessage: vi.fn(async () => ({
+          didRespond: true,
+          responseContent: { text: "The Hyperliquid order was submitted." },
+          responseMessages: [],
+          actionResults: [
+            {
+              success: true,
+              data: { actionName: "TRADE", account: {} },
+              values: { tradeOutcome: "not_attempted" },
+            },
+          ],
+        })),
+      } as NonNullable<AgentRuntime["messageService"]>,
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("buy ETH on Hyperliquid"),
+      "Chat Agent",
+      { timeoutDuration: 5_000 },
+    );
+
+    expect(result.text).toContain("no wallet action actually ran");
+    expect(result.text).not.toContain("order was submitted");
+  });
+
+  it.each([
+    ["prepared", { tradeActionPrepared: true }],
+    ["submitted", { tradeActionSucceeded: true }],
+  ])("accepts a TRADE order that was %s", async (_status, values) => {
+    const runtime = createRuntime({
+      actions: [{ name: "TRADE" }],
+      messageService: {
+        handleMessage: vi.fn(async () => ({
+          didRespond: true,
+          mode: "actions",
+          responseContent: {
+            text: "The Hyperliquid order flow is active.",
+            actions: ["TRADE"],
+          },
+          responseMessages: [],
+          actionResults: [
+            {
+              success: true,
+              data: { actionName: "TRADE" },
+              values,
+            },
+          ],
+        })),
+      } as NonNullable<AgentRuntime["messageService"]>,
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("buy ETH on Hyperliquid"),
+      "Chat Agent",
+      { timeoutDuration: 5_000 },
+    );
+
+    expect(result.text).toBe("The Hyperliquid order flow is active.");
+    expect(result.usedActionCallbacks).toBe(true);
+  });
+
+  it("matches a successful WALLET governance execution", async () => {
+    const runtime = createRuntime({
+      actions: [{ name: "WALLET", similes: ["WALLET_GOV"] }],
+      messageService: {
+        handleMessage: vi.fn(async () => ({
+          didRespond: true,
+          mode: "actions",
+          responseContent: {
+            text: "The governance proposal was executed.",
+            actions: ["WALLET_GOV"],
+          },
+          responseMessages: [],
+          actionResults: [
+            {
+              success: true,
+              data: {
+                actionName: "WALLET",
+                subaction: "gov",
+                metadata: { op: "execute" },
+              },
+            },
+          ],
+        })),
+      } as NonNullable<AgentRuntime["messageService"]>,
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("execute this onchain governance proposal"),
+      "Chat Agent",
+      { timeoutDuration: 5_000 },
+    );
+
+    expect(result.text).toBe("The governance proposal was executed.");
+    expect(result.usedActionCallbacks).toBe(true);
+  });
+
+  it("rejects a different WALLET governance operation", async () => {
+    const runtime = createRuntime({
+      actions: [{ name: "WALLET", similes: ["WALLET_GOV"] }],
+      messageService: {
+        handleMessage: vi.fn(async () => ({
+          didRespond: true,
+          responseContent: {
+            text: "The governance proposal was executed.",
+          },
+          responseMessages: [],
+          actionResults: [
+            {
+              success: true,
+              data: {
+                actionName: "WALLET",
+                subaction: "gov",
+                metadata: { op: "queue" },
+              },
+            },
+          ],
+        })),
+      } as NonNullable<AgentRuntime["messageService"]>,
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("execute this onchain governance proposal"),
+      "Chat Agent",
+      { timeoutDuration: 5_000 },
+    );
+
+    expect(result.text).toContain("no wallet action actually ran");
+    expect(result.text).not.toContain("proposal was executed");
+  });
+
+  it("rejects a successful but unrelated WALLET router subaction", async () => {
+    const runtime = createRuntime({
+      actions: [{ name: "WALLET", similes: ["TRANSFER", "SWAP"] }],
+      messageService: {
+        handleMessage: vi.fn(async () => ({
+          didRespond: true,
+          responseContent: { text: "The transfer was submitted." },
+          responseMessages: [],
+          actionResults: [
+            {
+              success: true,
+              data: { actionName: "WALLET", subaction: "swap" },
+            },
+          ],
+        })),
+      } as NonNullable<AgentRuntime["messageService"]>,
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("send 1 SOL to this wallet"),
+      "Chat Agent",
+      { timeoutDuration: 5_000 },
+    );
+
+    expect(result.text).toContain("no wallet action actually ran");
+    expect(result.text).not.toContain("transfer was submitted");
+  });
+
+  it.each([
+    ["SEND_MESSAGE action", "SEND_MESSAGE", undefined],
+    ["SEND_EMAIL action", "SEND_EMAIL", undefined],
+    ["malformed WALLET subaction", "WALLET", "send_message"],
+  ])(
+    "rejects a successful %s for a wallet transfer",
+    async (_label, actionName, subaction) => {
+      const runtime = createRuntime({
+        actions:
+          actionName === "WALLET"
+            ? [{ name: "WALLET", similes: ["TRANSFER"] }]
+            : [{ name: actionName }],
+        messageService: {
+          handleMessage: vi.fn(async () => ({
+            didRespond: true,
+            responseContent: { text: "The transfer was submitted." },
+            responseMessages: [],
+            actionResults: [
+              {
+                success: true,
+                data: {
+                  actionName,
+                  ...(subaction ? { subaction } : {}),
+                },
+              },
+            ],
+          })),
+        } as NonNullable<AgentRuntime["messageService"]>,
+      });
+
+      const result = await generateChatResponse(
+        runtime,
+        createChatMessage("send 1 SOL to this wallet"),
+        "Chat Agent",
+        { timeoutDuration: 5_000 },
+      );
+
+      expect(result.text).toContain("no wallet action actually ran");
+      expect(result.text).not.toContain("transfer was submitted");
+    },
+  );
+
+  it.each([
+    ["a failed wallet result", actionResult("CHECK_BALANCE", false)],
+    ["an unrelated successful result", actionResult("SEARCH", true)],
+  ])(
+    "fails wallet execution closed for %s",
+    async (_label, executionResult) => {
+      const runtime = createRuntime({
+        actions: [{ name: "CHECK_BALANCE" }, { name: "SEARCH" }],
+        messageService: {
+          handleMessage: vi.fn(async () => ({
+            didRespond: true,
+            responseContent: { text: "Your wallet balance is 4 SOL." },
+            responseMessages: [],
+            actionResults: [executionResult],
+          })),
+        } as NonNullable<AgentRuntime["messageService"]>,
+      });
+
+      const result = await generateChatResponse(
+        runtime,
+        createChatMessage("check my wallet balance"),
+        "Chat Agent",
+        { timeoutDuration: 5_000 },
+      );
+
+      expect(result.text).toContain("no wallet action actually ran");
+      expect(result.text).not.toContain("4 SOL");
+      expect(result.usedActionCallbacks).toBeUndefined();
+    },
+  );
 });
 
 describe("local inference chat command intent detection", () => {

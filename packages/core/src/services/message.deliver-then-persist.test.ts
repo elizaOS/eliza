@@ -249,12 +249,14 @@ describe("simple-path deliver-then-persist ordering", () => {
 	it("fires the delivery callback before the reply persist completes, then still persists it", async () => {
 		const h = await createHarness();
 		let repliesVisibleAtDelivery = -1;
+		let deliveryActionName: string | undefined;
 
 		const result = await h.service.handleMessage(
 			h.runtime,
 			h.makeMessage(),
-			async () => {
+			async (_content, actionName) => {
 				h.order.push("callback");
+				deliveryActionName = actionName;
 				// Direct proof delivery precedes persistence: at delivery time the
 				// reply row is not yet readable from the real adapter.
 				repliesVisibleAtDelivery = (await h.storedReplies()).length;
@@ -265,8 +267,10 @@ describe("simple-path deliver-then-persist ordering", () => {
 		expect(result.didRespond).toBe(true);
 		expect(result.mode).toBe("simple");
 		expect(result.responseContent?.text).toBe(h.replyText);
+		expect(deliveryActionName).toBeUndefined();
 		expect(repliesVisibleAtDelivery).toBe(0);
 		expect(h.order).toEqual(["stage1:1", "callback", "persist:reply"]);
+		expect(result.persistedResponseMessageIds).toHaveLength(1);
 
 		// The persist completed before handleMessage resolved: an immediate
 		// next-turn-style read sees exactly one stored reply — no drop, no

@@ -27,12 +27,21 @@
  * swallows provider failures into a partial map), so a dexscreener /
  * geckoterminal outage collapses totals to ~0 while unit balances are
  * unchanged. Price coverage is therefore tracked PER POSITION: a
- * priced↔unpriced flip on a position both samples hold is a sampling change,
- * not a balance move, and re-baselines silently instead of emitting a
- * "down ~100%" / "up" flap. Crucially, that guard is scoped to positions the
- * baseline knows: a NEW unpriced position (spam airdrop) contributes $0 to
- * the total, leaves the priced holdings fully comparable, and must never
- * swallow a concurrent material move by triggering a re-baseline.
+ * priced↔unpriced flip on a position both samples hold is a sampling change
+ * on THAT position only, not a balance move. The baseline records each
+ * position's USD value alongside its coverage bit so a flip excises just the
+ * flipped positions from both totals and compares the residual — re-anchoring
+ * the whole total on any flip would hand anyone who can time a price listing
+ * on a spam token (fake-liquidity dexscreener pump) a mute button for a
+ * concurrent real crash, and would let one flapping dust position re-anchor
+ * the drift accumulator every tick. When the residual holdings did not move
+ * materially, only the flipped contribution is re-baselined, and a run of
+ * consecutive flip re-baselines is escalated via `runtime.reportError` as a
+ * systemic price-feed problem instead of flapping silently at debug forever.
+ * The guard stays scoped to positions the baseline knows: a NEW unpriced
+ * position (spam airdrop) contributes $0 to the total, leaves the priced
+ * holdings fully comparable, and must never swallow a concurrent material
+ * move by triggering a re-baseline.
  *
  * The baseline is scoped to the wallet identity (the sampled addresses).
  * Importing a different wallet must never cross-compare the old wallet's
@@ -77,6 +86,13 @@ export const DEFAULT_THRESHOLD_PCT = 10;
 
 const RETRY_AFTER_MINUTES = 15;
 
+/** Consecutive silent coverage-flip re-baselines tolerated before the flap is
+ * escalated via `runtime.reportError` as a systemic price-feed problem. One
+ * flip is a routine outage/listing event and two covers the matching
+ * recovery; a third consecutive flip means a feed is oscillating and the
+ * watcher is spending every tick re-anchoring instead of watching. */
+const COVERAGE_FLAP_REPORT_THRESHOLD = 3;
+
 /** Persisted baseline: the last total we notified about (or first observed). */
 export interface WalletBalanceBaseline {
   /** Identity of the wallet the total was sampled from (sorted address
@@ -92,10 +108,22 @@ export interface WalletBalanceBaseline {
   /** Per-position price coverage: position id → whether its USD value was
    * known (units > 0 positions only). Used to detect priced↔unpriced flips on
    * positions BOTH samples hold — those collapse/restore the total without
-   * any unit moving, so they re-baseline. Positions present in only one
-   * sample are real balance events (or $0-impact unpriced arrivals) and go
-   * through the normal delta comparison. */
+   * any unit moving. Positions present in only one sample are real balance
+   * events (or $0-impact unpriced arrivals) and go through the normal delta
+   * comparison. */
   positionPricing: Record<string, boolean>;
+  /** Per-position USD value at the time this row was written — same key set
+   * as {@link positionPricing} (the validator enforces the congruence). On a
+   * coverage flip these let the comparison excise ONLY the flipped positions
+   * from both totals: the residual, consistently-priced holdings stay
+   * comparable, so a flip can never re-baseline away a concurrent material
+   * move elsewhere in the wallet. */
+  positionValuesUsd: Record<string, number>;
+  /** Consecutive coverage-flip re-baselines since the last fully comparable
+   * tick. At {@link COVERAGE_FLAP_REPORT_THRESHOLD} the flap escalates via
+   * `runtime.reportError` — a feed oscillating priced↔unpriced every tick is
+   * a systemic sampling problem, not routine composition drift. */
+  coverageFlapCount: number;
   observedAtIso: string;
 }
 
@@ -206,22 +234,22 @@ export function walletSampleLegs(balances: WalletBalancesResponse): string[] {
   return legs.sort();
 }
 
-/**
- * Per-position price coverage for every position holding nonzero units on a
- * samplable leg: position id → whether its USD value is known. Upstream
- * encodes "price unknown" as `valueUsd: "0"` with no error, so coverage —
- * not the value itself — is what distinguishes a price-feed outage from the
- * owner's balance actually going to zero. Positions on an errored chain are
- * excluded entirely (the whole leg already is).
- */
-export function walletPositionPricing(
+/** Coverage bit + USD value for one held position, captured in one pass so
+ * the two per-position maps in the baseline can never disagree. */
+interface PositionSnapshot {
+  priced: boolean;
+  valueUsd: number;
+}
+
+function walletPositionSnapshots(
   balances: WalletBalancesResponse,
-): Record<string, boolean> {
-  const pricing: Record<string, boolean> = {};
+): Record<string, PositionSnapshot> {
+  const positions: Record<string, PositionSnapshot> = {};
   const mark = (positionId: string, units: string, valueUsd: string): void => {
     const amount = Number.parseFloat(units);
     if (Number.isFinite(amount) && amount > 0) {
-      pricing[positionId] = parseUsd(valueUsd) !== 0;
+      const value = parseUsd(valueUsd);
+      positions[positionId] = { priced: value !== 0, valueUsd: value };
     }
   };
   if (balances.solana) {
@@ -247,7 +275,43 @@ export function walletPositionPricing(
       }
     }
   }
-  return pricing;
+  return positions;
+}
+
+/**
+ * Per-position price coverage for every position holding nonzero units on a
+ * samplable leg: position id → whether its USD value is known. Upstream
+ * encodes "price unknown" as `valueUsd: "0"` with no error, so coverage —
+ * not the value itself — is what distinguishes a price-feed outage from the
+ * owner's balance actually going to zero. Positions on an errored chain are
+ * excluded entirely (the whole leg already is).
+ */
+export function walletPositionPricing(
+  balances: WalletBalancesResponse,
+): Record<string, boolean> {
+  return Object.fromEntries(
+    Object.entries(walletPositionSnapshots(balances)).map(([id, snapshot]) => [
+      id,
+      snapshot.priced,
+    ]),
+  );
+}
+
+/**
+ * Per-position USD value for the same position set as
+ * {@link walletPositionPricing} (an unpriced position reads $0 — its real
+ * contribution to the sampled total). Persisted in the baseline so a
+ * coverage flip can subtract exactly the flipped positions from both totals.
+ */
+export function walletPositionValues(
+  balances: WalletBalancesResponse,
+): Record<string, number> {
+  return Object.fromEntries(
+    Object.entries(walletPositionSnapshots(balances)).map(([id, snapshot]) => [
+      id,
+      snapshot.valueUsd,
+    ]),
+  );
 }
 
 /**
@@ -334,11 +398,24 @@ function getNotifier(runtime: AgentRuntime): NotifierLike | null {
   return null;
 }
 
+function sameKeySet(
+  a: Record<string, unknown>,
+  b: Record<string, unknown>,
+): boolean {
+  const aKeys = Object.keys(a);
+  return (
+    aKeys.length === Object.keys(b).length && aKeys.every((key) => key in b)
+  );
+}
+
 /**
- * Strict shape check doubles as schema migration: rows written by the
- * pre-wallet-scoped format (no `walletKey`/`positionPricing`) fail it and are
- * treated as no-baseline — one designed silent re-baseline on upgrade, never
- * a comparison against a row whose wallet identity is unknown.
+ * Strict shape check doubles as schema migration: rows written by earlier
+ * formats — pre-wallet-scoped (no `walletKey`/`positionPricing`, #16943) and
+ * coverage-bits-only (no `positionValuesUsd`/`coverageFlapCount`, #17039) —
+ * fail it and are treated as no-baseline: one designed silent re-baseline on
+ * upgrade, never a comparison against a row missing the fields the residual
+ * math needs. The pricing/value key-set congruence check makes the flipped
+ * lookups in the dispatcher total.
  */
 function isBaseline(value: unknown): value is WalletBalanceBaseline {
   return (
@@ -352,6 +429,14 @@ function isBaseline(value: unknown): value is WalletBalanceBaseline {
     Object.values(value.positionPricing).every(
       (priced) => typeof priced === "boolean",
     ) &&
+    isRecord(value.positionValuesUsd) &&
+    Object.values(value.positionValuesUsd).every(
+      (usd) => typeof usd === "number" && Number.isFinite(usd),
+    ) &&
+    sameKeySet(value.positionPricing, value.positionValuesUsd) &&
+    typeof value.coverageFlapCount === "number" &&
+    Number.isInteger(value.coverageFlapCount) &&
+    value.coverageFlapCount >= 0 &&
     typeof value.observedAtIso === "string"
   );
 }
@@ -430,6 +515,7 @@ export function createWalletBalanceDeltaDispatcher(
     const walletKey = walletIdentityKey(balances);
     const sampleLegs = walletSampleLegs(balances);
     const positionPricing = walletPositionPricing(balances);
+    const positionValuesUsd = walletPositionValues(balances);
     const nowIso = new Date().toISOString();
     const stored = await runtime.getCache<WalletBalanceBaseline>(
       WALLET_BALANCE_DELTA_BASELINE_CACHE_KEY,
@@ -442,6 +528,8 @@ export function createWalletBalanceDeltaDispatcher(
         totalUsd,
         sampleLegs,
         positionPricing,
+        positionValuesUsd,
+        coverageFlapCount: 0,
         observedAtIso: nowIso,
       };
       await runtime.setCache(WALLET_BALANCE_DELTA_BASELINE_CACHE_KEY, next);
@@ -471,12 +559,11 @@ export function createWalletBalanceDeltaDispatcher(
       return { ok: true, target: "rebaselined_wallet_changed" };
     }
 
-    const rebaseline = async (
-      target: "rebaselined_leg_change" | "rebaselined_price_coverage_change",
-      changed: Record<string, unknown>,
-    ): Promise<DispatchResult> => {
-      // WHAT we can sample changed, not what the owner holds — notifying
-      // would fabricate a delta the units never made.
+    if (baseline.sampleLegs.join("|") !== sampleLegs.join("|")) {
+      // Leg composition moved: chain errored/recovered, RPC readiness
+      // flipped, a leg was added/removed. WHAT we can sample changed, not
+      // what the owner holds — notifying would fabricate a delta the units
+      // never made.
       await persistBaseline();
       logger.debug(
         {
@@ -485,50 +572,110 @@ export function createWalletBalanceDeltaDispatcher(
           taskId: record.taskId,
           previousTotalUsd: baseline.totalUsd,
           currentTotalUsd: totalUsd,
-          ...changed,
+          previousLegs: baseline.sampleLegs,
+          currentLegs: sampleLegs,
         },
-        `[WalletBalanceDelta] sample composition changed — ${target}`,
+        "[WalletBalanceDelta] sample composition changed — rebaselined_leg_change",
       );
-      return { ok: true, target };
-    };
-
-    if (baseline.sampleLegs.join("|") !== sampleLegs.join("|")) {
-      // Leg composition moved: chain errored/recovered, RPC readiness
-      // flipped, a leg was added/removed.
-      return rebaseline("rebaselined_leg_change", {
-        previousLegs: baseline.sampleLegs,
-        currentLegs: sampleLegs,
-      });
+      return { ok: true, target: "rebaselined_leg_change" };
     }
 
+    // A known position's USD value became unknown or recovered (the
+    // price-feed-outage flap): its collapse/restoration is baked into the
+    // total without any unit moving. Only the FLIPPED positions are
+    // incomparable, so excise exactly those from both totals and compare the
+    // residual — a whole-total re-baseline here would let an attacker-timed
+    // price listing on a spam token mute a concurrent real crash, and would
+    // let one flapping dust position re-anchor the drift accumulator every
+    // tick. Flips fire ONLY on positions both samples hold — a brand-new
+    // unpriced position (spam airdrop) adds $0 and stays in the comparison.
     const coverageFlips = pricedCoverageFlips(
       baseline.positionPricing,
       positionPricing,
     );
-    if (coverageFlips.length > 0) {
-      // A known position's USD value became unknown or recovered (the
-      // price-feed-outage flap): its collapse/restoration is baked into the
-      // total without any unit moving. Note this fires ONLY on positions both
-      // samples hold — a brand-new unpriced position (spam airdrop) adds $0
-      // and falls through to the normal comparison below, so it can never
-      // swallow a concurrent material move in priced holdings.
-      return rebaseline("rebaselined_price_coverage_change", {
-        coverageFlips,
-      });
-    }
+    const flippedValueSum = (values: Record<string, number>): number => {
+      let sum = 0;
+      for (const positionId of coverageFlips) {
+        const value = values[positionId];
+        if (value === undefined) {
+          // isBaseline enforces pricing/value key congruence and the current
+          // maps come from one snapshot pass — a miss is a programming error,
+          // and the runner's dispatch boundary translates the throw.
+          throw new Error(
+            `[WalletBalanceDelta] no USD value recorded for flipped position ${positionId}`,
+          );
+        }
+        sum += value;
+      }
+      return sum;
+    };
+    const baselineCompareUsd =
+      baseline.totalUsd - flippedValueSum(baseline.positionValuesUsd);
+    const currentCompareUsd = totalUsd - flippedValueSum(positionValuesUsd);
 
     const thresholds = resolveThresholds(record.metadata);
     const { material, deltaUsd, deltaPct } = evaluateWalletBalanceDelta({
-      baselineUsd: baseline.totalUsd,
-      currentUsd: totalUsd,
+      baselineUsd: baselineCompareUsd,
+      currentUsd: currentCompareUsd,
       thresholds,
     });
+
+    if (!material && coverageFlips.length > 0) {
+      // The residual holdings did not move materially: this tick is only a
+      // coverage flip. Re-baseline the flipped contribution alone — the
+      // residual anchor carries over so slow drift on consistently-priced
+      // positions keeps accumulating toward the thresholds.
+      const coverageFlapCount = baseline.coverageFlapCount + 1;
+      const next: WalletBalanceBaseline = {
+        walletKey,
+        totalUsd: baselineCompareUsd + flippedValueSum(positionValuesUsd),
+        sampleLegs,
+        positionPricing,
+        positionValuesUsd,
+        coverageFlapCount,
+        observedAtIso: nowIso,
+      };
+      await runtime.setCache(WALLET_BALANCE_DELTA_BASELINE_CACHE_KEY, next);
+      if (coverageFlapCount >= COVERAGE_FLAP_REPORT_THRESHOLD) {
+        // A feed oscillating priced↔unpriced tick after tick is a systemic
+        // sampling problem the owner/agent must see (RECENT_ERRORS), not a
+        // silent debug-level re-anchor loop.
+        runtime.reportError(
+          "WalletBalanceDelta.coverageFlap",
+          new Error(
+            `price coverage flapped ${coverageFlapCount} consecutive ticks on: ${coverageFlips.join(", ")}`,
+          ),
+          {
+            taskId: record.taskId,
+            coverageFlips,
+            coverageFlapCount,
+          },
+        );
+      } else {
+        logger.debug(
+          {
+            src: "wallet-balance-delta",
+            agentId: runtime.agentId,
+            taskId: record.taskId,
+            previousTotalUsd: baseline.totalUsd,
+            currentTotalUsd: totalUsd,
+            coverageFlips,
+            coverageFlapCount,
+          },
+          "[WalletBalanceDelta] price coverage changed — rebaselined_price_coverage_change",
+        );
+      }
+      return { ok: true, target: "rebaselined_price_coverage_change" };
+    }
+
     if (!material) {
       // The anchor total stays put (slow drift must accumulate to material),
-      // but the coverage map absorbs positions that appeared/disappeared
-      // since the baseline: a spam token that arrives unpriced and is later
-      // listed by a price feed (fake-liquidity pump) then reads as a coverage
-      // flip on a known position — a silent re-baseline, not a "+4000%" flap.
+      // but the coverage/value maps absorb positions that appeared or
+      // disappeared since the baseline: a spam token that arrives unpriced
+      // and is later listed by a price feed (fake-liquidity pump) then reads
+      // as a coverage flip on a known position — a silent partial
+      // re-baseline, not a "+4000%" flap. A fully comparable tick also ends
+      // any flap window.
       const pricingChanged =
         JSON.stringify(
           Object.entries(baseline.positionPricing).sort(([a], [b]) =>
@@ -540,10 +687,12 @@ export function createWalletBalanceDeltaDispatcher(
             a.localeCompare(b),
           ),
         );
-      if (pricingChanged) {
+      if (pricingChanged || baseline.coverageFlapCount > 0) {
         await runtime.setCache(WALLET_BALANCE_DELTA_BASELINE_CACHE_KEY, {
           ...baseline,
           positionPricing,
+          positionValuesUsd,
+          coverageFlapCount: 0,
         } satisfies WalletBalanceBaseline);
       }
       return { ok: true, target: "below_threshold" };
@@ -571,7 +720,7 @@ export function createWalletBalanceDeltaDispatcher(
         // Percent-only body: lock-screen-safe on shared devices; dollar
         // figures live in `data` for in-app consumers.
         body:
-          baseline.totalUsd > 0
+          baselineCompareUsd > 0
             ? `Your total balance moved ${direction} about ${pctLabel} since the last check. Open the wallet for details.`
             : `Your wallet just received funds. Open the wallet for details.`,
         category: "general",
@@ -579,9 +728,12 @@ export function createWalletBalanceDeltaDispatcher(
         source: "wallet",
         deepLink: "/wallet",
         groupKey: WALLET_BALANCE_DELTA_GROUP_KEY,
+        // On a flip tick these are the RESIDUAL totals (flipped positions
+        // excised from both sides) — the numbers the materiality decision was
+        // actually made on, so deltaUsd/deltaPct stay internally consistent.
         data: {
-          previousTotalUsd: baseline.totalUsd,
-          currentTotalUsd: totalUsd,
+          previousTotalUsd: baselineCompareUsd,
+          currentTotalUsd: currentCompareUsd,
           deltaUsd,
           deltaPct,
           observedAtIso: nowIso,
@@ -612,8 +764,9 @@ export function createWalletBalanceDeltaDispatcher(
         src: "wallet-balance-delta",
         agentId: runtime.agentId,
         taskId: record.taskId,
-        previousTotalUsd: baseline.totalUsd,
-        currentTotalUsd: totalUsd,
+        previousTotalUsd: baselineCompareUsd,
+        currentTotalUsd: currentCompareUsd,
+        coverageFlips,
         deltaUsd,
         deltaPct,
       },
