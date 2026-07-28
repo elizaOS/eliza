@@ -129,10 +129,19 @@ describe("deterministic security check outcomes", () => {
 });
 
 describe("delayed fork-workflow approval", () => {
+  const start = Date.parse("2026-07-28T00:00:00.000Z");
+
+  function timestamp(offsetMs) {
+    return new Date(start + offsetMs).toISOString();
+  }
+
   function fakeClock() {
-    let value = 0;
+    let value = start;
     return {
       now: () => value,
+      advance: (delayMs) => {
+        value += delayMs;
+      },
       sleep: async (delayMs) => {
         value += delayMs;
       },
@@ -143,8 +152,23 @@ describe("delayed fork-workflow approval", () => {
     const clock = fakeClock();
     const states = [
       [],
-      [{ name: "gitleaks", conclusion: null, status: "in_progress" }],
-      [{ name: "gitleaks", conclusion: "success", status: "completed" }],
+      [
+        {
+          name: "gitleaks",
+          conclusion: null,
+          status: "in_progress",
+          started_at: timestamp(5),
+        },
+      ],
+      [
+        {
+          name: "gitleaks",
+          conclusion: "success",
+          status: "completed",
+          started_at: timestamp(5),
+          completed_at: timestamp(15),
+        },
+      ],
     ];
 
     await waitForRequiredChecks({
@@ -177,7 +201,12 @@ describe("delayed fork-workflow approval", () => {
     await assert.rejects(
       waitForRequiredChecks({
         loadChecks: async () => [
-          { name: "gitleaks", conclusion: null, status: "in_progress" },
+          {
+            name: "gitleaks",
+            conclusion: null,
+            status: "in_progress",
+            started_at: timestamp(0),
+          },
         ],
         timeoutMs: 10,
         completionGraceMs: 10,
@@ -187,5 +216,110 @@ describe("delayed fork-workflow approval", () => {
       }),
       /timed out waiting for security advisory checks/,
     );
+  });
+
+  it("does not grant grace to a check that starts after the approval deadline", async () => {
+    const clock = fakeClock();
+    let loadCount = 0;
+    await assert.rejects(
+      waitForRequiredChecks({
+        loadChecks: async () => {
+          loadCount += 1;
+          if (loadCount === 1) return [];
+          clock.advance(1);
+          return [
+            {
+              name: "gitleaks",
+              conclusion: null,
+              status: "in_progress",
+              started_at: timestamp(11),
+            },
+          ];
+        },
+        timeoutMs: 10,
+        completionGraceMs: 10,
+        intervalMs: 10,
+        now: clock.now,
+        sleep: clock.sleep,
+      }),
+      /timed out waiting for security advisory checks/,
+    );
+  });
+
+  it("does not accept a check that completes after the bounded grace", async () => {
+    const clock = fakeClock();
+    const states = [
+      [],
+      [
+        {
+          name: "gitleaks",
+          conclusion: null,
+          status: "in_progress",
+          started_at: timestamp(5),
+        },
+      ],
+      [
+        {
+          name: "gitleaks",
+          conclusion: "success",
+          status: "completed",
+          started_at: timestamp(5),
+          completed_at: timestamp(21),
+        },
+      ],
+    ];
+
+    await assert.rejects(
+      waitForRequiredChecks({
+        loadChecks: async () => {
+          const state = states.shift() ?? [];
+          if (states.length === 0) clock.advance(1);
+          return state;
+        },
+        timeoutMs: 10,
+        completionGraceMs: 10,
+        intervalMs: 10,
+        now: clock.now,
+        sleep: clock.sleep,
+      }),
+      /timed out waiting for security advisory checks/,
+    );
+  });
+
+  it("accepts an on-time completion observed after a slow API response", async () => {
+    const clock = fakeClock();
+    let loadCount = 0;
+
+    await waitForRequiredChecks({
+      loadChecks: async () => {
+        loadCount += 1;
+        if (loadCount === 1) return [];
+        if (loadCount === 2) {
+          return [
+            {
+              name: "gitleaks",
+              conclusion: null,
+              status: "in_progress",
+              started_at: timestamp(5),
+            },
+          ];
+        }
+        clock.advance(5);
+        return [
+          {
+            name: "gitleaks",
+            conclusion: "success",
+            status: "completed",
+            started_at: timestamp(5),
+            completed_at: timestamp(19),
+          },
+        ];
+      },
+      timeoutMs: 10,
+      completionGraceMs: 10,
+      intervalMs: 10,
+      now: clock.now,
+      sleep: clock.sleep,
+    });
   });
 });
