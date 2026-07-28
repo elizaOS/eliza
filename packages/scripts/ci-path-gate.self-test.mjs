@@ -1,5 +1,8 @@
 #!/usr/bin/env node
-// Exercises ci path gate.self test automation behavior with deterministic script fixtures.
+/**
+ * Exercises CI path classification through deterministic CLI fixtures and
+ * real temporary Git histories.
+ */
 import { spawnSync } from "node:child_process";
 import {
   mkdirSync,
@@ -14,7 +17,7 @@ import { fileURLToPath } from "node:url";
 
 const script = fileURLToPath(new URL("./ci-path-gate.mjs", import.meta.url));
 
-function runGate({ config, files = [], labels = "" }) {
+function runGate({ config, files = [], labels = "", event = "pull_request" }) {
   const dir = mkdtempSync(join(tmpdir(), "ci-path-gate-"));
   const changedFiles = join(dir, "changed-files.txt");
   const output = join(dir, "github-output.txt");
@@ -28,7 +31,7 @@ function runGate({ config, files = [], labels = "" }) {
       "--config",
       config,
       "--event",
-      "pull_request",
+      event,
       "--changed-files",
       changedFiles,
       "--labels",
@@ -83,6 +86,47 @@ assertGate(
     desktop: "false",
     zero_key: "true",
     cloud: "false",
+  },
+);
+
+assertGate("empty pull request", runGate({ config: "test" }), {
+  server: "false",
+  client: "false",
+  plugins: "false",
+  desktop: "false",
+  zero_key: "false",
+  cloud: "false",
+});
+
+for (const event of ["push", "merge_group", "schedule", "workflow_dispatch"]) {
+  assertGate(
+    `${event} runs every lane without diff inputs`,
+    runGate({ config: "test", event }),
+    {
+      server: "true",
+      client: "true",
+      plugins: "true",
+      desktop: "true",
+      zero_key: "true",
+      cloud: "true",
+    },
+  );
+}
+
+assertGate(
+  "push cannot be narrowed by a docs-only changed-files fixture",
+  runGate({
+    config: "test",
+    event: "push",
+    files: ["packages/docs/pages/intro.mdx"],
+  }),
+  {
+    server: "true",
+    client: "true",
+    plugins: "true",
+    desktop: "true",
+    zero_key: "true",
+    cloud: "true",
   },
 );
 
@@ -272,8 +316,10 @@ try {
 
   // Merge-base commit: the point the PR branch forks from.
   writeIn(repo, "README.md", "base\n");
+  writeIn(repo, "packages/app/src/covered.ts", "export const covered = 1;\n");
   gitIn(repo, "add", ".");
   gitIn(repo, "commit", "-q", "-m", "base");
+  const branchPointSha = gitIn(repo, "rev-parse", "HEAD");
 
   // PR branch changes only a docs page (matches no test lane).
   gitIn(repo, "checkout", "-q", "-b", "pr");
@@ -308,6 +354,88 @@ try {
       cloud: "false",
     },
   );
+
+  // Push classification is deliberately broad, while PR classification must
+  // still account for removals and both endpoints of cross-lane renames.
+  const unchanged = runGateGit({
+    config: "test",
+    cwd: repo,
+    base: baseTipSha,
+    head: baseTipSha,
+  });
+  assertEqual(unchanged.status, 0, "unchanged git diff run exit status");
+  assertGate("unchanged pull request skips every lane", unchanged.values, {
+    server: "false",
+    client: "false",
+    plugins: "false",
+    desktop: "false",
+    zero_key: "false",
+    cloud: "false",
+  });
+
+  gitIn(repo, "checkout", "-q", "-b", "rename-pr", branchPointSha);
+  mkdirSync(join(repo, "packages/docs/pages"), { recursive: true });
+  gitIn(
+    repo,
+    "mv",
+    "packages/app/src/covered.ts",
+    "packages/docs/pages/covered.ts",
+  );
+  gitIn(repo, "commit", "-q", "-m", "move covered code to docs");
+  const renameHeadSha = gitIn(repo, "rev-parse", "HEAD");
+  const renamed = runGateGit({
+    config: "test",
+    cwd: repo,
+    base: baseTipSha,
+    head: renameHeadSha,
+  });
+  assertEqual(renamed.status, 0, "rename git diff run exit status");
+  assertGate("cross-lane rename retains source lane coverage", renamed.values, {
+    server: "false",
+    client: "true",
+    plugins: "false",
+    desktop: "false",
+    zero_key: "true",
+    cloud: "false",
+  });
+
+  gitIn(repo, "checkout", "-q", "-b", "delete-pr", branchPointSha);
+  rmSync(join(repo, "packages/app/src/covered.ts"));
+  gitIn(repo, "add", "-A");
+  gitIn(repo, "commit", "-q", "-m", "delete covered code");
+  const deleteHeadSha = gitIn(repo, "rev-parse", "HEAD");
+  const deleted = runGateGit({
+    config: "test",
+    cwd: repo,
+    base: baseTipSha,
+    head: deleteHeadSha,
+  });
+  assertEqual(deleted.status, 0, "deletion git diff run exit status");
+  assertGate("deletion retains removed path coverage", deleted.values, {
+    client: "true",
+    zero_key: "true",
+  });
+
+  gitIn(repo, "checkout", "-q", "-b", "unusual-path-pr", branchPointSha);
+  writeIn(
+    repo,
+    "packages/app/src/space tab\tline\nbreak.ts",
+    "export const unusual = 1;\n",
+  );
+  gitIn(repo, "add", ".");
+  gitIn(repo, "commit", "-q", "-m", "add unusual path");
+  const unusualHeadSha = gitIn(repo, "rev-parse", "HEAD");
+  const unusual = runGateGit({
+    config: "test",
+    cwd: repo,
+    base: baseTipSha,
+    head: unusualHeadSha,
+  });
+  assertEqual(unusual.status, 0, "unusual-path git diff run exit status");
+  assertGate("NUL-delimited unusual path retains coverage", unusual.values, {
+    client: "true",
+    zero_key: "true",
+  });
 
   // No merge-base (unrelated histories / bad fetch depth) must fail loud, not
   // silently diff the entire tree.

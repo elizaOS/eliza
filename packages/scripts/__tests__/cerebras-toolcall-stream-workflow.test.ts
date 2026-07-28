@@ -15,6 +15,7 @@ const workflowSource = readFileSync(
 );
 
 type WorkflowStep = {
+  id?: string;
   name?: string;
   uses?: string;
   env?: Record<string, string>;
@@ -59,6 +60,15 @@ function namedStep(job: WorkflowJob | undefined, name: string): WorkflowStep {
   return step;
 }
 
+function identifiedStep(
+  job: WorkflowJob | undefined,
+  id: string,
+): WorkflowStep {
+  const step = job?.steps?.find((candidate) => candidate.id === id);
+  if (!step) throw new Error(`Missing Cerebras workflow step id: ${id}`);
+  return step;
+}
+
 function runExactHeadGuard(overrides: Record<string, string> = {}) {
   const run = namedStep(evidenceJob, "Bind trusted exact-head dispatch").run;
   if (!run) throw new Error("Exact-head binding step has no shell contract");
@@ -84,7 +94,7 @@ function stepsWithSecret(
 ): string[] {
   return (job?.steps ?? [])
     .filter((step) => Object.values(step.env ?? {}).includes(secret))
-    .map((step) => step.name ?? "<unnamed>");
+    .map((step) => step.id ?? "<missing-id>");
 }
 
 describe("Eliza Cloud plugin tool-call stream workflow (#16997)", () => {
@@ -133,12 +143,23 @@ describe("Eliza Cloud plugin tool-call stream workflow (#16997)", () => {
     expect(evidenceJob?.env?.CEREBRAS_API_KEY).toBeUndefined();
     expect(evidenceJob?.env?.ELIZAOS_CLOUD_API_KEY).toBeUndefined();
     expect(stepsWithSecret(runtimeJob, cerebrasSecret)).toEqual([
-      "Measure every provider in parallel and max-cached",
-      "Measure live Cerebras Gemma 4 production chat flow",
+      "provider_latency_live",
+      "cerebras_chat_flow_live",
     ]);
     expect(stepsWithSecret(evidenceJob, cloudSecret)).toEqual([
-      "Run live plugin tool-call stream evidence",
+      "plugin_toolcall_stream_live",
     ]);
+    expect(identifiedStep(runtimeJob, "provider_latency_live").run).toContain(
+      "packages/core perf:providers",
+    );
+    expect(identifiedStep(runtimeJob, "cerebras_chat_flow_live").run).toContain(
+      "packages/agent perf:cerebras-chat",
+    );
+    expect(
+      identifiedStep(evidenceJob, "plugin_toolcall_stream_live").run,
+    ).toContain(
+      "plugins/plugin-elizacloud/__tests__/text-streaming.live.test.ts",
+    );
     expect(workflowSource.split(cerebrasSecret)).toHaveLength(3);
     expect(workflowSource.split(cloudSecret)).toHaveLength(2);
   });
@@ -180,10 +201,7 @@ describe("Eliza Cloud plugin tool-call stream workflow (#16997)", () => {
     expect(liveTestSource).not.toContain("mockResolvedValue");
     expect(liveTestSource).not.toMatch(/authorization|cookie/i);
 
-    const testStep = namedStep(
-      evidenceJob,
-      "Run live plugin tool-call stream evidence",
-    );
+    const testStep = identifiedStep(evidenceJob, "plugin_toolcall_stream_live");
     expect(testStep.run).toContain("--conditions=eliza-source");
     expect(testStep.run).toContain(
       "plugins/plugin-elizacloud/__tests__/text-streaming.live.test.ts",
