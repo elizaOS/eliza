@@ -84,8 +84,18 @@ if parse_args --root "$RUNNER_ROOT" --min-age 19 >/dev/null 2>&1; then
   fail "the tool silently accepted an unknown flag (--min-age); it must reject it"
 fi
 
-# 4. The scheduled path must not bypass the active-job guard.
-if grep -q -- "--allow-active" "$svc"; then fail "the scheduled unit must not pass --allow-active"; fi
+# 4. The rendered UNIT delegates to the helper and carries no tool flags of its
+#    own; the helper owns `--allow-active` (it proves per-runner inactivity
+#    first, and the unit's ProtectProc=invisible confinement blinds the tool's
+#    host-global pgrep guard anyway — see the helper for the full rationale).
+if grep -q -- "--allow-active" "$svc"; then fail "the unit must delegate flags to the helper"; fi
+grep -q -- "--allow-active" "$SCRIPT_DIR/bin/eliza-prune-idle-runner-workspaces.sh" \
+  || fail "the idle helper must pass --allow-active (in-unit pgrep is blind under ProtectProc)"
+# The helper must NOT run under `set -e`: one runner's failure (or the orphan
+# grep-miss) would abort the sweep before later runners are processed.
+if head -40 "$SCRIPT_DIR/bin/eliza-prune-idle-runner-workspaces.sh" | grep -qE "^set +-[a-z]*e"; then
+  fail "the idle helper must not use set -e; per-runner errors are isolated instead"
+fi
 
 # 5. Timer must be a real recurring timer wired to timers.target.
 grep -q "OnUnitActiveSec=" "$tmr" || fail "timer has no recurring interval"
@@ -133,5 +143,49 @@ test -e "$RUNNER_ROOT/runner-1/_work/fresh-repo" || fail "fresh checkout must be
 if command -v systemd-analyze >/dev/null 2>&1; then
   systemd-analyze verify "$svc" "$tmr" || fail "systemd-analyze rejected the rendered units"
 fi
+
+# 10. BEHAVIORAL: the idle helper sweeps EVERY orphaned runner — the exact
+#     #15398 case. A deregistered runner's agentName matches no unit, which
+#     under the old `set -e` aborted the sweep at the FIRST orphan (the grep
+#     miss propagated through the command substitution), so a second orphan was
+#     never processed. Driven through the REAL helper + REAL tool with only
+#     systemctl stubbed to "no units exist".
+STUB_DIR="$TMP_DIR/stub-bin"
+mkdir -p "$STUB_DIR"
+cat > "$STUB_DIR/systemctl" <<'EOF_STUB'
+#!/usr/bin/env bash
+case "${1:-}" in
+  list-units) exit 0 ;;   # no actions.runner.* units: every runner is orphaned
+  is-active)  exit 3 ;;   # inactive
+  *)          exit 0 ;;
+esac
+EOF_STUB
+chmod +x "$STUB_DIR/systemctl"
+
+SWEEP_ROOT="$TMP_DIR/sweep-root"
+for r in runner-a runner-b; do
+  mkdir -p "$SWEEP_ROOT/$r/_work/stale-repo"
+  echo payload > "$SWEEP_ROOT/$r/_work/stale-repo/file"
+  printf '{"agentName": "%s"}\n' "$r" > "$SWEEP_ROOT/$r/.runner"
+  node -e '
+    const fs = require("node:fs");
+    const when = new Date(Date.now() - 48 * 3600 * 1000);
+    fs.utimesSync(process.argv[1], when, when);
+  ' "$SWEEP_ROOT/$r/_work/stale-repo"
+done
+
+PATH="$STUB_DIR:$PATH" \
+RUNNER_WORKSPACE_ROOT="$SWEEP_ROOT" \
+PRUNE_MIN_AGE_HOURS=6 \
+BUN_BIN="$BUN_BIN" \
+PRUNE_TOOL="$TOOL_SRC" \
+  bash "$SCRIPT_DIR/bin/eliza-prune-idle-runner-workspaces.sh" >"$TMP_DIR/sweep.log" 2>&1 \
+  || fail "idle sweep exited nonzero on a clean orphan sweep: $(cat "$TMP_DIR/sweep.log")"
+
+test ! -e "$SWEEP_ROOT/runner-a/_work/stale-repo" \
+  || fail "first orphaned runner was not pruned"
+test ! -e "$SWEEP_ROOT/runner-b/_work/stale-repo" \
+  || fail "second orphaned runner was not pruned — the sweep stopped at the first (set -e regression)"
+grep -q "pruned=2" "$TMP_DIR/sweep.log" || fail "sweep did not report pruned=2: $(cat "$TMP_DIR/sweep.log")"
 
 echo "runner-workspace-cleanup smoke OK (behavioral)"

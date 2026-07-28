@@ -96,11 +96,39 @@ render_unit "$SCRIPT_DIR/units/eliza-runner-workspace-prune.timer" \
 systemctl daemon-reload
 systemctl enable --now eliza-runner-workspace-prune.timer
 
+# Wire the job-completed hook into every runner found under the root, so
+# active-runner coverage does not depend on an operator hand-editing each
+# runner's .env. Idempotent: the line is written once and never duplicated.
+# Deliberately NO automatic unit restart — the runner reads .env at start, and
+# restarting an ACTIVE runner kills its in-flight job. The restart is the one
+# step that stays with the operator, at a quiet moment.
+wired=0
+needs_restart=()
+for runner_dir in "$RUNNER_ROOT"/*/; do
+  [[ -f "${runner_dir}.runner" ]] || continue
+  env_file="${runner_dir}.env"
+  if [[ ! -f "$env_file" ]]; then
+    : > "$env_file"
+    chown --reference="$runner_dir" "$env_file" 2>/dev/null || true
+    chmod 0644 "$env_file"
+  fi
+  if ! grep -q "^ACTIONS_RUNNER_HOOK_JOB_COMPLETED=" "$env_file"; then
+    echo "ACTIONS_RUNNER_HOOK_JOB_COMPLETED=$HOOK_DST" >> "$env_file"
+    wired=$((wired + 1))
+    needs_restart+=("$(basename "$runner_dir")")
+  fi
+done
+
 echo
-echo "Installed the IDLE-runner timer. Active runners are covered race-free by"
-echo "their own job-completed hook — wire it once per runner (as the runner user):"
-echo "  echo 'ACTIONS_RUNNER_HOOK_JOB_COMPLETED=$HOOK_DST' >> <runner-dir>/.env"
-echo "  systemctl restart <that runner's actions.runner.* unit>"
+echo "Installed the IDLE-runner timer, and wired the job-completed hook into"
+echo "$wired runner .env file(s) under $RUNNER_ROOT."
+if [[ "${#needs_restart[@]}" -gt 0 ]]; then
+  echo "Each newly wired runner picks the hook up on its next unit restart —"
+  echo "restart at a quiet moment (restarting an active runner kills its job):"
+  for name in "${needs_restart[@]}"; do
+    echo "  systemctl restart 'actions.runner.*${name}*'   # or the exact unit for $name"
+  done
+fi
 echo
 echo "Verify:"
 echo "  systemctl list-timers eliza-runner-workspace-prune.timer"
