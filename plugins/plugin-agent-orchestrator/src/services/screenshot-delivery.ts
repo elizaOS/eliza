@@ -11,8 +11,12 @@
  */
 
 import { statSync } from "node:fs";
-import type { Content, Media, UUID } from "@elizaos/core";
-import { ContentType, logger } from "@elizaos/core";
+import type { Content, Media, SendHandlerResult, UUID } from "@elizaos/core";
+import {
+  ContentType,
+  logger,
+  requireConfirmedSendHandlerDelivery,
+} from "@elizaos/core";
 import { parseCompletionEnvelope } from "./completion-envelope.js";
 
 const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|bmp)$/i;
@@ -128,7 +132,7 @@ export function screenshotsToAttachments(
 type SendToTarget = (
   target: { source: string; roomId: UUID },
   content: Content,
-) => Promise<unknown>;
+) => SendHandlerResult;
 
 /**
  * Post the collected screenshots to the origin room as a single media message.
@@ -153,11 +157,13 @@ export async function deliverScreenshots(
   const attachments = pathsToMedia(selected);
   const who = label ? ` from ${label}` : "";
   try {
-    await send(target, {
-      text: `📸 ${attachments.length} screenshot${attachments.length === 1 ? "" : "s"}${who}`,
-      source: target.source,
-      attachments,
-    });
+    requireConfirmedSendHandlerDelivery(
+      await send(target, {
+        text: `📸 ${attachments.length} screenshot${attachments.length === 1 ? "" : "s"}${who}`,
+        source: target.source,
+        attachments,
+      }),
+    );
     return attachments.length;
   } catch (error) {
     // error-policy:J4 screenshot delivery is a best-effort side channel; a connector send failure is warned and degrades to 0 delivered so it never breaks the completion flow

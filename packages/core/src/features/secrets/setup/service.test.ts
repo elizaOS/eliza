@@ -102,7 +102,18 @@ describe("SetupService.startTelegramSetup", () => {
 	];
 
 	it("sends the owner deep link through the runtime send registry", async () => {
-		const sendMessageToTarget = vi.fn(async () => undefined);
+		const sendMessageToTarget = vi.fn(async () => ({
+			kind: "delivered" as const,
+			receipt: {
+				providerMessageIds: ["telegram-message-1"] as [string, ...string[]],
+				acceptedAt: 1_780_000_000_000,
+				persistence: {
+					status: "persisted" as const,
+					memoryIds: [] as UUID[],
+				},
+			},
+			memories: [],
+		}));
 		const getService = vi.fn();
 		const svc = new SetupService(
 			createMockRuntime({

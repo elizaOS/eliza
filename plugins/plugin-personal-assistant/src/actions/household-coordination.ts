@@ -48,7 +48,7 @@ const SUBACTIONS: SubactionsMap<HouseholdOwnerSubaction> = {
     descriptionCompressed:
       "bind existing Entity household role; reuse relationship optional",
     required: ["entityId", "role", "evidence"],
-    optional: ["subjectEntityIds", "relationshipId"],
+    optional: ["householdId", "subjectEntityIds", "relationshipId"],
   },
   issue_grant: {
     description:
@@ -248,6 +248,10 @@ function scheduleTerms(
         custody,
         "substituteCustodianEntityId",
       ),
+      authorityBaselineRelationshipId: requiredText(
+        custody,
+        "authorityBaselineRelationshipId",
+      ),
       reason: requiredText(custody, "reason"),
     };
   }
@@ -293,6 +297,7 @@ async function runHouseholdOwnerSubaction(
     const binding = await service.bindRole({
       entityId: requiredText(params, "entityId"),
       role: householdRole(params, "role"),
+      householdId: optionalText(params, "householdId") ?? undefined,
       subjectEntityIds: stringArray(params, "subjectEntityIds"),
       relationshipId: optionalText(params, "relationshipId"),
       evidence: requiredText(params, "evidence"),
@@ -449,6 +454,10 @@ const TERMS_SCHEMA = {
           type: "string" as const,
           minLength: 1,
         },
+        authorityBaselineRelationshipId: {
+          type: "string" as const,
+          minLength: 1,
+        },
         reason: { type: "string" as const, minLength: 1 },
       },
       required: [
@@ -457,6 +466,7 @@ const TERMS_SCHEMA = {
         "toAt",
         "normalCustodianEntityId",
         "substituteCustodianEntityId",
+        "authorityBaselineRelationshipId",
         "reason",
       ],
       additionalProperties: false,
@@ -509,6 +519,13 @@ export const householdCoordinationAction: Action = {
         type: "string",
         enum: [...HOUSEHOLD_OWNER_SUBACTIONS],
       },
+    },
+    {
+      name: "householdId",
+      description:
+        "Canonical household namespace to bind to this relationship for household-scoped authorization.",
+      subactions: ["bind_role"],
+      schema: { type: "string", minLength: 1 },
     },
     {
       name: "entityId",

@@ -5,7 +5,13 @@
  * semantics stay deterministic and cheap enough for the unit lane.
  */
 
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { ScenarioDefinition } from "@elizaos/scenario-runner/schema";
@@ -14,9 +20,15 @@ import {
   type CliDependencies,
   CliUsageError,
   parseArgs,
+  providerQualifiedRunFailure,
+  resolveRunExecutionProfile,
   runCli,
 } from "./cli.ts";
-import { writeReport as writeReportToDisk } from "./reporter.ts";
+import {
+  buildAggregate as buildAggregateReport,
+  writeReport as writeReportToDisk,
+  writeScenarioRunViewer as writeScenarioRunViewerToDisk,
+} from "./reporter.ts";
 import type { AggregateReport, ScenarioReport } from "./types.ts";
 
 const ENV_KEYS = [
@@ -58,7 +70,7 @@ function scenarioReport(
     domain: "cli-test",
     tags: [],
     status,
-    skipReason: status === "skipped" ? "dependency unavailable" : undefined,
+    ...(status === "skipped" ? { skipReason: "dependency unavailable" } : {}),
     durationMs: 1,
     turns: [],
     finalChecks: [],
@@ -66,6 +78,84 @@ function scenarioReport(
     failedAssertions:
       status === "failed" ? [{ label: "unit", detail: "forced failure" }] : [],
     providerName: "unit-test",
+  };
+}
+
+function qualifiedScenarioReport(id: string): ScenarioReport {
+  const sha256 = "a".repeat(64);
+  return {
+    ...scenarioReport(id, "passed"),
+    executionProfile: "provider-qualified",
+    judgeScore: 0.9,
+    finalChecks: [
+      {
+        label: "provider effect",
+        type: "providerEffectObserved",
+        status: "passed",
+        detail: "independent provider readback matched",
+      },
+    ],
+    evidence: {
+      schemaVersion: 1,
+      executionProfile: "provider-qualified",
+      qualification: {
+        status: "qualified",
+        publishable: true,
+        reasons: [],
+      },
+      observerProvenance: [
+        {
+          observerId: "observer-1",
+          kind: "provider-api",
+          implementation: "unit-observer",
+          version: "1",
+          environment: "unit",
+          configurationSha256: sha256,
+        },
+      ],
+      trajectoryHashes: [
+        {
+          trajectoryId: "trajectory-1",
+          relativePath: "trajectories/trajectory-1.json",
+          sha256,
+          recorder: {
+            implementation: "unit-recorder",
+            version: "1",
+            environment: "unit",
+          },
+        },
+      ],
+      observations: [
+        {
+          observationId: "observation-1",
+          kind: "provider-effect",
+          observedAtIso: "2026-07-28T00:00:01.000Z",
+          observerId: "observer-1",
+          source: {
+            kind: "provider-api",
+            system: "unit-provider",
+            environment: "unit",
+            recordIdSha256: sha256,
+            accountRefSha256: sha256,
+          },
+          payloadSha256: sha256,
+          trajectoryRefs: [
+            {
+              trajectoryId: "trajectory-1",
+              stageId: "stage-1",
+              sha256,
+            },
+          ],
+          provider: "unit-provider",
+          operation: "create",
+          accountRefSha256: sha256,
+          requestSha256: sha256,
+          responseSha256: sha256,
+          providerReceiptIdSha256: sha256,
+          readbackSha256: sha256,
+        },
+      ],
+    },
   };
 }
 
@@ -211,6 +301,248 @@ describe("scenario-runner CLI", () => {
     expect(() => parseArgs(["list", tempDir, "--lane", "bad-lane"])).toThrow(
       CliUsageError,
     );
+  });
+
+  it("rejects mixed or multi-scenario provider-qualified runs before runtime creation", async () => {
+    expect(() =>
+      resolveRunExecutionProfile([
+        {
+          id: "simulated",
+          title: "simulated",
+          domain: "cli-test",
+          turns: [],
+        },
+        {
+          id: "qualified",
+          title: "qualified",
+          domain: "cli-test",
+          lane: "live-only",
+          executionProfile: "provider-qualified",
+          turns: [],
+        },
+      ]),
+    ).toThrow(/cannot mix simulated and provider-qualified/);
+
+    writeScenario(tempDir, "qualified-one", {
+      lane: "live-only",
+      executionProfile: "provider-qualified",
+    });
+    writeScenario(tempDir, "qualified-two", {
+      lane: "live-only",
+      executionProfile: "provider-qualified",
+    });
+    const createScenarioRuntime = vi.fn();
+    const dependencies = createDependencies(() => "passed", {
+      createScenarioRuntime,
+    });
+
+    await expect(runCli(["run", tempDir], dependencies)).resolves.toBe(2);
+    expect(stderr).toContain("exactly one scenario per process");
+    expect(createScenarioRuntime).not.toHaveBeenCalled();
+  });
+
+  it("wires a single provider-qualified scenario but refuses caller-fabricated qualification", async () => {
+    writeScenario(tempDir, "qualified-one", {
+      lane: "live-only",
+      executionProfile: "provider-qualified",
+      requires: { plugins: ["@elizaos/plugin-personal-assistant"] },
+    });
+    const runDir = path.join(tempDir, "qualified-run");
+    const nativePath = path.join(tempDir, "fabricated-qualified.jsonl");
+    const reportPath = path.join(tempDir, "fabricated-qualified-report.json");
+    const cleanup = vi.fn(async () => undefined);
+    const persistedWrites: AggregateReport[] = [];
+    const createScenarioRuntime = vi.fn(async () => ({
+      runtime: {} as never,
+      pgliteDir: tmpdir(),
+      executionProfile: "provider-qualified" as const,
+      registeredPluginPackages: ["@elizaos/plugin-personal-assistant"],
+      providerName: "openai" as const,
+      providerConfig: {
+        name: "openai" as const,
+        apiKey: "unit-test-key",
+        baseUrl: "https://api.openai.example/v1",
+        smallModel: "unit-small",
+        largeModel: "unit-large",
+        env: {},
+        pluginPackage: "@elizaos/plugin-openai",
+      },
+      cleanup,
+    }));
+    const dependencies = createDependencies(() => "passed", {
+      shouldUseDeterministicLlmProxy: vi.fn(() => false),
+      createScenarioRuntime,
+      runScenario: vi.fn(async (scenario) =>
+        qualifiedScenarioReport(scenario.id),
+      ),
+      buildAggregate: buildAggregateReport,
+      writeReport: vi.fn((report, filePath) => {
+        persistedWrites.push(structuredClone(report));
+        writeReportToDisk(report, filePath);
+      }),
+    });
+
+    await expect(
+      runCli(
+        [
+          "run",
+          tempDir,
+          "--run-dir",
+          runDir,
+          "--export-native",
+          nativePath,
+          "--report",
+          reportPath,
+        ],
+        dependencies,
+      ),
+    ).resolves.toBe(1);
+    expect(createScenarioRuntime).toHaveBeenCalledWith({
+      executionProfile: "provider-qualified",
+      requiredPlugins: ["@elizaos/plugin-personal-assistant"],
+    });
+    expect(dependencies.runScenario).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "qualified-one" }),
+      expect.anything(),
+      expect.objectContaining({
+        executionProfile: "provider-qualified",
+        runDir,
+      }),
+    );
+    expect(cleanup).toHaveBeenCalledTimes(1);
+    expect(dependencies.exportScenarioNativeJsonl).not.toHaveBeenCalled();
+    expect(stderr).toContain("no external controller decision");
+    expect(persistedWrites.length).toBeGreaterThan(0);
+    expect(
+      persistedWrites.every(
+        (report) => report.evidenceSummary.publishableScenarioCount === 0,
+      ),
+    ).toBe(true);
+    expect(JSON.stringify(persistedWrites)).not.toContain('"publishable":true');
+    const persisted = JSON.parse(
+      readFileSync(reportPath, "utf8"),
+    ) as AggregateReport;
+    expect(persisted.evidenceSummary).toMatchObject({
+      publishableScenarioCount: 0,
+      qualificationCounts: {
+        qualified: 0,
+        unqualified: 1,
+        ineligible: 0,
+      },
+    });
+    expect(persisted.scenarios[0]?.evidence?.qualification).toEqual({
+      status: "unqualified",
+      publishable: false,
+      reasons: ["external-controller-decision:missing"],
+    });
+  });
+
+  it("rejects serializer substitution before report or viewer persistence", async () => {
+    writeScenario(tempDir, "qualified-serializer", {
+      lane: "live-only",
+      executionProfile: "provider-qualified",
+    });
+    const runDir = path.join(tempDir, "qualified-serializer-run");
+    const reportPath = path.join(tempDir, "qualified-serializer-report.json");
+    const forged = qualifiedScenarioReport("qualified-serializer");
+    const forgedSerialization = structuredClone(forged);
+    Object.defineProperty(forged, "toJSON", {
+      enumerable: true,
+      value: () => forgedSerialization,
+    });
+    const writeReport = vi.fn(writeReportToDisk);
+    const writeScenarioRunViewer = vi.fn(writeScenarioRunViewerToDisk);
+    const dependencies = createDependencies(() => "passed", {
+      shouldUseDeterministicLlmProxy: vi.fn(() => false),
+      createScenarioRuntime: vi.fn(async () => ({
+        runtime: {} as never,
+        pgliteDir: tmpdir(),
+        executionProfile: "provider-qualified" as const,
+        registeredPluginPackages: [],
+        providerName: "openai" as const,
+        providerConfig: {
+          name: "openai" as const,
+          apiKey: "unit-test-key",
+          baseUrl: "https://api.openai.example/v1",
+          smallModel: "unit-small",
+          largeModel: "unit-large",
+          env: {},
+          pluginPackage: "@elizaos/plugin-openai",
+        },
+        cleanup: vi.fn(async () => undefined),
+      })),
+      runScenario: vi.fn(async () => forged),
+      buildAggregate: buildAggregateReport,
+      writeReport,
+      writeScenarioRunViewer,
+    });
+
+    await expect(
+      runCli(
+        ["run", tempDir, "--run-dir", runDir, "--report", reportPath],
+        dependencies,
+      ),
+    ).rejects.toThrow(/scenarioReport\.toJSON.*executable or non-JSON data/);
+    expect(writeReport).not.toHaveBeenCalled();
+    expect(writeScenarioRunViewer).not.toHaveBeenCalled();
+    expect(existsSync(reportPath)).toBe(false);
+    expect(existsSync(path.join(runDir, "viewer", "data.js"))).toBe(false);
+  });
+
+  it("fails and withholds native export when a provider run merely passes without qualification", async () => {
+    writeScenario(tempDir, "unqualified", {
+      lane: "live-only",
+      executionProfile: "provider-qualified",
+    });
+    const runDir = path.join(tempDir, "unqualified-run");
+    const nativePath = path.join(tempDir, "unqualified.jsonl");
+    const dependencies = createDependencies(() => "passed", {
+      shouldUseDeterministicLlmProxy: vi.fn(() => false),
+      createScenarioRuntime: vi.fn(async () => ({
+        runtime: {} as never,
+        pgliteDir: tmpdir(),
+        executionProfile: "provider-qualified" as const,
+        registeredPluginPackages: [],
+        providerName: "openai" as const,
+        providerConfig: {
+          name: "openai" as const,
+          apiKey: "unit-test-key",
+          baseUrl: "https://api.openai.example/v1",
+          smallModel: "unit-small",
+          largeModel: "unit-large",
+          env: {},
+          pluginPackage: "@elizaos/plugin-openai",
+        },
+        cleanup: vi.fn(async () => undefined),
+      })),
+    });
+
+    await expect(
+      runCli(
+        ["run", tempDir, "--run-dir", runDir, "--export-native", nativePath],
+        dependencies,
+      ),
+    ).resolves.toBe(1);
+    expect(stderr).toContain("no external controller decision");
+    expect(dependencies.exportScenarioNativeJsonl).not.toHaveBeenCalled();
+    expect(
+      providerQualifiedRunFailure([scenarioReport("unqualified", "passed")]),
+    ).toContain("no external controller decision");
+  });
+
+  it("requires retained trajectories before constructing a provider-qualified runtime", async () => {
+    writeScenario(tempDir, "qualified-no-artifacts", {
+      lane: "live-only",
+      executionProfile: "provider-qualified",
+    });
+    const createScenarioRuntime = vi.fn();
+    const dependencies = createDependencies(() => "passed", {
+      createScenarioRuntime,
+    });
+
+    await expect(runCli(["run", tempDir], dependencies)).resolves.toBe(2);
+    expect(stderr).toContain("requires --run-dir or --export-native");
+    expect(createScenarioRuntime).not.toHaveBeenCalled();
   });
 
   it("lists only scenarios in the requested lane", async () => {

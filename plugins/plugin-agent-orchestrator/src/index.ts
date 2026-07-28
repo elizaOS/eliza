@@ -22,9 +22,9 @@ import {
   createUniqueUuid,
   EventType,
   isLocalCodeExecutionAllowed,
-  isSendHandlerOutcome,
   ModelType,
   promoteSubactionsToActions,
+  requireConfirmedSendHandlerDelivery,
 } from "@elizaos/core";
 
 // Register coding-agent HTTP routes with the runtime route registry.
@@ -1723,17 +1723,13 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
           return;
         }
       }
-      const sent = await runtime.sendMessageToTarget(
-        sendTarget,
-        transientContent(initialText, "sub_agent_progress"),
+      const delivery = requireConfirmedSendHandlerDelivery(
+        await runtime.sendMessageToTarget(
+          sendTarget,
+          transientContent(initialText, "sub_agent_progress"),
+        ),
       );
-      const platformId = isSendHandlerOutcome(sent)
-        ? sent.kind === "delivered" ||
-          (sent.kind === "duplicate" && sent.priorDelivery === "delivered")
-          ? sent.providerMessageId
-          : undefined
-        : (sent?.metadata as Record<string, unknown> | undefined)
-            ?.platformMessageId;
+      const platformId = delivery.providerMessageId;
       if (
         !state &&
         typeof platformId === "string" &&
@@ -1906,9 +1902,11 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
         // mid-task — post the final summary as a fresh message so the user
         // actually sees the outcome.
         try {
-          await runtime.sendMessageToTarget(
-            sendTarget,
-            transientContent(completionText, "sub_agent_complete"),
+          requireConfirmedSendHandlerDelivery(
+            await runtime.sendMessageToTarget(
+              sendTarget,
+              transientContent(completionText, "sub_agent_complete"),
+            ),
           );
         } catch {
           // error-policy:J4 best-effort completion notice on a no-edit surface;
@@ -1944,13 +1942,15 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
       progressPolicy.mode === "ack" || progressPolicy.mode === "silent";
     if (!state.canEdit && !suppressFailurePost) {
       try {
-        await runtime.sendMessageToTarget(
-          sendTarget,
-          transientContent(
-            progressPolicy.mode === "threaded"
-              ? `❌ [${state.label}] failed`
-              : `Failed ${state.label}.`,
-            "sub_agent_complete",
+        requireConfirmedSendHandlerDelivery(
+          await runtime.sendMessageToTarget(
+            sendTarget,
+            transientContent(
+              progressPolicy.mode === "threaded"
+                ? `❌ [${state.label}] failed`
+                : `Failed ${state.label}.`,
+              "sub_agent_complete",
+            ),
           ),
         );
       } catch {

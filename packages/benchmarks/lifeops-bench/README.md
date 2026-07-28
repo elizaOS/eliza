@@ -127,6 +127,14 @@ scenario-local `evaluator_trace` with the exact simulated-user and judge
 input messages, output text, token/latency/cost telemetry, and raw provider
 response. Traces are isolated even when scenarios run concurrently.
 
+An incomplete run still exits nonzero, but it is not discarded. The CLI writes
+its available turns, evaluator trace, errors, workload hash, and acting-model
+provenance beneath `<output-dir>/diagnostics/` with
+`artifact_tier: diagnostic_nonpublishable` and `publishable: false`.
+Publishable-result collectors scan only the output root, so a timeout or
+provider failure remains inspectable evidence without entering benchmark
+scores.
+
 For STATIC runs, structural facts remain deterministic: state hashes and
 action names/parameters prove what happened. Natural-language
 `required_outputs` and `static_rubric` items are graded together in one
@@ -244,8 +252,22 @@ HERMES_BASE_URL=http://127.0.0.1:11434/v1 \
 MODEL_NAME_OVERRIDE=gemma3:latest \
 python3 -m eliza_lifeops_bench --agent hermes-direct --mode live \
   --evaluator-provider hermes --evaluator-model llama3.2:3b \
-  --judge-provider hermes --judge-model eliza-1-0_8b-trained:latest
+  --judge-provider hermes --judge-model eliza-1-0_8b-trained:latest \
+  --hermes-request-timeout-s 600 \
+  --per-scenario-timeout-s 1800
 ```
+
+Direct Hermes agent and Hermes evaluator/judge HTTP calls default to a
+300-second per-request timeout. Set
+`LIFEOPS_BENCH_HERMES_REQUEST_TIMEOUT_S` or
+`--hermes-request-timeout-s` (CLI wins) for slower local inference; accepted
+values are 1–3,600 seconds. The scenario timeout is still the outer deadline
+across every agent, evaluator, and judge call, so raise it separately when a
+single local completion may exceed the default five-minute scenario budget.
+Rate-limit and server responses receive one retry. A transport timeout is not
+retried because the local server may still be generating the first request;
+the scenario records an error rather than treating an incomplete response as
+model output.
 
 ### Cerebras-direct (gpt-oss-120b reference)
 

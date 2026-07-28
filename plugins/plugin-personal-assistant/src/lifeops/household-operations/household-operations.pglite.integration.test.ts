@@ -5,6 +5,7 @@
 import {
   type EntityStore,
   KNOWLEDGE_GRAPH_SERVICE,
+  type RelationshipStore,
   resolveKnowledgeGraphService,
 } from "@elizaos/agent";
 import type { AgentRuntime, Memory } from "@elizaos/core";
@@ -31,13 +32,19 @@ describe("household operations — real PGlite and runtime graph", () => {
   let runtimeResult: RealTestRuntimeResult;
   let runtime: AgentRuntime;
   let entities: EntityStore;
+  let relationships: RelationshipStore;
   let repository: HouseholdOperationsRepository;
   let service: HouseholdOperationsService;
   let nowMs = Date.parse("2027-03-10T12:00:00.000Z");
 
   const householdId = "household-operations-main";
+  const secondHouseholdId = "household-operations-second";
   const partnerEntityId = "household-operations-partner";
+  const secondPartnerEntityId = "household-operations-second-partner";
   const childEntityId = "household-operations-child";
+  const secondChildEntityId = "household-operations-second-child";
+  const legacyPartnerEntityId = "household-operations-legacy-partner";
+  const invalidRoleEntityId = "household-operations-invalid-role";
   const vendorEntityId = "household-operations-vendor";
   const outsiderEntityId = "household-operations-outsider";
   const maintenanceAssignmentId = "responsibility-home-maintenance";
@@ -139,7 +146,17 @@ describe("household operations — real PGlite and runtime graph", () => {
         entityId: partnerEntityId,
         preferredName: "Household Partner",
       },
+      {
+        entityId: secondPartnerEntityId,
+        preferredName: "Second Household Partner",
+      },
       { entityId: childEntityId, preferredName: "Household Child" },
+      {
+        entityId: secondChildEntityId,
+        preferredName: "Second Household Child",
+      },
+      { entityId: legacyPartnerEntityId, preferredName: "Legacy Partner" },
+      { entityId: invalidRoleEntityId, preferredName: "Invalid Role Person" },
       { entityId: vendorEntityId, preferredName: "Home Services Vendor" },
       { entityId: outsiderEntityId, preferredName: "Unrelated Person" },
     ]) {
@@ -153,12 +170,13 @@ describe("household operations — real PGlite and runtime graph", () => {
         state: {},
       });
     }
-    const relationships = graph.getRelationshipStore(runtime.agentId);
+    relationships = graph.getRelationshipStore(runtime.agentId);
     await relationships.upsert({
       fromEntityId: SELF_ENTITY_ID,
       toEntityId: partnerEntityId,
       type: "partner_of",
       metadata: {
+        householdId,
         householdRole: "current_partner",
         householdSubjectEntityIds: [childEntityId],
       },
@@ -172,11 +190,67 @@ describe("household operations — real PGlite and runtime graph", () => {
       toEntityId: childEntityId,
       type: "parent_of",
       metadata: {
+        householdId,
         householdRole: "child",
         householdSubjectEntityIds: [childEntityId],
       },
       state: {},
       evidence: ["Owner confirmed household child."],
+      confidence: 1,
+      source: "user_chat",
+    });
+    await relationships.upsert({
+      fromEntityId: SELF_ENTITY_ID,
+      toEntityId: secondPartnerEntityId,
+      type: "partner_of",
+      metadata: {
+        householdId: secondHouseholdId,
+        householdRole: "current_partner",
+        householdSubjectEntityIds: [secondChildEntityId],
+      },
+      state: {},
+      evidence: ["Owner confirmed second-household partner."],
+      confidence: 1,
+      source: "user_chat",
+    });
+    await relationships.upsert({
+      fromEntityId: SELF_ENTITY_ID,
+      toEntityId: secondChildEntityId,
+      type: "parent_of",
+      metadata: {
+        householdId: secondHouseholdId,
+        householdRole: "child",
+        householdSubjectEntityIds: [secondChildEntityId],
+      },
+      state: {},
+      evidence: ["Owner confirmed second-household child."],
+      confidence: 1,
+      source: "user_chat",
+    });
+    await relationships.upsert({
+      fromEntityId: SELF_ENTITY_ID,
+      toEntityId: legacyPartnerEntityId,
+      type: "partner_of",
+      metadata: {
+        householdRole: "current_partner",
+        householdSubjectEntityIds: [childEntityId],
+      },
+      state: {},
+      evidence: ["Legacy relationship without a household binding."],
+      confidence: 1,
+      source: "user_chat",
+    });
+    await relationships.upsert({
+      fromEntityId: SELF_ENTITY_ID,
+      toEntityId: invalidRoleEntityId,
+      type: "knows",
+      metadata: {
+        householdId,
+        householdRole: "roommate",
+        householdSubjectEntityIds: [childEntityId],
+      },
+      state: {},
+      evidence: ["Invalid free-form household role fixture."],
       confidence: 1,
       source: "user_chat",
     });
@@ -790,16 +864,19 @@ describe("household operations — real PGlite and runtime graph", () => {
       childEntityId,
       itemCategory: "shoes",
     });
-    const outsiderHistory = await service.listChildItemSizeHistory({
-      principalEntityId: outsiderEntityId,
-      householdId,
-      childEntityId,
-      itemCategory: "shoes",
-    });
     expect(ownerHistory).toHaveLength(2);
     expect(childHistory).toHaveLength(2);
     expect(partnerHistory).toHaveLength(2);
-    expect(outsiderHistory).toEqual([]);
+    await expect(
+      service.listChildItemSizeHistory({
+        principalEntityId: outsiderEntityId,
+        householdId,
+        childEntityId,
+        itemCategory: "shoes",
+      }),
+    ).rejects.toMatchObject({
+      code: "HOUSEHOLD_OPERATIONS_RELATIONSHIP_REQUIRED",
+    });
 
     const concurrentThreshold = (
       minimumUsableCount: number,
@@ -1211,5 +1288,139 @@ describe("household operations — real PGlite and runtime graph", () => {
     ).rejects.toMatchObject({
       code: "HOUSEHOLD_OPERATIONS_ACCESS_DENIED",
     });
+    await expect(
+      service.readWeeklyBrief({
+        principalEntityId: secondPartnerEntityId,
+        briefId: brief.briefId,
+      }),
+    ).rejects.toMatchObject({
+      code: "HOUSEHOLD_OPERATIONS_ACCESS_DENIED",
+    });
+  });
+
+  it("binds every non-owner read and visibility principal to one canonical household relationship", async () => {
+    const main = await service.recordObservation({
+      principalEntityId: SELF_ENTITY_ID,
+      observation: {
+        householdId,
+        subjectKey: "household-visibility-main",
+        subjectEntityIds: [childEntityId],
+        observationKind: "home_state",
+        value: {
+          kind: "home_state",
+          state: "main-household-only",
+          details: null,
+        },
+        provenance: provenance("household-visibility-main"),
+        visibility: { kind: "household" },
+        supersedesObservationId: null,
+        correctsObservationId: null,
+      },
+    });
+    const second = await service.recordObservation({
+      principalEntityId: SELF_ENTITY_ID,
+      observation: {
+        householdId: secondHouseholdId,
+        subjectKey: "household-visibility-second",
+        subjectEntityIds: [secondChildEntityId],
+        observationKind: "home_state",
+        value: {
+          kind: "home_state",
+          state: "second-household-only",
+          details: null,
+        },
+        provenance: provenance("household-visibility-second"),
+        visibility: { kind: "household" },
+        supersedesObservationId: null,
+        correctsObservationId: null,
+      },
+    });
+
+    await expect(
+      service.listVisibleObservations({
+        principalEntityId: partnerEntityId,
+        householdId,
+        subjectKey: main.observation.subjectKey,
+      }),
+    ).resolves.toEqual([main.observation]);
+    await expect(
+      service.listVisibleObservations({
+        principalEntityId: secondPartnerEntityId,
+        householdId: secondHouseholdId,
+        subjectKey: second.observation.subjectKey,
+      }),
+    ).resolves.toEqual([second.observation]);
+    await expect(
+      service.listVisibleObservations({
+        principalEntityId: partnerEntityId,
+        householdId: secondHouseholdId,
+      }),
+    ).rejects.toMatchObject({
+      code: "HOUSEHOLD_OPERATIONS_RELATIONSHIP_REQUIRED",
+    });
+    await expect(
+      service.listVisibleObservations({
+        principalEntityId: secondPartnerEntityId,
+        householdId,
+      }),
+    ).rejects.toMatchObject({
+      code: "HOUSEHOLD_OPERATIONS_RELATIONSHIP_REQUIRED",
+    });
+    await expect(
+      service.listVisibleObservations({
+        principalEntityId: legacyPartnerEntityId,
+        householdId,
+      }),
+    ).rejects.toMatchObject({
+      code: "HOUSEHOLD_OPERATIONS_RELATIONSHIP_REQUIRED",
+    });
+    await expect(
+      service.listVisibleObservations({
+        principalEntityId: invalidRoleEntityId,
+        householdId,
+      }),
+    ).rejects.toMatchObject({
+      code: "HOUSEHOLD_OPERATIONS_INVALID_CONTRACT",
+    });
+    await expect(
+      service.recordObservation({
+        principalEntityId: SELF_ENTITY_ID,
+        observation: {
+          householdId,
+          subjectKey: "cross-household-principal",
+          subjectEntityIds: [childEntityId],
+          observationKind: "home_state",
+          value: {
+            kind: "home_state",
+            state: "must-not-persist",
+            details: null,
+          },
+          provenance: provenance("cross-household-principal"),
+          visibility: {
+            kind: "principals",
+            principalEntityIds: [secondPartnerEntityId],
+          },
+          supersedesObservationId: null,
+          correctsObservationId: null,
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "HOUSEHOLD_OPERATIONS_RELATIONSHIP_REQUIRED",
+    });
+
+    await expect(
+      service.listVisibleObservations({
+        principalEntityId: SELF_ENTITY_ID,
+        householdId,
+        subjectKey: main.observation.subjectKey,
+      }),
+    ).resolves.toEqual([main.observation]);
+    await expect(
+      service.listVisibleObservations({
+        principalEntityId: SELF_ENTITY_ID,
+        householdId: secondHouseholdId,
+        subjectKey: second.observation.subjectKey,
+      }),
+    ).resolves.toEqual([second.observation]);
   });
 });

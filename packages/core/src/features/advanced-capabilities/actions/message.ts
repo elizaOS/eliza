@@ -44,7 +44,7 @@ import type {
 import {
 	CANONICAL_MESSAGE_TARGET_KINDS,
 	ChannelType,
-	isSendHandlerOutcome,
+	inspectSendHandlerResult,
 	ModelType,
 } from "../../../types/index.ts";
 import { MESSAGE_SOURCE_CLIENT_CHAT } from "../../../types/message-source.ts";
@@ -1776,6 +1776,18 @@ async function ensureOutboundRoom(
 	return { roomId, worldId };
 }
 
+type OutboundMemoryPersistence =
+	| {
+			status: "persisted" | "not_requested";
+			memory?: Memory;
+	  }
+	| {
+			status: "failed";
+			memory?: Memory;
+			code: "MESSAGE_OUTBOUND_MEMORY_PERSISTENCE_FAILED";
+			message: string;
+	  };
+
 async function persistOutboundMemory(params: {
 	runtime: IAgentRuntime;
 	source: string;
@@ -1786,8 +1798,10 @@ async function persistOutboundMemory(params: {
 	sentMemory?: Memory;
 	providerMessageId?: string;
 	persist: boolean;
-}): Promise<Memory | undefined> {
-	if (!params.persist) return params.sentMemory ?? undefined;
+}): Promise<OutboundMemoryPersistence> {
+	if (!params.persist) {
+		return { status: "not_requested", memory: params.sentMemory };
+	}
 	const { runtime, source, target, label, kind, content, sentMemory } = params;
 	try {
 		const { roomId, worldId } = await ensureOutboundRoom(
@@ -1844,20 +1858,28 @@ async function persistOutboundMemory(params: {
 		};
 		if (memory.id) {
 			await runtime.upsertMemory(memory, "messages");
-			return memory;
+			return { status: "persisted", memory };
 		}
 		const id = await runtime.createMemory(memory, "messages");
-		return { ...memory, id };
+		return { status: "persisted", memory: { ...memory, id } };
 	} catch (error) {
+		// error-policy:J1 the action boundary preserves provider acceptance while
+		// returning an explicit failed local write instead of fabricated success.
+		const message = error instanceof Error ? error.message : String(error);
 		runtime.logger.warn(
 			{
 				src: "MESSAGE/send",
-				err: error instanceof Error ? error.message : String(error),
+				err: message,
 				source,
 			},
 			"Message sent but target room persistence failed",
 		);
-		return params.sentMemory ?? undefined;
+		return {
+			status: "failed",
+			memory: params.sentMemory,
+			code: "MESSAGE_OUTBOUND_MEMORY_PERSISTENCE_FAILED",
+			message,
+		};
 	}
 }
 
@@ -1927,6 +1949,8 @@ async function persistCurrentChatMemory(args: {
 		};
 		await runtime.upsertMemory(memory, "messages");
 	} catch (error) {
+		// error-policy:J7 the provider delivery is already observable; failure to
+		// persist its local action trace is reported without inviting a resend.
 		runtime.logger.warn(
 			{
 				src: "MESSAGE/send",
@@ -1935,6 +1959,11 @@ async function persistCurrentChatMemory(args: {
 			},
 			"Message sent but action memory persistence failed",
 		);
+		runtime.reportError("MESSAGE/send-action-memory", error, {
+			source,
+			targetLabel: label,
+			platformMessageId,
+		});
 	}
 }
 
@@ -2077,78 +2106,8 @@ async function handleSend(
 	let providerMessageId: string | undefined;
 	try {
 		const sendResult = await runtime.sendMessageToTarget(target, content);
-		let sentMemory: Memory | undefined;
-		if (isSendHandlerOutcome(sendResult)) {
-			if (sendResult.kind === "duplicate") {
-				const duplicateData = {
-					source: selected.connector.source,
-					target,
-					targetLabel: selected.label,
-					targetKind: selected.kind,
-					sourceResolution: resolution.sourceResolution,
-					deliveryStatus: "duplicate",
-					priorDelivery: sendResult.priorDelivery,
-					responseMessageId: sendResult.providerMessageId,
-					newDelivery: false,
-					persisted: false,
-				};
-				if (
-					sendResult.priorDelivery === "delivered" &&
-					sendResult.providerMessageId
-				) {
-					return opSuccess(
-						"send",
-						`A matching message had already been delivered via ${selected.connector.label} to ${selected.label}; this attempt sent and persisted nothing new.`,
-						duplicateData,
-					);
-				}
-				if (sendResult.priorDelivery === "in_flight") {
-					return opFailure(
-						"send",
-						"MESSAGE_DELIVERY_IN_FLIGHT",
-						`A matching message is already being delivered via ${selected.connector.label} to ${selected.label}. This attempt sent and persisted nothing, and delivery is not yet confirmed.`,
-						duplicateData,
-					);
-				}
-				return opFailure(
-					"send",
-					"MESSAGE_DELIVERY_UNKNOWN",
-					`The connector suppressed a matching message via ${selected.connector.label}, but did not provide enough receipt evidence to establish a completed earlier delivery. This attempt persisted no success record.`,
-					duplicateData,
-				);
-			}
-			if (sendResult.kind === "not_delivered") {
-				return opFailure(
-					"send",
-					"MESSAGE_NOT_DELIVERED",
-					`Message was not delivered via ${selected.connector.label}: ${sendResult.message}`,
-					{
-						source: selected.connector.source,
-						target,
-						targetKind: selected.kind,
-						sourceResolution: resolution.sourceResolution,
-						deliveryStatus: "not_delivered",
-						connectorCode: sendResult.code,
-						newDelivery: false,
-						persisted: false,
-					},
-				);
-			}
-			sentMemory = sendResult.memory;
-			providerMessageId = sendResult.providerMessageId;
-		} else if (sendResult) {
-			sentMemory = sendResult;
-			const sentMetadata =
-				typeof sentMemory.metadata === "object" && sentMemory.metadata !== null
-					? (sentMemory.metadata as Record<string, unknown>)
-					: undefined;
-			providerMessageId =
-				typeof sentMetadata?.platformMessageId === "string"
-					? sentMetadata.platformMessageId
-					: typeof sentMetadata?.messageIdFull === "string"
-						? sentMetadata.messageIdFull
-						: undefined;
-		} else {
+		const disposition = inspectSendHandlerResult(sendResult);
+		if (disposition.kind === "unknown") {
 			logger.warn(
 				`[MESSAGE/send] ${selected.connector.source} returned no delivery evidence`,
 			);
@@ -2167,7 +2126,111 @@ async function handleSend(
 				},
 			);
 		}
-		persisted = await persistOutboundMemory({
+		if (disposition.kind === "in_flight") {
+			return opFailure(
+				"send",
+				"MESSAGE_DELIVERY_IN_FLIGHT",
+				`A matching message is already being delivered via ${selected.connector.label} to ${selected.label}. This attempt sent and persisted nothing, and delivery is not yet confirmed.`,
+				{
+					source: selected.connector.source,
+					target,
+					targetLabel: selected.label,
+					targetKind: selected.kind,
+					sourceResolution: resolution.sourceResolution,
+					deliveryStatus: "in_flight",
+					newDelivery: false,
+					persisted: false,
+				},
+			);
+		}
+		if (disposition.kind === "not_delivered") {
+			return opFailure(
+				"send",
+				"MESSAGE_NOT_DELIVERED",
+				`Message was not delivered via ${selected.connector.label}: ${disposition.message}`,
+				{
+					source: selected.connector.source,
+					target,
+					targetKind: selected.kind,
+					sourceResolution: resolution.sourceResolution,
+					deliveryStatus: "not_delivered",
+					connectorCode: disposition.code,
+					newDelivery: false,
+					persisted: false,
+				},
+			);
+		}
+		if (disposition.kind === "partially_delivered") {
+			return opFailure(
+				"send",
+				"MESSAGE_PARTIAL_DELIVERY",
+				`${selected.connector.label} accepted part of the message, but the complete payload was not delivered. Do not retry blindly; provider messages ${disposition.receipt.providerMessageIds.join(", ")} already exist. ${disposition.message}`,
+				{
+					source: selected.connector.source,
+					target,
+					targetKind: selected.kind,
+					sourceResolution: resolution.sourceResolution,
+					deliveryStatus: "partially_delivered",
+					connectorCode: disposition.code,
+					acceptance: "partial",
+					responseMessageId: disposition.providerMessageId,
+					providerMessageIds: disposition.receipt.providerMessageIds,
+					replayed: disposition.replayed,
+					persistenceStatus: disposition.receipt.persistence.status,
+					newDelivery: !disposition.replayed,
+					persisted: false,
+				},
+			);
+		}
+
+		providerMessageId = disposition.providerMessageId;
+		if (
+			disposition.receipt &&
+			(disposition.receipt.persistence.status === "partial" ||
+				disposition.receipt.persistence.status === "failed")
+		) {
+			return opFailure(
+				"send",
+				"MESSAGE_DELIVERED_PERSISTENCE_FAILED",
+				`The provider accepted the complete message via ${selected.connector.label}, but local delivery evidence was not fully persisted. Do not resend; reconcile provider messages ${disposition.receipt.providerMessageIds.join(", ")}.`,
+				{
+					source: selected.connector.source,
+					target,
+					targetKind: selected.kind,
+					sourceResolution: resolution.sourceResolution,
+					deliveryStatus: "delivered",
+					acceptance: "accepted",
+					responseMessageId: providerMessageId,
+					providerMessageIds: disposition.receipt.providerMessageIds,
+					persistenceStatus: disposition.receipt.persistence.status,
+					replayed: disposition.replayed,
+					newDelivery: !disposition.replayed,
+					persisted: false,
+				},
+			);
+		}
+		if (disposition.replayed) {
+			return opSuccess(
+				"send",
+				`A matching message had already been delivered via ${selected.connector.label} to ${selected.label}; this attempt sent and persisted nothing new.`,
+				{
+					source: selected.connector.source,
+					target,
+					targetLabel: selected.label,
+					targetKind: selected.kind,
+					sourceResolution: resolution.sourceResolution,
+					deliveryStatus: "duplicate",
+					priorDelivery: "delivered",
+					responseMessageId: providerMessageId,
+					providerMessageIds: disposition.receipt?.providerMessageIds,
+					newDelivery: false,
+					persisted: false,
+				},
+			);
+		}
+
+		const sentMemory = disposition.memories.at(-1);
+		const persistence = await persistOutboundMemory({
 			runtime,
 			source: selected.connector.source,
 			target,
@@ -2178,7 +2241,36 @@ async function handleSend(
 			providerMessageId,
 			persist: boolParam(params.persist) !== false,
 		});
+		persisted = persistence.memory;
+		if (persistence.status === "failed") {
+			const providerMessageIds =
+				disposition.receipt?.providerMessageIds ??
+				(providerMessageId ? [providerMessageId] : undefined);
+			return opFailure(
+				"send",
+				"MESSAGE_DELIVERED_PERSISTENCE_FAILED",
+				`The provider accepted the complete message via ${selected.connector.label}, but the requested local outbound record failed. Do not resend; reconcile the accepted provider message${providerMessageIds?.length === 1 ? "" : "s"}${providerMessageIds ? ` ${providerMessageIds.join(", ")}` : ""}.`,
+				{
+					source: selected.connector.source,
+					target,
+					targetKind: selected.kind,
+					sourceResolution: resolution.sourceResolution,
+					deliveryStatus: "delivered",
+					acceptance: "accepted",
+					responseMessageId: providerMessageId,
+					providerMessageIds,
+					persistenceStatus: "failed",
+					persistenceCode: persistence.code,
+					persistenceMessage: persistence.message,
+					replayed: false,
+					newDelivery: true,
+					persisted: false,
+				},
+			);
+		}
 	} catch (error) {
+		// error-policy:J1 connector/action boundary translates transport throws
+		// into an explicit failed action without fabricating persistence.
 		const text = error instanceof Error ? error.message : String(error);
 		logger.error(
 			`[MESSAGE/send] failed via ${selected.connector.source}: ${text}`,

@@ -26,7 +26,7 @@ import {
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
-  isSendHandlerOutcome,
+  inspectSendHandlerResult,
   logger,
   type Media,
   type Memory,
@@ -788,43 +788,34 @@ async function dispatchToRoom(
     };
   }
   try {
-    const sent = await runtime.sendMessageToTarget(target, content);
-    if (isSendHandlerOutcome(sent)) {
-      if (sent.kind === "delivered") {
+    const disposition = inspectSendHandlerResult(
+      await runtime.sendMessageToTarget(target, content),
+    );
+    if (disposition.kind === "delivered") {
+      if (
+        disposition.receipt &&
+        (disposition.receipt.persistence.status === "partial" ||
+          disposition.receipt.persistence.status === "failed")
+      ) {
         return {
-          ok: true,
-          messageId: sent.memory?.id ?? sent.providerMessageId,
+          ok: false,
+          reason: "transport_error",
+          userActionable: false,
+          message: `The provider accepted the message, but local delivery evidence is ${disposition.receipt.persistence.status}; do not retry blindly.`,
         };
       }
-      if (
-        sent.kind === "duplicate" &&
-        sent.priorDelivery === "delivered" &&
-        sent.providerMessageId
-      ) {
-        return { ok: true, messageId: sent.providerMessageId };
-      }
       return {
-        ok: false,
-        reason: "transport_error",
-        userActionable: sent.kind !== "duplicate",
-        message:
-          sent.kind === "not_delivered"
-            ? sent.message
-            : sent.priorDelivery === "in_flight"
-              ? "A matching connector delivery is still in flight."
-              : "The connector suppressed the delivery without a committed receipt.",
+        ok: true,
+        messageId:
+          disposition.memories.at(-1)?.id ?? disposition.providerMessageId,
       };
     }
-    if (!sent) {
-      return {
-        ok: false,
-        reason: "transport_error",
-        userActionable: true,
-        message:
-          "The connector returned no delivery receipt; acceptance is unknown.",
-      };
-    }
-    return { ok: true, ...(sent.id ? { messageId: sent.id } : {}) };
+    return {
+      ok: false,
+      reason: "transport_error",
+      userActionable: disposition.kind === "not_delivered",
+      message: disposition.message,
+    };
   } catch (err) {
     // error-policy:J1 boundary translation — connector dispatch failures become
     // a structured DispatchResult the action surfaces to the model/user.

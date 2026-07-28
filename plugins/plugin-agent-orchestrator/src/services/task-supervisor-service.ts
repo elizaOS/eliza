@@ -11,8 +11,17 @@
  * it unit-tests without timers, services, or a runtime.
  */
 
-import type { Content, IAgentRuntime, UUID } from "@elizaos/core";
-import { logger, Service } from "@elizaos/core";
+import type {
+  Content,
+  IAgentRuntime,
+  SendHandlerResult,
+  UUID,
+} from "@elizaos/core";
+import {
+  logger,
+  requireConfirmedSendHandlerDelivery,
+  Service,
+} from "@elizaos/core";
 import type { OrchestratorTaskStatus } from "./orchestrator-task-types.js";
 
 export const TASK_SUPERVISOR_SERVICE_TYPE = "ORCHESTRATOR_TASK_SUPERVISOR";
@@ -199,7 +208,7 @@ type RuntimeWithSendTarget = IAgentRuntime & {
   sendMessageToTarget?: (
     target: { source: string; roomId?: UUID; accountId?: string },
     content: Content,
-  ) => Promise<unknown>;
+  ) => SendHandlerResult;
 };
 
 export type TaskSupervisorDigestTarget = {
@@ -317,7 +326,11 @@ export class TaskSupervisorService extends Service {
         );
       }
     }
-    if (typeof fallback === "function") return fallback(target, content);
+    if (typeof fallback === "function") {
+      return requireConfirmedSendHandlerDelivery(
+        await fallback(target, content),
+      );
+    }
     throw new Error(`No digest delivery path for ${target.source}`);
   }
 

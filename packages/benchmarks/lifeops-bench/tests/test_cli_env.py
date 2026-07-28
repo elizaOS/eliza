@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 
 import pytest
+import eliza_lifeops_bench.__main__ as cli_module
 
 from eliza_lifeops_bench.__main__ import (
     _build_parser,
@@ -86,9 +87,7 @@ def test_dry_run_allows_distinct_cerebras_evaluator_and_judge(
     assert "Judge:           cerebras → gpt-oss-120b" in output
 
 
-def test_environment_can_select_live_evaluator_providers(
-    monkeypatch, capsys
-) -> None:
+def test_environment_can_select_live_evaluator_providers(monkeypatch, capsys) -> None:
     monkeypatch.setenv("LIFEOPS_BENCH_EVALUATOR_PROVIDER", "cerebras")
     monkeypatch.setenv("LIFEOPS_BENCH_JUDGE_PROVIDER", "cerebras")
     args = _build_parser().parse_args(
@@ -131,13 +130,87 @@ def test_dry_run_rejects_same_evaluator_and_judge_model() -> None:
         asyncio.run(_run(args))
 
 
+def test_hermes_request_timeout_cli_wins_over_environment(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    captured: dict[str, object] = {}
+
+    def capture_agent_build(name: str, **kwargs: object) -> None:
+        captured["name"] = name
+        captured.update(kwargs)
+
+    monkeypatch.setattr(cli_module, "_build_agent_fn", capture_agent_build)
+    monkeypatch.setenv("LIFEOPS_BENCH_HERMES_REQUEST_TIMEOUT_S", "720")
+    args = _build_parser().parse_args(
+        [
+            "--agent",
+            "hermes-direct",
+            "--suite",
+            "smoke",
+            "--hermes-request-timeout-s",
+            "480",
+            "--dry-run",
+        ]
+    )
+
+    asyncio.run(_run(args))
+
+    output = capsys.readouterr().out
+    assert "Hermes request:  480s maximum" in output
+    assert captured["name"] == "hermes-direct"
+    assert captured["hermes_request_timeout_s"] == 480.0
+
+
+def test_hermes_direct_reports_its_transport_provider(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.delenv("BENCHMARK_MODEL_PROVIDER", raising=False)
+    monkeypatch.setenv("MODEL_NAME_OVERRIDE", "local-hermes-model")
+    monkeypatch.setenv("HERMES_BASE_URL", "http://127.0.0.1:11434/v1")
+    args = _build_parser().parse_args(
+        ["--agent", "hermes-direct", "--suite", "smoke", "--dry-run"]
+    )
+
+    asyncio.run(_run(args))
+
+    output = capsys.readouterr().out
+    assert "Model tier:      large (hermes → local-hermes-model)" in output
+
+
+def test_hermes_request_timeout_environment_is_validated(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LIFEOPS_BENCH_HERMES_REQUEST_TIMEOUT_S", "7200")
+    args = _build_parser().parse_args(
+        ["--agent", "hermes-direct", "--suite", "smoke", "--dry-run"]
+    )
+
+    with pytest.raises(SystemExit, match="between 1 and 3600 seconds"):
+        asyncio.run(_run(args))
+
+
+def test_hermes_request_timeout_flag_rejects_unused_provider() -> None:
+    args = _build_parser().parse_args(
+        [
+            "--agent",
+            "perfect",
+            "--hermes-request-timeout-s",
+            "480",
+            "--dry-run",
+        ]
+    )
+
+    with pytest.raises(SystemExit, match="applies only"):
+        asyncio.run(_run(args))
+
+
 def test_trusted_executor_uses_distinct_keys_and_removes_credentials(
     monkeypatch,
 ) -> None:
     scenario = next(
-        item
-        for item in ALL_SCENARIOS
-        if item.trusted_evidence_requirement is not None
+        item for item in ALL_SCENARIOS if item.trusted_evidence_requirement is not None
     )
     request_key = base64.b64encode(b"r" * 32).decode("ascii")
     receipt_key = base64.b64encode(b"s" * 32).decode("ascii")
@@ -171,9 +244,7 @@ def test_legacy_shared_executor_key_does_not_enable_evidence(
     monkeypatch,
 ) -> None:
     scenario = next(
-        item
-        for item in ALL_SCENARIOS
-        if item.trusted_evidence_requirement is not None
+        item for item in ALL_SCENARIOS if item.trusted_evidence_requirement is not None
     )
     for name in (
         "LIFEOPS_BENCH_TRUSTED_EXECUTOR_REQUEST_HMAC_KEY_B64",

@@ -296,6 +296,24 @@ def test_calendar_source_executor_exposes_planning_without_fake_connection() -> 
     assert refused_write["error"] == "external_source_selection_required"
 
 
+def test_calendar_source_executor_normalizes_granular_list_alias() -> None:
+    from eliza_lifeops_bench.__main__ import _build_world_factory
+    from eliza_lifeops_bench.runner import _execute_action, _normalize_action
+    from eliza_lifeops_bench.types import Action
+
+    world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
+    normalized = _normalize_action(Action(name="CALENDAR_LIST_ACTIVE", kwargs={}))
+
+    assert normalized == Action(
+        name="CALENDAR_SOURCES",
+        kwargs={"operation": "list"},
+    )
+    listed = _execute_action(normalized, world)
+    assert listed["snapshot"]["state"] == "complete"
+    assert listed["providerReceipt"] is None
+    assert listed["simulatedOnly"] is True
+
+
 def test_executor_accepts_promoted_calendar_alias_without_subaction() -> None:
     from eliza_lifeops_bench.__main__ import _build_world_factory
     from eliza_lifeops_bench.runner import _execute_action

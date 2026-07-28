@@ -194,6 +194,7 @@ function createHarness(): TestHarness {
     updateWorld: vi.fn(async () => undefined),
     getWorld: vi.fn(async (worldId: UUID) => worlds.get(worldId) ?? null),
     getRoom: vi.fn(async () => null),
+    getParticipantsForRoom: vi.fn(async () => [USER_ID, AGENT_ID]),
     reportError: vi.fn(),
     adapter: {} as never,
   } satisfies Partial<AgentRuntime> & Record<string, unknown>;
@@ -227,6 +228,7 @@ function createReq(method: string, url: string): http.IncomingMessage {
     method,
     url,
     headers: {},
+    socket: { remoteAddress: "127.0.0.1" },
   }) as http.IncomingMessage;
 }
 

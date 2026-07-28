@@ -12,7 +12,7 @@
 import { computeNextCronRunAtMs, stringToUuid } from "@elizaos/core";
 
 import type { AnchorRegistry } from "../anchors/anchor-registry.js";
-import { resolveLocalHHMMToIso } from "./local-time.js";
+import { parseLocalHHMM, resolveLocalHHMMToIso } from "./local-time.js";
 import { resolveTriggerTz } from "./trigger-tz.js";
 import type {
   OwnerFactsView,
@@ -105,13 +105,6 @@ function localDateKey(date: Date, timeZone: string): string {
   return `${parts.year.toString().padStart(4, "0")}-${parts.month
     .toString()
     .padStart(2, "0")}-${parts.day.toString().padStart(2, "0")}`;
-}
-
-function minutesFromHHMM(value: string | undefined): number | null {
-  if (!value) return null;
-  const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(value);
-  if (!match) return null;
-  return Number(match[1]) * 60 + Number(match[2]);
 }
 
 function metadataCreatedAtMs(task: ScheduledTask): number | null {
@@ -324,11 +317,11 @@ function windowBoundsMinutes(
   ownerFacts: OwnerFactsView,
 ): Array<{ name: string; start: number; end: number }> {
   const morningStart =
-    minutesFromHHMM(ownerFacts.morningWindow?.start) ?? 6 * 60;
-  const morningEnd = minutesFromHHMM(ownerFacts.morningWindow?.end) ?? 11 * 60;
+    parseLocalHHMM(ownerFacts.morningWindow?.start) ?? 6 * 60;
+  const morningEnd = parseLocalHHMM(ownerFacts.morningWindow?.end) ?? 11 * 60;
   const eveningStart =
-    minutesFromHHMM(ownerFacts.eveningWindow?.start) ?? 18 * 60;
-  const eveningEnd = minutesFromHHMM(ownerFacts.eveningWindow?.end) ?? 22 * 60;
+    parseLocalHHMM(ownerFacts.eveningWindow?.start) ?? 18 * 60;
+  const eveningEnd = parseLocalHHMM(ownerFacts.eveningWindow?.end) ?? 22 * 60;
   const afternoonStart = morningEnd;
   const afternoonEnd = eveningStart;
   const windows: Record<

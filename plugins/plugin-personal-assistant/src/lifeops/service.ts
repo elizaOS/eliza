@@ -2224,6 +2224,8 @@ export class LifeOpsService extends LifeOpsServiceBase {
   sendDiscordMessage(request: {
     side?: LifeOpsConnectorSide;
     channelId?: string;
+    /** Discord user id target (DM via createDM); exclusive with channelId. */
+    userId?: string;
     text: string;
   }): Promise<DiscordSendMessageResult> {
     return this.discordDomain.sendDiscordMessage(request);

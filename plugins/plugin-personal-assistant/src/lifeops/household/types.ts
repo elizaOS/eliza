@@ -109,6 +109,7 @@ export interface HouseholdCustodyException {
   toAt: string;
   normalCustodianEntityId: string;
   substituteCustodianEntityId: string;
+  authorityBaselineRelationshipId: string;
   reason: string;
 }
 
@@ -350,16 +351,112 @@ export function normalizeGrantScopes(
   return HOUSEHOLD_ACCESS_SCOPES.filter((scope) => requested.has(scope));
 }
 
-function requireIso(value: string, field: string): string {
-  const timestamp = Date.parse(value);
-  if (!Number.isFinite(timestamp)) {
+const RFC3339_INSTANT_PATTERN =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/;
+
+function timezoneOffsetAt(instant: Date, timezone: string): string {
+  const value = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    timeZoneName: "longOffset",
+    hour: "2-digit",
+  })
+    .formatToParts(instant)
+    .find((part) => part.type === "timeZoneName")?.value;
+  if (value === "GMT") return "+00:00";
+  const match = /^GMT([+-]\d{2}:\d{2})$/.exec(value ?? "");
+  if (!match?.[1]) {
     throw new HouseholdCoordinationError(
-      `${field} must be an ISO-8601 timestamp`,
+      "Could not resolve the IANA time-zone offset at the supplied instant",
+      "HOUSEHOLD_INVALID_CONTRACT",
+      { timezone, instant: instant.toISOString() },
+    );
+  }
+  return match[1];
+}
+
+function localDateTimeAt(
+  instant: Date,
+  timezone: string,
+): {
+  year: string;
+  month: string;
+  day: string;
+  hour: string;
+  minute: string;
+  second: string;
+} {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hourCycle: "h23",
+    })
+      .formatToParts(instant)
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value]),
+  );
+  return {
+    year: parts.year ?? "",
+    month: parts.month ?? "",
+    day: parts.day ?? "",
+    hour: parts.hour ?? "",
+    minute: parts.minute ?? "",
+    second: parts.second ?? "",
+  };
+}
+
+function requireZonedInstant(
+  value: string,
+  field: string,
+  timezone: string,
+): string {
+  if (typeof value !== "string" || !RFC3339_INSTANT_PATTERN.test(value)) {
+    throw new HouseholdCoordinationError(
+      `${field} must be an RFC3339 timestamp with an explicit offset`,
       "HOUSEHOLD_INVALID_CONTRACT",
       { field, value },
     );
   }
-  return new Date(timestamp).toISOString();
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) {
+    throw new HouseholdCoordinationError(
+      `${field} must be a valid RFC3339 timestamp`,
+      "HOUSEHOLD_INVALID_CONTRACT",
+      { field, value },
+    );
+  }
+  const instant = new Date(timestamp);
+  // Persisted schedule instants are normalized to Z, so Z is the canonical
+  // transport encoding. A numeric offset additionally claims a local civil
+  // time and must match the named zone, which rejects skipped-time guesses.
+  const suppliedOffset = /([+-]\d{2}:\d{2})$/.exec(value)?.[1];
+  const suppliedLocal = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/.exec(
+    value,
+  );
+  const resolvedLocal = localDateTimeAt(instant, timezone);
+  if (
+    suppliedOffset !== undefined &&
+    (timezoneOffsetAt(instant, timezone) !== suppliedOffset ||
+      !suppliedLocal ||
+      resolvedLocal.year !== suppliedLocal[1] ||
+      resolvedLocal.month !== suppliedLocal[2] ||
+      resolvedLocal.day !== suppliedLocal[3] ||
+      resolvedLocal.hour !== suppliedLocal[4] ||
+      resolvedLocal.minute !== suppliedLocal[5] ||
+      resolvedLocal.second !== suppliedLocal[6])
+  ) {
+    throw new HouseholdCoordinationError(
+      `${field} offset is inconsistent with ${timezone} at that instant`,
+      "HOUSEHOLD_INVALID_CONTRACT",
+      { field, value, timezone },
+    );
+  }
+  return instant.toISOString();
 }
 
 function requireText(value: string, field: string): string {
@@ -421,8 +518,16 @@ export function normalizeHouseholdIdentifiers(
 export function normalizeScheduleTerms(
   input: HouseholdScheduleTerms,
 ): HouseholdScheduleTerms {
-  const startAt = requireIso(input.startAt, "startAt");
-  const endAt = requireIso(input.endAt, "endAt");
+  const timezone = requireText(input.timezone, "timezone");
+  if (!isValidTimeZone(timezone)) {
+    throw new HouseholdCoordinationError(
+      "timezone must be a valid IANA time zone",
+      "HOUSEHOLD_INVALID_CONTRACT",
+      { timezone },
+    );
+  }
+  const startAt = requireZonedInstant(input.startAt, "startAt", timezone);
+  const endAt = requireZonedInstant(input.endAt, "endAt", timezone);
   if (Date.parse(endAt) <= Date.parse(startAt)) {
     throw new HouseholdCoordinationError(
       "endAt must be after startAt",
@@ -436,8 +541,16 @@ export function normalizeScheduleTerms(
   );
   let custodyException: HouseholdCustodyException | null = null;
   if (input.custodyException) {
-    const fromAt = requireIso(input.custodyException.fromAt, "custody.fromAt");
-    const toAt = requireIso(input.custodyException.toAt, "custody.toAt");
+    const fromAt = requireZonedInstant(
+      input.custodyException.fromAt,
+      "custody.fromAt",
+      timezone,
+    );
+    const toAt = requireZonedInstant(
+      input.custodyException.toAt,
+      "custody.toAt",
+      timezone,
+    );
     const childEntityId = normalizeHouseholdIdentifier(
       input.custodyException.childEntityId,
       "custody.childEntityId",
@@ -486,6 +599,10 @@ export function normalizeScheduleTerms(
       toAt,
       normalCustodianEntityId,
       substituteCustodianEntityId,
+      authorityBaselineRelationshipId: normalizeHouseholdIdentifier(
+        input.custodyException.authorityBaselineRelationshipId,
+        "custody.authorityBaselineRelationshipId",
+      ),
       reason: requireText(input.custodyException.reason, "custody.reason"),
     };
   }
@@ -493,17 +610,7 @@ export function normalizeScheduleTerms(
     summary: requireText(input.summary, "summary"),
     startAt,
     endAt,
-    timezone: (() => {
-      const timezone = requireText(input.timezone, "timezone");
-      if (!isValidTimeZone(timezone)) {
-        throw new HouseholdCoordinationError(
-          "timezone must be a valid IANA time zone",
-          "HOUSEHOLD_INVALID_CONTRACT",
-          { timezone },
-        );
-      }
-      return timezone;
-    })(),
+    timezone,
     childEntityIds,
     location: input.location?.trim() || null,
     notes: input.notes?.trim() || null,

@@ -96,6 +96,7 @@ from .types import (
     BenchmarkResult,
     Disruption,
     Domain,
+    EvaluatorTraceEntry,
     MessageTurn,
     Scenario,
     ScenarioMode,
@@ -292,6 +293,10 @@ _PROMOTED_ACTION_DEFAULTS: dict[str, tuple[str, str, str]] = {
     "CALENDAR_FEED": ("CALENDAR", "subaction", "search_events"),
     "CALENDAR_TRIP_WINDOW": ("CALENDAR", "subaction", "search_events"),
     "CALENDAR_BULK_RESCHEDULE": ("CALENDAR", "subaction", "bulk_reschedule"),
+    # Small local models sometimes apply the granular BLOCK naming pattern to
+    # source enumeration. Preserve the single CALENDAR_SOURCES contract while
+    # accepting that unambiguous read-only spelling at the adapter boundary.
+    "CALENDAR_LIST_ACTIVE": ("CALENDAR_SOURCES", "operation", "list"),
     # P1-5: contact-create aliases. Agents emit ENTITY_CREATE_CONTACT,
     # CONTACT_CREATE, or contact_create interchangeably with ENTITY/create.
     # Normalise all of them into ENTITY(subaction=create) before dispatch.
@@ -6050,6 +6055,12 @@ class LifeOpsBenchRunner:
         # ``abort_on_budget_exceeded`` is on. Avoids racing many in-flight
         # scenarios past the cap before the gather sees the first failure.
         self._budget_exhausted = False
+        # Failure artifacts retain every fully assembled turn and evaluator
+        # exchange completed before a timeout or provider exception.
+        self._partial_turns: dict[tuple[str, int], list[TurnResult]] = {}
+        self._partial_evaluator_traces: dict[
+            tuple[str, int], list[EvaluatorTraceEntry]
+        ] = {}
 
     async def run_all(self) -> BenchmarkResult:
         """Run every configured scenario across `seeds` repetitions and aggregate."""
@@ -6169,6 +6180,14 @@ class LifeOpsBenchRunner:
         bench_result.static_run_count = sum(
             result.scenario_id in static_ids for result in results
         )
+        bench_result.unpriced_agent_call_count = sum(
+            turn.cost_usd is None for result in results for turn in result.turns
+        )
+        bench_result.unpriced_eval_call_count = sum(
+            entry.cost_usd is None
+            for result in results
+            for entry in result.evaluator_trace
+        )
         semantic_static_ids = {
             scenario.id
             for scenario in scenarios
@@ -6208,11 +6227,18 @@ class LifeOpsBenchRunner:
                     "skipped — cumulative cost cap "
                     f"${self.max_cost_usd:.4f} already exceeded",
                 )
+            run_key = (scenario.id, seed)
+            self._partial_turns[run_key] = []
+            self._partial_evaluator_traces[run_key] = []
             try:
-                return await asyncio.wait_for(
+                result = await asyncio.wait_for(
                     self.run_one(scenario, seed),
                     timeout=self.per_scenario_timeout_s,
                 )
+                self._partial_turns.pop(run_key, None)
+                self._partial_evaluator_traces.pop(run_key, None)
+                return result
+            # error-policy:J1 scenario boundary preserves partial evidence on timeout.
             except asyncio.TimeoutError:
                 logger.warning(
                     "Scenario %s seed=%d timed out after %ds",
@@ -6220,17 +6246,38 @@ class LifeOpsBenchRunner:
                     seed,
                     self.per_scenario_timeout_s,
                 )
-                return self._failure_result(scenario, seed, "timeout", "timed out")
+                return self._failure_result(
+                    scenario,
+                    seed,
+                    "timeout",
+                    "timed out",
+                    turns=self._partial_turns.pop(run_key, []),
+                    evaluator_trace=self._partial_evaluator_traces.pop(run_key, []),
+                )
+            # error-policy:J1 scenario boundary records a typed cost failure.
             except CostBudgetExceeded as exc:
                 logger.error(
                     "Cost budget exceeded on %s seed=%d: %s", scenario.id, seed, exc
                 )
-                return self._failure_result(scenario, seed, "cost_exceeded", str(exc))
-            except (
-                Exception
-            ) as exc:  # noqa: BLE001 - boundary translates to typed result
+                return self._failure_result(
+                    scenario,
+                    seed,
+                    "cost_exceeded",
+                    str(exc),
+                    turns=self._partial_turns.pop(run_key, []),
+                    evaluator_trace=self._partial_evaluator_traces.pop(run_key, []),
+                )
+            # error-policy:J1 outer scenario boundary retains diagnostics and fails.
+            except Exception as exc:
                 logger.exception("Scenario %s seed=%d errored", scenario.id, seed)
-                return self._failure_result(scenario, seed, "error", str(exc))
+                return self._failure_result(
+                    scenario,
+                    seed,
+                    "error",
+                    str(exc),
+                    turns=self._partial_turns.pop(run_key, []),
+                    evaluator_trace=self._partial_evaluator_traces.pop(run_key, []),
+                )
 
     async def run_one(self, scenario: Scenario, seed: int) -> ScenarioResult:
         """Run a single scenario at a single seed and return its result.
@@ -6274,6 +6321,10 @@ class LifeOpsBenchRunner:
         scenario_evaluator = (
             self.evaluator.fork() if self.evaluator is not None else None
         )
+        run_key = (scenario.id, seed)
+        turns = self._partial_turns.setdefault(run_key, [])
+        if scenario_evaluator is not None:
+            self._partial_evaluator_traces[run_key] = scenario_evaluator.trace
 
         world = self.world_factory(seed, scenario.now_iso)
         run_id = secrets.token_hex(16)
@@ -6321,7 +6372,6 @@ class LifeOpsBenchRunner:
                     content=_initial_user_content(scenario),
                 )
             ]
-        turns: list[TurnResult] = []
         terminated_reason: str = "max_turns"
 
         # Pre-bucket disruptions by the turn they fire after.
@@ -6519,13 +6569,6 @@ class LifeOpsBenchRunner:
                 if isinstance(agent_cost_raw, (int, float))
                 else None
             )
-            await self._charge(
-                agent_cost if agent_cost is not None else 0.0,
-                scenario.id,
-                seed,
-                bucket="agent",
-            )
-
             latency_raw = getattr(agent_turn, "latency_ms", None)
             latency_value: int | None = (
                 int(latency_raw) if isinstance(latency_raw, (int, float)) else None
@@ -6583,6 +6626,16 @@ class LifeOpsBenchRunner:
                 model_name=agent_turn.model_name,
                 verified_evidence=turn_verified_receipts,
             )
+            # The provider response and every resulting tool effect are already
+            # facts at this point. Retain them before budget enforcement or an
+            # evaluator call can fail so diagnostics never erase a real effect.
+            turns.append(turn_result)
+            await self._charge(
+                agent_cost if agent_cost is not None else 0.0,
+                scenario.id,
+                seed,
+                bucket="agent",
+            )
 
             # Terminal detection: assistant turn with no tool_calls signals
             # the agent is done responding. Tool-call-only turns continue the
@@ -6614,7 +6667,6 @@ class LifeOpsBenchRunner:
                         )
                     if user_turn is None:
                         terminated_reason = "respond"
-                        turns.append(turn_result)
                         break
                     history.append(user_turn)
                     turn_result.user_response = user_turn.content
@@ -6635,7 +6687,7 @@ class LifeOpsBenchRunner:
                         world,
                         evidence_verification=verify_result_trusted_evidence(
                             scenario,
-                            [*turns, turn_result],
+                            turns,
                             seed=seed,
                             verifier=self.trusted_evidence_verifier,
                         ),
@@ -6649,7 +6701,6 @@ class LifeOpsBenchRunner:
                     pre_eval_cost = scenario_evaluator.cost_usd  # type: ignore[union-attr]
                     if satisfied:
                         terminated_reason = "satisfied"
-                        turns.append(turn_result)
                         break
 
                 # Always advance the conversation by one user turn in LIVE
@@ -6670,8 +6721,6 @@ class LifeOpsBenchRunner:
                     seed,
                     bucket="eval",
                 )
-
-            turns.append(turn_result)
 
         # Compute the ground-truth post-state by replaying scenario actions on
         # a fresh world. If the executor doesn't support every gt action, the
@@ -6745,6 +6794,8 @@ class LifeOpsBenchRunner:
             scenario,
             trusted_evidence_verifier=self.trusted_evidence_verifier,
         )
+        self._partial_turns.pop(run_key, None)
+        self._partial_evaluator_traces.pop(run_key, None)
         return result
 
     async def _apply_disruptions(
@@ -6894,7 +6945,11 @@ class LifeOpsBenchRunner:
         seed: int,
         reason: str,
         message: str,
+        *,
+        turns: list[TurnResult] | None = None,
+        evaluator_trace: list[EvaluatorTraceEntry] | None = None,
     ) -> ScenarioResult:
+        retained_turns = list(turns or [])
         return ScenarioResult(
             scenario_id=scenario.id,
             seed=seed,
@@ -6903,15 +6958,22 @@ class LifeOpsBenchRunner:
                 if scenario.mode is ScenarioMode.STATIC
                 else None
             ),
-            turns=[],
+            turns=retained_turns,
             state_hash_match=False,
             output_substring_matches=[False] * len(scenario.required_outputs),
             total_score=0.0,
             max_score=1.0,
             terminated_reason=reason,  # type: ignore[arg-type]
-            total_cost_usd=0.0,
-            total_latency_ms=0,
+            total_cost_usd=sum(
+                turn.cost_usd for turn in retained_turns if turn.cost_usd is not None
+            ),
+            total_latency_ms=sum(
+                turn.latency_ms
+                for turn in retained_turns
+                if turn.latency_ms is not None
+            ),
             error=message,
+            evaluator_trace=list(evaluator_trace or []),
         )
 
     @staticmethod
@@ -6997,6 +7059,59 @@ class LifeOpsBenchRunner:
         return path
 
     @staticmethod
+    def save_diagnostic_results(
+        result: BenchmarkResult,
+        output_dir: str = "lifeops_bench_results",
+    ) -> str:
+        """Persist an incomplete run as explicitly non-publishable evidence.
+
+        Provider failures, timeouts, and harness errors are evidence too. They
+        live under a diagnostic subdirectory so result collectors cannot
+        mistake them for publishable benchmark artifacts.
+        """
+        if result.complete:
+            raise RuntimeError(
+                "save_diagnostic_results accepts only incomplete benchmark runs"
+            )
+        diagnostic_dir = os.path.join(output_dir, "diagnostics")
+        os.makedirs(diagnostic_dir, exist_ok=True)
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
+        safe = (
+            re.sub(
+                r"[^A-Za-z0-9_.-]+",
+                "-",
+                result.agent_model_name or "unknown-model",
+            ).strip("-")
+            or "unknown-model"
+        )
+        path = os.path.join(
+            diagnostic_dir,
+            f"lifeops_diagnostic_{safe}_{timestamp}.json",
+        )
+        reasons = [
+            "incomplete workload: "
+            f"successful={result.successful_run_count}/"
+            f"{result.expected_run_count}, "
+            f"completed={result.completed_run_count}",
+            *[
+                f"{scenario.scenario_id}#{scenario.seed}: "
+                f"{scenario.terminated_reason}: {scenario.error}"
+                for scenario in result.scenarios
+                if scenario.error is not None
+            ],
+        ]
+        payload = LifeOpsBenchRunner._serialize_result_value(result)
+        if not isinstance(payload, dict):
+            raise RuntimeError("serialized benchmark diagnostic must be an object")
+        payload["artifact_tier"] = "diagnostic_nonpublishable"
+        payload["publishable"] = False
+        payload["nonpublishable_reasons"] = reasons
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(payload, fh, indent=2, default=str)
+        logger.warning("Non-publishable diagnostic results saved to %s", path)
+        return path
+
+    @staticmethod
     def save_conformance_results(
         result: BenchmarkResult,
         output_dir: str = "lifeops_bench_results",
@@ -7056,9 +7171,15 @@ class LifeOpsBenchRunner:
         print(f"  Scenarios run:      {len(result.scenarios)}")
         print(f"  pass@1:             {result.pass_at_1:.3f}")
         print(f"  pass@k:             {result.pass_at_k:.3f}")
-        print(f"  Total cost:         ${result.total_cost_usd:.4f}")
+        print(f"  Known cost:         ${result.total_cost_usd:.4f}")
         print(f"    agent:            ${result.agent_cost_usd:.4f}")
         print(f"    eval:             ${result.eval_cost_usd:.4f}")
+        if result.unpriced_agent_call_count or result.unpriced_eval_call_count:
+            print(
+                "  Unpriced calls:     "
+                f"{result.unpriced_agent_call_count} agent + "
+                f"{result.unpriced_eval_call_count} evaluator/judge"
+            )
         print(f"  Total latency:      {result.total_latency_ms / 1000:.2f}s")
         print()
         print("  Mean score per domain:")

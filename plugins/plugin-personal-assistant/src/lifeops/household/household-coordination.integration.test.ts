@@ -34,9 +34,10 @@ import {
   HouseholdCoordinationRuntimeService,
   HouseholdCoordinationService,
 } from "./service.js";
-import type {
-  HouseholdScheduleProposal,
-  HouseholdScheduleTerms,
+import {
+  type HouseholdScheduleProposal,
+  type HouseholdScheduleTerms,
+  normalizeScheduleTerms,
 } from "./types.js";
 
 class RejectCommitFaultRepository extends HouseholdCoordinationRepository {
@@ -122,6 +123,7 @@ describe("household coordination — real PGlite", () => {
       childEntityId: string;
       normalCustodianEntityId: string;
       substituteCustodianEntityId: string;
+      authorityBaselineRelationshipId: string;
     };
   }): HouseholdScheduleTerms {
     const startHour = input.startHour ?? 17;
@@ -143,6 +145,8 @@ describe("household coordination — real PGlite", () => {
             normalCustodianEntityId: input.custody.normalCustodianEntityId,
             substituteCustodianEntityId:
               input.custody.substituteCustodianEntityId,
+            authorityBaselineRelationshipId:
+              input.custody.authorityBaselineRelationshipId,
             reason: "School closure changed the normal handoff.",
           }
         : null,
@@ -258,6 +262,7 @@ describe("household coordination — real PGlite", () => {
 
     const childId = await person("action-child");
     const coParentId = await person("action-co-parent");
+    const actionHouseholdId = `action-household-${randomUUID()}`;
     const ownerMessage = createMessageMemory({
       entityId: runtime.agentId,
       agentId: runtime.agentId,
@@ -281,6 +286,7 @@ describe("household coordination — real PGlite", () => {
         action: "bind_role",
         entityId: childId,
         role: "child",
+        householdId: actionHouseholdId,
         subjectEntityIds: [childId],
         evidence: "Owner identified this child through the action surface.",
       }),
@@ -290,10 +296,27 @@ describe("household coordination — real PGlite", () => {
         action: "bind_role",
         entityId: coParentId,
         role: "co_parent",
+        householdId: actionHouseholdId,
         subjectEntityIds: [childId],
         evidence: "Owner identified this co-parent through the action surface.",
       }),
     ).resolves.toMatchObject({ success: true });
+    const graph = resolveKnowledgeGraphService(runtime);
+    if (!graph) throw new Error("knowledge graph unavailable");
+    const coParentRelationships = await graph
+      .getRelationshipStore(runtime.agentId)
+      .list({
+        fromEntityId: SELF_ENTITY_ID,
+        toEntityId: coParentId,
+      });
+    expect(coParentRelationships).toEqual([
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          householdId: actionHouseholdId,
+          householdRole: "co_parent",
+        }),
+      }),
+    ]);
 
     const result = await invoke({
       action: "create_proposal",
@@ -318,6 +341,79 @@ describe("household coordination — real PGlite", () => {
     expect(result.text).toContain("No calendar event or external message");
   });
 
+  it("requires offset-bearing instants and rejects skipped civil times while preserving both repeated-time instants", () => {
+    const schedule = (
+      startAt: string,
+      endAt: string,
+      timezone: string,
+    ): HouseholdScheduleTerms => ({
+      summary: "Time-zone boundary test",
+      startAt,
+      endAt,
+      timezone,
+      childEntityIds: [],
+      location: null,
+      notes: null,
+      custodyException: null,
+    });
+
+    for (const invalid of [
+      schedule(
+        "2027-03-12T17:00:00",
+        "2027-03-12T18:00:00-08:00",
+        "America/Los_Angeles",
+      ),
+      schedule(
+        "2027-03-12",
+        "2027-03-12T18:00:00-08:00",
+        "America/Los_Angeles",
+      ),
+      schedule(
+        "2027-02-31T17:00:00-08:00",
+        "2027-03-03T18:00:00-08:00",
+        "America/Los_Angeles",
+      ),
+      schedule(
+        "2026-03-08T02:30:00-05:00",
+        "2026-03-08T04:00:00-04:00",
+        "America/New_York",
+      ),
+      schedule(
+        "2026-09-06T00:00:00-04:00",
+        "2026-09-06T02:00:00-03:00",
+        "America/Santiago",
+      ),
+      schedule(
+        "2011-12-30T00:00:00-10:00",
+        "2011-12-31T02:00:00+14:00",
+        "Pacific/Apia",
+      ),
+    ]) {
+      expect(() => normalizeScheduleTerms(invalid)).toThrowError(
+        expect.objectContaining({ code: "HOUSEHOLD_INVALID_CONTRACT" }),
+      );
+    }
+
+    expect(
+      normalizeScheduleTerms(
+        schedule(
+          "2026-11-01T01:30:00-04:00",
+          "2026-11-01T01:45:00-04:00",
+          "America/New_York",
+        ),
+      ).startAt,
+    ).toBe("2026-11-01T05:30:00.000Z");
+    expect(
+      normalizeScheduleTerms(
+        schedule(
+          "2026-11-01T01:30:00-05:00",
+          "2026-11-01T01:45:00-05:00",
+          "America/New_York",
+        ),
+      ).startAt,
+    ).toBe("2026-11-01T06:30:00.000Z");
+  });
+
   it("requires both custodians for a custody exception and writes the accepted obligation", async () => {
     expect(runtime.getService(HOUSEHOLD_COORDINATION_SERVICE)).toBeInstanceOf(
       HouseholdCoordinationRuntimeService,
@@ -339,6 +435,21 @@ describe("household coordination — real PGlite", () => {
       householdRole: "co_parent",
       householdSubjectEntityIds: [childId],
     });
+    const authorityBaseline = await graph
+      .getRelationshipStore(runtime.agentId)
+      .observe({
+        fromEntityId: SELF_ENTITY_ID,
+        toEntityId: childId,
+        type: "custody_authority",
+        metadataPatch: {
+          custodyAuthorityChildEntityId: childId,
+          custodyAuthorityCustodianEntityIds: [SELF_ENTITY_ID, coParentId],
+        },
+        evidence: ["Owner supplied the current custody-authority baseline."],
+        confidence: 1,
+        occurredAt: "2027-03-10T12:00:00.000Z",
+        source: "user_chat",
+      });
     const coordinator = service();
     const proposal = await coordinator.createProposal({
       coordinationId: `custody-${randomUUID()}`,
@@ -349,6 +460,7 @@ describe("household coordination — real PGlite", () => {
           childEntityId: childId,
           normalCustodianEntityId: coParentId,
           substituteCustodianEntityId: SELF_ENTITY_ID,
+          authorityBaselineRelationshipId: authorityBaseline.relationshipId,
         },
       }),
       affectedPartyEntityIds: [childId],
@@ -484,6 +596,85 @@ describe("household coordination — real PGlite", () => {
         "household_proposal_approved",
         "household_agreement_activated",
       ]),
+    );
+  });
+
+  it("rejects missing custody authority and non-parent household roles before proposal materialization", async () => {
+    const childId = await person("custody-authority-child");
+    const coParentId = await person("custody-authority-co-parent");
+    const partnerId = await person("custody-authority-partner");
+    const caregiverId = await person("custody-authority-caregiver");
+    const professionalId = await person("custody-authority-professional");
+    await bindFamily({
+      childId,
+      coParentId,
+      caregiverId,
+      professionalId,
+    });
+    const coordinator = service();
+    await coordinator.bindRole({
+      entityId: partnerId,
+      role: "current_partner",
+      subjectEntityIds: [childId],
+      evidence: "Owner identified the current partner.",
+      boundByEntityId: SELF_ENTITY_ID,
+    });
+    const graph = resolveKnowledgeGraphService(runtime);
+    if (!graph) throw new Error("knowledge graph unavailable");
+    const authorityBaseline = await graph
+      .getRelationshipStore(runtime.agentId)
+      .observe({
+        fromEntityId: SELF_ENTITY_ID,
+        toEntityId: childId,
+        type: "custody_authority",
+        metadataPatch: {
+          custodyAuthorityChildEntityId: childId,
+          custodyAuthorityCustodianEntityIds: [
+            SELF_ENTITY_ID,
+            coParentId,
+            partnerId,
+            caregiverId,
+            professionalId,
+          ],
+        },
+        evidence: ["Owner supplied a custody-authority test baseline."],
+        confidence: 1,
+        occurredAt: "2027-03-10T12:00:00.000Z",
+        source: "user_chat",
+      });
+    const proposalCount = (await householdRepository.listProposals()).length;
+    const attempt = async (
+      substituteCustodianEntityId: string,
+      authorityBaselineRelationshipId: string,
+    ): Promise<void> => {
+      await coordinator.createProposal({
+        coordinationId: `custody-authority-${randomUUID()}`,
+        terms: terms({
+          summary: "Authority must be established before a handoff",
+          childEntityIds: [childId],
+          custody: {
+            childEntityId: childId,
+            normalCustodianEntityId: coParentId,
+            substituteCustodianEntityId,
+            authorityBaselineRelationshipId,
+          },
+        }),
+        affectedPartyEntityIds: [childId],
+        requiredApproverEntityIds: [],
+        createdByEntityId: SELF_ENTITY_ID,
+      });
+    };
+
+    await expect(
+      attempt(SELF_ENTITY_ID, `missing-authority-${randomUUID()}`),
+    ).rejects.toMatchObject({ code: "HOUSEHOLD_ACCESS_DENIED" });
+    for (const entityId of [partnerId, caregiverId, professionalId]) {
+      await expect(
+        attempt(entityId, authorityBaseline.relationshipId),
+      ).rejects.toMatchObject({ code: "HOUSEHOLD_ACCESS_DENIED" });
+    }
+    expect(await householdRepository.listProposals()).toHaveLength(
+      proposalCount,
     );
   });
 

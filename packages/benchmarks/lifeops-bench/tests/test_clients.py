@@ -16,14 +16,14 @@ import pytest
 
 from eliza_lifeops_bench.clients import (
     ANTHROPIC_PRICING,
+    CEREBRAS_PRICING,
+    HERMES_PRICING,
     AnthropicClient,
     BaseClient,
-    CEREBRAS_PRICING,
     CerebrasClient,
     ClaudeSubscriptionClient,
     ClientCall,
     ClientResponse,
-    HERMES_PRICING,
     HermesClient,
     ProviderError,
     ToolCall,
@@ -33,8 +33,8 @@ from eliza_lifeops_bench.clients import (
 from eliza_lifeops_bench.clients.hermes import (
     _build_hermes_system_prompt,
     _parse_hermes_response_text,
+    resolve_hermes_request_timeout_s,
 )
-
 
 # ---------------------------------------------------------------------------
 # Cerebras
@@ -297,7 +297,9 @@ async def test_cerebras_honors_retry_after_header() -> None:
         i = call_index["i"]
         call_index["i"] += 1
         if i == 0:
-            return httpx.Response(429, headers={"Retry-After": "3"}, text="rate limited")
+            return httpx.Response(
+                429, headers={"Retry-After": "3"}, text="rate limited"
+            )
         return httpx.Response(200, json=_cerebras_success_response())
 
     transport = httpx.MockTransport(handler)
@@ -548,7 +550,9 @@ async def test_anthropic_retries_once_on_429() -> None:
         async def create(self, **_: Any) -> Any:
             raise _anthropic_sdk.APIStatusError(
                 "rate limited",
-                response=httpx.Response(429, request=httpx.Request("POST", "https://x")),
+                response=httpx.Response(
+                    429, request=httpx.Request("POST", "https://x")
+                ),
                 body=None,
             )
 
@@ -614,6 +618,28 @@ def _hermes_response(text: str) -> dict[str, Any]:
             "total_tokens": 120,
         },
     }
+
+
+def test_hermes_request_timeout_resolves_default_env_and_explicit_precedence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("LIFEOPS_BENCH_HERMES_REQUEST_TIMEOUT_S", raising=False)
+    assert resolve_hermes_request_timeout_s() == 300.0
+
+    monkeypatch.setenv("LIFEOPS_BENCH_HERMES_REQUEST_TIMEOUT_S", "725.5")
+    assert resolve_hermes_request_timeout_s() == 725.5
+    assert resolve_hermes_request_timeout_s(41) == 41.0
+
+
+@pytest.mark.parametrize(
+    "value",
+    [True, "not-a-number", "nan", "inf", 0, 0.5, 3600.1],
+)
+def test_hermes_request_timeout_rejects_invalid_or_unbounded_values(
+    value: object,
+) -> None:
+    with pytest.raises(ValueError, match="timeout"):
+        resolve_hermes_request_timeout_s(value)  # type: ignore[arg-type]
 
 
 def test_hermes_system_prompt_embeds_tools_json() -> None:
@@ -719,7 +745,11 @@ async def test_hermes_complete_full_pipeline() -> None:
     assert response.content == "OK"
     assert response.finish_reason == "tool_calls"
     assert response.tool_calls == [
-        ToolCall(id="call_0", name="list_events", arguments={"date": "2026-05-10"})
+        ToolCall(
+            id="call_1_0",
+            name="list_events",
+            arguments={"date": "2026-05-10"},
+        )
     ]
     assert response.usage == Usage(
         prompt_tokens=80, completion_tokens=40, total_tokens=120, cached_tokens=0
@@ -740,6 +770,32 @@ async def test_hermes_complete_full_pipeline() -> None:
     assert system_msg["role"] == "system"
     assert "<tools>" in system_msg["content"]
     assert "be helpful" in system_msg["content"]
+
+
+@pytest.mark.asyncio
+async def test_hermes_synthesizes_unique_tool_call_ids_across_turns() -> None:
+    transport = httpx.MockTransport(
+        lambda _request: httpx.Response(
+            200,
+            json=_hermes_response(
+                '<tool_call>{"name":"list_events","arguments":{}}</tool_call>'
+            ),
+        )
+    )
+    async with httpx.AsyncClient(transport=transport) as http_client:
+        client = HermesClient(
+            base_url="https://hermes.example.com/v1",
+            http_client=http_client,
+        )
+        first = await client.complete(
+            ClientCall(messages=[{"role": "user", "content": "first"}])
+        )
+        second = await client.complete(
+            ClientCall(messages=[{"role": "user", "content": "second"}])
+        )
+
+    assert first.tool_calls[0].id == "call_1_0"
+    assert second.tool_calls[0].id == "call_2_0"
 
 
 @pytest.mark.asyncio
@@ -813,6 +869,60 @@ async def test_hermes_retries_once_on_429() -> None:
     assert call_index["i"] == 2
 
 
+@pytest.mark.asyncio
+async def test_hermes_timeout_is_typed_and_not_retried() -> None:
+    attempts = 0
+    request_timeouts: list[dict[str, float]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        request_timeouts.append(request.extensions["timeout"])
+        raise httpx.ReadTimeout("local inference exceeded deadline", request=request)
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport) as http_client:
+        client = HermesClient(
+            base_url="http://127.0.0.1:11434/v1",
+            request_timeout_s=725,
+            http_client=http_client,
+        )
+        with pytest.raises(ProviderError, match="725 seconds") as exc_info:
+            await client.complete(
+                ClientCall(messages=[{"role": "user", "content": "hi"}])
+            )
+
+    assert attempts == 1
+    assert exc_info.value.status is None
+    assert exc_info.value.body is None
+    assert isinstance(exc_info.value.__cause__, httpx.ReadTimeout)
+    assert request_timeouts == [
+        {"connect": 725.0, "read": 725.0, "write": 725.0, "pool": 725.0}
+    ]
+
+
+@pytest.mark.asyncio
+async def test_hermes_partial_json_is_a_failed_call_not_partial_output() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, content=b'{"choices":[{"message":{"content":"partial'
+        )
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport) as http_client:
+        client = HermesClient(
+            base_url="http://127.0.0.1:11434/v1",
+            http_client=http_client,
+        )
+        with pytest.raises(ProviderError, match="not valid JSON") as exc_info:
+            await client.complete(
+                ClientCall(messages=[{"role": "user", "content": "hi"}])
+            )
+
+    assert exc_info.value.status == 200
+    assert exc_info.value.body == '{"choices":[{"message":{"content":"partial'
+
+
 def test_hermes_requires_base_url() -> None:
     saved = os.environ.pop("HERMES_BASE_URL", None)
     try:
@@ -850,10 +960,16 @@ def test_make_client_returns_correct_subclass() -> None:
         cerebras = make_client("cerebras")
         anthropic = make_client("anthropic")
         hermes = make_client("hermes")
+        configured_hermes = make_client(
+            "hermes",
+            hermes_request_timeout_s=615,
+        )
         subscription = make_client("claude-subscription", model="claude-opus-4-8")
         assert isinstance(cerebras, CerebrasClient)
         assert isinstance(anthropic, AnthropicClient)
         assert isinstance(hermes, HermesClient)
+        assert isinstance(configured_hermes, HermesClient)
+        assert configured_hermes.request_timeout_s == 615.0
         assert isinstance(subscription, ClaudeSubscriptionClient)
         assert isinstance(cerebras, BaseClient)
     finally:

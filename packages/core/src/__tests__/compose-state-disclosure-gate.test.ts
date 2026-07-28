@@ -68,6 +68,10 @@ describe("composeState owner-exclusive providers", () => {
 
 		expect(get).not.toHaveBeenCalled();
 		expect(state.text).not.toContain("PRIVATE_PROVIDER_CANARY");
+		// Denial UX: the suppression is explicit in the composed state, so the
+		// model can say the surface is unavailable instead of ignoring it.
+		expect(state.text).toContain("Owner-private access notice");
+		expect(state.text).toContain("missing_attestation");
 	});
 
 	it("never caches sensitive state and revalidates the same message", async () => {
@@ -94,5 +98,7 @@ describe("composeState owner-exclusive providers", () => {
 		const second = await runtime.composeState(turn, ["PRIVATE"], true, true);
 		expect(second.text).not.toContain("PRIVATE_PROVIDER_CANARY");
 		expect(get).toHaveBeenCalledTimes(1);
+		expect(second.text).toContain("Owner-private access notice");
+		expect(second.text).toContain("audience_changed");
 	});
 });

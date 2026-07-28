@@ -4,13 +4,19 @@
  * cannot be misspelled or silently skipped.
  */
 
+import { createHash } from "node:crypto";
 import type { IAgentRuntime } from "@elizaos/core";
 import {
   FINAL_CHECK_KEYS,
   type ScenarioContext,
   type ScenarioFinalCheck,
 } from "@elizaos/scenario-runner/schema";
-import type { FinalCheckReport, FinalCheckStatus } from "../types.ts";
+import type {
+  FinalCheckReport,
+  FinalCheckStatus,
+  ScenarioEvidenceObservation,
+  ScenarioEvidenceReport,
+} from "../types.ts";
 import { isLoopbackUrl, toRecord } from "../utils.js";
 
 export type FinalCheckRuntime = {
@@ -26,6 +32,9 @@ const MODEL_CALL_OCCURRED_POLL_INTERVAL_MS = 50;
 export interface FinalCheckHandlerContext {
   runtime: FinalCheckRuntime;
   ctx: ScenarioContext;
+  trustedEvidence?: ScenarioEvidenceReport;
+  scenarioStartedAtIso?: string;
+  scenarioEndedAtIso?: string;
 }
 
 type FinalCheckOutcome =
@@ -1113,9 +1122,218 @@ function actionCallSummary(
   }).slice(0, 500);
 }
 
+type TrustedObservationCheck = {
+  type:
+    | "durableApprovalObserved"
+    | "durableDraftObserved"
+    | "providerEffectObserved"
+    | "providerNoEffectObserved"
+    | "scheduledTaskObserved";
+  observerId?: string | string[];
+  provider?: string | string[];
+  accountId?: string | string[];
+  operation?: string | string[];
+  resourceId?: string | string[];
+  state?: string | string[];
+  minCount?: number;
+  intervalCoversScenario?: boolean;
+};
+
+const TRUSTED_OBSERVATION_KIND_BY_CHECK: Record<
+  TrustedObservationCheck["type"],
+  ScenarioEvidenceObservation["kind"]
+> = {
+  durableApprovalObserved: "durable-approval",
+  durableDraftObserved: "durable-draft",
+  providerEffectObserved: "provider-effect",
+  providerNoEffectObserved: "provider-no-effect",
+  scheduledTaskObserved: "scheduled-task",
+};
+
+function sha256Identity(value: string): string {
+  return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
+function matchesStringFilter(
+  actual: string | undefined,
+  expected: string | string[] | undefined,
+): boolean {
+  return (
+    expected === undefined ||
+    (typeof actual === "string" && toArray(expected).includes(actual))
+  );
+}
+
+function observationProvider(observation: ScenarioEvidenceObservation): string {
+  return "provider" in observation
+    ? observation.provider
+    : observation.source.system;
+}
+
+function observationOperation(
+  observation: ScenarioEvidenceObservation,
+): string | undefined {
+  if ("operation" in observation) {
+    return observation.operation;
+  }
+  if (observation.kind === "durable-approval") {
+    return observation.actionName;
+  }
+  return undefined;
+}
+
+function observationState(
+  observation: ScenarioEvidenceObservation,
+): string | undefined {
+  return "state" in observation ? observation.state : undefined;
+}
+
+function observationAccountHashes(
+  observation: ScenarioEvidenceObservation,
+): string[] {
+  const hashes = [
+    observation.source.accountRefSha256,
+    "accountRefSha256" in observation
+      ? observation.accountRefSha256
+      : undefined,
+  ];
+  return hashes.filter((value): value is string => typeof value === "string");
+}
+
+function observationResourceHashes(
+  observation: ScenarioEvidenceObservation,
+): string[] {
+  const hashes: Array<string | undefined> = [observation.source.recordIdSha256];
+  if (observation.kind === "durable-approval") {
+    hashes.push(observation.approvalIdSha256);
+  } else if (observation.kind === "durable-draft") {
+    hashes.push(observation.draftIdSha256);
+  } else if (observation.kind === "provider-effect") {
+    hashes.push(observation.providerReceiptIdSha256);
+  } else if (observation.kind === "provider-no-effect") {
+    hashes.push(observation.scopeSha256);
+  } else {
+    hashes.push(observation.taskIdSha256);
+  }
+  return hashes.filter((value): value is string => typeof value === "string");
+}
+
+function matchesHashedFilter(
+  actualHashes: readonly string[],
+  expected: string | string[] | undefined,
+): boolean {
+  if (expected === undefined) {
+    return true;
+  }
+  return toArray(expected).some((value) =>
+    actualHashes.includes(sha256Identity(value)),
+  );
+}
+
+function observationCoversScenario(
+  observation: ScenarioEvidenceObservation,
+  startedAtIso: string | undefined,
+  endedAtIso: string | undefined,
+): boolean {
+  if (
+    observation.kind !== "provider-no-effect" ||
+    !startedAtIso ||
+    !endedAtIso
+  ) {
+    return false;
+  }
+  return (
+    Date.parse(observation.observationStartedAtIso) <=
+      Date.parse(startedAtIso) &&
+    Date.parse(observation.observationEndedAtIso) >= Date.parse(endedAtIso)
+  );
+}
+
+function runTrustedObservationCheck(
+  check: TrustedObservationCheck,
+  handlerCtx: FinalCheckHandlerContext,
+): FinalCheckOutcome {
+  const evidence = handlerCtx.trustedEvidence;
+  if (evidence?.executionProfile !== "provider-qualified") {
+    return {
+      status: "skipped",
+      detail:
+        "trusted observer evidence is unavailable; action results and model prose are not accepted as substitutes",
+    };
+  }
+  const expectedKind = TRUSTED_OBSERVATION_KIND_BY_CHECK[check.type];
+  const matches = evidence.observations.filter((observation) => {
+    if (observation.kind !== expectedKind) {
+      return false;
+    }
+    if (!matchesStringFilter(observation.observerId, check.observerId)) {
+      return false;
+    }
+    if (
+      !matchesStringFilter(observationProvider(observation), check.provider)
+    ) {
+      return false;
+    }
+    if (
+      !matchesStringFilter(observationOperation(observation), check.operation)
+    ) {
+      return false;
+    }
+    if (!matchesStringFilter(observationState(observation), check.state)) {
+      return false;
+    }
+    if (
+      !matchesHashedFilter(
+        observationAccountHashes(observation),
+        check.accountId,
+      )
+    ) {
+      return false;
+    }
+    if (
+      !matchesHashedFilter(
+        observationResourceHashes(observation),
+        check.resourceId,
+      )
+    ) {
+      return false;
+    }
+    return (
+      check.type !== "providerNoEffectObserved" ||
+      check.intervalCoversScenario === false ||
+      observationCoversScenario(
+        observation,
+        handlerCtx.scenarioStartedAtIso,
+        handlerCtx.scenarioEndedAtIso,
+      )
+    );
+  });
+  const minimum = Math.max(1, check.minCount ?? 1);
+  return matches.length >= minimum
+    ? {
+        status: "passed",
+        detail: `${matches.length} independently observed ${expectedKind} record(s) matched`,
+      }
+    : {
+        status: "failed",
+        detail: `expected at least ${minimum} independently observed ${expectedKind} record(s), saw ${matches.length}`,
+      };
+}
+
 // ---------------------------------------------------------------------------
 // Built-in handlers
 // ---------------------------------------------------------------------------
+
+for (const type of Object.keys(
+  TRUSTED_OBSERVATION_KIND_BY_CHECK,
+) as TrustedObservationCheck["type"][]) {
+  registerFinalCheckHandler(type, (check, handlerCtx) =>
+    runTrustedObservationCheck(
+      check as unknown as TrustedObservationCheck,
+      handlerCtx,
+    ),
+  );
+}
 
 registerFinalCheckHandler("custom", async (check, { runtime, ctx }) => {
   const { predicate } = check as { predicate?: unknown };

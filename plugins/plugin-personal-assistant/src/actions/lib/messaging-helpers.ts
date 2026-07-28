@@ -7,7 +7,11 @@
  * whose payload action is still "send_message".
  */
 
-import type { ActionResult, IAgentRuntime } from "@elizaos/core";
+import {
+  type ActionResult,
+  type IAgentRuntime,
+  requireConfirmedSendHandlerDelivery,
+} from "@elizaos/core";
 import {
   readTwilioCredentialsFromEnv,
   sendTwilioSms,
@@ -76,19 +80,25 @@ export async function dispatchCrossChannelSend(
             });
             return ok(channel, target, body);
           } catch {
+            // error-policy:J4 an unavailable legacy LifeOps sender falls
+            // through to the canonical runtime connector.
             // Fall through to the runtime connector path. Test and desktop
             // runtimes often expose Telegram through sendMessageToTarget rather
             // than LifeOpsService credentials.
           }
         }
-        await args.runtime.sendMessageToTarget(
-          { source: "telegram", channelId: target } as Parameters<
-            typeof args.runtime.sendMessageToTarget
-          >[0],
-          { text: body, source: "telegram" },
+        requireConfirmedSendHandlerDelivery(
+          await args.runtime.sendMessageToTarget(
+            { source: "telegram", channelId: target } as Parameters<
+              typeof args.runtime.sendMessageToTarget
+            >[0],
+            { text: body, source: "telegram" },
+          ),
         );
         return ok(channel, target, body);
       } catch (error) {
+        // error-policy:J1 action delivery boundary returns an explicit failed
+        // dispatch instead of narrating an unconfirmed send.
         return fail(
           channel,
           target,
@@ -99,14 +109,18 @@ export async function dispatchCrossChannelSend(
     }
     case "discord": {
       try {
-        await args.runtime.sendMessageToTarget(
-          { source: "discord", channelId: target } as Parameters<
-            typeof args.runtime.sendMessageToTarget
-          >[0],
-          { text: body, source: "discord" },
+        requireConfirmedSendHandlerDelivery(
+          await args.runtime.sendMessageToTarget(
+            { source: "discord", channelId: target } as Parameters<
+              typeof args.runtime.sendMessageToTarget
+            >[0],
+            { text: body, source: "discord" },
+          ),
         );
         return ok(channel, target, body);
       } catch (error) {
+        // error-policy:J1 action delivery boundary returns an explicit failed
+        // dispatch instead of narrating an unconfirmed send.
         return fail(
           channel,
           target,

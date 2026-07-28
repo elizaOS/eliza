@@ -13,6 +13,7 @@ import {
   type DispatchSensitiveRequest,
   defaultSensitiveRequestPolicy,
   resolveSensitiveRequestDelivery,
+  type SendHandlerOutcome,
   type TargetInfo,
 } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
@@ -32,7 +33,7 @@ function makeRuntime(): {
     sendMessageToTarget: (
       target: TargetInfo,
       content: Content,
-    ) => Promise<void>;
+    ) => Promise<SendHandlerOutcome>;
   };
   calls: CapturedSend[];
 } {
@@ -43,6 +44,15 @@ function makeRuntime(): {
         target,
         content: content as CapturedSend["content"],
       });
+      return {
+        kind: "delivered",
+        receipt: {
+          providerMessageIds: ["owner-app-message-1"],
+          acceptedAt: 1_780_000_000_000,
+          persistence: { status: "persisted", memoryIds: [] },
+        },
+        memories: [],
+      } satisfies SendHandlerOutcome;
     },
   );
   return { runtime: { sendMessageToTarget }, calls };
@@ -401,5 +411,15 @@ describe("ownerAppInlineSensitiveRequestAdapter", () => {
     expect(result.delivered).toBe(false);
     expect(result.error).toContain("dispatch failed");
     expect(result.error).toContain("transport down");
+  });
+
+  it("does not claim delivery when the runtime returns no evidence", async () => {
+    const result = await ownerAppInlineSensitiveRequestAdapter.deliver({
+      request: makeOwnerAppPrivateRequest(),
+      channelId: "ch_owner_app",
+      runtime: { sendMessageToTarget: vi.fn(async () => undefined) },
+    });
+    expect(result.delivered).toBe(false);
+    expect(result.error).toContain("no delivery evidence");
   });
 });

@@ -71,18 +71,12 @@ export function createAnchorRegistry(): AnchorRegistry {
 
 function todayIsoWithLocalHHMM(
   nowIso: string,
-  hhmm: string,
+  hhmm: string | undefined,
   tz: string,
 ): { atIso: string } | null {
-  try {
-    const atIso = resolveLocalHHMMToIso(new Date(nowIso), hhmm, tz);
-    return atIso ? { atIso } : null;
-  } catch {
-    // error-policy:J3 owner-provided timezone data yields an explicit invalid anchor.
-    return null;
-  }
+  const atIso = resolveLocalHHMMToIso(new Date(nowIso), hhmm, tz);
+  return atIso === null ? null : { atIso };
 }
-
 const fallbackWakeConfirmedAnchor: AnchorContribution = {
   anchorKey: "wake.confirmed",
   describe: {
@@ -92,7 +86,6 @@ const fallbackWakeConfirmedAnchor: AnchorContribution = {
   resolve(context) {
     const tz = context.ownerFacts.timezone ?? "UTC";
     const start = context.ownerFacts.morningWindow?.start;
-    if (!start) return null;
     return todayIsoWithLocalHHMM(context.nowIso, start, tz);
   },
 };

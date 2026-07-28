@@ -62,6 +62,7 @@ function makeCompactorLikeAction(): Action {
 function makeRuntime(action: Action): IAgentRuntime {
 	return {
 		actions: [action],
+		getRoom: vi.fn(async () => null),
 		logger: { debug: vi.fn(), warn: vi.fn(), error: vi.fn() },
 		// A STREAMING TEXT_LARGE model: it pushes the intermediate ledger into
 		// whatever streaming context is active during the call.

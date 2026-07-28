@@ -22,11 +22,13 @@ import type {
   HandlerCallback,
   IAgentRuntime,
   Memory,
+  SendHandlerResult,
   UUID,
 } from "@elizaos/core";
 import {
-  isSendHandlerOutcome,
+  inspectSendHandlerResult,
   MESSAGE_SOURCE_SUB_AGENT,
+  requireConfirmedSendHandlerDelivery,
   Service,
   ServiceType,
 } from "@elizaos/core";
@@ -83,7 +85,7 @@ type RuntimeWithSendTarget = IAgentRuntime & {
   sendMessageToTarget?: (
     target: { source: string; roomId?: UUID; accountId?: string },
     content: Content,
-  ) => Promise<Memory | undefined>;
+  ) => SendHandlerResult;
 };
 
 const ACPX_ROUTER_SOURCE = MESSAGE_SOURCE_SUB_AGENT;
@@ -1807,17 +1809,21 @@ export class SubAgentRouter extends Service {
     const body = stripSubAgentHeaderLine(text).trim() || text.trim();
     const originReplyTarget =
       origin.parentConnectorMessageId ?? origin.parentMessageId;
-    await sendToTarget(
-      { source: origin.source, roomId: origin.roomId },
-      {
-        text: `❓ [${origin.label}] ${body}`,
-        // Same source the router stamps on its posts: the mid-task forward
-        // handler skips it (echo-loop guard), so the question is never fed
-        // back into the asking session as a prompt.
-        source: ACPX_ROUTER_SOURCE,
-        ...(originReplyTarget ? { inReplyTo: originReplyTarget } : {}),
-      },
-    ).catch((err) => {
+    try {
+      requireConfirmedSendHandlerDelivery(
+        await sendToTarget(
+          { source: origin.source, roomId: origin.roomId },
+          {
+            text: `❓ [${origin.label}] ${body}`,
+            // Same source the router stamps on its posts: the mid-task forward
+            // handler skips it (echo-loop guard), so the question is never fed
+            // back into the asking session as a prompt.
+            source: ACPX_ROUTER_SOURCE,
+            ...(originReplyTarget ? { inReplyTo: originReplyTarget } : {}),
+          },
+        ),
+      );
+    } catch (err) {
       // error-policy:J1 question-delivery boundary; the failure is warned and
       // the task-room planner turn remains the surviving leg.
       this.log("warn", "sub-agent question delivery to origin room failed", {
@@ -1826,7 +1832,7 @@ export class SubAgentRouter extends Service {
         roomId: origin.roomId,
         error: err instanceof Error ? err.message : String(err),
       });
-    });
+    }
   }
 
   private buildReplyCallback(
@@ -1872,14 +1878,35 @@ export class SubAgentRouter extends Service {
         return undefined;
       });
       if (!delivered) return [];
-      // Structural outcomes carry a persisted Memory only on a delivered
-      // receipt; duplicate/not_delivered outcomes report zero deliveries.
-      if (isSendHandlerOutcome(delivered)) {
-        return delivered.kind === "delivered" && delivered.memory
-          ? [delivered.memory]
-          : [];
+      const disposition = inspectSendHandlerResult(delivered);
+      if (disposition.kind !== "delivered") {
+        this.runtime.reportError(
+          "SubAgentRouter.replyDelivery",
+          new Error(disposition.message),
+          { sessionId, source, roomId: origin.roomId },
+        );
+        return [];
       }
-      return [delivered];
+      if (
+        disposition.receipt &&
+        (disposition.receipt.persistence.status === "partial" ||
+          disposition.receipt.persistence.status === "failed")
+      ) {
+        this.runtime.reportError(
+          "SubAgentRouter.replyPersistence",
+          new Error(
+            `Provider delivery was accepted, but local evidence is ${disposition.receipt.persistence.status}.`,
+          ),
+          {
+            sessionId,
+            source,
+            roomId: origin.roomId,
+            providerMessageIds: disposition.receipt.providerMessageIds,
+          },
+        );
+        return [];
+      }
+      return [...disposition.memories];
     };
   }
 

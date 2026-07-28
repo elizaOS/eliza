@@ -34,6 +34,7 @@ const RESOURCE_CAPACITY_SUBACTIONS = [
   "evaluate_plan",
   "propose_plan",
   "read_proposal",
+  "cancel_proposal",
 ] as const;
 type ResourceCapacitySubaction = (typeof RESOURCE_CAPACITY_SUBACTIONS)[number];
 
@@ -72,6 +73,13 @@ const SUBACTIONS: SubactionsMap<ResourceCapacitySubaction> = {
       "Read the exact proposal, review states, and explicit no-effect flags.",
     descriptionCompressed: "read proposal-only capacity review state",
     required: ["proposalId"],
+  },
+  cancel_proposal: {
+    description:
+      "Cancel a pending proposal review, release its proposal-only resource hold, expire outstanding reviews, and dismiss its shared expiry watcher.",
+    descriptionCompressed:
+      "cancel pending proposal review and release proposal-only hold",
+    required: ["proposalId", "reason"],
   },
 };
 
@@ -243,7 +251,13 @@ export function createResourceCapacityAction(
       {
         name: "proposalId",
         description: "Persisted resource-capacity proposal ID.",
-        subactions: ["read_proposal"],
+        subactions: ["read_proposal", "cancel_proposal"],
+        schema: { type: "string", minLength: 1 },
+      },
+      {
+        name: "reason",
+        description: "Owner-visible reason for cancelling the proposal.",
+        subactions: ["cancel_proposal"],
         schema: { type: "string", minLength: 1 },
       },
     ],
@@ -450,12 +464,47 @@ export function createResourceCapacityAction(
           }),
         );
       }
+      const proposalId = requireCapacityText(
+        resolved.params.proposalId,
+        "proposalId",
+      );
+      if (resolved.subaction === "cancel_proposal") {
+        const proposal = await service.cancelProposal({
+          principalEntityId: SELF_ENTITY_ID,
+          proposalId,
+          reason: requireCapacityText(resolved.params.reason, "reason", 2_000),
+        });
+        const operation = "lifeops.resource_capacity_proposal.cancel";
+        const observedAt = new Date().toISOString();
+        return completeLifeOpsEffect(
+          callback,
+          {
+            success: true,
+            text: "The capacity proposal was cancelled; its proposal-only resource hold and shared review watcher were retired.",
+            data: { proposal },
+          },
+          lifeOpsAppliedEffect({
+            receiptId: receiptId(message, operation, proposalId),
+            operation,
+            resource: {
+              kind: "lifeops.resource_capacity_proposal",
+              id: proposalId,
+              version: String(proposal.proposal.version),
+            },
+            artifacts: [],
+            idempotency: { key: proposalId, replayed: proposal.replayed },
+            observedAt,
+            commit: {
+              kind: "durable",
+              id: `cancelled:${proposalId}`,
+              committedAt: observedAt,
+            },
+          }),
+        );
+      }
       const proposal = await service.readProposal({
         principalEntityId: SELF_ENTITY_ID,
-        proposalId: requireCapacityText(
-          resolved.params.proposalId,
-          "proposalId",
-        ),
+        proposalId,
       });
       const operation = "lifeops.resource_capacity_proposal.read";
       const observedAt = new Date().toISOString();

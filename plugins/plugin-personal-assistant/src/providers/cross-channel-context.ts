@@ -24,7 +24,6 @@ import type {
   State,
   UUID,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
 import {
   CROSS_CHANNEL_SEARCH_CHANNELS,
   type CrossChannelSearchChannel,
@@ -204,6 +203,12 @@ export const crossChannelContextProvider: Provider = {
     message: Memory,
     state: State | undefined,
   ): Promise<ProviderResult> {
+    // Signal check first: it is a pure state read, so no-signal turns (the
+    // overwhelming majority) skip the owner-role database lookup entirely.
+    const request = pickRequestFromState(state);
+    if (!request) {
+      return EMPTY;
+    }
     if (!(await hasOwnerAccess(runtime, message))) {
       return EMPTY;
     }
@@ -212,11 +217,6 @@ export const crossChannelContextProvider: Provider = {
       agentId: runtime.agentId,
       entityId: message.entityId,
     });
-
-    const request = pickRequestFromState(state);
-    if (!request) {
-      return EMPTY;
-    }
 
     const personRef = (() => {
       if (request.primaryEntityId) {
@@ -301,12 +301,20 @@ export const crossChannelContextProvider: Provider = {
         },
       };
     } catch (err) {
-      logger.warn(
-        `[crossChannelContext] Skipped injection after error: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      );
-      return EMPTY;
+      // error-policy:J4 explicit degrade — the planner asked for this context
+      // (the provider only runs on an explicit signal), so a failed search
+      // returns a distinguishable "unavailable" result rather than the
+      // designed-empty crossChannelHits: 0, which would read as "no prior
+      // signal exists"; reportError surfaces the failure in RECENT_ERRORS.
+      runtime.reportError("cross-channel-context.provider", err, {
+        roomId: message.roomId,
+        entityId: message.entityId,
+      });
+      return {
+        text: "",
+        values: { crossChannelUnavailable: true },
+        data: { crossChannelError: true },
+      };
     }
   },
 };

@@ -8,7 +8,10 @@ import { ChannelType } from "../types";
 import {
 	attestAuthenticatedApiDeliveryAudience,
 	attestDeliveryAudienceFromCanonicalRoom,
+	disclosureGateFailure,
 	evaluateOwnerExclusiveDisclosure,
+	OWNER_EXCLUSIVE_DISCLOSURE_GATE,
+	ownerExclusiveSuppressionNote,
 	revalidateOwnerExclusiveDisclosure,
 } from "./trusted-delivery-audience";
 
@@ -251,6 +254,98 @@ describe("trusted delivery audience", () => {
 			allowed: false,
 			reason: "participant_mismatch",
 		});
+	});
+
+	it.each([
+		{
+			name: "SELF room, agent actor",
+			type: ChannelType.SELF,
+			actor: AGENT,
+			participants: [AGENT],
+		},
+		{
+			name: "AUTONOMOUS room, owner actor",
+			type: ChannelType.AUTONOMOUS,
+			actor: OWNER,
+			participants: [OWNER, AGENT],
+		},
+		{
+			// The real autonomy-service shape: turns are posted under a dedicated
+			// synthetic entity that the runtime registered as a room participant.
+			name: "SELF room, registered autonomy-entity actor",
+			type: ChannelType.SELF,
+			actor: GUEST,
+			participants: [AGENT, GUEST],
+		},
+	] as const)(
+		"allows the agent-internal turn: $name",
+		async ({ type, actor, participants }) => {
+			const { runtime, setParticipants } = harness(type);
+			setParticipants([...participants]);
+			const turn = message({ entityId: actor });
+			await attestDeliveryAudienceFromCanonicalRoom(runtime, turn);
+			expect(evaluateOwnerExclusiveDisclosure(turn)).toMatchObject({
+				allowed: true,
+				basis: "internal_agent_turn",
+			});
+			expect(
+				await revalidateOwnerExclusiveDisclosure(runtime, turn),
+			).toMatchObject({ allowed: true, basis: "internal_agent_turn" });
+		},
+	);
+
+	it("keeps denying internal rooms for an actor the runtime never registered", async () => {
+		const { runtime, setParticipants } = harness(ChannelType.SELF);
+		setParticipants([AGENT]);
+		const turn = message({ entityId: GUEST });
+		await attestDeliveryAudienceFromCanonicalRoom(runtime, turn);
+		expect(evaluateOwnerExclusiveDisclosure(turn)).toMatchObject({
+			allowed: false,
+			reason: "destination_not_private",
+		});
+	});
+
+	it("labels owner-DM allows with the destination basis", async () => {
+		const { runtime } = harness();
+		const turn = message();
+		await attestDeliveryAudienceFromCanonicalRoom(runtime, turn);
+		expect(evaluateOwnerExclusiveDisclosure(turn)).toMatchObject({
+			allowed: true,
+			basis: "owner_private_destination",
+		});
+	});
+
+	it("records gate suppressions and surfaces one model-visible note", async () => {
+		const { runtime } = harness(ChannelType.GROUP);
+		const turn = message();
+		expect(ownerExclusiveSuppressionNote(turn)).toBeUndefined();
+
+		// Unattested turn: the gate denies and the denial is recorded.
+		expect(
+			disclosureGateFailure(OWNER_EXCLUSIVE_DISCLOSURE_GATE, turn),
+		).toContain("missing_attestation");
+		// Attested group turn: still denied, second reason accumulates.
+		await attestDeliveryAudienceFromCanonicalRoom(runtime, turn);
+		expect(
+			disclosureGateFailure(OWNER_EXCLUSIVE_DISCLOSURE_GATE, turn),
+		).toContain("destination_not_private");
+
+		const note = ownerExclusiveSuppressionNote(turn);
+		expect(note).toContain("Owner-private");
+		expect(note).toContain("destination_not_private");
+		expect(note).toContain("missing_attestation");
+		// The note rides ordinary in-process spreads, like the binding itself.
+		expect(ownerExclusiveSuppressionNote({ ...turn })).toBe(note);
+	});
+
+	it("does not record a suppression for an allowed turn", async () => {
+		const { runtime } = harness();
+		const turn = message();
+		await attestDeliveryAudienceFromCanonicalRoom(runtime, turn);
+		expect(
+			disclosureGateFailure(OWNER_EXCLUSIVE_DISCLOSURE_GATE, turn),
+		).toBeUndefined();
+		expect(ownerExclusiveSuppressionNote(turn)).toBeUndefined();
 	});
 
 	it("fails closed and reports canonical lookup failures", async () => {

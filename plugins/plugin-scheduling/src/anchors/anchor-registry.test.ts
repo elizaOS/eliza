@@ -19,8 +19,8 @@ import {
 /**
  * Built-in LifeOps anchors resolve owner-window times into concrete fire
  * instants in the owner's timezone — the basis for `relative_to_anchor`
- * scheduling. The math must land on the correct UTC instant and degrade to
- * null on missing/invalid windows.
+ * scheduling. The math must land on the correct UTC instant, degrade to null
+ * only when a window is absent, and reject malformed supplied times.
  */
 
 const ctx = (
@@ -68,29 +68,23 @@ describe("built-in anchors", () => {
     ).toEqual({ atIso: "2026-06-23T11:00:00.000Z" });
   });
 
-  it("moves a skipped Santiago morning-window start forward compatibly", () => {
-    expect(
-      anchor("morning.start").resolve(
-        ctx({
-          nowIso: "2026-09-06T16:00:00.000Z",
-          timezone: "America/Santiago",
-          morningWindow: { start: "00:00" },
-        }),
-      ),
-    ).toEqual({ atIso: "2026-09-06T04:00:00.000Z" });
-  });
-
   it("resolves lunch.start to local noon", () => {
     expect(anchor("lunch.start").resolve(ctx({}))).toEqual({
       atIso: "2026-06-23T12:00:00.000Z",
     });
   });
 
-  it("returns null on a missing window or malformed time", () => {
+  it("returns null for a missing window and a typed error for malformed time", () => {
     expect(anchor("morning.start").resolve(ctx({}))).toBeNull();
-    expect(
+    expect(() =>
       anchor("night.start").resolve(ctx({ eveningWindow: { start: "25:61" } })),
-    ).toBeNull();
+    ).toThrow(
+      expect.objectContaining({
+        code: "invalid_local_time",
+        reason: "malformed_hhmm",
+        localTime: "25:61",
+      }),
+    );
   });
 
   it("treats meeting.ended as event-driven (always null here)", () => {

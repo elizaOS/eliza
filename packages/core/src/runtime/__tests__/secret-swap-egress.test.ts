@@ -17,6 +17,7 @@ import { executePlannedToolCall } from "../execute-planned-tool-call";
 function makeRuntime(actions: Action[]): IAgentRuntime {
 	return {
 		actions,
+		getRoom: vi.fn(async () => null),
 		logger: { debug: vi.fn(), warn: vi.fn(), error: vi.fn() },
 	} as unknown as IAgentRuntime;
 }

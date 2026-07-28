@@ -4,7 +4,14 @@
  * Telegram, X, Calendly) and forwards read/send calls, so LifeOps holds no
  * connector transport of its own and never depends on connector internals.
  */
-import type { Content, IAgentRuntime, Memory, TargetInfo } from "@elizaos/core";
+import {
+  type Content,
+  type IAgentRuntime,
+  type Memory,
+  requireConfirmedSendHandlerDelivery,
+  type SendHandlerResult,
+  type TargetInfo,
+} from "@elizaos/core";
 import type {
   CalendlyAvailabilityNormalized as CalendlyAvailability,
   CalendlyScheduledEventNormalized as CalendlyScheduledEvent,
@@ -187,7 +194,7 @@ type XRuntimeServiceLike = {
     runtime: IAgentRuntime,
     target: TargetInfo,
     content: Content,
-  ) => Promise<unknown>;
+  ) => SendHandlerResult;
   fetchConnectorMessages?: (
     context: ConnectorQueryContext,
     params: Record<string, unknown>,
@@ -322,17 +329,25 @@ export async function sendXDirectMessageWithRuntimeService(args: {
     );
   }
   try {
-    await handleSendMessage(args.runtime, target, {
-      text: args.text,
-      source: "lifeops",
-      metadata: { accountId },
-    } as Content);
+    const delivery = requireConfirmedSendHandlerDelivery(
+      await handleSendMessage(args.runtime, target, {
+        text: args.text,
+        source: "lifeops",
+        metadata: { accountId },
+      } as Content),
+    );
     return {
       status: "handled",
       accountId,
-      value: { ok: true, status: 201, externalId: null },
+      value: {
+        ok: true,
+        status: 201,
+        externalId: delivery.providerMessageId ?? null,
+      },
     };
   } catch (error) {
+    // error-policy:J1 connector-service boundary refuses to translate an
+    // unconfirmed structural outcome into `{ ok: true }`.
     return unavailable("X runtime service handleSendMessage failed.", error);
   }
 }
@@ -888,7 +903,7 @@ type ConnectorMessageRuntimeServiceLike = {
     runtime: IAgentRuntime,
     target: TargetInfo,
     content: Content,
-  ) => Promise<unknown>;
+  ) => SendHandlerResult;
   fetchConnectorMessages?: (
     context: ConnectorQueryContext,
     params: Record<string, unknown>,
@@ -991,13 +1006,17 @@ export async function sendDiscordMessageWithRuntimeService(args: {
     channelId: args.channelId,
   });
   try {
-    await service.handleSendMessage(args.runtime, target, {
-      text: args.text,
-      source: "lifeops",
-      metadata: { accountId },
-    } as Content);
+    requireConfirmedSendHandlerDelivery(
+      await service.handleSendMessage(args.runtime, target, {
+        text: args.text,
+        source: "lifeops",
+        metadata: { accountId },
+      } as Content),
+    );
     return { status: "handled", accountId, value: { ok: true } };
   } catch (error) {
+    // error-policy:J1 connector-service boundary refuses to translate an
+    // unconfirmed structural outcome into `{ ok: true }`.
     return unavailable(
       "Discord runtime service handleSendMessage failed.",
       error,
@@ -1060,13 +1079,17 @@ export async function sendTelegramMessageWithRuntimeService(args: {
     channelId: args.target,
   });
   try {
-    await service.handleSendMessage(args.runtime, target, {
-      text: args.message,
-      source: "lifeops",
-      metadata: { accountId },
-    } as Content);
+    requireConfirmedSendHandlerDelivery(
+      await service.handleSendMessage(args.runtime, target, {
+        text: args.message,
+        source: "lifeops",
+        metadata: { accountId },
+      } as Content),
+    );
     return { status: "handled", accountId, value: { ok: true } };
   } catch (error) {
+    // error-policy:J1 connector-service boundary refuses to translate an
+    // unconfirmed structural outcome into `{ ok: true }`.
     return unavailable(
       "Telegram runtime service handleSendMessage failed.",
       error,

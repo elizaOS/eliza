@@ -35,6 +35,10 @@ const AGENT_ID = "00000000-0000-0000-0000-0000000000a1" as UUID;
 const OWNER_ID = "00000000-0000-0000-0000-0000000000b1" as UUID;
 const STRANGER_ID = "00000000-0000-0000-0000-0000000000c1" as UUID;
 
+// Mirrors the canonical plugin-sql `approval_requests` DDL (schema/
+// approvalRequests.ts) including the nullable idempotency key + its partial
+// unique index — the queue INSERT writes every one of these columns, so a
+// stale copy here makes list/enqueue fail against a healthy-looking harness.
 const CREATE_APPROVAL_REQUESTS_TABLE = `CREATE TABLE approval_requests (
   id uuid PRIMARY KEY NOT NULL,
   state text NOT NULL,
@@ -44,6 +48,7 @@ const CREATE_APPROVAL_REQUESTS_TABLE = `CREATE TABLE approval_requests (
   payload jsonb NOT NULL,
   channel text NOT NULL,
   reason text NOT NULL,
+  idempotency_key text,
   expires_at timestamp with time zone NOT NULL,
   resolved_at timestamp with time zone,
   resolved_by text,
@@ -52,6 +57,10 @@ const CREATE_APPROVAL_REQUESTS_TABLE = `CREATE TABLE approval_requests (
   created_at timestamp with time zone NOT NULL,
   updated_at timestamp with time zone NOT NULL
 )`;
+
+const CREATE_APPROVAL_IDEMPOTENCY_INDEX = `CREATE UNIQUE INDEX approval_requests_agent_idempotency_uidx
+  ON approval_requests (agent_id, idempotency_key)
+  WHERE idempotency_key IS NOT NULL`;
 
 let pg: PGlite;
 let queue: ApprovalQueue;
@@ -95,10 +104,25 @@ beforeAll(async () => {
   pg = new PGlite();
   const db = drizzle(pg);
   await db.execute(sql.raw(CREATE_APPROVAL_REQUESTS_TABLE));
+  await db.execute(sql.raw(CREATE_APPROVAL_IDEMPOTENCY_INDEX));
+  // Minimal recording stand-in for the scheduled-task runner side-channel:
+  // enqueue surfaces every approval as a ScheduledTask and rolls the row back
+  // when that fails, so the harness must accept the schedule call — but the
+  // queue SQL and provider under test stay fully real.
+  const scheduledTaskRunnerService = {
+    getRunner: () => ({
+      schedule: async (input: { idempotencyKey?: string }) => ({
+        taskId: input.idempotencyKey ?? `task-${crypto.randomUUID()}`,
+      }),
+    }),
+  };
   runtime = {
     agentId: AGENT_ID,
     adapter: { db },
-    getService: () => null,
+    getService: (type: string) =>
+      type === "lifeops_scheduled_task_runner"
+        ? scheduledTaskRunnerService
+        : null,
     reportError: vi.fn(),
   } as unknown as IAgentRuntime;
   queue = createApprovalQueue(runtime, { agentId: AGENT_ID });
@@ -193,5 +217,28 @@ describe("pendingApprovals provider (real PGlite queue)", () => {
       emptyState,
     );
     expect(result.text).not.toContain("Other Owner Doc");
+  });
+
+  it("degrades a queue-read failure to a distinguishable unavailable state, never a fabricated empty queue", async () => {
+    await pg.query("DROP TABLE approval_requests");
+    try {
+      const result = await pendingApprovalsProvider.get(
+        runtime,
+        message(OWNER_ID, "anything waiting on me?"),
+        emptyState,
+      );
+      expect(result.values?.pendingApprovalsUnavailable).toBe(true);
+      expect(result.values?.pendingApprovalCount).toBeUndefined();
+      expect(result.data?.pendingApprovalsError).toBe(true);
+      expect(runtime.reportError).toHaveBeenCalledWith(
+        "pending-approvals.provider",
+        expect.anything(),
+        expect.objectContaining({ entityId: OWNER_ID }),
+      );
+    } finally {
+      const db = drizzle(pg);
+      await db.execute(sql.raw(CREATE_APPROVAL_REQUESTS_TABLE));
+      await db.execute(sql.raw(CREATE_APPROVAL_IDEMPOTENCY_INDEX));
+    }
   });
 });

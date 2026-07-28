@@ -11,6 +11,7 @@ import type {
 	IAgentRuntime,
 	Memory,
 	SendHandlerOutcome,
+	SendHandlerReceipt,
 	SendHandlerResult,
 } from "../../../types/index.ts";
 import { inferOp, messageAction } from "./message.ts";
@@ -391,6 +392,8 @@ describe("MESSAGE op=send owner-binding gate", () => {
 				return { id: "00000000-0000-0000-0000-0000000000ff" } as Memory;
 			},
 			createMemory: async () => undefined,
+			upsertMemory: async () => undefined,
+			reportError: () => undefined,
 		});
 		return { runtime, sent };
 	}
@@ -409,6 +412,7 @@ describe("MESSAGE op=send owner-binding gate", () => {
 				parameters: {
 					action: "send",
 					message: "hi",
+					persist: false,
 					target: {
 						source: "matrix",
 						accountId: "personal",
@@ -450,13 +454,26 @@ describe("MESSAGE op=send owner-binding gate", () => {
 
 describe("MESSAGE op=send delivery evidence", () => {
 	const recipient = "00000000-0000-0000-0000-0000000000dd";
+	const receipt = (
+		providerMessageIds: [string, ...string[]] = ["discord-message-123"],
+	): SendHandlerReceipt => ({
+		providerMessageIds,
+		acceptedAt: 1_780_000_000_000,
+		persistence: { status: "persisted", memoryIds: [] },
+	});
 
 	function runtimeForOutcome(outcome: Awaited<SendHandlerResult>): {
 		runtime: IAgentRuntime;
 		upsertMemory: ReturnType<typeof vi.fn>;
 		createMemory: ReturnType<typeof vi.fn>;
+		setOutboundPersistenceFailure: (error: Error) => void;
 	} {
-		const upsertMemory = vi.fn(async () => undefined);
+		let outboundPersistenceFailure: Error | undefined;
+		const upsertMemory = vi.fn(async () => {
+			if (outboundPersistenceFailure) {
+				throw outboundPersistenceFailure;
+			}
+		});
 		const createMemory = vi.fn(async () => undefined);
 		const runtime = createMockRuntime({
 			agentId: "00000000-0000-0000-0000-000000000001",
@@ -471,18 +488,39 @@ describe("MESSAGE op=send delivery evidence", () => {
 				},
 			],
 			sendMessageToTarget: async () => outcome,
+			ensureWorldExists: async () => undefined,
+			ensureRoomExists: async () => undefined,
+			ensureParticipantInRoom: async () => undefined,
 			upsertMemory,
 			createMemory,
 		});
-		return { runtime, upsertMemory, createMemory };
+		return {
+			runtime,
+			upsertMemory,
+			createMemory,
+			setOutboundPersistenceFailure: (error) => {
+				outboundPersistenceFailure = error;
+			},
+		};
 	}
 
-	async function sendWithOutcome(outcome: Awaited<SendHandlerResult>): Promise<{
+	async function sendWithOutcome(
+		outcome: Awaited<SendHandlerResult>,
+		options?: { outboundPersistenceFailure?: Error },
+	): Promise<{
 		result: ActionResult;
 		upsertMemory: ReturnType<typeof vi.fn>;
 		createMemory: ReturnType<typeof vi.fn>;
 	}> {
-		const { runtime, upsertMemory, createMemory } = runtimeForOutcome(outcome);
+		const {
+			runtime,
+			upsertMemory,
+			createMemory,
+			setOutboundPersistenceFailure,
+		} = runtimeForOutcome(outcome);
+		if (options?.outboundPersistenceFailure) {
+			setOutboundPersistenceFailure(options.outboundPersistenceFailure);
+		}
 		const result = await messageAction.handler(
 			runtime,
 			{
@@ -517,12 +555,6 @@ describe("MESSAGE op=send delivery evidence", () => {
 			outcome: { kind: "duplicate", priorDelivery: "in_flight" },
 			error: "MESSAGE_DELIVERY_IN_FLIGHT",
 			text: /not yet confirmed/i,
-		},
-		{
-			name: "committed duplicate without a replayable receipt",
-			outcome: { kind: "duplicate", priorDelivery: "delivered" },
-			error: "MESSAGE_DELIVERY_UNKNOWN",
-			text: /not provide enough receipt evidence/i,
 		},
 		{
 			name: "explicit connector refusal",
@@ -560,7 +592,7 @@ describe("MESSAGE op=send delivery evidence", () => {
 		const { result, upsertMemory, createMemory } = await sendWithOutcome({
 			kind: "duplicate",
 			priorDelivery: "delivered",
-			providerMessageId: "discord-message-123",
+			receipt: receipt(),
 		});
 		expect(result).toMatchObject({
 			success: true,
@@ -576,6 +608,92 @@ describe("MESSAGE op=send delivery evidence", () => {
 		expect(result.text).not.toContain("Message sent via");
 		expect(upsertMemory).not.toHaveBeenCalled();
 		expect(createMemory).not.toHaveBeenCalled();
+	});
+
+	it("exposes a provider-accepted prefix without claiming complete delivery", async () => {
+		const { result, upsertMemory, createMemory } = await sendWithOutcome({
+			kind: "partially_delivered",
+			receipt: receipt(["discord-chunk-1"]),
+			memories: [],
+			code: "DISCORD_PROVIDER_PARTIAL_DELIVERY",
+			message: "The second chunk failed.",
+		});
+		expect(result).toMatchObject({
+			success: false,
+			data: {
+				error: "MESSAGE_PARTIAL_DELIVERY",
+				acceptance: "partial",
+				responseMessageId: "discord-chunk-1",
+				providerMessageIds: ["discord-chunk-1"],
+				newDelivery: true,
+			},
+		});
+		expect(result.text).toMatch(/do not retry blindly/i);
+		expect(upsertMemory).not.toHaveBeenCalled();
+		expect(createMemory).not.toHaveBeenCalled();
+	});
+
+	it("reports provider acceptance when local persistence failed without resending", async () => {
+		const failedReceipt: SendHandlerReceipt = {
+			providerMessageIds: ["discord-message-accepted"],
+			acceptedAt: 1_780_000_000_000,
+			persistence: {
+				status: "failed",
+				failures: [
+					{
+						providerMessageId: "discord-message-accepted",
+						stage: "memory",
+						code: "PERSISTENCE_FAILED",
+						message: "database unavailable",
+					},
+				],
+			},
+		};
+		const { result, upsertMemory, createMemory } = await sendWithOutcome({
+			kind: "delivered",
+			receipt: failedReceipt,
+			memories: [],
+		});
+		expect(result).toMatchObject({
+			success: false,
+			data: {
+				error: "MESSAGE_DELIVERED_PERSISTENCE_FAILED",
+				acceptance: "accepted",
+				responseMessageId: "discord-message-accepted",
+				persistenceStatus: "failed",
+				newDelivery: true,
+			},
+		});
+		expect(result.text).toMatch(/do not resend/i);
+		expect(upsertMemory).not.toHaveBeenCalled();
+		expect(createMemory).not.toHaveBeenCalled();
+	});
+
+	it("does not narrate success when its requested local write fails after acceptance", async () => {
+		const { result, upsertMemory } = await sendWithOutcome(
+			{
+				kind: "delivered",
+				receipt: receipt(["discord-message-accepted"]),
+				memories: [],
+			},
+			{ outboundPersistenceFailure: new Error("database unavailable") },
+		);
+		expect(result).toMatchObject({
+			success: false,
+			data: {
+				error: "MESSAGE_DELIVERED_PERSISTENCE_FAILED",
+				acceptance: "accepted",
+				responseMessageId: "discord-message-accepted",
+				providerMessageIds: ["discord-message-accepted"],
+				persistenceStatus: "failed",
+				persistenceCode: "MESSAGE_OUTBOUND_MEMORY_PERSISTENCE_FAILED",
+				newDelivery: true,
+				persisted: false,
+			},
+		});
+		expect(result.text).toMatch(/do not resend/i);
+		expect(result.text).not.toContain("Message sent via");
+		expect(upsertMemory).toHaveBeenCalledTimes(1);
 	});
 });
 

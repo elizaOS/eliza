@@ -33,6 +33,9 @@ import {
   getChannelRegistry,
 } from "../channels/index.js";
 import { createLifeOpsCommitmentLedgerRecord } from "../commitments/index.js";
+// Registry-only import (not the connector barrel) so the household policy
+// layer never pulls the connector contribution graph.
+import { getConnectorRegistry } from "../connectors/registry.js";
 import {
   cancelHouseholdGrantExpiryWarning,
   ensureHouseholdGrantExpiryWarning,
@@ -67,6 +70,10 @@ import {
 
 const HOUSEHOLD_ROLE_METADATA_KEY = "householdRole";
 const HOUSEHOLD_SUBJECTS_METADATA_KEY = "householdSubjectEntityIds";
+const HOUSEHOLD_ID_METADATA_KEY = "householdId";
+const CUSTODY_AUTHORITY_CHILD_METADATA_KEY = "custodyAuthorityChildEntityId";
+const CUSTODY_AUTHORITY_CUSTODIANS_METADATA_KEY =
+  "custodyAuthorityCustodianEntityIds";
 const DEFAULT_PROPOSAL_TTL_MS = 48 * 60 * 60 * 1000;
 export const HOUSEHOLD_COORDINATION_SERVICE = "lifeops_household_coordination";
 
@@ -269,6 +276,14 @@ function approvalIdempotencyKey(
  * `EntityIdentity.platform` values and mirror the inbound `identityPlatforms`
  * mapping in inbound-approval.ts, so a decision sent back on the same channel
  * authenticates against the identity the prompt was delivered to.
+ *
+ * Round-trip status: telegram and discord are verified live end-to-end
+ * (outbound prompt delivered, inbound authenticated decision applied).
+ * Discord requires `targetKind: "user"` — the verified identity handle is a
+ * Discord USER id (inbound auth matches `metadata.discord.userId`), which the
+ * connector resolves to a DM; sending it as a channel id fails with Unknown
+ * Channel. The remaining channels authenticate inbound decisions per the
+ * `identityPlatforms` mapping but have no live outbound round-trip proof yet.
  */
 const PARTY_CONTACT_ROUTES: ReadonlyArray<{
   channel: Extract<
@@ -283,6 +298,8 @@ const PARTY_CONTACT_ROUTES: ReadonlyArray<{
     | "x_dm"
   >;
   platforms: readonly string[];
+  /** Set when the identity handle is a platform USER id, not a channel id. */
+  targetKind?: "user";
 }> = [
   { channel: "telegram", platforms: ["telegram"] },
   { channel: "signal", platforms: ["signal"] },
@@ -290,13 +307,14 @@ const PARTY_CONTACT_ROUTES: ReadonlyArray<{
   { channel: "imessage", platforms: ["imessage"] },
   { channel: "sms", platforms: ["phone", "sms", "twilio"] },
   { channel: "email", platforms: ["email", "gmail", "google"] },
-  { channel: "discord", platforms: ["discord"] },
+  { channel: "discord", platforms: ["discord"], targetKind: "user" },
   { channel: "x_dm", platforms: ["x", "twitter"] },
 ];
 
 interface PartyApprovalContactRoute {
   channel: ApprovalChannel;
   target: string;
+  targetKind?: "user";
   platform: string;
   send: NonNullable<ChannelContribution["send"]>;
 }
@@ -522,6 +540,7 @@ export class HouseholdCoordinationService {
   async bindRole(input: {
     entityId: string;
     role: HouseholdRole;
+    householdId?: string;
     subjectEntityIds?: string[];
     relationshipId?: string | null;
     evidence: string;
@@ -536,6 +555,10 @@ export class HouseholdCoordinationService {
       input.relationshipId === null || input.relationshipId === undefined
         ? null
         : normalizeHouseholdIdentifier(input.relationshipId, "relationshipId");
+    const householdId =
+      input.householdId === undefined
+        ? null
+        : normalizeHouseholdIdentifier(input.householdId, "householdId");
     await this.requireEntity(entityId);
     await this.requireEntity(boundByEntityId);
     const subjectEntityIds = normalizeHouseholdIdentifiers(
@@ -617,6 +640,7 @@ export class HouseholdCoordinationService {
           ...existing.metadata,
           [HOUSEHOLD_ROLE_METADATA_KEY]: input.role,
           [HOUSEHOLD_SUBJECTS_METADATA_KEY]: subjectEntityIds,
+          ...(householdId ? { [HOUSEHOLD_ID_METADATA_KEY]: householdId } : {}),
         },
         state: existing.state,
         evidence: uniqueStrings([...existing.evidence, input.evidence]),
@@ -632,6 +656,7 @@ export class HouseholdCoordinationService {
         metadataPatch: {
           [HOUSEHOLD_ROLE_METADATA_KEY]: input.role,
           [HOUSEHOLD_SUBJECTS_METADATA_KEY]: subjectEntityIds,
+          ...(householdId ? { [HOUSEHOLD_ID_METADATA_KEY]: householdId } : {}),
         },
         evidence: [input.evidence],
         confidence: 1,
@@ -654,6 +679,7 @@ export class HouseholdCoordinationService {
       inputs: {
         entityId,
         role: input.role,
+        householdId,
         relationshipId: relationship.relationshipId,
       },
       decision: { subjectEntityIds },
@@ -725,6 +751,74 @@ export class HouseholdCoordinationService {
       );
     }
     return binding;
+  }
+
+  private async requireCustodyAuthority(
+    custody: NonNullable<HouseholdScheduleTerms["custodyException"]>,
+  ): Promise<void> {
+    const relationship = await this.deps.relationshipStore.get(
+      custody.authorityBaselineRelationshipId,
+    );
+    if (relationship?.status !== "active") {
+      throw new HouseholdCoordinationError(
+        "Custody exception requires an active authority-baseline relationship",
+        "HOUSEHOLD_ACCESS_DENIED",
+        {
+          authorityBaselineRelationshipId:
+            custody.authorityBaselineRelationshipId,
+        },
+      );
+    }
+    const endpoints = new Set([
+      relationship.fromEntityId,
+      relationship.toEntityId,
+    ]);
+    const authorityChild =
+      relationship.metadata?.[CUSTODY_AUTHORITY_CHILD_METADATA_KEY];
+    const authorityCustodians =
+      relationship.metadata?.[CUSTODY_AUTHORITY_CUSTODIANS_METADATA_KEY];
+    if (
+      !endpoints.has(SELF_ENTITY_ID) ||
+      !endpoints.has(custody.childEntityId) ||
+      authorityChild !== custody.childEntityId ||
+      !Array.isArray(authorityCustodians) ||
+      authorityCustodians.some((entityId) => typeof entityId !== "string")
+    ) {
+      throw new HouseholdCoordinationError(
+        "Custody authority baseline does not match the proposed child",
+        "HOUSEHOLD_ACCESS_DENIED",
+        {
+          authorityBaselineRelationshipId:
+            custody.authorityBaselineRelationshipId,
+          childEntityId: custody.childEntityId,
+        },
+      );
+    }
+    const authorized = new Set(authorityCustodians);
+    for (const custodianEntityId of [
+      custody.normalCustodianEntityId,
+      custody.substituteCustodianEntityId,
+    ]) {
+      const binding = await this.requireRoleBinding(custodianEntityId);
+      if (
+        (binding.role !== "owner" && binding.role !== "co_parent") ||
+        !authorized.has(custodianEntityId) ||
+        (binding.role !== "owner" &&
+          !binding.subjectEntityIds.includes(custody.childEntityId))
+      ) {
+        throw new HouseholdCoordinationError(
+          "Custody exception names a custodian without explicit custody authority",
+          "HOUSEHOLD_ACCESS_DENIED",
+          {
+            authorityBaselineRelationshipId:
+              custody.authorityBaselineRelationshipId,
+            childEntityId: custody.childEntityId,
+            custodianEntityId,
+            role: binding.role,
+          },
+        );
+      }
+    }
   }
 
   async issueGrant(input: {
@@ -1056,6 +1150,7 @@ export class HouseholdCoordinationService {
       ...requestedApproverEntityIds,
       ...normalizedCustodyParties,
     ]);
+    if (custody) await this.requireCustodyAuthority(custody);
     for (const childEntityId of input.terms.childEntityIds) {
       await this.requireRoleBinding(childEntityId, "child");
     }
@@ -1129,10 +1224,49 @@ export class HouseholdCoordinationService {
   }
 
   /**
+   * A channel that delegates delivery to a connector (`connectorKind` set,
+   * as every default-pack channel does) can only reach the party while that
+   * connector is registered, send-capable, and not reporting `disconnected`.
+   * Without this gate a dead higher-preference route shadows a live
+   * lower-preference one and the prompt parks in a send failure instead of
+   * reaching the party. Channels with `connectorKind: null` own their
+   * transport, so their advertised `send` is trusted as-is.
+   */
+  private async partyRouteIsLive(
+    channel: ChannelContribution,
+    partyEntityId: string,
+  ): Promise<boolean> {
+    const connectorKind = channel.connectorKind;
+    if (!connectorKind) return true;
+    const connector = getConnectorRegistry(this.deps.runtime)?.get(
+      connectorKind,
+    );
+    if (!connector?.send) return false;
+    try {
+      const status = await connector.status();
+      return status.state !== "disconnected";
+    } catch (error) {
+      // error-policy:J7 a failed liveness probe is itself the dead-route
+      // signal; it must not strand the remaining parties' approvals. The
+      // failure is surfaced via reportError and the resolver moves on to the
+      // party's next verified route (or the owner-relay fallback).
+      this.deps.runtime.reportError(
+        "HouseholdCoordination.partyRouteProbe",
+        error,
+        { channel: channel.kind, connectorKind, partyEntityId },
+      );
+      return false;
+    }
+  }
+
+  /**
    * Resolve the connector route that can reach an affected party: the first
    * preference-ordered send-capable registered channel on which the party has
-   * an operator-verified identity. The owner needs no route — the internal
+   * an operator-verified identity and whose backing connector is live
+   * ({@link partyRouteIsLive}). The owner needs no route — the internal
    * approval surfaces (task, notification, chat choice) already reach them.
+   * A party with no live route resolves to null and stays reachable through
+   * the owner-relay fallback in {@link enqueueApprovals}.
    */
   private async resolvePartyContactRoute(
     partyEntityId: string,
@@ -1147,20 +1281,23 @@ export class HouseholdCoordinationService {
     for (const route of PARTY_CONTACT_ROUTES) {
       const channel = registry.get(route.channel);
       const send = channel?.send;
-      if (!send) continue;
-      for (const platform of route.platforms) {
-        const identity = verified.find(
-          (candidate) => candidate.platform.trim().toLowerCase() === platform,
-        );
-        if (identity) {
-          return {
-            channel: route.channel,
-            target: identity.handle,
-            platform,
-            send,
-          };
-        }
-      }
+      if (!channel || !send) continue;
+      const identity = route.platforms
+        .map((platform) =>
+          verified.find(
+            (candidate) => candidate.platform.trim().toLowerCase() === platform,
+          ),
+        )
+        .find((match) => match !== undefined);
+      if (!identity) continue;
+      if (!(await this.partyRouteIsLive(channel, partyEntityId))) continue;
+      return {
+        channel: route.channel,
+        target: identity.handle,
+        ...(route.targetKind ? { targetKind: route.targetKind } : {}),
+        platform: identity.platform.trim().toLowerCase(),
+        send,
+      };
     }
     return null;
   }
@@ -1193,6 +1330,12 @@ export class HouseholdCoordinationService {
     try {
       const result = await input.route.send({
         target: input.route.target,
+        // Discord routes target the party's verified USER id; the typed kind
+        // makes the connector resolve a DM instead of misreading the id as a
+        // channel (see PARTY_CONTACT_ROUTES).
+        ...(input.route.targetKind
+          ? { targetKind: input.route.targetKind }
+          : {}),
         message: prompt,
         metadata: {
           workflowId: HOUSEHOLD_SCHEDULE_PROPOSAL_APPROVAL_WORKFLOW_ID,

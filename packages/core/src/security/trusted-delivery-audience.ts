@@ -6,6 +6,21 @@
  * cannot mint or replay it. Canonical connector rooms are attested from their
  * stored room and participant set; authenticated API routes use the separate
  * host-principal attestor.
+ *
+ * Agent-internal turns (canonical SELF/AUTONOMOUS rooms whose actor is the
+ * agent, the canonical owner, or a runtime-registered participant of the
+ * agent's own internal room — the autonomy service and trigger runtime post
+ * under dedicated synthetic entities) are ALLOWED for disclosure-gate
+ * purposes. This is sound because this gate only controls what enters the
+ * in-process turn: nothing composed here becomes visible without passing the
+ * egress seams (wrapSingleTurnVisibleCallback.deliver and the simple/early/
+ * terminal result enforcers), which re-validate the CURRENT room audience at
+ * delivery time. Denying internal turns would strip the autonomous planner of
+ * every owner-private action while protecting nothing.
+ *
+ * When a gate denial suppresses owner-private surfaces, the suppression is
+ * recorded on the turn so state composition can surface an explicit note the
+ * model can see — silence would read as the capabilities not existing.
  */
 
 import { ElizaError } from "../errors";
@@ -20,6 +35,9 @@ const trustedDeliveryAudienceBrand: unique symbol = Symbol(
 );
 const trustedDeliveryAudienceBinding: unique symbol = Symbol(
 	"eliza.trusted-delivery-audience.binding",
+);
+const ownerExclusiveSuppressionCarrier: unique symbol = Symbol(
+	"eliza.trusted-delivery-audience.suppressions",
 );
 
 export const OWNER_EXCLUSIVE_DISCLOSURE_GATE = Object.freeze({
@@ -89,9 +107,20 @@ export type OwnerExclusiveDisclosureDenial =
 	| "audience_changed"
 	| "audience_lookup_failed";
 
+/**
+ * Why an allowed decision is allowed: a verified owner-only destination, or an
+ * agent-internal turn whose visible egress is separately re-validated. Kept as
+ * a required discriminant so callers that must NOT extend internal-turn trust
+ * to a visible delivery can tell the two apart.
+ */
+export type OwnerExclusiveDisclosureBasis =
+	| "owner_private_destination"
+	| "internal_agent_turn";
+
 export type OwnerExclusiveDisclosureDecision =
 	| {
 			allowed: true;
+			basis: OwnerExclusiveDisclosureBasis;
 			audience: TrustedDeliveryAudience;
 	  }
 	| {
@@ -337,6 +366,34 @@ function decisionFromAudience(
 	if (audience.roomId !== message.roomId) {
 		return { allowed: false, reason: "room_mismatch", audience };
 	}
+	// Agent-internal turns must clear the gate BEFORE the owner/participant
+	// checks: a SELF/AUTONOMOUS room can never look like a two-party owner DM.
+	// Sound because every visible egress path re-validates the delivery
+	// audience — see the module header. Only canonical-room provenance
+	// qualifies: an API principal cannot label its own turn "internal".
+	if (audience.kind === "internal_agent") {
+		const actorIsRuntimeIdentity =
+			audience.actorEntityId === audience.agentEntityId ||
+			(audience.canonicalOwnerEntityId !== null &&
+				audience.actorEntityId === audience.canonicalOwnerEntityId);
+		// The autonomy service and the trigger runtime deliberately post planner
+		// turns under dedicated synthetic entities (autonomyEntityId,
+		// `trigger-entity:<id>`) so the pipeline does not skip them as
+		// messages-from-self, and both register that entity as a participant of
+		// the runtime-created internal room before dispatch. A stored
+		// co-participant of the agent's own internal room is therefore
+		// runtime-managed identity, not an external sender.
+		const actorIsRegisteredInternalParticipant =
+			audience.participantEntityIds.includes(audience.actorEntityId) &&
+			audience.participantEntityIds.includes(audience.agentEntityId);
+		if (
+			audience.provenance === "canonical_room" &&
+			(actorIsRuntimeIdentity || actorIsRegisteredInternalParticipant)
+		) {
+			return { allowed: true, basis: "internal_agent_turn", audience };
+		}
+		return { allowed: false, reason: "destination_not_private", audience };
+	}
 	if (
 		!audience.canonicalOwnerEntityId ||
 		audience.actorEntityId !== audience.canonicalOwnerEntityId
@@ -370,7 +427,61 @@ function decisionFromAudience(
 	) {
 		return { allowed: false, reason: "destination_not_private", audience };
 	}
-	return { allowed: true, audience };
+	return { allowed: true, basis: "owner_private_destination", audience };
+}
+
+/**
+ * Suppression bookkeeping shares the enumerable-symbol trick used for the
+ * audience binding: the Set rides ordinary in-process spreads (clone and
+ * original share one Set), while JSON cannot name or serialize it. Recording
+ * happens only at real suppression sites — the action-gate disclosure check
+ * and the sensitive-provider/mode-action authorization — never on plain
+ * queries, so the note reflects surfaces the turn actually lost.
+ */
+function ownerExclusiveSuppressions(
+	message: Memory,
+	create: boolean,
+): Set<OwnerExclusiveDisclosureDenial> | undefined {
+	const holder = message as Memory & {
+		[ownerExclusiveSuppressionCarrier]?: Set<OwnerExclusiveDisclosureDenial>;
+	};
+	let reasons = holder[ownerExclusiveSuppressionCarrier];
+	if (!reasons && create) {
+		reasons = new Set();
+		Object.defineProperty(message, ownerExclusiveSuppressionCarrier, {
+			value: reasons,
+			enumerable: true,
+			configurable: false,
+			writable: false,
+		});
+	}
+	return reasons;
+}
+
+function recordOwnerExclusiveSuppression(
+	message: Memory,
+	reason: OwnerExclusiveDisclosureDenial,
+): void {
+	ownerExclusiveSuppressions(message, true)?.add(reason);
+}
+
+/**
+ * Model-visible note appended to composed state when this turn had
+ * owner-private surfaces suppressed. Silence would read to the model as the
+ * capabilities not existing; the note lets it answer honestly instead of
+ * fabricating either the data or a permanent inability.
+ */
+export function ownerExclusiveSuppressionNote(
+	message: Memory | undefined,
+): string | undefined {
+	if (!message) return undefined;
+	const reasons = ownerExclusiveSuppressions(message, false);
+	if (!reasons || reasons.size === 0) return undefined;
+	return [
+		"# Owner-private access notice",
+		`Owner-private tools and context were withheld from this turn because the delivery audience is not verified as owner-only (${[...reasons].sort().join(", ")}).`,
+		"If they are needed, say the information is only available in the owner's verified private channel. Never guess or fabricate the withheld information.",
+	].join("\n");
 }
 
 /** Synchronous gate used by catalogs and other pre-execution exposure paths. */
@@ -460,6 +571,8 @@ export async function authorizeOwnerExclusiveDisclosure(
 	if (decision.allowed) {
 		const record = getAudienceRecord(message);
 		if (record) record.sensitiveUsed = true;
+	} else {
+		recordOwnerExclusiveSuppression(message, decision.reason);
 	}
 	return decision;
 }
@@ -488,7 +601,9 @@ export function disclosureGateFailure(
 ): string | undefined {
 	if (!gate) return undefined;
 	const decision = evaluateOwnerExclusiveDisclosure(message);
-	return decision.allowed
-		? undefined
-		: `Owner-private disclosure denied: ${decision.reason}`;
+	if (decision.allowed) return undefined;
+	// A non-undefined return here IS a suppressed surface (the action-gate
+	// drops the action), so this call site doubles as the recording point.
+	if (message) recordOwnerExclusiveSuppression(message, decision.reason);
+	return `Owner-private disclosure denied: ${decision.reason}`;
 }

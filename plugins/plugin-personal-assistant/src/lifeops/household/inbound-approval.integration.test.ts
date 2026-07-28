@@ -61,7 +61,10 @@ describe("household inbound approval — real PGlite", () => {
         attachments: false,
         quietHoursAware: false,
       },
-      connectorKind: "telegram",
+      // The capture stub owns its transport, so the household route-liveness
+      // gate must not probe the (disconnected) default-pack telegram
+      // connector for it.
+      connectorKind: null,
       async send(payload) {
         partySends.push(
           payload as {

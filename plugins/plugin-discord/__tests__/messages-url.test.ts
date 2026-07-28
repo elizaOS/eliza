@@ -7,6 +7,7 @@ import {
 	__setDocumentUrlFetchImplForTests,
 	ContentType,
 	type IAgentRuntime,
+	type SendHandlerReceipt,
 	ServiceType,
 } from "@elizaos/core";
 import type { Message as DiscordMessage } from "discord.js";
@@ -302,7 +303,19 @@ describe("createDiscordMessageMemoryOnce", () => {
 });
 
 describe("beginDiscordOutboundDelivery dedupe window", () => {
-	it("suppresses the same committed logical send inside the window and frees it on release", () => {
+	const receipt = (
+		id: string,
+		persistence: SendHandlerReceipt["persistence"] = {
+			status: "persisted",
+			memoryIds: [],
+		},
+	): SendHandlerReceipt => ({
+		providerMessageIds: [id],
+		acceptedAt: 1_000,
+		persistence,
+	});
+
+	it("joins an in-flight logical send and replays its exact committed receipt", async () => {
 		const state = new Map<string, DiscordOutboundDeliveryState>();
 		const base = {
 			channelId: "123",
@@ -315,18 +328,34 @@ describe("beginDiscordOutboundDelivery dedupe window", () => {
 		const first = beginDiscordOutboundDelivery(base);
 		expect(first.kind).toBe("deliver");
 		if (first.kind !== "deliver") throw new Error("unreachable");
-		expect(beginDiscordOutboundDelivery({ ...base, now: 2_000 })).toEqual({
-			kind: "duplicate",
-			priorDelivery: "in_flight",
+		const joined = beginDiscordOutboundDelivery({ ...base, now: 2_000 });
+		expect(joined.kind).toBe("in_flight");
+		if (joined.kind !== "in_flight") throw new Error("unreachable");
+		const exactReceipt = receipt("provider-message-1", {
+			status: "partial",
+			memoryIds: [],
+			failures: [
+				{
+					providerMessageId: "provider-message-1",
+					stage: "memory",
+					code: "DB_DOWN",
+					message: "database unavailable",
+				},
+			],
 		});
-		first.reservation.commit("provider-message-1");
+		first.reservation.commit("delivered", exactReceipt, 2_500);
+		await expect(joined.settlement).resolves.toEqual({
+			kind: "settled",
+			delivery: "delivered",
+			receipt: exactReceipt,
+		});
 
 		// Same account/channel/text inside the window → duplicate (this is the
 		// callback-vs-connector-send double-delivery guard).
 		expect(beginDiscordOutboundDelivery({ ...base, now: 3_000 })).toEqual({
 			kind: "duplicate",
 			priorDelivery: "delivered",
-			providerMessageId: "provider-message-1",
+			receipt: exactReceipt,
 		});
 
 		// A different channel is a different logical send.
@@ -335,13 +364,16 @@ describe("beginDiscordOutboundDelivery dedupe window", () => {
 				.kind,
 		).toBe("deliver");
 
-		// Past the window the reservation has expired and delivery is allowed.
-		expect(beginDiscordOutboundDelivery({ ...base, now: 7_000 }).kind).toBe(
+		// The window starts at settlement, not reservation.
+		expect(beginDiscordOutboundDelivery({ ...base, now: 7_499 }).kind).toBe(
+			"duplicate",
+		);
+		expect(beginDiscordOutboundDelivery({ ...base, now: 7_501 }).kind).toBe(
 			"deliver",
 		);
 	});
 
-	it("released (failed) sends do not block a retry, and empty payloads bypass dedupe", () => {
+	it("released sends wake joiners and permit one retry claimant", async () => {
 		const state = new Map<string, DiscordOutboundDeliveryState>();
 		const params = {
 			channelId: "123",
@@ -353,9 +385,12 @@ describe("beginDiscordOutboundDelivery dedupe window", () => {
 
 		const first = beginDiscordOutboundDelivery(params);
 		if (first.kind !== "deliver") throw new Error("expected deliver");
+		const joined = beginDiscordOutboundDelivery({ ...params, now: 1_050 });
+		if (joined.kind !== "in_flight") throw new Error("expected in-flight");
 		// The REST send failed; releasing must let the retry through instead of
 		// eating it as a duplicate of the failed attempt.
 		first.reservation.release();
+		await expect(joined.settlement).resolves.toEqual({ kind: "released" });
 		expect(beginDiscordOutboundDelivery({ ...params, now: 1_100 }).kind).toBe(
 			"deliver",
 		);
@@ -365,5 +400,41 @@ describe("beginDiscordOutboundDelivery dedupe window", () => {
 			beginDiscordOutboundDelivery({ channelId: "123", now: 1_000, state })
 				.kind,
 		).toBe("deliver");
+	});
+
+	it("never expires or cap-evicts an active reservation", () => {
+		const state = new Map<string, DiscordOutboundDeliveryState>();
+		const activeParams = {
+			accountId: "primary",
+			channelId: "active-channel",
+			text: "long provider operation",
+			now: 1,
+			windowMs: 1_000,
+			state,
+		};
+		expect(beginDiscordOutboundDelivery(activeParams).kind).toBe("deliver");
+
+		for (let index = 0; index < 530; index += 1) {
+			const settled = beginDiscordOutboundDelivery({
+				accountId: "primary",
+				channelId: `settled-${index}`,
+				text: "same text",
+				now: 10_000 + index,
+				windowMs: 1_000_000,
+				state,
+			});
+			if (settled.kind !== "deliver") throw new Error("expected deliver");
+			settled.reservation.commit(
+				"delivered",
+				receipt(`provider-${index}`),
+				10_000 + index,
+			);
+		}
+
+		const stillActive = beginDiscordOutboundDelivery({
+			...activeParams,
+			now: 50_000,
+		});
+		expect(stillActive.kind).toBe("in_flight");
 	});
 });

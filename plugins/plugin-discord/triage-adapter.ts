@@ -21,7 +21,7 @@ import {
 	type DraftRequest,
 	getDefaultTriageService,
 	type IAgentRuntime,
-	isSendHandlerOutcome,
+	inspectSendHandlerResult,
 	type ListOptions,
 	logger,
 	type Memory,
@@ -301,32 +301,43 @@ export class DiscordTriageAdapter extends BaseMessageAdapter {
 			source: "discord",
 		};
 		const sent = await service.handleSendMessage(runtime, target, content);
-		let externalId: string | undefined;
-		if (isSendHandlerOutcome(sent)) {
-			if (sent.kind === "delivered") {
-				externalId = sent.providerMessageId;
-			} else if (
-				sent.kind === "duplicate" &&
-				sent.priorDelivery === "delivered" &&
-				sent.providerMessageId
-			) {
-				externalId = sent.providerMessageId;
-			} else if (sent.kind === "not_delivered") {
-				throw new Error(
-					`[DiscordTriageAdapter] Discord did not deliver draft ${draftId}: ${sent.message}`,
-				);
-			} else {
-				throw new Error(
-					`[DiscordTriageAdapter] Discord delivery for draft ${draftId} is not confirmed.`,
-				);
-			}
-		} else if (sent) {
-			const sentMeta = (sent.metadata ?? {}) as Record<string, unknown>;
-			externalId =
-				metaString(sentMeta, "platformMessageId") ??
-				metaString(sentMeta, "discordMessageId") ??
-				metaString(sentMeta, "messageIdFull") ??
-				sent.id;
+		const disposition = inspectSendHandlerResult(sent);
+		if (disposition.kind === "not_delivered") {
+			throw new Error(
+				`[DiscordTriageAdapter] Discord did not deliver draft ${draftId}: ${disposition.message}`,
+			);
+		}
+		if (disposition.kind === "in_flight") {
+			throw new Error(
+				`[DiscordTriageAdapter] Discord delivery for draft ${draftId} is still in flight.`,
+			);
+		}
+		if (disposition.kind === "unknown") {
+			throw new Error(
+				`[DiscordTriageAdapter] Discord returned no delivery evidence for draft ${draftId}.`,
+			);
+		}
+		if (disposition.kind === "partially_delivered") {
+			throw new Error(
+				`[DiscordTriageAdapter] Discord partially delivered draft ${draftId}; do not retry blindly. Provider messages: ${disposition.receipt.providerMessageIds.join(", ")}.`,
+			);
+		}
+		const externalId = disposition.providerMessageId;
+		if (
+			disposition.receipt &&
+			(disposition.receipt.persistence.status === "partial" ||
+				disposition.receipt.persistence.status === "failed")
+		) {
+			runtime.reportError(
+				"DiscordTriageAdapter.sendDraft.localPersistence",
+				new Error(
+					`Discord accepted draft ${draftId}, but local persistence is ${disposition.receipt.persistence.status}.`,
+				),
+				{
+					draftId,
+					providerMessageIds: disposition.receipt.providerMessageIds,
+				},
+			);
 		}
 		if (!externalId) {
 			throw new Error(

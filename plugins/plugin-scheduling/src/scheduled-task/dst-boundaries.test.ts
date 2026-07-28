@@ -20,7 +20,12 @@
 
 import { describe, expect, it } from "vitest";
 
+import {
+  createAnchorRegistry,
+  registerAppLifeOpsAnchors,
+} from "../anchors/anchor-registry.js";
 import { isScheduledTaskDue, markWindowFireIfNeeded } from "./due.js";
+import { InvalidLocalTimeError, resolveLocalHHMMToIso } from "./local-time.js";
 import { computeNextFireAt } from "./next-fire-at.js";
 import type {
   OwnerFactsView,
@@ -32,6 +37,8 @@ const MINUTE_MS = 60_000;
 const NY = "America/New_York";
 const BERLIN = "Europe/Berlin";
 const LORD_HOWE = "Australia/Lord_Howe";
+const SANTIAGO = "America/Santiago";
+const APIA = "Pacific/Apia";
 
 function makeTask(args: {
   trigger: ScheduledTaskTrigger;
@@ -189,6 +196,217 @@ describe("local HH:MM resolution at DST boundaries (relative_to_anchor)", () => 
     });
     expect(at.due).toBe(true);
     expect(at.occurrenceAtIso).toBe("2026-03-08T07:30:00.000Z");
+  });
+
+  it("distinguishes an absent time from a malformed supplied time", () => {
+    expect(
+      resolveLocalHHMMToIso(
+        new Date("2026-05-11T12:00:00.000Z"),
+        undefined,
+        "UTC",
+      ),
+    ).toBeNull();
+
+    for (const malformed of ["", "7:30", "24:00", "12:60", "noon"]) {
+      try {
+        resolveLocalHHMMToIso(
+          new Date("2026-05-11T12:00:00.000Z"),
+          malformed,
+          "UTC",
+        );
+        throw new Error(`expected ${JSON.stringify(malformed)} to fail`);
+      } catch (error) {
+        expect(error).toBeInstanceOf(InvalidLocalTimeError);
+        expect(error).toMatchObject({
+          code: "invalid_local_time",
+          reason: "malformed_hhmm",
+          localTime: malformed,
+        });
+      }
+    }
+  });
+
+  it("returns a typed error for an invalid timezone", () => {
+    expect(() =>
+      resolveLocalHHMMToIso(
+        new Date("2026-05-11T12:00:00.000Z"),
+        "09:00",
+        "Mars/Olympus",
+      ),
+    ).toThrow(
+      expect.objectContaining({
+        code: "invalid_local_time",
+        reason: "invalid_time_zone",
+        timeZone: "Mars/Olympus",
+      }),
+    );
+  });
+
+  it("does not silently replace a malformed bedtime with the default", async () => {
+    const task = makeTask({
+      trigger: {
+        kind: "relative_to_anchor",
+        anchorKey: "bedtime.target",
+        offsetMinutes: 0,
+      },
+    });
+    const context = {
+      now: new Date("2026-05-11T12:00:00.000Z"),
+      ownerFacts: { timezone: "UTC", eveningWindow: { end: "25:00" } },
+      anchors: null,
+    } satisfies Parameters<typeof computeNextFireAt>[1];
+
+    await expect(computeNextFireAt(task, context)).rejects.toMatchObject({
+      code: "invalid_local_time",
+      reason: "malformed_hhmm",
+      localTime: "25:00",
+    });
+    await expect(
+      isScheduledTaskDue(task, {
+        now: context.now,
+        ownerFacts: context.ownerFacts,
+      }),
+    ).rejects.toBeInstanceOf(InvalidLocalTimeError);
+  });
+
+  it("makes due evaluation and indexing reject the same malformed window", async () => {
+    const task = makeTask({
+      trigger: { kind: "during_window", windowKey: "morning" },
+    });
+    const ownerFacts: OwnerFactsView = {
+      timezone: "UTC",
+      morningWindow: { start: "not-a-time", end: "11:00" },
+    };
+
+    await expect(
+      computeNextFireAt(task, {
+        now: new Date("2026-05-11T12:00:00.000Z"),
+        ownerFacts,
+        anchors: null,
+      }),
+    ).rejects.toMatchObject({
+      code: "invalid_local_time",
+      reason: "malformed_hhmm",
+      localTime: "not-a-time",
+    });
+    await expect(
+      isScheduledTaskDue(task, {
+        now: new Date("2026-05-11T12:00:00.000Z"),
+        ownerFacts,
+      }),
+    ).rejects.toMatchObject({
+      code: "invalid_local_time",
+      reason: "malformed_hhmm",
+      localTime: "not-a-time",
+    });
+  });
+
+  it("still applies the bedtime default only when the owner fact is absent", async () => {
+    const iso = await computeNextFireAt(
+      makeTask({
+        trigger: {
+          kind: "relative_to_anchor",
+          anchorKey: "bedtime.target",
+          offsetMinutes: 0,
+        },
+      }),
+      {
+        now: new Date("2026-05-11T12:00:00.000Z"),
+        ownerFacts: { timezone: "UTC" },
+        anchors: null,
+      },
+    );
+    expect(iso).toBe("2026-05-11T22:30:00.000Z");
+  });
+
+  it("uses the canonical resolver through the production anchor registry", async () => {
+    const anchors = createAnchorRegistry();
+    registerAppLifeOpsAnchors(anchors);
+    const iso = await computeNextFireAt(
+      makeTask({
+        trigger: {
+          kind: "relative_to_anchor",
+          anchorKey: "morning.start",
+          offsetMinutes: 0,
+        },
+      }),
+      {
+        now: new Date("2026-09-06T12:00:00.000Z"),
+        ownerFacts: {
+          timezone: SANTIAGO,
+          morningWindow: { start: "00:00" },
+        },
+        anchors,
+      },
+    );
+    expect(iso).toBe("2026-09-06T04:00:00.000Z");
+    expect(localHourMinute(iso ?? "", SANTIAGO)).toBe("01:00");
+  });
+
+  it("does not let the production anchor registry swallow malformed local time", async () => {
+    const anchors = createAnchorRegistry();
+    registerAppLifeOpsAnchors(anchors);
+    await expect(
+      computeNextFireAt(
+        makeTask({
+          trigger: {
+            kind: "relative_to_anchor",
+            anchorKey: "morning.start",
+            offsetMinutes: 0,
+          },
+        }),
+        {
+          now: new Date("2026-05-11T12:00:00.000Z"),
+          ownerFacts: {
+            timezone: "UTC",
+            morningWindow: { start: "bad-time" },
+          },
+          anchors,
+        },
+      ),
+    ).rejects.toMatchObject({
+      code: "invalid_local_time",
+      reason: "malformed_hhmm",
+      localTime: "bad-time",
+    });
+  });
+
+  it("Santiago 2026-09-06: compatible resolution advances skipped midnight to 01:00", () => {
+    const iso = resolveLocalHHMMToIso(
+      new Date("2026-09-05T16:00:00.000Z"),
+      "00:00",
+      SANTIAGO,
+      1,
+    );
+    expect(iso).toBe("2026-09-06T04:00:00.000Z");
+    expect(localDate(iso ?? "", SANTIAGO)).toBe("2026-09-06");
+    expect(localHourMinute(iso ?? "", SANTIAGO)).toBe("01:00");
+  });
+
+  it("indexes across Santiago's midnight transition without inventing 00:00", async () => {
+    const next = await computeNextFireAt(
+      makeTask({ trigger: { kind: "during_window", windowKey: "night" } }),
+      {
+        // 2026-09-05 23:30 CLT. The next local-day boundary is 01:00 CLST.
+        now: new Date("2026-09-06T03:30:00.000Z"),
+        ownerFacts: { timezone: SANTIAGO },
+        anchors: null,
+      },
+    );
+    expect(next).toBe("2026-09-06T04:00:00.000Z");
+    expect(localHourMinute(next ?? "", SANTIAGO)).toBe("01:00");
+  });
+
+  it("Apia's skipped 2011-12-30 resolves to the same wall time after the date jump", () => {
+    const iso = resolveLocalHHMMToIso(
+      new Date("2011-12-29T22:00:00.000Z"),
+      "06:00",
+      APIA,
+      1,
+    );
+    expect(iso).toBe("2011-12-30T16:00:00.000Z");
+    expect(localDate(iso ?? "", APIA)).toBe("2011-12-31");
+    expect(localHourMinute(iso ?? "", APIA)).toBe("06:00");
   });
 });
 

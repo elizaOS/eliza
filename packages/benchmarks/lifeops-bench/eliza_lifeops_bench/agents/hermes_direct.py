@@ -19,11 +19,17 @@ def build_hermes_direct_agent(
     temperature: float = 0.0,
     reasoning_effort: str = "low",
     max_tokens: int | None = 4096,
+    request_timeout_s: float | str | None = None,
 ) -> OpenAICompatAgent:
     """Build an agent that calls one configured OpenAI-compatible endpoint."""
 
     def factory() -> HermesClient:
-        return HermesClient(model=model, base_url=base_url, api_key=api_key)
+        return HermesClient(
+            model=model,
+            base_url=base_url,
+            api_key=api_key,
+            request_timeout_s=request_timeout_s,
+        )
 
     return OpenAICompatAgent(
         factory,

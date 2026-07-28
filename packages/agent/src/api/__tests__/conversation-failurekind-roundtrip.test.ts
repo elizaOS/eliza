@@ -196,6 +196,7 @@ function createState(
     updateWorld: vi.fn(async () => undefined),
     getWorld: vi.fn(async (worldId: UUID) => worlds.get(worldId) ?? null),
     getRoom: vi.fn(async () => null),
+    getParticipantsForRoom: vi.fn(async () => [USER_ID, AGENT_ID]),
     adapter: {},
   };
   return {
@@ -218,6 +219,7 @@ function createReq(method: string, url: string): http.IncomingMessage {
     method,
     url,
     headers: {},
+    socket: { remoteAddress: "127.0.0.1" },
   }) as http.IncomingMessage;
 }
 

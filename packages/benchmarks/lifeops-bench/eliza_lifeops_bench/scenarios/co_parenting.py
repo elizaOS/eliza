@@ -24,7 +24,7 @@ CO_PARENTING_SCENARIOS: list[Scenario] = [
         persona=PERSONA_JORDAN_COPARENT,
         instruction=(
             "Set up our alternating-week custody rhythm for Mira starting Friday "
-            "2026-05-16, with a Friday 4:30pm exchange block on the family calendar."
+            "2026-05-15, with a Friday 4:30pm exchange block on the family calendar."
         ),
         ground_truth_actions=[
             Action(
@@ -35,8 +35,8 @@ CO_PARENTING_SCENARIOS: list[Scenario] = [
                     "title": "Mira exchange",
                     "details": {
                         "calendarId": "cal_family",
-                        "start": "2026-05-16T16:30:00Z",
-                        "end": "2026-05-16T17:00:00Z",
+                        "start": "2026-05-15T16:30:00Z",
+                        "end": "2026-05-15T17:00:00Z",
                         "recurrence": "FREQ=WEEKLY;INTERVAL=2;BYDAY=FR",
                     },
                 },

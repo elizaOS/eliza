@@ -140,6 +140,7 @@ async function callConversationRoute<TBody extends Record<string, unknown>>(
     method,
     url: pathname,
     headers: { host: "localhost" },
+    socket: { remoteAddress: "127.0.0.1" },
   }) as http.IncomingMessage;
   const res = {
     setHeader: () => undefined,

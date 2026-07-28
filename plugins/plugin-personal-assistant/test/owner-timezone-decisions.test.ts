@@ -189,4 +189,50 @@ describe("evaluateProactiveBlockOnBrowserFocus enforcement-window zone", () => {
     expect(outcome.blocked).toBe(false);
     expect(outcome.reason).toBe("outside_enforcement_window");
   });
+
+  it("does not claim the default chat alert was sent without connector evidence", async () => {
+    const runtime = Object.assign(createMinimalRuntimeStub(), {
+      sendMessageToTarget: async () => undefined,
+    });
+
+    await expect(
+      evaluateProactiveBlockOnBrowserFocus(
+        runtime,
+        { domain: "example.com" },
+        {
+          now: () => NOW,
+          timezone: "Asia/Tokyo",
+          loadActiveRules: async () => [activeRule(["example.com"])],
+          startBlock: async () => ({ success: true }),
+        },
+      ),
+    ).rejects.toThrow(/no delivery evidence/i);
+  });
+
+  it("accepts a default chat alert only with a provider receipt", async () => {
+    const runtime = Object.assign(createMinimalRuntimeStub(), {
+      sendMessageToTarget: async () => ({
+        kind: "delivered" as const,
+        receipt: {
+          providerMessageIds: ["proactive-alert-1"] as [string],
+          acceptedAt: NOW.getTime(),
+          persistence: { status: "persisted" as const, memoryIds: [] },
+        },
+        memories: [],
+      }),
+    });
+
+    await expect(
+      evaluateProactiveBlockOnBrowserFocus(
+        runtime,
+        { domain: "example.com" },
+        {
+          now: () => NOW,
+          timezone: "Asia/Tokyo",
+          loadActiveRules: async () => [activeRule(["example.com"])],
+          startBlock: async () => ({ success: true }),
+        },
+      ),
+    ).resolves.toMatchObject({ blocked: true, reason: "blocked" });
+  });
 });

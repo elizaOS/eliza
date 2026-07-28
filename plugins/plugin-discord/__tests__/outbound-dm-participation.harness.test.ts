@@ -43,19 +43,31 @@ describe("Discord outbound DM participation", () => {
 	it("persists one provider-backed send and truthfully reports a committed duplicate", async () => {
 		const recipient = "11111111-1111-1111-1111-111111111111" as UUID;
 		const discordUserId = "222222222222222222";
+		let markProviderStarted!: () => void;
+		let releaseProvider!: () => void;
+		const providerStarted = new Promise<void>((resolve) => {
+			markProviderStarted = resolve;
+		});
+		const providerGate = new Promise<void>((resolve) => {
+			releaseProvider = resolve;
+		});
 		const dmChannel = {
 			id: "333333333333333333",
 			type: DiscordChannelType.DM,
 			isTextBased: () => true,
 			isVoiceBased: () => false,
 			isThread: () => false,
-			send: vi.fn(async (payload: { content?: string }) => ({
-				id: "444444444444444444",
-				content: payload.content ?? "",
-				url: "https://discord.test/dm/444444444444444444",
-				createdTimestamp: Date.now(),
-				attachments: new Collection(),
-			})),
+			send: vi.fn(async (payload: { content?: string }) => {
+				markProviderStarted();
+				await providerGate;
+				return {
+					id: "444444444444444444",
+					content: payload.content ?? "",
+					url: "https://discord.test/dm/444444444444444444",
+					createdTimestamp: Date.now(),
+					attachments: new Collection(),
+				};
+			}),
 		};
 		const user = {
 			id: discordUserId,
@@ -153,7 +165,16 @@ describe("Discord outbound DM participation", () => {
 			return result;
 		};
 
-		const first = await dispatch();
+		const firstPromise = dispatch();
+		await providerStarted;
+		let joinedSettled = false;
+		const joinedPromise = dispatch().finally(() => {
+			joinedSettled = true;
+		});
+		await Promise.resolve();
+		expect(joinedSettled).toBe(false);
+		releaseProvider();
+		const [first, joined] = await Promise.all([firstPromise, joinedPromise]);
 		expect(first).toMatchObject({
 			success: true,
 			data: {
@@ -162,6 +183,16 @@ describe("Discord outbound DM participation", () => {
 			},
 		});
 		expect(first.text).toContain("Message sent via Discord");
+		expect(joined).toMatchObject({
+			success: true,
+			data: {
+				deliveryStatus: "duplicate",
+				priorDelivery: "delivered",
+				responseMessageId: "444444444444444444",
+				newDelivery: false,
+				persisted: false,
+			},
+		});
 
 		expect(new Set(await runtime.getParticipantsForRoom(roomId))).toEqual(
 			new Set([recipient, runtime.agentId]),
@@ -189,8 +220,8 @@ describe("Discord outbound DM participation", () => {
 			.map((memory) => memory.id)
 			.sort();
 
-		const second = await dispatch();
-		expect(second).toMatchObject({
+		const replay = await dispatch();
+		expect(replay).toMatchObject({
 			success: true,
 			data: {
 				deliveryStatus: "duplicate",
@@ -200,8 +231,8 @@ describe("Discord outbound DM participation", () => {
 				persisted: false,
 			},
 		});
-		expect(second.text).toContain("had already been delivered");
-		expect(second.text).not.toContain("Message sent");
+		expect(replay.text).toContain("had already been delivered");
+		expect(replay.text).not.toContain("Message sent");
 		expect(dmChannel.send).toHaveBeenCalledTimes(1);
 		const storedAfterSecond = await runtime.getMemories({
 			roomId,

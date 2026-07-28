@@ -170,6 +170,16 @@ export function safeFormatError(error: unknown): string {
 export interface ConnectorSendPayload {
   /** The recipient identity. Channel-specific format (chat id, phone, email). */
   target: string;
+  /**
+   * How `target` addresses the transport when the platform distinguishes user
+   * identities from conversation ids. `"user"` means `target` is a platform
+   * user id the connector must resolve to a direct conversation itself
+   * (Discord: `users.fetch` → `createDM`); `"channel"`/omitted means `target`
+   * is a conversation/channel id usable as-is. Discord is the only transport
+   * where the two id spaces differ, and treating a user id as a channel id
+   * fails with Unknown Channel — senders addressing a person must say so.
+   */
+  targetKind?: "user" | "channel";
   /** Plain-text body to deliver. */
   message: string;
   /**
@@ -230,7 +240,10 @@ export function isConnectorSendPayload(
   return (
     typeof v.target === "string" &&
     v.target.trim().length > 0 &&
-    typeof v.message === "string"
+    typeof v.message === "string" &&
+    (v.targetKind === undefined ||
+      v.targetKind === "user" ||
+      v.targetKind === "channel")
   );
 }
 

@@ -107,6 +107,7 @@ import {
 	CompositeEntityRecognizer,
 	DEFAULT_PSEUDONYM_BLOCKLIST,
 	GuardedStreamScanner,
+	ownerExclusiveSuppressionNote,
 	PII_ENTITY_RECOGNIZER_SERVICE,
 	PII_SWAP_DISABLED_KINDS_SETTING,
 	PII_SWAP_ENABLED_SETTING,
@@ -4662,6 +4663,16 @@ export class AgentRuntime implements IAgentRuntime {
 			) {
 				orderedTexts.push(result.text);
 			}
+		}
+		// Denial UX: when the disclosure gate suppressed owner-private providers
+		// or actions this turn, the model sees an explicit notice instead of a
+		// silently thinner toolset — otherwise it fabricates either the missing
+		// data or a permanent inability. Suppressions are recorded by the gate
+		// itself (security/trusted-delivery-audience.ts), so this covers both
+		// the provider drop above and action-gate drops during selection.
+		const suppressionNote = ownerExclusiveSuppressionNote(message);
+		if (suppressionNote) {
+			orderedTexts.push(suppressionNote);
 		}
 		// Redact any secrets from provider context before use
 		const rawProvidersText = orderedTexts.join("\n");

@@ -233,6 +233,17 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Per-scenario wall-clock timeout in seconds (default: 300)",
     )
     parser.add_argument(
+        "--hermes-request-timeout-s",
+        type=float,
+        default=None,
+        help=(
+            "Per-request timeout for hermes-direct and Hermes evaluator/judge "
+            "HTTP calls. CLI wins over "
+            "LIFEOPS_BENCH_HERMES_REQUEST_TIMEOUT_S; default: 300 seconds. "
+            "The per-scenario timeout remains the outer wall-clock limit."
+        ),
+    )
+    parser.add_argument(
         "--trusted-executor-url",
         default=None,
         help=(
@@ -345,6 +356,7 @@ def _build_agent_fn(
     *,
     model_override: str | None = None,
     base_url_override: str | None = None,
+    hermes_request_timeout_s: float | None = None,
 ):
     if name in {"perfect", "wrong"}:
         # These stateful oracles are constructed per scenario by
@@ -448,6 +460,7 @@ def _build_agent_fn(
         return build_hermes_direct_agent(
             model=model_override,
             base_url=hermes_base_url,
+            request_timeout_s=hermes_request_timeout_s,
         )
     if name == "cerebras-direct":
         try:
@@ -728,7 +741,10 @@ async def _run(args: argparse.Namespace) -> None:
 
     tier_spec = resolve_tier()
     campaign_provider = os.environ.get("BENCHMARK_MODEL_PROVIDER", "").strip().lower()
-    agent_provider = campaign_provider or tier_spec.provider
+    adapter_provider = (
+        "hermes" if args.agent in {"hermes", "hermes-direct"} else tier_spec.provider
+    )
+    agent_provider = campaign_provider or adapter_provider
     subscription_transport = campaign_provider == "claude-subscription"
     if subscription_transport:
         gateway_base_url = (
@@ -778,6 +794,27 @@ async def _run(args: argparse.Namespace) -> None:
             f"{judge_provider!r}; choose one of "
             f"{', '.join(_EVALUATOR_PROVIDER_CHOICES)}."
         )
+    uses_hermes_http_client = (
+        args.agent == "hermes-direct"
+        or evaluator_provider == "hermes"
+        or judge_provider == "hermes"
+    )
+    if args.hermes_request_timeout_s is not None and not uses_hermes_http_client:
+        raise SystemExit(
+            "--hermes-request-timeout-s applies only to hermes-direct or a "
+            "Hermes evaluator/judge provider."
+        )
+    hermes_request_timeout_s: float | None = None
+    if uses_hermes_http_client:
+        try:
+            from .clients.hermes import resolve_hermes_request_timeout_s
+
+            hermes_request_timeout_s = resolve_hermes_request_timeout_s(
+                args.hermes_request_timeout_s
+            )
+        # error-policy:J1 The CLI boundary translates invalid config into a clean exit.
+        except ValueError as exc:
+            raise SystemExit(f"Invalid Hermes request timeout: {exc}") from exc
     judge_model = args.judge_model or (
         "gpt-oss-120b" if judge_provider == "cerebras" else "claude-opus-4-7"
     )
@@ -821,6 +858,7 @@ async def _run(args: argparse.Namespace) -> None:
             args.agent,
             model_override=tier_spec.model_name,
             base_url_override=tier_spec.base_url,
+            hermes_request_timeout_s=hermes_request_timeout_s,
         )
         if agent_factory is None
         else None
@@ -848,6 +886,8 @@ async def _run(args: argparse.Namespace) -> None:
         )
     print(f"Evaluator:       {evaluator_provider} → {evaluator_model}")
     print(f"Judge:           {judge_provider} → {judge_model}")
+    if hermes_request_timeout_s is not None:
+        print(f"Hermes request:  {hermes_request_timeout_s:g}s maximum")
     print(f"STATIC grading:  {static_grading_mode}")
     if gated_scenario_count:
         trusted_executor_status = (
@@ -882,9 +922,15 @@ async def _run(args: argparse.Namespace) -> None:
             ) from exc
         try:
             simulated_user_client = make_client(
-                evaluator_provider, model=evaluator_model
+                evaluator_provider,
+                model=evaluator_model,
+                hermes_request_timeout_s=hermes_request_timeout_s,
             )
-            judge_client = make_client(judge_provider, model=judge_model)
+            judge_client = make_client(
+                judge_provider,
+                model=judge_model,
+                hermes_request_timeout_s=hermes_request_timeout_s,
+            )
         except ProviderError as exc:
             raise SystemExit(
                 "Semantic evaluator setup failed for "
@@ -917,21 +963,27 @@ async def _run(args: argparse.Namespace) -> None:
     )
 
     result = await runner.run_filtered(domain=domain, mode=mode)
-    path = (
-        LifeOpsBenchRunner.save_conformance_results(
+    if not result.complete:
+        path = LifeOpsBenchRunner.save_diagnostic_results(
             result,
             output_dir=args.output_dir,
         )
-        if static_grading_mode == "offline_conformance"
-        else LifeOpsBenchRunner.save_results(result, output_dir=args.output_dir)
-    )
+        label = "Non-publishable diagnostic artifact"
+    elif static_grading_mode == "offline_conformance":
+        path = LifeOpsBenchRunner.save_conformance_results(
+            result,
+            output_dir=args.output_dir,
+        )
+        label = "Non-publishable conformance artifact"
+    else:
+        path = LifeOpsBenchRunner.save_results(result, output_dir=args.output_dir)
+        label = "Full results"
     LifeOpsBenchRunner.print_summary(result)
-    label = (
-        "Non-publishable conformance artifact"
-        if static_grading_mode == "offline_conformance"
-        else "Full results"
-    )
     print(f"{label} saved to: {path}")
+    if not result.complete:
+        raise SystemExit(
+            "LifeOpsBench run was incomplete; diagnostic evidence was retained"
+        )
 
 
 def main() -> None:

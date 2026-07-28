@@ -16,6 +16,7 @@ import {
 import { type IAgentRuntime, Service } from "@elizaos/core";
 import type { Relationship } from "@elizaos/shared";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
+import { isHouseholdRole } from "../household/types.js";
 import {
   evaluateItemReplacement,
   evaluateOpportunity,
@@ -73,7 +74,28 @@ export interface HouseholdOperationsServiceDependencies {
 
 function householdRole(relationship: Relationship): string | null {
   const value = relationship.metadata?.householdRole;
-  return typeof value === "string" ? value : null;
+  if (value === undefined) return null;
+  if (typeof value !== "string" || !isHouseholdRole(value)) {
+    throw new HouseholdOperationsError(
+      "Household relationship has an invalid role",
+      "HOUSEHOLD_OPERATIONS_INVALID_CONTRACT",
+      { relationshipId: relationship.relationshipId },
+    );
+  }
+  return value;
+}
+
+function relationshipHouseholdId(relationship: Relationship): string | null {
+  const value = relationship.metadata?.householdId;
+  if (value === undefined) return null;
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new HouseholdOperationsError(
+      "Household relationship has invalid household identity metadata",
+      "HOUSEHOLD_OPERATIONS_INVALID_CONTRACT",
+      { relationshipId: relationship.relationshipId },
+    );
+  }
+  return value.trim();
 }
 
 function relationshipSubjects(relationship: Relationship): string[] {
@@ -169,6 +191,7 @@ export class HouseholdOperationsService {
 
   private async activeHouseholdRelationships(
     entityId: string,
+    householdId: string,
   ): Promise<Relationship[]> {
     if (entityId === SELF_ENTITY_ID) return [];
     const [outbound, inbound] = await Promise.all([
@@ -184,32 +207,38 @@ export class HouseholdOperationsService {
     return [...outbound, ...inbound].filter(
       (relationship) =>
         relationship.status === "active" &&
-        householdRole(relationship) !== null,
+        householdRole(relationship) !== null &&
+        relationshipHouseholdId(relationship) === householdId,
     );
   }
 
-  private async requireHouseholdMember(entityId: string): Promise<void> {
+  private async requireHouseholdMember(
+    entityId: string,
+    householdId: string,
+  ): Promise<void> {
     await this.requireEntity(entityId);
     if (
       entityId !== SELF_ENTITY_ID &&
-      (await this.activeHouseholdRelationships(entityId)).length === 0
+      (await this.activeHouseholdRelationships(entityId, householdId))
+        .length === 0
     ) {
       throw new HouseholdOperationsError(
-        `Entity ${entityId} has no active household relationship`,
+        `Entity ${entityId} has no active relationship in household ${householdId}`,
         "HOUSEHOLD_OPERATIONS_RELATIONSHIP_REQUIRED",
-        { entityId },
+        { entityId, householdId },
       );
     }
   }
 
   private async assertVisibilityEntities(
     visibility: HouseholdOperationsVisibility,
+    householdId: string,
   ): Promise<void> {
     if (visibility.kind === "child_scoped") {
-      await this.requireHouseholdMember(visibility.childEntityId);
+      await this.requireHouseholdMember(visibility.childEntityId, householdId);
     } else if (visibility.kind === "principals") {
       for (const principalEntityId of visibility.principalEntityIds) {
-        await this.requireHouseholdMember(principalEntityId);
+        await this.requireHouseholdMember(principalEntityId, householdId);
       }
     }
   }
@@ -217,16 +246,29 @@ export class HouseholdOperationsService {
   private async canView(
     visibility: HouseholdOperationsVisibility,
     principalEntityId: string,
+    householdId: string,
   ): Promise<boolean> {
     await this.requireEntity(principalEntityId);
     if (principalEntityId === SELF_ENTITY_ID) return true;
     if (visibility.kind === "owner_private") return false;
-    const relationships =
-      await this.activeHouseholdRelationships(principalEntityId);
+    const relationships = await this.activeHouseholdRelationships(
+      principalEntityId,
+      householdId,
+    );
     if (relationships.length === 0) return false;
     if (visibility.kind === "household") return true;
     if (visibility.kind === "principals") {
       return visibility.principalEntityIds.includes(principalEntityId);
+    }
+    if (
+      (
+        await this.activeHouseholdRelationships(
+          visibility.childEntityId,
+          householdId,
+        )
+      ).length === 0
+    ) {
+      return false;
     }
     if (visibility.childEntityId === principalEntityId) return true;
     return relationships.some((relationship) =>
@@ -259,7 +301,10 @@ export class HouseholdOperationsService {
   private async validateDefinitionGraph(
     definition: HouseholdOperationDefinition,
   ): Promise<void> {
-    await this.assertVisibilityEntities(definition.visibility);
+    await this.assertVisibilityEntities(
+      definition.visibility,
+      definition.householdId,
+    );
     if (definition.kind === "vendor_profile") {
       await this.requireEntity(definition.vendorEntityId);
       return;
@@ -307,7 +352,7 @@ export class HouseholdOperationsService {
     }
     if (definition.kind === "opportunity") {
       for (const entityId of definition.subjectEntityIds) {
-        await this.requireHouseholdMember(entityId);
+        await this.requireHouseholdMember(entityId, definition.householdId);
       }
       const almanac = await this.requireCurrentRevision(
         "almanac_entry",
@@ -322,15 +367,21 @@ export class HouseholdOperationsService {
       return;
     }
     if (definition.kind === "item_threshold") {
-      await this.requireHouseholdMember(definition.childEntityId);
+      await this.requireHouseholdMember(
+        definition.childEntityId,
+        definition.householdId,
+      );
       return;
     }
     const ownerIds = Object.values(definition.owners);
     for (const ownerId of Array.from(new Set(ownerIds))) {
-      await this.requireHouseholdMember(ownerId);
+      await this.requireHouseholdMember(ownerId, definition.householdId);
     }
     for (const acceptedEntityId of definition.acceptedByEntityIds) {
-      await this.requireHouseholdMember(acceptedEntityId);
+      await this.requireHouseholdMember(
+        acceptedEntityId,
+        definition.householdId,
+      );
     }
   }
 
@@ -355,12 +406,18 @@ export class HouseholdOperationsService {
   }): Promise<{ observation: HouseholdObservation; inserted: boolean }> {
     this.assertOwnerPrincipal(input.principalEntityId);
     const observation = normalizeObservationInput(input.observation);
-    await this.assertVisibilityEntities(observation.visibility);
+    await this.assertVisibilityEntities(
+      observation.visibility,
+      observation.householdId,
+    );
     for (const entityId of observation.subjectEntityIds) {
-      await this.requireHouseholdMember(entityId);
+      await this.requireHouseholdMember(entityId, observation.householdId);
     }
     if (observation.value.kind === "child_item_size") {
-      await this.requireHouseholdMember(observation.value.childEntityId);
+      await this.requireHouseholdMember(
+        observation.value.childEntityId,
+        observation.householdId,
+      );
       if (
         !observation.subjectEntityIds.includes(observation.value.childEntityId)
       ) {
@@ -391,7 +448,7 @@ export class HouseholdOperationsService {
   }): Promise<{ event: HouseholdServiceEvent; inserted: boolean }> {
     this.assertOwnerPrincipal(input.principalEntityId);
     const event = normalizeServiceEventInput(input.event);
-    await this.assertVisibilityEntities(event.visibility);
+    await this.assertVisibilityEntities(event.visibility, event.householdId);
     if (event.vendorEntityId) await this.requireEntity(event.vendorEntityId);
     return this.deps.repository.recordServiceEvent(
       event,
@@ -404,7 +461,7 @@ export class HouseholdOperationsService {
     signal: ResponsibilitySignalInput;
   }): Promise<{ signal: ResponsibilitySignal; inserted: boolean }> {
     const signal = normalizeResponsibilitySignalInput(input.signal);
-    await this.requireHouseholdMember(input.actingEntityId);
+    await this.requireHouseholdMember(input.actingEntityId, signal.householdId);
     const assignment = await this.requireCurrentRevision(
       "responsibility_assignment",
       signal.assignmentRecordId,
@@ -471,6 +528,10 @@ export class HouseholdOperationsService {
     subjectKey?: string;
     observationKind?: string;
   }): Promise<HouseholdObservation[]> {
+    await this.requireHouseholdMember(
+      input.principalEntityId,
+      requireOperationsText(input.householdId, "householdId", 300),
+    );
     const observations = await this.deps.repository.listObservations(
       input.householdId,
       {
@@ -480,7 +541,13 @@ export class HouseholdOperationsService {
     );
     const visible: HouseholdObservation[] = [];
     for (const observation of observations) {
-      if (await this.canView(observation.visibility, input.principalEntityId)) {
+      if (
+        await this.canView(
+          observation.visibility,
+          input.principalEntityId,
+          observation.householdId,
+        )
+      ) {
         visible.push(observation);
       }
     }
@@ -507,7 +574,11 @@ export class HouseholdOperationsService {
       input.opportunityRecordId,
     );
     if (
-      !(await this.canView(opportunity.visibility, input.principalEntityId))
+      !(await this.canView(
+        opportunity.visibility,
+        input.principalEntityId,
+        opportunity.householdId,
+      ))
     ) {
       throw new HouseholdOperationsError(
         "Principal may not view this household opportunity",
@@ -526,7 +597,13 @@ export class HouseholdOperationsService {
       "item_threshold",
       input.thresholdRecordId,
     );
-    if (!(await this.canView(threshold.visibility, input.principalEntityId))) {
+    if (
+      !(await this.canView(
+        threshold.visibility,
+        input.principalEntityId,
+        threshold.householdId,
+      ))
+    ) {
       throw new HouseholdOperationsError(
         "Principal may not view this item threshold",
         "HOUSEHOLD_OPERATIONS_ACCESS_DENIED",
@@ -1110,13 +1187,25 @@ export class HouseholdOperationsService {
     }
     const items: HouseholdWeeklyBriefItem[] = [];
     for (const item of brief.items) {
-      if (await this.canView(item.visibility, input.principalEntityId)) {
+      if (
+        await this.canView(
+          item.visibility,
+          input.principalEntityId,
+          brief.householdId,
+        )
+      ) {
         items.push(item);
       }
     }
     const questions: HouseholdWeeklyBriefQuestion[] = [];
     for (const question of brief.questions) {
-      if (await this.canView(question.visibility, input.principalEntityId)) {
+      if (
+        await this.canView(
+          question.visibility,
+          input.principalEntityId,
+          brief.householdId,
+        )
+      ) {
         questions.push(question);
       }
     }

@@ -1143,58 +1143,377 @@
                 "calendarId": {
                   "type": "string"
                 },
+                "calendarid": {
+                  "type": "string"
+                },
+                "calendar_id": {
+                  "type": "string"
+                },
                 "timeMin": {
+                  "type": "string"
+                },
+                "timemin": {
+                  "type": "string"
+                },
+                "time_min": {
                   "type": "string"
                 },
                 "timeMax": {
                   "type": "string"
                 },
+                "timemax": {
+                  "type": "string"
+                },
+                "time_max": {
+                  "type": "string"
+                },
                 "timeZone": {
                   "type": "string"
                 },
-                "forceSync": {
-                  "type": "boolean"
+                "timezone": {
+                  "type": "string"
                 },
-                "windowDays": {
-                  "type": "number"
+                "time_zone": {
+                  "type": "string"
                 },
                 "windowPreset": {
                   "type": "string"
                 },
-                "start": {
+                "windowpreset": {
                   "type": "string"
                 },
-                "end": {
+                "window_preset": {
+                  "type": "string"
+                },
+                "eventId": {
+                  "type": "string"
+                },
+                "eventid": {
+                  "type": "string"
+                },
+                "event_id": {
+                  "type": "string"
+                },
+                "externaleventid": {
+                  "type": "string"
+                },
+                "external_event_id": {
+                  "type": "string"
+                },
+                "googleeventid": {
+                  "type": "string"
+                },
+                "google_event_id": {
                   "type": "string"
                 },
                 "startAt": {
                   "type": "string"
                 },
+                "startat": {
+                  "type": "string"
+                },
+                "start_at": {
+                  "type": "string"
+                },
+                "start": {
+                  "type": "string"
+                },
+                "start_time": {
+                  "type": "string"
+                },
+                "starttime": {
+                  "type": "string"
+                },
                 "endAt": {
                   "type": "string"
                 },
-                "durationMinutes": {
-                  "type": "number"
+                "endat": {
+                  "type": "string"
                 },
-                "eventId": {
+                "end_at": {
+                  "type": "string"
+                },
+                "end": {
+                  "type": "string"
+                },
+                "end_time": {
+                  "type": "string"
+                },
+                "endtime": {
                   "type": "string"
                 },
                 "newTitle": {
                   "type": "string"
                 },
+                "newtitle": {
+                  "type": "string"
+                },
+                "new_title": {
+                  "type": "string"
+                },
+                "renameto": {
+                  "type": "string"
+                },
+                "rename_to": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "query": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
                 "description": {
+                  "type": "string"
+                },
+                "desc": {
+                  "type": "string"
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "body": {
                   "type": "string"
                 },
                 "location": {
                   "type": "string"
                 },
+                "place": {
+                  "type": "string"
+                },
+                "venue": {
+                  "type": "string"
+                },
+                "mode": {
+                  "type": "string"
+                },
+                "side": {
+                  "type": "string"
+                },
+                "grantId": {
+                  "type": "string"
+                },
+                "recurrenceScope": {
+                  "type": "string"
+                },
+                "recurrencescope": {
+                  "type": "string"
+                },
+                "recurrence_scope": {
+                  "type": "string"
+                },
+                "applyto": {
+                  "type": "string"
+                },
+                "apply_to": {
+                  "type": "string"
+                },
+                "editscope": {
+                  "type": "string"
+                },
+                "edit_scope": {
+                  "type": "string"
+                },
                 "travelOriginAddress": {
                   "type": "string"
+                },
+                "traveloriginaddress": {
+                  "type": "string"
+                },
+                "travel_origin_address": {
+                  "type": "string"
+                },
+                "travelorigin": {
+                  "type": "string"
+                },
+                "travel_origin": {
+                  "type": "string"
+                },
+                "originaddress": {
+                  "type": "string"
+                },
+                "origin_address": {
+                  "type": "string"
+                },
+                "departureaddress": {
+                  "type": "string"
+                },
+                "departure_address": {
+                  "type": "string"
+                },
+                "fromaddress": {
+                  "type": "string"
+                },
+                "from_address": {
+                  "type": "string"
+                },
+                "durationMinutes": {
+                  "type": "number"
+                },
+                "durationminutes": {
+                  "type": "number"
+                },
+                "duration_minutes": {
+                  "type": "number"
+                },
+                "windowDays": {
+                  "type": "number"
+                },
+                "windowdays": {
+                  "type": "number"
+                },
+                "window_days": {
+                  "type": "number"
+                },
+                "forceSync": {
+                  "type": "boolean"
+                },
+                "forcesync": {
+                  "type": "boolean"
+                },
+                "force_sync": {
+                  "type": "boolean"
+                },
+                "notifyAttendees": {
+                  "type": "boolean"
+                },
+                "recurrence": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "rrule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "recurrencerule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "recurrence_rule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "repeat": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "repeats": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "repeatrule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "repeat_rule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "queries": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
                 },
                 "attendees": {
                   "type": "array",
                   "items": {
-                    "type": "string"
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "object",
+                        "required": ["email"],
+                        "properties": {
+                          "email": {
+                            "type": "string"
+                          },
+                          "displayName": {
+                            "type": "string"
+                          },
+                          "optional": {
+                            "type": "boolean"
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    ]
                   }
                 }
               },
@@ -1290,6 +1609,7 @@
         "capability:write",
         "capability:update",
         "capability:delete",
+        "effect:receipt-required",
         "surface:remote-api",
         "surface:internal"
       ],
@@ -1356,58 +1676,377 @@
                 "calendarId": {
                   "type": "string"
                 },
+                "calendarid": {
+                  "type": "string"
+                },
+                "calendar_id": {
+                  "type": "string"
+                },
                 "timeMin": {
+                  "type": "string"
+                },
+                "timemin": {
+                  "type": "string"
+                },
+                "time_min": {
                   "type": "string"
                 },
                 "timeMax": {
                   "type": "string"
                 },
+                "timemax": {
+                  "type": "string"
+                },
+                "time_max": {
+                  "type": "string"
+                },
                 "timeZone": {
                   "type": "string"
                 },
-                "forceSync": {
-                  "type": "boolean"
+                "timezone": {
+                  "type": "string"
                 },
-                "windowDays": {
-                  "type": "number"
+                "time_zone": {
+                  "type": "string"
                 },
                 "windowPreset": {
                   "type": "string"
                 },
-                "start": {
+                "windowpreset": {
                   "type": "string"
                 },
-                "end": {
+                "window_preset": {
+                  "type": "string"
+                },
+                "eventId": {
+                  "type": "string"
+                },
+                "eventid": {
+                  "type": "string"
+                },
+                "event_id": {
+                  "type": "string"
+                },
+                "externaleventid": {
+                  "type": "string"
+                },
+                "external_event_id": {
+                  "type": "string"
+                },
+                "googleeventid": {
+                  "type": "string"
+                },
+                "google_event_id": {
                   "type": "string"
                 },
                 "startAt": {
                   "type": "string"
                 },
+                "startat": {
+                  "type": "string"
+                },
+                "start_at": {
+                  "type": "string"
+                },
+                "start": {
+                  "type": "string"
+                },
+                "start_time": {
+                  "type": "string"
+                },
+                "starttime": {
+                  "type": "string"
+                },
                 "endAt": {
                   "type": "string"
                 },
-                "durationMinutes": {
-                  "type": "number"
+                "endat": {
+                  "type": "string"
                 },
-                "eventId": {
+                "end_at": {
+                  "type": "string"
+                },
+                "end": {
+                  "type": "string"
+                },
+                "end_time": {
+                  "type": "string"
+                },
+                "endtime": {
                   "type": "string"
                 },
                 "newTitle": {
                   "type": "string"
                 },
+                "newtitle": {
+                  "type": "string"
+                },
+                "new_title": {
+                  "type": "string"
+                },
+                "renameto": {
+                  "type": "string"
+                },
+                "rename_to": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "query": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
                 "description": {
+                  "type": "string"
+                },
+                "desc": {
+                  "type": "string"
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "body": {
                   "type": "string"
                 },
                 "location": {
                   "type": "string"
                 },
+                "place": {
+                  "type": "string"
+                },
+                "venue": {
+                  "type": "string"
+                },
+                "mode": {
+                  "type": "string"
+                },
+                "side": {
+                  "type": "string"
+                },
+                "grantId": {
+                  "type": "string"
+                },
+                "recurrenceScope": {
+                  "type": "string"
+                },
+                "recurrencescope": {
+                  "type": "string"
+                },
+                "recurrence_scope": {
+                  "type": "string"
+                },
+                "applyto": {
+                  "type": "string"
+                },
+                "apply_to": {
+                  "type": "string"
+                },
+                "editscope": {
+                  "type": "string"
+                },
+                "edit_scope": {
+                  "type": "string"
+                },
                 "travelOriginAddress": {
                   "type": "string"
+                },
+                "traveloriginaddress": {
+                  "type": "string"
+                },
+                "travel_origin_address": {
+                  "type": "string"
+                },
+                "travelorigin": {
+                  "type": "string"
+                },
+                "travel_origin": {
+                  "type": "string"
+                },
+                "originaddress": {
+                  "type": "string"
+                },
+                "origin_address": {
+                  "type": "string"
+                },
+                "departureaddress": {
+                  "type": "string"
+                },
+                "departure_address": {
+                  "type": "string"
+                },
+                "fromaddress": {
+                  "type": "string"
+                },
+                "from_address": {
+                  "type": "string"
+                },
+                "durationMinutes": {
+                  "type": "number"
+                },
+                "durationminutes": {
+                  "type": "number"
+                },
+                "duration_minutes": {
+                  "type": "number"
+                },
+                "windowDays": {
+                  "type": "number"
+                },
+                "windowdays": {
+                  "type": "number"
+                },
+                "window_days": {
+                  "type": "number"
+                },
+                "forceSync": {
+                  "type": "boolean"
+                },
+                "forcesync": {
+                  "type": "boolean"
+                },
+                "force_sync": {
+                  "type": "boolean"
+                },
+                "notifyAttendees": {
+                  "type": "boolean"
+                },
+                "recurrence": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "rrule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "recurrencerule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "recurrence_rule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "repeat": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "repeats": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "repeatrule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "repeat_rule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "queries": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
                 },
                 "attendees": {
                   "type": "array",
                   "items": {
-                    "type": "string"
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "object",
+                        "required": ["email"],
+                        "properties": {
+                          "email": {
+                            "type": "string"
+                          },
+                          "displayName": {
+                            "type": "string"
+                          },
+                          "optional": {
+                            "type": "boolean"
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    ]
                   }
                 }
               },
@@ -1503,6 +2142,7 @@
         "capability:write",
         "capability:update",
         "capability:delete",
+        "effect:receipt-required",
         "surface:remote-api",
         "surface:internal"
       ],
@@ -1569,58 +2209,377 @@
                 "calendarId": {
                   "type": "string"
                 },
+                "calendarid": {
+                  "type": "string"
+                },
+                "calendar_id": {
+                  "type": "string"
+                },
                 "timeMin": {
+                  "type": "string"
+                },
+                "timemin": {
+                  "type": "string"
+                },
+                "time_min": {
                   "type": "string"
                 },
                 "timeMax": {
                   "type": "string"
                 },
+                "timemax": {
+                  "type": "string"
+                },
+                "time_max": {
+                  "type": "string"
+                },
                 "timeZone": {
                   "type": "string"
                 },
-                "forceSync": {
-                  "type": "boolean"
+                "timezone": {
+                  "type": "string"
                 },
-                "windowDays": {
-                  "type": "number"
+                "time_zone": {
+                  "type": "string"
                 },
                 "windowPreset": {
                   "type": "string"
                 },
-                "start": {
+                "windowpreset": {
                   "type": "string"
                 },
-                "end": {
+                "window_preset": {
+                  "type": "string"
+                },
+                "eventId": {
+                  "type": "string"
+                },
+                "eventid": {
+                  "type": "string"
+                },
+                "event_id": {
+                  "type": "string"
+                },
+                "externaleventid": {
+                  "type": "string"
+                },
+                "external_event_id": {
+                  "type": "string"
+                },
+                "googleeventid": {
+                  "type": "string"
+                },
+                "google_event_id": {
                   "type": "string"
                 },
                 "startAt": {
                   "type": "string"
                 },
+                "startat": {
+                  "type": "string"
+                },
+                "start_at": {
+                  "type": "string"
+                },
+                "start": {
+                  "type": "string"
+                },
+                "start_time": {
+                  "type": "string"
+                },
+                "starttime": {
+                  "type": "string"
+                },
                 "endAt": {
                   "type": "string"
                 },
-                "durationMinutes": {
-                  "type": "number"
+                "endat": {
+                  "type": "string"
                 },
-                "eventId": {
+                "end_at": {
+                  "type": "string"
+                },
+                "end": {
+                  "type": "string"
+                },
+                "end_time": {
+                  "type": "string"
+                },
+                "endtime": {
                   "type": "string"
                 },
                 "newTitle": {
                   "type": "string"
                 },
+                "newtitle": {
+                  "type": "string"
+                },
+                "new_title": {
+                  "type": "string"
+                },
+                "renameto": {
+                  "type": "string"
+                },
+                "rename_to": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "query": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
                 "description": {
+                  "type": "string"
+                },
+                "desc": {
+                  "type": "string"
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "body": {
                   "type": "string"
                 },
                 "location": {
                   "type": "string"
                 },
+                "place": {
+                  "type": "string"
+                },
+                "venue": {
+                  "type": "string"
+                },
+                "mode": {
+                  "type": "string"
+                },
+                "side": {
+                  "type": "string"
+                },
+                "grantId": {
+                  "type": "string"
+                },
+                "recurrenceScope": {
+                  "type": "string"
+                },
+                "recurrencescope": {
+                  "type": "string"
+                },
+                "recurrence_scope": {
+                  "type": "string"
+                },
+                "applyto": {
+                  "type": "string"
+                },
+                "apply_to": {
+                  "type": "string"
+                },
+                "editscope": {
+                  "type": "string"
+                },
+                "edit_scope": {
+                  "type": "string"
+                },
                 "travelOriginAddress": {
                   "type": "string"
+                },
+                "traveloriginaddress": {
+                  "type": "string"
+                },
+                "travel_origin_address": {
+                  "type": "string"
+                },
+                "travelorigin": {
+                  "type": "string"
+                },
+                "travel_origin": {
+                  "type": "string"
+                },
+                "originaddress": {
+                  "type": "string"
+                },
+                "origin_address": {
+                  "type": "string"
+                },
+                "departureaddress": {
+                  "type": "string"
+                },
+                "departure_address": {
+                  "type": "string"
+                },
+                "fromaddress": {
+                  "type": "string"
+                },
+                "from_address": {
+                  "type": "string"
+                },
+                "durationMinutes": {
+                  "type": "number"
+                },
+                "durationminutes": {
+                  "type": "number"
+                },
+                "duration_minutes": {
+                  "type": "number"
+                },
+                "windowDays": {
+                  "type": "number"
+                },
+                "windowdays": {
+                  "type": "number"
+                },
+                "window_days": {
+                  "type": "number"
+                },
+                "forceSync": {
+                  "type": "boolean"
+                },
+                "forcesync": {
+                  "type": "boolean"
+                },
+                "force_sync": {
+                  "type": "boolean"
+                },
+                "notifyAttendees": {
+                  "type": "boolean"
+                },
+                "recurrence": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "rrule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "recurrencerule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "recurrence_rule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "repeat": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "repeats": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "repeatrule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "repeat_rule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "queries": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
                 },
                 "attendees": {
                   "type": "array",
                   "items": {
-                    "type": "string"
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "object",
+                        "required": ["email"],
+                        "properties": {
+                          "email": {
+                            "type": "string"
+                          },
+                          "displayName": {
+                            "type": "string"
+                          },
+                          "optional": {
+                            "type": "boolean"
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    ]
                   }
                 }
               },
@@ -1716,6 +2675,7 @@
         "capability:write",
         "capability:update",
         "capability:delete",
+        "effect:receipt-required",
         "surface:remote-api",
         "surface:internal"
       ],
@@ -1782,58 +2742,377 @@
                 "calendarId": {
                   "type": "string"
                 },
+                "calendarid": {
+                  "type": "string"
+                },
+                "calendar_id": {
+                  "type": "string"
+                },
                 "timeMin": {
+                  "type": "string"
+                },
+                "timemin": {
+                  "type": "string"
+                },
+                "time_min": {
                   "type": "string"
                 },
                 "timeMax": {
                   "type": "string"
                 },
+                "timemax": {
+                  "type": "string"
+                },
+                "time_max": {
+                  "type": "string"
+                },
                 "timeZone": {
                   "type": "string"
                 },
-                "forceSync": {
-                  "type": "boolean"
+                "timezone": {
+                  "type": "string"
                 },
-                "windowDays": {
-                  "type": "number"
+                "time_zone": {
+                  "type": "string"
                 },
                 "windowPreset": {
                   "type": "string"
                 },
-                "start": {
+                "windowpreset": {
                   "type": "string"
                 },
-                "end": {
+                "window_preset": {
+                  "type": "string"
+                },
+                "eventId": {
+                  "type": "string"
+                },
+                "eventid": {
+                  "type": "string"
+                },
+                "event_id": {
+                  "type": "string"
+                },
+                "externaleventid": {
+                  "type": "string"
+                },
+                "external_event_id": {
+                  "type": "string"
+                },
+                "googleeventid": {
+                  "type": "string"
+                },
+                "google_event_id": {
                   "type": "string"
                 },
                 "startAt": {
                   "type": "string"
                 },
+                "startat": {
+                  "type": "string"
+                },
+                "start_at": {
+                  "type": "string"
+                },
+                "start": {
+                  "type": "string"
+                },
+                "start_time": {
+                  "type": "string"
+                },
+                "starttime": {
+                  "type": "string"
+                },
                 "endAt": {
                   "type": "string"
                 },
-                "durationMinutes": {
-                  "type": "number"
+                "endat": {
+                  "type": "string"
                 },
-                "eventId": {
+                "end_at": {
+                  "type": "string"
+                },
+                "end": {
+                  "type": "string"
+                },
+                "end_time": {
+                  "type": "string"
+                },
+                "endtime": {
                   "type": "string"
                 },
                 "newTitle": {
                   "type": "string"
                 },
+                "newtitle": {
+                  "type": "string"
+                },
+                "new_title": {
+                  "type": "string"
+                },
+                "renameto": {
+                  "type": "string"
+                },
+                "rename_to": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "query": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
                 "description": {
+                  "type": "string"
+                },
+                "desc": {
+                  "type": "string"
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "body": {
                   "type": "string"
                 },
                 "location": {
                   "type": "string"
                 },
+                "place": {
+                  "type": "string"
+                },
+                "venue": {
+                  "type": "string"
+                },
+                "mode": {
+                  "type": "string"
+                },
+                "side": {
+                  "type": "string"
+                },
+                "grantId": {
+                  "type": "string"
+                },
+                "recurrenceScope": {
+                  "type": "string"
+                },
+                "recurrencescope": {
+                  "type": "string"
+                },
+                "recurrence_scope": {
+                  "type": "string"
+                },
+                "applyto": {
+                  "type": "string"
+                },
+                "apply_to": {
+                  "type": "string"
+                },
+                "editscope": {
+                  "type": "string"
+                },
+                "edit_scope": {
+                  "type": "string"
+                },
                 "travelOriginAddress": {
                   "type": "string"
+                },
+                "traveloriginaddress": {
+                  "type": "string"
+                },
+                "travel_origin_address": {
+                  "type": "string"
+                },
+                "travelorigin": {
+                  "type": "string"
+                },
+                "travel_origin": {
+                  "type": "string"
+                },
+                "originaddress": {
+                  "type": "string"
+                },
+                "origin_address": {
+                  "type": "string"
+                },
+                "departureaddress": {
+                  "type": "string"
+                },
+                "departure_address": {
+                  "type": "string"
+                },
+                "fromaddress": {
+                  "type": "string"
+                },
+                "from_address": {
+                  "type": "string"
+                },
+                "durationMinutes": {
+                  "type": "number"
+                },
+                "durationminutes": {
+                  "type": "number"
+                },
+                "duration_minutes": {
+                  "type": "number"
+                },
+                "windowDays": {
+                  "type": "number"
+                },
+                "windowdays": {
+                  "type": "number"
+                },
+                "window_days": {
+                  "type": "number"
+                },
+                "forceSync": {
+                  "type": "boolean"
+                },
+                "forcesync": {
+                  "type": "boolean"
+                },
+                "force_sync": {
+                  "type": "boolean"
+                },
+                "notifyAttendees": {
+                  "type": "boolean"
+                },
+                "recurrence": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "rrule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "recurrencerule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "recurrence_rule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "repeat": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "repeats": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "repeatrule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "repeat_rule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "queries": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
                 },
                 "attendees": {
                   "type": "array",
                   "items": {
-                    "type": "string"
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "object",
+                        "required": ["email"],
+                        "properties": {
+                          "email": {
+                            "type": "string"
+                          },
+                          "displayName": {
+                            "type": "string"
+                          },
+                          "optional": {
+                            "type": "boolean"
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    ]
                   }
                 }
               },
@@ -1929,6 +3208,7 @@
         "capability:write",
         "capability:update",
         "capability:delete",
+        "effect:receipt-required",
         "surface:remote-api",
         "surface:internal"
       ],
@@ -1995,58 +3275,377 @@
                 "calendarId": {
                   "type": "string"
                 },
+                "calendarid": {
+                  "type": "string"
+                },
+                "calendar_id": {
+                  "type": "string"
+                },
                 "timeMin": {
+                  "type": "string"
+                },
+                "timemin": {
+                  "type": "string"
+                },
+                "time_min": {
                   "type": "string"
                 },
                 "timeMax": {
                   "type": "string"
                 },
+                "timemax": {
+                  "type": "string"
+                },
+                "time_max": {
+                  "type": "string"
+                },
                 "timeZone": {
                   "type": "string"
                 },
-                "forceSync": {
-                  "type": "boolean"
+                "timezone": {
+                  "type": "string"
                 },
-                "windowDays": {
-                  "type": "number"
+                "time_zone": {
+                  "type": "string"
                 },
                 "windowPreset": {
                   "type": "string"
                 },
-                "start": {
+                "windowpreset": {
                   "type": "string"
                 },
-                "end": {
+                "window_preset": {
+                  "type": "string"
+                },
+                "eventId": {
+                  "type": "string"
+                },
+                "eventid": {
+                  "type": "string"
+                },
+                "event_id": {
+                  "type": "string"
+                },
+                "externaleventid": {
+                  "type": "string"
+                },
+                "external_event_id": {
+                  "type": "string"
+                },
+                "googleeventid": {
+                  "type": "string"
+                },
+                "google_event_id": {
                   "type": "string"
                 },
                 "startAt": {
                   "type": "string"
                 },
+                "startat": {
+                  "type": "string"
+                },
+                "start_at": {
+                  "type": "string"
+                },
+                "start": {
+                  "type": "string"
+                },
+                "start_time": {
+                  "type": "string"
+                },
+                "starttime": {
+                  "type": "string"
+                },
                 "endAt": {
                   "type": "string"
                 },
-                "durationMinutes": {
-                  "type": "number"
+                "endat": {
+                  "type": "string"
                 },
-                "eventId": {
+                "end_at": {
+                  "type": "string"
+                },
+                "end": {
+                  "type": "string"
+                },
+                "end_time": {
+                  "type": "string"
+                },
+                "endtime": {
                   "type": "string"
                 },
                 "newTitle": {
                   "type": "string"
                 },
+                "newtitle": {
+                  "type": "string"
+                },
+                "new_title": {
+                  "type": "string"
+                },
+                "renameto": {
+                  "type": "string"
+                },
+                "rename_to": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "query": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
                 "description": {
+                  "type": "string"
+                },
+                "desc": {
+                  "type": "string"
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "body": {
                   "type": "string"
                 },
                 "location": {
                   "type": "string"
                 },
+                "place": {
+                  "type": "string"
+                },
+                "venue": {
+                  "type": "string"
+                },
+                "mode": {
+                  "type": "string"
+                },
+                "side": {
+                  "type": "string"
+                },
+                "grantId": {
+                  "type": "string"
+                },
+                "recurrenceScope": {
+                  "type": "string"
+                },
+                "recurrencescope": {
+                  "type": "string"
+                },
+                "recurrence_scope": {
+                  "type": "string"
+                },
+                "applyto": {
+                  "type": "string"
+                },
+                "apply_to": {
+                  "type": "string"
+                },
+                "editscope": {
+                  "type": "string"
+                },
+                "edit_scope": {
+                  "type": "string"
+                },
                 "travelOriginAddress": {
                   "type": "string"
+                },
+                "traveloriginaddress": {
+                  "type": "string"
+                },
+                "travel_origin_address": {
+                  "type": "string"
+                },
+                "travelorigin": {
+                  "type": "string"
+                },
+                "travel_origin": {
+                  "type": "string"
+                },
+                "originaddress": {
+                  "type": "string"
+                },
+                "origin_address": {
+                  "type": "string"
+                },
+                "departureaddress": {
+                  "type": "string"
+                },
+                "departure_address": {
+                  "type": "string"
+                },
+                "fromaddress": {
+                  "type": "string"
+                },
+                "from_address": {
+                  "type": "string"
+                },
+                "durationMinutes": {
+                  "type": "number"
+                },
+                "durationminutes": {
+                  "type": "number"
+                },
+                "duration_minutes": {
+                  "type": "number"
+                },
+                "windowDays": {
+                  "type": "number"
+                },
+                "windowdays": {
+                  "type": "number"
+                },
+                "window_days": {
+                  "type": "number"
+                },
+                "forceSync": {
+                  "type": "boolean"
+                },
+                "forcesync": {
+                  "type": "boolean"
+                },
+                "force_sync": {
+                  "type": "boolean"
+                },
+                "notifyAttendees": {
+                  "type": "boolean"
+                },
+                "recurrence": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "rrule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "recurrencerule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "recurrence_rule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "repeat": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "repeats": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "repeatrule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "repeat_rule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "queries": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
                 },
                 "attendees": {
                   "type": "array",
                   "items": {
-                    "type": "string"
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "object",
+                        "required": ["email"],
+                        "properties": {
+                          "email": {
+                            "type": "string"
+                          },
+                          "displayName": {
+                            "type": "string"
+                          },
+                          "optional": {
+                            "type": "boolean"
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    ]
                   }
                 }
               },
@@ -2142,6 +3741,7 @@
         "capability:write",
         "capability:update",
         "capability:delete",
+        "effect:receipt-required",
         "surface:remote-api",
         "surface:internal"
       ],
@@ -2208,58 +3808,377 @@
                 "calendarId": {
                   "type": "string"
                 },
+                "calendarid": {
+                  "type": "string"
+                },
+                "calendar_id": {
+                  "type": "string"
+                },
                 "timeMin": {
+                  "type": "string"
+                },
+                "timemin": {
+                  "type": "string"
+                },
+                "time_min": {
                   "type": "string"
                 },
                 "timeMax": {
                   "type": "string"
                 },
+                "timemax": {
+                  "type": "string"
+                },
+                "time_max": {
+                  "type": "string"
+                },
                 "timeZone": {
                   "type": "string"
                 },
-                "forceSync": {
-                  "type": "boolean"
+                "timezone": {
+                  "type": "string"
                 },
-                "windowDays": {
-                  "type": "number"
+                "time_zone": {
+                  "type": "string"
                 },
                 "windowPreset": {
                   "type": "string"
                 },
-                "start": {
+                "windowpreset": {
                   "type": "string"
                 },
-                "end": {
+                "window_preset": {
+                  "type": "string"
+                },
+                "eventId": {
+                  "type": "string"
+                },
+                "eventid": {
+                  "type": "string"
+                },
+                "event_id": {
+                  "type": "string"
+                },
+                "externaleventid": {
+                  "type": "string"
+                },
+                "external_event_id": {
+                  "type": "string"
+                },
+                "googleeventid": {
+                  "type": "string"
+                },
+                "google_event_id": {
                   "type": "string"
                 },
                 "startAt": {
                   "type": "string"
                 },
+                "startat": {
+                  "type": "string"
+                },
+                "start_at": {
+                  "type": "string"
+                },
+                "start": {
+                  "type": "string"
+                },
+                "start_time": {
+                  "type": "string"
+                },
+                "starttime": {
+                  "type": "string"
+                },
                 "endAt": {
                   "type": "string"
                 },
-                "durationMinutes": {
-                  "type": "number"
+                "endat": {
+                  "type": "string"
                 },
-                "eventId": {
+                "end_at": {
+                  "type": "string"
+                },
+                "end": {
+                  "type": "string"
+                },
+                "end_time": {
+                  "type": "string"
+                },
+                "endtime": {
                   "type": "string"
                 },
                 "newTitle": {
                   "type": "string"
                 },
+                "newtitle": {
+                  "type": "string"
+                },
+                "new_title": {
+                  "type": "string"
+                },
+                "renameto": {
+                  "type": "string"
+                },
+                "rename_to": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "query": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
                 "description": {
+                  "type": "string"
+                },
+                "desc": {
+                  "type": "string"
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "body": {
                   "type": "string"
                 },
                 "location": {
                   "type": "string"
                 },
+                "place": {
+                  "type": "string"
+                },
+                "venue": {
+                  "type": "string"
+                },
+                "mode": {
+                  "type": "string"
+                },
+                "side": {
+                  "type": "string"
+                },
+                "grantId": {
+                  "type": "string"
+                },
+                "recurrenceScope": {
+                  "type": "string"
+                },
+                "recurrencescope": {
+                  "type": "string"
+                },
+                "recurrence_scope": {
+                  "type": "string"
+                },
+                "applyto": {
+                  "type": "string"
+                },
+                "apply_to": {
+                  "type": "string"
+                },
+                "editscope": {
+                  "type": "string"
+                },
+                "edit_scope": {
+                  "type": "string"
+                },
                 "travelOriginAddress": {
                   "type": "string"
+                },
+                "traveloriginaddress": {
+                  "type": "string"
+                },
+                "travel_origin_address": {
+                  "type": "string"
+                },
+                "travelorigin": {
+                  "type": "string"
+                },
+                "travel_origin": {
+                  "type": "string"
+                },
+                "originaddress": {
+                  "type": "string"
+                },
+                "origin_address": {
+                  "type": "string"
+                },
+                "departureaddress": {
+                  "type": "string"
+                },
+                "departure_address": {
+                  "type": "string"
+                },
+                "fromaddress": {
+                  "type": "string"
+                },
+                "from_address": {
+                  "type": "string"
+                },
+                "durationMinutes": {
+                  "type": "number"
+                },
+                "durationminutes": {
+                  "type": "number"
+                },
+                "duration_minutes": {
+                  "type": "number"
+                },
+                "windowDays": {
+                  "type": "number"
+                },
+                "windowdays": {
+                  "type": "number"
+                },
+                "window_days": {
+                  "type": "number"
+                },
+                "forceSync": {
+                  "type": "boolean"
+                },
+                "forcesync": {
+                  "type": "boolean"
+                },
+                "force_sync": {
+                  "type": "boolean"
+                },
+                "notifyAttendees": {
+                  "type": "boolean"
+                },
+                "recurrence": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "rrule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "recurrencerule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "recurrence_rule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "repeat": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "repeats": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "repeatrule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "repeat_rule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "queries": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
                 },
                 "attendees": {
                   "type": "array",
                   "items": {
-                    "type": "string"
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "object",
+                        "required": ["email"],
+                        "properties": {
+                          "email": {
+                            "type": "string"
+                          },
+                          "displayName": {
+                            "type": "string"
+                          },
+                          "optional": {
+                            "type": "boolean"
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    ]
                   }
                 }
               },
@@ -2355,6 +4274,7 @@
         "capability:write",
         "capability:update",
         "capability:delete",
+        "effect:receipt-required",
         "surface:remote-api",
         "surface:internal"
       ],
@@ -2421,58 +4341,377 @@
                 "calendarId": {
                   "type": "string"
                 },
+                "calendarid": {
+                  "type": "string"
+                },
+                "calendar_id": {
+                  "type": "string"
+                },
                 "timeMin": {
+                  "type": "string"
+                },
+                "timemin": {
+                  "type": "string"
+                },
+                "time_min": {
                   "type": "string"
                 },
                 "timeMax": {
                   "type": "string"
                 },
+                "timemax": {
+                  "type": "string"
+                },
+                "time_max": {
+                  "type": "string"
+                },
                 "timeZone": {
                   "type": "string"
                 },
-                "forceSync": {
-                  "type": "boolean"
+                "timezone": {
+                  "type": "string"
                 },
-                "windowDays": {
-                  "type": "number"
+                "time_zone": {
+                  "type": "string"
                 },
                 "windowPreset": {
                   "type": "string"
                 },
-                "start": {
+                "windowpreset": {
                   "type": "string"
                 },
-                "end": {
+                "window_preset": {
+                  "type": "string"
+                },
+                "eventId": {
+                  "type": "string"
+                },
+                "eventid": {
+                  "type": "string"
+                },
+                "event_id": {
+                  "type": "string"
+                },
+                "externaleventid": {
+                  "type": "string"
+                },
+                "external_event_id": {
+                  "type": "string"
+                },
+                "googleeventid": {
+                  "type": "string"
+                },
+                "google_event_id": {
                   "type": "string"
                 },
                 "startAt": {
                   "type": "string"
                 },
+                "startat": {
+                  "type": "string"
+                },
+                "start_at": {
+                  "type": "string"
+                },
+                "start": {
+                  "type": "string"
+                },
+                "start_time": {
+                  "type": "string"
+                },
+                "starttime": {
+                  "type": "string"
+                },
                 "endAt": {
                   "type": "string"
                 },
-                "durationMinutes": {
-                  "type": "number"
+                "endat": {
+                  "type": "string"
                 },
-                "eventId": {
+                "end_at": {
+                  "type": "string"
+                },
+                "end": {
+                  "type": "string"
+                },
+                "end_time": {
+                  "type": "string"
+                },
+                "endtime": {
                   "type": "string"
                 },
                 "newTitle": {
                   "type": "string"
                 },
+                "newtitle": {
+                  "type": "string"
+                },
+                "new_title": {
+                  "type": "string"
+                },
+                "renameto": {
+                  "type": "string"
+                },
+                "rename_to": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "query": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
                 "description": {
+                  "type": "string"
+                },
+                "desc": {
+                  "type": "string"
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "body": {
                   "type": "string"
                 },
                 "location": {
                   "type": "string"
                 },
+                "place": {
+                  "type": "string"
+                },
+                "venue": {
+                  "type": "string"
+                },
+                "mode": {
+                  "type": "string"
+                },
+                "side": {
+                  "type": "string"
+                },
+                "grantId": {
+                  "type": "string"
+                },
+                "recurrenceScope": {
+                  "type": "string"
+                },
+                "recurrencescope": {
+                  "type": "string"
+                },
+                "recurrence_scope": {
+                  "type": "string"
+                },
+                "applyto": {
+                  "type": "string"
+                },
+                "apply_to": {
+                  "type": "string"
+                },
+                "editscope": {
+                  "type": "string"
+                },
+                "edit_scope": {
+                  "type": "string"
+                },
                 "travelOriginAddress": {
                   "type": "string"
+                },
+                "traveloriginaddress": {
+                  "type": "string"
+                },
+                "travel_origin_address": {
+                  "type": "string"
+                },
+                "travelorigin": {
+                  "type": "string"
+                },
+                "travel_origin": {
+                  "type": "string"
+                },
+                "originaddress": {
+                  "type": "string"
+                },
+                "origin_address": {
+                  "type": "string"
+                },
+                "departureaddress": {
+                  "type": "string"
+                },
+                "departure_address": {
+                  "type": "string"
+                },
+                "fromaddress": {
+                  "type": "string"
+                },
+                "from_address": {
+                  "type": "string"
+                },
+                "durationMinutes": {
+                  "type": "number"
+                },
+                "durationminutes": {
+                  "type": "number"
+                },
+                "duration_minutes": {
+                  "type": "number"
+                },
+                "windowDays": {
+                  "type": "number"
+                },
+                "windowdays": {
+                  "type": "number"
+                },
+                "window_days": {
+                  "type": "number"
+                },
+                "forceSync": {
+                  "type": "boolean"
+                },
+                "forcesync": {
+                  "type": "boolean"
+                },
+                "force_sync": {
+                  "type": "boolean"
+                },
+                "notifyAttendees": {
+                  "type": "boolean"
+                },
+                "recurrence": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "rrule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "recurrencerule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "recurrence_rule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "repeat": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "repeats": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "repeatrule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "repeat_rule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "queries": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
                 },
                 "attendees": {
                   "type": "array",
                   "items": {
-                    "type": "string"
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "object",
+                        "required": ["email"],
+                        "properties": {
+                          "email": {
+                            "type": "string"
+                          },
+                          "displayName": {
+                            "type": "string"
+                          },
+                          "optional": {
+                            "type": "boolean"
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    ]
                   }
                 }
               },
@@ -2568,6 +4807,7 @@
         "capability:write",
         "capability:update",
         "capability:delete",
+        "effect:receipt-required",
         "surface:remote-api",
         "surface:internal"
       ],
@@ -2634,58 +4874,377 @@
                 "calendarId": {
                   "type": "string"
                 },
+                "calendarid": {
+                  "type": "string"
+                },
+                "calendar_id": {
+                  "type": "string"
+                },
                 "timeMin": {
+                  "type": "string"
+                },
+                "timemin": {
+                  "type": "string"
+                },
+                "time_min": {
                   "type": "string"
                 },
                 "timeMax": {
                   "type": "string"
                 },
+                "timemax": {
+                  "type": "string"
+                },
+                "time_max": {
+                  "type": "string"
+                },
                 "timeZone": {
                   "type": "string"
                 },
-                "forceSync": {
-                  "type": "boolean"
+                "timezone": {
+                  "type": "string"
                 },
-                "windowDays": {
-                  "type": "number"
+                "time_zone": {
+                  "type": "string"
                 },
                 "windowPreset": {
                   "type": "string"
                 },
-                "start": {
+                "windowpreset": {
                   "type": "string"
                 },
-                "end": {
+                "window_preset": {
+                  "type": "string"
+                },
+                "eventId": {
+                  "type": "string"
+                },
+                "eventid": {
+                  "type": "string"
+                },
+                "event_id": {
+                  "type": "string"
+                },
+                "externaleventid": {
+                  "type": "string"
+                },
+                "external_event_id": {
+                  "type": "string"
+                },
+                "googleeventid": {
+                  "type": "string"
+                },
+                "google_event_id": {
                   "type": "string"
                 },
                 "startAt": {
                   "type": "string"
                 },
+                "startat": {
+                  "type": "string"
+                },
+                "start_at": {
+                  "type": "string"
+                },
+                "start": {
+                  "type": "string"
+                },
+                "start_time": {
+                  "type": "string"
+                },
+                "starttime": {
+                  "type": "string"
+                },
                 "endAt": {
                   "type": "string"
                 },
-                "durationMinutes": {
-                  "type": "number"
+                "endat": {
+                  "type": "string"
                 },
-                "eventId": {
+                "end_at": {
+                  "type": "string"
+                },
+                "end": {
+                  "type": "string"
+                },
+                "end_time": {
+                  "type": "string"
+                },
+                "endtime": {
                   "type": "string"
                 },
                 "newTitle": {
                   "type": "string"
                 },
+                "newtitle": {
+                  "type": "string"
+                },
+                "new_title": {
+                  "type": "string"
+                },
+                "renameto": {
+                  "type": "string"
+                },
+                "rename_to": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "query": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
                 "description": {
+                  "type": "string"
+                },
+                "desc": {
+                  "type": "string"
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "body": {
                   "type": "string"
                 },
                 "location": {
                   "type": "string"
                 },
+                "place": {
+                  "type": "string"
+                },
+                "venue": {
+                  "type": "string"
+                },
+                "mode": {
+                  "type": "string"
+                },
+                "side": {
+                  "type": "string"
+                },
+                "grantId": {
+                  "type": "string"
+                },
+                "recurrenceScope": {
+                  "type": "string"
+                },
+                "recurrencescope": {
+                  "type": "string"
+                },
+                "recurrence_scope": {
+                  "type": "string"
+                },
+                "applyto": {
+                  "type": "string"
+                },
+                "apply_to": {
+                  "type": "string"
+                },
+                "editscope": {
+                  "type": "string"
+                },
+                "edit_scope": {
+                  "type": "string"
+                },
                 "travelOriginAddress": {
                   "type": "string"
+                },
+                "traveloriginaddress": {
+                  "type": "string"
+                },
+                "travel_origin_address": {
+                  "type": "string"
+                },
+                "travelorigin": {
+                  "type": "string"
+                },
+                "travel_origin": {
+                  "type": "string"
+                },
+                "originaddress": {
+                  "type": "string"
+                },
+                "origin_address": {
+                  "type": "string"
+                },
+                "departureaddress": {
+                  "type": "string"
+                },
+                "departure_address": {
+                  "type": "string"
+                },
+                "fromaddress": {
+                  "type": "string"
+                },
+                "from_address": {
+                  "type": "string"
+                },
+                "durationMinutes": {
+                  "type": "number"
+                },
+                "durationminutes": {
+                  "type": "number"
+                },
+                "duration_minutes": {
+                  "type": "number"
+                },
+                "windowDays": {
+                  "type": "number"
+                },
+                "windowdays": {
+                  "type": "number"
+                },
+                "window_days": {
+                  "type": "number"
+                },
+                "forceSync": {
+                  "type": "boolean"
+                },
+                "forcesync": {
+                  "type": "boolean"
+                },
+                "force_sync": {
+                  "type": "boolean"
+                },
+                "notifyAttendees": {
+                  "type": "boolean"
+                },
+                "recurrence": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "rrule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "recurrencerule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "recurrence_rule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "repeat": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "repeats": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "repeatrule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "repeat_rule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "queries": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
                 },
                 "attendees": {
                   "type": "array",
                   "items": {
-                    "type": "string"
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "object",
+                        "required": ["email"],
+                        "properties": {
+                          "email": {
+                            "type": "string"
+                          },
+                          "displayName": {
+                            "type": "string"
+                          },
+                          "optional": {
+                            "type": "boolean"
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    ]
                   }
                 }
               },
@@ -2781,6 +5340,7 @@
         "capability:write",
         "capability:update",
         "capability:delete",
+        "effect:receipt-required",
         "surface:remote-api",
         "surface:internal"
       ],
@@ -2847,58 +5407,377 @@
                 "calendarId": {
                   "type": "string"
                 },
+                "calendarid": {
+                  "type": "string"
+                },
+                "calendar_id": {
+                  "type": "string"
+                },
                 "timeMin": {
+                  "type": "string"
+                },
+                "timemin": {
+                  "type": "string"
+                },
+                "time_min": {
                   "type": "string"
                 },
                 "timeMax": {
                   "type": "string"
                 },
+                "timemax": {
+                  "type": "string"
+                },
+                "time_max": {
+                  "type": "string"
+                },
                 "timeZone": {
                   "type": "string"
                 },
-                "forceSync": {
-                  "type": "boolean"
+                "timezone": {
+                  "type": "string"
                 },
-                "windowDays": {
-                  "type": "number"
+                "time_zone": {
+                  "type": "string"
                 },
                 "windowPreset": {
                   "type": "string"
                 },
-                "start": {
+                "windowpreset": {
                   "type": "string"
                 },
-                "end": {
+                "window_preset": {
+                  "type": "string"
+                },
+                "eventId": {
+                  "type": "string"
+                },
+                "eventid": {
+                  "type": "string"
+                },
+                "event_id": {
+                  "type": "string"
+                },
+                "externaleventid": {
+                  "type": "string"
+                },
+                "external_event_id": {
+                  "type": "string"
+                },
+                "googleeventid": {
+                  "type": "string"
+                },
+                "google_event_id": {
                   "type": "string"
                 },
                 "startAt": {
                   "type": "string"
                 },
+                "startat": {
+                  "type": "string"
+                },
+                "start_at": {
+                  "type": "string"
+                },
+                "start": {
+                  "type": "string"
+                },
+                "start_time": {
+                  "type": "string"
+                },
+                "starttime": {
+                  "type": "string"
+                },
                 "endAt": {
                   "type": "string"
                 },
-                "durationMinutes": {
-                  "type": "number"
+                "endat": {
+                  "type": "string"
                 },
-                "eventId": {
+                "end_at": {
+                  "type": "string"
+                },
+                "end": {
+                  "type": "string"
+                },
+                "end_time": {
+                  "type": "string"
+                },
+                "endtime": {
                   "type": "string"
                 },
                 "newTitle": {
                   "type": "string"
                 },
+                "newtitle": {
+                  "type": "string"
+                },
+                "new_title": {
+                  "type": "string"
+                },
+                "renameto": {
+                  "type": "string"
+                },
+                "rename_to": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "query": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
                 "description": {
+                  "type": "string"
+                },
+                "desc": {
+                  "type": "string"
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "body": {
                   "type": "string"
                 },
                 "location": {
                   "type": "string"
                 },
+                "place": {
+                  "type": "string"
+                },
+                "venue": {
+                  "type": "string"
+                },
+                "mode": {
+                  "type": "string"
+                },
+                "side": {
+                  "type": "string"
+                },
+                "grantId": {
+                  "type": "string"
+                },
+                "recurrenceScope": {
+                  "type": "string"
+                },
+                "recurrencescope": {
+                  "type": "string"
+                },
+                "recurrence_scope": {
+                  "type": "string"
+                },
+                "applyto": {
+                  "type": "string"
+                },
+                "apply_to": {
+                  "type": "string"
+                },
+                "editscope": {
+                  "type": "string"
+                },
+                "edit_scope": {
+                  "type": "string"
+                },
                 "travelOriginAddress": {
                   "type": "string"
+                },
+                "traveloriginaddress": {
+                  "type": "string"
+                },
+                "travel_origin_address": {
+                  "type": "string"
+                },
+                "travelorigin": {
+                  "type": "string"
+                },
+                "travel_origin": {
+                  "type": "string"
+                },
+                "originaddress": {
+                  "type": "string"
+                },
+                "origin_address": {
+                  "type": "string"
+                },
+                "departureaddress": {
+                  "type": "string"
+                },
+                "departure_address": {
+                  "type": "string"
+                },
+                "fromaddress": {
+                  "type": "string"
+                },
+                "from_address": {
+                  "type": "string"
+                },
+                "durationMinutes": {
+                  "type": "number"
+                },
+                "durationminutes": {
+                  "type": "number"
+                },
+                "duration_minutes": {
+                  "type": "number"
+                },
+                "windowDays": {
+                  "type": "number"
+                },
+                "windowdays": {
+                  "type": "number"
+                },
+                "window_days": {
+                  "type": "number"
+                },
+                "forceSync": {
+                  "type": "boolean"
+                },
+                "forcesync": {
+                  "type": "boolean"
+                },
+                "force_sync": {
+                  "type": "boolean"
+                },
+                "notifyAttendees": {
+                  "type": "boolean"
+                },
+                "recurrence": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "rrule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "recurrencerule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "recurrence_rule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "repeat": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "repeats": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "repeatrule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "repeat_rule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "queries": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
                 },
                 "attendees": {
                   "type": "array",
                   "items": {
-                    "type": "string"
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "object",
+                        "required": ["email"],
+                        "properties": {
+                          "email": {
+                            "type": "string"
+                          },
+                          "displayName": {
+                            "type": "string"
+                          },
+                          "optional": {
+                            "type": "boolean"
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    ]
                   }
                 }
               },
@@ -2994,6 +5873,7 @@
         "capability:write",
         "capability:update",
         "capability:delete",
+        "effect:receipt-required",
         "surface:remote-api",
         "surface:internal"
       ],
@@ -3022,7 +5902,7 @@
       "type": "function",
       "function": {
         "name": "CALENDAR_SOURCES",
-        "description": "calendar provider/account/source connection, reconnection, health, or feed selection -> CALENDAR_SOURCES; calendar event reads/writes -> CALENDAR\ncalendar source list|select|deselect|connect|reconnect exact identity versioned",
+        "description": "calendar provider/account/source connection, reconnection, health, or feed selection -> CALENDAR_SOURCES; calendar event reads/writes -> CALENDAR\ncalendar source list|select|deselect|connect|reconnect exact identity versioned; ics create=owner UI only",
         "parameters": {
           "type": "object",
           "required": ["operation"],
@@ -3057,14 +5937,6 @@
             "forceSync": {
               "type": "boolean",
               "description": "For list only: ask providers for fresh health rather than preferring cache."
-            },
-            "name": {
-              "type": "string",
-              "description": "Owner-visible source name for a new ICS subscription."
-            },
-            "url": {
-              "type": "string",
-              "description": "HTTPS or webcal URL for a new ICS subscription. The capability-bearing URL is never returned."
             }
           },
           "additionalProperties": false
@@ -3076,6 +5948,7 @@
         "domain:calendar",
         "capability:read",
         "capability:update",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": ["general", "calendar", "connectors"],
@@ -3129,58 +6002,377 @@
                 "calendarId": {
                   "type": "string"
                 },
+                "calendarid": {
+                  "type": "string"
+                },
+                "calendar_id": {
+                  "type": "string"
+                },
                 "timeMin": {
+                  "type": "string"
+                },
+                "timemin": {
+                  "type": "string"
+                },
+                "time_min": {
                   "type": "string"
                 },
                 "timeMax": {
                   "type": "string"
                 },
+                "timemax": {
+                  "type": "string"
+                },
+                "time_max": {
+                  "type": "string"
+                },
                 "timeZone": {
                   "type": "string"
                 },
-                "forceSync": {
-                  "type": "boolean"
+                "timezone": {
+                  "type": "string"
                 },
-                "windowDays": {
-                  "type": "number"
+                "time_zone": {
+                  "type": "string"
                 },
                 "windowPreset": {
                   "type": "string"
                 },
-                "start": {
+                "windowpreset": {
                   "type": "string"
                 },
-                "end": {
+                "window_preset": {
+                  "type": "string"
+                },
+                "eventId": {
+                  "type": "string"
+                },
+                "eventid": {
+                  "type": "string"
+                },
+                "event_id": {
+                  "type": "string"
+                },
+                "externaleventid": {
+                  "type": "string"
+                },
+                "external_event_id": {
+                  "type": "string"
+                },
+                "googleeventid": {
+                  "type": "string"
+                },
+                "google_event_id": {
                   "type": "string"
                 },
                 "startAt": {
                   "type": "string"
                 },
+                "startat": {
+                  "type": "string"
+                },
+                "start_at": {
+                  "type": "string"
+                },
+                "start": {
+                  "type": "string"
+                },
+                "start_time": {
+                  "type": "string"
+                },
+                "starttime": {
+                  "type": "string"
+                },
                 "endAt": {
                   "type": "string"
                 },
-                "durationMinutes": {
-                  "type": "number"
+                "endat": {
+                  "type": "string"
                 },
-                "eventId": {
+                "end_at": {
+                  "type": "string"
+                },
+                "end": {
+                  "type": "string"
+                },
+                "end_time": {
+                  "type": "string"
+                },
+                "endtime": {
                   "type": "string"
                 },
                 "newTitle": {
                   "type": "string"
                 },
+                "newtitle": {
+                  "type": "string"
+                },
+                "new_title": {
+                  "type": "string"
+                },
+                "renameto": {
+                  "type": "string"
+                },
+                "rename_to": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "query": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
                 "description": {
+                  "type": "string"
+                },
+                "desc": {
+                  "type": "string"
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "body": {
                   "type": "string"
                 },
                 "location": {
                   "type": "string"
                 },
+                "place": {
+                  "type": "string"
+                },
+                "venue": {
+                  "type": "string"
+                },
+                "mode": {
+                  "type": "string"
+                },
+                "side": {
+                  "type": "string"
+                },
+                "grantId": {
+                  "type": "string"
+                },
+                "recurrenceScope": {
+                  "type": "string"
+                },
+                "recurrencescope": {
+                  "type": "string"
+                },
+                "recurrence_scope": {
+                  "type": "string"
+                },
+                "applyto": {
+                  "type": "string"
+                },
+                "apply_to": {
+                  "type": "string"
+                },
+                "editscope": {
+                  "type": "string"
+                },
+                "edit_scope": {
+                  "type": "string"
+                },
                 "travelOriginAddress": {
                   "type": "string"
+                },
+                "traveloriginaddress": {
+                  "type": "string"
+                },
+                "travel_origin_address": {
+                  "type": "string"
+                },
+                "travelorigin": {
+                  "type": "string"
+                },
+                "travel_origin": {
+                  "type": "string"
+                },
+                "originaddress": {
+                  "type": "string"
+                },
+                "origin_address": {
+                  "type": "string"
+                },
+                "departureaddress": {
+                  "type": "string"
+                },
+                "departure_address": {
+                  "type": "string"
+                },
+                "fromaddress": {
+                  "type": "string"
+                },
+                "from_address": {
+                  "type": "string"
+                },
+                "durationMinutes": {
+                  "type": "number"
+                },
+                "durationminutes": {
+                  "type": "number"
+                },
+                "duration_minutes": {
+                  "type": "number"
+                },
+                "windowDays": {
+                  "type": "number"
+                },
+                "windowdays": {
+                  "type": "number"
+                },
+                "window_days": {
+                  "type": "number"
+                },
+                "forceSync": {
+                  "type": "boolean"
+                },
+                "forcesync": {
+                  "type": "boolean"
+                },
+                "force_sync": {
+                  "type": "boolean"
+                },
+                "notifyAttendees": {
+                  "type": "boolean"
+                },
+                "recurrence": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "rrule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "recurrencerule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "recurrence_rule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "repeat": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "repeats": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "repeatrule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "repeat_rule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "queries": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
                 },
                 "attendees": {
                   "type": "array",
                   "items": {
-                    "type": "string"
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "object",
+                        "required": ["email"],
+                        "properties": {
+                          "email": {
+                            "type": "string"
+                          },
+                          "displayName": {
+                            "type": "string"
+                          },
+                          "optional": {
+                            "type": "boolean"
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    ]
                   }
                 }
               },
@@ -3276,6 +6468,7 @@
         "capability:write",
         "capability:update",
         "capability:delete",
+        "effect:receipt-required",
         "surface:remote-api",
         "surface:internal"
       ],
@@ -3342,58 +6535,377 @@
                 "calendarId": {
                   "type": "string"
                 },
+                "calendarid": {
+                  "type": "string"
+                },
+                "calendar_id": {
+                  "type": "string"
+                },
                 "timeMin": {
+                  "type": "string"
+                },
+                "timemin": {
+                  "type": "string"
+                },
+                "time_min": {
                   "type": "string"
                 },
                 "timeMax": {
                   "type": "string"
                 },
+                "timemax": {
+                  "type": "string"
+                },
+                "time_max": {
+                  "type": "string"
+                },
                 "timeZone": {
                   "type": "string"
                 },
-                "forceSync": {
-                  "type": "boolean"
+                "timezone": {
+                  "type": "string"
                 },
-                "windowDays": {
-                  "type": "number"
+                "time_zone": {
+                  "type": "string"
                 },
                 "windowPreset": {
                   "type": "string"
                 },
-                "start": {
+                "windowpreset": {
                   "type": "string"
                 },
-                "end": {
+                "window_preset": {
+                  "type": "string"
+                },
+                "eventId": {
+                  "type": "string"
+                },
+                "eventid": {
+                  "type": "string"
+                },
+                "event_id": {
+                  "type": "string"
+                },
+                "externaleventid": {
+                  "type": "string"
+                },
+                "external_event_id": {
+                  "type": "string"
+                },
+                "googleeventid": {
+                  "type": "string"
+                },
+                "google_event_id": {
                   "type": "string"
                 },
                 "startAt": {
                   "type": "string"
                 },
+                "startat": {
+                  "type": "string"
+                },
+                "start_at": {
+                  "type": "string"
+                },
+                "start": {
+                  "type": "string"
+                },
+                "start_time": {
+                  "type": "string"
+                },
+                "starttime": {
+                  "type": "string"
+                },
                 "endAt": {
                   "type": "string"
                 },
-                "durationMinutes": {
-                  "type": "number"
+                "endat": {
+                  "type": "string"
                 },
-                "eventId": {
+                "end_at": {
+                  "type": "string"
+                },
+                "end": {
+                  "type": "string"
+                },
+                "end_time": {
+                  "type": "string"
+                },
+                "endtime": {
                   "type": "string"
                 },
                 "newTitle": {
                   "type": "string"
                 },
+                "newtitle": {
+                  "type": "string"
+                },
+                "new_title": {
+                  "type": "string"
+                },
+                "renameto": {
+                  "type": "string"
+                },
+                "rename_to": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "query": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
                 "description": {
+                  "type": "string"
+                },
+                "desc": {
+                  "type": "string"
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "body": {
                   "type": "string"
                 },
                 "location": {
                   "type": "string"
                 },
+                "place": {
+                  "type": "string"
+                },
+                "venue": {
+                  "type": "string"
+                },
+                "mode": {
+                  "type": "string"
+                },
+                "side": {
+                  "type": "string"
+                },
+                "grantId": {
+                  "type": "string"
+                },
+                "recurrenceScope": {
+                  "type": "string"
+                },
+                "recurrencescope": {
+                  "type": "string"
+                },
+                "recurrence_scope": {
+                  "type": "string"
+                },
+                "applyto": {
+                  "type": "string"
+                },
+                "apply_to": {
+                  "type": "string"
+                },
+                "editscope": {
+                  "type": "string"
+                },
+                "edit_scope": {
+                  "type": "string"
+                },
                 "travelOriginAddress": {
                   "type": "string"
+                },
+                "traveloriginaddress": {
+                  "type": "string"
+                },
+                "travel_origin_address": {
+                  "type": "string"
+                },
+                "travelorigin": {
+                  "type": "string"
+                },
+                "travel_origin": {
+                  "type": "string"
+                },
+                "originaddress": {
+                  "type": "string"
+                },
+                "origin_address": {
+                  "type": "string"
+                },
+                "departureaddress": {
+                  "type": "string"
+                },
+                "departure_address": {
+                  "type": "string"
+                },
+                "fromaddress": {
+                  "type": "string"
+                },
+                "from_address": {
+                  "type": "string"
+                },
+                "durationMinutes": {
+                  "type": "number"
+                },
+                "durationminutes": {
+                  "type": "number"
+                },
+                "duration_minutes": {
+                  "type": "number"
+                },
+                "windowDays": {
+                  "type": "number"
+                },
+                "windowdays": {
+                  "type": "number"
+                },
+                "window_days": {
+                  "type": "number"
+                },
+                "forceSync": {
+                  "type": "boolean"
+                },
+                "forcesync": {
+                  "type": "boolean"
+                },
+                "force_sync": {
+                  "type": "boolean"
+                },
+                "notifyAttendees": {
+                  "type": "boolean"
+                },
+                "recurrence": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "rrule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "recurrencerule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "recurrence_rule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "repeat": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "repeats": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "repeatrule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "repeat_rule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "queries": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
                 },
                 "attendees": {
                   "type": "array",
                   "items": {
-                    "type": "string"
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "object",
+                        "required": ["email"],
+                        "properties": {
+                          "email": {
+                            "type": "string"
+                          },
+                          "displayName": {
+                            "type": "string"
+                          },
+                          "optional": {
+                            "type": "boolean"
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    ]
                   }
                 }
               },
@@ -3489,6 +7001,7 @@
         "capability:write",
         "capability:update",
         "capability:delete",
+        "effect:receipt-required",
         "surface:remote-api",
         "surface:internal"
       ],
@@ -3555,58 +7068,377 @@
                 "calendarId": {
                   "type": "string"
                 },
+                "calendarid": {
+                  "type": "string"
+                },
+                "calendar_id": {
+                  "type": "string"
+                },
                 "timeMin": {
+                  "type": "string"
+                },
+                "timemin": {
+                  "type": "string"
+                },
+                "time_min": {
                   "type": "string"
                 },
                 "timeMax": {
                   "type": "string"
                 },
+                "timemax": {
+                  "type": "string"
+                },
+                "time_max": {
+                  "type": "string"
+                },
                 "timeZone": {
                   "type": "string"
                 },
-                "forceSync": {
-                  "type": "boolean"
+                "timezone": {
+                  "type": "string"
                 },
-                "windowDays": {
-                  "type": "number"
+                "time_zone": {
+                  "type": "string"
                 },
                 "windowPreset": {
                   "type": "string"
                 },
-                "start": {
+                "windowpreset": {
                   "type": "string"
                 },
-                "end": {
+                "window_preset": {
+                  "type": "string"
+                },
+                "eventId": {
+                  "type": "string"
+                },
+                "eventid": {
+                  "type": "string"
+                },
+                "event_id": {
+                  "type": "string"
+                },
+                "externaleventid": {
+                  "type": "string"
+                },
+                "external_event_id": {
+                  "type": "string"
+                },
+                "googleeventid": {
+                  "type": "string"
+                },
+                "google_event_id": {
                   "type": "string"
                 },
                 "startAt": {
                   "type": "string"
                 },
+                "startat": {
+                  "type": "string"
+                },
+                "start_at": {
+                  "type": "string"
+                },
+                "start": {
+                  "type": "string"
+                },
+                "start_time": {
+                  "type": "string"
+                },
+                "starttime": {
+                  "type": "string"
+                },
                 "endAt": {
                   "type": "string"
                 },
-                "durationMinutes": {
-                  "type": "number"
+                "endat": {
+                  "type": "string"
                 },
-                "eventId": {
+                "end_at": {
+                  "type": "string"
+                },
+                "end": {
+                  "type": "string"
+                },
+                "end_time": {
+                  "type": "string"
+                },
+                "endtime": {
                   "type": "string"
                 },
                 "newTitle": {
                   "type": "string"
                 },
+                "newtitle": {
+                  "type": "string"
+                },
+                "new_title": {
+                  "type": "string"
+                },
+                "renameto": {
+                  "type": "string"
+                },
+                "rename_to": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "query": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
                 "description": {
+                  "type": "string"
+                },
+                "desc": {
+                  "type": "string"
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "body": {
                   "type": "string"
                 },
                 "location": {
                   "type": "string"
                 },
+                "place": {
+                  "type": "string"
+                },
+                "venue": {
+                  "type": "string"
+                },
+                "mode": {
+                  "type": "string"
+                },
+                "side": {
+                  "type": "string"
+                },
+                "grantId": {
+                  "type": "string"
+                },
+                "recurrenceScope": {
+                  "type": "string"
+                },
+                "recurrencescope": {
+                  "type": "string"
+                },
+                "recurrence_scope": {
+                  "type": "string"
+                },
+                "applyto": {
+                  "type": "string"
+                },
+                "apply_to": {
+                  "type": "string"
+                },
+                "editscope": {
+                  "type": "string"
+                },
+                "edit_scope": {
+                  "type": "string"
+                },
                 "travelOriginAddress": {
                   "type": "string"
+                },
+                "traveloriginaddress": {
+                  "type": "string"
+                },
+                "travel_origin_address": {
+                  "type": "string"
+                },
+                "travelorigin": {
+                  "type": "string"
+                },
+                "travel_origin": {
+                  "type": "string"
+                },
+                "originaddress": {
+                  "type": "string"
+                },
+                "origin_address": {
+                  "type": "string"
+                },
+                "departureaddress": {
+                  "type": "string"
+                },
+                "departure_address": {
+                  "type": "string"
+                },
+                "fromaddress": {
+                  "type": "string"
+                },
+                "from_address": {
+                  "type": "string"
+                },
+                "durationMinutes": {
+                  "type": "number"
+                },
+                "durationminutes": {
+                  "type": "number"
+                },
+                "duration_minutes": {
+                  "type": "number"
+                },
+                "windowDays": {
+                  "type": "number"
+                },
+                "windowdays": {
+                  "type": "number"
+                },
+                "window_days": {
+                  "type": "number"
+                },
+                "forceSync": {
+                  "type": "boolean"
+                },
+                "forcesync": {
+                  "type": "boolean"
+                },
+                "force_sync": {
+                  "type": "boolean"
+                },
+                "notifyAttendees": {
+                  "type": "boolean"
+                },
+                "recurrence": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "rrule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "recurrencerule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "recurrence_rule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "repeat": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "repeats": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "repeatrule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "repeat_rule": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "queries": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
                 },
                 "attendees": {
                   "type": "array",
                   "items": {
-                    "type": "string"
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "object",
+                        "required": ["email"],
+                        "properties": {
+                          "email": {
+                            "type": "string"
+                          },
+                          "displayName": {
+                            "type": "string"
+                          },
+                          "optional": {
+                            "type": "boolean"
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    ]
                   }
                 }
               },
@@ -3702,6 +7534,7 @@
         "capability:write",
         "capability:update",
         "capability:delete",
+        "effect:receipt-required",
         "surface:remote-api",
         "surface:internal"
       ],
@@ -3757,7 +7590,7 @@
             },
             "proposal": {
               "type": "object",
-              "description": "scan_event_proposal candidate: { startISO, endISO, attendees? }.",
+              "description": "scan_event_proposal candidate: { startISO, endISO, attendees?, guestAvailabilityGrantIds? }. Attendees only match already-visible events; external free/busy requires opaque host-issued grant ids.",
               "required": [],
               "properties": {},
               "additionalProperties": true
@@ -3826,7 +7659,7 @@
             },
             "proposal": {
               "type": "object",
-              "description": "scan_event_proposal candidate: { startISO, endISO, attendees? }.",
+              "description": "scan_event_proposal candidate: { startISO, endISO, attendees?, guestAvailabilityGrantIds? }. Attendees only match already-visible events; external free/busy requires opaque host-issued grant ids.",
               "required": [],
               "properties": {},
               "additionalProperties": true
@@ -3895,7 +7728,7 @@
             },
             "proposal": {
               "type": "object",
-              "description": "scan_event_proposal candidate: { startISO, endISO, attendees? }.",
+              "description": "scan_event_proposal candidate: { startISO, endISO, attendees?, guestAvailabilityGrantIds? }. Attendees only match already-visible events; external free/busy requires opaque host-issued grant ids.",
               "required": [],
               "properties": {},
               "additionalProperties": true
@@ -3964,7 +7797,7 @@
             },
             "proposal": {
               "type": "object",
-              "description": "scan_event_proposal candidate: { startISO, endISO, attendees? }.",
+              "description": "scan_event_proposal candidate: { startISO, endISO, attendees?, guestAvailabilityGrantIds? }. Attendees only match already-visible events; external free/busy requires opaque host-issued grant ids.",
               "required": [],
               "properties": {},
               "additionalProperties": true
@@ -5551,6 +9384,7 @@
         "capability:write",
         "capability:update",
         "capability:delete",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": ["contacts", "tasks", "calendar", "messaging", "memory"],
@@ -5849,6 +9683,7 @@
               "description": "LifeOps HEALTH discriminator.",
               "enum": [
                 "by_metric",
+                "delete_metric",
                 "summary",
                 "trends",
                 "trend",
@@ -5907,6 +9742,11 @@
                 "finalize_proposal",
                 "export"
               ]
+            },
+            "householdId": {
+              "type": "string",
+              "description": "Canonical household namespace to bind to this relationship for household-scoped authorization.",
+              "minLength": 1
             },
             "entityId": {
               "type": "string",
@@ -6049,6 +9889,7 @@
                     "toAt",
                     "normalCustodianEntityId",
                     "substituteCustodianEntityId",
+                    "authorityBaselineRelationshipId",
                     "reason"
                   ],
                   "properties": {
@@ -6069,6 +9910,10 @@
                       "minLength": 1
                     },
                     "substituteCustodianEntityId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "authorityBaselineRelationshipId": {
                       "type": "string",
                       "minLength": 1
                     },
@@ -6139,6 +9984,11 @@
               "description": "Subaction discriminator (auto-set to \"bind_role\" for this virtual; do not change).",
               "enum": ["bind_role"],
               "default": "bind_role"
+            },
+            "householdId": {
+              "type": "string",
+              "description": "Canonical household namespace to bind to this relationship for household-scoped authorization.",
+              "minLength": 1
             },
             "entityId": {
               "type": "string",
@@ -6285,6 +10135,7 @@
                     "toAt",
                     "normalCustodianEntityId",
                     "substituteCustodianEntityId",
+                    "authorityBaselineRelationshipId",
                     "reason"
                   ],
                   "properties": {
@@ -6305,6 +10156,10 @@
                       "minLength": 1
                     },
                     "substituteCustodianEntityId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "authorityBaselineRelationshipId": {
                       "type": "string",
                       "minLength": 1
                     },
@@ -6675,6 +10530,7 @@
                     "toAt",
                     "normalCustodianEntityId",
                     "substituteCustodianEntityId",
+                    "authorityBaselineRelationshipId",
                     "reason"
                   ],
                   "properties": {
@@ -6695,6 +10551,10 @@
                       "minLength": 1
                     },
                     "substituteCustodianEntityId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "authorityBaselineRelationshipId": {
                       "type": "string",
                       "minLength": 1
                     },
@@ -6799,6 +10659,576 @@
         "capability:write",
         "capability:update"
       ],
+      "_surfaces": ["surface:internal"],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "HOUSEHOLD_FOOD",
+        "description": "meal plan, family dinner idea, food allergy or diet rule, pantry stock update, or grocery/shopping list request -> HOUSEHOLD_FOOD\nfood constraints|preferences|inventory|meal eval|plan publish|approval-bound shopping handoff",
+        "parameters": {
+          "type": "object",
+          "required": ["action"],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Food-domain verb.",
+              "enum": [
+                "put_household_profile",
+                "put_constraint",
+                "put_preference",
+                "record_inventory",
+                "evaluate_meal",
+                "publish_meal_plan",
+                "request_shopping_handoff",
+                "view"
+              ]
+            },
+            "householdId": {
+              "type": "string",
+              "description": "Stable food household identifier.",
+              "minLength": 1
+            },
+            "memberEntityIds": {
+              "type": "array",
+              "description": "Canonical graph entity IDs of every household member covered by food policy.",
+              "items": {
+                "type": "string"
+              }
+            },
+            "expectedVersion": {
+              "type": "integer",
+              "description": "Current record version for compare-and-swap; zero creates it.",
+              "minimum": 0
+            },
+            "constraint": {
+              "type": "object",
+              "description": "Typed hard food constraint with kind, excluded tags, subject entity, and provenance.",
+              "required": [],
+              "properties": {},
+              "additionalProperties": true
+            },
+            "preference": {
+              "type": "object",
+              "description": "Typed soft food preference with preferred/avoided tags, weight, and provenance.",
+              "required": [],
+              "properties": {},
+              "additionalProperties": true
+            },
+            "lot": {
+              "type": "object",
+              "description": "Inventory lot observation with quantity, unit, confidence state, and provenance.",
+              "required": [],
+              "properties": {},
+              "additionalProperties": true
+            },
+            "plannedFor": {
+              "type": "string",
+              "description": "ISO timestamp of the planned meal.",
+              "minLength": 1
+            },
+            "meal": {
+              "type": "object",
+              "description": "Meal candidate with ingredients, tags, servings, and label-safety evidence.",
+              "required": [],
+              "properties": {},
+              "additionalProperties": true
+            },
+            "participants": {
+              "type": "array",
+              "description": "Attending household members with portion servings and attendance provenance.",
+              "items": {
+                "type": "object",
+                "required": [],
+                "properties": {},
+                "additionalProperties": true
+              }
+            },
+            "expectedContentSha256": {
+              "type": "string",
+              "description": "The contentSha256 returned by evaluate_meal for this exact meal; guards against publishing content the owner did not review.",
+              "minLength": 1
+            },
+            "planId": {
+              "type": "string",
+              "description": "Stable identifier for the published meal plan.",
+              "minLength": 1
+            },
+            "idempotencyKey": {
+              "type": "string",
+              "description": "Stable key for one immutable shopping-handoff intent.",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [
+        "domain:household",
+        "capability:read",
+        "capability:write",
+        "effect:receipt-required",
+        "surface:internal"
+      ],
+      "_contexts": ["general", "tasks"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:household",
+      "_capabilities": ["capability:read", "capability:write"],
+      "_surfaces": ["surface:internal"],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "HOUSEHOLD_FOOD_EVALUATE_MEAL",
+        "description": "Maintain household food policy and plan meals: hard allergy/diet constraints, preferences, provenance-stamped pantry inventory, deterministic meal evaluation, published meal plans, and approval-bound shopping-list handoffs. Never places an order, builds a retailer cart, or bypasses hard constraints. — subaction = evaluate_meal",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Subaction discriminator (auto-set to \"evaluate_meal\" for this virtual; do not change).",
+              "enum": ["evaluate_meal"],
+              "default": "evaluate_meal"
+            },
+            "householdId": {
+              "type": "string",
+              "description": "Stable food household identifier.",
+              "minLength": 1
+            },
+            "plannedFor": {
+              "type": "string",
+              "description": "ISO timestamp of the planned meal.",
+              "minLength": 1
+            },
+            "meal": {
+              "type": "object",
+              "description": "Meal candidate with ingredients, tags, servings, and label-safety evidence.",
+              "required": [],
+              "properties": {},
+              "additionalProperties": true
+            },
+            "participants": {
+              "type": "array",
+              "description": "Attending household members with portion servings and attendance provenance.",
+              "items": {
+                "type": "object",
+                "required": [],
+                "properties": {},
+                "additionalProperties": true
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [
+        "domain:household",
+        "capability:read",
+        "capability:write",
+        "effect:receipt-required",
+        "surface:internal"
+      ],
+      "_contexts": ["general", "tasks"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:household",
+      "_capabilities": ["capability:read", "capability:write"],
+      "_surfaces": ["surface:internal"],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "HOUSEHOLD_FOOD_PUBLISH_MEAL_PLAN",
+        "description": "Maintain household food policy and plan meals: hard allergy/diet constraints, preferences, provenance-stamped pantry inventory, deterministic meal evaluation, published meal plans, and approval-bound shopping-list handoffs. Never places an order, builds a retailer cart, or bypasses hard constraints. — subaction = publish_meal_plan",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Subaction discriminator (auto-set to \"publish_meal_plan\" for this virtual; do not change).",
+              "enum": ["publish_meal_plan"],
+              "default": "publish_meal_plan"
+            },
+            "householdId": {
+              "type": "string",
+              "description": "Stable food household identifier.",
+              "minLength": 1
+            },
+            "plannedFor": {
+              "type": "string",
+              "description": "ISO timestamp of the planned meal.",
+              "minLength": 1
+            },
+            "meal": {
+              "type": "object",
+              "description": "Meal candidate with ingredients, tags, servings, and label-safety evidence.",
+              "required": [],
+              "properties": {},
+              "additionalProperties": true
+            },
+            "participants": {
+              "type": "array",
+              "description": "Attending household members with portion servings and attendance provenance.",
+              "items": {
+                "type": "object",
+                "required": [],
+                "properties": {},
+                "additionalProperties": true
+              }
+            },
+            "expectedContentSha256": {
+              "type": "string",
+              "description": "The contentSha256 returned by evaluate_meal for this exact meal; guards against publishing content the owner did not review.",
+              "minLength": 1
+            },
+            "planId": {
+              "type": "string",
+              "description": "Stable identifier for the published meal plan.",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [
+        "domain:household",
+        "capability:read",
+        "capability:write",
+        "effect:receipt-required",
+        "surface:internal"
+      ],
+      "_contexts": ["general", "tasks"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:household",
+      "_capabilities": ["capability:read", "capability:write"],
+      "_surfaces": ["surface:internal"],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "HOUSEHOLD_FOOD_PUT_CONSTRAINT",
+        "description": "Maintain household food policy and plan meals: hard allergy/diet constraints, preferences, provenance-stamped pantry inventory, deterministic meal evaluation, published meal plans, and approval-bound shopping-list handoffs. Never places an order, builds a retailer cart, or bypasses hard constraints. — subaction = put_constraint",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Subaction discriminator (auto-set to \"put_constraint\" for this virtual; do not change).",
+              "enum": ["put_constraint"],
+              "default": "put_constraint"
+            },
+            "expectedVersion": {
+              "type": "integer",
+              "description": "Current record version for compare-and-swap; zero creates it.",
+              "minimum": 0
+            },
+            "constraint": {
+              "type": "object",
+              "description": "Typed hard food constraint with kind, excluded tags, subject entity, and provenance.",
+              "required": [],
+              "properties": {},
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [
+        "domain:household",
+        "capability:read",
+        "capability:write",
+        "effect:receipt-required",
+        "surface:internal"
+      ],
+      "_contexts": ["general", "tasks"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:household",
+      "_capabilities": ["capability:read", "capability:write"],
+      "_surfaces": ["surface:internal"],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "HOUSEHOLD_FOOD_PUT_HOUSEHOLD_PROFILE",
+        "description": "Maintain household food policy and plan meals: hard allergy/diet constraints, preferences, provenance-stamped pantry inventory, deterministic meal evaluation, published meal plans, and approval-bound shopping-list handoffs. Never places an order, builds a retailer cart, or bypasses hard constraints. — subaction = put_household_profile",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Subaction discriminator (auto-set to \"put_household_profile\" for this virtual; do not change).",
+              "enum": ["put_household_profile"],
+              "default": "put_household_profile"
+            },
+            "householdId": {
+              "type": "string",
+              "description": "Stable food household identifier.",
+              "minLength": 1
+            },
+            "memberEntityIds": {
+              "type": "array",
+              "description": "Canonical graph entity IDs of every household member covered by food policy.",
+              "items": {
+                "type": "string"
+              }
+            },
+            "expectedVersion": {
+              "type": "integer",
+              "description": "Current record version for compare-and-swap; zero creates it.",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [
+        "domain:household",
+        "capability:read",
+        "capability:write",
+        "effect:receipt-required",
+        "surface:internal"
+      ],
+      "_contexts": ["general", "tasks"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:household",
+      "_capabilities": ["capability:read", "capability:write"],
+      "_surfaces": ["surface:internal"],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "HOUSEHOLD_FOOD_PUT_PREFERENCE",
+        "description": "Maintain household food policy and plan meals: hard allergy/diet constraints, preferences, provenance-stamped pantry inventory, deterministic meal evaluation, published meal plans, and approval-bound shopping-list handoffs. Never places an order, builds a retailer cart, or bypasses hard constraints. — subaction = put_preference",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Subaction discriminator (auto-set to \"put_preference\" for this virtual; do not change).",
+              "enum": ["put_preference"],
+              "default": "put_preference"
+            },
+            "expectedVersion": {
+              "type": "integer",
+              "description": "Current record version for compare-and-swap; zero creates it.",
+              "minimum": 0
+            },
+            "preference": {
+              "type": "object",
+              "description": "Typed soft food preference with preferred/avoided tags, weight, and provenance.",
+              "required": [],
+              "properties": {},
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [
+        "domain:household",
+        "capability:read",
+        "capability:write",
+        "effect:receipt-required",
+        "surface:internal"
+      ],
+      "_contexts": ["general", "tasks"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:household",
+      "_capabilities": ["capability:read", "capability:write"],
+      "_surfaces": ["surface:internal"],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "HOUSEHOLD_FOOD_RECORD_INVENTORY",
+        "description": "Maintain household food policy and plan meals: hard allergy/diet constraints, preferences, provenance-stamped pantry inventory, deterministic meal evaluation, published meal plans, and approval-bound shopping-list handoffs. Never places an order, builds a retailer cart, or bypasses hard constraints. — subaction = record_inventory",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Subaction discriminator (auto-set to \"record_inventory\" for this virtual; do not change).",
+              "enum": ["record_inventory"],
+              "default": "record_inventory"
+            },
+            "lot": {
+              "type": "object",
+              "description": "Inventory lot observation with quantity, unit, confidence state, and provenance.",
+              "required": [],
+              "properties": {},
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [
+        "domain:household",
+        "capability:read",
+        "capability:write",
+        "effect:receipt-required",
+        "surface:internal"
+      ],
+      "_contexts": ["general", "tasks"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:household",
+      "_capabilities": ["capability:read", "capability:write"],
+      "_surfaces": ["surface:internal"],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "HOUSEHOLD_FOOD_REQUEST_SHOPPING_HANDOFF",
+        "description": "Maintain household food policy and plan meals: hard allergy/diet constraints, preferences, provenance-stamped pantry inventory, deterministic meal evaluation, published meal plans, and approval-bound shopping-list handoffs. Never places an order, builds a retailer cart, or bypasses hard constraints. — subaction = request_shopping_handoff",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Subaction discriminator (auto-set to \"request_shopping_handoff\" for this virtual; do not change).",
+              "enum": ["request_shopping_handoff"],
+              "default": "request_shopping_handoff"
+            },
+            "householdId": {
+              "type": "string",
+              "description": "Stable food household identifier.",
+              "minLength": 1
+            },
+            "plannedFor": {
+              "type": "string",
+              "description": "ISO timestamp of the planned meal.",
+              "minLength": 1
+            },
+            "meal": {
+              "type": "object",
+              "description": "Meal candidate with ingredients, tags, servings, and label-safety evidence.",
+              "required": [],
+              "properties": {},
+              "additionalProperties": true
+            },
+            "participants": {
+              "type": "array",
+              "description": "Attending household members with portion servings and attendance provenance.",
+              "items": {
+                "type": "object",
+                "required": [],
+                "properties": {},
+                "additionalProperties": true
+              }
+            },
+            "expectedContentSha256": {
+              "type": "string",
+              "description": "The contentSha256 returned by evaluate_meal for this exact meal; guards against publishing content the owner did not review.",
+              "minLength": 1
+            },
+            "idempotencyKey": {
+              "type": "string",
+              "description": "Stable key for one immutable shopping-handoff intent.",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [
+        "domain:household",
+        "capability:read",
+        "capability:write",
+        "effect:receipt-required",
+        "surface:internal"
+      ],
+      "_contexts": ["general", "tasks"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:household",
+      "_capabilities": ["capability:read", "capability:write"],
+      "_surfaces": ["surface:internal"],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "HOUSEHOLD_FOOD_VIEW",
+        "description": "Maintain household food policy and plan meals: hard allergy/diet constraints, preferences, provenance-stamped pantry inventory, deterministic meal evaluation, published meal plans, and approval-bound shopping-list handoffs. Never places an order, builds a retailer cart, or bypasses hard constraints. — subaction = view",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Subaction discriminator (auto-set to \"view\" for this virtual; do not change).",
+              "enum": ["view"],
+              "default": "view"
+            },
+            "householdId": {
+              "type": "string",
+              "description": "Stable food household identifier.",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [
+        "domain:household",
+        "capability:read",
+        "capability:write",
+        "effect:receipt-required",
+        "surface:internal"
+      ],
+      "_contexts": ["general", "tasks"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:household",
+      "_capabilities": ["capability:read", "capability:write"],
       "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
@@ -7327,7 +11757,8 @@
                 "put_resource",
                 "evaluate_plan",
                 "propose_plan",
-                "read_proposal"
+                "read_proposal",
+                "cancel_proposal"
               ]
             },
             "resource": {
@@ -7394,6 +11825,59 @@
             "proposalId": {
               "type": "string",
               "description": "Persisted resource-capacity proposal ID.",
+              "minLength": 1
+            },
+            "reason": {
+              "type": "string",
+              "description": "Owner-visible reason for cancelling the proposal.",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [
+        "domain:household",
+        "domain:calendar",
+        "capability:read",
+        "capability:write",
+        "effect:receipt-required",
+        "surface:internal"
+      ],
+      "_contexts": ["general", "calendar", "tasks"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:household",
+      "_capabilities": ["capability:read", "capability:write"],
+      "_surfaces": ["surface:internal"],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "HOUSEHOLD_RESOURCE_CAPACITY_CANCEL_PROPOSAL",
+        "description": "Record household caregivers, vehicles, restraints, authorization and availability; detect shared-resource conflicts across non-overlapping events; and create proposal-only affected-adult reviews. Never treats review as a reservation, writes a calendar, or sends a message. — subaction = cancel_proposal",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Subaction discriminator (auto-set to \"cancel_proposal\" for this virtual; do not change).",
+              "enum": ["cancel_proposal"],
+              "default": "cancel_proposal"
+            },
+            "proposalId": {
+              "type": "string",
+              "description": "Persisted resource-capacity proposal ID.",
+              "minLength": 1
+            },
+            "reason": {
+              "type": "string",
+              "description": "Owner-visible reason for cancelling the proposal.",
               "minLength": 1
             }
           },
@@ -8019,6 +12503,473 @@
       "_examples_count": 0,
       "_domain": "domain:reminders",
       "_capabilities": ["capability:update"],
+      "_surfaces": ["surface:internal"],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "LOCAL_CONDITIONS",
+        "description": "weather outlook, local family activity/event search, weekend outing options for the kids, or childcare coverage gap question -> LOCAL_CONDITIONS\nweather forecast|local activity discovery|fail-closed curation|childcare coverage gaps; observe only",
+        "parameters": {
+          "type": "object",
+          "required": ["action"],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "External-conditions verb.",
+              "enum": [
+                "weather_outlook",
+                "discover_activities",
+                "curate_discovered_activities",
+                "childcare_coverage_gaps"
+              ]
+            },
+            "latitude": {
+              "type": "number",
+              "description": "Forecast point latitude in decimal degrees.",
+              "minimum": -90,
+              "maximum": 90
+            },
+            "longitude": {
+              "type": "number",
+              "description": "Forecast point longitude in decimal degrees.",
+              "minimum": -180,
+              "maximum": 180
+            },
+            "includeHourly": {
+              "type": "boolean",
+              "description": "Include hourly forecast periods only when true."
+            },
+            "location": {
+              "type": "object",
+              "description": "Search area: { postalCode, countryCode } or { latitude, longitude, radiusMiles }.",
+              "required": [],
+              "properties": {},
+              "additionalProperties": true
+            },
+            "startAt": {
+              "type": "string",
+              "description": "RFC 3339 start of the activity search window.",
+              "minLength": 1
+            },
+            "endAt": {
+              "type": "string",
+              "description": "RFC 3339 end of the activity search window.",
+              "minLength": 1
+            },
+            "keywords": {
+              "type": "array",
+              "description": "Search keywords, e.g. [\"kids\", \"summer camp\"].",
+              "items": {
+                "type": "string"
+              }
+            },
+            "pageSize": {
+              "type": "integer",
+              "description": "Source page size.",
+              "minimum": 1
+            },
+            "maxPages": {
+              "type": "integer",
+              "description": "Maximum source pages to read.",
+              "minimum": 1
+            },
+            "children": {
+              "type": "array",
+              "description": "Children the outing is for: { childId, ageYears, scheduledLoad, maxScheduledLoad, accessibilityNeeds? }. Omit accessibilityNeeds only when the child has none.",
+              "items": {
+                "type": "object",
+                "required": [],
+                "properties": {},
+                "additionalProperties": true
+              }
+            },
+            "custodyHealth": {
+              "type": "string",
+              "description": "How complete the supplied custody windows are. Anything but complete makes custody a verification question, never assumed coverage.",
+              "enum": ["complete", "partial", "unavailable"]
+            },
+            "custodyWindows": {
+              "type": "array",
+              "description": "Known custody windows: { childId, startAt, endAt }.",
+              "items": {
+                "type": "object",
+                "required": [],
+                "properties": {},
+                "additionalProperties": true
+              }
+            },
+            "busyWindows": {
+              "type": "array",
+              "description": "Known busy calendar windows: { participantIds, startAt, endAt }.",
+              "items": {
+                "type": "object",
+                "required": [],
+                "properties": {},
+                "additionalProperties": true
+              }
+            },
+            "protectedUnstructuredWindows": {
+              "type": "array",
+              "description": "Protected unstructured family time: { windowId, childIds, startAt, endAt }.",
+              "items": {
+                "type": "object",
+                "required": [],
+                "properties": {},
+                "additionalProperties": true
+              }
+            },
+            "caregiverParticipantIds": {
+              "type": "array",
+              "description": "Caregivers who would attend. Omit only when none are decided yet.",
+              "items": {
+                "type": "string"
+              }
+            },
+            "availableCaregiverHeadcount": {
+              "type": "integer",
+              "description": "Confirmed available caregiver headcount. Omit when unknown; unknown becomes a verification question.",
+              "minimum": 0
+            },
+            "requiredCaregiverHeadcount": {
+              "type": "integer",
+              "description": "Caregivers each activity requires. Omit when unknown; unknown becomes a verification question.",
+              "minimum": 0
+            },
+            "maxSuggestions": {
+              "type": "integer",
+              "description": "Maximum activities to select.",
+              "minimum": 0
+            },
+            "requiredWindows": {
+              "type": "array",
+              "description": "Time windows that must be covered by childcare: { startAt, endAt }.",
+              "items": {
+                "type": "object",
+                "required": [],
+                "properties": {},
+                "additionalProperties": true
+              }
+            },
+            "coverageSlots": {
+              "type": "array",
+              "description": "Care slots with state (confirmed, waitlisted, full, canceled, unknown). Omit when no care is arranged.",
+              "items": {
+                "type": "object",
+                "required": [],
+                "properties": {},
+                "additionalProperties": true
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": ["domain:household", "capability:read", "surface:internal"],
+      "_contexts": ["general", "calendar", "tasks"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:household",
+      "_capabilities": ["capability:read"],
+      "_surfaces": ["surface:internal"],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "LOCAL_CONDITIONS_CHILDCARE_COVERAGE_GAPS",
+        "description": "Observe external facts for household planning: a typed point weather forecast, local activity and event discovery across registered sources, fail-closed curation of discovered activities for stated children, and childcare coverage-gap math. Never books, registers, purchases, or cancels anything; weather is evidence, only a provider can cancel its program. — subaction = childcare_coverage_gaps",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Subaction discriminator (auto-set to \"childcare_coverage_gaps\" for this virtual; do not change).",
+              "enum": ["childcare_coverage_gaps"],
+              "default": "childcare_coverage_gaps"
+            },
+            "requiredWindows": {
+              "type": "array",
+              "description": "Time windows that must be covered by childcare: { startAt, endAt }.",
+              "items": {
+                "type": "object",
+                "required": [],
+                "properties": {},
+                "additionalProperties": true
+              }
+            },
+            "coverageSlots": {
+              "type": "array",
+              "description": "Care slots with state (confirmed, waitlisted, full, canceled, unknown). Omit when no care is arranged.",
+              "items": {
+                "type": "object",
+                "required": [],
+                "properties": {},
+                "additionalProperties": true
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": ["domain:household", "capability:read", "surface:internal"],
+      "_contexts": ["general", "calendar", "tasks"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:household",
+      "_capabilities": ["capability:read"],
+      "_surfaces": ["surface:internal"],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "LOCAL_CONDITIONS_CURATE_DISCOVERED_ACTIVITIES",
+        "description": "Observe external facts for household planning: a typed point weather forecast, local activity and event discovery across registered sources, fail-closed curation of discovered activities for stated children, and childcare coverage-gap math. Never books, registers, purchases, or cancels anything; weather is evidence, only a provider can cancel its program. — subaction = curate_discovered_activities",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Subaction discriminator (auto-set to \"curate_discovered_activities\" for this virtual; do not change).",
+              "enum": ["curate_discovered_activities"],
+              "default": "curate_discovered_activities"
+            },
+            "location": {
+              "type": "object",
+              "description": "Search area: { postalCode, countryCode } or { latitude, longitude, radiusMiles }.",
+              "required": [],
+              "properties": {},
+              "additionalProperties": true
+            },
+            "startAt": {
+              "type": "string",
+              "description": "RFC 3339 start of the activity search window.",
+              "minLength": 1
+            },
+            "endAt": {
+              "type": "string",
+              "description": "RFC 3339 end of the activity search window.",
+              "minLength": 1
+            },
+            "keywords": {
+              "type": "array",
+              "description": "Search keywords, e.g. [\"kids\", \"summer camp\"].",
+              "items": {
+                "type": "string"
+              }
+            },
+            "pageSize": {
+              "type": "integer",
+              "description": "Source page size.",
+              "minimum": 1
+            },
+            "maxPages": {
+              "type": "integer",
+              "description": "Maximum source pages to read.",
+              "minimum": 1
+            },
+            "children": {
+              "type": "array",
+              "description": "Children the outing is for: { childId, ageYears, scheduledLoad, maxScheduledLoad, accessibilityNeeds? }. Omit accessibilityNeeds only when the child has none.",
+              "items": {
+                "type": "object",
+                "required": [],
+                "properties": {},
+                "additionalProperties": true
+              }
+            },
+            "custodyHealth": {
+              "type": "string",
+              "description": "How complete the supplied custody windows are. Anything but complete makes custody a verification question, never assumed coverage.",
+              "enum": ["complete", "partial", "unavailable"]
+            },
+            "custodyWindows": {
+              "type": "array",
+              "description": "Known custody windows: { childId, startAt, endAt }.",
+              "items": {
+                "type": "object",
+                "required": [],
+                "properties": {},
+                "additionalProperties": true
+              }
+            },
+            "busyWindows": {
+              "type": "array",
+              "description": "Known busy calendar windows: { participantIds, startAt, endAt }.",
+              "items": {
+                "type": "object",
+                "required": [],
+                "properties": {},
+                "additionalProperties": true
+              }
+            },
+            "protectedUnstructuredWindows": {
+              "type": "array",
+              "description": "Protected unstructured family time: { windowId, childIds, startAt, endAt }.",
+              "items": {
+                "type": "object",
+                "required": [],
+                "properties": {},
+                "additionalProperties": true
+              }
+            },
+            "caregiverParticipantIds": {
+              "type": "array",
+              "description": "Caregivers who would attend. Omit only when none are decided yet.",
+              "items": {
+                "type": "string"
+              }
+            },
+            "availableCaregiverHeadcount": {
+              "type": "integer",
+              "description": "Confirmed available caregiver headcount. Omit when unknown; unknown becomes a verification question.",
+              "minimum": 0
+            },
+            "requiredCaregiverHeadcount": {
+              "type": "integer",
+              "description": "Caregivers each activity requires. Omit when unknown; unknown becomes a verification question.",
+              "minimum": 0
+            },
+            "maxSuggestions": {
+              "type": "integer",
+              "description": "Maximum activities to select.",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": ["domain:household", "capability:read", "surface:internal"],
+      "_contexts": ["general", "calendar", "tasks"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:household",
+      "_capabilities": ["capability:read"],
+      "_surfaces": ["surface:internal"],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "LOCAL_CONDITIONS_DISCOVER_ACTIVITIES",
+        "description": "Observe external facts for household planning: a typed point weather forecast, local activity and event discovery across registered sources, fail-closed curation of discovered activities for stated children, and childcare coverage-gap math. Never books, registers, purchases, or cancels anything; weather is evidence, only a provider can cancel its program. — subaction = discover_activities",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Subaction discriminator (auto-set to \"discover_activities\" for this virtual; do not change).",
+              "enum": ["discover_activities"],
+              "default": "discover_activities"
+            },
+            "location": {
+              "type": "object",
+              "description": "Search area: { postalCode, countryCode } or { latitude, longitude, radiusMiles }.",
+              "required": [],
+              "properties": {},
+              "additionalProperties": true
+            },
+            "startAt": {
+              "type": "string",
+              "description": "RFC 3339 start of the activity search window.",
+              "minLength": 1
+            },
+            "endAt": {
+              "type": "string",
+              "description": "RFC 3339 end of the activity search window.",
+              "minLength": 1
+            },
+            "keywords": {
+              "type": "array",
+              "description": "Search keywords, e.g. [\"kids\", \"summer camp\"].",
+              "items": {
+                "type": "string"
+              }
+            },
+            "pageSize": {
+              "type": "integer",
+              "description": "Source page size.",
+              "minimum": 1
+            },
+            "maxPages": {
+              "type": "integer",
+              "description": "Maximum source pages to read.",
+              "minimum": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": ["domain:household", "capability:read", "surface:internal"],
+      "_contexts": ["general", "calendar", "tasks"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:household",
+      "_capabilities": ["capability:read"],
+      "_surfaces": ["surface:internal"],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "LOCAL_CONDITIONS_WEATHER_OUTLOOK",
+        "description": "Observe external facts for household planning: a typed point weather forecast, local activity and event discovery across registered sources, fail-closed curation of discovered activities for stated children, and childcare coverage-gap math. Never books, registers, purchases, or cancels anything; weather is evidence, only a provider can cancel its program. — subaction = weather_outlook",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Subaction discriminator (auto-set to \"weather_outlook\" for this virtual; do not change).",
+              "enum": ["weather_outlook"],
+              "default": "weather_outlook"
+            },
+            "latitude": {
+              "type": "number",
+              "description": "Forecast point latitude in decimal degrees.",
+              "minimum": -90,
+              "maximum": 90
+            },
+            "longitude": {
+              "type": "number",
+              "description": "Forecast point longitude in decimal degrees.",
+              "minimum": -180,
+              "maximum": 180
+            },
+            "includeHourly": {
+              "type": "boolean",
+              "description": "Include hourly forecast periods only when true."
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": ["domain:household", "capability:read", "surface:internal"],
+      "_contexts": ["general", "calendar", "tasks"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:household",
+      "_capabilities": ["capability:read"],
       "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
@@ -15894,6 +20845,7 @@
         "capability:execute",
         "capability:update",
         "capability:send",
+        "effect:receipt-required",
         "surface:internal",
         "risk:irreversible"
       ],
@@ -15954,6 +20906,7 @@
         "capability:execute",
         "capability:update",
         "capability:send",
+        "effect:receipt-required",
         "surface:internal",
         "risk:irreversible"
       ],
@@ -16014,6 +20967,7 @@
         "capability:execute",
         "capability:update",
         "capability:send",
+        "effect:receipt-required",
         "surface:internal",
         "risk:irreversible"
       ],
@@ -16228,6 +21182,7 @@
         "capability:update",
         "capability:delete",
         "capability:schedule",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": [
@@ -16428,6 +21383,7 @@
         "capability:update",
         "capability:delete",
         "capability:schedule",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": [
@@ -16628,6 +21584,7 @@
         "capability:update",
         "capability:delete",
         "capability:schedule",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": [
@@ -16828,6 +21785,7 @@
         "capability:update",
         "capability:delete",
         "capability:schedule",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": [
@@ -17028,6 +21986,7 @@
         "capability:update",
         "capability:delete",
         "capability:schedule",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": [
@@ -17228,6 +22187,7 @@
         "capability:update",
         "capability:delete",
         "capability:schedule",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": [
@@ -17428,6 +22388,7 @@
         "capability:update",
         "capability:delete",
         "capability:schedule",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": [
@@ -17628,6 +22589,7 @@
         "capability:update",
         "capability:delete",
         "capability:schedule",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": [
@@ -17828,6 +22790,7 @@
         "capability:update",
         "capability:delete",
         "capability:schedule",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": [
@@ -18028,6 +22991,7 @@
         "capability:update",
         "capability:delete",
         "capability:schedule",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": [
@@ -18228,6 +23192,7 @@
         "capability:update",
         "capability:delete",
         "capability:schedule",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": [
@@ -18428,6 +23393,7 @@
         "capability:update",
         "capability:delete",
         "capability:schedule",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": [
@@ -18628,6 +23594,7 @@
         "capability:update",
         "capability:delete",
         "capability:schedule",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": [

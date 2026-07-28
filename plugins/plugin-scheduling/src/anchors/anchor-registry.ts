@@ -50,19 +50,10 @@ function nullableTimeAnchor(args: {
       const tz = context.ownerFacts.timezone ?? "UTC";
       const window = context.ownerFacts[windowKey];
       const value = edge === "start" ? window?.start : window?.end;
-      if (!value) return null;
-      return resolveLocalHHMM(context.nowIso, value, tz);
+      const atIso = resolveLocalHHMMToIso(new Date(context.nowIso), value, tz);
+      return atIso === null ? null : { atIso };
     },
   };
-}
-
-function resolveLocalHHMM(
-  nowIso: string,
-  hhmm: string,
-  tz: string,
-): { atIso: string } | null {
-  const atIso = resolveLocalHHMMToIso(new Date(nowIso), hhmm, tz);
-  return atIso ? { atIso } : null;
 }
 
 const morningStartAnchor: AnchorContribution = nullableTimeAnchor({
@@ -93,7 +84,8 @@ const lunchStartAnchor: AnchorContribution = {
   },
   resolve(context) {
     const tz = context.ownerFacts.timezone ?? "UTC";
-    return resolveLocalHHMM(context.nowIso, "12:00", tz);
+    const atIso = resolveLocalHHMMToIso(new Date(context.nowIso), "12:00", tz);
+    return atIso === null ? null : { atIso };
   },
 };
 

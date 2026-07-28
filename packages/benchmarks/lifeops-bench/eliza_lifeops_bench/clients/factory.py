@@ -12,8 +12,10 @@ from typing import Final, Literal
 try:
     from dotenv import load_dotenv
 except ImportError:  # pragma: no cover - exercised in lean benchmark envs
+
     def load_dotenv(*_args: object, **_kwargs: object) -> bool:
         return False
+
 
 from .anthropic import AnthropicClient
 from .base import BaseClient
@@ -50,11 +52,17 @@ def _load_repo_dotenv() -> None:
         load_dotenv(env_path, override=False)
 
 
-def make_client(provider: str, model: str | None = None) -> BaseClient:
+def make_client(
+    provider: str,
+    model: str | None = None,
+    *,
+    hermes_request_timeout_s: float | str | None = None,
+) -> BaseClient:
     """Construct a client for the requested provider.
 
     Loads the repo-root ``.env`` first so credentials are discoverable in dev.
     Existing process env vars take precedence over the file.
+    ``hermes_request_timeout_s`` is consumed only by the Hermes HTTP client.
     """
     _load_repo_dotenv()
     if provider == "cerebras":
@@ -62,7 +70,10 @@ def make_client(provider: str, model: str | None = None) -> BaseClient:
     if provider == "anthropic":
         return AnthropicClient(model=model)
     if provider == "hermes":
-        return HermesClient(model=model)
+        return HermesClient(
+            model=model,
+            request_timeout_s=hermes_request_timeout_s,
+        )
     if provider == "claude-subscription":
         return ClaudeSubscriptionClient(model=model)
     raise ValueError(

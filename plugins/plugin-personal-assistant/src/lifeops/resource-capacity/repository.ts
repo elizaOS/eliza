@@ -26,6 +26,8 @@ import {
   type ResourceCapacityApprovalLink,
   ResourceCapacityError,
   type ResourceCapacityProposal,
+  type ResourceCapacityProposalTerminal,
+  type ResourceCapacityTerminalState,
   requireCapacityInteger,
   requireCapacityText,
   requireCapacityTimestamp,
@@ -79,6 +81,18 @@ const RESOURCE_CAPACITY_SCHEMA = [
   `CREATE INDEX IF NOT EXISTS life_resource_capacity_proposals_household_idx
      ON app_lifeops.life_resource_capacity_proposals
        (agent_id, household_id, status, expires_at)`,
+  `CREATE TABLE IF NOT EXISTS app_lifeops.life_resource_capacity_proposal_terminals (
+     agent_id TEXT NOT NULL,
+     proposal_id TEXT NOT NULL,
+     terminal_state TEXT NOT NULL
+       CHECK (terminal_state IN ('declined', 'cancelled', 'expired')),
+     reason TEXT NOT NULL,
+     terminal_at TEXT NOT NULL,
+     PRIMARY KEY (agent_id, proposal_id),
+     FOREIGN KEY (agent_id, proposal_id)
+       REFERENCES app_lifeops.life_resource_capacity_proposals
+         (agent_id, proposal_id)
+   )`,
   `CREATE TABLE IF NOT EXISTS app_lifeops.life_resource_capacity_approvals (
      agent_id TEXT NOT NULL,
      proposal_id TEXT NOT NULL,
@@ -251,6 +265,26 @@ function approvalLinkFromRow(
       "approval.approvalRequestId",
     ),
     createdAt: requireCapacityTimestamp(row.created_at, "approval.createdAt"),
+  };
+}
+
+function proposalTerminalFromRow(
+  row: Record<string, unknown>,
+): ResourceCapacityProposalTerminal {
+  const state = rowText(row, "terminal_state", "proposalTerminal.state");
+  if (state !== "declined" && state !== "cancelled" && state !== "expired") {
+    return persistedInvalid("Capacity proposal has an invalid terminal state", {
+      state,
+    });
+  }
+  return {
+    proposalId: rowText(row, "proposal_id", "proposalTerminal.proposalId"),
+    state,
+    reason: rowText(row, "reason", "proposalTerminal.reason"),
+    terminalAt: requireCapacityTimestamp(
+      row.terminal_at,
+      "proposalTerminal.terminalAt",
+    ),
   };
 }
 
@@ -546,14 +580,87 @@ export class ResourceCapacityRepository {
     return (
       await executeRawSql(
         this.runtime,
-        `SELECT * FROM app_lifeops.life_resource_capacity_proposals
-         WHERE agent_id = ${sqlQuote(this.agentId)}
-           AND household_id = ${sqlQuote(householdId)}
-           AND status = 'pending_review'
-           AND expires_at > ${sqlQuote(at)}
-         ORDER BY created_at ASC, proposal_id ASC`,
+        `SELECT proposals.*
+         FROM app_lifeops.life_resource_capacity_proposals AS proposals
+         LEFT JOIN app_lifeops.life_resource_capacity_proposal_terminals AS terminals
+           ON terminals.agent_id = proposals.agent_id
+          AND terminals.proposal_id = proposals.proposal_id
+         WHERE proposals.agent_id = ${sqlQuote(this.agentId)}
+           AND proposals.household_id = ${sqlQuote(householdId)}
+           AND proposals.status = 'pending_review'
+           AND proposals.expires_at > ${sqlQuote(at)}
+           AND terminals.proposal_id IS NULL
+         ORDER BY proposals.created_at ASC, proposals.proposal_id ASC`,
       )
     ).map(proposalFromRow);
+  }
+
+  async getProposalTerminal(
+    proposalIdValue: string,
+  ): Promise<ResourceCapacityProposalTerminal | null> {
+    await this.ensureSchema();
+    const proposalId = requireCapacityText(proposalIdValue, "proposalId");
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT proposal_id, terminal_state, reason, terminal_at
+       FROM app_lifeops.life_resource_capacity_proposal_terminals
+       WHERE agent_id = ${sqlQuote(this.agentId)}
+         AND proposal_id = ${sqlQuote(proposalId)}
+       LIMIT 1`,
+    );
+    return rows[0] ? proposalTerminalFromRow(rows[0]) : null;
+  }
+
+  async terminalizeProposal(input: {
+    proposalId: string;
+    state: ResourceCapacityTerminalState;
+    reason: string;
+    terminalAt: string;
+  }): Promise<ResourceCapacityProposalTerminal> {
+    await this.ensureSchema();
+    const proposalId = requireCapacityText(input.proposalId, "proposalId");
+    const state = input.state;
+    if (state !== "declined" && state !== "cancelled" && state !== "expired") {
+      throw new ResourceCapacityError(
+        "Unsupported capacity-proposal terminal state",
+        "RESOURCE_CAPACITY_INVALID_CONTRACT",
+        { proposalId, state },
+      );
+    }
+    const reason = requireCapacityText(input.reason, "reason", 2_000);
+    const terminalAt = requireCapacityTimestamp(input.terminalAt, "terminalAt");
+    const rows = await executeRawSql(
+      this.runtime,
+      `INSERT INTO app_lifeops.life_resource_capacity_proposal_terminals (
+         agent_id, proposal_id, terminal_state, reason, terminal_at
+       )
+       SELECT agent_id, proposal_id, ${sqlQuote(state)},
+              ${sqlQuote(reason)}, ${sqlQuote(terminalAt)}
+       FROM app_lifeops.life_resource_capacity_proposals
+       WHERE agent_id = ${sqlQuote(this.agentId)}
+         AND proposal_id = ${sqlQuote(proposalId)}
+         AND status = 'pending_review'
+       ON CONFLICT DO NOTHING
+       RETURNING proposal_id, terminal_state, reason, terminal_at`,
+    );
+    if (rows[0]) return proposalTerminalFromRow(rows[0]);
+    const existing = await this.getProposalTerminal(proposalId);
+    if (!existing) {
+      return conflict("Capacity proposal terminalization did not persist", {
+        proposalId,
+      });
+    }
+    if (existing.state !== state) {
+      return conflict(
+        "Capacity proposal already has a different terminal outcome",
+        {
+          proposalId,
+          existingState: existing.state,
+          attemptedState: state,
+        },
+      );
+    }
+    return existing;
   }
 
   async insertApprovalLink(

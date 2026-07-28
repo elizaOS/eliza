@@ -19,7 +19,7 @@ import type {
   UUID,
 } from "@elizaos/core";
 import {
-  isSendHandlerOutcome,
+  inspectSendHandlerResult,
   MESSAGE_SOURCE_TRIGGER_PROMPT,
   ServiceType,
   stringToUuid,
@@ -372,14 +372,27 @@ async function dispatchPrompt(
     const connectorSource = originRoomId ? room?.source?.trim() : undefined;
     if (originRoomId && connectorSource) {
       deliveryCallback = async (content) => {
-        const sent = await runtime.sendMessageToTarget(
-          { source: connectorSource, roomId: originRoomId },
-          { ...content, agentVoiced: true },
+        const disposition = inspectSendHandlerResult(
+          await runtime.sendMessageToTarget(
+            { source: connectorSource, roomId: originRoomId },
+            { ...content, agentVoiced: true },
+          ),
         );
-        if (isSendHandlerOutcome(sent)) {
-          return sent.kind === "delivered" && sent.memory ? [sent.memory] : [];
+        if (disposition.kind !== "delivered") {
+          throw new Error(
+            `Trigger reply was not fully delivered: ${disposition.message}`,
+          );
         }
-        return sent ? [sent] : [];
+        if (
+          disposition.receipt &&
+          (disposition.receipt.persistence.status === "partial" ||
+            disposition.receipt.persistence.status === "failed")
+        ) {
+          throw new Error(
+            `Trigger reply reached the provider, but local evidence is ${disposition.receipt.persistence.status}; do not retry blindly.`,
+          );
+        }
+        return [...disposition.memories];
       };
     }
 

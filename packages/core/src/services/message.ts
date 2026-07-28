@@ -189,6 +189,8 @@ import {
 	type UserVisibleModelOutput,
 } from "../runtime/user-visible-model-output";
 import {
+	attestDeliveryAudienceFromCanonicalRoom,
+	getTrustedDeliveryAudience,
 	ownerExclusiveDisclosureWasUsed,
 	PRIVACY_DENIED_TEXT,
 	revalidateOwnerExclusiveDisclosure,
@@ -6860,11 +6862,27 @@ export async function runShortcutGate(args: {
 		},
 		{
 			name: action.name,
-			params: { ...target.parameters, ...match.parameters, mode: "simple" },
+			params: { ...target.parameters, ...match.parameters },
 		},
 		{ actions: [action] },
 	);
-	if (captured === undefined) return null;
+	if (captured === undefined) {
+		const executionError = shortcutActionResult.data?.error;
+		if (executionError !== undefined) {
+			// A shortcut failure does not enter the planner transcript, so its
+			// underlying exception needs a separate observable boundary.
+			args.runtime.logger.warn(
+				{
+					src: "shortcut-gate",
+					shortcut: match.shortcut.id,
+					action: action.name,
+					err: executionError,
+				},
+				"Shortcut action failed before producing a reply",
+			);
+		}
+		return null;
+	}
 	let actionResult: ActionResult | undefined;
 	if (shouldSuppressActionResultClipboard(action, shortcutActionResult)) {
 		actionResult = projectActionResultForClipboard(
@@ -10148,6 +10166,26 @@ export class DefaultMessageService implements IMessageService {
 				skipEvaluation: true,
 				reason: "analysis-mode-token",
 			};
+		}
+
+		// Central delivery-audience attestation: every connector funnels inbound
+		// turns through this seam, so attesting from canonical room state here
+		// gives Telegram/iMessage/WhatsApp-style ingress the same evidence the
+		// Discord connector mints itself. A connector-level attestation already
+		// bound to this exact turn stays authoritative — rebinding would clobber
+		// evidence issued closer to the transport (and any narrower TTL).
+		if (!getTrustedDeliveryAudience(message)) {
+			try {
+				await attestDeliveryAudienceFromCanonicalRoom(runtime, message);
+			} catch (error) {
+				// error-policy:J4 attestation failure leaves the turn unattested, so
+				// every owner-private surface fails closed while ordinary chat
+				// continues; the lookup failure surfaces via RECENT_ERRORS.
+				runtime.reportError("MessageService.deliveryAudience", error, {
+					roomId: message.roomId,
+					messageId: message.id,
+				});
+			}
 		}
 
 		const source =

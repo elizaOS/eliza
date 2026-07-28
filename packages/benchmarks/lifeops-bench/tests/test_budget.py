@@ -46,7 +46,6 @@ from eliza_lifeops_bench.types import (
     ScenarioMode,
 )
 
-
 # ---------------------------------------------------------------------------
 # Shared fixtures: minimal scenarios + world factory the budget tests can use
 # without depending on the static corpus or any snapshot file.
@@ -181,6 +180,86 @@ async def test_per_scenario_timeout_aborts(tmp_path: Path) -> None:
     with pytest.raises(RuntimeError, match="refusing to publish incomplete"):
         LifeOpsBenchRunner.save_results(result, output_dir=str(output_dir))
     assert not output_dir.exists()
+    diagnostic_path = Path(
+        LifeOpsBenchRunner.save_diagnostic_results(
+            result,
+            output_dir=str(output_dir),
+        )
+    )
+    assert diagnostic_path.parent == output_dir / "diagnostics"
+    diagnostic = json.loads(diagnostic_path.read_text(encoding="utf-8"))
+    assert diagnostic["artifact_tier"] == "diagnostic_nonpublishable"
+    assert diagnostic["publishable"] is False
+    assert diagnostic["complete"] is False
+    assert diagnostic["scenarios"][0]["terminated_reason"] == "timeout"
+    assert any("timeout" in reason for reason in diagnostic["nonpublishable_reasons"])
+
+
+async def test_timeout_diagnostic_retains_completed_turns(tmp_path: Path) -> None:
+    """A later stalled model call must not erase an earlier executed tool turn."""
+    call_count = 0
+
+    async def partially_responding_agent(
+        history: list[MessageTurn], tools: list[dict[str, Any]]
+    ) -> MessageTurn:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return MessageTurn(
+                role="assistant",
+                content="I will create that reminder.",
+                tool_calls=[
+                    {
+                        "id": "call_timeout_diagnostic_1",
+                        "type": "function",
+                        "function": {
+                            "name": "REMINDER.create",
+                            "arguments": json.dumps(
+                                {
+                                    "reminder_id": "rm_budget",
+                                    "list_id": "list_personal",
+                                    "title": "x",
+                                }
+                            ),
+                        },
+                    }
+                ],
+            )
+        await asyncio.sleep(5.0)
+        return _make_turn()
+
+    runner = LifeOpsBenchRunner(
+        agent_fn=partially_responding_agent,
+        world_factory=_budget_world_factory,
+        scenarios=[_make_scenario("budget.partial_timeout")],
+        concurrency=1,
+        seeds=1,
+        max_cost_usd=1000.0,
+        per_scenario_timeout_s=1,
+        static_grading_mode="offline_conformance",
+    )
+
+    result = await runner.run_filtered()
+
+    scenario_result = result.scenarios[0]
+    assert scenario_result.terminated_reason == "timeout"
+    assert len(scenario_result.turns) == 1
+    retained_turn = scenario_result.turns[0]
+    assert [action.name for action in retained_turn.agent_actions] == [
+        "REMINDER.create"
+    ]
+    assert retained_turn.tool_results[0]["payload"]["id"] == "rm_budget"
+
+    diagnostic_path = Path(
+        LifeOpsBenchRunner.save_diagnostic_results(
+            result,
+            output_dir=str(tmp_path / "partial-timeout-results"),
+        )
+    )
+    diagnostic = json.loads(diagnostic_path.read_text(encoding="utf-8"))
+    persisted_turns = diagnostic["scenarios"][0]["turns"]
+    assert len(persisted_turns) == 1
+    assert persisted_turns[0]["tool_results"][0]["payload"]["id"] == "rm_budget"
 
 
 async def test_complete_workload_records_exact_counts_and_provenance(
@@ -274,6 +353,30 @@ async def test_per_turn_model_name_is_attested_not_configured(
     assert all(turn["model_name"] == "attested-model-b" for turn in turns)
 
 
+async def test_run_reports_unpriced_call_coverage() -> None:
+    async def unpriced_agent(
+        history: list[MessageTurn], tools: list[dict[str, Any]]
+    ) -> MessageTurn:
+        turn = _make_turn(content="done")
+        turn.cost_usd = None
+        return turn
+
+    runner = LifeOpsBenchRunner(
+        agent_fn=unpriced_agent,
+        world_factory=_budget_world_factory,
+        scenarios=[_make_scenario("completion.unpriced")],
+        concurrency=1,
+        seeds=1,
+        static_grading_mode="offline_conformance",
+    )
+
+    result = await runner.run_filtered()
+
+    assert result.total_cost_usd == pytest.approx(0.0)
+    assert result.unpriced_agent_call_count == 1
+    assert result.unpriced_eval_call_count == 0
+
+
 async def test_publish_rejects_missing_acting_model_provenance(tmp_path: Path) -> None:
     async def responding_agent(
         history: list[MessageTurn], tools: list[dict[str, Any]]
@@ -339,10 +442,11 @@ async def test_max_cost_usd_aborts_scenario() -> None:
     assert sr.total_score == pytest.approx(0.0)
     # The agent was invoked at least once before the cap tripped.
     assert call_count["n"] >= 1
-    # Aggregate cost ledger reflects the spend even though the per-scenario
-    # failure result reports 0 cost (the failure-result builder is a static
-    # method that doesn't see the runner's ledger). The runner overrides
-    # bench_result.total_cost_usd with the agent + eval ledger total.
+    # The failed scenario and aggregate ledger both retain the provider turn
+    # that tripped the cap rather than erasing its spend and output.
+    assert len(sr.turns) == 1
+    assert sr.turns[0].agent_message == "ok"
+    assert sr.total_cost_usd == pytest.approx(10.0)
     assert result.total_cost_usd == pytest.approx(10.0)
     assert result.agent_cost_usd == pytest.approx(10.0)
     assert result.eval_cost_usd == pytest.approx(0.0)
@@ -451,9 +555,11 @@ class _FixedCostClient(BaseClient):
     touching real LLM endpoints.
     """
 
-    def __init__(self, model_name: str, *, cost_usd: float, content: str) -> None:
+    def __init__(
+        self, model_name: str, *, cost_usd: float | None, content: str
+    ) -> None:
         self.model_name = model_name
-        self._cost_usd = float(cost_usd)
+        self._cost_usd = None if cost_usd is None else float(cost_usd)
         self._content = content
 
     async def complete(self, call: ClientCall) -> ClientResponse:
@@ -466,6 +572,58 @@ class _FixedCostClient(BaseClient):
             cost_usd=self._cost_usd,
             raw_provider_response={"fake": True},
         )
+
+
+async def test_run_reports_unpriced_evaluator_call_coverage() -> None:
+    async def free_agent_fn(
+        history: list[MessageTurn], tools: list[dict[str, Any]]
+    ) -> MessageTurn:
+        return MessageTurn(role="assistant", content="done", cost_usd=0.0)
+
+    live_scenario = Scenario(
+        id="completion.unpriced_eval",
+        name="unpriced evaluator coverage",
+        domain=Domain.REMINDERS,
+        mode=ScenarioMode.LIVE,
+        persona=_PERSONA,
+        instruction="remind me",
+        ground_truth_actions=[],
+        required_outputs=[],
+        first_question_fallback=None,
+        world_seed=999,
+        max_turns=1,
+    )
+    evaluator = LifeOpsEvaluator(
+        simulated_user_client=_FixedCostClient(
+            model_name="unpriced-sim-user",
+            cost_usd=None,
+            content="please help",
+        ),
+        judge_client=_FixedCostClient(
+            model_name="unpriced-judge",
+            cost_usd=None,
+            content='{"satisfied": true, "reason": "done"}',
+        ),
+    )
+    runner = LifeOpsBenchRunner(
+        agent_fn=free_agent_fn,
+        world_factory=_budget_world_factory,
+        scenarios=[live_scenario],
+        concurrency=1,
+        seeds=1,
+        evaluator=evaluator,
+        live_judge_min_turn=1,
+    )
+
+    result = await runner.run_filtered()
+
+    evaluator_trace = result.scenarios[0].evaluator_trace
+    assert result.total_cost_usd == pytest.approx(0.0)
+    assert result.unpriced_agent_call_count == 0
+    assert result.unpriced_eval_call_count == len(evaluator_trace)
+    assert evaluator_trace
+    assert {entry.role for entry in evaluator_trace} == {"simulated_user", "judge"}
+    assert all(entry.cost_usd is None for entry in evaluator_trace)
 
 
 async def test_eval_cost_counted_toward_budget() -> None:
@@ -558,6 +716,8 @@ async def test_eval_cost_counted_toward_budget() -> None:
     assert result.agent_cost_usd == pytest.approx(0.0)
     # Combined wall-spend exceeded the cap.
     assert result.total_cost_usd > runner.max_cost_usd
+    assert sr.evaluator_trace
+    assert all(entry.role == "simulated_user" for entry in sr.evaluator_trace)
 
 
 async def test_judge_eval_cost_trips_budget_before_user_turn() -> None:
@@ -633,3 +793,7 @@ async def test_judge_eval_cost_trips_budget_before_user_turn() -> None:
     assert result.eval_cost_usd == pytest.approx(9.0)
     assert result.agent_cost_usd == pytest.approx(0.0)
     assert result.total_cost_usd > runner.max_cost_usd
+    assert [entry.role for entry in sr.evaluator_trace] == [
+        "simulated_user",
+        "judge",
+    ]

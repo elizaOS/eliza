@@ -39,7 +39,9 @@ import {
   type ResourceCapacityEvaluation,
   type ResourceCapacityEvaluationInput,
   type ResourceCapacityProposal,
+  type ResourceCapacityProposalTerminal,
   type ResourceCapacityReviewProjection,
+  type ResourceCapacityTerminalState,
   requireCapacityInteger,
   requireCapacityText,
   requireCapacityTimestamp,
@@ -181,7 +183,10 @@ function reevaluateProposal(
 
 export class ResourceCapacityService {
   private readonly now: () => Date;
-  private readonly reviewTaskEnsures = new Map<string, Promise<string>>();
+  private readonly reviewTaskEnsures = new Map<
+    string,
+    Promise<string | null>
+  >();
 
   constructor(private readonly deps: ResourceCapacityDependencies) {
     this.now = deps.now ?? (() => new Date());
@@ -219,6 +224,126 @@ export class ResourceCapacityService {
       });
     }
     return principalEntityId;
+  }
+
+  private async settleTerminalArtifacts(
+    proposal: ResourceCapacityProposal,
+    terminal: ResourceCapacityProposalTerminal,
+  ): Promise<void> {
+    const links = await this.deps.repository.listApprovalLinks(
+      proposal.proposalId,
+    );
+    for (const link of links) {
+      const request = await this.deps.approvalQueue.byId(
+        link.approvalRequestId,
+      );
+      if (!request || !approvalMatches(request, proposal, link.partyEntityId)) {
+        throw new ResourceCapacityError(
+          "Terminal capacity review references a missing or mismatched approval",
+          "RESOURCE_CAPACITY_PERSISTED_DATA_INVALID",
+          {
+            proposalId: proposal.proposalId,
+            approvalRequestId: link.approvalRequestId,
+          },
+        );
+      }
+      if (request.state === "pending" || request.state === "approved") {
+        await this.deps.approvalQueue.markExpired(request.id);
+      }
+    }
+    const taskId = await this.deps.repository.getReviewTaskId(
+      proposal.proposalId,
+    );
+    if (!taskId) return;
+    const task = (await this.deps.scheduledTasks.list()).find(
+      (candidate) => candidate.taskId === taskId,
+    );
+    if (!task) {
+      throw new ResourceCapacityError(
+        "Terminal capacity review references a missing ScheduledTask",
+        "RESOURCE_CAPACITY_PERSISTED_DATA_INVALID",
+        { proposalId: proposal.proposalId, taskId },
+      );
+    }
+    if (
+      task.state.status !== "completed" &&
+      task.state.status !== "skipped" &&
+      task.state.status !== "expired" &&
+      task.state.status !== "failed" &&
+      task.state.status !== "dismissed"
+    ) {
+      await this.deps.scheduledTasks.apply(taskId, "dismiss", {
+        reason: `Resource-capacity proposal ${terminal.state}: ${terminal.reason}`,
+      });
+    }
+  }
+
+  private async terminalizeReview(
+    proposal: ResourceCapacityProposal,
+    state: ResourceCapacityTerminalState,
+    reason: string,
+  ): Promise<ResourceCapacityProposalTerminal> {
+    const terminal = await this.deps.repository.terminalizeProposal({
+      proposalId: proposal.proposalId,
+      state,
+      reason,
+      terminalAt: this.now().toISOString(),
+    });
+    await this.settleTerminalArtifacts(proposal, terminal);
+    return terminal;
+  }
+
+  private async reconcileTerminalReview(
+    proposal: ResourceCapacityProposal,
+  ): Promise<ResourceCapacityProposalTerminal | null> {
+    if (proposal.status === "blocked") return null;
+    const persisted = await this.deps.repository.getProposalTerminal(
+      proposal.proposalId,
+    );
+    if (persisted) {
+      await this.settleTerminalArtifacts(proposal, persisted);
+      return persisted;
+    }
+    if (Date.parse(proposal.expiresAt) <= this.now().getTime()) {
+      return this.terminalizeReview(
+        proposal,
+        "expired",
+        "The proposal review window expired.",
+      );
+    }
+    const links = await this.deps.repository.listApprovalLinks(
+      proposal.proposalId,
+    );
+    for (const link of links) {
+      const request = await this.deps.approvalQueue.byId(
+        link.approvalRequestId,
+      );
+      if (!request || !approvalMatches(request, proposal, link.partyEntityId)) {
+        throw new ResourceCapacityError(
+          "Capacity review references a missing or mismatched approval",
+          "RESOURCE_CAPACITY_PERSISTED_DATA_INVALID",
+          {
+            proposalId: proposal.proposalId,
+            approvalRequestId: link.approvalRequestId,
+          },
+        );
+      }
+      if (request.state === "rejected") {
+        return this.terminalizeReview(
+          proposal,
+          "declined",
+          request.resolutionReason ?? "A required reviewer declined.",
+        );
+      }
+      if (request.state === "expired") {
+        return this.terminalizeReview(
+          proposal,
+          "expired",
+          request.resolutionReason ?? "A required review was cancelled.",
+        );
+      }
+    }
+    return null;
   }
 
   private async validateResourceGraph(
@@ -305,7 +430,13 @@ export class ResourceCapacityService {
         evaluatedAt,
       ),
     ]);
-    const currentProposals = activeProposals.filter((proposal) => {
+    const nonterminalProposals: ResourceCapacityProposal[] = [];
+    for (const proposal of activeProposals) {
+      if (!(await this.reconcileTerminalReview(proposal))) {
+        nonterminalProposals.push(proposal);
+      }
+    }
+    const currentProposals = nonterminalProposals.filter((proposal) => {
       if (invalidatedResourceIds(proposal, resources).length > 0) return false;
       return reevaluateProposal(proposal, resources, evaluatedAt).feasible;
     });
@@ -437,7 +568,10 @@ export class ResourceCapacityService {
 
   private async ensureReviewTaskClaimed(
     proposal: ResourceCapacityProposal,
-  ): Promise<string> {
+  ): Promise<string | null> {
+    if (await this.deps.repository.getProposalTerminal(proposal.proposalId)) {
+      return null;
+    }
     const existing = await this.deps.repository.getReviewTaskId(
       proposal.proposalId,
     );
@@ -469,6 +603,9 @@ export class ResourceCapacityService {
         "RESOURCE_CAPACITY_CONFLICT",
         { proposalId: proposal.proposalId },
       );
+    }
+    if (await this.deps.repository.getProposalTerminal(proposal.proposalId)) {
+      return null;
     }
     const idempotencyKey = `resource-capacity:review-expiry:${proposal.proposalId}`;
     const existingTasks = (await this.deps.scheduledTasks.list()).filter(
@@ -517,17 +654,22 @@ export class ResourceCapacityService {
       scheduledTaskId,
       this.now().toISOString(),
     );
-    return this.deps.repository.completeReviewTaskClaim({
+    const completed = await this.deps.repository.completeReviewTaskClaim({
       proposalId: proposal.proposalId,
       attemptToken,
       scheduledTaskId: attached,
       completedAt: this.now().toISOString(),
     });
+    const terminal = await this.deps.repository.getProposalTerminal(
+      proposal.proposalId,
+    );
+    if (terminal) await this.settleTerminalArtifacts(proposal, terminal);
+    return completed;
   }
 
   private async ensureReviewTask(
     proposal: ResourceCapacityProposal,
-  ): Promise<string> {
+  ): Promise<string | null> {
     const active = this.reviewTaskEnsures.get(proposal.proposalId);
     if (active) return active;
     const promise = this.ensureReviewTaskClaimed(proposal);
@@ -550,6 +692,7 @@ export class ResourceCapacityService {
     ) {
       return;
     }
+    if (await this.reconcileTerminalReview(proposal)) return;
     const resources = await this.deps.repository.listCurrentResources(
       proposal.householdId,
     );
@@ -561,6 +704,7 @@ export class ResourceCapacityService {
       return;
     }
     await this.ensureApprovalLinks(proposal);
+    if (await this.reconcileTerminalReview(proposal)) return;
     await this.ensureReviewTask(proposal);
   }
 
@@ -649,6 +793,7 @@ export class ResourceCapacityService {
   private async projectReview(
     proposal: ResourceCapacityProposal,
   ): Promise<ResourceCapacityReviewProjection> {
+    const terminal = await this.reconcileTerminalReview(proposal);
     const resources = await this.deps.repository.listCurrentResources(
       proposal.householdId,
     );
@@ -698,24 +843,28 @@ export class ResourceCapacityService {
     }
     const nowMs = this.now().getTime();
     const effectiveState =
-      Date.parse(proposal.expiresAt) <= nowMs
-        ? "expired"
-        : invalidated.length > 0 || invalidationConflicts.length > 0
-          ? "invalidated"
-          : approvals.some(
-                (approval) =>
-                  approval.state === "rejected" || approval.state === "expired",
-              )
-            ? "declined"
-            : approvals.length === proposal.requiredApproverEntityIds.length &&
-                approvals.every(
+      terminal !== null
+        ? terminal.state
+        : Date.parse(proposal.expiresAt) <= nowMs
+          ? "expired"
+          : invalidated.length > 0 || invalidationConflicts.length > 0
+            ? "invalidated"
+            : approvals.some(
                   (approval) =>
-                    approval.state === "approved" ||
-                    approval.state === "executing" ||
-                    approval.state === "done",
+                    approval.state === "rejected" ||
+                    approval.state === "expired",
                 )
-              ? "review_complete"
-              : "pending_review";
+              ? "declined"
+              : approvals.length ===
+                    proposal.requiredApproverEntityIds.length &&
+                  approvals.every(
+                    (approval) =>
+                      approval.state === "approved" ||
+                      approval.state === "executing" ||
+                      approval.state === "done",
+                  )
+                ? "review_complete"
+                : "pending_review";
     return {
       proposal,
       effectiveState,
@@ -866,9 +1015,78 @@ export class ResourceCapacityService {
       resolvedBy: partyEntityId,
       resolutionReason: reason,
     };
-    return input.decision === "approve"
-      ? this.deps.approvalQueue.approve(approvalRequestId, resolution)
-      : this.deps.approvalQueue.reject(approvalRequestId, resolution);
+    if (input.decision === "approve") {
+      return this.deps.approvalQueue.approve(approvalRequestId, resolution);
+    }
+    const rejected = await this.deps.approvalQueue.reject(
+      approvalRequestId,
+      resolution,
+    );
+    await this.terminalizeReview(proposal, "declined", reason);
+    return rejected;
+  }
+
+  async cancelProposal(input: {
+    principalEntityId: string;
+    proposalId: string;
+    reason: string;
+  }): Promise<
+    ResourceCapacityReviewProjection & { readonly replayed: boolean }
+  > {
+    const principalEntityId = await this.requireEntity(input.principalEntityId);
+    if (principalEntityId !== SELF_ENTITY_ID) {
+      throw new ResourceCapacityError(
+        "Only the owner may cancel a resource-capacity proposal",
+        "RESOURCE_CAPACITY_ACCESS_DENIED",
+        { principalEntityId },
+      );
+    }
+    const proposal = await this.deps.repository.getProposal(
+      requireCapacityText(input.proposalId, "proposalId"),
+    );
+    if (!proposal) {
+      throw new ResourceCapacityError(
+        "Resource-capacity proposal was not found",
+        "RESOURCE_CAPACITY_NOT_FOUND",
+        { proposalId: input.proposalId },
+      );
+    }
+    const existingTerminal = await this.deps.repository.getProposalTerminal(
+      proposal.proposalId,
+    );
+    if (existingTerminal) {
+      if (existingTerminal.state !== "cancelled") {
+        throw new ResourceCapacityError(
+          "Resource-capacity proposal already has a different terminal outcome",
+          "RESOURCE_CAPACITY_CONFLICT",
+          {
+            proposalId: proposal.proposalId,
+            terminalState: existingTerminal.state,
+          },
+        );
+      }
+      await this.settleTerminalArtifacts(proposal, existingTerminal);
+      return {
+        ...(await this.projectReview(proposal)),
+        replayed: true,
+      };
+    }
+    if (proposal.status !== "pending_review") {
+      throw new ResourceCapacityError(
+        "Only a pending resource-capacity review may be cancelled",
+        "RESOURCE_CAPACITY_CONFLICT",
+        { proposalId: proposal.proposalId, status: proposal.status },
+      );
+    }
+    await this.terminalizeReview(
+      proposal,
+      "cancelled",
+      requireCapacityText(input.reason, "reason", 2_000),
+    );
+    return {
+      ...(await this.projectReview(proposal)),
+      replayed: false,
+    };
   }
 }
 

@@ -207,6 +207,10 @@ function termsValue(value: unknown): HouseholdScheduleTerms {
             custodyRecord.substituteCustodianEntityId,
             "custody.substituteCustodianEntityId",
           ),
+          authorityBaselineRelationshipId: requiredText(
+            custodyRecord.authorityBaselineRelationshipId,
+            "custody.authorityBaselineRelationshipId",
+          ),
           reason: requiredText(custodyRecord.reason, "custody.reason"),
         }
       : null,

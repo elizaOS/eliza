@@ -451,6 +451,8 @@ class BenchmarkResult:
     consumers see the same headline number. ``agent_cost_usd`` and
     ``eval_cost_usd`` split that total so operators can answer "how much
     of this run was the executor vs. the judge / simulated user?".
+    ``unpriced_*_call_count`` makes that headline an explicitly known-cost
+    subtotal whenever a provider did not publish pricing.
     """
 
     scenarios: list[ScenarioResult]
@@ -479,3 +481,5 @@ class BenchmarkResult:
     static_run_count: int = 0
     semantic_static_run_count: int = 0
     semantic_static_judged_count: int = 0
+    unpriced_agent_call_count: int = 0
+    unpriced_eval_call_count: int = 0

@@ -309,8 +309,21 @@ export type ResourceCapacityReviewState =
   | "pending_review"
   | "review_complete"
   | "declined"
+  | "cancelled"
   | "invalidated"
   | "expired";
+
+export type ResourceCapacityTerminalState =
+  | "declined"
+  | "cancelled"
+  | "expired";
+
+export interface ResourceCapacityProposalTerminal {
+  readonly proposalId: string;
+  readonly state: ResourceCapacityTerminalState;
+  readonly reason: string;
+  readonly terminalAt: string;
+}
 
 export interface ResourceCapacityReviewProjection {
   readonly proposal: ResourceCapacityProposal;

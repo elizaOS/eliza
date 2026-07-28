@@ -100,6 +100,24 @@ const TRUSTED_PROVIDER_CHECK_TYPES = new Set([
   "providerEffectObserved",
   "providerNoEffectObserved",
 ]);
+const PROVIDER_QUALIFIED_FINAL_CHECK_TYPES = new Set([
+  "durableApprovalObserved",
+  "durableDraftObserved",
+  "judgeRubric",
+  "providerEffectObserved",
+  "providerNoEffectObserved",
+  "scheduledTaskObserved",
+]);
+const PROVIDER_QUALIFIED_TURN_KEYS = new Set([
+  "kind",
+  "name",
+  "text",
+  "timeoutMs",
+  "responseIncludesAny",
+  "responseIncludesAll",
+  "responseExcludes",
+  "responseJudge",
+]);
 
 function scenarioHasIndependentJudgeWork(
   scenario: ScenarioDefinition,
@@ -142,21 +160,55 @@ export function providerQualifiedScenarioProblems(
       "provider-qualified scenarios cannot declare seed steps; observe production state instead of injecting fixtures or logical time",
     );
   }
-  const forbiddenTurns = scenario.turns
-    .filter((turn) => turn.kind === "action" || turn.kind === "tick")
-    .map((turn) => `${turn.name}:${turn.kind}`);
-  if (forbiddenTurns.length > 0) {
+  if (scenario.isolation !== "per-scenario") {
     problems.push(
-      `provider-qualified scenarios cannot bypass model/scheduler routing with direct action or tick turns (${forbiddenTurns.join(", ")})`,
+      "provider-qualified scenarios must declare isolation=per-scenario",
     );
   }
-  if (
-    (scenario.cleanup ?? []).some(
-      (cleanup) => cleanup.type === "gmailDeleteDrafts",
-    )
-  ) {
+  if (scenario.deferred !== undefined) {
     problems.push(
-      "provider-qualified scenarios cannot use gmailDeleteDrafts because it targets the loopback connector mock",
+      "provider-qualified scenarios cannot be deferred while claiming executable evidence",
+    );
+  }
+  if ((scenario.mockoon?.length ?? 0) > 0) {
+    problems.push(
+      "provider-qualified scenarios cannot declare Mockoon services",
+    );
+  }
+  if ((scenario.rooms?.length ?? 0) > 0) {
+    problems.push(
+      "provider-qualified target principals, rooms, and ingress belong in the operator-signed run manifest, not scenario-authored rooms",
+    );
+  }
+  const forbiddenTurns = scenario.turns
+    .filter((turn) => turn.kind !== "message")
+    .map((turn) => `${turn.name}:${turn.kind ?? "implicit-message"}`);
+  if (forbiddenTurns.length > 0) {
+    problems.push(
+      `provider-qualified scenarios accept only explicit message turns through authenticated production ingress (${forbiddenTurns.join(", ")})`,
+    );
+  }
+  const executableTurnKeys = scenario.turns.flatMap((turn) =>
+    Object.keys(turn)
+      .filter((key) => !PROVIDER_QUALIFIED_TURN_KEYS.has(key))
+      .map((key) => `${turn.name}.${key}`),
+  );
+  if (executableTurnKeys.length > 0) {
+    problems.push(
+      `provider-qualified message turns contain fields outside the data-only ingress contract (${executableTurnKeys.join(", ")})`,
+    );
+  }
+  if ((scenario.cleanup?.length ?? 0) > 0) {
+    problems.push(
+      "provider-qualified cleanup must run after signed evidence finalization through the external operator, not scenario callbacks",
+    );
+  }
+  const untrustedChecks = (scenario.finalChecks ?? [])
+    .filter((check) => !PROVIDER_QUALIFIED_FINAL_CHECK_TYPES.has(check.type))
+    .map((check) => check.type);
+  if (untrustedChecks.length > 0) {
+    problems.push(
+      `provider-qualified final checks must be independent semantic or trusted-observer checks (${untrustedChecks.join(", ")})`,
     );
   }
   if (!scenarioHasIndependentJudgeWork(scenario)) {
@@ -2243,6 +2295,9 @@ export async function runScenario(
   }
   if (executionProfile === "provider-qualified") {
     const preflightProblems = providerQualifiedScenarioProblems(scenario);
+    preflightProblems.push(
+      "the in-process scenario executor cannot establish authenticated production ingress or an independent signed observer boundary; use the provider-qualified controller rather than relabeling this runtime",
+    );
     const missingPlugins = resolveRequiredPluginPackages(scenario).filter(
       (packageName) => !pluginPackageIsRegistered(runtime, packageName),
     );
@@ -2475,6 +2530,7 @@ export async function runScenario(
       // without this, ~30% of cross-cutting scenarios fail on provider-quirk
       // rather than semantic regression.
       if (
+        executionProfile === "simulated" &&
         kind === "message" &&
         actionsThisTurn.length === 0 &&
         typeof execution.responseText === "string" &&
@@ -2571,6 +2627,7 @@ export async function runScenario(
         const failure = skippedFinalCheckFailure(
           scenarioLane(scenario),
           result,
+          executionProfile,
         );
         if (failure) {
           report.status = "failed";

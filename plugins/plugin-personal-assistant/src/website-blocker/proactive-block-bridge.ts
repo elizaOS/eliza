@@ -24,7 +24,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { logger, requireConfirmedSendHandlerDelivery } from "@elizaos/core";
 import {
   buildSelfControlBlockPolicy,
   isWebsiteBlockedByPolicy,
@@ -147,24 +147,28 @@ async function defaultSendAlert(
     runtime as { sendMessageToTarget?: IAgentRuntime["sendMessageToTarget"] }
   ).sendMessageToTarget;
   if (typeof send !== "function") {
-    return;
+    throw new Error(
+      "[ProactiveBlockBridge] runtime has no outbound alert connector.",
+    );
   }
-  await send.call(
-    runtime,
-    {
-      source: "agent",
-      entityId: runtime.agentId,
-    } as Parameters<IAgentRuntime["sendMessageToTarget"]>[0],
-    {
-      text: alert.text,
-      source: "agent",
-      metadata: {
-        lifeopsProactiveBlock: true,
-        domain: alert.domain,
-        ruleId: alert.ruleId,
-        enforcementWindowKind: alert.enforcementWindowKind,
+  requireConfirmedSendHandlerDelivery(
+    await send.call(
+      runtime,
+      {
+        source: "agent",
+        entityId: runtime.agentId,
+      } as Parameters<IAgentRuntime["sendMessageToTarget"]>[0],
+      {
+        text: alert.text,
+        source: "agent",
+        metadata: {
+          lifeopsProactiveBlock: true,
+          domain: alert.domain,
+          ruleId: alert.ruleId,
+          enforcementWindowKind: alert.enforcementWindowKind,
+        },
       },
-    },
+    ),
   );
 }
 

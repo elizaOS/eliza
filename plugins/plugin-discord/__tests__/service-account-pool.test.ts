@@ -464,21 +464,26 @@ describe("DiscordService account-scoped primitives", () => {
 		});
 		expect(second).toMatchObject({
 			kind: "delivered",
-			providerMessageId: "999999999999999998",
-			memory: expect.objectContaining({
-				entityId: AGENT_ID,
-				roomId: expect.any(String),
-				content: expect.objectContaining({
-					text: "dedupe ordering canary 2026-07-27",
+			receipt: {
+				providerMessageIds: ["999999999999999998"],
+				persistence: { status: "persisted" },
+			},
+			memories: [
+				expect.objectContaining({
+					entityId: AGENT_ID,
+					roomId: expect.any(String),
+					content: expect.objectContaining({
+						text: "dedupe ordering canary 2026-07-27",
+					}),
 				}),
-			}),
+			],
 		});
 		expect(recipientEnsureCalls).toBe(2);
 		expect(dmChannel.send).toHaveBeenCalledTimes(1);
 		expect(runtime.createMemory).toHaveBeenCalledTimes(1);
 	});
 
-	it("reports concurrent duplicate state before and after the provider accepts the first send", async () => {
+	it("joins a concurrent duplicate and replays the exact provider receipt", async () => {
 		const { graph, runtime, service } = makeService();
 		const recipientEntityId = "00000000-0000-0000-0000-000000000098";
 		let releaseProvider!: () => void;
@@ -522,24 +527,37 @@ describe("DiscordService account-scoped primitives", () => {
 
 		const first = service.handleSendMessage(runtime as never, target, content);
 		await providerStarted;
-		await expect(
-			service.handleSendMessage(runtime as never, target, content),
-		).resolves.toEqual({
-			kind: "duplicate",
-			priorDelivery: "in_flight",
-		});
+		let secondSettled = false;
+		const second = service
+			.handleSendMessage(runtime as never, target, content)
+			.finally(() => {
+				secondSettled = true;
+			});
+		await Promise.resolve();
+		expect(secondSettled).toBe(false);
 
 		releaseProvider();
-		await expect(first).resolves.toMatchObject({
+		const firstOutcome = await first;
+		expect(firstOutcome).toMatchObject({
 			kind: "delivered",
-			providerMessageId: "999999999999999997",
+			receipt: {
+				providerMessageIds: ["999999999999999997"],
+				persistence: { status: "persisted" },
+			},
+		});
+		await expect(second).resolves.toEqual({
+			kind: "duplicate",
+			priorDelivery: "delivered",
+			receipt:
+				"receipt" in firstOutcome ? firstOutcome.receipt : expect.anything(),
 		});
 		await expect(
 			service.handleSendMessage(runtime as never, target, content),
 		).resolves.toEqual({
 			kind: "duplicate",
 			priorDelivery: "delivered",
-			providerMessageId: "999999999999999997",
+			receipt:
+				"receipt" in firstOutcome ? firstOutcome.receipt : expect.anything(),
 		});
 
 		expect(dmChannel.send).toHaveBeenCalledTimes(1);
@@ -550,7 +568,7 @@ describe("DiscordService account-scoped primitives", () => {
 		expect(recipientConnections).toHaveLength(3);
 	});
 
-	it("releases an in-flight reservation when the provider send fails", async () => {
+	it("hands a released reservation to the waiting caller after a zero-accept provider failure", async () => {
 		const { graph, runtime, service } = makeService();
 		const recipientEntityId = "00000000-0000-0000-0000-000000000097";
 		let rejectProvider!: (reason: Error) => void;
@@ -598,23 +616,163 @@ describe("DiscordService account-scoped primitives", () => {
 
 		const first = service.handleSendMessage(runtime as never, target, content);
 		await providerStarted;
+		const waitingRetry = service.handleSendMessage(
+			runtime as never,
+			target,
+			content,
+		);
+		rejectProvider(new Error("Discord REST send failed"));
+		await expect(first).rejects.toThrow("Discord REST send failed");
+		const retryOutcome = await waitingRetry;
+		expect(retryOutcome).toMatchObject({
+			kind: "delivered",
+			receipt: {
+				providerMessageIds: ["999999999999999996"],
+				persistence: { status: "persisted" },
+			},
+		});
 		await expect(
 			service.handleSendMessage(runtime as never, target, content),
 		).resolves.toEqual({
 			kind: "duplicate",
-			priorDelivery: "in_flight",
-		});
-		rejectProvider(new Error("Discord REST send failed"));
-		await expect(first).rejects.toThrow("Discord REST send failed");
-
-		await expect(
-			service.handleSendMessage(runtime as never, target, content),
-		).resolves.toMatchObject({
-			kind: "delivered",
-			providerMessageId: "999999999999999996",
+			priorDelivery: "delivered",
+			receipt:
+				"receipt" in retryOutcome ? retryOutcome.receipt : expect.anything(),
 		});
 		expect(dmChannel.send).toHaveBeenCalledTimes(2);
 		expect(runtime.createMemory).toHaveBeenCalledTimes(1);
+	});
+
+	it("settles an accepted chunk prefix as partial and never resends it", async () => {
+		const { graph, runtime, service } = makeService();
+		const recipientEntityId = "00000000-0000-0000-0000-000000000096";
+		const dmChannel = {
+			id: "888888888888888885",
+			type: DiscordChannelType.DM,
+			isTextBased: () => true,
+			isVoiceBased: () => false,
+			isThread: () => false,
+			send: vi
+				.fn()
+				.mockImplementationOnce(async (payload: { content?: string }) =>
+					makeMessage({
+						id: "999999999999999995",
+						content: payload.content ?? "",
+						url: "https://discord.test/dm/999999999999999995",
+						author: { id: "999999999999999999", username: "bot" },
+					}),
+				)
+				.mockRejectedValueOnce(new Error("second Discord chunk failed")),
+		};
+		Object.assign(graph.cachedUser, {
+			dmChannel,
+			displayName: "Recipient",
+		});
+		service.resolveDiscordTargetUserId = vi.fn(async () => graph.cachedUser.id);
+		const target = {
+			source: "discord",
+			accountId: "work",
+			entityId: recipientEntityId,
+		};
+		const content = { text: "x".repeat(2_100) };
+
+		const first = await service.handleSendMessage(
+			runtime as never,
+			target,
+			content,
+		);
+		expect(first).toMatchObject({
+			kind: "partially_delivered",
+			code: "DISCORD_PROVIDER_PARTIAL_DELIVERY",
+			receipt: {
+				providerMessageIds: ["999999999999999995"],
+				persistence: { status: "persisted" },
+			},
+			memories: [expect.objectContaining({ entityId: AGENT_ID })],
+		});
+		await expect(
+			service.handleSendMessage(runtime as never, target, content),
+		).resolves.toEqual({
+			kind: "duplicate",
+			priorDelivery: "partially_delivered",
+			receipt: "receipt" in first ? first.receipt : expect.anything(),
+		});
+		expect(dmChannel.send).toHaveBeenCalledTimes(2);
+		expect(runtime.createMemory).toHaveBeenCalledTimes(1);
+	});
+
+	it("returns provider acceptance with failed local persistence and suppresses resend", async () => {
+		const { graph, runtime, service } = makeService();
+		const recipientEntityId = "00000000-0000-0000-0000-000000000095";
+		const dmChannel = {
+			id: "888888888888888884",
+			type: DiscordChannelType.DM,
+			isTextBased: () => true,
+			isVoiceBased: () => false,
+			isThread: () => false,
+			send: vi.fn(async (payload: { content?: string }) =>
+				makeMessage({
+					id: "999999999999999994",
+					content: payload.content ?? "",
+					url: "https://discord.test/dm/999999999999999994",
+					author: { id: "999999999999999999", username: "bot" },
+				}),
+			),
+		};
+		Object.assign(graph.cachedUser, {
+			dmChannel,
+			displayName: "Recipient",
+		});
+		service.resolveDiscordTargetUserId = vi.fn(async () => graph.cachedUser.id);
+		runtime.createMemory.mockRejectedValueOnce(
+			Object.assign(new Error("PGlite write failed"), {
+				code: "PGLITE_WRITE_FAILED",
+			}),
+		);
+		const target = {
+			source: "discord",
+			accountId: "work",
+			entityId: recipientEntityId,
+		};
+		const content = { text: "persistence truth canary 2026-07-28" };
+
+		const first = await service.handleSendMessage(
+			runtime as never,
+			target,
+			content,
+		);
+		expect(first).toMatchObject({
+			kind: "delivered",
+			receipt: {
+				providerMessageIds: ["999999999999999994"],
+				persistence: {
+					status: "failed",
+					failures: [
+						{
+							providerMessageId: "999999999999999994",
+							stage: "memory",
+							code: "PGLITE_WRITE_FAILED",
+						},
+					],
+				},
+			},
+			memories: [],
+		});
+		await expect(
+			service.handleSendMessage(runtime as never, target, content),
+		).resolves.toEqual({
+			kind: "duplicate",
+			priorDelivery: "delivered",
+			receipt: "receipt" in first ? first.receipt : expect.anything(),
+		});
+		expect(dmChannel.send).toHaveBeenCalledTimes(1);
+		expect(runtime.reportError).toHaveBeenCalledWith(
+			"discord:outbound-memory-persistence",
+			expect.any(Error),
+			expect.objectContaining({
+				providerMessageId: "999999999999999994",
+			}),
+		);
 	});
 
 	it("does not register a recipient for an explicit guild channel target", async () => {

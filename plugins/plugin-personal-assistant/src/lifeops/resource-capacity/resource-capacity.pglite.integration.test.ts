@@ -1170,6 +1170,303 @@ describe("household resource capacity — real PGlite", () => {
     ).rejects.toMatchObject({ code: "RESOURCE_CAPACITY_CONFLICT" });
   });
 
+  it("terminalizes rejected and cancelled reviews, releases overlapping resources, and dismisses shared watchers across restart", async () => {
+    const rejectedHouseholdId = "capacity-household-rejected-terminal";
+    const rejectedResources = await seedResourceSet(
+      rejectedHouseholdId,
+      "rejected-terminal",
+    );
+    const rejectedNeed = need({
+      needId: "rejected-terminal-school-run",
+      startsAt: "2027-03-17T15:00:00.000Z",
+      endsAt: "2027-03-17T16:00:00.000Z",
+      location: "place:school",
+    });
+    const rejectedProposal = await service.createProposal({
+      principalEntityId: SELF_ENTITY_ID,
+      evaluation: evaluationInput(
+        rejectedHouseholdId,
+        [rejectedNeed],
+        rejectedResources,
+      ),
+      requiredApproverEntityIds: [SELF_ENTITY_ID, partnerId],
+      idempotencyKey: "capacity-rejected-terminal-v1",
+      expiresAt: "2027-03-17T12:00:00.000Z",
+    });
+    const ownerApproval = rejectedProposal.approvals.find(
+      (approval) => approval.partyEntityId === SELF_ENTITY_ID,
+    );
+    if (!ownerApproval) throw new Error("owner review approval missing");
+
+    const [, concurrentEvaluation] = await Promise.all([
+      service.respondToProposal({
+        principalEntityId: SELF_ENTITY_ID,
+        proposalId: rejectedProposal.proposal.proposalId,
+        proposalVersion: 1,
+        partyEntityId: SELF_ENTITY_ID,
+        approvalRequestId: ownerApproval.approvalRequestId,
+        contentSha256: rejectedProposal.proposal.contentSha256,
+        decision: "reject",
+        reason: "The family chose a different transport plan.",
+      }),
+      service.evaluate({
+        principalEntityId: SELF_ENTITY_ID,
+        evaluation: evaluationInput(
+          rejectedHouseholdId,
+          [rejectedNeed],
+          rejectedResources,
+        ),
+      }),
+    ]);
+    expect(
+      concurrentEvaluation.conflicts.every(
+        (conflict) => conflict.kind !== "duplicate_assignment",
+      ),
+    ).toBe(true);
+
+    const releasedAfterRejection = await service.evaluate({
+      principalEntityId: SELF_ENTITY_ID,
+      evaluation: evaluationInput(
+        rejectedHouseholdId,
+        [rejectedNeed],
+        rejectedResources,
+      ),
+    });
+    expect(releasedAfterRejection.feasible).toBe(true);
+    expect(
+      releasedAfterRejection.conflicts.some(
+        (conflict) => conflict.kind === "pending_proposal_reservation",
+      ),
+    ).toBe(false);
+    const declined = await service.readProposal({
+      principalEntityId: SELF_ENTITY_ID,
+      proposalId: rejectedProposal.proposal.proposalId,
+    });
+    expect(declined.effectiveState).toBe("declined");
+    expect(declined.approvals.map((approval) => approval.state).sort()).toEqual(
+      ["expired", "rejected"],
+    );
+
+    const cancelledHouseholdId = "capacity-household-cancelled-terminal";
+    const cancelledResources = await seedResourceSet(
+      cancelledHouseholdId,
+      "cancelled-terminal",
+    );
+    const cancelledNeed = need({
+      needId: "cancelled-terminal-school-run",
+      startsAt: "2027-03-18T15:00:00.000Z",
+      endsAt: "2027-03-18T16:00:00.000Z",
+      location: "place:school",
+    });
+    const cancellable = await service.createProposal({
+      principalEntityId: SELF_ENTITY_ID,
+      evaluation: evaluationInput(
+        cancelledHouseholdId,
+        [cancelledNeed],
+        cancelledResources,
+      ),
+      requiredApproverEntityIds: [SELF_ENTITY_ID],
+      idempotencyKey: "capacity-cancelled-terminal-v1",
+      expiresAt: "2027-03-18T12:00:00.000Z",
+    });
+    const cancelled = await service.cancelProposal({
+      principalEntityId: SELF_ENTITY_ID,
+      proposalId: cancellable.proposal.proposalId,
+      reason: "The owner replaced this draft with a different plan.",
+    });
+    expect(cancelled.effectiveState).toBe("cancelled");
+    expect(cancelled.replayed).toBe(false);
+    expect(cancelled.approvals).toEqual([
+      expect.objectContaining({ state: "expired" }),
+    ]);
+    await expect(
+      service.cancelProposal({
+        principalEntityId: SELF_ENTITY_ID,
+        proposalId: cancellable.proposal.proposalId,
+        reason: "A duplicate owner cancellation retry.",
+      }),
+    ).resolves.toMatchObject({
+      effectiveState: "cancelled",
+      replayed: true,
+    });
+    const cancelAction = createResourceCapacityAction({
+      authorize: async () => true,
+      getService: () => service,
+    });
+    await expect(
+      cancelAction.handler(
+        runtime,
+        createMessageMemory({
+          entityId: runtime.agentId,
+          agentId: runtime.agentId,
+          roomId: runtime.agentId,
+          content: {
+            text: "Cancel the obsolete capacity proposal.",
+            source: "test",
+          },
+        }),
+        undefined,
+        {
+          parameters: {
+            action: "cancel_proposal",
+            proposalId: cancellable.proposal.proposalId,
+            reason: "Action-surface cancellation retry.",
+          },
+        },
+        undefined,
+      ),
+    ).resolves.toMatchObject({
+      success: true,
+      data: {
+        proposal: {
+          effectiveState: "cancelled",
+          replayed: true,
+        },
+      },
+      effectReceipts: [
+        {
+          outcome: "applied",
+          operation: "lifeops.resource_capacity_proposal.cancel",
+          idempotency: { replayed: true },
+        },
+      ],
+    });
+    const releasedAfterCancellation = await service.evaluate({
+      principalEntityId: SELF_ENTITY_ID,
+      evaluation: evaluationInput(
+        cancelledHouseholdId,
+        [cancelledNeed],
+        cancelledResources,
+      ),
+    });
+    expect(releasedAfterCancellation.feasible).toBe(true);
+    expect(
+      releasedAfterCancellation.conflicts.some(
+        (conflict) => conflict.kind === "pending_proposal_reservation",
+      ),
+    ).toBe(false);
+
+    const terminalRows = await executeRawSql(
+      runtime,
+      `SELECT proposal_id, terminal_state
+       FROM app_lifeops.life_resource_capacity_proposal_terminals
+       WHERE agent_id = '${runtime.agentId}'
+         AND proposal_id IN (
+           '${rejectedProposal.proposal.proposalId}',
+           '${cancellable.proposal.proposalId}'
+         )
+       ORDER BY terminal_state`,
+    );
+    expect(terminalRows).toEqual([
+      {
+        proposal_id: cancellable.proposal.proposalId,
+        terminal_state: "cancelled",
+      },
+      {
+        proposal_id: rejectedProposal.proposal.proposalId,
+        terminal_state: "declined",
+      },
+    ]);
+    const tasks = await getScheduledTaskRunner(runtime, {
+      agentId: runtime.agentId,
+    }).list();
+    for (const taskId of [
+      rejectedProposal.reviewTaskId,
+      cancellable.reviewTaskId,
+    ]) {
+      expect(tasks.find((task) => task.taskId === taskId)?.state.status).toBe(
+        "dismissed",
+      );
+    }
+
+    const recoveryHouseholdId = "capacity-household-rejection-recovery";
+    const recoveryResources = await seedResourceSet(
+      recoveryHouseholdId,
+      "rejection-recovery",
+    );
+    const recoveryNeed = need({
+      needId: "rejection-recovery-school-run",
+      startsAt: "2027-03-19T15:00:00.000Z",
+      endsAt: "2027-03-19T16:00:00.000Z",
+      location: "place:school",
+    });
+    const recoveryProposal = await service.createProposal({
+      principalEntityId: SELF_ENTITY_ID,
+      evaluation: evaluationInput(
+        recoveryHouseholdId,
+        [recoveryNeed],
+        recoveryResources,
+      ),
+      requiredApproverEntityIds: [SELF_ENTITY_ID],
+      idempotencyKey: "capacity-rejection-recovery-v1",
+      expiresAt: "2027-03-19T12:00:00.000Z",
+    });
+    const recoveryApproval = recoveryProposal.approvals[0];
+    if (!recoveryApproval) throw new Error("recovery approval missing");
+    await approvals.reject(recoveryApproval.approvalRequestId, {
+      resolvedBy: SELF_ENTITY_ID,
+      resolutionReason:
+        "Simulated process death after the approval rejection commit.",
+    });
+    expect(
+      await repository.getProposalTerminal(
+        recoveryProposal.proposal.proposalId,
+      ),
+    ).toBeNull();
+
+    const restarted = new ResourceCapacityService({
+      runtime,
+      agentId: runtime.agentId,
+      entityStore: entities,
+      household,
+      repository: new ResourceCapacityRepository(runtime, runtime.agentId),
+      approvalQueue: createApprovalQueue(runtime, {
+        agentId: runtime.agentId,
+      }),
+      scheduledTasks: getScheduledTaskRunner(runtime, {
+        agentId: runtime.agentId,
+      }),
+      now: currentDate,
+    });
+    await restarted.initialize();
+    await expect(
+      restarted.readProposal({
+        principalEntityId: SELF_ENTITY_ID,
+        proposalId: rejectedProposal.proposal.proposalId,
+      }),
+    ).resolves.toMatchObject({ effectiveState: "declined" });
+    await expect(
+      restarted.readProposal({
+        principalEntityId: SELF_ENTITY_ID,
+        proposalId: cancellable.proposal.proposalId,
+      }),
+    ).resolves.toMatchObject({ effectiveState: "cancelled" });
+    await expect(
+      restarted.readProposal({
+        principalEntityId: SELF_ENTITY_ID,
+        proposalId: recoveryProposal.proposal.proposalId,
+      }),
+    ).resolves.toMatchObject({ effectiveState: "declined" });
+    expect(
+      (
+        await getScheduledTaskRunner(runtime, {
+          agentId: runtime.agentId,
+        }).list()
+      ).find((task) => task.taskId === recoveryProposal.reviewTaskId)?.state
+        .status,
+    ).toBe("dismissed");
+    await expect(
+      restarted.evaluate({
+        principalEntityId: SELF_ENTITY_ID,
+        evaluation: evaluationInput(
+          recoveryHouseholdId,
+          [recoveryNeed],
+          recoveryResources,
+        ),
+      }),
+    ).resolves.toMatchObject({ feasible: true });
+  });
+
   it("invalidates review after resource drift and stops treating it as a pending reservation", async () => {
     const householdId = "capacity-household-invalidated-review";
     const resources = await seedResourceSet(householdId, "invalidated-review");

@@ -126,6 +126,80 @@ describe("scenario executor wait turns", () => {
   });
 });
 
+describe("provider-qualified execution boundary", () => {
+  it("fails before creating synthetic users or dispatching through the in-process runtime", async () => {
+    const ensureConnection = vi.fn(async () => undefined);
+    const setSetting = vi.fn();
+    const handleMessage = vi.fn();
+    const runtime = {
+      ...createRuntime([], {
+        plugins: [
+          {
+            name: "plugin-personal-assistant",
+            description: "production plugin registration",
+          },
+        ],
+        ensureConnection,
+        getService: vi.fn((serviceType: string) =>
+          serviceType === "lifeops_scheduled_task_runner" ? {} : null,
+        ) as unknown as AgentRuntime["getService"],
+        setSetting,
+      }),
+      messageService: { handleMessage },
+    } as unknown as AgentRuntime;
+
+    const report = await runScenario(
+      {
+        id: "provider-boundary",
+        title: "Provider boundary",
+        domain: "executor",
+        lane: "live-only",
+        executionProfile: "provider-qualified",
+        isolation: "per-scenario",
+        requires: { plugins: ["@elizaos/plugin-personal-assistant"] },
+        turns: [
+          {
+            kind: "message",
+            name: "authenticated ingress turn",
+            text: "Schedule the approved appointment.",
+            responseJudge: {
+              rubric:
+                "The response must describe the independently observed result.",
+            },
+          },
+        ],
+        finalChecks: [
+          {
+            type: "providerEffectObserved",
+            provider: "google-calendar",
+          },
+          {
+            type: "judgeRubric",
+            name: "independent semantics",
+            rubric: "The result must match the provider-side observation.",
+          },
+        ],
+      },
+      runtime,
+      {
+        executionProfile: "provider-qualified",
+        minJudgeScore: 0.8,
+        providerName: "unit-test",
+        runDir: "/tmp/provider-qualified-executor-test",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(report.status).toBe("failed");
+    expect(report.error).toContain(
+      "cannot establish authenticated production ingress",
+    );
+    expect(ensureConnection).not.toHaveBeenCalled();
+    expect(setSetting).not.toHaveBeenCalled();
+    expect(handleMessage).not.toHaveBeenCalled();
+  });
+});
+
 describe("scenario executor api turn captures", () => {
   it("captures API response fields for later path and body templates", async () => {
     const runtime = createRuntime([], {

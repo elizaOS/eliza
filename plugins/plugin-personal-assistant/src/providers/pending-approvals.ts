@@ -125,12 +125,20 @@ export const pendingApprovalsProvider: Provider = {
       });
     } catch (error) {
       // error-policy:J4 explicit user-facing degrade — a queue-read failure
-      // omits the approvals block (empty, never a fabricated "no approvals
-      // pending"); reportError surfaces it in RECENT_ERRORS so a broken queue
-      // cannot silently reintroduce the stuck-pending failure this provider
-      // exists to prevent.
-      runtime.reportError?.("pending-approvals.provider", error);
-      return EMPTY;
+      // renders a distinguishable "unavailable" result, never the designed
+      // empty (a fabricated pendingApprovalCount of 0 would read as "no
+      // approvals pending"); reportError surfaces it in RECENT_ERRORS so a
+      // broken queue cannot silently reintroduce the stuck-pending failure
+      // this provider exists to prevent.
+      runtime.reportError("pending-approvals.provider", error, {
+        roomId: message.roomId,
+        entityId: message.entityId,
+      });
+      return {
+        text: "",
+        values: { pendingApprovalsUnavailable: true },
+        data: { pendingApprovalsError: true },
+      };
     }
     if (pending.length === 0) return EMPTY;
 

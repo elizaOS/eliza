@@ -83,6 +83,35 @@ eliza-scenarios run  <dir>
   [fileGlob ...]           Filter by file glob pattern
 ```
 
+## Provider-qualified release evidence
+
+The ordinary executor is an in-process diagnostic harness. It can exercise a
+real model and real plugin code, but it creates scenario identities and invokes
+the runtime directly, so it is never a trustworthy provider-evidence boundary.
+Declaring `executionProfile: "provider-qualified"` does not relabel that path:
+the executor fails closed, mixed-profile or multi-scenario runs are rejected,
+and the CLI returns nonzero and withholds native export unless exactly one
+report carries independently verified, publishable qualification.
+
+An out-of-process controller can use the public primitives under
+`src/provider-qualified/` to:
+
+1. build a closed, content-hashed run manifest bound to deployment, principal,
+   room, every connector account/capability, and the exact required
+   observations;
+2. drive authenticated production ingress while independent observers collect
+   provider, durable-database, and scheduler evidence;
+3. recompute exact trajectory and stage hashes from a fresh isolated run
+   directory; and
+4. derive qualification from a pinned Ed25519 observer signature, exact
+   observation/result multisets, independent semantic verdicts, provider
+   acceptance, and required readback/idempotency.
+
+The qualifier always records `exactlyOnce: false`; provider idempotency and
+readback reduce ambiguity but do not prove end-to-end exactly-once delivery.
+Action results, model prose, loopback fixtures, local PGlite, and unsigned
+same-process observations cannot satisfy these contracts.
+
 ## Key env vars
 
 | Variable | Effect |
@@ -115,6 +144,6 @@ await cleanup();
 
 ## Notes
 
-- A single CLI invocation runs all scenarios in one shared runtime; PGLite cannot be recreated in-process. For true per-scenario isolation, run the CLI once per scenario from a shell loop.
+- A simulated CLI invocation runs its scenarios in one shared runtime because PGLite cannot be recreated in-process. Provider-qualified definitions are restricted to one scenario and still require an external production controller; the ordinary executor deliberately refuses to qualify them.
 - Schema types (`ScenarioDefinition`, `CapturedAction`, etc.) come from `@elizaos/scenario-runner/schema`, not from the main export.
 - Scenarios starting with `_` or in directories starting with `_` are skipped by the loader.

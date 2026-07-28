@@ -80,6 +80,7 @@ function seedRequest(
       req: {
         url: "/api/conversations/dev/seed-messages",
         headers: { host: "localhost" },
+        socket: { remoteAddress: "127.0.0.1" },
       },
       res: {},
       method: "POST",
