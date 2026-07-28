@@ -4,13 +4,20 @@
  */
 
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, test } from "node:test";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { resolveAptSnapshots } from "./resolve-apt-snapshots.mjs";
 
 const temporaryDirectories = [];
+const execFileAsync = promisify(execFile);
+const prepareSnapshotsScript = fileURLToPath(
+  new URL("../tails/auto/scripts/apt-snapshots-serials", import.meta.url),
+);
 
 afterEach(async () => {
   await Promise.all(
@@ -27,6 +34,24 @@ async function snapshotConfig(serials) {
   temporaryDirectories.push(directory);
   for (const [origin, serial] of Object.entries(serials)) {
     const originDirectory = path.join(directory, origin);
+    await mkdir(originDirectory, { recursive: true });
+    await writeFile(path.join(originDirectory, "serial"), `${serial}\n`);
+  }
+  return directory;
+}
+
+async function snapshotWorkspace(serials) {
+  const directory = await mkdtemp(
+    path.join(os.tmpdir(), "elizaos-apt-snapshot-workspace-"),
+  );
+  temporaryDirectories.push(directory);
+  for (const [origin, serial] of Object.entries(serials)) {
+    const originDirectory = path.join(
+      directory,
+      "config",
+      "APT_snapshots.d",
+      origin,
+    );
     await mkdir(originDirectory, { recursive: true });
     await writeFile(path.join(originDirectory, "serial"), `${serial}\n`);
   }
@@ -138,4 +163,31 @@ test("rejects malformed authoritative trace metadata", async () => {
     resolveAptSnapshots({ baseUrl, configDir, fetchImpl }),
     /Invalid Archive serial/,
   );
+});
+
+test("verified serial maps override frozen and latest build inputs", async () => {
+  const workspace = await snapshotWorkspace({
+    debian: "2026070701",
+    "debian-security": "latest",
+    torproject: "2026050704",
+  });
+  const snapshots = {
+    debian: "2026072801",
+    "debian-security": "2026072801",
+    torproject: "2026050704",
+  };
+
+  await execFileAsync(
+    prepareSnapshotsScript,
+    ["prepare-build", JSON.stringify(snapshots)],
+    { cwd: workspace },
+  );
+
+  for (const [origin, expected] of Object.entries(snapshots)) {
+    const serial = await readFile(
+      path.join(workspace, "tmp", "APT_snapshots.d", origin, "serial"),
+      "utf8",
+    );
+    assert.equal(serial.trim(), expected);
+  }
 });
