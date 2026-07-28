@@ -7,6 +7,24 @@
  */
 
 declare module "@elizaos/shared" {
+  export const AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES: number;
+
+  export class AgentSnapshotV1WireLimitError extends Error {
+    readonly receivedBytes: number;
+    readonly maxBytes: number;
+
+    constructor(receivedBytes: number, maxBytes: number);
+  }
+
+  export function assertAgentSnapshotV1WireByteLength(
+    receivedBytes: number,
+    maxBytes?: number,
+  ): void;
+
+  export function resolveAgentSnapshotV1MaxWireBytes(
+    configuredBytes: string | undefined,
+  ): number;
+
   export interface CoinGeckoMarketRecord {
     id: string;
     symbol: string;

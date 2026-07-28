@@ -29,6 +29,9 @@ describe("JOB_TYPES", () => {
     expect(JOB_TYPES.AGENT_SNAPSHOT).toBe("agent_snapshot");
     expect(JOB_TYPES.AGENT_UPGRADE).toBe("agent_upgrade");
     expect(JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE).toBe("agent_admin_canary_image");
+    expect(JOB_TYPES.AGENT_ADMIN_CANARY_RESTORE_VALIDATION).toBe(
+      "agent_admin_canary_restore_validation",
+    );
     expect(JOB_TYPES.AGENT_ADMIN_CANARY_STANDBY_DECISION).toBe(
       "agent_admin_canary_standby_decision",
     );
@@ -46,7 +49,7 @@ describe("JOB_TYPES", () => {
     expect(JOB_TYPES.CONTAINER_STOP).toBe("container_stop");
     // Lock the size so a new entry without a matching assertion above
     // fails CI instead of being silently under-covered by tests below.
-    expect(Object.keys(JOB_TYPES)).toHaveLength(22);
+    expect(Object.keys(JOB_TYPES)).toHaveLength(23);
   });
 
   test("wire values are unique (no two symbols share a string)", () => {
@@ -77,8 +80,9 @@ describe("JOB_TYPES", () => {
       JOB_TYPES.AGENT_WAKE,
       JOB_TYPES.AGENT_UPGRADE,
       JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
+      JOB_TYPES.AGENT_ADMIN_CANARY_RESTORE_VALIDATION,
       JOB_TYPES.AGENT_ADMIN_CANARY_STANDBY_DECISION,
     ]);
-    expect(new Set(EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES).size).toBe(11);
+    expect(new Set(EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES).size).toBe(12);
   });
 });
