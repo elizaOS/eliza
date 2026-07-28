@@ -80,7 +80,7 @@ test.describe("chat client stream rendering", () => {
   }, testInfo) => {
     await seedChatRoutes(page);
     await openAppPath(page, "/chat");
-    await expect(page.getByTestId("continuous-chat-overlay")).toBeVisible({
+    await expect(page.getByTestId("chat-overlay")).toBeVisible({
       timeout: 10_000,
     });
     await expect(page.getByTestId("chat-composer-textarea")).toBeVisible({

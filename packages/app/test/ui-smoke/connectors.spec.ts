@@ -254,8 +254,10 @@ test("connector settings list enabled connectors and expand setup panels", async
     page.getByRole("switch", { name: "Disable Discord" }),
   ).toBeChecked();
   await expandConnector(page, "discord");
+  const discord = page.locator('[data-connector="discord"]');
+  await discord.getByRole("button", { name: "Desktop App" }).click();
   await expect(
-    page.getByRole("button", { name: "Authorize Discord desktop" }),
+    discord.getByRole("button", { name: "Authorize Discord desktop" }),
   ).toBeVisible();
 });
 
@@ -269,8 +271,10 @@ test("cloud-connected connector settings keep local setup controls available", a
     page.getByRole("switch", { name: "Disable Discord" }),
   ).toBeChecked();
   await expandConnector(page, "discord");
+  const discord = page.locator('[data-connector="discord"]');
+  await discord.getByRole("button", { name: "Desktop App" }).click();
   await expect(
-    page.getByRole("button", { name: "Authorize Discord desktop" }),
+    discord.getByRole("button", { name: "Authorize Discord desktop" }),
   ).toBeVisible();
 });
 

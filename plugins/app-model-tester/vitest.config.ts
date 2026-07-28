@@ -29,6 +29,15 @@ export default defineConfig({
     dedupe: ["react", "react-dom"],
     alias: [
       {
+        // Preset accessibility is implemented by the spatial primitive itself;
+        // exercise source rather than a previously-built workspace dist.
+        find: /^@elizaos\/ui\/spatial$/,
+        replacement: new URL(
+          "../../packages/ui/src/spatial/index.ts",
+          import.meta.url,
+        ).pathname,
+      },
+      {
         // @elizaos/ui DynamicViewLoader statically imports this plugin-health
         // subpath; anchor it to source (no built plugin-health dist in the
         // keyless lane). Self-contained so it needs no config-local path vars.

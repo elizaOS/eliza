@@ -183,6 +183,33 @@ describe("CockpitInteractiveTerminal — spawn → attach wiring", () => {
 });
 
 describe("CockpitInteractiveTerminal — session death (pty-exit)", () => {
+  it("preserves an exit that arrives before the spawn response exposes its session id", async () => {
+    let resolveSpawn: ((value: { sessionId: string }) => void) | undefined;
+    mocks.spawnPtySession.mockImplementation(
+      () =>
+        new Promise<{ sessionId: string }>((resolve) => {
+          resolveSpawn = resolve;
+        }),
+    );
+    render(<CockpitInteractiveTerminal tier="fast" />);
+    await waitFor(() => expect(mocks.onWsEvent).toHaveBeenCalled());
+
+    act(() => {
+      mocks.emitWsEvent("pty-exit", {
+        type: "pty-exit",
+        sessionId: "sess-fast-exit",
+        exitCode: 1,
+      });
+      resolveSpawn?.({ sessionId: "sess-fast-exit" });
+    });
+
+    const ended = await screen.findByTestId("cockpit-terminal-ended");
+    expect(ended.textContent).toContain("exit 1");
+    expect(screen.getByTestId("pty-pane").getAttribute("data-visible")).toBe(
+      "false",
+    );
+  });
+
   it("shows the ended state when the session's pty-exit arrives (was: stuck 'ready' forever)", async () => {
     mocks.spawnPtySession.mockResolvedValue({ sessionId: "sess-exit" });
     render(<CockpitInteractiveTerminal tier="fast" />);

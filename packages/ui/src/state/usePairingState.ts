@@ -8,23 +8,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import { client } from "../api";
-import { getActiveProfile, updateAgentProfile } from "./agent-profiles";
-import {
-  loadPersistedActiveServer,
-  savePersistedActiveServer,
-} from "./persistence";
-
-export function persistPairedToken(token: string): void {
-  const activeServer = loadPersistedActiveServer();
-  if (activeServer && activeServer.kind !== "local") {
-    savePersistedActiveServer({ ...activeServer, accessToken: token });
-  }
-
-  const activeProfile = getActiveProfile();
-  if (activeProfile && activeProfile.kind !== "local") {
-    updateAgentProfile(activeProfile.id, { accessToken: token });
-  }
-}
+import { persistActiveServerCredential } from "./active-server-credential";
 
 export function usePairingState() {
   const [pairingEnabled, setPairingEnabled] = useState(false);
@@ -46,7 +30,7 @@ export function usePairingState() {
     setPairingBusy(true);
     try {
       const { token } = await client.pair(code);
-      persistPairedToken(token);
+      persistActiveServerCredential(token);
       client.setToken(token);
       window.location.reload();
     } catch (err) {

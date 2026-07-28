@@ -234,6 +234,19 @@ function isExpectedCatalogAuthError(error: unknown): boolean {
   return isApiError(error) && (error.status === 401 || error.status === 403);
 }
 
+function isExpectedCatalogCancellation(
+  error: unknown,
+  signal: AbortSignal,
+  cancelled: boolean,
+): boolean {
+  return (
+    cancelled ||
+    signal.aborted ||
+    (error instanceof DOMException && error.name === "AbortError") ||
+    (error instanceof Error && error.name === "AbortError")
+  );
+}
+
 /** Merge catalogs, keeping the first definition for any duplicated alias. */
 function mergeByAlias(
   groups: SlashCommandCatalogItem[][],
@@ -305,6 +318,7 @@ export function useSlashCommandController(
       return;
     }
     let cancelled = false;
+    const abortController = new AbortController();
     setLoading(true);
     setLoadError(false);
     void (async () => {
@@ -316,10 +330,19 @@ export function useSlashCommandController(
       // show a distinguishable degraded state, not a false healthy-empty.
       let loadFailed = false;
       const catalog: SlashCommandCatalogItem[] = await client
-        .listCommands("gui")
+        .listCommands("gui", { signal: abortController.signal })
         // error-policy:J4 degrade to an empty catalog with the failure logged
         // + flagged (not fabricated as a healthy-empty catalog).
         .catch((error: unknown) => {
+          if (
+            isExpectedCatalogCancellation(
+              error,
+              abortController.signal,
+              cancelled,
+            )
+          ) {
+            return [];
+          }
           // A 401/403 means the viewer isn't authenticated (or the agent
           // session lapsed) — the catalog is legitimately unavailable, not a
           // diagnosable failure. Degrade quietly rather than console.error-
@@ -336,9 +359,18 @@ export function useSlashCommandController(
           return [];
         });
       const customActions: CustomActionDef[] = await client
-        .listCustomActions()
+        .listCustomActions({ signal: abortController.signal })
         // error-policy:J4 omit custom actions with the failure logged + flagged.
         .catch((error: unknown) => {
+          if (
+            isExpectedCatalogCancellation(
+              error,
+              abortController.signal,
+              cancelled,
+            )
+          ) {
+            return [];
+          }
           // See above: an unauthenticated 401/403 is expected, not a failure —
           // degrade quietly instead of logging (#14663).
           if (isExpectedCatalogAuthError(error)) {
@@ -362,12 +394,21 @@ export function useSlashCommandController(
         )
       ) {
         void client
-          .getModelsCatalog()
+          .getModelsCatalog({ signal: abortController.signal })
           .then((models) => {
             if (!cancelled)
               setModelCatalog(resolveModelCatalogProviders(models));
           })
           .catch((error: unknown) => {
+            if (
+              isExpectedCatalogCancellation(
+                error,
+                abortController.signal,
+                cancelled,
+              )
+            ) {
+              return;
+            }
             // error-policy:J4 model completions degrade to none with the
             // failure logged; an unauthenticated 401/403 is expected (#14663).
             if (isExpectedCatalogAuthError(error)) return;
@@ -390,6 +431,7 @@ export function useSlashCommandController(
     })();
     return () => {
       cancelled = true;
+      abortController.abort();
     };
   }, [probesEnabled]);
 

@@ -6,8 +6,17 @@
  */
 
 import type { MeetingSession } from "@elizaos/shared";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { AgentSurfaceProvider } from "../../agent-surface/AgentSurfaceContext";
+import { handleAgentSurfaceCapability } from "../../agent-surface/capabilities";
+import { getViewRegistry } from "../../agent-surface/registry";
 import { MeetingJoinBar } from "./MeetingJoinBar";
 
 afterEach(cleanup);
@@ -135,5 +144,45 @@ describe("MeetingJoinBar", () => {
   it("renders the join error", () => {
     renderBar({ error: "Bot could not join" });
     expect(screen.getByRole("alert").textContent).toBe("Bot could not join");
+  });
+
+  it("exposes the live meeting form through the agent bridge", async () => {
+    const onJoin = vi.fn();
+    render(
+      <AgentSurfaceProvider viewId="transcripts" viewType="gui">
+        <MeetingJoinBar activeMeetings={[]} onJoin={onJoin} onStop={vi.fn()} />
+      </AgentSurfaceProvider>,
+    );
+    const registry = getViewRegistry("transcripts", "gui");
+    if (!registry) throw new Error("transcripts registry missing");
+
+    expect(
+      handleAgentSurfaceCapability(registry, "list-elements", undefined),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "meeting-url", fillable: true }),
+        expect.objectContaining({ id: "meeting-bot-name", fillable: true }),
+        expect.objectContaining({ id: "meeting-join", clickable: true }),
+      ]),
+    );
+    await act(async () => {
+      expect(
+        handleAgentSurfaceCapability(registry, "agent-fill", {
+          id: "meeting-url",
+          value: "https://meet.google.com/abc-defg-hij",
+        }),
+      ).toMatchObject({ ok: true });
+    });
+    await act(async () => {
+      expect(
+        handleAgentSurfaceCapability(registry, "agent-click", {
+          id: "meeting-join",
+        }),
+      ).toMatchObject({ ok: true });
+    });
+    expect(onJoin).toHaveBeenCalledWith({
+      platform: "google_meet",
+      meetingUrl: "https://meet.google.com/abc-defg-hij",
+    });
   });
 });

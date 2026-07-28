@@ -9,7 +9,7 @@ suite that locks it.
 
 ## Where the cost is
 
-Two things run on every streamed token:
+Two things run on every streamed paint:
 
 1. **`MessageContent` re-parses the message body.** It scans the growing text
    for code fences, `[CONFIG]`/`[CHOICE]`/`[FORM]`/`[WORKFLOW]`/`[TASK]` markers,
@@ -23,6 +23,13 @@ Two things run on every streamed token:
    that body, the inline widgets are memoized on their data props
    (`widget-equality.ts`), so a widget already on screen does not re-render as
    the surrounding prose grows.
+
+Transport events can arrive faster than the overlay can paint. `useChatSend`
+shows the first snapshot immediately, parks later cumulative snapshots, and
+paints them at a 64 ms cadence; terminal and abort paths synchronously flush the
+latest snapshot. This preserves responsive incremental text without spending a
+full overlay render on every model token. The browser perf fixture uses the same
+cadence while feeding token events once per animation frame.
 
 ## Memoized inline widgets
 

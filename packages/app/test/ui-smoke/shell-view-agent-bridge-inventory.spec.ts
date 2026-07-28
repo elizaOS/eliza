@@ -127,7 +127,7 @@ const SHELL_VIEW_TARGETS: readonly {
     path: "/apps/transcripts",
     viewId: "transcripts",
     readyTestId: "live-meeting-page",
-    requiredIds: [`transcript-${TRANSCRIPT_ID}`],
+    requiredIds: ["meeting-url", "meeting-bot-name", "meeting-join"],
   },
   {
     label: "Files",

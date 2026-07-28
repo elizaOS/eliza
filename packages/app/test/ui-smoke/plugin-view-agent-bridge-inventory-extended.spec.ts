@@ -1,29 +1,13 @@
-// Extended runtime bridge inventory for the plugin-backed app pages that the
-// original `plugin-view-agent-bridge-inventory.spec.ts` did NOT cover
-// (#11356). The sibling spec drives only `wallet.inventory`, `orchestrator`,
-// and `feed`; #10722 enumerates ~16 more instrumented plugin views that chat /
-// voice must be able to address through `window.__ELIZA_BRIDGE__.viewInteract`.
-//
-// This spec mirrors the established pattern EXACTLY: it opens each real view
-// through the preview harness, waits for the agent bridge, and asserts that
-// `list-elements` returns the concrete id/role/label/fillable/clickable shape
-// for the view's known controls against the REAL rendered DOM. It also
-// generalizes the `unwiredControls` scan from `settings-chat-control.spec.ts`:
-// any CONTROL-role element that renders without a `data-agent-id` (on itself or
-// an ancestor) is a real "chat can't reach this control" gap and fails.
-//
-// Coverage / honest accounting (see the PR body for the full table):
-//   Covered here: calendar, contacts, phone, messages, health, finances,
-//     inbox, goals, todos, polymarket, hyperliquid, training, screenshare,
-//     shopify, vector-browser (15).
-//   Skipped: facewear — its device config lives under Settings → Wearables, so
-//     there is no standalone GUI route that mounts an agent-bridge surface to
-//     inventory. Its controls are covered by the comms/device interaction specs.
-//
-// The fixture backends for every view below already live in
-// `installDefaultAppRoutes` (helpers.ts) — this spec adds NO new stubs; it only
-// reuses the deterministic keyless smoke data the other decomposed-view specs
-// already rely on.
+/**
+ * Runtime bridge inventory for plugin views that mount in the browser shell.
+ *
+ * Each target opens its real rendered route and proves that chat and voice can
+ * enumerate every interactive control through `viewInteract`. Native-OS Phone,
+ * Contacts, and Messages are exercised on device rather than through the web
+ * shell; Shopify has no shipped view declaration, and facewear lives inside
+ * Settings. The sibling inventory covers wallet inventory, orchestrator, and
+ * feed.
+ */
 
 import { expect, type Page, test } from "@playwright/test";
 import {
@@ -83,48 +67,24 @@ type PluginViewTarget = {
   requiredIds: readonly string[];
 };
 
-// Ordered roughly by surface family (comms → lifeops → markets → tooling) so a
-// failure localizes to a cohesive group.
+// Ordered by surface family so a failure localizes to a cohesive group.
 const PLUGIN_VIEW_TARGETS: readonly PluginViewTarget[] = [
-  // --- Comms surfaces (plugin-phone / plugin-contacts / plugin-messages) ---
-  {
-    label: "Phone",
-    path: "/phone",
-    viewId: "phone",
-    // phone-refresh + phone-call are declared unconditionally in the PhoneView
-    // body (useAgentElement), so both register on mount regardless of data.
-    requiredIds: ["phone-refresh", "phone-call"],
-  },
-  {
-    label: "Contacts",
-    path: "/contacts",
-    viewId: "contacts",
-    ready: { testId: "contacts-shell" },
-    // Default mode is "list": nav-back + action-new render on mount.
-    requiredIds: ["nav-back", "action-new"],
-  },
-  {
-    label: "Messages",
-    path: "/messages",
-    viewId: "messages",
-    // messages-refresh + messages-send are unconditional useAgentElement
-    // controls in the MessagesView body.
-    requiredIds: ["messages-refresh", "messages-send"],
-  },
   // --- LifeOps decomposed views (spatial `Button agent=…` + DomSection ids) ---
   {
     label: "Calendar",
     path: "/calendar",
     viewId: "calendar",
-    // The calendar mock (installDefaultAppRoutes) seeds "Design sync"; the
-    // CalendarSection period-nav + view-mode controls always render.
+    // The dynamic route mounts CalendarSpatialView, whose spatial `agent`
+    // values are the canonical bridge ids.
     ready: { text: "Design sync" },
     requiredIds: [
-      "calendar-prev",
-      "calendar-today",
-      "calendar-next",
-      "calendar-new-event",
-      "calendar-view-mode",
+      "prev",
+      "today",
+      "next",
+      "new",
+      "mode:day",
+      "mode:week",
+      "mode:month",
     ],
   },
   {
@@ -205,13 +165,6 @@ const PLUGIN_VIEW_TARGETS: readonly PluginViewTarget[] = [
     requiredIds: ["polymarket-refresh"],
   },
   {
-    label: "Shopify",
-    path: "/shopify",
-    viewId: "shopify",
-    ready: { selector: '[aria-label="Shopify controls"]' },
-    requiredIds: ["shopify-refresh", "shopify-product-search"],
-  },
-  {
     label: "Screenshare",
     path: "/screenshare",
     viewId: "screenshare",
@@ -244,6 +197,7 @@ const PLUGIN_VIEW_TARGETS: readonly PluginViewTarget[] = [
       "vector-view-list",
       "vector-search",
       "vector-search-run",
+      "vector-memory:memory-smoke-1",
     ],
   },
 ];
@@ -348,13 +302,10 @@ function assertElementShape(elements: AgentElement[], label: string): void {
  * Generalized `unwiredControls` scan (from settings-chat-control.spec.ts): every
  * interactive CONTROL rendered inside the mounted view region that has no
  * `data-agent-id` on itself or an ancestor is a real "chat can't reach this"
- * gap. There is no single DOM wrapper attribute for a plugin view surface, so
- * the scan scopes to the tightest region that actually contains the view's
- * bridged controls: the nearest common ancestor of every `[data-agent-id]`
- * node. Shell chrome (nav rail, tab bar, hidden chat composer) lives outside
- * that subtree, so it is excluded without an allowlist; genuinely-unwired
- * controls rendered ALONGSIDE the view's wired controls are still caught.
- * Empty/absent sections contribute nothing, so this is robust to keyless data.
+ * gap. DynamicViewLoader gives each plugin one `data-spatial-surface`; choosing
+ * the surface with the most registered nodes keeps wallet/header and hidden
+ * chat controls out while still catching controls beside the view's wired
+ * controls.
  */
 async function scanUnwiredControls(page: Page, label: string): Promise<void> {
   const unwired = await page.evaluate(() => {
@@ -366,17 +317,17 @@ async function scanUnwiredControls(page: Page, label: string): Promise<void> {
     });
     if (agentNodes.length === 0) return [] as string[];
 
-    // Nearest common ancestor of all visible bridged nodes = the view region.
-    let scope: HTMLElement = agentNodes[0];
-    for (const node of agentNodes.slice(1)) {
-      while (scope && !scope.contains(node)) {
-        scope = scope.parentElement as HTMLElement;
-        if (!scope) break;
+    const surfaceCounts = new Map<HTMLElement, number>();
+    for (const node of agentNodes) {
+      const surface = node.closest<HTMLElement>("[data-spatial-surface]");
+      if (surface) {
+        surfaceCounts.set(surface, (surfaceCounts.get(surface) ?? 0) + 1);
       }
-      if (!scope) break;
     }
-    const root: HTMLElement =
-      scope ?? document.getElementById("root") ?? document.body;
+    const root =
+      [...surfaceCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ??
+      document.getElementById("root") ??
+      document.body;
 
     const selector =
       'button:not([disabled]), [role="button"], input:not([type="hidden"]):not([disabled]):not([readonly]), textarea:not([disabled]), [role="switch"], [role="combobox"], [role="tab"], select:not([disabled])';

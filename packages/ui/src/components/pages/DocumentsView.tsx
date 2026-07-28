@@ -1012,6 +1012,7 @@ export function DocumentsView({
   const facetStrip = (
     <SectionTabStrip
       testId="knowledge-facets"
+      agentIdPrefix="facet"
       ariaLabel={t("knowledgehub.facetsLabel", {
         defaultValue: "Filter knowledge by media type",
       })}
@@ -1021,6 +1022,7 @@ export function DocumentsView({
         const Icon = knowledgeFacetIcon(value);
         return {
           id: value,
+          agentLabel: knowledgeFacetLabel(value, t),
           label: (
             <span
               className="inline-flex items-center gap-1.5"
@@ -1052,6 +1054,7 @@ export function DocumentsView({
   const scopeStrip = (
     <SectionTabStrip
       testId="knowledge-scope"
+      agentIdPrefix="scope"
       ariaLabel={t("knowledgehub.scopeLabel", {
         defaultValue: "Filter knowledge by scope",
       })}
@@ -1062,6 +1065,7 @@ export function DocumentsView({
         ({ value, labelKey, defaultLabel }) => ({
           id: value,
           label: t(labelKey, { defaultValue: defaultLabel }),
+          agentLabel: t(labelKey, { defaultValue: defaultLabel }),
         }),
       )}
     />

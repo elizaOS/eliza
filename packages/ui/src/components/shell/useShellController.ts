@@ -992,7 +992,11 @@ export function useShellController(): ShellController {
             setTranscript("");
             return;
           }
-          if (intent === "transcription") {
+          // A hands-free recorder can finish draining after the user has
+          // switched modes. Once transcription owns the session, route that
+          // final into the recording instead of letting the stale converse
+          // intent send it as a chat turn.
+          if (intent === "transcription" || transcriptionModeRef.current) {
             // Long-form record-only. Run exit detection on every final.
             if (isTranscriptionExitPhrase(text)) {
               // Fold any preceding non-exit content into the session, then close
@@ -1652,12 +1656,15 @@ export function useShellController(): ShellController {
       setIsOpen(true);
       voiceOutput.unlockAudio();
       beginTranscriptSession();
-      if (captureRef.current) stopCapture();
+      // The outgoing hands-free recorder owns the WAV chunks captured before
+      // this mode switch. Drain it before opening the transcription recorder so
+      // both captures reach ASR in order and the old handle cannot dispose the
+      // new capture's state.
+      if (captureRef.current) await stopCaptureAndDrain();
       startCapture("transcription");
     }
   }, [
     startCapture,
-    stopCapture,
     stopCaptureAndDrain,
     voiceOutput,
     beginTranscriptSession,

@@ -192,9 +192,14 @@ vi.mock("@elizaos/ui/config", () => ({
   }),
 }));
 
-vi.mock("@elizaos/ui/agent-surface", () => ({
-  useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
+const agentSurface = vi.hoisted(() => ({
+  useAgentElement: vi.fn(() => ({
+    ref: { current: null },
+    agentProps: {},
+  })),
 }));
+
+vi.mock("@elizaos/ui/agent-surface", () => agentSurface);
 
 // Thin passthrough layout / panel / skeleton.
 vi.mock("@elizaos/ui/layouts", () => ({
@@ -359,6 +364,7 @@ beforeEach(() => {
   backend.calls = [];
   getDatabaseTables.mockClear();
   executeDatabaseQuery.mockClear();
+  agentSurface.useAgentElement.mockClear();
 });
 
 afterEach(() => {
@@ -409,6 +415,20 @@ describe("VectorBrowserView — populated list", () => {
     });
     // "2" appears for total + unique metric values
     expect(screen.getAllByText("2").length).toBeGreaterThanOrEqual(1);
+    expect(agentSurface.useAgentElement).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "vector-memory:m-0",
+        role: "button",
+        status: "active",
+      }),
+    );
+    expect(agentSurface.useAgentElement).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "vector-memory:m-1",
+        role: "button",
+        status: "inactive",
+      }),
+    );
   });
 
   it("shows the empty state when there are no records", async () => {

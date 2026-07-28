@@ -60,6 +60,7 @@ import {
   clearPendingChatTurn,
   persistPendingChatTurn,
 } from "./pending-chat-turns";
+import { streamingRenderDelayMs } from "./streaming-render-cadence";
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -653,16 +654,17 @@ export function useChatSend(deps: UseChatSendDeps) {
   // when `preferSharedCloudTier` is off, since no `migrating` phase ever fires).
   const handoffFrozenRef = useRef(false);
 
-  // Streaming-commit coalescer.
+  // Streaming-paint coalescer.
   // The SSE stream fires three per-event callbacks that each trigger a state
   // commit: `onToken` (cumulative text, often >60/sec on a fast model),
   // `onStatus` (live turn phase), and `onToolEvent` (inline tool-call steps).
-  // Committing each one synchronously means up to three React renders per SSE
-  // event; instead every callback parks its latest value here and one microtask
-  // commits the burst. A frame callback is not a delivery clock: browsers can
-  // defer rAF for seconds in a hidden or resource-constrained tab, making an
-  // active SSE stream appear frozen. Microtasks remain prompt and React still
-  // batches the related state writes into one commit.
+  // A microtask merges callbacks decoded from one transport event, but a fast
+  // model still delivers separate events faster than the full chat overlay can
+  // render them. Park cumulative snapshots and paint the first one immediately,
+  // then at a bounded cadence. Terminal/abort paths synchronously flush the
+  // latest snapshot, so throttling cannot lose text. A timeout is the delivery
+  // clock rather than rAF because hidden/resource-constrained tabs may defer
+  // animation frames for seconds.
   //
   // `pendingStatus` uses the NO_PENDING_STATUS sentinel = "no status update
   // parked", distinct from a parked `null` (an explicit clear-the-status
@@ -675,6 +677,8 @@ export function useChatSend(deps: UseChatSendDeps) {
     pendingToolEvents: ChatToolCallEvent[];
     flushScheduled: boolean;
     flushGeneration: number;
+    flushTimer: ReturnType<typeof setTimeout> | null;
+    lastFlushAtMs: number | null;
   }>({
     conversationId: null,
     messageId: "",
@@ -683,6 +687,8 @@ export function useChatSend(deps: UseChatSendDeps) {
     pendingToolEvents: [],
     flushScheduled: false,
     flushGeneration: 0,
+    flushTimer: null,
+    lastFlushAtMs: null,
   });
 
   const isConversationCommitActive = useCallback(
@@ -811,6 +817,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       buffer.pendingStatus = NO_PENDING_STATUS;
       return;
     }
+    let committed = false;
     if (buffer.pendingText !== null) {
       const fullText = buffer.pendingText;
       buffer.pendingText = null;
@@ -819,6 +826,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         mode: "replace",
         fullText,
       });
+      committed = true;
     }
     if (buffer.pendingToolEvents.length > 0) {
       const toolEvents = buffer.pendingToolEvents;
@@ -830,27 +838,33 @@ export function useChatSend(deps: UseChatSendDeps) {
           event,
         });
       }
+      committed = true;
     }
     if (buffer.pendingStatus !== NO_PENDING_STATUS) {
       const status = buffer.pendingStatus;
       buffer.pendingStatus = NO_PENDING_STATUS;
       setServerTurnStatus(status);
+      committed = true;
     }
+    if (committed) buffer.lastFlushAtMs = performance.now();
   }, [
     isConversationCommitActive,
     setConversationMessages,
     setServerTurnStatus,
   ]);
 
-  // Apply whatever streaming state is parked for the in-flight turn NOW
-  // (synchronously) and invalidate the pending microtask — called before every terminal
-  // / abort transition so no token, tool row, or status is lost. Safe when
-  // nothing is pending (no-op).
+  // Apply whatever streaming state is parked for the in-flight turn NOW and
+  // invalidate its pending microtask/timer. Called before every terminal/abort
+  // transition so no token, tool row, or status is lost.
   const flushStreamingText = useCallback(() => {
     const buffer = streamingFlushRef.current;
     if (buffer.flushScheduled) {
       buffer.flushGeneration += 1;
       buffer.flushScheduled = false;
+    }
+    if (buffer.flushTimer !== null) {
+      clearTimeout(buffer.flushTimer);
+      buffer.flushTimer = null;
     }
     commitStreamingBuffer();
   }, [commitStreamingBuffer]);
@@ -867,27 +881,43 @@ export function useChatSend(deps: UseChatSendDeps) {
       )
         return;
       if (buffer.flushScheduled) buffer.flushGeneration += 1;
+      if (buffer.flushTimer !== null) {
+        clearTimeout(buffer.flushTimer);
+        buffer.flushTimer = null;
+      }
       buffer.conversationId = conversationId;
       buffer.messageId = messageId;
       buffer.pendingText = null;
       buffer.pendingStatus = NO_PENDING_STATUS;
       buffer.pendingToolEvents = [];
       buffer.flushScheduled = false;
+      buffer.lastFlushAtMs = null;
     },
     [],
   );
 
-  // Ensure one microtask is scheduled for the current synchronous SSE burst.
+  // The first snapshot paints in a microtask; later snapshots within the
+  // cadence window share one trailing timer and overwrite the cumulative text.
   const ensureStreamingFlush = useCallback(() => {
     const buffer = streamingFlushRef.current;
     if (buffer.flushScheduled) return;
     buffer.flushScheduled = true;
     const generation = buffer.flushGeneration;
-    queueMicrotask(() => {
+    const commitScheduled = () => {
       if (buffer.flushGeneration !== generation) return;
+      buffer.flushTimer = null;
       buffer.flushScheduled = false;
       commitStreamingBuffer();
-    });
+    };
+    const delayMs = streamingRenderDelayMs(
+      buffer.lastFlushAtMs,
+      performance.now(),
+    );
+    if (delayMs === 0) {
+      queueMicrotask(commitScheduled);
+      return;
+    }
+    buffer.flushTimer = setTimeout(commitScheduled, delayMs);
   }, [commitStreamingBuffer]);
 
   // Park the latest cumulative text for `messageId`. Synchronous callbacks from
@@ -936,6 +966,10 @@ export function useChatSend(deps: UseChatSendDeps) {
     return () => {
       buffer.flushGeneration += 1;
       buffer.flushScheduled = false;
+      if (buffer.flushTimer !== null) {
+        clearTimeout(buffer.flushTimer);
+        buffer.flushTimer = null;
+      }
       buffer.pendingText = null;
       buffer.conversationId = null;
       buffer.pendingStatus = NO_PENDING_STATUS;
@@ -1005,7 +1039,7 @@ export function useChatSend(deps: UseChatSendDeps) {
     activeTurn?.controller.abort();
     chatAbortRef.current?.abort();
     // Commit any parked partial text (so a stopped turn keeps what the user saw)
-    // and invalidate the pending microtask so it can't fire after the stop.
+    // and invalidate the pending scheduled flush so it can't fire after stop.
     flushStreamingText();
     activeChatTurnRef.current = null;
     chatAbortRef.current = null;
@@ -2427,7 +2461,7 @@ export function useChatSend(deps: UseChatSendDeps) {
             });
           }
         } finally {
-          // Belt-and-braces: invalidate any pending microtask (idempotent).
+          // Belt-and-braces: invalidate any pending scheduled flush (idempotent).
           flushStreamingText();
           if (chatAbortRef.current === controller) {
             chatAbortRef.current = null;

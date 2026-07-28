@@ -92,14 +92,15 @@ import { useKioskViewSurfaces } from "./components/shell/useKioskViewSurfaces";
 import { VoiceCaptureHud } from "./components/shell/VoiceCaptureHud";
 import { Button } from "./components/ui/button";
 import { KeepAliveViewHost } from "./components/views/KeepAliveViewHost";
+import { ShellViewAgentSurface } from "./components/views/ShellViewAgentSurface";
 import { ViewErrorBoundary } from "./components/views/ViewErrorBoundary";
 import { AppWorkspaceChrome } from "./components/workspace/AppWorkspaceChrome";
 import { useBootConfig } from "./config/boot-config-react.hooks";
 import {
-  CONNECT_EVENT,
   dispatchNavigateViewEvent,
   FOCUS_CONNECTOR_EVENT,
   type FocusConnectorEventDetail,
+  listenForConnectRequests,
   NAVIGATE_VIEW_EVENT,
 } from "./events";
 import { adoptRemoteAgentFirstRun } from "./first-run/adopt-remote-first-run";
@@ -121,6 +122,7 @@ import {
   getWindowNavigationPath,
   isAospShellEnabled,
   isRouteRootPath,
+  NATIVE_OS_VIEW_IDS,
   pathForTab,
   shouldUseHashNavigation,
   TAB_PATHS,
@@ -770,12 +772,12 @@ function RegisteredAppShellPage({
 }: {
   registration: AppShellPageRegistration;
 }) {
+  let content: ReactNode;
   if (registration.Component) {
     const Component = registration.Component;
-    return <Component />;
-  }
-  if (registration.loader) {
-    return (
+    content = <Component />;
+  } else if (registration.loader) {
+    content = (
       <RetainedLazyComponent
         loader={registration.loader}
         cacheKey={registration.id}
@@ -792,11 +794,21 @@ function RegisteredAppShellPage({
         )}
       />
     );
+  } else {
+    content = (
+      <div className="flex flex-1 min-h-0 min-w-0 items-center justify-center text-sm text-muted">
+        {registration.label} is not available in this build.
+      </div>
+    );
   }
+
+  // In-process plugin pages bypass DynamicViewLoader, so the shell owns the
+  // capability bridge for them. This keeps registry pages and remote bundles
+  // equivalent: controls registered with useAgentElement are live immediately.
   return (
-    <div className="flex flex-1 min-h-0 min-w-0 items-center justify-center text-sm text-muted">
-      {registration.label} is not available in this build.
-    </div>
+    <ShellViewAgentSurface viewId={registration.id}>
+      {content}
+    </ShellViewAgentSurface>
   );
 }
 
@@ -1151,17 +1163,19 @@ function findRemoteViewForRoute(
 ): ViewRegistryEntry | undefined {
   const normalizedPath = trimmedNavigationPath(navigationPath);
   if (SHELL_RESERVED_PATHS.has(normalizedPath)) return undefined;
+  // Exact plugin paths own their route even when they share a reserved tab
+  // affinity such as Wallet. This lets web/desktop mount the agent-served
+  // bundle while native shells still fall back to their in-process page.
+  const exactMatch = views.find(
+    (view) => remoteViewAvailable(view) && view.path === normalizedPath,
+  );
+  if (exactMatch) return exactMatch;
   if (tab !== "views" && tab !== "apps" && SHELL_RESERVED_TABS.has(tab)) {
     return undefined;
   }
-  return (
-    views.find(
-      (view) => remoteViewAvailable(view) && view.path === normalizedPath,
-    ) ??
-    views.find(
-      (view) =>
-        remoteViewAvailable(view) && remoteViewMatchesTab(view, tab, appSlug),
-    )
+  return views.find(
+    (view) =>
+      remoteViewAvailable(view) && remoteViewMatchesTab(view, tab, appSlug),
   );
 }
 
@@ -1565,6 +1579,53 @@ function renderViewRouterContent({
   settingsNavigatePayload?: unknown;
   settingsNavigateSequence?: number;
 }): ReactNode {
+  // Path ownership is more specific than tab affinity. Wallet-family plugins
+  // intentionally share the `inventory` tab, but their exact routes must mount
+  // their own registrations before that affinity resolves to the wallet root.
+  const walletNav = isWalletSectionPath(navigationPath) ? (
+    <WalletSectionNav activePath={navigationPath} />
+  ) : undefined;
+  // The AOSP system surfaces are host-owned because they coordinate privileged
+  // device APIs beyond the narrower plugin views. Keep them stable when remote
+  // metadata or a late in-process registration for the same path arrives.
+  if (
+    nativeOsSurfaceEnabled &&
+    (NATIVE_OS_VIEW_IDS as readonly string[]).includes(resolveBuiltinTabId(tab))
+  ) {
+    return renderStaticViewRouterTab({
+      tab,
+      nativeOsSurfaceEnabled,
+      navigationPath,
+      settingsInitialSection,
+      settingsNavigatePayload,
+      settingsNavigateSequence,
+      walletNav,
+    });
+  }
+  const remoteView = findRemoteViewForRoute(
+    availableViews,
+    navigationPath,
+    tab,
+    appSlug,
+  );
+  if (remoteView?.bundleUrl || remoteView?.frameUrl) {
+    return renderRemoteView(remoteView, walletNav);
+  }
+  const appShellPageForRoute = findAppShellPageForRoute(navigationPath);
+  if (
+    appShellPageForRoute &&
+    isViewVisible(appShellPageForRoute, enabledKinds)
+  ) {
+    return (
+      <TabContentView
+        nav={walletNav}
+        reserveChatClearance={!surfaceOwnsViewport(appShellPageForRoute)}
+      >
+        <RegisteredAppShellPage registration={appShellPageForRoute} />
+      </TabContentView>
+    );
+  }
+
   if (visibleDynamicPage(dynamicPage, enabledKinds)) {
     return (
       <TabContentView
@@ -1583,11 +1644,6 @@ function renderViewRouterContent({
       </TabContentView>
     );
   }
-  // Wallet-family routes share one sub-nav rendered in the workspace chrome
-  // nav slot. Plugins join it by registering app-shell pages with group=wallet.
-  const walletNav = isWalletSectionPath(navigationPath) ? (
-    <WalletSectionNav activePath={navigationPath} />
-  ) : undefined;
 
   // Character-family routes (Personality/Relationships/Skills/Experience) share
   // one "Character" header + section strip in the same nav slot (#13591). Unlike
@@ -1596,29 +1652,6 @@ function renderViewRouterContent({
     <CharacterSectionNav activePath={navigationPath} />
   ) : undefined;
 
-  const appShellPageForRoute = findAppShellPageForRoute(navigationPath);
-  if (
-    appShellPageForRoute &&
-    isViewVisible(appShellPageForRoute, enabledKinds)
-  ) {
-    return (
-      <TabContentView
-        nav={walletNav}
-        reserveChatClearance={!surfaceOwnsViewport(appShellPageForRoute)}
-      >
-        <RegisteredAppShellPage registration={appShellPageForRoute} />
-      </TabContentView>
-    );
-  }
-  const remoteView = findRemoteViewForRoute(
-    availableViews,
-    navigationPath,
-    tab,
-    appSlug,
-  );
-  if (remoteView?.bundleUrl || remoteView?.frameUrl) {
-    return renderRemoteView(remoteView, walletNav);
-  }
   return renderStaticViewRouterTab({
     tab,
     nativeOsSurfaceEnabled,
@@ -1648,33 +1681,15 @@ function ViewRouter({
   settingsNavigateSequence?: number;
 }) {
   const activeTab = useAppSelector((s) => s.tab);
-  const setActiveTab = useAppSelector((s) => s.setTab);
   const tab = routeOverride?.tab ?? activeTab;
   // Phone / messages / contacts are AOSP-fork-only native-OS surfaces (like
   // camera + the home tiles + the launcher tiles) — never rendered on web,
   // desktop, iOS, or stock Play-Store Android, even via a deep link.
   const nativeOsSurfaceEnabled = isAospShellEnabled();
+  // AppProvider owns late path-to-tab reconciliation through setTabRaw. Doing
+  // it here through the public setTab command would rewrite exact plugin paths
+  // to a shared affinity's canonical path (for example /hyperliquid → /wallet).
   const dynamicPage = useResolvedDynamicPage(tab);
-  // Late plugin registrations can land AFTER the boot path→tab resolution: a
-  // direct deep link to a plugin-owned page (e.g. /phone-companion) resolves
-  // to the "views" fallback because registerAppShellPage runs on the deferred
-  // idle pump, after first paint. Re-derive the tab for the current path on
-  // every registry change and adopt the now-registered page. Correcting only
-  // away from the "views" fallback means user navigation is never fought —
-  // for a fixed path, tabFromPath's answer only changes when a registration
-  // lands.
-  const shellPageRegistryVersion = useAppShellPageRegistryVersion();
-  useEffect(() => {
-    // The version is the re-run trigger (same pattern as useResolvedDynamicPage).
-    void shellPageRegistryVersion;
-    if (routeOverride) return;
-    if (activeTab !== "views") return;
-    if (typeof window === "undefined") return;
-    const resolved = tabFromPath(getWindowNavigationPath());
-    if (resolved && resolved !== "views") {
-      setActiveTab(resolved);
-    }
-  }, [shellPageRegistryVersion, routeOverride, activeTab, setActiveTab]);
   const [navigationPath, setNavigationPath] = useState(
     () =>
       routeOverride?.navigationPath ??
@@ -2093,6 +2108,7 @@ function AppContent() {
     tab,
     setTab,
     setState,
+    completeFirstRun,
     setActionNotice,
     actionNotice,
     activeOverlayApp,
@@ -2111,6 +2127,7 @@ function AppContent() {
     tab: s.tab,
     setTab: s.setTab,
     setState: s.setState,
+    completeFirstRun: s.completeFirstRun,
     setActionNotice: s.setActionNotice,
     actionNotice: s.actionNotice,
     activeOverlayApp: s.activeOverlayApp,
@@ -2157,22 +2174,13 @@ function AppContent() {
   useEffect(() => {
     if (!isShellPaintableNow) return;
 
-    const handleConnect = async (event: Event): Promise<void> => {
-      const detail = (event as CustomEvent<unknown>).detail;
-      const payload =
-        detail && typeof detail === "object" && !Array.isArray(detail)
-          ? (detail as {
-              gatewayUrl?: unknown;
-              token?: unknown;
-              completeFirstRun?: unknown;
-              skipConfirm?: unknown;
-            })
-          : null;
-      if (typeof payload?.gatewayUrl !== "string") {
-        return;
-      }
-
-      const completeFirstRun = payload.completeFirstRun === true;
+    const handleConnect = async (payload: {
+      gatewayUrl: string;
+      token?: string;
+      completeFirstRun?: boolean;
+      skipConfirm?: boolean;
+    }): Promise<void> => {
+      const shouldCompleteFirstRun = payload.completeFirstRun === true;
       const skipConfirm = payload.skipConfirm === true;
       if (!skipConfirm && !isLoopbackGatewayHost(payload.gatewayUrl)) {
         const approved = await confirmDesktopAction({
@@ -2202,14 +2210,13 @@ function AppContent() {
         setState("firstRunRemoteToken", connection.token ?? "");
         setState("firstRunRemoteConnected", true);
         setState("firstRunRemoteError", null);
-        if (completeFirstRun) {
+        if (shouldCompleteFirstRun) {
           await adoptRemoteAgentFirstRun(client, {
             apiBase: connection.apiBase,
             token: connection.token,
             uiLanguage,
           });
-          setState("firstRunComplete", true);
-          startupCoordinator.dispatch({ type: "FIRST_RUN_COMPLETE" });
+          completeFirstRun();
         }
         setActionNotice("Connected to remote backend.", "success", 4200);
         retryStartup();
@@ -2224,14 +2231,13 @@ function AppContent() {
       }
     };
 
-    document.addEventListener(CONNECT_EVENT, handleConnect);
-    return () => document.removeEventListener(CONNECT_EVENT, handleConnect);
+    return listenForConnectRequests(handleConnect);
   }, [
+    completeFirstRun,
     isShellPaintableNow,
     retryStartup,
     setActionNotice,
     setState,
-    startupCoordinator.dispatch,
     uiLanguage,
   ]);
 
