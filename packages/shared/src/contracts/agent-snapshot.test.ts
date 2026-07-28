@@ -48,4 +48,38 @@ describe("agent snapshot v1 wire contract", () => {
       ),
     ).toBe(AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES);
   });
+
+  it("treats an absent or blank override as unset", () => {
+    for (const configuredBytes of [undefined, "", "   "]) {
+      expect(resolveAgentSnapshotV1MaxWireBytes(configuredBytes)).toBe(
+        AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES,
+      );
+    }
+  });
+
+  it("fails fast on configured malformed, non-positive, or unsafe values", () => {
+    for (const configuredBytes of [
+      "not-a-number",
+      "0",
+      "-1",
+      "NaN",
+      "1e9",
+      "12.5",
+      " 12 34 ",
+      String(Number.MAX_SAFE_INTEGER + 1),
+    ]) {
+      expect(() => resolveAgentSnapshotV1MaxWireBytes(configuredBytes)).toThrow(
+        /Invalid snapshot retain budget/,
+      );
+    }
+  });
+
+  it("rejects numeric prefixes instead of silently parsing a smaller budget", () => {
+    for (const configuredBytes of ["128MiB", "128abc", "128_000", "0x80"]) {
+      expect(() => resolveAgentSnapshotV1MaxWireBytes(configuredBytes)).toThrow(
+        /Invalid snapshot retain budget/,
+      );
+    }
+    expect(resolveAgentSnapshotV1MaxWireBytes("  1048576  ")).toBe(1024 * 1024);
+  });
 });

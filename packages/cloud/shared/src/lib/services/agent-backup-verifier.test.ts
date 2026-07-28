@@ -461,7 +461,7 @@ describe("readBackupVerifierConfig", () => {
     expect(config.erroredAlertStreak).toBe(3);
   });
 
-  test("opt-out flag and tunables parse; garbage falls back to defaults", () => {
+  test("opt-out and tunables parse; invalid byte budgets fail fast", () => {
     expect(
       readBackupVerifierConfig({ BACKUP_VERIFICATION_ENABLED: "0" } as NodeJS.ProcessEnv).enabled,
     ).toBe(false);
@@ -486,11 +486,14 @@ describe("readBackupVerifierConfig", () => {
     const garbage = readBackupVerifierConfig({
       BACKUP_VERIFICATION_BATCH_SIZE: "-5",
       BACKUP_VERIFICATION_REVERIFY_HOURS: "banana",
-      BACKUP_VERIFICATION_MAX_DECRYPT_BYTES: "0",
     } as NodeJS.ProcessEnv);
     expect(garbage.batchSize).toBe(10);
     expect(garbage.reVerifyIntervalMs).toBe(24 * 3_600_000);
-    expect(garbage.maxDecryptBytesPerCycle).toBe(AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES);
+    expect(() =>
+      readBackupVerifierConfig({
+        BACKUP_VERIFICATION_MAX_DECRYPT_BYTES: "0",
+      } as NodeJS.ProcessEnv),
+    ).toThrow(/Invalid snapshot retain budget/);
 
     const capped = readBackupVerifierConfig({
       BACKUP_VERIFICATION_MAX_DECRYPT_BYTES: String(AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES + 1),

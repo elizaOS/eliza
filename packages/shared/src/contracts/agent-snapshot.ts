@@ -29,6 +29,8 @@ export class AgentSnapshotV1WireLimitError extends Error {
 /**
  * Resolve an optional deployment-specific v1 limit without allowing an
  * operator override to exceed the protocol's universally restorable ceiling.
+ * Only an absent or blank override defaults: a configured malformed value
+ * fails fast so an operator typo cannot silently select an unintended budget.
  */
 export function resolveAgentSnapshotV1MaxWireBytes(
   configuredBytes: string | undefined,
@@ -36,9 +38,19 @@ export function resolveAgentSnapshotV1MaxWireBytes(
   if (configuredBytes === undefined || configuredBytes.trim() === "") {
     return AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES;
   }
-  const parsed = Number(configuredBytes);
+  const trimmed = configuredBytes.trim();
+  if (!/^\d+$/.test(trimmed)) {
+    throw new Error(
+      `Invalid snapshot retain budget ${JSON.stringify(configuredBytes)}: ` +
+        "expected a positive integer count of bytes",
+    );
+  }
+  const parsed = Number(trimmed);
   if (!Number.isSafeInteger(parsed) || parsed <= 0) {
-    return AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES;
+    throw new Error(
+      `Invalid snapshot retain budget ${JSON.stringify(configuredBytes)}: ` +
+        "expected a positive integer count of bytes",
+    );
   }
   return Math.min(parsed, AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES);
 }
