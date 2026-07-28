@@ -698,7 +698,9 @@ async function assertDeviceBridgeSnapshotQuiescent(): Promise<void> {
   }
   let assertQuiescent: (() => void) | undefined;
   try {
-    const bridgeModule = await import("@elizaos/plugin-capacitor-bridge");
+    const bridgeModule = await import(
+      "@elizaos/plugin-capacitor-bridge/mobile-device-bridge-bootstrap"
+    );
     assertQuiescent = bridgeModule.assertMobileDeviceBridgeSnapshotQuiescent;
   } catch (cause) {
     // error-policy:J2 Snapshot capture cannot proceed without its configured
