@@ -1500,31 +1500,224 @@ function readRuntimeActionResults(
   }
 }
 
-function listExecutedRuntimeActions(
+function readActionResultName(result: unknown): string {
+  if (!result || typeof result !== "object") {
+    return "";
+  }
+  const record = result as Record<string, unknown>;
+  if (typeof record.actionName === "string") {
+    return normalizeActionName(record.actionName);
+  }
+  const data =
+    record.data && typeof record.data === "object"
+      ? (record.data as Record<string, unknown>)
+      : null;
+  return normalizeActionName(data?.actionName);
+}
+
+function listSuccessfulActionNames(
   runtime: AgentRuntime,
   messageId: UUID | undefined,
+  turnActionResults: readonly unknown[] | undefined,
+  actionNameLookup: ReadonlyMap<string, string>,
 ): Set<string> {
-  return new Set(
-    readRuntimeActionResults(runtime, messageId)
-      .map((result) => {
-        if (typeof result === "string") {
-          return normalizeActionName(result);
-        }
-        if (!result || typeof result !== "object") {
-          return "";
-        }
-        const record = result as Record<string, unknown>;
-        if (typeof record.actionName === "string") {
-          return normalizeActionName(record.actionName);
-        }
-        const data =
-          record.data && typeof record.data === "object"
-            ? (record.data as Record<string, unknown>)
-            : null;
-        return normalizeActionName(data?.actionName);
-      })
-      .filter((name) => name.length > 0),
+  const successfulNames = new Set<string>();
+  for (const result of listSuccessfulActionResults(
+    runtime,
+    messageId,
+    turnActionResults,
+  )) {
+    const normalizedName = readActionResultName(result);
+    if (!normalizedName) {
+      continue;
+    }
+    successfulNames.add(actionNameLookup.get(normalizedName) ?? normalizedName);
+  }
+  return successfulNames;
+}
+
+function listSuccessfulActionResults(
+  runtime: AgentRuntime,
+  messageId: UUID | undefined,
+  turnActionResults: readonly unknown[] | undefined,
+): unknown[] {
+  return [
+    ...(turnActionResults ?? []),
+    ...readRuntimeActionResults(runtime, messageId),
+  ].filter((result) => {
+    if (
+      !result ||
+      typeof result !== "object" ||
+      (result as Record<string, unknown>).success !== true
+    ) {
+      return false;
+    }
+    return Boolean(readActionResultName(result));
+  });
+}
+
+function isProgressActionCallback(content: Content): boolean {
+  const status = normalizeActionName(
+    (content as Record<string, unknown>).actionStatus,
   );
+  return (
+    status === "PENDING" ||
+    status === "QUEUED" ||
+    status === "RUNNING" ||
+    status === "IN_PROGRESS" ||
+    status === "PROGRESS"
+  );
+}
+
+type WalletAttributedOperation =
+  | "APPROVE"
+  | "BALANCE"
+  | "BUY"
+  | "EXECUTE"
+  | "SELL"
+  | "SWAP"
+  | "TRADE"
+  | "TRANSFER";
+
+const WALLET_ROUTER_SUBACTION_OPERATIONS = new Map<
+  string,
+  readonly WalletAttributedOperation[]
+>([
+  ["TRANSFER", ["TRANSFER"]],
+  ["SWAP", ["BUY", "SELL", "SWAP", "TRADE"]],
+  ["BRIDGE", ["TRANSFER"]],
+  ["GOV", []],
+  ["PUMP_FUN_BUY", ["BUY", "TRADE"]],
+  ["TOKEN_INFO", []],
+  ["SEARCH_ADDRESS", ["BALANCE"]],
+]);
+
+const WALLET_GOV_OP_OPERATIONS = new Map<
+  string,
+  readonly WalletAttributedOperation[]
+>([
+  ["PROPOSE", []],
+  ["VOTE", ["APPROVE"]],
+  ["QUEUE", []],
+  ["EXECUTE", ["EXECUTE"]],
+]);
+
+// This fail-closed boundary intentionally duplicates the wallet plugin's public
+// action names and similes so an unrelated action cannot gain wallet authority
+// merely by containing a financial verb.
+const WALLET_ACTION_OPERATIONS = new Map<
+  string,
+  readonly WalletAttributedOperation[]
+>([
+  ["EVM_TRANSFER", ["TRANSFER"]],
+  ["SOLANA_TRANSFER", ["TRANSFER"]],
+  ["CROSS_CHAIN_TRANSFER", ["TRANSFER"]],
+  ["TRANSFER", ["TRANSFER"]],
+  ["TRANSFER_TOKEN", ["TRANSFER"]],
+  ["TRANSFER_TOKENS", ["TRANSFER"]],
+  ["TRANSFER_SOL", ["TRANSFER"]],
+  ["WALLET_TRANSFER", ["TRANSFER"]],
+  ["SEND_TOKEN", ["TRANSFER"]],
+  ["SEND_TOKENS", ["TRANSFER"]],
+  ["SEND_SOL", ["TRANSFER"]],
+  ["PREPARE_TRANSFER", ["TRANSFER"]],
+  ["PAY", ["TRANSFER"]],
+  ["EVM_SWAP", ["BUY", "SELL", "SWAP", "TRADE"]],
+  ["SOLANA_SWAP", ["BUY", "SELL", "SWAP", "TRADE"]],
+  ["SWAP", ["BUY", "SELL", "SWAP", "TRADE"]],
+  ["SWAP_SOL", ["BUY", "SELL", "SWAP", "TRADE"]],
+  ["SWAP_SOLANA", ["BUY", "SELL", "SWAP", "TRADE"]],
+  ["SWAP_TOKEN", ["BUY", "SELL", "SWAP", "TRADE"]],
+  ["SWAP_TOKENS", ["BUY", "SELL", "SWAP", "TRADE"]],
+  ["WALLET_SWAP", ["BUY", "SELL", "SWAP", "TRADE"]],
+  ["TOKEN_SWAP", ["BUY", "SELL", "SWAP", "TRADE"]],
+  ["TRADE", ["TRADE", "BUY", "SELL"]],
+  ["PUMP_FUN_BUY", ["BUY", "TRADE"]],
+  ["PUMPFUN_BUY", ["BUY", "TRADE"]],
+  ["BUY_PUMP_FUN", ["BUY", "TRADE"]],
+  ["BUY_PUMPFUN", ["BUY", "TRADE"]],
+  ["CHECK_BALANCE", ["BALANCE"]],
+  ["WALLET_SEARCH_ADDRESS", ["BALANCE"]],
+  ["BIRDEYE_SEARCH", ["BALANCE"]],
+  ["BIRDEYE_LOOKUP", ["BALANCE"]],
+]);
+
+function walletActionMatchesIntent(
+  prompt: string,
+  successfulActionName: string,
+  result?: unknown,
+): boolean {
+  const actionName = normalizeActionName(successfulActionName);
+  if (!actionName) return false;
+  const record =
+    result && typeof result === "object"
+      ? (result as Record<string, unknown>)
+      : null;
+  const data =
+    record?.data && typeof record.data === "object"
+      ? (record.data as Record<string, unknown>)
+      : null;
+  const values =
+    record?.values && typeof record.values === "object"
+      ? (record.values as Record<string, unknown>)
+      : null;
+  const metadata =
+    data?.metadata && typeof data.metadata === "object"
+      ? (data.metadata as Record<string, unknown>)
+      : null;
+  const walletSubaction = normalizeActionName(
+    data?.subaction ??
+      data?.walletSubaction ??
+      values?.walletSubaction ??
+      values?.subaction,
+  );
+  const walletGovOp = normalizeActionName(
+    data?.op ?? metadata?.op ?? values?.walletGovOp,
+  );
+  const tradeHasExecutionEvidence =
+    values?.tradeActionPrepared === true ||
+    values?.tradeActionSucceeded === true ||
+    normalizeActionName(values?.tradeOutcome) === "SUBMITTED" ||
+    normalizeActionName(data?.outcome) === "SUBMITTED";
+  const attributedOperations =
+    actionName === "WALLET"
+      ? walletSubaction === "GOV"
+        ? WALLET_GOV_OP_OPERATIONS.get(walletGovOp)
+        : WALLET_ROUTER_SUBACTION_OPERATIONS.get(walletSubaction)
+      : actionName === "TRADE"
+        ? tradeHasExecutionEvidence
+          ? WALLET_ACTION_OPERATIONS.get(actionName)
+          : undefined
+        : WALLET_ACTION_OPERATIONS.get(actionName);
+  if (!attributedOperations) return false;
+  const matches = (operation: WalletAttributedOperation) =>
+    attributedOperations.includes(operation);
+
+  if (/\b(send|transfer)\b/i.test(prompt)) {
+    return matches("TRANSFER");
+  }
+  if (/\bswap\b/i.test(prompt)) {
+    return matches("SWAP");
+  }
+  if (/\btrade\b/i.test(prompt)) {
+    return matches("TRADE") || matches("BUY") || matches("SELL");
+  }
+  if (/\bbuy\b/i.test(prompt)) {
+    return matches("BUY");
+  }
+  if (/\bsell\b/i.test(prompt)) {
+    return matches("SELL");
+  }
+  if (/\bapprove\b/i.test(prompt)) {
+    return matches("APPROVE");
+  }
+  if (/\bexecute\b/i.test(prompt)) {
+    return matches("EXECUTE");
+  }
+  if (/\b(balance|portfolio|holdings|funds)\b/i.test(prompt)) {
+    return matches("BALANCE");
+  }
+  return attributedOperations.length > 0;
 }
 
 function sanitizeActionResultValue(value: unknown, depth = 0): unknown {
@@ -2649,7 +2842,11 @@ async function generateChatResponseWithTiming(
     let forcedWalletExecutionText = false;
     let blockedUnexecutedActionPayload = false;
     let activeStreamSource: StreamSource = "unset";
-    const actionCallbackHistory: string[] = [];
+    let visibleCallbackDeliveries = 0;
+    const deliveredActionCallbacks: Array<{
+      actionName: string;
+      text?: string;
+    }> = [];
     // Snapshot of `responseText` at the moment the first action callback runs.
     // WHY: LLM streaming genuinely appends token deltas. Action handlers that
     // call HandlerCallback multiple times (Discord "progressive message" pattern)
@@ -2733,15 +2930,8 @@ async function generateChatResponseWithTiming(
         preCallbackText = responseText;
       }
     };
-    const recordActionCallbackText = (incoming: string): void => {
-      const normalized = normalizeActionCallbackText(incoming);
-      if (!normalized) return;
-      if (actionCallbackHistory.at(-1) === normalized) return;
-      actionCallbackHistory.push(normalized);
-    };
     /** Latest action callback wins: replaces prior callback text, keeps LLM prefix. */
     const replaceCallbackText = (incoming: string): void => {
-      recordActionCallbackText(incoming);
       captureCallbackBaseline();
       const baseline = preCallbackText ?? "";
       const separator = baseline.length > 0 ? "\n\n" : "";
@@ -2769,7 +2959,6 @@ async function generateChatResponseWithTiming(
     ): void => {
       captureCallbackBaseline();
       if (resolveCallbackMergeMode(content) === "append") {
-        recordActionCallbackText(incoming);
         appendIncomingText(incoming);
         return;
       }
@@ -2854,50 +3043,44 @@ async function generateChatResponseWithTiming(
         >
       | undefined;
     let capturedUsage: CapturedModelUsage | null = null;
-    let actionCallbacksSeen = 0;
-    const seenActionTags = new Set<string>();
     const recordActionCallback = (
       actionTag: string,
       hasText: boolean,
+      text?: string,
     ): void => {
-      actionCallbacksSeen += 1;
       const normalizedActionTag = normalizeActionName(actionTag);
-      if (normalizedActionTag) {
-        seenActionTags.add(normalizedActionTag);
+      if (!normalizedActionTag) {
+        return;
       }
-      // The reply is now coming from an action handler, not raw LLM streaming —
-      // surface it as `running_action`, carrying the concrete action name (when
-      // it is a real action rather than the generic VISIBLE_CALLBACK tag) so the
-      // status reads e.g. "Running SEND_MESSAGE" instead of generic "Working".
+      const normalizedText =
+        hasText && text ? normalizeActionCallbackText(text) : "";
+      if (
+        normalizedText &&
+        !deliveredActionCallbacks.some(
+          (entry) =>
+            entry.actionName === normalizedActionTag &&
+            entry.text === normalizedText,
+        )
+      ) {
+        deliveredActionCallbacks.push({
+          actionName: normalizedActionTag,
+          text: normalizedText,
+        });
+      }
       emitStatus({
         kind: "running_action",
-        ...(normalizedActionTag && normalizedActionTag !== "VISIBLE_CALLBACK"
-          ? { actionName: normalizedActionTag }
-          : {}),
+        actionName: normalizedActionTag,
       });
       runtime.logger.info(
         {
           src: "eliza-api",
-          action: normalizedActionTag || actionTag,
+          action: normalizedActionTag,
           hasText,
         },
-        `[eliza-api] Action callback fired: ${normalizedActionTag || actionTag}`,
+        `[eliza-api] Action callback fired: ${normalizedActionTag}`,
       );
     };
-    const extractCallbackActionTag = (content: Content): string => {
-      const record = content as Record<string, unknown>;
-      if (typeof record.action === "string" && record.action.length > 0) {
-        return record.action;
-      }
-      if (Array.isArray(record.actions)) {
-        const firstAction = record.actions.find(
-          (action): action is string =>
-            typeof action === "string" && action.trim().length > 0,
-        );
-        if (firstAction) return firstAction;
-      }
-      return "VISIBLE_CALLBACK";
-    };
+    const fallbackSuccessfulActionNames = new Set<string>();
 
     const generationCapture = await withModelUsageCapture(runtime, () =>
       withTimeout(
@@ -3053,7 +3236,7 @@ async function generateChatResponseWithTiming(
                 runtime.messageService?.handleMessage(
                   runtime,
                   generationMessage,
-                  async (content: Content) => {
+                  async (content: Content, actionName?: string) => {
                     if (generationTimedOut) {
                       throw createChatGenerationTimeoutError(
                         generationTimeoutMs,
@@ -3067,13 +3250,32 @@ async function generateChatResponseWithTiming(
                     const visibleChunk = isInternalStructuredStreamText(chunk)
                       ? ""
                       : chunk;
-                    recordActionCallback(
-                      extractCallbackActionTag(content),
-                      Boolean(visibleChunk),
-                    );
-                    if (!visibleChunk) return [];
-                    if (!claimStreamSource("callback")) return [];
+                    const attributedActionName =
+                      normalizeActionName(actionName);
+                    const progressCallback = isProgressActionCallback(content);
+                    if (!visibleChunk) {
+                      if (attributedActionName) {
+                        recordActionCallback(attributedActionName, false);
+                      }
+                      return [];
+                    }
+                    if (!claimStreamSource("callback")) {
+                      if (attributedActionName) {
+                        recordActionCallback(attributedActionName, false);
+                      }
+                      return [];
+                    }
+                    if (!progressCallback) {
+                      visibleCallbackDeliveries += 1;
+                    }
                     applyCallbackTextUpdate(content, visibleChunk);
+                    if (attributedActionName) {
+                      recordActionCallback(
+                        attributedActionName,
+                        !progressCallback,
+                        progressCallback ? undefined : visibleChunk,
+                      );
+                    }
                     return [];
                   },
                   {
@@ -3208,18 +3410,13 @@ async function generateChatResponseWithTiming(
                 modelText,
               );
               const actionNameLookup = buildRuntimeActionNameLookup(runtime);
-              const executedRuntimeActions = listExecutedRuntimeActions(
+              const successfulActionNames = listSuccessfulActionNames(
                 runtime,
                 typeof message.id === "string" ? message.id : undefined,
-              );
-              const executedActionNames = new Set(
-                [...executedRuntimeActions, ...seenActionTags]
-                  .map((name) => actionNameLookup.get(name) ?? name)
-                  .filter((name) => name.length > 0),
+                result.actionResults,
+                actionNameLookup,
               );
 
-              // Only run fallback execution when the core did NOT dispatch actions itself.
-              const coreHandledActions = resultRecord?.mode === "actions";
               const executableFallbackActions = parsedFallbackActions.filter(
                 (action) => {
                   if (!isExecutableFallbackAction(action)) {
@@ -3228,10 +3425,10 @@ async function generateChatResponseWithTiming(
                   const canonicalName =
                     actionNameLookup.get(normalizeActionName(action.name)) ??
                     normalizeActionName(action.name);
-                  return !executedActionNames.has(canonicalName);
+                  return !successfulActionNames.has(canonicalName);
                 },
               );
-              if (!coreHandledActions && executableFallbackActions.length > 0) {
+              if (executableFallbackActions.length > 0) {
                 const selfControlFallbackActions =
                   executableFallbackActions.filter((action) => {
                     const canonicalName =
@@ -3239,10 +3436,10 @@ async function generateChatResponseWithTiming(
                       normalizeActionName(action.name);
                     return canonicalName === "BLOCK";
                   });
-                const callbacksBeforeFallback = actionCallbacksSeen;
+                let successfulFallbackActions = new Set<string>();
 
                 if (selfControlFallbackActions.length > 0) {
-                  await executeFallbackParsedActions(
+                  const fallbackExecutions = await executeFallbackParsedActions(
                     runtime,
                     message,
                     selfControlFallbackActions,
@@ -3252,17 +3449,31 @@ async function generateChatResponseWithTiming(
                       getCurrentText: () => responseText || modelText,
                     },
                   );
+                  successfulFallbackActions = new Set(
+                    fallbackExecutions
+                      .filter((execution) => execution.success)
+                      .map((execution) => {
+                        const normalizedName = normalizeActionName(
+                          execution.actionName,
+                        );
+                        return (
+                          actionNameLookup.get(normalizedName) ?? normalizedName
+                        );
+                      })
+                      .filter((name) => name.length > 0),
+                  );
+                  for (const actionName of successfulFallbackActions) {
+                    fallbackSuccessfulActionNames.add(actionName);
+                  }
                 }
 
-                const selfControlFallbackExecuted =
-                  actionCallbacksSeen > callbacksBeforeFallback;
                 const remainingExecutableFallbackActions =
                   executableFallbackActions.filter((action) => {
                     const canonicalName =
                       actionNameLookup.get(normalizeActionName(action.name)) ??
                       normalizeActionName(action.name);
                     if (canonicalName === "BLOCK") {
-                      return !selfControlFallbackExecuted;
+                      return !successfulFallbackActions.has(canonicalName);
                     }
                     return true;
                   });
@@ -3318,6 +3529,21 @@ async function generateChatResponseWithTiming(
         phase: "post-model",
       },
     );
+    const actionNameLookup = buildRuntimeActionNameLookup(runtime);
+    const successfulActionNames = listSuccessfulActionNames(
+      runtime,
+      typeof message.id === "string" ? message.id : undefined,
+      result?.actionResults,
+      actionNameLookup,
+    );
+    for (const actionName of fallbackSuccessfulActionNames) {
+      successfulActionNames.add(actionName);
+    }
+    const successfulTurnActionResults = listSuccessfulActionResults(
+      runtime,
+      typeof message.id === "string" ? message.id : undefined,
+      result?.actionResults,
+    );
 
     const responseMessageText = getLatestVisibleResponseMessageText(
       result?.responseMessages,
@@ -3344,7 +3570,7 @@ async function generateChatResponseWithTiming(
         emitChunk(resultText);
       }
     } else if (
-      actionCallbacksSeen === 0 &&
+      visibleCallbackDeliveries === 0 &&
       resultText &&
       resultTextVisibility !== "internal" &&
       resultText !== responseText &&
@@ -3352,7 +3578,7 @@ async function generateChatResponseWithTiming(
     ) {
       emitChunk(resultText.slice(responseText.length));
     } else if (
-      actionCallbacksSeen === 0 &&
+      visibleCallbackDeliveries === 0 &&
       resultText &&
       resultTextVisibility !== "internal" &&
       resultText !== responseText &&
@@ -3367,8 +3593,17 @@ async function generateChatResponseWithTiming(
     }
 
     if (
-      actionCallbacksSeen === 0 &&
-      isWalletActionRequiredIntent(originalUserText)
+      isWalletActionRequiredIntent(originalUserText) &&
+      !successfulTurnActionResults.some((actionResult) => {
+        const normalizedName = readActionResultName(actionResult);
+        const canonicalName =
+          actionNameLookup.get(normalizedName) ?? normalizedName;
+        return walletActionMatchesIntent(
+          originalUserText,
+          canonicalName,
+          actionResult,
+        );
+      })
     ) {
       const failureText = buildWalletActionNotExecutedReply(
         runtime,
@@ -3475,6 +3710,39 @@ async function generateChatResponseWithTiming(
       typeof message.id === "string" ? message.id : undefined,
       result?.actionResults,
     );
+    const successfulDeliveredActionCallbacks = deliveredActionCallbacks.filter(
+      (entry) => {
+        const canonicalName =
+          actionNameLookup.get(entry.actionName) ?? entry.actionName;
+        return successfulActionNames.has(canonicalName);
+      },
+    );
+    const actionCallbackHistory = successfulDeliveredActionCallbacks.reduce<
+      string[]
+    >((history, entry) => {
+      if (entry.text && history.at(-1) !== entry.text) {
+        history.push(entry.text);
+      }
+      return history;
+    }, []);
+    const declaredResultActionNames = new Set(
+      (Array.isArray(result?.responseContent?.actions)
+        ? result.responseContent.actions
+        : []
+      )
+        .map((actionName) => {
+          const normalizedName = normalizeActionName(actionName);
+          return actionNameLookup.get(normalizedName) ?? normalizedName;
+        })
+        .filter((actionName) => actionName.length > 0),
+    );
+    const successfulActionMode =
+      result?.mode === "actions" &&
+      [...declaredResultActionNames].some((actionName) =>
+        successfulActionNames.has(actionName),
+      );
+    const usedActionCallbacks =
+      successfulDeliveredActionCallbacks.length > 0 || successfulActionMode;
 
     return {
       text: finalText,
@@ -3487,9 +3755,7 @@ async function generateChatResponseWithTiming(
       ...(failureKind ? { failureKind } : {}),
       ...(accountConnect ? { accountConnect } : {}),
       ...(localInference ? { localInference } : {}),
-      ...(actionCallbacksSeen > 0 || result?.mode === "actions"
-        ? { usedActionCallbacks: true }
-        : {}),
+      ...(usedActionCallbacks ? { usedActionCallbacks: true } : {}),
       ...(actionCallbackHistory.length > 0
         ? { actionCallbackHistory: [...actionCallbackHistory] }
         : {}),
