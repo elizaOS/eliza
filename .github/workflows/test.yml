@@ -1256,7 +1256,9 @@ jobs:
         run: bun run format:check
 
       - name: Repo-wide typecheck
-        run: bun run typecheck
+        # Match the bounded PR lane: the full graph otherwise starts enough
+        # native TypeScript workers to terminate a four-vCPU hosted runner.
+        run: NODE_OPTIONS='--max-old-space-size=8192' node packages/scripts/run-turbo.mjs run typecheck --concurrency=4
 
       - name: Stale base guard
         env:
