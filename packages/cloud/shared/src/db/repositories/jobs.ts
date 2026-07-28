@@ -7,6 +7,11 @@ import {
   isPendingAdminCanaryCutoverAudit,
 } from "../../lib/services/admin-canary-image";
 import { configureElizaLifecycleTransaction } from "../../lib/services/eliza-provision-lock";
+import {
+  EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES,
+  JOB_TYPES,
+  type ProvisioningJobType,
+} from "../../lib/services/provisioning-job-types";
 import { ObjectNamespaces } from "../../lib/storage/object-namespace";
 import {
   hydrateJsonField,
@@ -17,6 +22,7 @@ import {
 import type { DbTransaction } from "../client";
 import { sqlRows } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";
+import { agentSandboxes } from "../schemas/agent-sandboxes";
 import type { Job, NewJob } from "../schemas/jobs";
 import { jobs } from "../schemas/jobs";
 
@@ -176,6 +182,8 @@ function retryPayloadFence(job: Job) {
     AND ${jobs.character_id} IS NOT DISTINCT FROM ${job.character_id}
     AND ${jobs.attempts} = ${job.attempts}
     AND ${jobs.max_attempts} = ${job.max_attempts}
+    AND ${jobs.execution_generation} IS NOT DISTINCT FROM ${job.execution_generation}
+    AND ${jobs.execution_quiesced_at} IS NOT DISTINCT FROM ${normalizedTimestamp(job.execution_quiesced_at)}
     AND ${jobs.started_at} IS NOT DISTINCT FROM ${normalizedTimestamp(job.started_at)}
     AND ${jobs.completed_at} IS NOT DISTINCT FROM ${normalizedTimestamp(job.completed_at)}
     AND ${jobs.updated_at} IS NOT DISTINCT FROM ${normalizedTimestamp(job.updated_at)}
@@ -215,6 +223,8 @@ function sameRetrySnapshot(left: Job, right: Job): boolean {
     left.character_id === right.character_id &&
     left.attempts === right.attempts &&
     left.max_attempts === right.max_attempts &&
+    left.execution_generation === right.execution_generation &&
+    sameTimestamp(left.execution_quiesced_at, right.execution_quiesced_at) &&
     sameTimestamp(left.started_at, right.started_at) &&
     sameTimestamp(left.completed_at, right.completed_at) &&
     sameTimestamp(left.updated_at, right.updated_at) &&
@@ -228,6 +238,31 @@ function sameRetrySnapshot(left: Job, right: Job): boolean {
     left.error_key === right.error_key &&
     sameError
   );
+}
+
+export class StaleJobExecutionError extends Error {
+  constructor(jobId: string) {
+    super(`Job execution generation is no longer current: ${jobId}`);
+    this.name = "StaleJobExecutionError";
+  }
+}
+
+function requireExecutionGeneration(job: Job): string {
+  if (!job.execution_generation) {
+    throw new Error(`Claimed job ${job.id} has no execution generation`);
+  }
+  return job.execution_generation;
+}
+
+function hasAgentLifecycleFence(job: Job): job is Job & { agent_id: string } {
+  return (
+    job.agent_id !== null &&
+    EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES.includes(job.type as ProvisioningJobType)
+  );
+}
+
+function hasDetachedProvisioningExecution(type: string): boolean {
+  return Object.values(JOB_TYPES).includes(type as ProvisioningJobType);
 }
 
 export async function hydrateJob(job: Job): Promise<Job> {
@@ -592,6 +627,8 @@ export class JobsRepository {
       SET 
         status = 'in_progress',
         started_at = NOW(),
+        execution_generation = gen_random_uuid(),
+        execution_quiesced_at = NULL,
         updated_at = NOW()
       WHERE id IN (SELECT id FROM claimed)
       RETURNING *
@@ -652,6 +689,8 @@ export class JobsRepository {
           SET
             status = 'in_progress',
             started_at = NOW(),
+            execution_generation = gen_random_uuid(),
+            execution_quiesced_at = NULL,
             updated_at = NOW()
           WHERE id IN (SELECT id FROM claimed)
           RETURNING *
@@ -662,9 +701,10 @@ export class JobsRepository {
   }
 
   /**
-   * Recovers stale jobs that have been stuck in in_progress status.
-   * Jobs older than the threshold are reset to pending for retry.
-   * Only recovers jobs with a valid started_at timestamp.
+   * Recovers stale jobs that have been stuck in in_progress status. Provisioning
+   * jobs with a generated execution remain owned until their executor
+   * acknowledges quiescence; worker startup recovery handles process death.
+   * Other job families retain elapsed-time recovery.
    *
    * Increments attempts counter to prevent infinite retry loops.
    * Jobs exceeding maxAttempts are marked as failed instead of pending.
@@ -685,6 +725,11 @@ export class JobsRepository {
       sql`${jobs.started_at} IS NOT NULL`,
       lt(jobs.started_at, staleThreshold),
     ];
+    if (hasDetachedProvisioningExecution(filters.type)) {
+      conditions.push(
+        sql`(${jobs.execution_generation} IS NULL OR ${jobs.execution_quiesced_at} IS NOT NULL)`,
+      );
+    }
 
     if (filters.organizationId) {
       conditions.push(eq(jobs.organization_id, filters.organizationId));
@@ -793,25 +838,57 @@ export class JobsRepository {
     error: string;
     recoveryFence: SQL;
   }): Promise<boolean> {
-    const [updated] = await dbWrite
-      .update(jobs)
-      .set({
-        status: params.isFailed ? "failed" : "pending",
-        ...(await prepareJobPayload({ error: params.error }, params.job)),
-        attempts: params.newAttempts,
-        updated_at: new Date(),
-      })
-      .where(
-        and(
-          eq(jobs.id, params.job.id),
-          eq(jobs.status, "in_progress"),
-          eq(jobs.attempts, params.job.attempts),
-          lt(jobs.started_at, params.startedBefore),
-          params.recoveryFence,
-        ),
-      )
-      .returning({ id: jobs.id });
-    return Boolean(updated);
+    const payload = await prepareJobPayload({ error: params.error }, params.job);
+    return dbWrite.transaction(async (tx) => {
+      if (hasAgentLifecycleFence(params.job)) {
+        await configureElizaLifecycleTransaction(tx);
+        await tx.execute(
+          sql`SELECT pg_advisory_xact_lock(
+            hashtext(${params.job.organization_id}),
+            hashtext(${params.job.agent_id})
+          )`,
+        );
+      }
+      const [updated] = await tx
+        .update(jobs)
+        .set({
+          status: params.isFailed ? "failed" : "pending",
+          ...payload,
+          attempts: params.newAttempts,
+          execution_quiesced_at: new Date(),
+          updated_at: new Date(),
+        })
+        .where(
+          and(
+            eq(jobs.id, params.job.id),
+            eq(jobs.status, "in_progress"),
+            eq(jobs.attempts, params.job.attempts),
+            sql`${jobs.execution_generation} IS NOT DISTINCT FROM ${params.job.execution_generation}`,
+            sql`${jobs.execution_quiesced_at} IS NOT DISTINCT FROM ${normalizedTimestamp(params.job.execution_quiesced_at)}`,
+            lt(jobs.started_at, params.startedBefore),
+            params.recoveryFence,
+          ),
+        )
+        .returning({ id: jobs.id });
+      if (!updated) return false;
+      if (hasAgentLifecycleFence(params.job) && params.job.execution_generation) {
+        await tx
+          .update(agentSandboxes)
+          .set({
+            lifecycle_job_id: null,
+            lifecycle_execution_generation: null,
+          })
+          .where(
+            and(
+              eq(agentSandboxes.id, params.job.agent_id),
+              eq(agentSandboxes.organization_id, params.job.organization_id),
+              eq(agentSandboxes.lifecycle_job_id, params.job.id),
+              eq(agentSandboxes.lifecycle_execution_generation, params.job.execution_generation),
+            ),
+          );
+      }
+      return true;
+    });
   }
 
   /**
@@ -837,6 +914,32 @@ export class JobsRepository {
       .set({ ...updateData, updated_at: new Date() })
       .where(eq(jobs.id, id))
       .returning();
+    return await hydrateJob(updated);
+  }
+
+  /**
+   * Persists an intermediate result only while the caller still owns the exact
+   * claimed execution. A timed-out or recovered attempt cannot overwrite the
+   * payload belonging to a newer generation.
+   */
+  async updateForExecution(claimedJob: Job, updates: Partial<Job>): Promise<Job> {
+    const generation = requireExecutionGeneration(claimedJob);
+    const prepared = hasPayloadUpdates(updates)
+      ? await prepareJobPayload(updates, claimedJob)
+      : updates;
+    const [updated] = await dbWrite
+      .update(jobs)
+      .set({ ...prepared, updated_at: new Date() })
+      .where(
+        and(
+          eq(jobs.id, claimedJob.id),
+          eq(jobs.status, "in_progress"),
+          eq(jobs.execution_generation, generation),
+          sql`${jobs.execution_quiesced_at} IS NULL`,
+        ),
+      )
+      .returning();
+    if (!updated) throw new StaleJobExecutionError(claimedJob.id);
     return await hydrateJob(updated);
   }
 
@@ -873,6 +976,90 @@ export class JobsRepository {
   }
 
   /**
+   * Settles one claimed execution and acknowledges that no resource writes can
+   * follow it. The job generation and sandbox generation are checked and
+   * released atomically under the per-agent lifecycle lock.
+   */
+  async settleExecution(
+    claimedJob: Job,
+    status: "completed" | "cancelled",
+    additionalFields?: Partial<Job>,
+  ): Promise<void> {
+    const generation = requireExecutionGeneration(claimedJob);
+    let updates: Partial<Job> = {
+      status,
+      completed_at: status === "completed" ? new Date() : claimedJob.completed_at,
+      execution_quiesced_at: new Date(),
+      updated_at: new Date(),
+      ...additionalFields,
+    };
+    if (hasPayloadUpdates(updates)) {
+      updates = await prepareJobPayload(updates, claimedJob);
+    }
+
+    await dbWrite.transaction(async (tx) => {
+      if (hasAgentLifecycleFence(claimedJob)) {
+        await configureElizaLifecycleTransaction(tx);
+        await tx.execute(
+          sql`SELECT pg_advisory_xact_lock(
+            hashtext(${claimedJob.organization_id}),
+            hashtext(${claimedJob.agent_id})
+          )`,
+        );
+        const [sandboxFence] = await tx
+          .select({
+            jobId: agentSandboxes.lifecycle_job_id,
+            generation: agentSandboxes.lifecycle_execution_generation,
+          })
+          .from(agentSandboxes)
+          .where(
+            and(
+              eq(agentSandboxes.id, claimedJob.agent_id),
+              eq(agentSandboxes.organization_id, claimedJob.organization_id),
+            ),
+          )
+          .limit(1);
+        if (
+          sandboxFence &&
+          (sandboxFence.jobId !== claimedJob.id || sandboxFence.generation !== generation)
+        ) {
+          throw new StaleJobExecutionError(claimedJob.id);
+        }
+      }
+      const [updated] = await tx
+        .update(jobs)
+        .set(updates)
+        .where(
+          and(
+            eq(jobs.id, claimedJob.id),
+            eq(jobs.status, "in_progress"),
+            eq(jobs.execution_generation, generation),
+            sql`${jobs.execution_quiesced_at} IS NULL`,
+          ),
+        )
+        .returning({ id: jobs.id });
+      if (!updated) throw new StaleJobExecutionError(claimedJob.id);
+
+      if (hasAgentLifecycleFence(claimedJob)) {
+        await tx
+          .update(agentSandboxes)
+          .set({
+            lifecycle_job_id: null,
+            lifecycle_execution_generation: null,
+          })
+          .where(
+            and(
+              eq(agentSandboxes.id, claimedJob.agent_id),
+              eq(agentSandboxes.organization_id, claimedJob.organization_id),
+              eq(agentSandboxes.lifecycle_job_id, claimedJob.id),
+              eq(agentSandboxes.lifecycle_execution_generation, generation),
+            ),
+          );
+      }
+    });
+  }
+
+  /**
    * Increments job attempt count and updates status.
    * Marks as failed if max attempts reached.
    * Implements exponential backoff for retries.
@@ -898,6 +1085,7 @@ export class JobsRepository {
     error: string,
     maxAttempts: number,
     onFailedInTx?: (tx: DbTransaction, job: Job) => Promise<void>,
+    expectedExecutionGeneration?: string,
   ): Promise<Job | undefined> {
     const job = await this.findByIdForWrite(id);
     if (!job) return undefined;
@@ -919,17 +1107,58 @@ export class JobsRepository {
     );
 
     const hydrated = await dbWrite.transaction(async (tx) => {
+      if (hasAgentLifecycleFence(job) && expectedExecutionGeneration) {
+        await configureElizaLifecycleTransaction(tx);
+        await tx.execute(
+          sql`SELECT pg_advisory_xact_lock(
+            hashtext(${job.organization_id}),
+            hashtext(${job.agent_id})
+          )`,
+        );
+        const [sandboxFence] = await tx
+          .select({
+            jobId: agentSandboxes.lifecycle_job_id,
+            generation: agentSandboxes.lifecycle_execution_generation,
+          })
+          .from(agentSandboxes)
+          .where(
+            and(
+              eq(agentSandboxes.id, job.agent_id),
+              eq(agentSandboxes.organization_id, job.organization_id),
+            ),
+          )
+          .limit(1);
+        if (
+          sandboxFence &&
+          (sandboxFence.jobId !== job.id || sandboxFence.generation !== expectedExecutionGeneration)
+        ) {
+          return undefined;
+        }
+      }
       const [updated] = await tx
         .update(jobs)
         .set({
           status: isFailed ? "failed" : "pending",
           ...payload,
           attempts: newAttempts,
+          execution_quiesced_at: expectedExecutionGeneration
+            ? new Date()
+            : job.execution_quiesced_at,
           updated_at: new Date(),
           scheduled_for: isFailed ? job.scheduled_for : scheduledFor,
         })
         .where(
-          and(eq(jobs.id, id), eq(jobs.status, "in_progress"), eq(jobs.attempts, job.attempts)),
+          and(
+            eq(jobs.id, id),
+            eq(jobs.status, "in_progress"),
+            eq(jobs.attempts, job.attempts),
+            ...(expectedExecutionGeneration
+              ? [
+                  eq(jobs.execution_generation, expectedExecutionGeneration),
+                  sql`${jobs.execution_quiesced_at} IS NULL`,
+                ]
+              : []),
+          ),
         )
         .returning();
 
@@ -941,6 +1170,23 @@ export class JobsRepository {
       // atomically with the `failed` flip above.
       if (isFailed && onFailedInTx) {
         await onFailedInTx(tx, result);
+      }
+
+      if (hasAgentLifecycleFence(job) && expectedExecutionGeneration) {
+        await tx
+          .update(agentSandboxes)
+          .set({
+            lifecycle_job_id: null,
+            lifecycle_execution_generation: null,
+          })
+          .where(
+            and(
+              eq(agentSandboxes.id, job.agent_id),
+              eq(agentSandboxes.organization_id, job.organization_id),
+              eq(agentSandboxes.lifecycle_job_id, job.id),
+              eq(agentSandboxes.lifecycle_execution_generation, expectedExecutionGeneration),
+            ),
+          );
       }
 
       return result;
@@ -976,22 +1222,74 @@ export class JobsRepository {
       },
     );
 
-    const [updated] = await dbWrite
-      .update(jobs)
-      .set({
-        status: "pending",
-        ...payload,
-        updated_at: new Date(),
-        scheduled_for: scheduledFor,
-      })
-      .where(
-        and(
-          eq(jobs.id, claimedJob.id),
-          eq(jobs.status, "in_progress"),
-          retryPayloadFence(claimedJob),
-        ),
-      )
-      .returning();
+    const generation = requireExecutionGeneration(claimedJob);
+    const updated = await dbWrite.transaction(async (tx) => {
+      if (hasAgentLifecycleFence(claimedJob)) {
+        await configureElizaLifecycleTransaction(tx);
+        await tx.execute(
+          sql`SELECT pg_advisory_xact_lock(
+            hashtext(${claimedJob.organization_id}),
+            hashtext(${claimedJob.agent_id})
+          )`,
+        );
+        const [sandboxFence] = await tx
+          .select({
+            jobId: agentSandboxes.lifecycle_job_id,
+            generation: agentSandboxes.lifecycle_execution_generation,
+          })
+          .from(agentSandboxes)
+          .where(
+            and(
+              eq(agentSandboxes.id, claimedJob.agent_id),
+              eq(agentSandboxes.organization_id, claimedJob.organization_id),
+            ),
+          )
+          .limit(1);
+        if (
+          sandboxFence &&
+          (sandboxFence.jobId !== claimedJob.id || sandboxFence.generation !== generation)
+        ) {
+          return undefined;
+        }
+      }
+      const [row] = await tx
+        .update(jobs)
+        .set({
+          status: "pending",
+          ...payload,
+          execution_quiesced_at: new Date(),
+          updated_at: new Date(),
+          scheduled_for: scheduledFor,
+        })
+        .where(
+          and(
+            eq(jobs.id, claimedJob.id),
+            eq(jobs.status, "in_progress"),
+            eq(jobs.execution_generation, generation),
+            sql`${jobs.execution_quiesced_at} IS NULL`,
+            retryPayloadFence(claimedJob),
+          ),
+        )
+        .returning();
+      if (!row) return undefined;
+      if (hasAgentLifecycleFence(claimedJob)) {
+        await tx
+          .update(agentSandboxes)
+          .set({
+            lifecycle_job_id: null,
+            lifecycle_execution_generation: null,
+          })
+          .where(
+            and(
+              eq(agentSandboxes.id, claimedJob.agent_id),
+              eq(agentSandboxes.organization_id, claimedJob.organization_id),
+              eq(agentSandboxes.lifecycle_job_id, claimedJob.id),
+              eq(agentSandboxes.lifecycle_execution_generation, generation),
+            ),
+          );
+      }
+      return row;
+    });
 
     return updated ? await hydrateJob(updated) : undefined;
   }

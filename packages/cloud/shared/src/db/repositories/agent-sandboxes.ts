@@ -25,10 +25,11 @@ import { AGENT_MANAGED_DISCORD_KEY } from "../../lib/services/eliza-agent-config
 import {
   configureElizaLifecycleTransaction,
   elizaProvisionAdvisoryLockSql,
+  elizaTryProvisionAdvisoryLockSql,
 } from "../../lib/services/eliza-provision-lock";
 import {
-  AGENT_LIFECYCLE_DETACHED_EXECUTION_QUIESCENCE_MS,
   JOB_TYPES,
+  PROVISIONING_RECONCILIATION_BATCH_SIZE,
   PROVISIONING_STATUS_OWNER_JOB_TYPES,
   type ProvisioningJobType,
 } from "../../lib/services/provisioning-job-types";
@@ -92,10 +93,7 @@ const MAX_RECONSTRUCTED_BACKUP_CHAIN_BYTES = 128 * 1024 * 1024;
  * `provisioning` state. Drizzle binds every type/status value as a parameter;
  * the repository never assembles executable SQL from job-type strings.
  */
-function hasNoProvisioningOwnerJob(
-  ownerJobTypes: readonly ProvisioningJobType[],
-  detachedExecutionQuiescentBefore: Date,
-): SQL {
+function hasNoProvisioningOwnerJob(ownerJobTypes: readonly ProvisioningJobType[]): SQL {
   return sql`NOT EXISTS (
     SELECT 1 FROM ${jobs}
     WHERE  ${jobs.agent_id} = ${agentSandboxes.id}::text
@@ -104,20 +102,20 @@ function hasNoProvisioningOwnerJob(
     AND    (
       ${inArray(jobs.status, ["pending", "in_progress"])}
       OR (
-        ${inArray(jobs.status, ["failed", "cancelled"])}
-        AND ${jobs.started_at} IS NOT NULL
-        AND ${gte(jobs.updated_at, detachedExecutionQuiescentBefore)}
+        ${jobs.execution_generation} IS NOT NULL
+        AND ${jobs.execution_quiesced_at} IS NULL
       )
     )
   )`;
 }
 
-function detachedExecutionQuiescentBefore(now = Date.now()): Date {
-  return new Date(now - AGENT_LIFECYCLE_DETACHED_EXECUTION_QUIESCENCE_MS);
+function hasNoProvisioningStatusOwnerJob(): SQL {
+  return hasNoProvisioningOwnerJob([...PROVISIONING_STATUS_OWNER_JOB_TYPES]);
 }
 
-function hasNoProvisioningStatusOwnerJob(quiescentBefore: Date): SQL {
-  return hasNoProvisioningOwnerJob([...PROVISIONING_STATUS_OWNER_JOB_TYPES], quiescentBefore);
+export interface ReconciliationBatchResult<T> {
+  updated: T[];
+  deferred: number;
 }
 
 async function getStoredBackupById(
@@ -389,7 +387,6 @@ export class AgentSandboxesRepository {
     }>
   > {
     await ensureAgentSandboxSchema();
-    const quiescentBefore = detachedExecutionQuiescentBefore();
     return dbRead
       .select({
         id: agentSandboxes.id,
@@ -406,7 +403,7 @@ export class AgentSandboxesRepository {
           sql`${agentSandboxes.sandbox_id} IS NOT NULL`,
           sql`${agentSandboxes.pool_status} IS NULL`,
           sql`${agentSandboxes.deleted_at} IS NULL`,
-          hasNoProvisioningStatusOwnerJob(quiescentBefore),
+          hasNoProvisioningStatusOwnerJob(),
         ),
       )
       .limit(limit);
@@ -778,7 +775,7 @@ export class AgentSandboxesRepository {
   }
 
   async markStuckProvisioningWithoutActiveJobAsError(cutoff: Date): Promise<
-    Array<{
+    ReconciliationBatchResult<{
       agentId: string;
       agentName: string | null;
       organizationId: string;
@@ -786,7 +783,6 @@ export class AgentSandboxesRepository {
     }>
   > {
     await ensureAgentSandboxSchema();
-    const quiescentBefore = detachedExecutionQuiescentBefore();
     const candidates = await dbWrite
       .select({
         agentId: agentSandboxes.id,
@@ -797,9 +793,11 @@ export class AgentSandboxesRepository {
         and(
           eq(agentSandboxes.status, "provisioning"),
           lt(agentSandboxes.updated_at, cutoff),
-          hasNoProvisioningStatusOwnerJob(quiescentBefore),
+          hasNoProvisioningStatusOwnerJob(),
         ),
-      );
+      )
+      .orderBy(asc(agentSandboxes.updated_at), asc(agentSandboxes.id))
+      .limit(PROVISIONING_RECONCILIATION_BATCH_SIZE);
 
     const swept: Array<{
       agentId: string;
@@ -807,12 +805,15 @@ export class AgentSandboxesRepository {
       organizationId: string;
       updatedAt: Date | null;
     }> = [];
+    let deferred = 0;
     for (const candidate of candidates) {
       const updated = await dbWrite.transaction(async (tx) => {
         await configureElizaLifecycleTransaction(tx);
-        await tx.execute(
-          elizaProvisionAdvisoryLockSql(candidate.organizationId, candidate.agentId),
+        const [lock] = await sqlRows<{ acquired: boolean }>(
+          tx,
+          elizaTryProvisionAdvisoryLockSql(candidate.organizationId, candidate.agentId),
         );
+        if (!lock?.acquired) return "deferred" as const;
         const [row] = await tx
           .update(agentSandboxes)
           .set({
@@ -829,7 +830,7 @@ export class AgentSandboxesRepository {
               eq(agentSandboxes.organization_id, candidate.organizationId),
               eq(agentSandboxes.status, "provisioning"),
               lt(agentSandboxes.updated_at, cutoff),
-              hasNoProvisioningStatusOwnerJob(quiescentBefore),
+              hasNoProvisioningStatusOwnerJob(),
             ),
           )
           .returning({
@@ -840,9 +841,10 @@ export class AgentSandboxesRepository {
           });
         return row;
       });
-      if (updated) swept.push(updated);
+      if (updated === "deferred") deferred++;
+      else if (updated) swept.push(updated);
     }
-    return swept;
+    return { updated: swept, deferred };
   }
 
   /**
@@ -863,7 +865,7 @@ export class AgentSandboxesRepository {
    * the honest "how long has this been stuck" signal.
    */
   async markOrphanedPendingWithoutJobAsError(cutoff: Date): Promise<
-    Array<{
+    ReconciliationBatchResult<{
       agentId: string;
       agentName: string | null;
       organizationId: string;
@@ -871,9 +873,7 @@ export class AgentSandboxesRepository {
     }>
   > {
     await ensureAgentSandboxSchema();
-    const quiescentBefore = detachedExecutionQuiescentBefore();
-    const noProvisionJob = () =>
-      hasNoProvisioningOwnerJob([JOB_TYPES.AGENT_PROVISION], quiescentBefore);
+    const noProvisionJob = () => hasNoProvisioningOwnerJob([JOB_TYPES.AGENT_PROVISION]);
     const candidates = await dbWrite
       .select({
         agentId: agentSandboxes.id,
@@ -887,7 +887,9 @@ export class AgentSandboxesRepository {
           lt(agentSandboxes.created_at, cutoff),
           noProvisionJob(),
         ),
-      );
+      )
+      .orderBy(asc(agentSandboxes.created_at), asc(agentSandboxes.id))
+      .limit(PROVISIONING_RECONCILIATION_BATCH_SIZE);
 
     const swept: Array<{
       agentId: string;
@@ -895,12 +897,15 @@ export class AgentSandboxesRepository {
       organizationId: string;
       createdAt: Date | null;
     }> = [];
+    let deferred = 0;
     for (const candidate of candidates) {
       const updated = await dbWrite.transaction(async (tx) => {
         await configureElizaLifecycleTransaction(tx);
-        await tx.execute(
-          elizaProvisionAdvisoryLockSql(candidate.organizationId, candidate.agentId),
+        const [lock] = await sqlRows<{ acquired: boolean }>(
+          tx,
+          elizaTryProvisionAdvisoryLockSql(candidate.organizationId, candidate.agentId),
         );
+        if (!lock?.acquired) return "deferred" as const;
         const [row] = await tx
           .update(agentSandboxes)
           .set({
@@ -928,9 +933,10 @@ export class AgentSandboxesRepository {
           });
         return row;
       });
-      if (updated) swept.push(updated);
+      if (updated === "deferred") deferred++;
+      else if (updated) swept.push(updated);
     }
-    return swept;
+    return { updated: swept, deferred };
   }
 
   async update(
@@ -1123,7 +1129,6 @@ export class AgentSandboxesRepository {
    */
   async markRunningFromProvisioning(id: string): Promise<AgentSandbox | undefined> {
     await ensureAgentSandboxSchema();
-    const quiescentBefore = detachedExecutionQuiescentBefore();
     const [candidate] = await dbWrite
       .select({ organizationId: agentSandboxes.organization_id })
       .from(agentSandboxes)
@@ -1135,7 +1140,7 @@ export class AgentSandboxesRepository {
           sql`${agentSandboxes.node_id} IS NOT NULL`,
           sql`${agentSandboxes.node_id} <> ''`,
           sql`${agentSandboxes.deleted_at} IS NULL`,
-          hasNoProvisioningStatusOwnerJob(quiescentBefore),
+          hasNoProvisioningStatusOwnerJob(),
         ),
       )
       .limit(1);
@@ -1143,7 +1148,11 @@ export class AgentSandboxesRepository {
 
     return dbWrite.transaction(async (tx) => {
       await configureElizaLifecycleTransaction(tx);
-      await tx.execute(elizaProvisionAdvisoryLockSql(candidate.organizationId, id));
+      const [lock] = await sqlRows<{ acquired: boolean }>(
+        tx,
+        elizaTryProvisionAdvisoryLockSql(candidate.organizationId, id),
+      );
+      if (!lock?.acquired) return undefined;
       const [updated] = await tx
         .update(agentSandboxes)
         .set({
@@ -1161,7 +1170,7 @@ export class AgentSandboxesRepository {
             sql`${agentSandboxes.node_id} IS NOT NULL`,
             sql`${agentSandboxes.node_id} <> ''`,
             sql`${agentSandboxes.deleted_at} IS NULL`,
-            hasNoProvisioningStatusOwnerJob(quiescentBefore),
+            hasNoProvisioningStatusOwnerJob(),
           ),
         )
         .returning();

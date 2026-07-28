@@ -39,6 +39,7 @@ async function seedJob(params: {
   organizationId?: string;
   userId?: string;
   agentId?: string;
+  executionGeneration?: string;
 }): Promise<void> {
   const old = JOB_STARTED_AT;
   await dbWrite.insert(jobs).values({
@@ -56,6 +57,7 @@ async function seedJob(params: {
     agent_id: params.agentId ?? AGENT_ID,
     scheduled_for: old,
     started_at: old,
+    execution_generation: params.executionGeneration,
     created_at: old,
     updated_at: JOB_UPDATED_AT,
   });
@@ -136,10 +138,17 @@ beforeAll(async () => {
 				estimated_completion_at timestamp,
 				scheduled_for timestamp NOT NULL DEFAULT now(),
 				started_at timestamp,
+				execution_generation uuid,
+				execution_quiesced_at timestamp,
 				completed_at timestamp,
 				created_at timestamp NOT NULL DEFAULT now(),
 				updated_at timestamp NOT NULL DEFAULT now()
 			);`,
+    );
+    await dbWrite.execute(
+      `ALTER TABLE jobs
+        ADD COLUMN IF NOT EXISTS execution_generation uuid,
+        ADD COLUMN IF NOT EXISTS execution_quiesced_at timestamp;`,
     );
   } catch (error) {
     pgliteReady = false;
@@ -192,6 +201,30 @@ describe("jobsRepository.recoverStaleJobs", () => {
       status: "pending",
       attempts: 1,
       error: "Job timed out - recovered for retry (attempt 1/3)",
+    });
+  });
+
+  test("non-provisioning job families keep elapsed-time crash recovery", async () => {
+    expect(pgliteReady).toBe(true);
+    const jobId = "00000000-0000-4000-8000-000000170854";
+    await seedJob({
+      id: jobId,
+      type: "pii_scrub",
+      maxAttempts: 3,
+      executionGeneration: "00000000-0000-4000-8000-000000170855",
+    });
+
+    expect(
+      await repo.recoverStaleJobs({
+        type: "pii_scrub",
+        staleThresholdMs: 5 * 60 * 1000,
+      }),
+    ).toBe(1);
+    expect(await repo.findByIdForWrite(jobId)).toMatchObject({
+      status: "pending",
+      attempts: 1,
+      execution_generation: "00000000-0000-4000-8000-000000170855",
+      execution_quiesced_at: expect.any(Date),
     });
   });
 
@@ -505,7 +538,11 @@ describe("jobsRepository.recoverStaleJobs", () => {
   test("retry without attempt increment cannot overwrite a concurrent completion", async () => {
     expect(pgliteReady).toBe(true);
     const jobId = "00000000-0000-4000-8000-000000160854";
-    await seedJob({ id: jobId, maxAttempts: 3 });
+    await seedJob({
+      id: jobId,
+      maxAttempts: 3,
+      executionGeneration: "00000000-0000-4000-8000-000000160855",
+    });
     const claimed = await repo.findByIdForWrite(jobId);
     if (!claimed) throw new Error("expected claimed job");
 

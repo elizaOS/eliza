@@ -31,19 +31,15 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import { verifyCronSecret } from "@/lib/auth/cron";
+import {
+  ORPHAN_PENDING_THRESHOLD_MS,
+  STUCK_PROVISIONING_THRESHOLD_MS,
+} from "@/lib/services/provisioning-job-types";
 import { logger } from "@/lib/utils/logger";
 
-/**
- * This must remain above the daemon's 15-minute cold-boot timeout so the
- * Worker cannot terminalize a row while its owner still has execution time.
- */
-const STUCK_PROVISIONING_THRESHOLD_MINUTES = 20;
-
-/**
- * A pending row with no job never entered the boot state, so cold-boot timing
- * does not apply. Keep its original recovery window independent.
- */
-const ORPHAN_PENDING_THRESHOLD_MINUTES = 10;
+const STUCK_PROVISIONING_THRESHOLD_MINUTES =
+  STUCK_PROVISIONING_THRESHOLD_MS / 60_000;
+const ORPHAN_PENDING_THRESHOLD_MINUTES = ORPHAN_PENDING_THRESHOLD_MS / 60_000;
 
 interface CleanupResult {
   agentId: string;
@@ -89,10 +85,11 @@ async function handleCleanupStuckProvisioning(
      * The repository runs this on the write path so it lands on the primary
      * replica and is subject to the write path's connection pool.
      */
-    const stuckAgents =
+    const stuckBatch =
       await agentSandboxesRepository.markStuckProvisioningWithoutActiveJobAsError(
         stuckProvisioningCutoff,
       );
+    const stuckAgents = stuckBatch.updated;
 
     const results: CleanupResult[] = stuckAgents.map((row) => ({
       agentId: row.agentId,
@@ -129,10 +126,11 @@ async function handleCleanupStuckProvisioning(
     const orphanPendingCutoff = new Date(
       Date.now() - ORPHAN_PENDING_THRESHOLD_MINUTES * 60 * 1000,
     );
-    const orphanedPending =
+    const orphanedPendingBatch =
       await agentSandboxesRepository.markOrphanedPendingWithoutJobAsError(
         orphanPendingCutoff,
       );
+    const orphanedPending = orphanedPendingBatch.updated;
 
     // Orphans have no stuckSinceMinutes (the created_at staleness drives them,
     // not updated_at), so project them once into the shared shape and reuse it
@@ -160,6 +158,10 @@ async function handleCleanupStuckProvisioning(
       data: {
         cleaned: results.length,
         cleanedOrphanedPending: orphanedPendingAgents.length,
+        deferredLockContended:
+          stuckBatch.deferred + orphanedPendingBatch.deferred,
+        deferredStuckProvisioning: stuckBatch.deferred,
+        deferredOrphanedPending: orphanedPendingBatch.deferred,
         thresholdMinutes: STUCK_PROVISIONING_THRESHOLD_MINUTES,
         stuckProvisioningThresholdMinutes: STUCK_PROVISIONING_THRESHOLD_MINUTES,
         orphanPendingThresholdMinutes: ORPHAN_PENDING_THRESHOLD_MINUTES,

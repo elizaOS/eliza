@@ -146,5 +146,11 @@ jobs:
       - uses: ./.github/actions/cloud-setup-test-env
         with:
           setup-db: "true"
+      - name: Run PostgreSQL lifecycle barrier tests
+        env:
+          APPS_TENANT_DB_TEST_DSN: postgresql://postgres@127.0.0.1:5432/postgres
+        run: >-
+          bun --config=/dev/null test --isolate
+          packages/cloud/shared/src/db/repositories/__tests__/agent-sandboxes-stuck-provisioning-lock.integration.test.ts
       - name: Run cloud e2e tests
         run: bun run test:cloud:e2e

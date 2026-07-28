@@ -584,7 +584,7 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
     expect(await jobsOfType(sandbox.id, JOB_TYPES.AGENT_DELETE)).toHaveLength(1);
   });
 
-  test("conditional delete cancels a retry-pending job only after its quiescence window", async () => {
+  test("conditional delete cancels a retry-pending job after execution quiescence is acknowledged", async () => {
     const { orgId, userId } = await seedOwner();
     const createdAt = new Date(Date.now() - 20 * 60 * 1000);
     const agentName = "managed-dedicated-canary-r30081355987a1";
@@ -611,6 +611,8 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
       .set({
         status: "pending",
         started_at: createdAt,
+        execution_generation: "55555555-5555-4555-8555-555555555555",
+        execution_quiesced_at: createdAt,
         updated_at: createdAt,
       })
       .where(eq(jobs.id, provision.job.id));
@@ -632,7 +634,7 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
     expect(await jobsOfType(sandbox.id, JOB_TYPES.AGENT_DELETE)).toHaveLength(1);
   });
 
-  for (const activeStatus of ["pending", "in_progress", "failed", "cancelled"] as const) {
+  for (const activeStatus of ["in_progress", "failed", "cancelled"] as const) {
     test(`conditional delete refuses a non-quiescent ${activeStatus} lifecycle job`, async () => {
       const { orgId, userId } = await seedOwner();
       const createdAt = new Date();
@@ -660,6 +662,8 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
         .set({
           status: activeStatus,
           started_at: createdAt,
+          execution_generation: "55555555-5555-4555-8555-555555555555",
+          execution_quiesced_at: null,
           updated_at: createdAt,
         })
         .where(eq(jobs.id, provision.job.id));

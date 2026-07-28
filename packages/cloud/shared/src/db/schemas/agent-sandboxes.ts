@@ -105,6 +105,8 @@ export const agentSandboxes = pgTable(
     }),
     sandbox_id: text("sandbox_id"),
     status: text("status").$type<AgentSandboxStatus>().notNull().default("pending"),
+    lifecycle_job_id: uuid("lifecycle_job_id"),
+    lifecycle_execution_generation: uuid("lifecycle_execution_generation"),
     deletion_attempt_id: uuid("deletion_attempt_id"),
     deletion_started_at: timestamp("deletion_started_at", { withTimezone: true }),
     /**
@@ -229,6 +231,19 @@ export const agentSandboxes = pgTable(
     sandbox_id_idx: index("agent_sandboxes_sandbox_id_idx").on(table.sandbox_id),
     billing_status_idx: index("agent_sandboxes_billing_status_idx").on(table.billing_status),
     deleted_at_idx: index("agent_sandboxes_deleted_at_idx").on(table.deleted_at),
+    lifecycle_execution_pair_check: check(
+      "agent_sandboxes_lifecycle_execution_pair_check",
+      sql`(
+        ${table.lifecycle_job_id} IS NULL
+        AND ${table.lifecycle_execution_generation} IS NULL
+      ) OR (
+        ${table.lifecycle_job_id} IS NOT NULL
+        AND ${table.lifecycle_execution_generation} IS NOT NULL
+      )`,
+    ),
+    lifecycle_execution_idx: index("agent_sandboxes_lifecycle_execution_idx")
+      .on(table.lifecycle_job_id, table.lifecycle_execution_generation)
+      .where(sql`${table.lifecycle_execution_generation} IS NOT NULL`),
     deletion_intent_pair_check: check(
       "agent_sandboxes_deletion_intent_pair_check",
       sql`(

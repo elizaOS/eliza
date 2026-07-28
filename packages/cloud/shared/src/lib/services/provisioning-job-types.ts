@@ -231,13 +231,11 @@ export const PROVISIONING_STATUS_OWNER_JOB_TYPES: ReadonlySet<ProvisioningJobTyp
 
 export const DEFAULT_STALE_JOB_THRESHOLD_MS = 5 * 60 * 1000;
 export const COLD_BOOT_STALE_JOB_THRESHOLD_MS = 15 * 60 * 1000;
-
-/**
- * A timeout or stale-job recovery changes queue state without aborting the
- * underlying bounded SSH/HTTP operation. Reconciliation must retain ownership
- * for this interval after a failed or cancelled cold lifecycle attempt.
- */
-export const AGENT_LIFECYCLE_DETACHED_EXECUTION_QUIESCENCE_MS = COLD_BOOT_STALE_JOB_THRESHOLD_MS;
+export const STUCK_PROVISIONING_RECONCILIATION_GRACE_MS = 5 * 60 * 1000;
+export const STUCK_PROVISIONING_THRESHOLD_MS =
+  COLD_BOOT_STALE_JOB_THRESHOLD_MS + STUCK_PROVISIONING_RECONCILIATION_GRACE_MS;
+export const ORPHAN_PENDING_THRESHOLD_MS = 10 * 60 * 1000;
+export const PROVISIONING_RECONCILIATION_BATCH_SIZE = 100;
 
 export const APPS_JOB_TYPES = [
   JOB_TYPES.CONTAINER_PROVISION,

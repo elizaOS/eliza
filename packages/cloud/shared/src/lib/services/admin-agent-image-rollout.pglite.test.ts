@@ -3591,7 +3591,7 @@ describe("admin agent image rollout on primary PGlite", () => {
     expect(await dbWrite.select().from(jobs)).toHaveLength(0);
   });
 
-  test("an interrupted ordinary image swap is CAS-rearmed without admitting a second claim", async () => {
+  test("only replacement-worker recovery re-arms an interrupted ordinary image swap", async () => {
     const seeded = await seedAgents(1);
     const enqueued = await provisioningJobService.enqueueAgentUpgradeOnce({
       agentId: seeded.targets[0]!.agentId,
@@ -3619,6 +3619,11 @@ describe("admin agent image rollout on primary PGlite", () => {
         staleThresholdMs: 1_000,
         maxAttempts: 3,
       }),
+    ).toBe(0);
+    expect(
+      await provisioningJobService.recoverInterruptedJobsOnStartup(new Date(), [
+        JOB_TYPES.AGENT_UPGRADE,
+      ]),
     ).toBe(1);
     expect(await jobsRepository.findByIdForWrite(enqueued.job.id)).toMatchObject({
       status: "pending",

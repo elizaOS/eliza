@@ -4,6 +4,7 @@
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { readFile } from "node:fs/promises";
 import { eq } from "drizzle-orm";
 
 const ORIGINAL_ENV = {
@@ -19,8 +20,8 @@ process.env.MOCK_REDIS = "1";
 
 import { pushSchema } from "drizzle-kit/api";
 import {
-  AGENT_LIFECYCLE_DETACHED_EXECUTION_QUIESCENCE_MS,
   JOB_TYPES,
+  PROVISIONING_RECONCILIATION_BATCH_SIZE,
   PROVISIONING_STATUS_OWNER_JOB_TYPES,
   type ProvisioningJobType,
 } from "../../../lib/services/provisioning-job-types";
@@ -34,7 +35,7 @@ import { userCharacters } from "../../schemas/user-characters";
 import { users } from "../../schemas/users";
 
 const [
-  { closeDatabaseConnectionsForTests, dbWrite },
+  { closeDatabaseConnectionsForTests, dbWrite, getPgliteClientForTests },
   { AgentSandboxesRepository },
   { jobsRepository },
 ] = await Promise.all([import("../../client"), import("../agent-sandboxes"), import("../jobs")]);
@@ -55,17 +56,6 @@ function restoreEnv(name: keyof typeof ORIGINAL_ENV, value: string | undefined):
   } else {
     process.env[name] = value;
   }
-}
-
-function deferred(): {
-  promise: Promise<void>;
-  resolve: () => void;
-} {
-  let resolve!: () => void;
-  const promise = new Promise<void>((settle) => {
-    resolve = settle;
-  });
-  return { promise, resolve };
 }
 
 function uniq(prefix: string): string {
@@ -156,13 +146,31 @@ async function sandboxStatus(agentId: string): Promise<string> {
 async function jobStatus(jobId: string): Promise<{
   status: string;
   attempts: number;
+  executionGeneration: string | null;
+  executionQuiescedAt: Date | null;
 }> {
   const [row] = await dbWrite
-    .select({ status: jobs.status, attempts: jobs.attempts })
+    .select({
+      status: jobs.status,
+      attempts: jobs.attempts,
+      executionGeneration: jobs.execution_generation,
+      executionQuiescedAt: jobs.execution_quiesced_at,
+    })
     .from(jobs)
     .where(eq(jobs.id, jobId));
   if (!row) throw new Error(`Job ${jobId} disappeared`);
   return row;
+}
+
+async function activateLifecycleExecution(agentId: string, job: typeof jobs.$inferSelect) {
+  if (!job.execution_generation) throw new Error(`Job ${job.id} was not assigned a generation`);
+  await dbWrite
+    .update(agentSandboxes)
+    .set({
+      lifecycle_job_id: job.id,
+      lifecycle_execution_generation: job.execution_generation,
+    })
+    .where(eq(agentSandboxes.id, agentId));
 }
 
 async function backdateClaim(jobId: string): Promise<void> {
@@ -183,6 +191,12 @@ beforeAll(async () => {
     };
     const { apply } = await pushSchema(schema as never, dbWrite as never);
     await apply();
+    await getPgliteClientForTests().exec(
+      await readFile(
+        new URL("../../migrations/0183_lifecycle_execution_fence.sql", import.meta.url),
+        "utf8",
+      ),
+    );
   } catch (error) {
     pgliteReady = false;
     console.error(
@@ -217,7 +231,7 @@ describe("stuck-provisioning owner predicates", () => {
 
       const swept = await repo.markStuckProvisioningWithoutActiveJobAsError(SWEEP_CUTOFF);
 
-      expect(swept.map((row) => row.agentId)).not.toContain(agentId);
+      expect(swept.updated.map((row) => row.agentId)).not.toContain(agentId);
       expect(await sandboxStatus(agentId)).toBe("provisioning");
     });
   }
@@ -234,7 +248,7 @@ describe("stuck-provisioning owner predicates", () => {
 
     const swept = await repo.markStuckProvisioningWithoutActiveJobAsError(SWEEP_CUTOFF);
 
-    expect(swept.map((row) => row.agentId)).toContain(agentId);
+    expect(swept.updated.map((row) => row.agentId)).toContain(agentId);
     expect(await sandboxStatus(agentId)).toBe("error");
   });
 
@@ -244,7 +258,7 @@ describe("stuck-provisioning owner predicates", () => {
     const olderId = await seedProvisioningAgent(organizationId, userId, BEFORE_CUTOFF);
 
     const swept = await repo.markStuckProvisioningWithoutActiveJobAsError(SWEEP_CUTOFF);
-    const sweptIds = new Set(swept.map((row) => row.agentId));
+    const sweptIds = new Set(swept.updated.map((row) => row.agentId));
 
     expect(sweptIds.has(exactId)).toBe(false);
     expect(sweptIds.has(olderId)).toBe(true);
@@ -252,14 +266,35 @@ describe("stuck-provisioning owner predicates", () => {
     expect(await sandboxStatus(olderId)).toBe("error");
   });
 
-  test("terminal stale recovery keeps a detached executor fenced until quiescence", async () => {
+  test("processes the oldest deterministic bounded batch", async () => {
+    const { organizationId, userId } = await seedOrgAndUser();
+    const oldest = new Date(SWEEP_CUTOFF.getTime() - 10_000);
+    const inserted = await dbWrite
+      .insert(agentSandboxes)
+      .values(
+        Array.from({ length: PROVISIONING_RECONCILIATION_BATCH_SIZE + 1 }, (_, index) => ({
+          organization_id: organizationId,
+          user_id: userId,
+          agent_name: uniq("bounded-agent"),
+          status: "provisioning" as const,
+          execution_tier: "dedicated-always" as const,
+          updated_at: new Date(oldest.getTime() + index),
+        })),
+      )
+      .returning({ id: agentSandboxes.id });
+
+    const batch = await repo.markStuckProvisioningWithoutActiveJobAsError(SWEEP_CUTOFF);
+    const updatedIds = new Set(batch.updated.map((row) => row.agentId));
+
+    expect(batch.updated).toHaveLength(PROVISIONING_RECONCILIATION_BATCH_SIZE);
+    expect(updatedIds.has(inserted[0]!.id)).toBe(true);
+    expect(updatedIds.has(inserted.at(-1)!.id)).toBe(false);
+    expect(await sandboxStatus(inserted.at(-1)!.id)).toBe("provisioning");
+  });
+
+  test("timeout retains ownership until settlement and stale generations cannot complete", async () => {
     const { organizationId, userId } = await seedOrgAndUser();
     const agentId = await seedProvisioningAgent(organizationId, userId);
-    const execution = deferred();
-    let executionSettled = false;
-    const detachedExecution = execution.promise.finally(() => {
-      executionSettled = true;
-    });
     const firstClaim = await seedAndClaimJob({
       organizationId,
       userId,
@@ -267,6 +302,7 @@ describe("stuck-provisioning owner predicates", () => {
       type: JOB_TYPES.AGENT_WAKE,
       maxAttempts: 2,
     });
+    await activateLifecycleExecution(agentId, firstClaim);
     await backdateClaim(firstClaim.id);
 
     const firstRecovery = await jobsRepository.recoverStaleJobs({
@@ -274,16 +310,32 @@ describe("stuck-provisioning owner predicates", () => {
       organizationId,
       staleThresholdMs: 15 * 60 * 1000,
     });
-    expect(firstRecovery).toBe(1);
-    expect(await jobStatus(firstClaim.id)).toEqual({
-      status: "pending",
-      attempts: 1,
+    expect(firstRecovery).toBe(0);
+    expect(await jobStatus(firstClaim.id)).toMatchObject({
+      status: "in_progress",
+      attempts: 0,
+      executionGeneration: firstClaim.execution_generation,
+      executionQuiescedAt: null,
     });
     expect(
-      (await repo.markStuckProvisioningWithoutActiveJobAsError(SWEEP_CUTOFF)).map(
+      (await repo.markStuckProvisioningWithoutActiveJobAsError(SWEEP_CUTOFF)).updated.map(
         (row) => row.agentId,
       ),
     ).not.toContain(agentId);
+
+    const requeued = await jobsRepository.incrementAttempt(
+      firstClaim.id,
+      "detached execution rejected after timeout",
+      firstClaim.max_attempts,
+      undefined,
+      firstClaim.execution_generation ?? undefined,
+    );
+    expect(requeued?.status).toBe("pending");
+    expect(requeued?.execution_quiesced_at).not.toBeNull();
+    await dbWrite
+      .update(jobs)
+      .set({ scheduled_for: new Date(Date.now() - 1_000) })
+      .where(eq(jobs.id, firstClaim.id));
 
     const [secondClaim] = await jobsRepository.claimPendingJobs({
       type: JOB_TYPES.AGENT_WAKE,
@@ -291,42 +343,43 @@ describe("stuck-provisioning owner predicates", () => {
       limit: 1,
     });
     expect(secondClaim?.id).toBe(firstClaim.id);
+    expect(secondClaim?.execution_generation).not.toBe(firstClaim.execution_generation);
+    await activateLifecycleExecution(agentId, secondClaim!);
     expect(secondClaim?.started_at).not.toBeNull();
     expect(Number.isNaN(new Date(secondClaim!.started_at!).getTime())).toBe(false);
-    await backdateClaim(firstClaim.id);
-
-    const terminalRecovery = await jobsRepository.recoverStaleJobs({
-      type: JOB_TYPES.AGENT_WAKE,
-      organizationId,
-      staleThresholdMs: 15 * 60 * 1000,
+    await expect(
+      jobsRepository.settleExecution(firstClaim, "completed", {
+        result: { stale: true },
+      }),
+    ).rejects.toThrow(/generation is no longer current/);
+    expect(await jobStatus(firstClaim.id)).toMatchObject({
+      status: "in_progress",
+      attempts: 1,
+      executionGeneration: secondClaim?.execution_generation,
+      executionQuiescedAt: null,
     });
-    expect(terminalRecovery).toBe(0);
-    expect(await jobStatus(firstClaim.id)).toEqual({
-      status: "failed",
-      attempts: 2,
-    });
-    expect(executionSettled).toBe(false);
 
     const stillOwned = await repo.markStuckProvisioningWithoutActiveJobAsError(SWEEP_CUTOFF);
-    expect(stillOwned.map((row) => row.agentId)).not.toContain(agentId);
+    expect(stillOwned.updated.map((row) => row.agentId)).not.toContain(agentId);
     expect(await sandboxStatus(agentId)).toBe("provisioning");
 
-    execution.resolve();
-    await detachedExecution;
-    await dbWrite
-      .update(jobs)
-      .set({
-        updated_at: new Date(Date.now() - AGENT_LIFECYCLE_DETACHED_EXECUTION_QUIESCENCE_MS - 1_000),
-      })
-      .where(eq(jobs.id, firstClaim.id));
+    const failed = await jobsRepository.incrementAttempt(
+      secondClaim!.id,
+      "second execution rejected",
+      secondClaim!.max_attempts,
+      undefined,
+      secondClaim!.execution_generation ?? undefined,
+    );
+    expect(failed?.status).toBe("failed");
+    expect(failed?.execution_quiesced_at).not.toBeNull();
 
     const sweptAfterQuiescence =
       await repo.markStuckProvisioningWithoutActiveJobAsError(SWEEP_CUTOFF);
-    expect(sweptAfterQuiescence.map((row) => row.agentId)).toContain(agentId);
+    expect(sweptAfterQuiescence.updated.map((row) => row.agentId)).toContain(agentId);
     expect(await sandboxStatus(agentId)).toBe("error");
   });
 
-  test("recently cancelled owner jobs retain provisioning ownership", async () => {
+  test("cancelled owner jobs become ownerless only after acknowledged settlement", async () => {
     const { organizationId, userId } = await seedOrgAndUser();
     const agentId = await seedProvisioningAgent(organizationId, userId);
     const job = await seedAndClaimJob({
@@ -335,14 +388,15 @@ describe("stuck-provisioning owner predicates", () => {
       agentId,
       type: JOB_TYPES.AGENT_RESTART,
     });
-    await jobsRepository.updateStatus(job.id, "cancelled", {
+    await activateLifecycleExecution(agentId, job);
+    await jobsRepository.settleExecution(job, "cancelled", {
       error: "awaiter cancelled while executor unwinds",
     });
 
     const swept = await repo.markStuckProvisioningWithoutActiveJobAsError(SWEEP_CUTOFF);
 
-    expect(swept.map((row) => row.agentId)).not.toContain(agentId);
-    expect(await sandboxStatus(agentId)).toBe("provisioning");
+    expect(swept.updated.map((row) => row.agentId)).toContain(agentId);
+    expect(await sandboxStatus(agentId)).toBe("error");
   });
 
   test("list and recovery CAS both unblock after the owner settles", async () => {
@@ -354,13 +408,14 @@ describe("stuck-provisioning owner predicates", () => {
       agentId,
       type: JOB_TYPES.AGENT_RESUME,
     });
+    await activateLifecycleExecution(agentId, job);
 
     expect(
       (await repo.listStuckProvisioningWithContainer(SWEEP_CUTOFF, 500)).map((row) => row.id),
     ).not.toContain(agentId);
     expect(await repo.markRunningFromProvisioning(agentId)).toBeUndefined();
 
-    await jobsRepository.updateStatus(job.id, "completed");
+    await jobsRepository.settleExecution(job, "completed");
 
     expect(
       (await repo.listStuckProvisioningWithContainer(SWEEP_CUTOFF, 500)).map((row) => row.id),

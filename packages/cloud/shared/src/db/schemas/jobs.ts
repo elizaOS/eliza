@@ -42,6 +42,8 @@ export const jobs = pgTable(
     estimated_completion_at: timestamp("estimated_completion_at"),
     scheduled_for: timestamp("scheduled_for").notNull().defaultNow(),
     started_at: timestamp("started_at"),
+    execution_generation: uuid("execution_generation"),
+    execution_quiesced_at: timestamp("execution_quiesced_at"),
     completed_at: timestamp("completed_at"),
     created_at: timestamp("created_at").notNull().defaultNow(),
     updated_at: timestamp("updated_at").notNull().defaultNow(),
@@ -68,6 +70,11 @@ export const jobs = pgTable(
     pending_claim_idx: index("jobs_pending_claim_idx")
       .on(table.type, table.scheduled_for, table.created_at)
       .where(sql`${table.status} = 'pending'`),
+    unquiesced_execution_idx: index("jobs_unquiesced_execution_idx")
+      .on(table.organization_id, table.agent_id, table.type, table.status)
+      .where(
+        sql`${table.execution_generation} IS NOT NULL AND ${table.execution_quiesced_at} IS NULL AND ${table.agent_id} IS NOT NULL`,
+      ),
   }),
 );
 

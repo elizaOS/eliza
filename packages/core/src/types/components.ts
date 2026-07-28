@@ -234,8 +234,10 @@ export interface EvaluationResult {
 }
 
 /**
- * Callback function type for handlers. actionName is optional so callers can attribute
- * the response to the action that produced it without parsing content (backward compatible).
+ * Delivers handler output to a transport. `actionName` is present only when an
+ * executing action produced the callback; message-service deliveries such as
+ * simple, early, terminal, attachment, and voice output omit it. Consumers must
+ * not infer action provenance from `Content.actions`.
  */
 export type HandlerCallback = (
 	response: Content,

@@ -1,12 +1,14 @@
 /**
- * Proves lifecycle enqueue and stuck-row reconciliation serialize through the
- * same per-agent advisory lock on two real PostgreSQL transactions.
+ * Proves all reconciliation paths serialize with lifecycle work on real
+ * PostgreSQL, and that timed-out attempts cannot retry or settle until their
+ * exact execution generation acknowledges quiescence.
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { pushSchema } from "drizzle-kit/api";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { Client } from "pg";
 import {
   acquireEphemeralPostgres,
@@ -46,6 +48,10 @@ let agentSandboxesRepository:
 let provisioningJobService:
   | typeof import("../../../lib/services/provisioning-jobs").provisioningJobService
   | undefined;
+let ProvisioningJobService:
+  | typeof import("../../../lib/services/provisioning-jobs").ProvisioningJobService
+  | undefined;
+let jobsRepository: typeof import("../jobs").jobsRepository | undefined;
 
 function restoreEnv(name: keyof typeof ORIGINAL_ENV, value: string | undefined): void {
   if (value === undefined) {
@@ -111,15 +117,18 @@ if (!postgres) {
   process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
   process.env.MOCK_REDIS = "1";
 
-  const [clientModule, repositoryModule, jobModule] = await Promise.all([
+  const [clientModule, repositoryModule, jobModule, jobsModule] = await Promise.all([
     import("../../client"),
     import("../agent-sandboxes"),
     import("../../../lib/services/provisioning-jobs"),
+    import("../jobs"),
   ]);
   closeDatabaseConnectionsForTests = clientModule.closeDatabaseConnectionsForTests;
   dbWrite = clientModule.dbWrite;
   agentSandboxesRepository = repositoryModule.agentSandboxesRepository;
   provisioningJobService = jobModule.provisioningJobService;
+  ProvisioningJobService = jobModule.ProvisioningJobService;
+  jobsRepository = jobsModule.jobsRepository;
 }
 
 afterAll(async () => {
@@ -151,6 +160,19 @@ realPostgres("stuck provisioning lifecycle lock", () => {
     };
     const { apply } = await pushSchema(schema as never, dbWrite as never);
     await apply();
+    if (!isolatedDsn) throw new Error("isolated database was not initialized");
+    const migrationClient = new Client({ connectionString: isolatedDsn });
+    await migrationClient.connect();
+    try {
+      await migrationClient.query(
+        await readFile(
+          new URL("../../migrations/0183_lifecycle_execution_fence.sql", import.meta.url),
+          "utf8",
+        ),
+      );
+    } finally {
+      await migrationClient.end();
+    }
   }, 60_000);
 
   test("an enqueue holding the agent lock commits before the sweep rechecks ownership", async () => {
@@ -223,12 +245,13 @@ realPostgres("stuck provisioning lifecycle lock", () => {
 
       const sweep =
         agentSandboxesRepository.markStuckProvisioningWithoutActiveJobAsError(SWEEP_CUTOFF);
-      await waitForAdvisoryWaiters(control, 2);
+      const firstSweep = await sweep;
+      expect(firstSweep.deferred).toBe(1);
+      expect(firstSweep.updated.map((row) => row.agentId)).not.toContain(sandbox.id);
       await control.query("COMMIT");
 
-      const [enqueueResult, swept] = await Promise.all([enqueue, sweep]);
+      const enqueueResult = await enqueue;
       expect(enqueueResult.created).toBe(true);
-      expect(swept.map((row) => row.agentId)).not.toContain(sandbox.id);
 
       const [persistedSandbox] = await dbWrite
         .select({ status: agentSandboxes.status })
@@ -250,5 +273,280 @@ realPostgres("stuck provisioning lifecycle lock", () => {
       await control.query("ROLLBACK");
       await Promise.allSettled([control.end(), setup.end()]);
     }
+  }, 30_000);
+
+  test("lock contention defers one stuck row without blocking later candidates", async () => {
+    if (!isolatedDsn || !dbWrite || !agentSandboxesRepository) {
+      throw new Error("real PostgreSQL harness was not initialized");
+    }
+    const suffix = randomUUID();
+    const [organization] = await dbWrite
+      .insert(organizations)
+      .values({ name: "Bounded Sweep Org", slug: `bounded-sweep-${suffix}` })
+      .returning();
+    const [user] = await dbWrite
+      .insert(users)
+      .values({
+        steward_user_id: `bounded-sweep-${suffix}`,
+        organization_id: organization.id,
+      })
+      .returning();
+    const [blocked, later] = await dbWrite
+      .insert(agentSandboxes)
+      .values([
+        {
+          organization_id: organization.id,
+          user_id: user.id,
+          agent_name: `blocked-${suffix}`,
+          status: "provisioning",
+          execution_tier: "dedicated-always",
+          updated_at: new Date(STALE_UPDATED_AT.getTime() - 1_000),
+        },
+        {
+          organization_id: organization.id,
+          user_id: user.id,
+          agent_name: `later-${suffix}`,
+          status: "provisioning",
+          execution_tier: "dedicated-always",
+          updated_at: STALE_UPDATED_AT,
+        },
+      ])
+      .returning();
+    const lock = new Client({ connectionString: isolatedDsn });
+    await lock.connect();
+    try {
+      await lock.query("BEGIN");
+      await lock.query("SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))", [
+        organization.id,
+        blocked.id,
+      ]);
+      const batch =
+        await agentSandboxesRepository.markStuckProvisioningWithoutActiveJobAsError(SWEEP_CUTOFF);
+      expect(batch.deferred).toBe(1);
+      expect(batch.updated.map((row) => row.agentId)).toContain(later.id);
+      expect(batch.updated.map((row) => row.agentId)).not.toContain(blocked.id);
+      await lock.query("COMMIT");
+
+      const retry =
+        await agentSandboxesRepository.markStuckProvisioningWithoutActiveJobAsError(SWEEP_CUTOFF);
+      expect(retry.updated.map((row) => row.agentId)).toContain(blocked.id);
+    } finally {
+      await lock.query("ROLLBACK");
+      await lock.end();
+    }
+  }, 30_000);
+
+  test("orphan-pending and markRunning defer lock owners without aborting", async () => {
+    if (!isolatedDsn || !dbWrite || !agentSandboxesRepository) {
+      throw new Error("real PostgreSQL harness was not initialized");
+    }
+    const suffix = randomUUID();
+    const [organization] = await dbWrite
+      .insert(organizations)
+      .values({ name: "Other Paths Org", slug: `other-paths-${suffix}` })
+      .returning();
+    const [user] = await dbWrite
+      .insert(users)
+      .values({
+        steward_user_id: `other-paths-${suffix}`,
+        organization_id: organization.id,
+      })
+      .returning();
+    const oldCreatedAt = new Date(SWEEP_CUTOFF.getTime() - 30 * 60 * 1000);
+    const [orphan] = await dbWrite
+      .insert(agentSandboxes)
+      .values({
+        organization_id: organization.id,
+        user_id: user.id,
+        agent_name: `orphan-${suffix}`,
+        status: "pending",
+        execution_tier: "dedicated-always",
+        created_at: oldCreatedAt,
+      })
+      .returning();
+    const [wedged] = await dbWrite
+      .insert(agentSandboxes)
+      .values({
+        organization_id: organization.id,
+        user_id: user.id,
+        agent_name: `wedged-${suffix}`,
+        status: "provisioning",
+        execution_tier: "dedicated-always",
+        sandbox_id: `sandbox-${suffix}`,
+        node_id: `node-${suffix}`,
+        container_name: `container-${suffix}`,
+        updated_at: STALE_UPDATED_AT,
+      })
+      .returning();
+    const lock = new Client({ connectionString: isolatedDsn });
+    await lock.connect();
+    try {
+      await lock.query("BEGIN");
+      await lock.query("SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))", [
+        organization.id,
+        orphan.id,
+      ]);
+      const orphanBatch =
+        await agentSandboxesRepository.markOrphanedPendingWithoutJobAsError(SWEEP_CUTOFF);
+      expect(orphanBatch.deferred).toBe(1);
+      expect(await agentSandboxesRepository.markRunningFromProvisioning(wedged.id)).toMatchObject({
+        id: wedged.id,
+        status: "running",
+      });
+      await lock.query("COMMIT");
+
+      const orphanRetry =
+        await agentSandboxesRepository.markOrphanedPendingWithoutJobAsError(SWEEP_CUTOFF);
+      expect(orphanRetry.updated.map((row) => row.agentId)).toContain(orphan.id);
+
+      await dbWrite
+        .update(agentSandboxes)
+        .set({ status: "provisioning", updated_at: STALE_UPDATED_AT })
+        .where(eq(agentSandboxes.id, wedged.id));
+      await lock.query("BEGIN");
+      await lock.query("SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))", [
+        organization.id,
+        wedged.id,
+      ]);
+      expect(await agentSandboxesRepository.markRunningFromProvisioning(wedged.id)).toBeUndefined();
+      await lock.query("COMMIT");
+      expect(await agentSandboxesRepository.markRunningFromProvisioning(wedged.id)).toMatchObject({
+        id: wedged.id,
+        status: "running",
+      });
+    } finally {
+      await lock.query("ROLLBACK");
+      await lock.end();
+    }
+  }, 30_000);
+
+  test("a timed-out attempt retries only after quiescence and cannot settle the next generation", async () => {
+    if (!dbWrite || !ProvisioningJobService || !jobsRepository || !agentSandboxesRepository) {
+      throw new Error("real PostgreSQL harness was not initialized");
+    }
+    const suffix = randomUUID();
+    const [organization] = await dbWrite
+      .insert(organizations)
+      .values({ name: "Execution Fence Org", slug: `execution-fence-${suffix}` })
+      .returning();
+    const [user] = await dbWrite
+      .insert(users)
+      .values({
+        steward_user_id: `execution-fence-${suffix}`,
+        organization_id: organization.id,
+      })
+      .returning();
+    const [sandbox] = await dbWrite
+      .insert(agentSandboxes)
+      .values({
+        organization_id: organization.id,
+        user_id: user.id,
+        agent_name: `execution-fence-${suffix}`,
+        status: "provisioning",
+        execution_tier: "dedicated-always",
+      })
+      .returning();
+    await dbWrite.insert(jobs).values({
+      type: "agent_wake",
+      status: "pending",
+      data: {
+        agentId: sandbox.id,
+        organizationId: organization.id,
+        userId: user.id,
+      },
+      agent_id: sandbox.id,
+      organization_id: organization.id,
+      user_id: user.id,
+      scheduled_for: new Date("2020-01-01T00:00:00.000Z"),
+      max_attempts: 3,
+    });
+
+    let releaseFirst!: () => void;
+    const firstGate = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    let call = 0;
+    let timeoutResolution = 0;
+    let firstClaim: typeof jobs.$inferSelect | undefined;
+    let secondClaim: typeof jobs.$inferSelect | undefined;
+    const service = new ProvisioningJobService({
+      executionTimeoutMs: () => (++timeoutResolution === 1 ? 20 : 5_000),
+      executeJob: async (job) => {
+        call++;
+        if (call === 1) {
+          firstClaim = job;
+          await firstGate;
+          throw new Error("late detached failure");
+        }
+        secondClaim = job;
+        await jobsRepository!.settleExecution(job, "completed", {
+          result: { generation: job.execution_generation },
+        });
+      },
+    });
+    expect(
+      await dbWrite
+        .select({
+          id: jobs.id,
+          type: jobs.type,
+          status: jobs.status,
+          scheduledFor: jobs.scheduled_for,
+          claimable: sql<boolean>`${jobs.scheduled_for} <= NOW()`,
+        })
+        .from(jobs)
+        .where(and(eq(jobs.agent_id, sandbox.id), eq(jobs.type, "agent_wake"))),
+    ).toEqual([
+      expect.objectContaining({
+        type: "agent_wake",
+        status: "pending",
+        claimable: true,
+      }),
+    ]);
+
+    const timedOut = await service.processPendingJobs(1, {
+      jobTypes: ["agent_wake"],
+    });
+    expect(timedOut).toMatchObject({ claimed: 1, failed: 1 });
+    const claimDeadline = Date.now() + 5_000;
+    while (!firstClaim && Date.now() < claimDeadline) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(firstClaim?.execution_generation).toBeTruthy();
+    const duringTimeout = await jobsRepository.findByIdForWrite(firstClaim!.id);
+    expect(duringTimeout).toMatchObject({
+      status: "in_progress",
+      execution_generation: firstClaim!.execution_generation,
+      execution_quiesced_at: null,
+    });
+
+    releaseFirst();
+    const deadline = Date.now() + 5_000;
+    let afterQuiescence = await jobsRepository.findByIdForWrite(firstClaim!.id);
+    while (afterQuiescence?.status !== "pending" && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      afterQuiescence = await jobsRepository.findByIdForWrite(firstClaim!.id);
+    }
+    expect(afterQuiescence?.status).toBe("pending");
+    expect(afterQuiescence?.execution_quiesced_at).not.toBeNull();
+    await dbWrite
+      .update(jobs)
+      .set({ scheduled_for: new Date("2020-01-01T00:00:00.000Z") })
+      .where(eq(jobs.id, firstClaim!.id));
+
+    const completed = await service.processPendingJobs(1, {
+      jobTypes: ["agent_wake"],
+    });
+    expect(completed.succeeded).toBe(1);
+    expect(secondClaim?.execution_generation).toBeTruthy();
+    expect(secondClaim?.execution_generation).not.toBe(firstClaim?.execution_generation);
+    await expect(
+      jobsRepository.settleExecution(firstClaim!, "completed", {
+        result: { stale: true },
+      }),
+    ).rejects.toThrow(/generation is no longer current/);
+    expect(await jobsRepository.findByIdForWrite(firstClaim!.id)).toMatchObject({
+      status: "completed",
+      execution_generation: secondClaim!.execution_generation,
+    });
   }, 30_000);
 });

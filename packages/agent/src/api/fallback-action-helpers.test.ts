@@ -52,7 +52,7 @@ describe("executeFallbackParsedActions", () => {
     const appended: string[] = [];
     const callbacks: Array<{ actionTag: string; hasText: boolean }> = [];
 
-    await executeFallbackParsedActions(
+    const executions = await executeFallbackParsedActions(
       runtime,
       message,
       [{ name: "CUSTOM_FALLBACK", parameters: { target: "example.com" } }],
@@ -63,6 +63,9 @@ describe("executeFallbackParsedActions", () => {
     expect(appended).toEqual(["I turned on the block for example.com."]);
     expect(callbacks).toEqual([
       { actionTag: "CUSTOM_FALLBACK", hasText: true },
+    ]);
+    expect(executions).toEqual([
+      { actionName: "CUSTOM_FALLBACK", success: true },
     ]);
     expect(runtime.useModel).toHaveBeenCalledWith(
       ModelType.TEXT_SMALL,

@@ -347,6 +347,7 @@ describe("AgentSandboxesRepository", () => {
     useWriteSelectMock = true;
     useTransactionMock = true;
     useRepositoryTransactionUpdate = true;
+    executeHandler = () => ({ rows: [{ acquired: true }] });
     selectRows = [
       {
         agentId: "e06bb509-6c52-4c33-a9f7-66addc43e8c8",
@@ -374,11 +375,13 @@ describe("AgentSandboxesRepository", () => {
     // ...and have NO live agent_provision job.
     expect(sql).toContain("not exists");
     expect(query.params).toContain("agent_provision");
-    // Active jobs and recently-terminal claimed jobs both retain ownership:
-    // timeout/cancellation releases the awaiter without aborting its executor.
-    expect(query.params).toEqual(
-      expect.arrayContaining(["pending", "in_progress", "failed", "cancelled"]),
-    );
+    // Active queue rows retain ownership, as does any generated execution that
+    // has not durably acknowledged quiescence.
+    expect(query.params).toEqual(expect.arrayContaining(["pending", "in_progress"]));
+    expect(sql).toContain("execution_generation");
+    expect(sql).toContain("execution_quiesced_at");
+    expect(query.params).not.toContain("failed");
+    expect(query.params).not.toContain("cancelled");
     expect(query.params).not.toContain("completed");
 
     // It MARKS ERROR (it never re-enqueues) with a clear, retry-able message.

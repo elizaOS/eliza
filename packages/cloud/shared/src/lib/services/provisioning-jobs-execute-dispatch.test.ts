@@ -6,53 +6,19 @@
  * dispatch table, the per-handler result-record shaping, and the terminal-vs-retry
  * disposition are all covered by real code, not asserted against a stand-in.
  *
- * The only stubs are the two genuine boundaries the daemon dispatch sits on:
- * `jobsRepository` (the Postgres job store) and `elizaSandboxService` (the
- * transport that SSHes the Hetzner cores / calls the container bridge). Mirrors
- * the harness in `provisioning-jobs-delete-lifecycle.test.ts`; no DB is touched,
- * so this file is process-isolated and safe to run alongside the DB-backed
- * suites in the same `bun test` invocation.
+ * The only stubs are the genuine boundaries the daemon dispatch sits on:
+ * `jobsRepository`, the lifecycle-ownership preflight, and
+ * `elizaSandboxService`. They are per-test spies rather than module-global DB
+ * mocks so this suite can compose with real PGlite schema tests safely.
  */
 
-import { afterAll, afterEach, beforeAll, describe, expect, mock, spyOn, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 
-import * as realHelpersNs from "../../db/helpers";
 import { jobsRepository } from "../../db/repositories/jobs";
 import type { Job } from "../../db/schemas/jobs";
 import { elizaSandboxService } from "./eliza-sandbox";
 import { JOB_TYPES, type ProvisioningJobType } from "./provisioning-job-types";
-
-const realHelpers = { ...realHelpersNs };
-const conflictQueryTx = {
-  execute: async () => ({ rows: [] }),
-  select: () => ({
-    from: () => ({
-      where: () => ({
-        orderBy: () => ({
-          limit: async () => [],
-        }),
-      }),
-    }),
-  }),
-};
-const dispatchDbWrite = {
-  ...(realHelpers.dbWrite as unknown as Record<string, unknown>),
-  transaction: async <T>(fn: (tx: typeof conflictQueryTx) => Promise<T>): Promise<T> =>
-    fn(conflictQueryTx),
-};
-let provisioningJobService: typeof import("./provisioning-jobs").provisioningJobService;
-
-beforeAll(async () => {
-  mock.module("../../db/helpers", () => ({
-    ...realHelpers,
-    dbWrite: dispatchDbWrite,
-  }));
-  ({ provisioningJobService } = await import("./provisioning-jobs.ts?dispatch-harness"));
-});
-
-afterAll(() => {
-  mock.module("../../db/helpers", () => realHelpers);
-});
+import { provisioningJobService } from "./provisioning-jobs";
 
 const ORG = "22222222-2222-4222-8222-222222222222";
 const AGENT = "e06bb509-6c52-4c33-a9f7-66addc43e8c8";
@@ -87,6 +53,8 @@ function makeJob(
     error_key: null,
     attempts: 1,
     max_attempts: 3,
+    execution_generation: "55555555-5555-4555-8555-555555555555",
+    execution_quiesced_at: null,
     organization_id: ORG,
     user_id: USER,
     api_key_id: null,
@@ -111,6 +79,12 @@ function makeJob(
  * daemon's mid-retry behavior.
  */
 function harness(job: Job) {
+  const conflictSpy = spyOn(
+    provisioningJobService as unknown as {
+      assertNoConflictingLifecycleExecution(job: Job): Promise<void>;
+    },
+    "assertNoConflictingLifecycleExecution",
+  ).mockResolvedValue(undefined);
   const ordinaryClaimSpy = spyOn(jobsRepository, "claimPendingJobs").mockImplementation(
     async (f: { type: string }) => (f.type === job.type ? [job] : []),
   );
@@ -120,13 +94,16 @@ function harness(job: Job) {
   ).mockImplementation(async (f: { type: string }) => (f.type === job.type ? [job] : []));
   const claimSpy = {
     mockRestore() {
+      conflictSpy.mockRestore();
       ordinaryClaimSpy.mockRestore();
       sharedClaimSpy.mockRestore();
     },
   };
   const recoverSpy = spyOn(jobsRepository, "recoverStaleJobs").mockResolvedValue(0);
-  const updateStatusSpy = spyOn(jobsRepository, "updateStatus").mockResolvedValue(undefined);
-  const updateSpy = spyOn(jobsRepository, "update").mockResolvedValue(undefined as never);
+  const updateStatusSpy = spyOn(jobsRepository, "settleExecution").mockResolvedValue(undefined);
+  const updateSpy = spyOn(jobsRepository, "updateForExecution").mockImplementation(
+    async (claimedJob, updates) => ({ ...claimedJob, ...updates }),
+  );
   const incrementSpy = spyOn(jobsRepository, "incrementAttempt").mockResolvedValue(undefined);
   const retryLaterSpy = spyOn(
     jobsRepository,
@@ -374,7 +351,7 @@ describe("executeJob dispatch — success path per job type marks the job comple
         const completed = completedCall(ctx);
         if (arm.type === JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE) {
           expect(completed).toBeUndefined();
-          expect(atomicAuditWrites).toHaveLength(2);
+          expect(atomicAuditWrites).toHaveLength(3);
           expect(atomicAuditWrites[0]).toMatchObject({
             result_storage: "inline",
             error: null,
@@ -393,6 +370,10 @@ describe("executeJob dispatch — success path per job type marks the job comple
           expect(atomicAuditWrites[1]?.result).toMatchObject({
             success: true,
             cleanupPending: false,
+          });
+          expect(atomicAuditWrites[2]).toEqual({
+            lifecycle_job_id: null,
+            lifecycle_execution_generation: null,
           });
         } else {
           expect(completed).toBeDefined();
@@ -493,7 +474,9 @@ describe("executeJob dispatch — success path per job type marks the job comple
       await onConvergedInTx?.({
         update: () => ({
           set: (updates: Record<string, unknown>) => {
-            cleanupCompletion = updates.result as Record<string, unknown>;
+            if ("result" in updates) {
+              cleanupCompletion = updates.result as Record<string, unknown>;
+            }
             return {
               where: () => ({
                 returning: async () => [{ id: retry.job.id }],
@@ -593,7 +576,7 @@ describe("executeJob dispatch — failure path per job type retries (increments 
       const res = await run(JOB_TYPES.AGENT_MESSAGE);
       expect(res.failed).toBe(1);
       expect(ctx.updateSpy).toHaveBeenCalledWith(
-        ctx.job.id,
+        ctx.job,
         expect.objectContaining({
           result: expect.objectContaining({ error: "bridge unreachable" }),
         }),

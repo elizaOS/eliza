@@ -38,6 +38,8 @@ function makeDowngradeJob(): Job {
     error_key: null,
     attempts: 1,
     max_attempts: 1,
+    execution_generation: "55555555-5555-4555-8555-555555555555",
+    execution_quiesced_at: null,
     organization_id: ORG,
     user_id: USER,
     api_key_id: null,
@@ -66,7 +68,7 @@ function withClaimedDowngradeJob() {
       filters.type === JOB_TYPES.AGENT_DOWNGRADE ? [job] : [],
   );
   const recoverSpy = spyOn(jobsRepository, "recoverStaleJobs").mockResolvedValue(0);
-  const updateStatusSpy = spyOn(jobsRepository, "updateStatus").mockResolvedValue(undefined);
+  const updateStatusSpy = spyOn(jobsRepository, "settleExecution").mockResolvedValue(undefined);
   const incrementSpy = spyOn(jobsRepository, "incrementAttempt").mockResolvedValue(undefined);
   return {
     job,
@@ -131,16 +133,13 @@ describe("ProvisioningJobService agent_downgrade", () => {
       expect(result.claimed).toBe(1);
       expect(result.succeeded).toBe(0);
       expect(result.failed).toBe(1);
-      expect(ctx.updateStatusSpy).not.toHaveBeenCalledWith(
-        ctx.job.id,
-        "completed",
-        expect.anything(),
-      );
+      expect(ctx.updateStatusSpy).not.toHaveBeenCalledWith(ctx.job, "completed", expect.anything());
       expect(ctx.incrementSpy).toHaveBeenCalledWith(
         ctx.job.id,
         "No pre-upgrade snapshot found; refusing rollback without restore point",
         ctx.job.max_attempts,
         undefined,
+        ctx.job.execution_generation,
       );
     } finally {
       svcSpy.mockRestore();

@@ -59,6 +59,7 @@ export interface AppsWorkerConfig {
 
 const DEFAULT_POLL_INTERVAL_MS = 30_000;
 const DEFAULT_BATCH_SIZE = 3;
+const workerStartedAt = new Date();
 
 function parsePositiveInt(value: string | undefined, fallback: number): number {
   if (!value) return fallback;
@@ -195,6 +196,22 @@ async function main(): Promise<void> {
   });
 
   armed = await armAppsDeployBackend(logger);
+  if (armed) {
+    const { provisioningJobService } = await loadDeps();
+    const recovered =
+      await provisioningJobService.recoverInterruptedJobsOnStartup(
+        workerStartedAt,
+        APPS_JOB_TYPES,
+      );
+    if (recovered > 0) {
+      logger.warn(
+        "[apps-worker] recovered interrupted executions from prior process",
+        {
+          recovered,
+        },
+      );
+    }
+  }
 
   if (config.runOnce) {
     await pollCycle(logger, config);

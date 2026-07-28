@@ -168,14 +168,16 @@ describe("enqueueAgentDeleteOnce.beforeInsert — cancels other pending jobs", (
     expect(cancelSet).toBeDefined();
 
     // The cancel WHERE is scoped to this org AND this agent, excludes
-    // agent_delete (delete never self-cancels), and only touches pending rows
-    // whose execution is provably quiescent. Asserting the scoping prevents a
-    // future edit from cancelling sibling agents' or other orgs' jobs.
+    // agent_delete (delete never self-cancels), and only touches pending rows.
+    // The repository can make an execution pending only while atomically
+    // acknowledging quiescence, so no elapsed-time predicate belongs here.
+    // Asserting the scoping prevents a future edit from cancelling sibling
+    // agents' or other orgs' jobs.
     if (!capturedCancellationWhere) {
       throw new Error("cancel WHERE clause was not captured");
     }
     const sql = new PgDialect().sqlToQuery(capturedCancellationWhere);
-    expect(sql.sql).toContain("started_at");
+    expect(sql.sql).not.toContain("started_at");
     expect(sql.params).toContain("pending");
     expect(sql.params).not.toContain("in_progress");
     expect(sql.params).not.toContain("completed");

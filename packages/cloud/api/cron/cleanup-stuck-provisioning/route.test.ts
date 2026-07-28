@@ -12,21 +12,26 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
  */
 
 const markStuckProvisioningWithoutActiveJobAsError = mock(
-  async (_cutoff: Date) =>
-    [] as Array<{
+  async (_cutoff: Date) => ({
+    updated: [] as Array<{
       agentId: string;
       agentName: string | null;
       organizationId: string;
     }>,
+    deferred: 0,
+  }),
 );
-const markOrphanedPendingWithoutJobAsError = mock(async (_cutoff: Date) => [
-  {
-    agentId: "sandbox-orphan-1",
-    agentName: "orphaned-agent",
-    organizationId: "org-1",
-    createdAt: new Date("2026-06-14T00:00:00.000Z"),
-  },
-]);
+const markOrphanedPendingWithoutJobAsError = mock(async (_cutoff: Date) => ({
+  updated: [
+    {
+      agentId: "sandbox-orphan-1",
+      agentName: "orphaned-agent",
+      organizationId: "org-1",
+      createdAt: new Date("2026-06-14T00:00:00.000Z"),
+    },
+  ],
+  deferred: 0,
+}));
 
 // verifyCronSecret returns null on success (auth passes), a Response otherwise.
 const verifyCronSecret = mock((): Response | null => null);
@@ -71,15 +76,21 @@ describe("cleanup-stuck-provisioning cron", () => {
     markOrphanedPendingWithoutJobAsError.mockClear();
     verifyCronSecret.mockClear();
     verifyCronSecret.mockReturnValue(null);
-    markStuckProvisioningWithoutActiveJobAsError.mockResolvedValue([]);
-    markOrphanedPendingWithoutJobAsError.mockResolvedValue([
-      {
-        agentId: "sandbox-orphan-1",
-        agentName: "orphaned-agent",
-        organizationId: "org-1",
-        createdAt: new Date("2026-06-14T00:00:00.000Z"),
-      },
-    ]);
+    markStuckProvisioningWithoutActiveJobAsError.mockResolvedValue({
+      updated: [],
+      deferred: 1,
+    });
+    markOrphanedPendingWithoutJobAsError.mockResolvedValue({
+      updated: [
+        {
+          agentId: "sandbox-orphan-1",
+          agentName: "orphaned-agent",
+          organizationId: "org-1",
+          createdAt: new Date("2026-06-14T00:00:00.000Z"),
+        },
+      ],
+      deferred: 0,
+    });
   });
 
   test("uses independent provisioning and orphan-pending cutoffs", async () => {
@@ -119,6 +130,9 @@ describe("cleanup-stuck-provisioning cron", () => {
       success: boolean;
       data: {
         cleanedOrphanedPending: number;
+        deferredLockContended: number;
+        deferredStuckProvisioning: number;
+        deferredOrphanedPending: number;
         thresholdMinutes: number;
         stuckProvisioningThresholdMinutes: number;
         orphanPendingThresholdMinutes: number;
@@ -131,6 +145,9 @@ describe("cleanup-stuck-provisioning cron", () => {
     };
     expect(body.success).toBe(true);
     expect(body.data.cleanedOrphanedPending).toBe(1);
+    expect(body.data.deferredLockContended).toBe(1);
+    expect(body.data.deferredStuckProvisioning).toBe(1);
+    expect(body.data.deferredOrphanedPending).toBe(0);
     expect(body.data.thresholdMinutes).toBe(20);
     expect(body.data.stuckProvisioningThresholdMinutes).toBe(20);
     expect(body.data.orphanPendingThresholdMinutes).toBe(10);
