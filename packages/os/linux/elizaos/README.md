@@ -3,6 +3,12 @@
 This directory contains the source-controlled live-build variant used for the
 legacy multi-arch elizaOS Linux ISO checks.
 
+It is not the canonical Tails-derived release builder at
+`packages/os/linux/build.sh`, and its Debian-only images are not release
+equivalent. In particular, CI must not route arm64 through this tree and
+publish it beside the Tails-derived amd64 artifact until equivalent privacy,
+persistence, update, application, and real boot evidence exists.
+
 Profiles:
 
 - `default`: headless Debian live image with the elizaOS agent/runtime payload.
@@ -72,8 +78,9 @@ path: `scripts/qemu_virt_boot_riscv64.sh` (driven by
 Two build orchestrators ship in this tree, sharing one source of truth for
 the rootfs skeleton, chroot hooks, systemd units, and kiosk wiring:
 
-- **live-build (current default; documented below).** Source-of-truth for
-  release artifacts today. Multi-arch ISO via `lb config` / `lb build`.
+- **live-build (legacy experimental path; documented below).** Multi-arch
+  Debian image work via `lb config` / `lb build`; not a canonical release
+  artifact.
 - **mkosi (additive, in active bring-up).** See `mkosi/README.md`. Produces
   bootable `*.raw[.zst]` disk images (systemd-repart partitioned) and an
   optional hybrid `*.iso` wrap. Targets: `make mkosi-build ARCH=… PROFILE=…`,
@@ -201,16 +208,18 @@ agent-health, and terminal TUI markers.
 
 ## Status
 
-This is the active, canonical Linux build. The build pipeline, multi-arch
-config, branding overlay, `secure` hardening profile, and release-manifest
-gate are in the tree. The checked-in riscv64 boot row is promoted from
+This is an experimental multi-arch Linux build. The build pipeline,
+multi-arch config, branding overlay, `secure` hardening profile, and
+release-manifest gate are in the tree. The checked-in riscv64 boot row is from
 `evidence/qemu_virt_boot.json`, whose matching transcript and ISO artifact are
 `evidence/qemu_virt_boot_20260524T030430Z.transcript.log` and
 `out/elizaos-linux-riscv64-default-20260524T030430Z.iso`; that run proves
 qemu-virt EDK2/OpenSBI -> GRUB EFI -> Linux plus local curl health,
-agent-ready, and terminal TUI markers. arm64 still needs produced ISO evidence
-before full multi-arch release promotion. See
-`packages/os/CLAUDE.md` for the distribution-channel and promotion policy.
+agent-ready, and terminal TUI markers. arm64 still needs produced ISO evidence,
+and every architecture needs parity with the canonical Tails-derived privacy,
+persistence, update, and application contracts before this path can be
+considered for release promotion. See `packages/os/CLAUDE.md` for the
+distribution-channel and promotion policy.
 
 ## License
 

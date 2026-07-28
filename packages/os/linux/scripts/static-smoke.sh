@@ -85,6 +85,7 @@ grep -Fq 'if [ -f "${SRC}/binary.iso" ]' build-iso.sh
 grep -Fq 'find "${SRC}" -maxdepth 1 -name' build-iso.sh
 grep -Fq "sort -nr" build-iso.sh
 bash scripts/build-cache-contract.test.sh
+node --test scripts/resolve-apt-snapshots.test.mjs
 bash -n scripts/sync-runtime-to-chroot.sh
 sh -n \
     tails/auto/config \

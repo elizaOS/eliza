@@ -34,25 +34,23 @@ RM_PATH_RECURSIVE_SCRIPT="${REPO_ROOT}/packages/scripts/rm-path-recursive.mjs"
 source "${HERE}/scripts/submodule-checkout.sh"
 TAILS_SRC="${TAILS_SRC:-${HERE}/tails}"
 OUT="${HERE}/out"
-# Target architecture for the ISO. Default amd64 keeps every existing
-# call site working unchanged. arm64 + riscv64 add the per-arch bootloader
-# packages in the Dockerfile (grub-efi-arm64-bin / grub-efi-riscv64-bin
-# instead of grub-pc-bin + syslinux + isolinux, which are x86-only) and
-# switch live-build's --architecture and --linux-flavours. Both inputs
-# are tightly coupled — drive them from one source so a mismatch can't
-# silently produce an amd64 chroot inside an arm64 image.
+# The canonical Tails-derived live-build fork only produces bootable amd64
+# ISO images. Its architecture defaults reject arm64/riscv64, and its ISO
+# assembly has no grub-efi implementation for those targets. Keep the
+# boundary explicit so an emulated container cannot be mistaken for a
+# supported release artifact.
 ARCH="${ELIZAOS_ARCH:-amd64}"
 case "${ARCH}" in
-    amd64|arm64|riscv64) ;;
+    amd64) ;;
     *)
         echo "ERROR: ELIZAOS_ARCH=${ARCH} is not supported." >&2
-        echo "       Supported values: amd64 (default), arm64, riscv64." >&2
+        echo "       The canonical Tails-derived ISO currently supports amd64 only." >&2
+        echo "       Non-amd64 package experiments are not release-equivalent ISO builds." >&2
         exit 1
         ;;
 esac
-# One builder image per arch — mixing them would race for the same image
-# tag. Per-arch tags also let CI keep an amd64 + arm64 builder warm in
-# the same registry.
+# Keep the architecture in the image tag so any future target enablement
+# cannot reuse an incompatible cached builder.
 IMAGE="elizaos-builder-${ARCH}"
 # Persistent apt-cacher-ng cache. A Docker named volume (not a host
 # bind-mount) so it is owned correctly inside the container regardless
@@ -86,6 +84,14 @@ if [ ! -d "${TAILS_SRC}/config" ]; then
     exit 1
 fi
 
+if [ -z "${APT_SNAPSHOTS_SERIALS:-}" ]; then
+    APT_SNAPSHOTS_SERIALS="$(
+        node "${HERE}/scripts/resolve-apt-snapshots.mjs"
+    )"
+fi
+export APT_SNAPSHOTS_SERIALS
+echo "=== verified Tails APT snapshots: ${APT_SNAPSHOTS_SERIALS} ==="
+
 if [ "${STAGE}" = "binary" ] && [ "${ELIZAOS_SYNC_CHROOT:-1}" = "1" ]; then
     echo "=== syncing elizaOS overlay into existing chroot ==="
     "${HERE}/scripts/sync-runtime-to-chroot.sh"
@@ -102,14 +108,8 @@ materialize_submodule_checkout \
     "${HERE}/tails-live-build" \
     "${LIVE_BUILD_URL}" \
     "${LIVE_BUILD_REF}"
-# Pin the build platform so the Dockerfile pulls the matching debian
-# base image and resolves arch-specific apt packages. For amd64 this
-# also prevents Apple Silicon hosts (default arm64) from pulling the
-# arm64 debian image when the user asked for an amd64 ISO. For
-# non-amd64 archs the host must have qemu-user-static + binfmt_misc
-# registered (Docker Desktop ships this; on bare Linux,
-# `apt-get install qemu-user-static binfmt-support` then `docker run
-# --rm --privileged tonistiigi/binfmt --install all`).
+# Pin the amd64 build platform so Apple Silicon hosts do not silently pull an
+# arm64 Debian base image for the canonical amd64 ISO.
 docker_build_args=(
     --platform "linux/${ARCH}"
     --build-arg "TARGETARCH=${ARCH}"
@@ -157,6 +157,9 @@ docker_run_args=(
     -e "ELIZAOS_BUILD_CPUS=${ELIZAOS_BUILD_CPUS:-}"
     -e "ELIZAOS_MKSQUASHFS_PROCESSORS=${ELIZAOS_MKSQUASHFS_PROCESSORS:-}"
     -e "TAILS_WEBSITE_CACHE=${TAILS_WEBSITE_CACHE:-}"
+    # The host verifies every Release file before starting the expensive
+    # container build. Tails records this exact map in its build manifest.
+    -e "APT_SNAPSHOTS_SERIALS=${APT_SNAPSHOTS_SERIALS}"
     -v "${TAILS_SRC}:/build"
     -v "${OUT}:/out"
     -v "${ACNG_VOLUME}:/var/cache/apt-cacher-ng"

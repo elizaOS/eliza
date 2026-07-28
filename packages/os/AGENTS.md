@@ -6,7 +6,7 @@ OS distribution assets for elizaOS: the elizaOS Live Linux USB distro (`linux/`)
 
 Provides the full OS-level distribution layer for elizaOS:
 
-- **elizaOS Live** — a Tails-derived Debian live-build USB distro (amd64/arm64/riscv64) with GNOME desktop, the bundled elizaOS Electrobun app, amnesia/persistence boot modes, and optional Tor Privacy Mode.
+- **elizaOS Live** — a Tails-derived Debian live-build USB distro. The publishable ISO is amd64-only; arm64/riscv64 remain experimental package and GUI contracts until the canonical builder can produce equivalent boot-validated artifacts.
 - **elizaOS AOSP** — an Android vendor overlay tree targeting Pixel devices and Cuttlefish emulator, with custom launcher, boot animation, sepolicy, and privileged-app permissions.
 - **Installer tooling** — cross-platform USB flasher (`usb-installer/`) and AOSP ADB/fastboot flasher (`setup/`), each as standalone Electrobun microapps.
 - **Release pipeline** — manifest schema, validation scripts, checksum generation, and TEE/confidential-compute scaffolding (`scripts/`, `release/`).
@@ -177,7 +177,7 @@ node packages/os/scripts/generate-confidential-artifacts.mjs
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `ELIZAOS_ARCH` | `amd64` | Target architecture: `amd64`, `arm64`, `riscv64` |
+| `ELIZAOS_ARCH` | `amd64` | Canonical Tails-derived ISO target; only `amd64` is currently supported |
 | `ELIZAOS_PROFILE` | `default` | live-build profile: `default`, `gui`, `secure`, `secure-gui` |
 | `ELIZAOS_BUILD_CPUS` | (unlimited) | Cap Docker CPU count |
 | `ELIZAOS_MKSQUASHFS_PROCESSORS` | (unlimited) | Cap squashfs compression parallelism |
