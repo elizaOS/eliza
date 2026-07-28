@@ -1498,10 +1498,14 @@ export class ProvisioningJobService {
           Boolean(sandbox.deletion_attempt_id) ||
           sandbox.status === "deletion_pending" ||
           sandbox.status === "deletion_failed";
-        const deletionStartedAt =
-          isRecoveryReEnqueue && sandbox.deletion_started_at
-            ? sandbox.deletion_started_at
-            : new Date();
+        // A retry must keep the ORIGINAL start time, which the column already
+        // holds — so it is preserved by not writing the column at all, rather
+        // than by reading the stored value and writing it back. The read-back
+        // form was a no-op write that still round-tripped a timestamp through
+        // the application, so any caller handing us a row that had crossed a
+        // serialization boundary turned a retry into a hard failure.
+        const continuesEarlierDeletion =
+          isRecoveryReEnqueue && sandbox.deletion_started_at !== null;
         const deletionAttemptId =
           isRecoveryReEnqueue && sandbox.deletion_attempt_id
             ? sandbox.deletion_attempt_id
@@ -1524,7 +1528,7 @@ export class ProvisioningJobService {
           .set({
             status: "deletion_pending" as const,
             deletion_attempt_id: deletionAttemptId,
-            deletion_started_at: deletionStartedAt,
+            ...(continuesEarlierDeletion ? {} : { deletion_started_at: new Date() }),
             billing_status: "suspended" as const,
             scheduled_shutdown_at: null,
             shutdown_warning_sent_at: null,
