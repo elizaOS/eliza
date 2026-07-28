@@ -11,8 +11,9 @@
 // (the original `choice-remote` / `first-run-remote-address` / `choice-connect`
 // flow). Replaces the lane quarantined in #10322.
 //
-// The deterministic host agent is reachable at 127.0.0.1:31337 through
-// `adb reverse`; 127.0.0.1 is loopback, so the connect needs no confirm prompt.
+// The deterministic host agent listens on host port 31337 and is exposed on a
+// non-reserved device loopback port through `adb reverse`; loopback needs no
+// confirm prompt.
 //
 // Liveness contract (#14359): this lane is STUB-BACKED by default — the host
 // agent is the deterministic ui-smoke stub, so a "real model" reply cannot be
@@ -39,7 +40,14 @@ import { expect, ORIGIN, test } from "./android-harness";
 // the deterministic stub.
 const LIVENESS_ENABLED = process.env.ELIZA_ONBOARDING_LIVENESS === "1";
 
-const HOST_AGENT_BASE = "http://127.0.0.1:31337";
+const HOST_AGENT_PORT = Number(
+  process.env.ELIZA_ANDROID_HOST_AGENT_PORT ?? "31337",
+);
+// Android reserves loopback:31337 for the bundled local agent. Expose the host
+// on a distinct device port so remote adoption exercises HTTP through adb
+// reverse instead of being classified as local IPC.
+const DEVICE_REMOTE_PORT = 31338;
+const HOST_AGENT_BASE = `http://127.0.0.1:${DEVICE_REMOTE_PORT}`;
 // app.config.ts `desktop.urlScheme`; the Android manifest registers it as the
 // BROWSABLE `@string/custom_url_scheme` intent-filter.
 const URL_SCHEME = "elizaos";
@@ -62,8 +70,8 @@ test.describe
 
       const adbBin = resolveAdb();
       const serial = device.serial();
-      // The device's 127.0.0.1:31337 must reach the host's deterministic agent.
-      adbReverse(adbBin, serial, 31337);
+      // The device-side remote port must reach the host's deterministic agent.
+      adbReverse(adbBin, serial, DEVICE_REMOTE_PORT, HOST_AGENT_PORT);
 
       const recording = await startAndroidScreenRecord({
         serial,
@@ -134,7 +142,7 @@ test.describe
             timeout: 30_000,
             message: "active-server persisted",
           })
-          .toContain("127.0.0.1:31337");
+          .toContain(HOST_AGENT_BASE);
         const activeServer = await readActiveServer();
         expect(activeServer).toBeTruthy();
         expect(activeServer).toContain('"kind":"remote"');
