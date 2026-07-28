@@ -45,6 +45,7 @@ import json
 import logging
 import os
 import re
+import secrets
 from collections.abc import Awaitable, Callable
 from copy import deepcopy
 from datetime import date, datetime, timedelta, timezone
@@ -54,6 +55,16 @@ from typing import Any
 
 from .clients.base import BaseClient
 from .evaluator import LifeOpsEvaluator
+from .evidence import (
+    TrustedEvidenceVerifier,
+    TrustedExecutionContext,
+    TrustedToolExecutor,
+    mark_authenticated_external_result,
+    mark_deterministic_lifeworld_result,
+    validate_action_policy,
+    validate_tool_call_id,
+    verify_result_trusted_evidence,
+)
 from .lifeworld import EntityKind, LifeWorld
 from .lifeworld.entities import Contact, EmailMessage, EmailThread, Reminder
 from .scorer import (
@@ -72,6 +83,7 @@ from .types import (
     ScenarioMode,
     ScenarioResult,
     TurnResult,
+    VerifiedEvidenceReceipt,
     compute_cache_hit_pct,
 )
 
@@ -89,6 +101,32 @@ class CostBudgetExceeded(Exception):
 
 class UnsupportedAction(RuntimeError):
     """Raised when the executor doesn't know how to apply an action against the world."""
+
+
+def _unsupported_no_effect(
+    *,
+    operation: str,
+    reason: str,
+    details: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Return an explicit failure when LifeWorld cannot model an operation.
+
+    A state-preserving result must never look like successful execution merely
+    because ground-truth replay preserves the same hash. Modeled reads return
+    their real snapshot data instead; unmodeled reads and writes use this
+    failure shape so adapters, traces, and corpus audits can distinguish a
+    genuine empty result from missing benchmark semantics.
+    """
+    result: dict[str, Any] = {
+        "ok": False,
+        "status": "unsupported",
+        "noEffect": True,
+        "operation": operation,
+        "reason": reason,
+    }
+    if details:
+        result.update(details)
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -312,6 +350,13 @@ _TOOL_DESCRIPTIONS: dict[str, str] = {
         "on the calendar — focus blocks, deep-work blocks, and any 'block out N "
         "hours for X' request are calendar events, NOT BLOCK actions."
     ),
+    "CALENDAR_SOURCES": (
+        "List or administer exact calendar sources. Use operation=list before "
+        "select/deselect, then echo provider, grantId, connectorAccountId, "
+        "calendarId, and expectedVersion. Connect/reconnect returns an explicit "
+        "authorization, device-permission, or configuration handoff; it never "
+        "means the external source is connected until a provider receipt proves it."
+    ),
     "MESSAGE": (
         "Send, draft, search, triage, or manage messages and email. Use operation=send, "
         "draft_reply, manage, triage, search_inbox, list_channels, read_channel, or "
@@ -415,6 +460,10 @@ _DISCRIMINATORS: dict[str, tuple[str, list[str]]] = {
             "next_event",
             "update_preferences",
         ],
+    ),
+    "CALENDAR_SOURCES": (
+        "operation",
+        ["list", "select", "deselect", "connect", "reconnect"],
     ),
     "MESSAGE": (
         "operation",
@@ -561,7 +610,49 @@ def _tool_parameters_for_action(action_name: str) -> dict[str, Any]:
         }
         schema["required"] = [field]
 
-    if action_name == "LIFE_CREATE":
+    if action_name == "CALENDAR_SOURCES":
+        schema["properties"].update(
+            {
+                "provider": {
+                    "type": "string",
+                    "enum": ["google", "microsoft", "apple_calendar", "ics"],
+                    "description": "Exact calendar provider.",
+                },
+                "grantId": {
+                    "type": "string",
+                    "description": "Exact grant id copied from a fresh list result.",
+                },
+                "connectorAccountId": {
+                    "type": "string",
+                    "description": (
+                        "Exact connector account id copied from a fresh list "
+                        "result."
+                    ),
+                },
+                "calendarId": {
+                    "type": "string",
+                    "description": "Exact calendar id copied from a fresh list result.",
+                },
+                "expectedVersion": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "Selection revision copied from a fresh list result.",
+                },
+                "forceSync": {
+                    "type": "boolean",
+                    "description": "Request a provider refresh before listing.",
+                },
+                "name": {
+                    "type": "string",
+                    "description": "Display name for a new ICS source.",
+                },
+                "url": {
+                    "type": "string",
+                    "description": "HTTPS or webcal URL for a new ICS source.",
+                },
+            }
+        )
+    elif action_name == "LIFE_CREATE":
         schema["properties"]["title"] = {
             "type": "string",
             "description": (
@@ -1368,7 +1459,7 @@ def _u_calendar(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str, An
             if requested_event_id:
                 return {
                     "ok": False,
-                    "noop": True,
+                    "noEffect": True,
                     "missing_id": str(requested_event_id),
                     "subaction": sub,
                 }
@@ -1410,20 +1501,161 @@ def _u_calendar(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str, An
             "events": _search_calendar_events(world, kw, details),
         }
     if sub == "bulk_reschedule":
-        return {
-            "subaction": sub,
-            "ok": True,
-            "noop": True,
-            "events": _search_calendar_events(world, kw, details),
-        }
+        return _unsupported_no_effect(
+            operation=f"CALENDAR/{sub}",
+            reason="LifeWorld has no atomic bulk-reschedule transaction",
+            details={"events": _search_calendar_events(world, kw, details)},
+        )
     if sub in {"propose_times", "update_preferences"}:
-        # Planner-config subactions; LifeWorld has no place to persist these,
-        # so they're no-ops by design. State hash matches because both replays
-        # are no-ops.
-        return {"subaction": sub, "ok": True, "noop": True}
+        return _unsupported_no_effect(
+            operation=f"CALENDAR/{sub}",
+            reason=(
+                "LifeWorld does not model proposal artifacts"
+                if sub == "propose_times"
+                else "LifeWorld does not model calendar preference state"
+            ),
+        )
     raise UnsupportedAction(
         f"unsupported action in execute path: CALENDAR/{sub} — file gap in LIFEOPS_BENCH_GAPS.md"
     )
+
+
+def _u_calendar_sources(
+    world: LifeWorld,
+    kw: dict[str, Any],
+    name: str,
+) -> dict[str, Any]:
+    """Expose source-administration semantics without fabricating provider E2E.
+
+    LifeWorld can enumerate its deterministic calendars, but it cannot perform
+    OAuth, native permission grants, or external ICS fetches. Connect and write
+    operations therefore return explicit pending/unsupported states. The
+    runner-owned execution stamp marks every payload as deterministic, so these
+    results can exercise planning without satisfying trusted-evidence gates.
+    """
+    operation = kw.get("operation") or kw.get("subaction")
+    if operation not in {"list", "select", "deselect", "connect", "reconnect"}:
+        raise KeyError(
+            f"{name} requires operation=list|select|deselect|connect|reconnect"
+        )
+
+    def provider_name(source: str) -> str:
+        return {
+            "apple": "apple_calendar",
+            "outlook": "microsoft",
+        }.get(source, source)
+
+    sources: list[dict[str, Any]] = []
+    for calendar in sorted(
+        world.calendars.values(),
+        key=lambda item: (item.source, item.owner, item.id),
+    ):
+        provider = provider_name(calendar.source)
+        account_id = _synthetic_id(
+            "calendar_account",
+            {"provider": provider, "owner": calendar.owner},
+        )
+        grant_id = f"simulated-grant:{provider}:{account_id}"
+        sources.append(
+            {
+                "key": {
+                    "provider": provider,
+                    "side": "owner",
+                    "grantId": grant_id,
+                    "connectorAccountId": account_id,
+                    "calendarId": calendar.id,
+                },
+                "accountEmail": calendar.owner,
+                "summary": calendar.name,
+                "primary": calendar.is_primary,
+                "accessRole": "owner",
+                "includeInFeed": True,
+                "selectionVersion": 0,
+                "health": {
+                    "status": "fresh",
+                    "visibility": "details",
+                    "syncedAt": world.now_iso,
+                },
+            }
+        )
+
+    if operation == "list":
+        return {
+            "operation": operation,
+            "snapshot": {
+                "state": "complete" if sources else "unavailable",
+                "observedAt": world.now_iso,
+                "sources": sources,
+            },
+            "simulatedOnly": True,
+            "providerReceipt": None,
+        }
+
+    provider = kw.get("provider")
+    if provider not in {"google", "microsoft", "apple_calendar", "ics"}:
+        raise KeyError(f"{name}/{operation} requires an exact provider")
+    if operation in {"connect", "reconnect"}:
+        if provider in {"google", "microsoft"}:
+            state = "authorization_required"
+            handoff = "external_oauth_required"
+        elif provider == "apple_calendar":
+            state = "permission_required"
+            handoff = "native_device_permission_required"
+        else:
+            state = "configuration_required"
+            handoff = "external_ics_fetch_required"
+        return {
+            "operation": operation,
+            "connection": {
+                "state": state,
+                "provider": provider,
+                "connected": False,
+                "handoff": handoff,
+            },
+            "ok": False,
+            "simulatedOnly": True,
+            "providerReceipt": None,
+        }
+
+    required_identity = {
+        "provider": provider,
+        "grantId": kw.get("grantId"),
+        "connectorAccountId": kw.get("connectorAccountId"),
+        "calendarId": kw.get("calendarId"),
+    }
+    if (
+        any(not isinstance(value, str) or not value for value in required_identity.values())
+        or not isinstance(kw.get("expectedVersion"), int)
+        or kw["expectedVersion"] < 0
+    ):
+        raise KeyError(
+            f"{name}/{operation} requires exact provider, grantId, "
+            "connectorAccountId, calendarId, and non-negative expectedVersion"
+        )
+    target = next(
+        (
+            source
+            for source in sources
+            if source["key"] == {
+                **required_identity,
+                "side": "owner",
+            }
+        ),
+        None,
+    )
+    return {
+        "operation": operation,
+        "ok": False,
+        "error": (
+            "deterministic_source_not_found"
+            if target is None
+            else "external_source_selection_required"
+        ),
+        "source": target,
+        "changed": False,
+        "simulatedOnly": True,
+        "providerReceipt": None,
+    }
 
 
 def _u_message(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str, Any]:
@@ -1453,7 +1685,11 @@ def _u_message(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str, Any
         "read_channel",
         "read_with_contact",
     }:
-        return {"operation": op, "source": source, "ok": True, "noop": True}
+        return _unsupported_no_effect(
+            operation=f"MESSAGE/{op}",
+            reason="LifeWorld does not implement this cross-channel read projection",
+            details={"source": source},
+        )
     raise UnsupportedAction(
         f"unsupported action in execute path: MESSAGE/{op} — file gap in LIFEOPS_BENCH_GAPS.md"
     )
@@ -1559,9 +1795,11 @@ def _draft_reply_via_message(
     world: LifeWorld, kw: dict[str, Any], source: str
 ) -> dict[str, Any]:
     if source != "gmail":
-        # Drafts on chat channels aren't modeled — treat as no-op so state
-        # match still works. Add a non-mail draft store if scenarios need one.
-        return {"operation": "draft_reply", "source": source, "ok": True, "noop": True}
+        return _unsupported_no_effect(
+            operation="MESSAGE/draft_reply",
+            reason="LifeWorld has no persisted draft entity for chat channels",
+            details={"source": source},
+        )
     parent_id = (
         kw.get("messageId")
         or kw.get("message_id")
@@ -1821,9 +2059,14 @@ def _u_entity(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str, Any]
             "created": created,
         }
     if sub in {"log_interaction", "list"}:
-        # No interaction-log entity in LifeWorld; treat list/log_interaction
-        # as read-only no-ops so state hash matches.
-        return {"subaction": sub, "ok": True, "noop": True}
+        return _unsupported_no_effect(
+            operation=f"ENTITY/{sub}",
+            reason=(
+                "LifeWorld has no interaction-log entity"
+                if sub == "log_interaction"
+                else "LifeWorld does not expose the entity-list projection"
+            ),
+        )
     raise UnsupportedAction(
         f"unsupported action in execute path: ENTITY/{sub} — file gap in LIFEOPS_BENCH_GAPS.md"
     )
@@ -1981,20 +2224,27 @@ def _u_life_delete(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str,
         return {"id": target, "deleted": True}
     return {
         "subaction": kw.get("subaction", "delete"),
-        "ok": True,
-        "noop": True,
+        "ok": False,
+        "status": "unsupported",
+        "noEffect": True,
         "reason": "no concrete id; alarm definitions not modeled",
     }
 
 
 def _u_life_update(_world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[str, Any]:
-    """LIFE_UPDATE on alarm/reminder definitions — no-op (definitions not modeled)."""
-    return {"subaction": kw.get("subaction", "update"), "ok": True, "noop": True}
+    """Reject alarm-definition updates until LifeWorld models definitions."""
+    return _unsupported_no_effect(
+        operation="LIFE/update",
+        reason="LifeWorld does not model alarm or reminder definitions",
+    )
 
 
 def _u_life_skip(_world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[str, Any]:
-    """LIFE_SKIP — skip one occurrence; modeled as a no-op (no skip log entity)."""
-    return {"subaction": kw.get("subaction", "skip"), "ok": True, "noop": True}
+    """Reject occurrence skips until LifeWorld models skip logs."""
+    return _unsupported_no_effect(
+        operation="LIFE/skip",
+        reason="LifeWorld does not model occurrence skip logs",
+    )
 
 
 def _scheduled_task_id(kw: dict[str, Any]) -> str | None:
@@ -2252,7 +2502,10 @@ def _u_health(world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[str, Any
     """
     subaction = kw.get("subaction", "by_metric")
     if subaction != "by_metric":
-        return {"subaction": subaction, "ok": True, "noop": True}
+        return _unsupported_no_effect(
+            operation=f"HEALTH/{subaction}",
+            reason="LifeWorld implements only HEALTH/by_metric projections",
+        )
 
     metric_type = (kw.get("metric") or "").strip().lower()
 
@@ -2332,7 +2585,10 @@ def _u_money_readonly(world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[
     """
     subaction = kw.get("subaction", "dashboard")
     if subaction != "list_transactions":
-        return {"subaction": subaction, "ok": True, "noop": True}
+        return _unsupported_no_effect(
+            operation=f"MONEY/{subaction}",
+            reason="LifeWorld implements only MONEY/list_transactions projections",
+        )
 
     # --- list_transactions: filter transactions by category / date range ---
     transactions = list(world.transactions.values())
@@ -2390,8 +2646,11 @@ def _u_money_readonly(world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[
 def _u_money_subscription_audit(
     _world: LifeWorld, kw: dict[str, Any], _name: str
 ) -> dict[str, Any]:
-    """MONEY_SUBSCRIPTION_AUDIT — read-only no-op."""
-    return {"subaction": kw.get("subaction", "audit"), "ok": True, "noop": True}
+    """Reject subscription audits until the benchmark exposes a real projection."""
+    return _unsupported_no_effect(
+        operation="MONEY/subscription_audit",
+        reason="LifeWorld does not implement the subscription-audit projection",
+    )
 
 
 def _u_money_subscription_cancel(
@@ -2401,7 +2660,13 @@ def _u_money_subscription_cancel(
 
     """
     if not bool(kw.get("confirmed", False)):
-        return {"subaction": "cancel", "ok": True, "noop": True, "reason": "unconfirmed"}
+        return {
+            "subaction": "cancel",
+            "ok": False,
+            "status": "confirmation_required",
+            "noEffect": True,
+            "reason": "unconfirmed",
+        }
     slug = (kw.get("serviceSlug") or "").lower()
     service_name = (kw.get("serviceName") or "").lower()
     target_id: str | None = None
@@ -2429,18 +2694,19 @@ def _u_money_subscription_cancel(
 
 
 def _u_book_travel(_world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[str, Any]:
-    """BOOK_TRAVEL — search/offer path and cancel path.
-
-    Search/offer (default): returns stub offers without mutating state.
-    Cancel: marks a booking as cancelled in the fake state and returns the
-    cancelled booking id. No LifeWorld entity exists for bookings, so the
-    cancellation is a no-op for the state hash (same as search).
-    """
+    """Reject travel operations until LifeWorld has a booking store."""
     subaction = kw.get("subaction") or kw.get("action")
     if subaction == "cancel":
         booking_id = kw.get("booking_id") or kw.get("bookingId") or kw.get("id")
-        return {"ok": True, "cancelled_booking_id": booking_id}
-    return {"action": "BOOK_TRAVEL", "ok": True, "noop": True}
+        return _unsupported_no_effect(
+            operation="BOOK_TRAVEL/cancel",
+            reason="LifeWorld has no travel-booking store to cancel",
+            details={"bookingId": booking_id},
+        )
+    return _unsupported_no_effect(
+        operation=f"BOOK_TRAVEL/{subaction}",
+        reason="LifeWorld does not persist travel holds or bookings",
+    )
 
 
 def _u_block(_world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[str, Any]:
@@ -2471,7 +2737,10 @@ def _u_block(_world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[str, Any
         or kw.get("name")
         or None
     )
-    result: dict[str, Any] = {"subaction": kw.get("subaction", "block"), "ok": True, "noop": True}
+    result = _unsupported_no_effect(
+        operation=f"BLOCK/{kw.get('subaction', 'block')}",
+        reason="LifeWorld has no focus-block state or device enforcement boundary",
+    )
     if bundle_id is not None:
         result["bundle_id"] = bundle_id
     return result
@@ -2861,6 +3130,7 @@ _ACTION_HANDLERS: dict[
     "NOTE.create": _h_note_create,
     # Umbrella vocabulary (static scenarios + Eliza adapter)
     "CALENDAR": _u_calendar,
+    "CALENDAR_SOURCES": _u_calendar_sources,
     "MESSAGE": _u_message,
     "ENTITY": _u_entity,
     "LIFE_CREATE": _u_life_create,
@@ -2887,8 +3157,8 @@ _ACTION_HANDLERS: dict[
     "MONEY_SUBSCRIPTION_CANCEL": _u_money_subscription_cancel,
     "BOOK_TRAVEL": _u_book_travel,
     # BLOCK_* family.
-    # All BLOCK_* verbs share one handler — focus-block sessions aren't
-    # modeled in LifeWorld yet, so every BLOCK_* is a read-only no-op.
+    # All BLOCK_* verbs share one handler. Until LifeWorld has device or
+    # focus-session state, the handler returns an explicit unsupported result.
     "BLOCK": _u_block,
     "BLOCK_BLOCK": _u_block,
     "BLOCK_UNBLOCK": _u_block,
@@ -2915,7 +3185,12 @@ _ACTION_HANDLERS: dict[
     # Conversational terminal sentinels are valid assistant outcomes. They
     # have no LifeWorld side effect and should not be reported as executor
     # coverage gaps.
-    "REPLY": lambda _world, kw, _name: {"ok": True, "noop": True, "reply": kw},
+    "REPLY": lambda _world, kw, _name: {
+        "ok": True,
+        "effect": "none",
+        "terminal": True,
+        "reply": kw,
+    },
     # Promoted CALENDAR_* names (the manifest exporter promotes
     # subactions into top-level action names). Each promoted name carries
     # `subaction` in its kwargs already, so route to `_u_calendar` unchanged.
@@ -2991,7 +3266,7 @@ def _replay_ground_truth(scenario: Scenario, world_factory: WorldFactory) -> str
 def _workload_sha256(scenarios: list[Scenario], seeds: int) -> str:
     """Fingerprint the exact authored workload and seed expansion for publication."""
     payload = {
-        "schema_version": 1,
+        "schema_version": 2,
         "seeds_per_scenario": seeds,
         "scenarios": [
             {
@@ -3038,6 +3313,42 @@ def _workload_sha256(scenarios: list[Scenario], seeds: int) -> str:
                 ],
                 "expected_world_mutation": scenario.expected_world_mutation,
                 "tier": scenario.tier,
+                "opening_mode": scenario.opening_mode,
+                "trusted_evidence_requirement": (
+                    {
+                        "contract_id": scenario.trusted_evidence_requirement.contract_id,
+                        "contract_version": (
+                            scenario.trusted_evidence_requirement.contract_version
+                        ),
+                        "contract_sha256": (
+                            scenario.trusted_evidence_requirement.contract_sha256
+                        ),
+                        "required_assertion_ids": list(
+                            scenario.trusted_evidence_requirement.required_assertion_ids
+                        ),
+                        "allowed_actions": [
+                            {
+                                "name": policy.name,
+                                "discriminator_field": policy.discriminator_field,
+                                "allowed_discriminators": list(
+                                    policy.allowed_discriminators
+                                ),
+                                "risk": policy.risk,
+                                "required_kwargs": list(policy.required_kwargs),
+                                "max_calls": policy.max_calls,
+                            }
+                            for policy in (
+                                scenario.trusted_evidence_requirement.allowed_actions
+                            )
+                        ],
+                        "terminal_attestation_required": (
+                            scenario.trusted_evidence_requirement
+                            .terminal_attestation_required
+                        ),
+                    }
+                    if scenario.trusted_evidence_requirement is not None
+                    else None
+                ),
             }
             for scenario in scenarios
         ],
@@ -3081,6 +3392,8 @@ class LifeOpsBenchRunner:
         live_judge_min_turn: int = 5,
         abort_on_budget_exceeded: bool = True,
         agent_factory: AgentFactory | None = None,
+        trusted_tool_executor: TrustedToolExecutor | None = None,
+        trusted_evidence_verifier: TrustedEvidenceVerifier | None = None,
     ) -> None:
         if agent_fn is None and agent_factory is None:
             raise ValueError("LifeOpsBenchRunner requires agent_fn or agent_factory")
@@ -3090,6 +3403,11 @@ class LifeOpsBenchRunner:
             raise ValueError("LifeOpsBenchRunner concurrency must be positive")
         if seeds <= 0:
             raise ValueError("LifeOpsBenchRunner seeds must be positive")
+        if (trusted_tool_executor is None) != (trusted_evidence_verifier is None):
+            raise ValueError(
+                "trusted_tool_executor and trusted_evidence_verifier must be "
+                "configured together"
+            )
         self.agent_fn = agent_fn
         self.agent_factory = agent_factory
         self.world_factory = world_factory
@@ -3106,6 +3424,8 @@ class LifeOpsBenchRunner:
         self.per_scenario_timeout_s = per_scenario_timeout_s
         self.live_judge_min_turn = live_judge_min_turn
         self.abort_on_budget_exceeded = abort_on_budget_exceeded
+        self.trusted_tool_executor = trusted_tool_executor
+        self.trusted_evidence_verifier = trusted_evidence_verifier
 
         if scenarios is not None:
             self.scenarios = scenarios
@@ -3193,6 +3513,7 @@ class LifeOpsBenchRunner:
             model_name=self.evaluator_model,
             judge_model_name=self.judge_model,
             timestamp=datetime.now(timezone.utc).isoformat(),
+            trusted_evidence_verifier=self.trusted_evidence_verifier,
         )
         # Attach the agent / eval cost split. ``compile_benchmark_result``
         # only sees per-turn agent cost, so fold the eval ledger in here so
@@ -3262,12 +3583,13 @@ class LifeOpsBenchRunner:
     async def run_one(self, scenario: Scenario, seed: int) -> ScenarioResult:
         """Run a single scenario at a single seed and return its result.
 
-        STATIC mode opens with the persona's instruction and ends as soon as
-        the agent responds with no tool calls (after one optional first-question
-        fallback). LIVE mode adds a simulated-user turn on every executor reply
-        and consults the judge starting at ``live_judge_min_turn`` to decide
-        whether the persona's goal is satisfied. LIVE scenarios may also carry
-        ``Disruption`` entries that mutate the world after the named turn.
+        STATIC mode opens with the authored instruction and ends as soon as the
+        agent responds with no tool calls (after one optional first-question
+        fallback). LIVE scenarios may ask the independent persona model to
+        generate the opening from the hidden goal, then add another simulated
+        user turn after every executor reply. The judge starts at
+        ``live_judge_min_turn`` and LIVE disruptions mutate the world after the
+        named turn.
         """
         if scenario.mode is ScenarioMode.LIVE and self.evaluator is None:
             raise RuntimeError(
@@ -3275,15 +3597,52 @@ class LifeOpsBenchRunner:
                 "construct LifeOpsBenchRunner with simulated_user_client and judge_client."
             )
         scenario_evaluator = (
-            self.evaluator.fork()
-            if scenario.mode is ScenarioMode.LIVE and self.evaluator is not None
-            else None
+            self.evaluator.fork() if self.evaluator is not None else None
         )
 
         world = self.world_factory(seed, scenario.now_iso)
-        history: list[MessageTurn] = [
-            MessageTurn(role="user", content=_initial_user_content(scenario)),
-        ]
+        run_id = secrets.token_hex(16)
+        run_nonce = secrets.token_hex(32)
+        run_started_at = datetime.now(timezone.utc)
+        seen_receipt_ids: set[str] = set()
+        seen_tool_call_ids: set[str] = set()
+        policy_call_counts: dict[int, int] = {}
+        request_ordinal = 0
+        if scenario.mode is ScenarioMode.LIVE:
+            pre_opening_eval_cost = scenario_evaluator.cost_usd  # type: ignore[union-attr]
+            opening_turn = await scenario_evaluator.simulate_user_turn(  # type: ignore[union-attr]
+                scenario,
+                [],
+                world,
+            )
+            opening_text = opening_turn.content.strip()
+            if opening_text == scenario.instruction.strip():
+                raise ValueError(
+                    "simulated-user opening repeated the hidden goal verbatim"
+                )
+            history = [
+                MessageTurn(
+                    role="user",
+                    content=(
+                        _benchmark_clock_context(scenario.now_iso)
+                        + "\n\n"
+                        + opening_text
+                    ),
+                )
+            ]
+            await self._charge(
+                scenario_evaluator.cost_usd - pre_opening_eval_cost,  # type: ignore[union-attr]
+                scenario.id,
+                seed,
+                bucket="eval",
+            )
+        else:
+            history = [
+                MessageTurn(
+                    role="user",
+                    content=_initial_user_content(scenario),
+                )
+            ]
         turns: list[TurnResult] = []
         terminated_reason: str = "max_turns"
 
@@ -3302,16 +3661,112 @@ class LifeOpsBenchRunner:
         for turn_number in range(1, scenario.max_turns + 1):
             tool_manifest = build_tool_manifest(world)
             agent_turn = await active_agent_fn(list(history), tool_manifest)
+            if agent_turn.role != "assistant":
+                raise ValueError(
+                    "agent adapter crossed the role boundary: expected an "
+                    f"assistant turn, received {agent_turn.role!r}"
+                )
             history.append(agent_turn)
 
             agent_actions = _extract_actions_from_turn(agent_turn)
+            tool_call_ids = [
+                _extract_tool_call_id(
+                    agent_turn,
+                    action,
+                    action_index,
+                )
+                or f"runner-{run_id}-{turn_number}-{action_index}"
+                for action_index, action in enumerate(agent_actions)
+            ]
+            requirement = scenario.trusted_evidence_requirement
+            if requirement is not None:
+                for tool_call_id in tool_call_ids:
+                    validate_tool_call_id(tool_call_id)
+                    if tool_call_id in seen_tool_call_ids:
+                        raise ValueError(
+                            "agent reused tool_call_id "
+                            f"{tool_call_id!r} within one evidence-gated run"
+                        )
+                    seen_tool_call_ids.add(tool_call_id)
+            external_execution_enabled = (
+                requirement is not None
+                and self.trusted_tool_executor is not None
+                and self.trusted_evidence_verifier is not None
+            )
+            canonical_actions = [
+                _normalize_action(action) for action in agent_actions
+            ]
+            if external_execution_enabled:
+                # Validate the complete batch against a shadow before the first
+                # real dispatch. A later malformed or unauthorized call cannot
+                # leave an earlier call partially committed.
+                shadow = deepcopy(world)
+                next_policy_counts = dict(policy_call_counts)
+                for canonical_action in canonical_actions:
+                    validate_action_policy(
+                        canonical_action,
+                        requirement,
+                        next_policy_counts,
+                    )
+                    _execute_action(canonical_action, shadow)
+                policy_call_counts = next_policy_counts
+
             tool_results: list[dict[str, Any]] = []
-            for action in agent_actions:
+            turn_verified_receipts: list[VerifiedEvidenceReceipt] = []
+            for action_index, action in enumerate(canonical_actions):
                 # Execution failures don't crash the run — we surface them as
                 # tool-error messages and let scoring penalize via state mismatch.
-                tool_call_id = _extract_tool_call_id(agent_turn, action)
+                tool_call_id = tool_call_ids[action_index]
                 try:
-                    result_payload = _execute_action(action, world)
+                    if external_execution_enabled:
+                        request_ordinal += 1
+                        context = TrustedExecutionContext(
+                            run_id=run_id,
+                            run_nonce=run_nonce,
+                            run_started_at=run_started_at,
+                            scenario_id=scenario.id,
+                            seed=seed,
+                            tool_call_id=tool_call_id,
+                            request_ordinal=request_ordinal,
+                            action=action,
+                            contract_id=requirement.contract_id,
+                            contract_version=requirement.contract_version,
+                            contract_sha256=requirement.contract_sha256,
+                            requested_at=datetime.now(timezone.utc),
+                        )
+                        execution = await self.trusted_tool_executor.execute(context)
+                        receipt = self.trusted_evidence_verifier.verify(
+                            context,
+                            execution,
+                            requirement,
+                        )
+                        if receipt.receipt_id in seen_receipt_ids:
+                            raise RuntimeError(
+                                "trusted executor reused receipt_id "
+                                f"{receipt.receipt_id!r} within one run"
+                            )
+                        seen_receipt_ids.add(receipt.receipt_id)
+                        turn_verified_receipts.append(receipt)
+                        result_payload = mark_authenticated_external_result(
+                            execution.payload,
+                            receipt,
+                        )
+                        if receipt.success:
+                            # The deterministic world is a scoring shadow only;
+                            # authenticated artifacts, not this replay, establish
+                            # that the provider-side operation really occurred.
+                            try:
+                                _execute_action(action, world)
+                            except UnsupportedAction as exc:
+                                raise RuntimeError(
+                                    "authenticated action has no LifeWorld shadow "
+                                    f"implementation: {action.name}"
+                                ) from exc
+                    else:
+                        result_payload = _execute_action(action, world)
+                        result_payload = mark_deterministic_lifeworld_result(
+                            result_payload
+                        )
                     tool_results.append(
                         {
                             "name": action.name,
@@ -3331,6 +3786,7 @@ class LifeOpsBenchRunner:
                 except UnsupportedAction as exc:
                     logger.warning("Unsupported action in scenario %s: %s", scenario.id, exc)
                     error_payload = {"error": "unsupported_action", "message": str(exc)}
+                    error_payload = mark_deterministic_lifeworld_result(error_payload)
                     tool_results.append(
                         {
                             "name": action.name,
@@ -3352,6 +3808,7 @@ class LifeOpsBenchRunner:
                         "Action %s failed in scenario %s: %s", action.name, scenario.id, exc
                     )
                     error_payload = {"error": "execution_failed", "message": str(exc)}
+                    error_payload = mark_deterministic_lifeworld_result(error_payload)
                     tool_results.append(
                         {
                             "name": action.name,
@@ -3437,6 +3894,7 @@ class LifeOpsBenchRunner:
                 model_tier=getattr(agent_turn, "model_tier", None),
                 prompt_cache_key=getattr(agent_turn, "prompt_cache_key", None),
                 model_name=agent_turn.model_name or self.agent_model_name,
+                verified_evidence=turn_verified_receipts,
             )
 
             # Terminal detection: assistant turn with no tool_calls signals
@@ -3449,9 +3907,24 @@ class LifeOpsBenchRunner:
                     # Plain text means the agent is responding. Apply the
                     # first-question fallback once if it's a clarifier; else
                     # terminate.
-                    user_turn = await self._next_static_user_turn(
-                        scenario, agent_turn, turn_number
+                    pre_eval_cost = (
+                        scenario_evaluator.cost_usd
+                        if scenario_evaluator is not None
+                        else 0.0
                     )
+                    user_turn = await self._next_static_user_turn(
+                        scenario,
+                        agent_turn,
+                        turn_number,
+                        evaluator=scenario_evaluator,
+                    )
+                    if scenario_evaluator is not None:
+                        await self._charge(
+                            scenario_evaluator.cost_usd - pre_eval_cost,
+                            scenario.id,
+                            seed,
+                            bucket="eval",
+                        )
                     if user_turn is None:
                         terminated_reason = "respond"
                         turns.append(turn_result)
@@ -3470,7 +3943,15 @@ class LifeOpsBenchRunner:
                 pre_eval_cost = scenario_evaluator.cost_usd  # type: ignore[union-attr]
                 if turn_number >= self.live_judge_min_turn:
                     satisfied, _reason = await scenario_evaluator.judge_satisfaction(  # type: ignore[union-attr]
-                        scenario, history, world
+                        scenario,
+                        history,
+                        world,
+                        evidence_verification=verify_result_trusted_evidence(
+                            scenario,
+                            [*turns, turn_result],
+                            seed=seed,
+                            verifier=self.trusted_evidence_verifier,
+                        ),
                     )
                     await self._charge(
                         scenario_evaluator.cost_usd - pre_eval_cost,  # type: ignore[union-attr]
@@ -3544,7 +4025,11 @@ class LifeOpsBenchRunner:
                 else []
             ),
         )
-        result.total_score = score_scenario(result, scenario)
+        result.total_score = score_scenario(
+            result,
+            scenario,
+            trusted_evidence_verifier=self.trusted_evidence_verifier,
+        )
         return result
 
     async def _apply_disruptions(
@@ -3640,6 +4125,8 @@ class LifeOpsBenchRunner:
         scenario: Scenario,
         agent_turn: MessageTurn,
         turn_number: int,
+        *,
+        evaluator: LifeOpsEvaluator | None,
     ) -> MessageTurn | None:
         """STATIC mode: only respond on the FIRST agent turn if the fallback applies; otherwise terminate.
 
@@ -3649,8 +4136,8 @@ class LifeOpsBenchRunner:
         """
         if turn_number != 1:
             return None
-        if self.evaluator is not None:
-            return await self.evaluator.apply_first_question_fallback(
+        if evaluator is not None:
+            return await evaluator.apply_first_question_fallback(
                 scenario, agent_turn.content
             )
         fallback = scenario.first_question_fallback
@@ -3809,16 +4296,23 @@ class LifeOpsBenchRunner:
         print("=" * 60 + "\n")
 
 
-def _extract_tool_call_id(agent_turn: MessageTurn, action: Action) -> str | None:
-    """Find the tool_call_id matching `action.name` in the assistant turn."""
+def _extract_tool_call_id(
+    agent_turn: MessageTurn,
+    action: Action,
+    action_index: int,
+) -> str | None:
+    """Correlate an extracted action with the same-position raw tool call."""
     if not agent_turn.tool_calls:
         return None
-    for call in agent_turn.tool_calls:
-        name = (
-            call.get("function", {}).get("name")
-            if isinstance(call.get("function"), dict)
-            else call.get("name")
-        )
-        if name == action.name:
-            return call.get("id")
+    if action_index >= len(agent_turn.tool_calls):
+        return None
+    call = agent_turn.tool_calls[action_index]
+    name = (
+        call.get("function", {}).get("name")
+        if isinstance(call.get("function"), dict)
+        else call.get("name")
+    )
+    if name == action.name:
+        call_id = call.get("id")
+        return call_id if isinstance(call_id, str) and call_id else None
     return None

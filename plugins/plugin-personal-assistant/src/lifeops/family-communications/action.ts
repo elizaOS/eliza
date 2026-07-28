@@ -6,13 +6,16 @@
  */
 import {
   type Action,
-  type ActionResult,
-  type HandlerCallback,
   type IAgentRuntime,
   type Memory,
   resolveActionArgs,
   type SubactionsMap,
 } from "@elizaos/core";
+import {
+  completeLifeOpsEffect,
+  lifeOpsAppliedEffect,
+  lifeOpsFailedEffect,
+} from "../action-effect-result.js";
 import type { AuthenticatedMessageSpeakerAttestation } from "./authenticated-speaker-verifier.js";
 import {
   type FamilyCommunicationsService,
@@ -67,12 +70,31 @@ export interface FamilyCommunicationsActionDependencies {
   getService?(runtime: IAgentRuntime): FamilyCommunicationsService | null;
 }
 
-async function complete(
-  callback: HandlerCallback | undefined,
-  result: ActionResult,
-): Promise<ActionResult> {
-  if (result.text) await callback?.({ text: result.text });
-  return result;
+function requestId(message: Memory): string {
+  return message.id ?? `room:${message.roomId}`;
+}
+
+function failedReceipt(input: {
+  message: Memory;
+  operation: string;
+  code: string;
+  retryable: boolean;
+}) {
+  const observedAt = new Date().toISOString();
+  const id = requestId(input.message);
+  return lifeOpsFailedEffect({
+    receiptId: `${ACTION_NAME}:${input.operation}:${id}:${observedAt}`,
+    operation: input.operation,
+    resource: { kind: "runtime.message", id },
+    artifacts: [],
+    idempotency: { key: null, replayed: false },
+    observedAt,
+    failure: {
+      code: input.code,
+      retryable: input.retryable,
+      acceptance: "rejected",
+    },
+  });
 }
 
 function stringArray(
@@ -188,6 +210,7 @@ export function createFamilyCommunicationsAction(
       "domain:calendar",
       "capability:read",
       "capability:write",
+      "effect:receipt-required",
       "surface:internal",
     ],
     description:
@@ -289,11 +312,20 @@ export function createFamilyCommunicationsAction(
         message,
       );
       if (!principalEntityId) {
-        return complete(callback, {
-          success: false,
-          text: "A verified household identity is required for this view.",
-          data: { error: "PERMISSION_DENIED" },
-        });
+        return completeLifeOpsEffect(
+          callback,
+          {
+            success: false,
+            text: "A verified household identity is required for this view.",
+            data: { error: "PERMISSION_DENIED" },
+          },
+          failedReceipt({
+            message,
+            operation: "lifeops.family_communications.authorize",
+            code: "PERMISSION_DENIED",
+            retryable: false,
+          }),
+        );
       }
       const resolved = await resolveActionArgs<
         "capture_voice_bundle" | "child_week",
@@ -307,14 +339,23 @@ export function createFamilyCommunicationsAction(
         subactions: SUBACTIONS,
       });
       if (!resolved.ok) {
-        return complete(callback, {
-          success: false,
-          text: resolved.clarification,
-          data: {
-            error: "MISSING_FAMILY_COMMUNICATIONS_PARAMETERS",
-            missing: resolved.missing,
+        return completeLifeOpsEffect(
+          callback,
+          {
+            success: false,
+            text: resolved.clarification,
+            data: {
+              error: "MISSING_FAMILY_COMMUNICATIONS_PARAMETERS",
+              missing: resolved.missing,
+            },
           },
-        });
+          failedReceipt({
+            message,
+            operation: "lifeops.family_communications.resolve_request",
+            code: "MISSING_FAMILY_COMMUNICATIONS_PARAMETERS",
+            retryable: true,
+          }),
+        );
       }
       const service =
         deps.getService?.(runtime) ?? getFamilyCommunicationsService(runtime);
@@ -358,19 +399,46 @@ export function createFamilyCommunicationsAction(
             message.id,
           ),
         });
-        return complete(callback, {
-          success: true,
-          text:
-            result.bundle.authorizationState === "authorized"
-              ? "The family request was separated into proposals; nothing was sent, changed, or purchased."
-              : "The family request was quarantined because speaker authorization could not be verified.",
-          data: {
-            bundle: result.bundle,
-            candidates: result.candidates,
-            replayed: result.replayed,
-            externalEffectsPerformed: false,
+        return completeLifeOpsEffect(
+          callback,
+          {
+            success: true,
+            text:
+              result.bundle.authorizationState === "authorized"
+                ? "The family request was separated into proposals; nothing was sent, changed, or purchased."
+                : "The family request was quarantined because speaker authorization could not be verified.",
+            data: {
+              bundle: result.bundle,
+              candidates: result.candidates,
+              replayed: result.replayed,
+              externalEffectsPerformed: false,
+            },
           },
-        });
+          lifeOpsAppliedEffect({
+            receiptId: `${ACTION_NAME}:capture_voice_bundle:${requestId(message)}:${result.bundle.bundleId}`,
+            operation: "lifeops.family_voice_bundle.capture",
+            resource: {
+              kind: "lifeops.family_voice_bundle",
+              id: result.bundle.bundleId,
+              version: result.bundle.inputSha256,
+            },
+            artifacts: result.candidates.map((candidate) => ({
+              kind: "lifeops.family_voice_candidate",
+              id: candidate.candidateId,
+              version: String(candidate.version),
+            })),
+            idempotency: {
+              key: result.bundle.turnId,
+              replayed: result.replayed,
+            },
+            observedAt: result.bundle.createdAt,
+            commit: {
+              kind: "durable",
+              id: result.bundle.bundleId,
+              committedAt: result.bundle.createdAt,
+            },
+          }),
+        );
       }
       const childEntityId = requireFamilyText(
         resolved.params.childEntityId,
@@ -401,17 +469,37 @@ export function createFamilyCommunicationsAction(
         windowEndsAt,
         items,
       });
-      return complete(callback, {
-        success: true,
-        text: "The child-safe week view is ready.",
-        data: {
-          projection,
-          omittedCount: Object.values(projection.omissions).reduce(
-            (total, count) => total + count,
-            0,
-          ),
+      return completeLifeOpsEffect(
+        callback,
+        {
+          success: true,
+          text: "The child-safe week view is ready.",
+          data: {
+            projection,
+            omittedCount: Object.values(projection.omissions).reduce(
+              (total, count) => total + count,
+              0,
+            ),
+          },
         },
-      });
+        lifeOpsAppliedEffect({
+          receiptId: `${ACTION_NAME}:child_week:${requestId(message)}:${projection.projectionId}`,
+          operation: "lifeops.child_week_projection.create",
+          resource: {
+            kind: "lifeops.child_week_projection",
+            id: projection.projectionId,
+            version: projection.snapshotSha256,
+          },
+          artifacts: [],
+          idempotency: { key: null, replayed: false },
+          observedAt: projection.generatedAt,
+          commit: {
+            kind: "durable",
+            id: projection.projectionId,
+            committedAt: projection.generatedAt,
+          },
+        }),
+      );
     },
   };
 }

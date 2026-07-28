@@ -83,6 +83,55 @@ describe("evaluateParentingGuidance", () => {
     expect(result.frameworkNotice).toMatch(/does not impersonate/);
   });
 
+  it("does not claim named-framework grounding when its reviewed source does not cover the topic", () => {
+    const result = evaluateParentingGuidance(
+      request({
+        topic: "routines",
+        requestedFramework: "good_inside",
+      }),
+    );
+
+    expect(result.status).toBe("educational_options");
+    expect(
+      result.sources.some(
+        (source) => source.evidenceTier === "named_framework_primary",
+      ),
+    ).toBe(false);
+    expect(result.frameworkNotice).toMatch(
+      /No reviewed primary source from the named framework/u,
+    );
+  });
+
+  it.each(["communication", "independence"] as const)(
+    "returns cited toddler-preschool options for %s",
+    (topic) => {
+      const result = evaluateParentingGuidance(
+        request({
+          subject: {
+            entityId: "toddler-1",
+            ageBand: "toddler_preschool",
+          },
+          privacy: {
+            ...request().privacy,
+            subjectEntityId: "toddler-1",
+          },
+          topic,
+        }),
+      );
+
+      expect(result.status).toBe("educational_options");
+      expect(result.options.length).toBeGreaterThan(0);
+      expect(
+        result.options.every((option) => option.sourceIds.length > 0),
+      ).toBe(true);
+      expect(
+        result.sources.some(
+          (source) => source.id === "cdc-positive-parenting-tips-2026",
+        ),
+      ).toBe(true);
+    },
+  );
+
   it("stops ordinary guidance for self-harm or immediate danger and requires locale resolution", () => {
     const result = evaluateParentingGuidance(
       request({
@@ -138,6 +187,33 @@ describe("evaluateParentingGuidance", () => {
     expect(legal.handoff?.kinds).toEqual(["qualified_legal_professional"]);
   });
 
+  it("preserves every applicable handoff when urgent, safeguarding, and clinical risks coexist", () => {
+    const result = evaluateParentingGuidance(
+      request({
+        safety: {
+          ...request().safety,
+          selfHarm: "present",
+          suspectedAbuseOrNeglect: "present",
+          medicationOrDiagnosis: "present",
+          severeOrPersistentSymptoms: "present",
+        },
+      }),
+    );
+
+    expect(result.status).toBe("urgent_safety_handoff");
+    expect(result.handoff).toMatchObject({ urgency: "immediate" });
+    expect(result.handoff?.kinds).toEqual([
+      "emergency_services",
+      "crisis_support",
+      "child_safeguarding",
+      "licensed_mental_health_professional",
+      "pediatrician_or_prescriber",
+    ]);
+    expect(result.reasons.join(" ")).toMatch(
+      /self-harm.*abuse or neglect.*Medication/isu,
+    );
+  });
+
   it("withholds teen-private context from a co-parent without consent or a verified scope", () => {
     const result = evaluateParentingGuidance(
       request({
@@ -162,6 +238,55 @@ describe("evaluateParentingGuidance", () => {
     expect(result.mayDisclosePrivateContext).toBe(false);
     expect(result.omissionNotice).toMatch(/contents are omitted/);
     expect(result.options).toEqual([]);
+  });
+
+  it("preserves generic safety and professional handoffs while private child context remains withheld", () => {
+    const privateRequest = request({
+      subject: { entityId: "teen-1", ageBand: "teen" },
+      requester: {
+        principalEntityId: "coparent-1",
+        role: "co_parent",
+        identityAssurance: "connector_verified",
+        grantedScopes: ["household.subject.freebusy"],
+      },
+      privacy: {
+        recordScope: "teen_private",
+        subjectEntityId: "teen-1",
+        subjectExplicitlyConsentedToRequester: false,
+        safetyDisclosureAuthorized: false,
+      },
+    });
+    const medication = evaluateParentingGuidance({
+      ...privateRequest,
+      safety: {
+        ...privateRequest.safety,
+        medicationOrDiagnosis: "present",
+      },
+    });
+    expect(medication).toMatchObject({
+      status: "privacy_withheld",
+      mayDisclosePrivateContext: false,
+    });
+    expect(medication.handoff?.kinds).toEqual([
+      "licensed_mental_health_professional",
+      "pediatrician_or_prescriber",
+    ]);
+
+    const ambiguous = evaluateParentingGuidance({
+      ...privateRequest,
+      safety: {
+        ...privateRequest.safety,
+        selfHarm: "unknown",
+      },
+    });
+    expect(ambiguous).toMatchObject({
+      status: "privacy_withheld",
+      mayDisclosePrivateContext: false,
+    });
+    expect(ambiguous.handoff?.kinds).toEqual([
+      "emergency_services",
+      "crisis_support",
+    ]);
   });
 
   it("allows the teen subject while preserving age-specific privacy language", () => {
@@ -205,6 +330,10 @@ describe("evaluateParentingGuidance", () => {
     expect(result.status).toBe("needs_safety_clarification");
     expect(result.options).toEqual([]);
     expect(result.reasons.join(" ")).toContain("severeOrPersistentSymptoms");
+    expect(result.handoff?.kinds).toEqual([
+      "emergency_services",
+      "crisis_support",
+    ]);
   });
 
   it("fails closed when source review has expired", () => {
@@ -212,7 +341,8 @@ describe("evaluateParentingGuidance", () => {
       request({ requestedAt: "2027-02-01T12:00:00.000Z" }),
     );
 
-    expect(result.status).toBe("professional_handoff");
+    expect(result.status).toBe("evidence_unavailable");
+    expect(result.handoff).toBeNull();
     expect(result.options).toEqual([]);
     expect(result.reasons.join(" ")).toMatch(/past their required review date/);
   });

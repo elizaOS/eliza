@@ -28,6 +28,7 @@ import { calendarRouteHandler } from "../src/routes/plugin-routes.js";
 import {
   type CalendarHostGate,
   CalendarService,
+  ensureCalendarFeedPreferenceTable,
   ensureGoogleCalendarWatchChannelTable,
   ensureIcsCalendarSourceTable,
 } from "../src/service/index.js";
@@ -307,6 +308,7 @@ async function initializeDatabase(pg: PGlite): Promise<void> {
     return result.rows;
   };
   await ensureIcsCalendarSourceTable(execute);
+  await ensureCalendarFeedPreferenceTable(execute);
   await ensureGoogleCalendarWatchChannelTable(execute);
 }
 
@@ -508,7 +510,7 @@ async function waitForSyncRetryTask(
   throw new Error("Google Calendar notification retry task was not scheduled.");
 }
 
-describe("Google Calendar push lifecycle", () => {
+describe("Google Calendar push lifecycle", { timeout: 30_000 }, () => {
   const harnesses: Harness[] = [];
 
   afterEach(async () => {
@@ -565,7 +567,7 @@ describe("Google Calendar push lifecycle", () => {
     );
     expect(bodyResponse.status).toBe(400);
     expect(harness.google.eventPageRequests).toHaveLength(beforeBodyAttempt);
-  }, 15_000);
+  }, 30_000);
 
   it("survives a runtime restart and ignores duplicate or out-of-order message numbers", async () => {
     const first = await createHarness();

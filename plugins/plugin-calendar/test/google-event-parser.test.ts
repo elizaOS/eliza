@@ -172,7 +172,7 @@ describe("lifeOpsCalendarEventFromGoogle (Google -> LifeOps contract)", () => {
     expect(result.metadata.visibility).toBe("private");
 
     expect(result.syncedAt).toBe("2026-06-16T08:00:00.000Z");
-    expect(result.updatedAt).toBe("2026-06-16T08:00:00.000Z");
+    expect(result.updatedAt).toBe("2026-06-15T12:00:00.000Z");
     expect(result.connectorAccountId).toBe("acct-123");
     expect(result.grantId).toBe("connector-account:acct-123");
     expect(result.accountEmail).toBe("owner@example.com");
@@ -190,6 +190,7 @@ describe("lifeOpsCalendarEventFromGoogle (Google -> LifeOps contract)", () => {
     expect(result.startAt).toBe("2026-07-04T00:00:00.000Z");
     expect(result.endAt).toBe("2026-07-05T00:00:00.000Z");
     expect(result.title).toBe("Company holiday");
+    expect(result.updatedAt).toBe("2026-06-16T08:00:00.000Z");
     // No conference / no attendees for this event.
     expect(result.conferenceLink).toBeNull();
     expect(result.attendees).toEqual([]);
@@ -243,6 +244,7 @@ describe("lifeOpsCalendarSummaryFromGoogle (calendar list contract)", () => {
       selected: true,
       // includeInFeed defaults to true (opt-out, never opt-in).
       includeInFeed: true,
+      selectionVersion: 0,
     });
   });
 

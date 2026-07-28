@@ -439,7 +439,7 @@ async def test_eval_cost_counted_toward_budget() -> None:
             content="working on it",
             tool_calls=[
                 {
-                    "id": "call_x",
+                    "id": f"call_x_{free_calls['n']}",
                     "type": "function",
                     "function": {
                         "name": "REMINDER.create",

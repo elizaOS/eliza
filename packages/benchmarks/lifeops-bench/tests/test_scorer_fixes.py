@@ -1812,7 +1812,7 @@ def test_p2_9_life_review_not_read_only() -> None:
 
 def _live_scenario(
     *,
-    expected_world_mutation: str = "auto",
+    expected_world_mutation: str = "changed",
     world_assertions: list[str] | None = None,
 ) -> Scenario:
     """A LIVE scenario: no ground truth, judged by the simulated user."""
@@ -1864,6 +1864,7 @@ def test_live_correct_mutation_scores_above_do_nothing() -> None:
 
 def test_live_read_only_unchanged_world_scores_full_and_counts_as_pass() -> None:
     scenario = _live_scenario(
+        expected_world_mutation="unchanged",
         world_assertions=[
             "No write to chat_message store (this is a read-only summarization task).",
         ],
@@ -1899,6 +1900,7 @@ def test_live_read_only_mutation_loses_state_bonus() -> None:
 
 def test_live_optional_mutation_allows_unchanged_or_changed_world() -> None:
     scenario = _live_scenario(
+        expected_world_mutation="optional",
         world_assertions=[
             "Either: at least one email moved to archive after approval; OR: no mutation if persona declined all recommendations.",
         ],

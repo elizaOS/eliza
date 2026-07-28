@@ -13,7 +13,13 @@ import {
   normalizeCalendarAttendees,
   normalizeCalendarTimeZone,
 } from "@elizaos/plugin-calendar/internal/calendar-normalize";
-import { normalizeRecurrence } from "@elizaos/plugin-calendar/internal/recurrence";
+import {
+  buildRecurrenceSplitPlan,
+  normalizeRecurrence,
+  recurrenceLinesFrom,
+  recurrenceOriginalStartAtFrom,
+  recurringEventIdFrom,
+} from "@elizaos/plugin-calendar/internal/recurrence";
 import type {
   CreateLifeOpsCalendarEventRequest,
   GetLifeOpsCalendarFeedRequest,
@@ -355,7 +361,11 @@ function requireSeriesMasterBinding(
     { action: "modify_event" | "cancel_event" }
   >,
 ): CalendarSeriesMasterBinding | null {
-  if ((payload.recurrenceScope ?? "instance") !== "series") {
+  const recurrenceScope = payload.recurrenceScope ?? "instance";
+  if (
+    recurrenceScope !== "series" &&
+    recurrenceScope !== "this_and_following"
+  ) {
     if (payload.seriesMaster) {
       throw new CalendarMutationPreflightError(
         "CALENDAR_MUTATION_INVALID_PAYLOAD",
@@ -366,10 +376,13 @@ function requireSeriesMasterBinding(
   }
   const binding = payload.seriesMaster;
   if (!binding) {
-    if (payload.editorRequestSha256) {
+    if (
+      payload.editorRequestSha256 ||
+      recurrenceScope === "this_and_following"
+    ) {
       throw new CalendarMutationPreflightError(
         "CALENDAR_MUTATION_SERIES_MASTER_BINDING_REQUIRED",
-        "A recurring-series editor approval must bind the exact series master.",
+        "A master-scoped recurring-event approval must bind the exact series master.",
       );
     }
     return null;
@@ -453,6 +466,7 @@ async function resolveCalendarSource(
         timeZone: null,
         selected: true,
         includeInFeed: true,
+        selectionVersion: 0,
       };
     }
 
@@ -835,6 +849,102 @@ async function resolveConditionalMutationTarget(
   return target;
 }
 
+function validateThisAndFollowingPreflight(
+  payload: Extract<
+    CalendarMutationPayload,
+    { action: "modify_event" | "cancel_event" }
+  >,
+  occurrence: LifeOpsCalendarEvent,
+  seriesMaster: LifeOpsCalendarEvent,
+): void {
+  if (payload.recurrenceScope !== "this_and_following") return;
+  if (occurrence.provider !== "google" || seriesMaster.provider !== "google") {
+    throw new CalendarMutationPreflightError(
+      "CALENDAR_RECURRENCE_SPLIT_PROVIDER_UNSUPPORTED",
+      "This-and-following mutations currently require Google Calendar.",
+      { details: { provider: occurrence.provider } },
+    );
+  }
+  if (
+    payload.action === "cancel_event" &&
+    payload.cancellationMode !== "organizer_cancel"
+  ) {
+    throw new CalendarMutationPreflightError(
+      "CALENDAR_RECURRENCE_SPLIT_CANCELLATION_MODE_UNSUPPORTED",
+      "This-and-following cancellation is available only to the series organizer.",
+      { details: { cancellationMode: payload.cancellationMode ?? null } },
+    );
+  }
+  const masterEventId = recurringEventIdFrom(occurrence);
+  const originalStartAt = recurrenceOriginalStartAtFrom(occurrence);
+  if (
+    !masterEventId ||
+    masterEventId !== seriesMaster.externalId ||
+    !originalStartAt
+  ) {
+    throw new CalendarMutationPreflightError(
+      "CALENDAR_RECURRENCE_SPLIT_OCCURRENCE_REQUIRED",
+      "The approved target is not bound to the selected recurring-series master.",
+    );
+  }
+  if (
+    occurrence.isAllDay ||
+    occurrence.metadata.originalStartIsAllDay === true
+  ) {
+    throw new CalendarMutationPreflightError(
+      "CALENDAR_RECURRENCE_SPLIT_ALL_DAY_UNSUPPORTED",
+      "This-and-following is unavailable for all-day recurrence until date-only split semantics can be preserved.",
+    );
+  }
+  if (Date.parse(originalStartAt) !== Date.parse(occurrence.startAt)) {
+    throw new CalendarMutationPreflightError(
+      "CALENDAR_RECURRENCE_SPLIT_TARGET_EXCEPTION_UNSUPPORTED",
+      "The selected occurrence is a moved exception and cannot be used as a lossless series split boundary.",
+    );
+  }
+  if (
+    payload.action === "modify_event" &&
+    payload.patch.title !== null &&
+    !payload.patch.title.trim()
+  ) {
+    throw new CalendarMutationPreflightError(
+      "CALENDAR_RECURRENCE_SPLIT_TITLE_REQUIRED",
+      "The following series must retain a non-empty title.",
+    );
+  }
+  const timeZone = seriesMaster.timezone ?? occurrence.timezone;
+  if (!timeZone) {
+    throw new CalendarMutationPreflightError(
+      "CALENDAR_RECURRENCE_SPLIT_TIMEZONE_MISSING",
+      "The series timezone is required to verify the split boundary.",
+    );
+  }
+  try {
+    buildRecurrenceSplitPlan({
+      recurrence: recurrenceLinesFrom(seriesMaster),
+      ...(payload.action === "modify_event" &&
+      payload.patch.recurrence !== null &&
+      payload.patch.recurrence !== undefined
+        ? { replacementRecurrence: [...payload.patch.recurrence] }
+        : {}),
+      seriesStartAt: new Date(seriesMaster.startAt),
+      targetStartAt: new Date(originalStartAt),
+      timeZone,
+    });
+  } catch (error) {
+    // error-policy:J2 Approval preflight keeps the calendar domain cause while
+    // translating it into a durable, ledger-classified invalidation.
+    if (error instanceof CalendarServiceError) {
+      throw new CalendarMutationPreflightError(
+        error.code ?? "CALENDAR_RECURRENCE_SPLIT_UNSUPPORTED",
+        error.message,
+        { cause: error },
+      );
+    }
+    throw error;
+  }
+}
+
 function receiptFromEvent(args: {
   readonly operation: "schedule_event" | "modify_event";
   readonly event: LifeOpsCalendarEvent;
@@ -930,6 +1040,7 @@ export function createLifeOpsCalendarMutationPort(
         binding,
         seriesMaster,
       );
+      validateThisAndFollowingPreflight(payload, event, target);
       return {
         operation: payload.action,
         provider: calendar.provider,
@@ -938,7 +1049,12 @@ export function createLifeOpsCalendarMutationPort(
         event: target,
         providerEventId: target.externalId,
         providerVersion: seriesMaster?.etag ?? binding.expectedProviderVersion,
-        idempotencyKey: null,
+        idempotencyKey:
+          payload.recurrenceScope === "this_and_following"
+            ? calendarMutationOperationKey(
+                calendarMutationApprovalSha256(request),
+              )
+            : null,
         recurrenceScope: payload.recurrenceScope ?? null,
         cancellationMode:
           payload.action === "cancel_event"
@@ -1043,7 +1159,10 @@ export function createLifeOpsCalendarMutationPort(
             side: payload.side ?? "owner",
             grantId: preflight.sourceId,
             calendarId: payload.calendarId,
-            eventId: providerEventId,
+            eventId:
+              payload.recurrenceScope === "this_and_following"
+                ? payload.eventId
+                : providerEventId,
             ...(payload.patch.title !== null
               ? { title: payload.patch.title }
               : {}),
@@ -1081,6 +1200,13 @@ export function createLifeOpsCalendarMutationPort(
               : {}),
             notifyAttendees: payload.notifyAttendees === true,
             expectedProviderVersion,
+            ...(payload.recurrenceScope === "this_and_following"
+              ? {
+                  expectedOccurrenceProviderVersion:
+                    payload.expectedProviderVersion ?? undefined,
+                  idempotencyKey: preflight.idempotencyKey ?? undefined,
+                }
+              : {}),
           });
           return receiptFromEvent({
             operation: payload.action,
@@ -1129,12 +1255,22 @@ export function createLifeOpsCalendarMutationPort(
           side: payload.side ?? "owner",
           grantId: preflight.sourceId,
           calendarId: payload.calendarId,
-          eventId: providerEventId,
+          eventId:
+            payload.recurrenceScope === "this_and_following"
+              ? payload.eventId
+              : providerEventId,
           ...(payload.recurrenceScope
             ? { recurrenceScope: payload.recurrenceScope }
             : {}),
           notifyAttendees: payload.notifyAttendees,
           expectedProviderVersion,
+          ...(payload.recurrenceScope === "this_and_following"
+            ? {
+                expectedOccurrenceProviderVersion:
+                  payload.expectedProviderVersion ?? undefined,
+                idempotencyKey: preflight.idempotencyKey ?? undefined,
+              }
+            : {}),
         });
         return {
           operation: payload.action,

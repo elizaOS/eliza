@@ -126,6 +126,9 @@ function normalizeRequestedCapabilities(scopes: readonly string[] | undefined): 
   // OAuth scope URLs. Both shapes are accepted so the manager's startOAuth API
   // surface stays uniform with other providers (which use raw scopes).
   const requested = new Set<GoogleCapability>();
+  const identityScopes = new Set<string>(
+    GOOGLE_IDENTITY_SCOPES.map((scope) => scope.toLowerCase())
+  );
   for (const value of scopes) {
     if (isGoogleCapability(value)) {
       requested.add(value);
@@ -134,10 +137,12 @@ function normalizeRequestedCapabilities(scopes: readonly string[] | undefined): 
     const matched = matchCapabilityFromScope(value);
     if (matched) {
       requested.add(matched);
+      continue;
     }
-  }
-  if (requested.size === 0) {
-    return [...GOOGLE_CAPABILITIES];
+    if (identityScopes.has(value.trim().toLowerCase())) {
+      continue;
+    }
+    throw new Error(`Google OAuth capability or scope is not recognized: ${value}`);
   }
   return [...requested];
 }

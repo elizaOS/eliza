@@ -149,15 +149,21 @@ export function useCalendarSources(): UseCalendarSourcesResult {
 
       try {
         const response = await calendarClient.setLifeOpsCalendarIncluded({
-          calendarId: calendar.calendarId,
-          includeInFeed,
+          provider: calendar.provider,
           side: calendar.side,
           grantId: calendar.grantId,
+          connectorAccountId: calendar.connectorAccountId,
+          calendarId: calendar.calendarId,
+          includeInFeed,
+          expectedVersion: calendar.selectionVersion,
         });
         if (!isCurrentWrite()) return "superseded";
         if (
           !matchesCalendarIdentity(response.calendar, calendar) ||
-          response.calendar.includeInFeed !== includeInFeed
+          response.calendar.includeInFeed !== includeInFeed ||
+          response.previousVersion !== calendar.selectionVersion ||
+          response.currentVersion !== response.calendar.selectionVersion ||
+          response.currentVersion <= response.previousVersion
         ) {
           throw new Error("Calendar inclusion response did not match request");
         }

@@ -28,6 +28,7 @@ import type {
 	ActionResult,
 	MessageHandlerResult,
 } from "../types/components";
+import type { EffectReceipt } from "../types/effects";
 import type { Memory } from "../types/memory";
 import type { State } from "../types/state";
 import {
@@ -270,6 +271,25 @@ describe("replyClaimsCompletedSideEffect", () => {
 });
 
 describe(CLAIM_EVALUATOR_NAME, () => {
+	it.each([
+		"Your reminder is ready for tomorrow.",
+		"You’ll get a nudge tomorrow at 9.",
+		"That’s taken care of for tomorrow.",
+		"It is on the books for 9am.",
+		"The reminder now exists.",
+		"El recordatorio quedó listo para mañana.",
+	])(
+		"honors the model's semantic applied classification for vague or non-English wording: %s",
+		async (reply) => {
+			expect(replyClaimsCompletedSideEffect(reply)).toBe(false);
+			const evaluator = getClaimEvaluator();
+			const handler = simpleReplyHandler(reply);
+			handler.plan.replyEffectStatus = "applied";
+
+			expect(await evaluator.shouldRun(makeContext(handler))).toBe(true);
+		},
+	);
+
 	it("fires only on simple-path replies that claim a completed side effect", async () => {
 		const evaluator = getClaimEvaluator();
 		expect(
@@ -557,6 +577,24 @@ describe(EMPTY_CLAIM_EVALUATOR_NAME, () => {
 describe("evaluatePlannedReplyEgress", () => {
 	const FABRICATED_ALL_SET_REPLY =
 		"You're all set — I've seeded your first reminder for tomorrow at 9am.";
+	const observedAt = "2026-07-27T18:00:00.000Z";
+	const effectBase = {
+		receiptId: "receipt-reminder-1",
+		operation: "lifeops.reminder.create",
+		resource: { kind: "lifeops.reminder", id: "reminder-1" },
+		artifacts: [],
+		idempotency: { key: "request-1", replayed: false },
+		observedAt,
+	} as const;
+	const appliedReceipt: EffectReceipt = {
+		...effectBase,
+		outcome: "applied",
+		commit: {
+			kind: "durable",
+			id: "transaction-1",
+			committedAt: observedAt,
+		},
+	};
 	const action = (name: string, tags: string[]): Action => ({
 		name,
 		description: name,
@@ -596,11 +634,13 @@ describe("evaluatePlannedReplyEgress", () => {
 		);
 	});
 
-	it("allows a completion claim only for a successful mutating operation", () => {
+	it("allows a completion claim only for an exact active applied receipt", () => {
 		const created: ActionResult = {
 			success: true,
 			userFacingText: FABRICATED_ALL_SET_REPLY,
 			verifiedUserFacing: true,
+			effectReceipts: [appliedReceipt],
+			userFacingEffectReceiptIds: [appliedReceipt.receiptId],
 			data: { actionName: "OWNER_REMINDERS", action: "create" },
 		};
 		expect(
@@ -610,6 +650,100 @@ describe("evaluatePlannedReplyEgress", () => {
 				actions: [reminderSurface],
 			}),
 		).toEqual({ verdict: "allow" });
+	});
+
+	it.each([
+		{
+			name: "bare success",
+			receipts: undefined,
+			receiptIds: undefined,
+		},
+		{
+			name: "preview",
+			receipts: [{ ...effectBase, outcome: "preview" as const }],
+			receiptIds: [effectBase.receiptId],
+		},
+		{
+			name: "no-op",
+			receipts: [
+				{
+					...effectBase,
+					outcome: "noop" as const,
+					reason: "already existed",
+				},
+			],
+			receiptIds: [effectBase.receiptId],
+		},
+		{
+			name: "failed",
+			receipts: [
+				{
+					...effectBase,
+					outcome: "failed" as const,
+					failure: {
+						code: "PROVIDER_TIMEOUT",
+						retryable: true,
+						acceptance: "unknown" as const,
+					},
+				},
+			],
+			receiptIds: [effectBase.receiptId],
+		},
+	])(
+		"rejects a completion claim grounded only by $name",
+		({ receipts, receiptIds }) => {
+			const result: ActionResult = {
+				success: true,
+				userFacingText: FABRICATED_ALL_SET_REPLY,
+				verifiedUserFacing: true,
+				...(receipts ? { effectReceipts: receipts } : {}),
+				...(receiptIds ? { userFacingEffectReceiptIds: receiptIds } : {}),
+				data: { actionName: "OWNER_REMINDERS", action: "create" },
+			};
+			expect(
+				evaluatePlannedReplyEgress({
+					reply: FABRICATED_ALL_SET_REPLY,
+					actionResults: [result],
+					actions: [reminderSurface],
+				}).verdict,
+			).toBe("reject");
+		},
+	);
+
+	it("rejects an applied receipt reverted later in the same turn", () => {
+		const created: ActionResult = {
+			success: true,
+			userFacingText: FABRICATED_ALL_SET_REPLY,
+			verifiedUserFacing: true,
+			effectReceipts: [appliedReceipt],
+			userFacingEffectReceiptIds: [appliedReceipt.receiptId],
+			data: { actionName: "OWNER_REMINDERS", action: "create" },
+		};
+		const rollback: EffectReceipt = {
+			...effectBase,
+			receiptId: "receipt-rollback-1",
+			operation: "lifeops.reminder.rollback",
+			outcome: "rolled_back",
+			rollback: {
+				receiptId: "rollback-transaction-1",
+				revertedReceiptIds: [appliedReceipt.receiptId],
+				rolledBackAt: "2026-07-27T18:01:00.000Z",
+			},
+		};
+		expect(
+			evaluatePlannedReplyEgress({
+				reply: FABRICATED_ALL_SET_REPLY,
+				actionResults: [
+					created,
+					{
+						success: true,
+						effectReceipts: [rollback],
+						data: { actionName: "OWNER_REMINDERS", action: "rollback" },
+					},
+				],
+				actions: [reminderSurface],
+			}).verdict,
+		).toBe("reject");
 	});
 
 	it("does not let an unrelated successful tool launder either claim kind", () => {

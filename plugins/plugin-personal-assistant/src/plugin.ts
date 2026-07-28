@@ -166,6 +166,10 @@ import {
 } from "./lifeops/owner/fact-store.js";
 import { ownerProfileExtractionEvaluator } from "./lifeops/owner/profile-extraction-evaluator.js";
 import {
+  createParentingGuidanceAction,
+  ParentingGuidanceRuntimeService,
+} from "./lifeops/parenting/index.js";
+import {
   createAnchorRegistry,
   createEventKindRegistry,
   createFamilyRegistry,
@@ -267,6 +271,9 @@ const familyCommunicationsAction = createFamilyCommunicationsAction({
   resolveAuthenticatedPrincipal: resolveAuthenticatedFamilyPrincipal,
   issueSpeakerAttestation: issueAuthenticatedMessageSpeakerAttestation,
   resolveWeekItems: resolveTrustedChildWeekItems,
+});
+const parentingGuidanceAction = createParentingGuidanceAction({
+  resolveAuthenticatedPrincipal: resolveAuthenticatedFamilyPrincipal,
 });
 
 const GOOGLE_CONNECTOR_PLUGIN_PACKAGE = "@elizaos/plugin-google";
@@ -490,6 +497,14 @@ export async function ensureLifeOpsGooglePluginRegistered(
  * the calendar `CalendarService` (which LifeOps delegates every calendar call
  * to) is available. The calendar plugin is a hard LifeOps dependency, so a
  * static import is sufficient.
+ *
+ * PA composes its own CALENDAR and CONFLICT_DETECT actions with LifeOps deps
+ * (travel buffers, approval gateway, host adapter), so only those two names
+ * are withheld from the standalone plugin. Every other calendar action — the
+ * typed CALENDAR_SOURCES source-administration surface in particular — must
+ * stay reachable: this init runs before PA's own actions register, so passing
+ * a colliding action here would silently win first-wins and shadow the
+ * LifeOps-composed version.
  */
 export async function ensureLifeOpsCalendarPluginRegistered(
   runtime: IAgentRuntime,
@@ -497,9 +512,15 @@ export async function ensureLifeOpsCalendarPluginRegistered(
   if (runtime.plugins.some((plugin) => plugin.name === calendarPlugin.name)) {
     return;
   }
+  const composedByPersonalAssistant = new Set([
+    calendarAction.name,
+    conflictDetectAction.name,
+  ]);
   await runtime.registerPlugin({
     ...calendarPlugin,
-    actions: [],
+    actions: (calendarPlugin.actions ?? []).filter(
+      (action) => !composedByPersonalAssistant.has(action.name),
+    ),
   });
 }
 
@@ -710,6 +731,7 @@ const rawPersonalAssistantPlugin: Plugin = {
     ...promoteSubactionsToActions(householdOperationsAction),
     ...promoteSubactionsToActions(resourceCapacityAction),
     ...promoteSubactionsToActions(familyCommunicationsAction),
+    parentingGuidanceAction,
     ...promoteSubactionsToActions(schoolSourceFactAction),
     ...promoteSubactionsToActions(resolveRequestAction),
     ...promoteSubactionsToActions(ownerRemindersAction),
@@ -777,6 +799,7 @@ const rawPersonalAssistantPlugin: Plugin = {
     HouseholdCoordinationRuntimeService,
     AuthenticatedRuntimeSpeakerVerifierService,
     FamilyCommunicationsRuntimeService,
+    ParentingGuidanceRuntimeService,
     HouseholdOperationsRuntimeService,
     OwnerCalendarMutationGatewayService,
     ResourceCapacityRuntimeService,

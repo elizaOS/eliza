@@ -693,6 +693,10 @@ function mapEvent(
   }
   const start = readEventInstant(event.start, fallbackTimeZone);
   const end = readEventInstant(event.end, start?.timeZone ?? fallbackTimeZone);
+  const originalStart = readEventInstant(
+    event.originalStartTime,
+    start?.timeZone ?? fallbackTimeZone
+  );
   return {
     id: eventId,
     calendarId,
@@ -717,6 +721,8 @@ function mapEvent(
       sequence: event.sequence ?? null,
       iCalUID: event.iCalUID ?? null,
       recurringEventId: event.recurringEventId ?? null,
+      originalStartTime: originalStart?.iso ?? null,
+      originalStartIsAllDay: originalStart?.isAllDay ?? null,
       ...(event.recurrence ? { recurrence: event.recurrence } : {}),
       idempotencyKeySha256:
         event.extendedProperties?.private?.[IDEMPOTENCY_PRIVATE_PROPERTY] ?? null,

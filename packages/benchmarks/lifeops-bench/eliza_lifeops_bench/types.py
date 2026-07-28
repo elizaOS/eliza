@@ -13,8 +13,17 @@ DisruptionKind = Literal[
     "rule_change",
 ]
 
-ExpectedWorldMutation = Literal["auto", "changed", "unchanged", "optional"]
+ExpectedWorldMutation = Literal["changed", "unchanged", "optional"]
 ScenarioTier = Literal["T1", "T2", "T3", "T4"]
+ScenarioOpeningMode = Literal["authored", "simulated"]
+TrustedActionRisk = Literal["read", "proposal", "approved_write"]
+TrustedEvidenceBoundary = Literal[
+    "production_connector",
+    "sandbox_connector",
+    "production_runtime",
+    "native_device",
+]
+TrustedAttestationKind = Literal["operation", "terminal_postcondition"]
 
 
 class Domain(Enum):
@@ -125,6 +134,75 @@ class Disruption:
 
 
 @dataclass(frozen=True)
+class TrustedActionPolicy:
+    """Pre-dispatch allow rule for one canonical external action surface."""
+
+    name: str
+    discriminator_field: str | None
+    allowed_discriminators: tuple[str, ...]
+    risk: TrustedActionRisk
+    required_kwargs: tuple[str, ...] = ()
+    max_calls: int = 1
+
+
+@dataclass(frozen=True)
+class TrustedEvidenceRequirement:
+    """Receipt contract that a LIVE scenario must satisfy outside model prose.
+
+    ``contract_id`` identifies the capability under test. Every
+    ``required_assertion_id`` must be attested by a trusted tool receipt before
+    a positive judge verdict can terminate the run. The receipt validator
+    deliberately rejects deterministic LifeWorld results as real-provider
+    evidence.
+    """
+
+    contract_id: str
+    contract_version: int
+    contract_sha256: str
+    required_assertion_ids: tuple[str, ...]
+    allowed_actions: tuple[TrustedActionPolicy, ...]
+    terminal_attestation_required: bool = True
+
+
+@dataclass(frozen=True)
+class VerifiedEvidenceReceipt:
+    """Runner-owned proof returned by an authenticated execution boundary.
+
+    The model and its adapter cannot populate this structure. The runner adds
+    it only after a configured verifier authenticates the receipt, binds it to
+    the current run and tool call, and recomputes the referenced artifact
+    digest from the received bytes.
+    """
+
+    schema: Literal["lifeops.verified-evidence.v1"]
+    receipt_id: str
+    provider: str
+    boundary: TrustedEvidenceBoundary
+    run_id: str
+    scenario_id: str
+    seed: int
+    tool_call_id: str
+    action: str
+    action_sha256: str
+    contract_id: str
+    assertion_ids: tuple[str, ...]
+    observed_at: str
+    artifact_sha256: str
+    request_sha256: str
+    payload_sha256: str
+    success: bool
+    verification_method: Literal["hmac-sha256"]
+    signing_key_id: str
+    executor_version: str
+    contract_sha256: str
+    request_ordinal: int
+    attestation_kind: TrustedAttestationKind
+    request_envelope: dict[str, Any]
+    signed_receipt: dict[str, Any]
+    artifact_manifest: dict[str, Any]
+
+
+@dataclass(frozen=True)
 class Scenario:
     """A single benchmark scenario."""
 
@@ -144,10 +222,12 @@ class Scenario:
     success_criteria: list[str] = field(default_factory=list)
     world_assertions: list[str] = field(default_factory=list)
     disruptions: list[Disruption] = field(default_factory=list)
-    expected_world_mutation: ExpectedWorldMutation = "auto"
+    expected_world_mutation: ExpectedWorldMutation = "changed"
     # T1 extraction/normalization; T2 multi-turn friction; T3 longitudinal
     # journey; T4 adversarial/boundary behavior.
     tier: ScenarioTier | None = None
+    trusted_evidence_requirement: TrustedEvidenceRequirement | None = None
+    opening_mode: ScenarioOpeningMode = "simulated"
 
 
 def attach_usage_cache_fields(turn: Any, usage: dict[str, Any]) -> None:
@@ -282,6 +362,7 @@ class TurnResult:
     model_tier: str | None = None
     prompt_cache_key: str | None = None
     model_name: str | None = None
+    verified_evidence: list[VerifiedEvidenceReceipt] = field(default_factory=list)
 
 
 @dataclass

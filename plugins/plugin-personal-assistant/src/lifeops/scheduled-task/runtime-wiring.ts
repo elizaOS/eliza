@@ -62,6 +62,8 @@ import { decideDispatchPolicy } from "../connectors/dispatch-policy.js";
 import { getConnectorRegistry } from "../connectors/registry.js";
 import { resolveDefaultTimeZone } from "../defaults.js";
 import { resolveGlobalPauseStore } from "../global-pause/store.js";
+import { registerHouseholdGrantExpiryWarningGate } from "../household/grant-expiry-warning.js";
+import { HouseholdCoordinationRepository } from "../household/repository.js";
 import {
   ownerFactsToView,
   resolveOwnerFactStore,
@@ -722,6 +724,10 @@ function buildLifeOpsRunnerDeps(
   // standalone tests).
   registerActivityProfileGates(opts.runtime, gates);
   registerModelMomentCheckGate(opts.runtime, gates);
+  registerHouseholdGrantExpiryWarningGate(
+    new HouseholdCoordinationRepository(opts.runtime, opts.agentId),
+    gates,
+  );
   registerBuiltInGates(gates);
 
   const completionChecks = createCompletionCheckRegistry();

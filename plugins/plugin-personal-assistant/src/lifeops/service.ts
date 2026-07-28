@@ -94,6 +94,8 @@ import type {
   LifeOpsXFeedType,
   ListLifeOpsCalendarsRequest,
   LifeOpsScreenTimeBreakdown as ScreenTimeBreakdown,
+  SetLifeOpsCalendarIncludedRequest,
+  SetLifeOpsCalendarIncludedResponse,
   LifeOpsSocialHabitSummary as SocialHabitSummary,
   VerifyLifeOpsTelegramConnectorRequest,
   VerifyLifeOpsTelegramConnectorResponse,
@@ -528,14 +530,8 @@ export class LifeOpsService extends LifeOpsServiceBase {
 
   setCalendarIncluded(
     requestUrl: URL,
-    request: {
-      calendarId: string;
-      includeInFeed: boolean;
-      side?: LifeOpsConnectorSide;
-      mode?: LifeOpsConnectorMode;
-      grantId?: string;
-    },
-  ): Promise<LifeOpsCalendarSummary> {
+    request: SetLifeOpsCalendarIncludedRequest,
+  ): Promise<SetLifeOpsCalendarIncludedResponse> {
     return this.calendarDomain.setCalendarIncluded(requestUrl, request);
   }
 
@@ -592,6 +588,8 @@ export class LifeOpsService extends LifeOpsServiceBase {
       recurrenceScope?: LifeOpsCalendarRecurrenceScope | null;
       notifyAttendees?: boolean;
       expectedProviderVersion?: string;
+      expectedOccurrenceProviderVersion?: string;
+      idempotencyKey?: string;
     },
   ): Promise<LifeOpsCalendarEvent> {
     return this.calendarDomain.updateCalendarEvent(requestUrl, request);
@@ -608,6 +606,8 @@ export class LifeOpsService extends LifeOpsServiceBase {
       recurrenceScope?: LifeOpsCalendarRecurrenceScope | null;
       notifyAttendees?: boolean;
       expectedProviderVersion?: string;
+      expectedOccurrenceProviderVersion?: string;
+      idempotencyKey?: string;
     },
   ): Promise<void> {
     return this.calendarDomain.deleteCalendarEvent(requestUrl, request);

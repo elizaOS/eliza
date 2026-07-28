@@ -20,13 +20,13 @@ clarification, and verifiable end-state correctness.
 +------------------+     +-------------------+     +----------------------+
 |  Scenario Corpus |---->|  LifeOpsBench     |<----|  Agent Adapter        |
 |  (744 static +   |     |  Runner           |     |  (Eliza | Hermes |    |
-|   690 live)      |     |  (orchestrator)   |     |   OpenClaw |       |
+|   738 live)      |     |  (orchestrator)   |     |   OpenClaw |       |
 +------------------+     +-------------------+     |   PerfectAgent | …)   |
         |                        |                 +----------------------+
         v                        v                          |
 +------------------+     +-------------------+              |
 |  Persona Library |     |  LifeWorld        |<-------------+ tool calls
-|  (10 personas)   |     |  (in-memory state)|
+|  (23 personas)   |     |  (in-memory state)|
 +------------------+     +-------------------+
                                  |
                                  v
@@ -39,16 +39,17 @@ clarification, and verifiable end-state correctness.
                          +-----------------+
 ```
 
-**Three swappable adapter backends** evaluate the same scenarios:
+**Four swappable adapter backends** evaluate the same scenarios:
 
 1. **elizaOS adapter** (`agents/__init__.py::build_eliza_agent`) — drives the elizaOS runtime via the existing TS bench server.
 2. **Hermes adapter** (`agents/hermes.py`) — drives any model that speaks the Hermes XML `<tool_call>` template (local Hermes, llama-cpp servers, hosted endpoints).
 3. **OpenClaw adapter** (`agents/openclaw.py`) — translates LifeOpsBench history/tools into OpenClaw's text-embedded `<tool_call>{"tool": ..., "args": ...}</tool_call>` protocol.
 4. **cerebras-direct adapter** (`agents/cerebras_direct.py`) — calls the eval/teacher model (gpt-oss-120b on Cerebras) directly with the OpenAI tool-call format. Used as the upper-bound reference.
 
-Plus reference oracles for sanity:
+Plus explicit reference oracles for harness sanity:
 
-- **PerfectAgent** — emits the scenario's ground-truth actions; should score ~1.0.
+- **PerfectAgent** — replays scenario-authored actions; useful for conformance,
+  but never a benchmark result or provider-evidence source.
 - **WrongAgent** — emits unrelated actions or refuses; should score ~0.0.
 
 ## Quick start
@@ -59,15 +60,18 @@ uv sync
 # or
 pip install -e .[anthropic,test]
 
-# List all scenarios. 1434 base scenarios are expanded 10x under fixed
-# prompt-prefix framings (polite/urgent/mobile/…) into 15774 robustness runs;
+# List all scenarios. 1482 base scenarios are expanded 10x under fixed
+# prompt-prefix framings (polite/urgent/mobile/…) into 16302 robustness runs;
 # each edge variant shares its base's ground-truth actions, required outputs
 # and world seed — only the prompt wording differs. `--count-scenarios` prints
 # the base-vs-variant split explicitly.
 python3 -m eliza_lifeops_bench --list-scenarios
 
-# Run the calendar smoke scenario against the perfect oracle
-python3 -m eliza_lifeops_bench --agent perfect --domain calendar
+# Run the real elizaOS adapter (the CLI default)
+python3 -m eliza_lifeops_bench --agent eliza --domain calendar
+
+# Check harness conformance explicitly; this is not agent evidence
+python3 -m eliza_lifeops_bench --agent perfect --scenario smoke_static_calendar_01
 ```
 
 Expected output (truncated) for an adapter-conformance run:
@@ -90,7 +94,8 @@ Expected output (truncated) for an adapter-conformance run:
 ```
 
 Note: `--agent perfect` and `--agent wrong` use per-scenario agent
-factories, so they are valid CLI verification paths. LIVE-mode runs default
+factories and are limited to explicit harness-conformance checks. The CLI
+defaults to `--agent eliza`. LIVE-mode runs default
 to Cerebras for the simulated user and Anthropic for the judge. The provider
 pair is configurable with `--evaluator-provider` / `--judge-provider` (or
 `LIFEOPS_BENCH_EVALUATOR_PROVIDER` / `LIFEOPS_BENCH_JUDGE_PROVIDER`), and
@@ -115,6 +120,71 @@ provider names and both model IDs. Each LIVE `ScenarioResult` also carries a
 scenario-local `evaluator_trace` with the exact simulated-user and judge
 input messages, output text, token/latency/cost telemetry, and raw provider
 response. Traces are isolated even when scenarios run concurrently.
+
+### Authenticated execution for evidence-gated LIVE scenarios
+
+Some LIVE suites require proof from a real production, sandbox, or native
+execution boundary. They intentionally score zero when run only against the
+deterministic LifeWorld, even if the model and judge both claim success.
+Enable the external boundary explicitly:
+
+```bash
+export LIFEOPS_BENCH_TRUSTED_EXECUTOR_URL=https://executor.example/execute
+export LIFEOPS_BENCH_TRUSTED_EXECUTOR_REQUEST_HMAC_KEY_B64="$(openssl rand -base64 32)"
+export LIFEOPS_BENCH_TRUSTED_EXECUTOR_RECEIPT_HMAC_KEY_B64="$(openssl rand -base64 32)"
+export LIFEOPS_BENCH_TRUSTED_EXECUTOR_REQUEST_KEY_ID=request-key-v1
+export LIFEOPS_BENCH_TRUSTED_EXECUTOR_RECEIPT_KEY_ID=receipt-key-v1
+export LIFEOPS_BENCH_TRUSTED_EXECUTOR_ALLOWED_PROVIDERS=calendar-sandbox
+export LIFEOPS_BENCH_TRUSTED_EXECUTOR_ALLOWED_BOUNDARIES=sandbox_connector
+export LIFEOPS_BENCH_TRUSTED_EXECUTOR_BEARER_TOKEN=...
+python3 -m eliza_lifeops_bench --agent eliza --scenario <gated-scenario-id>
+```
+
+The executor receives a runner-signed request containing a unique run nonce,
+scenario ID, seed, exact tool name and arguments, tool-call ID, and the
+scenario's versioned contract ID and hash. Assertion IDs and definitions do
+not cross this boundary: the independently controlled executor resolves the
+contract and derives postconditions from provider state. It returns a
+sanitized tool payload, an inspectable terminal artifact manifest, and an
+HMAC-signed `lifeops.trusted-evidence.v3` receipt.
+
+The runner validates the complete action batch against the scenario's
+allowlist and a LifeWorld shadow before the first external dispatch. It then
+recomputes request, payload, and artifact SHA-256 digests; pins the receipt key
+to exact providers, boundaries, and contracts; enforces request-relative
+freshness; rejects duplicate tool-call or receipt IDs; and retains the full
+signed envelope and artifact for scoring and human review. A final terminal
+postcondition artifact must cover the exact assertion set. Model-authored
+prose, adapter metadata, deterministic results, and earlier state that a later
+action undoes cannot satisfy the gate.
+
+HTTP is accepted only on an explicit loopback host; remote executors must use
+HTTPS. Request-authentication and receipt-signing keys must be distinct. The
+CLI removes both keys, both key IDs, the provider/boundary allowlists, and the
+bearer token from its environment before constructing the evaluated agent.
+Treat the adapter implementation as harness code, not untrusted
+model-generated code, and run any arbitrary-code agent in a separate process
+that does not inherit executor credentials. Transport errors and unverifiable
+responses are terminal because the provider outcome may be unknown and an
+automatic retry could duplicate a real write.
+
+The benchmark client does not make an executor trustworthy. The executor must
+independently enforce the same contract action policy, consume nonces
+durably, use provider idempotency keys for writes, preserve redacted source
+artifacts, and keep its contract implementation and receipt key outside the
+evaluated agent's process. A deterministic or in-process signing test is
+protocol coverage, not production or sandbox connector evidence.
+
+`eliza_lifeops_bench.trusted_executor_server` provides the reference boundary:
+an exact contract registry, injected connector and server-owned evaluator
+interfaces, durable SQLite replay/idempotency state, signed terminal artifacts,
+and a bounded `ThreadingHTTPServer` handler.
+`eliza_lifeops_bench.runtime_connector` supplies a separate-process native
+elizaOS action connector and a structured evaluator for contract G10. The
+production registry deliberately contains only that implemented contract; the
+other 47 evidence contracts fail closed before dispatch. Real-socket protocol
+tests and the deterministic test connector remain test coverage, not provider
+evidence. See `PLAN.md` for the three-process deployment and acceptance bar.
 
 ## Running with each backend
 
@@ -178,12 +248,13 @@ packages/benchmarks/lifeops-bench/
     runner.py                Orchestration + umbrella action executor
     evaluator.py             LIVE-mode simulated-user + judge wiring
     scorer.py                state_hash, output_substring, pass@k aggregation
+    corpus_audit.py           Rebuilds the module/persona/no-effect inventory
     lifeworld/               In-memory hashable world (entities + snapshots)
-    scenarios/               1434 base scenarios (744 static + 690 live) by domain;
+    scenarios/               1482 base scenarios (744 static + 738 live) by domain;
                              __init__.py expands each 10x under fixed prompt-prefix
-                             framings into 15774 robustness runs (variant shares its
+                             framings into 16302 robustness runs (variant shares its
                              base's ground-truth/required-outputs/world-seed)
-      _personas.py           10 reusable personas
+      _personas.py           23 reusable personas
       _smoke_scenarios.py    Two original smoke scenarios (kept at front of list)
       _authoring/            Candidate-generator pipeline + spec
         spec.md              Authoring guide (also fed to Cerebras as a prompt)
@@ -202,7 +273,8 @@ packages/benchmarks/lifeops-bench/
     ingest/                  Real-trajectory ingest with privacy filter (Wave 3D)
       privacy.py             Credential + geo redaction (Python port of TS source)
       trajectories.py        Disk loader; mandatory privacy filter; strict-mode raise
-  tests/                     574 passing tests (3 live-gated skips)
+  tests/                     Hermetic, socket-boundary, and env-gated live tests
+  corpus-audit.json          Generated base-corpus module/persona/no-effect inventory
   manifests/
     actions.manifest.json    Committed JSON-Schema dump of every Eliza action
     actions.summary.md       Human-readable index regenerated with the manifest
@@ -218,6 +290,7 @@ packages/benchmarks/lifeops-bench/
 
 ```bash
 python3 -m pytest tests/ -v
+python3 -m eliza_lifeops_bench.corpus_audit --output corpus-audit.json
 ```
 
 Regenerate `manifests/actions.manifest.json` and `manifests/actions.summary.md`
@@ -230,20 +303,21 @@ bun run lifeops-bench:manifest
 The command exports the live elizaOS plugin action registry, then applies the
 bench-only umbrella augment from `eliza_lifeops_bench.manifest_export`.
 
-The hermetic test suite uses fake providers for normal CI coverage.
-Live network tests remain env-gated because they require credentials for
-the selected evaluator and judge providers and spend real inference budget.
+The hermetic suite uses deterministic provider doubles for protocol and runner
+coverage; those results are never labeled live evidence. Live network tests
+remain env-gated because they require credentials for distinct simulated-user
+and judge models and spend real inference budget.
 
 ## Known gaps
 
-See [`LIFEOPS_BENCH_GAPS.md`](./LIFEOPS_BENCH_GAPS.md) for the
-canonical list of action names the runner's executor doesn't yet
-support, plus subactions that no-op because LifeWorld lacks the
-underlying entity (focus blocks, interaction logs, hotel bookings).
-The adapter-conformance test (`tests/test_adapter_conformance.py`)
-already filters scenarios to those whose ground-truth actions are all
-in `runner.supported_actions()`; gaps therefore surface as skipped
-scenarios rather than silent failures.
+See [`LIFEOPS_BENCH_GAPS.md`](./LIFEOPS_BENCH_GAPS.md) and
+[`corpus-audit.json`](./corpus-audit.json). The current base corpus contains
+346 action occurrences across 304 STATIC scenarios whose semantics are not
+modeled by LifeWorld. Every such dispatch now returns an explicit non-success
+result (`ok=false`, `status=unsupported`, `noEffect=true`); none can masquerade
+as a successful empty result. The generated audit retains every affected
+scenario, action, arguments, and reason, while modeled reads and conversational
+terminals live in a separate exemption registry.
 
 ## Pointers
 

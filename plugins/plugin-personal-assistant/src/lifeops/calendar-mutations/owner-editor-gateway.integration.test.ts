@@ -273,6 +273,116 @@ describe("OwnerCalendarMutationGatewayService — real PGlite", () => {
     expect(providerCalls).toBe(1);
   });
 
+  it("binds the selected occurrence and series master before a following-series update", async () => {
+    const master: LifeOpsCalendarEvent = {
+      ...event(),
+      id: "editor-series-master-row",
+      externalId: "provider-series-master",
+      title: "Weekly school pickup",
+      startAt: "2027-02-28T18:00:00.000Z",
+      endAt: "2027-02-28T18:30:00.000Z",
+      recurrence: ["RRULE:FREQ=WEEKLY;COUNT=6"],
+      recurringEventId: null,
+      metadata: { etag: '"series-master-v1"' },
+      updatedAt: "2027-03-01T00:05:00.000Z",
+    };
+    const occurrence: LifeOpsCalendarEvent = {
+      ...event(),
+      id: "editor-series-occurrence-row",
+      externalId: "provider-series-occurrence-3",
+      title: master.title,
+      recurringEventId: master.externalId,
+      metadata: {
+        etag: '"series-occurrence-v3"',
+        recurringEventId: master.externalId,
+        originalStartTime: event().startAt,
+        originalStartIsAllDay: false,
+      },
+    };
+    const following: LifeOpsCalendarEvent = {
+      ...occurrence,
+      id: "editor-following-series-row",
+      externalId: "provider-following-series",
+      title: "Updated weekly pickup",
+      recurrence: ["RRULE:FREQ=WEEKLY;COUNT=4"],
+      recurringEventId: null,
+      metadata: { etag: '"following-series-v1"' },
+      updatedAt: "2027-03-01T01:00:00.000Z",
+    };
+    const followingPort: CalendarMutationPort = {
+      async preflight() {
+        return {
+          operation: "modify_event",
+          provider: "google",
+          sourceId: "google-calendar-owner-grant",
+          calendarId: "primary",
+          event: master,
+          providerEventId: master.externalId,
+          providerVersion: '"series-master-v1"',
+          idempotencyKey: "provider-following-operation-1",
+          recurrenceScope: "this_and_following",
+          cancellationMode: null,
+        };
+      },
+      async execute(request) {
+        providerCalls += 1;
+        executedApprovals.push(request);
+        return readableReceipt(following, {
+          operation: "modify_event",
+          providerVersion: '"following-series-v1"',
+          recurrenceScope: "this_and_following",
+        });
+      },
+    };
+    const gateway = new OwnerCalendarMutationGatewayService(runtime, {
+      approvalQueue: createApprovalQueue(runtime, {
+        agentId: runtime.agentId,
+      }),
+      calendar: {
+        async getConditionalCalendarMutationTarget(_requestUrl, request) {
+          return request.recurrenceScope === "series" ? master : occurrence;
+        },
+      },
+      port: followingPort,
+    });
+
+    await expect(
+      gateway.update(new URL("http://internal.local"), {
+        side: "owner",
+        grantId: "google-calendar-owner-grant",
+        calendarId: "primary",
+        eventId: occurrence.externalId,
+        title: following.title,
+        recurrenceScope: "this_and_following",
+        notifyAttendees: true,
+        expectedProviderVersion: '"series-occurrence-v3"',
+        idempotencyKey: "owner-editor-following-update-1",
+      }),
+    ).resolves.toMatchObject({
+      externalId: following.externalId,
+      title: following.title,
+    });
+    expect(executedApprovals).toHaveLength(1);
+    expect(executedApprovals[0]).toMatchObject({
+      reason: expect.stringContaining(
+        "Later per-occurrence exceptions will reset",
+      ),
+      payload: {
+        action: "modify_event",
+        eventId: occurrence.externalId,
+        expectedProviderVersion: '"series-occurrence-v3"',
+        recurrenceScope: "this_and_following",
+        seriesMaster: {
+          externalId: master.externalId,
+          startAtMs: Date.parse(master.startAt),
+          updatedAt: master.updatedAt,
+          etag: '"series-master-v1"',
+        },
+      },
+    });
+    expect(providerCalls).toBe(1);
+  });
+
   it("returns an updated invitation snapshot instead of claiming a deletion", async () => {
     storedEvent = {
       ...event(),

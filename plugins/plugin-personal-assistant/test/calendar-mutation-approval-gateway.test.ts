@@ -205,6 +205,73 @@ describe("calendar conversational mutation approval gateway", () => {
     });
   });
 
+  it("binds the exact master and discloses exception reset for a following split", async () => {
+    const { gateway, enqueue } = harness();
+    const target = {
+      ...event("organizer"),
+      externalId: "series-instance-3",
+      recurringEventId: "series-master",
+      metadata: {
+        etag: '"instance-etag"',
+        recurringEventId: "series-master",
+        originalStartTime: "2026-08-03T17:00:00.000Z",
+      },
+    };
+    const master = {
+      ...event("organizer"),
+      id: "owner:google:primary:series-master",
+      externalId: "series-master",
+      startAt: "2026-07-20T17:00:00.000Z",
+      recurrence: ["RRULE:FREQ=WEEKLY;COUNT=8"],
+      recurringEventId: null,
+      metadata: {
+        etag: '"master-etag"',
+        recurrence: ["RRULE:FREQ=WEEKLY;COUNT=8"],
+      },
+    };
+    const runtimeWithCalendar = {
+      ...runtime(),
+      getService: (name: string) =>
+        name === "calendar"
+          ? {
+              getConditionalCalendarMutationTarget: vi.fn(async () => master),
+            }
+          : null,
+    } as unknown as IAgentRuntime;
+
+    await gateway.modify({
+      runtime: runtimeWithCalendar,
+      message: message(),
+      targetEvent: target,
+      request: {
+        side: "owner",
+        grantId: "grant-google-a",
+        calendarId: "primary",
+        eventId: target.externalId,
+        title: "School conference moved",
+        recurrenceScope: "this_and_following",
+        notifyAttendees: true,
+      },
+    });
+
+    const input = enqueue.mock.calls[0]?.[0] as ApprovalEnqueueInput;
+    expect(input.payload).toMatchObject({
+      action: "modify_event",
+      recurrenceScope: "this_and_following",
+      expectedProviderVersion: '"instance-etag"',
+      seriesMaster: {
+        externalId: "series-master",
+        startAtMs: Date.parse(master.startAt),
+        updatedAt: master.updatedAt,
+        etag: '"master-etag"',
+      },
+    });
+    expect(input.reason).toContain(
+      "Later per-occurrence exceptions will reset",
+    );
+    expect(input.reason).toContain("both split update notifications");
+  });
+
   it("maps invitee delete to decline and organizer delete to cancellation", async () => {
     const { gateway, enqueue } = harness();
     for (const role of ["invitee", "organizer"] as const) {

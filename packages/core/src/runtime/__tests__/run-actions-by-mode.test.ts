@@ -18,6 +18,8 @@ import {
 	HOOK_MODES,
 	type Memory,
 } from "../../types";
+import type { EffectReceipt } from "../../types/effects";
+import { effectDeliveryBindingProvesApplication } from "../effect-delivery";
 
 function makeProbe(
 	name: string,
@@ -67,6 +69,23 @@ function makeMessage(): Memory {
 		roomId: "00000000-0000-0000-0000-00000000000c" as Memory["roomId"],
 		content: { text: "hello", source: "test" },
 	} as Memory;
+}
+
+function appliedEffectReceipt(receiptId: string): EffectReceipt {
+	return {
+		receiptId,
+		operation: "test.hook.apply",
+		resource: { kind: "test.hook", id: receiptId },
+		artifacts: [],
+		idempotency: { key: `request-${receiptId}`, replayed: false },
+		observedAt: "2026-07-27T18:00:00.000Z",
+		outcome: "applied",
+		commit: {
+			kind: "durable",
+			id: `commit-${receiptId}`,
+			committedAt: "2026-07-27T18:00:00.000Z",
+		},
+	};
 }
 
 describe("runActionsByMode", () => {
@@ -206,6 +225,262 @@ describe("runActionsByMode", () => {
 		expect(callback).toHaveBeenCalledWith(
 			{ text: "raw hook output" },
 			"HOOK_STATUS",
+		);
+	});
+
+	it("delivers a mutation hook callback only after binding exact receipt proof", async () => {
+		const receipt = appliedEffectReceipt("receipt-hook-mutation");
+		const callback = vi.fn(async () => []);
+		const canonicalText = "The hook mutation is committed.";
+		runtime.actions.length = 0;
+		runtime.actions.push({
+			name: "HOOK_MUTATION",
+			description: "hook mutation",
+			mode: ActionMode.ALWAYS_AFTER,
+			tags: ["capability:write"],
+			examples: [],
+			validate: async () => true,
+			handler: async (_runtime, _message, _state, _options, cb) => {
+				await cb?.({ text: canonicalText });
+				return {
+					success: true,
+					userFacingText: canonicalText,
+					verifiedUserFacing: true,
+					effectReceipts: [receipt],
+					userFacingEffectReceiptIds: [receipt.receiptId],
+				};
+			},
+		} as Action);
+
+		await runtime.runActionsByMode("ALWAYS_AFTER", makeMessage(), undefined, {
+			callback,
+		});
+
+		expect(callback).toHaveBeenCalledOnce();
+		const delivered = callback.mock.calls[0]?.[0];
+		expect(delivered).toEqual(
+			expect.objectContaining({
+				text: canonicalText,
+				effectReceiptIds: [receipt.receiptId],
+			}),
+		);
+		expect(
+			delivered ? effectDeliveryBindingProvesApplication(delivered) : false,
+		).toBe(true);
+	});
+
+	it("suppresses a receipt-required mutation hook callback that has no effect receipt", async () => {
+		const callback = vi.fn(async () => []);
+		runtime.actions.length = 0;
+		runtime.actions.push({
+			name: "LEGACY_HOOK_MUTATION",
+			description: "legacy hook mutation",
+			mode: ActionMode.ALWAYS_AFTER,
+			tags: ["capability:write", "effect:receipt-required"],
+			examples: [],
+			validate: async () => true,
+			handler: async (_runtime, _message, _state, _options, cb) => {
+				await cb?.({ text: "Done." });
+				return { success: true, text: "Done." };
+			},
+		} as Action);
+
+		await runtime.runActionsByMode("ALWAYS_AFTER", makeMessage(), undefined, {
+			callback,
+		});
+
+		expect(callback).not.toHaveBeenCalled();
+	});
+
+	it("delivers an explicit mutation failure without fabricating effect proof", async () => {
+		const callback = vi.fn(async () => []);
+		runtime.actions.length = 0;
+		runtime.actions.push({
+			name: "FAILED_HOOK_MUTATION",
+			description: "failed mutation",
+			mode: ActionMode.ALWAYS_AFTER,
+			tags: ["capability:write"],
+			examples: [],
+			validate: async () => true,
+			handler: async (_runtime, _message, _state, _options, cb) => {
+				const text = "The change was rejected before anything was written.";
+				await cb?.({ text });
+				return { success: false, text, error: "PRECONDITION_REJECTED" };
+			},
+		} as Action);
+
+		await runtime.runActionsByMode("ALWAYS_AFTER", makeMessage(), undefined, {
+			callback,
+		});
+
+		expect(callback).toHaveBeenCalledWith(
+			{ text: "The change was rejected before anything was written." },
+			"FAILED_HOOK_MUTATION",
+		);
+	});
+
+	it("discards a failed hook callback and continues to the next action", async () => {
+		const callback = vi.fn(async () => []);
+		const ledger: string[] = [];
+		runtime.actions.length = 0;
+		runtime.actions.push(
+			{
+				name: "FAILING_HOOK",
+				description: "fails after trying to reply",
+				mode: ActionMode.ALWAYS_AFTER,
+				modePriority: 10,
+				examples: [],
+				validate: async () => true,
+				handler: async (_runtime, _message, _state, _options, cb) => {
+					ledger.push("failing");
+					await cb?.({ text: "This must not escape." });
+					throw new Error("hook failed");
+				},
+			} as Action,
+			makeProbe("following", "ALWAYS_AFTER", ledger, { modePriority: 20 }),
+		);
+
+		await runtime.runActionsByMode("ALWAYS_AFTER", makeMessage(), undefined, {
+			callback,
+		});
+
+		expect(ledger).toEqual(["failing", "following"]);
+		expect(callback).not.toHaveBeenCalled();
+	});
+
+	it("reports callback delivery failure without failing or rerunning a settled hook", async () => {
+		const receipt = appliedEffectReceipt("receipt-hook-delivery");
+		const callback = vi.fn(async () => {
+			throw new Error("hook transport unavailable");
+		});
+		const reportError = vi
+			.spyOn(runtime, "reportError")
+			.mockImplementation(() => undefined);
+		const handler = vi.fn(async (_runtime, _message, _state, _options, cb) => {
+			const text = "The hook change is committed.";
+			await cb?.({ text });
+			return {
+				success: true,
+				userFacingText: text,
+				verifiedUserFacing: true,
+				effectReceipts: [receipt],
+				userFacingEffectReceiptIds: [receipt.receiptId],
+			};
+		});
+		runtime.actions.length = 0;
+		runtime.actions.push({
+			name: "HOOK_DELIVERY_FAILURE",
+			description: "settles independently of callback delivery",
+			mode: ActionMode.ALWAYS_AFTER,
+			tags: ["capability:write"],
+			examples: [],
+			validate: async () => true,
+			handler,
+		} as Action);
+
+		await expect(
+			runtime.runActionsByMode("ALWAYS_AFTER", makeMessage(), undefined, {
+				callback,
+			}),
+		).resolves.toEqual([
+			expect.objectContaining({ name: "HOOK_DELIVERY_FAILURE" }),
+		]);
+
+		expect(handler).toHaveBeenCalledOnce();
+		expect(reportError).toHaveBeenCalledWith(
+			"ActionCallbackDelivery",
+			expect.any(Error),
+			expect.objectContaining({
+				actionName: "HOOK_DELIVERY_FAILURE",
+				effectReceiptIds: [receipt.receiptId],
+			}),
+		);
+		reportError.mockRestore();
+	});
+
+	it("keeps parallel hook callback settlement isolated per action", async () => {
+		const callback = vi.fn(async () => []);
+		const makeMutationHook = (name: string, delayMs: number): Action => {
+			const receipt = appliedEffectReceipt(`receipt-${name.toLowerCase()}`);
+			const text = `${name} committed.`;
+			return {
+				name,
+				description: `parallel mutation ${name}`,
+				mode: ActionMode.ALWAYS_DURING,
+				tags: ["capability:write"],
+				examples: [],
+				validate: async () => true,
+				handler: async (_runtime, _message, _state, _options, cb) => {
+					await cb?.({ text });
+					await new Promise((resolve) => setTimeout(resolve, delayMs));
+					return {
+						success: true,
+						userFacingText: text,
+						verifiedUserFacing: true,
+						effectReceipts: [receipt],
+						userFacingEffectReceiptIds: [receipt.receiptId],
+					};
+				},
+			};
+		};
+		runtime.actions.length = 0;
+		runtime.actions.push(
+			makeMutationHook("HOOK_A", 20),
+			makeMutationHook("HOOK_B", 5),
+		);
+
+		await runtime.runActionsByMode("ALWAYS_DURING", makeMessage(), undefined, {
+			callback,
+		});
+
+		expect(callback).toHaveBeenCalledTimes(2);
+		const deliveries = callback.mock.calls.map(([content, actionName]) => ({
+			actionName,
+			text: content.text,
+			receiptIds: content.effectReceiptIds,
+			applied: effectDeliveryBindingProvesApplication(content),
+		}));
+		expect(deliveries).toEqual(
+			expect.arrayContaining([
+				{
+					actionName: "HOOK_A",
+					text: "HOOK_A committed.",
+					receiptIds: ["receipt-hook_a"],
+					applied: true,
+				},
+				{
+					actionName: "HOOK_B",
+					text: "HOOK_B committed.",
+					receiptIds: ["receipt-hook_b"],
+					applied: true,
+				},
+			]),
+		);
+	});
+
+	it("strips forged receipt IDs from a non-mutating hook callback", async () => {
+		const callback = vi.fn(async () => []);
+		runtime.actions.length = 0;
+		runtime.actions.push({
+			name: "HOOK_READ",
+			description: "read hook",
+			mode: ActionMode.ALWAYS_AFTER,
+			tags: ["capability:read"],
+			examples: [],
+			validate: async () => true,
+			handler: async (_runtime, _message, _state, _options, cb) => {
+				await cb?.({ text: "Read complete.", effectReceiptIds: ["forged"] });
+				return { success: true, text: "Read complete." };
+			},
+		} as Action);
+
+		await runtime.runActionsByMode("ALWAYS_AFTER", makeMessage(), undefined, {
+			callback,
+		});
+
+		expect(callback).toHaveBeenCalledWith(
+			{ text: "Read complete." },
+			"HOOK_READ",
 		);
 	});
 

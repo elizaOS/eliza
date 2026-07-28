@@ -1,10 +1,13 @@
 /**
  * Microsoft Graph calendar port for account discovery, paged calendar views,
- * delta tracking, and privacy-minimized schedule lookup. It validates every
- * wire payload and continuation URL before calendar persistence sees it.
+ * delta tracking, privacy-minimized schedule lookup, and idempotent one-off
+ * creation. It validates every wire payload and continuation URL before
+ * calendar persistence sees it.
  */
+import { createHash } from "node:crypto";
 import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 import type {
+  CreateLifeOpsCalendarEventAttendee,
   LifeOpsCalendarEventAttendee,
   LifeOpsConnectorSide,
 } from "@elizaos/shared";
@@ -51,6 +54,7 @@ export interface MicrosoftGraphEvent {
   eventType: string;
   seriesMasterId: string | null;
   iCalUId: string | null;
+  originalStart: string | null;
   changeKey: string | null;
   lastModifiedAt: string | null;
   sensitivity: string | null;
@@ -111,6 +115,18 @@ export interface MicrosoftGraphCalendarPort {
     timeMax: string;
     timeZone?: string;
   }): Promise<MicrosoftGraphScheduleResult[]>;
+  createEvent(args: {
+    account: MicrosoftCalendarAccount;
+    calendarId: string;
+    title: string;
+    description?: string | null;
+    location?: string | null;
+    startAt: string;
+    endAt: string;
+    attendees: readonly CreateLifeOpsCalendarEventAttendee[];
+    notifyAttendees: boolean;
+    idempotencyKey: string;
+  }): Promise<MicrosoftGraphEvent>;
 }
 
 interface MicrosoftGraphPortOptions {
@@ -293,6 +309,17 @@ function parseGraphEvent(value: unknown): MicrosoftGraphEventChange {
           displayName: organizerEmail.name,
         }
       : null;
+  const originalStartValue = stringValue(event?.originalStart);
+  if (originalStartValue && !Number.isFinite(Date.parse(originalStartValue))) {
+    throw new ElizaError(
+      "Microsoft Graph event has an invalid original occurrence start.",
+      {
+        code: "MICROSOFT_GRAPH_INVALID_ORIGINAL_START",
+        context: { eventId },
+        severity: "fatal",
+      },
+    );
+  }
   return {
     kind: "upsert",
     event: {
@@ -314,6 +341,9 @@ function parseGraphEvent(value: unknown): MicrosoftGraphEventChange {
       eventType: stringValue(event?.type) ?? "singleInstance",
       seriesMasterId: stringValue(event?.seriesMasterId),
       iCalUId: stringValue(event?.iCalUId),
+      originalStart: originalStartValue
+        ? new Date(originalStartValue).toISOString()
+        : null,
       changeKey: stringValue(event?.changeKey),
       lastModifiedAt: stringValue(event?.lastModifiedDateTime),
       sensitivity: stringValue(event?.sensitivity),
@@ -532,15 +562,18 @@ function assertCapability(
   capability:
     | "microsoft.calendar.read_basic"
     | "microsoft.calendar.read"
-    | "microsoft.calendar.freebusy",
+    | "microsoft.calendar.freebusy"
+    | "microsoft.calendar.write",
 ): void {
   if (!account.grant.capabilities.includes(capability)) {
     throw new ElizaError(
       capability === "microsoft.calendar.read"
         ? "Microsoft Calendar event sync requires delegated Calendars.Read permission."
-        : capability === "microsoft.calendar.freebusy"
-          ? "Microsoft guest free/busy requires delegated Calendars.ReadBasic permission."
-          : "Microsoft Calendar discovery requires delegated Calendars.ReadBasic permission.",
+        : capability === "microsoft.calendar.write"
+          ? "Microsoft Calendar creation requires delegated Calendars.ReadWrite permission."
+          : capability === "microsoft.calendar.freebusy"
+            ? "Microsoft guest free/busy requires delegated Calendars.ReadBasic permission."
+            : "Microsoft Calendar discovery requires delegated Calendars.ReadBasic permission.",
       {
         code: "MICROSOFT_CALENDAR_PERMISSION_MISSING",
         context: {
@@ -563,6 +596,42 @@ function utcGraphDateTime(value: string, field: string): string {
     });
   }
   return new Date(parsed).toISOString().replace(/Z$/, "");
+}
+
+function graphTransactionId(idempotencyKey: string): string {
+  const normalized = idempotencyKey.trim();
+  if (!normalized) {
+    throw new ElizaError(
+      "Microsoft Calendar creation requires a stable idempotency key.",
+      {
+        code: "MICROSOFT_CALENDAR_IDEMPOTENCY_KEY_REQUIRED",
+        severity: "fatal",
+      },
+    );
+  }
+  const digest = createHash("sha256").update(normalized).digest("hex");
+  return [
+    digest.slice(0, 8),
+    digest.slice(8, 12),
+    `5${digest.slice(13, 16)}`,
+    `8${digest.slice(17, 20)}`,
+    digest.slice(20, 32),
+  ].join("-");
+}
+
+function createdGraphEvent(body: JsonRecord): MicrosoftGraphEvent {
+  const parsed = parseGraphEvent(body);
+  if (parsed.kind === "tombstone") {
+    throw new ElizaError(
+      "Microsoft Graph returned a deleted event after creation.",
+      {
+        code: "MICROSOFT_GRAPH_INVALID_CREATE_RESPONSE",
+        context: { eventId: parsed.eventId },
+        severity: "fatal",
+      },
+    );
+  }
+  return parsed.event;
 }
 
 export class DefaultMicrosoftGraphCalendarPort
@@ -825,6 +894,92 @@ export class DefaultMicrosoftGraphCalendarPort
       results.push(...valueArray(page.body, "get_schedule").map(parseSchedule));
     }
     return results;
+  }
+
+  async createEvent(args: {
+    account: MicrosoftCalendarAccount;
+    calendarId: string;
+    title: string;
+    description?: string | null;
+    location?: string | null;
+    startAt: string;
+    endAt: string;
+    attendees: readonly CreateLifeOpsCalendarEventAttendee[];
+    notifyAttendees: boolean;
+    idempotencyKey: string;
+  }): Promise<MicrosoftGraphEvent> {
+    assertCapability(args.account, "microsoft.calendar.write");
+    if (args.attendees.length > 0 && !args.notifyAttendees) {
+      throw new ElizaError(
+        "Microsoft Graph sends invitations when attendees are added; explicit attendee notification approval is required.",
+        {
+          code: "MICROSOFT_CALENDAR_ATTENDEE_NOTIFICATION_REQUIRED",
+          context: { connectorAccountId: args.account.account.id },
+          severity: "fatal",
+        },
+      );
+    }
+    const title = stringValue(args.title);
+    const calendarId = stringValue(args.calendarId);
+    if (!title || !calendarId) {
+      throw new ElizaError(
+        "Microsoft Calendar creation requires a title and calendar identifier.",
+        {
+          code: "MICROSOFT_CALENDAR_CREATE_INPUT_INVALID",
+          context: {
+            connectorAccountId: args.account.account.id,
+            missingTitle: !title,
+            missingCalendarId: !calendarId,
+          },
+          severity: "fatal",
+        },
+      );
+    }
+    const startAt = utcGraphDateTime(args.startAt, "startAt");
+    const endAt = utcGraphDateTime(args.endAt, "endAt");
+    if (Date.parse(args.endAt) <= Date.parse(args.startAt)) {
+      throw new ElizaError(
+        "Microsoft Calendar creation requires endAt after startAt.",
+        {
+          code: "MICROSOFT_CALENDAR_CREATE_RANGE_INVALID",
+          context: { connectorAccountId: args.account.account.id },
+          severity: "fatal",
+        },
+      );
+    }
+    const page = await this.request(
+      args.account,
+      new URL(
+        `me/calendars/${encodeURIComponent(calendarId)}/events`,
+        this.baseUrl,
+      ),
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Prefer: 'outlook.timezone="UTC", IdType="ImmutableId"',
+        },
+        body: JSON.stringify({
+          subject: title,
+          body: {
+            contentType: "text",
+            content: args.description?.trim() ?? "",
+          },
+          start: { dateTime: startAt, timeZone: "UTC" },
+          end: { dateTime: endAt, timeZone: "UTC" },
+          location: { displayName: args.location?.trim() ?? "" },
+          attendees: args.attendees.map((attendee) => ({
+            emailAddress: {
+              address: attendee.email,
+              name: attendee.displayName?.trim() || attendee.email,
+            },
+            type: attendee.optional ? "optional" : "required",
+          })),
+          transactionId: graphTransactionId(args.idempotencyKey),
+        }),
+      },
+    );
+    return createdGraphEvent(page.body);
   }
 
   private continuationUrl(value: string): URL {

@@ -166,6 +166,7 @@ def test_runner_builds_openai_compatible_tool_manifest() -> None:
     tool_names = [tool["function"]["name"] for tool in tools]
 
     assert "CALENDAR" in tool_names
+    assert "CALENDAR_SOURCES" in tool_names
     assert "MESSAGE" in tool_names
     assert "SCHEDULED_TASK_CREATE" in tool_names
     assert "CALENDAR.create" not in tool_names
@@ -193,6 +194,80 @@ def test_runner_builds_openai_compatible_tool_manifest() -> None:
         "next_event",
         "update_preferences",
     ]
+    source_tool = next(
+        tool for tool in tools if tool["function"]["name"] == "CALENDAR_SOURCES"
+    )
+    source_params = source_tool["function"]["parameters"]
+    assert source_params["required"] == ["operation"]
+    assert source_params["properties"]["operation"]["enum"] == [
+        "list",
+        "select",
+        "deselect",
+        "connect",
+        "reconnect",
+    ]
+    assert {
+        "provider",
+        "grantId",
+        "connectorAccountId",
+        "calendarId",
+        "expectedVersion",
+    }.issubset(source_params["properties"])
+
+
+def test_calendar_source_executor_exposes_planning_without_fake_connection() -> None:
+    from eliza_lifeops_bench.__main__ import _build_world_factory
+    from eliza_lifeops_bench.runner import _execute_action
+    from eliza_lifeops_bench.types import Action
+
+    world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
+    listed = _execute_action(
+        Action(name="CALENDAR_SOURCES", kwargs={"operation": "list"}),
+        world,
+    )
+
+    assert listed["simulatedOnly"] is True
+    assert listed["providerReceipt"] is None
+    assert listed["snapshot"]["state"] == "complete"
+    assert {
+        source["key"]["provider"] for source in listed["snapshot"]["sources"]
+    } == {"apple_calendar", "google"}
+
+    oauth = _execute_action(
+        Action(
+            name="CALENDAR_SOURCES",
+            kwargs={"operation": "connect", "provider": "google"},
+        ),
+        world,
+    )
+    assert oauth == {
+        "operation": "connect",
+        "connection": {
+            "state": "authorization_required",
+            "provider": "google",
+            "connected": False,
+            "handoff": "external_oauth_required",
+        },
+        "ok": False,
+        "simulatedOnly": True,
+        "providerReceipt": None,
+    }
+
+    source = listed["snapshot"]["sources"][0]
+    refused_write = _execute_action(
+        Action(
+            name="CALENDAR_SOURCES",
+            kwargs={
+                "operation": "deselect",
+                **source["key"],
+                "expectedVersion": source["selectionVersion"],
+            },
+        ),
+        world,
+    )
+    assert refused_write["ok"] is False
+    assert refused_write["changed"] is False
+    assert refused_write["error"] == "external_source_selection_required"
 
 
 def test_executor_accepts_promoted_calendar_alias_without_subaction() -> None:
@@ -400,7 +475,7 @@ def test_executor_calendar_search_returns_matching_events() -> None:
     assert [event["id"] for event in result["events"]] == ["event_00040"]
 
 
-def test_executor_treats_reply_as_terminal_noop() -> None:
+def test_executor_treats_reply_as_explicit_effectless_terminal() -> None:
     from eliza_lifeops_bench.__main__ import _build_world_factory
     from eliza_lifeops_bench.runner import _execute_action
     from eliza_lifeops_bench.types import Action
@@ -408,7 +483,12 @@ def test_executor_treats_reply_as_terminal_noop() -> None:
     world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
     result = _execute_action(Action(name="REPLY", kwargs={"text": "done"}), world)
 
-    assert result == {"ok": True, "noop": True, "reply": {"text": "done"}}
+    assert result == {
+        "ok": True,
+        "effect": "none",
+        "terminal": True,
+        "reply": {"text": "done"},
+    }
 
 
 def test_executor_accepts_calendar_delete_alias_with_id() -> None:
@@ -430,7 +510,7 @@ def test_executor_accepts_calendar_delete_alias_with_id() -> None:
     )
     assert missing == {
         "ok": False,
-        "noop": True,
+        "noEffect": True,
         "missing_id": "evt_12345",
         "subaction": "delete_event",
     }
@@ -577,10 +657,12 @@ def test_executor_accepts_message_subaction_alias() -> None:
     )
 
     assert result == {
-        "operation": "read_with_contact",
+        "ok": False,
+        "status": "unsupported",
+        "noEffect": True,
+        "operation": "MESSAGE/read_with_contact",
+        "reason": "LifeWorld does not implement this cross-channel read projection",
         "source": "signal",
-        "ok": True,
-        "noop": True,
     }
 
 

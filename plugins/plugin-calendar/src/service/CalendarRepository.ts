@@ -641,7 +641,6 @@ export class CalendarRepository {
     agentId: string;
     sourceId: string;
     name: string;
-    enabled: boolean;
     updatedAt: string;
     replacement?: {
       secretRef: string;
@@ -652,7 +651,6 @@ export class CalendarRepository {
     const replacement = args.replacement;
     const updateStatement = `UPDATE app_calendar.life_calendar_sources
         SET name = ${sqlQuote(args.name)},
-            enabled = ${sqlBoolean(args.enabled)},
             updated_at = ${sqlQuote(args.updatedAt)},
             sync_generation = sync_generation + 1,
             lease_token = NULL,

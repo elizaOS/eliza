@@ -21,9 +21,11 @@ import { createCalendarFeedConflictLoader } from "../src/actions/conflict-detect
 import {
   type CalendarHostGate,
   CalendarService,
+  ensureCalendarFeedPreferenceTable,
 } from "../src/service/index.js";
 
 const AGENT_ID = "ics-pglite-agent";
+const INTERNAL_URL = new URL("http://internal.local/api/calendar");
 const SOURCE_URL =
   "https://calendar.example.test/private/family.ics?token=never-in-db";
 const WINDOW = {
@@ -180,6 +182,10 @@ beforeAll(async () => {
   await db.execute(sql.raw(CREATE_EVENTS_TABLE));
   await db.execute(sql.raw(CREATE_SYNC_TABLE));
   await db.execute(sql.raw(CREATE_SOURCES_TABLE));
+  await ensureCalendarFeedPreferenceTable(
+    async (statement) =>
+      (await pg.query<Record<string, unknown>>(statement)).rows,
+  );
   const secretsService = {
     getGlobal: async (key: string) => secrets.get(key) ?? null,
     setGlobal: async (key: string, value: string) => {
@@ -203,12 +209,13 @@ beforeAll(async () => {
   } as unknown as IAgentRuntime;
   service = new CalendarService(runtime);
   service.setGate(gate());
-});
+}, 30_000);
 
 beforeEach(async () => {
   await pg.query("DELETE FROM app_calendar.life_calendar_events");
   await pg.query("DELETE FROM app_calendar.life_calendar_sync_states");
   await pg.query("DELETE FROM app_calendar.life_calendar_sources");
+  await pg.query("DELETE FROM app_calendar.life_calendar_feed_preferences");
   secrets.clear();
   vi.clearAllMocks();
 });
@@ -247,7 +254,72 @@ async function syncBody(
   });
 }
 
-describe("CalendarService guarded ICS sources (real PGlite)", () => {
+describe("CalendarService guarded ICS sources (real PGlite)", {
+  timeout: 30_000,
+}, () => {
+  it("routes direct enabled updates through the exact-source CAS", async () => {
+    const source = await createSource();
+    const listed = await service.listCalendars(INTERNAL_URL, {
+      grantId: source.id,
+    });
+    expect(listed).toHaveLength(1);
+    expect(listed[0]).toMatchObject({
+      calendarId: source.id,
+      includeInFeed: true,
+      selectionVersion: 0,
+    });
+
+    await expect(
+      service.updateIcsCalendarSource(source.id, { enabled: false }),
+    ).rejects.toMatchObject({
+      status: 400,
+      code: "CALENDAR_SOURCE_VERSION_INVALID",
+    });
+    await expect(
+      service.updateIcsCalendarSource(source.id, {
+        enabled: false,
+        expectedSelectionVersion: 0,
+        name: "Ambiguous mixed update",
+      }),
+    ).rejects.toMatchObject({
+      status: 400,
+      code: "CALENDAR_SOURCE_SELECTION_COMBINATION_INVALID",
+    });
+
+    const selected = await service.updateIcsCalendarSource(source.id, {
+      enabled: false,
+      expectedSelectionVersion: 0,
+    });
+    expect(selected.enabled).toBe(false);
+    const renamed = await service.updateIcsCalendarSource(source.id, {
+      name: "Renamed family calendar",
+    });
+    expect(renamed).toMatchObject({
+      enabled: false,
+      name: "Renamed family calendar",
+    });
+
+    const preference = await pg.query<{
+      included: boolean;
+      version: number;
+    }>(
+      `SELECT included, version
+         FROM app_calendar.life_calendar_feed_preferences
+        WHERE agent_id = $1 AND calendar_id = $2`,
+      [AGENT_ID, source.id],
+    );
+    expect(preference.rows).toEqual([{ included: false, version: 1 }]);
+    await expect(
+      service.updateIcsCalendarSource(source.id, {
+        enabled: false,
+        expectedSelectionVersion: 0,
+      }),
+    ).rejects.toMatchObject({
+      status: 409,
+      code: "CALENDAR_SOURCE_SELECTION_CONFLICT",
+    });
+  });
+
   it("persists only a secret reference, fingerprint, and origin across restart", async () => {
     const created = await createSource();
     const raw = await pg.query<Record<string, unknown>>(

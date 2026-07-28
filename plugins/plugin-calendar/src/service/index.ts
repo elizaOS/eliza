@@ -31,9 +31,12 @@ export {
 } from "./CalendarService.js";
 export {
   type CalendarFeedPreferenceIdentifier,
+  type CalendarFeedPreferenceSnapshot,
   type CalendarFeedPreferences,
+  type CalendarFeedPreferenceWriteReceipt,
   calendarFeedPreferenceKey,
   ensureCalendarFeedIncludes,
+  getCalendarFeedPreference,
   setCalendarFeedIncluded,
 } from "./feed-preferences.js";
 export {
@@ -45,12 +48,14 @@ export {
 export {
   CALENDAR_MIGRATION_SERVICE_TYPE,
   CalendarMigrationService,
+  ensureCalendarFeedPreferenceTable,
   ensureGoogleCalendarWatchChannelTable,
   ensureIcsCalendarSourceTable,
   MIGRATED_CALENDAR_TABLES,
 } from "./migration.js";
 export {
   calendarEvents,
+  calendarFeedPreferences,
   calendarPgSchema,
   calendarSchema,
   calendarSources,

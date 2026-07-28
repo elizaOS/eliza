@@ -6,14 +6,13 @@
  * action bundles; there is deliberately no send, purchase, submit, or calendar
  * mutation verb.
  */
-import type {
-  Action,
-  ActionResult,
-  HandlerCallback,
-  IAgentRuntime,
-  Memory,
-} from "@elizaos/core";
+import type { Action, IAgentRuntime, Memory } from "@elizaos/core";
 import { resolveActionArgs, type SubactionsMap } from "@elizaos/core";
+import {
+  completeLifeOpsEffect,
+  lifeOpsAppliedEffect,
+  lifeOpsFailedEffect,
+} from "../action-effect-result.js";
 import {
   getSchoolSourceFactRuntimeService,
   type SchoolSourceFactRuntimeService,
@@ -104,12 +103,39 @@ function serviceFor(
   return service;
 }
 
-async function complete(
-  callback: HandlerCallback | undefined,
-  result: ActionResult,
-): Promise<ActionResult> {
-  if (result.text) await callback?.({ text: result.text });
-  return result;
+function requestId(message: Memory): string {
+  return message.id ?? `room:${message.roomId}`;
+}
+
+function receiptId(
+  message: Memory,
+  operation: string,
+  resourceId: string,
+): string {
+  return `${ACTION_NAME}:${operation}:${requestId(message)}:${resourceId}`;
+}
+
+function failedReceipt(input: {
+  message: Memory;
+  operation: string;
+  code: string;
+  retryable: boolean;
+}) {
+  const observedAt = new Date().toISOString();
+  const id = requestId(input.message);
+  return lifeOpsFailedEffect({
+    receiptId: receiptId(input.message, input.operation, id),
+    operation: input.operation,
+    resource: { kind: "runtime.message", id },
+    artifacts: [],
+    idempotency: { key: null, replayed: false },
+    observedAt,
+    failure: {
+      code: input.code,
+      retryable: input.retryable,
+      acceptance: "rejected",
+    },
+  });
 }
 
 function ingestInput(value: unknown): IngestSchoolNoticeInput {
@@ -172,6 +198,7 @@ export function createSchoolSourceFactAction(
       "domain:calendar",
       "capability:read",
       "capability:write",
+      "effect:receipt-required",
       "surface:internal",
     ],
     description:
@@ -228,11 +255,20 @@ export function createSchoolSourceFactAction(
     ],
     handler: async (runtime, message, state, options, callback) => {
       if (!(await deps.authorize(runtime, message))) {
-        return complete(callback, {
-          success: false,
-          text: "School source operations are restricted to the owner.",
-          data: { error: "PERMISSION_DENIED" },
-        });
+        return completeLifeOpsEffect(
+          callback,
+          {
+            success: false,
+            text: "School source operations are restricted to the owner.",
+            data: { error: "PERMISSION_DENIED" },
+          },
+          failedReceipt({
+            message,
+            operation: "lifeops.school_sources.authorize",
+            code: "PERMISSION_DENIED",
+            retryable: false,
+          }),
+        );
       }
       const resolved = await resolveActionArgs<
         SchoolSourceSubaction,
@@ -246,14 +282,23 @@ export function createSchoolSourceFactAction(
         subactions: SUBACTIONS,
       });
       if (!resolved.ok) {
-        return complete(callback, {
-          success: false,
-          text: resolved.clarification,
-          data: {
-            error: "MISSING_SCHOOL_SOURCE_PARAMETERS",
-            missing: resolved.missing,
+        return completeLifeOpsEffect(
+          callback,
+          {
+            success: false,
+            text: resolved.clarification,
+            data: {
+              error: "MISSING_SCHOOL_SOURCE_PARAMETERS",
+              missing: resolved.missing,
+            },
           },
-        });
+          failedReceipt({
+            message,
+            operation: "lifeops.school_sources.resolve_request",
+            code: "MISSING_SCHOOL_SOURCE_PARAMETERS",
+            retryable: true,
+          }),
+        );
       }
       const service = serviceFor(runtime, deps);
       if (resolved.subaction === "capture_candidates") {
@@ -268,52 +313,146 @@ export function createSchoolSourceFactAction(
           normalizeSourceArtifactInput(resolved.params.artifact),
           candidatesValue.map(normalizeSourceFactCandidate),
         );
-        return complete(callback, {
-          success: true,
-          text:
-            `Captured ${result.sourceFacts.length} separate proposed source fact(s). ` +
-            "No message, purchase, submission, or calendar mutation was performed.",
-          data: {
-            action: resolved.subaction,
-            artifactId: result.artifact.id,
-            sourceFactIds: result.sourceFacts.map((fact) => fact.id),
+        const operation = "lifeops.school_source_candidates.capture";
+        return completeLifeOpsEffect(
+          callback,
+          {
+            success: true,
+            text:
+              `Captured ${result.sourceFacts.length} separate proposed source fact(s). ` +
+              "No message, purchase, submission, or calendar mutation was performed.",
+            data: {
+              action: resolved.subaction,
+              artifactId: result.artifact.id,
+              sourceFactIds: result.sourceFacts.map((fact) => fact.id),
+            },
           },
-        });
+          lifeOpsAppliedEffect({
+            receiptId: receiptId(message, operation, result.artifact.id),
+            operation,
+            resource: {
+              kind: "lifeops.school_source_artifact",
+              id: result.artifact.id,
+              version: result.artifact.contentSha256,
+            },
+            artifacts: result.sourceFacts.map((fact) => ({
+              kind: "lifeops.school_source_fact",
+              id: fact.id,
+              version: fact.revisionSha256,
+            })),
+            idempotency: { key: null, replayed: false },
+            observedAt: result.artifact.createdAt,
+            commit: {
+              kind: "durable",
+              id: result.artifact.id,
+              committedAt: result.artifact.createdAt,
+            },
+          }),
+        );
       }
       if (resolved.subaction === "ingest_notice") {
         const result = await service.ingestSchoolNotice(
           ingestInput(resolved.params.input),
         );
-        return complete(callback, {
-          success: true,
-          text:
-            `Captured school notice ${result.noticeResolution.noticeKey} as ` +
-            `${result.noticeResolution.state}; created action bundle ${result.actionBundle.id}. ` +
-            "All consequential items remain approval-gated proposals.",
-          data: {
-            action: resolved.subaction,
-            artifactId: result.artifact.id,
-            sourceFactId: result.sourceFact.id,
-            noticeState: result.noticeResolution.state,
-            actionBundleId: result.actionBundle.id,
-            childResolution: result.childResolution.status,
+        const operation = "lifeops.school_notice.ingest";
+        return completeLifeOpsEffect(
+          callback,
+          {
+            success: true,
+            text:
+              `Captured school notice ${result.noticeResolution.noticeKey} as ` +
+              `${result.noticeResolution.state}; created action bundle ${result.actionBundle.id}. ` +
+              "All consequential items remain approval-gated proposals.",
+            data: {
+              action: resolved.subaction,
+              artifactId: result.artifact.id,
+              sourceFactId: result.sourceFact.id,
+              noticeState: result.noticeResolution.state,
+              actionBundleId: result.actionBundle.id,
+              childResolution: result.childResolution.status,
+              actionBundleReplayed: result.actionBundleReplayed,
+            },
           },
-        });
+          lifeOpsAppliedEffect({
+            receiptId: receiptId(message, operation, result.actionBundle.id),
+            operation,
+            resource: {
+              kind: "lifeops.school_action_bundle",
+              id: result.actionBundle.id,
+              version: String(result.actionBundle.revision),
+            },
+            artifacts: [
+              {
+                kind: "lifeops.school_source_artifact",
+                id: result.artifact.id,
+                version: result.artifact.contentSha256,
+              },
+              {
+                kind: "lifeops.school_source_fact",
+                id: result.sourceFact.id,
+                version: result.sourceFact.revisionSha256,
+              },
+              ...(result.responsibilityAssignment
+                ? [
+                    {
+                      kind: "lifeops.school_responsibility_assignment",
+                      id: result.responsibilityAssignment.id,
+                    },
+                  ]
+                : []),
+            ],
+            idempotency: {
+              key: result.actionBundle.id,
+              replayed: result.actionBundleReplayed,
+            },
+            observedAt: result.actionBundle.createdAt,
+            commit: {
+              kind: "durable",
+              id: result.actionBundle.id,
+              committedAt: result.actionBundle.createdAt,
+            },
+          }),
+        );
       }
       const result = await service.reconcileNotice(
         requiredText(resolved.params.noticeKey, "noticeKey"),
       );
-      return complete(callback, {
-        success: true,
-        text:
-          `Reconciled ${result.resolution.noticeKey} as ${result.resolution.state}; ` +
-          `current action bundle is ${result.bundle.id}.`,
-        data: {
-          action: resolved.subaction,
-          noticeState: result.resolution.state,
-          actionBundleId: result.bundle.id,
+      const operation = "lifeops.school_notice.reconcile";
+      return completeLifeOpsEffect(
+        callback,
+        {
+          success: true,
+          text:
+            `Reconciled ${result.resolution.noticeKey} as ${result.resolution.state}; ` +
+            `current action bundle is ${result.bundle.id}.`,
+          data: {
+            action: resolved.subaction,
+            noticeState: result.resolution.state,
+            actionBundleId: result.bundle.id,
+            replayed: result.replayed,
+          },
         },
-      });
+        lifeOpsAppliedEffect({
+          receiptId: receiptId(message, operation, result.bundle.id),
+          operation,
+          resource: {
+            kind: "lifeops.school_action_bundle",
+            id: result.bundle.id,
+            version: String(result.bundle.revision),
+          },
+          artifacts: [],
+          idempotency: {
+            key: result.bundle.id,
+            replayed: result.replayed,
+          },
+          observedAt: result.bundle.createdAt,
+          commit: {
+            kind: "durable",
+            id: result.bundle.id,
+            committedAt: result.bundle.createdAt,
+          },
+        }),
+      );
     },
     examples: [],
   };

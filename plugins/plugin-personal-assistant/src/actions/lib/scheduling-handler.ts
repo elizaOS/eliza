@@ -36,6 +36,7 @@ import {
   runWithTrajectoryPurpose,
 } from "@elizaos/core";
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
+import type { LifeOpsCalendarFeed } from "@elizaos/shared";
 import { hasLifeOpsAccess, INTERNAL_URL } from "../../lifeops/access.js";
 import { PgApprovalQueue } from "../../lifeops/approval-queue.js";
 import type {
@@ -81,6 +82,52 @@ const MAX_DAYS_LOOKAHEAD = 60;
 const DEFAULT_DAYS_LOOKAHEAD = 7;
 const DEFAULT_SLOTS_COUNT = 3;
 const SLOT_STEP_MINUTES = 15;
+
+function calendarFeedIssueSummary(
+  feed: LifeOpsCalendarFeed,
+): Array<{ provider: string; status: string; code: string | null }> {
+  return feed.sources
+    .filter((source) => source.status !== "fresh")
+    .map((source) => ({
+      provider: source.key.provider,
+      status: source.status,
+      code: source.error?.code ?? null,
+    }));
+}
+
+async function incompleteCalendarResponse(args: {
+  feed: LifeOpsCalendarFeed;
+  respond: ReturnType<typeof makeSchedulingRespond>;
+  scenario: string;
+  knownConflicts?: readonly LifeOpsCalendarEvent[];
+}): Promise<ActionResult> {
+  const knownConflicts = args.knownConflicts ?? [];
+  return args.respond({
+    success: false,
+    scenario: args.scenario,
+    fallback:
+      knownConflicts.length > 0
+        ? `I can't confirm the full window because one or more calendars are stale or unavailable. The data I could read contains ${knownConflicts.length} possible conflict${knownConflicts.length === 1 ? "" : "s"}, so I won't call this time free.`
+        : "I can't confirm availability because one or more calendars are stale or unavailable. I won't call this time free until every selected source is current.",
+    context: {
+      feedState: args.feed.state,
+      knownConflictCount: knownConflicts.length,
+      sourceIssues: calendarFeedIssueSummary(args.feed),
+    },
+    data: {
+      error: "CALENDAR_INCOMPLETE",
+      feedState: args.feed.state,
+      isFree: null,
+      knownConflicts: knownConflicts.map((event) => ({
+        id: event.id,
+        title: event.title,
+        startAt: event.startAt,
+        endAt: event.endAt,
+      })),
+      sourceIssues: calendarFeedIssueSummary(args.feed),
+    },
+  });
+}
 
 async function loadLifeOpsServiceModule() {
   return import("../../lifeops/service.js");
@@ -545,15 +592,14 @@ export async function runProposeMeetingTimesHandler(
   const { LifeOpsService, LifeOpsServiceError } =
     await loadLifeOpsServiceModule();
   const service = new LifeOpsService(runtime);
-  let events: readonly LifeOpsCalendarEvent[] = [];
+  let feed: LifeOpsCalendarFeed;
   try {
-    const feed = await service.getCalendarFeed(INTERNAL_URL, {
+    feed = await service.getCalendarFeed(INTERNAL_URL, {
       includeHiddenCalendars: true,
       timeMin: windowStart.toISOString(),
       timeMax: windowEnd.toISOString(),
       timeZone: effectivePreferences.timeZone,
     });
-    events = feed.events;
   } catch (error) {
     if (error instanceof LifeOpsServiceError) {
       const fallback =
@@ -574,6 +620,13 @@ export async function runProposeMeetingTimesHandler(
     }
     throw error;
   }
+  if (feed.state !== "complete") {
+    return incompleteCalendarResponse({
+      feed,
+      respond,
+      scenario: "scheduling_calendar_incomplete",
+    });
+  }
 
   const slots = computeProposedSlots({
     now,
@@ -582,7 +635,7 @@ export async function runProposeMeetingTimesHandler(
     durationMinutes,
     slotCount,
     preferences: effectivePreferences,
-    events,
+    events: feed.events,
   });
 
   const fallback = formatProposedSlotsReply({
@@ -661,15 +714,14 @@ export async function runCheckAvailabilityHandler(
   const { LifeOpsService, LifeOpsServiceError } =
     await loadLifeOpsServiceModule();
   const service = new LifeOpsService(runtime);
-  let events: readonly LifeOpsCalendarEvent[] = [];
+  let feed: LifeOpsCalendarFeed;
   try {
-    const feed = await service.getCalendarFeed(INTERNAL_URL, {
+    feed = await service.getCalendarFeed(INTERNAL_URL, {
       includeHiddenCalendars: true,
       timeMin: windowStart.toISOString(),
       timeMax: windowEnd.toISOString(),
       timeZone: preferences.timeZone,
     });
-    events = feed.events;
   } catch (error) {
     if (error instanceof LifeOpsServiceError) {
       const fallback =
@@ -693,11 +745,19 @@ export async function runCheckAvailabilityHandler(
 
   const windowStartMs = windowStart.getTime();
   const windowEndMs = windowEnd.getTime();
-  const conflicts = events.filter((event) => {
+  const conflicts = feed.events.filter((event) => {
     const s = Date.parse(event.startAt);
     const e = Date.parse(event.endAt);
     return s < windowEndMs && e > windowStartMs;
   });
+  if (feed.state !== "complete") {
+    return incompleteCalendarResponse({
+      feed,
+      respond,
+      scenario: "scheduling_calendar_incomplete",
+      knownConflicts: conflicts,
+    });
+  }
 
   const isFree = conflicts.length === 0;
   const fallback = isFree

@@ -7,6 +7,8 @@ import {
   CalendarService,
   calendarAction,
   calendarPlugin,
+  calendarSourcesAction,
+  calendarSourcesProvider,
   conflictDetectAction,
 } from "../src/index.js";
 import { CalendarMigrationService } from "../src/service/migration.js";
@@ -24,12 +26,24 @@ describe("plugin-calendar surface", () => {
     expect(calendarPlugin.views?.[0]?.modalities).toEqual(["gui"]);
   });
 
-  it("registers functional calendar and conflict actions without scaffolds", () => {
+  it("registers calendar event, source-administration, and conflict surfaces", () => {
     expect(calendarPlugin.actions).toEqual([
       calendarAction,
+      calendarSourcesAction,
       conflictDetectAction,
     ]);
+    expect(calendarPlugin.providers).toContain(calendarSourcesProvider);
+    expect(calendarSourcesAction.subActions).toEqual([
+      "list",
+      "select",
+      "deselect",
+      "connect",
+      "reconnect",
+    ]);
     expect(calendarAction.description).not.toMatch(
+      /scaffold_stub|not migrated|not yet implemented/i,
+    );
+    expect(calendarSourcesAction.description).not.toMatch(
       /scaffold_stub|not migrated|not yet implemented/i,
     );
     expect(conflictDetectAction.description).not.toMatch(

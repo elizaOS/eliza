@@ -63,21 +63,27 @@ describe("calendar client methods", () => {
 
   it("setLifeOpsCalendarIncluded preserves multi-account identity in path and body", async () => {
     await client.setLifeOpsCalendarIncluded({
+      provider: "google",
       calendarId: "work@x",
       includeInFeed: false,
       side: "owner",
       mode: "remote",
       grantId: "grant-family",
+      connectorAccountId: "account-family",
+      expectedVersion: 6,
     });
     const [path, init] = client.fetch.mock.calls[0] as [string, RequestInit];
     expect(path).toBe("/api/lifeops/calendar/calendars/work%40x/include");
     expect(init.method).toBe("PUT");
     expect(JSON.parse(String(init.body))).toEqual({
+      provider: "google",
       calendarId: "work@x",
       includeInFeed: false,
       side: "owner",
       mode: "remote",
       grantId: "grant-family",
+      connectorAccountId: "account-family",
+      expectedVersion: 6,
     });
   });
 

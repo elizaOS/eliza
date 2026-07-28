@@ -24,6 +24,7 @@ import {
   integer,
   jsonb,
   pgSchema,
+  primaryKey,
   real,
   text,
   timestamp,
@@ -1500,6 +1501,41 @@ export const lifeCalendarMutationAttempts = appLifeopsPgSchema.table(
   ],
 );
 
+/**
+ * Durable outbox for one grant-expiry watcher per household access grant.
+ * Revocation records cancellation intent in the same transaction as access
+ * removal; the shared scheduler tick retries materialization or dismissal
+ * until the corresponding completion timestamp is committed.
+ */
+export const lifeHouseholdGrantExpiryWarningClaims = appLifeopsPgSchema.table(
+  "life_household_grant_expiry_warning_claims",
+  {
+    agentId: text("agent_id").notNull(),
+    grantId: text("grant_id").notNull(),
+    attemptToken: text("attempt_token").notNull(),
+    leaseExpiresAt: text("lease_expires_at").notNull(),
+    scheduledTaskId: text("scheduled_task_id"),
+    warningAt: text("warning_at"),
+    expiresAt: text("expires_at"),
+    cancelledAt: text("cancelled_at"),
+    cancellationCompletedAt: text("cancellation_completed_at"),
+    cancellationAttemptCount: integer("cancellation_attempt_count")
+      .notNull()
+      .default(0),
+    cancellationLastError: text("cancellation_last_error"),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.agentId, t.grantId] }),
+    unique().on(t.agentId, t.scheduledTaskId),
+    index("idx_life_household_warning_cancellation").on(
+      t.agentId,
+      t.cancelledAt,
+      t.cancellationCompletedAt,
+    ),
+  ],
+);
+
 export const lifeHouseholdAccessGrants = appLifeopsPgSchema.table(
   "life_household_access_grants",
   {
@@ -1954,6 +1990,7 @@ export const lifeOpsSchema = {
   lifeSchedulingProposals,
   lifeSchedulingDeliveryAttempts,
   lifeCalendarMutationAttempts,
+  lifeHouseholdGrantExpiryWarningClaims,
   lifeHouseholdAccessGrants,
   lifeHouseholdCoordinationHeads,
   lifeHouseholdScheduleProposals,

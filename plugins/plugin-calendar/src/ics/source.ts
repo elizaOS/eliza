@@ -51,6 +51,7 @@ export function icsCalendarSummary(
     timeZone: null,
     selected: source.enabled,
     includeInFeed: source.enabled,
+    selectionVersion: 0,
   };
 }
 

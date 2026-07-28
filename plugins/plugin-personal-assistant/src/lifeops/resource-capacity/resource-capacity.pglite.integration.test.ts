@@ -787,6 +787,20 @@ describe("household resource capacity — real PGlite", () => {
     );
     expect(result).toMatchObject({
       success: true,
+      effectReceipts: [
+        {
+          outcome: "applied",
+          operation: "lifeops.household_resource.put_revision",
+          resource: {
+            kind: "lifeops.household_resource",
+            id: resourceId,
+            version: "1",
+          },
+          commit: {
+            kind: "durable",
+          },
+        },
+      ],
       data: {
         revision: {
           resourceId,

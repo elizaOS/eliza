@@ -25,6 +25,7 @@ import type {
   ListLifeOpsCalendarsRequest,
   ListLifeOpsIcsCalendarSourcesResponse,
   SetLifeOpsCalendarIncludedRequest,
+  SetLifeOpsCalendarIncludedResponse,
   UpdateLifeOpsIcsCalendarSourceRequest,
 } from "@elizaos/shared";
 // Load the `@elizaos/ui` barrel so the `declare module "@elizaos/ui"`
@@ -69,7 +70,7 @@ export interface CalendarClientMethods {
   ): Promise<{ calendars: LifeOpsCalendarSummary[] }>;
   setLifeOpsCalendarIncluded(
     data: SetLifeOpsCalendarIncludedRequest,
-  ): Promise<{ calendar: LifeOpsCalendarSummary }>;
+  ): Promise<SetLifeOpsCalendarIncludedResponse>;
   getLifeOpsNextCalendarEventContext(
     options?: GetLifeOpsCalendarFeedRequest,
   ): Promise<LifeOpsNextCalendarEventContext>;
@@ -160,7 +161,7 @@ calendarClientPrototype.setLifeOpsCalendarIncluded = async function (
   this: ElizaClient,
   data: SetLifeOpsCalendarIncludedRequest,
 ) {
-  return this.fetch<{ calendar: LifeOpsCalendarSummary }>(
+  return this.fetch<SetLifeOpsCalendarIncludedResponse>(
     `/api/lifeops/calendar/calendars/${encodeURIComponent(data.calendarId)}/include`,
     {
       method: "PUT",

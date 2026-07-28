@@ -23,7 +23,7 @@
  */
 
 import type { AgentRuntime } from "@elizaos/core";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
@@ -32,6 +32,7 @@ import {
   computeProposedSlots,
   formatProposedSlotsReply,
   runCheckAvailabilityHandler,
+  runProposeMeetingTimesHandler,
   runSchedulingNegotiationHandler,
   runUpdateMeetingPreferencesHandler,
 } from "../src/actions/lib/scheduling-handler.js";
@@ -309,5 +310,113 @@ describe("life-ops scheduling-with-others handlers (real PGLite)", () => {
     expect((result as { data?: { error?: string } }).data?.error).toBe(
       "INVALID_WINDOW",
     );
+  });
+
+  it("CALENDAR.check_availability never calls a partial feed free", async () => {
+    const originalGetService = runtime.getService.bind(runtime);
+    const getService = vi.spyOn(runtime, "getService").mockImplementation(((
+      serviceType: string,
+    ) =>
+      serviceType === "calendar"
+        ? {
+            getCalendarFeed: async () => ({
+              calendarId: "all",
+              events: [],
+              source: "cache",
+              state: "partial",
+              sources: [
+                {
+                  key: {
+                    provider: "google",
+                    side: "owner",
+                    grantId: "redacted-by-action",
+                    calendarId: "primary",
+                  },
+                  summary: "Work",
+                  accessRole: "reader",
+                  visibility: "busy_only",
+                  status: "error",
+                  syncedAt: null,
+                  error: {
+                    code: "CALENDAR_SOURCE_UNAVAILABLE",
+                    message: "source unavailable",
+                    retryable: true,
+                  },
+                },
+              ],
+              timeMin: "2026-05-01T09:00:00.000Z",
+              timeMax: "2026-05-01T10:00:00.000Z",
+              syncedAt: null,
+            }),
+          }
+        : originalGetService(serviceType)) as typeof runtime.getService);
+    try {
+      const result = await runCheckAvailabilityHandler(
+        runtime,
+        makeMessage(runtime, "am I free") as never,
+        undefined,
+        {
+          parameters: {
+            startAt: "2026-05-01T09:00:00.000Z",
+            endAt: "2026-05-01T10:00:00.000Z",
+          },
+        } as never,
+        async () => {},
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.data).toMatchObject({
+        error: "CALENDAR_INCOMPLETE",
+        feedState: "partial",
+        isFree: null,
+      });
+      expect(JSON.stringify(result.data)).not.toContain("redacted-by-action");
+    } finally {
+      getService.mockRestore();
+    }
+  });
+
+  it("CALENDAR.propose_times refuses candidates from an unavailable feed", async () => {
+    const originalGetService = runtime.getService.bind(runtime);
+    const getService = vi.spyOn(runtime, "getService").mockImplementation(((
+      serviceType: string,
+    ) =>
+      serviceType === "calendar"
+        ? {
+            getCalendarFeed: async () => ({
+              calendarId: "all",
+              events: [],
+              source: "cache",
+              state: "unavailable",
+              sources: [],
+              timeMin: "2026-05-01T09:00:00.000Z",
+              timeMax: "2026-05-02T09:00:00.000Z",
+              syncedAt: null,
+            }),
+          }
+        : originalGetService(serviceType)) as typeof runtime.getService);
+    try {
+      const result = await runProposeMeetingTimesHandler(
+        runtime,
+        makeMessage(runtime, "find a time") as never,
+        undefined,
+        {
+          parameters: {
+            windowStart: "2026-05-01T09:00:00.000Z",
+            windowEnd: "2026-05-02T09:00:00.000Z",
+          },
+        } as never,
+        async () => {},
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.data).toMatchObject({
+        error: "CALENDAR_INCOMPLETE",
+        feedState: "unavailable",
+        isFree: null,
+      });
+    } finally {
+      getService.mockRestore();
+    }
   });
 });

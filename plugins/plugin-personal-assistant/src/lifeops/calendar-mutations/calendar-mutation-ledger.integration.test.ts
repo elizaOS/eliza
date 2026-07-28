@@ -301,7 +301,12 @@ describe("calendar mutation ledger — real PGlite and HTTP provider", () => {
             url.pathname.slice("/events/".length),
           );
           const current = events.get(eventId);
-          const etag = current?.metadata.etag;
+          const conditionalTarget =
+            body.recurrenceScope === "this_and_following" &&
+            current?.recurringEventId
+              ? events.get(current.recurringEventId)
+              : current;
+          const etag = conditionalTarget?.metadata.etag;
           if (
             typeof body.expectedProviderVersion === "string" &&
             body.expectedProviderVersion !== etag
@@ -309,6 +314,16 @@ describe("calendar mutation ledger — real PGlite and HTTP provider", () => {
             json(response, 409, {
               code: "PROVIDER_PRECONDITION_FAILED",
               message: "sandbox event changed before conditional write",
+            });
+            return;
+          }
+          if (
+            typeof body.expectedOccurrenceProviderVersion === "string" &&
+            body.expectedOccurrenceProviderVersion !== current?.metadata.etag
+          ) {
+            json(response, 409, {
+              code: "PROVIDER_PRECONDITION_FAILED",
+              message: "sandbox occurrence changed before conditional write",
             });
             return;
           }
@@ -440,8 +455,15 @@ describe("calendar mutation ledger — real PGlite and HTTP provider", () => {
         );
       },
       async getConditionalCalendarMutationTarget(_requestUrl, request) {
+        const selected = events.get(request.eventId);
+        const targetEventId =
+          (request.recurrenceScope === "series" ||
+            request.recurrenceScope === "this_and_following") &&
+          selected?.recurringEventId
+            ? selected.recurringEventId
+            : request.eventId;
         const result = await providerJson<{ event: LifeOpsCalendarEvent }>(
-          `/events/${encodeURIComponent(request.eventId)}`,
+          `/events/${encodeURIComponent(targetEventId)}`,
         );
         return result.event;
       },
@@ -512,7 +534,7 @@ describe("calendar mutation ledger — real PGlite and HTTP provider", () => {
 
   function modifyPayload(
     event: LifeOpsCalendarEvent,
-    recurrenceScope: "instance" | "series" = "instance",
+    recurrenceScope: "instance" | "this_and_following" | "series" = "instance",
   ): Extract<ApprovalPayload, { action: "modify_event" }> {
     return {
       action: "modify_event",
@@ -541,7 +563,7 @@ describe("calendar mutation ledger — real PGlite and HTTP provider", () => {
     event: LifeOpsCalendarEvent,
     input: {
       mode?: "organizer_cancel" | "remove_private_copy";
-      recurrenceScope?: "instance" | "series";
+      recurrenceScope?: "instance" | "this_and_following" | "series";
     } = {},
   ): Extract<ApprovalPayload, { action: "cancel_event" }> {
     return {
@@ -636,6 +658,88 @@ describe("calendar mutation ledger — real PGlite and HTTP provider", () => {
     expect(mutationRequests.at(-1)?.body.recurrenceScope).toBe("series");
     expect(events.has("provider-event-1")).toBe(false);
     expect((await approvals.byId(cancelRequest.id))?.state).toBe("done");
+  }, 60_000);
+
+  it("binds both recurrence versions and suppresses replay of a following-series split", async () => {
+    const series = calendarEvent({
+      id: "calendar-row-series-1",
+      externalId: "provider-series-1",
+      title: "Weekly school pickup",
+      startAt: "2027-02-26T23:00:00.000Z",
+      endAt: "2027-02-27T00:00:00.000Z",
+      recurrence: ["RRULE:FREQ=WEEKLY;COUNT=6"],
+      recurringEventId: null,
+      metadata: { etag: '"series-version-1"' },
+      updatedAt: "2027-03-01T11:00:00.000Z",
+    });
+    const occurrence = calendarEvent({
+      id: "calendar-row-occurrence-3",
+      externalId: "provider-occurrence-3",
+      title: series.title,
+      recurringEventId: series.externalId,
+      recurrence: null,
+      metadata: {
+        etag: '"occurrence-version-3"',
+        recurringEventId: series.externalId,
+        originalStartTime: "2027-03-12T23:00:00.000Z",
+        originalStartIsAllDay: false,
+      },
+      updatedAt: "2027-03-01T12:00:00.000Z",
+    });
+    events = new Map([
+      [series.externalId, series],
+      [occurrence.externalId, occurrence],
+    ]);
+    const request = await approved({
+      ...modifyPayload(occurrence, "this_and_following"),
+      seriesMaster: {
+        externalId: series.externalId,
+        startAtMs: Date.parse(series.startAt),
+        updatedAt: series.updatedAt,
+        etag: String(series.metadata.etag),
+      },
+    });
+
+    const completed = await executeCalendarMutationApproval({
+      runtime,
+      request,
+      port: port(),
+    });
+    expect(completed).toMatchObject({
+      kind: "succeeded",
+      duplicateSuppressed: false,
+      receipt: {
+        operation: "modify_event",
+        recurrenceScope: "this_and_following",
+      },
+    });
+    expect(mutationRequests).toHaveLength(1);
+    expect(mutationRequests[0]).toMatchObject({
+      method: "PATCH",
+      path: `/events/${occurrence.externalId}`,
+      body: {
+        recurrenceScope: "this_and_following",
+        expectedProviderVersion: '"series-version-1"',
+        expectedOccurrenceProviderVersion: '"occurrence-version-3"',
+        idempotencyKey: expect.any(String),
+      },
+    });
+    const operationKey = mutationRequests[0]?.body.idempotencyKey;
+    expect(typeof operationKey === "string" && operationKey.length > 0).toBe(
+      true,
+    );
+
+    const replay = await executeCalendarMutationApproval({
+      runtime,
+      request: (await approvals.byId(request.id)) ?? request,
+      port: port(),
+    });
+    expect(replay).toMatchObject({
+      kind: "succeeded",
+      duplicateSuppressed: true,
+      receipt: { recurrenceScope: "this_and_following" },
+    });
+    expect(mutationRequests).toHaveLength(1);
   }, 60_000);
 
   it("claims concurrently, sends one provider request, and suppresses receipt replay", async () => {

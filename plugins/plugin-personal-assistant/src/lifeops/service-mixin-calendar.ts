@@ -27,6 +27,8 @@ import type {
   LifeOpsConnectorSide,
   LifeOpsNextCalendarEventContext,
   ListLifeOpsCalendarsRequest,
+  SetLifeOpsCalendarIncludedRequest,
+  SetLifeOpsCalendarIncludedResponse,
 } from "@elizaos/shared";
 
 export interface LifeOpsCalendarService {
@@ -36,14 +38,8 @@ export interface LifeOpsCalendarService {
   ): Promise<LifeOpsCalendarSummary[]>;
   setCalendarIncluded(
     requestUrl: URL,
-    request: {
-      calendarId: string;
-      includeInFeed: boolean;
-      side?: LifeOpsConnectorSide;
-      mode?: LifeOpsConnectorMode;
-      grantId?: string;
-    },
-  ): Promise<LifeOpsCalendarSummary>;
+    request: SetLifeOpsCalendarIncludedRequest,
+  ): Promise<SetLifeOpsCalendarIncludedResponse>;
   getCalendarFeed(
     requestUrl: URL,
     request?: GetLifeOpsCalendarFeedRequest,
@@ -84,6 +80,8 @@ export interface LifeOpsCalendarService {
       recurrenceScope?: LifeOpsCalendarRecurrenceScope | null;
       notifyAttendees?: boolean;
       expectedProviderVersion?: string;
+      expectedOccurrenceProviderVersion?: string;
+      idempotencyKey?: string;
     },
   ): Promise<LifeOpsCalendarEvent>;
   deleteCalendarEvent(
@@ -97,6 +95,8 @@ export interface LifeOpsCalendarService {
       recurrenceScope?: LifeOpsCalendarRecurrenceScope | null;
       notifyAttendees?: boolean;
       expectedProviderVersion?: string;
+      expectedOccurrenceProviderVersion?: string;
+      idempotencyKey?: string;
     },
   ): Promise<void>;
   getConditionalCalendarMutationTarget(

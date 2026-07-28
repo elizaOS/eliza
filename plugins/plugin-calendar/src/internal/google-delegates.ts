@@ -12,11 +12,11 @@ import {
 } from "@elizaos/core";
 import type {
   GoogleCalendarAttendee,
+  GoogleCalendarAttendeeInput,
   GoogleCalendarEvent,
   GoogleCalendarEventInput,
   GoogleCalendarEventPatchInput,
   GoogleCalendarListEntry,
-  GoogleEmailAddress,
   IGoogleWorkspaceService,
 } from "@elizaos/plugin-google";
 import type {
@@ -463,6 +463,12 @@ export function lifeOpsCalendarEventFromGoogle(args: {
   const startAt = requireEventDateTime(event.start, "start", externalId);
   const endAt = requireEventDateTime(event.end, "end", externalId);
   const connectorAccountId = accountIdForGrant(grant);
+  const providerUpdatedAt = event.metadata?.updatedAt;
+  const updatedAt =
+    typeof providerUpdatedAt === "string" &&
+    Number.isFinite(Date.parse(providerUpdatedAt))
+      ? new Date(providerUpdatedAt).toISOString()
+      : syncedAt;
   return {
     id: `${agentId}:google:${grant.side}:grant:${grant.id}:calendar:${event.calendarId}:${externalId}`,
     externalId,
@@ -491,7 +497,7 @@ export function lifeOpsCalendarEventFromGoogle(args: {
       visibility: event.visibility ?? "default",
     },
     syncedAt,
-    updatedAt: syncedAt,
+    updatedAt,
     connectorAccountId,
     grantId: grant.id,
     accountEmail: grant.identityEmail ?? undefined,
@@ -533,6 +539,7 @@ export function lifeOpsCalendarSummaryFromGoogle(args: {
     timeZone: entry.timeZone,
     selected: entry.selected,
     includeInFeed: args.includeInFeed ?? true,
+    selectionVersion: 0,
   };
 }
 
@@ -546,7 +553,11 @@ export function googleCalendarEventInput(args: {
   description?: string | null;
   location?: string | null;
   attendees?:
-    | readonly { email?: string | null; displayName?: string | null }[]
+    | readonly {
+        email?: string | null;
+        displayName?: string | null;
+        optional?: boolean;
+      }[]
     | null;
   recurrence?: readonly string[] | null;
   idempotencyKey?: string;
@@ -561,10 +572,22 @@ export function googleCalendarEventInput(args: {
     timeZone: args.timeZone ?? undefined,
     description: args.description ?? undefined,
     location: args.location ?? undefined,
-    attendees: args.attendees
-      ?.map((attendee) => attendee.email?.trim())
-      .filter(Boolean)
-      .map((email) => ({ email })) as GoogleEmailAddress[] | undefined,
+    attendees: args.attendees?.flatMap(
+      (attendee): GoogleCalendarAttendeeInput[] => {
+        const email = attendee.email?.trim();
+        return email
+          ? [
+              {
+                email,
+                ...(attendee.displayName ? { name: attendee.displayName } : {}),
+                ...(attendee.optional !== undefined
+                  ? { optional: attendee.optional }
+                  : {}),
+              },
+            ]
+          : [];
+      },
+    ),
     recurrence: args.recurrence ? [...args.recurrence] : undefined,
     idempotencyKey: args.idempotencyKey,
     sendUpdates: args.notifyAttendees ? "all" : "none",
@@ -582,7 +605,11 @@ export function googleCalendarEventPatchInput(args: {
   description?: string;
   location?: string;
   attendees?:
-    | readonly { email?: string | null; displayName?: string | null }[]
+    | readonly {
+        email?: string | null;
+        displayName?: string | null;
+        optional?: boolean;
+      }[]
     | null;
   recurrence?: readonly string[] | null;
   notifyAttendees?: boolean;
@@ -598,10 +625,22 @@ export function googleCalendarEventPatchInput(args: {
     timeZone: args.timeZone ?? undefined,
     description: args.description,
     location: args.location,
-    attendees: args.attendees
-      ?.map((attendee) => attendee.email?.trim())
-      .filter(Boolean)
-      .map((email) => ({ email })) as GoogleEmailAddress[] | undefined,
+    attendees: args.attendees?.flatMap(
+      (attendee): GoogleCalendarAttendeeInput[] => {
+        const email = attendee.email?.trim();
+        return email
+          ? [
+              {
+                email,
+                ...(attendee.displayName ? { name: attendee.displayName } : {}),
+                ...(attendee.optional !== undefined
+                  ? { optional: attendee.optional }
+                  : {}),
+              },
+            ]
+          : [];
+      },
+    ),
     recurrence: args.recurrence ? [...args.recurrence] : undefined,
     sendUpdates: args.notifyAttendees ? "all" : "none",
     expectedEtag: args.expectedProviderVersion,

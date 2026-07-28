@@ -32,6 +32,7 @@ export function createIMessageConnectorContribution(
     modes: ["local"],
     describe: { label: "iMessage" },
     receiptContract: "provider_receipt_id",
+    requiresApproval: true,
     async start() {},
     async disconnect() {
       // iMessage account is bound to the macOS Messages.app login; LifeOps

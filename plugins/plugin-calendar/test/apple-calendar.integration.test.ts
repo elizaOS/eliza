@@ -98,6 +98,7 @@ describe("listNativeAppleCalendars", () => {
       calendarId: "cal-1",
       summary: "Home",
       includeInFeed: true,
+      selectionVersion: 0,
     });
   });
 });

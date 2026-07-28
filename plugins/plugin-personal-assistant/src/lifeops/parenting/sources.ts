@@ -17,11 +17,11 @@ const REVIEW_EXPIRES_AT = "2027-01-26T12:00:00.000Z";
 
 export const PARENTING_GUIDANCE_SOURCES: readonly ParentingGuidanceSource[] = [
   {
-    id: "cdc-toddler-structure-rules-2024",
+    id: "cdc-toddler-structure-rules-2026",
     publisher: "U.S. Centers for Disease Control and Prevention",
     title: "Tips for Creating Rules",
     url: "https://www.cdc.gov/parenting-toddlers/structure-rules/rules.html",
-    sourceUpdatedAt: "2024-08-08",
+    sourceUpdatedAt: "2026-04-30",
     reviewedAt: REVIEWED_AT,
     reviewExpiresAt: REVIEW_EXPIRES_AT,
     evidenceTier: "government_public_health",
@@ -29,16 +29,33 @@ export const PARENTING_GUIDANCE_SOURCES: readonly ParentingGuidanceSource[] = [
     topics: ["boundary_setting", "routines", "positive_discipline"],
   },
   {
-    id: "cdc-toddler-structure-2024",
+    id: "cdc-toddler-structure-2026",
     publisher: "U.S. Centers for Disease Control and Prevention",
     title: "Tips for Building Structure",
     url: "https://www.cdc.gov/parenting-toddlers/structure-rules/structure.html",
-    sourceUpdatedAt: "2024-08-08",
+    sourceUpdatedAt: "2026-04-30",
     reviewedAt: REVIEWED_AT,
     reviewExpiresAt: REVIEW_EXPIRES_AT,
     evidenceTier: "government_public_health",
     ageBands: ["toddler_preschool"],
     topics: ["routines", "boundary_setting"],
+  },
+  {
+    id: "cdc-positive-parenting-tips-2026",
+    publisher: "U.S. Centers for Disease Control and Prevention",
+    title: "Positive Parenting Tips",
+    url: "https://www.cdc.gov/child-development/positive-parenting-tips/index.html",
+    sourceUpdatedAt: "2026-02-20",
+    reviewedAt: REVIEWED_AT,
+    reviewExpiresAt: REVIEW_EXPIRES_AT,
+    evidenceTier: "government_public_health",
+    ageBands: ["toddler_preschool", "school_age", "teen"],
+    topics: [
+      "communication",
+      "emotion_coaching",
+      "independence",
+      "positive_discipline",
+    ],
   },
   {
     id: "aap-positive-discipline-2018",
@@ -66,8 +83,20 @@ export const PARENTING_GUIDANCE_SOURCES: readonly ParentingGuidanceSource[] = [
     reviewedAt: REVIEWED_AT,
     reviewExpiresAt: REVIEW_EXPIRES_AT,
     evidenceTier: "professional_academy",
-    ageBands: ["school_age", "teen"],
+    ageBands: ["school_age"],
     topics: ["communication", "emotion_coaching", "independence"],
+  },
+  {
+    id: "aap-family-routines-2024",
+    publisher: "American Academy of Pediatrics",
+    title: "The Importance of Family Routines",
+    url: "https://www.healthychildren.org/English/family-life/family-dynamics/Pages/The-Importance-of-Family-Routines.aspx",
+    sourceUpdatedAt: "2024-06-28",
+    reviewedAt: REVIEWED_AT,
+    reviewExpiresAt: REVIEW_EXPIRES_AT,
+    evidenceTier: "professional_academy",
+    ageBands: ["toddler_preschool", "school_age", "teen"],
+    topics: ["routines", "boundary_setting", "independence"],
   },
   {
     id: "cdc-parenting-teens-2024",
@@ -102,8 +131,8 @@ export const PARENTING_GUIDANCE_SOURCES: readonly ParentingGuidanceSource[] = [
   {
     id: "good-inside-boundaries-2026",
     publisher: "Good Inside",
-    title: "The Good Inside Method",
-    url: "https://www.goodinside.com/",
+    title: "An Effective Alternative to Punishments for Kids",
+    url: "https://www.goodinside.com/blog/punishment-and-consequences-for-kids/",
     sourceUpdatedAt: "not_stated",
     reviewedAt: REVIEWED_AT,
     reviewExpiresAt: REVIEW_EXPIRES_AT,
@@ -131,7 +160,7 @@ const OPTIONS: Readonly<
         "Name what will happen next without threats, shame, or an unrelated punishment.",
       ],
       sourceIds: [
-        "cdc-toddler-structure-rules-2024",
+        "cdc-toddler-structure-rules-2026",
         "aap-positive-discipline-2018",
       ],
       rationale:
@@ -161,7 +190,7 @@ const OPTIONS: Readonly<
         "Review whether the rule was realistic and whether all caregivers can apply it consistently.",
       ],
       sourceIds: [
-        "cdc-toddler-structure-rules-2024",
+        "cdc-toddler-structure-rules-2026",
         "good-inside-boundaries-2026",
       ],
       rationale:
@@ -177,7 +206,7 @@ const OPTIONS: Readonly<
         "Define a small sequence with the same cues and order.",
         "Practice it at a calm time and adjust it for the child's developmental ability.",
       ],
-      sourceIds: ["cdc-toddler-structure-2024"],
+      sourceIds: ["cdc-toddler-structure-2026", "aap-family-routines-2024"],
       rationale:
         "A repeatable sequence makes the next step more predictable for both child and caregiver.",
     },
@@ -190,8 +219,9 @@ const OPTIONS: Readonly<
         "Review what worked without making the child carry messages between adults.",
       ],
       sourceIds: [
-        "cdc-toddler-structure-rules-2024",
+        "cdc-toddler-structure-rules-2026",
         "aap-positive-discipline-2018",
+        "aap-family-routines-2024",
       ],
       rationale:
         "Children receive fewer mixed signals when caregivers agree on a realistic core routine.",
@@ -206,7 +236,11 @@ const OPTIONS: Readonly<
         "Let the child finish before offering a solution.",
         "Reflect what you heard and ask whether you understood correctly.",
       ],
-      sourceIds: ["aap-family-communication-2025", "cdc-parenting-teens-2024"],
+      sourceIds: [
+        "cdc-positive-parenting-tips-2026",
+        "aap-family-communication-2025",
+        "cdc-parenting-teens-2024",
+      ],
       rationale:
         "Checking understanding reduces assumption-driven conflict and helps a child feel heard.",
     },
@@ -218,7 +252,10 @@ const OPTIONS: Readonly<
         "Explain the impact or family expectation.",
         "Invite the child's view and agree on the next concrete step.",
       ],
-      sourceIds: ["aap-family-communication-2025"],
+      sourceIds: [
+        "cdc-positive-parenting-tips-2026",
+        "aap-family-communication-2025",
+      ],
       rationale:
         "Behavior-specific language keeps the conversation about a solvable situation rather than the child's character.",
     },
@@ -234,6 +271,7 @@ const OPTIONS: Readonly<
       ],
       sourceIds: [
         "aap-positive-discipline-2018",
+        "cdc-positive-parenting-tips-2026",
         "aap-family-communication-2025",
         "good-inside-boundaries-2026",
       ],
@@ -250,7 +288,11 @@ const OPTIONS: Readonly<
         "Keep adult responsibility for safety and non-negotiable limits.",
         "Review the result together without turning a mistake into a character judgment.",
       ],
-      sourceIds: ["cdc-parenting-teens-2024", "aap-family-communication-2025"],
+      sourceIds: [
+        "cdc-positive-parenting-tips-2026",
+        "cdc-parenting-teens-2024",
+        "aap-family-communication-2025",
+      ],
       rationale:
         "Clear decision boundaries let independence grow without silently transferring adult safety responsibilities.",
     },
@@ -266,7 +308,8 @@ const OPTIONS: Readonly<
       ],
       sourceIds: [
         "aap-positive-discipline-2018",
-        "cdc-toddler-structure-rules-2024",
+        "cdc-toddler-structure-rules-2026",
+        "cdc-positive-parenting-tips-2026",
       ],
       rationale:
         "Discipline is more useful when it teaches a replacement skill and avoids physical punishment, humiliation, or threats.",

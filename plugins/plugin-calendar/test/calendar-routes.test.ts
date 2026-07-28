@@ -157,10 +157,27 @@ describe("handleCalendarRoutes", () => {
     const { deps, service } = harness({
       method: "PUT",
       pathname: "/api/lifeops/calendar/calendars/primary/include",
-      body: { calendarId: "primary", includeInFeed: false },
+      body: {
+        provider: "google",
+        side: "owner",
+        grantId: "connector-account:account-a",
+        connectorAccountId: "account-a",
+        calendarId: "primary",
+        includeInFeed: false,
+        expectedVersion: 7,
+      },
     });
     expect(await handleCalendarRoutes(deps)).toBe(true);
     expect(service.setCalendarIncluded).toHaveBeenCalledTimes(1);
+    expect(service.setCalendarIncluded.mock.calls[0]?.[1]).toEqual({
+      provider: "google",
+      side: "owner",
+      grantId: "connector-account:account-a",
+      connectorAccountId: "account-a",
+      calendarId: "primary",
+      includeInFeed: false,
+      expectedVersion: 7,
+    });
   });
 
   it("rejects a calendarId path/body mismatch on include", async () => {
@@ -170,6 +187,24 @@ describe("handleCalendarRoutes", () => {
       body: { calendarId: "other", includeInFeed: true },
     });
     await expect(handleCalendarRoutes(deps)).rejects.toThrow(/must match/);
+  });
+
+  it("rejects an unversioned include write before calling the service", async () => {
+    const { deps, service } = harness({
+      method: "PUT",
+      pathname: "/api/lifeops/calendar/calendars/primary/include",
+      body: {
+        provider: "google",
+        side: "owner",
+        grantId: "connector-account:account-a",
+        connectorAccountId: "account-a",
+        calendarId: "primary",
+        includeInFeed: false,
+      },
+    });
+
+    await expect(handleCalendarRoutes(deps)).rejects.toThrow(/expectedVersion/);
+    expect(service.setCalendarIncluded).not.toHaveBeenCalled();
   });
 
   it("routes GET /next-context to getNextCalendarEventContext", async () => {

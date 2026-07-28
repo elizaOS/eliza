@@ -11,7 +11,10 @@ import {
   readSchedulingApprovalCorrelation,
   verifySchedulingApprovalContent,
 } from "../src/lifeops/scheduling-approval.js";
-import { withRequiredTransaction } from "../src/lifeops/sql.js";
+import {
+  withRequiredTransaction,
+  withTransaction,
+} from "../src/lifeops/sql.js";
 
 function correlatedEmail(): Extract<ApprovalPayload, { action: "send_email" }> {
   return attachSchedulingApprovalCorrelation(
@@ -65,6 +68,24 @@ function correlatedMessage(): Extract<
 }
 
 describe("scheduling approval integrity", () => {
+  it("rejects non-transactional adapters for multi-record LifeOps mutations", async () => {
+    const runtime = {
+      agentId: "agent-no-transaction",
+      adapter: {
+        db: {
+          execute: async () => ({ rows: [] }),
+        },
+      },
+    } as never;
+
+    await expect(
+      withTransaction(runtime, async () => "must-not-run"),
+    ).rejects.toMatchObject({
+      code: "LIFEOPS_TRANSACTION_REQUIRED",
+      severity: "fatal",
+    });
+  });
+
   it("fails closed when the runtime database cannot provide a real transaction", async () => {
     const runtime = {
       agentId: "agent-no-transaction",

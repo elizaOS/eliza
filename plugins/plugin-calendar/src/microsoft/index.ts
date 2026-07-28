@@ -10,6 +10,7 @@ export {
   type MicrosoftCalendarTokenResolver,
   microsoftAccountIdFromGrantId,
 } from "./accounts.js";
+export { createMicrosoftConnectorAccountProvider } from "./connector-account-provider.js";
 export {
   DefaultMicrosoftGraphCalendarPort,
   type MicrosoftGraphCalendarPort,

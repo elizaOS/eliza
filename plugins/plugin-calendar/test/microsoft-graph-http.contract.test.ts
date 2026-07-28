@@ -70,11 +70,12 @@ function connectorAccount(
 
 function microsoftAccount(
   accountKind: MicrosoftCalendarAccount["accountKind"] = "organization",
+  write = false,
 ): MicrosoftCalendarAccount {
   const timestamp = "2026-07-26T00:00:00.000Z";
   const account = connectorAccount({
     accountKind,
-    grantedScopes: ["Calendars.Read"],
+    grantedScopes: [write ? "Calendars.ReadWrite" : "Calendars.Read"],
   });
   const grant: LifeOpsConnectorGrant = {
     id: `connector-account:microsoft:${account.id}`,
@@ -84,11 +85,12 @@ function microsoftAccount(
     side: "owner",
     identity: { sub: "microsoft-user-id", email: "owner@example.test" },
     identityEmail: "owner@example.test",
-    grantedScopes: ["Calendars.Read"],
+    grantedScopes: [write ? "Calendars.ReadWrite" : "Calendars.Read"],
     capabilities: [
       "microsoft.calendar.read_basic",
       "microsoft.calendar.read",
       "microsoft.calendar.freebusy",
+      ...(write ? (["microsoft.calendar.write"] as const) : []),
     ],
     tokenRef: null,
     mode: "local",
@@ -129,6 +131,7 @@ function graphEvent(id: string): Record<string, unknown> {
     type: "exception",
     seriesMasterId: "series-immutable-id",
     iCalUId: "ical-stable-id",
+    originalStart: "2026-08-01T15:00:00Z",
     changeKey: `change-${id}`,
     lastModifiedDateTime: "2026-07-26T10:00:00Z",
     sensitivity: "private",
@@ -316,6 +319,7 @@ describe("Microsoft Graph calendar HTTP contract", () => {
         event: expect.objectContaining({
           id: "occurrence-immutable-id",
           seriesMasterId: "series-immutable-id",
+          originalStart: "2026-08-01T15:00:00.000Z",
           changeKey: "change-occurrence-immutable-id",
           recurrence: expect.any(Object),
         }),
@@ -339,6 +343,127 @@ describe("Microsoft Graph calendar HTTP contract", () => {
     );
     expect(deltaRequest?.headers.prefer).toContain('IdType="ImmutableId"');
     expect(deltaRequest?.headers.prefer).toContain('outlook.timezone="UTC"');
+  });
+
+  it("creates one-off events with a stable transaction id and explicit invitation approval", async () => {
+    handler = (request) => {
+      expect(request.method).toBe("POST");
+      expect(request.path).toBe("/v1.0/me/calendars/family%2Fcalendar/events");
+      expect(request.headers.prefer).toContain('IdType="ImmutableId"');
+      expect(request.headers.prefer).toContain('outlook.timezone="UTC"');
+      const payload = JSON.parse(request.body) as {
+        subject: string;
+        body: { contentType: string; content: string };
+        start: { dateTime: string; timeZone: string };
+        end: { dateTime: string; timeZone: string };
+        location: { displayName: string };
+        attendees: Array<{
+          emailAddress: { address: string; name: string };
+          type: string;
+        }>;
+        transactionId: string;
+      };
+      expect(payload).toMatchObject({
+        subject: "School conference",
+        body: { contentType: "text", content: "Bring the progress report" },
+        start: {
+          dateTime: "2026-08-01T19:00:00.000",
+          timeZone: "UTC",
+        },
+        end: {
+          dateTime: "2026-08-01T20:00:00.000",
+          timeZone: "UTC",
+        },
+        location: { displayName: "Room 12" },
+        attendees: [
+          {
+            emailAddress: {
+              address: "coparent@example.test",
+              name: "Co-parent",
+            },
+            type: "required",
+          },
+        ],
+      });
+      expect(payload.transactionId).toMatch(
+        /^[a-f0-9]{8}-[a-f0-9]{4}-5[a-f0-9]{3}-8[a-f0-9]{3}-[a-f0-9]{12}$/u,
+      );
+      return {
+        status: 201,
+        body: graphEvent("created-immutable-id"),
+      };
+    };
+
+    const client = port();
+    const request = {
+      account: microsoftAccount("organization", true),
+      calendarId: "family/calendar",
+      title: "School conference",
+      description: "Bring the progress report",
+      location: "Room 12",
+      startAt: "2026-08-01T19:00:00.000Z",
+      endAt: "2026-08-01T20:00:00.000Z",
+      attendees: [
+        {
+          email: "coparent@example.test",
+          displayName: "Co-parent",
+          optional: false,
+        },
+      ],
+      notifyAttendees: true,
+      idempotencyKey: "approval:school-conference:create",
+    } as const;
+    const first = await client.createEvent(request);
+    await client.createEvent(request);
+
+    expect(first).toMatchObject({
+      id: "created-immutable-id",
+      subject: "School pickup",
+      changeKey: "change-created-immutable-id",
+    });
+    const transactionIds = requests.map(
+      (entry) =>
+        (
+          JSON.parse(entry.body) as {
+            transactionId: string;
+          }
+        ).transactionId,
+    );
+    expect(transactionIds[0]).toBe(transactionIds[1]);
+    expect(requests[0]?.headers.authorization).toBe(
+      "Bearer wire-contract-token",
+    );
+  });
+
+  it("fails before the wire without write scope or attendee-send approval", async () => {
+    const base = {
+      calendarId: "primary-calendar",
+      title: "School conference",
+      startAt: "2026-08-01T19:00:00.000Z",
+      endAt: "2026-08-01T20:00:00.000Z",
+      attendees: [],
+      notifyAttendees: false,
+      idempotencyKey: "approval:school-conference:create",
+    } as const;
+
+    await expect(
+      port().createEvent({
+        ...base,
+        account: microsoftAccount(),
+      }),
+    ).rejects.toMatchObject({
+      code: "MICROSOFT_CALENDAR_PERMISSION_MISSING",
+    });
+    await expect(
+      port().createEvent({
+        ...base,
+        account: microsoftAccount("organization", true),
+        attendees: [{ email: "coparent@example.test" }],
+      }),
+    ).rejects.toMatchObject({
+      code: "MICROSOFT_CALENDAR_ATTENDEE_NOTIFICATION_REQUIRED",
+    });
+    expect(requests).toEqual([]);
   });
 
   it("chunks getSchedule at twenty and returns only anonymous intervals and errors", async () => {

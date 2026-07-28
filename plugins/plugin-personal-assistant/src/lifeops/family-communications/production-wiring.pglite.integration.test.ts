@@ -284,6 +284,18 @@ describe("family communications production wiring — real PGlite", () => {
     );
     expect(result).toMatchObject({
       success: true,
+      effectReceipts: [
+        {
+          outcome: "applied",
+          operation: "lifeops.family_voice_bundle.capture",
+          resource: {
+            kind: "lifeops.family_voice_bundle",
+          },
+          commit: {
+            kind: "durable",
+          },
+        },
+      ],
       data: {
         externalEffectsPerformed: false,
         bundle: {
@@ -298,6 +310,13 @@ describe("family communications production wiring — real PGlite", () => {
         ],
       },
     });
+    expect(result.effectReceipts?.[0]?.resource.id).toBe(
+      result.data?.bundle &&
+        typeof result.data.bundle === "object" &&
+        !Array.isArray(result.data.bundle)
+        ? Reflect.get(result.data.bundle, "bundleId")
+        : undefined,
+    );
   });
 
   it("rejects entity, platformName, and content-metadata impersonation", async () => {

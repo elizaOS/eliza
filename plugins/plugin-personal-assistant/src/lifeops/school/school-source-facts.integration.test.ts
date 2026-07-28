@@ -8,7 +8,7 @@ import {
   type RelationshipStore,
   resolveKnowledgeGraphService,
 } from "@elizaos/agent";
-import type { AgentRuntime } from "@elizaos/core";
+import type { AgentRuntime, Memory } from "@elizaos/core";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
@@ -17,7 +17,10 @@ import {
 } from "../../../test/helpers/runtime.js";
 import { executeRawSql, sqlQuote, toNumber } from "../sql.js";
 import { createSchoolSourceFactAction } from "./action.js";
-import { SchoolSourceFactService } from "./service.js";
+import {
+  type SchoolSourceFactRuntimeService,
+  SchoolSourceFactService,
+} from "./service.js";
 import {
   type IngestSchoolNoticeInput,
   type SchoolNoticeExtraction,
@@ -760,6 +763,75 @@ describe("school source facts — real PGlite", () => {
       "reconcile_notice",
     ]);
     expect(action.description).toContain("never sends, purchases, submits");
+  });
+
+  it("returns commit proof tied to real source-artifact and fact records", async () => {
+    const content = `School action receipt ${randomUUID()}`;
+    const reference = `action-receipt-${randomUUID()}`;
+    const artifact = sourceArtifact({
+      kind: "document",
+      reference,
+      observedAt: "2027-09-02T12:00:00.000Z",
+      content,
+    });
+    const candidate = genericCandidate({
+      stableFactKey: `school.action-receipt.${reference}`,
+      domain: "school",
+      factType: "school_notice.action_receipt",
+      value: { title: "Action receipt proof" },
+    });
+    const action = createSchoolSourceFactAction({
+      authorize: async () => true,
+      getService: () => service as unknown as SchoolSourceFactRuntimeService,
+    });
+    const result = await action.handler(
+      runtime,
+      {
+        id: `message-${randomUUID()}`,
+        entityId: runtime.agentId,
+        agentId: runtime.agentId,
+        roomId: runtime.agentId,
+        content: { text: "Capture this school source.", source: "test" },
+      } as Memory,
+      undefined,
+      {
+        parameters: {
+          action: "capture_candidates",
+          artifact,
+          candidates: [candidate],
+        },
+      },
+      undefined,
+    );
+    const receipt = result.effectReceipts?.[0];
+
+    expect(receipt).toMatchObject({
+      outcome: "applied",
+      operation: "lifeops.school_source_candidates.capture",
+      resource: {
+        kind: "lifeops.school_source_artifact",
+      },
+      artifacts: [
+        {
+          kind: "lifeops.school_source_fact",
+        },
+      ],
+      commit: {
+        kind: "durable",
+      },
+    });
+    expect(
+      receipt ? await service.getArtifact(receipt.resource.id) : null,
+    ).toMatchObject({
+      id: receipt?.resource.id,
+      contentSha256: artifact.contentSha256,
+    });
+    expect(await service.listFacts(candidate.stableFactKey)).toEqual([
+      expect.objectContaining({
+        id: receipt?.artifacts[0]?.id,
+        artifactId: receipt?.resource.id,
+      }),
+    ]);
   });
 
   it("surfaces equal-authority concurrent contradictions instead of last-write-wins", async () => {

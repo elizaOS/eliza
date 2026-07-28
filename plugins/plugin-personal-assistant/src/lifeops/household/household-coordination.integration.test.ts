@@ -10,10 +10,15 @@ import {
 } from "@elizaos/agent";
 import type { AgentRuntime } from "@elizaos/core";
 import { AgentEventService, createMessageMemory } from "@elizaos/core";
+import {
+  getScheduledTaskRunner,
+  type ScheduledTaskRunnerHandle,
+} from "@elizaos/plugin-scheduling";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createLifeOpsTestRuntime,
+  getRecordedTestNotifications,
   type RealTestRuntimeResult,
 } from "../../../test/helpers/runtime.js";
 import { householdCoordinationAction } from "../../actions/household-coordination.js";
@@ -22,6 +27,7 @@ import { createApprovalQueue } from "../approval-queue.js";
 import type { ApprovalQueue } from "../approval-queue.types.js";
 import { LifeOpsRepository } from "../repository.js";
 import { executeRawSql, sqlInteger, sqlQuote } from "../sql.js";
+import { HOUSEHOLD_GRANT_EXPIRY_WARNING_GATE } from "./grant-expiry-warning.js";
 import { HouseholdCoordinationRepository } from "./repository.js";
 import {
   HOUSEHOLD_COORDINATION_SERVICE,
@@ -76,7 +82,10 @@ describe("household coordination — real PGlite", () => {
     await runtimeResult?.cleanup();
   });
 
-  function service(now?: () => Date): HouseholdCoordinationService {
+  function service(
+    now?: () => Date,
+    scheduledTasks?: ScheduledTaskRunnerHandle,
+  ): HouseholdCoordinationService {
     const graph = resolveKnowledgeGraphService(runtime);
     if (!graph) throw new Error("knowledge graph unavailable");
     return new HouseholdCoordinationService({
@@ -86,6 +95,7 @@ describe("household coordination — real PGlite", () => {
       relationshipStore: graph.getRelationshipStore(runtime.agentId),
       approvalQueue: approvals,
       repository: householdRepository,
+      scheduledTasks,
       now,
     });
   }
@@ -532,6 +542,646 @@ describe("household coordination — real PGlite", () => {
         scope: "calendar.freebusy",
       }),
     ).rejects.toMatchObject({ code: "HOUSEHOLD_GRANT_REVOKED" });
+  });
+
+  it("persists one exact, grant-only pre-expiry watcher across reconciliation restarts", async () => {
+    const now = new Date("2027-04-01T12:00:00.000Z");
+    const expiresAt = "2027-04-03T12:00:00.000Z";
+    const childId = await person("warning-child");
+    const caregiverId = await person("warning-caregiver");
+    const unrelatedId = await person("warning-unrelated");
+    await bindFamily({ childId, caregiverId });
+    const coordinator = service(() => new Date(now));
+    const grant = await coordinator.issueGrant({
+      principalEntityId: caregiverId,
+      role: "caregiver",
+      subjectEntityIds: [childId],
+      scopes: ["calendar.freebusy"],
+      issuedByEntityId: SELF_ENTITY_ID,
+      expiresAt,
+    });
+    const runner = getScheduledTaskRunner(runtime, {
+      agentId: runtime.agentId,
+      now: () => new Date(now),
+    });
+    const before = (await runner.list({ kind: "watcher" })).filter((task) =>
+      task.idempotencyKey?.includes(grant.id),
+    );
+    expect(before).toHaveLength(1);
+    expect(before[0]).toMatchObject({
+      trigger: { kind: "once", atIso: "2027-04-02T12:00:00.000Z" },
+      subject: { kind: "self", id: SELF_ENTITY_ID },
+      output: {
+        destination: "in_app_card",
+        target: `entity:${SELF_ENTITY_ID}`,
+      },
+      respectsGlobalPause: false,
+      executionProfile: "notify-only",
+      metadata: {
+        householdGrantExpiryWarning: {
+          version: 1,
+          grantId: grant.id,
+          principalEntityId: caregiverId,
+          subjectEntityIds: [childId],
+          scopes: ["calendar.freebusy", "household.visibility"],
+          expiresAt,
+          autoExtend: false,
+          disclosure: "grant_identity_only",
+        },
+      },
+    });
+    expect(before[0]?.contextRequest).toBeUndefined();
+    expect(JSON.stringify(before[0])).not.toContain(unrelatedId);
+
+    const restarted = service(() => new Date(now));
+    const [receipt] = (await restarted.reconcileGrantExpiryWarnings()).filter(
+      (candidate) => candidate.grantId === grant.id,
+    );
+    expect(receipt).toMatchObject({
+      outcome: "ready",
+      grantId: grant.id,
+      scheduledTaskId: before[0]?.taskId,
+      deduplicated: true,
+      autoExtend: false,
+    });
+    const after = (await runner.list({ kind: "watcher" })).filter((task) =>
+      task.idempotencyKey?.includes(grant.id),
+    );
+    expect(after.map((task) => task.taskId)).toEqual([before[0]?.taskId]);
+    await expect(householdRepository.getGrant(grant.id)).resolves.toMatchObject(
+      {
+        expiresAt,
+        revokedAt: null,
+      },
+    );
+  });
+
+  it("durably reconciles a warning after scheduling fails without duplicating its grant", async () => {
+    const clock = new Date("2027-04-21T12:00:00.000Z");
+    const childId = await person("warning-outbox-child");
+    const caregiverId = await person("warning-outbox-caregiver");
+    await bindFamily({ childId, caregiverId });
+    const runner = getScheduledTaskRunner(runtime, {
+      agentId: runtime.agentId,
+      now: () => new Date(clock),
+    });
+    const failingRunner: ScheduledTaskRunnerHandle = {
+      ...runner,
+      async schedule() {
+        throw new Error("simulated ScheduledTask persistence outage");
+      },
+    };
+    const errorsBefore = runtime.getRecentReportedErrors().length;
+    const grant = await service(
+      () => new Date(clock),
+      failingRunner,
+    ).issueGrant({
+      principalEntityId: caregiverId,
+      role: "caregiver",
+      subjectEntityIds: [childId],
+      scopes: ["calendar.freebusy"],
+      issuedByEntityId: SELF_ENTITY_ID,
+      expiresAt: "2027-04-23T12:00:00.000Z",
+    });
+
+    await expect(
+      householdRepository.getGrantExpiryWarningIntent(grant.id),
+    ).resolves.toMatchObject({
+      state: "pending",
+      grantId: grant.id,
+      scheduledTaskId: null,
+    });
+    expect(
+      (await householdRepository.listGrants()).filter(
+        (candidate) => candidate.id === grant.id,
+      ),
+    ).toHaveLength(1);
+    expect(
+      runtime.getRecentReportedErrors().slice(errorsBefore),
+    ).toContainEqual(
+      expect.objectContaining({
+        scope: "HouseholdCoordination.grantExpiryWarning",
+        context: expect.objectContaining({
+          grantId: grant.id,
+          recovery: "startup_reconciliation",
+        }),
+      }),
+    );
+
+    const receipts = await service(
+      () => new Date(clock),
+    ).reconcileGrantExpiryWarnings();
+    expect(receipts).toContainEqual(
+      expect.objectContaining({
+        outcome: "ready",
+        grantId: grant.id,
+        autoExtend: false,
+      }),
+    );
+    await expect(
+      householdRepository.getGrantExpiryWarningIntent(grant.id),
+    ).resolves.toMatchObject({
+      state: "scheduled",
+      grantId: grant.id,
+      warningAt: "2027-04-22T12:00:00.000Z",
+      expiresAt: "2027-04-23T12:00:00.000Z",
+    });
+    expect(
+      (await householdRepository.listGrants()).filter(
+        (candidate) => candidate.id === grant.id,
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("defers an active materialization lease and reclaims it on a later scheduler tick", async () => {
+    let clock = new Date("2027-04-27T12:00:00.000Z");
+    const childId = await person("warning-lease-child");
+    const caregiverId = await person("warning-lease-caregiver");
+    await bindFamily({ childId, caregiverId });
+    const runner = getScheduledTaskRunner(runtime, {
+      agentId: runtime.agentId,
+      now: () => new Date(clock),
+    });
+    const failingRunner: ScheduledTaskRunnerHandle = {
+      ...runner,
+      async schedule() {
+        throw new Error("leave a pending warning intent");
+      },
+    };
+    const grant = await service(
+      () => new Date(clock),
+      failingRunner,
+    ).issueGrant({
+      principalEntityId: caregiverId,
+      role: "caregiver",
+      subjectEntityIds: [childId],
+      scopes: ["calendar.freebusy"],
+      issuedByEntityId: SELF_ENTITY_ID,
+      expiresAt: "2027-04-29T12:00:00.000Z",
+    });
+    const leaseExpiresAt = "2027-04-27T12:01:00.000Z";
+    await expect(
+      householdRepository.claimGrantExpiryWarning({
+        grantId: grant.id,
+        attemptToken: "other-process",
+        now: clock.toISOString(),
+        leaseExpiresAt,
+      }),
+    ).resolves.toEqual({ kind: "claimed" });
+
+    const [deferred] = (
+      await service(() => new Date(clock)).reconcileGrantExpiryWarnings()
+    ).filter((receipt) => receipt.grantId === grant.id);
+    expect(deferred).toEqual({
+      outcome: "deferred",
+      grantId: grant.id,
+      reason: "active_claim",
+      retryAt: leaseExpiresAt,
+      autoExtend: false,
+    });
+    expect(
+      (await runner.list({ kind: "watcher" })).filter((task) =>
+        task.idempotencyKey?.includes(grant.id),
+      ),
+    ).toEqual([]);
+
+    clock = new Date("2027-04-27T12:01:01.000Z");
+    const [reclaimed] = (
+      await service(() => new Date(clock)).reconcileGrantExpiryWarnings()
+    ).filter((receipt) => receipt.grantId === grant.id);
+    expect(reclaimed).toMatchObject({
+      outcome: "ready",
+      grantId: grant.id,
+      autoExtend: false,
+    });
+    expect(
+      (await runner.list({ kind: "watcher" })).filter((task) =>
+        task.idempotencyKey?.includes(grant.id),
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("commits revocation with a cancellation outbox and retries a failed dismissal", async () => {
+    const clock = new Date("2027-04-30T12:00:00.000Z");
+    const childId = await person("warning-cancel-retry-child");
+    const caregiverId = await person("warning-cancel-retry-caregiver");
+    await bindFamily({ childId, caregiverId });
+    const runner = getScheduledTaskRunner(runtime, {
+      agentId: runtime.agentId,
+      now: () => new Date(clock),
+    });
+    const grant = await service(() => new Date(clock)).issueGrant({
+      principalEntityId: caregiverId,
+      role: "caregiver",
+      subjectEntityIds: [childId],
+      scopes: ["calendar.freebusy"],
+      issuedByEntityId: SELF_ENTITY_ID,
+      expiresAt: "2027-05-02T12:00:00.000Z",
+    });
+    const task = (await runner.list({ kind: "watcher" })).find((candidate) =>
+      candidate.idempotencyKey?.includes(grant.id),
+    );
+    if (!task) throw new Error("cancellation retry warning task missing");
+    const failingRunner: ScheduledTaskRunnerHandle = {
+      ...runner,
+      async apply(taskId, verb, payload) {
+        if (taskId === task.taskId && verb === "dismiss") {
+          throw new Error("simulated watcher cancellation outage");
+        }
+        return await runner.apply(taskId, verb, payload);
+      },
+    };
+    const errorsBefore = runtime.getRecentReportedErrors().length;
+    await expect(
+      service(() => new Date(clock), failingRunner).revokeGrant({
+        grantId: grant.id,
+        revokedByEntityId: SELF_ENTITY_ID,
+        reason: "Caregiving access ended.",
+      }),
+    ).resolves.toMatchObject({
+      id: grant.id,
+      revokedAt: clock.toISOString(),
+    });
+    await expect(
+      householdRepository.getGrantExpiryWarningIntent(grant.id),
+    ).resolves.toMatchObject({
+      cancelledAt: clock.toISOString(),
+      cancellationCompletedAt: null,
+      cancellationAttemptCount: 1,
+      cancellationLastError: "simulated watcher cancellation outage",
+    });
+    expect(
+      runtime.getRecentReportedErrors().slice(errorsBefore),
+    ).toContainEqual(
+      expect.objectContaining({
+        scope: "HouseholdCoordination.grantExpiryWarningCancellation",
+        context: expect.objectContaining({
+          grantId: grant.id,
+          recovery: "lifeops_scheduler_tick",
+        }),
+      }),
+    );
+    expect(
+      (await runner.list({ kind: "watcher" })).find(
+        (candidate) => candidate.taskId === task.taskId,
+      )?.state.status,
+    ).toBe("scheduled");
+
+    const [reconciled] = (
+      await service(() => new Date(clock)).reconcileGrantExpiryWarnings()
+    ).filter((receipt) => receipt.grantId === grant.id);
+    expect(reconciled).toMatchObject({
+      outcome: "cancelled",
+      grantId: grant.id,
+      scheduledTaskId: task.taskId,
+      taskState: "dismissed",
+    });
+    await expect(
+      householdRepository.getGrantExpiryWarningIntent(grant.id),
+    ).resolves.toMatchObject({
+      cancelledAt: clock.toISOString(),
+      cancellationCompletedAt: clock.toISOString(),
+      cancellationAttemptCount: 1,
+      cancellationLastError: null,
+    });
+  });
+
+  it("leaves no live watcher when revocation races warning materialization", async () => {
+    const clock = new Date("2027-04-24T12:00:00.000Z");
+    const childId = await person("warning-revoke-race-child");
+    const caregiverId = await person("warning-revoke-race-caregiver");
+    await bindFamily({ childId, caregiverId });
+    const runner = getScheduledTaskRunner(runtime, {
+      agentId: runtime.agentId,
+      now: () => new Date(clock),
+    });
+    let announceScheduleStarted!: () => void;
+    let releaseSchedule!: () => void;
+    const scheduleStarted = new Promise<void>((resolve) => {
+      announceScheduleStarted = resolve;
+    });
+    const scheduleRelease = new Promise<void>((resolve) => {
+      releaseSchedule = resolve;
+    });
+    const blockedRunner: ScheduledTaskRunnerHandle = {
+      ...runner,
+      async schedule(task) {
+        announceScheduleStarted();
+        await scheduleRelease;
+        return await runner.schedule(task);
+      },
+    };
+    const notificationsBefore = getRecordedTestNotifications(runtime).length;
+    const issuance = service(() => new Date(clock), blockedRunner).issueGrant({
+      principalEntityId: caregiverId,
+      role: "caregiver",
+      subjectEntityIds: [childId],
+      scopes: ["calendar.freebusy"],
+      issuedByEntityId: SELF_ENTITY_ID,
+      expiresAt: "2027-04-26T12:00:00.000Z",
+    });
+
+    await scheduleStarted;
+    const persistedGrant = (
+      await householdRepository.listGrants(caregiverId)
+    ).find((candidate) => candidate.expiresAt === "2027-04-26T12:00:00.000Z");
+    if (!persistedGrant) {
+      throw new Error("in-flight grant was not persisted before scheduling");
+    }
+    await service(() => new Date(clock)).revokeGrant({
+      grantId: persistedGrant.id,
+      revokedByEntityId: SELF_ENTITY_ID,
+      reason: "Revoke while the warning task is being persisted.",
+    });
+    releaseSchedule();
+    const issuedGrant = await issuance;
+    expect(issuedGrant.id).toBe(persistedGrant.id);
+
+    await expect(
+      householdRepository.getGrantExpiryWarningIntent(persistedGrant.id),
+    ).resolves.toMatchObject({
+      state: "pending",
+      grantId: persistedGrant.id,
+      scheduledTaskId: null,
+      cancelledAt: clock.toISOString(),
+    });
+    const tasks = (await runner.list({ kind: "watcher" })).filter((candidate) =>
+      candidate.idempotencyKey?.includes(persistedGrant.id),
+    );
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0]?.state.status).toBe("dismissed");
+    expect(
+      tasks.filter((task) =>
+        ["scheduled", "fired", "acknowledged"].includes(task.state.status),
+      ),
+    ).toEqual([]);
+    await expect(
+      runner.fireWithResult(tasks[0]?.taskId ?? ""),
+    ).resolves.toMatchObject({
+      kind: "skipped",
+      reason: "terminal:dismissed",
+      task: { state: { status: "dismissed" } },
+    });
+    expect(getRecordedTestNotifications(runtime)).toHaveLength(
+      notificationsBefore,
+    );
+    await expect(
+      householdRepository.getGrant(persistedGrant.id),
+    ).resolves.toMatchObject({
+      revokedAt: clock.toISOString(),
+      expiresAt: "2027-04-26T12:00:00.000Z",
+    });
+  });
+
+  it("atomically fires one owner warning when concurrent watcher ticks race", async () => {
+    let clock = new Date("2027-04-04T12:00:00.000Z");
+    const childId = await person("warning-race-child");
+    const caregiverId = await person("warning-race-caregiver");
+    await bindFamily({ childId, caregiverId });
+    const grant = await service(() => new Date(clock)).issueGrant({
+      principalEntityId: caregiverId,
+      role: "caregiver",
+      subjectEntityIds: [childId],
+      scopes: ["household.visibility", "calendar.freebusy"],
+      issuedByEntityId: SELF_ENTITY_ID,
+      expiresAt: "2027-04-06T12:00:00.000Z",
+    });
+    clock = new Date("2027-04-05T12:00:00.000Z");
+    const runner = getScheduledTaskRunner(runtime, {
+      agentId: runtime.agentId,
+      now: () => new Date(clock),
+    });
+    const task = (await runner.list({ kind: "watcher" })).find((candidate) =>
+      candidate.idempotencyKey?.includes(grant.id),
+    );
+    if (!task) throw new Error("grant warning task missing");
+    const notificationsBefore = getRecordedTestNotifications(runtime).length;
+    const results = await Promise.all([
+      runner.fireWithResult(task.taskId),
+      runner.fireWithResult(task.taskId),
+    ]);
+    expect(results.map((result) => result.kind).sort()).toEqual([
+      "fired",
+      "raced",
+    ]);
+    expect(getRecordedTestNotifications(runtime)).toHaveLength(
+      notificationsBefore + 1,
+    );
+    await expect(householdRepository.getGrant(grant.id)).resolves.toMatchObject(
+      {
+        expiresAt: "2027-04-06T12:00:00.000Z",
+        revokedAt: null,
+      },
+    );
+  });
+
+  it("dismisses a revoked grant watcher and skips an already expired grant", async () => {
+    let clock = new Date("2027-04-07T12:00:00.000Z");
+    const childId = await person("warning-state-child");
+    const caregiverId = await person("warning-state-caregiver");
+    await bindFamily({ childId, caregiverId });
+    const coordinator = service(() => new Date(clock));
+    const revoked = await coordinator.issueGrant({
+      principalEntityId: caregiverId,
+      role: "caregiver",
+      subjectEntityIds: [childId],
+      scopes: ["calendar.freebusy"],
+      issuedByEntityId: SELF_ENTITY_ID,
+      expiresAt: "2027-04-09T12:00:00.000Z",
+    });
+    const runner = getScheduledTaskRunner(runtime, {
+      agentId: runtime.agentId,
+      now: () => new Date(clock),
+    });
+    const revokedTask = (await runner.list({ kind: "watcher" })).find(
+      (candidate) => candidate.idempotencyKey?.includes(revoked.id),
+    );
+    if (!revokedTask) throw new Error("revoked grant warning task missing");
+    await coordinator.revokeGrant({
+      grantId: revoked.id,
+      revokedByEntityId: SELF_ENTITY_ID,
+      reason: "Caregiving access ended before the warning.",
+    });
+    await expect(
+      runner.fireWithResult(revokedTask.taskId),
+    ).resolves.toMatchObject({
+      kind: "skipped",
+      reason: "terminal:dismissed",
+    });
+
+    const expiringCaregiverId = await person("warning-expired-caregiver");
+    await bindFamily({ childId, caregiverId: expiringCaregiverId });
+    const expiring = await coordinator.issueGrant({
+      principalEntityId: expiringCaregiverId,
+      role: "caregiver",
+      subjectEntityIds: [childId],
+      scopes: ["calendar.freebusy"],
+      issuedByEntityId: SELF_ENTITY_ID,
+      expiresAt: "2027-04-10T12:00:00.000Z",
+    });
+    const expiredTask = (await runner.list({ kind: "watcher" })).find(
+      (candidate) => candidate.idempotencyKey?.includes(expiring.id),
+    );
+    if (!expiredTask) throw new Error("expired grant warning task missing");
+    const notificationsBefore = getRecordedTestNotifications(runtime).length;
+    clock = new Date("2027-04-10T12:00:01.000Z");
+    const expiredResult = await getScheduledTaskRunner(runtime, {
+      agentId: runtime.agentId,
+      now: () => new Date(clock),
+    }).fireWithResult(expiredTask.taskId);
+    expect(expiredResult).toMatchObject({
+      kind: "skipped",
+      reason: expect.stringContaining("grant expired"),
+      task: { state: { status: "skipped" } },
+    });
+    expect(getRecordedTestNotifications(runtime)).toHaveLength(
+      notificationsBefore,
+    );
+    await expect(
+      coordinator.requireScope({
+        principalEntityId: expiringCaregiverId,
+        subjectEntityId: childId,
+        scope: "calendar.freebusy",
+        at: clock,
+      }),
+    ).rejects.toMatchObject({ code: "HOUSEHOLD_GRANT_EXPIRED" });
+  });
+
+  it("preserves every terminal watcher outcome when its grant is later revoked", async () => {
+    const clock = new Date("2027-04-14T12:00:00.000Z");
+    const coordinator = service(() => new Date(clock));
+    const runner = getScheduledTaskRunner(runtime, {
+      agentId: runtime.agentId,
+      now: () => new Date(clock),
+    });
+    const terminalStates = [
+      "completed",
+      "skipped",
+      "expired",
+      "failed",
+      "dismissed",
+    ] as const;
+
+    for (const terminalState of terminalStates) {
+      const childId = await person(`warning-terminal-${terminalState}-child`);
+      const caregiverId = await person(
+        `warning-terminal-${terminalState}-caregiver`,
+      );
+      await bindFamily({ childId, caregiverId });
+      const grant = await coordinator.issueGrant({
+        principalEntityId: caregiverId,
+        role: "caregiver",
+        subjectEntityIds: [childId],
+        scopes: ["calendar.freebusy"],
+        issuedByEntityId: SELF_ENTITY_ID,
+        expiresAt: "2027-04-20T12:00:00.000Z",
+      });
+      const task = (await runner.list({ kind: "watcher" })).find((candidate) =>
+        candidate.idempotencyKey?.includes(grant.id),
+      );
+      if (!task) {
+        throw new Error(`terminal ${terminalState} warning task missing`);
+      }
+
+      if (terminalState === "completed") {
+        await runner.apply(task.taskId, "complete", {
+          reason: "terminal preservation fixture",
+        });
+      } else if (terminalState === "skipped") {
+        await runner.apply(task.taskId, "skip", {
+          reason: "terminal preservation fixture",
+        });
+      } else if (terminalState === "expired" || terminalState === "failed") {
+        await runner.pipeline(task.taskId, terminalState);
+      } else {
+        await runner.apply(task.taskId, "dismiss", {
+          reason: "terminal preservation fixture",
+        });
+      }
+
+      await coordinator.revokeGrant({
+        grantId: grant.id,
+        revokedByEntityId: SELF_ENTITY_ID,
+        reason: `Revoke after ${terminalState} terminal outcome.`,
+      });
+      const persisted = (await runner.list({ kind: "watcher" })).find(
+        (candidate) => candidate.taskId === task.taskId,
+      );
+      expect(persisted?.state.status).toBe(terminalState);
+    }
+  });
+
+  it("fails fast when persisted watcher identity is malformed", async () => {
+    const clock = new Date("2027-04-11T12:00:00.000Z");
+    const childId = await person("warning-invalid-child");
+    const caregiverId = await person("warning-invalid-caregiver");
+    await bindFamily({ childId, caregiverId });
+    const grant = await service(() => new Date(clock)).issueGrant({
+      principalEntityId: caregiverId,
+      role: "caregiver",
+      subjectEntityIds: [childId],
+      scopes: ["calendar.freebusy"],
+      issuedByEntityId: SELF_ENTITY_ID,
+      expiresAt: "2027-04-13T12:00:00.000Z",
+    });
+    const runner = getScheduledTaskRunner(runtime, {
+      agentId: runtime.agentId,
+      now: () => new Date("2027-04-12T12:00:00.000Z"),
+    });
+    const task = (await runner.list({ kind: "watcher" })).find((candidate) =>
+      candidate.idempotencyKey?.includes(grant.id),
+    );
+    if (!task) throw new Error("invalid-contract warning task missing");
+    const originalTrigger = task.trigger;
+    const originalShouldFire = task.shouldFire;
+    const originalMetadata = task.metadata;
+    await runner.apply(task.taskId, "edit", {
+      metadata: { householdGrantExpiryWarning: { grantId: grant.id } },
+    });
+    await expect(runner.fireWithResult(task.taskId)).rejects.toMatchObject({
+      code: "HOUSEHOLD_INVALID_CONTRACT",
+    });
+    await runner.apply(task.taskId, "edit", { metadata: originalMetadata });
+
+    const originalIdentity = originalMetadata?.householdGrantExpiryWarning;
+    if (
+      !originalIdentity ||
+      typeof originalIdentity !== "object" ||
+      Array.isArray(originalIdentity)
+    ) {
+      throw new Error("typed warning identity fixture missing");
+    }
+    const shiftedIdentity = {
+      ...originalIdentity,
+      warningAt: "2027-04-12T11:00:00.000Z",
+    };
+    await runner.apply(task.taskId, "edit", {
+      trigger: { kind: "once", atIso: shiftedIdentity.warningAt },
+      shouldFire: {
+        compose: "first_deny",
+        gates: [
+          {
+            kind: HOUSEHOLD_GRANT_EXPIRY_WARNING_GATE,
+            params: shiftedIdentity,
+          },
+        ],
+      },
+      metadata: {
+        ...originalMetadata,
+        householdGrantExpiryWarning: shiftedIdentity,
+      },
+    });
+    await expect(runner.fireWithResult(task.taskId)).rejects.toMatchObject({
+      code: "HOUSEHOLD_INVALID_CONTRACT",
+    });
+    await runner.apply(task.taskId, "edit", {
+      trigger: originalTrigger,
+      shouldFire: originalShouldFire,
+      metadata: originalMetadata,
+    });
+    await runner.apply(task.taskId, "dismiss", {
+      reason: "test cleanup after invalid persisted identity",
+    });
   });
 
   it("keeps a co-parent scoped to the shared child and hides another child's plan", async () => {
@@ -1133,5 +1783,53 @@ describe("household coordination — real PGlite", () => {
       ),
     ).toBe(true);
     expect(JSON.stringify(exported)).not.toContain(secret);
+  });
+
+  it("converges an existing warning table to the durable cancellation outbox shape", async () => {
+    await executeRawSql(
+      runtime,
+      `ALTER TABLE app_lifeops.life_household_grant_expiry_warning_claims
+         DROP COLUMN cancellation_completed_at,
+         DROP COLUMN cancellation_attempt_count,
+         DROP COLUMN cancellation_last_error`,
+    );
+
+    const restartedRepository = new HouseholdCoordinationRepository(
+      runtime,
+      runtime.agentId,
+    );
+    await expect(
+      restartedRepository.getGrantExpiryWarningIntent(
+        `missing-grant-${randomUUID()}`,
+      ),
+    ).resolves.toBeNull();
+    const columns = await executeRawSql(
+      runtime,
+      `SELECT column_name, is_nullable, column_default
+         FROM information_schema.columns
+        WHERE table_schema = 'app_lifeops'
+          AND table_name = 'life_household_grant_expiry_warning_claims'
+          AND column_name IN (
+            'cancellation_completed_at',
+            'cancellation_attempt_count',
+            'cancellation_last_error'
+          )
+        ORDER BY column_name`,
+    );
+    expect(columns).toEqual([
+      expect.objectContaining({
+        column_name: "cancellation_attempt_count",
+        is_nullable: "NO",
+      }),
+      expect.objectContaining({
+        column_name: "cancellation_completed_at",
+        is_nullable: "YES",
+      }),
+      expect.objectContaining({
+        column_name: "cancellation_last_error",
+        is_nullable: "YES",
+      }),
+    ]);
+    expect(String(columns[0]?.column_default)).toContain("0");
   });
 });

@@ -2,7 +2,7 @@
  * Calendar Drizzle schema.
  *
  * The calendar tables (`life_calendar_events`, `life_calendar_sync_states`,
- * `life_calendar_sources`)
+ * `life_calendar_sources`, `life_calendar_feed_preferences`)
  * were carved out of `@elizaos/plugin-personal-assistant`'s `app_lifeops`
  * schema into `app_calendar`, owned by this plugin. Table + column names are
  * preserved verbatim so the non-destructive `CalendarMigrationService` can copy
@@ -13,11 +13,14 @@
  * prefix; the bare `life_*` names do not resolve in the default search path.
  */
 
+import { sql } from "drizzle-orm";
 import {
   boolean,
+  check,
   index,
   integer,
   pgSchema,
+  primaryKey,
   text,
   unique,
 } from "drizzle-orm/pg-core";
@@ -133,6 +136,38 @@ export const calendarSources = calendarPgSchema.table(
   ],
 );
 
+export const calendarFeedPreferences = calendarPgSchema.table(
+  "life_calendar_feed_preferences",
+  {
+    agentId: text("agent_id").notNull(),
+    provider: text("provider").notNull(),
+    side: text("side").notNull(),
+    grantId: text("grant_id").notNull(),
+    connectorAccountId: text("connector_account_id").notNull(),
+    calendarId: text("calendar_id").notNull(),
+    included: boolean("included").notNull().default(true),
+    version: integer("version").notNull().default(0),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    primaryKey({
+      name: "calendar_feed_preferences_source_pk",
+      columns: [
+        t.agentId,
+        t.provider,
+        t.side,
+        t.grantId,
+        t.connectorAccountId,
+        t.calendarId,
+      ],
+    }),
+    check(
+      "calendar_feed_preferences_version_nonnegative",
+      sql`${t.version} >= 0`,
+    ),
+  ],
+);
+
 export const googleCalendarWatchChannels = calendarPgSchema.table(
   "google_calendar_watch_channels",
   {
@@ -187,5 +222,6 @@ export const calendarSchema = {
   calendarEvents,
   calendarSyncStates,
   calendarSources,
+  calendarFeedPreferences,
   googleCalendarWatchChannels,
 };

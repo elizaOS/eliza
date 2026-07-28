@@ -21,6 +21,7 @@ import { __testing, APPLE_CALENDAR_GRANT_ID } from "../src/apple-calendar.js";
 import {
   type CalendarHostGate,
   CalendarService,
+  ensureCalendarFeedPreferenceTable,
 } from "../src/service/index.js";
 
 const INTERNAL_URL = new URL("http://internal.local/api/calendar");
@@ -147,6 +148,10 @@ beforeAll(async () => {
   await db.execute(sql.raw("CREATE SCHEMA IF NOT EXISTS app_calendar"));
   await db.execute(sql.raw(CREATE_EVENTS_TABLE));
   await db.execute(sql.raw(CREATE_SYNC_TABLE));
+  await ensureCalendarFeedPreferenceTable(
+    async (statement) =>
+      (await pg.query<Record<string, unknown>>(statement)).rows,
+  );
 
   const runtime = {
     agentId: "agent-cal-test",

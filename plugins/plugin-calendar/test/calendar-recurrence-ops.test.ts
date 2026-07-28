@@ -9,6 +9,8 @@
  *     intent → clarification round-trip, no approval
  *   - "just this …" phrasing / recurrenceScope=instance → approval binds the
  *     occurrence id with scope "instance"
+ *   - "this and following …" phrasing → approval binds the provider-safe split
+ *     scope without collapsing it into the whole series
  *   - "whole series" phrasing / recurrenceScope=series → one series-scoped
  *     approval (never an iteration over flattened occurrences)
  *   - non-recurring events keep the old behavior (no scope round-trip)
@@ -255,6 +257,23 @@ describe("CALENDAR update_event on a recurring occurrence", () => {
     expect(service.updateCalendarEvent).not.toHaveBeenCalled();
   });
 
+  it('"this and following" phrasing → one split-scoped patch', async () => {
+    const result = await runHandler({
+      service,
+      text: "rename this standup and every following one",
+      parameters: {
+        subaction: "update_event",
+        query: "standup",
+        details: { newTitle: "Family Sync" },
+      },
+    });
+    expect(result.success).toBe(true);
+    const request = service.modifyApproval.mock.calls[0]?.[0]
+      ?.request as Record<string, unknown>;
+    expect(request.recurrenceScope).toBe("this_and_following");
+    expect(request.title).toBe("Family Sync");
+  });
+
   it("explicit recurrenceScope detail wins without special phrasing", async () => {
     const result = await runHandler({
       service,
@@ -356,6 +375,18 @@ describe("CALENDAR delete_event on a recurring occurrence", () => {
       ?.request as Record<string, unknown>;
     expect(request.recurrenceScope).toBe("series");
     expect(service.deleteCalendarEvent).not.toHaveBeenCalled();
+  });
+
+  it('"from this one forward" phrasing → one split-scoped cancellation', async () => {
+    const result = await runHandler({
+      service,
+      text: "delete my standup from this one forward",
+      parameters: { subaction: "delete_event", query: "standup" },
+    });
+    expect(result.success).toBe(true);
+    const request = service.cancelApproval.mock.calls[0]?.[0]
+      ?.request as Record<string, unknown>;
+    expect(request.recurrenceScope).toBe("this_and_following");
   });
 
   it("explicit eventId path forwards a structured recurrenceScope", async () => {

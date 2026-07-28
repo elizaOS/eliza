@@ -95,6 +95,13 @@ export interface Content {
 	/** The main text content visible to users */
 	text?: string;
 
+	/**
+	 * Core-validated effect receipts grounding this exact visible text. Plugins
+	 * cannot establish proof by setting this field alone; the delivery boundary
+	 * also requires non-serialized core binding metadata.
+	 */
+	effectReceiptIds?: string[];
+
 	/** Excludes machine-only content from user-facing conversation transcripts. */
 	transcriptVisibility?: "internal";
 

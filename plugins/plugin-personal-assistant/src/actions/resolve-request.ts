@@ -13,6 +13,7 @@ import type {
   Action,
   ActionExample,
   ActionResult,
+  EffectResourceRef,
   HandlerCallback,
   IAgentRuntime,
   Memory,
@@ -34,6 +35,12 @@ import {
 } from "@elizaos/plugin-phone/twilio";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { INTERNAL_URL } from "../lifeops/access.js";
+import {
+  completeLifeOpsEffect,
+  lifeOpsAppliedEffect,
+  lifeOpsFailedEffect,
+  lifeOpsNoopEffect,
+} from "../lifeops/action-effect-result.js";
 import { createApprovalQueue } from "../lifeops/approval-queue.js";
 import {
   ApprovalNotFoundError,
@@ -338,10 +345,353 @@ Return strict JSON only with exactly these keys:
 
 function denied(reason: string): ActionResult {
   return {
-    text: "",
+    text: `The approval request was not changed (${reason}).`,
     success: false,
     data: { error: reason },
   };
+}
+
+interface ApprovalEffectProof {
+  readonly requestId: string;
+  readonly state: ApprovalRequest["state"];
+  readonly updatedAt: string;
+  readonly idempotencyKey: string | null;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function approvalProof(request: ApprovalRequest): ApprovalEffectProof {
+  return {
+    requestId: request.id,
+    state: request.state,
+    updatedAt: request.updatedAt.toISOString(),
+    idempotencyKey: request.idempotencyKey,
+  };
+}
+
+function withApprovalProof(
+  result: ActionResult,
+  request: ApprovalRequest,
+): ActionResult {
+  const data = asRecord(result.data) ?? {};
+  return {
+    ...result,
+    data: {
+      ...data,
+      approvalEffect: approvalProof(request),
+    },
+  };
+}
+
+function trackingApprovalQueue(
+  queue: ApprovalQueue,
+  observed: (request: ApprovalRequest) => void,
+): ApprovalQueue {
+  const track = async (
+    operation: Promise<ApprovalRequest>,
+  ): Promise<ApprovalRequest> => {
+    const request = await operation;
+    observed(request);
+    return request;
+  };
+  return {
+    enqueue: (input) => queue.enqueue(input),
+    enqueueConfirmed: (input, resolution) =>
+      queue.enqueueConfirmed(input, resolution),
+    list: (filter) => queue.list(filter),
+    byId: (id) => queue.byId(id),
+    byIdempotencyKey: (key) => queue.byIdempotencyKey(key),
+    approve: (id, resolution) => track(queue.approve(id, resolution)),
+    reject: (id, resolution) => track(queue.reject(id, resolution)),
+    markExecuting: (id) => track(queue.markExecuting(id)),
+    markDone: (id) => track(queue.markDone(id)),
+    markExpired: (id) => track(queue.markExpired(id)),
+    purgeExpired: (now) => queue.purgeExpired(now),
+  };
+}
+
+function resolutionRequestId(message: Memory): string {
+  return typeof message.id === "string"
+    ? message.id
+    : `room:${String(message.roomId)}`;
+}
+
+function approvalReceiptId(
+  message: Memory,
+  operation: string,
+  resourceId: string,
+): string {
+  return `${ACTION_NAME}:${operation}:${resolutionRequestId(message)}:${resourceId}`;
+}
+
+function readApprovalEffectProof(
+  data: Record<string, unknown>,
+): ApprovalEffectProof | null {
+  const raw = asRecord(data.approvalEffect);
+  if (
+    !raw ||
+    typeof raw.requestId !== "string" ||
+    typeof raw.state !== "string" ||
+    typeof raw.updatedAt !== "string" ||
+    !Number.isFinite(Date.parse(raw.updatedAt)) ||
+    (raw.idempotencyKey !== null &&
+      typeof raw.idempotencyKey !== "string")
+  ) {
+    return null;
+  }
+  return {
+    requestId: raw.requestId,
+    state: raw.state as ApprovalRequest["state"],
+    updatedAt: new Date(raw.updatedAt).toISOString(),
+    idempotencyKey: raw.idempotencyKey as string | null,
+  };
+}
+
+interface ApprovalProviderProof {
+  readonly id: string;
+  readonly acceptedAt: string;
+  readonly artifact: EffectResourceRef;
+}
+
+function readProviderProof(
+  data: Record<string, unknown>,
+): ApprovalProviderProof | null {
+  const receipt = asRecord(data.receipt);
+  if (receipt && typeof receipt.acceptedAt === "string") {
+    const acceptedAt = new Date(receipt.acceptedAt);
+    if (Number.isFinite(acceptedAt.getTime())) {
+      const provider =
+        typeof receipt.provider === "string" && receipt.provider.trim()
+          ? receipt.provider.trim()
+          : "calendar";
+      const providerIdCandidates = [
+        receipt.providerMessageId,
+        receipt.providerEventId,
+        receipt.eventId,
+        data.attemptId,
+      ];
+      const providerId = providerIdCandidates.find(
+        (candidate): candidate is string =>
+          typeof candidate === "string" && candidate.trim().length > 0,
+      );
+      if (providerId) {
+        return {
+          id: providerId,
+          acceptedAt: acceptedAt.toISOString(),
+          artifact: {
+            kind: `provider.${provider}.receipt`,
+            id: providerId,
+            ...(typeof receipt.providerVersion === "string" &&
+            receipt.providerVersion.trim().length > 0
+              ? { version: receipt.providerVersion }
+              : {}),
+          },
+        };
+      }
+    }
+  }
+  const handoffUpdatedAt = data.handoffUpdatedAt;
+  const handoffId = data.handoffId;
+  if (
+    typeof handoffUpdatedAt === "string" &&
+    Number.isFinite(Date.parse(handoffUpdatedAt)) &&
+    typeof handoffId === "string" &&
+    handoffId.trim().length > 0
+  ) {
+    return {
+      id: handoffId,
+      acceptedAt: new Date(handoffUpdatedAt).toISOString(),
+      artifact: { kind: "lifeops.food_shopping_handoff", id: handoffId },
+    };
+  }
+  return null;
+}
+
+function approvalArtifacts(
+  data: Record<string, unknown>,
+  provider: ApprovalProviderProof | null,
+): EffectResourceRef[] {
+  const artifacts: EffectResourceRef[] = provider ? [provider.artifact] : [];
+  const fields: ReadonlyArray<readonly [string, string]> = [
+    ["orderId", "provider.travel_order"],
+    ["paymentId", "provider.payment"],
+    ["calendarEventId", "provider.calendar_event"],
+    ["workflowRunId", "lifeops.workflow_run"],
+    ["callSid", "provider.twilio_call"],
+    ["providerMessageId", "provider.gmail_message"],
+    ["documentId", "lifeops.document_request"],
+    ["handoffId", "lifeops.food_shopping_handoff"],
+  ];
+  for (const [field, kind] of fields) {
+    const value = data[field];
+    if (
+      typeof value === "string" &&
+      value.trim().length > 0 &&
+      !artifacts.some(
+        (artifact) => artifact.kind === kind && artifact.id === value,
+      )
+    ) {
+      artifacts.push({ kind, id: value.trim() });
+    }
+  }
+  return artifacts;
+}
+
+async function completeResolveRequestResult(args: {
+  runtime: IAgentRuntime;
+  message: Memory;
+  operation: string;
+  params: ResolveRequestParameters;
+  result: ActionResult;
+  callback: HandlerCallback | undefined;
+}): Promise<ActionResult> {
+  const data = asRecord(args.result.data) ?? {};
+  const proof = readApprovalEffectProof(data);
+  const requestId =
+    proof?.requestId ??
+    (typeof data.requestId === "string" && data.requestId.trim().length > 0
+      ? data.requestId.trim()
+      : typeof args.params.requestId === "string" &&
+          args.params.requestId.trim().length > 0
+        ? args.params.requestId.trim()
+        : resolutionRequestId(args.message));
+  const operation = `lifeops.approval.${args.operation}`;
+  const error =
+    typeof data.error === "string" ? data.error : "APPROVAL_NOT_APPLIED";
+  const idempotencyKey = proof?.idempotencyKey ?? requestId;
+
+  if (args.result.success !== true) {
+    const result =
+      typeof args.result.text === "string" &&
+      args.result.text.trim().length > 0
+        ? args.result
+        : {
+            ...args.result,
+            text: `The approval request was not changed (${error}).`,
+          };
+    const observedAt = new Date().toISOString();
+    return completeLifeOpsEffect(
+      args.callback,
+      result,
+      lifeOpsFailedEffect({
+        receiptId: approvalReceiptId(
+          args.message,
+          operation,
+          requestId,
+        ),
+        operation,
+        resource: { kind: "lifeops.approval_request", id: requestId },
+        artifacts: [],
+        idempotency: { key: idempotencyKey, replayed: false },
+        observedAt,
+        failure: {
+          code: error,
+          retryable: data.safeToRetry === true,
+          acceptance:
+            error.includes("AMBIGUOUS") || data.state === "executing"
+              ? "unknown"
+              : "rejected",
+        },
+      }),
+    );
+  }
+
+  const provider = readProviderProof(data);
+  const replayed =
+    data.duplicateSuppressed === true || data.alreadyResolved === true;
+  if (replayed) {
+    const observedAt =
+      provider?.acceptedAt ?? proof?.updatedAt ?? new Date().toISOString();
+    return completeLifeOpsEffect(
+      args.callback,
+      args.result,
+      lifeOpsNoopEffect({
+        receiptId: approvalReceiptId(
+          args.message,
+          operation,
+          requestId,
+        ),
+        operation,
+        resource: {
+          kind: "lifeops.approval_request",
+          id: requestId,
+          ...(proof
+            ? { version: `${proof.state}:${proof.updatedAt}` }
+            : {}),
+        },
+        artifacts: approvalArtifacts(data, provider),
+        idempotency: { key: idempotencyKey, replayed: true },
+        observedAt,
+        reason:
+          "The persisted approval or provider receipt already represented this decision.",
+      }),
+    );
+  }
+
+  const committedAt = provider?.acceptedAt ?? proof?.updatedAt;
+  const commitId = provider?.id ?? (proof ? `${proof.requestId}:${proof.state}:${proof.updatedAt}` : null);
+  if (!committedAt || !commitId) {
+    const failure: ActionResult = {
+      ...args.result,
+      success: false,
+      text: "I could not verify a durable approval or provider receipt, so I am not claiming the request was applied.",
+      data: {
+        ...data,
+        error: "APPROVAL_COMMIT_PROOF_MISSING",
+      },
+    };
+    return completeLifeOpsEffect(
+      args.callback,
+      failure,
+      lifeOpsFailedEffect({
+        receiptId: approvalReceiptId(
+          args.message,
+          operation,
+          requestId,
+        ),
+        operation,
+        resource: { kind: "lifeops.approval_request", id: requestId },
+        artifacts: [],
+        idempotency: { key: idempotencyKey, replayed: false },
+        observedAt: new Date().toISOString(),
+        failure: {
+          code: "APPROVAL_COMMIT_PROOF_MISSING",
+          retryable: false,
+          acceptance: "unknown",
+        },
+      }),
+    );
+  }
+
+  return completeLifeOpsEffect(
+    args.callback,
+    args.result,
+    lifeOpsAppliedEffect({
+      receiptId: approvalReceiptId(
+        args.message,
+        operation,
+        commitId,
+      ),
+      operation,
+      resource: {
+        kind: "lifeops.approval_request",
+        id: requestId,
+        ...(proof ? { version: `${proof.state}:${proof.updatedAt}` } : {}),
+      },
+      artifacts: approvalArtifacts(data, provider),
+      idempotency: { key: idempotencyKey, replayed: false },
+      observedAt: committedAt,
+      commit: {
+        kind: provider ? "provider_accepted" : "durable",
+        id: commitId,
+        committedAt,
+      },
+    }),
+  );
 }
 
 function approvalChannelToCrossChannelSend(
@@ -606,6 +956,8 @@ async function executeApprovedCalendarMutation(args: {
         state: "done",
         executed: true,
         duplicateSuppressed: result.duplicateSuppressed,
+        attemptId: result.attempt.id,
+        attemptCompletedAt: result.attempt.completedAt,
         receipt,
       },
     };
@@ -854,6 +1206,8 @@ export async function executeApprovedRequest(args: {
           state: "done",
           sent: true,
           duplicateSuppressed: true,
+          attemptId: claim.attempt.id,
+          attemptCompletedAt: claim.attempt.completedAt,
           receipt,
         },
       };
@@ -930,6 +1284,8 @@ export async function executeApprovedRequest(args: {
           state: "done",
           sent: true,
           channel: scheduling.correlation.transportChannel,
+          attemptId: persistedAttempt.id,
+          attemptCompletedAt: persistedAttempt.completedAt,
           receipt,
           scheduling: scheduling.correlation,
         },
@@ -998,6 +1354,7 @@ export async function executeApprovedRequest(args: {
       );
     }
     await args.queue.markExecuting(args.request.id);
+    let providerMessageId: string | null = null;
     if (payload.replyToMessageId) {
       await service.sendGmailReply(INTERNAL_URL, {
         messageId: payload.replyToMessageId,
@@ -1008,7 +1365,7 @@ export async function executeApprovedRequest(args: {
         confirmSend: true,
       });
     } else {
-      await service.sendGmailMessage(INTERNAL_URL, {
+      const sent = await service.sendGmailMessage(INTERNAL_URL, {
         to: [...payload.to],
         cc: [...payload.cc],
         bcc: [...payload.bcc],
@@ -1016,6 +1373,7 @@ export async function executeApprovedRequest(args: {
         bodyText: payload.body,
         confirmSend: true,
       });
+      providerMessageId = sent.messageId;
     }
     const done = await args.queue.markDone(args.request.id);
     await persistSentMailCommitments({
@@ -1035,6 +1393,7 @@ export async function executeApprovedRequest(args: {
         requestId: done.id,
         state: done.state,
         action: done.action,
+        providerMessageId,
       },
     };
   }
@@ -1149,6 +1508,7 @@ export async function executeApprovedRequest(args: {
           provider: handoff.provider,
           providerResultKind: handoff.providerResultKind,
           providerLinkUrl: handoff.providerLinkUrl,
+          handoffUpdatedAt: handoff.updatedAt,
         },
       };
     }
@@ -1393,16 +1753,19 @@ async function resolveApprovalRequest(
     const invalidated = await queue.markExpired(targeted.id);
     const text = `Household approval ${targeted.id} has an invalid proposal contract. Nothing was executed; the request was terminally invalidated.`;
     await callback?.({ text });
-    return {
-      text,
-      success: false,
-      data: {
-        error: "HOUSEHOLD_APPROVAL_INVALID_CONTRACT",
-        requestId: invalidated.id,
-        state: invalidated.state,
-        executed: false,
+    return withApprovalProof(
+      {
+        text,
+        success: false,
+        data: {
+          error: "HOUSEHOLD_APPROVAL_INVALID_CONTRACT",
+          requestId: invalidated.id,
+          state: invalidated.state,
+          executed: false,
+        },
       },
-    };
+      invalidated,
+    );
   }
   if (isResourceCapacityReviewWorkflow(targeted) && !capacityTarget) {
     if (targeted.subjectUserId !== SELF_ENTITY_ID) {
@@ -1411,16 +1774,19 @@ async function resolveApprovalRequest(
     const invalidated = await queue.markExpired(targeted.id);
     const text = `Resource-capacity review ${targeted.id} has an invalid proposal contract. Nothing was reserved, changed, or sent; the request was terminally invalidated.`;
     await callback?.({ text });
-    return {
-      text,
-      success: false,
-      data: {
-        error: "RESOURCE_CAPACITY_REVIEW_INVALID_CONTRACT",
-        requestId: invalidated.id,
-        state: invalidated.state,
-        executed: false,
+    return withApprovalProof(
+      {
+        text,
+        success: false,
+        data: {
+          error: "RESOURCE_CAPACITY_REVIEW_INVALID_CONTRACT",
+          requestId: invalidated.id,
+          state: invalidated.state,
+          executed: false,
+        },
       },
-    };
+      invalidated,
+    );
   }
   const authenticatedOwnerSelfApproval =
     (householdTarget?.partyEntityId === SELF_ENTITY_ID ||
@@ -1434,6 +1800,49 @@ async function resolveApprovalRequest(
       `[OwnerResolveRequest] ${subjectUserId} attempted to resolve approval ${targeted.id} owned by ${targeted.subjectUserId}`,
     );
     return denied("CROSS_SUBJECT_APPROVAL_FORBIDDEN");
+  }
+  if (intent === "reject" && targeted.state === "rejected") {
+    const text = `Request ${targeted.id} was already rejected; nothing else was dispatched.`;
+    return withApprovalProof(
+      {
+        text,
+        success: true,
+        data: {
+          requestId: targeted.id,
+          state: targeted.state,
+          action: targeted.action,
+          alreadyResolved: true,
+        },
+      },
+      targeted,
+    );
+  }
+  if (intent === "approve" && targeted.state === "done") {
+    const text = `Request ${targeted.id} was already completed; nothing was executed again.`;
+    return withApprovalProof(
+      {
+        text,
+        success: true,
+        data: {
+          requestId: targeted.id,
+          state: targeted.state,
+          action: targeted.action,
+          alreadyResolved: true,
+        },
+      },
+      targeted,
+    );
+  }
+  if (intent === "approve" && targeted.state === "executing") {
+    return {
+      text: `Request ${targeted.id} is already executing. I did not start a second operation.`,
+      success: false,
+      data: {
+        error: "APPROVAL_EXECUTION_IN_FLIGHT",
+        requestId: targeted.id,
+        state: targeted.state,
+      },
+    };
   }
   const resolution = {
     resolvedBy: subjectUserId,
@@ -1463,25 +1872,28 @@ async function resolveApprovalRequest(
           ? `Reviewed resource-capacity proposal ${capacityTarget.proposalId} v1. No caregiver, vehicle, or restraint was reserved; no calendar changed and no message was sent.`
           : `Declined resource-capacity proposal ${capacityTarget.proposalId} v1. Nothing was reserved, changed, or sent.`;
       await callback?.({ text });
-      return {
-        text,
-        success: true,
-        data: {
-          actionName: ACTION_NAME,
-          operation: "review_resource_capacity_proposal",
-          requestId: updated.id,
-          state: updated.state,
-          action: updated.action,
-          proposalId: capacityTarget.proposalId,
-          proposalVersion: capacityTarget.proposalVersion,
-          decision: intent,
-          resolvedBy: updated.resolvedBy,
-          executed: false,
-          reserved: false,
-          calendarMutated: false,
-          messageSent: false,
+      return withApprovalProof(
+        {
+          text,
+          success: true,
+          data: {
+            actionName: ACTION_NAME,
+            operation: "review_resource_capacity_proposal",
+            requestId: updated.id,
+            state: updated.state,
+            action: updated.action,
+            proposalId: capacityTarget.proposalId,
+            proposalVersion: capacityTarget.proposalVersion,
+            decision: intent,
+            resolvedBy: updated.resolvedBy,
+            executed: false,
+            reserved: false,
+            calendarMutated: false,
+            messageSent: false,
+          },
         },
-      };
+        updated,
+      );
     }
     if (householdTarget) {
       if (!authenticatedOwnerSelfApproval) {
@@ -1505,22 +1917,25 @@ async function resolveApprovalRequest(
           ? `Approved household schedule proposal ${householdTarget.proposalId} v${householdTarget.proposalVersion}.`
           : `Rejected household schedule proposal ${householdTarget.proposalId} v${householdTarget.proposalVersion}.`;
       await callback?.({ text });
-      return {
-        text,
-        success: true,
-        data: {
-          actionName: ACTION_NAME,
-          operation: "resolve_household_schedule_proposal",
-          requestId: updated.id,
-          state: updated.state,
-          action: updated.action,
-          proposalId: householdTarget.proposalId,
-          proposalVersion: householdTarget.proposalVersion,
-          coordinationId: householdTarget.coordinationId,
-          decision: intent,
-          resolvedBy: updated.resolvedBy,
+      return withApprovalProof(
+        {
+          text,
+          success: true,
+          data: {
+            actionName: ACTION_NAME,
+            operation: "resolve_household_schedule_proposal",
+            requestId: updated.id,
+            state: updated.state,
+            action: updated.action,
+            proposalId: householdTarget.proposalId,
+            proposalVersion: householdTarget.proposalVersion,
+            coordinationId: householdTarget.coordinationId,
+            decision: intent,
+            resolvedBy: updated.resolvedBy,
+          },
         },
-      };
+        updated,
+      );
     }
     const durableExecutionReplay =
       intent === "approve" &&
@@ -1537,27 +1952,35 @@ async function resolveApprovalRequest(
         ? await queue.approve(extracted.requestId, resolution)
         : await queue.reject(extracted.requestId, resolution);
     if (intent === "approve") {
-      return executeApprovedRequest({
-        runtime,
-        queue,
-        request: updated,
-        callback,
+      let latestPersisted = updated;
+      const trackedQueue = trackingApprovalQueue(queue, (request) => {
+        latestPersisted = request;
       });
+      const executed = await executeApprovedRequest({
+        runtime,
+        queue: trackedQueue,
+        request: updated,
+        callback: undefined,
+      });
+      return withApprovalProof(executed, latestPersisted);
     }
     logger.info(
       `[OwnerResolveRequest] ${intent} ${updated.id} by ${subjectUserId}`,
     );
     const text = `Rejected request ${updated.id}.`;
     if (callback) await callback({ text });
-    return {
-      text,
-      success: true,
-      data: {
-        requestId: updated.id,
-        state: updated.state,
-        action: updated.action,
+    return withApprovalProof(
+      {
+        text,
+        success: true,
+        data: {
+          requestId: updated.id,
+          state: updated.state,
+          action: updated.action,
+        },
       },
-    };
+      updated,
+    );
   } catch (error) {
     if (error instanceof ApprovalNotFoundError) {
       return denied("REQUEST_NOT_FOUND");
@@ -1609,6 +2032,7 @@ export const resolveRequestAction: Action & {
     "capability:execute",
     "capability:update",
     "capability:send",
+    "effect:receipt-required",
     "surface:internal",
     "risk:irreversible",
   ],
@@ -1666,19 +2090,38 @@ export const resolveRequestAction: Action & {
       subactions: SUBACTIONS,
     });
     if (!resolved.ok) {
-      return {
-        success: false,
-        text: resolved.clarification,
-        data: { actionName: ACTION_NAME, missing: resolved.missing },
-      };
+      return completeResolveRequestResult({
+        runtime,
+        message,
+        operation: "resolve",
+        params: {},
+        result: {
+          success: false,
+          text: resolved.clarification,
+          data: {
+            actionName: ACTION_NAME,
+            error: "APPROVAL_RESOLUTION_CLARIFICATION_REQUIRED",
+            missing: resolved.missing,
+          },
+        },
+        callback,
+      });
     }
-    return resolveApprovalRequest(
+    const result = await resolveApprovalRequest(
       runtime,
       message,
       resolved.subaction,
       resolved.params,
-      callback,
+      undefined,
     );
+    return completeResolveRequestResult({
+      runtime,
+      message,
+      operation: resolved.subaction,
+      params: resolved.params,
+      result,
+      callback,
+    });
   },
   examples: [
     [

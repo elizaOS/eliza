@@ -104,6 +104,7 @@ export type DiscordConnectorVerification = {
   verifiedAt: string;
   status: LifeOpsDiscordConnectorStatus;
   send: {
+    attempted: boolean;
     ok: boolean;
     error: string | null;
     channelId: string | null;
@@ -1684,27 +1685,15 @@ export class DiscordDomain {
     channelId?: string;
     sendMessage?: string;
   }): Promise<DiscordConnectorVerification> {
+    if (request.channelId !== undefined || request.sendMessage !== undefined) {
+      fail(
+        400,
+        "Discord verification is read-only. Draft a message and obtain owner approval before testing outbound delivery.",
+      );
+    }
     const normalizedSide =
       normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
-    const message =
-      request.sendMessage?.trim() ||
-      `LifeOps Discord verification ${new Date().toISOString()}`;
     const status = await this.getDiscordConnectorStatus(normalizedSide);
-    const channelId =
-      request.channelId?.trim() || selectedDiscordChannelIdFromStatus(status);
-
-    let send: Awaited<ReturnType<DiscordDomain["sendDiscordMessage"]>> | null =
-      null;
-    let error: string | null = null;
-    try {
-      send = await this.sendDiscordMessage({
-        side: normalizedSide,
-        ...(channelId ? { channelId } : {}),
-        text: message,
-      });
-    } catch (caught) {
-      error = caught instanceof Error ? caught.message : String(caught);
-    }
 
     return {
       provider: "discord",
@@ -1712,11 +1701,13 @@ export class DiscordDomain {
       verifiedAt: new Date().toISOString(),
       status,
       send: {
-        ok: Boolean(send),
-        error,
-        channelId: send?.channelId ?? channelId ?? null,
-        message,
-        deliveryStatus: send?.deliveryStatus ?? null,
+        attempted: false,
+        ok: false,
+        error:
+          "Outbound verification requires a drafted message and explicit owner approval.",
+        channelId: null,
+        message: "",
+        deliveryStatus: null,
       },
     };
   }

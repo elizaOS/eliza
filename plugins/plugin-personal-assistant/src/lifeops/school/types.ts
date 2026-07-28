@@ -311,6 +311,7 @@ export interface IngestSchoolNoticeResult {
   noticeResolution: SchoolNoticeResolution;
   actionBundle: ActionBundle;
   responsibilityAssignment: ResponsibilityAssignment | null;
+  actionBundleReplayed: boolean;
 }
 
 export type SchoolSourceFactErrorCode =

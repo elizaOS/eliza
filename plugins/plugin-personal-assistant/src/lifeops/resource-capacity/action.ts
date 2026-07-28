@@ -5,15 +5,15 @@
  * evidence, evaluate conflicts, and queue exact proposal reviews; it exposes
  * no reserve, calendar-write, send, purchase, or dispatch operation.
  */
-import type {
-  Action,
-  ActionResult,
-  HandlerCallback,
-  IAgentRuntime,
-  Memory,
-} from "@elizaos/core";
+import type { Action, IAgentRuntime, Memory } from "@elizaos/core";
 import { resolveActionArgs, type SubactionsMap } from "@elizaos/core";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
+import {
+  completeLifeOpsEffect,
+  lifeOpsAppliedEffect,
+  lifeOpsFailedEffect,
+  lifeOpsNoopEffect,
+} from "../action-effect-result.js";
 import {
   getResourceCapacityService,
   type ResourceCapacityService,
@@ -96,12 +96,39 @@ function serviceFor(
   return service;
 }
 
-async function complete(
-  callback: HandlerCallback | undefined,
-  result: ActionResult,
-): Promise<ActionResult> {
-  if (result.text) await callback?.({ text: result.text });
-  return result;
+function requestId(message: Memory): string {
+  return message.id ?? `room:${message.roomId}`;
+}
+
+function receiptId(
+  message: Memory,
+  operation: string,
+  resourceId: string,
+): string {
+  return `${ACTION_NAME}:${operation}:${requestId(message)}:${resourceId}`;
+}
+
+function failedReceipt(input: {
+  message: Memory;
+  operation: string;
+  code: string;
+  retryable: boolean;
+}) {
+  const observedAt = new Date().toISOString();
+  const id = requestId(input.message);
+  return lifeOpsFailedEffect({
+    receiptId: receiptId(input.message, input.operation, id),
+    operation: input.operation,
+    resource: { kind: "runtime.message", id },
+    artifacts: [],
+    idempotency: { key: null, replayed: false },
+    observedAt,
+    failure: {
+      code: input.code,
+      retryable: input.retryable,
+      acceptance: "rejected",
+    },
+  });
 }
 
 export function createResourceCapacityAction(
@@ -122,6 +149,7 @@ export function createResourceCapacityAction(
       "domain:calendar",
       "capability:read",
       "capability:write",
+      "effect:receipt-required",
       "surface:internal",
     ],
     description:
@@ -221,11 +249,20 @@ export function createResourceCapacityAction(
     ],
     handler: async (runtime, message, state, options, callback) => {
       if (!(await deps.authorize(runtime, message))) {
-        return complete(callback, {
-          success: false,
-          text: "Household resource capacity is restricted to the authenticated owner.",
-          data: { error: "PERMISSION_DENIED" },
-        });
+        return completeLifeOpsEffect(
+          callback,
+          {
+            success: false,
+            text: "Household resource capacity is restricted to the authenticated owner.",
+            data: { error: "PERMISSION_DENIED" },
+          },
+          failedReceipt({
+            message,
+            operation: "lifeops.resource_capacity.authorize",
+            code: "PERMISSION_DENIED",
+            retryable: false,
+          }),
+        );
       }
       const resolved = await resolveActionArgs<
         ResourceCapacitySubaction,
@@ -239,14 +276,23 @@ export function createResourceCapacityAction(
         subactions: SUBACTIONS,
       });
       if (!resolved.ok) {
-        return complete(callback, {
-          success: false,
-          text: resolved.clarification,
-          data: {
-            error: "MISSING_RESOURCE_CAPACITY_PARAMETERS",
-            missing: resolved.missing,
+        return completeLifeOpsEffect(
+          callback,
+          {
+            success: false,
+            text: resolved.clarification,
+            data: {
+              error: "MISSING_RESOURCE_CAPACITY_PARAMETERS",
+              missing: resolved.missing,
+            },
           },
-        });
+          failedReceipt({
+            message,
+            operation: "lifeops.resource_capacity.resolve_request",
+            code: "MISSING_RESOURCE_CAPACITY_PARAMETERS",
+            retryable: true,
+          }),
+        );
       }
       const service = serviceFor(runtime, deps);
       if (resolved.subaction === "put_resource") {
@@ -259,11 +305,36 @@ export function createResourceCapacityAction(
             0,
           ),
         });
-        return complete(callback, {
-          success: true,
-          text: `Household ${revision.kind} resource revision ${revision.revision} was appended.`,
-          data: { revision },
-        });
+        const operation = "lifeops.household_resource.put_revision";
+        return completeLifeOpsEffect(
+          callback,
+          {
+            success: true,
+            text: `Household ${revision.kind} resource revision ${revision.revision} was appended.`,
+            data: { revision },
+          },
+          lifeOpsAppliedEffect({
+            receiptId: receiptId(
+              message,
+              operation,
+              `${revision.resourceId}:${revision.revision}`,
+            ),
+            operation,
+            resource: {
+              kind: "lifeops.household_resource",
+              id: revision.resourceId,
+              version: String(revision.revision),
+            },
+            artifacts: [],
+            idempotency: { key: null, replayed: false },
+            observedAt: revision.createdAt,
+            commit: {
+              kind: "durable",
+              id: `${revision.kind}:${revision.resourceId}:${revision.revision}`,
+              committedAt: revision.createdAt,
+            },
+          }),
+        );
       }
       if (
         resolved.subaction === "evaluate_plan" ||
@@ -289,13 +360,29 @@ export function createResourceCapacityAction(
             principalEntityId: SELF_ENTITY_ID,
             evaluation: evaluationInput,
           });
-          return complete(callback, {
-            success: true,
-            text: evaluation.feasible
-              ? "The resource plan has no structural conflicts; nothing was reserved or changed."
-              : `The resource plan has ${evaluation.conflicts.length} structural conflict(s); nothing was reserved or changed.`,
-            data: { evaluation },
-          });
+          const operation = "lifeops.resource_capacity.evaluate";
+          return completeLifeOpsEffect(
+            callback,
+            {
+              success: true,
+              text: evaluation.feasible
+                ? "The resource plan has no structural conflicts; nothing was reserved or changed."
+                : `The resource plan has ${evaluation.conflicts.length} structural conflict(s); nothing was reserved or changed.`,
+              data: { evaluation },
+            },
+            lifeOpsNoopEffect({
+              receiptId: receiptId(message, operation, evaluation.inputSha256),
+              operation,
+              resource: {
+                kind: "lifeops.resource_capacity_evaluation",
+                id: evaluation.inputSha256,
+              },
+              artifacts: [],
+              idempotency: { key: null, replayed: false },
+              observedAt: evaluation.evaluatedAt,
+              reason: "Evaluation created no reservation or external mutation.",
+            }),
+          );
         }
         const proposal = await service.createProposal({
           principalEntityId: SELF_ENTITY_ID,
@@ -313,14 +400,55 @@ export function createResourceCapacityAction(
             "expiresAt",
           ),
         });
-        return complete(callback, {
-          success: true,
-          text:
-            proposal.effectiveState === "blocked"
-              ? `A blocked proposal was recorded with ${proposal.proposal.evaluation.conflicts.length} conflict(s); no approvals, reservation, or external effects were created.`
-              : "A proposal-only capacity review was queued. Approval does not reserve resources or mutate calendars.",
-          data: { proposal },
-        });
+        const operation = "lifeops.resource_capacity_proposal.create";
+        return completeLifeOpsEffect(
+          callback,
+          {
+            success: true,
+            text:
+              proposal.effectiveState === "blocked"
+                ? `A blocked proposal was recorded with ${proposal.proposal.evaluation.conflicts.length} conflict(s); no approvals, reservation, or external effects were created.`
+                : "A proposal-only capacity review was queued. Approval does not reserve resources or mutate calendars.",
+            data: { proposal },
+          },
+          lifeOpsAppliedEffect({
+            receiptId: receiptId(
+              message,
+              operation,
+              proposal.proposal.proposalId,
+            ),
+            operation,
+            resource: {
+              kind: "lifeops.resource_capacity_proposal",
+              id: proposal.proposal.proposalId,
+              version: String(proposal.proposal.version),
+            },
+            artifacts: [
+              ...proposal.approvals.map((approval) => ({
+                kind: "lifeops.approval_request",
+                id: approval.approvalRequestId,
+              })),
+              ...(proposal.reviewTaskId
+                ? [
+                    {
+                      kind: "lifeops.scheduled_task",
+                      id: proposal.reviewTaskId,
+                    },
+                  ]
+                : []),
+            ],
+            idempotency: {
+              key: proposal.proposal.idempotencyKey,
+              replayed: proposal.replayed,
+            },
+            observedAt: proposal.proposal.createdAt,
+            commit: {
+              kind: "durable",
+              id: proposal.proposal.proposalId,
+              committedAt: proposal.proposal.createdAt,
+            },
+          }),
+        );
       }
       const proposal = await service.readProposal({
         principalEntityId: SELF_ENTITY_ID,
@@ -329,11 +457,33 @@ export function createResourceCapacityAction(
           "proposalId",
         ),
       });
-      return complete(callback, {
-        success: true,
-        text: `The capacity proposal is ${proposal.effectiveState}; it has no reservation or external effect.`,
-        data: { proposal },
-      });
+      const operation = "lifeops.resource_capacity_proposal.read";
+      const observedAt = new Date().toISOString();
+      return completeLifeOpsEffect(
+        callback,
+        {
+          success: true,
+          text: `The capacity proposal is ${proposal.effectiveState}; it has no reservation or external effect.`,
+          data: { proposal },
+        },
+        lifeOpsNoopEffect({
+          receiptId: receiptId(
+            message,
+            operation,
+            proposal.proposal.proposalId,
+          ),
+          operation,
+          resource: {
+            kind: "lifeops.resource_capacity_proposal",
+            id: proposal.proposal.proposalId,
+            version: String(proposal.proposal.version),
+          },
+          artifacts: [],
+          idempotency: { key: null, replayed: false },
+          observedAt,
+          reason: "The operation read proposal state without changing it.",
+        }),
+      );
     },
   };
 }

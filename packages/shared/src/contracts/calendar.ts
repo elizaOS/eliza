@@ -83,6 +83,11 @@ export interface UpdateLifeOpsIcsCalendarSourceRequest {
   name?: string;
   url?: string;
   enabled?: boolean;
+  /**
+   * Required when changing `enabled`; clients obtain it from the matching
+   * calendar summary. Metadata-only updates do not consume a selection token.
+   */
+  expectedSelectionVersion?: number;
 }
 
 export interface ListLifeOpsIcsCalendarSourcesResponse {
@@ -178,6 +183,42 @@ export interface LifeOpsCalendarSourceHealth {
   changeDelivery?: LifeOpsCalendarChangeDeliveryHealth;
 }
 
+/**
+ * Owner-administration projection for one exact provider/account/calendar
+ * source. `selectionVersion` is null only for a health-only source that is no
+ * longer selectable; callers must echo a non-null version on every write.
+ */
+export interface LifeOpsCalendarSourceAdministrationEntry {
+  key: LifeOpsCalendarSourceKey;
+  accountEmail: string | null;
+  summary: string;
+  primary: boolean;
+  accessRole: string;
+  includeInFeed: boolean | null;
+  selectionVersion: number | null;
+  health: LifeOpsCalendarSourceHealth;
+}
+
+export interface LifeOpsCalendarSourceAdministrationSnapshot {
+  state: "complete" | "partial" | "unavailable";
+  sources: LifeOpsCalendarSourceAdministrationEntry[];
+  observedAt: string;
+}
+
+export interface SetLifeOpsCalendarSourceSelectionRequest {
+  key: LifeOpsCalendarSourceKey;
+  includeInFeed: boolean;
+  expectedVersion: number;
+}
+
+export interface LifeOpsCalendarSourceSelectionReceipt {
+  source: LifeOpsCalendarSourceAdministrationEntry;
+  previousVersion: number;
+  currentVersion: number;
+  changed: boolean;
+  acceptedAt: string;
+}
+
 export const LIFEOPS_CALENDAR_FEED_STATES = [
   "complete",
   "partial",
@@ -188,9 +229,13 @@ export type LifeOpsCalendarFeedState =
 
 /**
  * Which part of a recurring series a mutation targets: one flattened
- * occurrence (`instance`) or the series master (`series`).
+ * occurrence (`instance`), the selected occurrence and every occurrence after
+ * it (`this_and_following`), or the series master (`series`).
  */
-export type LifeOpsCalendarRecurrenceScope = "instance" | "series";
+export type LifeOpsCalendarRecurrenceScope =
+  | "instance"
+  | "this_and_following"
+  | "series";
 
 export interface LifeOpsCalendarEvent {
   id: string;
@@ -275,6 +320,8 @@ export interface LifeOpsCalendarSummary {
   timeZone: string | null;
   selected: boolean;
   includeInFeed: boolean;
+  /** Compare-and-swap token required by every feed-selection write. */
+  selectionVersion: number;
 }
 
 export interface ListLifeOpsCalendarsRequest {
@@ -288,15 +335,23 @@ export interface ListLifeOpsCalendarsResponse {
 }
 
 export interface SetLifeOpsCalendarIncludedRequest {
+  provider: LifeOpsCalendarProvider;
+  side: LifeOpsConnectorSide;
+  grantId: string;
+  connectorAccountId: string;
   calendarId: string;
   includeInFeed: boolean;
-  side?: LifeOpsConnectorSide;
+  expectedVersion: number;
+  /** Retained for transport compatibility; exact identity remains authoritative. */
   mode?: LifeOpsConnectorMode;
-  grantId?: string;
 }
 
 export interface SetLifeOpsCalendarIncludedResponse {
   calendar: LifeOpsCalendarSummary;
+  previousVersion: number;
+  currentVersion: number;
+  changed: boolean;
+  acceptedAt: string;
 }
 
 export interface GetLifeOpsCalendarFeedRequest {
@@ -433,7 +488,8 @@ export interface LifeOpsCalendarEventUpdate {
   recurrence?: string[];
   /**
    * When the target is part of a recurring series: `instance` patches only the
-   * addressed occurrence, `series` patches the series master.
+   * addressed occurrence, `this_and_following` safely splits at that
+   * occurrence, and `series` patches the series master.
    */
   recurrenceScope?: LifeOpsCalendarRecurrenceScope;
   /** Stable owner-editor operation key used by the durable mutation ledger. */

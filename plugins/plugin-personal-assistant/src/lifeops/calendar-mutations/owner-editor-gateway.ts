@@ -151,13 +151,17 @@ async function resolveEditorMutationTargets(
     {
       ...targetRequest,
       recurrenceScope:
-        request.recurrenceScope === "series"
+        request.recurrenceScope === "series" ||
+        request.recurrenceScope === "this_and_following"
           ? "instance"
           : request.recurrenceScope,
     },
   );
   requireMatchingProviderVersion(visible, request.expectedProviderVersion);
-  if (request.recurrenceScope !== "series") {
+  if (
+    request.recurrenceScope !== "series" &&
+    request.recurrenceScope !== "this_and_following"
+  ) {
     return { visible, seriesMaster: null };
   }
   const seriesMaster = await calendar.getConditionalCalendarMutationTarget(
@@ -571,7 +575,10 @@ export class OwnerCalendarMutationGatewayService
         queue,
         action: payload.action,
         payload,
-        reason: `Update "${target.title}" from the authenticated owner calendar editor.`,
+        reason:
+          request.recurrenceScope === "this_and_following"
+            ? `Update "${target.title}" from this occurrence forward by splitting the recurring series. Later per-occurrence exceptions will reset${request.notifyAttendees ? ", and attendees may receive both split update notifications" : ""}.`
+            : `Update "${target.title}" from the authenticated owner calendar editor.`,
         operationKey,
         requestSha256,
       });
@@ -629,7 +636,10 @@ export class OwnerCalendarMutationGatewayService
         queue,
         action: payload.action,
         payload,
-        reason: `Apply ${request.cancellationMode} to "${target.title}" from the authenticated owner calendar editor.`,
+        reason:
+          request.recurrenceScope === "this_and_following"
+            ? `Apply ${request.cancellationMode} to "${target.title}" from this occurrence forward by truncating the recurring series; every later occurrence and exception will be removed${request.notifyAttendees ? ", and attendees will be notified" : ""}.`
+            : `Apply ${request.cancellationMode} to "${target.title}" from the authenticated owner calendar editor.`,
         operationKey,
         requestSha256,
       });

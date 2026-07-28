@@ -586,6 +586,7 @@ export function lifeOpsCalendarSummaryFromApple(args: {
     timeZone: calendar.timeZone ?? null,
     selected: calendar.selected !== false,
     includeInFeed: true,
+    selectionVersion: 0,
   };
 }
 

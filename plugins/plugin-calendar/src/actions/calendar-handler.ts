@@ -338,15 +338,19 @@ const CALENDAR_DETAIL_ALIASES = {
 const RECURRENCE_SCOPE_INSTANCE_PATTERN =
   /\b(?:just|only)\s+(?:this|that)(?:\s+(?:one|time|occurrence|instance|event|meeting|week))?\b|\bthis\s+(?:one|occurrence|instance)\s+only\b|\bsingle\s+occurrence\b/i;
 
+/** Deterministic split-at-occurrence phrasing across mutation requests. */
+const RECURRENCE_SCOPE_THIS_AND_FOLLOWING_PATTERN =
+  /\b(?:this|that)(?:\s+(?:one|occurrence|instance|event|meeting|[a-z0-9_-]+))?\s+(?:and|&)\s+(?:(?:all|every)\s+)?(?:following|future|everything\s+after)(?:\s+(?:events|occurrences|instances|ones))?\b|\bfrom\s+(?:this|that)(?:\s+(?:one|occurrence|instance|event|meeting))?\s+(?:forward|onwards?|on)\b|\bstarting\s+(?:with|at)\s+(?:this|that)(?:\s+(?:one|occurrence|instance|event|meeting))?\b/i;
+
 /** Deterministic "the whole series" phrasing across mutation requests. */
 const RECURRENCE_SCOPE_SERIES_PATTERN =
-  /\b(?:whole|entire|full)\s+series\b|\bthe\s+series\b|\ball\s+(?:occurrences|instances|of\s+them|future\s+(?:events|occurrences|instances))\b|\bevery\s+(?:occurrence|instance|single\s+one)\b|\bstop\s+(?:it\s+)?(?:from\s+)?(?:repeating|recurring)\b|\bcancel\s+the\s+recurring\b/i;
+  /\b(?:whole|entire|full)\s+series\b|\bthe\s+series\b|\ball\s+(?:occurrences|instances|of\s+them)\b|\bevery\s+(?:occurrence|instance|single\s+one)\b|\bstop\s+(?:it\s+)?(?:from\s+)?(?:repeating|recurring)\b|\bcancel\s+the\s+recurring\b/i;
 
 /**
- * Structural resolution of instance-vs-series intent for a recurring-event
- * mutation: explicit `recurrenceScope` detail first, then unambiguous message
- * phrasing. Returns null when the intent stays ambiguous — the caller must ask
- * instead of mutating.
+ * Structural resolution of one, following, or whole-series intent: explicit
+ * `recurrenceScope` detail first, then unambiguous message phrasing. Returns
+ * null when the intent stays ambiguous — the caller must ask instead of
+ * mutating.
  */
 function resolveRecurrenceScopeIntent(args: {
   details: Record<string, unknown> | undefined;
@@ -359,11 +363,19 @@ function resolveRecurrenceScopeIntent(args: {
     return explicit;
   }
   const matchesInstance = RECURRENCE_SCOPE_INSTANCE_PATTERN.test(args.text);
+  const matchesThisAndFollowing =
+    RECURRENCE_SCOPE_THIS_AND_FOLLOWING_PATTERN.test(args.text);
   const matchesSeries = RECURRENCE_SCOPE_SERIES_PATTERN.test(args.text);
-  if (matchesInstance === matchesSeries) {
+  const matches = [
+    matchesInstance,
+    matchesThisAndFollowing,
+    matchesSeries,
+  ].filter(Boolean).length;
+  if (matches !== 1) {
     return null;
   }
-  return matchesInstance ? "instance" : "series";
+  if (matchesInstance) return "instance";
+  return matchesThisAndFollowing ? "this_and_following" : "series";
 }
 
 function isRecurringCalendarEvent(event: LifeOpsCalendarEvent | null): boolean {
@@ -401,7 +413,7 @@ function buildRecurrenceScopeClarification(args: {
     describeRecurrence(recurrenceLinesFrom(args.event)) ??
     "on a repeating schedule";
   const verb = args.action === "update" ? "change" : "delete";
-  return `"${args.event.title}" repeats ${description}. should i ${verb} just this occurrence or the whole series?`;
+  return `"${args.event.title}" repeats ${description}. should i ${verb} just this occurrence, this and every following occurrence, or the whole series?`;
 }
 
 function normalizeCalendarSubaction(value: unknown): CalendarSubaction | null {
@@ -2759,7 +2771,7 @@ async function inferUpdateEventDetails(
     "If the user gives a relative shift like later, earlier, push back, or move forward, apply it to the current event timing.",
     "Unless the user explicitly changes the timezone, preserve the current event timezone.",
     "If the user only renames the event, leave startAt, endAt, location, description, and timeZone empty.",
-    "When the current event is part of a recurring series, set recurrenceScope to instance when the user clearly targets only this occurrence, series when they clearly target every occurrence, and leave it empty when they do not say.",
+    "When the current event is part of a recurring series, set recurrenceScope to instance for only this occurrence, this_and_following for this occurrence and every later one, series for every occurrence including earlier ones, and leave it empty when the user does not say.",
     "Only set recurrence when the user changes how the event repeats (e.g. switch to weekly, stop after 5 times).",
     "Return JSON only as a single object. No prose.",
     "",
@@ -2770,7 +2782,7 @@ async function inferUpdateEventDetails(
     "endAt: updated ISO datetime if changed",
     "timeZone: IANA timezone if changed or needed to interpret the update",
     "recurrence: RFC 5545 RRULE string only when the repetition itself changes",
-    "recurrenceScope: instance|series only when the current event is recurring and the user says which",
+    "recurrenceScope: instance|this_and_following|series only when the current event is recurring and the user says which",
     "",
     `Current timezone: ${timeZone}`,
     `Current local datetime: ${nowReadable}`,
@@ -3750,8 +3762,8 @@ const calendarAction: CalendarHandlerAction = {
         if (recurrenceUpdate && !recurrenceScopeForUpdate) {
           recurrenceScopeForUpdate = "series";
         }
-        // Mutating a recurring event without explicit instance-vs-series
-        // intent is ambiguous: ask instead of guessing.
+        // Mutating a recurring event without explicit occurrence/following/
+        // series intent is ambiguous: ask instead of guessing.
         if (
           targetEvent &&
           isRecurringCalendarEvent(targetEvent) &&
@@ -4361,7 +4373,7 @@ const calendarAction: CalendarHandlerAction = {
       description:
         "Optional structured calendar fields such as time bounds, timezone, calendar id, create-event timing, location, attendees, " +
         'recurrence (RFC 5545 RRULE line(s) like "RRULE:FREQ=WEEKLY;BYDAY=MO" for repeating events), and recurrenceScope ' +
-        '("instance" to mutate one occurrence of a recurring event, "series" for the whole series).',
+        '("instance" for one occurrence, "this_and_following" to split at the selected occurrence, "series" for the whole series).',
       required: false,
       schema: { type: "object" as const },
     },

@@ -561,7 +561,7 @@ function assertApprovalPayload(
         record,
         "recurrenceScope",
         label,
-        new Set(["instance", "series"]),
+        new Set(["instance", "this_and_following", "series"]),
       );
       requireOptionalBooleanField(record, "notifyAttendees", label);
       requireOptionalNullableStringField(record, "grantId", label);
@@ -617,7 +617,7 @@ function assertApprovalPayload(
         record,
         "recurrenceScope",
         label,
-        new Set(["instance", "series"]),
+        new Set(["instance", "this_and_following", "series"]),
       );
       requireOptionalEnumField(
         record,

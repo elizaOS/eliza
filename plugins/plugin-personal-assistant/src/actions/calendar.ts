@@ -49,6 +49,7 @@ import type {
   ApprovalPayload,
   ApprovalRequest,
   CalendarCancellationMode,
+  CalendarSeriesMasterBinding,
 } from "../lifeops/approval-queue.types.js";
 import { buildApprovalChoiceText } from "../lifeops/choice-markers.js";
 import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
@@ -155,6 +156,57 @@ function requireCalendarProviderVersion(event: LifeOpsCalendarEvent): string {
     );
   }
   return etag.trim();
+}
+
+async function bindFollowingSeriesMaster(
+  runtime: IAgentRuntime,
+  target: LifeOpsCalendarEvent,
+  recurrenceScope: string | undefined,
+): Promise<CalendarSeriesMasterBinding | null> {
+  if (recurrenceScope !== "this_and_following") return null;
+  const grantId = target.grantId?.trim();
+  if (!grantId) {
+    throw new CalendarServiceError(
+      409,
+      "This-and-following approval requires the target connector grant.",
+      "CALENDAR_MUTATION_TARGET_BINDING_REQUIRED",
+    );
+  }
+  const master = await resolveCalendarService(
+    runtime,
+  ).getConditionalCalendarMutationTarget(INTERNAL_URL, {
+    side: target.side,
+    grantId,
+    calendarId: target.calendarId,
+    eventId: target.externalId,
+    recurrenceScope: "series",
+  });
+  const recurringEventId =
+    target.recurringEventId ??
+    (typeof target.metadata.recurringEventId === "string"
+      ? target.metadata.recurringEventId
+      : null);
+  if (
+    !recurringEventId ||
+    recurringEventId !== master.externalId ||
+    master.provider !== target.provider ||
+    master.grantId !== target.grantId ||
+    master.calendarId !== target.calendarId
+  ) {
+    throw new CalendarServiceError(
+      409,
+      "The selected occurrence is no longer bound to its approved recurring-series master.",
+      "CALENDAR_MUTATION_TARGET_CHANGED",
+    );
+  }
+  return {
+    externalId: master.externalId,
+    startAtMs: requireCalendarTimestamp(master.startAt, "seriesMaster.startAt"),
+    updatedAt: new Date(
+      requireCalendarTimestamp(master.updatedAt, "seriesMaster.updatedAt"),
+    ).toISOString(),
+    etag: requireCalendarProviderVersion(master),
+  };
 }
 
 function calendarApprovalIdempotencyKey(
@@ -274,6 +326,11 @@ export function createCalendarMutationApprovalGateway(options?: {
       });
     },
     async modify(args) {
+      const seriesMaster = await bindFollowingSeriesMaster(
+        args.runtime,
+        args.targetEvent,
+        args.request.recurrenceScope,
+      );
       const payload: CalendarApprovalPayload = {
         action: "modify_event",
         side: args.request.side,
@@ -290,6 +347,7 @@ export function createCalendarMutationApprovalGateway(options?: {
           "targetEvent.startAt",
         ),
         recurrenceScope: args.request.recurrenceScope ?? null,
+        seriesMaster,
         notifyAttendees: args.request.notifyAttendees,
         patch: {
           title: args.request.title ?? null,
@@ -328,11 +386,19 @@ export function createCalendarMutationApprovalGateway(options?: {
         queue: resolveQueue(args.runtime),
         action: "modify_event",
         payload,
-        reason: `Modify "${approvalSafeLabel(args.targetEvent.title)}" on ${new Date(payload.expectedEventStartAtMs as number).toISOString()}${payload.notifyAttendees ? " and notify attendees" : " without sending attendee notifications"}.`,
+        reason:
+          payload.recurrenceScope === "this_and_following"
+            ? `Modify "${approvalSafeLabel(args.targetEvent.title)}" from ${new Date(payload.expectedEventStartAtMs as number).toISOString()} forward by splitting the recurring series. Later per-occurrence exceptions will reset${payload.notifyAttendees ? ", and attendees may receive both split update notifications" : ""}.`
+            : `Modify "${approvalSafeLabel(args.targetEvent.title)}" on ${new Date(payload.expectedEventStartAtMs as number).toISOString()}${payload.notifyAttendees ? " and notify attendees" : " without sending attendee notifications"}.`,
       });
     },
     async cancel(args) {
       const cancellationMode = cancellationModeForEvent(args.targetEvent);
+      const seriesMaster = await bindFollowingSeriesMaster(
+        args.runtime,
+        args.targetEvent,
+        args.request.recurrenceScope,
+      );
       const payload: CalendarApprovalPayload = {
         action: "cancel_event",
         side: args.request.side,
@@ -349,6 +415,7 @@ export function createCalendarMutationApprovalGateway(options?: {
           "targetEvent.startAt",
         ),
         recurrenceScope: args.request.recurrenceScope ?? null,
+        seriesMaster,
         cancellationMode,
         notifyAttendees: args.request.notifyAttendees,
       };
@@ -362,7 +429,10 @@ export function createCalendarMutationApprovalGateway(options?: {
         queue: resolveQueue(args.runtime),
         action: "cancel_event",
         payload,
-        reason: `${verb} "${approvalSafeLabel(args.targetEvent.title)}" on ${new Date(payload.expectedEventStartAtMs as number).toISOString()}${payload.notifyAttendees ? " and notify attendees" : " without sending attendee notifications"}.`,
+        reason:
+          payload.recurrenceScope === "this_and_following"
+            ? `${verb} "${approvalSafeLabel(args.targetEvent.title)}" from ${new Date(payload.expectedEventStartAtMs as number).toISOString()} forward by truncating the recurring series; every later occurrence and exception will be removed${payload.notifyAttendees ? ", and attendees will be notified" : ""}.`
+            : `${verb} "${approvalSafeLabel(args.targetEvent.title)}" on ${new Date(payload.expectedEventStartAtMs as number).toISOString()}${payload.notifyAttendees ? " and notify attendees" : " without sending attendee notifications"}.`,
       });
     },
   };

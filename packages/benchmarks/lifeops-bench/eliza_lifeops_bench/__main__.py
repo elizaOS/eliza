@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import base64
+import binascii
 import logging
 import os
 import sys
@@ -23,6 +25,7 @@ from .eliza_1_bundle import (
     bundle_is_pre_release,
     read_eliza_one_bundle,
 )
+from .evidence import HttpTrustedToolExecutor, HmacSha256ReceiptVerifier
 from .model_tiers import DEFAULT_TIERS, TierSpec, resolve_tier
 from .runner import LifeOpsBenchRunner
 from .scenarios import (
@@ -33,7 +36,7 @@ from .scenarios import (
     validate_lifeops_scenarios,
 )
 from .suites import SUITES, resolve_suite
-from .types import Domain, MessageTurn, ScenarioMode
+from .types import Domain, MessageTurn, Scenario, ScenarioMode
 
 _AGENT_CHOICES = (
     "perfect",
@@ -125,8 +128,11 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--agent",
         choices=_AGENT_CHOICES,
-        default="perfect",
-        help="Backend agent under test (default: perfect)",
+        default="eliza",
+        help=(
+            "Backend agent under test (default: eliza). The perfect and wrong "
+            "oracles are explicit harness-conformance choices, never benchmark defaults."
+        ),
     )
     parser.add_argument(
         "--evaluator-provider",
@@ -219,6 +225,17 @@ def _build_parser() -> argparse.ArgumentParser:
         type=int,
         default=300,
         help="Per-scenario wall-clock timeout in seconds (default: 300)",
+    )
+    parser.add_argument(
+        "--trusted-executor-url",
+        default=None,
+        help=(
+            "Authenticated production/sandbox execution endpoint for "
+            "evidence-gated LIVE scenarios. CLI wins over "
+            "LIFEOPS_BENCH_TRUSTED_EXECUTOR_URL. Request and receipt keys, "
+            "key IDs, and provider/boundary allowlists come from the "
+            "LIFEOPS_BENCH_TRUSTED_EXECUTOR_* environment variables."
+        ),
     )
     parser.add_argument(
         "--abort-on-budget-exceeded",
@@ -593,6 +610,92 @@ def _needs_live_evaluator(
     )
 
 
+def _build_trusted_execution(
+    args: argparse.Namespace,
+    scenarios: list[Scenario],
+):
+    """Resolve the opt-in real execution boundary without exposing its secrets."""
+    url = (
+        args.trusted_executor_url
+        or os.environ.get("LIFEOPS_BENCH_TRUSTED_EXECUTOR_URL", "").strip()
+    )
+    if not url:
+        return None, None
+    contract_ids = {
+        scenario.trusted_evidence_requirement.contract_id
+        for scenario in scenarios
+        if scenario.trusted_evidence_requirement is not None
+    }
+    if not contract_ids:
+        return None, None
+
+    def decode_key(name: str) -> bytes:
+        encoded = os.environ.pop(name, "").strip()
+        if not encoded:
+            raise SystemExit(f"A trusted executor URL requires {name}.")
+        try:
+            return base64.b64decode(encoded, validate=True)
+        except (ValueError, binascii.Error) as exc:
+            raise SystemExit(f"{name} is not valid base64.") from exc
+
+    request_key = decode_key(
+        "LIFEOPS_BENCH_TRUSTED_EXECUTOR_REQUEST_HMAC_KEY_B64"
+    )
+    receipt_key = decode_key(
+        "LIFEOPS_BENCH_TRUSTED_EXECUTOR_RECEIPT_HMAC_KEY_B64"
+    )
+    request_key_id = os.environ.pop(
+        "LIFEOPS_BENCH_TRUSTED_EXECUTOR_REQUEST_KEY_ID",
+        "",
+    ).strip()
+    receipt_key_id = os.environ.pop(
+        "LIFEOPS_BENCH_TRUSTED_EXECUTOR_RECEIPT_KEY_ID",
+        "",
+    ).strip()
+    providers = {
+        item.strip()
+        for item in os.environ.pop(
+            "LIFEOPS_BENCH_TRUSTED_EXECUTOR_ALLOWED_PROVIDERS",
+            "",
+        ).split(",")
+        if item.strip()
+    }
+    boundaries = {
+        item.strip()
+        for item in os.environ.pop(
+            "LIFEOPS_BENCH_TRUSTED_EXECUTOR_ALLOWED_BOUNDARIES",
+            "sandbox_connector",
+        ).split(",")
+        if item.strip()
+    }
+    if not request_key_id or not receipt_key_id or not providers:
+        raise SystemExit(
+            "Trusted executor configuration requires request/receipt key IDs "
+            "and LIFEOPS_BENCH_TRUSTED_EXECUTOR_ALLOWED_PROVIDERS."
+        )
+    bearer_token = os.environ.pop(
+        "LIFEOPS_BENCH_TRUSTED_EXECUTOR_BEARER_TOKEN",
+        "",
+    ).strip()
+    try:
+        executor = HttpTrustedToolExecutor(
+            url,
+            request_key,
+            request_key_id=request_key_id,
+            bearer_token=bearer_token or None,
+        )
+        verifier = HmacSha256ReceiptVerifier(
+            receipt_key,
+            signing_key_id=receipt_key_id,
+            allowed_providers=providers,
+            allowed_boundaries=boundaries,
+            allowed_contract_ids=contract_ids,
+        )
+    except ValueError as exc:
+        raise SystemExit(f"Trusted executor configuration is invalid: {exc}") from exc
+    return executor, verifier
+
+
 async def _run(args: argparse.Namespace) -> None:
     if args.scenario and args.suite:
         print(
@@ -697,6 +800,10 @@ async def _run(args: argparse.Namespace) -> None:
         else:
             scenarios = filtered
 
+    trusted_tool_executor, trusted_evidence_verifier = _build_trusted_execution(
+        args,
+        scenarios,
+    )
     agent_factory = _build_agent_factory(args.agent)
     agent_fn = (
         _build_agent_fn(
@@ -706,6 +813,9 @@ async def _run(args: argparse.Namespace) -> None:
         )
         if agent_factory is None
         else None
+    )
+    gated_scenario_count = sum(
+        scenario.trusted_evidence_requirement is not None for scenario in scenarios
     )
 
     print(f"\nStarting LifeOpsBench with {len(scenarios)} scenarios x {args.seeds} seeds...")
@@ -723,6 +833,13 @@ async def _run(args: argparse.Namespace) -> None:
         )
     print(f"Evaluator:       {evaluator_provider} → {evaluator_model}")
     print(f"Judge:           {judge_provider} → {judge_model}")
+    if gated_scenario_count:
+        trusted_executor_status = (
+            "configured"
+            if trusted_tool_executor is not None
+            else "disabled (gated scenarios cannot earn evidence credit)"
+        )
+        print(f"Trusted executor: {trusted_executor_status}")
     print(f"Concurrency:     {args.concurrency}")
     print(f"Cost cap:        ${args.max_cost_usd:.2f}\n")
 
@@ -772,6 +889,8 @@ async def _run(args: argparse.Namespace) -> None:
         abort_on_budget_exceeded=args.abort_on_budget_exceeded,
         simulated_user_client=simulated_user_client,
         judge_client=judge_client,
+        trusted_tool_executor=trusted_tool_executor,
+        trusted_evidence_verifier=trusted_evidence_verifier,
     )
 
     result = await runner.run_filtered(domain=domain, mode=mode)

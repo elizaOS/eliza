@@ -7,13 +7,14 @@ import {
   KNOWLEDGE_GRAPH_SERVICE,
   resolveKnowledgeGraphService,
 } from "@elizaos/agent";
-import type { AgentRuntime } from "@elizaos/core";
+import type { AgentRuntime, Memory } from "@elizaos/core";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
 } from "../../../test/helpers/runtime.js";
+import { createHouseholdOperationsAction } from "./action.js";
 import { HouseholdOperationsRepository } from "./repository.js";
 import { HouseholdOperationsService } from "./service.js";
 import type {
@@ -195,6 +196,65 @@ describe("household operations — real PGlite and runtime graph", () => {
     await runtimeResult?.cleanup();
   });
 
+  it("returns commit proof tied to the real persisted household revision", async () => {
+    const recordId = "vendor-action-effect-contract";
+    const action = createHouseholdOperationsAction({
+      authorize: async () => true,
+      getService: () => service,
+    });
+    const result = await action.handler(
+      runtime,
+      {
+        id: "household-action-effect-message",
+        entityId: runtime.agentId,
+        agentId: runtime.agentId,
+        roomId: runtime.agentId,
+        content: { text: "Save this household vendor.", source: "test" },
+      } as Memory,
+      undefined,
+      {
+        parameters: {
+          action: "put_record",
+          expectedRevision: 0,
+          input: {
+            kind: "vendor_profile",
+            recordId,
+            householdId,
+            vendorEntityId,
+            serviceKinds: ["household-action-proof"],
+            contactRouteRefs: ["contact-route:household-action-proof"],
+            accessWindows: [],
+            accountReference: null,
+            notes: null,
+            active: true,
+            visibility: { kind: "owner_private" },
+          },
+        },
+      },
+      undefined,
+    );
+
+    const persisted = await repository.getCurrentRevision(
+      "vendor_profile",
+      recordId,
+    );
+    expect(persisted).toMatchObject({ recordId, revision: 1 });
+    expect(result.effectReceipts?.[0]).toMatchObject({
+      outcome: "applied",
+      operation: "lifeops.household_operation.put_revision",
+      resource: {
+        kind: "lifeops.household_operation",
+        id: recordId,
+        version: "1",
+      },
+      commit: {
+        kind: "durable",
+        id: `vendor_profile:${recordId}:1`,
+        committedAt: persisted?.createdAt,
+      },
+    });
+  });
+
   it("G29 preserves vendor/service history and blocks outreach until an exact calendar check", async () => {
     await service.putRevision({
       principalEntityId: SELF_ENTITY_ID,
@@ -256,7 +316,7 @@ describe("household operations — real PGlite and runtime graph", () => {
       expectedRevision: 0,
     });
 
-    const preparationBrief = await service.generateWeeklyBrief({
+    const preparationBriefInput = {
       principalEntityId: SELF_ENTITY_ID,
       householdId,
       window: {
@@ -264,12 +324,21 @@ describe("household operations — real PGlite and runtime graph", () => {
         endsAt: "2027-03-10T00:00:00.000Z",
       },
       calendarChecks: [],
-    });
+    };
+    const preparationBrief = await service.generateWeeklyBrief(
+      preparationBriefInput,
+    );
+    expect(preparationBrief.replayed).toBe(false);
     expect(
       preparationBrief.items.some(
         (item) => item.subjectKey === maintenanceSubjectKey,
       ),
     ).toBe(true);
+    const preparationReplay = await service.generateWeeklyBrief(
+      preparationBriefInput,
+    );
+    expect(preparationReplay.briefId).toBe(preparationBrief.briefId);
+    expect(preparationReplay.replayed).toBe(true);
 
     const blockedBrief = await service.generateWeeklyBrief({
       principalEntityId: SELF_ENTITY_ID,
@@ -1002,6 +1071,7 @@ describe("household operations — real PGlite and runtime graph", () => {
     });
     expect(proposal).toMatchObject({
       trigger: "repeated_dismissal",
+      replayed: false,
       currentOwners: {
         executionOwnerId: partnerEntityId,
         monitoringOwnerId: partnerEntityId,
@@ -1018,6 +1088,7 @@ describe("household operations — real PGlite and runtime graph", () => {
       assignmentRecordId: assignmentId,
     });
     expect(replay?.reviewId).toBe(proposal?.reviewId);
+    expect(replay?.replayed).toBe(true);
     const assignment = await repository.getCurrentRevision(
       "responsibility_assignment",
       assignmentId,

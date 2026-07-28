@@ -29,6 +29,8 @@ import type {
   LifeOpsConnectorSide,
   LifeOpsNextCalendarEventContext,
   ListLifeOpsCalendarsRequest,
+  SetLifeOpsCalendarIncludedRequest,
+  SetLifeOpsCalendarIncludedResponse,
 } from "@elizaos/shared";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import { LifeOpsServiceError } from "../service-types.js";
@@ -61,14 +63,8 @@ export class CalendarDomain {
 
   setCalendarIncluded(
     requestUrl: URL,
-    request: {
-      calendarId: string;
-      includeInFeed: boolean;
-      side?: LifeOpsConnectorSide;
-      mode?: LifeOpsConnectorMode;
-      grantId?: string;
-    },
-  ): Promise<LifeOpsCalendarSummary> {
+    request: SetLifeOpsCalendarIncludedRequest,
+  ): Promise<SetLifeOpsCalendarIncludedResponse> {
     return resolveCalendarService(this.ctx.runtime).setCalendarIncluded(
       requestUrl,
       request,
@@ -138,6 +134,8 @@ export class CalendarDomain {
       recurrenceScope?: LifeOpsCalendarRecurrenceScope | null;
       notifyAttendees?: boolean;
       expectedProviderVersion?: string;
+      expectedOccurrenceProviderVersion?: string;
+      idempotencyKey?: string;
     },
   ): Promise<LifeOpsCalendarEvent> {
     return resolveCalendarService(this.ctx.runtime).updateCalendarEvent(
@@ -157,6 +155,8 @@ export class CalendarDomain {
       recurrenceScope?: LifeOpsCalendarRecurrenceScope | null;
       notifyAttendees?: boolean;
       expectedProviderVersion?: string;
+      expectedOccurrenceProviderVersion?: string;
+      idempotencyKey?: string;
     },
   ): Promise<void> {
     return resolveCalendarService(this.ctx.runtime).deleteCalendarEvent(

@@ -12,6 +12,11 @@ import {
 } from "@elizaos/agent";
 import { type IAgentRuntime, Service } from "@elizaos/core";
 import {
+  getScheduledTaskRunner,
+  type ScheduledTaskRunnerHandle,
+  ScheduledTaskRunnerService,
+} from "@elizaos/plugin-scheduling";
+import {
   type Entity,
   type Relationship,
   SELF_ENTITY_ID,
@@ -22,6 +27,11 @@ import type {
   ApprovalRequest,
 } from "../approval-queue.types.js";
 import { createLifeOpsCommitmentLedgerRecord } from "../commitments/index.js";
+import {
+  cancelHouseholdGrantExpiryWarning,
+  ensureHouseholdGrantExpiryWarning,
+  type HouseholdGrantExpiryWarningReceipt,
+} from "./grant-expiry-warning.js";
 import { HouseholdCoordinationRepository } from "./repository.js";
 import {
   HOUSEHOLD_ACCESS_SCOPES,
@@ -59,6 +69,7 @@ export interface HouseholdCoordinationDependencies {
   relationshipStore: RelationshipStore;
   approvalQueue: ApprovalQueue;
   repository: HouseholdCoordinationRepository;
+  scheduledTasks?: ScheduledTaskRunnerHandle;
   now?: () => Date;
 }
 
@@ -247,6 +258,67 @@ export class HouseholdCoordinationService {
 
   constructor(private readonly deps: HouseholdCoordinationDependencies) {
     this.now = deps.now ?? (() => new Date());
+  }
+
+  private scheduledTasks() {
+    return (
+      this.deps.scheduledTasks ??
+      getScheduledTaskRunner(this.deps.runtime, {
+        agentId: this.deps.agentId,
+        now: this.now,
+      })
+    );
+  }
+
+  async reconcileGrantExpiryWarnings(): Promise<
+    HouseholdGrantExpiryWarningReceipt[]
+  > {
+    const now = this.now();
+    const grants = await this.deps.repository.listGrants();
+    const receipts: HouseholdGrantExpiryWarningReceipt[] = [];
+    for (const grant of grants) {
+      try {
+        receipts.push(
+          grant.revokedAt
+            ? await cancelHouseholdGrantExpiryWarning({
+                grant,
+                repository: this.deps.repository,
+                scheduledTasks: this.scheduledTasks(),
+                now,
+              })
+            : await ensureHouseholdGrantExpiryWarning({
+                grant,
+                repository: this.deps.repository,
+                scheduledTasks: this.scheduledTasks(),
+                now,
+              }),
+        );
+      } catch (error) {
+        // error-policy:J7 the durable warning/cancellation outbox remains
+        // pending; one grant failure must not prevent the same scheduler tick
+        // from repairing every other household grant.
+        const reason = grant.revokedAt
+          ? "cancellation_failure"
+          : "materialization_failure";
+        this.deps.runtime.reportError(
+          "HouseholdCoordination.reconcileGrantExpiryWarning",
+          error,
+          {
+            grantId: grant.id,
+            reason,
+            recovery: "lifeops_scheduler_tick",
+          },
+        );
+        receipts.push({
+          outcome: "deferred",
+          grantId: grant.id,
+          reason,
+          failedAt: now.toISOString(),
+          autoExtend: false,
+        });
+      }
+    }
+    return receipts;
   }
 
   private async terminallyInvalidateApprovalRequests(
@@ -705,6 +777,29 @@ export class HouseholdCoordinationService {
       actor: "user",
       createdAt: now,
     });
+    try {
+      await ensureHouseholdGrantExpiryWarning({
+        grant,
+        repository: this.deps.repository,
+        scheduledTasks: this.scheduledTasks(),
+        now: nowDate,
+      });
+    } catch (error) {
+      // error-policy:J1 boundary translation — grant issuance and its warning
+      // intent commit atomically. The committed grant is authoritative while
+      // startup reconciliation owns delivery, so returning it prevents a
+      // caller retry from creating duplicate access.
+      this.deps.runtime.reportError(
+        "HouseholdCoordination.grantExpiryWarning",
+        error,
+        {
+          grantId: grant.id,
+          principalEntityId: grant.principalEntityId,
+          expiresAt: grant.expiresAt,
+          recovery: "startup_reconciliation",
+        },
+      );
+    }
     return grant;
   }
 
@@ -733,12 +828,35 @@ export class HouseholdCoordinationService {
         "HOUSEHOLD_INVALID_CONTRACT",
       );
     }
-    return await this.deps.repository.revokeGrant({
+    const grant = await this.deps.repository.revokeGrant({
       id: grantId,
       revokedAt: this.now().toISOString(),
       revokedByEntityId,
       reason,
     });
+    try {
+      await cancelHouseholdGrantExpiryWarning({
+        grant,
+        repository: this.deps.repository,
+        scheduledTasks: this.scheduledTasks(),
+        now: this.now(),
+      });
+    } catch (error) {
+      // error-policy:J1 access revocation is already atomically committed with
+      // a cancellation outbox intent. Surface the repair path without
+      // pretending the access mutation rolled back or inviting a duplicate
+      // revoke request.
+      this.deps.runtime.reportError(
+        "HouseholdCoordination.grantExpiryWarningCancellation",
+        error,
+        {
+          grantId: grant.id,
+          revokedAt: grant.revokedAt,
+          recovery: "lifeops_scheduler_tick",
+        },
+      );
+    }
+    return grant;
   }
 
   private async grantIsActive(
@@ -1903,7 +2021,10 @@ export class HouseholdCoordinationRuntimeService extends Service {
   static async start(
     runtime: IAgentRuntime,
   ): Promise<HouseholdCoordinationRuntimeService> {
-    return new HouseholdCoordinationRuntimeService(runtime);
+    await runtime.getServiceLoadPromise(ScheduledTaskRunnerService.serviceType);
+    const service = new HouseholdCoordinationRuntimeService(runtime);
+    await service.coordination.reconcileGrantExpiryWarnings();
+    return service;
   }
 
   async stop(): Promise<void> {}

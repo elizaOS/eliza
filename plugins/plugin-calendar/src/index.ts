@@ -11,6 +11,8 @@ export {
   type CalendarMutationCancelRequest,
   type CalendarMutationGatewayDep,
   type CalendarMutationUpdateRequest,
+  type CalendarSourceConnectionIntent,
+  type CalendarSourceOperation,
   type CalendarTravelBufferDep,
   type CalendarTravelBufferResult,
   type CalendarTravelIntent,
@@ -27,6 +29,7 @@ export {
   type ConflictRange,
   type ConflictSeverity,
   calendarAction,
+  calendarSourcesAction,
   conflictDetectAction,
   createCalendarActionRunner,
   createCalendarFeedConflictLoader,
@@ -79,5 +82,7 @@ export { CalendarServiceError } from "./internal/errors.js";
 export * from "./meetings/index.js";
 export * from "./microsoft/index.js";
 export { calendarPlugin, calendarPlugin as default } from "./plugin.js";
+export * from "./providers/index.js";
 export * from "./routes/mutation-gateway.js";
 export * from "./service/index.js";
+export * from "./source-administration/index.js";

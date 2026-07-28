@@ -5,7 +5,10 @@
  * client, including stale-list and overlapping-write races across accounts.
  */
 
-import type { LifeOpsCalendarSummary } from "@elizaos/shared";
+import type {
+  LifeOpsCalendarSummary,
+  SetLifeOpsCalendarIncludedResponse,
+} from "@elizaos/shared";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -47,7 +50,27 @@ function calendar(
     timeZone: "America/Los_Angeles",
     selected: true,
     includeInFeed: true,
+    selectionVersion: 0,
     ...over,
+  };
+}
+
+function writeResponse(
+  source: LifeOpsCalendarSummary,
+  includeInFeed: boolean,
+  previousVersion = source.selectionVersion,
+): SetLifeOpsCalendarIncludedResponse {
+  const currentVersion = previousVersion + 1;
+  return {
+    calendar: {
+      ...source,
+      includeInFeed,
+      selectionVersion: currentVersion,
+    },
+    previousVersion,
+    currentVersion,
+    changed: source.includeInFeed !== includeInFeed,
+    acceptedAt: "2026-07-27T12:00:00.000Z",
   };
 }
 
@@ -73,18 +96,25 @@ describe("useCalendarSources", () => {
     });
     uiClient.setLifeOpsCalendarIncluded.mockImplementation(
       async (request: {
+        provider: LifeOpsCalendarSummary["provider"];
         calendarId: string;
+        connectorAccountId: string;
+        expectedVersion: number;
         includeInFeed: boolean;
         side: string;
         grantId: string;
-      }) => ({
-        calendar: calendar({
-          calendarId: request.calendarId,
-          includeInFeed: request.includeInFeed,
-          side: request.side,
-          grantId: request.grantId,
-        }),
-      }),
+      }) =>
+        writeResponse(
+          calendar({
+            provider: request.provider,
+            connectorAccountId: request.connectorAccountId,
+            selectionVersion: request.expectedVersion,
+            calendarId: request.calendarId,
+            side: request.side,
+            grantId: request.grantId,
+          }),
+          request.includeInFeed,
+        ),
     );
   });
 
@@ -144,7 +174,7 @@ describe("useCalendarSources", () => {
   });
 
   it("waits for the authoritative write response before changing inclusion", async () => {
-    const write = deferred<{ calendar: LifeOpsCalendarSummary }>();
+    const write = deferred<SetLifeOpsCalendarIncludedResponse>();
     uiClient.setLifeOpsCalendarIncluded.mockReturnValueOnce(write.promise);
     const { result } = renderHook(() => useCalendarSources());
     await waitFor(() => expect(result.current.status).toBe("ready"));
@@ -161,16 +191,17 @@ describe("useCalendarSources", () => {
     await waitFor(() => expect(result.current.pendingKeys.has(key)).toBe(true));
     expect(result.current.calendars[0]?.includeInFeed).toBe(true);
     expect(uiClient.setLifeOpsCalendarIncluded).toHaveBeenCalledWith({
+      provider: "google",
       calendarId: "primary",
+      connectorAccountId: "account-work",
+      expectedVersion: 0,
       includeInFeed: false,
       side: "owner",
       grantId: "grant-work",
     });
 
     await act(async () => {
-      write.resolve({
-        calendar: calendar({ includeInFeed: false }),
-      });
+      write.resolve(writeResponse(original, false));
       await write.promise;
     });
 
@@ -201,13 +232,46 @@ describe("useCalendarSources", () => {
     expect(result.current.mutationErrors[key]).not.toContain("token");
   });
 
+  it("cannot overwrite a newer agent choice with a stale UI row", async () => {
+    uiClient.getLifeOpsCalendars.mockResolvedValueOnce({
+      calendars: [calendar({ includeInFeed: false, selectionVersion: 8 })],
+    });
+    uiClient.setLifeOpsCalendarIncluded.mockRejectedValueOnce(
+      new Error("CALENDAR_SOURCE_SELECTION_CONFLICT"),
+    );
+    const staleRow = calendar({
+      includeInFeed: true,
+      selectionVersion: 7,
+    });
+    const { result } = renderHook(() => useCalendarSources());
+    await waitFor(() =>
+      expect(result.current.calendars[0]?.selectionVersion).toBe(8),
+    );
+
+    let outcome: string | undefined;
+    await act(async () => {
+      outcome = await result.current.setIncluded(staleRow, true);
+    });
+
+    expect(outcome).toBe("failed");
+    expect(uiClient.setLifeOpsCalendarIncluded).toHaveBeenCalledWith(
+      expect.objectContaining({ expectedVersion: 7 }),
+    );
+    expect(result.current.calendars[0]).toMatchObject({
+      includeInFeed: false,
+      selectionVersion: 8,
+    });
+  });
+
   it("rejects a response for the wrong account or requested state", async () => {
     uiClient.setLifeOpsCalendarIncluded.mockResolvedValueOnce({
-      calendar: calendar({
-        grantId: "grant-other",
-        connectorAccountId: "account-other",
-        includeInFeed: false,
-      }),
+      ...writeResponse(
+        calendar({
+          grantId: "grant-other",
+          connectorAccountId: "account-other",
+        }),
+        false,
+      ),
     });
     const { result } = renderHook(() => useCalendarSources());
     await waitFor(() => expect(result.current.status).toBe("ready"));
@@ -280,8 +344,8 @@ describe("useCalendarSources", () => {
   });
 
   it("lets the newest same-source write win when responses arrive out of order", async () => {
-    const first = deferred<{ calendar: LifeOpsCalendarSummary }>();
-    const second = deferred<{ calendar: LifeOpsCalendarSummary }>();
+    const first = deferred<SetLifeOpsCalendarIncludedResponse>();
+    const second = deferred<SetLifeOpsCalendarIncludedResponse>();
     uiClient.setLifeOpsCalendarIncluded
       .mockReturnValueOnce(first.promise)
       .mockReturnValueOnce(second.promise);
@@ -301,15 +365,15 @@ describe("useCalendarSources", () => {
     });
 
     await act(async () => {
-      second.resolve({ calendar: calendar({ includeInFeed: true }) });
+      second.resolve(writeResponse(original, true));
       await second.promise;
     });
     expect(secondOutcome).toBe("updated");
     expect(result.current.calendars[0]?.includeInFeed).toBe(true);
 
     await act(async () => {
-      first.resolve({ calendar: calendar({ includeInFeed: false }) });
-      await first.promise;
+      first.reject(new Error("CALENDAR_SOURCE_SELECTION_CONFLICT"));
+      await first.promise.catch(() => undefined);
     });
     expect(firstOutcome).toBe("superseded");
     expect(result.current.calendars[0]?.includeInFeed).toBe(true);
@@ -328,8 +392,8 @@ describe("useCalendarSources", () => {
     uiClient.getLifeOpsCalendars.mockResolvedValueOnce({
       calendars: [calendar(), family],
     });
-    const workWrite = deferred<{ calendar: LifeOpsCalendarSummary }>();
-    const familyWrite = deferred<{ calendar: LifeOpsCalendarSummary }>();
+    const workWrite = deferred<SetLifeOpsCalendarIncludedResponse>();
+    const familyWrite = deferred<SetLifeOpsCalendarIncludedResponse>();
     uiClient.setLifeOpsCalendarIncluded
       .mockReturnValueOnce(workWrite.promise)
       .mockReturnValueOnce(familyWrite.promise);
@@ -342,13 +406,9 @@ describe("useCalendarSources", () => {
     });
 
     await act(async () => {
-      familyWrite.resolve({
-        calendar: { ...family, includeInFeed: false },
-      });
+      familyWrite.resolve(writeResponse(family, false));
       await familyWrite.promise;
-      workWrite.resolve({
-        calendar: calendar({ includeInFeed: false }),
-      });
+      workWrite.resolve(writeResponse(calendar(), false));
       await workWrite.promise;
     });
 

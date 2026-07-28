@@ -91,6 +91,7 @@ export interface ResponseHandlerResult {
 	intents: string[];
 	candidateActionNames: string[];
 	replyText: string;
+	replyEffectStatus?: "none" | "applied" | "non_applied";
 	facts: string[];
 	relationships: Array<{
 		subject: string;

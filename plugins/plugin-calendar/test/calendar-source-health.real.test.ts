@@ -20,6 +20,7 @@ import {
 import {
   type CalendarHostGate,
   CalendarService,
+  ensureCalendarFeedPreferenceTable,
 } from "../src/service/index.js";
 
 const AGENT_ID = "calendar-source-health-agent";
@@ -196,6 +197,10 @@ beforeAll(async () => {
   await db.execute(sql.raw("CREATE SCHEMA IF NOT EXISTS app_calendar"));
   await db.execute(sql.raw(CREATE_EVENTS_TABLE));
   await db.execute(sql.raw(CREATE_SYNC_TABLE));
+  await ensureCalendarFeedPreferenceTable(
+    async (statement) =>
+      (await pg.query<Record<string, unknown>>(statement)).rows,
+  );
 
   runtime = {
     agentId: AGENT_ID,

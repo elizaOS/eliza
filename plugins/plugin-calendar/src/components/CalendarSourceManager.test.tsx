@@ -104,6 +104,7 @@ function calendar(
     timeZone: "UTC",
     selected: true,
     includeInFeed: true,
+    selectionVersion: 0,
     ...over,
   };
 }

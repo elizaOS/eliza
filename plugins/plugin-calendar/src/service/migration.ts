@@ -252,6 +252,55 @@ export async function ensureIcsCalendarSourceTable(
 }
 
 /**
+ * Feed selection is an independently versioned row per exact source. The
+ * composite primary key is the concurrency boundary: provider, side, grant,
+ * account, and calendar identifiers are never collapsed into a delimiter key.
+ */
+export async function ensureCalendarFeedPreferenceTable(
+  exec: SqlExecutor,
+): Promise<void> {
+  await exec(`
+    CREATE TABLE IF NOT EXISTS ${TARGET_SCHEMA}.life_calendar_feed_preferences (
+      agent_id TEXT NOT NULL,
+      provider TEXT NOT NULL,
+      side TEXT NOT NULL,
+      grant_id TEXT NOT NULL,
+      connector_account_id TEXT NOT NULL,
+      calendar_id TEXT NOT NULL,
+      included BOOLEAN NOT NULL DEFAULT TRUE,
+      version INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL,
+      CONSTRAINT calendar_feed_preferences_source_pk PRIMARY KEY (
+        agent_id,
+        provider,
+        side,
+        grant_id,
+        connector_account_id,
+        calendar_id
+      ),
+      CONSTRAINT calendar_feed_preferences_version_nonnegative
+        CHECK (version >= 0)
+    )`);
+  await exec(`
+    DO $calendar_feed_preference_version$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1
+          FROM pg_constraint
+         WHERE conrelid =
+               '${TARGET_SCHEMA}.life_calendar_feed_preferences'::regclass
+           AND conname =
+               'calendar_feed_preferences_version_nonnegative'
+      ) THEN
+        ALTER TABLE ${TARGET_SCHEMA}.life_calendar_feed_preferences
+          ADD CONSTRAINT calendar_feed_preferences_version_nonnegative
+          CHECK (version >= 0);
+      END IF;
+    END
+    $calendar_feed_preference_version$`);
+}
+
+/**
  * Push channels are calendar-owned state rather than connector credentials.
  * The explicit migration path creates their table before a public callback can
  * arrive, including direct PGlite and older plugin-sql boot orders.
@@ -362,6 +411,7 @@ export async function migrateCalendarTables(
 ): Promise<TableMigrationResult[]> {
   await exec(`CREATE SCHEMA IF NOT EXISTS ${TARGET_SCHEMA}`);
   await ensureIcsCalendarSourceTable(exec);
+  await ensureCalendarFeedPreferenceTable(exec);
   await ensureGoogleCalendarWatchChannelTable(exec);
   const results: TableMigrationResult[] = [];
   for (const table of MIGRATED_CALENDAR_TABLES) {

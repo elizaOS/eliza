@@ -44,10 +44,44 @@ import {
   normalizeScheduleTerms,
 } from "./types.js";
 
+const HOUSEHOLD_GRANT_EXPIRY_WARNING_CONVERGENCE = [
+  `ALTER TABLE app_lifeops.life_household_grant_expiry_warning_claims
+     ADD COLUMN IF NOT EXISTS cancellation_completed_at TEXT`,
+  `ALTER TABLE app_lifeops.life_household_grant_expiry_warning_claims
+     ADD COLUMN IF NOT EXISTS cancellation_attempt_count INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE app_lifeops.life_household_grant_expiry_warning_claims
+     ADD COLUMN IF NOT EXISTS cancellation_last_error TEXT`,
+] as const;
+
 type AuditWrite = Omit<HouseholdAuditRecord, "id" | "createdAt"> & {
   id?: string;
   createdAt?: string;
 };
+
+export interface PersistedHouseholdGrantExpiryWarning {
+  grantId: string;
+  scheduledTaskId: string;
+  warningAt: string;
+  expiresAt: string;
+  cancelledAt: string | null;
+  cancellationCompletedAt: string | null;
+  cancellationAttemptCount: number;
+  cancellationLastError: string | null;
+}
+
+export type PersistedHouseholdGrantExpiryWarningIntent =
+  | {
+      state: "pending";
+      grantId: string;
+      scheduledTaskId: null;
+      warningAt: null;
+      expiresAt: null;
+      cancelledAt: string | null;
+      cancellationCompletedAt: string | null;
+      cancellationAttemptCount: number;
+      cancellationLastError: string | null;
+    }
+  | ({ state: "scheduled" } & PersistedHouseholdGrantExpiryWarning);
 
 function requiredText(value: unknown, field: string): string {
   const text = toText(value).trim();
@@ -356,10 +390,26 @@ async function insertAudit(
 }
 
 export class HouseholdCoordinationRepository {
+  private grantExpiryWarningSchemaReady: Promise<void> | null = null;
+
   constructor(
     private readonly runtime: IAgentRuntime,
     private readonly agentId: string,
   ) {}
+
+  private async ensureGrantExpiryWarningSchema(): Promise<void> {
+    if (!this.grantExpiryWarningSchemaReady) {
+      this.grantExpiryWarningSchemaReady = (async () => {
+        // The plugin migration system owns table creation. These additive
+        // statements only converge installations created before cancellation
+        // completion became a durable outbox state.
+        for (const statement of HOUSEHOLD_GRANT_EXPIRY_WARNING_CONVERGENCE) {
+          await executeRawSql(this.runtime, statement);
+        }
+      })();
+    }
+    await this.grantExpiryWarningSchemaReady;
+  }
 
   async appendAudit(event: AuditWrite): Promise<void> {
     await insertAudit(this.runtime, this.agentId, event);
@@ -369,6 +419,7 @@ export class HouseholdCoordinationRepository {
     grant: HouseholdAccessGrant,
     audit: AuditWrite,
   ): Promise<void> {
+    await this.ensureGrantExpiryWarningSchema();
     await withTransaction(this.runtime, async (tx) => {
       await executeRawSqlTx(
         tx,
@@ -394,6 +445,19 @@ export class HouseholdCoordinationRepository {
           ${sqlQuote(grant.updatedAt)}
         )`,
       );
+      if (grant.expiresAt) {
+        await executeRawSqlTx(
+          tx,
+          `INSERT INTO app_lifeops.life_household_grant_expiry_warning_claims (
+             agent_id, grant_id, attempt_token, lease_expires_at,
+             scheduled_task_id, warning_at, expires_at, cancelled_at, updated_at
+           ) VALUES (
+             ${sqlQuote(this.agentId)}, ${sqlQuote(grant.id)},
+             ${sqlQuote(`pending:${grant.id}`)}, ${sqlQuote(grant.createdAt)},
+             NULL, NULL, NULL, NULL, ${sqlQuote(grant.createdAt)}
+           )`,
+        );
+      }
       await insertAudit(tx, this.agentId, audit);
     });
   }
@@ -433,6 +497,7 @@ export class HouseholdCoordinationRepository {
     revokedByEntityId: string;
     reason: string;
   }): Promise<HouseholdAccessGrant> {
+    await this.ensureGrantExpiryWarningSchema();
     return await withTransaction(this.runtime, async (tx) => {
       const rows = await executeRawSqlTx(
         tx,
@@ -470,8 +535,317 @@ export class HouseholdCoordinationRepository {
         actor: "user",
         createdAt: input.revokedAt,
       });
+      await executeRawSqlTx(
+        tx,
+        `INSERT INTO app_lifeops.life_household_grant_expiry_warning_claims (
+           agent_id, grant_id, attempt_token, lease_expires_at,
+           scheduled_task_id, warning_at, expires_at, cancelled_at,
+           cancellation_completed_at, cancellation_attempt_count,
+           cancellation_last_error, updated_at
+         ) VALUES (
+           ${sqlQuote(this.agentId)}, ${sqlQuote(grant.id)},
+           ${sqlQuote(`revocation:${grant.id}`)}, ${sqlQuote(input.revokedAt)},
+           NULL, NULL, NULL, ${sqlQuote(input.revokedAt)},
+           NULL, 0, NULL, ${sqlQuote(input.revokedAt)}
+         )
+         ON CONFLICT (agent_id, grant_id) DO UPDATE
+           SET cancelled_at = COALESCE(
+                 app_lifeops.life_household_grant_expiry_warning_claims.cancelled_at,
+                 EXCLUDED.cancelled_at
+               ),
+               updated_at = EXCLUDED.updated_at`,
+      );
       return grant;
     });
+  }
+
+  async getGrantExpiryWarningTaskId(grantId: string): Promise<string | null> {
+    return (await this.getGrantExpiryWarning(grantId))?.scheduledTaskId ?? null;
+  }
+
+  async getGrantExpiryWarning(
+    grantId: string,
+  ): Promise<PersistedHouseholdGrantExpiryWarning | null> {
+    const intent = await this.getGrantExpiryWarningIntent(grantId);
+    return intent?.state === "scheduled" ? intent : null;
+  }
+
+  async getGrantExpiryWarningIntent(
+    grantId: string,
+  ): Promise<PersistedHouseholdGrantExpiryWarningIntent | null> {
+    await this.ensureGrantExpiryWarningSchema();
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT grant_id, scheduled_task_id, warning_at, expires_at, cancelled_at,
+              cancellation_completed_at, cancellation_attempt_count,
+              cancellation_last_error
+         FROM app_lifeops.life_household_grant_expiry_warning_claims
+        WHERE agent_id = ${sqlQuote(this.agentId)}
+          AND grant_id = ${sqlQuote(grantId)}
+        LIMIT 1`,
+    );
+    const row = rows[0];
+    if (!row) return null;
+    const scheduledTaskId = optionalText(row.scheduled_task_id);
+    if (!scheduledTaskId) {
+      if (row.warning_at !== null || row.expires_at !== null) {
+        throw new HouseholdCoordinationError(
+          "Pending household grant warning has partial scheduled identity",
+          "HOUSEHOLD_INVALID_CONTRACT",
+          { grantId },
+        );
+      }
+      return {
+        state: "pending",
+        grantId: requiredText(row.grant_id, "grantId"),
+        scheduledTaskId: null,
+        warningAt: null,
+        expiresAt: null,
+        cancelledAt: optionalText(row.cancelled_at),
+        cancellationCompletedAt: optionalText(row.cancellation_completed_at),
+        cancellationAttemptCount: requiredInteger(
+          row.cancellation_attempt_count,
+          "cancellationAttemptCount",
+        ),
+        cancellationLastError: optionalText(row.cancellation_last_error),
+      };
+    }
+    return {
+      state: "scheduled",
+      grantId: requiredText(row.grant_id, "grantId"),
+      scheduledTaskId,
+      warningAt: requiredText(row.warning_at, "warningAt"),
+      expiresAt: requiredText(row.expires_at, "expiresAt"),
+      cancelledAt: optionalText(row.cancelled_at),
+      cancellationCompletedAt: optionalText(row.cancellation_completed_at),
+      cancellationAttemptCount: requiredInteger(
+        row.cancellation_attempt_count,
+        "cancellationAttemptCount",
+      ),
+      cancellationLastError: optionalText(row.cancellation_last_error),
+    };
+  }
+
+  async claimGrantExpiryWarning(input: {
+    grantId: string;
+    attemptToken: string;
+    now: string;
+    leaseExpiresAt: string;
+  }): Promise<
+    | { kind: "claimed" }
+    | { kind: "busy"; leaseExpiresAt: string }
+    | { kind: "complete"; scheduledTaskId: string }
+  > {
+    await this.ensureGrantExpiryWarningSchema();
+    const completed = await this.getGrantExpiryWarningTaskId(input.grantId);
+    if (completed) return { kind: "complete", scheduledTaskId: completed };
+    const inserted = await executeRawSql(
+      this.runtime,
+      `INSERT INTO app_lifeops.life_household_grant_expiry_warning_claims (
+         agent_id, grant_id, attempt_token, lease_expires_at, scheduled_task_id,
+         warning_at, expires_at, cancelled_at, updated_at
+       ) VALUES (
+         ${sqlQuote(this.agentId)}, ${sqlQuote(input.grantId)},
+         ${sqlQuote(input.attemptToken)}, ${sqlQuote(input.leaseExpiresAt)},
+         NULL, NULL, NULL, NULL, ${sqlQuote(input.now)}
+       )
+       ON CONFLICT DO NOTHING
+       RETURNING attempt_token`,
+    );
+    if (inserted[0]) return { kind: "claimed" };
+    const reclaimed = await executeRawSql(
+      this.runtime,
+      `UPDATE app_lifeops.life_household_grant_expiry_warning_claims
+          SET attempt_token = ${sqlQuote(input.attemptToken)},
+              lease_expires_at = ${sqlQuote(input.leaseExpiresAt)},
+              updated_at = ${sqlQuote(input.now)}
+        WHERE agent_id = ${sqlQuote(this.agentId)}
+          AND grant_id = ${sqlQuote(input.grantId)}
+          AND scheduled_task_id IS NULL
+          AND lease_expires_at <= ${sqlQuote(input.now)}
+      RETURNING attempt_token`,
+    );
+    if (reclaimed[0]) return { kind: "claimed" };
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT lease_expires_at
+         FROM app_lifeops.life_household_grant_expiry_warning_claims
+        WHERE agent_id = ${sqlQuote(this.agentId)}
+          AND grant_id = ${sqlQuote(input.grantId)}
+        LIMIT 1`,
+    );
+    const busy = rows[0];
+    if (!busy) {
+      throw new HouseholdCoordinationError(
+        "Household grant warning claim disappeared during contention",
+        "HOUSEHOLD_INVALID_CONTRACT",
+        { grantId: input.grantId },
+      );
+    }
+    return {
+      kind: "busy",
+      leaseExpiresAt: requiredText(busy.lease_expires_at, "leaseExpiresAt"),
+    };
+  }
+
+  async completeGrantExpiryWarningClaim(input: {
+    grantId: string;
+    attemptToken: string;
+    scheduledTaskId: string;
+    warningAt: string;
+    expiresAt: string;
+    completedAt: string;
+  }): Promise<
+    { kind: "linked"; scheduledTaskId: string } | { kind: "cancelled" }
+  > {
+    await this.ensureGrantExpiryWarningSchema();
+    const rows = await executeRawSql(
+      this.runtime,
+      `UPDATE app_lifeops.life_household_grant_expiry_warning_claims
+          SET scheduled_task_id = ${sqlQuote(input.scheduledTaskId)},
+              warning_at = ${sqlQuote(input.warningAt)},
+              expires_at = ${sqlQuote(input.expiresAt)},
+              updated_at = ${sqlQuote(input.completedAt)}
+        WHERE agent_id = ${sqlQuote(this.agentId)}
+          AND grant_id = ${sqlQuote(input.grantId)}
+          AND attempt_token = ${sqlQuote(input.attemptToken)}
+          AND scheduled_task_id IS NULL
+          AND cancelled_at IS NULL
+      RETURNING scheduled_task_id`,
+    );
+    if (rows[0]) {
+      return {
+        kind: "linked",
+        scheduledTaskId: requiredText(
+          rows[0].scheduled_task_id,
+          "scheduledTaskId",
+        ),
+      };
+    }
+    const existing = await this.getGrantExpiryWarningIntent(input.grantId);
+    if (existing?.state === "scheduled") {
+      if (existing.scheduledTaskId === input.scheduledTaskId) {
+        return {
+          kind: "linked",
+          scheduledTaskId: existing.scheduledTaskId,
+        };
+      }
+      throw new HouseholdCoordinationError(
+        "Household grant expiry warning claim resolved to a different task",
+        "HOUSEHOLD_INVALID_CONTRACT",
+        {
+          grantId: input.grantId,
+          scheduledTaskId: input.scheduledTaskId,
+          existingTaskId: existing.scheduledTaskId,
+        },
+      );
+    }
+    if (existing?.cancelledAt) return { kind: "cancelled" };
+    throw new HouseholdCoordinationError(
+      "Household grant expiry warning claim was lost before completion",
+      "HOUSEHOLD_INVALID_CONTRACT",
+      {
+        grantId: input.grantId,
+        scheduledTaskId: input.scheduledTaskId,
+      },
+    );
+  }
+
+  async releaseGrantExpiryWarningClaim(input: {
+    grantId: string;
+    attemptToken: string;
+    releasedAt: string;
+  }): Promise<void> {
+    await this.ensureGrantExpiryWarningSchema();
+    await executeRawSql(
+      this.runtime,
+      `UPDATE app_lifeops.life_household_grant_expiry_warning_claims
+          SET lease_expires_at = ${sqlQuote(input.releasedAt)},
+              updated_at = ${sqlQuote(input.releasedAt)}
+        WHERE agent_id = ${sqlQuote(this.agentId)}
+          AND grant_id = ${sqlQuote(input.grantId)}
+          AND attempt_token = ${sqlQuote(input.attemptToken)}
+          AND scheduled_task_id IS NULL`,
+    );
+  }
+
+  async markGrantExpiryWarningCancelled(
+    grantId: string,
+    cancelledAt: string,
+  ): Promise<string | null> {
+    await this.ensureGrantExpiryWarningSchema();
+    const rows = await executeRawSql(
+      this.runtime,
+      `INSERT INTO app_lifeops.life_household_grant_expiry_warning_claims (
+         agent_id, grant_id, attempt_token, lease_expires_at, scheduled_task_id,
+         warning_at, expires_at, cancelled_at, cancellation_completed_at,
+         cancellation_attempt_count, cancellation_last_error, updated_at
+       ) VALUES (
+         ${sqlQuote(this.agentId)}, ${sqlQuote(grantId)},
+         ${sqlQuote(`cancellation:${grantId}`)}, ${sqlQuote(cancelledAt)},
+         NULL, NULL, NULL, ${sqlQuote(cancelledAt)}, NULL, 0, NULL,
+         ${sqlQuote(cancelledAt)}
+       )
+       ON CONFLICT (agent_id, grant_id) DO UPDATE
+         SET cancelled_at = COALESCE(
+               app_lifeops.life_household_grant_expiry_warning_claims.cancelled_at,
+               EXCLUDED.cancelled_at
+             ),
+             updated_at = EXCLUDED.updated_at
+       RETURNING scheduled_task_id`,
+    );
+    return rows[0] ? optionalText(rows[0].scheduled_task_id) : null;
+  }
+
+  async completeGrantExpiryWarningCancellation(input: {
+    grantId: string;
+    completedAt: string;
+  }): Promise<void> {
+    await this.ensureGrantExpiryWarningSchema();
+    const rows = await executeRawSql(
+      this.runtime,
+      `UPDATE app_lifeops.life_household_grant_expiry_warning_claims
+          SET cancellation_completed_at = ${sqlQuote(input.completedAt)},
+              cancellation_last_error = NULL,
+              updated_at = ${sqlQuote(input.completedAt)}
+        WHERE agent_id = ${sqlQuote(this.agentId)}
+          AND grant_id = ${sqlQuote(input.grantId)}
+          AND cancelled_at IS NOT NULL
+      RETURNING grant_id`,
+    );
+    if (!rows[0]) {
+      throw new HouseholdCoordinationError(
+        "Household grant warning cancellation intent is missing",
+        "HOUSEHOLD_INVALID_CONTRACT",
+        { grantId: input.grantId },
+      );
+    }
+  }
+
+  async recordGrantExpiryWarningCancellationFailure(input: {
+    grantId: string;
+    failedAt: string;
+    error: string;
+  }): Promise<void> {
+    await this.ensureGrantExpiryWarningSchema();
+    const rows = await executeRawSql(
+      this.runtime,
+      `UPDATE app_lifeops.life_household_grant_expiry_warning_claims
+          SET cancellation_attempt_count = cancellation_attempt_count + 1,
+              cancellation_last_error = ${sqlQuote(input.error.slice(0, 512))},
+              updated_at = ${sqlQuote(input.failedAt)}
+        WHERE agent_id = ${sqlQuote(this.agentId)}
+          AND grant_id = ${sqlQuote(input.grantId)}
+          AND cancelled_at IS NOT NULL
+      RETURNING grant_id`,
+    );
+    if (!rows[0]) {
+      throw new HouseholdCoordinationError(
+        "Household grant warning cancellation failure has no durable intent",
+        "HOUSEHOLD_INVALID_CONTRACT",
+        { grantId: input.grantId },
+      );
+    }
   }
 
   async ensureHead(

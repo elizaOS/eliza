@@ -3,6 +3,7 @@
   "generator": "scripts/lifeops-bench/export-action-manifest.ts",
   "sourcePlugins": [
     "@elizaos/plugin-contacts",
+    "@elizaos/plugin-calendar",
     "@elizaos/plugin-personal-assistant",
     "@elizaos/plugin-phone",
     "bluebubbles",
@@ -913,6 +914,7 @@
       "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:briefing",
+        "resource:tracked-work",
         "capability:read",
         "capability:compose",
         "surface:internal"
@@ -966,6 +968,7 @@
       "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:briefing",
+        "resource:tracked-work",
         "capability:read",
         "capability:compose",
         "surface:internal"
@@ -1019,6 +1022,7 @@
       "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:briefing",
+        "resource:tracked-work",
         "capability:read",
         "capability:compose",
         "surface:internal"
@@ -1072,6 +1076,7 @@
       "_plugin": "@elizaos/plugin-personal-assistant",
       "_tags": [
         "domain:briefing",
+        "resource:tracked-work",
         "capability:read",
         "capability:compose",
         "surface:internal"
@@ -3016,6 +3021,75 @@
     {
       "type": "function",
       "function": {
+        "name": "CALENDAR_SOURCES",
+        "description": "calendar provider/account/source connection, reconnection, health, or feed selection -> CALENDAR_SOURCES; calendar event reads/writes -> CALENDAR\ncalendar source list|select|deselect|connect|reconnect exact identity versioned",
+        "parameters": {
+          "type": "object",
+          "required": ["operation"],
+          "properties": {
+            "operation": {
+              "type": "string",
+              "description": "Calendar source operation. Always list before select/deselect so the exact identity and current version are available.",
+              "enum": ["list", "select", "deselect", "connect", "reconnect"]
+            },
+            "provider": {
+              "type": "string",
+              "description": "Exact provider for selection or connection: google, microsoft, apple_calendar, or ics.",
+              "enum": ["google", "microsoft", "apple_calendar", "ics"]
+            },
+            "grantId": {
+              "type": "string",
+              "description": "Exact grantId copied from a fresh list result."
+            },
+            "connectorAccountId": {
+              "type": "string",
+              "description": "Exact connectorAccountId copied from a fresh list result. Required for reconnect and selection."
+            },
+            "calendarId": {
+              "type": "string",
+              "description": "Exact calendarId copied from a fresh list result."
+            },
+            "expectedVersion": {
+              "type": "number",
+              "description": "Non-negative selection version copied from the same fresh list row.",
+              "minimum": 0
+            },
+            "forceSync": {
+              "type": "boolean",
+              "description": "For list only: ask providers for fresh health rather than preferring cache."
+            },
+            "name": {
+              "type": "string",
+              "description": "Owner-visible source name for a new ICS subscription."
+            },
+            "url": {
+              "type": "string",
+              "description": "HTTPS or webcal URL for a new ICS subscription. The capability-bearing URL is never returned."
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-calendar",
+      "_tags": [
+        "domain:calendar",
+        "capability:read",
+        "capability:update",
+        "surface:internal"
+      ],
+      "_contexts": ["general", "calendar", "connectors"],
+      "_priority": 100,
+      "_examples_count": 2,
+      "_domain": "domain:calendar",
+      "_capabilities": ["capability:read", "capability:update"],
+      "_surfaces": ["surface:internal"],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
         "name": "CALENDAR_TRIP_WINDOW",
         "description": "Live calendar: event CRUD, availability, meeting prefs. Subactions: feed, next_event, search_events, create_event, update_event, delete_event, trip_window, bulk_reschedule, check_availability, propose_times, update_preferences. Use CALENDLY for calendly.com URLs. Use PERSONAL_ASSISTANT action=scheduling for multi-turn proposal/response. — subaction = trip_window",
         "parameters": {
@@ -3656,7 +3730,7 @@
       "type": "function",
       "function": {
         "name": "CONFLICT_DETECT",
-        "description": "calendar conflict-scan (\"conflicts today\", \"does this slot work\", \"scan week overlaps\") -> CONFLICT_DETECT; conflict-on-create -> CALENDAR.create_event\ncalendar conflicts: scan_today|scan_week|scan_event_proposal; severity warning|hard",
+        "description": "calendar conflict-scan (\"conflicts today\", \"does this slot work\", \"scan week overlaps\") -> CONFLICT_DETECT; event mutation -> CALENDAR\ncalendar conflicts: scan_today|scan_week|scan_event_proposal; complete|partial|unavailable",
         "parameters": {
           "type": "object",
           "required": [],
@@ -3667,15 +3741,34 @@
               "enum": ["scan_today", "scan_week", "scan_event_proposal"]
             },
             "range": {
-              "type": "object",
-              "description": "'today' | 'week' or { start, end } ISO window. Default subaction range.",
-              "required": [],
-              "properties": {},
-              "additionalProperties": true
+              "description": "'today' | 'week' or { start, end } RFC 3339 window with explicit offsets.",
+              "oneOf": [
+                {
+                  "type": "string",
+                  "enum": ["today", "week"]
+                },
+                {
+                  "type": "object",
+                  "required": [],
+                  "properties": {},
+                  "additionalProperties": true
+                }
+              ]
             },
             "proposal": {
               "type": "object",
               "description": "scan_event_proposal candidate: { startISO, endISO, attendees? }.",
+              "required": [],
+              "properties": {},
+              "additionalProperties": true
+            },
+            "timeZone": {
+              "type": "string",
+              "description": "IANA timezone used to resolve today/week boundaries."
+            },
+            "policy": {
+              "type": "object",
+              "description": "Optional deterministic policy overrides for tentative and all-day blockers.",
               "required": [],
               "properties": {},
               "additionalProperties": true
@@ -3705,7 +3798,7 @@
       "type": "function",
       "function": {
         "name": "CONFLICT_DETECT_SCAN_EVENT_PROPOSAL",
-        "description": "Scan owner calendar overlaps. Compare proposed window vs owner feed. Subactions: scan_today, scan_week, scan_event_proposal. — subaction = scan_event_proposal",
+        "description": "Scan connected calendar overlaps and evaluate proposed windows without exposing private guest details. Subactions: scan_today, scan_week, scan_event_proposal. — subaction = scan_event_proposal",
         "parameters": {
           "type": "object",
           "required": [],
@@ -3717,15 +3810,34 @@
               "default": "scan_event_proposal"
             },
             "range": {
-              "type": "object",
-              "description": "'today' | 'week' or { start, end } ISO window. Default subaction range.",
-              "required": [],
-              "properties": {},
-              "additionalProperties": true
+              "description": "'today' | 'week' or { start, end } RFC 3339 window with explicit offsets.",
+              "oneOf": [
+                {
+                  "type": "string",
+                  "enum": ["today", "week"]
+                },
+                {
+                  "type": "object",
+                  "required": [],
+                  "properties": {},
+                  "additionalProperties": true
+                }
+              ]
             },
             "proposal": {
               "type": "object",
               "description": "scan_event_proposal candidate: { startISO, endISO, attendees? }.",
+              "required": [],
+              "properties": {},
+              "additionalProperties": true
+            },
+            "timeZone": {
+              "type": "string",
+              "description": "IANA timezone used to resolve today/week boundaries."
+            },
+            "policy": {
+              "type": "object",
+              "description": "Optional deterministic policy overrides for tentative and all-day blockers.",
               "required": [],
               "properties": {},
               "additionalProperties": true
@@ -3755,7 +3867,7 @@
       "type": "function",
       "function": {
         "name": "CONFLICT_DETECT_SCAN_TODAY",
-        "description": "Scan owner calendar overlaps. Compare proposed window vs owner feed. Subactions: scan_today, scan_week, scan_event_proposal. — subaction = scan_today",
+        "description": "Scan connected calendar overlaps and evaluate proposed windows without exposing private guest details. Subactions: scan_today, scan_week, scan_event_proposal. — subaction = scan_today",
         "parameters": {
           "type": "object",
           "required": [],
@@ -3767,15 +3879,34 @@
               "default": "scan_today"
             },
             "range": {
-              "type": "object",
-              "description": "'today' | 'week' or { start, end } ISO window. Default subaction range.",
-              "required": [],
-              "properties": {},
-              "additionalProperties": true
+              "description": "'today' | 'week' or { start, end } RFC 3339 window with explicit offsets.",
+              "oneOf": [
+                {
+                  "type": "string",
+                  "enum": ["today", "week"]
+                },
+                {
+                  "type": "object",
+                  "required": [],
+                  "properties": {},
+                  "additionalProperties": true
+                }
+              ]
             },
             "proposal": {
               "type": "object",
               "description": "scan_event_proposal candidate: { startISO, endISO, attendees? }.",
+              "required": [],
+              "properties": {},
+              "additionalProperties": true
+            },
+            "timeZone": {
+              "type": "string",
+              "description": "IANA timezone used to resolve today/week boundaries."
+            },
+            "policy": {
+              "type": "object",
+              "description": "Optional deterministic policy overrides for tentative and all-day blockers.",
               "required": [],
               "properties": {},
               "additionalProperties": true
@@ -3805,7 +3936,7 @@
       "type": "function",
       "function": {
         "name": "CONFLICT_DETECT_SCAN_WEEK",
-        "description": "Scan owner calendar overlaps. Compare proposed window vs owner feed. Subactions: scan_today, scan_week, scan_event_proposal. — subaction = scan_week",
+        "description": "Scan connected calendar overlaps and evaluate proposed windows without exposing private guest details. Subactions: scan_today, scan_week, scan_event_proposal. — subaction = scan_week",
         "parameters": {
           "type": "object",
           "required": [],
@@ -3817,15 +3948,34 @@
               "default": "scan_week"
             },
             "range": {
-              "type": "object",
-              "description": "'today' | 'week' or { start, end } ISO window. Default subaction range.",
-              "required": [],
-              "properties": {},
-              "additionalProperties": true
+              "description": "'today' | 'week' or { start, end } RFC 3339 window with explicit offsets.",
+              "oneOf": [
+                {
+                  "type": "string",
+                  "enum": ["today", "week"]
+                },
+                {
+                  "type": "object",
+                  "required": [],
+                  "properties": {},
+                  "additionalProperties": true
+                }
+              ]
             },
             "proposal": {
               "type": "object",
               "description": "scan_event_proposal candidate: { startISO, endISO, attendees? }.",
+              "required": [],
+              "properties": {},
+              "additionalProperties": true
+            },
+            "timeZone": {
+              "type": "string",
+              "description": "IANA timezone used to resolve today/week boundaries."
+            },
+            "policy": {
+              "type": "object",
+              "description": "Optional deterministic policy overrides for tentative and all-day blockers.",
               "required": [],
               "properties": {},
               "additionalProperties": true
@@ -3866,7 +4016,7 @@
             },
             "action": {
               "type": "string",
-              "description": "connect auth/pairing; disconnect revoke+clear grant; verify active read/send probe; status/list read-only diagnostics. Omit ok: handler LLM-extracts.",
+              "description": "connect auth/pairing; disconnect revoke+clear grant; verify active read-only upstream probe; status/list read-only diagnostics. Omit ok: handler LLM-extracts.",
               "enum": ["connect", "disconnect", "verify", "status", "list"]
             },
             "side": {
@@ -3887,13 +4037,9 @@
               "type": "string",
               "description": "Discord verify only: search text for browser-message reads."
             },
-            "sendTarget": {
+            "channelId": {
               "type": "string",
-              "description": "verify only: destination chat/recipient/channel for self-test send."
-            },
-            "sendMessage": {
-              "type": "string",
-              "description": "verify only: self-test send body."
+              "description": "Discord verify only: optional channel scope for the read-only search."
             },
             "browser": {
               "type": "string",
@@ -3987,13 +4133,9 @@
               "type": "string",
               "description": "Discord verify only: search text for browser-message reads."
             },
-            "sendTarget": {
+            "channelId": {
               "type": "string",
-              "description": "verify only: destination chat/recipient/channel for self-test send."
-            },
-            "sendMessage": {
-              "type": "string",
-              "description": "verify only: self-test send body."
+              "description": "Discord verify only: optional channel scope for the read-only search."
             },
             "browser": {
               "type": "string",
@@ -4087,13 +4229,9 @@
               "type": "string",
               "description": "Discord verify only: search text for browser-message reads."
             },
-            "sendTarget": {
+            "channelId": {
               "type": "string",
-              "description": "verify only: destination chat/recipient/channel for self-test send."
-            },
-            "sendMessage": {
-              "type": "string",
-              "description": "verify only: self-test send body."
+              "description": "Discord verify only: optional channel scope for the read-only search."
             },
             "browser": {
               "type": "string",
@@ -4187,13 +4325,9 @@
               "type": "string",
               "description": "Discord verify only: search text for browser-message reads."
             },
-            "sendTarget": {
+            "channelId": {
               "type": "string",
-              "description": "verify only: destination chat/recipient/channel for self-test send."
-            },
-            "sendMessage": {
-              "type": "string",
-              "description": "verify only: self-test send body."
+              "description": "Discord verify only: optional channel scope for the read-only search."
             },
             "browser": {
               "type": "string",
@@ -4287,13 +4421,9 @@
               "type": "string",
               "description": "Discord verify only: search text for browser-message reads."
             },
-            "sendTarget": {
+            "channelId": {
               "type": "string",
-              "description": "verify only: destination chat/recipient/channel for self-test send."
-            },
-            "sendMessage": {
-              "type": "string",
-              "description": "verify only: self-test send body."
+              "description": "Discord verify only: optional channel scope for the read-only search."
             },
             "browser": {
               "type": "string",
@@ -4387,13 +4517,9 @@
               "type": "string",
               "description": "Discord verify only: search text for browser-message reads."
             },
-            "sendTarget": {
+            "channelId": {
               "type": "string",
-              "description": "verify only: destination chat/recipient/channel for self-test send."
-            },
-            "sendMessage": {
-              "type": "string",
-              "description": "verify only: self-test send body."
+              "description": "Discord verify only: optional channel scope for the read-only search."
             },
             "browser": {
               "type": "string",
@@ -5444,6 +5570,275 @@
     {
       "type": "function",
       "function": {
+        "name": "FAMILY_COMMUNICATIONS",
+        "description": "separate a spoken family request into proposals, or show a child their safe weekly logistics -> FAMILY_COMMUNICATIONS\nauthenticated family proposals (no execution) or child-safe week projection",
+        "parameters": {
+          "type": "object",
+          "required": ["action"],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Family-communications verb.",
+              "enum": ["capture_voice_bundle", "child_week"]
+            },
+            "candidates": {
+              "type": "array",
+              "description": "Separated typed proposals grounded by exact character spans in the authenticated message text.",
+              "items": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "summary",
+                  "subjectEntityIds",
+                  "sourceSpan"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "calendar_lookup",
+                      "calendar_change",
+                      "reminder_draft",
+                      "message_draft",
+                      "message_send",
+                      "purchase",
+                      "private_record_read",
+                      "household_note"
+                    ]
+                  },
+                  "summary": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "subjectEntityIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "sourceSpan": {
+                    "type": "object",
+                    "required": ["start", "end"],
+                    "properties": {
+                      "start": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "end": {
+                        "type": "integer",
+                        "minimum": 1
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "childEntityId": {
+              "type": "string",
+              "description": "Canonical entity ID of the authenticated child.",
+              "minLength": 1
+            },
+            "windowStartsAt": {
+              "type": "string",
+              "description": "Inclusive ISO-8601 week-window start.",
+              "minLength": 1
+            },
+            "windowEndsAt": {
+              "type": "string",
+              "description": "Exclusive ISO-8601 week-window end.",
+              "minLength": 1
+            },
+            "sourceRefs": {
+              "type": "array",
+              "description": "Trusted item-set references; currently household:child-week. Never raw event text.",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [
+        "domain:household",
+        "domain:calendar",
+        "capability:read",
+        "capability:write",
+        "effect:receipt-required",
+        "surface:internal"
+      ],
+      "_contexts": ["general", "calendar", "tasks"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:household",
+      "_capabilities": ["capability:read", "capability:write"],
+      "_surfaces": ["surface:internal"],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "FAMILY_COMMUNICATIONS_CAPTURE_VOICE_BUNDLE",
+        "description": "Capture authenticated multi-intent family requests as non-executing proposals, or create a child-safe week view from trusted source references. Adult and teen private content is structurally omitted. — subaction = capture_voice_bundle",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Subaction discriminator (auto-set to \"capture_voice_bundle\" for this virtual; do not change).",
+              "enum": ["capture_voice_bundle"],
+              "default": "capture_voice_bundle"
+            },
+            "candidates": {
+              "type": "array",
+              "description": "Separated typed proposals grounded by exact character spans in the authenticated message text.",
+              "items": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "summary",
+                  "subjectEntityIds",
+                  "sourceSpan"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "calendar_lookup",
+                      "calendar_change",
+                      "reminder_draft",
+                      "message_draft",
+                      "message_send",
+                      "purchase",
+                      "private_record_read",
+                      "household_note"
+                    ]
+                  },
+                  "summary": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "subjectEntityIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "sourceSpan": {
+                    "type": "object",
+                    "required": ["start", "end"],
+                    "properties": {
+                      "start": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "end": {
+                        "type": "integer",
+                        "minimum": 1
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [
+        "domain:household",
+        "domain:calendar",
+        "capability:read",
+        "capability:write",
+        "effect:receipt-required",
+        "surface:internal"
+      ],
+      "_contexts": ["general", "calendar", "tasks"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:household",
+      "_capabilities": ["capability:read", "capability:write"],
+      "_surfaces": ["surface:internal"],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "FAMILY_COMMUNICATIONS_CHILD_WEEK",
+        "description": "Capture authenticated multi-intent family requests as non-executing proposals, or create a child-safe week view from trusted source references. Adult and teen private content is structurally omitted. — subaction = child_week",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Subaction discriminator (auto-set to \"child_week\" for this virtual; do not change).",
+              "enum": ["child_week"],
+              "default": "child_week"
+            },
+            "childEntityId": {
+              "type": "string",
+              "description": "Canonical entity ID of the authenticated child.",
+              "minLength": 1
+            },
+            "windowStartsAt": {
+              "type": "string",
+              "description": "Inclusive ISO-8601 week-window start.",
+              "minLength": 1
+            },
+            "windowEndsAt": {
+              "type": "string",
+              "description": "Exclusive ISO-8601 week-window end.",
+              "minLength": 1
+            },
+            "sourceRefs": {
+              "type": "array",
+              "description": "Trusted item-set references; currently household:child-week. Never raw event text.",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [
+        "domain:household",
+        "domain:calendar",
+        "capability:read",
+        "capability:write",
+        "effect:receipt-required",
+        "surface:internal"
+      ],
+      "_contexts": ["general", "calendar", "tasks"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:household",
+      "_capabilities": ["capability:read", "capability:write"],
+      "_surfaces": ["surface:internal"],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
         "name": "HEALTH",
         "description": "Read health data without mutating state.",
         "parameters": {
@@ -5486,6 +5881,1790 @@
       "_examples_count": 0,
       "_domain": "domain:health",
       "_capabilities": ["capability:read"],
+      "_surfaces": ["surface:internal"],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "HOUSEHOLD_COORDINATION",
+        "description": "household role/access/proposal/agreement -> HOUSEHOLD_COORDINATION; calendar event CRUD -> CALENDAR; never use this owner action to answer for another affected party\nhousehold roles|grants|proposal versions|approval repair|agreement finalize|scoped export; no party impersonation",
+        "parameters": {
+          "type": "object",
+          "required": ["action"],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Household coordination operation.",
+              "enum": [
+                "bind_role",
+                "issue_grant",
+                "revoke_grant",
+                "create_proposal",
+                "revise_proposal",
+                "ensure_approvals",
+                "finalize_proposal",
+                "export"
+              ]
+            },
+            "entityId": {
+              "type": "string",
+              "description": "Existing EntityStore entity to bind.",
+              "minLength": 1
+            },
+            "role": {
+              "type": "string",
+              "description": "Typed household role.",
+              "enum": [
+                "owner",
+                "co_parent",
+                "current_partner",
+                "caregiver",
+                "child",
+                "professional"
+              ]
+            },
+            "subjectEntityIds": {
+              "type": "array",
+              "description": "Household subjects, usually child Entity ids, inside this relationship or grant.",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "relationshipId": {
+              "type": "string",
+              "description": "Existing relationship edge to annotate instead of creating another edge.",
+              "minLength": 1
+            },
+            "evidence": {
+              "type": "string",
+              "description": "Owner-supplied reason/evidence for the role binding.",
+              "minLength": 1
+            },
+            "principalEntityId": {
+              "type": "string",
+              "description": "Entity receiving a grant or principal whose scoped export is requested; export defaults to owner.",
+              "minLength": 1
+            },
+            "scopes": {
+              "type": "array",
+              "description": "Explicit household/calendar access scopes.",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "household.visibility",
+                  "calendar.freebusy",
+                  "calendar.details",
+                  "calendar.mutate"
+                ]
+              }
+            },
+            "expiresAt": {
+              "type": "string",
+              "description": "Optional future ISO-8601 expiry.",
+              "minLength": 1
+            },
+            "grantId": {
+              "type": "string",
+              "description": "Access grant id to revoke.",
+              "minLength": 1
+            },
+            "reason": {
+              "type": "string",
+              "description": "Auditable revocation reason.",
+              "minLength": 1
+            },
+            "coordinationId": {
+              "type": "string",
+              "description": "Stable logical schedule coordination id shared by competing/revised proposals.",
+              "minLength": 1
+            },
+            "proposalId": {
+              "type": "string",
+              "description": "Proposal logical id; optional on create and required for later operations.",
+              "minLength": 1
+            },
+            "baseAgreementVersion": {
+              "type": "integer",
+              "description": "Expected current agreement version; defaults to the current coordination head.",
+              "minimum": 0
+            },
+            "expectedVersion": {
+              "type": "integer",
+              "description": "Current proposal version expected before revision.",
+              "minimum": 1
+            },
+            "proposalVersion": {
+              "type": "integer",
+              "description": "Exact immutable proposal version.",
+              "minimum": 1
+            },
+            "terms": {
+              "type": "object",
+              "description": "Schedule interval, timezone, household subjects, private details, and optional custody exception.",
+              "required": [
+                "summary",
+                "startAt",
+                "endAt",
+                "timezone",
+                "childEntityIds"
+              ],
+              "properties": {
+                "summary": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "startAt": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "endAt": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "timezone": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "childEntityIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "location": {
+                  "type": "string"
+                },
+                "notes": {
+                  "type": "string"
+                },
+                "custodyException": {
+                  "type": "object",
+                  "required": [
+                    "childEntityId",
+                    "fromAt",
+                    "toAt",
+                    "normalCustodianEntityId",
+                    "substituteCustodianEntityId",
+                    "reason"
+                  ],
+                  "properties": {
+                    "childEntityId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "fromAt": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "toAt": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "normalCustodianEntityId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "substituteCustodianEntityId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "reason": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "additionalProperties": false
+            },
+            "affectedPartyEntityIds": {
+              "type": "array",
+              "description": "Additional affected Entity ids; child ids and required approvers are included automatically.",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "requiredApproverEntityIds": {
+              "type": "array",
+              "description": "Every adult whose exact approval is required; custody exception custodians are included automatically.",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [
+        "domain:calendar",
+        "domain:contacts",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "surface:internal"
+      ],
+      "_contexts": ["general", "calendar", "contacts", "tasks", "admin"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:calendar",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update"
+      ],
+      "_surfaces": ["surface:internal"],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "HOUSEHOLD_COORDINATION_BIND_ROLE",
+        "description": "Owner household coordination: bind roles, issue/revoke scoped grants, create/revise exact-hash schedule proposals, repair approval requests, finalize fully approved agreements, and inspect redacted exports. Affected-party approval responses are not owner operations. — subaction = bind_role",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Subaction discriminator (auto-set to \"bind_role\" for this virtual; do not change).",
+              "enum": ["bind_role"],
+              "default": "bind_role"
+            },
+            "entityId": {
+              "type": "string",
+              "description": "Existing EntityStore entity to bind.",
+              "minLength": 1
+            },
+            "role": {
+              "type": "string",
+              "description": "Typed household role.",
+              "enum": [
+                "owner",
+                "co_parent",
+                "current_partner",
+                "caregiver",
+                "child",
+                "professional"
+              ]
+            },
+            "subjectEntityIds": {
+              "type": "array",
+              "description": "Household subjects, usually child Entity ids, inside this relationship or grant.",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "relationshipId": {
+              "type": "string",
+              "description": "Existing relationship edge to annotate instead of creating another edge.",
+              "minLength": 1
+            },
+            "evidence": {
+              "type": "string",
+              "description": "Owner-supplied reason/evidence for the role binding.",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [
+        "domain:calendar",
+        "domain:contacts",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "surface:internal"
+      ],
+      "_contexts": ["general", "calendar", "contacts", "tasks", "admin"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:calendar",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update"
+      ],
+      "_surfaces": ["surface:internal"],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "HOUSEHOLD_COORDINATION_CREATE_PROPOSAL",
+        "description": "Owner household coordination: bind roles, issue/revoke scoped grants, create/revise exact-hash schedule proposals, repair approval requests, finalize fully approved agreements, and inspect redacted exports. Affected-party approval responses are not owner operations. — subaction = create_proposal",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Subaction discriminator (auto-set to \"create_proposal\" for this virtual; do not change).",
+              "enum": ["create_proposal"],
+              "default": "create_proposal"
+            },
+            "expiresAt": {
+              "type": "string",
+              "description": "Optional future ISO-8601 expiry.",
+              "minLength": 1
+            },
+            "coordinationId": {
+              "type": "string",
+              "description": "Stable logical schedule coordination id shared by competing/revised proposals.",
+              "minLength": 1
+            },
+            "proposalId": {
+              "type": "string",
+              "description": "Proposal logical id; optional on create and required for later operations.",
+              "minLength": 1
+            },
+            "baseAgreementVersion": {
+              "type": "integer",
+              "description": "Expected current agreement version; defaults to the current coordination head.",
+              "minimum": 0
+            },
+            "terms": {
+              "type": "object",
+              "description": "Schedule interval, timezone, household subjects, private details, and optional custody exception.",
+              "required": [
+                "summary",
+                "startAt",
+                "endAt",
+                "timezone",
+                "childEntityIds"
+              ],
+              "properties": {
+                "summary": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "startAt": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "endAt": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "timezone": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "childEntityIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "location": {
+                  "type": "string"
+                },
+                "notes": {
+                  "type": "string"
+                },
+                "custodyException": {
+                  "type": "object",
+                  "required": [
+                    "childEntityId",
+                    "fromAt",
+                    "toAt",
+                    "normalCustodianEntityId",
+                    "substituteCustodianEntityId",
+                    "reason"
+                  ],
+                  "properties": {
+                    "childEntityId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "fromAt": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "toAt": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "normalCustodianEntityId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "substituteCustodianEntityId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "reason": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "additionalProperties": false
+            },
+            "affectedPartyEntityIds": {
+              "type": "array",
+              "description": "Additional affected Entity ids; child ids and required approvers are included automatically.",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "requiredApproverEntityIds": {
+              "type": "array",
+              "description": "Every adult whose exact approval is required; custody exception custodians are included automatically.",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [
+        "domain:calendar",
+        "domain:contacts",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "surface:internal"
+      ],
+      "_contexts": ["general", "calendar", "contacts", "tasks", "admin"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:calendar",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update"
+      ],
+      "_surfaces": ["surface:internal"],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "HOUSEHOLD_COORDINATION_ENSURE_APPROVALS",
+        "description": "Owner household coordination: bind roles, issue/revoke scoped grants, create/revise exact-hash schedule proposals, repair approval requests, finalize fully approved agreements, and inspect redacted exports. Affected-party approval responses are not owner operations. — subaction = ensure_approvals",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Subaction discriminator (auto-set to \"ensure_approvals\" for this virtual; do not change).",
+              "enum": ["ensure_approvals"],
+              "default": "ensure_approvals"
+            },
+            "proposalId": {
+              "type": "string",
+              "description": "Proposal logical id; optional on create and required for later operations.",
+              "minLength": 1
+            },
+            "proposalVersion": {
+              "type": "integer",
+              "description": "Exact immutable proposal version.",
+              "minimum": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [
+        "domain:calendar",
+        "domain:contacts",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "surface:internal"
+      ],
+      "_contexts": ["general", "calendar", "contacts", "tasks", "admin"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:calendar",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update"
+      ],
+      "_surfaces": ["surface:internal"],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "HOUSEHOLD_COORDINATION_EXPORT",
+        "description": "Owner household coordination: bind roles, issue/revoke scoped grants, create/revise exact-hash schedule proposals, repair approval requests, finalize fully approved agreements, and inspect redacted exports. Affected-party approval responses are not owner operations. — subaction = export",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Subaction discriminator (auto-set to \"export\" for this virtual; do not change).",
+              "enum": ["export"],
+              "default": "export"
+            },
+            "principalEntityId": {
+              "type": "string",
+              "description": "Entity receiving a grant or principal whose scoped export is requested; export defaults to owner.",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [
+        "domain:calendar",
+        "domain:contacts",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "surface:internal"
+      ],
+      "_contexts": ["general", "calendar", "contacts", "tasks", "admin"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:calendar",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update"
+      ],
+      "_surfaces": ["surface:internal"],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "HOUSEHOLD_COORDINATION_FINALIZE_PROPOSAL",
+        "description": "Owner household coordination: bind roles, issue/revoke scoped grants, create/revise exact-hash schedule proposals, repair approval requests, finalize fully approved agreements, and inspect redacted exports. Affected-party approval responses are not owner operations. — subaction = finalize_proposal",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Subaction discriminator (auto-set to \"finalize_proposal\" for this virtual; do not change).",
+              "enum": ["finalize_proposal"],
+              "default": "finalize_proposal"
+            },
+            "proposalId": {
+              "type": "string",
+              "description": "Proposal logical id; optional on create and required for later operations.",
+              "minLength": 1
+            },
+            "proposalVersion": {
+              "type": "integer",
+              "description": "Exact immutable proposal version.",
+              "minimum": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [
+        "domain:calendar",
+        "domain:contacts",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "surface:internal"
+      ],
+      "_contexts": ["general", "calendar", "contacts", "tasks", "admin"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:calendar",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update"
+      ],
+      "_surfaces": ["surface:internal"],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "HOUSEHOLD_COORDINATION_ISSUE_GRANT",
+        "description": "Owner household coordination: bind roles, issue/revoke scoped grants, create/revise exact-hash schedule proposals, repair approval requests, finalize fully approved agreements, and inspect redacted exports. Affected-party approval responses are not owner operations. — subaction = issue_grant",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Subaction discriminator (auto-set to \"issue_grant\" for this virtual; do not change).",
+              "enum": ["issue_grant"],
+              "default": "issue_grant"
+            },
+            "role": {
+              "type": "string",
+              "description": "Typed household role.",
+              "enum": [
+                "owner",
+                "co_parent",
+                "current_partner",
+                "caregiver",
+                "child",
+                "professional"
+              ]
+            },
+            "subjectEntityIds": {
+              "type": "array",
+              "description": "Household subjects, usually child Entity ids, inside this relationship or grant.",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "principalEntityId": {
+              "type": "string",
+              "description": "Entity receiving a grant or principal whose scoped export is requested; export defaults to owner.",
+              "minLength": 1
+            },
+            "scopes": {
+              "type": "array",
+              "description": "Explicit household/calendar access scopes.",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "household.visibility",
+                  "calendar.freebusy",
+                  "calendar.details",
+                  "calendar.mutate"
+                ]
+              }
+            },
+            "expiresAt": {
+              "type": "string",
+              "description": "Optional future ISO-8601 expiry.",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [
+        "domain:calendar",
+        "domain:contacts",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "surface:internal"
+      ],
+      "_contexts": ["general", "calendar", "contacts", "tasks", "admin"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:calendar",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update"
+      ],
+      "_surfaces": ["surface:internal"],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "HOUSEHOLD_COORDINATION_REVISE_PROPOSAL",
+        "description": "Owner household coordination: bind roles, issue/revoke scoped grants, create/revise exact-hash schedule proposals, repair approval requests, finalize fully approved agreements, and inspect redacted exports. Affected-party approval responses are not owner operations. — subaction = revise_proposal",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Subaction discriminator (auto-set to \"revise_proposal\" for this virtual; do not change).",
+              "enum": ["revise_proposal"],
+              "default": "revise_proposal"
+            },
+            "expiresAt": {
+              "type": "string",
+              "description": "Optional future ISO-8601 expiry.",
+              "minLength": 1
+            },
+            "proposalId": {
+              "type": "string",
+              "description": "Proposal logical id; optional on create and required for later operations.",
+              "minLength": 1
+            },
+            "expectedVersion": {
+              "type": "integer",
+              "description": "Current proposal version expected before revision.",
+              "minimum": 1
+            },
+            "terms": {
+              "type": "object",
+              "description": "Schedule interval, timezone, household subjects, private details, and optional custody exception.",
+              "required": [
+                "summary",
+                "startAt",
+                "endAt",
+                "timezone",
+                "childEntityIds"
+              ],
+              "properties": {
+                "summary": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "startAt": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "endAt": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "timezone": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "childEntityIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "location": {
+                  "type": "string"
+                },
+                "notes": {
+                  "type": "string"
+                },
+                "custodyException": {
+                  "type": "object",
+                  "required": [
+                    "childEntityId",
+                    "fromAt",
+                    "toAt",
+                    "normalCustodianEntityId",
+                    "substituteCustodianEntityId",
+                    "reason"
+                  ],
+                  "properties": {
+                    "childEntityId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "fromAt": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "toAt": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "normalCustodianEntityId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "substituteCustodianEntityId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "reason": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "additionalProperties": false
+            },
+            "affectedPartyEntityIds": {
+              "type": "array",
+              "description": "Additional affected Entity ids; child ids and required approvers are included automatically.",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "requiredApproverEntityIds": {
+              "type": "array",
+              "description": "Every adult whose exact approval is required; custody exception custodians are included automatically.",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [
+        "domain:calendar",
+        "domain:contacts",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "surface:internal"
+      ],
+      "_contexts": ["general", "calendar", "contacts", "tasks", "admin"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:calendar",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update"
+      ],
+      "_surfaces": ["surface:internal"],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "HOUSEHOLD_COORDINATION_REVOKE_GRANT",
+        "description": "Owner household coordination: bind roles, issue/revoke scoped grants, create/revise exact-hash schedule proposals, repair approval requests, finalize fully approved agreements, and inspect redacted exports. Affected-party approval responses are not owner operations. — subaction = revoke_grant",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Subaction discriminator (auto-set to \"revoke_grant\" for this virtual; do not change).",
+              "enum": ["revoke_grant"],
+              "default": "revoke_grant"
+            },
+            "grantId": {
+              "type": "string",
+              "description": "Access grant id to revoke.",
+              "minLength": 1
+            },
+            "reason": {
+              "type": "string",
+              "description": "Auditable revocation reason.",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [
+        "domain:calendar",
+        "domain:contacts",
+        "capability:read",
+        "capability:write",
+        "capability:update",
+        "surface:internal"
+      ],
+      "_contexts": ["general", "calendar", "contacts", "tasks", "admin"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:calendar",
+      "_capabilities": [
+        "capability:read",
+        "capability:write",
+        "capability:update"
+      ],
+      "_surfaces": ["surface:internal"],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "HOUSEHOLD_OPERATIONS",
+        "description": "vendor/service history, due home work, seasonal registration, child clothing size, household responsibility non-use, or weekly family brief -> HOUSEHOLD_OPERATIONS\nhousehold vendors|maintenance|seasonal opportunities|child sizes|CPEM|weekly brief; drafts only",
+        "parameters": {
+          "type": "object",
+          "required": ["action"],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Household-operation verb.",
+              "enum": [
+                "put_record",
+                "record_observation",
+                "record_service_event",
+                "record_responsibility_signal",
+                "evaluate_opportunity",
+                "evaluate_item_replacement",
+                "assess_responsibility",
+                "generate_weekly_brief",
+                "read_weekly_brief"
+              ]
+            },
+            "input": {
+              "type": "object",
+              "description": "Typed record, observation, service event, or responsibility signal.",
+              "required": [],
+              "properties": {},
+              "additionalProperties": true
+            },
+            "expectedRevision": {
+              "type": "integer",
+              "description": "Current revision for compare-and-swap; zero creates a record.",
+              "minimum": 0
+            },
+            "recordId": {
+              "type": "string",
+              "description": "Opportunity, item-threshold, or responsibility-assignment record ID.",
+              "minLength": 1
+            },
+            "householdId": {
+              "type": "string",
+              "description": "Household projection ID.",
+              "minLength": 1
+            },
+            "window": {
+              "type": "object",
+              "description": "Weekly brief ISO start/end window.",
+              "required": [],
+              "properties": {},
+              "additionalProperties": true
+            },
+            "calendarChecks": {
+              "type": "array",
+              "description": "Provider-neutral availability results for exact maintenance windows; absent evidence blocks outreach drafting.",
+              "items": {
+                "type": "object",
+                "required": [],
+                "properties": {},
+                "additionalProperties": true
+              }
+            },
+            "briefId": {
+              "type": "string",
+              "description": "Persisted household weekly-brief ID.",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [
+        "domain:household",
+        "domain:tasks",
+        "capability:read",
+        "capability:write",
+        "effect:receipt-required",
+        "surface:internal"
+      ],
+      "_contexts": ["general", "calendar", "tasks", "finances", "documents"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:household",
+      "_capabilities": ["capability:read", "capability:write"],
+      "_surfaces": ["surface:internal"],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "HOUSEHOLD_OPERATIONS_ASSESS_RESPONSIBILITY",
+        "description": "Capture source-grounded household observations and vendor history; version seasonal, child-item, and C/P/E/M policy; and create scoped weekly briefs or approval-gated drafts. This action never sends, purchases, registers, books, mutates calendars, or silently reassigns another adult. — subaction = assess_responsibility",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Subaction discriminator (auto-set to \"assess_responsibility\" for this virtual; do not change).",
+              "enum": ["assess_responsibility"],
+              "default": "assess_responsibility"
+            },
+            "recordId": {
+              "type": "string",
+              "description": "Opportunity, item-threshold, or responsibility-assignment record ID.",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [
+        "domain:household",
+        "domain:tasks",
+        "capability:read",
+        "capability:write",
+        "effect:receipt-required",
+        "surface:internal"
+      ],
+      "_contexts": ["general", "calendar", "tasks", "finances", "documents"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:household",
+      "_capabilities": ["capability:read", "capability:write"],
+      "_surfaces": ["surface:internal"],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "HOUSEHOLD_OPERATIONS_EVALUATE_ITEM_REPLACEMENT",
+        "description": "Capture source-grounded household observations and vendor history; version seasonal, child-item, and C/P/E/M policy; and create scoped weekly briefs or approval-gated drafts. This action never sends, purchases, registers, books, mutates calendars, or silently reassigns another adult. — subaction = evaluate_item_replacement",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Subaction discriminator (auto-set to \"evaluate_item_replacement\" for this virtual; do not change).",
+              "enum": ["evaluate_item_replacement"],
+              "default": "evaluate_item_replacement"
+            },
+            "recordId": {
+              "type": "string",
+              "description": "Opportunity, item-threshold, or responsibility-assignment record ID.",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [
+        "domain:household",
+        "domain:tasks",
+        "capability:read",
+        "capability:write",
+        "effect:receipt-required",
+        "surface:internal"
+      ],
+      "_contexts": ["general", "calendar", "tasks", "finances", "documents"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:household",
+      "_capabilities": ["capability:read", "capability:write"],
+      "_surfaces": ["surface:internal"],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "HOUSEHOLD_OPERATIONS_EVALUATE_OPPORTUNITY",
+        "description": "Capture source-grounded household observations and vendor history; version seasonal, child-item, and C/P/E/M policy; and create scoped weekly briefs or approval-gated drafts. This action never sends, purchases, registers, books, mutates calendars, or silently reassigns another adult. — subaction = evaluate_opportunity",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Subaction discriminator (auto-set to \"evaluate_opportunity\" for this virtual; do not change).",
+              "enum": ["evaluate_opportunity"],
+              "default": "evaluate_opportunity"
+            },
+            "recordId": {
+              "type": "string",
+              "description": "Opportunity, item-threshold, or responsibility-assignment record ID.",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [
+        "domain:household",
+        "domain:tasks",
+        "capability:read",
+        "capability:write",
+        "effect:receipt-required",
+        "surface:internal"
+      ],
+      "_contexts": ["general", "calendar", "tasks", "finances", "documents"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:household",
+      "_capabilities": ["capability:read", "capability:write"],
+      "_surfaces": ["surface:internal"],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "HOUSEHOLD_OPERATIONS_GENERATE_WEEKLY_BRIEF",
+        "description": "Capture source-grounded household observations and vendor history; version seasonal, child-item, and C/P/E/M policy; and create scoped weekly briefs or approval-gated drafts. This action never sends, purchases, registers, books, mutates calendars, or silently reassigns another adult. — subaction = generate_weekly_brief",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Subaction discriminator (auto-set to \"generate_weekly_brief\" for this virtual; do not change).",
+              "enum": ["generate_weekly_brief"],
+              "default": "generate_weekly_brief"
+            },
+            "householdId": {
+              "type": "string",
+              "description": "Household projection ID.",
+              "minLength": 1
+            },
+            "window": {
+              "type": "object",
+              "description": "Weekly brief ISO start/end window.",
+              "required": [],
+              "properties": {},
+              "additionalProperties": true
+            },
+            "calendarChecks": {
+              "type": "array",
+              "description": "Provider-neutral availability results for exact maintenance windows; absent evidence blocks outreach drafting.",
+              "items": {
+                "type": "object",
+                "required": [],
+                "properties": {},
+                "additionalProperties": true
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [
+        "domain:household",
+        "domain:tasks",
+        "capability:read",
+        "capability:write",
+        "effect:receipt-required",
+        "surface:internal"
+      ],
+      "_contexts": ["general", "calendar", "tasks", "finances", "documents"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:household",
+      "_capabilities": ["capability:read", "capability:write"],
+      "_surfaces": ["surface:internal"],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "HOUSEHOLD_OPERATIONS_PUT_RECORD",
+        "description": "Capture source-grounded household observations and vendor history; version seasonal, child-item, and C/P/E/M policy; and create scoped weekly briefs or approval-gated drafts. This action never sends, purchases, registers, books, mutates calendars, or silently reassigns another adult. — subaction = put_record",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Subaction discriminator (auto-set to \"put_record\" for this virtual; do not change).",
+              "enum": ["put_record"],
+              "default": "put_record"
+            },
+            "input": {
+              "type": "object",
+              "description": "Typed record, observation, service event, or responsibility signal.",
+              "required": [],
+              "properties": {},
+              "additionalProperties": true
+            },
+            "expectedRevision": {
+              "type": "integer",
+              "description": "Current revision for compare-and-swap; zero creates a record.",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [
+        "domain:household",
+        "domain:tasks",
+        "capability:read",
+        "capability:write",
+        "effect:receipt-required",
+        "surface:internal"
+      ],
+      "_contexts": ["general", "calendar", "tasks", "finances", "documents"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:household",
+      "_capabilities": ["capability:read", "capability:write"],
+      "_surfaces": ["surface:internal"],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "HOUSEHOLD_OPERATIONS_READ_WEEKLY_BRIEF",
+        "description": "Capture source-grounded household observations and vendor history; version seasonal, child-item, and C/P/E/M policy; and create scoped weekly briefs or approval-gated drafts. This action never sends, purchases, registers, books, mutates calendars, or silently reassigns another adult. — subaction = read_weekly_brief",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Subaction discriminator (auto-set to \"read_weekly_brief\" for this virtual; do not change).",
+              "enum": ["read_weekly_brief"],
+              "default": "read_weekly_brief"
+            },
+            "briefId": {
+              "type": "string",
+              "description": "Persisted household weekly-brief ID.",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [
+        "domain:household",
+        "domain:tasks",
+        "capability:read",
+        "capability:write",
+        "effect:receipt-required",
+        "surface:internal"
+      ],
+      "_contexts": ["general", "calendar", "tasks", "finances", "documents"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:household",
+      "_capabilities": ["capability:read", "capability:write"],
+      "_surfaces": ["surface:internal"],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "HOUSEHOLD_OPERATIONS_RECORD_OBSERVATION",
+        "description": "Capture source-grounded household observations and vendor history; version seasonal, child-item, and C/P/E/M policy; and create scoped weekly briefs or approval-gated drafts. This action never sends, purchases, registers, books, mutates calendars, or silently reassigns another adult. — subaction = record_observation",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Subaction discriminator (auto-set to \"record_observation\" for this virtual; do not change).",
+              "enum": ["record_observation"],
+              "default": "record_observation"
+            },
+            "input": {
+              "type": "object",
+              "description": "Typed record, observation, service event, or responsibility signal.",
+              "required": [],
+              "properties": {},
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [
+        "domain:household",
+        "domain:tasks",
+        "capability:read",
+        "capability:write",
+        "effect:receipt-required",
+        "surface:internal"
+      ],
+      "_contexts": ["general", "calendar", "tasks", "finances", "documents"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:household",
+      "_capabilities": ["capability:read", "capability:write"],
+      "_surfaces": ["surface:internal"],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "HOUSEHOLD_OPERATIONS_RECORD_RESPONSIBILITY_SIGNAL",
+        "description": "Capture source-grounded household observations and vendor history; version seasonal, child-item, and C/P/E/M policy; and create scoped weekly briefs or approval-gated drafts. This action never sends, purchases, registers, books, mutates calendars, or silently reassigns another adult. — subaction = record_responsibility_signal",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Subaction discriminator (auto-set to \"record_responsibility_signal\" for this virtual; do not change).",
+              "enum": ["record_responsibility_signal"],
+              "default": "record_responsibility_signal"
+            },
+            "input": {
+              "type": "object",
+              "description": "Typed record, observation, service event, or responsibility signal.",
+              "required": [],
+              "properties": {},
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [
+        "domain:household",
+        "domain:tasks",
+        "capability:read",
+        "capability:write",
+        "effect:receipt-required",
+        "surface:internal"
+      ],
+      "_contexts": ["general", "calendar", "tasks", "finances", "documents"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:household",
+      "_capabilities": ["capability:read", "capability:write"],
+      "_surfaces": ["surface:internal"],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "HOUSEHOLD_OPERATIONS_RECORD_SERVICE_EVENT",
+        "description": "Capture source-grounded household observations and vendor history; version seasonal, child-item, and C/P/E/M policy; and create scoped weekly briefs or approval-gated drafts. This action never sends, purchases, registers, books, mutates calendars, or silently reassigns another adult. — subaction = record_service_event",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Subaction discriminator (auto-set to \"record_service_event\" for this virtual; do not change).",
+              "enum": ["record_service_event"],
+              "default": "record_service_event"
+            },
+            "input": {
+              "type": "object",
+              "description": "Typed record, observation, service event, or responsibility signal.",
+              "required": [],
+              "properties": {},
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [
+        "domain:household",
+        "domain:tasks",
+        "capability:read",
+        "capability:write",
+        "effect:receipt-required",
+        "surface:internal"
+      ],
+      "_contexts": ["general", "calendar", "tasks", "finances", "documents"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:household",
+      "_capabilities": ["capability:read", "capability:write"],
+      "_surfaces": ["surface:internal"],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "HOUSEHOLD_RESOURCE_CAPACITY",
+        "description": "caregiver coverage, pickup handoff, shared vehicle, car seat, accessibility transport, or non-overlap resource conflict -> HOUSEHOLD_RESOURCE_CAPACITY\ncaregiver|vehicle|car-seat|accessibility|handoff capacity; proposal only",
+        "parameters": {
+          "type": "object",
+          "required": ["action"],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Resource-capacity verb.",
+              "enum": [
+                "put_resource",
+                "evaluate_plan",
+                "propose_plan",
+                "read_proposal"
+              ]
+            },
+            "resource": {
+              "type": "object",
+              "description": "Typed caregiver, vehicle, or car-seat resource definition.",
+              "required": [],
+              "properties": {},
+              "additionalProperties": true
+            },
+            "expectedRevision": {
+              "type": "integer",
+              "description": "Current resource revision for compare-and-swap; zero creates it.",
+              "minimum": 0
+            },
+            "plan": {
+              "type": "object",
+              "description": "Household plan with exact needs, windows, locations, children, requirements, and handoffs.",
+              "required": [],
+              "properties": {},
+              "additionalProperties": true
+            },
+            "assignments": {
+              "type": "array",
+              "description": "Explicit caregiver, backup, vehicle, and car-seat assignments by need.",
+              "items": {
+                "type": "object",
+                "required": [],
+                "properties": {},
+                "additionalProperties": true
+              }
+            },
+            "transitions": {
+              "type": "array",
+              "description": "Exact source-grounded resource transition times between needs.",
+              "items": {
+                "type": "object",
+                "required": [],
+                "properties": {},
+                "additionalProperties": true
+              }
+            },
+            "maximumSourceAgeMinutes": {
+              "type": "integer",
+              "description": "Maximum accepted age for availability and transition evidence.",
+              "minimum": 1
+            },
+            "requiredApproverEntityIds": {
+              "type": "array",
+              "description": "Affected adult graph entity IDs who must review exact proposal bytes.",
+              "items": {
+                "type": "string"
+              }
+            },
+            "idempotencyKey": {
+              "type": "string",
+              "description": "Stable key for one immutable proposal intent.",
+              "minLength": 1
+            },
+            "expiresAt": {
+              "type": "string",
+              "description": "ISO timestamp ending the proposal-review window.",
+              "minLength": 1
+            },
+            "proposalId": {
+              "type": "string",
+              "description": "Persisted resource-capacity proposal ID.",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [
+        "domain:household",
+        "domain:calendar",
+        "capability:read",
+        "capability:write",
+        "effect:receipt-required",
+        "surface:internal"
+      ],
+      "_contexts": ["general", "calendar", "tasks"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:household",
+      "_capabilities": ["capability:read", "capability:write"],
+      "_surfaces": ["surface:internal"],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "HOUSEHOLD_RESOURCE_CAPACITY_EVALUATE_PLAN",
+        "description": "Record household caregivers, vehicles, restraints, authorization and availability; detect shared-resource conflicts across non-overlapping events; and create proposal-only affected-adult reviews. Never treats review as a reservation, writes a calendar, or sends a message. — subaction = evaluate_plan",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Subaction discriminator (auto-set to \"evaluate_plan\" for this virtual; do not change).",
+              "enum": ["evaluate_plan"],
+              "default": "evaluate_plan"
+            },
+            "plan": {
+              "type": "object",
+              "description": "Household plan with exact needs, windows, locations, children, requirements, and handoffs.",
+              "required": [],
+              "properties": {},
+              "additionalProperties": true
+            },
+            "assignments": {
+              "type": "array",
+              "description": "Explicit caregiver, backup, vehicle, and car-seat assignments by need.",
+              "items": {
+                "type": "object",
+                "required": [],
+                "properties": {},
+                "additionalProperties": true
+              }
+            },
+            "transitions": {
+              "type": "array",
+              "description": "Exact source-grounded resource transition times between needs.",
+              "items": {
+                "type": "object",
+                "required": [],
+                "properties": {},
+                "additionalProperties": true
+              }
+            },
+            "maximumSourceAgeMinutes": {
+              "type": "integer",
+              "description": "Maximum accepted age for availability and transition evidence.",
+              "minimum": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [
+        "domain:household",
+        "domain:calendar",
+        "capability:read",
+        "capability:write",
+        "effect:receipt-required",
+        "surface:internal"
+      ],
+      "_contexts": ["general", "calendar", "tasks"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:household",
+      "_capabilities": ["capability:read", "capability:write"],
+      "_surfaces": ["surface:internal"],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "HOUSEHOLD_RESOURCE_CAPACITY_PROPOSE_PLAN",
+        "description": "Record household caregivers, vehicles, restraints, authorization and availability; detect shared-resource conflicts across non-overlapping events; and create proposal-only affected-adult reviews. Never treats review as a reservation, writes a calendar, or sends a message. — subaction = propose_plan",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Subaction discriminator (auto-set to \"propose_plan\" for this virtual; do not change).",
+              "enum": ["propose_plan"],
+              "default": "propose_plan"
+            },
+            "plan": {
+              "type": "object",
+              "description": "Household plan with exact needs, windows, locations, children, requirements, and handoffs.",
+              "required": [],
+              "properties": {},
+              "additionalProperties": true
+            },
+            "assignments": {
+              "type": "array",
+              "description": "Explicit caregiver, backup, vehicle, and car-seat assignments by need.",
+              "items": {
+                "type": "object",
+                "required": [],
+                "properties": {},
+                "additionalProperties": true
+              }
+            },
+            "transitions": {
+              "type": "array",
+              "description": "Exact source-grounded resource transition times between needs.",
+              "items": {
+                "type": "object",
+                "required": [],
+                "properties": {},
+                "additionalProperties": true
+              }
+            },
+            "maximumSourceAgeMinutes": {
+              "type": "integer",
+              "description": "Maximum accepted age for availability and transition evidence.",
+              "minimum": 1
+            },
+            "requiredApproverEntityIds": {
+              "type": "array",
+              "description": "Affected adult graph entity IDs who must review exact proposal bytes.",
+              "items": {
+                "type": "string"
+              }
+            },
+            "idempotencyKey": {
+              "type": "string",
+              "description": "Stable key for one immutable proposal intent.",
+              "minLength": 1
+            },
+            "expiresAt": {
+              "type": "string",
+              "description": "ISO timestamp ending the proposal-review window.",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [
+        "domain:household",
+        "domain:calendar",
+        "capability:read",
+        "capability:write",
+        "effect:receipt-required",
+        "surface:internal"
+      ],
+      "_contexts": ["general", "calendar", "tasks"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:household",
+      "_capabilities": ["capability:read", "capability:write"],
+      "_surfaces": ["surface:internal"],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "HOUSEHOLD_RESOURCE_CAPACITY_PUT_RESOURCE",
+        "description": "Record household caregivers, vehicles, restraints, authorization and availability; detect shared-resource conflicts across non-overlapping events; and create proposal-only affected-adult reviews. Never treats review as a reservation, writes a calendar, or sends a message. — subaction = put_resource",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Subaction discriminator (auto-set to \"put_resource\" for this virtual; do not change).",
+              "enum": ["put_resource"],
+              "default": "put_resource"
+            },
+            "resource": {
+              "type": "object",
+              "description": "Typed caregiver, vehicle, or car-seat resource definition.",
+              "required": [],
+              "properties": {},
+              "additionalProperties": true
+            },
+            "expectedRevision": {
+              "type": "integer",
+              "description": "Current resource revision for compare-and-swap; zero creates it.",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [
+        "domain:household",
+        "domain:calendar",
+        "capability:read",
+        "capability:write",
+        "effect:receipt-required",
+        "surface:internal"
+      ],
+      "_contexts": ["general", "calendar", "tasks"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:household",
+      "_capabilities": ["capability:read", "capability:write"],
+      "_surfaces": ["surface:internal"],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "HOUSEHOLD_RESOURCE_CAPACITY_READ_PROPOSAL",
+        "description": "Record household caregivers, vehicles, restraints, authorization and availability; detect shared-resource conflicts across non-overlapping events; and create proposal-only affected-adult reviews. Never treats review as a reservation, writes a calendar, or sends a message. — subaction = read_proposal",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Subaction discriminator (auto-set to \"read_proposal\" for this virtual; do not change).",
+              "enum": ["read_proposal"],
+              "default": "read_proposal"
+            },
+            "proposalId": {
+              "type": "string",
+              "description": "Persisted resource-capacity proposal ID.",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [
+        "domain:household",
+        "domain:calendar",
+        "capability:read",
+        "capability:write",
+        "effect:receipt-required",
+        "surface:internal"
+      ],
+      "_contexts": ["general", "calendar", "tasks"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:household",
+      "_capabilities": ["capability:read", "capability:write"],
       "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
@@ -6549,6 +8728,7 @@
         "capability:update",
         "capability:delete",
         "capability:schedule",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": [
@@ -6635,6 +8815,7 @@
         "capability:update",
         "capability:delete",
         "capability:schedule",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": [
@@ -6721,6 +8902,7 @@
         "capability:update",
         "capability:delete",
         "capability:schedule",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": [
@@ -6807,6 +8989,7 @@
         "capability:update",
         "capability:delete",
         "capability:schedule",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": [
@@ -6893,6 +9076,7 @@
         "capability:update",
         "capability:delete",
         "capability:schedule",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": [
@@ -6979,6 +9163,7 @@
         "capability:update",
         "capability:delete",
         "capability:schedule",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": [
@@ -7065,6 +9250,7 @@
         "capability:update",
         "capability:delete",
         "capability:schedule",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": [
@@ -7151,6 +9337,7 @@
         "capability:update",
         "capability:delete",
         "capability:schedule",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": [
@@ -7819,6 +10006,7 @@
                 "list_transactions",
                 "spending_summary",
                 "recurring_charges",
+                "childcare_work_scenario",
                 "subscription_audit",
                 "subscription_cancel",
                 "subscription_status"
@@ -7887,6 +10075,10 @@
             "onlyDebits": {
               "type": "boolean",
               "description": "Exclude credits when listing transactions."
+            },
+            "scenarioJson": {
+              "type": "string",
+              "description": "For childcare_work_scenario: JSON using childcare-work-scenario.v1. Every material category must be known, explicitly not_applicable, or missing; missing values never become zero."
             },
             "serviceName": {
               "type": "string",
@@ -8011,6 +10203,137 @@
               "type": "boolean",
               "description": "Exclude credits when listing transactions."
             },
+            "scenarioJson": {
+              "type": "string",
+              "description": "For childcare_work_scenario: JSON using childcare-work-scenario.v1. Every material category must be known, explicitly not_applicable, or missing; missing values never become zero."
+            },
+            "serviceName": {
+              "type": "string",
+              "description": "Display name of the subscription service."
+            },
+            "serviceSlug": {
+              "type": "string",
+              "description": "Normalized slug for routing."
+            },
+            "candidateId": {
+              "type": "string",
+              "description": "Internal audit candidate identifier."
+            },
+            "cancellationId": {
+              "type": "string",
+              "description": "Ongoing cancellation id for status lookups."
+            },
+            "executor": {
+              "type": "string",
+              "description": "Browser executor: user_browser | agent_browser | desktop_native."
+            },
+            "queryWindowDays": {
+              "type": "number",
+              "description": "Days of history for audit queries."
+            },
+            "confirmed": {
+              "type": "boolean",
+              "description": "User confirmed cancellation prerequisites."
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [],
+      "_contexts": ["general"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": null,
+      "_capabilities": [],
+      "_surfaces": [],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "OWNER_FINANCES_CHILDCARE_WORK_SCENARIO",
+        "description": "Owner finances: sources, imports, spending, recurring charges, subscriptions. — subaction = childcare_work_scenario",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Subaction discriminator (auto-set to \"childcare_work_scenario\" for this virtual; do not change).",
+              "enum": ["childcare_work_scenario"],
+              "default": "childcare_work_scenario"
+            },
+            "sourceId": {
+              "type": "string",
+              "description": "Payment source UUID for scoped reads and CSV import."
+            },
+            "kind": {
+              "type": "string",
+              "description": "add_source kind: csv | plaid | manual | paypal."
+            },
+            "label": {
+              "type": "string",
+              "description": "Human label when adding a source."
+            },
+            "institution": {
+              "type": "string",
+              "description": "Institution display name."
+            },
+            "accountMask": {
+              "type": "string",
+              "description": "Last-four or mask string."
+            },
+            "csvText": {
+              "type": "string",
+              "description": "Raw CSV payload for import_csv."
+            },
+            "dateColumn": {
+              "type": "string",
+              "description": "CSV column hint for posting date."
+            },
+            "amountColumn": {
+              "type": "string",
+              "description": "CSV column hint for amount."
+            },
+            "merchantColumn": {
+              "type": "string",
+              "description": "CSV column hint for merchant."
+            },
+            "descriptionColumn": {
+              "type": "string",
+              "description": "CSV column hint for description."
+            },
+            "categoryColumn": {
+              "type": "string",
+              "description": "CSV column hint for category."
+            },
+            "windowDays": {
+              "type": "number",
+              "description": "Rolling window for dashboard or spending summaries."
+            },
+            "sinceDays": {
+              "type": "number",
+              "description": "History window for recurring charge detection."
+            },
+            "limit": {
+              "type": "number",
+              "description": "Transaction row cap for listings."
+            },
+            "merchantContains": {
+              "type": "string",
+              "description": "Filter transactions by merchant substring."
+            },
+            "onlyDebits": {
+              "type": "boolean",
+              "description": "Exclude credits when listing transactions."
+            },
+            "scenarioJson": {
+              "type": "string",
+              "description": "For childcare_work_scenario: JSON using childcare-work-scenario.v1. Every material category must be known, explicitly not_applicable, or missing; missing values never become zero."
+            },
             "serviceName": {
               "type": "string",
               "description": "Display name of the subscription service."
@@ -8133,6 +10456,10 @@
             "onlyDebits": {
               "type": "boolean",
               "description": "Exclude credits when listing transactions."
+            },
+            "scenarioJson": {
+              "type": "string",
+              "description": "For childcare_work_scenario: JSON using childcare-work-scenario.v1. Every material category must be known, explicitly not_applicable, or missing; missing values never become zero."
             },
             "serviceName": {
               "type": "string",
@@ -8257,6 +10584,10 @@
               "type": "boolean",
               "description": "Exclude credits when listing transactions."
             },
+            "scenarioJson": {
+              "type": "string",
+              "description": "For childcare_work_scenario: JSON using childcare-work-scenario.v1. Every material category must be known, explicitly not_applicable, or missing; missing values never become zero."
+            },
             "serviceName": {
               "type": "string",
               "description": "Display name of the subscription service."
@@ -8379,6 +10710,10 @@
             "onlyDebits": {
               "type": "boolean",
               "description": "Exclude credits when listing transactions."
+            },
+            "scenarioJson": {
+              "type": "string",
+              "description": "For childcare_work_scenario: JSON using childcare-work-scenario.v1. Every material category must be known, explicitly not_applicable, or missing; missing values never become zero."
             },
             "serviceName": {
               "type": "string",
@@ -8503,6 +10838,10 @@
               "type": "boolean",
               "description": "Exclude credits when listing transactions."
             },
+            "scenarioJson": {
+              "type": "string",
+              "description": "For childcare_work_scenario: JSON using childcare-work-scenario.v1. Every material category must be known, explicitly not_applicable, or missing; missing values never become zero."
+            },
             "serviceName": {
               "type": "string",
               "description": "Display name of the subscription service."
@@ -8625,6 +10964,10 @@
             "onlyDebits": {
               "type": "boolean",
               "description": "Exclude credits when listing transactions."
+            },
+            "scenarioJson": {
+              "type": "string",
+              "description": "For childcare_work_scenario: JSON using childcare-work-scenario.v1. Every material category must be known, explicitly not_applicable, or missing; missing values never become zero."
             },
             "serviceName": {
               "type": "string",
@@ -8749,6 +11092,10 @@
               "type": "boolean",
               "description": "Exclude credits when listing transactions."
             },
+            "scenarioJson": {
+              "type": "string",
+              "description": "For childcare_work_scenario: JSON using childcare-work-scenario.v1. Every material category must be known, explicitly not_applicable, or missing; missing values never become zero."
+            },
             "serviceName": {
               "type": "string",
               "description": "Display name of the subscription service."
@@ -8871,6 +11218,10 @@
             "onlyDebits": {
               "type": "boolean",
               "description": "Exclude credits when listing transactions."
+            },
+            "scenarioJson": {
+              "type": "string",
+              "description": "For childcare_work_scenario: JSON using childcare-work-scenario.v1. Every material category must be known, explicitly not_applicable, or missing; missing values never become zero."
             },
             "serviceName": {
               "type": "string",
@@ -8995,6 +11346,10 @@
               "type": "boolean",
               "description": "Exclude credits when listing transactions."
             },
+            "scenarioJson": {
+              "type": "string",
+              "description": "For childcare_work_scenario: JSON using childcare-work-scenario.v1. Every material category must be known, explicitly not_applicable, or missing; missing values never become zero."
+            },
             "serviceName": {
               "type": "string",
               "description": "Display name of the subscription service."
@@ -9117,6 +11472,10 @@
             "onlyDebits": {
               "type": "boolean",
               "description": "Exclude credits when listing transactions."
+            },
+            "scenarioJson": {
+              "type": "string",
+              "description": "For childcare_work_scenario: JSON using childcare-work-scenario.v1. Every material category must be known, explicitly not_applicable, or missing; missing values never become zero."
             },
             "serviceName": {
               "type": "string",
@@ -9241,6 +11600,10 @@
               "type": "boolean",
               "description": "Exclude credits when listing transactions."
             },
+            "scenarioJson": {
+              "type": "string",
+              "description": "For childcare_work_scenario: JSON using childcare-work-scenario.v1. Every material category must be known, explicitly not_applicable, or missing; missing values never become zero."
+            },
             "serviceName": {
               "type": "string",
               "description": "Display name of the subscription service."
@@ -9345,6 +11708,7 @@
         "capability:update",
         "capability:delete",
         "capability:schedule",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": [
@@ -9431,6 +11795,7 @@
         "capability:update",
         "capability:delete",
         "capability:schedule",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": [
@@ -9517,6 +11882,7 @@
         "capability:update",
         "capability:delete",
         "capability:schedule",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": [
@@ -9603,6 +11969,7 @@
         "capability:update",
         "capability:delete",
         "capability:schedule",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": [
@@ -9689,6 +12056,7 @@
         "capability:update",
         "capability:delete",
         "capability:schedule",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": [
@@ -10066,6 +12434,7 @@
         "capability:update",
         "capability:delete",
         "capability:schedule",
+        "effect:receipt-required",
         "surface:internal",
         "follow-up-capable"
       ],
@@ -10153,6 +12522,7 @@
         "capability:update",
         "capability:delete",
         "capability:schedule",
+        "effect:receipt-required",
         "surface:internal",
         "follow-up-capable"
       ],
@@ -10240,6 +12610,7 @@
         "capability:update",
         "capability:delete",
         "capability:schedule",
+        "effect:receipt-required",
         "surface:internal",
         "follow-up-capable"
       ],
@@ -10327,6 +12698,7 @@
         "capability:update",
         "capability:delete",
         "capability:schedule",
+        "effect:receipt-required",
         "surface:internal",
         "follow-up-capable"
       ],
@@ -10414,6 +12786,7 @@
         "capability:update",
         "capability:delete",
         "capability:schedule",
+        "effect:receipt-required",
         "surface:internal",
         "follow-up-capable"
       ],
@@ -10501,6 +12874,7 @@
         "capability:update",
         "capability:delete",
         "capability:schedule",
+        "effect:receipt-required",
         "surface:internal",
         "follow-up-capable"
       ],
@@ -10588,6 +12962,7 @@
         "capability:update",
         "capability:delete",
         "capability:schedule",
+        "effect:receipt-required",
         "surface:internal",
         "follow-up-capable"
       ],
@@ -10675,6 +13050,7 @@
         "capability:update",
         "capability:delete",
         "capability:schedule",
+        "effect:receipt-required",
         "surface:internal",
         "follow-up-capable"
       ],
@@ -10771,6 +13147,7 @@
         "capability:update",
         "capability:delete",
         "capability:schedule",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": [
@@ -10857,6 +13234,7 @@
         "capability:update",
         "capability:delete",
         "capability:schedule",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": [
@@ -10943,6 +13321,7 @@
         "capability:update",
         "capability:delete",
         "capability:schedule",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": [
@@ -11029,6 +13408,7 @@
         "capability:update",
         "capability:delete",
         "capability:schedule",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": [
@@ -11115,6 +13495,7 @@
         "capability:update",
         "capability:delete",
         "capability:schedule",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": [
@@ -11201,6 +13582,7 @@
         "capability:update",
         "capability:delete",
         "capability:schedule",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": [
@@ -11287,6 +13669,7 @@
         "capability:update",
         "capability:delete",
         "capability:schedule",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": [
@@ -11373,6 +13756,7 @@
         "capability:update",
         "capability:delete",
         "capability:schedule",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": [
@@ -11459,6 +13843,7 @@
         "capability:update",
         "capability:delete",
         "capability:schedule",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": [
@@ -11545,6 +13930,7 @@
         "capability:update",
         "capability:delete",
         "capability:schedule",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": [
@@ -11567,6 +13953,808 @@
         "capability:schedule"
       ],
       "_surfaces": ["surface:internal"],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "OWNER_SCREENTIME",
+        "description": "owner screentime summary|today|weekly|by_app|by_website|activity|time_on_app|time_on_site",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Owner screentime op.",
+              "enum": [
+                "summary",
+                "today",
+                "weekly",
+                "weekly_average_by_app",
+                "by_app",
+                "by_website",
+                "activity_report",
+                "time_on_app",
+                "time_on_site",
+                "browser_activity"
+              ]
+            },
+            "source": {
+              "type": "string",
+              "description": "source filter: app|website",
+              "enum": ["app", "website"]
+            },
+            "identifier": {
+              "type": "string",
+              "description": "Specific app bundle id or website domain when filtering screen-time to one source."
+            },
+            "date": {
+              "type": "string",
+              "description": "YYYY-MM-DD for the today subaction."
+            },
+            "days": {
+              "type": "number",
+              "description": "Number of days back from now for weekly / weekly_average_by_app windows."
+            },
+            "limit": {
+              "type": "number",
+              "description": "Top-N for by_app / by_website / browser_activity (default 10)."
+            },
+            "windowDays": {
+              "type": "number",
+              "description": "Window in days for by_app / by_website summary queries."
+            },
+            "windowHours": {
+              "type": "number",
+              "description": "Window in hours for activity_report / time_on_app / time_on_site (default 24, max 720)."
+            },
+            "appNameOrBundleId": {
+              "type": "string",
+              "description": "App name (e.g. 'Safari') or bundle id (e.g. 'com.apple.Safari') for time_on_app."
+            },
+            "domain": {
+              "type": "string",
+              "description": "Hostname (e.g. 'github.com') for time_on_site."
+            },
+            "deviceId": {
+              "type": "string",
+              "description": "Filter browser_activity to one registered device id; omit for default."
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [],
+      "_contexts": ["general"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": null,
+      "_capabilities": [],
+      "_surfaces": [],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "OWNER_SCREENTIME_ACTIVITY_REPORT",
+        "description": "Owner screen-time/activity analytics: local activity, app usage, browser. — subaction = activity_report",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Subaction discriminator (auto-set to \"activity_report\" for this virtual; do not change).",
+              "enum": ["activity_report"],
+              "default": "activity_report"
+            },
+            "source": {
+              "type": "string",
+              "description": "source filter: app|website",
+              "enum": ["app", "website"]
+            },
+            "identifier": {
+              "type": "string",
+              "description": "Specific app bundle id or website domain when filtering screen-time to one source."
+            },
+            "date": {
+              "type": "string",
+              "description": "YYYY-MM-DD for the today subaction."
+            },
+            "days": {
+              "type": "number",
+              "description": "Number of days back from now for weekly / weekly_average_by_app windows."
+            },
+            "limit": {
+              "type": "number",
+              "description": "Top-N for by_app / by_website / browser_activity (default 10)."
+            },
+            "windowDays": {
+              "type": "number",
+              "description": "Window in days for by_app / by_website summary queries."
+            },
+            "windowHours": {
+              "type": "number",
+              "description": "Window in hours for activity_report / time_on_app / time_on_site (default 24, max 720)."
+            },
+            "appNameOrBundleId": {
+              "type": "string",
+              "description": "App name (e.g. 'Safari') or bundle id (e.g. 'com.apple.Safari') for time_on_app."
+            },
+            "domain": {
+              "type": "string",
+              "description": "Hostname (e.g. 'github.com') for time_on_site."
+            },
+            "deviceId": {
+              "type": "string",
+              "description": "Filter browser_activity to one registered device id; omit for default."
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [],
+      "_contexts": ["general"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": null,
+      "_capabilities": [],
+      "_surfaces": [],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "OWNER_SCREENTIME_BROWSER_ACTIVITY",
+        "description": "Owner screen-time/activity analytics: local activity, app usage, browser. — subaction = browser_activity",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Subaction discriminator (auto-set to \"browser_activity\" for this virtual; do not change).",
+              "enum": ["browser_activity"],
+              "default": "browser_activity"
+            },
+            "source": {
+              "type": "string",
+              "description": "source filter: app|website",
+              "enum": ["app", "website"]
+            },
+            "identifier": {
+              "type": "string",
+              "description": "Specific app bundle id or website domain when filtering screen-time to one source."
+            },
+            "date": {
+              "type": "string",
+              "description": "YYYY-MM-DD for the today subaction."
+            },
+            "days": {
+              "type": "number",
+              "description": "Number of days back from now for weekly / weekly_average_by_app windows."
+            },
+            "limit": {
+              "type": "number",
+              "description": "Top-N for by_app / by_website / browser_activity (default 10)."
+            },
+            "windowDays": {
+              "type": "number",
+              "description": "Window in days for by_app / by_website summary queries."
+            },
+            "windowHours": {
+              "type": "number",
+              "description": "Window in hours for activity_report / time_on_app / time_on_site (default 24, max 720)."
+            },
+            "appNameOrBundleId": {
+              "type": "string",
+              "description": "App name (e.g. 'Safari') or bundle id (e.g. 'com.apple.Safari') for time_on_app."
+            },
+            "domain": {
+              "type": "string",
+              "description": "Hostname (e.g. 'github.com') for time_on_site."
+            },
+            "deviceId": {
+              "type": "string",
+              "description": "Filter browser_activity to one registered device id; omit for default."
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [],
+      "_contexts": ["general"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": null,
+      "_capabilities": [],
+      "_surfaces": [],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "OWNER_SCREENTIME_BY_APP",
+        "description": "Owner screen-time/activity analytics: local activity, app usage, browser. — subaction = by_app",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Subaction discriminator (auto-set to \"by_app\" for this virtual; do not change).",
+              "enum": ["by_app"],
+              "default": "by_app"
+            },
+            "source": {
+              "type": "string",
+              "description": "source filter: app|website",
+              "enum": ["app", "website"]
+            },
+            "identifier": {
+              "type": "string",
+              "description": "Specific app bundle id or website domain when filtering screen-time to one source."
+            },
+            "date": {
+              "type": "string",
+              "description": "YYYY-MM-DD for the today subaction."
+            },
+            "days": {
+              "type": "number",
+              "description": "Number of days back from now for weekly / weekly_average_by_app windows."
+            },
+            "limit": {
+              "type": "number",
+              "description": "Top-N for by_app / by_website / browser_activity (default 10)."
+            },
+            "windowDays": {
+              "type": "number",
+              "description": "Window in days for by_app / by_website summary queries."
+            },
+            "windowHours": {
+              "type": "number",
+              "description": "Window in hours for activity_report / time_on_app / time_on_site (default 24, max 720)."
+            },
+            "appNameOrBundleId": {
+              "type": "string",
+              "description": "App name (e.g. 'Safari') or bundle id (e.g. 'com.apple.Safari') for time_on_app."
+            },
+            "domain": {
+              "type": "string",
+              "description": "Hostname (e.g. 'github.com') for time_on_site."
+            },
+            "deviceId": {
+              "type": "string",
+              "description": "Filter browser_activity to one registered device id; omit for default."
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [],
+      "_contexts": ["general"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": null,
+      "_capabilities": [],
+      "_surfaces": [],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "OWNER_SCREENTIME_BY_WEBSITE",
+        "description": "Owner screen-time/activity analytics: local activity, app usage, browser. — subaction = by_website",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Subaction discriminator (auto-set to \"by_website\" for this virtual; do not change).",
+              "enum": ["by_website"],
+              "default": "by_website"
+            },
+            "source": {
+              "type": "string",
+              "description": "source filter: app|website",
+              "enum": ["app", "website"]
+            },
+            "identifier": {
+              "type": "string",
+              "description": "Specific app bundle id or website domain when filtering screen-time to one source."
+            },
+            "date": {
+              "type": "string",
+              "description": "YYYY-MM-DD for the today subaction."
+            },
+            "days": {
+              "type": "number",
+              "description": "Number of days back from now for weekly / weekly_average_by_app windows."
+            },
+            "limit": {
+              "type": "number",
+              "description": "Top-N for by_app / by_website / browser_activity (default 10)."
+            },
+            "windowDays": {
+              "type": "number",
+              "description": "Window in days for by_app / by_website summary queries."
+            },
+            "windowHours": {
+              "type": "number",
+              "description": "Window in hours for activity_report / time_on_app / time_on_site (default 24, max 720)."
+            },
+            "appNameOrBundleId": {
+              "type": "string",
+              "description": "App name (e.g. 'Safari') or bundle id (e.g. 'com.apple.Safari') for time_on_app."
+            },
+            "domain": {
+              "type": "string",
+              "description": "Hostname (e.g. 'github.com') for time_on_site."
+            },
+            "deviceId": {
+              "type": "string",
+              "description": "Filter browser_activity to one registered device id; omit for default."
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [],
+      "_contexts": ["general"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": null,
+      "_capabilities": [],
+      "_surfaces": [],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "OWNER_SCREENTIME_SUMMARY",
+        "description": "Owner screen-time/activity analytics: local activity, app usage, browser. — subaction = summary",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Subaction discriminator (auto-set to \"summary\" for this virtual; do not change).",
+              "enum": ["summary"],
+              "default": "summary"
+            },
+            "source": {
+              "type": "string",
+              "description": "source filter: app|website",
+              "enum": ["app", "website"]
+            },
+            "identifier": {
+              "type": "string",
+              "description": "Specific app bundle id or website domain when filtering screen-time to one source."
+            },
+            "date": {
+              "type": "string",
+              "description": "YYYY-MM-DD for the today subaction."
+            },
+            "days": {
+              "type": "number",
+              "description": "Number of days back from now for weekly / weekly_average_by_app windows."
+            },
+            "limit": {
+              "type": "number",
+              "description": "Top-N for by_app / by_website / browser_activity (default 10)."
+            },
+            "windowDays": {
+              "type": "number",
+              "description": "Window in days for by_app / by_website summary queries."
+            },
+            "windowHours": {
+              "type": "number",
+              "description": "Window in hours for activity_report / time_on_app / time_on_site (default 24, max 720)."
+            },
+            "appNameOrBundleId": {
+              "type": "string",
+              "description": "App name (e.g. 'Safari') or bundle id (e.g. 'com.apple.Safari') for time_on_app."
+            },
+            "domain": {
+              "type": "string",
+              "description": "Hostname (e.g. 'github.com') for time_on_site."
+            },
+            "deviceId": {
+              "type": "string",
+              "description": "Filter browser_activity to one registered device id; omit for default."
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [],
+      "_contexts": ["general"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": null,
+      "_capabilities": [],
+      "_surfaces": [],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "OWNER_SCREENTIME_TIME_ON_APP",
+        "description": "Owner screen-time/activity analytics: local activity, app usage, browser. — subaction = time_on_app",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Subaction discriminator (auto-set to \"time_on_app\" for this virtual; do not change).",
+              "enum": ["time_on_app"],
+              "default": "time_on_app"
+            },
+            "source": {
+              "type": "string",
+              "description": "source filter: app|website",
+              "enum": ["app", "website"]
+            },
+            "identifier": {
+              "type": "string",
+              "description": "Specific app bundle id or website domain when filtering screen-time to one source."
+            },
+            "date": {
+              "type": "string",
+              "description": "YYYY-MM-DD for the today subaction."
+            },
+            "days": {
+              "type": "number",
+              "description": "Number of days back from now for weekly / weekly_average_by_app windows."
+            },
+            "limit": {
+              "type": "number",
+              "description": "Top-N for by_app / by_website / browser_activity (default 10)."
+            },
+            "windowDays": {
+              "type": "number",
+              "description": "Window in days for by_app / by_website summary queries."
+            },
+            "windowHours": {
+              "type": "number",
+              "description": "Window in hours for activity_report / time_on_app / time_on_site (default 24, max 720)."
+            },
+            "appNameOrBundleId": {
+              "type": "string",
+              "description": "App name (e.g. 'Safari') or bundle id (e.g. 'com.apple.Safari') for time_on_app."
+            },
+            "domain": {
+              "type": "string",
+              "description": "Hostname (e.g. 'github.com') for time_on_site."
+            },
+            "deviceId": {
+              "type": "string",
+              "description": "Filter browser_activity to one registered device id; omit for default."
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [],
+      "_contexts": ["general"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": null,
+      "_capabilities": [],
+      "_surfaces": [],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "OWNER_SCREENTIME_TIME_ON_SITE",
+        "description": "Owner screen-time/activity analytics: local activity, app usage, browser. — subaction = time_on_site",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Subaction discriminator (auto-set to \"time_on_site\" for this virtual; do not change).",
+              "enum": ["time_on_site"],
+              "default": "time_on_site"
+            },
+            "source": {
+              "type": "string",
+              "description": "source filter: app|website",
+              "enum": ["app", "website"]
+            },
+            "identifier": {
+              "type": "string",
+              "description": "Specific app bundle id or website domain when filtering screen-time to one source."
+            },
+            "date": {
+              "type": "string",
+              "description": "YYYY-MM-DD for the today subaction."
+            },
+            "days": {
+              "type": "number",
+              "description": "Number of days back from now for weekly / weekly_average_by_app windows."
+            },
+            "limit": {
+              "type": "number",
+              "description": "Top-N for by_app / by_website / browser_activity (default 10)."
+            },
+            "windowDays": {
+              "type": "number",
+              "description": "Window in days for by_app / by_website summary queries."
+            },
+            "windowHours": {
+              "type": "number",
+              "description": "Window in hours for activity_report / time_on_app / time_on_site (default 24, max 720)."
+            },
+            "appNameOrBundleId": {
+              "type": "string",
+              "description": "App name (e.g. 'Safari') or bundle id (e.g. 'com.apple.Safari') for time_on_app."
+            },
+            "domain": {
+              "type": "string",
+              "description": "Hostname (e.g. 'github.com') for time_on_site."
+            },
+            "deviceId": {
+              "type": "string",
+              "description": "Filter browser_activity to one registered device id; omit for default."
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [],
+      "_contexts": ["general"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": null,
+      "_capabilities": [],
+      "_surfaces": [],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "OWNER_SCREENTIME_TODAY",
+        "description": "Owner screen-time/activity analytics: local activity, app usage, browser. — subaction = today",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Subaction discriminator (auto-set to \"today\" for this virtual; do not change).",
+              "enum": ["today"],
+              "default": "today"
+            },
+            "source": {
+              "type": "string",
+              "description": "source filter: app|website",
+              "enum": ["app", "website"]
+            },
+            "identifier": {
+              "type": "string",
+              "description": "Specific app bundle id or website domain when filtering screen-time to one source."
+            },
+            "date": {
+              "type": "string",
+              "description": "YYYY-MM-DD for the today subaction."
+            },
+            "days": {
+              "type": "number",
+              "description": "Number of days back from now for weekly / weekly_average_by_app windows."
+            },
+            "limit": {
+              "type": "number",
+              "description": "Top-N for by_app / by_website / browser_activity (default 10)."
+            },
+            "windowDays": {
+              "type": "number",
+              "description": "Window in days for by_app / by_website summary queries."
+            },
+            "windowHours": {
+              "type": "number",
+              "description": "Window in hours for activity_report / time_on_app / time_on_site (default 24, max 720)."
+            },
+            "appNameOrBundleId": {
+              "type": "string",
+              "description": "App name (e.g. 'Safari') or bundle id (e.g. 'com.apple.Safari') for time_on_app."
+            },
+            "domain": {
+              "type": "string",
+              "description": "Hostname (e.g. 'github.com') for time_on_site."
+            },
+            "deviceId": {
+              "type": "string",
+              "description": "Filter browser_activity to one registered device id; omit for default."
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [],
+      "_contexts": ["general"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": null,
+      "_capabilities": [],
+      "_surfaces": [],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "OWNER_SCREENTIME_WEEKLY",
+        "description": "Owner screen-time/activity analytics: local activity, app usage, browser. — subaction = weekly",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Subaction discriminator (auto-set to \"weekly\" for this virtual; do not change).",
+              "enum": ["weekly"],
+              "default": "weekly"
+            },
+            "source": {
+              "type": "string",
+              "description": "source filter: app|website",
+              "enum": ["app", "website"]
+            },
+            "identifier": {
+              "type": "string",
+              "description": "Specific app bundle id or website domain when filtering screen-time to one source."
+            },
+            "date": {
+              "type": "string",
+              "description": "YYYY-MM-DD for the today subaction."
+            },
+            "days": {
+              "type": "number",
+              "description": "Number of days back from now for weekly / weekly_average_by_app windows."
+            },
+            "limit": {
+              "type": "number",
+              "description": "Top-N for by_app / by_website / browser_activity (default 10)."
+            },
+            "windowDays": {
+              "type": "number",
+              "description": "Window in days for by_app / by_website summary queries."
+            },
+            "windowHours": {
+              "type": "number",
+              "description": "Window in hours for activity_report / time_on_app / time_on_site (default 24, max 720)."
+            },
+            "appNameOrBundleId": {
+              "type": "string",
+              "description": "App name (e.g. 'Safari') or bundle id (e.g. 'com.apple.Safari') for time_on_app."
+            },
+            "domain": {
+              "type": "string",
+              "description": "Hostname (e.g. 'github.com') for time_on_site."
+            },
+            "deviceId": {
+              "type": "string",
+              "description": "Filter browser_activity to one registered device id; omit for default."
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [],
+      "_contexts": ["general"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": null,
+      "_capabilities": [],
+      "_surfaces": [],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "OWNER_SCREENTIME_WEEKLY_AVERAGE_BY_APP",
+        "description": "Owner screen-time/activity analytics: local activity, app usage, browser. — subaction = weekly_average_by_app",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Subaction discriminator (auto-set to \"weekly_average_by_app\" for this virtual; do not change).",
+              "enum": ["weekly_average_by_app"],
+              "default": "weekly_average_by_app"
+            },
+            "source": {
+              "type": "string",
+              "description": "source filter: app|website",
+              "enum": ["app", "website"]
+            },
+            "identifier": {
+              "type": "string",
+              "description": "Specific app bundle id or website domain when filtering screen-time to one source."
+            },
+            "date": {
+              "type": "string",
+              "description": "YYYY-MM-DD for the today subaction."
+            },
+            "days": {
+              "type": "number",
+              "description": "Number of days back from now for weekly / weekly_average_by_app windows."
+            },
+            "limit": {
+              "type": "number",
+              "description": "Top-N for by_app / by_website / browser_activity (default 10)."
+            },
+            "windowDays": {
+              "type": "number",
+              "description": "Window in days for by_app / by_website summary queries."
+            },
+            "windowHours": {
+              "type": "number",
+              "description": "Window in hours for activity_report / time_on_app / time_on_site (default 24, max 720)."
+            },
+            "appNameOrBundleId": {
+              "type": "string",
+              "description": "App name (e.g. 'Safari') or bundle id (e.g. 'com.apple.Safari') for time_on_app."
+            },
+            "domain": {
+              "type": "string",
+              "description": "Hostname (e.g. 'github.com') for time_on_site."
+            },
+            "deviceId": {
+              "type": "string",
+              "description": "Filter browser_activity to one registered device id; omit for default."
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [],
+      "_contexts": ["general"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": null,
+      "_capabilities": [],
+      "_surfaces": [],
       "_risk": null,
       "_cost": null
     },
@@ -11638,6 +14826,7 @@
         "capability:update",
         "capability:delete",
         "capability:schedule",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": [
@@ -11724,6 +14913,7 @@
         "capability:update",
         "capability:delete",
         "capability:schedule",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": [
@@ -11810,6 +15000,7 @@
         "capability:update",
         "capability:delete",
         "capability:schedule",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": [
@@ -11896,6 +15087,7 @@
         "capability:update",
         "capability:delete",
         "capability:schedule",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": [
@@ -11982,6 +15174,7 @@
         "capability:update",
         "capability:delete",
         "capability:schedule",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": [
@@ -12068,6 +15261,7 @@
         "capability:update",
         "capability:delete",
         "capability:schedule",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": [
@@ -12154,6 +15348,7 @@
         "capability:update",
         "capability:delete",
         "capability:schedule",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": [
@@ -12240,6 +15435,7 @@
         "capability:update",
         "capability:delete",
         "capability:schedule",
+        "effect:receipt-required",
         "surface:internal"
       ],
       "_contexts": [
@@ -12263,6 +15459,64 @@
       ],
       "_surfaces": ["surface:internal"],
       "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "PARENTING_GUIDANCE",
+        "description": "ordinary child boundary/routine/communication/discipline question, named parenting framework, or possible self-harm/abuse/medication/severe-symptom/custody concern -> PARENTING_GUIDANCE\ncited parenting education|vague-language inference|privacy/safety/clinical/legal stop|verified local human handoff",
+        "parameters": {
+          "type": "object",
+          "required": ["topic"],
+          "properties": {
+            "subjectEntityId": {
+              "type": "string",
+              "description": "Canonical graph child entity ID. Omit only when exactly one accessible child exists or the authenticated principal is that child.",
+              "minLength": 1
+            },
+            "ageBand": {
+              "type": "string",
+              "description": "Developmental band inferred from the conversation only when the graph has no trusted age-band attribute.",
+              "enum": ["toddler_preschool", "school_age", "teen"]
+            },
+            "topic": {
+              "type": "string",
+              "description": "Closest educational topic inferred from the user's meaning, including vague wording. Safety classification is performed separately by the runtime.",
+              "enum": [
+                "boundary_setting",
+                "routines",
+                "communication",
+                "emotion_coaching",
+                "independence",
+                "positive_discipline"
+              ]
+            },
+            "requestedFramework": {
+              "type": "string",
+              "description": "good_inside only when the user asks for that named framework; otherwise none.",
+              "enum": ["none", "good_inside"]
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [
+        "domain:health",
+        "domain:household",
+        "capability:read",
+        "surface:internal",
+        "risk:sensitive"
+      ],
+      "_contexts": ["general", "health", "tasks"],
+      "_priority": 100,
+      "_examples_count": 8,
+      "_domain": "domain:health",
+      "_capabilities": ["capability:read"],
+      "_surfaces": ["surface:internal"],
+      "_risk": "risk:sensitive",
       "_cost": null
     },
     {
@@ -12639,6 +15893,7 @@
         "domain:meta",
         "capability:execute",
         "capability:update",
+        "capability:send",
         "surface:internal",
         "risk:irreversible"
       ],
@@ -12656,7 +15911,11 @@
       "_priority": 100,
       "_examples_count": 2,
       "_domain": "domain:meta",
-      "_capabilities": ["capability:execute", "capability:update"],
+      "_capabilities": [
+        "capability:execute",
+        "capability:update",
+        "capability:send"
+      ],
       "_surfaces": ["surface:internal"],
       "_risk": "risk:irreversible",
       "_cost": null
@@ -12694,6 +15953,7 @@
         "domain:meta",
         "capability:execute",
         "capability:update",
+        "capability:send",
         "surface:internal",
         "risk:irreversible"
       ],
@@ -12711,7 +15971,11 @@
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:meta",
-      "_capabilities": ["capability:execute", "capability:update"],
+      "_capabilities": [
+        "capability:execute",
+        "capability:update",
+        "capability:send"
+      ],
       "_surfaces": ["surface:internal"],
       "_risk": "risk:irreversible",
       "_cost": null
@@ -12749,6 +16013,7 @@
         "domain:meta",
         "capability:execute",
         "capability:update",
+        "capability:send",
         "surface:internal",
         "risk:irreversible"
       ],
@@ -12766,7 +16031,11 @@
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:meta",
-      "_capabilities": ["capability:execute", "capability:update"],
+      "_capabilities": [
+        "capability:execute",
+        "capability:update",
+        "capability:send"
+      ],
       "_surfaces": ["surface:internal"],
       "_risk": "risk:irreversible",
       "_cost": null
@@ -15558,6 +18827,219 @@
       "_examples_count": 0,
       "_domain": "domain:meta",
       "_capabilities": ["capability:schedule", "capability:update"],
+      "_surfaces": ["surface:internal"],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "SCHOOL_SOURCES",
+        "description": "school/activity email, PDF, ICS, portal, or noisy voice extraction -> SCHOOL_SOURCES; actual send/purchase/calendar write remains in its approval-gated owner action\nschool source facts|child disambiguation|corrections|safe proposed bundles; no external effects",
+        "parameters": {
+          "type": "object",
+          "required": ["action"],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "School source operation.",
+              "enum": [
+                "capture_candidates",
+                "ingest_notice",
+                "reconcile_notice"
+              ]
+            },
+            "artifact": {
+              "type": "object",
+              "description": "Immutable source snapshot provenance for capture_candidates.",
+              "required": [],
+              "properties": {},
+              "additionalProperties": true
+            },
+            "candidates": {
+              "type": "array",
+              "description": "Separate extractor candidates; each becomes an immutable proposed source fact.",
+              "items": {
+                "type": "object",
+                "required": [],
+                "properties": {},
+                "additionalProperties": true
+              }
+            },
+            "input": {
+              "type": "object",
+              "description": "School notice artifact, extraction, authority/version, confidence, and optional structural C/P/E/M assignment.",
+              "required": [],
+              "properties": {},
+              "additionalProperties": true
+            },
+            "noticeKey": {
+              "type": "string",
+              "description": "Stable logical school notice key.",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [
+        "domain:school",
+        "domain:calendar",
+        "capability:read",
+        "capability:write",
+        "effect:receipt-required",
+        "surface:internal"
+      ],
+      "_contexts": ["general", "calendar", "tasks", "documents", "inbox"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:school",
+      "_capabilities": ["capability:read", "capability:write"],
+      "_surfaces": ["surface:internal"],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "SCHOOL_SOURCES_CAPTURE_CANDIDATES",
+        "description": "Capture source-grounded school/activity facts, resolve the correct child, reconcile corrections/cancellations, and propose approval-classified action bundles. This action never sends, purchases, submits, or mutates calendars. — subaction = capture_candidates",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Subaction discriminator (auto-set to \"capture_candidates\" for this virtual; do not change).",
+              "enum": ["capture_candidates"],
+              "default": "capture_candidates"
+            },
+            "artifact": {
+              "type": "object",
+              "description": "Immutable source snapshot provenance for capture_candidates.",
+              "required": [],
+              "properties": {},
+              "additionalProperties": true
+            },
+            "candidates": {
+              "type": "array",
+              "description": "Separate extractor candidates; each becomes an immutable proposed source fact.",
+              "items": {
+                "type": "object",
+                "required": [],
+                "properties": {},
+                "additionalProperties": true
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [
+        "domain:school",
+        "domain:calendar",
+        "capability:read",
+        "capability:write",
+        "effect:receipt-required",
+        "surface:internal"
+      ],
+      "_contexts": ["general", "calendar", "tasks", "documents", "inbox"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:school",
+      "_capabilities": ["capability:read", "capability:write"],
+      "_surfaces": ["surface:internal"],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "SCHOOL_SOURCES_INGEST_NOTICE",
+        "description": "Capture source-grounded school/activity facts, resolve the correct child, reconcile corrections/cancellations, and propose approval-classified action bundles. This action never sends, purchases, submits, or mutates calendars. — subaction = ingest_notice",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Subaction discriminator (auto-set to \"ingest_notice\" for this virtual; do not change).",
+              "enum": ["ingest_notice"],
+              "default": "ingest_notice"
+            },
+            "input": {
+              "type": "object",
+              "description": "School notice artifact, extraction, authority/version, confidence, and optional structural C/P/E/M assignment.",
+              "required": [],
+              "properties": {},
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [
+        "domain:school",
+        "domain:calendar",
+        "capability:read",
+        "capability:write",
+        "effect:receipt-required",
+        "surface:internal"
+      ],
+      "_contexts": ["general", "calendar", "tasks", "documents", "inbox"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:school",
+      "_capabilities": ["capability:read", "capability:write"],
+      "_surfaces": ["surface:internal"],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "SCHOOL_SOURCES_RECONCILE_NOTICE",
+        "description": "Capture source-grounded school/activity facts, resolve the correct child, reconcile corrections/cancellations, and propose approval-classified action bundles. This action never sends, purchases, submits, or mutates calendars. — subaction = reconcile_notice",
+        "parameters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "action": {
+              "type": "string",
+              "description": "Subaction discriminator (auto-set to \"reconcile_notice\" for this virtual; do not change).",
+              "enum": ["reconcile_notice"],
+              "default": "reconcile_notice"
+            },
+            "noticeKey": {
+              "type": "string",
+              "description": "Stable logical school notice key.",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/plugin-personal-assistant",
+      "_tags": [
+        "domain:school",
+        "domain:calendar",
+        "capability:read",
+        "capability:write",
+        "effect:receipt-required",
+        "surface:internal"
+      ],
+      "_contexts": ["general", "calendar", "tasks", "documents", "inbox"],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:school",
+      "_capabilities": ["capability:read", "capability:write"],
       "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null

@@ -1,7 +1,8 @@
 /**
- * Microsoft Graph calendar discovery, delta reconciliation, source health,
- * restart recovery, and concurrent sync serialization through CalendarService
- * against real PGlite tables and a real loopback HTTP wire.
+ * Microsoft Graph calendar discovery, idempotent creation, delta
+ * reconciliation, source health, restart recovery, and concurrent sync
+ * serialization through CalendarService against real PGlite tables and a
+ * real loopback HTTP wire.
  */
 
 import { createServer, type IncomingMessage, type Server } from "node:http";
@@ -28,6 +29,7 @@ import {
 import {
   type CalendarHostGate,
   CalendarService,
+  ensureCalendarFeedPreferenceTable,
 } from "../src/service/index.js";
 
 const AGENT_ID = "microsoft-calendar-pglite-agent";
@@ -90,7 +92,7 @@ function account(): MicrosoftCalendarAccount {
     id: "microsoft-owner-account",
     provider: "microsoft",
     role: "OWNER",
-    purpose: ["reading"],
+    purpose: ["reading", "writing"],
     accessGate: "owner_binding",
     status: "connected",
     externalId: "microsoft-user-id",
@@ -99,7 +101,7 @@ function account(): MicrosoftCalendarAccount {
     updatedAt: Date.parse("2026-07-26T00:00:00.000Z"),
     metadata: {
       accountKind: "organization",
-      grantedScopes: ["Calendars.Read"],
+      grantedScopes: ["Calendars.ReadWrite"],
     },
   };
   const timestamp = "2026-07-26T00:00:00.000Z";
@@ -111,11 +113,12 @@ function account(): MicrosoftCalendarAccount {
     side: "owner",
     identity: { sub: "microsoft-user-id", email: "owner@example.test" },
     identityEmail: "owner@example.test",
-    grantedScopes: ["Calendars.Read"],
+    grantedScopes: ["Calendars.ReadWrite"],
     capabilities: [
       "microsoft.calendar.read_basic",
       "microsoft.calendar.read",
       "microsoft.calendar.freebusy",
+      "microsoft.calendar.write",
     ],
     tokenRef: null,
     mode: "local",
@@ -137,6 +140,8 @@ function graphEvent(args: {
   revision: string;
   changeKey: string;
   start?: string;
+  end?: string;
+  iCalUId?: string;
 }): Record<string, unknown> {
   return {
     id: args.id,
@@ -148,7 +153,10 @@ function graphEvent(args: {
       dateTime: args.start ?? "2026-08-01T16:00:00.0000000",
       timeZone: "UTC",
     },
-    end: { dateTime: "2026-08-01T17:00:00.0000000", timeZone: "UTC" },
+    end: {
+      dateTime: args.end ?? "2026-08-01T17:00:00.0000000",
+      timeZone: "UTC",
+    },
     isAllDay: false,
     organizer: {
       emailAddress: { address: "owner@example.test", name: "Owner" },
@@ -156,7 +164,7 @@ function graphEvent(args: {
     attendees: [],
     type: "occurrence",
     seriesMasterId: "series-master-immutable",
-    iCalUId: "ical-series-id",
+    iCalUId: args.iCalUId ?? `${args.id}@example.test`,
     changeKey: args.changeKey,
     lastModifiedDateTime: args.revision,
     sensitivity: "normal",
@@ -197,6 +205,7 @@ let fullGeneration = 0;
 let deltaInFlight = 0;
 let maxDeltaInFlight = 0;
 let deltaRequests: string[] = [];
+let creationPayloads: Array<Record<string, unknown>> = [];
 let token: string;
 
 function portForRuntime(): MicrosoftGraphCalendarPort {
@@ -219,6 +228,7 @@ function portForRuntime(): MicrosoftGraphCalendarPort {
     listCalendars: graph.listCalendars.bind(graph),
     syncCalendarView: graph.syncCalendarView.bind(graph),
     getSchedule: graph.getSchedule.bind(graph),
+    createEvent: graph.createEvent.bind(graph),
   };
 }
 
@@ -250,6 +260,10 @@ beforeAll(async () => {
   await db.execute(sql.raw("CREATE SCHEMA IF NOT EXISTS app_calendar"));
   await db.execute(sql.raw(CREATE_EVENTS_TABLE));
   await db.execute(sql.raw(CREATE_SYNC_TABLE));
+  await ensureCalendarFeedPreferenceTable(
+    async (statement) =>
+      (await pg.query<Record<string, unknown>>(statement)).rows,
+  );
   const cache = new Map<string, unknown>();
   runtime = {
     agentId: AGENT_ID,
@@ -289,6 +303,32 @@ beforeAll(async () => {
           ],
         }),
       );
+      return;
+    }
+    if (
+      request.method === "POST" &&
+      path === "/v1.0/me/calendars/primary-calendar/events"
+    ) {
+      const payload = JSON.parse(await requestBody(request)) as Record<
+        string,
+        unknown
+      >;
+      creationPayloads.push(payload);
+      const start = payload.start as { dateTime: string };
+      const end = payload.end as { dateTime: string };
+      const created = graphEvent({
+        id: "created-event-immutable",
+        subject: String(payload.subject),
+        revision: "2026-07-26T16:00:00Z",
+        changeKey: "created-change-1",
+        start: start.dateTime,
+        end: end.dateTime,
+      });
+      created.bodyPreview = (payload.body as { content: string }).content;
+      created.location = payload.location;
+      created.attendees = payload.attendees;
+      response.writeHead(201, { "content-type": "application/json" });
+      response.end(JSON.stringify(created));
       return;
     }
     if (path === "/v1.0/me/calendar/getSchedule") {
@@ -424,7 +464,7 @@ beforeAll(async () => {
   });
   const address = server.address() as AddressInfo;
   baseUrl = `http://127.0.0.1:${address.port}/v1.0/`;
-});
+}, 30_000);
 
 beforeEach(async () => {
   await pg.query("DELETE FROM app_calendar.life_calendar_events");
@@ -433,6 +473,7 @@ beforeEach(async () => {
   deltaInFlight = 0;
   maxDeltaInFlight = 0;
   deltaRequests = [];
+  creationPayloads = [];
   token = "pglite-wire-token";
   vi.clearAllMocks();
   installService();
@@ -445,7 +486,9 @@ afterAll(async () => {
   await pg.close();
 });
 
-describe("Microsoft Calendar service (Graph HTTP + real PGlite)", () => {
+describe("Microsoft Calendar service (Graph HTTP + real PGlite)", {
+  timeout: 30_000,
+}, () => {
   it("persists stable source identities and reconciles update/tombstone after restart", async () => {
     const initial = await feed();
     expect(initial.state).toBe("complete");
@@ -560,19 +603,87 @@ describe("Microsoft Calendar service (Graph HTTP + real PGlite)", () => {
     expect(JSON.stringify(result)).not.toContain("ErrorMailRecipientNotFound");
   });
 
-  it("rejects mutations on the deliberately read-only Microsoft provider", async () => {
+  it("creates exactly once through Graph and persists the provider receipt", async () => {
+    const event = await service.createCalendarEvent(INTERNAL_URL, {
+      grantId: GRANT_ID,
+      calendarId: "primary",
+      title: "School conference",
+      description: "Bring the progress report",
+      location: "Room 12",
+      startAt: "2026-08-01T19:00:00.000Z",
+      endAt: "2026-08-01T20:00:00.000Z",
+      attendees: [
+        {
+          email: "coparent@example.test",
+          displayName: "Co-parent",
+        },
+      ],
+      notifyAttendees: true,
+      idempotencyKey: "approval:school-conference:create",
+    });
+
+    expect(event).toMatchObject({
+      provider: "microsoft",
+      grantId: GRANT_ID,
+      calendarId: "primary-calendar",
+      externalId: "created-event-immutable",
+      title: "School conference",
+      description: "Bring the progress report",
+      location: "Room 12",
+      metadata: {
+        changeKey: "created-change-1",
+      },
+    });
+    expect(creationPayloads).toHaveLength(1);
+    expect(creationPayloads[0]).toMatchObject({
+      subject: "School conference",
+      transactionId: expect.stringMatching(
+        /^[a-f0-9]{8}-[a-f0-9]{4}-5[a-f0-9]{3}-8[a-f0-9]{3}-[a-f0-9]{12}$/u,
+      ),
+    });
+    const rows = await pg.query<{
+      external_event_id: string;
+      connector_account_id: string;
+      grant_id: string;
+    }>(
+      `SELECT external_event_id, connector_account_id, grant_id
+       FROM app_calendar.life_calendar_events
+       WHERE external_event_id = 'created-event-immutable'`,
+    );
+    expect(rows.rows).toEqual([
+      {
+        external_event_id: "created-event-immutable",
+        connector_account_id: "microsoft-owner-account",
+        grant_id: GRANT_ID,
+      },
+    ]);
+  });
+
+  it("keeps Microsoft update and delete fail-closed without an atomic provider precondition", async () => {
+    const eventId = `${AGENT_ID}:microsoft:owner:grant:${GRANT_ID}:calendar:primary-calendar:event-1`;
     await expect(
-      service.createCalendarEvent(INTERNAL_URL, {
+      service.updateCalendarEvent(INTERNAL_URL, {
         grantId: GRANT_ID,
         calendarId: "primary-calendar",
-        title: "Attempted write",
-        startAt: "2026-08-01T19:00:00.000Z",
-        endAt: "2026-08-01T20:00:00.000Z",
+        eventId,
+        title: "Changed title",
+        expectedProviderVersion: "change-1",
       }),
     ).rejects.toMatchObject({
-      status: 403,
-      code: "MICROSOFT_CALENDAR_READ_ONLY",
+      status: 409,
+      code: "MICROSOFT_CALENDAR_CONDITIONAL_WRITE_UNSUPPORTED",
     });
-    expect(deltaRequests).toEqual([]);
+    await expect(
+      service.deleteCalendarEvent(INTERNAL_URL, {
+        grantId: GRANT_ID,
+        calendarId: "primary-calendar",
+        eventId,
+        expectedProviderVersion: "change-1",
+      }),
+    ).rejects.toMatchObject({
+      status: 409,
+      code: "MICROSOFT_CALENDAR_CONDITIONAL_WRITE_UNSUPPORTED",
+    });
+    expect(creationPayloads).toEqual([]);
   });
 });

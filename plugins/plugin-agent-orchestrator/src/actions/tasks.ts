@@ -9,6 +9,8 @@ import * as fs from "node:fs";
 import type {
   Action,
   ActionResult,
+  Content,
+  EffectReceipt,
   HandlerCallback,
   HandlerOptions,
   IAgentRuntime,
@@ -1302,6 +1304,9 @@ async function runCreate(
     text: `Created ${successfulResults.length} task-agent lanes.`,
     data: {
       waveId: plan.waveId,
+      agents: successfulResults.flatMap((result) =>
+        effectRecords(objectValue(result.data)?.agents),
+      ),
       lanes: plan.lanes.map((lane, index) => ({
         id: lane.id,
         title: lane.title,
@@ -3725,6 +3730,523 @@ async function runReopen(
   return runTaskLifecycleControl(runtime, params, content, callback, "reopen");
 }
 
+type TasksEffectProof = {
+  commitId: string;
+  commitKind: "durable" | "provider_accepted";
+  resource: { kind: string; id: string };
+  artifacts?: Array<{ kind: string; id: string }>;
+};
+
+type CapturedCallback = {
+  response: Content;
+  actionName?: string;
+};
+
+const TASKS_READ_ONLY_OPERATIONS: ReadonlySet<TaskOp> = new Set([
+  "list_agents",
+  "history",
+  "share",
+]);
+
+const TASKS_REJECTED_FAILURE_CODES: ReadonlySet<string> = new Set([
+  "FORBIDDEN",
+  "INVALID_CREDENTIALS",
+  "INVALID_REPO_DOMAIN",
+  "MISSING_INPUT",
+  "MISSING_ISSUE_NUMBER",
+  "MISSING_PARAMS",
+  "MISSING_PARENT",
+  "MISSING_REPO",
+  "MISSING_TASK_ID",
+  "MISSING_TITLE",
+  "NO_INPUT",
+  "NO_SESSION",
+  "NO_WORKSPACE",
+  "SESSION_NOT_FOUND",
+  "SERVICE_UNAVAILABLE",
+  "SMITHERS_DURABLE_TASK_UNAVAILABLE",
+  "TASK_NOT_FOUND",
+  "TASK_HISTORY_FAILED",
+  "UNKNOWN_OPERATION",
+  "UNSUPPORTED_OPERATION",
+  "WORKSPACE_NOT_FOUND",
+]);
+
+function effectString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : undefined;
+}
+
+function effectNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0
+    ? value
+    : undefined;
+}
+
+function effectRecords(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value)
+    ? value
+        .map((entry) => objectValue(entry))
+        .filter((entry): entry is Record<string, unknown> => Boolean(entry))
+    : [];
+}
+
+function uniqueEffectRefs(
+  refs: Array<{ kind: string; id: string }>,
+): Array<{ kind: string; id: string }> {
+  const seen = new Set<string>();
+  return refs.filter((ref) => {
+    const key = `${ref.kind}:${ref.id}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function issueOperation(
+  params: Record<string, unknown>,
+  content: Record<string, unknown>,
+): string {
+  const topLevelAction =
+    effectString(params.action) ?? effectString(content.action);
+  const normalizedTopLevelAction = topLevelAction
+    ?.toLowerCase()
+    .replace(/-/g, "_");
+  return (
+    effectString(params.issueAction) ??
+    effectString(content.issueAction) ??
+    (topLevelAction && normalizedTopLevelAction !== "manage_issues"
+      ? topLevelAction
+      : undefined) ??
+    inferIssueAction(effectString(content.text) ?? "")
+  ).toLowerCase();
+}
+
+function tasksNoopReason(
+  operation: TaskOp,
+  params: Record<string, unknown>,
+  content: Record<string, unknown>,
+  result: ActionResult,
+): string | undefined {
+  if (result.success && TASKS_READ_ONLY_OPERATIONS.has(operation)) {
+    return "The operation only read orchestrator state.";
+  }
+  const data = objectValue(result.data) ?? {};
+  if (
+    operation === "manage_issues" &&
+    result.success &&
+    (issueOperation(params, content) === "list" ||
+      issueOperation(params, content) === "get")
+  ) {
+    return "The operation only read provider issue state.";
+  }
+  if (
+    operation === "submit_workspace" &&
+    result.success &&
+    !effectString(data.commitHash)
+  ) {
+    return "The workspace had no changes to submit.";
+  }
+  if (
+    operation === "spawn_agent" &&
+    result.success &&
+    data.spawnCapped === true
+  ) {
+    return "The spawn cap reused an already captured result.";
+  }
+  if (
+    operation === "create" &&
+    result.success &&
+    effectRecords(data.agents).length > 0 &&
+    effectRecords(data.agents).every((agent) => agent.reused === true)
+  ) {
+    return "Every requested lane reused an active task-agent session.";
+  }
+  if (
+    operation === "stop_agent" &&
+    result.success &&
+    (data.stoppedCount === 0 || result.text === "No sessions to stop")
+  ) {
+    return "There were no active sessions to stop.";
+  }
+  if (operation === "cancel" && result.success && data.canceledCount === 0) {
+    return "There were no active tasks to cancel.";
+  }
+  return undefined;
+}
+
+function issueEffectProof(
+  params: Record<string, unknown>,
+  content: Record<string, unknown>,
+  data: Record<string, unknown>,
+): TasksEffectProof | undefined {
+  const op = issueOperation(params, content);
+  if (op === "list" || op === "get" || op === "add_labels") return undefined;
+  const repo = effectString(params.repo) ?? effectString(content.repo);
+  const issue = objectValue(data.issue);
+  const issueRecords = [
+    ...(issue ? [issue] : []),
+    ...effectRecords(data.issues),
+  ];
+  const issueRefs = issueRecords
+    .map((issue) => {
+      const number = effectNumber(issue.number);
+      const url = effectString(issue.url);
+      const id = url ?? (number && repo ? `${repo}#${number}` : undefined);
+      return id ? { kind: "github.issue", id } : undefined;
+    })
+    .filter((ref): ref is { kind: string; id: string } => ref !== undefined);
+  const comment = objectValue(data.comment);
+  const commentUrl = effectString(comment?.url);
+  if (commentUrl) {
+    return {
+      commitId: commentUrl,
+      commitKind: "provider_accepted",
+      resource: { kind: "github.issue-comment", id: commentUrl },
+    };
+  }
+  const refs = uniqueEffectRefs(issueRefs);
+  if (refs.length === 0) return undefined;
+  return {
+    commitId: refs[0].id,
+    commitKind: "provider_accepted",
+    resource: refs[0],
+    artifacts: refs.slice(1),
+  };
+}
+
+function tasksEffectProof(
+  operation: TaskOp,
+  params: Record<string, unknown>,
+  content: Record<string, unknown>,
+  result: ActionResult,
+): TasksEffectProof | undefined {
+  const data = objectValue(result.data) ?? {};
+  if (operation === "manage_issues") {
+    return issueEffectProof(params, content, data);
+  }
+  if (operation === "provision_workspace") {
+    const workspaceId = effectString(data.workspaceId);
+    return workspaceId
+      ? {
+          commitId: workspaceId,
+          commitKind: "durable",
+          resource: { kind: "coding.workspace", id: workspaceId },
+        }
+      : undefined;
+  }
+  if (operation === "submit_workspace") {
+    const workspaceId = effectString(data.workspaceId);
+    const commitHash = effectString(data.commitHash);
+    if (!workspaceId || !commitHash) return undefined;
+    const pullRequest = objectValue(data.pr);
+    const pullRequestUrl = effectString(pullRequest?.url);
+    const pullRequestNumber = effectNumber(pullRequest?.number);
+    const pullRequestId =
+      pullRequestUrl ??
+      (pullRequestNumber ? `pull-request:${pullRequestNumber}` : undefined);
+    return {
+      commitId: commitHash,
+      commitKind: "provider_accepted",
+      resource: { kind: "coding.workspace", id: workspaceId },
+      artifacts: pullRequestId
+        ? [{ kind: "github.pull-request", id: pullRequestId }]
+        : [],
+    };
+  }
+  if (operation === "archive" || operation === "reopen") {
+    const taskId = effectString(data.taskId);
+    return taskId && objectValue(data.task)
+      ? {
+          commitId: taskId,
+          commitKind: "durable",
+          resource: { kind: "orchestrator.task", id: taskId },
+        }
+      : undefined;
+  }
+  if (operation === "control") {
+    const controlAction =
+      normalizeControlAction(
+        effectString(params.controlAction) ??
+          effectString(content.controlAction),
+      ) ?? "continue";
+    const taskId = effectString(data.taskId);
+    const sessionId = effectString(data.sessionId);
+    if (
+      taskId &&
+      (controlAction === "pause" ||
+        ((controlAction === "resume" || controlAction === "continue") &&
+          !sessionId))
+    ) {
+      return {
+        commitId: taskId,
+        commitKind: "durable",
+        resource: { kind: "orchestrator.task", id: taskId },
+      };
+    }
+    return undefined;
+  }
+  if (operation === "spawn_agent") {
+    const sessionId = effectString(data.sessionId);
+    return sessionId
+      ? {
+          commitId: sessionId,
+          commitKind: "provider_accepted",
+          resource: { kind: "acp.session", id: sessionId },
+        }
+      : undefined;
+  }
+  if (operation === "create") {
+    const taskRefs = [
+      effectString(data.taskId),
+      ...effectRecords(data.lanes).map((lane) => effectString(lane.taskId)),
+    ]
+      .filter((id): id is string => Boolean(id))
+      .map((id) => ({ kind: "orchestrator.task", id }));
+    const sessionRefs = effectRecords(data.agents)
+      .filter((agent) => agent.status !== "failed" && agent.reused !== true)
+      .map((agent) => effectString(agent.sessionId) ?? effectString(agent.id))
+      .filter((id): id is string => Boolean(id))
+      .map((id) => ({ kind: "acp.session", id }));
+    const refs = uniqueEffectRefs([...taskRefs, ...sessionRefs]);
+    if (refs.length === 0) return undefined;
+    const durable = refs.find((ref) => ref.kind === "orchestrator.task");
+    const resource = durable ?? refs[0];
+    return {
+      commitId: resource.id,
+      commitKind: durable ? "durable" : "provider_accepted",
+      resource,
+      artifacts: refs.filter(
+        (ref) => ref.kind !== resource.kind || ref.id !== resource.id,
+      ),
+    };
+  }
+  return undefined;
+}
+
+function tasksReceiptBase(
+  operation: TaskOp,
+  resource: { kind: string; id: string },
+) {
+  return {
+    receiptId: randomUUID(),
+    operation: `agent-orchestrator.tasks.${operation}`,
+    resource,
+    artifacts: [],
+    idempotency: { key: null, replayed: false },
+    observedAt: new Date().toISOString(),
+  } as const;
+}
+
+function tasksEffectReceipt(args: {
+  operation: TaskOp;
+  message: Memory;
+  params: Record<string, unknown>;
+  content: Record<string, unknown>;
+  result: ActionResult;
+}): { receipt: EffectReceipt; outcomeUnknown: boolean } {
+  const requestId = effectString(args.message.id) ?? randomUUID();
+  const noopReason = tasksNoopReason(
+    args.operation,
+    args.params,
+    args.content,
+    args.result,
+  );
+  if (noopReason) {
+    return {
+      receipt: {
+        ...tasksReceiptBase(args.operation, {
+          kind: "orchestrator.request",
+          id: requestId,
+        }),
+        outcome: "noop",
+        reason: noopReason,
+      },
+      outcomeUnknown: false,
+    };
+  }
+  const proof = tasksEffectProof(
+    args.operation,
+    args.params,
+    args.content,
+    args.result,
+  );
+  if (proof) {
+    const observedAt = new Date().toISOString();
+    return {
+      receipt: {
+        ...tasksReceiptBase(args.operation, proof.resource),
+        artifacts: proof.artifacts ?? [],
+        observedAt,
+        outcome: "applied",
+        commit: {
+          kind: proof.commitKind,
+          id: proof.commitId,
+          committedAt: observedAt,
+        },
+      },
+      outcomeUnknown: false,
+    };
+  }
+  const errorCode =
+    effectString(args.result.error) ?? "AUTHORITATIVE_RECEIPT_MISSING";
+  const rejected =
+    args.result.success === false &&
+    TASKS_REJECTED_FAILURE_CODES.has(errorCode);
+  return {
+    receipt: {
+      ...tasksReceiptBase(args.operation, {
+        kind: "orchestrator.request",
+        id: requestId,
+      }),
+      outcome: "failed",
+      failure: {
+        code: errorCode,
+        retryable: false,
+        acceptance: rejected ? "rejected" : "unknown",
+      },
+    },
+    outcomeUnknown: !rejected,
+  };
+}
+
+function unverifiedTasksText(operation: TaskOp): string {
+  return (
+    `The ${operation.replaceAll("_", " ")} request may have reached its target, ` +
+    "but no authoritative commit receipt was returned. Verify the external state before retrying."
+  );
+}
+
+async function settleTasksOperation(args: {
+  operation: TaskOp;
+  message: Memory;
+  params: Record<string, unknown>;
+  content: Record<string, unknown>;
+  result: ActionResult;
+  capturedCallbacks: CapturedCallback[];
+  callback?: HandlerCallback;
+}): Promise<ActionResult> {
+  const { receipt, outcomeUnknown } = tasksEffectReceipt(args);
+  let result = args.result;
+  const helperEmittedCallback = args.capturedCallbacks.length > 0;
+  let canonical = args.capturedCallbacks.at(-1);
+  if (!canonical && effectString(result.text)) {
+    canonical = { response: { text: effectString(result.text) } };
+  }
+  if (
+    args.capturedCallbacks.length > 1 &&
+    effectString(result.text) !== undefined
+  ) {
+    canonical = {
+      response: {
+        ...canonical?.response,
+        text: effectString(result.text),
+      },
+      actionName: canonical?.actionName,
+    };
+  }
+  if (result.success && receipt.outcome === "failed") {
+    const text = unverifiedTasksText(args.operation);
+    result = {
+      ...result,
+      text,
+    };
+    canonical = {
+      response: { ...(canonical?.response ?? {}), text },
+      actionName: canonical?.actionName,
+    };
+  } else if (outcomeUnknown && result.success === false) {
+    result = {
+      ...result,
+      data: {
+        ...(objectValue(result.data) ?? {}),
+        outcomeUnknown: true,
+        retryable: false,
+        reconciliationRequired: true,
+      },
+    };
+  }
+
+  const effectResult: ActionResult = {
+    ...result,
+    effectReceipts: [receipt],
+    ...(canonical?.response.text
+      ? {
+          userFacingText: canonical.response.text,
+          verifiedUserFacing: true,
+          userFacingEffectReceiptIds: [receipt.receiptId],
+        }
+      : {}),
+  };
+  if (canonical && args.callback && helperEmittedCallback) {
+    await args.callback(canonical.response, canonical.actionName);
+  }
+  return effectResult;
+}
+
+async function dispatchTasksOperation(
+  action: TaskOp,
+  runtime: IAgentRuntime,
+  message: Memory,
+  state: State | undefined,
+  params: Record<string, unknown>,
+  content: Record<string, unknown>,
+  callback: HandlerCallback | undefined,
+): Promise<ActionResult> {
+  switch (action) {
+    case "create":
+      return runCreate(runtime, message, state, params, content, callback);
+    case "spawn_agent":
+      return runSpawnAgent(runtime, message, state, params, content, callback);
+    case "send":
+      return runSend(runtime, message, state, params, content, callback);
+    case "stop_agent":
+      return runStopAgent(runtime, message, state, params, content, callback);
+    case "list_agents":
+      return runListAgents(runtime, message, state, params, content, callback);
+    case "cancel":
+      return runCancel(runtime, message, state, params, content, callback);
+    case "history":
+      return runHistory(runtime, message, state, params, content, callback);
+    case "control":
+      return runControl(runtime, message, state, params, content, callback);
+    case "share":
+      return runShare(runtime, message, state, params, content, callback);
+    case "provision_workspace":
+      return runProvisionWorkspace(
+        runtime,
+        message,
+        state,
+        params,
+        content,
+        callback,
+      );
+    case "submit_workspace":
+      return runSubmitWorkspace(
+        runtime,
+        message,
+        state,
+        params,
+        content,
+        callback,
+      );
+    case "manage_issues":
+      return runManageIssues(
+        runtime,
+        message,
+        state,
+        params,
+        content,
+        callback,
+      );
+    case "archive":
+      return runArchive(runtime, message, state, params, content, callback);
+    case "reopen":
+      return runReopen(runtime, message, state, params, content, callback);
+  }
+}
+
 // ── parent action ──────────────────────────────────────────────────────
 
 export const tasksAction: Action & {
@@ -3740,6 +4262,7 @@ export const tasksAction: Action & {
     "resource:agent-task",
     "resource:coding-task",
     "capability:delegate",
+    "effect:receipt-required",
     "surface:task-coordinator",
   ],
   similes: [
@@ -4327,77 +4850,31 @@ export const tasksAction: Action & {
     const params = paramsRecord(options as HandlerOptionsLike | undefined);
     const content = contentRecord(message);
     const action = readOp(params) ?? "create";
-
-    switch (action) {
-      case "create":
-        return runCreate(runtime, message, state, params, content, callback);
-      case "spawn_agent":
-        return runSpawnAgent(
-          runtime,
-          message,
-          state,
-          params,
-          content,
-          callback,
-        );
-      case "send":
-        return runSend(runtime, message, state, params, content, callback);
-      case "stop_agent":
-        return runStopAgent(runtime, message, state, params, content, callback);
-      case "list_agents":
-        return runListAgents(
-          runtime,
-          message,
-          state,
-          params,
-          content,
-          callback,
-        );
-      case "cancel":
-        return runCancel(runtime, message, state, params, content, callback);
-      case "history":
-        return runHistory(runtime, message, state, params, content, callback);
-      case "control":
-        return runControl(runtime, message, state, params, content, callback);
-      case "share":
-        return runShare(runtime, message, state, params, content, callback);
-      case "provision_workspace":
-        return runProvisionWorkspace(
-          runtime,
-          message,
-          state,
-          params,
-          content,
-          callback,
-        );
-      case "submit_workspace":
-        return runSubmitWorkspace(
-          runtime,
-          message,
-          state,
-          params,
-          content,
-          callback,
-        );
-      case "manage_issues":
-        return runManageIssues(
-          runtime,
-          message,
-          state,
-          params,
-          content,
-          callback,
-        );
-      case "archive":
-        return runArchive(runtime, message, state, params, content, callback);
-      case "reopen":
-        return runReopen(runtime, message, state, params, content, callback);
-      default:
-        return errorResult(
-          "UNKNOWN",
-          `Unknown TASKS action: ${String(action)}`,
-        );
-    }
+    const capturedCallbacks: CapturedCallback[] = [];
+    const captureCallback: HandlerCallback | undefined = callback
+      ? async (response, actionName) => {
+          capturedCallbacks.push({ response, actionName });
+          return [];
+        }
+      : undefined;
+    const result = await dispatchTasksOperation(
+      action,
+      runtime,
+      message,
+      state,
+      params,
+      content,
+      captureCallback,
+    );
+    return settleTasksOperation({
+      operation: action,
+      message,
+      params,
+      content,
+      result,
+      capturedCallbacks,
+      callback,
+    });
   },
 
   examples: [

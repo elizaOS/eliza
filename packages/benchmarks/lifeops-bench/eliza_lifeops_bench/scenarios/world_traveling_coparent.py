@@ -6,8 +6,244 @@ sandbox provider receipts plus a hand-reviewed trajectory and domain artifact.
 
 from __future__ import annotations
 
-from ..types import Domain, Scenario, ScenarioMode, ScenarioTier
+import hashlib
+import json
+
+from ..types import (
+    Domain,
+    Scenario,
+    ScenarioMode,
+    ScenarioTier,
+    TrustedActionRisk,
+    TrustedActionPolicy,
+    TrustedEvidenceRequirement,
+)
 from ._personas import PERSONA_MAYA_TRAVELING_COPARENT
+
+
+def _policy(
+    name: str,
+    *,
+    discriminator_field: str | None = None,
+    allowed_discriminators: tuple[str, ...] = (),
+    risk: TrustedActionRisk = "read",
+    required_kwargs: tuple[str, ...] = (),
+    max_calls: int = 12,
+) -> TrustedActionPolicy:
+    return TrustedActionPolicy(
+        name=name,
+        discriminator_field=discriminator_field,
+        allowed_discriminators=allowed_discriminators,
+        risk=risk,
+        required_kwargs=required_kwargs,
+        max_calls=max_calls,
+    )
+
+
+_CALENDAR_READ = _policy(
+    "CALENDAR",
+    discriminator_field="subaction",
+    allowed_discriminators=(
+        "search_events",
+        "check_availability",
+        "next_event",
+    ),
+)
+_CALENDAR_PROPOSE = _policy(
+    "CALENDAR",
+    discriminator_field="subaction",
+    allowed_discriminators=("propose_times",),
+    risk="proposal",
+)
+_CALENDAR_CREATE = _policy(
+    "CALENDAR",
+    discriminator_field="subaction",
+    allowed_discriminators=("create_event",),
+    risk="approved_write",
+    required_kwargs=("approvalId",),
+    max_calls=3,
+)
+_CALENDAR_UPDATE = _policy(
+    "CALENDAR",
+    discriminator_field="subaction",
+    allowed_discriminators=("update_event", "bulk_reschedule"),
+    risk="approved_write",
+    required_kwargs=("approvalId",),
+    max_calls=3,
+)
+_CALENDAR_DELETE = _policy(
+    "CALENDAR",
+    discriminator_field="subaction",
+    allowed_discriminators=("delete_event",),
+    risk="approved_write",
+    required_kwargs=("approvalId",),
+    max_calls=2,
+)
+_CALENDAR_SOURCE_READ = _policy(
+    "CALENDAR_SOURCES",
+    discriminator_field="operation",
+    allowed_discriminators=("list",),
+)
+_CALENDAR_SOURCE_ADMIN = _policy(
+    "CALENDAR_SOURCES",
+    discriminator_field="operation",
+    allowed_discriminators=("connect", "reconnect", "select", "deselect"),
+    risk="proposal",
+    max_calls=8,
+)
+_MESSAGE_READ = _policy(
+    "MESSAGE",
+    discriminator_field="operation",
+    allowed_discriminators=(
+        "search_inbox",
+        "list_channels",
+        "read_channel",
+        "read_with_contact",
+        "triage",
+    ),
+)
+_MESSAGE_DRAFT = _policy(
+    "MESSAGE",
+    discriminator_field="operation",
+    allowed_discriminators=("draft_reply",),
+    risk="proposal",
+    max_calls=4,
+)
+_ENTITY_READ = _policy(
+    "ENTITY",
+    discriminator_field="subaction",
+    allowed_discriminators=("list",),
+)
+_ENTITY_WRITE = _policy(
+    "ENTITY",
+    discriminator_field="subaction",
+    allowed_discriminators=(
+        "add",
+        "update",
+        "set_identity",
+        "set_relationship",
+        "log_interaction",
+    ),
+    risk="proposal",
+    max_calls=4,
+)
+_SCHEDULED_READ = _policy(
+    "SCHEDULED_TASKS",
+    discriminator_field="subaction",
+    allowed_discriminators=("list", "get", "history"),
+)
+_SCHEDULED_CREATE = _policy(
+    "SCHEDULED_TASK_CREATE",
+    risk="proposal",
+    max_calls=3,
+)
+_LIFE_READ = _policy("LIFE_REVIEW")
+_LIFE_CREATE = _policy("LIFE_CREATE", risk="proposal", max_calls=4)
+_MONEY_READ = _policy(
+    "MONEY",
+    discriminator_field="subaction",
+    allowed_discriminators=(
+        "dashboard",
+        "list_sources",
+        "list_transactions",
+        "recurring_charges",
+        "spending_summary",
+        "subscription_status",
+        "subscription_audit",
+    ),
+)
+_HEALTH_READ = _policy("HEALTH")
+_BOOK_TRAVEL_READ = _policy("BOOK_TRAVEL")
+
+_CAPABILITY_ACTION_POLICIES: dict[str, tuple[TrustedActionPolicy, ...]] = {
+    "G1": (_CALENDAR_SOURCE_READ, _CALENDAR_SOURCE_ADMIN, _MESSAGE_READ),
+    "G2": (_CALENDAR_READ,),
+    "G3": (_CALENDAR_READ,),
+    "G4": (_CALENDAR_READ,),
+    "G5": (_CALENDAR_READ, _BOOK_TRAVEL_READ, _ENTITY_READ),
+    "G6": (
+        _CALENDAR_READ,
+        _CALENDAR_PROPOSE,
+        _BOOK_TRAVEL_READ,
+        _MESSAGE_DRAFT,
+    ),
+    "G7": (_CALENDAR_READ,),
+    "G8": (_CALENDAR_READ, _CALENDAR_CREATE),
+    "G9": (_CALENDAR_READ, _CALENDAR_PROPOSE),
+    "G10": (_CALENDAR_READ, _CALENDAR_SOURCE_READ),
+    "G11": (_ENTITY_READ, _ENTITY_WRITE, _SCHEDULED_READ, _SCHEDULED_CREATE),
+    "G12": (_CALENDAR_READ, _CALENDAR_PROPOSE, _MESSAGE_READ, _MESSAGE_DRAFT),
+    "G13": (_LIFE_CREATE, _MESSAGE_DRAFT),
+    "G14": (_ENTITY_READ, _CALENDAR_CREATE),
+    "G15": (_MESSAGE_READ, _CALENDAR_READ, _CALENDAR_UPDATE),
+    "G16": (_CALENDAR_SOURCE_ADMIN,),
+    "G17": (_MESSAGE_DRAFT,),
+    "G18": (_CALENDAR_CREATE, _CALENDAR_PROPOSE),
+    "G19": (_ENTITY_READ, _MESSAGE_DRAFT),
+    "G20": (_ENTITY_READ,),
+    "G21": (_ENTITY_READ,),
+    "G22": (_MESSAGE_READ,),
+    "G23": (_ENTITY_READ, _MESSAGE_READ),
+    "G24": (_MESSAGE_READ, _SCHEDULED_READ, _SCHEDULED_CREATE),
+    "G25": (_HEALTH_READ, _LIFE_READ),
+    "G26": (_MONEY_READ,),
+    "G27": (_MONEY_READ,),
+    "G28": (_MONEY_READ,),
+    "G29": (_ENTITY_READ, _CALENDAR_READ, _MESSAGE_DRAFT),
+    "G30": (_ENTITY_READ, _ENTITY_WRITE),
+    "G31": (_MONEY_READ,),
+    "G32": (_CALENDAR_READ, _CALENDAR_PROPOSE),
+    "G33": (_MONEY_READ,),
+    "G34": (_MONEY_READ,),
+    "G35": (_HEALTH_READ,),
+    "G36": (_HEALTH_READ,),
+    "G37": (_ENTITY_READ,),
+    "G38": (_LIFE_READ, _SCHEDULED_READ, _SCHEDULED_CREATE),
+    "G39": (_CALENDAR_READ,),
+    "G40": (_CALENDAR_READ,),
+    "G41": (_CALENDAR_CREATE, _CALENDAR_UPDATE, _CALENDAR_DELETE),
+    "G42": (_CALENDAR_DELETE,),
+    "G43": (_CALENDAR_READ, _CALENDAR_UPDATE),
+    "G44": (_CALENDAR_UPDATE,),
+    "G45": (_CALENDAR_READ, _CALENDAR_CREATE),
+    "G46": (_CALENDAR_READ,),
+    "G47": (_CALENDAR_READ,),
+    "G48": (_CALENDAR_READ, _CALENDAR_PROPOSE),
+}
+
+
+def _contract_sha256(
+    capability_id: str,
+    success_criteria: list[str],
+    world_assertions: list[str],
+    policies: tuple[TrustedActionPolicy, ...],
+) -> str:
+    payload = {
+        "contract_id": capability_id,
+        "contract_version": 1,
+        "success_criteria": success_criteria,
+        "world_assertions": world_assertions,
+        "allowed_actions": [
+            {
+                "name": policy.name,
+                "discriminator_field": policy.discriminator_field,
+                "allowed_discriminators": list(policy.allowed_discriminators),
+                "risk": policy.risk,
+                "required_kwargs": list(policy.required_kwargs),
+                "max_calls": policy.max_calls,
+            }
+            for policy in policies
+        ],
+        "terminal_attestation_required": True,
+    }
+    return hashlib.sha256(
+        json.dumps(
+            payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8")
+    ).hexdigest()
 
 
 def _live(
@@ -20,6 +256,7 @@ def _live(
     success_criteria: list[str],
     world_assertions: list[str],
 ) -> Scenario:
+    policies = _CAPABILITY_ACTION_POLICIES[capability_id]
     return Scenario(
         id=scenario_id,
         name=name,
@@ -39,6 +276,22 @@ def _live(
         success_criteria=success_criteria,
         world_assertions=world_assertions,
         tier=tier,
+        opening_mode="simulated",
+        trusted_evidence_requirement=TrustedEvidenceRequirement(
+            contract_id=capability_id,
+            contract_version=1,
+            contract_sha256=_contract_sha256(
+                capability_id,
+                success_criteria,
+                world_assertions,
+                policies,
+            ),
+            required_assertion_ids=tuple(
+                f"{capability_id}.world.{index}"
+                for index in range(1, len(world_assertions) + 1)
+            ),
+            allowed_actions=policies,
+        ),
     )
 
 
@@ -243,7 +496,7 @@ WORLD_TRAVELING_COPARENT_SCENARIOS: list[Scenario] = [
             "The aggregate answer is partial rather than complete or empty.",
         ],
         [
-            "each source retains an independent complete, partial, stale, or error health record",
+            "each source retains an independent fresh, stale, error, or disconnected health record",
             "the aggregate calendar feed state is partial",
         ],
     ),

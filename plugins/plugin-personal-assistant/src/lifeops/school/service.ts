@@ -417,7 +417,7 @@ export class SchoolSourceFactService {
         this.now().toISOString(),
       );
     }
-    const { resolution, bundle } = await this.reconcileNotice(
+    const { resolution, bundle, replayed } = await this.reconcileNotice(
       noticeKey,
       responsibilityAssignment?.id ?? null,
     );
@@ -428,6 +428,7 @@ export class SchoolSourceFactService {
       noticeResolution: resolution,
       actionBundle: bundle,
       responsibilityAssignment,
+      actionBundleReplayed: replayed,
     };
   }
 
@@ -506,7 +507,11 @@ export class SchoolSourceFactService {
   async reconcileNotice(
     noticeKeyValue: string,
     explicitResponsibilityAssignmentId: string | null = null,
-  ): Promise<{ resolution: SchoolNoticeResolution; bundle: ActionBundle }> {
+  ): Promise<{
+    resolution: SchoolNoticeResolution;
+    bundle: ActionBundle;
+    replayed: boolean;
+  }> {
     const noticeKey = noticeKeyValue.trim();
     if (!noticeKey) return invalid("noticeKey must be a non-empty string");
     const facts = await this.deps.repository.listFacts(
@@ -642,7 +647,7 @@ export class SchoolSourceFactService {
     const replay = existingBundles.find((bundle) =>
       bundleMatches(bundle, bundleInput),
     );
-    if (replay) return { resolution, bundle: replay };
+    if (replay) return { resolution, bundle: replay, replayed: true };
 
     const revision =
       existingBundles.reduce(
@@ -664,7 +669,7 @@ export class SchoolSourceFactService {
       bundle,
       existingBundles.map((existing) => existing.id),
     );
-    return { resolution, bundle: persisted };
+    return { resolution, bundle: persisted, replayed: false };
   }
 
   async listCurrentActionBundles(noticeKey: string): Promise<ActionBundle[]> {
@@ -897,9 +902,11 @@ export class SchoolSourceFactRuntimeService extends Service {
     return this.school.captureCandidates(artifact, candidates);
   }
 
-  reconcileNotice(
-    noticeKey: string,
-  ): Promise<{ resolution: SchoolNoticeResolution; bundle: ActionBundle }> {
+  reconcileNotice(noticeKey: string): Promise<{
+    resolution: SchoolNoticeResolution;
+    bundle: ActionBundle;
+    replayed: boolean;
+  }> {
     return this.school.reconcileNotice(noticeKey);
   }
 }

@@ -139,7 +139,7 @@ export type ApprovalPayload =
         readonly updatedAt: string;
         readonly etag: string;
       } | null;
-      recurrenceScope?: "instance" | "series" | null;
+      recurrenceScope?: "instance" | "this_and_following" | "series" | null;
       notifyAttendees?: boolean;
       editorRequestSha256?: string;
       patch: {
@@ -173,7 +173,7 @@ export type ApprovalPayload =
         readonly updatedAt: string;
         readonly etag: string;
       } | null;
-      recurrenceScope?: "instance" | "series" | null;
+      recurrenceScope?: "instance" | "this_and_following" | "series" | null;
       cancellationMode?:
         | "organizer_cancel"
         | "decline_invitation"

@@ -12,6 +12,7 @@ import type {
 	ContextGate,
 	RoleGate,
 } from "./contexts";
+import type { EffectReceipt } from "./effects";
 import type { Memory } from "./memory";
 import type { Content, JsonPrimitive, JsonValue } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
@@ -372,7 +373,14 @@ export interface Action {
 	 */
 	override?: boolean;
 
-	/** Optional tags for categorization */
+	/**
+	 * Optional structural capability tags. Effectful actions use
+	 * `capability:write|update|delete|schedule|send|delegate|execute`; add
+	 * `effect:idempotent` only when every invocation carries a stable operation
+	 * key and the authoritative provider or store safely replays it. Add
+	 * `effect:receipt-required` only after every successful visible branch binds
+	 * exact user-facing text to a validated effect receipt.
+	 */
 	tags?: string[];
 
 	/**
@@ -874,6 +882,20 @@ export interface ActionResult {
 	 * than echoing the action verbatim.
 	 */
 	verifiedUserFacing?: boolean;
+
+	/**
+	 * Canonical mutation outcomes produced by this action. `success` alone is
+	 * never proof that an external change committed; only an applied receipt with
+	 * commit proof can ground a user-facing completion claim.
+	 */
+	effectReceipts?: readonly EffectReceipt[];
+
+	/**
+	 * Receipt IDs described by the exact `userFacingText`. The runtime accepts a
+	 * completion confirmation only when every ID resolves to an active applied
+	 * receipt from this turn.
+	 */
+	userFacingEffectReceiptIds?: readonly string[];
 
 	/** Values to merge into the state */
 	values?: Record<string, ProviderValue>;

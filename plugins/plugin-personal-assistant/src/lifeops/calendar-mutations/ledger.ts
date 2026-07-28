@@ -358,6 +358,7 @@ function parseReceipt(value: unknown): CalendarMutationReceipt | null {
   const recurrenceScope =
     record.recurrenceScope === null ||
     record.recurrenceScope === "instance" ||
+    record.recurrenceScope === "this_and_following" ||
     record.recurrenceScope === "series"
       ? record.recurrenceScope
       : undefined;

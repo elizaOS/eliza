@@ -34,10 +34,17 @@ scenarios are slower and more expensive — every agent turn triggers a
 simulated-user turn, plus a judge call from the configured
 `live_judge_min_turn` onward.
 
+Every LIVE `instruction` is a hidden evaluator goal. The independent persona
+model generates the opening in its own words, using indirect references and
+withholding at least one material detail for later clarification or
+correction. The executor never receives the authored goal verbatim. Write the
+complete hidden intent and behavioral constraints; do not treat
+`instruction` as a user-facing opening.
+
 ## Persona design
 
 Personas live in `eliza_lifeops_bench/scenarios/_personas.py`. There
-are 10 today; add a new one only if existing personas don't fit. Each
+are 23 today; add a new one only if existing personas don't fit. Each
 persona carries:
 
 - `id` — snake_case lowercase, used for cross-references (`PERSONA_RIA_PM` → `ria_pm`).
@@ -80,11 +87,12 @@ Supported (action, subaction) pairs at time of writing:
 | `ENTITY`               | `add`, `set_identity`, `log_interaction`, `list`                                                                              |
 | `LIFE_CREATE`          | `create` with `details.kind` ∈ `{reminder, alarm, workout, health_metric}`                                                    |
 | `LIFE_COMPLETE` / `LIFE_SNOOZE` | reminder targets only                                                                                                |
-| `LIFE_REVIEW`          | read-only no-op                                                                                                               |
-| `HEALTH`, `PAYMENTS`, `SUBSCRIPTIONS_AUDIT` | read-only no-op (state hash matches trivially)                                                           |
+| `LIFE_REVIEW`          | modeled review that stamps list review metadata                                                                               |
+| `HEALTH`               | `by_metric` is modeled; other projections fail explicitly until implemented                                                   |
+| `MONEY`                | `list_transactions` is modeled; other projections fail explicitly until implemented                                          |
 | `SUBSCRIPTIONS_CANCEL` | resolves by `serviceSlug` first, then `serviceName` (case-insensitive)                                                        |
-| `BOOK_TRAVEL`          | offer-return, no booking                                                                                                      |
-| `APP_BLOCK`, `WEBSITE_BLOCK` | focus blocks; not modeled in LifeWorld; no-op for state                                                                 |
+| `BOOK_TRAVEL`          | explicit unsupported result until LifeWorld has travel bookings                                                               |
+| `APP_BLOCK`, `WEBSITE_BLOCK` | explicit unsupported result until LifeWorld has device/focus enforcement state                                         |
 | `SCHEDULED_TASK_CREATE` | folded into reminders on `list_personal`                                                                                     |
 
 ### Fine-grained (legacy / inline conformance)
@@ -94,9 +102,11 @@ Domain-prefixed verbs (`CALENDAR.create`, `MAIL.archive`,
 adapters that emit explicit tool ids. Prefer umbrella for new
 scenarios.
 
-The full list of supported names is the keys of `_ACTION_HANDLERS` in
-`runner.py`; `runner.supported_actions()` is the programmatic entry
-point.
+The full list of recognized names is the keys of `_ACTION_HANDLERS` in
+`runner.py`; `runner.supported_actions()` is the programmatic entry point.
+Recognition does not imply modeled semantics. Consult `corpus-audit.json`:
+unmodeled dispatches return `ok=false`, `status=unsupported`, and
+`noEffect=true`.
 
 ## First-question fallback
 
@@ -121,13 +131,21 @@ If the instruction is fully specified and no realistic clarifier
 exists, leave `first_question_fallback=None`. At least 30% of static
 scenarios should carry one (see [The fallback-ratio rule](#the-fallback-ratio-rule)).
 
+With evaluator models configured, the persona model applies the
+natural-language `applies_when` contract and renders the fallback facts in
+character. Static-only offline runs retain a deterministic punctuation check
+and canned answer so schema conformance does not require network inference.
+
 ## Live-mode extras: success_criteria, world_assertions, disruptions
 
-Live scenarios use three extra fields to drive judging:
+Live scenarios use four extra fields to drive judging:
 
 - `success_criteria: list[str]` — natural-language predicates the judge model evaluates against the running history. Keep them concrete: `"the assistant proposed a Friday 9-10am slot"` beats `"the assistant did the right thing"`.
 - `world_assertions: list[str]` — explicit world-state predicates (used by the scorer in addition to the state hash). E.g. `"there exists a calendar event titled 'Dentist' starting Friday 10:00 UTC"`.
 - `disruptions: list[Disruption]` — REALM-style mid-run perturbations. Each fires `at_turn=N` and carries a `kind` ∈ `{new_message, calendar_change, reminder_due, rule_change}`. Disruption payload shapes are documented in `types.py::Disruption`.
+- `expected_world_mutation` — explicit `changed`, `unchanged`, or `optional`.
+  Never derive it from words in an assertion; the scorer does not route by
+  scanning natural-language criteria.
 
 Example disruption:
 
@@ -193,7 +211,8 @@ existing scenarios; duplicate ids abort the whole batch.
 Before committing a hand-edited scenario, run the corpus tests:
 
 ```bash
-python3 -m pytest tests/test_scenarios_corpus.py -v
+python3 -m pytest tests/test_scenarios_corpus.py tests/test_corpus_audit.py -v
+python3 -m eliza_lifeops_bench.corpus_audit --output corpus-audit.json
 ```
 
 These tests check:
@@ -202,6 +221,10 @@ These tests check:
 - Every entity id referenced in `ground_truth_actions` resolves in the corresponding snapshot.
 - Personas referenced are in `_personas.py`.
 - The static fallback ratio stays above the corpus threshold.
+- Every LIVE opening is model-generated and every scenario id is a stable
+  `[a-z0-9_.-]` identifier.
+- Every unmodeled LifeWorld operation returns explicit non-success, while
+  modeled read/terminal no-mutation exceptions are inventoried separately.
 
 ## The fallback-ratio rule
 

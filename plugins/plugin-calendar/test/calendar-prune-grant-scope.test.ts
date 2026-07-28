@@ -30,6 +30,7 @@ import {
   type CalendarHostGate,
   CalendarRepository,
   CalendarService,
+  ensureCalendarFeedPreferenceTable,
 } from "../src/service/index.js";
 
 const INTERNAL_URL = new URL("http://internal.local/api/calendar");
@@ -237,6 +238,10 @@ beforeAll(async () => {
   await db.execute(sql.raw(CREATE_EVENTS_TABLE));
   await db.execute(sql.raw(CREATE_SYNC_TABLE));
   await db.execute(sql.raw(CREATE_SOURCES_TABLE));
+  await ensureCalendarFeedPreferenceTable(
+    async (statement) =>
+      (await pg.query<Record<string, unknown>>(statement)).rows,
+  );
 
   runtime = {
     agentId: AGENT_ID,
@@ -265,7 +270,7 @@ beforeAll(async () => {
   repository = new CalendarRepository(runtime);
   calendar = new CalendarService(runtime);
   calendar.setGate(gateForBothGrants());
-});
+}, 30_000);
 
 afterAll(async () => {
   await pg.close();
@@ -285,7 +290,9 @@ async function clearEvents(): Promise<void> {
   await pg.query("DELETE FROM app_calendar.life_calendar_events");
 }
 
-describe("CalendarRepository.pruneCalendarEventsInWindow — grant scoping", () => {
+describe("CalendarRepository.pruneCalendarEventsInWindow — grant scoping", {
+  timeout: 30_000,
+}, () => {
   it("prunes only the syncing grant's stale rows; another grant's rows survive", async () => {
     await clearEvents();
     await repository.upsertCalendarEvent(
@@ -386,7 +393,9 @@ describe("CalendarRepository.pruneCalendarEventsInWindow — grant scoping", () 
   });
 });
 
-describe("CalendarService feed sync — two Google accounts, both named 'primary'", () => {
+describe("CalendarService feed sync — two Google accounts, both named 'primary'", {
+  timeout: 30_000,
+}, () => {
   it("alternating syncs do not cross-delete the other account's cached events", async () => {
     await clearEvents();
 

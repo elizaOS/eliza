@@ -200,6 +200,7 @@ function makeMockAction(opts: {
 		required?: boolean;
 		schema: { type: "string" | "number" | "boolean" | "object" | "array" };
 	}>;
+	tags?: string[];
 	suppressActionResultClipboard?: boolean;
 }): Action {
 	return {
@@ -210,6 +211,7 @@ function makeMockAction(opts: {
 		parameters: opts.parameters ?? [],
 		validate: async () => true,
 		handler: opts.handler,
+		...(opts.tags ? { tags: opts.tags } : {}),
 		...(opts.subActions ? { subActions: opts.subActions } : {}),
 		...(opts.contexts ? { contexts: opts.contexts } : {}),
 		...(opts.suppressActionResultClipboard
@@ -790,19 +792,42 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		}
 	});
 
-	it("suppresses planner echo after an action callback is voice-rewritten", async () => {
-		const rawPayload = '{"status":"ok","taskId":"abc123"}';
-		const rewritten = "I created the task and kept its ID handy: abc123.";
+	it("suppresses planner echo after a receipt-backed action callback is delivered", async () => {
+		const canonicalText = "I created the task and kept its ID handy: abc123.";
+		const observedAt = "2026-07-27T18:00:00.000Z";
 		const delivered: string[] = [];
 		const deliveredVisibleTexts = new Set<string>();
 		const action = makeMockAction({
 			name: "CREATE_TASK",
+			tags: ["capability:write"],
 			parameters: [],
 			handler: async (_runtime, _message, _state, _options, callback) => {
-				await callback?.({ text: rawPayload }, "CREATE_TASK");
+				await callback?.({ text: canonicalText }, "CREATE_TASK");
 				return {
 					success: true,
-					text: rawPayload,
+					text: canonicalText,
+					userFacingText: canonicalText,
+					verifiedUserFacing: true,
+					effectReceipts: [
+						{
+							receiptId: "receipt-create-task-abc123",
+							operation: "tasks.create",
+							resource: { kind: "task", id: "abc123" },
+							artifacts: [],
+							idempotency: {
+								key: "create-task-abc123",
+								replayed: false,
+							},
+							observedAt,
+							outcome: "applied",
+							commit: {
+								kind: "durable",
+								id: "task-transaction-abc123",
+								committedAt: observedAt,
+							},
+						},
+					],
+					userFacingEffectReceiptIds: ["receipt-create-task-abc123"],
 					data: { actionName: "CREATE_TASK" },
 				};
 			},
@@ -826,16 +851,12 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					},
 				},
 				{
-					expectModelType: ModelType.TEXT_SMALL,
-					body: JSON.stringify({ response: rewritten }),
-				},
-				{
 					expectModelType: ModelType.RESPONSE_HANDLER,
 					body: JSON.stringify({
 						success: true,
 						decision: "FINISH",
 						thought: "The action callback already told the user.",
-						messageToUser: rewritten,
+						messageToUser: canonicalText,
 					}),
 				},
 			],
@@ -860,7 +881,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 			deliveredVisibleTexts,
 		});
 
-		expect(delivered).toEqual([rewritten]);
+		expect(delivered).toEqual([canonicalText]);
 		expect(result.kind).toBe("planned_reply");
 		if (result.kind === "planned_reply") {
 			expect(result.result.responseContent).toBeNull();
@@ -869,7 +890,6 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		expect(getCalls(runtime).map((c) => c.modelType)).toEqual([
 			ModelType.RESPONSE_HANDLER,
 			ModelType.ACTION_PLANNER,
-			ModelType.TEXT_SMALL,
 			ModelType.RESPONSE_HANDLER,
 		]);
 	});

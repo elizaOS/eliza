@@ -379,9 +379,9 @@ describe("ApprovalService", () => {
           side: "owner",
           grantId: "google-owner-grant",
           calendarId: "primary",
-          eventId: "series-master-1",
+          eventId: "series-occurrence-4",
           expectedProvider: "google",
-          expectedProviderVersion: '"master-etag-4"',
+          expectedProviderVersion: '"occurrence-etag-4"',
           expectedEventUpdatedAt: "2027-10-01T00:00:00.000Z",
           expectedEventStartAtMs: Date.parse("2027-10-15T16:00:00.000Z"),
           seriesMaster: {
@@ -390,7 +390,7 @@ describe("ApprovalService", () => {
             updatedAt: "2027-10-01T00:00:00.000Z",
             etag: '"master-etag-4"',
           },
-          recurrenceScope: "series",
+          recurrenceScope: "this_and_following",
           notifyAttendees: true,
           editorRequestSha256: "request-sha",
           patch: {
@@ -424,7 +424,8 @@ describe("ApprovalService", () => {
     expect(confirmed).toMatchObject({
       state: "approved",
       payload: {
-        expectedProviderVersion: '"master-etag-4"',
+        expectedProviderVersion: '"occurrence-etag-4"',
+        recurrenceScope: "this_and_following",
         seriesMaster: {
           externalId: "series-master-1",
           etag: '"master-etag-4"',
@@ -439,6 +440,50 @@ describe("ApprovalService", () => {
             },
           ],
         },
+      },
+    });
+
+    const cancelled = await queue.enqueueConfirmed(
+      {
+        requestedBy: "OWNER_CALENDAR_EDITOR",
+        subjectUserId: "owner-123",
+        action: "cancel_event",
+        payload: {
+          action: "cancel_event",
+          side: "owner",
+          grantId: "google-owner-grant",
+          calendarId: "primary",
+          eventId: "series-occurrence-4",
+          expectedProvider: "google",
+          expectedProviderVersion: '"occurrence-etag-4"',
+          expectedEventUpdatedAt: "2027-10-01T00:00:00.000Z",
+          expectedEventStartAtMs: Date.parse("2027-10-15T16:00:00.000Z"),
+          seriesMaster: {
+            externalId: "series-master-1",
+            startAtMs: Date.parse("2027-01-15T17:00:00.000Z"),
+            updatedAt: "2027-10-01T00:00:00.000Z",
+            etag: '"master-etag-4"',
+          },
+          recurrenceScope: "this_and_following",
+          cancellationMode: "organizer_cancel",
+          notifyAttendees: false,
+        },
+        channel: "internal",
+        reason: "Authenticated owner editor gesture",
+        idempotencyKey: "calendar-editor-following-cancel-1",
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      },
+      {
+        resolvedBy: "owner-123",
+        resolutionReason: "Authenticated owner editor gesture",
+      },
+    );
+    expect(cancelled.payload).toMatchObject({
+      action: "cancel_event",
+      recurrenceScope: "this_and_following",
+      seriesMaster: {
+        externalId: "series-master-1",
+        etag: '"master-etag-4"',
       },
     });
 

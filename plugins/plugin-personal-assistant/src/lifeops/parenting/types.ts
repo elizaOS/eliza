@@ -115,6 +115,7 @@ export interface ParentingGuidanceOption {
 
 export type ParentingGuidanceStatus =
   | "educational_options"
+  | "evidence_unavailable"
   | "privacy_withheld"
   | "needs_safety_clarification"
   | "urgent_safety_handoff"

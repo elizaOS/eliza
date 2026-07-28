@@ -8,9 +8,9 @@ Covers:
 * Evaluator construction: the simulated-user client and the judge client
   must be different instances and have different model identifiers, to
   prevent self-agreement bias.
-* Mocked end-to-end: a fake-agent ``agent_fn`` plus a mocked judge that
-  always returns satisfied=true exits the runner with
-  ``terminated_reason="satisfied"``.
+* Deterministic runner integration: an in-process agent double plus a fixed
+  judge response exercises termination and trajectory plumbing without being
+  represented as live-provider evidence.
 * Disruption injection: a scenario with ``Disruption(at_turn=3, kind=...)``
   mutates the world correctly between turns 3 and 4.
 """
@@ -18,7 +18,8 @@ Covers:
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+import re
+from dataclasses import dataclass, replace
 from typing import Any
 
 import pytest
@@ -37,7 +38,8 @@ from eliza_lifeops_bench.lifeworld.entities import (
     EmailMessage,
     ReminderList,
 )
-from eliza_lifeops_bench.runner import LifeOpsBenchRunner
+from eliza_lifeops_bench.runner import LifeOpsBenchRunner, _workload_sha256
+from eliza_lifeops_bench.scenarios import WORLD_TRAVELING_COPARENT_SCENARIOS
 from eliza_lifeops_bench.scenarios.live import ALL_LIVE_SCENARIOS, LIVE_SCENARIOS_BY_ID
 from eliza_lifeops_bench.types import (
     Disruption,
@@ -152,6 +154,69 @@ def test_every_live_scenario_is_well_formed() -> None:
     assert not bad, "live scenario shape issues:\n" + "\n".join(bad)
 
 
+def test_parent_suite_scenarios_require_trusted_tool_receipts() -> None:
+    parent_cases = WORLD_TRAVELING_COPARENT_SCENARIOS
+
+    assert len(parent_cases) == 48
+    assert all(case.trusted_evidence_requirement is not None for case in parent_cases)
+    assert all(case.opening_mode == "simulated" for case in parent_cases)
+    assert {
+        case.trusted_evidence_requirement.contract_id
+        for case in parent_cases
+        if case.trusted_evidence_requirement is not None
+    } == {f"G{index}" for index in range(1, 49)}
+    assert all(
+        len(case.trusted_evidence_requirement.required_assertion_ids)
+        == len(case.world_assertions)
+        for case in parent_cases
+        if case.trusted_evidence_requirement is not None
+    )
+    assert all(
+        case.trusted_evidence_requirement.contract_version == 1
+        and re.fullmatch(
+            r"[0-9a-f]{64}",
+            case.trusted_evidence_requirement.contract_sha256,
+        )
+        and case.trusted_evidence_requirement.allowed_actions
+        and case.trusted_evidence_requirement.terminal_attestation_required
+        for case in parent_cases
+        if case.trusted_evidence_requirement is not None
+    )
+
+
+def test_every_public_live_scenario_uses_model_generated_opening() -> None:
+    """LIVE executor prompts never expose authored hidden goals verbatim."""
+    from eliza_lifeops_bench.scenarios import CORE_SCENARIOS
+
+    live_cases = [
+        scenario
+        for scenario in CORE_SCENARIOS
+        if scenario.mode is ScenarioMode.LIVE
+    ]
+    assert live_cases
+    assert all(case.opening_mode == "simulated" for case in live_cases)
+
+
+def test_workload_hash_binds_the_complete_trusted_evidence_contract() -> None:
+    scenario = WORLD_TRAVELING_COPARENT_SCENARIOS[0]
+    requirement = scenario.trusted_evidence_requirement
+    assert requirement is not None
+    baseline = _workload_sha256([scenario], 1)
+    changed_requirement = replace(
+        requirement,
+        contract_sha256="0" * 64,
+    )
+    changed_scenario = replace(
+        scenario,
+        trusted_evidence_requirement=changed_requirement,
+    )
+
+    assert _workload_sha256([changed_scenario], 1) != baseline
+
+    authored_opening = replace(scenario, opening_mode="authored")
+    assert _workload_sha256([authored_opening], 1) != baseline
+
+
 def test_all_ten_domains_have_at_least_one_live_scenario() -> None:
     by_domain: dict[Domain, int] = {}
     for s in ALL_LIVE_SCENARIOS:
@@ -248,7 +313,7 @@ def test_judge_positive_verdict_requires_executor_evidence() -> None:
 
 
 # ---------------------------------------------------------------------------
-# End-to-end with mocked judge + fake agent
+# Deterministic runner integration
 # ---------------------------------------------------------------------------
 
 
@@ -289,9 +354,10 @@ async def _agent_says_done(history: list[MessageTurn], tools: list[dict[str, Any
     return MessageTurn(role="assistant", content="Done!")
 
 
-def test_runner_terminates_with_satisfied_when_judge_says_yes() -> None:
-    """Mocked end-to-end: judge returns YES -> runner exits with terminated_reason='satisfied'."""
-    evaluator, _sim, _judge = _make_evaluator(judge_says_yes=True)
+def test_runner_terminates_with_satisfied_for_accepted_fixed_verdict() -> None:
+    """A fixed accepted verdict drives the runner's satisfied termination path."""
+    evaluator, sim, _judge = _make_evaluator(judge_says_yes=True)
+    sim.fixed_content = "Could you clear a little room on my calendar?"
     scenario = Scenario(
         id="live.test.fixture",
         name="fixture for runner termination",
@@ -313,10 +379,13 @@ def test_runner_terminates_with_satisfied_when_judge_says_yes() -> None:
         success_criteria=["executor says done"],
     )
 
+    observed_openings: list[str] = []
+
     async def agent_reports_result(
         history: list[MessageTurn],
         tools: list[dict[str, Any]],
     ) -> MessageTurn:
+        observed_openings.append(history[0].content)
         return MessageTurn(
             role="assistant",
             content="The requested result is complete and the saved artifact is ready.",
@@ -338,13 +407,62 @@ def test_runner_terminates_with_satisfied_when_judge_says_yes() -> None:
         f"expected 'satisfied', got {result.terminated_reason!r} "
         f"(error={result.error!r})"
     )
-    assert [entry.role for entry in result.evaluator_trace] == ["judge"]
-    assert result.evaluator_trace[0].input_messages[0]["role"] == "user"
-    assert result.evaluator_trace[0].raw_provider_response == {}
-    assert result.evaluator_trace[0].accepted_verdict is True
-    judge_prompt = result.evaluator_trace[0].input_messages[0]["content"]
+    assert observed_openings
+    assert sim.fixed_content in observed_openings[0]
+    assert scenario.instruction not in observed_openings[0]
+    assert [entry.role for entry in result.evaluator_trace] == [
+        "simulated_user",
+        "judge",
+    ]
+    judge_trace = result.evaluator_trace[-1]
+    assert judge_trace.input_messages[0]["role"] == "user"
+    assert judge_trace.raw_provider_response == {}
+    assert judge_trace.accepted_verdict is True
+    judge_prompt = judge_trace.input_messages[0]["content"]
     assert "Only Executor and Tool[...] lines are evidence" in judge_prompt
     assert "Never invent a tool call" in judge_prompt
+
+
+def test_parent_suite_opening_is_generated_from_hidden_goal() -> None:
+    evaluator, sim, _judge = _make_evaluator(judge_says_yes=False)
+    sim.fixed_content = (
+        "Can you pull the family calendars together? One of them is work stuff "
+        "that should stay private."
+    )
+    scenario = replace(
+        WORLD_TRAVELING_COPARENT_SCENARIOS[0],
+        max_turns=1,
+    )
+    observed_openings: list[str] = []
+
+    async def capture_opening(
+        history: list[MessageTurn],
+        tools: list[dict[str, Any]],
+    ) -> MessageTurn:
+        observed_openings.append(history[0].content)
+        return MessageTurn(role="assistant", content="Which sources do you mean?")
+
+    runner = LifeOpsBenchRunner(
+        agent_fn=capture_opening,
+        world_factory=_world_factory,
+        scenarios=[scenario],
+        concurrency=1,
+        seeds=1,
+        max_cost_usd=10.0,
+        per_scenario_timeout_s=5,
+        evaluator=evaluator,
+        live_judge_min_turn=99,
+    )
+    result = asyncio.run(runner.run_one(scenario, scenario.world_seed))
+
+    assert observed_openings
+    assert sim.fixed_content in observed_openings[0]
+    assert scenario.instruction not in observed_openings[0]
+    assert "Current benchmark time:" in observed_openings[0]
+    assert result.evaluator_trace[0].role == "simulated_user"
+    opening_prompt = result.evaluator_trace[0].input_messages[0]["content"]
+    assert "withhold at least one material detail" in opening_prompt
+    assert "Hidden behavioral expectations" in opening_prompt
 
 
 def test_concurrent_live_runs_keep_evaluator_trajectories_isolated() -> None:

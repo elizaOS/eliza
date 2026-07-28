@@ -94,6 +94,13 @@ import {
 	getDirectActionRoutingRules,
 } from "../runtime/direct-action-routing";
 import {
+	bindEffectDelivery,
+	effectDeliveryBindingIsValid,
+	effectDeliveryBindingProvesApplication,
+	getEffectDeliveryBinding,
+	stripEffectDeliveryBinding,
+} from "../runtime/effect-delivery";
+import {
 	type EvaluatorEffects,
 	type EvaluatorOutput,
 	runEvaluator,
@@ -205,6 +212,11 @@ import type {
 } from "../types/components";
 import type { ContextEvent, ContextObject } from "../types/context-object";
 import type { ContextDefinition, RoleGateRole } from "../types/contexts";
+import {
+	mergeEffectReceipts,
+	resolveAppliedUserFacingEffectReceipts,
+	resolveUserFacingEffectReceipts,
+} from "../types/effects";
 import type { Room } from "../types/environment";
 import type { RunEventPayload } from "../types/events";
 import { EventType } from "../types/events";
@@ -385,7 +397,7 @@ function buildDirectChannelResponseFieldSelection(
 			includeFieldNames.add(field.name);
 		}
 	}
-	return { includeFieldNames };
+	return { includeFieldNames, compact: true };
 }
 
 function mergeAbortSignals(
@@ -1794,6 +1806,8 @@ function createV5ReplyStrategyResult(args: {
 	mode?: StrategyMode;
 	attachments?: Media[];
 	transcriptVisibility?: "internal";
+	/** Applied receipt IDs grounding this exact text at the final send boundary. */
+	effectReceiptIds?: readonly string[];
 	/**
 	 * Provenance for the humanness voice gate (#14873): `true` when `text` is
 	 * the model's own composed reply (Stage-1 `replyText`, the Stage-1 ack), so
@@ -1806,7 +1820,7 @@ function createV5ReplyStrategyResult(args: {
 	 */
 	agentVoiced?: boolean;
 }): StrategyResult {
-	const responseContent: Content = {
+	let responseContent: Content = {
 		thought: args.thought,
 		actions: ["REPLY"],
 		text: restorePiiInUserReplyText(args.text),
@@ -1817,7 +1831,18 @@ function createV5ReplyStrategyResult(args: {
 		...(args.transcriptVisibility
 			? { transcriptVisibility: args.transcriptVisibility }
 			: {}),
+		...(args.effectReceiptIds?.length
+			? { effectReceiptIds: [...args.effectReceiptIds] }
+			: {}),
 	};
+	if (args.effectReceiptIds?.length && responseContent.text) {
+		responseContent = bindEffectDelivery(
+			responseContent,
+			responseContent.text,
+			args.effectReceiptIds,
+			true,
+		);
+	}
 
 	return {
 		responseContent,
@@ -3200,32 +3225,34 @@ export type PlannedReplyClaimKind =
 	| "completed_side_effect"
 	| "empty_tracked_state";
 
-const MUTATING_CAPABILITY_TAGS = new Set([
-	"capability:write",
-	"capability:update",
-	"capability:delete",
-	"capability:schedule",
-	"capability:send",
-]);
-const MUTATING_OPERATION =
-	/\b(?:create|add|set|save|schedule|write|update|edit|delete|remove|cancel|complete|finish|snooze|send|block|unblock|connect|disconnect|revoke|approve|dismiss|acknowledge|reopen)\b/iu;
-
-function actionResultOperation(result: ActionResult): string {
-	const data = result.data;
-	return ["action", "operation", "op", "subaction"]
-		.map((key) => data?.[key])
-		.filter((value): value is string => typeof value === "string")
-		.join(" ");
+function appliedEffectReceiptIdsForReply(
+	reply: string,
+	results: readonly ActionResult[],
+): readonly string[] {
+	const normalizedReply = reply.trim();
+	if (!normalizedReply) return [];
+	const allTurnReceipts = mergeEffectReceipts(
+		...results.map((result) => result.effectReceipts),
+	);
+	for (const result of results) {
+		if (result.userFacingText?.trim() !== normalizedReply) continue;
+		const receipts = resolveAppliedUserFacingEffectReceipts(
+			result,
+			allTurnReceipts,
+		);
+		if (receipts) {
+			return receipts.map((receipt) => receipt.receiptId);
+		}
+	}
+	return [];
 }
 
 /**
- * A successful action result grounds only the capability it actually proves.
+ * An action result grounds only the capability it actually proves.
  * Empty tracked-work claims require a `resource:tracked-work` read action.
- * Completion claims require a mutation-capable action; mixed read/write
- * umbrellas additionally need a mutating operation in their result payload.
- * Both claim kinds require the final reply to be the action-owned canonical
- * `userFacingText`; this binds the claim to that receipt instead of allowing
- * an unrelated successful action to validate planner-authored text.
+ * Completion claims require exact action-owned text bound to an active applied
+ * receipt from this turn; bare success, previews, no-ops, failures, and
+ * rolled-back effects cannot ground them.
  */
 export function plannedReplyHasClaimGroundingReceipt(args: {
 	kind: PlannedReplyClaimKind;
@@ -3240,7 +3267,6 @@ export function plannedReplyHasClaimGroundingReceipt(args: {
 		]),
 	);
 	return args.results.some((result) => {
-		if (result.success !== true) return false;
 		const canonicalUserFacingText = result.userFacingText?.trim();
 		if (
 			result.verifiedUserFacing !== true ||
@@ -3249,6 +3275,12 @@ export function plannedReplyHasClaimGroundingReceipt(args: {
 		) {
 			return false;
 		}
+		if (args.kind === "completed_side_effect") {
+			return (
+				appliedEffectReceiptIdsForReply(args.reply, args.results).length > 0
+			);
+		}
+		if (result.success !== true) return false;
 		const actionName =
 			typeof result.data?.actionName === "string" ? result.data.actionName : "";
 		const action = actionsByName.get(normalizeActionIdentifier(actionName));
@@ -3259,12 +3291,7 @@ export function plannedReplyHasClaimGroundingReceipt(args: {
 		if (args.kind === "empty_tracked_state") {
 			return tags.has("resource:tracked-work") && tags.has("capability:read");
 		}
-		const mutating = [...MUTATING_CAPABILITY_TAGS].some((tag) => tags.has(tag));
-		if (!mutating) return false;
-		return (
-			!tags.has("capability:read") ||
-			MUTATING_OPERATION.test(actionResultOperation(result))
-		);
+		return false;
 	});
 }
 
@@ -3276,6 +3303,9 @@ export type PlannedReplyEgressDecision =
 			kind: PlannedReplyClaimKind;
 			fallbackReply: string;
 	  };
+
+const UNVERIFIED_EFFECT_REPLY =
+	"I couldn't verify that the requested change was completed, so I won't claim it was. Want me to try again?";
 
 /**
  * Final planned replies may assert only state proven by a matching action
@@ -3304,8 +3334,7 @@ export function evaluatePlannedReplyEgress(args: {
 		return {
 			verdict: "reject",
 			kind: "completed_side_effect",
-			fallbackReply:
-				"I couldn't verify that the requested change was completed, so I won't claim it was. Want me to try again?",
+			fallbackReply: UNVERIFIED_EFFECT_REPLY,
 		};
 	}
 	if (replyClaimsEmptyTrackedWorkState(reply)) {
@@ -3538,7 +3567,10 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 					typeof messageHandler.plan.reply === "string"
 						? messageHandler.plan.reply
 						: "";
-				return replyClaimsCompletedSideEffect(reply);
+				return (
+					messageHandler.plan.replyEffectStatus === "applied" ||
+					replyClaimsCompletedSideEffect(reply)
+				);
 			},
 			evaluate: ({ messageHandler, runtime }) => {
 				const reply =
@@ -4395,6 +4427,11 @@ export function messageHandlerFromFieldResult(
 	const replyTextRaw = stripJsonStructuralJunkReply(
 		typeof result.replyText === "string" ? result.replyText : "",
 	);
+	const replyEffectStatus =
+		result.replyEffectStatus === "applied" ||
+		result.replyEffectStatus === "non_applied"
+			? result.replyEffectStatus
+			: "none";
 	const hasRunnableCandidateAction = candidateActionsContainRunnableAction(
 		candidateActions,
 		runtimeContext,
@@ -4655,6 +4692,7 @@ export function messageHandlerFromFieldResult(
 	const plan: MessageHandlerResult["plan"] = {
 		contexts: finalContexts,
 		reply: replyText,
+		replyEffectStatus,
 		simple: preemptDirect ? true : !shouldPlan,
 		requiresTool: shouldPlan,
 	};
@@ -6438,8 +6476,11 @@ export function subPlannerResultToPlannerToolResult(
 	subResult: Awaited<ReturnType<typeof runSubPlanner>>,
 ): PlannerToolResult {
 	const evaluator = subResult.evaluator;
-	const lastStep =
-		subResult.trajectory.steps[subResult.trajectory.steps.length - 1];
+	const allSteps = [
+		...(subResult.trajectory.archivedSteps ?? []),
+		...subResult.trajectory.steps,
+	];
+	const lastStep = allSteps[allSteps.length - 1];
 	const success = evaluator?.success ?? lastStep?.result?.success ?? true;
 	const userFacingText = subResult.finalMessage ?? evaluator?.messageToUser;
 	const internalTerminalPayload =
@@ -6460,7 +6501,23 @@ export function subPlannerResultToPlannerToolResult(
 	const completedSubActions = subSteps
 		.filter((step) => step.success)
 		.map((step) => step.action);
-	const terminalData = lastStep?.result?.data;
+	const terminalResult = lastStep?.result;
+	const terminalData = terminalResult?.data;
+	const effectReceipts = mergeEffectReceipts(
+		...allSteps.map((step) => step.result?.effectReceipts),
+	);
+	const terminalUserFacingEffectReceiptIds =
+		typeof terminalResult?.userFacingText === "string" &&
+		typeof userFacingText === "string" &&
+		terminalResult.userFacingText.trim() === userFacingText.trim()
+			? terminalResult.userFacingEffectReceiptIds
+			: undefined;
+	const terminalVerifiedUserFacing =
+		!internalTerminalPayload &&
+		terminalResult?.verifiedUserFacing === true &&
+		Array.isArray(terminalUserFacingEffectReceiptIds) &&
+		terminalUserFacingEffectReceiptIds.length > 0 &&
+		resolveUserFacingEffectReceipts(terminalResult, effectReceipts) !== null;
 	const data =
 		terminalData || subSteps.length > 0
 			? {
@@ -6482,6 +6539,13 @@ export function subPlannerResultToPlannerToolResult(
 		text: diagnosticText.length > 0 ? diagnosticText : userFacingText,
 		transcriptVisibility: lastStep?.result?.transcriptVisibility,
 		...(internalTerminalPayload ? {} : { userFacingText }),
+		...(effectReceipts.length > 0 ? { effectReceipts } : {}),
+		...(terminalUserFacingEffectReceiptIds
+			? {
+					userFacingEffectReceiptIds: terminalUserFacingEffectReceiptIds,
+				}
+			: {}),
+		...(terminalVerifiedUserFacing ? { verifiedUserFacing: true } : {}),
 		data,
 		error: lastStep?.result?.error,
 		// Propagate the terminal sub-action's chain signal to the parent
@@ -6643,6 +6707,15 @@ function collectPreviousActionResults(
 				...(step.result.verifiedUserFacing !== undefined
 					? { verifiedUserFacing: step.result.verifiedUserFacing }
 					: {}),
+				...(step.result.effectReceipts !== undefined
+					? { effectReceipts: step.result.effectReceipts }
+					: {}),
+				...(step.result.userFacingEffectReceiptIds !== undefined
+					? {
+							userFacingEffectReceiptIds:
+								step.result.userFacingEffectReceiptIds,
+						}
+					: {}),
 				data: { actionName },
 				...(step.result.turnComplete !== undefined
 					? { turnComplete: step.result.turnComplete }
@@ -6692,6 +6765,14 @@ function collectPreviousActionResults(
 				: {}),
 			...(step.result.verifiedUserFacing !== undefined
 				? { verifiedUserFacing: step.result.verifiedUserFacing }
+				: {}),
+			...(step.result.effectReceipts !== undefined
+				? { effectReceipts: step.result.effectReceipts }
+				: {}),
+			...(step.result.userFacingEffectReceiptIds !== undefined
+				? {
+						userFacingEffectReceiptIds: step.result.userFacingEffectReceiptIds,
+					}
 				: {}),
 			data: {
 				...actionData,
@@ -6844,6 +6925,20 @@ export async function runShortcutGate(args: {
 	const resultState = actionResult
 		? withActionResultsForPrompt(args.state, [actionResult])
 		: args.state;
+	const shortcutActionResults = actionResult ? [actionResult] : [];
+	const shortcutReplyDecision = evaluatePlannedReplyEgress({
+		reply: captured,
+		actionResults: shortcutActionResults,
+		actions: args.runtime.actions,
+	});
+	const shortcutReply =
+		shortcutReplyDecision.verdict === "allow"
+			? captured
+			: shortcutReplyDecision.fallbackReply;
+	const shortcutReplyReceiptIds = appliedEffectReceiptIdsForReply(
+		shortcutReply,
+		shortcutActionResults,
+	);
 
 	// #8792: report the interaction so the proactive-comment decider can react.
 	void emitInteractionEvent(args.runtime, match, args.message);
@@ -6856,7 +6951,7 @@ export async function runShortcutGate(args: {
 			thought,
 			plan: {
 				contexts: [SIMPLE_CONTEXT_ID],
-				reply: captured,
+				reply: shortcutReply,
 				simple: true,
 				requiresTool: false,
 			},
@@ -6867,8 +6962,11 @@ export async function runShortcutGate(args: {
 				message: args.message,
 				state: resultState,
 				responseId: args.responseId,
-				text: captured,
+				text: shortcutReply,
 				thought,
+				...(shortcutReplyReceiptIds.length > 0
+					? { effectReceiptIds: shortcutReplyReceiptIds }
+					: {}),
 			}),
 			...(actionResult ? { actionResults: [actionResult] } : {}),
 		},
@@ -7183,9 +7281,9 @@ export async function runV5MessageRuntimeStage1(args: {
 			omitMaxTokens: maxReplyTokens == null && directMessageChannel,
 			// Streamed structured generation: the local engine (W4) streams the
 			// HANDLE_RESPONSE envelope and parses it incrementally so `shouldRespond`
-			// / `contexts` route the moment they are known and `replyText` flows to
-			// TTS the instant that field opens. Cloud adapters ignore the flag and
-			// return the result whole.
+			// / `contexts` route the moment they are known. User-visible `replyText`
+			// remains buffered until routing and effect validation complete. Cloud
+			// adapters ignore the flag and return the result whole.
 			streamStructured: true,
 			responseSkeleton: responseGrammar.responseSkeleton,
 			grammar: responseGrammar.grammar,
@@ -7659,6 +7757,15 @@ export async function runV5MessageRuntimeStage1(args: {
 				reply = LIVE_LOOKUP_UNAVAILABLE_REPLY;
 				replyIsModelVoice = false;
 			}
+			const directReplyEgressDecision = evaluatePlannedReplyEgress({
+				reply,
+				actionResults: [],
+				actions: args.runtime.actions,
+			});
+			if (directReplyEgressDecision.verdict === "reject") {
+				reply = directReplyEgressDecision.fallbackReply;
+				replyIsModelVoice = false;
+			}
 			return {
 				kind: "direct_reply",
 				messageHandler,
@@ -7674,9 +7781,23 @@ export async function runV5MessageRuntimeStage1(args: {
 		const selectedContexts =
 			route.type === "planning_needed" ? route.contexts : [];
 		const routedResponseHandlerReply = getMessageHandlerReply(messageHandler);
-		const earlyReplyText =
+		let earlyReplyText =
 			routedResponseHandlerReply || parsedResponseHandlerReply;
 		const onResponseHandlerEarlyReply = args.onResponseHandlerEarlyReply;
+		if (earlyReplyText.length > 0 && onResponseHandlerEarlyReply) {
+			const earlyReplyEgressDecision = evaluatePlannedReplyEgress({
+				reply: earlyReplyText,
+				actionResults: [],
+				actions: args.runtime.actions,
+			});
+			if (earlyReplyEgressDecision.verdict === "reject") {
+				// Planning is still in progress, so an ungrounded completion claim
+				// becomes an honest acknowledgement. Keep this exact delivered text
+				// in the later dedupe bookkeeping so a subsequently proven final
+				// confirmation is not mistaken for an already-sent reply.
+				earlyReplyText = "On it.";
+			}
+		}
 		const earlyReplySent =
 			messageHandler.processMessage === "RESPOND" &&
 			earlyReplyText.length > 0 &&
@@ -8259,7 +8380,19 @@ export async function runV5MessageRuntimeStage1(args: {
 				? stageOneAck ||
 					(ranNonSilentAction ? "on it, working on that now." : "")
 				: preservedAnswerFallback;
-		const effectiveReplyText = plannedText || ackFallback;
+		let effectiveReplyText = plannedText || ackFallback;
+		const finalReplyEgressDecision = evaluatePlannedReplyEgress({
+			reply: effectiveReplyText,
+			actionResults,
+			actions: args.runtime.actions,
+		});
+		if (finalReplyEgressDecision.verdict === "reject") {
+			effectiveReplyText = finalReplyEgressDecision.fallbackReply;
+		}
+		const effectiveReplyReceiptIds = appliedEffectReceiptIdsForReply(
+			effectiveReplyText,
+			actionResults,
+		);
 		const plannedTextRepeatsEarlyReply =
 			earlyReplySent &&
 			normalizeVisibleTextForDuplicateCheck(effectiveReplyText) ===
@@ -8331,6 +8464,9 @@ export async function runV5MessageRuntimeStage1(args: {
 								plannerResult.trajectory.steps.at(-1)?.thought ??
 								messageHandler.thought,
 							agentVoiced: effectiveReplyIsModelVoice,
+							...(effectiveReplyReceiptIds.length > 0
+								? { effectReceiptIds: effectiveReplyReceiptIds }
+								: {}),
 							...(transcriptVisibility ? { transcriptVisibility } : {}),
 						}),
 						...(actionResults.length > 0 ? { actionResults } : {}),
@@ -9415,6 +9551,40 @@ export function stripReplyWhenActionOwnsTurn(
 	return filtered.length > 0 ? filtered : ["REPLY"];
 }
 
+function enforceEffectGroundedVisibleContent(
+	runtime: Pick<IAgentRuntime, "logger">,
+	response: Content,
+	actionName?: string,
+): Content {
+	const hasEffectDeliveryBinding =
+		getEffectDeliveryBinding(response) !== undefined;
+	if (!hasEffectDeliveryBinding && response.effectReceiptIds !== undefined) {
+		response = stripEffectDeliveryBinding(response);
+	}
+	const effectDeliveryBindingInvalid =
+		hasEffectDeliveryBinding && !effectDeliveryBindingIsValid(response);
+	if (
+		effectDeliveryBindingInvalid ||
+		(typeof response.text === "string" &&
+			replyClaimsCompletedSideEffect(response.text) &&
+			!effectDeliveryBindingProvesApplication(response))
+	) {
+		runtime.logger.warn(
+			{
+				src: "service:message",
+				actionName: resolveCallbackActionName(response, actionName),
+			},
+			"Replaced visible completion text that lacked validated effect receipt bindings",
+		);
+		return {
+			...stripEffectDeliveryBinding(response),
+			text: UNVERIFIED_EFFECT_REPLY,
+			agentVoiced: false,
+		};
+	}
+	return response;
+}
+
 export function wrapSingleTurnVisibleCallback(
 	runtime: Pick<IAgentRuntime, "agentId" | "logger"> &
 		Partial<Pick<IAgentRuntime, "character" | "useModel">> & {
@@ -9430,6 +9600,7 @@ export function wrapSingleTurnVisibleCallback(
 		if (response.transcriptVisibility === "internal") {
 			return [];
 		}
+		let rawUnsanitizedText: string | undefined;
 		// Shared post-model, pre-channel sanitization (#15888): every visible
 		// delivery — action callbacks, early replies, simple replies, terminal
 		// content — funnels through this wrap, so stripping leaked machine
@@ -9440,16 +9611,25 @@ export function wrapSingleTurnVisibleCallback(
 				// Record the raw form too: planner-echo suppression compares the
 				// planner's unsanitized finalMessage against this set, and must
 				// still recognize a delivery whose wire text was sanitized.
-				if (response.text.trim()) {
-					recordDeliveredVisibleText?.(response.text);
+					rawUnsanitizedText = response.text.trim()
+						? response.text
+						: undefined;
+					response = { ...response, text: sanitized };
 				}
-				response = { ...response, text: sanitized };
-			}
+		}
+		response = enforceEffectGroundedVisibleContent(
+			fullRuntime,
+			response,
+			actionName,
+		);
+		const delivered = await callback(response, actionName);
+		if (rawUnsanitizedText) {
+			recordDeliveredVisibleText?.(rawUnsanitizedText);
 		}
 		if (typeof response?.text === "string" && response.text.trim()) {
 			recordDeliveredVisibleText?.(response.text);
 		}
-		return callback(response, actionName);
+		return delivered;
 	};
 	// The character-voice rewrite spends a TEXT_SMALL call per action callback and
 	// restyles the delivered text. Deterministic harnesses (the scenario runner)
@@ -9573,6 +9753,9 @@ function shouldRewriteActionCallback(
 	actionName?: string,
 ): response is Content & { text: string } {
 	if (!response || typeof response.text !== "string") return false;
+	if (getEffectDeliveryBinding(response)) {
+		return false;
+	}
 	if (!response.text.trim() && !response.attachments?.length) return false;
 	// Media actions already produced a file attachment; deliver it directly instead
 	// of spending another model call rewriting placeholder text.
@@ -10964,7 +11147,16 @@ export class DefaultMessageService implements IMessageService {
 		}
 		const deliverResponseHandlerEarlyReply = voiceResponseHandlerFastPath
 			? async (event: ResponseHandlerEarlyReplyEvent): Promise<void> => {
-					const text = event.text.trim();
+					const proposedText = event.text.trim();
+					const earlyReplyEgressDecision = evaluatePlannedReplyEgress({
+						reply: proposedText,
+						actionResults: [],
+						actions: runtime.actions,
+					});
+					const text =
+						earlyReplyEgressDecision.verdict === "allow"
+							? proposedText
+							: "On it.";
 					if (!text || !message.id) return;
 					const currentResponseId = latestResponseIds
 						.get(runtime.agentId)
@@ -10986,7 +11178,7 @@ export class DefaultMessageService implements IMessageService {
 						return;
 					}
 					const earlyResponseId = asUUID(v4());
-					const earlyContent: Content = {
+					let earlyContent: Content = {
 						thought: event.messageHandler.thought,
 						actions: ["REPLY"],
 						text,
@@ -10994,7 +11186,9 @@ export class DefaultMessageService implements IMessageService {
 						inReplyTo: createUniqueUuid(runtime, message.id),
 						// #14873: the early reply IS the Stage-1 model's replyText —
 						// genuine agent voice — so gated transports must not re-voice it.
-						agentVoiced: true,
+						...(earlyReplyEgressDecision.verdict === "allow"
+							? { agentVoiced: true }
+							: {}),
 					};
 					await runtime.applyPipelineHooks(
 						"outgoing_before_deliver",
@@ -11004,6 +11198,10 @@ export class DefaultMessageService implements IMessageService {
 							message,
 							responseId: earlyResponseId,
 						}),
+					);
+					earlyContent = enforceEffectGroundedVisibleContent(
+						runtime,
+						earlyContent,
 					);
 					const earlyMemory: Memory = {
 						id: earlyResponseId,
@@ -11446,7 +11644,7 @@ export class DefaultMessageService implements IMessageService {
 			}
 
 			if (responseContent) {
-				const deliverableResponseContent = responseContent;
+				let deliverableResponseContent = responseContent;
 				if (mode === "simple") {
 					// Keep content hooks before delivery so the wire response carries
 					// their edits. The response-memory DB write runs AFTER the
@@ -11474,6 +11672,11 @@ export class DefaultMessageService implements IMessageService {
 							}),
 						),
 					);
+					deliverableResponseContent = enforceEffectGroundedVisibleContent(
+						runtime,
+						deliverableResponseContent,
+					);
+					responseContent = deliverableResponseContent;
 					// Registered BEFORE the callback fires so a follow-up prompted
 					// by this delivery always finds the barrier pending; released
 					// (never rejected) in the finally once the persist settles.

@@ -92,6 +92,83 @@ describe("google plugin", () => {
     expect(config.authorizationParams.include_granted_scopes).toBe("true");
   });
 
+  it("rejects unknown connector OAuth capabilities instead of widening access", async () => {
+    const runtime = {
+      getSetting: (key: string) =>
+        ({
+          GOOGLE_CLIENT_ID: "google-client",
+          GOOGLE_CLIENT_SECRET: "google-secret",
+          GOOGLE_REDIRECT_URI: "http://localhost/oauth/google/callback",
+        })[key],
+      getService: () => null,
+    } as never;
+    const provider = createGoogleConnectorAccountProvider(runtime);
+
+    await expect(
+      provider.startOAuth?.(
+        {
+          provider: "google",
+          scopes: ["google.calendar.read"],
+          flow: {
+            id: "flow-invalid-capability",
+            provider: "google",
+            state: "state-invalid-capability",
+            status: "pending",
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+          },
+        },
+        {} as never
+      )
+    ).rejects.toThrow("Google OAuth capability or scope is not recognized: google.calendar.read");
+  });
+
+  it("derives a least-privilege connector OAuth URL from calendar.read", async () => {
+    const runtime = {
+      getSetting: (key: string) =>
+        ({
+          GOOGLE_CLIENT_ID: "google-client",
+          GOOGLE_CLIENT_SECRET: "google-secret",
+          GOOGLE_REDIRECT_URI: "http://localhost/oauth/google/callback",
+        })[key],
+      getService: () => null,
+    } as never;
+    const provider = createGoogleConnectorAccountProvider(runtime);
+
+    const result = await provider.startOAuth?.(
+      {
+        provider: "google",
+        scopes: ["calendar.read"],
+        flow: {
+          id: "flow-calendar-read",
+          provider: "google",
+          state: "state-calendar-read",
+          status: "pending",
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        },
+      },
+      {} as never
+    );
+    const url = new URL(result?.authUrl ?? "");
+    const requestedScopes = new Set(
+      (url.searchParams.get("scope") ?? "").split(" ").filter(Boolean)
+    );
+
+    expect(requestedScopes).toEqual(
+      new Set([
+        GOOGLE_OAUTH_SCOPES.profile.openid,
+        GOOGLE_OAUTH_SCOPES.profile.email,
+        GOOGLE_OAUTH_SCOPES.profile.profile,
+        GOOGLE_OAUTH_SCOPES.calendar.read,
+      ])
+    );
+    expect(requestedScopes).not.toContain(GOOGLE_OAUTH_SCOPES.calendar.write);
+    expect(result?.metadata).toMatchObject({
+      requestedCapabilities: ["calendar.read"],
+    });
+  });
+
   it("keeps account auth resolution explicit", async () => {
     const service = new GoogleWorkspaceService();
     const metadata = service.getOAuthProviderMetadata();

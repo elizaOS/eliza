@@ -14,10 +14,11 @@ Score formula for LIVE mode:
                  0.7 * expected_world_state_component
                  + 0.3 * mean(output_substring_matches).
       LIVE has no ground-truth actions, so an unchanged world hashes equal to
-      the seed. The expected state component is based on
-      Scenario.expected_world_mutation plus a conservative fallback for older
-      scenarios whose assertions explicitly say read-only / no-write /
-      optional mutation.
+      the seed. Ordinary LIVE runs use the scenario's explicit
+      Scenario.expected_world_mutation contract. Evidence-gated LIVE runs
+      instead use authenticated external
+      receipt coverage as the state component; the LifeWorld shadow is not the
+      real provider and cannot prove or disprove that external mutation.
 
 PerfectAgent must produce 1.0 on every supported scenario.
 WrongAgent must produce 0.0 on every scenario.
@@ -32,6 +33,7 @@ import unicodedata
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
+from .evidence import TrustedEvidenceVerifier, verify_result_trusted_evidence
 from .types import (
     Action,
     BenchmarkResult,
@@ -48,34 +50,6 @@ if TYPE_CHECKING:
 
 # Tolerance (seconds) for treating two ISO timestamps as equivalent.
 DATE_TOLERANCE_SECONDS = 60
-
-_LIVE_UNCHANGED_ASSERTION_PATTERNS = (
-    "read-only",
-    "no write",
-    "only read operations",
-    "summary response",
-    "assistant's response",
-)
-
-_LIVE_OPTIONAL_MUTATION_ASSERTION_PATTERNS = (
-    "no mutation if",
-    "no destructive mutation if",
-    "if approval was withheld",
-    "if the persona declined",
-    "or leaves it untouched",
-    "or leaves the email untouched",
-    "or leaves the contacts unchanged",
-    "or leaves it unchanged",
-    "or clearly confirms",
-    "or presents the draft",
-    "or supplies the draft",
-    "or provides the draft",
-    "or provides the draft for manual",
-    "or provides the draft for manual action",
-    "or drafts what it would",
-    "if executor updates",
-)
-
 
 # Documentation-only kwargs: their absence on a predicted action MUST NOT
 # penalize the match. `intent` / `rationale` / `thought` / `reasoning` are
@@ -514,21 +488,7 @@ def _classify_scenario_kind(scenario: Scenario) -> str:
 
 
 def _live_expected_world_mutation(scenario: Scenario) -> ExpectedWorldMutation:
-    expected = scenario.expected_world_mutation
-    if expected != "auto":
-        return expected
-
-    assertion_text = "\n".join(
-        [*scenario.success_criteria, *scenario.world_assertions]
-    ).lower()
-    if any(pattern in assertion_text for pattern in _LIVE_UNCHANGED_ASSERTION_PATTERNS):
-        return "unchanged"
-    if any(
-        pattern in assertion_text
-        for pattern in _LIVE_OPTIONAL_MUTATION_ASSERTION_PATTERNS
-    ):
-        return "optional"
-    return "changed"
+    return scenario.expected_world_mutation
 
 
 def _live_state_component(result: ScenarioResult, scenario: Scenario) -> float:
@@ -1188,7 +1148,12 @@ def output_substring_match(
     return out
 
 
-def score_scenario(result: ScenarioResult, scenario: Scenario) -> float:
+def score_scenario(
+    result: ScenarioResult,
+    scenario: Scenario,
+    *,
+    trusted_evidence_verifier: TrustedEvidenceVerifier | None = None,
+) -> float:
     """Compose state-hash + action-overlap + output-substring into a normalized score in [0, 1].
 
     STATIC weighting depends on whether the scenario's ground-truth
@@ -1236,12 +1201,13 @@ def score_scenario(result: ScenarioResult, scenario: Scenario) -> float:
       (whose final hash differs from the seed, so `state_hash_match` is False)
       would lose it (0.3). That inversion is the #8795 bug.
 
-      LIVE scenarios declare or infer whether the world should end changed,
-      unchanged, or either. That keeps write tasks from rewarding inaction while
-      still allowing satisfied read-only and approval-withheld tasks to pass
-      with an unchanged world. The judge `satisfied` gate remains the
-      authoritative pass/fail; the state term only checks whether the final
-      hash matches the scenario's expected mutation class.
+      LIVE scenarios declare or infer whether the LifeWorld shadow should end
+      changed, unchanged, or either. That keeps ordinary write tasks from
+      rewarding inaction while still allowing satisfied read-only and
+      approval-withheld tasks to pass with an unchanged world. Evidence-gated
+      LIVE scenarios replace this shadow-state component with authenticated
+      receipt coverage because the separately controlled executor, not the
+      deterministic LifeWorld, owns the real provider state.
 
     Errors / timeouts / cost overruns force 0.
     """
@@ -1336,7 +1302,18 @@ def score_scenario(result: ScenarioResult, scenario: Scenario) -> float:
 
     if result.terminated_reason != "satisfied":
         return 0.0
-    state_component = _live_state_component(result, scenario)
+    if scenario.trusted_evidence_requirement is not None:
+        evidence = verify_result_trusted_evidence(
+            scenario,
+            result.turns,
+            seed=result.seed,
+            verifier=trusted_evidence_verifier,
+        )
+        if not evidence.satisfied:
+            return 0.0
+        state_component = 1.0
+    else:
+        state_component = _live_state_component(result, scenario)
     return 0.7 * state_component + 0.3 * substring_component
 
 
@@ -1363,6 +1340,7 @@ def compile_benchmark_result(
     model_name: str,
     judge_model_name: str,
     timestamp: str,
+    trusted_evidence_verifier: TrustedEvidenceVerifier | None = None,
 ) -> BenchmarkResult:
     """Aggregate per-scenario results into a BenchmarkResult.
 
@@ -1396,7 +1374,14 @@ def compile_benchmark_result(
     for scenario_id, scenario in scenarios_by_id.items():
         runs = per_scenario.get(scenario_id, [])
         n = max(expected_seed_count, len(runs))
-        per_run_scores = [score_scenario(r, scenario) for r in runs]
+        per_run_scores = [
+            score_scenario(
+                r,
+                scenario,
+                trusted_evidence_verifier=trusted_evidence_verifier,
+            )
+            for r in runs
+        ]
         pass_1_hits += sum(1 for s in per_run_scores if s >= 0.99)
         pass_1_total += n
         c = sum(1 for s in per_run_scores if s >= 0.99)

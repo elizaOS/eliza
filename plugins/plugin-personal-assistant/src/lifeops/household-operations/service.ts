@@ -579,7 +579,9 @@ export class HouseholdOperationsService {
   async assessResponsibility(input: {
     principalEntityId: string;
     assignmentRecordId: string;
-  }): Promise<ResponsibilityReviewProposal | null> {
+  }): Promise<
+    (ResponsibilityReviewProposal & { readonly replayed: boolean }) | null
+  > {
     this.assertOwnerPrincipal(input.principalEntityId);
     const assignment = await this.requireCurrentRevision(
       "responsibility_assignment",
@@ -596,8 +598,12 @@ export class HouseholdOperationsService {
       now: this.now(),
     });
     if (!proposal) return null;
-    return (await this.deps.repository.putResponsibilityReview(proposal))
-      .proposal;
+    const persisted =
+      await this.deps.repository.putResponsibilityReview(proposal);
+    return {
+      ...persisted.proposal,
+      replayed: !persisted.inserted,
+    };
   }
 
   private async responsibilityForEntry(
@@ -631,7 +637,12 @@ export class HouseholdOperationsService {
     householdId: string;
     window: { startsAt: string; endsAt: string };
     calendarChecks: HouseholdCalendarCheck[];
-  }): Promise<HouseholdWeeklyBrief> {
+  }): Promise<
+    HouseholdWeeklyBrief & {
+      readonly replayed: boolean;
+      readonly responsibilityReviewIds: readonly string[];
+    }
+  > {
     this.assertOwnerPrincipal(input.principalEntityId);
     const window = normalizeServiceWindow(input.window, "window");
     const calendarChecks = input.calendarChecks.map((check, index) =>
@@ -650,13 +661,17 @@ export class HouseholdOperationsService {
       isRevisionKind(revision, "responsibility_assignment"),
     );
     const activeResponsibilityReviewIds = new Set<string>();
+    let responsibilityReviewApplied = false;
     for (const assignment of assignments) {
       if (assignment.active) {
         const review = await this.assessResponsibility({
           principalEntityId: input.principalEntityId,
           assignmentRecordId: assignment.recordId,
         });
-        if (review) activeResponsibilityReviewIds.add(review.reviewId);
+        if (review) {
+          activeResponsibilityReviewIds.add(review.reviewId);
+          responsibilityReviewApplied ||= !review.replayed;
+        }
       }
     }
     const reviews = await this.deps.repository.listResponsibilityReviews(
@@ -1072,7 +1087,12 @@ export class HouseholdOperationsService {
       questions: selectedQuestions,
       createdAt: generatedAt,
     };
-    return (await this.deps.repository.putWeeklyBrief(brief)).brief;
+    const persisted = await this.deps.repository.putWeeklyBrief(brief);
+    return {
+      ...persisted.brief,
+      replayed: !persisted.inserted && !responsibilityReviewApplied,
+      responsibilityReviewIds: [...activeResponsibilityReviewIds].sort(),
+    };
   }
 
   async readWeeklyBrief(input: {

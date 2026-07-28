@@ -8,6 +8,11 @@ export {
   extractCalendarPlanWithLlm,
 } from "./calendar-handler.js";
 export {
+  type CalendarSourceConnectionIntent,
+  type CalendarSourceOperation,
+  calendarSourcesAction,
+} from "./calendar-sources.js";
+export {
   __resetConflictDetectLoaderForTests,
   type ConflictDetectActionDeps,
   type ConflictDetectEvent,

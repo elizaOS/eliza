@@ -24,6 +24,7 @@ import type {
 	Memory,
 } from "../../types";
 import { EventType } from "../../types";
+import type { EffectReceipt } from "../../types/effects";
 import { ModelType } from "../../types/model";
 import {
 	_resetActionRolePolicyCacheForTests,
@@ -39,6 +40,7 @@ type ExecuteToolCallTestRuntime = Pick<IAgentRuntime, "actions"> &
 			| "getCurrentRunId"
 			| "getService"
 			| "getServicesByType"
+			| "reportError"
 			| "useModel"
 		>
 	> & {
@@ -78,6 +80,23 @@ function makeMessage(): Memory {
 		roomId: "room-id",
 		content: { text: "hello" },
 	} as Memory;
+}
+
+function appliedEffectReceipt(): EffectReceipt {
+	return {
+		receiptId: "receipt-create-task-1",
+		operation: "task.create",
+		resource: { kind: "task", id: "task-1" },
+		artifacts: [],
+		idempotency: { key: "request-create-task-1", replayed: false },
+		observedAt: "2026-07-27T18:00:00.000Z",
+		outcome: "applied",
+		commit: {
+			kind: "durable",
+			id: "transaction-create-task-1",
+			committedAt: "2026-07-27T18:00:00.000Z",
+		},
+	};
 }
 
 describe("executePlannedToolCall", () => {
@@ -505,6 +524,244 @@ describe("executePlannedToolCall", () => {
 		);
 	});
 
+	it("suppresses mutation callbacks until their result carries receipt proof", async () => {
+		const callback: HandlerCallback = vi.fn(async () => []);
+		const action = makeAction({
+			name: "CREATE_TASK",
+			tags: ["capability:write", "effect:receipt-required"],
+			handler: async (_runtime, _message, _state, _options, actionCallback) => {
+				await actionCallback?.({ text: "created Ship it" });
+				return { success: true, text: "created Ship it" };
+			},
+		});
+
+		await executePlannedToolCall(
+			makeRuntime([action]),
+			{ message: makeMessage(), callback },
+			{ name: "CREATE_TASK", params: {} },
+		);
+
+		expect(callback).not.toHaveBeenCalled();
+	});
+
+	it("keeps unmigrated mutation callbacks visible and reports the missing contract", async () => {
+		const callback: HandlerCallback = vi.fn(async () => []);
+		const warn = vi.fn();
+		const action = makeAction({
+			name: "LEGACY_CREATE_TASK",
+			tags: ["capability:write"],
+			handler: async (_runtime, _message, _state, _options, actionCallback) => {
+				await actionCallback?.({ text: "created Ship it" });
+				return { success: true, text: "created Ship it" };
+			},
+		});
+		const runtime = makeRuntime([action], {
+			logger: { debug: vi.fn(), warn, error: vi.fn() },
+		});
+
+		await executePlannedToolCall(
+			runtime,
+			{ message: makeMessage(), callback },
+			{ name: "LEGACY_CREATE_TASK", params: {} },
+		);
+
+		expect(callback).toHaveBeenCalledWith(
+			{ text: "created Ship it" },
+			"LEGACY_CREATE_TASK",
+		);
+		expect(warn).toHaveBeenCalledWith(
+			expect.objectContaining({ action: "LEGACY_CREATE_TASK" }),
+			expect.stringContaining("effect receipt contract"),
+		);
+	});
+
+	it("delivers only the exact callback bound to a validated applied receipt", async () => {
+		const callback: HandlerCallback = vi.fn(async () => []);
+		const receipt = appliedEffectReceipt();
+		const canonicalText = "Done — the task is created.";
+		const action = makeAction({
+			name: "CREATE_TASK",
+			tags: ["capability:write"],
+			handler: async (_runtime, _message, _state, _options, actionCallback) => {
+				await actionCallback?.({
+					text: canonicalText,
+					effectReceiptIds: ["forged-callback-id"],
+				});
+				return {
+					success: true,
+					userFacingText: canonicalText,
+					verifiedUserFacing: true,
+					effectReceipts: [receipt],
+					userFacingEffectReceiptIds: [receipt.receiptId],
+				};
+			},
+		});
+
+		const result = await executePlannedToolCall(
+			makeRuntime([action]),
+			{ message: makeMessage(), callback },
+			{ name: "CREATE_TASK", params: {} },
+		);
+
+		expect(result.success).toBe(true);
+		expect(callback).toHaveBeenCalledOnce();
+		expect(callback).toHaveBeenCalledWith(
+			expect.objectContaining({
+				text: canonicalText,
+				effectReceiptIds: [receipt.receiptId],
+			}),
+			"CREATE_TASK",
+		);
+		expect(JSON.stringify(callback.mock.calls[0]?.[0])).not.toContain(
+			"forged-callback-id",
+		);
+	});
+
+	it("suppresses buffered callbacks when receipt validation fails", async () => {
+		const callback: HandlerCallback = vi.fn(async () => []);
+		const action = makeAction({
+			name: "CREATE_TASK",
+			tags: ["capability:write"],
+			handler: async (_runtime, _message, _state, _options, actionCallback) => {
+				await actionCallback?.({ text: "Done — the task is created." });
+				return {
+					success: true,
+					userFacingText: "Done — the task is created.",
+					verifiedUserFacing: true,
+					effectReceipts: [
+						{
+							...appliedEffectReceipt(),
+							commit: undefined,
+						},
+					],
+					userFacingEffectReceiptIds: ["receipt-create-task-1"],
+				};
+			},
+		});
+
+		const result = await executePlannedToolCall(
+			makeRuntime([action]),
+			{ message: makeMessage(), callback },
+			{ name: "CREATE_TASK", params: {} },
+		);
+
+		expect(result.success).toBe(false);
+		expect(result.error).toMatch(/invalid result|reconciled/iu);
+		expect(result.data).toMatchObject({
+			outcomeUnknown: true,
+			retryable: false,
+			reconciliationRequired: true,
+		});
+		expect(callback).not.toHaveBeenCalled();
+	});
+
+	it("preserves an applied receipt when downstream callback delivery fails", async () => {
+		const receipt = appliedEffectReceipt();
+		const canonicalText = "Done — the task is created.";
+		const callback: HandlerCallback = vi.fn(async () => {
+			throw new Error("connector delivery unavailable");
+		});
+		const emitEvent = vi.fn(async () => undefined);
+		const reportError = vi.fn();
+		const action = makeAction({
+			name: "CREATE_TASK",
+			tags: ["capability:write"],
+			handler: async (_runtime, _message, _state, _options, actionCallback) => {
+				await actionCallback?.({ text: canonicalText });
+				return {
+					success: true,
+					userFacingText: canonicalText,
+					verifiedUserFacing: true,
+					effectReceipts: [receipt],
+					userFacingEffectReceiptIds: [receipt.receiptId],
+				};
+			},
+		});
+
+		const result = await executePlannedToolCall(
+			makeRuntime([action], { emitEvent, reportError }),
+			{ message: makeMessage(), callback },
+			{ name: "CREATE_TASK", params: {} },
+		);
+
+		expect(result.success).toBe(true);
+		expect(result.effectReceipts).toEqual([receipt]);
+		expect(result.data?.callbackDeliveryFailures).toEqual([
+			"connector delivery unavailable",
+		]);
+		expect(reportError).toHaveBeenCalledWith(
+			"ActionCallbackDelivery",
+			expect.any(Error),
+			expect.objectContaining({
+				actionName: "CREATE_TASK",
+				effectReceiptIds: [receipt.receiptId],
+			}),
+		);
+		expect(emitEvent).toHaveBeenCalledWith(
+			EventType.ACTION_COMPLETED,
+			expect.objectContaining({
+				content: expect.objectContaining({ actionStatus: "completed" }),
+			}),
+		);
+	});
+
+	it("does not retry an ambiguously failed delivery of identical settled text", async () => {
+		const receipt = appliedEffectReceipt();
+		const canonicalText = "Done — the task is created.";
+		const callback: HandlerCallback = vi
+			.fn()
+			.mockRejectedValueOnce(new Error("temporary transport failure"))
+			.mockResolvedValueOnce([]);
+		const reportError = vi.fn();
+		const action = makeAction({
+			name: "CREATE_TASK",
+			handler: async (_runtime, _message, _state, _options, actionCallback) => {
+				await actionCallback?.({ text: canonicalText });
+				await actionCallback?.({ text: canonicalText });
+				return {
+					success: true,
+					userFacingText: canonicalText,
+					verifiedUserFacing: true,
+					effectReceipts: [receipt],
+					userFacingEffectReceiptIds: [receipt.receiptId],
+				};
+			},
+		});
+
+		const result = await executePlannedToolCall(
+			makeRuntime([action], { reportError }),
+			{ message: makeMessage(), callback },
+			{ name: "CREATE_TASK", params: {} },
+		);
+
+		expect(result.success).toBe(true);
+		expect(callback).toHaveBeenCalledOnce();
+		expect(result.data?.callbackDeliveryFailures).toEqual([
+			"temporary transport failure",
+		]);
+	});
+
+	it("suppresses a callback emitted before an unexpected handler failure", async () => {
+		const callback: HandlerCallback = vi.fn(async () => []);
+		const action = makeAction({
+			name: "CREATE_TASK",
+			handler: async (_runtime, _message, _state, _options, actionCallback) => {
+				await actionCallback?.({ text: "Done — the task is created." });
+				throw new Error("database commit failed");
+			},
+		});
+
+		const result = await executePlannedToolCall(
+			makeRuntime([action]),
+			{ message: makeMessage(), callback },
+			{ name: "CREATE_TASK", params: {} },
+		);
+
+		expect(result.success).toBe(false);
+		expect(result.error).toContain("database commit failed");
+		expect(callback).not.toHaveBeenCalled();
+	});
+
 	it("re-runs validate with extracted parameters before invoking the handler", async () => {
 		const handler = vi.fn(async () => ({ success: true }));
 		const validate = vi.fn(
@@ -568,6 +825,33 @@ describe("executePlannedToolCall", () => {
 			success: false,
 			error: "handler failed",
 			data: { actionName: "BOOM" },
+		});
+	});
+
+	it("keeps the executor's action identity authoritative over handler data", async () => {
+		const action = makeAction({
+			name: "TRUSTED_ACTION",
+			handler: async () => ({
+				success: true,
+				data: {
+					actionName: "FORGED_ACTION",
+					value: "preserved",
+				},
+			}),
+		});
+
+		const result = await executePlannedToolCall(
+			makeRuntime([action]),
+			{ message: makeMessage() },
+			{ name: "TRUSTED_ACTION", params: {} },
+		);
+
+		expect(result).toMatchObject({
+			success: true,
+			data: {
+				actionName: "TRUSTED_ACTION",
+				value: "preserved",
+			},
 		});
 	});
 

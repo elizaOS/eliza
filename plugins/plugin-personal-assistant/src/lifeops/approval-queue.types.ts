@@ -75,7 +75,10 @@ export type ApprovalChannel =
   | "phone"
   | "internal";
 
-export type CalendarMutationRecurrenceScope = "instance" | "series";
+export type CalendarMutationRecurrenceScope =
+  | "instance"
+  | "this_and_following"
+  | "series";
 
 export type CalendarCancellationMode =
   | "organizer_cancel"

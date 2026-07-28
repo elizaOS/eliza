@@ -110,7 +110,7 @@ function baseDecision(
     omissionNotice: args.omissionNotice ?? null,
     frameworkNotice:
       request.requestedFramework === "good_inside"
-        ? "The assistant can cite the named framework's primary source, but does not impersonate its author or claim what that person would say."
+        ? "The named-framework request is not answered across this safety, privacy, or evidence boundary; the assistant does not impersonate its author."
         : null,
     sources: [],
     options: [],
@@ -174,8 +174,109 @@ function expiredSourceIds(
 ): string[] {
   const requestedAt = Date.parse(request.requestedAt);
   return reviewExpiresAt.filter(
-    (expiresAt) => Date.parse(expiresAt) < requestedAt,
+    (expiresAt) =>
+      !Number.isFinite(Date.parse(expiresAt)) ||
+      Date.parse(expiresAt) < requestedAt,
   );
+}
+
+function invalidSourceIds(
+  sources: ReturnType<typeof parentingSourcesFor>,
+): string[] {
+  return sources
+    .filter((source) => {
+      const reviewedAt = Date.parse(source.reviewedAt);
+      const expiresAt = Date.parse(source.reviewExpiresAt);
+      const sourceUpdatedAt =
+        source.sourceUpdatedAt === "not_stated"
+          ? Number.NaN
+          : Date.parse(source.sourceUpdatedAt);
+      return (
+        !Number.isFinite(reviewedAt) ||
+        !Number.isFinite(expiresAt) ||
+        expiresAt < reviewedAt ||
+        (source.sourceUpdatedAt !== "not_stated" &&
+          !Number.isFinite(sourceUpdatedAt))
+      );
+    })
+    .map((source) => source.id);
+}
+
+function presentRiskDecision(
+  request: ParentingGuidanceRequest,
+  privateAccess: boolean,
+): ParentingGuidanceDecision | null {
+  const urgent = [
+    request.safety.immediateDanger,
+    request.safety.selfHarm,
+    request.safety.harmToOthers,
+  ].some((signal) => signal === "present");
+  const safeguarding = request.safety.suspectedAbuseOrNeglect === "present";
+  const clinical =
+    request.safety.medicationOrDiagnosis === "present" ||
+    request.safety.severeOrPersistentSymptoms === "present";
+  const legal = request.safety.legalOrCustodyInterpretation === "present";
+  if (!urgent && !safeguarding && !clinical && !legal) return null;
+
+  const handoffKinds = new Set<ParentingHandoffKind>();
+  const reasons: string[] = [];
+  if (urgent) {
+    handoffKinds.add("emergency_services");
+    handoffKinds.add("crisis_support");
+    reasons.push(
+      "A structural safety assessment identified immediate danger, self-harm, or possible harm to others.",
+      "Ordinary parenting suggestions stop while immediate human safety support is needed.",
+    );
+  }
+  if (safeguarding) {
+    handoffKinds.add("child_safeguarding");
+    reasons.push(
+      "A structural safety assessment identified possible abuse or neglect.",
+      "The assistant does not investigate, confront an alleged person, or replace a qualified safeguarding response.",
+    );
+  }
+  if (clinical) {
+    handoffKinds.add("licensed_mental_health_professional");
+    handoffKinds.add("pediatrician_or_prescriber");
+    reasons.push(
+      "Medication, diagnosis, or severe or persistent symptoms require an appropriately licensed professional.",
+      "The assistant does not infer a diagnosis or recommend starting, stopping, or changing medication.",
+    );
+  }
+  if (legal) {
+    handoffKinds.add("qualified_legal_professional");
+    reasons.push(
+      "The request calls for legal or custody-plan interpretation.",
+      "The assistant may organize facts but does not adjudicate rights or interpret an order.",
+    );
+  }
+
+  const mayUseSafetyDisclosure =
+    (urgent || safeguarding) &&
+    request.privacy.safetyDisclosureAuthorized === true;
+  const mayDisclose = privateAccess || mayUseSafetyDisclosure;
+  const status: ParentingGuidanceStatus = urgent
+    ? "urgent_safety_handoff"
+    : safeguarding
+      ? "safeguarding_handoff"
+      : clinical && !privateAccess
+        ? "privacy_withheld"
+        : clinical
+          ? "professional_handoff"
+          : "legal_handoff";
+  return baseDecision(request, status, {
+    mayDisclosePrivateContext: mayDisclose,
+    omissionNotice: mayDisclose
+      ? undefined
+      : "Sensitive child context is withheld from this requester; the applicable human handoffs remain available without exposing the private record.",
+    reasons,
+    handoffKinds: [...handoffKinds],
+    urgency: urgent
+      ? "immediate"
+      : safeguarding || clinical
+        ? "prompt"
+        : "routine",
+  });
 }
 
 /**
@@ -188,96 +289,29 @@ export function evaluateParentingGuidance(
   validateRequest(request);
   const privateAccess = canReadPrivateContext(request);
 
-  const urgent = [
-    request.safety.immediateDanger,
-    request.safety.selfHarm,
-    request.safety.harmToOthers,
-  ].some((signal) => signal === "present");
-  if (urgent) {
-    const mayDisclose =
-      privateAccess || request.privacy.safetyDisclosureAuthorized;
-    return baseDecision(request, "urgent_safety_handoff", {
-      mayDisclosePrivateContext: mayDisclose,
-      omissionNotice: mayDisclose
-        ? undefined
-        : "A safety concern exists, but private details are withheld from this requester.",
-      reasons: [
-        "A structural safety assessment identified immediate danger, self-harm, or possible harm to others.",
-        "Ordinary parenting suggestions stop while immediate human safety support is needed.",
-      ],
-      handoffKinds: ["emergency_services", "crisis_support"],
-      urgency: "immediate",
-    });
-  }
-
-  if (request.safety.suspectedAbuseOrNeglect === "present") {
-    const mayDisclose =
-      privateAccess || request.privacy.safetyDisclosureAuthorized;
-    return baseDecision(request, "safeguarding_handoff", {
-      mayDisclosePrivateContext: mayDisclose,
-      omissionNotice: mayDisclose
-        ? undefined
-        : "A safeguarding concern exists, but private details are withheld from this requester.",
-      reasons: [
-        "A structural safety assessment identified possible abuse or neglect.",
-        "The assistant does not investigate, confront an alleged person, or replace a qualified safeguarding response.",
-      ],
-      handoffKinds: ["child_safeguarding"],
-      urgency: "prompt",
-    });
-  }
-
-  if (
-    request.safety.medicationOrDiagnosis === "present" ||
-    request.safety.severeOrPersistentSymptoms === "present"
-  ) {
-    if (!privateAccess) {
-      return baseDecision(request, "privacy_withheld", {
-        mayDisclosePrivateContext: false,
-        omissionNotice:
-          "Private child context is not available to this requester. A qualified professional can work directly with the child and authorized caregiver.",
-        reasons: [
-          "The request involves clinical or severe-symptom context and the requester lacks verified private-scope access.",
-        ],
-      });
-    }
-    return baseDecision(request, "professional_handoff", {
-      mayDisclosePrivateContext: true,
-      reasons: [
-        "Medication, diagnosis, or severe or persistent symptoms require an appropriately licensed professional.",
-        "The assistant does not infer a diagnosis or recommend starting, stopping, or changing medication.",
-      ],
-      handoffKinds: [
-        "licensed_mental_health_professional",
-        "pediatrician_or_prescriber",
-      ],
-      urgency: "prompt",
-    });
-  }
-
-  if (request.safety.legalOrCustodyInterpretation === "present") {
-    return baseDecision(request, "legal_handoff", {
-      mayDisclosePrivateContext: privateAccess,
-      omissionNotice: privateAccess
-        ? undefined
-        : "Private child context is withheld from this requester.",
-      reasons: [
-        "The request calls for legal or custody-plan interpretation.",
-        "The assistant may organize facts but does not adjudicate rights or interpret an order.",
-      ],
-      handoffKinds: ["qualified_legal_professional"],
-      urgency: "routine",
-    });
-  }
+  const riskDecision = presentRiskDecision(request, privateAccess);
+  if (riskDecision) return riskDecision;
 
   if (!privateAccess) {
+    const unresolvedSafety = unknownSafetyFields(request);
     return baseDecision(request, "privacy_withheld", {
       mayDisclosePrivateContext: false,
       omissionNotice:
         "A private child record exists, but its contents are omitted because this requester lacks verified consent or scope.",
       reasons: [
         "Private child context does not become household-shared merely because the requester is a parent, partner, or caregiver.",
+        ...(unresolvedSafety.length > 0
+          ? [
+              `Safety assessment is unresolved for: ${unresolvedSafety.join(", ")}.`,
+            ]
+          : []),
       ],
+      ...(unresolvedSafety.length > 0
+        ? {
+            handoffKinds: ["emergency_services", "crisis_support"] as const,
+            urgency: "prompt" as const,
+          }
+        : {}),
     });
   }
 
@@ -289,6 +323,8 @@ export function evaluateParentingGuidance(
         `Safety assessment is unresolved for: ${unknown.join(", ")}.`,
         "Ordinary guidance waits for structural safety classification rather than assuming risk is absent.",
       ],
+      handoffKinds: ["emergency_services", "crisis_support"],
+      urgency: "prompt",
     });
   }
 
@@ -297,21 +333,22 @@ export function evaluateParentingGuidance(
     request.topic,
     request.requestedFramework,
   );
+  const invalidSources = invalidSourceIds(sources);
   const expired = expiredSourceIds(
     request,
     sources.map((source) => source.reviewExpiresAt),
   );
-  if (expired.length > 0 || sources.length === 0) {
-    return baseDecision(request, "professional_handoff", {
+  if (invalidSources.length > 0 || expired.length > 0 || sources.length === 0) {
+    return baseDecision(request, "evidence_unavailable", {
       mayDisclosePrivateContext: true,
       reasons: [
-        expired.length > 0
-          ? "One or more applicable sources are past their required review date."
-          : "No reviewed source covers this age band and topic.",
+        invalidSources.length > 0
+          ? `Applicable source metadata is invalid for: ${invalidSources.join(", ")}.`
+          : expired.length > 0
+            ? "One or more applicable sources are past their required review date."
+            : "No reviewed source covers this age band and topic.",
         "The assistant will not fabricate source-grounded advice when the curated basis is unavailable.",
       ],
-      handoffKinds: ["licensed_mental_health_professional"],
-      urgency: "routine",
     });
   }
 
@@ -321,15 +358,16 @@ export function evaluateParentingGuidance(
     new Set(sources.map((source) => source.id)),
   );
   if (options.length === 0) {
-    return baseDecision(request, "professional_handoff", {
+    return baseDecision(request, "evidence_unavailable", {
       mayDisclosePrivateContext: true,
       reasons: [
         "Reviewed sources exist, but no vetted educational option maps to this request.",
       ],
-      handoffKinds: ["licensed_mental_health_professional"],
-      urgency: "routine",
     });
   }
+  const includesNamedFrameworkSource = sources.some(
+    (source) => source.evidenceTier === "named_framework_primary",
+  );
 
   return {
     schemaVersion: PARENTING_GUIDANCE_VERSION,
@@ -340,7 +378,9 @@ export function evaluateParentingGuidance(
     omissionNotice: null,
     frameworkNotice:
       request.requestedFramework === "good_inside"
-        ? "These options cite the framework's primary source alongside public-health and pediatric sources; the assistant does not impersonate its author or claim a personalized clinical opinion."
+        ? includesNamedFrameworkSource
+          ? "These options cite the framework's primary source alongside public-health and pediatric sources; the assistant does not impersonate its author or claim a personalized clinical opinion."
+          : "No reviewed primary source from the named framework covers this topic; the options below come only from the cited public-health and pediatric sources."
         : null,
     sources,
     options,

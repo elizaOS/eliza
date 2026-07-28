@@ -36,6 +36,7 @@ import type {
   GetLifeOpsCalendarFeedRequest,
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
+  LifeOpsCalendarProvider,
   LifeOpsCalendarRecurrenceScope,
   LifeOpsCalendarSourceError,
   LifeOpsCalendarSourceHealth,
@@ -48,6 +49,8 @@ import type {
   LifeOpsIcsCalendarSyncResponse,
   LifeOpsNextCalendarEventContext,
   ListLifeOpsCalendarsRequest,
+  SetLifeOpsCalendarIncludedRequest,
+  SetLifeOpsCalendarIncludedResponse,
   UpdateLifeOpsIcsCalendarSourceRequest,
 } from "@elizaos/shared";
 import {
@@ -115,10 +118,14 @@ import {
   requireNonEmptyString,
 } from "../internal/normalize.js";
 import {
+  buildRecurrenceSplitPlan,
   normalizeRecurrence,
   normalizeRecurrenceScope,
+  recurrenceLinesFrom,
+  recurrenceOriginalStartAtFrom,
   recurringEventIdFrom,
 } from "../internal/recurrence.js";
+import { getZonedDateParts } from "../internal/time.js";
 import {
   cancelAllMeetingAutoJoinTasks,
   reconcileMeetingAutoJoin,
@@ -161,7 +168,14 @@ import {
 type AggregatedCalendarFeedSource = {
   calendar: Pick<
     LifeOpsCalendarSummary,
-    "accountEmail" | "calendarId" | "grantId" | "summary"
+    | "accessRole"
+    | "accountEmail"
+    | "calendarId"
+    | "connectorAccountId"
+    | "grantId"
+    | "provider"
+    | "side"
+    | "summary"
   >;
   feed: LifeOpsCalendarFeed;
 };
@@ -278,6 +292,23 @@ function calendarSourceKey(
     connectorAccountId: calendar.connectorAccountId,
     calendarId: calendar.calendarId,
   };
+}
+
+function normalizeCalendarProvider(value: unknown): LifeOpsCalendarProvider {
+  const provider = requireNonEmptyString(value, "provider");
+  switch (provider) {
+    case "google":
+    case "microsoft":
+    case "apple_calendar":
+    case "ics":
+      return provider;
+    default:
+      throw new CalendarServiceError(
+        400,
+        "provider must identify a supported calendar source",
+        "CALENDAR_SOURCE_PROVIDER_INVALID",
+      );
+  }
 }
 
 function calendarSourceError(error: unknown): LifeOpsCalendarSourceError {
@@ -419,6 +450,7 @@ function appleCalendarPlaceholderSummary(args: {
     timeZone: args.timeZone ?? null,
     selected: true,
     includeInFeed: true,
+    selectionVersion: 0,
   };
 }
 
@@ -444,6 +476,7 @@ function googleCalendarPlaceholderSummary(
     timeZone: null,
     selected: true,
     includeInFeed: true,
+    selectionVersion: 0,
   };
 }
 
@@ -469,6 +502,7 @@ function microsoftCalendarPlaceholderSummary(
     timeZone: null,
     selected: true,
     includeInFeed: true,
+    selectionVersion: 0,
   };
 }
 
@@ -494,6 +528,7 @@ function microsoftDiscoveryPlaceholderSummary(
     timeZone: null,
     selected: true,
     includeInFeed: true,
+    selectionVersion: 0,
   };
 }
 
@@ -504,6 +539,7 @@ function lifeOpsCalendarSummaryFromMicrosoft(args: {
     name: string;
     ownerAddress: string | null;
     isDefault: boolean;
+    canEdit: boolean;
     color: string | null;
     hexColor: string | null;
   };
@@ -519,14 +555,17 @@ function lifeOpsCalendarSummaryFromMicrosoft(args: {
     summary: calendar.name,
     description: null,
     primary: calendar.isDefault,
-    // The connector intentionally exposes no mutation methods yet, even when
-    // the upstream OAuth grant includes Calendars.ReadWrite.
-    accessRole: "reader",
+    accessRole:
+      calendar.canEdit &&
+      account.grant.capabilities.includes("microsoft.calendar.write")
+        ? "writer"
+        : "reader",
     backgroundColor: calendar.hexColor ?? calendar.color,
     foregroundColor: null,
     timeZone: null,
     selected: true,
     includeInFeed: true,
+    selectionVersion: 0,
   };
 }
 
@@ -578,6 +617,7 @@ function lifeOpsCalendarEventFromMicrosoft(args: {
       microsoftGraph: true,
       eventType: event.eventType,
       iCalUId: event.iCalUId,
+      originalStart: event.originalStart,
       changeKey: event.changeKey,
       graphLastModifiedAt: event.lastModifiedAt,
       sensitivity: event.sensitivity,
@@ -652,9 +692,17 @@ function failAppleRecurrenceUnsupported(operation: string): never {
 
 function failMicrosoftCalendarMutationUnsupported(operation: string): never {
   fail(
-    403,
-    `Microsoft Calendar is read-only in this integration; ${operation} is unavailable.`,
-    "MICROSOFT_CALENDAR_READ_ONLY",
+    409,
+    `Microsoft Calendar ${operation} is unavailable because Microsoft Graph does not expose an atomic event-version precondition through this integration.`,
+    "MICROSOFT_CALENDAR_CONDITIONAL_WRITE_UNSUPPORTED",
+  );
+}
+
+function failMicrosoftRecurrenceUnsupported(operation: string): never {
+  fail(
+    400,
+    `Microsoft Calendar recurring-event ${operation} is unavailable until RFC 5545 rules can be losslessly mapped to Microsoft Graph patterned recurrence.`,
+    "MICROSOFT_CALENDAR_RECURRENCE_UNSUPPORTED",
   );
 }
 
@@ -696,6 +744,71 @@ function translateGoogleMutationError(error: unknown): never {
   throw error;
 }
 
+function requireMatchingGoogleProviderVersion(
+  event: LifeOpsCalendarEvent,
+  expectedVersion: string | undefined,
+  target: "occurrence" | "series master",
+): string {
+  const expected = expectedVersion?.trim();
+  if (!expected) {
+    fail(
+      409,
+      `A this-and-following mutation must bind the exact ${target} provider version.`,
+      "CALENDAR_RECURRENCE_SPLIT_BINDING_REQUIRED",
+    );
+  }
+  const current = requireGoogleProviderVersion(event);
+  if (current !== expected) {
+    fail(
+      409,
+      `The recurring ${target} changed after approval; create a fresh approval.`,
+      "PROVIDER_PRECONDITION_FAILED",
+    );
+  }
+  return current;
+}
+
+function requireVerifiedRecurrence(
+  event: LifeOpsCalendarEvent,
+  expected: readonly string[],
+  phase: "trimmed original" | "new following series",
+): void {
+  const actual = normalizeRecurrence(recurrenceLinesFrom(event));
+  if (
+    !actual ||
+    actual.length !== expected.length ||
+    actual.some((line, index) => line !== expected[index])
+  ) {
+    fail(
+      502,
+      `Google Calendar did not return the expected recurrence for the ${phase}.`,
+      "CALENDAR_RECURRENCE_SPLIT_VERIFICATION_FAILED",
+    );
+  }
+}
+
+function recurrenceSplitAttendees(
+  event: LifeOpsCalendarEvent,
+): CreateLifeOpsCalendarEventAttendee[] {
+  return event.attendees.map((attendee, index) => {
+    const email = attendee.email?.trim();
+    if (!email) {
+      fail(
+        409,
+        `The recurring series attendee at index ${index} has no email address and cannot be preserved in a lossless split.`,
+        "CALENDAR_RECURRENCE_SPLIT_ATTENDEE_UNSUPPORTED",
+      );
+    }
+    return {
+      email,
+      ...(attendee.displayName ? { displayName: attendee.displayName } : {}),
+      ...(attendee.optional !== undefined
+        ? { optional: attendee.optional }
+        : {}),
+    };
+  });
+}
+
 function isMicrosoftCalendarEventId(
   eventId: string | null | undefined,
   agentId: string,
@@ -717,24 +830,249 @@ function shouldIncludeAppleCalendar(request: {
 export function mergeAggregatedCalendarFeedEvents(
   sources: readonly AggregatedCalendarFeedSource[],
 ): LifeOpsCalendarEvent[] {
-  const dedupedEvents = new Map<string, LifeOpsCalendarEvent>();
+  type Candidate = {
+    event: LifeOpsCalendarEvent;
+    source: AggregatedCalendarFeedSource["calendar"];
+  };
+
+  const eventUid = (event: LifeOpsCalendarEvent): string | null => {
+    for (const key of ["iCalUID", "iCalUId", "icalUid", "icsUid"]) {
+      const value = event.metadata[key];
+      if (typeof value === "string" && value.trim()) {
+        return value.trim();
+      }
+    }
+    return null;
+  };
+  const recurrenceIdentity = (event: LifeOpsCalendarEvent): string => {
+    for (const key of [
+      "originalStartTime",
+      "icsRecurrenceId",
+      "originalStart",
+    ]) {
+      const value = event.metadata[key];
+      if (typeof value === "string" && value.trim()) return value.trim();
+    }
+    return event.startAt;
+  };
+  const allDayDateIdentity = (
+    value: string,
+    event: LifeOpsCalendarEvent,
+  ): string | null => {
+    if (/^\d{4}-\d{2}-\d{2}$/u.test(value)) return value;
+    const parsed = new Date(value);
+    if (!Number.isFinite(parsed.getTime())) return null;
+    if (event.timezone) {
+      try {
+        const parts = getZonedDateParts(parsed, event.timezone);
+        return [parts.year, parts.month, parts.day]
+          .map((part, index) =>
+            index === 0 ? String(part) : String(part).padStart(2, "0"),
+          )
+          .join("-");
+      } catch {
+        // error-policy:J3 An invalid source timezone makes portable all-day
+        // identity unavailable; keeping both events is safer than collapsing.
+        return null;
+      }
+    }
+    return parsed.toISOString().slice(0, 10);
+  };
+  const occurrenceKey = (event: LifeOpsCalendarEvent): string | null => {
+    const uid = eventUid(event);
+    if (!uid) return null;
+    const identity = recurrenceIdentity(event);
+    const normalizedIdentity = event.isAllDay
+      ? allDayDateIdentity(identity, event)
+      : Number.isFinite(Date.parse(identity))
+        ? new Date(identity).toISOString()
+        : null;
+    if (!normalizedIdentity) return null;
+    // RECURRENCE-ID/originalStartTime identifies a moved exception; current
+    // DTSTART does not. Timed values are normalized to an instant, while
+    // all-day values retain their local calendar date.
+    return `${uid}\u0000${normalizedIdentity}\u0000${event.isAllDay ? "all-day" : "timed"}`;
+  };
+  const accessRank = (accessRole: string): number => {
+    switch (accessRole.toLowerCase()) {
+      case "owner":
+        return 5;
+      case "writer":
+        return 4;
+      case "reader":
+        return 3;
+      case "freebusyreader":
+        return 2;
+      case "none":
+        return 0;
+      default:
+        return 1;
+    }
+  };
+  const providerRank = (provider: LifeOpsCalendarProvider): number => {
+    switch (provider) {
+      case "google":
+      case "microsoft":
+        return 4;
+      case "apple_calendar":
+        return 3;
+      case "ics":
+        return 1;
+    }
+  };
+  const sourceSequence = (event: LifeOpsCalendarEvent): number => {
+    for (const key of ["icsSequence", "sequence"]) {
+      const value = event.metadata[key];
+      if (typeof value === "number" && Number.isFinite(value)) return value;
+      if (
+        typeof value === "string" &&
+        value.trim() &&
+        Number.isFinite(Number(value))
+      ) {
+        return Number(value);
+      }
+    }
+    return 0;
+  };
+  const candidateRank = (candidate: Candidate): readonly number[] => [
+    Date.parse(candidate.event.updatedAt),
+    sourceSequence(candidate.event),
+    candidate.event.side === "owner" ? 1 : 0,
+    accessRank(candidate.source.accessRole),
+    providerRank(candidate.event.provider),
+    Date.parse(candidate.event.syncedAt),
+  ];
+  const compareCandidates = (left: Candidate, right: Candidate): number => {
+    const leftRank = candidateRank(left);
+    const rightRank = candidateRank(right);
+    for (let index = 0; index < leftRank.length; index += 1) {
+      const leftValue = Number.isFinite(leftRank[index]) ? leftRank[index] : 0;
+      const rightValue = Number.isFinite(rightRank[index])
+        ? rightRank[index]
+        : 0;
+      if (leftValue !== rightValue) return leftValue - rightValue;
+    }
+    return right.event.id.localeCompare(left.event.id);
+  };
+  const sourceReference = (candidate: Candidate) => ({
+    eventId: candidate.event.id,
+    provider: candidate.event.provider,
+    side: candidate.event.side,
+    grantId: candidate.event.grantId ?? candidate.source.grantId,
+    connectorAccountId:
+      candidate.event.connectorAccountId ?? candidate.source.connectorAccountId,
+    calendarId: candidate.event.calendarId,
+  });
+  const localEventKey = (candidate: Candidate): string =>
+    JSON.stringify([
+      candidate.event.provider,
+      candidate.event.side,
+      candidate.event.grantId ?? candidate.source.grantId,
+      candidate.event.connectorAccountId ?? candidate.source.connectorAccountId,
+      candidate.event.calendarId,
+      candidate.event.id,
+    ]);
+
+  const groups = new Map<string, Candidate[]>();
   for (const source of sources) {
     for (const event of source.feed.events) {
-      if (dedupedEvents.has(event.id)) {
-        continue;
+      const candidate: Candidate = {
+        source: source.calendar,
+        event: {
+          ...event,
+          grantId: event.grantId ?? source.calendar.grantId,
+          connectorAccountId:
+            event.connectorAccountId ?? source.calendar.connectorAccountId,
+          accountEmail:
+            event.accountEmail ?? source.calendar.accountEmail ?? undefined,
+          calendarSummary: event.calendarSummary ?? source.calendar.summary,
+        },
+      };
+      const semanticKey = occurrenceKey(candidate.event);
+      const groupKey = semanticKey
+        ? `portable\u0000${semanticKey}`
+        : `source\u0000${localEventKey(candidate)}`;
+      const group = groups.get(groupKey);
+      if (group) {
+        group.push(candidate);
+      } else {
+        groups.set(groupKey, [candidate]);
       }
-      dedupedEvents.set(event.id, {
-        ...event,
-        grantId: event.grantId ?? source.calendar.grantId,
-        accountEmail:
-          event.accountEmail ?? source.calendar.accountEmail ?? undefined,
-        calendarSummary: event.calendarSummary ?? source.calendar.summary,
-      });
     }
   }
-  return [...dedupedEvents.values()].sort((a, b) =>
-    a.startAt.localeCompare(b.startAt),
-  );
+
+  return [...groups.values()]
+    .map((group) => {
+      const authoritative = group.reduce((winner, candidate) =>
+        compareCandidates(candidate, winner) > 0 ? candidate : winner,
+      );
+      if (group.length === 1) return authoritative.event;
+      const allSources = group
+        .map(sourceReference)
+        .sort((left, right) =>
+          [
+            left.provider,
+            left.side,
+            left.grantId,
+            left.calendarId,
+            left.eventId,
+          ]
+            .join("\u0000")
+            .localeCompare(
+              [
+                right.provider,
+                right.side,
+                right.grantId,
+                right.calendarId,
+                right.eventId,
+              ].join("\u0000"),
+            ),
+        );
+      const conflictingFields = [
+        "title",
+        "status",
+        "startAt",
+        "endAt",
+        "location",
+        "description",
+      ].filter((field) => {
+        const values = new Set(
+          group.map((candidate) =>
+            String(
+              candidate.event[
+                field as keyof Pick<
+                  LifeOpsCalendarEvent,
+                  | "title"
+                  | "status"
+                  | "startAt"
+                  | "endAt"
+                  | "location"
+                  | "description"
+                >
+              ],
+            ),
+          ),
+        );
+        return values.size > 1;
+      });
+      return {
+        ...authoritative.event,
+        metadata: {
+          ...authoritative.event.metadata,
+          deduplication: {
+            identityVersion: "rfc5545-uid-recurrence-id-v2",
+            authoritativeSource: sourceReference(authoritative),
+            sources: allSources,
+            conflictingFields,
+          },
+        },
+      };
+    })
+    .sort(
+      (left, right) =>
+        left.startAt.localeCompare(right.startAt) ||
+        left.id.localeCompare(right.id),
+    );
 }
 
 /**
@@ -1323,10 +1661,89 @@ export class CalendarService extends Service {
         : requireNonEmptyString(request.name, "name");
     const enabled =
       request.enabled === undefined
-        ? existing.enabled
+        ? undefined
         : normalizeOptionalBoolean(request.enabled, "enabled");
-    if (enabled === undefined) {
+    if (request.enabled !== undefined && enabled === undefined) {
       throw new CalendarServiceError(400, "enabled must be a boolean");
+    }
+    if (
+      enabled !== undefined &&
+      (request.name !== undefined || request.url !== undefined)
+    ) {
+      throw new CalendarServiceError(
+        400,
+        "Update enabled separately from source metadata so the selection change can commit atomically.",
+        "CALENDAR_SOURCE_SELECTION_COMBINATION_INVALID",
+      );
+    }
+    if (
+      request.enabled === undefined &&
+      request.expectedSelectionVersion !== undefined
+    ) {
+      throw new CalendarServiceError(
+        400,
+        "expectedSelectionVersion is only valid when changing enabled.",
+        "CALENDAR_SOURCE_VERSION_INVALID",
+      );
+    }
+    if (enabled !== undefined) {
+      const expectedVersion = request.expectedSelectionVersion;
+      if (
+        typeof expectedVersion !== "number" ||
+        !Number.isSafeInteger(expectedVersion) ||
+        expectedVersion < 0
+      ) {
+        throw new CalendarServiceError(
+          400,
+          "expectedSelectionVersion must be a non-negative safe integer when changing enabled.",
+          "CALENDAR_SOURCE_VERSION_INVALID",
+        );
+      }
+      try {
+        await setCalendarFeedIncluded(
+          this.runtime,
+          {
+            provider: "ics",
+            side: existing.side,
+            grantId: existing.id,
+            connectorAccountId: existing.id,
+            calendarId: existing.id,
+            initialIncluded: existing.enabled,
+          },
+          enabled,
+          expectedVersion,
+        );
+      } catch (error) {
+        // error-policy:J1 The public CRUD boundary maps durable CAS outcomes to
+        // transport-stable status codes without hiding the transaction cause.
+        if (error instanceof ElizaError) {
+          if (error.code === "CALENDAR_SOURCE_SELECTION_CONFLICT") {
+            throw new CalendarServiceError(409, error.message, error.code);
+          }
+          if (
+            error.code === "CALENDAR_SOURCE_ATOMIC_COMMIT_FAILED" ||
+            error.code === "CALENDAR_SOURCE_TRANSACTION_REQUIRED"
+          ) {
+            throw new CalendarServiceError(503, error.message, error.code);
+          }
+          if (error.code === "CALENDAR_ICS_SOURCE_NOT_FOUND") {
+            throw new CalendarServiceError(404, error.message, error.code);
+          }
+        }
+        throw error;
+      }
+      const selected = await this.repo.getIcsCalendarSource(
+        this.agentId(),
+        normalizedSourceId,
+      );
+      if (!selected) {
+        throw new CalendarServiceError(
+          404,
+          "Calendar subscription source not found.",
+          "ICS_SOURCE_NOT_FOUND",
+        );
+      }
+      return publicIcsCalendarSource(selected);
     }
 
     let replacement:
@@ -1363,7 +1780,6 @@ export class CalendarService extends Service {
         agentId: this.agentId(),
         sourceId: normalizedSourceId,
         name,
-        enabled,
         updatedAt: new Date().toISOString(),
         replacement,
       });
@@ -1968,26 +2384,54 @@ export class CalendarService extends Service {
           .map(icsCalendarSummary),
       );
     }
-    const preferenceCalendars = summaries.filter(
-      (summary) => summary.provider !== "ics",
-    );
     const preferences = await ensureCalendarFeedIncludes(
       this.runtime,
-      preferenceCalendars.map((summary) => ({
+      summaries.map((summary) => ({
+        provider: summary.provider,
+        side: summary.side,
         grantId: summary.grantId,
+        connectorAccountId: summary.connectorAccountId,
         calendarId: summary.calendarId,
+        ...(summary.provider === "ics"
+          ? { initialIncluded: summary.includeInFeed }
+          : {}),
       })),
     );
     return {
-      calendars: summaries.map((summary) => ({
-        ...summary,
-        includeInFeed:
-          summary.provider === "ics"
-            ? summary.includeInFeed
-            : preferences.calendarFeedIncludes[
-                calendarFeedPreferenceKey(summary.grantId, summary.calendarId)
-              ] !== false,
-      })),
+      calendars: summaries.map((summary) => {
+        const preferenceKey = calendarFeedPreferenceKey({
+          provider: summary.provider,
+          side: summary.side,
+          grantId: summary.grantId,
+          connectorAccountId: summary.connectorAccountId,
+          calendarId: summary.calendarId,
+        });
+        const includeInFeed = preferences.calendarFeedIncludes[preferenceKey];
+        const selectionVersion =
+          preferences.calendarFeedVersions[preferenceKey];
+        if (
+          typeof includeInFeed !== "boolean" ||
+          !Number.isSafeInteger(selectionVersion)
+        ) {
+          throw new ElizaError(
+            "Calendar source preference initialization returned an incomplete row.",
+            {
+              code: "CALENDAR_SOURCE_PREFERENCE_INCOMPLETE",
+              context: {
+                source: calendarSourceKey(summary),
+                includeInFeed,
+                selectionVersion,
+              },
+              severity: "fatal",
+            },
+          );
+        }
+        return {
+          ...summary,
+          includeInFeed,
+          selectionVersion,
+        };
+      }),
       failures,
     };
   }
@@ -2012,14 +2456,18 @@ export class CalendarService extends Service {
 
   async setCalendarIncluded(
     requestUrl: URL,
-    request: {
-      calendarId: string;
-      includeInFeed: boolean;
-      side?: LifeOpsConnectorSide;
-      mode?: LifeOpsConnectorMode;
-      grantId?: string;
-    },
-  ): Promise<LifeOpsCalendarSummary> {
+    request: SetLifeOpsCalendarIncludedRequest,
+  ): Promise<SetLifeOpsCalendarIncludedResponse> {
+    const provider = normalizeCalendarProvider(request.provider);
+    const side = normalizeOptionalConnectorSide(request.side, "side");
+    if (!side) {
+      throw new CalendarServiceError(400, "side is required");
+    }
+    const grantId = requireNonEmptyString(request.grantId, "grantId");
+    const connectorAccountId = requireNonEmptyString(
+      request.connectorAccountId,
+      "connectorAccountId",
+    );
     const calendarId = requireNonEmptyString(request.calendarId, "calendarId");
     const includeInFeed = normalizeOptionalBoolean(
       request.includeInFeed,
@@ -2028,41 +2476,106 @@ export class CalendarService extends Service {
     if (includeInFeed === undefined) {
       throw new CalendarServiceError(400, "includeInFeed must be a boolean");
     }
-    const calendars = await this.listCalendars(requestUrl, request);
+    if (
+      !Number.isSafeInteger(request.expectedVersion) ||
+      request.expectedVersion < 0
+    ) {
+      throw new CalendarServiceError(
+        400,
+        "expectedVersion must be a non-negative safe integer",
+        "CALENDAR_SOURCE_VERSION_INVALID",
+      );
+    }
+    const calendars = await this.listCalendars(requestUrl, {
+      side,
+      mode: request.mode,
+      grantId,
+    });
     const calendar = calendars.find(
       (entry) =>
+        entry.provider === provider &&
+        entry.side === side &&
+        entry.grantId === grantId &&
+        entry.connectorAccountId === connectorAccountId &&
         entry.calendarId === calendarId &&
-        (request.grantId ? entry.grantId === request.grantId : true),
+        entry.selectionVersion === request.expectedVersion,
     );
     if (!calendar) {
-      throw new CalendarServiceError(404, "Calendar not found");
-    }
-    if (calendar.provider === "ics") {
-      const source = await this.updateIcsCalendarSource(calendar.grantId, {
-        enabled: includeInFeed,
-      });
-      const record = await this.repo.getIcsCalendarSource(
-        this.agentId(),
-        source.id,
+      const sameIdentity = calendars.find(
+        (entry) =>
+          entry.provider === provider &&
+          entry.side === side &&
+          entry.grantId === grantId &&
+          entry.connectorAccountId === connectorAccountId &&
+          entry.calendarId === calendarId,
       );
-      if (!record) {
-        throw new ElizaError(
-          "Calendar subscription disappeared after its update.",
-          {
-            code: "ICS_SOURCE_UPDATE_INVARIANT",
-            context: { sourceId: source.id },
-            severity: "fatal",
-          },
+      if (sameIdentity) {
+        throw new CalendarServiceError(
+          409,
+          "Calendar source selection changed after it was listed. Refresh sources before retrying.",
+          "CALENDAR_SOURCE_SELECTION_CONFLICT",
         );
       }
-      return icsCalendarSummary(record);
+      throw new CalendarServiceError(
+        404,
+        "The exact calendar source was not found.",
+        "CALENDAR_SOURCE_NOT_FOUND",
+      );
     }
-    await setCalendarFeedIncluded(
-      this.runtime,
-      { grantId: calendar.grantId, calendarId },
-      includeInFeed,
-    );
-    return { ...calendar, includeInFeed };
+    try {
+      const receipt = await setCalendarFeedIncluded(
+        this.runtime,
+        {
+          provider: calendar.provider,
+          side: calendar.side,
+          grantId: calendar.grantId,
+          connectorAccountId: calendar.connectorAccountId,
+          calendarId,
+          initialIncluded: calendar.includeInFeed,
+        },
+        includeInFeed,
+        request.expectedVersion,
+      );
+      return {
+        calendar: {
+          ...calendar,
+          includeInFeed: receipt.included,
+          selectionVersion: receipt.currentVersion,
+        },
+        previousVersion: receipt.previousVersion,
+        currentVersion: receipt.currentVersion,
+        changed: receipt.changed,
+        acceptedAt: receipt.updatedAt,
+      };
+    } catch (error) {
+      // error-policy:J1 CalendarService is the public domain boundary. Preserve
+      // stable conflict/retry codes while the SQL layer retains rollback cause.
+      if (
+        error instanceof ElizaError &&
+        error.code === "CALENDAR_SOURCE_SELECTION_CONFLICT"
+      ) {
+        throw new CalendarServiceError(409, error.message, error.code);
+      }
+      if (
+        error instanceof ElizaError &&
+        error.code === "CALENDAR_SOURCE_ATOMIC_COMMIT_FAILED"
+      ) {
+        throw new CalendarServiceError(503, error.message, error.code);
+      }
+      if (
+        error instanceof ElizaError &&
+        error.code === "CALENDAR_SOURCE_TRANSACTION_REQUIRED"
+      ) {
+        throw new CalendarServiceError(503, error.message, error.code);
+      }
+      if (
+        error instanceof ElizaError &&
+        error.code === "CALENDAR_ICS_SOURCE_NOT_FOUND"
+      ) {
+        throw new CalendarServiceError(404, error.message, error.code);
+      }
+      throw error;
+    }
   }
 
   private async recordCalendarEventAudit(
@@ -3331,6 +3844,7 @@ export class CalendarService extends Service {
                 timeZone,
                 selected: true,
                 includeInFeed: true,
+                selectionVersion: 0,
               },
         );
       } else if (
@@ -3362,6 +3876,7 @@ export class CalendarService extends Service {
           timeZone,
           selected: false,
           includeInFeed: false,
+          selectionVersion: 0,
         };
         return {
           calendarId: disconnected.calendarId,
@@ -3589,6 +4104,59 @@ export class CalendarService extends Service {
       .map((event) => event.id);
   }
 
+  private async resolveMicrosoftCalendarWriteTarget(args: {
+    grantId: string;
+    calendarId: string;
+    side?: LifeOpsConnectorSide | null;
+  }): Promise<{
+    account: MicrosoftCalendarAccount;
+    calendarId: string;
+  }> {
+    const accounts = await this.microsoftPort.listAccounts({
+      grantId: args.grantId,
+      side: args.side ?? undefined,
+    });
+    if (accounts.length !== 1) {
+      fail(
+        409,
+        accounts.length === 0
+          ? "The selected Microsoft calendar account is not connected."
+          : "The Microsoft calendar source is ambiguous; select one account.",
+        accounts.length === 0
+          ? "MICROSOFT_CALENDAR_DISCONNECTED"
+          : "MICROSOFT_CALENDAR_ACCOUNT_AMBIGUOUS",
+      );
+    }
+    const account = accounts[0];
+    if (!account.grant.capabilities.includes("microsoft.calendar.write")) {
+      fail(
+        403,
+        "Microsoft Calendar creation requires delegated Calendars.ReadWrite permission.",
+        "MICROSOFT_CALENDAR_WRITE_PERMISSION_MISSING",
+      );
+    }
+    const calendars = await this.microsoftPort.listCalendars(account);
+    const calendar =
+      args.calendarId === "primary"
+        ? calendars.find((candidate) => candidate.isDefault)
+        : calendars.find((candidate) => candidate.id === args.calendarId);
+    if (!calendar) {
+      fail(
+        404,
+        "The selected Microsoft calendar no longer exists.",
+        "MICROSOFT_CALENDAR_NOT_FOUND",
+      );
+    }
+    if (!calendar.canEdit) {
+      fail(
+        403,
+        "The selected Microsoft calendar is read-only for this account.",
+        "MICROSOFT_CALENDAR_READ_ONLY",
+      );
+    }
+    return { account, calendarId: calendar.id };
+  }
+
   /**
    * Resolve a conversational create into one concrete, writable Google source
    * and absolute interval without performing the external write. Approval
@@ -3612,16 +4180,34 @@ export class CalendarService extends Service {
     const mode = normalizeOptionalConnectorMode(request.mode, "mode");
     const side = normalizeOptionalConnectorSide(request.side, "side");
     const calendarId = normalizeCalendarId(request.calendarId);
-    if (
-      isMicrosoftCalendarGrantId(request.grantId) ||
-      isAppleCalendarGrant(request.grantId)
-    ) {
-      failConditionalMutationUnsupported(
-        isAppleCalendarGrant(request.grantId) ? "Apple" : "Microsoft",
-      );
-    }
     const recurrence = normalizeRecurrence(request.recurrence);
     const range = resolveCalendarEventRange(request, now);
+    if (isAppleCalendarGrant(request.grantId)) {
+      failConditionalMutationUnsupported("Apple");
+    }
+    if (isMicrosoftCalendarGrantId(request.grantId)) {
+      if (recurrence) {
+        failMicrosoftRecurrenceUnsupported("creation");
+      }
+      const microsoftGrantId = requireNonEmptyString(
+        request.grantId,
+        "grantId",
+      );
+      const target = await this.resolveMicrosoftCalendarWriteTarget({
+        grantId: microsoftGrantId,
+        calendarId,
+        side,
+      });
+      return {
+        ...request,
+        side: target.account.grant.side,
+        grantId: target.account.grant.id,
+        calendarId: target.calendarId,
+        startAt: range.startAt,
+        endAt: range.endAt,
+        timeZone: range.timeZone,
+      };
+    }
     let grant: LifeOpsConnectorGrant;
     try {
       grant = await this.gate.requireGoogleCalendarWriteGrant(
@@ -3718,9 +4304,6 @@ export class CalendarService extends Service {
     const mode = normalizeOptionalConnectorMode(request.mode, "mode");
     const side = normalizeOptionalConnectorSide(request.side, "side");
     const calendarId = normalizeCalendarId(request.calendarId);
-    if (isMicrosoftCalendarGrantId(request.grantId)) {
-      failMicrosoftCalendarMutationUnsupported("event creation");
-    }
     // Validate recurrence up front so an invalid rule fails the request
     // instead of silently creating a one-off event.
     const recurrence = normalizeRecurrence(request.recurrence);
@@ -3728,6 +4311,68 @@ export class CalendarService extends Service {
       request,
       now,
     );
+    if (isMicrosoftCalendarGrantId(request.grantId)) {
+      if (recurrence) {
+        failMicrosoftRecurrenceUnsupported("creation");
+      }
+      const microsoftGrantId = requireNonEmptyString(
+        request.grantId,
+        "grantId",
+      );
+      const target = await this.resolveMicrosoftCalendarWriteTarget({
+        grantId: microsoftGrantId,
+        calendarId,
+        side,
+      });
+      const microsoftEvent = await this.microsoftPort.createEvent({
+        account: target.account,
+        calendarId: target.calendarId,
+        title: requireNonEmptyString(request.title, "title"),
+        description: normalizeOptionalString(request.description),
+        location: normalizeOptionalString(request.location),
+        startAt,
+        endAt,
+        attendees: normalizeCalendarAttendees(request.attendees),
+        notifyAttendees: request.notifyAttendees === true,
+        idempotencyKey: requireNonEmptyString(
+          request.idempotencyKey,
+          "idempotencyKey",
+        ),
+      });
+      const syncedAt = new Date().toISOString();
+      const event = lifeOpsCalendarEventFromMicrosoft({
+        event: microsoftEvent,
+        account: target.account,
+        calendarId: target.calendarId,
+        agentId: this.agentId(),
+        syncedAt,
+      });
+      await this.repo.upsertCalendarEvent(event, target.account.grant.side);
+      await this.syncCalendarReminderPlans([event]);
+      await reconcileMeetingAutoJoin({
+        runtime: this.runtime,
+        agentId: this.agentId(),
+        events: [event],
+      });
+      await this.recordCalendarEventAudit(
+        event.id,
+        "calendar event created through Microsoft Graph",
+        {
+          calendarId: target.calendarId,
+          title: request.title,
+          notifyAttendees: request.notifyAttendees === true,
+        },
+        {
+          externalId: event.externalId,
+          changeKey: microsoftEvent.changeKey,
+        },
+      );
+      return {
+        outcome: "event",
+        event,
+        writeOnlyReceipt: null,
+      };
+    }
     if (isAppleCalendarGrant(request.grantId)) {
       if (recurrence) {
         failAppleRecurrenceUnsupported("create");
@@ -3908,6 +4553,8 @@ export class CalendarService extends Service {
       recurrenceScope?: LifeOpsCalendarRecurrenceScope | null;
       notifyAttendees?: boolean;
       expectedProviderVersion?: string;
+      expectedOccurrenceProviderVersion?: string;
+      idempotencyKey?: string;
     },
   ): Promise<LifeOpsCalendarEvent> {
     const mode = normalizeOptionalConnectorMode(request.mode, "mode");
@@ -3988,6 +4635,16 @@ export class CalendarService extends Service {
       }
       return this.updateAppleCalendarEvent(request.eventId, nativePatch);
     }
+    if (recurrenceScope === "this_and_following") {
+      return this.updateGoogleThisAndFollowing({
+        requestUrl,
+        grant,
+        request,
+        recurrence,
+        timeZone,
+        parseTimeZone,
+      });
+    }
     let targetEventId = requireNonEmptyString(request.eventId, "eventId");
     // A series edit addressed through a flattened occurrence must patch the
     // series master; a recurrence-rule change is always a series edit.
@@ -4058,6 +4715,476 @@ export class CalendarService extends Service {
     return event;
   }
 
+  private async loadGoogleRecurrenceSplitContext(args: {
+    grant: LifeOpsConnectorGrant;
+    calendarId?: string | null;
+    eventId: string;
+    expectedProviderVersion?: string;
+    expectedOccurrenceProviderVersion?: string;
+    replacementRecurrence?: readonly string[];
+  }) {
+    const getEvent = requireGoogleServiceMethod(this.runtime, "getEvent");
+    const accountId = accountIdForGrant(args.grant);
+    const calendarId = args.calendarId ?? undefined;
+    const occurrenceWire = await getEvent({
+      accountId,
+      calendarId,
+      eventId: requireNonEmptyString(args.eventId, "eventId"),
+    });
+    const occurrence = lifeOpsCalendarEventFromGoogle({
+      event: occurrenceWire,
+      grant: args.grant,
+      agentId: this.agentId(),
+    });
+    requireMatchingGoogleProviderVersion(
+      occurrence,
+      args.expectedOccurrenceProviderVersion,
+      "occurrence",
+    );
+    const masterEventId = recurringEventIdFrom(occurrence);
+    if (!masterEventId) {
+      fail(
+        409,
+        "This-and-following requires a concrete recurring occurrence, not a one-off event or series master.",
+        "CALENDAR_RECURRENCE_SPLIT_OCCURRENCE_REQUIRED",
+      );
+    }
+    const originalStartAt = recurrenceOriginalStartAtFrom(occurrence);
+    if (!originalStartAt) {
+      fail(
+        502,
+        "Google Calendar did not return the occurrence identity required to split the series.",
+        "CALENDAR_RECURRENCE_SPLIT_OCCURRENCE_IDENTITY_MISSING",
+      );
+    }
+    if (
+      occurrence.metadata.originalStartIsAllDay === true ||
+      occurrence.isAllDay
+    ) {
+      fail(
+        400,
+        "This-and-following is unavailable for all-day recurrence until date-only split semantics can be preserved.",
+        "CALENDAR_RECURRENCE_SPLIT_ALL_DAY_UNSUPPORTED",
+      );
+    }
+    if (
+      new Date(originalStartAt).getTime() !==
+      new Date(occurrence.startAt).getTime()
+    ) {
+      fail(
+        409,
+        "The selected occurrence is a moved exception. Choose the whole series or a non-exception occurrence so the split does not silently change its identity.",
+        "CALENDAR_RECURRENCE_SPLIT_TARGET_EXCEPTION_UNSUPPORTED",
+      );
+    }
+
+    const masterWire = await getEvent({
+      accountId,
+      calendarId,
+      eventId: masterEventId,
+    });
+    const master = lifeOpsCalendarEventFromGoogle({
+      event: masterWire,
+      grant: args.grant,
+      agentId: this.agentId(),
+    });
+    requireMatchingGoogleProviderVersion(
+      master,
+      args.expectedProviderVersion,
+      "series master",
+    );
+    const timeZone = master.timezone ?? occurrence.timezone;
+    if (!timeZone) {
+      fail(
+        502,
+        "Google Calendar did not return the IANA timezone required to preserve wall-clock recurrence.",
+        "CALENDAR_RECURRENCE_SPLIT_TIMEZONE_MISSING",
+      );
+    }
+    const plan = buildRecurrenceSplitPlan({
+      recurrence: recurrenceLinesFrom(master),
+      ...(args.replacementRecurrence
+        ? { replacementRecurrence: args.replacementRecurrence }
+        : {}),
+      seriesStartAt: new Date(master.startAt),
+      targetStartAt: new Date(originalStartAt),
+      timeZone,
+    });
+    return {
+      accountId,
+      calendarId,
+      occurrence,
+      master,
+      masterEventId,
+      originalStartAt,
+      timeZone,
+      plan,
+    };
+  }
+
+  private async updateGoogleThisAndFollowing(args: {
+    requestUrl: URL;
+    grant: LifeOpsConnectorGrant;
+    request: {
+      calendarId?: string | null;
+      eventId: string;
+      title?: string;
+      description?: string;
+      location?: string;
+      startAt?: string;
+      endAt?: string;
+      attendees?: CreateLifeOpsCalendarEventAttendee[] | null;
+      notifyAttendees?: boolean;
+      expectedProviderVersion?: string;
+      expectedOccurrenceProviderVersion?: string;
+      idempotencyKey?: string;
+    };
+    recurrence?: string[];
+    timeZone?: string;
+    parseTimeZone: string;
+  }): Promise<LifeOpsCalendarEvent> {
+    const idempotencyKey = args.request.idempotencyKey?.trim();
+    if (!idempotencyKey) {
+      fail(
+        409,
+        "This-and-following update requires the durable mutation operation key.",
+        "CALENDAR_RECURRENCE_SPLIT_IDEMPOTENCY_REQUIRED",
+      );
+    }
+    const context = await this.loadGoogleRecurrenceSplitContext({
+      grant: args.grant,
+      calendarId: args.request.calendarId,
+      eventId: args.request.eventId,
+      expectedProviderVersion: args.request.expectedProviderVersion,
+      expectedOccurrenceProviderVersion:
+        args.request.expectedOccurrenceProviderVersion,
+      replacementRecurrence: args.recurrence,
+    });
+    const occurrenceStartMs = Date.parse(context.occurrence.startAt);
+    const occurrenceEndMs = Date.parse(context.occurrence.endAt);
+    const durationMs = occurrenceEndMs - occurrenceStartMs;
+    if (!Number.isFinite(durationMs) || durationMs <= 0) {
+      fail(
+        502,
+        "Google Calendar returned invalid occurrence bounds for the series split.",
+        "CALENDAR_RECURRENCE_SPLIT_EVENT_BOUNDS_INVALID",
+      );
+    }
+    const requestedStartAt = args.request.startAt
+      ? normalizeCalendarDateTimeInTimeZone(
+          args.request.startAt,
+          "startAt",
+          args.parseTimeZone,
+        )
+      : undefined;
+    const requestedEndAt = args.request.endAt
+      ? normalizeCalendarDateTimeInTimeZone(
+          args.request.endAt,
+          "endAt",
+          args.parseTimeZone,
+        )
+      : undefined;
+    const startAt = requestedStartAt ?? context.occurrence.startAt;
+    const endAt =
+      requestedEndAt ??
+      (requestedStartAt
+        ? new Date(Date.parse(requestedStartAt) + durationMs).toISOString()
+        : context.occurrence.endAt);
+    if (Date.parse(endAt) <= Date.parse(startAt)) {
+      fail(
+        400,
+        "The following series end must be after its start.",
+        "CALENDAR_RECURRENCE_SPLIT_EVENT_BOUNDS_INVALID",
+      );
+    }
+    const title = args.request.title ?? context.master.title;
+    if (!title.trim()) {
+      fail(
+        400,
+        "The following series must retain a non-empty title.",
+        "CALENDAR_RECURRENCE_SPLIT_TITLE_REQUIRED",
+      );
+    }
+    const normalizedAttendees =
+      args.request.attendees === undefined
+        ? recurrenceSplitAttendees(context.master)
+        : normalizeCalendarAttendees(args.request.attendees);
+    const updateEvent = requireGoogleServiceMethod(this.runtime, "updateEvent");
+    let trimmedMaster: LifeOpsCalendarEvent | null = null;
+    if (context.plan.truncatedRecurrence) {
+      let trimmedWire: GoogleCalendarEvent;
+      try {
+        trimmedWire = await updateEvent(
+          googleCalendarEventPatchInput({
+            accountId: context.accountId,
+            calendarId: args.request.calendarId,
+            eventId: context.masterEventId,
+            recurrence: context.plan.truncatedRecurrence,
+            notifyAttendees: args.request.notifyAttendees === true,
+            expectedProviderVersion: args.request.expectedProviderVersion,
+          }),
+        );
+      } catch (error) {
+        // error-policy:J1 CalendarService translates definitive Google
+        // mutation outcomes into its stable domain error contract.
+        translateGoogleMutationError(error);
+      }
+      trimmedMaster = lifeOpsCalendarEventFromGoogle({
+        event: trimmedWire,
+        grant: args.grant,
+        agentId: this.agentId(),
+      });
+      requireVerifiedRecurrence(
+        trimmedMaster,
+        context.plan.truncatedRecurrence,
+        "trimmed original",
+      );
+    } else {
+      const deleteEvent = requireGoogleServiceMethod(
+        this.runtime,
+        "deleteEvent",
+      );
+      try {
+        await deleteEvent({
+          accountId: context.accountId,
+          calendarId: context.calendarId,
+          eventId: context.masterEventId,
+          sendUpdates: args.request.notifyAttendees === true ? "all" : "none",
+          expectedEtag: args.request.expectedProviderVersion,
+        });
+      } catch (error) {
+        // error-policy:J1 CalendarService translates definitive Google
+        // mutation outcomes into its stable domain error contract.
+        translateGoogleMutationError(error);
+      }
+    }
+
+    let created: CreateLifeOpsCalendarEventResponse;
+    try {
+      created = await this.createCalendarEventMutation(args.requestUrl, {
+        side: args.grant.side,
+        grantId: args.grant.id,
+        calendarId: args.request.calendarId ?? context.master.calendarId,
+        title,
+        description: args.request.description ?? context.master.description,
+        location: args.request.location ?? context.master.location,
+        startAt,
+        endAt,
+        timeZone: args.timeZone ?? context.timeZone,
+        attendees: normalizedAttendees,
+        recurrence: context.plan.followingRecurrence,
+        idempotencyKey: `calendar-series-split:v1:${idempotencyKey}`,
+        notifyAttendees: args.request.notifyAttendees === true,
+      });
+    } catch (error) {
+      // error-policy:J2 Once the original series is trimmed, the provider
+      // cause must survive inside a non-retryable ambiguous-outcome failure.
+      throw new CalendarServiceError(
+        502,
+        "The original recurring series was changed, but the following series outcome is unknown. Automatic retry is disabled until the calendar is reconciled.",
+        "CALENDAR_RECURRENCE_SPLIT_OUTCOME_AMBIGUOUS",
+        { cause: error },
+      );
+    }
+    if (created.outcome !== "event") {
+      throw new CalendarServiceError(
+        502,
+        "The original recurring series was changed, but Google did not return the following series.",
+        "CALENDAR_RECURRENCE_SPLIT_OUTCOME_AMBIGUOUS",
+      );
+    }
+    const createdEvent = created.event;
+    requireVerifiedRecurrence(
+      createdEvent,
+      context.plan.followingRecurrence,
+      "new following series",
+    );
+    if (Date.parse(createdEvent.startAt) !== Date.parse(startAt)) {
+      fail(
+        502,
+        "Google Calendar returned the following series at an unexpected start time.",
+        "CALENDAR_RECURRENCE_SPLIT_VERIFICATION_FAILED",
+      );
+    }
+
+    const removedOwnerIds =
+      context.plan.targetOccurrenceIndex === 0
+        ? await this.purgeCachedSeries({
+            masterEventId: context.masterEventId,
+            calendarId: args.request.calendarId,
+            side: args.grant.side,
+            grantId: args.grant.id,
+          })
+        : await this.purgeCachedSeriesOccurrencesFrom({
+            masterEventId: context.masterEventId,
+            calendarId: args.request.calendarId,
+            side: args.grant.side,
+            grantId: args.grant.id,
+            originalStartAt: context.originalStartAt,
+          });
+    if (trimmedMaster) {
+      await this.repo.upsertCalendarEvent(trimmedMaster, args.grant.side);
+    }
+    const event = {
+      ...createdEvent,
+      metadata: {
+        ...createdEvent.metadata,
+        recurrenceMutation: {
+          scope: "this_and_following",
+          originalSeriesEventId: context.masterEventId,
+          targetOriginalStartAt: context.originalStartAt,
+          futureExceptions: "reset",
+        },
+      },
+    };
+    await this.repo.upsertCalendarEvent(event, args.grant.side);
+    await this.deleteAvailabilityReservationsForParentIds(removedOwnerIds);
+    await this.deleteCalendarReminderPlansForEvents(removedOwnerIds);
+    await reconcileMeetingAutoJoin({
+      runtime: this.runtime,
+      agentId: this.agentId(),
+      events: [event],
+      removedEventIds: removedOwnerIds,
+    });
+    await this.recordCalendarEventAudit(
+      event.id,
+      "calendar recurring series split through plugin-google",
+      {
+        eventId: args.request.eventId,
+        recurrenceScope: "this_and_following",
+        targetOriginalStartAt: context.originalStartAt,
+        futureExceptions: "reset",
+      },
+      {
+        originalSeriesExternalId: context.masterEventId,
+        followingSeriesExternalId: event.externalId,
+      },
+      "calendar_event_updated",
+    );
+    return event;
+  }
+
+  private async deleteGoogleThisAndFollowing(args: {
+    grant: LifeOpsConnectorGrant;
+    request: {
+      calendarId?: string | null;
+      eventId: string;
+      notifyAttendees?: boolean;
+      expectedProviderVersion?: string;
+      expectedOccurrenceProviderVersion?: string;
+      idempotencyKey?: string;
+    };
+  }): Promise<void> {
+    if (!args.request.idempotencyKey?.trim()) {
+      fail(
+        409,
+        "This-and-following cancellation requires the durable mutation operation key.",
+        "CALENDAR_RECURRENCE_SPLIT_IDEMPOTENCY_REQUIRED",
+      );
+    }
+    const context = await this.loadGoogleRecurrenceSplitContext({
+      grant: args.grant,
+      calendarId: args.request.calendarId,
+      eventId: args.request.eventId,
+      expectedProviderVersion: args.request.expectedProviderVersion,
+      expectedOccurrenceProviderVersion:
+        args.request.expectedOccurrenceProviderVersion,
+    });
+    let trimmedMaster: LifeOpsCalendarEvent | null = null;
+    if (context.plan.truncatedRecurrence) {
+      const updateEvent = requireGoogleServiceMethod(
+        this.runtime,
+        "updateEvent",
+      );
+      let trimmedWire: GoogleCalendarEvent;
+      try {
+        trimmedWire = await updateEvent(
+          googleCalendarEventPatchInput({
+            accountId: context.accountId,
+            calendarId: args.request.calendarId,
+            eventId: context.masterEventId,
+            recurrence: context.plan.truncatedRecurrence,
+            notifyAttendees: args.request.notifyAttendees === true,
+            expectedProviderVersion: args.request.expectedProviderVersion,
+          }),
+        );
+      } catch (error) {
+        // error-policy:J1 CalendarService translates definitive Google
+        // mutation outcomes into its stable domain error contract.
+        translateGoogleMutationError(error);
+      }
+      trimmedMaster = lifeOpsCalendarEventFromGoogle({
+        event: trimmedWire,
+        grant: args.grant,
+        agentId: this.agentId(),
+      });
+      requireVerifiedRecurrence(
+        trimmedMaster,
+        context.plan.truncatedRecurrence,
+        "trimmed original",
+      );
+    } else {
+      const deleteEvent = requireGoogleServiceMethod(
+        this.runtime,
+        "deleteEvent",
+      );
+      try {
+        await deleteEvent({
+          accountId: context.accountId,
+          calendarId: context.calendarId,
+          eventId: context.masterEventId,
+          sendUpdates: args.request.notifyAttendees === true ? "all" : "none",
+          expectedEtag: args.request.expectedProviderVersion,
+        });
+      } catch (error) {
+        // error-policy:J1 CalendarService translates definitive Google
+        // mutation outcomes into its stable domain error contract.
+        translateGoogleMutationError(error);
+      }
+    }
+    const removedOwnerIds =
+      context.plan.targetOccurrenceIndex === 0
+        ? await this.purgeCachedSeries({
+            masterEventId: context.masterEventId,
+            calendarId: args.request.calendarId,
+            side: args.grant.side,
+            grantId: args.grant.id,
+          })
+        : await this.purgeCachedSeriesOccurrencesFrom({
+            masterEventId: context.masterEventId,
+            calendarId: args.request.calendarId,
+            side: args.grant.side,
+            grantId: args.grant.id,
+            originalStartAt: context.originalStartAt,
+          });
+    if (trimmedMaster) {
+      await this.repo.upsertCalendarEvent(trimmedMaster, args.grant.side);
+    }
+    await this.deleteAvailabilityReservationsForParentIds(removedOwnerIds);
+    await this.deleteCalendarReminderPlansForEvents(removedOwnerIds);
+    await reconcileMeetingAutoJoin({
+      runtime: this.runtime,
+      agentId: this.agentId(),
+      events: trimmedMaster ? [trimmedMaster] : [],
+      removedEventIds: removedOwnerIds,
+    });
+    await this.recordCalendarEventAudit(
+      context.masterEventId,
+      "calendar recurring series truncated through plugin-google",
+      {
+        eventId: args.request.eventId,
+        recurrenceScope: "this_and_following",
+        targetOriginalStartAt: context.originalStartAt,
+        futureExceptions: "removed",
+      },
+      {
+        originalSeriesExternalId: context.masterEventId,
+        deletedFromTarget: true,
+      },
+      "calendar_event_deleted",
+    );
+  }
+
   private async updateAppleCalendarEvent(
     eventId: string,
     nativePatch: Parameters<
@@ -4102,6 +5229,8 @@ export class CalendarService extends Service {
       recurrenceScope?: LifeOpsCalendarRecurrenceScope | null;
       notifyAttendees?: boolean;
       expectedProviderVersion?: string;
+      expectedOccurrenceProviderVersion?: string;
+      idempotencyKey?: string;
     },
   ): Promise<void> {
     const mode = normalizeOptionalConnectorMode(request.mode, "mode");
@@ -4146,6 +5275,16 @@ export class CalendarService extends Service {
         failAppleRecurrenceUnsupported("delete");
       }
       await this.deleteAppleCalendarEvent(eventId, request.calendarId);
+      return;
+    }
+    if (recurrenceScope === "this_and_following") {
+      await this.deleteGoogleThisAndFollowing({
+        grant,
+        request: {
+          ...request,
+          eventId,
+        },
+      });
       return;
     }
     // A series delete addressed through a flattened occurrence deletes the
@@ -4261,7 +5400,7 @@ export class CalendarService extends Service {
     const eventId = requireNonEmptyString(request.eventId, "eventId");
     const recurrenceScope = normalizeRecurrenceScope(request.recurrenceScope);
     const targetEventId =
-      recurrenceScope === "series"
+      recurrenceScope === "series" || recurrenceScope === "this_and_following"
         ? await this.resolveSeriesMasterEventId({
             grant,
             calendarId: request.calendarId,
@@ -4297,6 +5436,15 @@ export class CalendarService extends Service {
       expectedProviderVersion: string;
     },
   ): Promise<LifeOpsCalendarEvent> {
+    if (
+      normalizeRecurrenceScope(request.recurrenceScope) === "this_and_following"
+    ) {
+      fail(
+        400,
+        "This-and-following is not a valid invitation response scope. Choose one occurrence or the whole series.",
+        "CALENDAR_RECURRENCE_RESPONSE_SCOPE_UNSUPPORTED",
+      );
+    }
     const target = await this.getConditionalCalendarMutationTarget(
       requestUrl,
       request,
@@ -4414,6 +5562,54 @@ export class CalendarService extends Service {
       .filter((event) =>
         event.grantId ? event.grantId === args.grantId : true,
       );
+  }
+
+  private async purgeCachedSeries(args: {
+    masterEventId: string;
+    calendarId?: string | null;
+    side: LifeOpsConnectorSide;
+    grantId: string;
+  }): Promise<string[]> {
+    const cachedSeries = await this.findCachedSeriesEvents(args);
+    for (const cachedEvent of cachedSeries) {
+      await this.repo.deleteCalendarEventByExternalId(
+        this.agentId(),
+        "google",
+        cachedEvent.calendarId,
+        cachedEvent.externalId,
+        args.side,
+        args.grantId,
+      );
+    }
+    return cachedSeries.map((event) => event.id);
+  }
+
+  private async purgeCachedSeriesOccurrencesFrom(args: {
+    masterEventId: string;
+    calendarId?: string | null;
+    side: LifeOpsConnectorSide;
+    grantId: string;
+    originalStartAt: string;
+  }): Promise<string[]> {
+    const targetMs = Date.parse(args.originalStartAt);
+    const cachedSeries = await this.findCachedSeriesEvents(args);
+    const removed = cachedSeries.filter((event) => {
+      if (recurringEventIdFrom(event) !== args.masterEventId) return false;
+      const occurrenceIdentity =
+        recurrenceOriginalStartAtFrom(event) ?? event.startAt;
+      return Date.parse(occurrenceIdentity) >= targetMs;
+    });
+    for (const cachedEvent of removed) {
+      await this.repo.deleteCalendarEventByExternalId(
+        this.agentId(),
+        "google",
+        cachedEvent.calendarId,
+        cachedEvent.externalId,
+        args.side,
+        args.grantId,
+      );
+    }
+    return removed.map((event) => event.id);
   }
 
   private async deleteAppleCalendarEvent(

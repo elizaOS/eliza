@@ -36,13 +36,7 @@ export interface CalendarRouteService {
   ): Promise<unknown>;
   setCalendarIncluded(
     requestUrl: URL,
-    request: {
-      calendarId: string;
-      includeInFeed: boolean;
-      side?: LifeOpsConnectorSide;
-      mode?: LifeOpsConnectorMode;
-      grantId?: string;
-    },
+    request: SetLifeOpsCalendarIncludedRequest,
   ): Promise<unknown>;
   getNextCalendarEventContext(
     requestUrl: URL,
@@ -258,14 +252,24 @@ export async function handleCalendarRoutes(
           "calendarId must match between path and request body",
         );
       }
-      const calendar = await service.setCalendarIncluded(url, {
-        calendarId,
-        includeInFeed: body.includeInFeed,
-        mode: body.mode,
-        side: body.side,
-        grantId: body.grantId,
-      });
-      deps.json({ calendar });
+      if (
+        body.provider === undefined ||
+        body.side === undefined ||
+        body.grantId === undefined ||
+        body.connectorAccountId === undefined ||
+        body.expectedVersion === undefined
+      ) {
+        throw deps.serviceError(
+          400,
+          "provider, side, grantId, connectorAccountId, and expectedVersion are required",
+        );
+      }
+      deps.json(
+        await service.setCalendarIncluded(url, {
+          ...body,
+          calendarId,
+        }),
+      );
     });
   }
 

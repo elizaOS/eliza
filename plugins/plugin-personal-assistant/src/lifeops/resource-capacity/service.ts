@@ -566,7 +566,9 @@ export class ResourceCapacityService {
 
   async createProposal(
     inputValue: CreateProposalInput,
-  ): Promise<ResourceCapacityReviewProjection> {
+  ): Promise<
+    ResourceCapacityReviewProjection & { readonly replayed: boolean }
+  > {
     const evaluation = normalizeCapacityEvaluationInput(inputValue.evaluation);
     const createdByEntityId = await this.requireScope(
       inputValue.principalEntityId,
@@ -601,7 +603,10 @@ export class ResourceCapacityService {
         );
       }
       await this.ensureReviewArtifacts(replay);
-      return this.projectReview(replay);
+      return {
+        ...(await this.projectReview(replay)),
+        replayed: true,
+      };
     }
     this.assertFutureProposalExpiry(expiresAt, evaluation);
 
@@ -635,7 +640,10 @@ export class ResourceCapacityService {
     };
     const persisted = await this.deps.repository.insertProposal(proposal);
     await this.ensureReviewArtifacts(persisted.proposal);
-    return this.projectReview(persisted.proposal);
+    return {
+      ...(await this.projectReview(persisted.proposal)),
+      replayed: !persisted.inserted,
+    };
   }
 
   private async projectReview(

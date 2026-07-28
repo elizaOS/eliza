@@ -88,7 +88,7 @@ export interface CalendarMutationPreflight {
   readonly providerEventId: string | null;
   /** Provider ETag/version captured immediately before the conditional write. */
   readonly providerVersion: string | null;
-  /** Stable create key derived from the immutable approved payload. */
+  /** Stable provider-create key, including the inserted half of a series split. */
   readonly idempotencyKey: string | null;
   readonly recurrenceScope: CalendarMutationRecurrenceScope | null;
   readonly cancellationMode: CalendarCancellationMode | null;

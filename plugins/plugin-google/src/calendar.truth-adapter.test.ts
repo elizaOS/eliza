@@ -239,6 +239,41 @@ describe("GoogleCalendarClient truth adapter", () => {
     });
   });
 
+  it("preserves an occurrence's immutable series identity and provider version metadata", async () => {
+    const events = {
+      get: vi.fn(async () => ({
+        data: {
+          ...event("occurrence-3"),
+          recurringEventId: "series-1",
+          originalStartTime: {
+            dateTime: "2026-08-15T09:00:00-07:00",
+            timeZone: "America/Los_Angeles",
+          },
+          etag: '"occurrence-version-3"',
+          updated: "2026-08-10T12:34:56.000Z",
+        },
+      })),
+    };
+    const client = clientFor({ events });
+
+    await expect(
+      client.getEvent({
+        accountId: "acct-1",
+        calendarId: "primary",
+        eventId: "occurrence-3",
+      })
+    ).resolves.toMatchObject({
+      recurringEventId: "series-1",
+      metadata: {
+        etag: '"occurrence-version-3"',
+        recurringEventId: "series-1",
+        originalStartTime: "2026-08-15T16:00:00.000Z",
+        originalStartIsAllDay: false,
+        updatedAt: "2026-08-10T12:34:56.000Z",
+      },
+    });
+  });
+
   it("returns busy-only guest availability without event content or group membership", async () => {
     const freebusy = {
       query: vi.fn(async () => ({

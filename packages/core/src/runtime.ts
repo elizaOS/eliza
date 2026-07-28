@@ -61,6 +61,7 @@ import {
 	resolveNativeRuntimeFeatureFromPluginName,
 	resolveNativeRuntimeFeatureFromServiceType,
 } from "./plugins/native-features";
+import { settleActionHandler } from "./runtime/action-handler-settlement";
 import {
 	executeChainWithFallback,
 	isLocalHandler,
@@ -555,7 +556,6 @@ export function resolveDefaultOutputFormat(
 
 const DEFAULT_DYNAMIC_PROMPT_STREAM_FIELDS = new Set(["text"]);
 const DEFAULT_RESPONSE_SKELETON_STREAM_FIELDS = new Set([
-	"replyText",
 	"text",
 	"messageToUser",
 ]);
@@ -3779,11 +3779,6 @@ export class AgentRuntime implements IAgentRuntime {
 		const worldId = message.worldId ?? roomId;
 
 		const runOne = async (action: Action) => {
-			const callback = options?.callback;
-			const actionCallback: HandlerCallback | undefined = callback
-				? (response, actionName) =>
-						callback(response, actionName ?? action.name)
-				: undefined;
 			await this.emitEvent(EventType.ACTION_STARTED, {
 				runtime: this,
 				messageId,
@@ -3807,20 +3802,27 @@ export class AgentRuntime implements IAgentRuntime {
 			let success = true;
 			let errorMsg: string | undefined;
 			try {
-				await runWithActionRoutingContext(
-					{ actionName: action.name, modelClass: action.modelClass },
-					() =>
-						runWithSuppressedModelStream(() =>
-							action.handler(
-								this,
-								message,
-								composedState,
-								{ mode },
-								actionCallback,
-								options?.responses,
-							),
+				await settleActionHandler({
+					runtime: this,
+					action,
+					callback: options?.callback,
+					handlerError: "rethrow",
+					invoke: (actionCallback) =>
+						runWithActionRoutingContext(
+							{ actionName: action.name, modelClass: action.modelClass },
+							() =>
+								runWithSuppressedModelStream(() =>
+									action.handler(
+										this,
+										message,
+										composedState,
+										{ mode },
+										actionCallback,
+										options?.responses,
+									),
+								),
 						),
-				);
+				});
 			} catch (err) {
 				success = false;
 				errorMsg = err instanceof Error ? err.message : String(err);
@@ -5896,6 +5898,10 @@ export class AgentRuntime implements IAgentRuntime {
 								paramsAsStreaming.responseSkeleton,
 							)
 						: [];
+				const suppressStructuredStream =
+					shouldStream &&
+					paramsAsStreaming?.streamStructured === true &&
+					structuredStreamFields.length === 0;
 				const downstreamChunk = (chunk: string, accumulated?: string): void => {
 					void (async () => {
 						if (paramsChunk) await paramsChunk(chunk, msgId, accumulated);
@@ -5974,6 +5980,11 @@ export class AgentRuntime implements IAgentRuntime {
 							structuredExtractor.push(visibleChunk);
 							return;
 						}
+						// A structured caller with no approved stream fields must
+						// hold the provider's raw envelope until the validated final
+						// result is available. Falling through here would expose
+						// routing JSON and unverified reply text token-by-token.
+						if (suppressStructuredStream) return;
 						if (paramsChunk) await paramsChunk(visibleChunk, msgId, undefined);
 						if (ctxChunk) await ctxChunk(visibleChunk, msgId, undefined);
 					});

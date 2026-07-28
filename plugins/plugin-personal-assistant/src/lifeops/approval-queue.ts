@@ -416,10 +416,11 @@ function requireCalendarMutationTargetVersion(
     record.recurrenceScope !== undefined &&
     record.recurrenceScope !== null &&
     record.recurrenceScope !== "instance" &&
+    record.recurrenceScope !== "this_and_following" &&
     record.recurrenceScope !== "series"
   ) {
     throw new Error(
-      `[ApprovalQueue] invalid ${label}.recurrenceScope: expected instance, series, or null`,
+      `[ApprovalQueue] invalid ${label}.recurrenceScope: expected instance, this_and_following, series, or null`,
     );
   }
 }

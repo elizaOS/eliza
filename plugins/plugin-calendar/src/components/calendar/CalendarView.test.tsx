@@ -169,6 +169,7 @@ function calendarSummary(
     timeZone: "UTC",
     selected: true,
     includeInFeed: true,
+    selectionVersion: 0,
     ...over,
   };
 }

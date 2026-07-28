@@ -20,7 +20,10 @@ from .types import (
     Scenario,
     ScenarioMode,
     ScenarioResult,
+    TrustedActionPolicy,
+    TrustedEvidenceRequirement,
     TurnResult,
+    VerifiedEvidenceReceipt,
     attach_usage_cache_fields,
     compute_cache_hit_pct,
 )
@@ -46,7 +49,10 @@ __all__ = [
     "Scenario",
     "ScenarioMode",
     "ScenarioResult",
+    "TrustedActionPolicy",
+    "TrustedEvidenceRequirement",
     "TurnResult",
+    "VerifiedEvidenceReceipt",
     "attach_usage_cache_fields",
     "compute_cache_hit_pct",
 ]
