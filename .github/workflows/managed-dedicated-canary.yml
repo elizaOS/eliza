@@ -328,22 +328,1410 @@ jobs:
             --set ON_ERROR_STOP=1 \
             --set suffix="$CANARY_DIAGNOSTIC_SUFFIX" \
             > "$CANARY_DIAGNOSTIC_RAW_PATH" <<'SQL'
-          BEGIN READ ONLY;
+          BEGIN READ ONLY, ISOLATION LEVEL REPEATABLE READ;
           SET LOCAL statement_timeout = '20s';
+          DO $schema_preflight$
+          DECLARE
+            missing_columns text;
+          BEGIN
+            SELECT string_agg(required.table_name || '.' || required.column_name, ', ')
+            INTO missing_columns
+            FROM (
+              VALUES
+                ('agent_sandboxes', 'deletion_attempt_id'),
+                ('agent_sandboxes', 'deletion_started_at'),
+                ('agent_sandboxes', 'replacement_cleanup_sandbox_id'),
+                ('agent_sandboxes', 'replacement_cleanup_node_id'),
+                ('agent_sandboxes', 'replacement_cleanup_container_name'),
+                ('agent_sandboxes', 'replacement_cleanup_attempt_id'),
+                ('agent_sandboxes', 'replacement_cleanup_container_id'),
+                ('agent_sandboxes', 'replacement_cleanup_vpn_node_id'),
+                ('agent_sandboxes', 'replacement_cleanup_vpn_node_name'),
+                ('agent_sandboxes', 'replacement_cleanup_preserved_vpn_node_id'),
+                ('agent_sandboxes', 'replacement_cleanup_vpn_registration_started_at'),
+                ('agent_sandboxes', 'replacement_cleanup_allocation_counted'),
+                ('agent_sandboxes', 'replacement_cleanup_created_at'),
+                ('agent_sandboxes', 'rollback_standby_state'),
+                ('agent_sandboxes', 'rollback_standby_generation'),
+                ('agent_sandboxes', 'rollback_standby_rollout_id'),
+                ('agent_sandboxes', 'rollback_standby_source_job_id'),
+                ('agent_sandboxes', 'rollback_standby_decision_job_id'),
+                ('agent_sandboxes', 'rollback_standby_verified_backup_id'),
+                ('agent_sandboxes', 'rollback_standby_restore_validation_id'),
+                ('agent_sandboxes', 'rollback_standby_restore_validation_aggregate_sha256'),
+                ('agent_sandboxes', 'rollback_standby_restore_candidate_provider_sandbox_id'),
+                ('agent_sandboxes', 'rollback_standby_restore_candidate_replacement_attempt_id'),
+                ('agent_sandboxes', 'rollback_standby_sandbox_id'),
+                ('agent_sandboxes', 'rollback_standby_node_id'),
+                ('agent_sandboxes', 'rollback_standby_container_name'),
+                ('agent_sandboxes', 'rollback_standby_container_id'),
+                ('agent_sandboxes', 'rollback_standby_bridge_url'),
+                ('agent_sandboxes', 'rollback_standby_health_url'),
+                ('agent_sandboxes', 'rollback_standby_bridge_port'),
+                ('agent_sandboxes', 'rollback_standby_web_ui_port'),
+                ('agent_sandboxes', 'rollback_standby_headscale_ip'),
+                ('agent_sandboxes', 'rollback_standby_vpn_node_id'),
+                ('agent_sandboxes', 'rollback_standby_docker_image'),
+                ('agent_sandboxes', 'rollback_standby_image_digest'),
+                ('agent_sandboxes', 'rollback_standby_previous_docker_image'),
+                ('agent_sandboxes', 'rollback_standby_previous_image_digest'),
+                ('agent_sandboxes', 'rollback_standby_environment_revision'),
+                ('agent_sandboxes', 'rollback_standby_allocation_counted'),
+                ('agent_sandboxes', 'rollback_standby_primary_sandbox_id'),
+                ('agent_sandboxes', 'rollback_standby_primary_node_id'),
+                ('agent_sandboxes', 'rollback_standby_primary_container_name'),
+                ('agent_sandboxes', 'rollback_standby_primary_container_id'),
+                ('agent_sandboxes', 'rollback_standby_primary_vpn_node_id'),
+                ('agent_sandboxes', 'rollback_standby_primary_replacement_attempt_id'),
+                ('agent_sandboxes', 'rollback_standby_created_at'),
+                ('agent_snapshot_restore_validations', 'restore_validation_id'),
+                ('agent_snapshot_restore_validations', 'validation_job_id'),
+                ('agent_snapshot_restore_validations', 'source_job_id'),
+                ('agent_snapshot_restore_validations', 'rollout_id'),
+                ('agent_snapshot_restore_validations', 'standby_generation'),
+                ('agent_snapshot_restore_validations', 'organization_id'),
+                ('agent_snapshot_restore_validations', 'sandbox_record_id'),
+                ('agent_snapshot_restore_validations', 'agent_id'),
+                ('agent_snapshot_restore_validations', 'target_owner_user_id'),
+                ('agent_snapshot_restore_validations', 'backup_id'),
+                ('agent_snapshot_restore_validations', 'capture_nonce'),
+                ('agent_snapshot_restore_validations', 'source_environment_revision'),
+                ('agent_snapshot_restore_validations', 'source_image_digest'),
+                ('agent_snapshot_restore_validations', 'source_sandbox_id'),
+                ('agent_snapshot_restore_validations', 'target_image'),
+                ('agent_snapshot_restore_validations', 'target_digest'),
+                ('agent_snapshot_restore_validations', 'candidate_route_mode'),
+                ('agent_snapshot_restore_validations', 'validation_state'),
+                ('agent_snapshot_restore_validations', 'aggregate_sha256'),
+                ('agent_snapshot_restore_validations', 'target_provider_sandbox_id'),
+                ('agent_snapshot_restore_validations', 'target_replacement_attempt_id'),
+                ('agent_snapshot_restore_validations', 'target_provider_node_id'),
+                ('agent_snapshot_restore_validations', 'target_provider_container_name'),
+                ('agent_snapshot_restore_validations', 'target_provider_container_id'),
+                ('agent_snapshot_restore_validations', 'target_provider_volume_path'),
+                ('agent_snapshot_restore_validations', 'target_provider_bridge_url'),
+                ('agent_snapshot_restore_validations', 'target_provider_health_url'),
+                ('agent_snapshot_restore_validations', 'target_provider_bridge_port'),
+                ('agent_snapshot_restore_validations', 'target_provider_web_ui_port'),
+                ('agent_snapshot_restore_validations', 'target_provider_vpn_node_id'),
+                ('agent_snapshot_restore_validations', 'target_provider_vpn_node_name'),
+                ('agent_snapshot_restore_validations', 'target_provider_vpn_registration_started_at'),
+                ('agent_snapshot_restore_validations', 'target_provider_allocation_counted'),
+                ('agent_snapshot_restore_validations', 'receipt_state'),
+                ('agent_snapshot_restore_validations', 'receipt_schema_version'),
+                ('agent_snapshot_restore_validations', 'receipt_transfer'),
+                ('agent_snapshot_restore_validations', 'receipt_file_count'),
+                ('agent_snapshot_restore_validations', 'receipt_total_bytes'),
+                ('agent_snapshot_restore_validations', 'receipt_requires_restart'),
+                ('agent_snapshot_restore_validations', 'receipt_success'),
+                ('agent_snapshot_restore_validations', 'receipt_committed_at'),
+                ('agent_snapshot_restore_validations', 'route_exposed_at'),
+                ('agent_snapshot_restore_validations', 'candidate_container_absent_at'),
+                ('agent_snapshot_restore_validations', 'candidate_vpn_absent_at'),
+                ('agent_snapshot_restore_validations', 'candidate_volume_absent_at'),
+                ('agent_snapshot_restore_validations', 'candidate_retired_at'),
+                ('agent_snapshot_restore_validations', 'created_at'),
+                ('agent_snapshot_restore_validations', 'updated_at'),
+                ('jobs', 'id'),
+                ('jobs', 'type'),
+                ('jobs', 'status'),
+                ('jobs', 'data'),
+                ('jobs', 'data_storage'),
+                ('jobs', 'result'),
+                ('jobs', 'result_storage'),
+                ('jobs', 'error'),
+                ('jobs', 'error_storage'),
+                ('jobs', 'attempts'),
+                ('jobs', 'max_attempts'),
+                ('jobs', 'organization_id'),
+                ('jobs', 'user_id'),
+                ('jobs', 'agent_id'),
+                ('jobs', 'scheduled_for'),
+                ('jobs', 'started_at'),
+                ('jobs', 'completed_at'),
+                ('jobs', 'created_at'),
+                ('jobs', 'updated_at'),
+                ('agent_sandbox_backups', 'id'),
+                ('agent_sandbox_backups', 'sandbox_record_id'),
+                ('agent_sandbox_backups', 'snapshot_type'),
+                ('agent_sandbox_backups', 'snapshot_schema_version'),
+                ('agent_sandbox_backups', 'verification_status'),
+                ('agent_sandbox_backups', 'verified_at'),
+                ('agent_sandbox_backups', 'verification_error'),
+                ('agent_sandbox_backups', 'storage_commit_state'),
+                ('agent_sandbox_backups', 'content_hash')
+            ) AS required(table_name, column_name)
+            LEFT JOIN information_schema.columns actual
+              ON actual.table_schema = current_schema()
+              AND actual.table_name = required.table_name
+              AND actual.column_name = required.column_name
+            WHERE actual.column_name IS NULL;
+            IF missing_columns IS NOT NULL THEN
+              RAISE EXCEPTION 'managed canary diagnostic schema is incomplete: %', missing_columns;
+            END IF;
+
+            IF EXISTS (
+              SELECT 1
+              FROM information_schema.columns actual
+              WHERE actual.table_schema = current_schema()
+                AND actual.table_name = 'jobs'
+                AND actual.column_name = ANY (ARRAY[
+                  'id',
+                  'type',
+                  'status',
+                  'data',
+                  'data_storage',
+                  'result',
+                  'result_storage',
+                  'error',
+                  'error_storage',
+                  'attempts',
+                  'max_attempts',
+                  'organization_id',
+                  'user_id',
+                  'agent_id',
+                  'scheduled_for',
+                  'started_at',
+                  'completed_at',
+                  'created_at',
+                  'updated_at'
+                ])
+                AND (
+                  actual.udt_name <> CASE
+                    WHEN actual.column_name IN ('id', 'organization_id', 'user_id')
+                      THEN 'uuid'
+                    WHEN actual.column_name IN ('data', 'result')
+                      THEN 'jsonb'
+                    WHEN actual.column_name IN ('attempts', 'max_attempts')
+                      THEN 'int4'
+                    WHEN actual.column_name IN (
+                      'scheduled_for',
+                      'started_at',
+                      'completed_at',
+                      'created_at',
+                      'updated_at'
+                    ) THEN 'timestamp'
+                    ELSE 'text'
+                  END
+                  OR CASE
+                    WHEN actual.column_name IN (
+                      'id',
+                      'type',
+                      'status',
+                      'data',
+                      'data_storage',
+                      'result_storage',
+                      'error_storage',
+                      'attempts',
+                      'max_attempts',
+                      'organization_id',
+                      'scheduled_for',
+                      'created_at',
+                      'updated_at'
+                    ) THEN actual.is_nullable <> 'NO'
+                    ELSE actual.is_nullable <> 'YES'
+                  END
+                )
+            ) THEN
+              RAISE EXCEPTION 'pointed job authority columns are incompatible';
+            END IF;
+
+            IF EXISTS (
+              SELECT 1
+              FROM information_schema.columns actual
+              WHERE actual.table_schema = current_schema()
+                AND actual.table_name = 'agent_sandboxes'
+                AND actual.column_name = ANY (ARRAY[
+                  'rollback_standby_state',
+                  'rollback_standby_generation',
+                  'rollback_standby_rollout_id',
+                  'rollback_standby_source_job_id',
+                  'rollback_standby_decision_job_id',
+                  'rollback_standby_verified_backup_id',
+                  'rollback_standby_restore_validation_id',
+                  'rollback_standby_restore_validation_aggregate_sha256',
+                  'rollback_standby_restore_candidate_provider_sandbox_id',
+                  'rollback_standby_restore_candidate_replacement_attempt_id',
+                  'rollback_standby_sandbox_id',
+                  'rollback_standby_node_id',
+                  'rollback_standby_container_name',
+                  'rollback_standby_container_id',
+                  'rollback_standby_bridge_url',
+                  'rollback_standby_health_url',
+                  'rollback_standby_bridge_port',
+                  'rollback_standby_web_ui_port',
+                  'rollback_standby_headscale_ip',
+                  'rollback_standby_vpn_node_id',
+                  'rollback_standby_docker_image',
+                  'rollback_standby_image_digest',
+                  'rollback_standby_previous_docker_image',
+                  'rollback_standby_previous_image_digest',
+                  'rollback_standby_environment_revision',
+                  'rollback_standby_allocation_counted',
+                  'rollback_standby_primary_sandbox_id',
+                  'rollback_standby_primary_node_id',
+                  'rollback_standby_primary_container_name',
+                  'rollback_standby_primary_container_id',
+                  'rollback_standby_primary_vpn_node_id',
+                  'rollback_standby_primary_replacement_attempt_id',
+                  'rollback_standby_created_at'
+                ])
+                AND (
+                  actual.is_nullable <> 'YES'
+                  OR actual.column_default IS NOT NULL
+                  OR actual.udt_name <> CASE
+                    WHEN actual.column_name = ANY (ARRAY[
+                      'rollback_standby_generation',
+                      'rollback_standby_rollout_id',
+                      'rollback_standby_source_job_id',
+                      'rollback_standby_decision_job_id',
+                      'rollback_standby_verified_backup_id',
+                      'rollback_standby_restore_validation_id',
+                      'rollback_standby_restore_candidate_replacement_attempt_id',
+                      'rollback_standby_primary_replacement_attempt_id'
+                    ]) THEN 'uuid'
+                    WHEN actual.column_name = ANY (ARRAY[
+                      'rollback_standby_bridge_port',
+                      'rollback_standby_web_ui_port',
+                      'rollback_standby_environment_revision'
+                    ]) THEN 'int4'
+                    WHEN actual.column_name = 'rollback_standby_allocation_counted'
+                      THEN 'bool'
+                    WHEN actual.column_name = 'rollback_standby_created_at'
+                      THEN 'timestamptz'
+                    ELSE 'text'
+                  END
+                )
+            ) THEN
+              RAISE EXCEPTION 'rollback standby columns differ from migration 0186';
+            END IF;
+
+            IF EXISTS (
+              SELECT 1
+              FROM information_schema.columns actual
+              WHERE actual.table_schema = current_schema()
+                AND actual.table_name = 'agent_snapshot_restore_validations'
+                AND actual.column_name = ANY (ARRAY[
+                  'restore_validation_id',
+                  'validation_job_id',
+                  'source_job_id',
+                  'rollout_id',
+                  'standby_generation',
+                  'organization_id',
+                  'sandbox_record_id',
+                  'agent_id',
+                  'target_owner_user_id',
+                  'backup_id',
+                  'capture_nonce',
+                  'source_environment_revision',
+                  'source_image_digest',
+                  'source_sandbox_id',
+                  'target_image',
+                  'target_digest',
+                  'candidate_route_mode',
+                  'validation_state',
+                  'aggregate_sha256',
+                  'target_provider_sandbox_id',
+                  'target_replacement_attempt_id',
+                  'target_provider_node_id',
+                  'target_provider_container_name',
+                  'target_provider_container_id',
+                  'target_provider_volume_path',
+                  'target_provider_bridge_url',
+                  'target_provider_health_url',
+                  'target_provider_bridge_port',
+                  'target_provider_web_ui_port',
+                  'target_provider_vpn_node_id',
+                  'target_provider_vpn_node_name',
+                  'target_provider_vpn_registration_started_at',
+                  'target_provider_allocation_counted',
+                  'receipt_state',
+                  'receipt_schema_version',
+                  'receipt_transfer',
+                  'receipt_file_count',
+                  'receipt_total_bytes',
+                  'receipt_requires_restart',
+                  'receipt_success',
+                  'receipt_committed_at',
+                  'route_exposed_at',
+                  'candidate_container_absent_at',
+                  'candidate_vpn_absent_at',
+                  'candidate_volume_absent_at',
+                  'candidate_retired_at',
+                  'created_at',
+                  'updated_at'
+                ])
+                AND (
+                  actual.udt_name <> CASE
+                    WHEN actual.column_name = ANY (ARRAY[
+                      'restore_validation_id',
+                      'validation_job_id',
+                      'source_job_id',
+                      'rollout_id',
+                      'standby_generation',
+                      'organization_id',
+                      'sandbox_record_id',
+                      'agent_id',
+                      'target_owner_user_id',
+                      'backup_id',
+                      'source_sandbox_id',
+                      'target_replacement_attempt_id'
+                    ]) THEN 'uuid'
+                    WHEN actual.column_name = ANY (ARRAY[
+                      'source_environment_revision',
+                      'target_provider_bridge_port',
+                      'target_provider_web_ui_port',
+                      'receipt_schema_version',
+                      'receipt_file_count'
+                    ]) THEN 'int4'
+                    WHEN actual.column_name = 'receipt_total_bytes' THEN 'int8'
+                    WHEN actual.column_name = ANY (ARRAY[
+                      'target_provider_allocation_counted',
+                      'receipt_requires_restart',
+                      'receipt_success'
+                    ]) THEN 'bool'
+                    WHEN actual.column_name = ANY (ARRAY[
+                      'target_provider_vpn_registration_started_at',
+                      'receipt_committed_at',
+                      'route_exposed_at',
+                      'candidate_container_absent_at',
+                      'candidate_vpn_absent_at',
+                      'candidate_volume_absent_at',
+                      'candidate_retired_at',
+                      'created_at',
+                      'updated_at'
+                    ]) THEN 'timestamptz'
+                    ELSE 'text'
+                  END
+                  OR CASE
+                    WHEN actual.column_name = ANY (ARRAY[
+                      'restore_validation_id',
+                      'validation_job_id',
+                      'source_job_id',
+                      'rollout_id',
+                      'standby_generation',
+                      'organization_id',
+                      'sandbox_record_id',
+                      'agent_id',
+                      'target_owner_user_id',
+                      'backup_id',
+                      'capture_nonce',
+                      'source_environment_revision',
+                      'source_image_digest',
+                      'source_sandbox_id',
+                      'target_image',
+                      'target_digest',
+                      'candidate_route_mode',
+                      'validation_state'
+                    ])
+                      THEN actual.is_nullable <> 'NO'
+                        OR actual.column_default IS NOT NULL
+                    WHEN actual.column_name = ANY (ARRAY['created_at', 'updated_at'])
+                      THEN actual.is_nullable <> 'NO'
+                        OR actual.column_default IS NULL
+                    ELSE actual.is_nullable <> 'YES'
+                      OR actual.column_default IS NOT NULL
+                  END
+                )
+            ) THEN
+              RAISE EXCEPTION 'restore validation columns differ from migration 0187';
+            END IF;
+
+            IF EXISTS (
+              SELECT 1
+              FROM information_schema.columns actual
+              WHERE actual.table_schema = current_schema()
+                AND actual.table_name = 'agent_sandbox_backups'
+                AND actual.column_name = ANY (ARRAY[
+                  'id',
+                  'sandbox_record_id',
+                  'snapshot_type',
+                  'snapshot_schema_version',
+                  'verification_status',
+                  'verified_at',
+                  'verification_error',
+                  'storage_commit_state',
+                  'content_hash'
+                ])
+                AND (
+                  actual.udt_name <> CASE
+                    WHEN actual.column_name IN ('id', 'sandbox_record_id')
+                      THEN 'uuid'
+                    WHEN actual.column_name = 'snapshot_schema_version'
+                      THEN 'int4'
+                    WHEN actual.column_name = 'verified_at'
+                      THEN 'timestamptz'
+                    ELSE 'text'
+                  END
+                  OR (
+                    actual.column_name IN (
+                      'id',
+                      'sandbox_record_id',
+                      'snapshot_type',
+                      'snapshot_schema_version',
+                      'storage_commit_state'
+                    )
+                    AND actual.is_nullable <> 'NO'
+                  )
+                )
+            ) THEN
+              RAISE EXCEPTION 'verified backup authority columns are incompatible';
+            END IF;
+
+            IF NOT EXISTS (
+              SELECT 1
+              FROM pg_constraint constraint_row
+              INNER JOIN pg_class relation ON relation.oid = constraint_row.conrelid
+              INNER JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
+              WHERE namespace.nspname = current_schema()
+                AND relation.relname = 'agent_sandboxes'
+                AND constraint_row.conname = 'agent_sandboxes_deletion_intent_pair_check'
+                AND constraint_row.contype = 'c'
+                AND constraint_row.convalidated
+                AND md5(
+                  regexp_replace(
+                    pg_get_constraintdef(constraint_row.oid),
+                    E'\\s+',
+                    ' ',
+                    'g'
+                  )
+                ) = '3f7d442d7cd6a8fea1b68ab42c707a8b'
+            ) THEN
+              RAISE EXCEPTION 'deletion intent pair constraint is missing or incomplete';
+            END IF;
+
+            IF NOT EXISTS (
+              SELECT 1
+              FROM pg_constraint constraint_row
+              INNER JOIN pg_class relation ON relation.oid = constraint_row.conrelid
+              INNER JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
+              WHERE namespace.nspname = current_schema()
+                AND relation.relname = 'agent_sandboxes'
+                AND constraint_row.conname = 'agent_sandboxes_replacement_cleanup_locator_check'
+                AND constraint_row.contype = 'c'
+                AND constraint_row.convalidated
+                AND md5(
+                  regexp_replace(
+                    pg_get_constraintdef(constraint_row.oid),
+                    E'\\s+',
+                    ' ',
+                    'g'
+                  )
+                ) = '3f30c7b71231f35d83b9944c7d86fb4a'
+            ) THEN
+              RAISE EXCEPTION 'replacement cleanup locator constraint is missing or incomplete';
+            END IF;
+
+            IF NOT EXISTS (
+              SELECT 1
+              FROM pg_constraint constraint_row
+              INNER JOIN pg_class relation ON relation.oid = constraint_row.conrelid
+              INNER JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
+              WHERE namespace.nspname = current_schema()
+                AND relation.relname = 'agent_sandboxes'
+                AND constraint_row.conname = 'agent_sandboxes_rollback_standby_contract_check'
+                AND constraint_row.contype = 'c'
+                AND constraint_row.convalidated
+                AND md5(
+                  regexp_replace(
+                    pg_get_constraintdef(constraint_row.oid),
+                    E'\\s+',
+                    ' ',
+                    'g'
+                  )
+                ) = '78828e000fbf77c896528abf07f0cac0'
+            ) THEN
+              RAISE EXCEPTION 'rollback standby contract constraint is missing or incomplete';
+            END IF;
+
+            IF NOT EXISTS (
+              SELECT 1
+              FROM pg_constraint constraint_row
+              INNER JOIN pg_class relation ON relation.oid = constraint_row.conrelid
+              INNER JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
+              WHERE namespace.nspname = current_schema()
+                AND relation.relname = 'agent_snapshot_restore_validations'
+                AND constraint_row.conname = 'agent_snapshot_restore_validations_contract_check'
+                AND constraint_row.contype = 'c'
+                AND constraint_row.convalidated
+                AND md5(
+                  regexp_replace(
+                    pg_get_constraintdef(constraint_row.oid),
+                    E'\\s+',
+                    ' ',
+                    'g'
+                  )
+                ) = '53d7fed6ce39d4e7fd81bdd40507405c'
+            ) THEN
+              RAISE EXCEPTION 'restore validation contract constraint is missing or incomplete';
+            END IF;
+
+            IF NOT EXISTS (
+              SELECT 1
+              FROM pg_class index_relation
+              INNER JOIN pg_index index_row
+                ON index_row.indexrelid = index_relation.oid
+              INNER JOIN pg_class table_relation
+                ON table_relation.oid = index_row.indrelid
+              INNER JOIN pg_namespace namespace
+                ON namespace.oid = table_relation.relnamespace
+              WHERE namespace.nspname = current_schema()
+                AND table_relation.relname = 'agent_snapshot_restore_validations'
+                AND index_relation.relname = 'agent_snapshot_restore_validations_source_unique'
+                AND index_row.indisunique
+                AND index_row.indisvalid
+                AND index_row.indisready
+                AND index_row.indpred IS NULL
+                AND replace(pg_get_indexdef(index_relation.oid), '"', '') LIKE
+                  '%(organization_id, sandbox_record_id, source_job_id, standby_generation)%'
+            ) THEN
+              RAISE EXCEPTION 'restore validation source uniqueness is missing or incomplete';
+            END IF;
+          END
+          $schema_preflight$;
           WITH target AS (
             SELECT
               id,
+              organization_id,
+              user_id,
               status,
               error_message,
               error_count,
               deletion_attempt_id IS NOT NULL AS deletion_owned,
               deletion_started_at,
               updated_at,
+              docker_image,
+              image_digest,
+              environment_revision,
               sandbox_id IS NOT NULL AS sandbox_id_present,
               node_id IS NOT NULL AS node_id_present,
-              container_name IS NOT NULL AS container_name_present
+              container_name IS NOT NULL AS container_name_present,
+              replacement_cleanup_sandbox_id IS NOT NULL AS replacement_cleanup_sandbox_id_present,
+              replacement_cleanup_node_id IS NOT NULL AS replacement_cleanup_node_id_present,
+              replacement_cleanup_container_name IS NOT NULL
+                AS replacement_cleanup_container_name_present,
+              replacement_cleanup_created_at IS NOT NULL
+                AS replacement_cleanup_created_at_present,
+              (
+                (
+                  replacement_cleanup_sandbox_id IS NULL
+                  AND replacement_cleanup_node_id IS NULL
+                  AND replacement_cleanup_container_name IS NULL
+                  AND replacement_cleanup_attempt_id IS NULL
+                  AND replacement_cleanup_container_id IS NULL
+                  AND replacement_cleanup_vpn_node_id IS NULL
+                  AND replacement_cleanup_vpn_node_name IS NULL
+                  AND replacement_cleanup_preserved_vpn_node_id IS NULL
+                  AND replacement_cleanup_vpn_registration_started_at IS NULL
+                  AND replacement_cleanup_allocation_counted IS NULL
+                  AND replacement_cleanup_created_at IS NULL
+                )
+                OR
+                (
+                  replacement_cleanup_sandbox_id IS NOT NULL
+                  AND replacement_cleanup_node_id IS NOT NULL
+                  AND replacement_cleanup_container_name IS NOT NULL
+                  AND replacement_cleanup_allocation_counted IS NOT NULL
+                  AND replacement_cleanup_created_at IS NOT NULL
+                  AND (
+                    (
+                      replacement_cleanup_attempt_id IS NOT NULL
+                      AND (
+                        (
+                          replacement_cleanup_vpn_node_id IS NULL
+                          AND replacement_cleanup_vpn_node_name IS NULL
+                          AND replacement_cleanup_vpn_registration_started_at IS NULL
+                          AND replacement_cleanup_preserved_vpn_node_id IS NULL
+                        )
+                        OR
+                        (
+                          replacement_cleanup_vpn_node_name IS NOT NULL
+                          AND replacement_cleanup_vpn_registration_started_at IS NOT NULL
+                        )
+                      )
+                    )
+                    OR
+                    (
+                      replacement_cleanup_attempt_id IS NULL
+                      AND replacement_cleanup_container_id IS NULL
+                      AND replacement_cleanup_vpn_node_name IS NULL
+                      AND replacement_cleanup_preserved_vpn_node_id IS NULL
+                      AND replacement_cleanup_vpn_registration_started_at IS NULL
+                      AND replacement_cleanup_allocation_counted = TRUE
+                    )
+                  )
+                )
+              ) IS TRUE AS replacement_cleanup_contract_complete,
+              rollback_standby_state,
+              rollback_standby_generation,
+              rollback_standby_rollout_id,
+              rollback_standby_source_job_id,
+              rollback_standby_decision_job_id,
+              rollback_standby_verified_backup_id,
+              rollback_standby_restore_validation_id,
+              rollback_standby_restore_validation_aggregate_sha256,
+              rollback_standby_restore_candidate_provider_sandbox_id,
+              rollback_standby_restore_candidate_replacement_attempt_id,
+              rollback_standby_docker_image,
+              rollback_standby_image_digest,
+              rollback_standby_environment_revision,
+              rollback_standby_primary_replacement_attempt_id,
+              (
+                sandbox_id IS NOT DISTINCT FROM rollback_standby_primary_sandbox_id
+                AND node_id IS NOT DISTINCT FROM rollback_standby_primary_node_id
+                AND container_name IS NOT DISTINCT FROM rollback_standby_primary_container_name
+              ) AS current_matches_primary,
+              (
+                sandbox_id IS NOT DISTINCT FROM rollback_standby_sandbox_id
+                AND node_id IS NOT DISTINCT FROM rollback_standby_node_id
+                AND container_name IS NOT DISTINCT FROM rollback_standby_container_name
+              ) AS current_matches_standby,
+              num_nonnulls(
+                rollback_standby_state,
+                rollback_standby_generation,
+                rollback_standby_rollout_id,
+                rollback_standby_source_job_id,
+                rollback_standby_decision_job_id,
+                rollback_standby_verified_backup_id,
+                rollback_standby_restore_validation_id,
+                rollback_standby_restore_validation_aggregate_sha256,
+                rollback_standby_restore_candidate_provider_sandbox_id,
+                rollback_standby_restore_candidate_replacement_attempt_id,
+                rollback_standby_sandbox_id,
+                rollback_standby_node_id,
+                rollback_standby_container_name,
+                rollback_standby_container_id,
+                rollback_standby_bridge_url,
+                rollback_standby_health_url,
+                rollback_standby_bridge_port,
+                rollback_standby_web_ui_port,
+                rollback_standby_headscale_ip,
+                rollback_standby_vpn_node_id,
+                rollback_standby_docker_image,
+                rollback_standby_image_digest,
+                rollback_standby_previous_docker_image,
+                rollback_standby_previous_image_digest,
+                rollback_standby_environment_revision,
+                rollback_standby_allocation_counted,
+                rollback_standby_primary_sandbox_id,
+                rollback_standby_primary_node_id,
+                rollback_standby_primary_container_name,
+                rollback_standby_primary_container_id,
+                rollback_standby_primary_vpn_node_id,
+                rollback_standby_primary_replacement_attempt_id,
+                rollback_standby_created_at
+              ) > 0 AS rollback_standby_bundle_present,
+              (
+                rollback_standby_state IN (
+                  'pausing',
+                  'paused_pre_cutover',
+                  'paused',
+                  'retiring',
+                  'rollback_pending',
+                  'rollback_cleanup_pending'
+                )
+                AND rollback_standby_generation IS NOT NULL
+                AND rollback_standby_rollout_id IS NOT NULL
+                AND rollback_standby_source_job_id IS NOT NULL
+                AND length(rollback_standby_sandbox_id) > 0
+                AND length(rollback_standby_node_id) > 0
+                AND length(rollback_standby_container_name) > 0
+                AND length(rollback_standby_bridge_url) > 0
+                AND length(rollback_standby_health_url) > 0
+                AND rollback_standby_bridge_port BETWEEN 1 AND 65535
+                AND rollback_standby_web_ui_port BETWEEN 1 AND 65535
+                AND length(rollback_standby_vpn_node_id) > 0
+                AND length(rollback_standby_docker_image) > 0
+                AND rollback_standby_image_digest ~ '^sha256:[0-9a-f]{64}$'
+                AND rollback_standby_environment_revision >= 0
+                AND rollback_standby_allocation_counted = TRUE
+                AND length(rollback_standby_primary_sandbox_id) > 0
+                AND length(rollback_standby_primary_node_id) > 0
+                AND length(rollback_standby_primary_container_name) > 0
+                AND length(rollback_standby_primary_container_id) > 0
+                AND length(rollback_standby_primary_vpn_node_id) > 0
+                AND rollback_standby_primary_replacement_attempt_id::text
+                  ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+                AND rollback_standby_created_at IS NOT NULL
+                AND deletion_attempt_id IS NULL
+                AND deletion_started_at IS NULL
+                AND status NOT IN ('deletion_pending', 'deletion_failed')
+                AND (
+                  (
+                    rollback_standby_state = 'pausing'
+                    AND rollback_standby_container_id IS NULL
+                  )
+                  OR
+                  (
+                    rollback_standby_state <> 'pausing'
+                    AND length(rollback_standby_container_id) > 0
+                  )
+                )
+                AND (
+                  (
+                    rollback_standby_state IN (
+                      'pausing',
+                      'paused_pre_cutover',
+                      'paused'
+                    )
+                    AND rollback_standby_decision_job_id IS NULL
+                    AND rollback_standby_verified_backup_id IS NULL
+                    AND rollback_standby_restore_validation_id IS NULL
+                    AND rollback_standby_restore_validation_aggregate_sha256 IS NULL
+                    AND rollback_standby_restore_candidate_provider_sandbox_id IS NULL
+                    AND rollback_standby_restore_candidate_replacement_attempt_id IS NULL
+                  )
+                  OR
+                  (
+                    rollback_standby_state = 'retiring'
+                    AND rollback_standby_decision_job_id IS NOT NULL
+                    AND rollback_standby_verified_backup_id IS NOT NULL
+                    AND rollback_standby_restore_validation_id IS NOT NULL
+                    AND rollback_standby_restore_validation_aggregate_sha256
+                      ~ '^[0-9a-f]{64}$'
+                    AND rollback_standby_restore_candidate_provider_sandbox_id
+                      ~ '^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$'
+                    AND rollback_standby_restore_candidate_replacement_attempt_id::text
+                      ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+                  )
+                  OR
+                  (
+                    rollback_standby_state IN (
+                      'rollback_pending',
+                      'rollback_cleanup_pending'
+                    )
+                    AND rollback_standby_decision_job_id IS NOT NULL
+                    AND rollback_standby_verified_backup_id IS NULL
+                    AND rollback_standby_restore_validation_id IS NULL
+                    AND rollback_standby_restore_validation_aggregate_sha256 IS NULL
+                    AND rollback_standby_restore_candidate_provider_sandbox_id IS NULL
+                    AND rollback_standby_restore_candidate_replacement_attempt_id IS NULL
+                  )
+                )
+                AND (
+                  (
+                    rollback_standby_previous_docker_image IS NULL
+                    AND rollback_standby_previous_image_digest IS NULL
+                  )
+                  OR
+                  (
+                    rollback_standby_previous_docker_image IS NOT NULL
+                    AND length(rollback_standby_previous_docker_image) > 0
+                    AND rollback_standby_previous_image_digest
+                      ~ '^sha256:[0-9a-f]{64}$'
+                  )
+                )
+              ) IS TRUE AS rollback_standby_contract_complete
             FROM agent_sandboxes
             WHERE agent_name = 'managed-dedicated-canary-' || :'suffix'
+          ),
+          pointed_source_job AS (
+            SELECT
+              target.id AS target_id,
+              json_build_object(
+                'type', source_job.type,
+                'status', source_job.status,
+                'outcome', CASE
+                  WHEN source_job.status = 'in_progress'
+                    AND source_job.result IS NULL
+                    AND source_job.error IS NULL
+                    THEN 'cutover_in_progress'
+                  WHEN source_job.status IN ('pending', 'in_progress')
+                    AND source_job.result IS NULL
+                    AND source_job.error IS NOT NULL
+                    AND source_job.attempts >= 1
+                    AND source_job.attempts < source_job.max_attempts
+                    AND source_job.completed_at IS NULL
+                    THEN 'pre_cutover_retrying'
+                  WHEN source_job.status = 'completed'
+                    AND source_job.error IS NULL
+                    AND source_job.result @> '{
+                      "success": true,
+                      "cleanupPending": false,
+                      "standbyPending": true
+                    }'::jsonb
+                    AND jsonb_typeof(source_job.result -> 'standbyGeneration') = 'string'
+                    AND jsonb_typeof(source_job.result -> 'jobId') = 'string'
+                    AND jsonb_typeof(source_job.result -> 'operation') = 'string'
+                    AND jsonb_typeof(source_job.result -> 'rolloutId') = 'string'
+                    AND jsonb_typeof(source_job.result -> 'actorUserId') = 'string'
+                    AND jsonb_typeof(source_job.result -> 'decisionAt') = 'string'
+                    AND jsonb_typeof(source_job.result -> 'agentId') = 'string'
+                    AND jsonb_typeof(source_job.result -> 'organizationId') = 'string'
+                    AND jsonb_typeof(source_job.result -> 'targetOwnerUserId') = 'string'
+                    AND jsonb_typeof(source_job.result -> 'sourceImage') = 'string'
+                    AND jsonb_typeof(source_job.result -> 'sourceDigest') = 'string'
+                    AND jsonb_typeof(source_job.result -> 'targetImage') = 'string'
+                    AND jsonb_typeof(source_job.result -> 'targetDigest') = 'string'
+                    AND jsonb_typeof(source_job.result -> 'startedAt') = 'string'
+                    AND jsonb_typeof(source_job.result -> 'finishedAt') = 'string'
+                    AND jsonb_typeof(source_job.result -> 'cutoverAt') = 'string'
+                    AND source_job.result ->> 'standbyGeneration' = source_job.id::text
+                    AND source_job.result ->> 'jobId' = source_job.id::text
+                    AND source_job.result ->> 'operation'
+                      = source_job.data ->> 'operation'
+                    AND source_job.result ->> 'rolloutId'
+                      = source_job.data ->> 'rolloutId'
+                    AND source_job.result ->> 'actorUserId'
+                      = source_job.data ->> 'actorUserId'
+                    AND source_job.result ->> 'decisionAt'
+                      = source_job.data ->> 'decisionAt'
+                    AND source_job.result ->> 'agentId'
+                      = source_job.data ->> 'agentId'
+                    AND source_job.result ->> 'organizationId'
+                      = source_job.data ->> 'organizationId'
+                    AND source_job.result ->> 'targetOwnerUserId'
+                      = source_job.data ->> 'targetOwnerUserId'
+                    AND source_job.result ->> 'sourceImage'
+                      = source_job.data ->> 'sourceImage'
+                    AND source_job.result ->> 'sourceDigest'
+                      = source_job.data ->> 'sourceDigest'
+                    AND source_job.result ->> 'targetImage'
+                      = source_job.data ->> 'targetImage'
+                    AND source_job.result ->> 'targetDigest'
+                      = source_job.data ->> 'targetDigest'
+                    AND source_job.result ->> 'startedAt'
+                      = to_char(
+                        source_job.started_at,
+                        'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'
+                      )
+                    AND source_job.result ->> 'finishedAt'
+                      = to_char(
+                        source_job.completed_at,
+                        'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'
+                      )
+                    AND source_job.result ->> 'cutoverAt'
+                      = to_char(
+                        source_job.completed_at,
+                        'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'
+                      )
+                    THEN 'standby_pending'
+                  WHEN source_job.status = 'failed'
+                    AND source_job.attempts = source_job.max_attempts
+                    AND (
+                      (
+                        source_job.result IS NULL
+                        AND source_job.completed_at IS NULL
+                        AND (
+                          source_job.error
+                            ~ '^Job timed out [1-9][0-9]{0,2} times - max attempts reached$'
+                          OR source_job.error
+                            ~ '^Job interrupted by worker restart [1-9][0-9]{0,2} times - max attempts reached$'
+                        )
+                      )
+                      OR
+                      (
+                        source_job.completed_at IS NOT NULL
+                        AND source_job.result @> '{"success": false}'::jsonb
+                        AND jsonb_typeof(source_job.result -> 'jobId') = 'string'
+                        AND jsonb_typeof(source_job.result -> 'operation') = 'string'
+                        AND jsonb_typeof(source_job.result -> 'rolloutId') = 'string'
+                        AND jsonb_typeof(source_job.result -> 'actorUserId') = 'string'
+                        AND jsonb_typeof(source_job.result -> 'decisionAt') = 'string'
+                        AND jsonb_typeof(source_job.result -> 'agentId') = 'string'
+                        AND jsonb_typeof(source_job.result -> 'organizationId') = 'string'
+                        AND jsonb_typeof(source_job.result -> 'targetOwnerUserId') = 'string'
+                        AND jsonb_typeof(source_job.result -> 'sourceImage') = 'string'
+                        AND jsonb_typeof(source_job.result -> 'sourceDigest') = 'string'
+                        AND jsonb_typeof(source_job.result -> 'targetImage') = 'string'
+                        AND jsonb_typeof(source_job.result -> 'targetDigest') = 'string'
+                        AND jsonb_typeof(source_job.result -> 'startedAt') = 'string'
+                        AND jsonb_typeof(source_job.result -> 'finishedAt') = 'string'
+                        AND jsonb_typeof(source_job.result -> 'error') = 'string'
+                        AND source_job.result ->> 'jobId' = source_job.id::text
+                        AND source_job.result ->> 'operation'
+                          = source_job.data ->> 'operation'
+                        AND source_job.result ->> 'rolloutId'
+                          = source_job.data ->> 'rolloutId'
+                        AND source_job.result ->> 'actorUserId'
+                          = source_job.data ->> 'actorUserId'
+                        AND source_job.result ->> 'decisionAt'
+                          = source_job.data ->> 'decisionAt'
+                        AND source_job.result ->> 'agentId'
+                          = source_job.data ->> 'agentId'
+                        AND source_job.result ->> 'organizationId'
+                          = source_job.data ->> 'organizationId'
+                        AND source_job.result ->> 'targetOwnerUserId'
+                          = source_job.data ->> 'targetOwnerUserId'
+                        AND source_job.result ->> 'sourceImage'
+                          = source_job.data ->> 'sourceImage'
+                        AND source_job.result ->> 'sourceDigest'
+                          = source_job.data ->> 'sourceDigest'
+                        AND source_job.result ->> 'targetImage'
+                          = source_job.data ->> 'targetImage'
+                        AND source_job.result ->> 'targetDigest'
+                          = source_job.data ->> 'targetDigest'
+                        AND source_job.result ->> 'startedAt'
+                          = to_char(
+                            source_job.started_at,
+                            'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'
+                          )
+                        AND source_job.result ->> 'finishedAt'
+                          = to_char(
+                            source_job.completed_at,
+                            'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'
+                          )
+                        AND source_job.result ->> 'error' = source_job.error
+                      )
+                    )
+                    THEN 'pre_cutover_failed'
+                  ELSE 'invalid'
+                END,
+                'failureKind', CASE
+                  WHEN source_job.status IN ('pending', 'in_progress')
+                    AND source_job.result IS NULL
+                    AND source_job.error IS NOT NULL
+                    AND source_job.attempts >= 1
+                    AND source_job.attempts < source_job.max_attempts
+                    AND source_job.completed_at IS NULL
+                    THEN 'retry'
+                  WHEN source_job.status = 'failed'
+                    AND source_job.result IS NULL
+                    AND source_job.completed_at IS NULL
+                    THEN 'stale_recovery'
+                  WHEN source_job.status = 'failed'
+                    AND source_job.result IS NOT NULL
+                    AND source_job.completed_at IS NOT NULL
+                    THEN 'execution_audit'
+                  ELSE NULL
+                END,
+                'error', source_job.error,
+                'attempts', source_job.attempts,
+                'maxAttempts', source_job.max_attempts,
+                'scheduledFor', source_job.scheduled_for,
+                'startedAt', source_job.started_at,
+                'completedAt', source_job.completed_at,
+                'createdAt', source_job.created_at,
+                'updatedAt', source_job.updated_at
+              ) AS diagnostic
+            FROM target
+            INNER JOIN jobs source_job
+              ON source_job.id = target.rollback_standby_source_job_id
+              AND source_job.type = 'agent_admin_canary_image'
+              AND source_job.organization_id = target.organization_id
+              AND source_job.agent_id = target.id::text
+              AND source_job.user_id::text = source_job.data ->> 'actorUserId'
+              AND source_job.data_storage = 'inline'
+              AND source_job.error_storage = 'inline'
+              AND source_job.result_storage = 'inline'
+              AND jsonb_typeof(source_job.data -> 'agentId') = 'string'
+              AND jsonb_typeof(source_job.data -> 'organizationId') = 'string'
+              AND jsonb_typeof(source_job.data -> 'targetOwnerUserId') = 'string'
+              AND jsonb_typeof(source_job.data -> 'actorUserId') = 'string'
+              AND jsonb_typeof(source_job.data -> 'userId') = 'string'
+              AND jsonb_typeof(source_job.data -> 'decisionAt') = 'string'
+              AND jsonb_typeof(source_job.data -> 'rolloutId') = 'string'
+              AND jsonb_typeof(source_job.data -> 'operation') = 'string'
+              AND jsonb_typeof(source_job.data -> 'sourceImage') = 'string'
+              AND jsonb_typeof(source_job.data -> 'sourceDigest') = 'string'
+              AND jsonb_typeof(source_job.data -> 'targetImage') = 'string'
+              AND jsonb_typeof(source_job.data -> 'targetDigest') = 'string'
+              AND source_job.data ->> 'agentId' = target.id::text
+              AND source_job.data ->> 'organizationId' = target.organization_id::text
+              AND source_job.data ->> 'targetOwnerUserId' = target.user_id::text
+              AND source_job.data ->> 'userId' = source_job.data ->> 'actorUserId'
+              AND source_job.data ->> 'rolloutId' = target.rollback_standby_rollout_id::text
+              AND source_job.data ->> 'operation' = 'upgrade'
+              AND source_job.data ->> 'sourceImage'
+                = target.rollback_standby_docker_image
+              AND source_job.data ->> 'sourceDigest'
+                = target.rollback_standby_image_digest
+              AND source_job.data ->> 'sourceDigest'
+                ~ '^sha256:[0-9a-f]{64}$'
+              AND length(source_job.data ->> 'targetImage') > 0
+              AND source_job.data ->> 'targetDigest'
+                ~ '^sha256:[0-9a-f]{64}$'
+              AND target.rollback_standby_generation = source_job.id
+              AND target.environment_revision
+                = target.rollback_standby_environment_revision
+              AND (
+                (
+                  target.rollback_standby_state IN (
+                    'pausing',
+                    'paused_pre_cutover',
+                    'rollback_cleanup_pending'
+                  )
+                  AND target.docker_image = source_job.data ->> 'sourceImage'
+                  AND target.image_digest = source_job.data ->> 'sourceDigest'
+                )
+                OR
+                (
+                  target.rollback_standby_state IN (
+                    'paused',
+                    'retiring',
+                    'rollback_pending'
+                  )
+                  AND target.docker_image = source_job.data ->> 'targetImage'
+                  AND target.image_digest = source_job.data ->> 'targetDigest'
+                )
+              )
+          ),
+          pointed_decision_job AS (
+            SELECT
+              target.id AS target_id,
+              json_build_object(
+                'type', decision_job.type,
+                'status', decision_job.status,
+                'decision', decision_job.data ->> 'decision',
+                'outcome', CASE
+                  WHEN decision_job.result IS NULL THEN NULL
+                  WHEN decision_job.result @> '{"success": true}'::jsonb
+                    AND jsonb_typeof(decision_job.result -> 'decision') = 'string'
+                    AND jsonb_typeof(decision_job.result -> 'outcome') = 'string'
+                    AND jsonb_typeof(decision_job.result -> 'requestId') = 'string'
+                    AND jsonb_typeof(decision_job.result -> 'decisionJobId') = 'string'
+                    AND jsonb_typeof(decision_job.result -> 'sourceJobId') = 'string'
+                    AND jsonb_typeof(decision_job.result -> 'standbyGeneration') = 'string'
+                    AND jsonb_typeof(decision_job.result -> 'rolloutId') = 'string'
+                    AND jsonb_typeof(decision_job.result -> 'actorUserId') = 'string'
+                    AND jsonb_typeof(decision_job.result -> 'agentId') = 'string'
+                    AND jsonb_typeof(decision_job.result -> 'organizationId') = 'string'
+                    AND jsonb_typeof(decision_job.result -> 'targetImage') = 'string'
+                    AND jsonb_typeof(decision_job.result -> 'targetDigest') = 'string'
+                    AND jsonb_typeof(decision_job.result -> 'startedAt') = 'string'
+                    AND jsonb_typeof(decision_job.result -> 'finishedAt') = 'string'
+                    AND decision_job.result ->> 'decision'
+                      = decision_job.data ->> 'decision'
+                    AND decision_job.result ->> 'requestId'
+                      = decision_job.data ->> 'requestId'
+                    AND decision_job.result ->> 'decisionJobId'
+                      = decision_job.id::text
+                    AND decision_job.result ->> 'sourceJobId'
+                      = target.rollback_standby_source_job_id::text
+                    AND decision_job.result ->> 'standbyGeneration'
+                      = target.rollback_standby_generation::text
+                    AND decision_job.result ->> 'rolloutId'
+                      = target.rollback_standby_rollout_id::text
+                    AND decision_job.result ->> 'actorUserId'
+                      = decision_job.data ->> 'actorUserId'
+                    AND decision_job.result ->> 'agentId' = target.id::text
+                    AND decision_job.result ->> 'organizationId'
+                      = target.organization_id::text
+                    AND decision_job.result ->> 'targetImage'
+                      = source_job.data ->> 'targetImage'
+                    AND decision_job.result ->> 'targetDigest'
+                      = source_job.data ->> 'targetDigest'
+                    AND decision_job.result ->> 'startedAt'
+                      = to_char(
+                        decision_job.started_at,
+                        'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'
+                      )
+                    AND decision_job.result ->> 'finishedAt'
+                      = to_char(
+                        decision_job.completed_at,
+                        'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'
+                      )
+                    THEN decision_job.result ->> 'outcome'
+                  ELSE 'invalid'
+                END,
+                'scheduledFor', decision_job.scheduled_for,
+                'startedAt', decision_job.started_at,
+                'completedAt', decision_job.completed_at,
+                'createdAt', decision_job.created_at,
+                'updatedAt', decision_job.updated_at
+              ) AS diagnostic
+            FROM target
+            INNER JOIN jobs source_job
+              ON source_job.id = target.rollback_standby_source_job_id
+              AND source_job.type = 'agent_admin_canary_image'
+              AND source_job.organization_id = target.organization_id
+              AND source_job.agent_id = target.id::text
+            INNER JOIN jobs decision_job
+              ON decision_job.id = target.rollback_standby_decision_job_id
+              AND decision_job.type = 'agent_admin_canary_standby_decision'
+              AND decision_job.organization_id = target.organization_id
+              AND decision_job.agent_id = target.id::text
+              AND decision_job.user_id::text
+                = decision_job.data ->> 'actorUserId'
+              AND decision_job.data_storage = 'inline'
+              AND decision_job.error_storage = 'inline'
+              AND decision_job.result_storage = 'inline'
+              AND jsonb_typeof(decision_job.data -> 'requestId') = 'string'
+              AND jsonb_typeof(decision_job.data -> 'sourceJobId') = 'string'
+              AND jsonb_typeof(decision_job.data -> 'decision') = 'string'
+              AND jsonb_typeof(decision_job.data -> 'standbyGeneration') = 'string'
+              AND jsonb_typeof(decision_job.data -> 'rolloutId') = 'string'
+              AND jsonb_typeof(decision_job.data -> 'actorUserId') = 'string'
+              AND jsonb_typeof(decision_job.data -> 'userId') = 'string'
+              AND jsonb_typeof(decision_job.data -> 'decisionAt') = 'string'
+              AND jsonb_typeof(decision_job.data -> 'agentId') = 'string'
+              AND jsonb_typeof(decision_job.data -> 'organizationId') = 'string'
+              AND jsonb_typeof(decision_job.data -> 'targetOwnerUserId') = 'string'
+              AND jsonb_typeof(decision_job.data -> 'sourceImage') = 'string'
+              AND jsonb_typeof(decision_job.data -> 'sourceDigest') = 'string'
+              AND jsonb_typeof(decision_job.data -> 'targetImage') = 'string'
+              AND jsonb_typeof(decision_job.data -> 'targetDigest') = 'string'
+              AND decision_job.data ->> 'agentId' = target.id::text
+              AND decision_job.data ->> 'organizationId' = target.organization_id::text
+              AND decision_job.data ->> 'targetOwnerUserId' = target.user_id::text
+              AND decision_job.data ->> 'userId'
+                = decision_job.data ->> 'actorUserId'
+              AND decision_job.data ->> 'sourceJobId'
+                = target.rollback_standby_source_job_id::text
+              AND decision_job.data ->> 'standbyGeneration'
+                = target.rollback_standby_generation::text
+              AND decision_job.data ->> 'rolloutId'
+                = target.rollback_standby_rollout_id::text
+              AND decision_job.data ->> 'sourceImage'
+                = source_job.data ->> 'sourceImage'
+              AND decision_job.data ->> 'sourceDigest'
+                = source_job.data ->> 'sourceDigest'
+              AND decision_job.data ->> 'targetImage'
+                = source_job.data ->> 'targetImage'
+              AND decision_job.data ->> 'targetDigest'
+                = source_job.data ->> 'targetDigest'
+          ),
+          restore_validation_rows AS (
+            SELECT
+              target.id AS target_id,
+              validation.restore_validation_id,
+              json_build_object(
+                'state', validation.validation_state,
+                'routeMode', validation.candidate_route_mode,
+                'authorityPointed', (
+                  target.rollback_standby_restore_validation_id
+                    = validation.restore_validation_id
+                  AND target.rollback_standby_verified_backup_id = validation.backup_id
+                  AND target.rollback_standby_restore_validation_aggregate_sha256
+                    = validation.aggregate_sha256
+                  AND target.rollback_standby_restore_candidate_provider_sandbox_id
+                    = validation.target_provider_sandbox_id
+                  AND target.rollback_standby_restore_candidate_replacement_attempt_id
+                    = validation.target_replacement_attempt_id
+                  AND validation.target_replacement_attempt_id
+                    <> target.rollback_standby_primary_replacement_attempt_id
+                ) IS TRUE,
+                'sourceIdentityMatches', (
+                  validation.source_job_id = target.rollback_standby_source_job_id
+                  AND validation.standby_generation = target.rollback_standby_generation
+                  AND validation.rollout_id = target.rollback_standby_rollout_id
+                  AND validation.organization_id = target.organization_id
+                  AND validation.sandbox_record_id = target.id
+                  AND validation.agent_id = target.id
+                  AND validation.target_owner_user_id = target.user_id
+                  AND validation.source_environment_revision
+                    = target.rollback_standby_environment_revision
+                  AND validation.source_image_digest
+                    = source_job.data ->> 'targetDigest'
+                  AND validation.source_sandbox_id
+                    = target.rollback_standby_primary_replacement_attempt_id
+                  AND validation.target_image = source_job.data ->> 'targetImage'
+                  AND validation.target_digest = source_job.data ->> 'targetDigest'
+                  AND (
+                    (
+                      target.rollback_standby_state IN (
+                        'paused',
+                        'retiring',
+                        'rollback_pending'
+                      )
+                      AND target.docker_image = source_job.data ->> 'targetImage'
+                      AND target.image_digest = source_job.data ->> 'targetDigest'
+                    )
+                    OR
+                    (
+                      target.rollback_standby_state = 'rollback_cleanup_pending'
+                      AND target.docker_image = source_job.data ->> 'sourceImage'
+                      AND target.image_digest = source_job.data ->> 'sourceDigest'
+                    )
+                  )
+                  AND source_job.data ->> 'agentId' = target.id::text
+                  AND source_job.data ->> 'organizationId'
+                    = target.organization_id::text
+                  AND source_job.data ->> 'targetOwnerUserId'
+                    = target.user_id::text
+                  AND source_job.data ->> 'rolloutId'
+                    = target.rollback_standby_rollout_id::text
+                  AND source_job.data ->> 'operation' = 'upgrade'
+                ) IS TRUE,
+                'backupVerifiedV2', (
+                  validation.validation_state IN (
+                    'restore_committed',
+                    'never_routed_retired'
+                  )
+                  AND backup.id = validation.backup_id
+                  AND backup.sandbox_record_id = target.id
+                  AND backup.snapshot_type = 'pre-upgrade'
+                  AND backup.snapshot_schema_version = 2
+                  AND backup.verification_status = 'verified'
+                  AND backup.verified_at IS NOT NULL
+                  AND backup.verification_error IS NULL
+                  AND backup.storage_commit_state = 'complete'
+                  AND backup.content_hash = validation.aggregate_sha256
+                ) IS TRUE,
+                'contractComplete', (
+                  validation.capture_nonce ~ '^[0-9a-f]{64}$'
+                  AND validation.source_environment_revision >= 0
+                  AND validation.source_image_digest ~ '^sha256:[0-9a-f]{64}$'
+                  AND validation.source_sandbox_id::text
+                    ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+                  AND validation.target_digest ~ '^sha256:[0-9a-f]{64}$'
+                  AND validation.candidate_route_mode
+                    = 'restore_validation_private_control'
+                  AND validation.route_exposed_at IS NULL
+                  AND (
+                    (
+                      validation.validation_state = 'planned'
+                      AND validation.aggregate_sha256 IS NULL
+                      AND validation.target_provider_sandbox_id IS NULL
+                      AND validation.target_replacement_attempt_id IS NULL
+                      AND validation.target_provider_node_id IS NULL
+                      AND validation.target_provider_container_name IS NULL
+                      AND validation.target_provider_container_id IS NULL
+                      AND validation.target_provider_volume_path IS NULL
+                      AND validation.target_provider_bridge_url IS NULL
+                      AND validation.target_provider_health_url IS NULL
+                      AND validation.target_provider_bridge_port IS NULL
+                      AND validation.target_provider_web_ui_port IS NULL
+                      AND validation.target_provider_vpn_node_id IS NULL
+                      AND validation.target_provider_vpn_node_name IS NULL
+                      AND validation.target_provider_vpn_registration_started_at IS NULL
+                      AND validation.target_provider_allocation_counted IS NULL
+                      AND validation.receipt_state IS NULL
+                      AND validation.receipt_schema_version IS NULL
+                      AND validation.receipt_transfer IS NULL
+                      AND validation.receipt_file_count IS NULL
+                      AND validation.receipt_total_bytes IS NULL
+                      AND validation.receipt_requires_restart IS NULL
+                      AND validation.receipt_success IS NULL
+                      AND validation.receipt_committed_at IS NULL
+                      AND validation.candidate_container_absent_at IS NULL
+                      AND validation.candidate_vpn_absent_at IS NULL
+                      AND validation.candidate_volume_absent_at IS NULL
+                      AND validation.candidate_retired_at IS NULL
+                    )
+                    OR
+                    (
+                      validation.validation_state IN (
+                        'candidate_provisioning',
+                        'restore_committed',
+                        'never_routed_retired'
+                      )
+                      AND validation.target_provider_sandbox_id
+                        ~ '^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$'
+                      AND validation.target_replacement_attempt_id::text
+                        ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+                      AND length(validation.target_provider_node_id) > 0
+                      AND length(validation.target_provider_container_name) > 0
+                      AND length(validation.target_provider_volume_path) > 0
+                      AND length(validation.target_provider_bridge_url) > 0
+                      AND length(validation.target_provider_health_url) > 0
+                      AND validation.target_provider_bridge_port BETWEEN 1 AND 65535
+                      AND validation.target_provider_web_ui_port BETWEEN 1 AND 65535
+                      AND length(validation.target_provider_vpn_node_name) > 0
+                      AND validation.target_provider_vpn_registration_started_at IS NOT NULL
+                      AND validation.target_provider_allocation_counted IS NOT NULL
+                      AND (
+                        (
+                          validation.validation_state = 'candidate_provisioning'
+                          AND validation.aggregate_sha256 IS NULL
+                          AND validation.receipt_state IS NULL
+                          AND validation.receipt_schema_version IS NULL
+                          AND validation.receipt_transfer IS NULL
+                          AND validation.receipt_file_count IS NULL
+                          AND validation.receipt_total_bytes IS NULL
+                          AND validation.receipt_requires_restart IS NULL
+                          AND validation.receipt_success IS NULL
+                          AND validation.receipt_committed_at IS NULL
+                          AND validation.target_provider_allocation_counted = TRUE
+                          AND validation.candidate_container_absent_at IS NULL
+                          AND validation.candidate_vpn_absent_at IS NULL
+                          AND validation.candidate_volume_absent_at IS NULL
+                          AND validation.candidate_retired_at IS NULL
+                        )
+                        OR
+                        (
+                          validation.validation_state IN (
+                            'restore_committed',
+                            'never_routed_retired'
+                          )
+                          AND validation.aggregate_sha256 ~ '^[0-9a-f]{64}$'
+                          AND length(validation.target_provider_container_id) > 0
+                          AND length(validation.target_provider_vpn_node_id) > 0
+                          AND validation.receipt_state = 'committed'
+                          AND validation.receipt_schema_version = 2
+                          AND validation.receipt_transfer = 'chunked-v1'
+                          AND validation.receipt_file_count >= 0
+                          AND validation.receipt_total_bytes
+                            BETWEEN 0 AND 9007199254740991
+                          AND validation.receipt_requires_restart = TRUE
+                          AND validation.receipt_success = TRUE
+                          AND validation.receipt_committed_at IS NOT NULL
+                          AND (
+                            (
+                              validation.validation_state = 'restore_committed'
+                              AND validation.target_provider_allocation_counted = TRUE
+                              AND validation.candidate_container_absent_at IS NULL
+                              AND validation.candidate_vpn_absent_at IS NULL
+                              AND validation.candidate_volume_absent_at IS NULL
+                              AND validation.candidate_retired_at IS NULL
+                            )
+                            OR
+                            (
+                              validation.validation_state = 'never_routed_retired'
+                              AND validation.target_provider_allocation_counted = FALSE
+                              AND validation.candidate_container_absent_at IS NOT NULL
+                              AND validation.candidate_vpn_absent_at IS NOT NULL
+                              AND validation.candidate_volume_absent_at IS NOT NULL
+                              AND validation.candidate_retired_at IS NOT NULL
+                              AND validation.candidate_container_absent_at
+                                >= validation.receipt_committed_at
+                              AND validation.candidate_vpn_absent_at
+                                >= validation.receipt_committed_at
+                              AND validation.candidate_volume_absent_at
+                                >= validation.receipt_committed_at
+                              AND validation.candidate_retired_at
+                                >= validation.candidate_container_absent_at
+                              AND validation.candidate_retired_at
+                                >= validation.candidate_vpn_absent_at
+                              AND validation.candidate_retired_at
+                                >= validation.candidate_volume_absent_at
+                            )
+                          )
+                        )
+                      )
+                    )
+                  )
+                ) IS TRUE,
+                'receiptState', validation.receipt_state,
+                'receiptSchemaVersion', validation.receipt_schema_version,
+                'receiptTransfer', validation.receipt_transfer,
+                'receiptCommittedAt', validation.receipt_committed_at,
+                'routeExposedAt', validation.route_exposed_at,
+                'candidateContainerAbsentAt', validation.candidate_container_absent_at,
+                'candidateVpnAbsentAt', validation.candidate_vpn_absent_at,
+                'candidateVolumeAbsentAt', validation.candidate_volume_absent_at,
+                'candidateRetiredAt', validation.candidate_retired_at
+              ) AS diagnostic
+            FROM target
+            INNER JOIN agent_snapshot_restore_validations validation
+              ON validation.source_job_id = target.rollback_standby_source_job_id
+              AND validation.standby_generation = target.rollback_standby_generation
+              AND validation.organization_id = target.organization_id
+              AND validation.sandbox_record_id = target.id
+            INNER JOIN jobs source_job
+              ON source_job.id = target.rollback_standby_source_job_id
+              AND source_job.type = 'agent_admin_canary_image'
+              AND source_job.organization_id = target.organization_id
+              AND source_job.agent_id = target.id::text
+            LEFT JOIN agent_sandbox_backups backup
+              ON backup.id = validation.backup_id
+              AND backup.sandbox_record_id = target.id
+          ),
+          restore_validation_summary AS (
+            SELECT
+              target.id AS target_id,
+              count(restore_validation_rows.restore_validation_id)::integer
+                AS restore_validation_count,
+              CASE
+                WHEN count(restore_validation_rows.restore_validation_id) = 1
+                  THEN (json_agg(restore_validation_rows.diagnostic)
+                    FILTER (WHERE restore_validation_rows.restore_validation_id IS NOT NULL)) -> 0
+                ELSE NULL
+              END AS diagnostic
+            FROM target
+            LEFT JOIN restore_validation_rows
+              ON restore_validation_rows.target_id = target.id
+            GROUP BY target.id
           ),
           newest_jobs AS (
             SELECT
@@ -377,6 +1765,7 @@ jobs:
             LIMIT 3
           )
           SELECT json_build_object(
+            'capturedAt', clock_timestamp(),
             'targetCount', (SELECT count(*) FROM target),
             'agent', (
               SELECT json_build_object(
@@ -390,7 +1779,43 @@ jobs:
                   'sandboxIdPresent', sandbox_id_present,
                   'nodeIdPresent', node_id_present,
                   'containerNamePresent', container_name_present
-                )
+                ),
+                'replacementCleanupLocator', json_build_object(
+                  'sandboxIdPresent', replacement_cleanup_sandbox_id_present,
+                  'nodeIdPresent', replacement_cleanup_node_id_present,
+                  'containerNamePresent', replacement_cleanup_container_name_present,
+                  'createdAtPresent', replacement_cleanup_created_at_present,
+                  'contractComplete', replacement_cleanup_contract_complete
+                ),
+                'rollbackStandby', CASE
+                  WHEN NOT rollback_standby_bundle_present THEN NULL
+                  ELSE json_build_object(
+                    'state', rollback_standby_state,
+                    'currentMatchesPrimary', current_matches_primary,
+                    'currentMatchesStandby', current_matches_standby,
+                    'contractComplete', rollback_standby_contract_complete,
+                    'sourceJob', (
+                      SELECT diagnostic
+                      FROM pointed_source_job
+                      WHERE pointed_source_job.target_id = target.id
+                    ),
+                    'decisionJob', (
+                      SELECT diagnostic
+                      FROM pointed_decision_job
+                      WHERE pointed_decision_job.target_id = target.id
+                    ),
+                    'restoreValidationCount', (
+                      SELECT restore_validation_count
+                      FROM restore_validation_summary
+                      WHERE restore_validation_summary.target_id = target.id
+                    ),
+                    'restoreValidation', (
+                      SELECT diagnostic
+                      FROM restore_validation_summary
+                      WHERE restore_validation_summary.target_id = target.id
+                    )
+                  )
+                END
               )
               FROM target
               LIMIT 1
@@ -443,11 +1868,18 @@ jobs:
             console.log("- exact target count: `" + evidence.targetCount + "`");
             console.log("- sandbox status: `" + evidence.sandbox.status + "`");
             console.log("- sandbox error class: `" + evidence.sandbox.errorCode + "`");
-            console.log("- latest job status: `" + latestJob.status + "`");
-            console.log("- latest job error class: `" + latestJob.errorCode + "`");
-            console.log("- latest job recovery class: `" + latestJob.recoveryCode + "`");
-            console.log("- latest persisted result class: `" + latestJob.resultErrorCode + "`");
-            console.log("- attempts: `" + latestJob.attempts + "/" + latestJob.maxAttempts + "`");
-            console.log("- container stopped: `" + latestJob.containerStopped + "`");
-            console.log("- row deleted: `" + latestJob.rowDeleted + "`");
+            console.log("- lifecycle authority: `" + evidence.lifecycle.authority + "`");
+            console.log("- standby state: `" + evidence.lifecycle.standbyState + "`");
+            console.log("- routed runtime: `" + evidence.lifecycle.routedRuntime + "`");
+            console.log("- restore validation: `" + evidence.lifecycle.restoreValidation?.state + "`");
+            console.log("- deletion jobs: `" + evidence.jobs.length + "`");
+            if (latestJob) {
+              console.log("- latest job status: `" + latestJob.status + "`");
+              console.log("- latest job error class: `" + latestJob.errorCode + "`");
+              console.log("- latest job recovery class: `" + latestJob.recoveryCode + "`");
+              console.log("- latest persisted result class: `" + latestJob.resultErrorCode + "`");
+              console.log("- attempts: `" + latestJob.attempts + "/" + latestJob.maxAttempts + "`");
+              console.log("- container stopped: `" + latestJob.containerStopped + "`");
+              console.log("- row deleted: `" + latestJob.rowDeleted + "`");
+            }
           ' >> "$GITHUB_STEP_SUMMARY"
