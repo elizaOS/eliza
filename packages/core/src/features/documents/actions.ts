@@ -802,7 +802,7 @@ async function handleList(
 			? Math.floor(params.offset)
 			: undefined;
 
-	const documents = await service.listDocuments(message, {
+	const listOptions = {
 		limit: getLimit(params.limit, 25),
 		offset,
 		query: params.query,
@@ -812,11 +812,25 @@ async function handleList(
 		timeRangeStart,
 		timeRangeEnd,
 		tags: Array.isArray(params.tags) ? params.tags : undefined,
-	});
-	const text =
-		documents.length === 0
-			? "No documents are available."
-			: `Available documents:\n${documents
+	};
+	let documents = await service.listDocuments(message, listOptions);
+	const query = params.query?.trim();
+	let unmatchedQuery: string | undefined;
+
+	if (documents.length === 0 && query) {
+		const unfilteredDocuments = await service.listDocuments(message, {
+			...listOptions,
+			query: undefined,
+		});
+		if (unfilteredDocuments.length > 0) {
+			documents = unfilteredDocuments;
+			unmatchedQuery = query;
+		}
+	}
+
+	const availableDocumentsText =
+		documents.length > 0
+			? `Available documents:\n${documents
 					.map((document, index) => {
 						const metadata = document.metadata as
 							| Record<string, unknown>
@@ -829,7 +843,11 @@ async function handleList(
 									: `Document ${index + 1}`;
 						return `${index + 1}. ${title} (${document.id})`;
 					})
-					.join("\n")}`;
+					.join("\n")}`
+			: "No documents are available.";
+	const text = unmatchedQuery
+		? `No documents matched ${JSON.stringify(unmatchedQuery)}. Showing available documents instead:\n${availableDocumentsText}`
+		: availableDocumentsText;
 	await emit(callback, { text, actions: ["DOCUMENT"] });
 	return result(true, text, "list", {
 		values: { documents },

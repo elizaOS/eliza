@@ -46,7 +46,7 @@ function makeMessage(text: string): Memory {
 
 function makeService() {
 	return {
-		listDocuments: vi.fn(async () => []),
+		listDocuments: vi.fn(async (): Promise<Memory[]> => []),
 		searchDocuments: vi.fn(async () => []),
 		getDocumentById: vi.fn(async () => null),
 		addDocument: vi.fn(async () => ({
@@ -166,6 +166,58 @@ describe("documentAction.handler structured routing", () => {
 			expect(service[method]).toHaveBeenCalledTimes(1);
 		},
 	);
+
+	it("distinguishes a query miss from an empty document store", async () => {
+		const service = makeService();
+		const document = {
+			id: DOC_ID,
+			content: { text: "Launch is Friday." },
+			metadata: { title: "Launch Notes" },
+		} as Memory;
+		service.listDocuments
+			.mockResolvedValueOnce([])
+			.mockResolvedValueOnce([document]);
+		const { runtime } = makeRuntime(service);
+
+		const res = await documentAction.handler?.(
+			runtime,
+			makeMessage("list all documents"),
+			undefined,
+			options({ action: "list", query: "list all", limit: 10, offset: 2 }),
+		);
+
+		expect(service.listDocuments).toHaveBeenCalledTimes(2);
+		expect(service.listDocuments.mock.calls[0]?.[1]).toMatchObject({
+			query: "list all",
+			limit: 10,
+			offset: 2,
+		});
+		expect(service.listDocuments.mock.calls[1]?.[1]).toMatchObject({
+			query: undefined,
+			limit: 10,
+			offset: 2,
+		});
+		expect(res?.text).toBe(
+			`No documents matched "list all". Showing available documents instead:\nAvailable documents:\n1. Launch Notes (${DOC_ID})`,
+		);
+		expect(res?.data?.documents).toEqual([document]);
+	});
+
+	it("keeps the empty-store message when query fallback also finds nothing", async () => {
+		const service = makeService();
+		const { runtime } = makeRuntime(service);
+
+		const res = await documentAction.handler?.(
+			runtime,
+			makeMessage("list all documents"),
+			undefined,
+			options({ action: "list", query: "list all" }),
+		);
+
+		expect(service.listDocuments).toHaveBeenCalledTimes(2);
+		expect(res?.text).toBe("No documents are available.");
+		expect(res?.data?.documents).toEqual([]);
+	});
 
 	it("extracts a missing search query instead of stripping English prose in the handler", async () => {
 		const service = makeService();
