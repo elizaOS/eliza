@@ -1,0 +1,3 @@
+gate-evidence tour 2026-07-28T23:34:13.057Z
+--- before: file://C:/Users/ADMINI~1/AppData/Local/Temp/claude/C--Users-Administrator-Documents-eliza--claude-worktrees-infallible-wiles-9d1dbd/905d9ec3-ed6f-4b40-aa91-04bbc0fff48e/scratchpad/gate-evidence/gate-evidence-before.html
+--- after: file://C:/Users/ADMINI~1/AppData/Local/Temp/claude/C--Users-Administrator-Documents-eliza--claude-worktrees-infallible-wiles-9d1dbd/905d9ec3-ed6f-4b40-aa91-04bbc0fff48e/scratchpad/gate-evidence/gate-evidence-after.html

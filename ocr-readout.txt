@@ -1,0 +1,96 @@
+﻿=== after-desktop-rail-keyboard-focus.jpg ===
+Glass action rail (bare) — Tab focuses the first control
+
+=== after-desktop-rest.jpg ===
+Glass action rail (bare) — Tab focuses the first control
+...quarterly report is ready for review...
+YOU JUL 25
+...summarize the quarterly numbers...
+AGENT JUL 24
+...Quarterly planning starts next Monday...
+quarterly
+
+=== after-desktop-search-section.jpg ===
+Message search (keyboard-anchored) — blur site on input + result rows
+...quarterly report is ready for review...
+YOU JUL 25
+...summarize the quarterly numbers...
+AGENT JUL 24
+...Quarterly planning starts next Monday...
+quarterly
+
+=== after-desktop-surface-section.jpg ===
+Boxed action surface (non-bare) — backdrop-filter site
+
+=== after-mobile-rest.jpg ===
+Glass action rail (bare) — Tab focuses the first control
+Message search (keyboard-anchored) — blur site on input +
+result rows
+AGENT JUL 27
+...quarterly report is ready for review...
+YOU JUL 25
+...summarize the quarterly numbers...
+AGENT JUL 24
+...Quarterly planning starts next Monday...
+quarterly
+
+=== after-mobile-search-section.jpg ===
+Message search (keyboard-anchored) — blur site on input +
+result rows
+AGENT JUL 27
+...quarterly report is ready for review...
+YOU JUL 25
+...summarize the quarterly numbers...
+AGENT JUL 24
+...Quarterly planning starts next Monday...
+quarterly
+
+=== before-desktop-rail-keyboard-focus.jpg ===
+Glass action rail (bare) — Tab focuses the first control
+
+=== before-desktop-rest.jpg ===
+Glass action rail (bare) — Tab focuses the first control
+Message search (keyboard-anchored) — blur site on input + result rows
+YOU JUL 25
+...summarize the quarterly numbers...
+AGENT JUL 24
+...Quarterly planning starts next Monday...
+quarterly
+
+=== before-desktop-search-section.jpg ===
+Message search (keyboard-anchored) — blur site on input + result rows
+...quarterly report is ready for review...
+YOU JUL 25
+...summarize the quarterly numbers...
+AGENT JUL 24
+...Quarterly planning starts next Monday...
+quarterly
+
+=== before-desktop-surface-section.jpg ===
+Boxed action surface (non-bare) — backdrop-filter site
+inline editor controls host
+
+=== before-mobile-rest.jpg ===
+Glass action rail (bare) — Tab focuses the first control
+Boxed action surface (non-bare) — backdrop-filter site
+Message search (keyboard-anchored) — blur site on input +
+result rows
+AGENT JUL 27
+...quarterly report is ready for review...
+YOU JUL 25
+...summarize the quarterly numbers...
+AGENT JUL 24
+...Quarterly planning starts next Monday...
+quarterly
+
+=== before-mobile-search-section.jpg ===
+Message search (keyboard-anchored) — blur site on input +
+result rows
+AGENT JUL 27
+...quarterly report is ready for review...
+YOU JUL 25
+...summarize the quarterly numbers...
+AGENT JUL 24
+...Quarterly planning starts next Monday...
+quarterly
+
