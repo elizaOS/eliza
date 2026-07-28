@@ -878,6 +878,28 @@ const UNRECOVERABLE_SNAPSHOT_HTTP_STATUSES = new Set([401, 403, 404, 410]);
 // so they must degrade-but-PRESERVE the chain: never prune a snapshot a
 // token-corrected resume could still restore (#15274).
 const PERMANENTLY_LOST_SNAPSHOT_HTTP_STATUSES = new Set([404, 410]);
+
+/**
+ * A reconstructed restore payload larger than what `/api/restore` accepts, so
+ * the push is refused locally instead of being sent to be rejected (#17172).
+ *
+ * Typed because the classification matters in both directions: retrying is
+ * pointless (the same bytes exceed the same limit every time), so this must
+ * read as UNRECOVERABLE — but the stored backup chain is intact and still
+ * decryptable, so it must NOT read as permanently lost and must never prune the
+ * chain.
+ */
+export class SnapshotPayloadTooLargeError extends Error {
+  readonly name = "SnapshotPayloadTooLargeError";
+  constructor(
+    readonly payloadBytes: number,
+    readonly limitBytes: number,
+  ) {
+    super(
+      `State restore refused: reconstructed payload of ${payloadBytes} bytes exceeds the v1 restorable limit of ${limitBytes} bytes`,
+    );
+  }
+}
 // Anchored on the exact `fetchSnapshotState` / `pushState` throw shapes so only
 // this file's snapshot HTTP throw sites classify — an unrelated error that
 // merely embeds one of these strings does not.
@@ -923,6 +945,10 @@ const SNAPSHOT_HTTP_ERROR_SHAPE =
 export function isUnrecoverableSnapshotError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   if (error.name === "AeadError" || error.name === "KeyNotFoundError") return true;
+  // A local size refusal is deterministic: the same reconstructed bytes breach
+  // the same limit on every attempt, so retrying only burns the provision.
+  // Deliberately absent from `isPermanentlyLostSnapshot` — the chain is intact.
+  if (error.name === "SnapshotPayloadTooLargeError") return true;
   const match = SNAPSHOT_HTTP_ERROR_SHAPE.exec(error.message);
   return match !== null && UNRECOVERABLE_SNAPSHOT_HTTP_STATUSES.has(Number(match[1]));
 }
@@ -9701,9 +9727,7 @@ export class ElizaSandboxService {
     const body = JSON.stringify(state);
     const bodyBytes = Buffer.byteLength(body, "utf8");
     if (bodyBytes > MAX_RESTORABLE_AGENT_BACKUP_BYTES) {
-      throw new Error(
-        `State restore refused: reconstructed payload of ${bodyBytes} bytes exceeds the v1 restorable limit of ${MAX_RESTORABLE_AGENT_BACKUP_BYTES} bytes`,
-      );
+      throw new SnapshotPayloadTooLargeError(bodyBytes, MAX_RESTORABLE_AGENT_BACKUP_BYTES);
     }
     const requestInit: RequestInit = {
       method: "POST",

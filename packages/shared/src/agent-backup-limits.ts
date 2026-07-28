@@ -33,13 +33,30 @@ export const MAX_RESTORABLE_AGENT_BACKUP_BYTES = 128 * 1024 * 1024;
  * alone, which is why the clamp lives here next to the limit rather than at the
  * call site.
  *
- * A missing, non-numeric, or non-positive value yields the canonical limit.
+ * Only an ABSENT override defaults. A present-but-invalid value throws rather
+ * than silently falling back: an operator who set the variable meant to change
+ * the budget, so quietly running on the canonical limit would hide a
+ * misconfiguration behind behavior that looks deliberate. `Number.parseInt` is
+ * deliberately not used — it accepts malformed numeric prefixes (`"128MiB"` and
+ * `"128abc"` both yield 128), which is exactly the silent-misread this guards.
  */
 export function resolveRetainableAgentBackupBytes(
   rawOverride: string | undefined,
 ): number {
-  const parsed = Number.parseInt(rawOverride ?? "", 10);
-  if (!Number.isFinite(parsed) || parsed <= 0)
-    return MAX_RESTORABLE_AGENT_BACKUP_BYTES;
+  if (rawOverride === undefined) return MAX_RESTORABLE_AGENT_BACKUP_BYTES;
+  const trimmed = rawOverride.trim();
+  if (trimmed === "") return MAX_RESTORABLE_AGENT_BACKUP_BYTES;
+
+  if (!/^\d+$/.test(trimmed)) {
+    throw new Error(
+      `Invalid snapshot retain budget ${JSON.stringify(rawOverride)}: expected a positive integer count of bytes`,
+    );
+  }
+  const parsed = Number(trimmed);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    throw new Error(
+      `Invalid snapshot retain budget ${JSON.stringify(rawOverride)}: expected a positive integer count of bytes`,
+    );
+  }
   return Math.min(parsed, MAX_RESTORABLE_AGENT_BACKUP_BYTES);
 }

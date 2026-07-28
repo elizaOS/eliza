@@ -796,6 +796,23 @@ describe("ElizaSandboxService state restore auth", () => {
     expect(fetchCalls).toBe(0);
   });
 
+  test("the oversized-push refusal is unrecoverable but NOT permanently lost (#17172)", async () => {
+    // Classification is the whole point of typing this error: provisioning
+    // must stop retrying (the same bytes breach the same limit every time),
+    // while the stored backup chain stays intact and must never be pruned.
+    const {
+      SnapshotPayloadTooLargeError,
+      isUnrecoverableSnapshotError,
+      isPermanentlyLostSnapshot,
+    } = await import("./eliza-sandbox.ts?actual");
+    const err = new SnapshotPayloadTooLargeError(200, 100);
+
+    expect(isUnrecoverableSnapshotError(err)).toBe(true);
+    expect(isPermanentlyLostSnapshot(err)).toBe(false);
+    expect(err.payloadBytes).toBe(200);
+    expect(err.limitBytes).toBe(100);
+  });
+
   test("pushes a restore payload that fits the v1 restorable limit (#17172)", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     let fetchCalls = 0;
