@@ -10,7 +10,7 @@ type JsonRecord = Record<string, unknown>;
 
 const SUFFIX_PATTERN = /^r[1-9][0-9]{7,19}a[1-9][0-9]{0,3}$/;
 const UUID_PATTERN_SOURCE =
-  "[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
+  "[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
 const UUID_PATTERN = new RegExp(`\\b${UUID_PATTERN_SOURCE}\\b`, "i");
 const EXCLUSIVE_LIFECYCLE_JOB_TYPE_PATTERN =
   "agent_(?:provision|delete|suspend|resume|restart|downgrade|sleep|wake|upgrade|admin_canary_image)";
@@ -19,7 +19,7 @@ const LIFECYCLE_JOB_CONFLICT_PATTERN = new RegExp(
   "i",
 );
 const FORBIDDEN_OUTPUT_PATTERN =
-  /(?:https?:\/\/|(?:\d{1,3}\.){3}\d{1,3}|\b(?:token|secret|password|api[_-]?key)\b|managed-dedicated-canary-|sha256:)/i;
+  /(?:https?:\/\/|(?:\d{1,3}\.){3}\d{1,3}|\b(?:token|secret|password|api[_-]?key)\b|managed-dedicated-canary-|sha256:|\b[0-9a-f]{64}\b)/i;
 const TIMEOUT_ERROR_PATTERN = /(?:timed out|timeout)/i;
 const PERMANENT_DELETE_PREFIX = "Deletion permanently failed";
 const PERMANENT_DELETE_PATTERN =
@@ -47,6 +47,61 @@ const JOB_STATUSES = new Set([
   "failed",
   "cancelled",
 ]);
+const ROLLBACK_STANDBY_STATES = new Set([
+  "pausing",
+  "paused_pre_cutover",
+  "paused",
+  "retiring",
+  "rollback_pending",
+  "rollback_cleanup_pending",
+]);
+const RESTORE_VALIDATION_STATES = new Set([
+  "planned",
+  "candidate_provisioning",
+  "restore_committed",
+  "never_routed_retired",
+]);
+const SOURCE_JOB_OUTCOMES = new Set([
+  "cutover_in_progress",
+  "pre_cutover_retrying",
+  "standby_pending",
+  "pre_cutover_failed",
+]);
+const SOURCE_JOB_FAILURE_KINDS = new Set([
+  "retry",
+  "execution_audit",
+  "stale_recovery",
+]);
+const STANDBY_DECISIONS = new Set(["accept", "reject"]);
+const STANDBY_DECISION_OUTCOMES = new Set(["accepted", "rolled_back"]);
+const RETAINED_STANDBY_DECISION_JOB_STATUSES = new Set([
+  "pending",
+  "in_progress",
+  "failed",
+]);
+
+type RollbackStandbyState =
+  | "pausing"
+  | "paused_pre_cutover"
+  | "paused"
+  | "retiring"
+  | "rollback_pending"
+  | "rollback_cleanup_pending";
+type RestoreValidationState =
+  | "planned"
+  | "candidate_provisioning"
+  | "restore_committed"
+  | "never_routed_retired";
+type LifecycleAuthority = "none" | "delete" | "rollback_standby";
+type RoutedRuntime = "not_applicable" | "standby" | "primary";
+type SourceJobOutcome =
+  | "cutover_in_progress"
+  | "pre_cutover_retrying"
+  | "standby_pending"
+  | "pre_cutover_failed";
+type SourceJobFailureKind = "retry" | "execution_audit" | "stale_recovery";
+type StandbyDecision = "accept" | "reject";
+type StandbyDecisionOutcome = "accepted" | "rolled_back";
 
 type ErrorCode =
   | "none"
@@ -110,7 +165,7 @@ const RECOVERY_PARTIAL_RESULT_ERRORS = new Map<string, ErrorCode>([
   ["Agent deletion ownership changed", "lifecycle_conflict"],
 ]);
 
-export interface ManagedDedicatedCanaryDiagnostic {
+export interface ManagedDedicatedCanaryDiagnosticV3 {
   schemaVersion: 3;
   targetCount: 1;
   sandbox: {
@@ -138,6 +193,69 @@ export interface ManagedDedicatedCanaryDiagnostic {
     durationMs: number | null;
     queueDurationMs: number | null;
   }>;
+}
+
+interface PointedJobClocks {
+  scheduledFor: string;
+  startedAt: string | null;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ManagedDedicatedCanaryDiagnostic
+  extends Omit<ManagedDedicatedCanaryDiagnosticV3, "schemaVersion"> {
+  schemaVersion: 4;
+  capturedAt: string;
+  sandbox: ManagedDedicatedCanaryDiagnosticV3["sandbox"] & {
+    locator: {
+      sandboxIdPresent: boolean;
+      nodeIdPresent: boolean;
+      containerNamePresent: boolean;
+    };
+  };
+  lifecycle: {
+    authority: LifecycleAuthority;
+    deletionOwned: boolean;
+    replacementCleanupPending: boolean;
+    standbyState: RollbackStandbyState | null;
+    routedRuntime: RoutedRuntime;
+    sourceJob:
+      | ({
+          status: string;
+          outcome: SourceJobOutcome;
+          failureKind: SourceJobFailureKind | null;
+          attempts: number;
+          maxAttempts: number;
+          errorCode: ErrorCode;
+          recoveryCode: RecoveryCode;
+          unclassifiedProfile: UnclassifiedErrorProfile | null;
+        } & PointedJobClocks)
+      | null;
+    decisionJob:
+      | ({
+          status: string;
+          decision: StandbyDecision;
+          outcome: StandbyDecisionOutcome | null;
+        } & PointedJobClocks)
+      | null;
+    restoreValidation: {
+      state: RestoreValidationState;
+      routeMode: "restore_validation_private_control";
+      authorityPointed: boolean;
+      sourceIdentityMatches: boolean;
+      backupVerifiedV2: boolean;
+      receiptState: "committed" | null;
+      receiptSchemaVersion: 2 | null;
+      receiptTransfer: "chunked-v1" | null;
+      receiptCommittedAt: string | null;
+      routeExposedAt: null;
+      candidateContainerAbsentAt: string | null;
+      candidateVpnAbsentAt: string | null;
+      candidateVolumeAbsentAt: string | null;
+      candidateRetiredAt: string | null;
+    } | null;
+  };
 }
 
 function record(value: unknown, label: string): JsonRecord {
@@ -188,6 +306,36 @@ function boolean(value: unknown, label: string): boolean {
 function nullableBoolean(value: unknown, label: string): boolean | null {
   if (value === null) return null;
   return boolean(value, label);
+}
+
+function closedString<T extends string>(
+  value: unknown,
+  allowed: ReadonlySet<string>,
+  label: string,
+): T {
+  if (typeof value !== "string" || !allowed.has(value)) {
+    throw new Error(`${label} is invalid`);
+  }
+  return value as T;
+}
+
+function nullableClosedString<T extends string>(
+  value: unknown,
+  allowed: ReadonlySet<string>,
+  label: string,
+): T | null {
+  if (value === null) return null;
+  return closedString<T>(value, allowed, label);
+}
+
+function nullableInteger(
+  value: unknown,
+  label: string,
+  minimum = 0,
+  maximum = Number.MAX_SAFE_INTEGER,
+): number | null {
+  if (value === null) return null;
+  return integer(value, label, minimum, maximum);
 }
 
 function looksLikeRecoveryProvenance(value: string): boolean {
@@ -565,6 +713,452 @@ function elapsedMs(start: string | null, end: string | null): number | null {
   return elapsed;
 }
 
+function requireCaptured(
+  capturedAt: string,
+  value: string | null,
+  label: string,
+): void {
+  if (value !== null && elapsedMs(value, capturedAt) === null) {
+    throw new Error(`${label} is not covered by the capture clock`);
+  }
+}
+
+function pointedJobClocks(job: JsonRecord, label: string): PointedJobClocks {
+  const scheduledFor = timestamp(
+    job.scheduledFor,
+    `${label}.scheduledFor`,
+  ) as string;
+  const startedAt = timestamp(job.startedAt, `${label}.startedAt`, true);
+  const completedAt = timestamp(job.completedAt, `${label}.completedAt`, true);
+  const createdAt = timestamp(job.createdAt, `${label}.createdAt`) as string;
+  const updatedAt = timestamp(job.updatedAt, `${label}.updatedAt`) as string;
+  elapsedMs(createdAt, updatedAt);
+  elapsedMs(createdAt, startedAt);
+  elapsedMs(startedAt, completedAt);
+  elapsedMs(startedAt, updatedAt);
+  elapsedMs(completedAt, updatedAt);
+  return {
+    scheduledFor,
+    startedAt,
+    completedAt,
+    createdAt,
+    updatedAt,
+  };
+}
+
+function parseSourceJob(
+  value: unknown,
+  standbyState: RollbackStandbyState,
+): ManagedDedicatedCanaryDiagnostic["lifecycle"]["sourceJob"] {
+  const job = record(value, "agent.rollbackStandby.sourceJob");
+  exactKeys(
+    job,
+    [
+      "type",
+      "status",
+      "outcome",
+      "failureKind",
+      "error",
+      "attempts",
+      "maxAttempts",
+      "scheduledFor",
+      "startedAt",
+      "completedAt",
+      "createdAt",
+      "updatedAt",
+    ],
+    "agent.rollbackStandby.sourceJob",
+  );
+  if (job.type !== "agent_admin_canary_image") {
+    throw new Error("rollback standby source job type is invalid");
+  }
+  const status = closedString<string>(
+    job.status,
+    JOB_STATUSES,
+    "agent.rollbackStandby.sourceJob.status",
+  );
+  const outcome = closedString<SourceJobOutcome>(
+    job.outcome,
+    SOURCE_JOB_OUTCOMES,
+    "agent.rollbackStandby.sourceJob.outcome",
+  );
+  const failureKind = nullableClosedString<SourceJobFailureKind>(
+    job.failureKind,
+    SOURCE_JOB_FAILURE_KINDS,
+    "agent.rollbackStandby.sourceJob.failureKind",
+  );
+  const attempts = integer(
+    job.attempts,
+    "agent.rollbackStandby.sourceJob.attempts",
+    0,
+    100,
+  );
+  const maxAttempts = integer(
+    job.maxAttempts,
+    "agent.rollbackStandby.sourceJob.maxAttempts",
+    1,
+    100,
+  );
+  if (attempts > maxAttempts) {
+    throw new Error("rollback standby source job attempts exceed maxAttempts");
+  }
+  const recovery = classifyRecovery(
+    job.error,
+    "agent.rollbackStandby.sourceJob.error",
+  );
+  const error = recovery
+    ? { code: "none" as const, unclassifiedProfile: null }
+    : classifyJobError(job.error, "agent.rollbackStandby.sourceJob.error");
+  const clocks = pointedJobClocks(job, "agent.rollbackStandby.sourceJob");
+  if (
+    outcome === "cutover_in_progress" &&
+    (status !== "in_progress" ||
+      clocks.startedAt === null ||
+      clocks.completedAt !== null ||
+      failureKind !== null ||
+      error.code !== "none" ||
+      recovery !== null)
+  ) {
+    throw new Error("rollback standby source job is not in progress");
+  }
+  if (
+    outcome === "standby_pending" &&
+    (status !== "completed" ||
+      clocks.startedAt === null ||
+      clocks.completedAt === null ||
+      failureKind !== null ||
+      error.code !== "none" ||
+      recovery !== null)
+  ) {
+    throw new Error("rollback standby source job has no completed cutover");
+  }
+  const beforeCutover =
+    standbyState === "pausing" || standbyState === "paused_pre_cutover";
+  if (
+    (outcome === "pre_cutover_failed") !==
+      (beforeCutover && status === "failed") ||
+    (beforeCutover &&
+      outcome !== "cutover_in_progress" &&
+      outcome !== "pre_cutover_retrying" &&
+      outcome !== "pre_cutover_failed") ||
+    (!beforeCutover && outcome !== "standby_pending")
+  ) {
+    throw new Error("rollback standby state and source job outcome disagree");
+  }
+  if (
+    outcome === "pre_cutover_retrying" &&
+    ((status !== "pending" && status !== "in_progress") ||
+      failureKind !== "retry" ||
+      (error.code === "none" && recovery === null) ||
+      attempts < 1 ||
+      attempts >= maxAttempts ||
+      clocks.startedAt === null ||
+      clocks.completedAt !== null)
+  ) {
+    throw new Error("rollback standby source retry is incomplete");
+  }
+  if (
+    outcome === "pre_cutover_retrying" &&
+    recovery !== null &&
+    (recovery.attempt !== attempts || recovery.maxAttempts !== maxAttempts)
+  ) {
+    throw new Error("rollback standby source retry counters disagree");
+  }
+  if (outcome === "pre_cutover_failed") {
+    if (
+      failureKind === null ||
+      (failureKind !== "execution_audit" && failureKind !== "stale_recovery") ||
+      error.code === "none" ||
+      clocks.startedAt === null ||
+      attempts !== maxAttempts
+    ) {
+      throw new Error("rollback standby source failure is incomplete");
+    }
+    const terminalFailure =
+      typeof job.error === "string" ? classifyTerminalFailure(job.error) : null;
+    if (
+      (failureKind === "execution_audit" && clocks.completedAt === null) ||
+      (failureKind === "stale_recovery" &&
+        (clocks.completedAt !== null ||
+          terminalFailure === null ||
+          terminalFailure.attempts !== attempts))
+    ) {
+      throw new Error("rollback standby source failure shape is invalid");
+    }
+  }
+  return {
+    status,
+    outcome,
+    failureKind,
+    attempts,
+    maxAttempts,
+    errorCode: error.code,
+    recoveryCode: recovery?.code ?? "none",
+    unclassifiedProfile: error.unclassifiedProfile,
+    ...clocks,
+  };
+}
+
+function parseDecisionJob(
+  value: unknown,
+  standbyState: RollbackStandbyState,
+): ManagedDedicatedCanaryDiagnostic["lifecycle"]["decisionJob"] {
+  if (value === null) {
+    if (
+      standbyState === "retiring" ||
+      standbyState === "rollback_pending" ||
+      standbyState === "rollback_cleanup_pending"
+    ) {
+      throw new Error("rollback standby decision job is missing");
+    }
+    return null;
+  }
+  if (
+    standbyState === "pausing" ||
+    standbyState === "paused_pre_cutover" ||
+    standbyState === "paused"
+  ) {
+    throw new Error("rollback standby has a premature decision job");
+  }
+  const job = record(value, "agent.rollbackStandby.decisionJob");
+  exactKeys(
+    job,
+    [
+      "type",
+      "status",
+      "decision",
+      "outcome",
+      "scheduledFor",
+      "startedAt",
+      "completedAt",
+      "createdAt",
+      "updatedAt",
+    ],
+    "agent.rollbackStandby.decisionJob",
+  );
+  if (job.type !== "agent_admin_canary_standby_decision") {
+    throw new Error("rollback standby decision job type is invalid");
+  }
+  const status = closedString<string>(
+    job.status,
+    RETAINED_STANDBY_DECISION_JOB_STATUSES,
+    "agent.rollbackStandby.decisionJob.status",
+  );
+  const decision = closedString<StandbyDecision>(
+    job.decision,
+    STANDBY_DECISIONS,
+    "agent.rollbackStandby.decisionJob.decision",
+  );
+  const outcome = nullableClosedString<StandbyDecisionOutcome>(
+    job.outcome,
+    STANDBY_DECISION_OUTCOMES,
+    "agent.rollbackStandby.decisionJob.outcome",
+  );
+  const clocks = pointedJobClocks(job, "agent.rollbackStandby.decisionJob");
+  if (
+    outcome !== null ||
+    clocks.startedAt === null ||
+    clocks.completedAt !== null
+  ) {
+    throw new Error("rollback standby decision outcome and clocks disagree");
+  }
+  if (
+    (decision === "reject" && outcome === "accepted") ||
+    (standbyState === "retiring" && decision !== "accept")
+  ) {
+    throw new Error("rollback standby decision and outcome disagree");
+  }
+  return { status, decision, outcome, ...clocks };
+}
+
+function parseRestoreValidation(
+  value: unknown,
+  countValue: unknown,
+  standbyState: RollbackStandbyState,
+): ManagedDedicatedCanaryDiagnostic["lifecycle"]["restoreValidation"] {
+  const count = integer(
+    countValue,
+    "agent.rollbackStandby.restoreValidationCount",
+    0,
+    2,
+  );
+  const beforeCutover =
+    standbyState === "pausing" || standbyState === "paused_pre_cutover";
+  if (beforeCutover) {
+    if (count !== 0 || value !== null) {
+      throw new Error(
+        "pre-cutover rollback standby cannot have restore validation authority",
+      );
+    }
+    return null;
+  }
+  if (value === null) {
+    if (count !== 0) {
+      throw new Error("restore validation cardinality disagrees with payload");
+    }
+    throw new Error("rollback standby restore validation is missing");
+  }
+  if (count !== 1) {
+    throw new Error("restore validation must resolve exactly one row");
+  }
+  const validation = record(value, "agent.rollbackStandby.restoreValidation");
+  exactKeys(
+    validation,
+    [
+      "state",
+      "routeMode",
+      "authorityPointed",
+      "sourceIdentityMatches",
+      "backupVerifiedV2",
+      "contractComplete",
+      "receiptState",
+      "receiptSchemaVersion",
+      "receiptTransfer",
+      "receiptCommittedAt",
+      "routeExposedAt",
+      "candidateContainerAbsentAt",
+      "candidateVpnAbsentAt",
+      "candidateVolumeAbsentAt",
+      "candidateRetiredAt",
+    ],
+    "agent.rollbackStandby.restoreValidation",
+  );
+  const state = closedString<RestoreValidationState>(
+    validation.state,
+    RESTORE_VALIDATION_STATES,
+    "agent.rollbackStandby.restoreValidation.state",
+  );
+  if (validation.routeMode !== "restore_validation_private_control") {
+    throw new Error("restore validation route mode is invalid");
+  }
+  const authorityPointed = boolean(
+    validation.authorityPointed,
+    "agent.rollbackStandby.restoreValidation.authorityPointed",
+  );
+  const sourceIdentityMatches = boolean(
+    validation.sourceIdentityMatches,
+    "agent.rollbackStandby.restoreValidation.sourceIdentityMatches",
+  );
+  const backupVerifiedV2 = boolean(
+    validation.backupVerifiedV2,
+    "agent.rollbackStandby.restoreValidation.backupVerifiedV2",
+  );
+  if (
+    !boolean(
+      validation.contractComplete,
+      "agent.rollbackStandby.restoreValidation.contractComplete",
+    )
+  ) {
+    throw new Error("restore validation row violates the frozen contract");
+  }
+  const receiptState = nullableClosedString<"committed">(
+    validation.receiptState,
+    new Set(["committed"]),
+    "agent.rollbackStandby.restoreValidation.receiptState",
+  );
+  const receiptSchemaVersion = nullableInteger(
+    validation.receiptSchemaVersion,
+    "agent.rollbackStandby.restoreValidation.receiptSchemaVersion",
+    2,
+    2,
+  ) as 2 | null;
+  const receiptTransfer = nullableClosedString<"chunked-v1">(
+    validation.receiptTransfer,
+    new Set(["chunked-v1"]),
+    "agent.rollbackStandby.restoreValidation.receiptTransfer",
+  );
+  const receiptCommittedAt = timestamp(
+    validation.receiptCommittedAt,
+    "agent.rollbackStandby.restoreValidation.receiptCommittedAt",
+    true,
+  );
+  const routeExposedAt = timestamp(
+    validation.routeExposedAt,
+    "agent.rollbackStandby.restoreValidation.routeExposedAt",
+    true,
+  );
+  const candidateContainerAbsentAt = timestamp(
+    validation.candidateContainerAbsentAt,
+    "agent.rollbackStandby.restoreValidation.candidateContainerAbsentAt",
+    true,
+  );
+  const candidateVpnAbsentAt = timestamp(
+    validation.candidateVpnAbsentAt,
+    "agent.rollbackStandby.restoreValidation.candidateVpnAbsentAt",
+    true,
+  );
+  const candidateVolumeAbsentAt = timestamp(
+    validation.candidateVolumeAbsentAt,
+    "agent.rollbackStandby.restoreValidation.candidateVolumeAbsentAt",
+    true,
+  );
+  const candidateRetiredAt = timestamp(
+    validation.candidateRetiredAt,
+    "agent.rollbackStandby.restoreValidation.candidateRetiredAt",
+    true,
+  );
+
+  if (!sourceIdentityMatches || routeExposedAt !== null) {
+    throw new Error(
+      "restore validation is not bound to private source authority",
+    );
+  }
+  const committed =
+    state === "restore_committed" || state === "never_routed_retired";
+  if (
+    committed !== (receiptState === "committed") ||
+    committed !== (receiptSchemaVersion === 2) ||
+    committed !== (receiptTransfer === "chunked-v1") ||
+    committed !== (receiptCommittedAt !== null) ||
+    committed !== backupVerifiedV2
+  ) {
+    throw new Error("restore validation receipt is incomplete");
+  }
+  const retired = state === "never_routed_retired";
+  if (
+    retired !== (candidateContainerAbsentAt !== null) ||
+    retired !== (candidateVpnAbsentAt !== null) ||
+    retired !== (candidateVolumeAbsentAt !== null) ||
+    retired !== (candidateRetiredAt !== null)
+  ) {
+    throw new Error("restore validation retirement proof is incomplete");
+  }
+  if (
+    retired &&
+    (elapsedMs(receiptCommittedAt, candidateContainerAbsentAt) === null ||
+      elapsedMs(receiptCommittedAt, candidateVpnAbsentAt) === null ||
+      elapsedMs(receiptCommittedAt, candidateVolumeAbsentAt) === null ||
+      elapsedMs(candidateContainerAbsentAt, candidateRetiredAt) === null ||
+      elapsedMs(candidateVpnAbsentAt, candidateRetiredAt) === null ||
+      elapsedMs(candidateVolumeAbsentAt, candidateRetiredAt) === null)
+  ) {
+    throw new Error("restore validation retirement clocks are incomplete");
+  }
+  const acceptanceState = standbyState === "retiring";
+  if (
+    acceptanceState !== authorityPointed ||
+    (acceptanceState && (!retired || !backupVerifiedV2))
+  ) {
+    throw new Error("restore validation acceptance authority disagrees");
+  }
+  return {
+    state,
+    routeMode: "restore_validation_private_control",
+    authorityPointed,
+    sourceIdentityMatches,
+    backupVerifiedV2,
+    receiptState,
+    receiptSchemaVersion,
+    receiptTransfer,
+    receiptCommittedAt,
+    routeExposedAt: null,
+    candidateContainerAbsentAt,
+    candidateVpnAbsentAt,
+    candidateVolumeAbsentAt,
+    candidateRetiredAt,
+  };
+}
+
 export function sanitizeManagedDedicatedCanaryDiagnostic(
   raw: unknown,
   suffix: string,
@@ -573,7 +1167,12 @@ export function sanitizeManagedDedicatedCanaryDiagnostic(
     throw new Error("diagnostic suffix is invalid");
 
   const root = record(raw, "diagnostic input");
-  exactKeys(root, ["targetCount", "agent", "jobs"], "diagnostic input");
+  exactKeys(
+    root,
+    ["capturedAt", "targetCount", "agent", "jobs"],
+    "diagnostic input",
+  );
+  const capturedAt = timestamp(root.capturedAt, "capturedAt") as string;
   if (integer(root.targetCount, "targetCount", 0, 2) !== 1) {
     throw new Error("diagnostic input must resolve exactly one target");
   }
@@ -589,6 +1188,8 @@ export function sanitizeManagedDedicatedCanaryDiagnostic(
       "deletionStartedAt",
       "updatedAt",
       "locator",
+      "replacementCleanupLocator",
+      "rollbackStandby",
     ],
     "agent",
   );
@@ -601,6 +1202,66 @@ export function sanitizeManagedDedicatedCanaryDiagnostic(
     ["sandboxIdPresent", "nodeIdPresent", "containerNamePresent"],
     "agent.locator",
   );
+  const sandboxIdPresent = boolean(
+    locator.sandboxIdPresent,
+    "locator.sandboxIdPresent",
+  );
+  const nodeIdPresent = boolean(locator.nodeIdPresent, "locator.nodeIdPresent");
+  const containerNamePresent = boolean(
+    locator.containerNamePresent,
+    "locator.containerNamePresent",
+  );
+  const replacementCleanupLocator = record(
+    agent.replacementCleanupLocator,
+    "agent.replacementCleanupLocator",
+  );
+  exactKeys(
+    replacementCleanupLocator,
+    [
+      "sandboxIdPresent",
+      "nodeIdPresent",
+      "containerNamePresent",
+      "createdAtPresent",
+      "contractComplete",
+    ],
+    "agent.replacementCleanupLocator",
+  );
+  if (
+    !boolean(
+      replacementCleanupLocator.contractComplete,
+      "agent.replacementCleanupLocator.contractComplete",
+    )
+  ) {
+    throw new Error(
+      "agent replacement cleanup row violates its locator contract",
+    );
+  }
+  const replacementCleanupPresence = [
+    boolean(
+      replacementCleanupLocator.sandboxIdPresent,
+      "agent.replacementCleanupLocator.sandboxIdPresent",
+    ),
+    boolean(
+      replacementCleanupLocator.nodeIdPresent,
+      "agent.replacementCleanupLocator.nodeIdPresent",
+    ),
+    boolean(
+      replacementCleanupLocator.containerNamePresent,
+      "agent.replacementCleanupLocator.containerNamePresent",
+    ),
+    boolean(
+      replacementCleanupLocator.createdAtPresent,
+      "agent.replacementCleanupLocator.createdAtPresent",
+    ),
+  ];
+  const replacementCleanupPending = replacementCleanupPresence.some(Boolean);
+  if (
+    replacementCleanupPresence.some(
+      (present) => present !== replacementCleanupPending,
+    )
+  ) {
+    throw new Error("agent replacement cleanup locator is partially populated");
+  }
   const deletionOwned = boolean(agent.deletionOwned, "agent.deletionOwned");
   const deletionStartedAt = timestamp(
     agent.deletionStartedAt,
@@ -610,16 +1271,113 @@ export function sanitizeManagedDedicatedCanaryDiagnostic(
   if (deletionOwned !== (deletionStartedAt !== null)) {
     throw new Error("agent deletion ownership and timestamp disagree");
   }
-  boolean(locator.sandboxIdPresent, "locator.sandboxIdPresent");
-  boolean(locator.nodeIdPresent, "locator.nodeIdPresent");
-  boolean(locator.containerNamePresent, "locator.containerNamePresent");
+  const sandboxUpdatedAt = timestamp(
+    agent.updatedAt,
+    "agent.updatedAt",
+  ) as string;
+
+  let standbyState: RollbackStandbyState | null = null;
+  let routedRuntime: RoutedRuntime = "not_applicable";
+  let sourceJob: ManagedDedicatedCanaryDiagnostic["lifecycle"]["sourceJob"] =
+    null;
+  let decisionJob: ManagedDedicatedCanaryDiagnostic["lifecycle"]["decisionJob"] =
+    null;
+  let restoreValidation: ManagedDedicatedCanaryDiagnostic["lifecycle"]["restoreValidation"] =
+    null;
+  if (agent.rollbackStandby !== null) {
+    if (deletionOwned) {
+      throw new Error("agent has dual delete and rollback-standby authority");
+    }
+    const standby = record(agent.rollbackStandby, "agent.rollbackStandby");
+    exactKeys(
+      standby,
+      [
+        "state",
+        "currentMatchesPrimary",
+        "currentMatchesStandby",
+        "contractComplete",
+        "sourceJob",
+        "decisionJob",
+        "restoreValidationCount",
+        "restoreValidation",
+      ],
+      "agent.rollbackStandby",
+    );
+    standbyState = closedString<RollbackStandbyState>(
+      standby.state,
+      ROLLBACK_STANDBY_STATES,
+      "agent.rollbackStandby.state",
+    );
+    if (
+      agent.status === "deletion_pending" ||
+      agent.status === "deletion_failed"
+    ) {
+      throw new Error("rollback standby cannot coexist with deletion status");
+    }
+    if (
+      !boolean(
+        standby.contractComplete,
+        "agent.rollbackStandby.contractComplete",
+      )
+    ) {
+      throw new Error("rollback standby row violates the frozen contract");
+    }
+    const currentMatchesPrimary = boolean(
+      standby.currentMatchesPrimary,
+      "agent.rollbackStandby.currentMatchesPrimary",
+    );
+    const currentMatchesStandby = boolean(
+      standby.currentMatchesStandby,
+      "agent.rollbackStandby.currentMatchesStandby",
+    );
+    if (currentMatchesPrimary === currentMatchesStandby) {
+      throw new Error("rollback standby routed runtime is ambiguous");
+    }
+    const standbyRouted =
+      standbyState === "pausing" ||
+      standbyState === "paused_pre_cutover" ||
+      standbyState === "rollback_cleanup_pending";
+    if (
+      standbyRouted !== currentMatchesStandby ||
+      standbyRouted === currentMatchesPrimary
+    ) {
+      throw new Error("rollback standby state and routed runtime disagree");
+    }
+    routedRuntime = standbyRouted ? "standby" : "primary";
+    sourceJob = parseSourceJob(standby.sourceJob, standbyState);
+    decisionJob = parseDecisionJob(standby.decisionJob, standbyState);
+    restoreValidation = parseRestoreValidation(
+      standby.restoreValidation,
+      standby.restoreValidationCount,
+      standbyState,
+    );
+    const beforeCutover =
+      standbyState === "pausing" || standbyState === "paused_pre_cutover";
+    if (beforeCutover !== replacementCleanupPending) {
+      throw new Error(
+        "rollback standby state and replacement cleanup locator disagree",
+      );
+    }
+  }
+  const deletionStatus =
+    agent.status === "deletion_pending" || agent.status === "deletion_failed";
+  if (deletionOwned !== deletionStatus) {
+    throw new Error("agent deletion ownership and status disagree");
+  }
+  const authority: LifecycleAuthority = standbyState
+    ? "rollback_standby"
+    : deletionOwned
+      ? "delete"
+      : "none";
 
   if (
     !Array.isArray(root.jobs) ||
-    root.jobs.length < 1 ||
-    root.jobs.length > 3
+    root.jobs.length > 3 ||
+    (deletionOwned && root.jobs.length < 1)
   ) {
-    throw new Error("jobs must contain one to three newest-first records");
+    throw new Error(
+      "jobs must contain at most three newest-first records and deletion authority requires one",
+    );
   }
 
   let previousCreatedAt = Number.POSITIVE_INFINITY;
@@ -813,6 +1571,8 @@ export function sanitizeManagedDedicatedCanaryDiagnostic(
         ? updatedAt
         : null);
     elapsedMs(createdAt, updatedAt);
+    elapsedMs(startedAt, updatedAt);
+    elapsedMs(completedAt, updatedAt);
 
     rawJobErrors.push(job.error);
     return {
@@ -855,18 +1615,96 @@ export function sanitizeManagedDedicatedCanaryDiagnostic(
   ) {
     throw new Error("sandbox and latest failed deletion job disagree");
   }
+  requireCaptured(capturedAt, sandboxUpdatedAt, "agent.updatedAt");
+  requireCaptured(capturedAt, deletionStartedAt, "agent.deletionStartedAt");
+  for (const [index, job] of jobs.entries()) {
+    for (const [field, value] of [
+      ["createdAt", job.createdAt],
+      ["startedAt", job.startedAt],
+      ["completedAt", job.completedAt],
+      ["updatedAt", job.updatedAt],
+    ] as const) {
+      requireCaptured(capturedAt, value, `jobs[${index}].${field}`);
+    }
+  }
+  for (const [label, job] of [
+    ["sourceJob", sourceJob],
+    ["decisionJob", decisionJob],
+  ] as const) {
+    if (!job) continue;
+    for (const [field, value] of [
+      ["createdAt", job.createdAt],
+      ["startedAt", job.startedAt],
+      ["completedAt", job.completedAt],
+      ["updatedAt", job.updatedAt],
+    ] as const) {
+      requireCaptured(capturedAt, value, `${label}.${field}`);
+    }
+  }
+  if (restoreValidation) {
+    for (const [field, value] of [
+      ["receiptCommittedAt", restoreValidation.receiptCommittedAt],
+      [
+        "candidateContainerAbsentAt",
+        restoreValidation.candidateContainerAbsentAt,
+      ],
+      ["candidateVpnAbsentAt", restoreValidation.candidateVpnAbsentAt],
+      ["candidateVolumeAbsentAt", restoreValidation.candidateVolumeAbsentAt],
+      ["candidateRetiredAt", restoreValidation.candidateRetiredAt],
+    ] as const) {
+      requireCaptured(capturedAt, value, `restoreValidation.${field}`);
+    }
+  }
 
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
+    capturedAt,
     targetCount: 1,
     sandbox: {
       status: agent.status,
       errorCode: sandboxErrorCode,
       errorCount,
       deletionStartedAt,
-      updatedAt: timestamp(agent.updatedAt, "agent.updatedAt") as string,
+      updatedAt: sandboxUpdatedAt,
+      locator: {
+        sandboxIdPresent,
+        nodeIdPresent,
+        containerNamePresent,
+      },
     },
     jobs,
+    lifecycle: {
+      authority,
+      deletionOwned,
+      replacementCleanupPending,
+      standbyState,
+      routedRuntime,
+      sourceJob,
+      decisionJob,
+      restoreValidation,
+    },
+  };
+}
+
+export function projectManagedDedicatedCanaryDiagnosticV3(
+  evidence: ManagedDedicatedCanaryDiagnostic,
+): ManagedDedicatedCanaryDiagnosticV3 {
+  if (evidence.jobs.length < 1 || evidence.jobs.length > 3) {
+    throw new Error(
+      "schema-v4 evidence has no one-to-three-job v3-compatible projection",
+    );
+  }
+  return {
+    schemaVersion: 3,
+    targetCount: evidence.targetCount,
+    sandbox: {
+      status: evidence.sandbox.status,
+      errorCode: evidence.sandbox.errorCode,
+      errorCount: evidence.sandbox.errorCount,
+      deletionStartedAt: evidence.sandbox.deletionStartedAt,
+      updatedAt: evidence.sandbox.updatedAt,
+    },
+    jobs: evidence.jobs,
   };
 }
 
@@ -874,10 +1712,14 @@ export function canonicalizeManagedDedicatedCanaryDiagnostic(
   rawText: string,
   suffix: string,
 ): string {
-  const evidence = sanitizeManagedDedicatedCanaryDiagnostic(
-    JSON.parse(rawText),
-    suffix,
-  );
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawText);
+  } catch {
+    // error-policy:J3 Raw parser errors can echo private diagnostic input.
+    throw new Error("managed canary diagnostic input is not valid JSON");
+  }
+  const evidence = sanitizeManagedDedicatedCanaryDiagnostic(parsed, suffix);
   const canonical = `${JSON.stringify(evidence, null, 2)}\n`;
   if (
     UUID_PATTERN.test(canonical) ||
