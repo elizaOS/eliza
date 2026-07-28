@@ -103,7 +103,7 @@ export async function getReadyAcpService(
 ): Promise<AcpActionService | undefined> {
   const existing = getAcpService(runtime);
   if (existing) return existing;
-  if (!runtime.hasService?.("ACP_SUBPROCESS_SERVICE")) return undefined;
+  if (!runtime.hasService("ACP_SUBPROCESS_SERVICE")) return undefined;
 
   try {
     return (await runtime.getServiceLoadPromise(

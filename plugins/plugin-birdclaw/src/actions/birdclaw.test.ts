@@ -17,6 +17,8 @@ function runtimeWith(service: BirdclawService | null): IAgentRuntime {
     getSetting: () => undefined,
     getService: (type: string) =>
       type === BirdclawService.serviceType ? service : null,
+    hasService: (type: string) =>
+      type === BirdclawService.serviceType && service !== null,
   } as unknown as IAgentRuntime;
 }
 

@@ -69,7 +69,7 @@ async function getReadyService(
 ): Promise<BirdclawService | null> {
   const existing = getService(runtime);
   if (existing) return existing;
-  if (!runtime.hasService?.(BirdclawService.serviceType)) return null;
+  if (!runtime.hasService(BirdclawService.serviceType)) return null;
 
   try {
     return (await runtime.getServiceLoadPromise(
