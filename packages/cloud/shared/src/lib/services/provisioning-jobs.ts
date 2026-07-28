@@ -79,6 +79,7 @@ import {
   SNAPSHOT_ENDPOINT_UNSUPPORTED,
 } from "./eliza-sandbox";
 import {
+  COLD_BOOT_JOB_TYPES,
   EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES,
   JOB_TYPES,
   type ProvisioningJobType,
@@ -882,15 +883,6 @@ const COLD_BOOT_STALE_JOB_THRESHOLD_MS = 15 * 60 * 1000;
  * retry-pending row is not proof that execution is quiescent.
  */
 const DELETE_DETACHED_EXECUTION_QUIESCENCE_MS = COLD_BOOT_STALE_JOB_THRESHOLD_MS;
-const COLD_BOOT_JOB_TYPES: ReadonlySet<ProvisioningJobType> = new Set([
-  JOB_TYPES.AGENT_PROVISION,
-  JOB_TYPES.AGENT_RESUME,
-  JOB_TYPES.AGENT_WAKE,
-  JOB_TYPES.AGENT_RESTART,
-  JOB_TYPES.AGENT_UPGRADE,
-  JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
-  JOB_TYPES.AGENT_DOWNGRADE,
-]);
 /** Re-schedule delay for snapshot jobs claimed while the lane gate is off
  *  (#16639) — long enough not to spin, short enough to drain promptly once
  *  operators enable the lane. */

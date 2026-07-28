@@ -197,3 +197,38 @@ export function resolveJobTypesForLanes(spec: string | undefined | null): Provis
   if (!matchedAnyLane) return all;
   return all.filter((t) => wanted.has(t));
 }
+
+/**
+ * Job types that legitimately hold `agent_sandboxes.status = 'provisioning'`
+ * while they run — every one of them reaches `provision()`, which sets that
+ * status and then does not touch the row again until the post-health-check
+ * flip. A cold boot here takes minutes (image pull + container create +
+ * tailnet health poll), which is why these carry the longer stale budget.
+ *
+ * This lives in the neutral constants module, NOT next to the daemon that
+ * schedules them, because the stuck-provisioning sweeper in the repository
+ * layer must exempt exactly this set. Two hand-maintained copies is precisely
+ * how #17215 happened: `agent_restart` was added to the sweeper's list when it
+ * started owning a provisioning row, and `agent_wake` / `agent_resume` — which
+ * do the same thing — were left behind, so a legitimate wake/resume was flipped
+ * to terminal `error` mid-flight.
+ */
+export const COLD_BOOT_JOB_TYPES: ReadonlySet<ProvisioningJobType> = new Set([
+  JOB_TYPES.AGENT_PROVISION,
+  JOB_TYPES.AGENT_RESUME,
+  JOB_TYPES.AGENT_WAKE,
+  JOB_TYPES.AGENT_RESTART,
+  JOB_TYPES.AGENT_UPGRADE,
+  JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
+  JOB_TYPES.AGENT_DOWNGRADE,
+]);
+
+/**
+ * SQL literal list of {@link COLD_BOOT_JOB_TYPES}, for the repository
+ * predicates that must exempt in-flight cold boots. Derived from the same set
+ * so a new cold-boot type cannot reach the scheduler while staying invisible
+ * to the sweeper.
+ */
+export const COLD_BOOT_JOB_TYPES_SQL_LIST: string = [...COLD_BOOT_JOB_TYPES]
+  .map((type) => `'${type}'`)
+  .join(", ");

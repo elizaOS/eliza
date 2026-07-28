@@ -13,6 +13,7 @@ import {
   configureElizaLifecycleTransaction,
   elizaProvisionAdvisoryLockSql,
 } from "../../lib/services/eliza-provision-lock";
+import { COLD_BOOT_JOB_TYPES_SQL_LIST } from "../../lib/services/provisioning-job-types";
 import { mergeWarmClaimEnvironmentVars } from "../../lib/services/warm-claim-character-push";
 import { ObjectNamespaces } from "../../lib/storage/object-namespace";
 import { getObjectText, offloadJsonField } from "../../lib/storage/object-store";
@@ -357,7 +358,7 @@ export class AgentSandboxesRepository {
             SELECT 1 FROM ${jobs}
             WHERE  ${jobs.agent_id} = ${agentSandboxes.id}::text
             AND    ${jobs.organization_id} = ${agentSandboxes.organization_id}
-            AND    ${jobs.type} IN ('agent_provision', 'agent_restart')
+            AND    ${jobs.type} IN (${sql.raw(COLD_BOOT_JOB_TYPES_SQL_LIST)})
             AND    ${jobs.status} IN ('pending', 'in_progress')
           )`,
         ),
@@ -757,7 +758,7 @@ export class AgentSandboxesRepository {
             SELECT 1 FROM ${jobs}
             WHERE  ${jobs.agent_id} = ${agentSandboxes.id}::text
             AND    ${jobs.organization_id} = ${agentSandboxes.organization_id}
-            AND    ${jobs.type} IN ('agent_provision', 'agent_restart')
+            AND    ${jobs.type} IN (${sql.raw(COLD_BOOT_JOB_TYPES_SQL_LIST)})
             AND    ${jobs.status} IN ('pending', 'in_progress')
           )`,
         ),
@@ -1037,7 +1038,7 @@ export class AgentSandboxesRepository {
             SELECT 1 FROM ${jobs}
             WHERE  ${jobs.agent_id} = ${agentSandboxes.id}::text
             AND    ${jobs.organization_id} = ${agentSandboxes.organization_id}
-            AND    ${jobs.type} IN ('agent_provision', 'agent_restart')
+            AND    ${jobs.type} IN (${sql.raw(COLD_BOOT_JOB_TYPES_SQL_LIST)})
             AND    ${jobs.status} IN ('pending', 'in_progress')
           )`,
         ),

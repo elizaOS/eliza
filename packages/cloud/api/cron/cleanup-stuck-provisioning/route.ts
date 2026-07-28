@@ -33,8 +33,21 @@ import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import { verifyCronSecret } from "@/lib/auth/cron";
 import { logger } from "@/lib/utils/logger";
 
-/** How long an agent must be stuck before we reset it (ms). */
-const STUCK_THRESHOLD_MINUTES = 10;
+/**
+ * How long an agent must sit in `provisioning` before we call it abandoned.
+ *
+ * MUST stay above the longest cold-boot budget the daemon grants a job
+ * (`COLD_BOOT_STALE_JOB_THRESHOLD_MS`, 15 min), or this sweeper races a boot
+ * that is still legitimately running: a cold boot pays an image pull plus a
+ * container create plus a tailnet health poll, and nothing refreshes
+ * `updated_at` in between. At 10 minutes it flipped in-flight wake/resume rows
+ * to terminal `error` — and `error` is reapable by the orphan reconciler with
+ * no age grace, so the container was destroyed under the running job (#17215).
+ *
+ * The job-type exemption below is the primary guard; this margin is the belt
+ * for a row whose owning job row is missing entirely.
+ */
+const STUCK_THRESHOLD_MINUTES = 20;
 
 interface CleanupResult {
   agentId: string;
