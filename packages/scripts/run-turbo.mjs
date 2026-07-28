@@ -149,39 +149,106 @@ if (
   turboArgs.splice(runIndex + 1, 0, "--log-order=stream");
 }
 
-const turboCommand = turboShim ?? process.execPath;
-const turboCommandArgs = turboShim
-  ? turboArgs
-  : [turboPackageBin, ...turboArgs];
+// Test seam: RUN_TURBO_BIN points at a Node script that stands in for the
+// turbo binary so the retry contract below is provable with real
+// subprocesses (see __tests__/run-turbo-windows-init-crash-retry.test.ts).
+const turboBinOverride = process.env.RUN_TURBO_BIN
+  ? path.resolve(process.env.RUN_TURBO_BIN)
+  : null;
+const turboCommand = turboBinOverride
+  ? process.execPath
+  : (turboShim ?? process.execPath);
+const turboCommandArgs = turboBinOverride
+  ? [turboBinOverride, ...turboArgs]
+  : turboShim
+    ? turboArgs
+    : [turboPackageBin, ...turboArgs];
 
-if (!turboShim && !fs.existsSync(turboPackageBin)) {
+if (!turboBinOverride && !turboShim && !fs.existsSync(turboPackageBin)) {
   console.error(
     `Unable to find turbo. Expected one of ${turboShimCandidates.join(", ")} or ${turboPackageBin}.`,
   );
   process.exit(1);
 }
 
-let child;
-try {
-  child = spawn(turboCommand, turboCommandArgs, {
-    cwd: process.cwd(),
-    env: process.env,
-    stdio: "inherit",
+// 0xC0000142 (STATUS_DLL_INIT_FAILED) as the signed 32-bit exit code Turbo
+// prints when a Windows child process dies before its entry point runs —
+// desktop-heap/session-resource exhaustion on busy CI runners, not a property
+// of the task. The task emits no output at all, so the only observable
+// signature is Turbo's own failure line. One bounded retry resumes from the
+// Turbo cache (completed tasks skip), and the retry is announced loudly so a
+// deterministic failure can never hide behind it.
+const WINDOWS_PROCESS_INIT_CRASH = "exited (-1073741502)";
+// The retry is live on Windows only (the crash class is a Windows runner
+// failure); RUN_TURBO_FORCE_INIT_CRASH_RETRY lets the contract tests exercise
+// the loop on every platform, RUN_TURBO_NO_INIT_CRASH_RETRY turns it off.
+const maxTurboAttempts =
+  process.env.RUN_TURBO_NO_INIT_CRASH_RETRY === "1"
+    ? 1
+    : process.platform === "win32" ||
+        process.env.RUN_TURBO_FORCE_INIT_CRASH_RETRY === "1"
+      ? 2
+      : 1;
+
+function runTurboOnce() {
+  return new Promise((resolve) => {
+    let child;
+    try {
+      child = spawn(turboCommand, turboCommandArgs, {
+        cwd: process.cwd(),
+        env: process.env,
+        // Piped (not inherited) stdio so the crash signature is observable;
+        // --ui=stream/--log-order=stream are already forced above, so Turbo's
+        // output does not depend on TTY detection.
+        stdio: ["inherit", "pipe", "pipe"],
+      });
+    } catch (error) {
+      console.error(`Failed to start turbo: ${error.message}`);
+      process.exit(1);
+    }
+
+    let sawInitCrash = false;
+    // The signature could straddle a chunk boundary; carry a tail shorter than
+    // the marker across writes.
+    const scan = (carry, chunk) => {
+      const text = carry + chunk.toString("utf8");
+      if (text.includes(WINDOWS_PROCESS_INIT_CRASH)) sawInitCrash = true;
+      return text.slice(-WINDOWS_PROCESS_INIT_CRASH.length);
+    };
+    let outCarry = "";
+    let errCarry = "";
+    child.stdout.on("data", (chunk) => {
+      outCarry = scan(outCarry, chunk);
+      process.stdout.write(chunk);
+    });
+    child.stderr.on("data", (chunk) => {
+      errCarry = scan(errCarry, chunk);
+      process.stderr.write(chunk);
+    });
+
+    child.on("exit", (code, signal) => {
+      if (signal) {
+        process.kill(process.pid, signal);
+        return;
+      }
+      resolve({ code: code ?? 1, sawInitCrash });
+    });
+
+    child.on("error", (error) => {
+      console.error(`Failed to start turbo: ${error.message}`);
+      process.exit(1);
+    });
   });
-} catch (error) {
-  console.error(`Failed to start turbo: ${error.message}`);
-  process.exit(1);
 }
 
-child.on("exit", (code, signal) => {
-  if (signal) {
-    process.kill(process.pid, signal);
-    return;
+for (let attempt = 1; attempt <= maxTurboAttempts; attempt += 1) {
+  const { code, sawInitCrash } = await runTurboOnce();
+  if (code === 0) process.exit(0);
+  if (attempt < maxTurboAttempts && sawInitCrash) {
+    console.error(
+      `[run-turbo] A task child process died with 0xC0000142 (STATUS_DLL_INIT_FAILED) — a Windows runner resource crash, not task output. Retrying once from the Turbo cache (attempt ${attempt + 1}/${maxTurboAttempts}).`,
+    );
+    continue;
   }
-  process.exit(code ?? 1);
-});
-
-child.on("error", (error) => {
-  console.error(`Failed to start turbo: ${error.message}`);
-  process.exit(1);
-});
+  process.exit(code);
+}
