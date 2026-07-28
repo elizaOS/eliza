@@ -96,7 +96,6 @@ interface Harness {
 	callbacks: Content[];
 	sent: Content[];
 	voiceHandler: ReturnType<typeof vi.fn>;
-	persistedAtCallback: boolean[];
 }
 
 const activeRuntimes: AgentRuntime[] = [];
@@ -188,7 +187,6 @@ async function createHarness(finalText: string): Promise<Harness> {
 
 	const callbacks: Content[] = [];
 	const sent: Content[] = [];
-	const persistedAtCallback: boolean[] = [];
 	runtime.registerSendHandler(
 		"client_chat",
 		async (_runtime, _target, content) => {
@@ -199,17 +197,6 @@ async function createHarness(finalText: string): Promise<Harness> {
 
 	const callback: HandlerCallback = async (content: Content) => {
 		callbacks.push(content);
-		const stored = await runtime.getMemories({
-			roomId: runtime.agentId,
-			tableName: "messages",
-		});
-		persistedAtCallback.push(
-			stored.some(
-				(memory) =>
-					memory.entityId === runtime.agentId &&
-					memory.content.text === content.text,
-			),
-		);
 		await runtime.sendMessageToTarget(
 			{ source: "client_chat", roomId: runtime.agentId },
 			content,
@@ -224,7 +211,6 @@ async function createHarness(finalText: string): Promise<Harness> {
 		callbacks,
 		sent,
 		voiceHandler,
-		persistedAtCallback,
 	};
 }
 
@@ -311,11 +297,9 @@ describe("DefaultMessageService transcript visibility integration", () => {
 		expect(persisted).toHaveLength(1);
 		expect(persisted[0]?.content.text).toBe(visibleSummary);
 		expect(persisted[0]?.content.transcriptVisibility).toBeUndefined();
-		// Core delivers the visible reply before persisting the response memory
-		// (#17105 took the write off the reply path); durability-before-terminal
-		// is the conversation route's contract, not the callback's. The summary
-		// is persisted by the time handleMessage resolves (asserted above).
-		expect(harness.persistedAtCallback).toEqual([false]);
+		// Delivery and persistence run concurrently. Their relative completion
+		// is intentionally not a transcript-visibility contract; both settle
+		// before handleMessage resolves, as the persisted row above proves.
 		expect(harness.callbacks).toHaveLength(1);
 		expect(harness.callbacks[0]?.text).toBe(visibleSummary);
 		expect(harness.sent).toHaveLength(1);
