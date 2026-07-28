@@ -229,6 +229,16 @@ function base64Length(rawBytes: number): number {
  */
 const DEFAULT_SNAPSHOT_MAX_FILES = 5_000;
 
+/**
+ * Rows fetched per round-trip when capturing an agent-scoped Postgres table.
+ *
+ * `pool.query` buffers whatever a statement returns, so an unbounded
+ * `SELECT * WHERE agent_id = $1` puts the entire table in this process's heap
+ * before the budget can see a single byte. Reading in keyset batches caps that
+ * peak at one batch and lets the budget refuse mid-table (#17172 §1).
+ */
+const POSTGRES_CAPTURE_BATCH_ROWS = 500;
+
 const MEDIA_DIR_NAME = "media";
 const BACKUPS_DIR_NAME = "backups";
 const LOCAL_BACKUP_EXTENSION = ".agent-backup.json";
@@ -623,6 +633,56 @@ function getTableColumnsBucket(
   return columns;
 }
 
+/**
+ * Read an agent-scoped table in keyset batches, charging the budget per batch.
+ *
+ * Keyset (`id > $last ORDER BY id LIMIT n`) rather than OFFSET: OFFSET re-scans
+ * from the start on every page, and a snapshot taken while the agent is live
+ * would also skip or duplicate rows as they shift. Ordering on the primary key
+ * makes each batch disjoint and the walk resumable.
+ *
+ * The budget is charged after each batch, so an oversized table stops the
+ * capture partway instead of being fully materialized first — the peak is one
+ * batch, not the table.
+ */
+export async function fetchAgentScopedRowsBatched(
+  pool: {
+    query: (text: string, values: unknown[]) => Promise<{ rows: unknown[] }>;
+  },
+  buildSql: (keysetClause: string) => string,
+  baseParams: unknown[],
+  budget: SnapshotBudget | undefined,
+  tableName: string,
+  // Qualified for a join (`e."id"`), bare otherwise — the ORDER BY must be
+  // unambiguous or Postgres rejects the statement.
+  idExpression: string,
+): Promise<JsonRecord[]> {
+  const rows: JsonRecord[] = [];
+  let lastId: unknown = null;
+  for (;;) {
+    budget?.check();
+    const params = lastId === null ? baseParams : [...baseParams, lastId];
+    const keysetClause =
+      lastId === null
+        ? `ORDER BY ${idExpression} LIMIT ${POSTGRES_CAPTURE_BATCH_ROWS}`
+        : `AND ${idExpression} > $${baseParams.length + 1} ORDER BY ${idExpression} LIMIT ${POSTGRES_CAPTURE_BATCH_ROWS}`;
+    const batch = (await pool.query(buildSql(keysetClause), params))
+      .rows as JsonRecord[];
+    if (batch.length === 0) break;
+    budget?.chargeRaw(
+      Buffer.byteLength(JSON.stringify(batch), "utf8"),
+      `postgres table ${tableName}`,
+    );
+    rows.push(...batch);
+    if (batch.length < POSTGRES_CAPTURE_BATCH_ROWS) break;
+    lastId = batch[batch.length - 1]?.id ?? null;
+    // A table whose last row carries no usable id cannot be walked further;
+    // stopping is the honest outcome rather than looping on the same page.
+    if (lastId === null) break;
+  }
+  return rows;
+}
+
 async function capturePostgresRows(
   postgresUrl: string,
   agentId: string,
@@ -654,6 +714,8 @@ async function capturePostgresRows(
     for (const [tableName, columns] of tableColumns) {
       const columnSet = new Set(columns);
       let rows: JsonRecord[] = [];
+      // Batched reads charge per batch; the single-read paths charge below.
+      let charged = false;
       if (tableName === POSTGRES_AGENT_TABLE && columnSet.has("id")) {
         const result = await pool.query(
           `SELECT * FROM ${quoteIdentifier(tableName)} WHERE ${quoteIdentifier("id")} = $1`,
@@ -664,40 +726,70 @@ async function capturePostgresRows(
         tableName === POSTGRES_EMBEDDINGS_TABLE &&
         columnSet.has("memory_id")
       ) {
-        const result = await pool.query(
-          `SELECT e.*
-           FROM ${quoteIdentifier(tableName)} e
-           INNER JOIN ${quoteIdentifier(POSTGRES_MEMORIES_TABLE)} m
-             ON e.${quoteIdentifier("memory_id")} = m.${quoteIdentifier("id")}
-           WHERE m.${quoteIdentifier("agent_id")} = $1`,
-          [agentId],
-        );
-        rows = result.rows as JsonRecord[];
+        if (columnSet.has("id")) {
+          rows = await fetchAgentScopedRowsBatched(
+            pool,
+            (keyset) =>
+              `SELECT e.*
+               FROM ${quoteIdentifier(tableName)} e
+               INNER JOIN ${quoteIdentifier(POSTGRES_MEMORIES_TABLE)} m
+                 ON e.${quoteIdentifier("memory_id")} = m.${quoteIdentifier("id")}
+               WHERE m.${quoteIdentifier("agent_id")} = $1 ${keyset}`,
+            [agentId],
+            budget,
+            tableName,
+            `e.${quoteIdentifier("id")}`,
+          );
+          charged = true;
+        } else {
+          const result = await pool.query(
+            `SELECT e.*
+             FROM ${quoteIdentifier(tableName)} e
+             INNER JOIN ${quoteIdentifier(POSTGRES_MEMORIES_TABLE)} m
+               ON e.${quoteIdentifier("memory_id")} = m.${quoteIdentifier("id")}
+             WHERE m.${quoteIdentifier("agent_id")} = $1`,
+            [agentId],
+          );
+          rows = result.rows as JsonRecord[];
+        }
       } else {
         const ownerColumn = agentIdColumn(columnSet);
         if (!ownerColumn) continue;
-        const result = await pool.query(
-          `SELECT * FROM ${quoteIdentifier(tableName)} WHERE ${quoteIdentifier(ownerColumn)} = $1`,
-          [agentId],
-        );
-        rows = result.rows as JsonRecord[];
+        if (columnSet.has("id")) {
+          rows = await fetchAgentScopedRowsBatched(
+            pool,
+            (keyset) =>
+              `SELECT * FROM ${quoteIdentifier(tableName)} WHERE ${quoteIdentifier(ownerColumn)} = $1 ${keyset}`,
+            [agentId],
+            budget,
+            tableName,
+            quoteIdentifier("id"),
+          );
+          charged = true;
+        } else {
+          // No primary key to walk: a single read is the only option, so the
+          // peak stays the table. Such tables are the small ones in practice;
+          // the post-read charge below still bounds the assembled snapshot.
+          const result = await pool.query(
+            `SELECT * FROM ${quoteIdentifier(tableName)} WHERE ${quoteIdentifier(ownerColumn)} = $1`,
+            [agentId],
+          );
+          rows = result.rows as JsonRecord[];
+        }
       }
       if (
         tableName === POSTGRES_AGENT_TABLE ||
         tableName === POSTGRES_EMBEDDINGS_TABLE ||
         agentIdColumn(columnSet)
       ) {
-        // Charge the serialized rows so a huge table stops the capture instead
-        // of riding along to be rejected downstream. NOTE: this bounds the
-        // assembled SNAPSHOT, not the peak of the single query that produced
-        // it — `pool.query` buffers the whole result set and node-postgres
-        // cannot interrupt an in-flight SELECT. Bounding that peak needs
-        // batched reads (keyset pagination) or a cursor dependency; see the PR
-        // discussion rather than assuming this line covers it.
-        budget?.chargeRaw(
-          Buffer.byteLength(JSON.stringify(rows), "utf8"),
-          `postgres table ${tableName}`,
-        );
+        // Batched reads already charged per batch; only the single-read paths
+        // (a keyless table, or the single-row agent row) are charged here.
+        if (!charged) {
+          budget?.chargeRaw(
+            Buffer.byteLength(JSON.stringify(rows), "utf8"),
+            `postgres table ${tableName}`,
+          );
+        }
         tables.push({ name: tableName, columns, rows });
       }
     }
