@@ -1,6 +1,7 @@
 package ai.elizaos.app;
 
 import android.Manifest;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
@@ -81,6 +82,8 @@ public class MainActivity extends BridgeActivity {
             WebView.setWebContentsDebuggingEnabled(true);
         }
 
+        DeepLinkBufferPlugin.captureIntent(this, getIntent());
+        registerPlugin(DeepLinkBufferPlugin.class);
         registerPlugin(AgentPlugin.class);
         registerPlugin(BatteryOptimizationPlugin.class);
         registerPlugin(VoiceCapturePlugin.class);
@@ -156,6 +159,12 @@ public class MainActivity extends BridgeActivity {
         }
 
         ElizaWorkScheduler.enqueuePeriodic(getApplicationContext());
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        DeepLinkBufferPlugin.captureIntent(this, intent);
+        super.onNewIntent(intent);
     }
 
     @Override

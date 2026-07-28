@@ -5675,6 +5675,7 @@ export function cloudSafeMainActivityJava(androidPackage) {
 
 import android.os.Build;
 import android.os.Bundle;
+import android.content.Intent;
 import android.util.Log;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -5717,6 +5718,9 @@ ${cloudBrandUserAgentMarkerLines()}
             WebView.setWebContentsDebuggingEnabled(true);
         }
 
+        DeepLinkBufferPlugin.captureIntent(this, getIntent());
+        registerPlugin(DeepLinkBufferPlugin.class);
+
         // Cloud builds keep the native glass tier: GlassBridgePlugin has no
         // local-agent dependencies (android.* + Capacitor only).
         registerPlugin(GlassBridgePlugin.class);
@@ -5732,6 +5736,12 @@ ${cloudBrandUserAgentMarkerLines()}
             settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
             applyBrandUserAgentMarkers(settings);
         }
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        DeepLinkBufferPlugin.captureIntent(this, intent);
+        super.onNewIntent(intent);
     }
 
     @Override

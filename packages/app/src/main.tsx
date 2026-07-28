@@ -201,6 +201,7 @@ import {
 } from "./ios-runtime";
 import { startKeyboardDictationSession } from "./keyboard-dictation";
 import {
+  type AndroidDeepLinkBuffer,
   createMobileLifecycle,
   type MobileLifecycle,
 } from "./mobile-lifecycle";
@@ -1774,12 +1775,16 @@ async function initializeKeyboard(): Promise<void> {
 let mobileLifecycleInstance: MobileLifecycle | null = null;
 function getMobileLifecycle(): MobileLifecycle {
   if (!mobileLifecycleInstance) {
+    const androidDeepLinkBuffer = isAndroid
+      ? Capacitor.registerPlugin<AndroidDeepLinkBuffer>("DeepLinkBuffer")
+      : undefined;
     mobileLifecycleInstance = createMobileLifecycle({
       isNative,
       isIOS,
       isAndroid,
       logPrefix: APP_LOG_PREFIX,
       handleDeepLink,
+      androidDeepLinkBuffer,
     });
   }
   return mobileLifecycleInstance;

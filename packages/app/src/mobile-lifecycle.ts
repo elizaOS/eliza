@@ -27,6 +27,14 @@ export interface MobileLifecycleContext {
   isAndroid: boolean;
   logPrefix: string;
   handleDeepLink: (url: string) => void;
+  androidDeepLinkBuffer?: AndroidDeepLinkBuffer;
+}
+
+export interface AndroidDeepLinkBuffer {
+  peekPendingUrl: () => Promise<{ url?: string | null }>;
+  acknowledgePendingUrl: (options: {
+    url: string;
+  }) => Promise<{ cleared: boolean }>;
 }
 
 // There is one document/window, so there is one visibilitychange→lifecycle and
@@ -54,7 +62,7 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
   let lifecycleListenersRegistered = false;
   let networkStatusListenerRegistered = false;
   const handledDeepLinks = new Set<string>();
-  const pendingDeepLinks: string[] = [];
+  const pendingDeepLinks = new Map<string, Array<() => void>>();
 
   function logNativePluginUnavailable(
     pluginName: string,
@@ -118,14 +126,39 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
     if (deepLinkListenerRegistered) return;
     deepLinkListenerRegistered = true;
 
-    const captureDeepLinkOnce = (url: string | null | undefined): boolean => {
+    const acknowledgeBufferedUrl = (url: string): (() => void) | undefined => {
+      if (!ctx.androidDeepLinkBuffer) return undefined;
+      return () => {
+        void ctx.androidDeepLinkBuffer
+          ?.acknowledgePendingUrl({ url })
+          .catch((error) => {
+            // error-policy:J4 native replay remains pending for the next
+            // renderer when acknowledgement cannot reach the optional plugin
+            logNativePluginUnavailable("DeepLinkBuffer", error);
+          });
+      };
+    };
+
+    const captureDeepLinkOnce = (
+      url: string | null | undefined,
+      acknowledge?: () => void,
+    ): boolean => {
       const trimmed = url?.trim();
-      if (!trimmed || handledDeepLinks.has(trimmed)) return false;
+      if (!trimmed) return false;
+      if (handledDeepLinks.has(trimmed)) {
+        if (deepLinkHandlingReady) {
+          acknowledge?.();
+        } else if (acknowledge) {
+          pendingDeepLinks.get(trimmed)?.push(acknowledge);
+        }
+        return false;
+      }
       handledDeepLinks.add(trimmed);
       if (deepLinkHandlingReady) {
         ctx.handleDeepLink(trimmed);
+        acknowledge?.();
       } else {
-        pendingDeepLinks.push(trimmed);
+        pendingDeepLinks.set(trimmed, acknowledge ? [acknowledge] : []);
       }
       return true;
     };
@@ -150,24 +183,39 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
       clearInterval(replayTimer);
       replayTimer = null;
     };
-    const readLaunchUrl = (): void => {
+    const readLaunchUrls = (): void => {
       void CapacitorApp.getLaunchUrl()
         .then((result) => {
-          if (captureDeepLinkOnce(result?.url)) stopReplay();
+          captureDeepLinkOnce(result?.url);
         })
-        // error-policy:J4 App plugin unavailable — stop the replay loop
+        // error-policy:J4 App plugin unavailable — native replay may still work
         .catch((error) => {
-          stopReplay();
           logNativePluginUnavailable("App", error);
         });
+      if (ctx.androidDeepLinkBuffer) {
+        void ctx.androidDeepLinkBuffer
+          .peekPendingUrl()
+          .then((result) => {
+            const url = result?.url;
+            captureDeepLinkOnce(
+              url,
+              url ? acknowledgeBufferedUrl(url) : undefined,
+            );
+          })
+          // error-policy:J4 optional Android replay bridge — Capacitor App
+          // remains the ordinary cold/warm deep-link path
+          .catch((error) => {
+            logNativePluginUnavailable("DeepLinkBuffer", error);
+          });
+      }
     };
-    readLaunchUrl();
+    readLaunchUrls();
     replayTimer = setInterval(() => {
       if (Date.now() - replayStartedAt >= COLD_LAUNCH_URL_REPLAY_MS) {
         stopReplay();
         return;
       }
-      readLaunchUrl();
+      readLaunchUrls();
     }, COLD_LAUNCH_URL_REPLAY_INTERVAL_MS);
     unrefTimer(replayTimer);
   }
@@ -176,7 +224,11 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
     initializeDeepLinks();
     if (!deepLinkHandlingReady) {
       deepLinkHandlingReady = true;
-      for (const url of pendingDeepLinks.splice(0)) ctx.handleDeepLink(url);
+      for (const [url, acknowledgements] of pendingDeepLinks) {
+        ctx.handleDeepLink(url);
+        for (const acknowledge of acknowledgements) acknowledge();
+      }
+      pendingDeepLinks.clear();
     }
 
     // Each Capacitor listener fires its handler N times if added N times;

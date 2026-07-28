@@ -158,6 +158,23 @@ function makeContext(
   };
 }
 
+function makeDeepLinkBuffer(initialUrl: string | null = null) {
+  let pendingUrl = initialUrl;
+  return {
+    bridge: {
+      peekPendingUrl: vi.fn(async () => ({ url: pendingUrl })),
+      acknowledgePendingUrl: vi.fn(async ({ url }: { url: string }) => {
+        const cleared = pendingUrl === url;
+        if (cleared) pendingUrl = null;
+        return { cleared };
+      }),
+    },
+    setPendingUrl(url: string | null) {
+      pendingUrl = url;
+    },
+  };
+}
+
 let historyBackSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
@@ -400,6 +417,56 @@ describe("createMobileLifecycle — app lifecycle", () => {
       "elizaos://first-run/runtime/remote?api=http%3A%2F%2F127.0.0.1%3A31337",
     );
     expect(appListeners.get("appUrlOpen")?.length).toBe(1);
+  });
+
+  it("routes and acknowledges an Android URL buffered before JS listener registration", async () => {
+    const bufferedUrl =
+      "elizaos://first-run/runtime/remote?api=http%3A%2F%2F127.0.0.1%3A31337";
+    const deepLinkBuffer = makeDeepLinkBuffer(bufferedUrl);
+    const ctx = makeContext({
+      androidDeepLinkBuffer: deepLinkBuffer.bridge,
+    });
+    const lifecycle = createMobileLifecycle(ctx);
+
+    lifecycle.initializeDeepLinks();
+    await vi.waitFor(() =>
+      expect(deepLinkBuffer.bridge.peekPendingUrl).toHaveBeenCalled(),
+    );
+
+    expect(ctx.handleDeepLink).not.toHaveBeenCalled();
+    expect(deepLinkBuffer.bridge.acknowledgePendingUrl).not.toHaveBeenCalled();
+
+    lifecycle.initializeAppLifecycle();
+
+    expect(ctx.handleDeepLink).toHaveBeenCalledOnce();
+    expect(ctx.handleDeepLink).toHaveBeenCalledWith(bufferedUrl);
+    await vi.waitFor(() =>
+      expect(deepLinkBuffer.bridge.acknowledgePendingUrl).toHaveBeenCalledWith({
+        url: bufferedUrl,
+      }),
+    );
+  });
+
+  it("acknowledges a native replay duplicate after appUrlOpen already routed it", async () => {
+    vi.useFakeTimers();
+    const url = "elizaos://chat/replayed";
+    const deepLinkBuffer = makeDeepLinkBuffer();
+    const ctx = makeContext({
+      androidDeepLinkBuffer: deepLinkBuffer.bridge,
+    });
+    const lifecycle = createMobileLifecycle(ctx);
+
+    lifecycle.initializeAppLifecycle();
+    await vi.waitFor(() => expect(appListeners.has("appUrlOpen")).toBe(true));
+    fireAppEvent("appUrlOpen", { url });
+    deepLinkBuffer.setPendingUrl(url);
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(deepLinkBuffer.bridge.peekPendingUrl).toHaveBeenCalled();
+    expect(deepLinkBuffer.bridge.acknowledgePendingUrl).toHaveBeenCalledWith({
+      url,
+    });
+    expect(ctx.handleDeepLink).toHaveBeenCalledOnce();
   });
 
   it("deduplicates one URL across early warm delivery and cold replay", async () => {
