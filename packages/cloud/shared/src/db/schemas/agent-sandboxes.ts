@@ -41,6 +41,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 import { organizations } from "./organizations";
@@ -632,7 +633,20 @@ export interface AgentBackupChunkStagingDescriptor {
   organizationId: string;
   sandboxRecordId: string;
   backupId: string;
+  /**
+   * One immutable write epoch owns every planned object key. Repository
+   * transitions compare this value before accepting a plan or commit so a late
+   * writer can never act on a replacement attempt.
+   */
+  objectSetId: string;
   createdAt: string;
+  writeLeaseExpiresAt: string;
+  /**
+   * Set only by the owning writer after all remote writes have settled and
+   * cleanup has completed. Crash-recovered rows without this proof remain
+   * durable reconciliation fences instead of being recycled unsafely.
+   */
+  writeQuiescedAt: string | null;
   plannedObjectKeys: string[];
   failure: string | null;
 }
@@ -739,56 +753,152 @@ export const agentSandboxBackups = pgTable(
     storage_reconcile_idx: index("agent_sandbox_backups_storage_reconcile_idx")
       .on(table.storage_commit_updated_at)
       .where(sql`${table.storage_commit_state} <> 'complete'`),
+    write_epoch_check: check(
+      "agent_sandbox_backups_write_epoch_check",
+      sql`
+        NOT (
+          ${table.snapshot_schema_version} = 2
+          AND ${table.state_data_storage} = 'chunked-v2'
+          AND ${table.storage_commit_state} IN ('staging', 'failed')
+        )
+        OR COALESCE((
+          jsonb_typeof(${table.state_data_descriptor}) = 'object'
+          AND ${table.state_data_descriptor} ->> 'format' = 'elizaos.agent-backup-chunks'
+          AND ${table.state_data_descriptor} ->> 'descriptorVersion' = '1'
+          AND ${table.state_data_descriptor} ->> 'backupSchemaVersion' = '2'
+          AND jsonb_typeof(${table.state_data_descriptor} -> 'backupId') = 'string'
+          AND ${table.state_data_descriptor} ->> 'backupId' = ${table.id}::text
+          AND jsonb_typeof(${table.state_data_descriptor} -> 'objectSetId') = 'string'
+          AND (
+            ${table.state_data_descriptor} ->> 'objectSetId'
+          ) ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+          AND jsonb_typeof(${table.state_data_descriptor} -> 'writeLeaseExpiresAt') = 'string'
+          AND (
+            ${table.state_data_descriptor} ->> 'writeLeaseExpiresAt'
+          ) ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'
+          AND ${table.state_data_descriptor} ? 'writeQuiescedAt'
+          AND jsonb_typeof(${table.state_data_descriptor} -> 'plannedObjectKeys') = 'array'
+          AND (
+            (
+              ${table.storage_commit_state} = 'staging'
+              AND ${table.state_data_descriptor} ->> 'commitState' = 'staging'
+              AND ${table.state_data_descriptor} -> 'writeQuiescedAt' = 'null'::jsonb
+              AND ${table.state_data_descriptor} -> 'failure' = 'null'::jsonb
+            )
+            OR (
+              ${table.storage_commit_state} = 'failed'
+              AND ${table.state_data_descriptor} ->> 'commitState' = 'failed'
+              AND jsonb_typeof(${table.state_data_descriptor} -> 'failure') = 'string'
+              AND (
+                ${table.state_data_descriptor} -> 'writeQuiescedAt' = 'null'::jsonb
+                OR (
+                  jsonb_typeof(${table.state_data_descriptor} -> 'writeQuiescedAt') = 'string'
+                  AND (
+                    ${table.state_data_descriptor} ->> 'writeQuiescedAt'
+                  ) ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'
+                )
+              )
+            )
+          )
+        ), FALSE)
+      `,
+    ),
   }),
 );
 
+export type AgentSnapshotRestoreValidationState =
+  | "planned"
+  | "candidate_provisioning"
+  | "restore_committed"
+  | "never_routed_retired";
 export type AgentSnapshotRestoreReceiptState = "committed";
-export type AgentSnapshotRestoreCandidateState = "never_routed_retired";
+export type AgentSnapshotRestoreCandidateRouteMode = "restore_validation_private_control";
 
 /**
- * Terminal, server-owned proof that one exact replacement attempt restored a
- * verified v2 backup and was retired without ever becoming routable. Standby
- * acceptance reads this table in its lifecycle transaction; caller assertions
- * alone can never authorize destruction of the retained rollback placement.
+ * Server-owned restore-validation state for one exact canary generation. The
+ * row is planned before capture, records the committed restore receipt before
+ * remote retirement, and becomes acceptance authority only after exact
+ * container, VPN, and volume absence are all durably proven.
  */
 export const agentSnapshotRestoreValidations = pgTable(
   "agent_snapshot_restore_validations",
   {
     restore_validation_id: uuid("restore_validation_id").primaryKey(),
+    validation_job_id: uuid("validation_job_id").notNull(),
+    source_job_id: uuid("source_job_id").notNull(),
+    rollout_id: uuid("rollout_id").notNull(),
+    standby_generation: uuid("standby_generation").notNull(),
     organization_id: uuid("organization_id").notNull(),
     sandbox_record_id: uuid("sandbox_record_id").notNull(),
     agent_id: uuid("agent_id").notNull(),
     target_owner_user_id: uuid("target_owner_user_id").notNull(),
     backup_id: uuid("backup_id").notNull(),
-    aggregate_sha256: text("aggregate_sha256").notNull(),
     capture_nonce: text("capture_nonce").notNull(),
     source_environment_revision: integer("source_environment_revision").notNull(),
     source_image_digest: text("source_image_digest").notNull(),
     source_sandbox_id: uuid("source_sandbox_id").notNull(),
     target_image: text("target_image").notNull(),
     target_digest: text("target_digest").notNull(),
-    target_provider_sandbox_id: text("target_provider_sandbox_id").notNull(),
-    target_replacement_attempt_id: uuid("target_replacement_attempt_id").notNull(),
+    candidate_route_mode: text("candidate_route_mode")
+      .$type<AgentSnapshotRestoreCandidateRouteMode>()
+      .notNull(),
+    validation_state: text("validation_state")
+      .$type<AgentSnapshotRestoreValidationState>()
+      .notNull(),
+    aggregate_sha256: text("aggregate_sha256"),
+    target_provider_sandbox_id: text("target_provider_sandbox_id"),
+    target_replacement_attempt_id: uuid("target_replacement_attempt_id"),
     target_provider_node_id: text("target_provider_node_id"),
     target_provider_container_name: text("target_provider_container_name"),
-    receipt_state: text("receipt_state").$type<AgentSnapshotRestoreReceiptState>().notNull(),
-    receipt_schema_version: integer("receipt_schema_version").notNull(),
-    receipt_transfer: text("receipt_transfer").notNull(),
-    receipt_file_count: integer("receipt_file_count").notNull(),
-    receipt_total_bytes: bigint("receipt_total_bytes", { mode: "number" }).notNull(),
-    receipt_requires_restart: boolean("receipt_requires_restart").notNull(),
-    receipt_success: boolean("receipt_success").notNull(),
+    target_provider_container_id: text("target_provider_container_id"),
+    target_provider_volume_path: text("target_provider_volume_path"),
+    target_provider_bridge_url: text("target_provider_bridge_url"),
+    target_provider_health_url: text("target_provider_health_url"),
+    target_provider_bridge_port: integer("target_provider_bridge_port"),
+    target_provider_web_ui_port: integer("target_provider_web_ui_port"),
+    target_provider_vpn_node_id: text("target_provider_vpn_node_id"),
+    target_provider_vpn_node_name: text("target_provider_vpn_node_name"),
+    target_provider_vpn_registration_started_at: timestamp(
+      "target_provider_vpn_registration_started_at",
+      { withTimezone: true },
+    ),
+    target_provider_allocation_counted: boolean("target_provider_allocation_counted"),
+    receipt_state: text("receipt_state").$type<AgentSnapshotRestoreReceiptState>(),
+    receipt_schema_version: integer("receipt_schema_version"),
+    receipt_transfer: text("receipt_transfer"),
+    receipt_file_count: integer("receipt_file_count"),
+    receipt_total_bytes: bigint("receipt_total_bytes", { mode: "number" }),
+    receipt_requires_restart: boolean("receipt_requires_restart"),
+    receipt_success: boolean("receipt_success"),
     receipt_committed_at: timestamp("receipt_committed_at", {
       withTimezone: true,
-    }).notNull(),
-    candidate_state: text("candidate_state").$type<AgentSnapshotRestoreCandidateState>().notNull(),
+    }),
     route_exposed_at: timestamp("route_exposed_at", { withTimezone: true }),
+    candidate_container_absent_at: timestamp("candidate_container_absent_at", {
+      withTimezone: true,
+    }),
+    candidate_vpn_absent_at: timestamp("candidate_vpn_absent_at", {
+      withTimezone: true,
+    }),
+    candidate_volume_absent_at: timestamp("candidate_volume_absent_at", {
+      withTimezone: true,
+    }),
     candidate_retired_at: timestamp("candidate_retired_at", {
       withTimezone: true,
-    }).notNull(),
+    }),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
+    validation_job_unique: uniqueIndex("agent_snapshot_restore_validations_job_unique").on(
+      table.validation_job_id,
+    ),
+    source_unique: uniqueIndex("agent_snapshot_restore_validations_source_unique").on(
+      table.organization_id,
+      table.sandbox_record_id,
+      table.source_job_id,
+      table.standby_generation,
+    ),
     backup_idx: index("agent_snapshot_restore_validations_backup_idx").on(
       table.organization_id,
       table.sandbox_record_id,
@@ -802,21 +912,123 @@ export const agentSnapshotRestoreValidations = pgTable(
     contract_check: check(
       "agent_snapshot_restore_validations_contract_check",
       sql`
-        ${table.aggregate_sha256} ~ '^[0-9a-f]{64}$'
-        AND ${table.capture_nonce} ~ '^[0-9a-f]{64}$'
+        ${table.capture_nonce} ~ '^[0-9a-f]{64}$'
         AND ${table.source_environment_revision} >= 0
         AND ${table.source_image_digest} ~ '^sha256:[0-9a-f]{64}$'
         AND ${table.target_digest} ~ '^sha256:[0-9a-f]{64}$'
-        AND ${table.receipt_state} = 'committed'
-        AND ${table.receipt_schema_version} = 2
-        AND ${table.receipt_transfer} = 'chunked-v1'
-        AND ${table.receipt_file_count} >= 0
-        AND ${table.receipt_total_bytes} >= 0
-        AND ${table.receipt_requires_restart} = TRUE
-        AND ${table.receipt_success} = TRUE
-        AND ${table.candidate_state} = 'never_routed_retired'
+        AND ${table.candidate_route_mode} = 'restore_validation_private_control'
         AND ${table.route_exposed_at} IS NULL
-        AND ${table.candidate_retired_at} >= ${table.receipt_committed_at}
+        AND (
+          (
+            ${table.validation_state} = 'planned'
+            AND ${table.aggregate_sha256} IS NULL
+            AND ${table.target_provider_sandbox_id} IS NULL
+            AND ${table.target_replacement_attempt_id} IS NULL
+            AND ${table.target_provider_node_id} IS NULL
+            AND ${table.target_provider_container_name} IS NULL
+            AND ${table.target_provider_container_id} IS NULL
+            AND ${table.target_provider_volume_path} IS NULL
+            AND ${table.target_provider_bridge_url} IS NULL
+            AND ${table.target_provider_health_url} IS NULL
+            AND ${table.target_provider_bridge_port} IS NULL
+            AND ${table.target_provider_web_ui_port} IS NULL
+            AND ${table.target_provider_vpn_node_id} IS NULL
+            AND ${table.target_provider_vpn_node_name} IS NULL
+            AND ${table.target_provider_vpn_registration_started_at} IS NULL
+            AND ${table.target_provider_allocation_counted} IS NULL
+            AND ${table.receipt_state} IS NULL
+            AND ${table.receipt_schema_version} IS NULL
+            AND ${table.receipt_transfer} IS NULL
+            AND ${table.receipt_file_count} IS NULL
+            AND ${table.receipt_total_bytes} IS NULL
+            AND ${table.receipt_requires_restart} IS NULL
+            AND ${table.receipt_success} IS NULL
+            AND ${table.receipt_committed_at} IS NULL
+            AND ${table.candidate_container_absent_at} IS NULL
+            AND ${table.candidate_vpn_absent_at} IS NULL
+            AND ${table.candidate_volume_absent_at} IS NULL
+            AND ${table.candidate_retired_at} IS NULL
+          )
+          OR
+          (
+            ${table.validation_state} IN (
+              'candidate_provisioning',
+              'restore_committed',
+              'never_routed_retired'
+            )
+            AND ${table.target_provider_sandbox_id} IS NOT NULL
+            AND ${table.target_replacement_attempt_id} IS NOT NULL
+            AND ${table.target_provider_node_id} IS NOT NULL
+            AND ${table.target_provider_container_name} IS NOT NULL
+            AND ${table.target_provider_volume_path} IS NOT NULL
+            AND ${table.target_provider_bridge_url} IS NOT NULL
+            AND ${table.target_provider_health_url} IS NOT NULL
+            AND ${table.target_provider_bridge_port} BETWEEN 1 AND 65535
+            AND ${table.target_provider_web_ui_port} BETWEEN 1 AND 65535
+            AND ${table.target_provider_vpn_node_name} IS NOT NULL
+            AND ${table.target_provider_vpn_registration_started_at} IS NOT NULL
+            AND ${table.target_provider_allocation_counted} IS NOT NULL
+            AND (
+              (
+                ${table.validation_state} = 'candidate_provisioning'
+                AND ${table.aggregate_sha256} IS NULL
+                AND ${table.receipt_state} IS NULL
+                AND ${table.receipt_schema_version} IS NULL
+                AND ${table.receipt_transfer} IS NULL
+                AND ${table.receipt_file_count} IS NULL
+                AND ${table.receipt_total_bytes} IS NULL
+                AND ${table.receipt_requires_restart} IS NULL
+                AND ${table.receipt_success} IS NULL
+                AND ${table.receipt_committed_at} IS NULL
+                AND ${table.target_provider_allocation_counted} = TRUE
+                AND ${table.candidate_container_absent_at} IS NULL
+                AND ${table.candidate_vpn_absent_at} IS NULL
+                AND ${table.candidate_volume_absent_at} IS NULL
+                AND ${table.candidate_retired_at} IS NULL
+              )
+              OR
+              (
+                ${table.validation_state} IN ('restore_committed', 'never_routed_retired')
+                AND ${table.aggregate_sha256} ~ '^[0-9a-f]{64}$'
+                AND ${table.target_provider_container_id} IS NOT NULL
+                AND ${table.target_provider_vpn_node_id} IS NOT NULL
+                AND ${table.receipt_state} = 'committed'
+                AND ${table.receipt_schema_version} = 2
+                AND ${table.receipt_transfer} = 'chunked-v1'
+                AND ${table.receipt_file_count} >= 0
+                AND ${table.receipt_total_bytes} >= 0
+                AND ${table.receipt_requires_restart} = TRUE
+                AND ${table.receipt_success} = TRUE
+                AND ${table.receipt_committed_at} IS NOT NULL
+                AND (
+                  (
+                    ${table.validation_state} = 'restore_committed'
+                    AND ${table.target_provider_allocation_counted} = TRUE
+                    AND ${table.candidate_container_absent_at} IS NULL
+                    AND ${table.candidate_vpn_absent_at} IS NULL
+                    AND ${table.candidate_volume_absent_at} IS NULL
+                    AND ${table.candidate_retired_at} IS NULL
+                  )
+                  OR
+                  (
+                    ${table.validation_state} = 'never_routed_retired'
+                    AND ${table.target_provider_allocation_counted} = FALSE
+                    AND ${table.candidate_container_absent_at} IS NOT NULL
+                    AND ${table.candidate_vpn_absent_at} IS NOT NULL
+                    AND ${table.candidate_volume_absent_at} IS NOT NULL
+                    AND ${table.candidate_retired_at} IS NOT NULL
+                    AND ${table.candidate_container_absent_at} >= ${table.receipt_committed_at}
+                    AND ${table.candidate_vpn_absent_at} >= ${table.receipt_committed_at}
+                    AND ${table.candidate_volume_absent_at} >= ${table.receipt_committed_at}
+                    AND ${table.candidate_retired_at} >= ${table.candidate_container_absent_at}
+                    AND ${table.candidate_retired_at} >= ${table.candidate_vpn_absent_at}
+                    AND ${table.candidate_retired_at} >= ${table.candidate_volume_absent_at}
+                  )
+                )
+              )
+            )
+          )
+        )
       `,
     ),
   }),
@@ -837,6 +1049,49 @@ export const agentSandboxBackupCleanupIntents = pgTable(
   },
   (table) => ({
     updated_at_idx: index("agent_sandbox_backup_cleanup_intents_updated_idx").on(table.updated_at),
+    write_epoch_check: check(
+      "agent_sandbox_backup_cleanup_intents_write_epoch_check",
+      sql`
+        COALESCE(
+          ${table.descriptor} ->> 'commitState' = 'complete'
+          OR (
+            ${table.storage_commit_state} = 'failed'
+            AND jsonb_typeof(${table.descriptor}) = 'object'
+            AND ${table.descriptor} ->> 'format' = 'elizaos.agent-backup-chunks'
+            AND ${table.descriptor} ->> 'descriptorVersion' = '1'
+            AND ${table.descriptor} ->> 'backupSchemaVersion' = '2'
+            AND jsonb_typeof(${table.descriptor} -> 'organizationId') = 'string'
+            AND jsonb_typeof(${table.descriptor} -> 'sandboxRecordId') = 'string'
+            AND jsonb_typeof(${table.descriptor} -> 'backupId') = 'string'
+            AND ${table.descriptor} ->> 'organizationId' = ${table.organization_id}::text
+            AND ${table.descriptor} ->> 'sandboxRecordId' = ${table.sandbox_record_id}::text
+            AND ${table.descriptor} ->> 'backupId' = ${table.backup_id}::text
+            AND jsonb_typeof(${table.descriptor} -> 'objectSetId') = 'string'
+            AND (
+              ${table.descriptor} ->> 'objectSetId'
+            ) ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+            AND jsonb_typeof(${table.descriptor} -> 'writeLeaseExpiresAt') = 'string'
+            AND (
+              ${table.descriptor} ->> 'writeLeaseExpiresAt'
+            ) ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'
+            AND ${table.descriptor} ? 'writeQuiescedAt'
+            AND jsonb_typeof(${table.descriptor} -> 'plannedObjectKeys') = 'array'
+            AND ${table.descriptor} ->> 'commitState' = 'failed'
+            AND jsonb_typeof(${table.descriptor} -> 'failure') = 'string'
+            AND (
+              ${table.descriptor} -> 'writeQuiescedAt' = 'null'::jsonb
+              OR (
+                jsonb_typeof(${table.descriptor} -> 'writeQuiescedAt') = 'string'
+                AND (
+                  ${table.descriptor} ->> 'writeQuiescedAt'
+                ) ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'
+              )
+            )
+          ),
+          FALSE
+        )
+      `,
+    ),
   }),
 );
 

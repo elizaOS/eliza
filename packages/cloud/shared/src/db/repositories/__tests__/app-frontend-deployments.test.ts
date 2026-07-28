@@ -72,7 +72,7 @@ function memoryBucket(objects: Map<string, Uint8Array>): RuntimeR2Bucket {
       return {};
     },
     async delete(key) {
-      objects.delete(key);
+      for (const candidate of Array.isArray(key) ? key : [key]) objects.delete(candidate);
       return {};
     },
   };
