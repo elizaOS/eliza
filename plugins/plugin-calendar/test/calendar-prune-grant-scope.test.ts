@@ -216,6 +216,9 @@ function gateForBothGrants(): CalendarHostGate {
   };
   return {
     getGoogleConnectorAccounts: async () => [],
+    resolveGuestAvailabilityGrants: async () => {
+      throw new Error("Guest availability is outside this test.");
+    },
     requireGoogleCalendarGrant: requireGrant,
     requireGoogleCalendarWriteGrant: requireGrant,
     createReminderPlan: async () => {},

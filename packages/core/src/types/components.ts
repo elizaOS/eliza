@@ -327,6 +327,15 @@ export const HOOK_MODES: readonly ActionMode[] = [
  */
 export const FOLLOW_UP_CAPABLE_ACTION_TAG = "follow-up-capable" as const;
 
+/**
+ * Non-overridable policy for components whose prompt or result can contain
+ * owner-private data. Unlike a role gate, this binds access to the attested
+ * destination audience as well as the actor.
+ */
+export interface DisclosureGate {
+	require: "owner_exclusive";
+}
+
 export interface Action {
 	/** Action name */
 	name: string;
@@ -545,6 +554,13 @@ export interface Action {
 
 	/** Optional role gate checked by planners before exposing this action. */
 	roleGate?: RoleGate;
+
+	/**
+	 * Destination-audience policy enforced before catalog exposure, execution,
+	 * provider composition, and visible delivery. Operator role policy cannot
+	 * weaken this gate.
+	 */
+	disclosureGate?: DisclosureGate;
 
 	/**
 	 * Optional connector account policy checked by planner tool exposure and
@@ -787,6 +803,9 @@ export interface Provider {
 
 	/** Optional role gate checked before including this provider. */
 	roleGate?: RoleGate;
+
+	/** Non-overridable destination-audience policy for sensitive context. */
+	disclosureGate?: DisclosureGate;
 
 	/** Child provider/action names exposed beneath this provider, if any. */
 	subActions?: string[];

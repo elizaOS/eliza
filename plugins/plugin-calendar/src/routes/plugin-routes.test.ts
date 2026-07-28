@@ -6,7 +6,10 @@
 import type http from "node:http";
 import type { ElizaError, IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import { calendarRouteHandler } from "./plugin-routes.js";
+import {
+  __calendarRouteRateLimitBucketCountForTests,
+  calendarRouteHandler,
+} from "./plugin-routes.js";
 
 function createRequest(path = "/api/lifeops/calendar/feed") {
   return {
@@ -27,6 +30,16 @@ function createResponse() {
         ? value.join(", ")
         : String(value);
     },
+    writeHead(
+      statusCode: number,
+      headers?: Record<string, number | string | readonly string[]>,
+    ) {
+      response.statusCode = statusCode;
+      for (const [name, value] of Object.entries(headers ?? {})) {
+        response.setHeader(name, value);
+      }
+      return response;
+    },
     end(chunk?: unknown) {
       response.headersSent = true;
       response.body = chunk === undefined ? "" : String(chunk);
@@ -39,13 +52,43 @@ function createResponse() {
 function createRuntime(overrides: {
   serviceLoad?: Promise<unknown>;
   reportError?: ReturnType<typeof vi.fn>;
+  service?: unknown;
+  settings?: Record<string, string>;
 }): IAgentRuntime {
   return {
     agentId: "calendar-agent",
-    getService: vi.fn(() => null),
+    getSetting: vi.fn((key: string) => overrides.settings?.[key] ?? null),
+    getService: vi.fn(() => overrides.service ?? null),
     getServiceLoadPromise: vi.fn(() => overrides.serviceLoad ?? null),
     reportError: overrides.reportError ?? vi.fn(),
   } as unknown as IAgentRuntime;
+}
+
+const webhookHeaders = {
+  host: "localhost",
+  "x-goog-channel-id": "channel-1",
+  "x-goog-channel-token": "opaque-token",
+  "x-goog-resource-id": "resource-1",
+  "x-goog-resource-uri":
+    "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+  "x-goog-resource-state": "exists",
+  "x-goog-message-number": "2",
+};
+
+function createWebhookRequest(
+  overrides: Partial<http.IncomingMessage> & {
+    headers?: http.IncomingHttpHeaders;
+  } = {},
+): http.IncomingMessage {
+  return {
+    method: "POST",
+    url: "/api/lifeops/calendar/google/webhook",
+    ...overrides,
+    headers: { ...webhookHeaders, ...overrides.headers },
+    socket:
+      overrides.socket ??
+      ({ remoteAddress: "203.0.113.10" } as http.IncomingMessage["socket"]),
+  } as unknown as http.IncomingMessage;
 }
 
 describe("calendarRouteHandler", () => {
@@ -84,5 +127,112 @@ describe("calendarRouteHandler", () => {
       { serviceType: "calendar" },
     );
     expect(res.headersSent).toBe(false);
+  });
+
+  it("hides the public webhook unless it is explicitly enabled", async () => {
+    const notification = vi.fn();
+    const runtime = createRuntime({
+      settings: {
+        GOOGLE_CALENDAR_WEBHOOK_URL:
+          "https://calendar.example.test/api/lifeops/calendar/google/webhook",
+      },
+      service: { handleGoogleCalendarNotification: notification },
+    });
+    const res = createResponse();
+
+    await calendarRouteHandler()(createWebhookRequest(), res, runtime);
+
+    expect(res.statusCode).toBe(404);
+    expect(runtime.getService).not.toHaveBeenCalled();
+    expect(notification).not.toHaveBeenCalled();
+  });
+
+  it("rejects bounded and streaming bodies without resolving the service", async () => {
+    const notification = vi.fn();
+    const runtime = createRuntime({
+      settings: { GOOGLE_CALENDAR_WEBHOOK_ENABLED: "true" },
+      service: { handleGoogleCalendarNotification: notification },
+    });
+    const oversized = createResponse();
+    await calendarRouteHandler()(
+      createWebhookRequest({
+        rawBody: Buffer.alloc(1_025),
+        headers: { "content-length": "1025" },
+      } as Partial<http.IncomingMessage>),
+      oversized,
+      runtime,
+    );
+
+    const iterator = vi.fn(() => {
+      throw new Error("The webhook must not consume a request stream.");
+    });
+    const streamed = createResponse();
+    await calendarRouteHandler()(
+      createWebhookRequest({
+        headers: { "transfer-encoding": "chunked" },
+        [Symbol.asyncIterator]: iterator,
+      } as Partial<http.IncomingMessage>),
+      streamed,
+      runtime,
+    );
+
+    expect(oversized.statusCode).toBe(413);
+    expect(streamed.statusCode).toBe(400);
+    expect(iterator).not.toHaveBeenCalled();
+    expect(runtime.getService).not.toHaveBeenCalled();
+    expect(notification).not.toHaveBeenCalled();
+  });
+
+  it("rate-limits a public flood before resolving the service", async () => {
+    const notification = vi.fn(async () => ({
+      status: 204,
+      outcome: "processed",
+    }));
+    const runtime = createRuntime({
+      settings: { GOOGLE_CALENDAR_WEBHOOK_ENABLED: "true" },
+      service: { handleGoogleCalendarNotification: notification },
+    });
+    const handler = calendarRouteHandler();
+    const responses = [];
+    for (let index = 0; index < 61; index += 1) {
+      const response = createResponse();
+      responses.push(response);
+      await handler(createWebhookRequest(), response, runtime);
+    }
+
+    expect(responses.slice(0, 60).every((res) => res.statusCode === 204)).toBe(
+      true,
+    );
+    expect(responses[60]?.statusCode).toBe(429);
+    expect(notification).toHaveBeenCalledTimes(60);
+    expect(runtime.getService).toHaveBeenCalledTimes(60);
+  });
+
+  it("bounds distributed source buckets with oldest-entry eviction", async () => {
+    const notification = vi.fn(async () => ({
+      status: 204,
+      outcome: "processed",
+    }));
+    const runtime = createRuntime({
+      settings: { GOOGLE_CALENDAR_WEBHOOK_ENABLED: "true" },
+      service: { handleGoogleCalendarNotification: notification },
+    });
+    const handler = calendarRouteHandler();
+    for (let index = 0; index < 300; index += 1) {
+      const response = createResponse();
+      await handler(
+        createWebhookRequest({
+          socket: {
+            remoteAddress: `2001:db8::${index.toString(16)}`,
+          } as http.IncomingMessage["socket"],
+        }),
+        response,
+        runtime,
+      );
+      expect(response.statusCode).toBe(204);
+    }
+
+    expect(__calendarRouteRateLimitBucketCountForTests(runtime)).toBe(256);
+    expect(notification).toHaveBeenCalledTimes(300);
   });
 });

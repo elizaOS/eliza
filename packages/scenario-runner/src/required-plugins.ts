@@ -1,0 +1,151 @@
+/**
+ * Resolves scenario-declared plugin packages at the runtime boundary. The
+ * provider-qualified profile accepts only installable production packages and
+ * registers them before runtime initialization; simulated runs retain the
+ * small compatibility wrapper needed by existing app-control fixtures.
+ */
+
+import type { Action, AgentRuntime, Plugin } from "@elizaos/core";
+import type {
+  ScenarioDefinition,
+  ScenarioExecutionProfile,
+} from "@elizaos/scenario-runner/schema";
+
+const NON_PRODUCTION_PACKAGE_PATTERN =
+  /(?:^|[/._-])(?:mock|mocks|fixture|fixtures|test|tests|test-harness)(?:$|[/._-])/iu;
+const PACKAGE_NAME_PATTERN =
+  /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/u;
+
+function isPlugin(value: unknown): value is Plugin {
+  if (value === null || typeof value !== "object") return false;
+  const obj = value as Record<string, unknown>;
+  if (typeof obj.name !== "string" || obj.name.trim().length === 0) {
+    return false;
+  }
+  return (
+    Array.isArray(obj.actions) ||
+    Array.isArray(obj.providers) ||
+    Array.isArray(obj.services) ||
+    Array.isArray(obj.evaluators) ||
+    Array.isArray(obj.routes) ||
+    typeof obj.init === "function" ||
+    (obj.models !== null && typeof obj.models === "object")
+  );
+}
+
+export function resolveRequiredPluginPackages(
+  scenario: ScenarioDefinition,
+): string[] {
+  const plugins = scenario.requires?.plugins;
+  if (!Array.isArray(plugins)) return [];
+  const normalized = plugins.map((plugin) => plugin.trim()).filter(Boolean);
+  return [...new Set(normalized)];
+}
+
+export function providerQualifiedPluginPackageProblem(
+  packageName: string,
+): string | null {
+  if (!PACKAGE_NAME_PATTERN.test(packageName)) {
+    return `required plugin "${packageName}" is not a bare npm package name`;
+  }
+  if (NON_PRODUCTION_PACKAGE_PATTERN.test(packageName)) {
+    return `required plugin "${packageName}" names a test, mock, or fixture package`;
+  }
+  return null;
+}
+
+export function assertProviderQualifiedPluginPackages(
+  packageNames: readonly string[],
+): void {
+  const problems = packageNames
+    .map(providerQualifiedPluginPackageProblem)
+    .filter((problem): problem is string => problem !== null);
+  if (problems.length > 0) {
+    throw new Error(
+      `[scenario-runner] provider-qualified plugin preflight failed: ${problems.join("; ")}`,
+    );
+  }
+}
+
+function pluginNameAliases(packageName: string): Set<string> {
+  const withoutScope = packageName.replace(/^@elizaos\//u, "");
+  const withoutPluginPrefix = withoutScope.replace(/^plugin-/u, "");
+  return new Set([
+    packageName,
+    withoutScope,
+    withoutPluginPrefix,
+    `plugin-${withoutPluginPrefix}`,
+  ]);
+}
+
+export function pluginPackageIsRegistered(
+  runtime: Pick<AgentRuntime, "plugins">,
+  packageName: string,
+): boolean {
+  const aliases = pluginNameAliases(packageName);
+  return runtime.plugins.some(
+    (plugin) =>
+      typeof plugin.name === "string" && aliases.has(plugin.name.trim()),
+  );
+}
+
+async function loadSimulatedAppControlPlugin(): Promise<Plugin | null> {
+  const mod = (await import("@elizaos/plugin-app-control")) as {
+    appAction?: Action;
+    appControlPlugin?: Plugin;
+    backgroundAction?: Action;
+    viewsAction?: Action;
+    settingsAction?: Action;
+  };
+  if (
+    !mod.appAction ||
+    !mod.backgroundAction ||
+    !mod.viewsAction ||
+    !mod.settingsAction
+  ) {
+    return null;
+  }
+  return {
+    name: "app-control",
+    description: "App control simulated-scenario actions.",
+    actions: [
+      mod.appAction,
+      mod.backgroundAction,
+      mod.viewsAction,
+      mod.settingsAction,
+    ],
+    responseHandlerEvaluators:
+      mod.appControlPlugin?.responseHandlerEvaluators,
+  };
+}
+
+export async function loadScenarioRequiredPlugin(
+  packageName: string,
+  executionProfile: ScenarioExecutionProfile,
+): Promise<Plugin | null> {
+  if (
+    executionProfile === "simulated" &&
+    packageName === "@elizaos/plugin-app-control"
+  ) {
+    return loadSimulatedAppControlPlugin();
+  }
+  if (executionProfile === "provider-qualified") {
+    assertProviderQualifiedPluginPackages([packageName]);
+  }
+
+  const mod = (await import(packageName)) as Record<string, unknown>;
+  const candidate =
+    [mod.default, mod.elizaPlugin, mod.plugin, mod.schedulingPlugin].find(
+      isPlugin,
+    ) ?? Object.values(mod).find(isPlugin);
+  if (!candidate) return null;
+  if (
+    executionProfile === "provider-qualified" &&
+    NON_PRODUCTION_PACKAGE_PATTERN.test(candidate.name)
+  ) {
+    throw new Error(
+      `[scenario-runner] provider-qualified plugin "${packageName}" resolved to non-production plugin name "${candidate.name}"`,
+    );
+  }
+  return candidate;
+}

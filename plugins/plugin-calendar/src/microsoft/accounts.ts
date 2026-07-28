@@ -340,6 +340,19 @@ export async function listMicrosoftCalendarAccounts(args: {
     );
 }
 
+function credentialTimestamp(
+  value: unknown,
+): number | string | Date | null {
+  if (
+    typeof value === "number" ||
+    typeof value === "string" ||
+    value instanceof Date
+  ) {
+    return value;
+  }
+  return null;
+}
+
 function credentialRef(value: unknown): CredentialRefRecord | null {
   const item = record(value);
   const credentialType = stringValue(item?.credentialType ?? item?.type);
@@ -348,8 +361,8 @@ function credentialRef(value: unknown): CredentialRefRecord | null {
   return {
     credentialType,
     vaultRef,
-    expiresAt: (item?.expiresAt as CredentialRefRecord["expiresAt"]) ?? null,
-    updatedAt: (item?.updatedAt as CredentialRefRecord["updatedAt"]) ?? null,
+    expiresAt: credentialTimestamp(item?.expiresAt),
+    updatedAt: credentialTimestamp(item?.updatedAt),
   };
 }
 

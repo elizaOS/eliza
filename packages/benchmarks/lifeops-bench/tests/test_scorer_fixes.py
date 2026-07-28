@@ -16,6 +16,7 @@ from __future__ import annotations
 import pytest
 
 from eliza_lifeops_bench.scorer import (
+    _action_is_hash_inert,
     _canonicalize_action,
     _classify_scenario_kind,
     _is_read_only_action,
@@ -92,6 +93,9 @@ def _result(
     return ScenarioResult(
         scenario_id="t_scenario",
         seed=0,
+        # These are deterministic scorer-unit fixtures, not publishable
+        # benchmark runs.
+        static_grading_mode="offline_conformance",
         turns=turns,
         state_hash_match=state_hash_match,
         output_substring_matches=matches,
@@ -355,7 +359,9 @@ def test_output_substring_match_accepts_calendar_confirmation_synonym() -> None:
 
 
 @pytest.mark.parametrize("action_name", ["ARCHIVE_EMAIL_THREAD", "ARCHIVE_THREAD"])
-def test_archive_thread_alias_scores_like_message_manage_archive(action_name: str) -> None:
+def test_archive_thread_alias_scores_like_message_manage_archive(
+    action_name: str,
+) -> None:
     predicted = [
         Action(
             name=action_name,
@@ -1031,21 +1037,16 @@ def test_canonicalize_preserves_existing_subaction_kwarg() -> None:
         ("CALENDAR", "next_event"),
         ("CALENDAR", "search_events"),
         ("CALENDAR", "propose_times"),
-        ("CALENDAR", "update_preferences"),
-        ("MESSAGE", "triage"),
         ("MESSAGE", "search_inbox"),
         ("MESSAGE", "list_channels"),
         ("MESSAGE", "read_channel"),
         ("MESSAGE", "read_with_contact"),
         ("ENTITY", "list"),
-        ("ENTITY", "log_interaction"),
-        # LIFE/review removed — read_with_side_effects (P2-9)
-        ("LIFE", "update"),
-        ("LIFE", "skip"),
         ("LIFE", "list"),
         ("HEALTH", "today"),
         ("HEALTH", "trend"),
-        # HEALTH/trends + HEALTH/summary removed — read_with_side_effects (P2-9)
+        ("HEALTH", "trends"),
+        ("HEALTH", "summary"),
         ("HEALTH", "by_metric"),
         ("HEALTH", "status"),
         ("MONEY", "dashboard"),
@@ -1055,26 +1056,19 @@ def test_canonicalize_preserves_existing_subaction_kwarg() -> None:
         ("MONEY", "recurring_charges"),
         ("MONEY", "subscription_audit"),
         ("MONEY", "subscription_status"),
-        ("BLOCK", "block"),
-        ("BLOCK", "unblock"),
         ("BLOCK", "status"),
         ("BLOCK", "list_active"),
-        ("BLOCK", "release"),
-        ("BLOCK", "request_permission"),
         ("BOOK_TRAVEL", "search"),
         ("BOOK_TRAVEL", "prepare"),
-        ("BOOK_TRAVEL", "book"),
-        ("BOOK_TRAVEL", "cancel"),
-        ("BOOK_TRAVEL", "hold"),
         ("SCHEDULED_TASK", "list"),
         ("SCHEDULED_TASK", "get"),
         ("SCHEDULED_TASK", "history"),
     ],
 )
-def test_is_read_only_action_recognizes_runner_noops(
+def test_is_read_only_action_recognizes_modeled_projections(
     umbrella: str, subaction: str
 ) -> None:
-    """Every (umbrella, subaction) listed maps to a runner `_u_*` no-op branch."""
+    """Every listed operation preserves state, including modeled projections."""
     # MESSAGE umbrella uses `operation` as its discriminator field.
     field = "operation" if umbrella == "MESSAGE" else "subaction"
     action = Action(name=umbrella, kwargs={field: subaction})
@@ -1088,6 +1082,7 @@ def test_is_read_only_action_recognizes_runner_noops(
         ("CALENDAR", "create_event"),
         ("CALENDAR", "update_event"),
         ("CALENDAR", "delete_event"),
+        ("CALENDAR", "update_preferences"),
         # MESSAGE mutators
         ("MESSAGE", "send"),
         ("MESSAGE", "manage"),
@@ -1097,18 +1092,31 @@ def test_is_read_only_action_recognizes_runner_noops(
         ("ENTITY", "set_identity"),
         ("ENTITY", "set_relationship"),
         ("ENTITY", "merge"),
+        ("ENTITY", "log_interaction"),
         # LIFE mutators
         ("LIFE", "create"),
         ("LIFE", "complete"),
         ("LIFE", "snooze"),
         ("LIFE", "delete"),
+        ("LIFE", "skip"),
+        ("LIFE", "update"),
         ("LIFE", "policy_set_reminder"),
         ("LIFE", "policy_configure_escalation"),
+        # Health deletion mutates the metric store.
+        ("HEALTH", "delete_metric"),
         # MONEY mutators
         ("MONEY", "subscription_cancel"),
         ("MONEY", "add_source"),
         ("MONEY", "remove_source"),
         ("MONEY", "import_csv"),
+        # Focus enforcement and travel holds persist authoritative state
+        ("BLOCK", "block"),
+        ("BLOCK", "unblock"),
+        ("BLOCK", "release"),
+        ("BLOCK", "request_permission"),
+        ("BOOK_TRAVEL", "book"),
+        ("BOOK_TRAVEL", "cancel"),
+        ("BOOK_TRAVEL", "hold"),
         # SCHEDULED_TASK mutators
         ("SCHEDULED_TASK", "create"),
         ("SCHEDULED_TASK", "update"),
@@ -1124,11 +1132,65 @@ def test_is_read_only_action_rejects_mutators(umbrella: str, subaction: str) -> 
     assert not _is_read_only_action(action), f"{umbrella}/{subaction} mutates"
 
 
+@pytest.mark.parametrize(
+    ("umbrella", "subaction"),
+    [
+        ("BLOCK", "block"),
+        ("BLOCK", "unblock"),
+        ("BLOCK", "release"),
+        ("BLOCK", "request_permission"),
+        ("BOOK_TRAVEL", "hold"),
+    ],
+)
+def test_focus_and_travel_writes_are_not_hash_inert(
+    umbrella: str,
+    subaction: str,
+) -> None:
+    action = Action(name=umbrella, kwargs={"subaction": subaction})
+    assert not _action_is_hash_inert(action)
+
+
+def test_conditional_message_and_entity_effects_drive_scenario_classification() -> None:
+    triage_read = Action(
+        name="MESSAGE", kwargs={"operation": "triage", "source": "gmail"}
+    )
+    triage_write = Action(
+        name="MESSAGE",
+        kwargs={"operation": "triage", "content": "Batch non-priority messages."},
+    )
+    private_log = Action(
+        name="ENTITY",
+        kwargs={
+            "subaction": "log_interaction",
+            "entityId": "contact_00001",
+            "notes": "private",
+            "storeAllowed": False,
+        },
+    )
+    durable_log = Action(
+        name="ENTITY",
+        kwargs={
+            "subaction": "log_interaction",
+            "entityId": "contact_00001",
+            "notes": "durable",
+        },
+    )
+
+    assert _is_read_only_action(triage_read)
+    assert _action_is_hash_inert(triage_read)
+    assert not _is_read_only_action(triage_write)
+    assert not _action_is_hash_inert(triage_write)
+    assert _is_read_only_action(private_log)
+    assert _action_is_hash_inert(private_log)
+    assert not _is_read_only_action(durable_log)
+    assert not _action_is_hash_inert(durable_log)
+
+
 def test_classify_scenario_kind_pure_read() -> None:
     scenario = _scenario(
         ground_truth_actions=[
             Action(name="HEALTH", kwargs={"subaction": "today"}),
-            Action(name="BLOCK", kwargs={"subaction": "block"}),
+            Action(name="BLOCK", kwargs={"subaction": "status"}),
         ]
     )
     assert _classify_scenario_kind(scenario) == "read"
@@ -1198,7 +1260,9 @@ def test_static_no_action_scenario_without_required_output_is_invalid() -> None:
     scenario = _scenario(ground_truth_actions=[])
     result = _result(state_hash_match=True, agent_actions=[])
 
-    with pytest.raises(ValueError, match="neither actions nor required outputs"):
+    with pytest.raises(
+        ValueError, match="neither actions, required outputs, nor a static rubric"
+    ):
         score_scenario(result, scenario)
 
 
@@ -1210,7 +1274,7 @@ def test_classify_scenario_kind_canonicalizes_granular() -> None:
             Action(name="HEALTH_TODAY", kwargs={}),
         ]
     )
-    assert _classify_scenario_kind(scenario) == "read"
+    assert _classify_scenario_kind(scenario) == "mixed"
 
 
 # ---------------------------------------------------------------------------
@@ -1259,26 +1323,19 @@ def test_p0_8_read_scenario_wrong_action_no_longer_inflated_by_state_hash() -> N
 
 
 def test_p0_8_read_scenario_partial_action_no_longer_promoted() -> None:
-    """Repro for W5-foc/W5-msg inflation: BLOCK with wrong kwargs no longer gets 1.0.
+    """A focus status query with the wrong rule cannot borrow hash-match credit.
 
-    Agent emits `BLOCK_BLOCK` with kwargs `apps` / `duration_minutes` /
-    `duration:'2h'` — wrong shapes vs GT `hostnames` / `packageNames` /
-    `durationMinutes`. After canonicalization both are BLOCK/block, so
-    name matches, kwargs don't → action_score = 0.5 partial.
-
-    Pre-P0-8: state_hash=True (BLOCK is a no-op) → action promoted to 1.0
-    → score 0.5 + 0.4 + 0.1 = 1.0. BAD — kwargs were wrong.
-    Post-P0-8: READ weights kick in, no promotion → 0.1 + 0.35 + 0.2 = 0.65.
+    Enforcement writes now have meaningful hashes; this regression therefore
+    uses the remaining read-only status projection to guard the original
+    state-hash inflation failure.
     """
     scenario = _scenario(
         ground_truth_actions=[
             Action(
                 name="BLOCK",
                 kwargs={
-                    "subaction": "block",
-                    "hostnames": ["news.example.test"],
-                    "packageNames": ["com.example.distract"],
-                    "durationMinutes": 120,
+                    "subaction": "status",
+                    "ruleId": "focus_seed_twitter",
                 },
             )
         ]
@@ -1287,19 +1344,17 @@ def test_p0_8_read_scenario_partial_action_no_longer_promoted() -> None:
         state_hash_match=True,
         agent_actions=[
             Action(
-                name="BLOCK_BLOCK",
+                name="BLOCK_STATUS",
                 kwargs={
-                    "apps": ["distract"],
-                    "duration_minutes": 120,
-                    "duration": "2h",
+                    "ruleId": "focus_seed_reddit",
                 },
             )
         ],
     )
     score = score_scenario(result, scenario)
-    # Triviality guard: BLOCK is hash-inert + wrong kwargs → no creditable overlap → 0.0
+    # The read projection is hash-inert and its wrong rule id has no overlap.
     assert score == pytest.approx(0.0)
-    assert score < 0.9  # contractual: must drop well below pre-P0-8 1.0 inflation
+    assert score < 0.9
 
 
 def test_p0_8_read_scenario_correct_kwargs_full_credit() -> None:
@@ -1614,13 +1669,23 @@ def test_p2_10_message_send_no_contact_in_gt_no_penalty() -> None:
     gt = [
         Action(
             name="MESSAGE",
-            kwargs={"operation": "send", "source": "imessage", "targetKind": "group", "roomId": "group_abc"},
+            kwargs={
+                "operation": "send",
+                "source": "imessage",
+                "targetKind": "group",
+                "roomId": "group_abc",
+            },
         )
     ]
     predicted = [
         Action(
             name="MESSAGE",
-            kwargs={"operation": "send", "source": "imessage", "targetKind": "group", "roomId": "group_xyz"},
+            kwargs={
+                "operation": "send",
+                "source": "imessage",
+                "targetKind": "group",
+                "roomId": "group_xyz",
+            },
         )
     ]
     # roomId mismatch → 0.5 partial, but no contact key → no P2-10 penalty.
@@ -1628,10 +1693,9 @@ def test_p2_10_message_send_no_contact_in_gt_no_penalty() -> None:
 
 
 # ---------------------------------------------------------------------------
-# P2-9: read_with_side_effects category for LIFE_REVIEW + HEALTH summary/trends.
+# P2-9: read_with_side_effects category for LIFE_REVIEW.
 #
 # LIFE/review stamps last_reviewed_at on reminder lists (not a pure no-op).
-# HEALTH/summary and HEALTH/trends are side-effecting reads.
 # Weights: 0.15 state + 0.3 action + 0.55 substring.
 # ---------------------------------------------------------------------------
 
@@ -1640,17 +1704,19 @@ def test_p2_10_message_send_no_contact_in_gt_no_penalty() -> None:
     ("umbrella", "subaction"),
     [
         ("LIFE", "review"),
-        ("HEALTH", "summary"),
-        ("HEALTH", "trends"),
     ],
 )
 def test_is_read_with_side_effects_action_recognizes_rwse_ops(
     umbrella: str, subaction: str
 ) -> None:
-    """LIFE/review and HEALTH/summary+trends are read-with-side-effects."""
+    """LIFE/review is a read whose review stamp mutates state."""
     action = Action(name=umbrella, kwargs={"subaction": subaction})
-    assert _is_read_with_side_effects_action(action), f"{umbrella}/{subaction} should be rwse"
-    assert not _is_read_only_action(action), f"{umbrella}/{subaction} must not be pure read"
+    assert _is_read_with_side_effects_action(
+        action
+    ), f"{umbrella}/{subaction} should be rwse"
+    assert not _is_read_only_action(
+        action
+    ), f"{umbrella}/{subaction} must not be pure read"
 
 
 @pytest.mark.parametrize(
@@ -1661,6 +1727,8 @@ def test_is_read_with_side_effects_action_recognizes_rwse_ops(
         ("LIFE", "skip"),
         ("HEALTH", "today"),
         ("HEALTH", "trend"),
+        ("HEALTH", "trends"),
+        ("HEALTH", "summary"),
         ("HEALTH", "by_metric"),
         ("HEALTH", "status"),
         ("LIFE", "create"),
@@ -1673,7 +1741,9 @@ def test_is_read_with_side_effects_action_rejects_non_rwse(
 ) -> None:
     """Non-rwse subactions are not classified as read_with_side_effects."""
     action = Action(name=umbrella, kwargs={"subaction": subaction})
-    assert not _is_read_with_side_effects_action(action), f"{umbrella}/{subaction} is not rwse"
+    assert not _is_read_with_side_effects_action(
+        action
+    ), f"{umbrella}/{subaction} is not rwse"
 
 
 def test_classify_scenario_kind_life_review_is_rwse() -> None:
@@ -1686,14 +1756,14 @@ def test_classify_scenario_kind_life_review_is_rwse() -> None:
     assert _classify_scenario_kind(scenario) == "read_with_side_effects"
 
 
-def test_classify_scenario_kind_health_summary_is_rwse() -> None:
-    """A scenario with only HEALTH/summary gets read_with_side_effects."""
+def test_classify_scenario_kind_health_summary_is_read() -> None:
+    """A scenario with only HEALTH/summary remains a pure projection."""
     scenario = _scenario(
         ground_truth_actions=[
             Action(name="HEALTH", kwargs={"subaction": "summary"}),
         ]
     )
-    assert _classify_scenario_kind(scenario) == "read_with_side_effects"
+    assert _classify_scenario_kind(scenario) == "read"
 
 
 def test_classify_scenario_kind_rwse_plus_read_is_rwse() -> None:
@@ -1743,26 +1813,28 @@ def test_p2_9_life_review_wrong_kwargs_partial_credit() -> None:
     """
     scenario = _scenario(
         ground_truth_actions=[
-            Action(name="LIFE", kwargs={"subaction": "review", "list_id": "list_primary"}),
+            Action(
+                name="LIFE", kwargs={"subaction": "review", "list_id": "list_primary"}
+            ),
         ]
     )
     result = _result(
         state_hash_match=True,
         agent_actions=[
-            Action(name="LIFE", kwargs={"subaction": "review", "list_id": "list_other"}),
+            Action(
+                name="LIFE", kwargs={"subaction": "review", "list_id": "list_other"}
+            ),
         ],
     )
     assert score_scenario(result, scenario) == pytest.approx(0.85)
 
 
-def test_p2_9_health_trends_uses_rwse_weights() -> None:
-    """HEALTH/trends correct action scores 1.0 under rwse weights.
+def test_p2_9_health_trends_uses_read_weights() -> None:
+    """HEALTH/trends correct action scores 1.0 under read weights.
 
     HEALTH/trends is still hash-inert (runner doesn't write state yet), so
     partial kwarg matches are zeroed by the triviality guard. Test with a
-    matching action to confirm rwse weights apply.
-
-    READ_WITH_SIDE_EFFECTS: 0.15 + 0.3 + 0.55 = 1.0 on correct match.
+    matching action to confirm read weights apply.
     """
     scenario = _scenario(
         ground_truth_actions=[

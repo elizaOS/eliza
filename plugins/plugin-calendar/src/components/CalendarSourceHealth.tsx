@@ -7,6 +7,7 @@
 
 import type { LifeOpsCalendarSourceHealth } from "@elizaos/shared";
 import { Button } from "@elizaos/ui/components";
+import { useAppSelector } from "@elizaos/ui/state";
 import {
   CheckCircle2,
   Clock3,
@@ -67,6 +68,7 @@ export function CalendarSourceHealth({
   refreshing,
   onRefresh,
 }: CalendarSourceHealthProps) {
+  const t = useAppSelector((s) => s.t);
   const rows = toCalendarSourceHealthRows(sources);
   const headline = calendarCoverageHeadline(status, rows, refreshing);
   const headlineTone =
@@ -79,7 +81,9 @@ export function CalendarSourceHealth({
   return (
     <section
       className="border-y border-border/12 py-2"
-      aria-label="Calendar sources"
+      aria-label={t("calendarSources.sectionAria", {
+        defaultValue: "Calendar sources",
+      })}
       data-testid="calendar-source-health"
     >
       <div className="flex min-h-7 items-center gap-2">
@@ -97,7 +101,13 @@ export function CalendarSourceHealth({
           onClick={onRefresh}
           disabled={refreshing}
           aria-label={
-            refreshing ? "Refreshing calendar sources" : "Refresh calendar"
+            refreshing
+              ? t("calendarSources.refreshingAria", {
+                  defaultValue: "Refreshing calendar sources",
+                })
+              : t("calendarSources.refreshAria", {
+                  defaultValue: "Refresh calendar",
+                })
           }
         >
           <RefreshCw
@@ -105,7 +115,11 @@ export function CalendarSourceHealth({
             aria-hidden
           />
           <span className="hidden sm:inline">
-            {refreshing ? "Refreshing" : "Refresh"}
+            {refreshing
+              ? t("calendarSources.refreshing", {
+                  defaultValue: "Refreshing",
+                })
+              : t("calendarSources.refresh", { defaultValue: "Refresh" })}
           </span>
         </Button>
       </div>
@@ -131,8 +145,12 @@ export function CalendarSourceHealth({
       ) : status !== "loading" && status !== "error" ? (
         <p className="mt-1 text-xs text-muted">
           {status === "unavailable"
-            ? "No connected source details are available."
-            : "No source details were reported for this view."}
+            ? t("calendarSources.noConnectedDetails", {
+                defaultValue: "No connected source details are available.",
+              })
+            : t("calendarSources.noReportedDetails", {
+                defaultValue: "No source details were reported for this view.",
+              })}
         </p>
       ) : null}
     </section>

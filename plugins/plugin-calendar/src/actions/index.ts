@@ -1,4 +1,6 @@
 /** Barrel for the calendar actions: calendar CRUD/planning plus deterministic conflict detection. */
+
+export { CALENDAR_DETAILS_PARAMETER_SCHEMA } from "../calendar-action-schema.js";
 export { calendarAction } from "./calendar.js";
 export {
   CALENDAR_PLAN_INSTRUCTIONS,
@@ -13,7 +15,6 @@ export {
   calendarSourcesAction,
 } from "./calendar-sources.js";
 export {
-  __resetConflictDetectLoaderForTests,
   type ConflictDetectActionDeps,
   type ConflictDetectEvent,
   type ConflictDetectHostAdapter,
@@ -30,7 +31,6 @@ export {
   createCalendarFeedConflictLoader,
   createConflictDetectAction,
   registerConflictDetectHostAdapter,
-  setConflictDetectLoader,
 } from "./conflict-detect.js";
 export type {
   CalendarActionDeps,

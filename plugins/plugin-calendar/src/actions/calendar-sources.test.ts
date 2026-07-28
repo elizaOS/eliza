@@ -1,12 +1,16 @@
 /**
- * Calendar-source action tests exercise owner gating and real connector-account
- * OAuth-flow persistence while substituting only provider transports and the
- * external ICS sync boundary.
+ * Calendar-source action tests exercise owner gating, the host authorization
+ * seam, and real connector-account OAuth-flow persistence while substituting
+ * only provider transports and the external ICS sync boundary. They also pin
+ * the least-privilege invariant that no URL parameter exists on the agent
+ * surface: ICS subscription creation is an owner handoff, never an agent call.
  */
 
 import {
   CONNECTOR_ACCOUNT_SERVICE_TYPE,
   ConnectorAccountManager,
+  type Content,
+  executePlannedToolCall,
   type IAgentRuntime,
   type Memory,
 } from "@elizaos/core";
@@ -16,6 +20,8 @@ import { CalendarService } from "../service/CalendarService.js";
 import {
   type CalendarSourceConnectionIntent,
   calendarSourcesAction,
+  createCalendarSourcesAction,
+  registerCalendarSourcesHostAdapter,
   renderCalendarSourceListText,
   selectionEffectReceipt,
 } from "./calendar-sources.js";
@@ -44,6 +50,10 @@ function runtimeFixture(calendarService?: object) {
       return null;
     },
     getRoom: async () => null,
+    logger: {
+      warn: vi.fn(),
+      error: vi.fn(),
+    },
   } as unknown as IAgentRuntime;
   manager = new ConnectorAccountManager(runtime);
   return { runtime, manager };
@@ -94,6 +104,64 @@ describe("CALENDAR_SOURCES action", () => {
       data: { error: "PERMISSION_DENIED" },
     });
     expect(startOAuth).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when injected deps deny authorization", async () => {
+    const { runtime } = runtimeFixture();
+    const denied = createCalendarSourcesAction({
+      authorize: async () => false,
+    });
+
+    const result = await denied.handler(
+      runtime,
+      message(),
+      undefined,
+      { parameters: { operation: "list" } },
+      undefined,
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      data: { error: "PERMISSION_DENIED" },
+    });
+  });
+
+  it("lets a runtime-keyed host adapter substitute the owner gate", async () => {
+    const calendarService = {
+      getCalendarFeed: vi.fn(async () => ({ sources: [] })),
+      listCalendars: vi.fn(async () => []),
+    };
+    const { runtime } = runtimeFixture(calendarService);
+    registerCalendarSourcesHostAdapter(runtime, {
+      authorize: async () => true,
+    });
+
+    // The default owner gate denies this caller (see the test above); the
+    // host adapter's decision replaces it entirely.
+    const result = await invoke(
+      runtime,
+      { operation: "list" },
+      message(OTHER_ENTITY_ID),
+    );
+
+    expect(result).toMatchObject({
+      success: true,
+      data: { operation: "list" },
+    });
+  });
+
+  it("applies a denying host adapter to the already-created default action", async () => {
+    const { runtime } = runtimeFixture();
+    registerCalendarSourcesHostAdapter(runtime, {
+      authorize: async () => false,
+    });
+
+    const result = await invoke(runtime, { operation: "list" });
+
+    expect(result).toMatchObject({
+      success: false,
+      data: { error: "PERMISSION_DENIED" },
+    });
   });
 
   it("persists a least-privilege Google authorization flow without claiming connection", async () => {
@@ -230,71 +298,51 @@ describe("CALENDAR_SOURCES action", () => {
     expect(result?.text).toContain('"action":"permission_request"');
   });
 
-  it("keeps a durable ICS source in configured_sync_failed when first sync fails", async () => {
-    const configurationCommittedAt = "2026-07-27T12:00:00.000Z";
-    const failedAt = "2026-07-27T12:01:00.000Z";
+  it("offers no URL parameter on the agent surface", () => {
+    // Least privilege: subscription capability URLs never enter the agent
+    // surface, so the schema must not even offer a URL (or ICS name) field.
+    expect(
+      calendarSourcesAction.parameters?.some((parameter) =>
+        /url/i.test(parameter.name),
+      ),
+    ).toBe(false);
+    expect(
+      calendarSourcesAction.parameters?.map((parameter) => parameter.name),
+    ).not.toContain("name");
+  });
+
+  it("hands ICS subscription creation to the owner instead of accepting a URL", async () => {
     const calendarService = {
-      createIcsCalendarSource: vi.fn(async () => ({
-        id: "ics-source-1",
-        updatedAt: configurationCommittedAt,
-      })),
-      syncIcsCalendarSource: vi.fn(async () => {
-        throw new CalendarServiceError(
-          503,
-          "Remote feed is unavailable",
-          "ICS_FETCH_FAILED",
-        );
-      }),
-      listIcsCalendarSources: vi.fn(async () => [
-        { id: "ics-source-1", updatedAt: failedAt },
-      ]),
+      createIcsCalendarSource: vi.fn(),
+      syncIcsCalendarSource: vi.fn(),
     };
     const { runtime } = runtimeFixture(calendarService);
 
     const result = await invoke(runtime, {
       operation: "connect",
       provider: "ics",
-      name: "Family logistics",
       url: "https://calendar.example.test/private.ics",
     });
 
     expect(result?.success).toBe(false);
     expect(connection(result)).toEqual({
-      state: "configured_sync_failed",
+      state: "configuration_required",
       provider: "ics",
       operation: "connect",
       connected: false,
-      sourceId: "ics-source-1",
-      configurationCommittedAt,
-      sourceUpdatedAt: failedAt,
-      reason: "Remote feed is unavailable",
-      errorCode: "ICS_FETCH_FAILED",
-      retryable: true,
-      completion: "partial_failure",
+      connectorId: "ics",
+      reason: expect.stringContaining("Settings → Calendar sources"),
+      completion: "configuration_required",
     });
-    expect(result?.effectReceipts).toEqual([
-      expect.objectContaining({
-        operation: "calendar.source.configure",
-        outcome: "applied",
-      }),
-      expect.objectContaining({
-        operation: "calendar.source.sync",
-        outcome: "failed",
-        failure: {
-          code: "ICS_FETCH_FAILED",
-          retryable: true,
-          acceptance: "rejected",
-        },
-      }),
-    ]);
-    expect(JSON.stringify(result?.effectReceipts)).not.toContain(
-      "ics-source-1",
+    expect(result?.data).toMatchObject({
+      completion: "configuration_required",
+    });
+    expect(calendarService.createIcsCalendarSource).not.toHaveBeenCalled();
+    expect(calendarService.syncIcsCalendarSource).not.toHaveBeenCalled();
+    // A stray url argument is dropped, never echoed into model-visible output.
+    expect(JSON.stringify(result)).not.toContain(
+      "calendar.example.test/private.ics",
     );
-    expect(calendarService.createIcsCalendarSource).toHaveBeenCalledWith({
-      name: "Family logistics",
-      url: "https://calendar.example.test/private.ics",
-      enabled: true,
-    });
   });
 
   it("returns a durable failed-sync receipt when ICS reconnect cannot synchronize", async () => {
@@ -326,7 +374,6 @@ describe("CALENDAR_SOURCES action", () => {
       operation: "reconnect",
       connected: false,
       sourceId: "ics-source-1",
-      configurationCommittedAt: null,
       sourceUpdatedAt: failedAt,
       reason: "Remote feed is invalid",
       errorCode: "ICS_FEED_PARSE_ERROR",
@@ -344,6 +391,119 @@ describe("CALENDAR_SOURCES action", () => {
         },
       }),
     ]);
+    expect(result?.text).toContain("remains configured");
+    expect(result?.text).not.toContain("was saved");
+    expect(result?.userFacingEffectReceiptIds).toEqual([
+      result?.effectReceipts?.[0]?.receiptId,
+    ]);
+  });
+
+  it("preserves an original reconnect 404 without fabricating reconciliation loss", async () => {
+    const original = new CalendarServiceError(
+      404,
+      "Calendar subscription source not found.",
+      "ICS_SOURCE_NOT_FOUND",
+    );
+    const calendarService = {
+      syncIcsCalendarSource: vi.fn(async () => {
+        throw original;
+      }),
+      listIcsCalendarSources: vi.fn(async () => []),
+    };
+    const { runtime } = runtimeFixture(calendarService);
+
+    const result = await invoke(runtime, {
+      operation: "reconnect",
+      provider: "ics",
+      connectorAccountId: "missing-source",
+    });
+
+    expect(result).toMatchObject({
+      success: false,
+      text: original.message,
+      data: {
+        operation: "reconnect",
+        error: "ICS_SOURCE_NOT_FOUND",
+        status: 404,
+      },
+    });
+    expect(calendarService.listIcsCalendarSources).not.toHaveBeenCalled();
+  });
+
+  it("binds a read-only source snapshot to an explicit no-change receipt", async () => {
+    const calendarService = {
+      getCalendarFeed: vi.fn(async () => ({ sources: [] })),
+      listCalendars: vi.fn(async () => []),
+    };
+    const { runtime } = runtimeFixture(calendarService);
+
+    const result = await invoke(runtime, { operation: "list" });
+
+    expect(result).toMatchObject({
+      success: true,
+      verifiedUserFacing: true,
+      data: {
+        operation: "list",
+        snapshot: {
+          state: "unavailable",
+          sources: [],
+        },
+      },
+    });
+    expect(result?.effectReceipts).toEqual([
+      expect.objectContaining({
+        operation: "calendar.source.list",
+        outcome: "noop",
+        resource: expect.objectContaining({
+          kind: "calendar.source.snapshot",
+        }),
+      }),
+    ]);
+    expect(result?.userFacingEffectReceiptIds).toEqual([
+      result?.effectReceipts?.[0]?.receiptId,
+    ]);
+  });
+
+  it("delivers OAuth-start text only after the executor binds its durable receipt", async () => {
+    const { runtime, manager } = runtimeFixture();
+    manager.registerProvider({
+      provider: "google",
+      startOAuth: vi.fn(async () => ({
+        authUrl: "https://accounts.example.test/auth?state=opaque",
+        expiresAt: Date.parse("2026-07-27T13:00:00.000Z"),
+      })),
+    });
+    const delivered: Content[] = [];
+
+    const result = await executePlannedToolCall(
+      runtime,
+      {
+        message: message(),
+        userRoles: ["OWNER"],
+        activeContexts: ["general"],
+        callback: async (response) => {
+          delivered.push(response);
+          return [];
+        },
+      },
+      {
+        name: calendarSourcesAction.name,
+        params: {
+          operation: "connect",
+          provider: "google",
+        },
+      },
+      {
+        actions: [calendarSourcesAction],
+      },
+    );
+
+    expect(result.effectReceipts, JSON.stringify(result)).toHaveLength(1);
+    expect(delivered).toHaveLength(1);
+    expect(delivered[0]).toMatchObject({
+      text: result.userFacingText,
+      effectReceiptIds: [result.effectReceipts?.[0]?.receiptId],
+    });
   });
 
   it.each([

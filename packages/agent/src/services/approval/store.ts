@@ -36,6 +36,7 @@ import {
   type ApprovalAction,
   type ApprovalChannel,
   type ApprovalEnqueueInput,
+  type ApprovalEnqueueResult,
   ApprovalIdempotencyConflictError,
   type ApprovalListFilter,
   ApprovalNotFoundError,
@@ -754,11 +755,6 @@ function timestampLiteral(date: Date): string {
   return sqlText(date.toISOString());
 }
 
-interface ApprovalInsertResult {
-  readonly request: ApprovalRequest;
-  readonly reused: boolean;
-}
-
 interface NotificationEmitter {
   notify: (input: {
     title: string;
@@ -825,9 +821,15 @@ export class PgApprovalQueue implements ApprovalQueue {
   }
 
   async enqueue(input: ApprovalEnqueueInput): Promise<ApprovalRequest> {
+    return (await this.enqueueWithResult(input)).request;
+  }
+
+  async enqueueWithResult(
+    input: ApprovalEnqueueInput,
+  ): Promise<ApprovalEnqueueResult> {
     const inserted = await this.insertApproval(input);
     if (inserted.reused) {
-      return inserted.request;
+      return inserted;
     }
     const { request } = inserted;
     logger.info(
@@ -862,7 +864,7 @@ export class PgApprovalQueue implements ApprovalQueue {
           });
         });
     }
-    return request;
+    return inserted;
   }
 
   async enqueueConfirmed(
@@ -893,7 +895,7 @@ export class PgApprovalQueue implements ApprovalQueue {
   private async insertApproval(
     input: ApprovalEnqueueInput,
     confirmedResolution?: ApprovalResolution,
-  ): Promise<ApprovalInsertResult> {
+  ): Promise<ApprovalEnqueueResult> {
     const payload = validateApprovalPayload(input.payload, "enqueue payload");
     if (input.action !== payload.action) {
       throw new Error(

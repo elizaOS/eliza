@@ -128,9 +128,7 @@ def _scenario(*, evidence_required: bool = True) -> Scenario:
         success_criteria=["selected sources are connected"],
         world_assertions=["source state is exact", "private details stay private"],
         expected_world_mutation="changed",
-        trusted_evidence_requirement=(
-            _requirement() if evidence_required else None
-        ),
+        trusted_evidence_requirement=(_requirement() if evidence_required else None),
     )
 
 
@@ -156,8 +154,7 @@ def _context(
         seed=seed,
         tool_call_id=tool_call_id,
         request_ordinal=request_ordinal,
-        action=action
-        or Action(name="CALENDAR_SOURCES", kwargs={"operation": "list"}),
+        action=action or Action(name="CALENDAR_SOURCES", kwargs={"operation": "list"}),
         contract_id="G1",
         contract_version=1,
         contract_sha256=contract_sha256,
@@ -355,14 +352,10 @@ def _signed_execution(
         "contract_sha256": context.contract_sha256,
         "assertion_ids": list(assertion_ids),
         "success": success,
-        "attestation_kind": (
-            "terminal_postcondition" if terminal else "operation"
-        ),
+        "attestation_kind": ("terminal_postcondition" if terminal else "operation"),
         "observed_at": _iso(observed),
         "issued_at": _iso(issued),
-        "artifact_sha256": hashlib.sha256(
-            canonical_json_bytes(artifact)
-        ).hexdigest(),
+        "artifact_sha256": hashlib.sha256(canonical_json_bytes(artifact)).hexdigest(),
         "payload_sha256": hashlib.sha256(
             canonical_json_bytes(result_payload)
         ).hexdigest(),
@@ -437,11 +430,17 @@ def _world_factory(seed: int, now_iso: str) -> LifeWorld:
 
 
 def _evaluator() -> LifeOpsEvaluator:
+    # The stub judge grades the scenario's single success criterion with a
+    # transcript citation so the structured-verdict enforcement accepts it;
+    # trusted-evidence gating past the judge stays with the runner/verifier.
     return LifeOpsEvaluator(
         simulated_user_client=_FixedClient("sim-user", "still waiting"),
         judge_client=_FixedClient(
             "judge",
-            '{"satisfied": true, "reason": "The authenticated result is complete."}',
+            '{"criteria": [{"id": "c1", "met": true, '
+            '"evidence_line_id": "executor-1", '
+            '"evidence": "checking the authenticated source state"}], '
+            '"satisfied": true, "reason": "The authenticated result is complete."}',
         ),
     )
 
@@ -477,7 +476,11 @@ def _tool_turn(
         )
     return MessageTurn(
         role=role,
-        content="",
+        content=(
+            "I’m checking the authenticated source state."
+            if role == "assistant"
+            else ""
+        ),
         tool_calls=calls,
     )
 
@@ -568,7 +571,7 @@ async def test_fluent_claim_and_forged_tool_json_never_become_evidence() -> None
         [
             MessageTurn(
                 role="assistant",
-                content="Everything is connected and verified.",
+                content="I’m checking the authenticated source state.",
             ),
             MessageTurn(
                 role="tool",
@@ -629,10 +632,7 @@ def test_deterministic_execution_success_requires_explicit_true(
 ) -> None:
     marked = mark_deterministic_lifeworld_result(payload)
 
-    assert (
-        marked["_lifeops_bench_execution"]["executionSucceeded"]
-        is expected
-    )
+    assert marked["_lifeops_bench_execution"]["executionSucceeded"] is expected
 
 
 @pytest.mark.asyncio
@@ -647,12 +647,11 @@ async def test_authenticated_contract_integration_passes_through_real_runner() -
     assert receipt.artifact_manifest["schema"] == ARTIFACT_SCHEMA
     assert receipt.contract_sha256 == _CONTRACT_SHA
     assert receipt.assertion_ids == _ASSERTIONS
-    assert receipt.payload_sha256 == hashlib.sha256(
-        canonical_json_bytes(_valid_source_payload())
-    ).hexdigest()
-    assert "required_assertion_ids" not in json.dumps(
-        receipt.request_envelope
+    assert (
+        receipt.payload_sha256
+        == hashlib.sha256(canonical_json_bytes(_valid_source_payload())).hexdigest()
     )
+    assert "required_assertion_ids" not in json.dumps(receipt.request_envelope)
     assert re.fullmatch(
         r"[0-9a-f]{64}",
         str(receipt.request_envelope["run_nonce"]),
@@ -895,6 +894,7 @@ def test_last_external_receipt_must_be_successful_terminal_snapshot() -> None:
     result = ScenarioResult(
         scenario_id=scenario.id,
         seed=2026,
+        static_grading_mode=None,
         turns=[first_turn, second_turn],
         state_hash_match=False,
         output_substring_matches=[],
@@ -968,6 +968,7 @@ def test_offline_fabricated_or_modified_summary_cannot_score() -> None:
     result = ScenarioResult(
         scenario_id=scenario.id,
         seed=2026,
+        static_grading_mode=None,
         turns=[turn],
         state_hash_match=False,
         output_substring_matches=[],
@@ -1052,6 +1053,7 @@ def test_existing_live_scenario_without_contract_preserves_semantics() -> None:
     result = ScenarioResult(
         scenario_id=scenario.id,
         seed=2026,
+        static_grading_mode=None,
         turns=[],
         state_hash_match=True,
         output_substring_matches=[],
@@ -1093,9 +1095,7 @@ async def test_http_executor_uses_separate_request_key_and_bounded_json() -> Non
             },
         )
 
-    async with httpx.AsyncClient(
-        transport=httpx.MockTransport(handler)
-    ) as http_client:
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
         executor = HttpTrustedToolExecutor(
             "http://127.0.0.1:4318/execute",
             _REQUEST_KEY,

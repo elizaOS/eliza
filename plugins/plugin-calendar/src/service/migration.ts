@@ -252,6 +252,36 @@ export async function ensureIcsCalendarSourceTable(
 }
 
 /**
+ * Secret cleanup is an outbox owned by the calendar database. Rotation and
+ * source deletion enqueue an opaque vault reference in the same statement as
+ * the source mutation, so a vault outage cannot permanently orphan a URL.
+ */
+export async function ensureIcsSecretCleanupTable(
+  exec: SqlExecutor,
+): Promise<void> {
+  await exec(`
+    CREATE TABLE IF NOT EXISTS ${TARGET_SCHEMA}.life_calendar_secret_cleanup (
+      id TEXT PRIMARY KEY,
+      agent_id TEXT NOT NULL,
+      source_id TEXT NOT NULL,
+      secret_ref TEXT NOT NULL,
+      reason TEXT NOT NULL,
+      attempt_count INTEGER NOT NULL DEFAULT 0,
+      last_attempt_at TEXT,
+      last_error_code TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      CONSTRAINT calendar_secret_cleanup_agent_ref_unique
+        UNIQUE (agent_id, secret_ref)
+    )`);
+  await exec(`
+    CREATE INDEX IF NOT EXISTS calendar_secret_cleanup_drain_idx
+      ON ${TARGET_SCHEMA}.life_calendar_secret_cleanup (
+        agent_id, created_at, id
+      )`);
+}
+
+/**
  * Feed selection is an independently versioned row per exact source. The
  * composite primary key is the concurrency boundary: provider, side, grant,
  * account, and calendar identifiers are never collapsed into a delimiter key.
@@ -411,6 +441,7 @@ export async function migrateCalendarTables(
 ): Promise<TableMigrationResult[]> {
   await exec(`CREATE SCHEMA IF NOT EXISTS ${TARGET_SCHEMA}`);
   await ensureIcsCalendarSourceTable(exec);
+  await ensureIcsSecretCleanupTable(exec);
   await ensureCalendarFeedPreferenceTable(exec);
   await ensureGoogleCalendarWatchChannelTable(exec);
   const results: TableMigrationResult[] = [];

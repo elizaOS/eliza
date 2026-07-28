@@ -7,6 +7,7 @@
 import type { Action } from "../types/components";
 import type { AgentContext, RoleGate, RoleGateRole } from "../types/contexts";
 import type { Memory } from "../types/memory";
+import { disclosureGateFailure } from "../security/trusted-delivery-audience";
 import { resolveActionRolePolicyRole } from "./action-role-policy";
 import { satisfiesContextGate, satisfiesRoleGate } from "./context-gates";
 import { privateActionAllowedOnTurn } from "./private-action-gate";
@@ -18,7 +19,12 @@ import { privateActionAllowedOnTurn } from "./private-action-gate";
  */
 export type GateableAction = Pick<
 	Action,
-	"name" | "private" | "contextGate" | "contexts" | "roleGate"
+	| "name"
+	| "private"
+	| "contextGate"
+	| "contexts"
+	| "roleGate"
+	| "disclosureGate"
 >;
 
 /**
@@ -46,11 +52,12 @@ export interface ActionGateContext {
  * `ctx` (#12087 Item 9). Composes, in order:
  *
  *   1. the private-action gate (unless `skipPrivateGate`),
- *   2. the operator `ACTION_ROLE_POLICY` override — when set for this action it
+ *   2. the non-overridable destination disclosure gate,
+ *   3. the operator `ACTION_ROLE_POLICY` override — when set for this action it
  *      **replaces** the declared gates and access is decided solely by the
  *      policy role,
- *   3. the contextGate (derived from `contextGate ?? {contexts, roleGate}`),
- *   4. the top-level roleGate.
+ *   4. the contextGate (derived from `contextGate ?? {contexts, roleGate}`),
+ *   5. the top-level roleGate.
  *
  * Returns a human-readable failure reason, or `undefined` when the action is
  * allowed. Every exposure and execution path — planner selection, sub-planner
@@ -66,6 +73,14 @@ export function actionGateFailure(
 		!privateActionAllowedOnTurn(action, ctx.message)
 	) {
 		return `Action ${action.name} is private and can only run in the agent's autonomous loop`;
+	}
+
+	const disclosureFailure = disclosureGateFailure(
+		action.disclosureGate,
+		ctx.message,
+	);
+	if (disclosureFailure) {
+		return `Action ${action.name} is not allowed: ${disclosureFailure}`;
 	}
 
 	const policyRole = resolveActionRolePolicyRole(action);

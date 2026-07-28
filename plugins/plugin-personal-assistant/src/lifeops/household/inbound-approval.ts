@@ -33,14 +33,22 @@ import {
   toText,
 } from "../sql.js";
 import { createHouseholdCoordinationService } from "./service.js";
+import { HOUSEHOLD_SCHEDULE_PROPOSAL_APPROVAL_WORKFLOW_ID } from "./types.js";
 
 type UnknownRecord = Record<string, unknown>;
 
 const DIRECT_CHAT_TYPES = new Set(["direct", "dm", "private"]);
-const HOUSEHOLD_APPROVAL_WORKFLOW =
-  "household.schedule.proposal.approval" as const;
-const APPROVAL_COMMAND =
+// One full line per command: real email/SMS replies wrap the decision in
+// greetings, signatures, and quoted history, so the command is matched
+// line-by-line instead of against the whole message. A line must contain
+// nothing but the command (plus an optional note after an explicit
+// separator) — prose sharing the command's line never parses, which is what
+// keeps quoted echoes of the outbound prompt from registering as decisions.
+const APPROVAL_COMMAND_LINE =
   /^\s*(approve|reject)\s+household\s+approval\s+([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})(?:\s*[:—-]\s*(.{1,500}))?\s*$/iu;
+// Quoted-reply context (`>`/`|` prefixes) restates earlier messages, not the
+// sender's decision, so those lines are excluded before command matching.
+const QUOTED_REPLY_LINE = /^\s*[>|]/u;
 
 export type HouseholdInboundApprovalDecision = "approve" | "reject";
 
@@ -164,19 +172,40 @@ function identityPlatforms(provider: string): string[] {
   return [provider];
 }
 
-/** Parse the narrow, deterministic command shown in an approval notification. */
+/**
+ * Parse the narrow, deterministic command taught by the delivered approval
+ * prompt. The command may sit anywhere in the reply as long as it occupies a
+ * whole unquoted line; conflicting commands (different decisions or approval
+ * ids) make the reply ambiguous and parse to null rather than guessing.
+ */
 export function parseHouseholdInboundApprovalCommand(
   text: string,
 ): HouseholdInboundApprovalCommand | null {
-  const match = APPROVAL_COMMAND.exec(text);
-  if (!match) return null;
-  const decision = match[1]?.toLowerCase();
-  const approvalRequestId = match[2]?.toLowerCase();
-  if ((decision !== "approve" && decision !== "reject") || !approvalRequestId) {
-    return null;
+  const commands = new Map<string, HouseholdInboundApprovalCommand>();
+  for (const line of text.split(/\r?\n/u)) {
+    if (QUOTED_REPLY_LINE.test(line)) continue;
+    const match = APPROVAL_COMMAND_LINE.exec(line);
+    if (!match) continue;
+    const decision = match[1]?.toLowerCase();
+    const approvalRequestId = match[2]?.toLowerCase();
+    if (
+      (decision !== "approve" && decision !== "reject") ||
+      !approvalRequestId
+    ) {
+      continue;
+    }
+    const key = `${decision}\0${approvalRequestId}`;
+    if (!commands.has(key)) {
+      commands.set(key, {
+        decision,
+        approvalRequestId,
+        reason: match[3]?.trim() || null,
+      });
+    }
   }
-  const reason = match[3]?.trim() || null;
-  return { decision, approvalRequestId, reason };
+  if (commands.size !== 1) return null;
+  const [command] = commands.values();
+  return command ?? null;
 }
 
 /**
@@ -263,12 +292,12 @@ export function authenticatedHouseholdInboundIdentity(
   }
   const receivedAt = new Date(createdAt);
   if (!Number.isFinite(receivedAt.getTime())) return null;
+  const connectorAccountId = firstString(nested.accountId, metadata.accountId);
+  if (!connectorAccountId) return null;
 
   return {
     provider,
-    connectorAccountId:
-      firstString(nested.accountId, metadata.accountId) ??
-      "connector-account-unavailable",
+    connectorAccountId,
     providerThreadId,
     providerMessageId,
     identityClaims,
@@ -303,7 +332,10 @@ function approvalTarget(request: ApprovalRequest): HouseholdApprovalTarget {
       { approvalRequestId: request.id },
     );
   }
-  if (request.payload.workflowId === HOUSEHOLD_APPROVAL_WORKFLOW) {
+  if (
+    request.payload.workflowId ===
+    HOUSEHOLD_SCHEDULE_PROPOSAL_APPROVAL_WORKFLOW_ID
+  ) {
     if (
       typeof proposalVersion !== "number" ||
       !Number.isInteger(proposalVersion) ||
@@ -419,11 +451,16 @@ function assertReceiptMatches(
   receipt: HouseholdInboundApprovalReceipt,
   command: HouseholdInboundApprovalCommand,
   partyEntityId: string,
+  identity: HouseholdAuthenticatedInboundIdentity,
 ): void {
   if (
     receipt.approvalRequestId !== command.approvalRequestId ||
     receipt.decision !== command.decision ||
-    receipt.partyEntityId !== partyEntityId
+    receipt.partyEntityId !== partyEntityId ||
+    receipt.provider !== identity.provider ||
+    receipt.connectorAccountId !== identity.connectorAccountId ||
+    receipt.providerThreadId !== identity.providerThreadId ||
+    receipt.providerMessageId !== identity.providerMessageId
   ) {
     throw new HouseholdInboundApprovalError(
       "A provider message or approval request was replayed with different decision bytes.",
@@ -478,7 +515,12 @@ async function persistReceipt(input: {
       { approvalRequestId: input.command.approvalRequestId },
     );
   }
-  assertReceiptMatches(receipt, input.command, input.target.partyEntityId);
+  assertReceiptMatches(
+    receipt,
+    input.command,
+    input.target.partyEntityId,
+    input.identity,
+  );
   return receipt;
 }
 
@@ -577,7 +619,12 @@ export async function processHouseholdInboundApproval(input: {
   );
   const duplicate = await receiptByMessage(input.runtime, input.identity);
   if (duplicate) {
-    assertReceiptMatches(duplicate, input.command, partyEntityId);
+    assertReceiptMatches(
+      duplicate,
+      input.command,
+      partyEntityId,
+      input.identity,
+    );
     return { status: "duplicate", receipt: duplicate };
   }
 
@@ -612,7 +659,12 @@ export async function processHouseholdInboundApproval(input: {
     request.id,
   );
   if (existingForApproval) {
-    assertReceiptMatches(existingForApproval, input.command, partyEntityId);
+    assertReceiptMatches(
+      existingForApproval,
+      input.command,
+      partyEntityId,
+      input.identity,
+    );
     return { status: "duplicate", receipt: existingForApproval };
   }
 

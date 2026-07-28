@@ -171,6 +171,17 @@ function setting(runtime: IAgentRuntime, key: string): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+export function isGoogleCalendarWebhookEnabled(
+  runtime: IAgentRuntime | null,
+): boolean {
+  if (!runtime) return false;
+  const value = runtime.getSetting?.("GOOGLE_CALENDAR_WEBHOOK_ENABLED");
+  return (
+    value === true ||
+    (typeof value === "string" && value.trim().toLowerCase() === "true")
+  );
+}
+
 function boundedIntegerSetting(
   runtime: IAgentRuntime,
   key: string,
@@ -233,6 +244,7 @@ function validateConfiguredWebhookUrl(value: string): string {
 function runtimeWatchConfig(
   runtime: IAgentRuntime,
 ): GoogleCalendarWatchConfig | null {
+  if (!isGoogleCalendarWebhookEnabled(runtime)) return null;
   const webhookUrl = setting(runtime, "GOOGLE_CALENDAR_WEBHOOK_URL");
   if (!webhookUrl) return null;
   return {
@@ -510,7 +522,6 @@ export class GoogleCalendarWatchLifecycle {
   }
 
   async installMaintenanceTask(): Promise<void> {
-    if (!this.config()) return;
     const runner = getScheduledTaskRunner(this.runtime, {
       agentId: this.runtime.agentId,
     });
@@ -518,7 +529,7 @@ export class GoogleCalendarWatchLifecycle {
     await runner.schedule({
       kind: "watcher",
       promptInstructions:
-        "Maintain Google Calendar push channels and retire replaced channels.",
+        "Maintain calendar background state, including Google push channels and durable cleanup effects.",
       trigger: {
         kind: "interval",
         everyMinutes: 60,
@@ -689,6 +700,10 @@ export class GoogleCalendarWatchLifecycle {
       return { status: 400, outcome: "invalid" };
     }
 
+    const config = this.config();
+    if (!config) {
+      return { status: 404, outcome: "unauthorized" };
+    }
     const now = this.now();
     const nowIso = now.toISOString();
     let channel = await this.repo.get(this.runtime.agentId, headers.channelId);
@@ -744,10 +759,6 @@ export class GoogleCalendarWatchLifecycle {
         : { status: 404, outcome: "unauthorized" };
     }
 
-    const config = this.config();
-    if (!config) {
-      return { status: 503, outcome: "retry", retryAfterSeconds: 60 };
-    }
     const result = await this.drainPendingChannel(channel.channelId, config);
     if (result.kind === "retry") {
       await this.scheduleSyncRetry(result.channel, result.retryAtIso);

@@ -144,3 +144,22 @@ export function listScheduledTaskChannelDispatcherKeys(
   const map = contributionsByRuntime.get(runtime);
   return map ? Array.from(map.keys()) : [];
 }
+
+/**
+ * Remove one contribution during plugin unload.
+ *
+ * The optional identity guard prevents an older plugin instance from deleting
+ * a newer registration that reused the same namespaced channel key.
+ */
+export function unregisterScheduledTaskChannelDispatcher(
+  runtime: IAgentRuntime,
+  channelKey: string,
+  expected?: ScheduledTaskChannelDispatcherContribution,
+): boolean {
+  const map = contributionsByRuntime.get(runtime);
+  const current = map?.get(channelKey);
+  if (!map || !current || (expected && current !== expected)) return false;
+  const removed = map.delete(channelKey);
+  if (map.size === 0) contributionsByRuntime.delete(runtime);
+  return removed;
+}

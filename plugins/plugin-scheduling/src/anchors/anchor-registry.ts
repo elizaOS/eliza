@@ -18,6 +18,7 @@
 
 import type { IAgentRuntime } from "@elizaos/core";
 import type { AnchorRegistry } from "../scheduled-task/consolidation-policy.js";
+import { resolveLocalHHMMToIso } from "../scheduled-task/local-time.js";
 import type {
   AnchorContext,
   AnchorContribution,
@@ -60,53 +61,8 @@ function resolveLocalHHMM(
   hhmm: string,
   tz: string,
 ): { atIso: string } | null {
-  const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(hhmm);
-  if (!match) return null;
-  const hour = Number.parseInt(match[1] ?? "0", 10);
-  const minute = Number.parseInt(match[2] ?? "0", 10);
-  const formatter = new Intl.DateTimeFormat("en-CA", {
-    timeZone: tz,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
-  const parts = formatter.formatToParts(new Date(nowIso));
-  const y = Number.parseInt(
-    parts.find((p) => p.type === "year")?.value ?? "1970",
-    10,
-  );
-  const mo = Number.parseInt(
-    parts.find((p) => p.type === "month")?.value ?? "01",
-    10,
-  );
-  const d = Number.parseInt(
-    parts.find((p) => p.type === "day")?.value ?? "01",
-    10,
-  );
-  const localDate = new Date(Date.UTC(y, mo - 1, d, hour, minute, 0));
-  const offsetFormatter = new Intl.DateTimeFormat("en-US", {
-    timeZone: tz,
-    timeZoneName: "longOffset",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
-  const tzParts = offsetFormatter.formatToParts(localDate);
-  const offsetStr =
-    tzParts.find((p) => p.type === "timeZoneName")?.value ?? "GMT";
-  const offsetMatch = /GMT([+-]\d{1,2})(?::?(\d{2}))?/.exec(offsetStr);
-  let offsetMinutes = 0;
-  if (offsetMatch) {
-    const sign = offsetMatch[1]?.startsWith("-") ? -1 : 1;
-    const oh = Math.abs(Number.parseInt(offsetMatch[1] ?? "0", 10));
-    const om = Number.parseInt(offsetMatch[2] ?? "0", 10);
-    offsetMinutes = sign * (oh * 60 + om);
-  }
-  const atMs = localDate.getTime() - offsetMinutes * 60_000;
-  return { atIso: new Date(atMs).toISOString() };
+  const atIso = resolveLocalHHMMToIso(new Date(nowIso), hhmm, tz);
+  return atIso ? { atIso } : null;
 }
 
 const morningStartAnchor: AnchorContribution = nullableTimeAnchor({

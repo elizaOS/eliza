@@ -530,6 +530,52 @@ function requireSplittableRule(
   return { line, rule };
 }
 
+/**
+ * Fails before a provider mutation when DTSTART is outside the RRULE set.
+ * RFC 5545 leaves such recurrence sets undefined, so silently reusing the
+ * former rule after moving a following series would create provider-specific
+ * behavior.
+ */
+export function assertRecurrenceStartMatchesRule(args: {
+  recurrence: readonly string[] | null | undefined;
+  startAt: Date;
+  timeZone: string;
+  label?: string;
+}): void {
+  const { rule } = requireSplittableRule(
+    args.recurrence,
+    args.label ?? "Recurrence",
+  );
+  const startMs = args.startAt.getTime();
+  if (!Number.isFinite(startMs)) {
+    invalidRecurrenceSplit(
+      "The recurring series start is invalid.",
+      "CALENDAR_RECURRENCE_START_MISMATCH",
+    );
+  }
+  const local = getZonedDateParts(args.startAt, args.timeZone);
+  const localDate = {
+    year: local.year,
+    month: local.month,
+    day: local.day,
+  };
+  const weekday = getWeekdayForLocalDate(localDate);
+  const monthLength = daysInMonth(local.year, local.month);
+  const byMonthDayMatches =
+    rule.byMonthDay === undefined ||
+    rule.byMonthDay.some((day) =>
+      day < 0 ? monthLength + day + 1 === local.day : day === local.day,
+    );
+  const byDayMatches = rule.byDay === undefined || rule.byDay.includes(weekday);
+  const untilMatches = rule.untilMs === undefined || startMs <= rule.untilMs;
+  if (!byMonthDayMatches || !byDayMatches || !untilMatches) {
+    invalidRecurrenceSplit(
+      "The following series start does not satisfy its recurrence rule. Supply a replacement RRULE aligned with the new start.",
+      "CALENDAR_RECURRENCE_START_MISMATCH",
+    );
+  }
+}
+
 function formatRecurrenceUntil(untilMs: number): string {
   return new Date(Math.floor(untilMs / 1000) * 1000)
     .toISOString()

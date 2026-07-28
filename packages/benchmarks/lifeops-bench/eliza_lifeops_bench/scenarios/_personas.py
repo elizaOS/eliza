@@ -1,9 +1,8 @@
 """Reusable personas for the LifeOpsBench scenario corpus.
 
-Personas are deliberately ordinary working professionals — no celebrities,
-no fictional characters. Each one carries enough texture (background,
-communication_style) that a simulator can drive the user side of a
-multi-turn scenario without falling into bland defaults.
+Personas are ordinary people rather than celebrities or fictional characters.
+Each carries enough social, economic, access, and communication context for a
+simulator to drive multi-turn behavior without collapsing into a generic user.
 """
 
 from __future__ import annotations
@@ -312,7 +311,12 @@ PERSONA_MARCUS_SHIFT = Persona(
 PERSONA_CASEY_ADHD = Persona(
     id="casey_adhd",
     name="Casey Brennan",
-    traits=["adhd", "idea-jumping", "apologetic-about-forgetting", "bursts-of-hyperfocus"],
+    traits=[
+        "adhd",
+        "idea-jumping",
+        "apologetic-about-forgetting",
+        "bursts-of-hyperfocus",
+    ],
     background=(
         "Product designer diagnosed with ADHD in adulthood. Medication coverage is "
         "inconsistent. Loses tasks that leave the screen, underestimates how long "
@@ -364,6 +368,213 @@ PERSONA_DEL_LOW = Persona(
     patience_turns=20,
 )
 
+PERSONA_JANELLE_HOURLY_PARENT = Persona(
+    id="janelle_hourly_parent",
+    name="Janelle Price",
+    traits=[
+        "rotating-shift-hourly-worker",
+        "default-parent",
+        "low-bandwidth",
+        "benefit-cliff-aware",
+    ],
+    background=(
+        "Hourly hospital food-service worker raising two children with a roster "
+        "that can change every Sunday. Missing a shift means lost pay, late pickup "
+        "fees compound quickly, and subsidized care depends on reported hours. She "
+        "uses prepaid mobile data and cannot assume a reliable employer feed."
+    ),
+    communication_style=(
+        "compressed voice notes between shifts, refers to roster screenshots and "
+        "pickups as 'that one', reveals money and leave constraints only when they "
+        "change the decision, and corrects times as new roster details arrive"
+    ),
+    patience_turns=18,
+)
+
+PERSONA_ROSA_RURAL_SINGLE_PARENT = Persona(
+    id="rosa_rural_single_parent",
+    name="Rosa Bell",
+    traits=[
+        "single-parent",
+        "rural",
+        "transit-limited",
+        "kin-network-reliant",
+    ],
+    background=(
+        "Single parent outside a regional town who combines a demand-response bus, "
+        "one fixed-route transfer, and rides from relatives. Childcare and pediatric "
+        "providers have long waitlists, so a calendar gap is not usable until the "
+        "whole door-to-door chain and confirmed care are available."
+    ),
+    communication_style=(
+        "plainspoken and practical, calls recurring trips 'the Tuesday one', names "
+        "relatives before explaining their role, and updates the plan when a route "
+        "or ride falls through"
+    ),
+    patience_turns=20,
+)
+
+PERSONA_NIA_SURVIVOR_COPARENT = Persona(
+    id="nia_survivor_coparent",
+    name="Nia Cole",
+    traits=[
+        "survivor",
+        "high-conflict-coparent",
+        "notification-boundary-protective",
+        "evidence-preserving",
+    ],
+    background=(
+        "Parent coordinating through a court-required written channel after leaving "
+        "a controlling relationship. Continuous location sharing is unsafe, a prior "
+        "device may be compromised, and message originals and delivery states may "
+        "matter later. She needs factual logistics without forced reconciliation."
+    ),
+    communication_style=(
+        "guarded and concise, initially says 'their message' instead of naming the "
+        "sender, distinguishes what must be answered from what should be preserved, "
+        "and corrects any assumption that silence or a read receipt means agreement"
+    ),
+    patience_turns=16,
+)
+
+PERSONA_ELI_DEFAULT_FATHER = Persona(
+    id="eli_default_father",
+    name="Eli Navarro",
+    traits=[
+        "father",
+        "default-parent",
+        "household-coordinator",
+        "rescue-work-visible",
+    ],
+    background=(
+        "Father who owns the school, medical, activity, meal, and pickup coordination "
+        "for two children across a former spouse, current partner, and family backup. "
+        "His work and household sources have the same privacy and approval boundaries "
+        "as any other default parent's."
+    ),
+    communication_style=(
+        "warm, fast, and referential, says 'the school one' or 'our usual handoff', "
+        "then supplies role and timing corrections without re-explaining the whole "
+        "household"
+    ),
+    patience_turns=18,
+)
+
+PERSONA_AVERY_NONBINARY_PARENT = Persona(
+    id="avery_nonbinary_parent",
+    name="Avery Quinn",
+    traits=[
+        "nonbinary-parent",
+        "default-parent",
+        "household-coordinator",
+        "rescue-work-visible",
+    ],
+    background=(
+        "Nonbinary parent who owns the school, medical, activity, meal, and pickup "
+        "coordination for two children across a former spouse, current partner, and "
+        "family backup. They require the same privacy, approval, workload, and "
+        "recovery policies as any other default parent."
+    ),
+    communication_style=(
+        "warm, fast, and referential, uses they/them for themself, says 'the school "
+        "one' or 'our usual handoff', and supplies role or timing corrections without "
+        "repeating the whole household"
+    ),
+    patience_turns=18,
+)
+
+PERSONA_LUZ_VOICE_FIRST_PARENT = Persona(
+    id="luz_voice_first_parent",
+    name="Luz Mendoza",
+    traits=[
+        "limited-english",
+        "dyslexic",
+        "voice-first",
+        "local-processing-preferring",
+    ],
+    background=(
+        "Bilingual parent who is more comfortable speaking Spanish than reading long "
+        "English school forms. Dyslexia makes image-only PDFs and dense portals hard "
+        "to use. She prefers local or offline processing and qualified school "
+        "interpretation for rights, consent, and special-education material."
+    ),
+    communication_style=(
+        "short voice-transcribed English with natural Spanish code-switching, asks "
+        "for plain words and read-back of names or numbers, and calmly corrects "
+        "transcription errors; the simulator never caricatures her grammar"
+    ),
+    patience_turns=22,
+)
+
+PERSONA_OMAR_ACCESS_PARENT = Persona(
+    id="omar_access_parent",
+    name="Omar Shah",
+    traits=[
+        "disability-access-coordinator",
+        "iep-advocate",
+        "qualification-conscious",
+        "detail-correcting",
+    ],
+    background=(
+        "Parent of a child who uses a wheelchair and has a seizure action plan and "
+        "an IEP. Transport needs a working lift and securement; substitute caregivers "
+        "must have current medication training. Generic availability never proves "
+        "that a person, vehicle, or service is qualified."
+    ),
+    communication_style=(
+        "uses familiar shorthand such as 'the usual ride' until a material access "
+        "detail matters, then gives exact equipment and training constraints and "
+        "corrects stale assumptions immediately"
+    ),
+    patience_turns=20,
+)
+
+PERSONA_REN_MULTI_GUARDIAN = Persona(
+    id="ren_multi_guardian",
+    name="Ren Okoye",
+    traits=[
+        "queer-multi-parent-household",
+        "scope-conscious",
+        "authority-explicit",
+        "shared-care-coordinator",
+    ],
+    background=(
+        "Coordinates a three-parent household where legal guardianship, daily "
+        "caregiving, emergency pickup, and household membership are different roles. "
+        "Adults receive child- and resource-specific access, and consequential "
+        "changes need independent approval from each authorized principal."
+    ),
+    communication_style=(
+        "casual and role-aware, starts with first names and phrases like 'share the "
+        "usual stuff', then clarifies which child, resource, legal role, and duration "
+        "are actually in scope"
+    ),
+    patience_turns=20,
+)
+
+PERSONA_DANA_TEEN_PARENT = Persona(
+    id="dana_teen_parent",
+    name="Dana Brooks",
+    traits=[
+        "teen-privacy-protective",
+        "coparenting",
+        "safety-plan-aware",
+        "disclosure-cautious",
+    ],
+    background=(
+        "Parent of a teenager who has an existing clinician-authored safety plan. "
+        "Dana coordinates with a co-parent while protecting ordinary private "
+        "disclosures; a possible safety signal changes the response route but does "
+        "not authorize an indiscriminate export of the teen's words."
+    ),
+    communication_style=(
+        "careful and indirect around sensitive details, refers to 'what they told me' "
+        "until scope is established, distinguishes a logistics update from private "
+        "content, and reveals safety context in stages"
+    ),
+    patience_turns=20,
+)
+
 ALL_PERSONAS: list[Persona] = [
     PERSONA_ALEX_ENG,
     PERSONA_RIA_PM,
@@ -388,4 +599,13 @@ ALL_PERSONAS: list[Persona] = [
     PERSONA_CASEY_ADHD,
     PERSONA_TARA_LOW,
     PERSONA_DEL_LOW,
+    PERSONA_JANELLE_HOURLY_PARENT,
+    PERSONA_ROSA_RURAL_SINGLE_PARENT,
+    PERSONA_NIA_SURVIVOR_COPARENT,
+    PERSONA_ELI_DEFAULT_FATHER,
+    PERSONA_AVERY_NONBINARY_PARENT,
+    PERSONA_LUZ_VOICE_FIRST_PARENT,
+    PERSONA_OMAR_ACCESS_PARENT,
+    PERSONA_REN_MULTI_GUARDIAN,
+    PERSONA_DANA_TEEN_PARENT,
 ]

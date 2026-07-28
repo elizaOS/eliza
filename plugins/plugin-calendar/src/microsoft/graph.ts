@@ -72,8 +72,20 @@ export type MicrosoftGraphEventChange =
       reason: "deleted" | "cancelled" | "changed";
     };
 
+export interface MicrosoftGraphEventParseIssue {
+  code: string;
+  message: string;
+  eventId: string | null;
+}
+
 export interface MicrosoftGraphCalendarSyncBatch {
   changes: MicrosoftGraphEventChange[];
+  /**
+   * Per-event quarantine records for payloads Graph returned but this port
+   * could not validate. A malformed event never aborts the batch or blocks
+   * the delta cursor; it surfaces here instead.
+   */
+  issues: MicrosoftGraphEventParseIssue[];
   deltaLink: string;
   incremental: boolean;
 }
@@ -289,15 +301,14 @@ function parseGraphEvent(value: unknown): MicrosoftGraphEventChange {
   }
   const start = graphDateTime(event?.start, "start", eventId);
   const end = graphDateTime(event?.end, "end", eventId);
-  if (Date.parse(end.iso) <= Date.parse(start.iso)) {
-    throw new ElizaError(
-      "Microsoft Graph event has a non-increasing time range.",
-      {
-        code: "MICROSOFT_GRAPH_INVALID_EVENT_RANGE",
-        context: { eventId },
-        severity: "fatal",
-      },
-    );
+  // Outlook allows instantaneous events (start == end), so zero duration is a
+  // valid parse; only an end strictly before the start is malformed.
+  if (Date.parse(end.iso) < Date.parse(start.iso)) {
+    throw new ElizaError("Microsoft Graph event ends before it starts.", {
+      code: "MICROSOFT_GRAPH_INVALID_EVENT_RANGE",
+      context: { eventId },
+      severity: "fatal",
+    });
   }
   const location = record(event?.location);
   const onlineMeeting = record(event?.onlineMeeting);
@@ -758,6 +769,7 @@ export class DefaultMicrosoftGraphCalendarPort
         );
     const seenLinks = new Set<string>();
     const changes: MicrosoftGraphEventChange[] = [];
+    const issues: MicrosoftGraphEventParseIssue[] = [];
     let pageCount = 0;
     while (true) {
       pageCount += 1;
@@ -780,9 +792,22 @@ export class DefaultMicrosoftGraphCalendarPort
           Prefer: `outlook.timezone="UTC", IdType="ImmutableId", odata.maxpagesize=${GRAPH_MAX_PAGE_SIZE}`,
         },
       });
-      changes.push(
-        ...valueArray(page.body, "calendar_view_delta").map(parseGraphEvent),
-      );
+      for (const entry of valueArray(page.body, "calendar_view_delta")) {
+        try {
+          changes.push(parseGraphEvent(entry));
+        } catch (cause) {
+          if (!(cause instanceof ElizaError)) throw cause;
+          // error-policy:J3 One malformed Graph payload becomes a typed
+          // quarantine issue so a single degenerate event can never abort the
+          // batch or wedge the delta cursor; valid siblings still ingest and
+          // the consumer surfaces the issues as partial source health.
+          issues.push({
+            code: cause.code,
+            message: cause.message,
+            eventId: stringValue(record(entry)?.id),
+          });
+        }
+      }
       const nextLink = stringValue(page.body["@odata.nextLink"]);
       const deltaLink = stringValue(page.body["@odata.deltaLink"]);
       if (nextLink) {
@@ -818,6 +843,7 @@ export class DefaultMicrosoftGraphCalendarPort
       }
       return {
         changes,
+        issues,
         deltaLink: this.continuationUrl(deltaLink).href,
         incremental,
       };

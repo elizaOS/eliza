@@ -11,6 +11,11 @@ import {
 	getConnectorAccountManager,
 	InMemoryConnectorAccountStorage,
 } from "../../connectors/account-manager";
+import { ElizaError } from "../../errors";
+import {
+	attestDeliveryAudienceFromCanonicalRoom,
+	PRIVACY_DENIED_TEXT,
+} from "../../security/trusted-delivery-audience";
 import { runWithStreamingContext } from "../../streaming-context";
 import {
 	getTrajectoryContext,
@@ -23,7 +28,7 @@ import type {
 	IAgentRuntime,
 	Memory,
 } from "../../types";
-import { EventType } from "../../types";
+import { ChannelType, EventType } from "../../types";
 import type { EffectReceipt } from "../../types/effects";
 import { ModelType } from "../../types/model";
 import {
@@ -38,8 +43,11 @@ type ExecuteToolCallTestRuntime = Pick<IAgentRuntime, "actions"> &
 			IAgentRuntime,
 			| "emitEvent"
 			| "getCurrentRunId"
+			| "getParticipantsForRoom"
+			| "getRoom"
 			| "getService"
 			| "getServicesByType"
+			| "getSetting"
 			| "reportError"
 			| "useModel"
 		>
@@ -63,6 +71,7 @@ function makeRuntime(
 ): IAgentRuntime {
 	const runtime: ExecuteToolCallTestRuntime = {
 		actions,
+		getRoom: vi.fn(async () => null),
 		logger: {
 			debug: vi.fn(),
 			warn: vi.fn(),
@@ -1266,6 +1275,83 @@ describe("executePlannedToolCall", () => {
 		);
 	});
 
+	it("revalidates owner-private callbacks, events, and streamed tool results after the handler", async () => {
+		const owner = "11111111-1111-1111-1111-111111111111";
+		const agent = "22222222-2222-2222-2222-222222222222";
+		const room = "33333333-3333-3333-3333-333333333333";
+		const guest = "44444444-4444-4444-4444-444444444444";
+		let participants = [owner, agent];
+		const emitEvent = vi.fn(async () => {});
+		const onToolResult = vi.fn();
+		const callback = vi.fn(async () => []);
+		const action = makeAction({
+			name: "OWNER_PRIVATE",
+			disclosureGate: { require: "owner_exclusive" },
+			handler: async (_runtime, _message, _state, _options, actionCallback) => {
+				await actionCallback?.({ text: "OWNER_PRIVATE_CANARY" });
+				participants = [owner, agent, guest];
+				return {
+					success: true,
+					text: "OWNER_PRIVATE_CANARY",
+					data: { privateValue: "OWNER_PRIVATE_CANARY" },
+				};
+			},
+		});
+		const runtime = makeRuntime([action], {
+			emitEvent,
+			getParticipantsForRoom: vi.fn(async () => [...participants]),
+			getRoom: vi.fn(async () => ({
+				id: room,
+				agentId: agent,
+				source: "discord",
+				type: ChannelType.DM,
+			})),
+			getSetting: vi.fn((key: string) =>
+				key === "ELIZA_ADMIN_ENTITY_ID" ? owner : undefined,
+			),
+			reportError: vi.fn(),
+		});
+		(runtime as { agentId: string }).agentId = agent;
+		const turn = {
+			...makeMessage(),
+			entityId: owner,
+			agentId: agent,
+			roomId: room,
+		} as Memory;
+		await attestDeliveryAudienceFromCanonicalRoom(runtime, turn);
+
+		const result = await runWithStreamingContext(
+			{ onStreamChunk: vi.fn(), onToolResult },
+			() =>
+				executePlannedToolCall(
+					runtime,
+					{ message: turn, callback, userRoles: ["OWNER"] },
+					{ name: action.name, params: {} },
+				),
+		);
+
+		expect(result).toMatchObject({
+			success: false,
+			text: PRIVACY_DENIED_TEXT,
+			data: {
+				actionName: "OWNER_PRIVATE",
+				privacyDenied: true,
+				privacyReason: "audience_changed",
+			},
+		});
+		expect(callback).toHaveBeenCalledWith(
+			expect.objectContaining({ text: PRIVACY_DENIED_TEXT }),
+			"PRIVACY_DENIED",
+		);
+		const observable = JSON.stringify({
+			callback: callback.mock.calls,
+			events: emitEvent.mock.calls,
+			streaming: onToolResult.mock.calls,
+			result,
+		});
+		expect(observable).not.toContain("OWNER_PRIVATE_CANARY");
+	});
+
 	it("emits failed ACTION_COMPLETED events with string errors for thrown handlers", async () => {
 		const emitEvent = vi.fn(async () => {});
 		const action = makeAction({
@@ -1317,6 +1403,55 @@ describe("executePlannedToolCall", () => {
 				userRoles: ["MEMBER"],
 			},
 			{ name: "OWNER_ONLY", params: {} },
+		);
+
+		expect(result.success).toBe(false);
+		expect(String(result.error)).toContain("not allowed");
+		expect(handler).not.toHaveBeenCalled();
+	});
+
+	it("fails closed when canonical role lookup throws instead of fabricating USER", async () => {
+		const handler = vi.fn(async () => ({ success: true }));
+		const action = makeAction({
+			name: "USER_OR_HIGHER",
+			roleGate: { minRole: "USER" },
+			handler,
+		});
+		const roleStoreFailure = new Error("role database unavailable");
+		const runtime = makeRuntime([action], {
+			getRoom: vi.fn(async () => {
+				throw roleStoreFailure;
+			}),
+		});
+
+		await expect(
+			executePlannedToolCall(
+				runtime,
+				{ message: makeMessage() },
+				{ name: "USER_OR_HIGHER", params: {} },
+			),
+		).rejects.toMatchObject<Partial<ElizaError>>({
+			code: "ACTION_CALLER_ROLE_LOOKUP_FAILED",
+			cause: roleStoreFailure,
+		});
+		expect(handler).not.toHaveBeenCalled();
+	});
+
+	it("uses the GUEST floor when canonical room or world evidence is absent", async () => {
+		const handler = vi.fn(async () => ({ success: true }));
+		const action = makeAction({
+			name: "USER_OR_HIGHER",
+			roleGate: { minRole: "USER" },
+			handler,
+		});
+		const runtime = makeRuntime([action], {
+			getRoom: vi.fn(async () => null),
+		});
+
+		const result = await executePlannedToolCall(
+			runtime,
+			{ message: makeMessage() },
+			{ name: "USER_OR_HIGHER", params: {} },
 		);
 
 		expect(result.success).toBe(false);

@@ -1,7 +1,8 @@
 /**
  * IANA-timezone date arithmetic. `getZonedDateParts` and its companions project
- * an instant into a target timezone's calendar parts and back. A local copy (not
- * an import) so plugin-health takes no build-time dependency on app-lifeops.
+ * an instant into a target timezone's calendar parts and back with compatible
+ * disambiguation for repeated or skipped wall times. This remains a local copy
+ * so plugin-health takes no build-time dependency on app-lifeops.
  */
 export interface ZonedDateParts {
   year: number;
@@ -14,6 +15,9 @@ export interface ZonedDateParts {
 
 const zonedFormatterCache = new Map<string, Intl.DateTimeFormat>();
 const offsetFormatterCache = new Map<string, Intl.DateTimeFormat>();
+const MINUTE_MS = 60_000;
+const HOUR_MS = 60 * MINUTE_MS;
+const OFFSET_SAMPLE_HOURS = [-48, -36, -24, -12, 0, 12, 24, 36, 48];
 
 function getZonedFormatter(timeZone: string): Intl.DateTimeFormat {
   const cacheKey = `parts:${timeZone}`;
@@ -109,25 +113,61 @@ function localPartsToEpochMs(parts: ZonedDateParts): number {
   );
 }
 
+function sameZonedParts(left: ZonedDateParts, right: ZonedDateParts): boolean {
+  return (
+    left.year === right.year &&
+    left.month === right.month &&
+    left.day === right.day &&
+    left.hour === right.hour &&
+    left.minute === right.minute &&
+    left.second === right.second
+  );
+}
+
 export function buildUtcDateFromLocalParts(
   timeZone: string,
   parts: ZonedDateParts,
 ): Date {
   const baseUtcMs = localPartsToEpochMs(parts);
-  let candidate = new Date(baseUtcMs);
-  for (let index = 0; index < 6; index += 1) {
-    const offsetMinutes = getTimeZoneOffsetMinutes(candidate, timeZone);
-    const adjusted = new Date(baseUtcMs - offsetMinutes * 60_000);
-    const actualParts = getZonedDateParts(adjusted, timeZone);
-    const deltaMinutes = Math.round(
-      (localPartsToEpochMs(parts) - localPartsToEpochMs(actualParts)) / 60_000,
-    );
-    if (deltaMinutes === 0) {
-      return adjusted;
-    }
-    candidate = new Date(adjusted.getTime() + deltaMinutes * 60_000);
+  const offsets = new Set(
+    OFFSET_SAMPLE_HOURS.map((hours) =>
+      getTimeZoneOffsetMinutes(new Date(baseUtcMs + hours * HOUR_MS), timeZone),
+    ),
+  );
+  const candidates = [...offsets].map(
+    (offsetMinutes) => new Date(baseUtcMs - offsetMinutes * MINUTE_MS),
+  );
+  const exact = candidates
+    .filter((candidate) =>
+      sameZonedParts(getZonedDateParts(candidate, timeZone), parts),
+    )
+    .sort((left, right) => left.getTime() - right.getTime());
+  if (exact[0]) {
+    // Compatible disambiguation selects the earlier instant during a repeat.
+    return exact[0];
   }
-  return candidate;
+
+  const shiftedForward = candidates
+    .map((candidate) => ({
+      candidate,
+      wallDeltaMs:
+        localPartsToEpochMs(getZonedDateParts(candidate, timeZone)) - baseUtcMs,
+    }))
+    .filter(({ wallDeltaMs }) => wallDeltaMs > 0)
+    .sort(
+      (left, right) =>
+        left.wallDeltaMs - right.wallDeltaMs ||
+        left.candidate.getTime() - right.candidate.getTime(),
+    );
+  if (shiftedForward[0]) {
+    // Compatible disambiguation advances a nonexistent wall time by the gap,
+    // including jurisdictions that skip an entire local calendar date.
+    return shiftedForward[0].candidate;
+  }
+
+  throw new RangeError(
+    `Local date-time cannot be resolved in timezone ${timeZone}`,
+  );
 }
 
 export function formatInstantAsRfc3339InTimeZone(

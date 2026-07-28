@@ -75,6 +75,10 @@ class TestApprovalQueue implements ApprovalQueue {
     return request;
   }
 
+  async enqueueWithResult(input: ApprovalEnqueueInput) {
+    return { request: await this.enqueue(input), reused: false };
+  }
+
   async list(
     filter: ApprovalListFilter,
   ): Promise<ReadonlyArray<ApprovalRequest>> {

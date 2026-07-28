@@ -6,6 +6,7 @@
 import { describe, expect, it } from "vitest";
 import { runChildcareWorkScenarioJson } from "./actions/finances.ts";
 import {
+  CHILDCARE_WORK_FORMULA_SET_ID,
   CHILDCARE_WORK_SCENARIO_VERSION,
   type ChildcareWorkOption,
   type ChildcareWorkScenarioInput,
@@ -241,6 +242,18 @@ describe("evaluateChildcareWorkScenario", () => {
     expect(result.options[0]?.reentryEffect).toEqual(current.reentryEffect);
     expect(result.comparisons[0]?.annualEconomicDifferenceUsd).not.toBeNull();
     expect(result.comparisons[0]?.interpretation).toBe("ranges_overlap");
+    expect(result.comparableFormulaSetId).toBe(CHILDCARE_WORK_FORMULA_SET_ID);
+    expect(result.inputRevisionIds).toHaveLength(2);
+    expect(new Set(result.inputRevisionIds).size).toBe(2);
+    expect(
+      result.inputRevisionIds.every((revision) =>
+        /^sha256:[0-9a-f]{64}$/u.test(revision),
+      ),
+    ).toBe(true);
+    expect(
+      evaluateChildcareWorkScenario(scenario([current, reduced]))
+        .inputRevisionIds,
+    ).toEqual(result.inputRevisionIds);
   });
 
   it("blocks numeric totals when insurance, retirement, reliability, or per-child care is missing", () => {

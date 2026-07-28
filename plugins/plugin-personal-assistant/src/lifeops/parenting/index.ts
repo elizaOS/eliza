@@ -5,4 +5,5 @@ export * from "./resources.js";
 export * from "./safety-classifier.js";
 export * from "./service.js";
 export * from "./sources.js";
+export * from "./subject-location.js";
 export * from "./types.js";

@@ -16,6 +16,7 @@ import type {
   IcsParsedEvent,
   IcsParseIssue,
 } from "./types.js";
+import { resolveIcsTimeZoneId } from "./windows-timezones.js";
 
 const MAX_UNFOLDED_LINES = 50_000;
 const MAX_UNFOLDED_LINE_LENGTH = 32_768;
@@ -397,6 +398,20 @@ function validateDateParts(parts: {
   }
 }
 
+// Outlook/Exchange feeds carry Windows display names in TZID, so raw zone ids
+// go through the CLDR windowsZones table before the Intl-backed date math. An
+// unresolvable zone throws here and quarantines only that event via the
+// per-event issue handler in parseIcsCalendar.
+function resolveEventTimeZone(raw: string, field: string): string {
+  const resolved = resolveIcsTimeZoneId(raw);
+  if (!resolved) {
+    throw new Error(
+      `${field} time zone "${raw.trim()}" is not a recognized IANA or Windows time zone.`,
+    );
+  }
+  return resolved;
+}
+
 function parseDateProperty(
   property: IcsContentLine,
   calendarTimezone: string | null,
@@ -414,8 +429,10 @@ function parseDateProperty(
       day: Number(dateMatch[3]),
     };
     validateDateParts(localDate);
-    const timezone =
-      property.params.get("TZID")?.[0] ?? calendarTimezone ?? "UTC";
+    const timezone = resolveEventTimeZone(
+      property.params.get("TZID")?.[0] ?? calendarTimezone ?? "UTC",
+      field,
+    );
     const instant = normalizeCalendarDateTimeInTimeZone(
       `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}T00:00:00`,
       field,
@@ -441,14 +458,15 @@ function parseDateProperty(
   };
   validateDateParts(parts);
   const isUtc = dateTimeMatch[7] === "Z";
-  const timezone = isUtc
+  const rawTimezone = isUtc
     ? "UTC"
     : (property.params.get("TZID")?.[0] ?? calendarTimezone);
-  if (!timezone) {
+  if (!rawTimezone) {
     throw new Error(
       `${field} is a floating DATE-TIME without TZID or X-WR-TIMEZONE.`,
     );
   }
+  const timezone = resolveEventTimeZone(rawTimezone, field);
   const instant = isUtc
     ? new Date(
         Date.UTC(

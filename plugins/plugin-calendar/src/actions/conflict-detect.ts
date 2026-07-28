@@ -17,10 +17,11 @@ import type {
   Memory,
 } from "@elizaos/core";
 import { hasRoleAccess } from "@elizaos/core";
-import type {
-  LifeOpsCalendarEvent,
-  LifeOpsCalendarFeed,
-  LifeOpsCalendarSourceHealth,
+import {
+  type LifeOpsCalendarEvent,
+  type LifeOpsCalendarFeed,
+  type LifeOpsCalendarSourceHealth,
+  SELF_ENTITY_ID,
 } from "@elizaos/shared";
 import { calendarAvailabilityKindFromMetadata } from "../internal/availability-metadata.js";
 import { resolveDefaultTimeZone } from "../internal/constants.js";
@@ -107,7 +108,7 @@ export interface ConflictDetectLoader {
   }) => Promise<ConflictDetectLoadResult>;
   loadFreeBusy?: (args: {
     runtime: IAgentRuntime;
-    proposal: ConflictDetectProposal;
+    guestAvailabilityGrantIds: readonly string[];
     range: ConflictRange;
   }) => Promise<ConflictDetectLoadResult>;
 }
@@ -124,21 +125,23 @@ export interface ConflictDetectActionDeps {
 
 export type ConflictDetectHostAdapter = Pick<
   ConflictDetectActionDeps,
-  "authorize" | "resolveTimeZone"
+  "authorize" | "resolveTimeZone" | "loader"
 >;
 
 const hostAdapters = new WeakMap<IAgentRuntime, ConflictDetectHostAdapter>();
 
 /**
- * Bind host-owned authorization and timezone semantics to one runtime. The
- * runtime-keyed registry lets an already-registered calendar action gain the
- * host adapter without cross-runtime state or plugin-order dependence.
+ * Bind host-owned authorization, timezone, and provider-loading semantics to
+ * one runtime. The runtime-keyed registry lets an already-registered calendar
+ * action gain the host adapter without cross-runtime state or plugin-order
+ * dependence. Registrations merge, so a host can bind authorization at plugin
+ * init while a harness later binds only the loader for the same runtime.
  */
 export function registerConflictDetectHostAdapter(
   runtime: IAgentRuntime,
   adapter: ConflictDetectHostAdapter,
 ): void {
-  hostAdapters.set(runtime, adapter);
+  hostAdapters.set(runtime, { ...hostAdapters.get(runtime), ...adapter });
 }
 
 interface CalendarConflictFeedService {
@@ -152,7 +155,8 @@ interface CalendarConflictFreeBusyService {
   getCalendarFreeBusy(
     requestUrl: URL,
     request: {
-      calendarIds: readonly string[];
+      principalEntityId: string;
+      guestAvailabilityGrantIds: readonly string[];
       timeMin: string;
       timeMax: string;
     },
@@ -189,23 +193,6 @@ interface ConflictDetectActionParameters {
   proposal?: ConflictDetectProposal;
   timeZone?: string;
   policy?: CalendarAvailabilityPolicy;
-}
-
-let activeLoader: Partial<ConflictDetectLoader> = {};
-
-/**
- * Compatibility seam for deterministic tests and scenario harnesses. Production
- * action instances read CalendarService directly unless a host supplies a real
- * provider adapter.
- */
-export function setConflictDetectLoader(
-  next: Partial<ConflictDetectLoader>,
-): void {
-  activeLoader = { ...activeLoader, ...next };
-}
-
-export function __resetConflictDetectLoaderForTests(): void {
-  activeLoader = {};
 }
 
 function metadataString(
@@ -394,7 +381,7 @@ export function createCalendarFeedConflictLoader(): Pick<
         sources: feedSourcesForAvailability(feed),
       };
     },
-    loadFreeBusy: async ({ runtime, proposal }) => {
+    loadFreeBusy: async ({ runtime, guestAvailabilityGrantIds, range }) => {
       const service = runtime.getService(CALENDAR_SERVICE_TYPE);
       if (!isCalendarConflictFreeBusyService(service)) {
         throw new CalendarServiceError(
@@ -404,9 +391,10 @@ export function createCalendarFeedConflictLoader(): Pick<
         );
       }
       return service.getCalendarFreeBusy(INTERNAL_URL, {
-        calendarIds: proposal.attendees ?? [],
-        timeMin: proposal.startISO,
-        timeMax: proposal.endISO,
+        principalEntityId: SELF_ENTITY_ID,
+        guestAvailabilityGrantIds,
+        timeMin: range.start,
+        timeMax: range.end,
       });
     },
   };
@@ -459,10 +447,18 @@ function validInstantRange(range: ConflictRange): boolean {
 function validProposal(
   proposal: ConflictDetectProposal,
 ): proposal is ConflictDetectProposal {
-  return validInstantRange({
-    start: proposal.startISO,
-    end: proposal.endISO,
-  });
+  const grantIds = proposal.guestAvailabilityGrantIds;
+  return (
+    validInstantRange({
+      start: proposal.startISO,
+      end: proposal.endISO,
+    }) &&
+    (grantIds === undefined ||
+      (Array.isArray(grantIds) &&
+        grantIds.every(
+          (grantId) => typeof grantId === "string" && grantId.trim().length > 0,
+        )))
+  );
 }
 
 function rangeContainsProposal(
@@ -537,7 +533,18 @@ function privateBusySources(
   }));
 }
 
-function requestedGuestCalendarCount(proposal: ConflictDetectProposal): number {
+function requestedGuestGrantIds(proposal: ConflictDetectProposal): string[] {
+  return [
+    ...new Set(
+      (proposal.guestAvailabilityGrantIds ?? [])
+        .filter((grantId): grantId is string => typeof grantId === "string")
+        .map((grantId) => grantId.trim())
+        .filter(Boolean),
+    ),
+  ];
+}
+
+function requestedAttendeeCount(proposal: ConflictDetectProposal): number {
   return new Set(
     (proposal.attendees ?? [])
       .filter((attendee): attendee is string => typeof attendee === "string")
@@ -664,7 +671,7 @@ export function createConflictDetectAction(
       {
         name: "proposal",
         description:
-          "scan_event_proposal candidate: { startISO, endISO, attendees? }.",
+          "scan_event_proposal candidate: { startISO, endISO, attendees?, guestAvailabilityGrantIds? }. Attendees only match already-visible events; external free/busy requires opaque host-issued grant ids.",
         schema: { type: "object" as const, additionalProperties: true },
       },
       {
@@ -790,9 +797,13 @@ export function createConflictDetectAction(
         };
       }
 
+      // Loader tiers mirror authorize/resolveTimeZone: explicit per-instance
+      // deps, then the runtime-keyed host adapter (the only rebinding path for
+      // an already-registered action), then the real CalendarService loader.
+      const hostLoader = hostAdapters.get(runtime)?.loader;
       const loadFeed =
-        activeLoader.loadFeed ??
         deps.loader?.loadFeed ??
+        hostLoader?.loadFeed ??
         productionLoader.loadFeed;
       let feedSources: CalendarAvailabilitySource[];
       try {
@@ -823,17 +834,34 @@ export function createConflictDetectAction(
       }
 
       const sources: CalendarAvailabilitySource[] = [...feedSources];
-      const requestedGuestCalendars = proposal
-        ? requestedGuestCalendarCount(proposal)
+      const requestedGrantIds = proposal
+        ? requestedGuestGrantIds(proposal)
+        : [];
+      const requestedGuestGrants = requestedGrantIds.length;
+      const requestedAttendees = proposal
+        ? requestedAttendeeCount(proposal)
         : 0;
       const requestedGuestAvailability =
-        subaction === "scan_event_proposal" && requestedGuestCalendars > 0;
+        subaction === "scan_event_proposal" &&
+        (requestedGuestGrants > 0 || requestedAttendees > 0);
       if (requestedGuestAvailability && proposal) {
+        if (requestedGuestGrants === 0) {
+          sources.push({
+            id: "guest-freebusy-authorization",
+            status: "disconnected",
+            visibility: "busy_only",
+            events: [],
+            error:
+              "Guest free/busy requires a current host-issued availability grant.",
+          });
+        }
         const loadFreeBusy =
-          activeLoader.loadFreeBusy ??
-          deps.loader?.loadFreeBusy ??
-          productionLoader.loadFreeBusy;
-        if (!loadFreeBusy) {
+          requestedGuestGrants > 0
+            ? (deps.loader?.loadFreeBusy ??
+              hostLoader?.loadFreeBusy ??
+              productionLoader.loadFreeBusy)
+            : undefined;
+        if (requestedGuestGrants > 0 && !loadFreeBusy) {
           sources.push({
             id: "guest-freebusy",
             status: "disconnected",
@@ -841,9 +869,16 @@ export function createConflictDetectAction(
             events: [],
             error: "Guest free/busy provider is not connected.",
           });
-        } else {
+        } else if (loadFreeBusy) {
           try {
-            const result = await loadFreeBusy({ runtime, proposal, range });
+            const result = await loadFreeBusy({
+              runtime,
+              guestAvailabilityGrantIds: requestedGrantIds,
+              range: {
+                start: proposal.startISO,
+                end: proposal.endISO,
+              },
+            });
             const guestSources = privateBusySources(
               normalizeLoadResult(result, {
                 id: "guest-freebusy",
@@ -852,7 +887,7 @@ export function createConflictDetectAction(
               }),
             );
             sources.push(...guestSources);
-            if (guestSources.length < requestedGuestCalendars) {
+            if (guestSources.length < requestedGuestGrants) {
               sources.push({
                 id: "guest-freebusy-incomplete",
                 status: "disconnected",

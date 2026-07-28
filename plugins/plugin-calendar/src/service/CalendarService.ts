@@ -118,6 +118,7 @@ import {
   requireNonEmptyString,
 } from "../internal/normalize.js";
 import {
+  assertRecurrenceStartMatchesRule,
   buildRecurrenceSplitPlan,
   normalizeRecurrence,
   normalizeRecurrenceScope,
@@ -159,6 +160,8 @@ import {
   setCalendarFeedIncluded,
 } from "./feed-preferences.js";
 import {
+  CALENDAR_GUEST_AVAILABILITY_PURPOSE,
+  type CalendarGuestAvailabilityGrant,
   type CalendarHostGate,
   createDefaultCalendarHostGate,
   createLifeOpsAuditEvent,
@@ -1093,6 +1096,7 @@ export class CalendarService extends Service {
   private readonly googleWatch: GoogleCalendarWatchLifecycle;
   private readonly googleSyncLocks = new Map<string, Promise<void>>();
   private readonly microsoftSyncLocks = new Map<string, Promise<void>>();
+  private icsSecretCleanupDrain: Promise<void> | null = null;
 
   constructor(runtime?: IAgentRuntime) {
     super(runtime);
@@ -1113,6 +1117,7 @@ export class CalendarService extends Service {
     // Best-effort: the schema may not be migrated yet on first boot.
     void service.restoreMeetingAutoJoinAnchorsOnBoot();
     void service.installGoogleWatchMaintenanceOnBoot();
+    void service.drainIcsSecretCleanupOnBoot();
     return service;
   }
 
@@ -1130,6 +1135,17 @@ export class CalendarService extends Service {
         { src: "calendar:google-watch", error },
         "[CalendarService] Google Calendar watch maintenance was not installed.",
       );
+    }
+  }
+
+  private async drainIcsSecretCleanupOnBoot(): Promise<void> {
+    try {
+      await this.runtime.initPromise;
+      await this.drainIcsSecretCleanupAtBoundary("boot");
+    } catch (error) {
+      // error-policy:J5 Service.start launches the durable cleanup worker in
+      // the background; this handler observes initialization rejection.
+      this.runtime.reportError("calendar:ics-secret-cleanup-boot", error);
     }
   }
 
@@ -1236,32 +1252,41 @@ export class CalendarService extends Service {
   }
 
   /**
-   * Resolve guest calendars through the owner's delegated calendar accounts.
-   * Every source is deliberately anonymous and contains intervals only: guest
-   * identifiers, provider errors, and account-selection details never cross
-   * this calendar-domain privacy boundary.
+   * Resolve guest calendars through exact host-authorized bindings. Planner
+   * strings never select a provider account or calendar: LifeOps resolves each
+   * opaque grant id, and this service queries only the bound account. Every
+   * returned source remains anonymous and contains intervals only.
    */
   async getCalendarFreeBusy(
     requestUrl: URL,
     request: {
-      calendarIds: readonly string[];
+      principalEntityId: string;
+      guestAvailabilityGrantIds: readonly string[];
       timeMin: string;
       timeMax: string;
       timeZone?: string;
     },
   ): Promise<{ sources: CalendarAvailabilitySource[] }> {
-    const calendarIds = [
+    const principalEntityId = request.principalEntityId.trim();
+    if (!principalEntityId) {
+      throw new CalendarServiceError(
+        400,
+        "Guest free/busy requires an authenticated principal.",
+        "CALENDAR_FREE_BUSY_PRINCIPAL_REQUIRED",
+      );
+    }
+    const requestedGrantIds = [
       ...new Set(
-        request.calendarIds
-          .map((calendarId) => calendarId.trim().toLowerCase())
+        request.guestAvailabilityGrantIds
+          .map((grantId) => grantId.trim())
           .filter(Boolean),
       ),
     ];
-    if (calendarIds.length === 0) {
+    if (requestedGrantIds.length === 0) {
       throw new CalendarServiceError(
         400,
-        "At least one guest calendar is required.",
-        "CALENDAR_FREE_BUSY_GUESTS_REQUIRED",
+        "At least one guest availability grant is required.",
+        "CALENDAR_FREE_BUSY_GRANTS_REQUIRED",
       );
     }
     const start = Date.parse(request.timeMin);
@@ -1274,205 +1299,306 @@ export class CalendarService extends Service {
       );
     }
 
-    let grants: LifeOpsConnectorGrant[] = [];
-    let googleDiscoveryFailed = false;
-    try {
-      const statuses = await this.gate.getGoogleConnectorAccounts(
-        requestUrl,
-        "owner",
-      );
-      const byAccount = new Map<string, LifeOpsConnectorGrant>();
-      for (const status of statuses) {
-        const grant = status.grant;
-        if (!grant) {
-          continue;
-        }
-        if (!grant.capabilities.includes("google.calendar.read")) {
-          continue;
-        }
-        const accountId = accountIdForGrant(grant);
-        const existing = byAccount.get(accountId);
-        if (
-          !existing ||
-          (!existing.preferredByAgent && grant.preferredByAgent)
-        ) {
-          byAccount.set(accountId, grant);
-        }
+    const authorizationAt = new Date().toISOString();
+    const resolvedGrants = await this.gate.resolveGuestAvailabilityGrants({
+      principalEntityId,
+      grantIds: requestedGrantIds,
+      purpose: CALENDAR_GUEST_AVAILABILITY_PURPOSE,
+      at: authorizationAt,
+    });
+    const resolvedById = new Map<string, CalendarGuestAvailabilityGrant>();
+    for (const grant of resolvedGrants) {
+      if (
+        resolvedById.has(grant.grantId) ||
+        !requestedGrantIds.includes(grant.grantId) ||
+        grant.principalEntityId !== principalEntityId ||
+        (grant.provider !== "google" && grant.provider !== "microsoft") ||
+        grant.purpose !== CALENDAR_GUEST_AVAILABILITY_PURPOSE ||
+        grant.side !== "owner" ||
+        !grant.guestEntityId.trim() ||
+        !grant.connectorAccountId.trim() ||
+        !grant.providerGrantId.trim() ||
+        !grant.calendarId.trim() ||
+        !Number.isFinite(Date.parse(grant.consentRecordedAt)) ||
+        Date.parse(grant.consentRecordedAt) > Date.parse(authorizationAt) ||
+        !Number.isFinite(Date.parse(grant.expiresAt)) ||
+        Date.parse(grant.expiresAt) <= Date.parse(authorizationAt)
+      ) {
+        throw new CalendarServiceError(
+          403,
+          "Guest free/busy authorization is invalid.",
+          "CALENDAR_FREE_BUSY_GRANT_INVALID",
+        );
       }
-      grants = [...byAccount.values()].sort(
-        (left, right) =>
-          Number(right.preferredByAgent) - Number(left.preferredByAgent) ||
-          left.id.localeCompare(right.id),
-      );
-    } catch {
-      // error-policy:J4 guest identifiers and provider messages are redacted
-      // while the caller receives one explicit failed source per guest.
-      googleDiscoveryFailed = true;
-      this.runtime.reportError(
-        "calendar:guest-free-busy-accounts",
-        new ElizaError("Google Calendar account discovery failed.", {
-          code: "CALENDAR_FREE_BUSY_ACCOUNT_DISCOVERY_FAILED",
-          context: { requestedCalendarCount: calendarIds.length },
-          severity: "ephemeral",
-        }),
+      resolvedById.set(grant.grantId, grant);
+    }
+    if (
+      resolvedById.size !== requestedGrantIds.length ||
+      requestedGrantIds.some((grantId) => !resolvedById.has(grantId))
+    ) {
+      throw new CalendarServiceError(
+        403,
+        "Guest free/busy authorization is incomplete.",
+        "CALENDAR_FREE_BUSY_GRANT_MISSING",
       );
     }
+    const grants = requestedGrantIds.map((grantId) => {
+      const grant = resolvedById.get(grantId);
+      if (!grant) {
+        throw new CalendarServiceError(
+          403,
+          "Guest free/busy authorization is incomplete.",
+          "CALENDAR_FREE_BUSY_GRANT_MISSING",
+        );
+      }
+      return grant;
+    });
 
     const resolved = new Map<string, CalendarAvailabilitySource>();
-    let providerQueryFailed = false;
-    if (!googleDiscoveryFailed && grants.length > 0) {
-      for (const grant of grants) {
-        const unresolved = calendarIds.filter(
-          (calendarId) => !resolved.has(calendarId),
+    const sourceFor = (
+      grant: CalendarGuestAvailabilityGrant,
+      events: CalendarAvailabilitySource["events"],
+    ): CalendarAvailabilitySource => {
+      const sourceIndex = requestedGrantIds.indexOf(grant.grantId) + 1;
+      return {
+        id: `guest-freebusy-${sourceIndex}`,
+        status: "fresh",
+        visibility: "busy_only",
+        events,
+      };
+    };
+    const unavailableSourceFor = (
+      grant: CalendarGuestAvailabilityGrant,
+      status: "disconnected" | "error",
+    ): CalendarAvailabilitySource => {
+      const sourceIndex = requestedGrantIds.indexOf(grant.grantId) + 1;
+      return {
+        id: `guest-freebusy-${sourceIndex}`,
+        status,
+        visibility: "busy_only",
+        events: [],
+        error:
+          status === "disconnected"
+            ? "Guest free/busy provider is not connected."
+            : "Guest availability source is unavailable.",
+      };
+    };
+    const groupByTarget = (
+      provider: CalendarGuestAvailabilityGrant["provider"],
+    ): CalendarGuestAvailabilityGrant[][] => {
+      const groups = new Map<string, CalendarGuestAvailabilityGrant[]>();
+      for (const grant of grants.filter(
+        (candidate) => candidate.provider === provider,
+      )) {
+        const key = `${grant.providerGrantId}\u0000${grant.connectorAccountId}`;
+        const group = groups.get(key) ?? [];
+        group.push(grant);
+        groups.set(key, group);
+      }
+      return [...groups.values()];
+    };
+
+    for (const group of groupByTarget("google")) {
+      const first = group[0];
+      if (!first) continue;
+      let connectorGrant: LifeOpsConnectorGrant;
+      try {
+        connectorGrant = await this.gate.requireGoogleCalendarGrant(
+          requestUrl,
+          "local",
+          "owner",
+          first.providerGrantId,
         );
-        if (unresolved.length === 0) break;
-        try {
-          const queryFreeBusy = requireGoogleServiceMethod(
-            this.runtime,
-            "queryFreeBusy",
-          );
-          const result = await queryFreeBusy({
-            accountId: accountIdForGrant(grant),
-            calendarIds: unresolved,
-            timeMin: request.timeMin,
-            timeMax: request.timeMax,
-            ...(request.timeZone ? { timeZone: request.timeZone } : {}),
-          });
-          for (const calendarId of unresolved) {
-            const availability = result.calendars[calendarId];
-            if (!availability || availability.errors.length > 0) {
-              providerQueryFailed = true;
-              continue;
-            }
-            const sourceIndex = calendarIds.indexOf(calendarId) + 1;
-            resolved.set(calendarId, {
-              id: `guest-freebusy-${sourceIndex}`,
-              status: "fresh",
-              visibility: "busy_only",
-              events: availability.busy.map((interval, intervalIndex) => ({
+      } catch (error) {
+        // error-policy:J4 an unavailable exact connector binding becomes an
+        // anonymous incomplete source; no alternate account is attempted.
+        this.runtime.reportError(
+          "calendar:guest-free-busy-google-binding",
+          new ElizaError("A bound Google Calendar account is unavailable.", {
+            code: "CALENDAR_FREE_BUSY_BOUND_ACCOUNT_UNAVAILABLE",
+            context: { affectedGrantCount: group.length },
+            cause: error,
+            severity: "ephemeral",
+          }),
+        );
+        for (const grant of group) {
+          resolved.set(grant.grantId, unavailableSourceFor(grant, "error"));
+        }
+        continue;
+      }
+      if (
+        connectorGrant.id !== first.providerGrantId ||
+        accountIdForGrant(connectorGrant) !== first.connectorAccountId ||
+        connectorGrant.side !== "owner" ||
+        !connectorGrant.capabilities.includes("google.calendar.read")
+      ) {
+        for (const grant of group) {
+          resolved.set(grant.grantId, unavailableSourceFor(grant, "error"));
+        }
+        this.runtime.reportError(
+          "calendar:guest-free-busy-google-binding",
+          new ElizaError(
+            "A bound Google Calendar account did not match its authorization.",
+            {
+              code: "CALENDAR_FREE_BUSY_BOUND_ACCOUNT_MISMATCH",
+              context: { affectedGrantCount: group.length },
+              severity: "fatal",
+            },
+          ),
+        );
+        continue;
+      }
+      try {
+        const queryFreeBusy = requireGoogleServiceMethod(
+          this.runtime,
+          "queryFreeBusy",
+        );
+        const calendarIds = [
+          ...new Set(group.map((grant) => grant.calendarId)),
+        ];
+        const result = await queryFreeBusy({
+          accountId: first.connectorAccountId,
+          calendarIds,
+          timeMin: request.timeMin,
+          timeMax: request.timeMax,
+          ...(request.timeZone ? { timeZone: request.timeZone } : {}),
+        });
+        for (const grant of group) {
+          const availability = result.calendars[grant.calendarId];
+          if (!availability || availability.errors.length > 0) {
+            resolved.set(grant.grantId, unavailableSourceFor(grant, "error"));
+            continue;
+          }
+          const sourceIndex = requestedGrantIds.indexOf(grant.grantId) + 1;
+          resolved.set(
+            grant.grantId,
+            sourceFor(
+              grant,
+              availability.busy.map((interval, intervalIndex) => ({
                 id: `guest-freebusy-${sourceIndex}-interval-${intervalIndex + 1}`,
                 startISO: interval.start,
                 endISO: interval.end,
                 status: "busy",
                 kind: "guest_busy",
               })),
-            });
-          }
-        } catch {
-          // error-policy:J4 try another authorized owner account without
-          // exposing the requested guest ids or the provider's raw response.
-          providerQueryFailed = true;
-          this.runtime.reportError(
-            "calendar:guest-free-busy-account",
-            new ElizaError("A Google Calendar free/busy query failed.", {
-              code: "CALENDAR_FREE_BUSY_ACCOUNT_QUERY_FAILED",
-              context: {
-                accountId: accountIdForGrant(grant),
-                unresolvedCalendarCount: unresolved.length,
-              },
-              severity: "ephemeral",
-            }),
+            ),
           );
+        }
+      } catch (error) {
+        // error-policy:J4 bound-provider failure remains explicit unknown
+        // availability and never triggers a query through another account.
+        this.runtime.reportError(
+          "calendar:guest-free-busy-google-account",
+          new ElizaError("A Google Calendar free/busy query failed.", {
+            code: "CALENDAR_FREE_BUSY_ACCOUNT_QUERY_FAILED",
+            context: { affectedGrantCount: group.length },
+            cause: error,
+            severity: "ephemeral",
+          }),
+        );
+        for (const grant of group) {
+          resolved.set(grant.grantId, unavailableSourceFor(grant, "error"));
         }
       }
     }
 
-    let microsoftAccounts: MicrosoftCalendarAccount[] = [];
-    let microsoftDiscoveryFailed = false;
-    try {
-      microsoftAccounts = await this.microsoftPort.listAccounts({
-        side: "owner",
-      });
-    } catch {
-      // error-policy:J4 Microsoft account failures are redacted at the same
-      // guest-availability boundary as Google failures.
-      microsoftDiscoveryFailed = true;
-      this.runtime.reportError(
-        "calendar:guest-free-busy-microsoft-accounts",
-        new ElizaError("Microsoft Calendar account discovery failed.", {
-          code: "CALENDAR_FREE_BUSY_ACCOUNT_DISCOVERY_FAILED",
-          context: { requestedCalendarCount: calendarIds.length },
-          severity: "ephemeral",
-        }),
-      );
-    }
-
-    if (!microsoftDiscoveryFailed) {
-      for (const account of microsoftAccounts) {
-        const unresolved = calendarIds.filter(
-          (calendarId) => !resolved.has(calendarId),
+    for (const group of groupByTarget("microsoft")) {
+      const first = group[0];
+      if (!first) continue;
+      let exactAccount: MicrosoftCalendarAccount | undefined;
+      try {
+        const candidates = await this.microsoftPort.listAccounts({
+          side: "owner",
+          grantId: first.providerGrantId,
+        });
+        exactAccount = candidates.find(
+          (candidate) =>
+            candidate.grant.id === first.providerGrantId &&
+            candidate.account.id === first.connectorAccountId &&
+            candidate.grant.side === "owner" &&
+            candidate.grant.capabilities.includes(
+              "microsoft.calendar.freebusy",
+            ),
         );
-        if (unresolved.length === 0) break;
-        try {
-          const schedules = await this.microsoftPort.getSchedule({
-            account,
-            schedules: unresolved,
-            timeMin: request.timeMin,
-            timeMax: request.timeMax,
-            ...(request.timeZone ? { timeZone: request.timeZone } : {}),
-          });
-          const schedulesById = new Map(
-            schedules.map((schedule) => [schedule.scheduleId, schedule]),
+      } catch (error) {
+        // error-policy:J4 account lookup is constrained by the host-resolved
+        // grant id; failure never widens discovery to other owner accounts.
+        this.runtime.reportError(
+          "calendar:guest-free-busy-microsoft-binding",
+          new ElizaError("A bound Microsoft Calendar account is unavailable.", {
+            code: "CALENDAR_FREE_BUSY_BOUND_ACCOUNT_UNAVAILABLE",
+            context: { affectedGrantCount: group.length },
+            cause: error,
+            severity: "ephemeral",
+          }),
+        );
+      }
+      if (!exactAccount) {
+        for (const grant of group) {
+          resolved.set(
+            grant.grantId,
+            unavailableSourceFor(grant, "disconnected"),
           );
-          for (const calendarId of unresolved) {
-            const availability = schedulesById.get(calendarId);
-            if (!availability || availability.error) {
-              providerQueryFailed = true;
-              continue;
-            }
-            const sourceIndex = calendarIds.indexOf(calendarId) + 1;
-            resolved.set(calendarId, {
-              id: `guest-freebusy-${sourceIndex}`,
-              status: "fresh",
-              visibility: "busy_only",
-              events: availability.intervals.map((interval, intervalIndex) => ({
+        }
+        continue;
+      }
+      try {
+        const calendarIds = [
+          ...new Set(group.map((grant) => grant.calendarId)),
+        ];
+        const schedules = await this.microsoftPort.getSchedule({
+          account: exactAccount,
+          schedules: calendarIds,
+          timeMin: request.timeMin,
+          timeMax: request.timeMax,
+          ...(request.timeZone ? { timeZone: request.timeZone } : {}),
+        });
+        const schedulesById = new Map(
+          schedules.map((schedule) => [schedule.scheduleId, schedule]),
+        );
+        for (const grant of group) {
+          const availability = schedulesById.get(grant.calendarId);
+          if (!availability || availability.error) {
+            resolved.set(grant.grantId, unavailableSourceFor(grant, "error"));
+            continue;
+          }
+          const sourceIndex = requestedGrantIds.indexOf(grant.grantId) + 1;
+          resolved.set(
+            grant.grantId,
+            sourceFor(
+              grant,
+              availability.intervals.map((interval, intervalIndex) => ({
                 id: `guest-freebusy-${sourceIndex}-interval-${intervalIndex + 1}`,
                 startISO: interval.startAt,
                 endISO: interval.endAt,
                 status: interval.status,
                 kind: "guest_busy",
               })),
-            });
-          }
-        } catch {
-          // error-policy:J4 Organization-only getSchedule limitations,
-          // throttling, and permission failures remain explicit unknown
-          // availability without exposing guest ids or provider responses.
-          providerQueryFailed = true;
-          this.runtime.reportError(
-            "calendar:guest-free-busy-microsoft-account",
-            new ElizaError("A Microsoft Calendar free/busy query failed.", {
-              code: "CALENDAR_FREE_BUSY_ACCOUNT_QUERY_FAILED",
-              context: {
-                accountId: account.account.id,
-                unresolvedCalendarCount: unresolved.length,
-              },
-              severity: "ephemeral",
-            }),
+            ),
           );
+        }
+      } catch (error) {
+        // error-policy:J4 organization limits, throttling, and permission
+        // failures remain anonymous unknown availability for the exact target.
+        this.runtime.reportError(
+          "calendar:guest-free-busy-microsoft-account",
+          new ElizaError("A Microsoft Calendar free/busy query failed.", {
+            code: "CALENDAR_FREE_BUSY_ACCOUNT_QUERY_FAILED",
+            context: { affectedGrantCount: group.length },
+            cause: error,
+            severity: "ephemeral",
+          }),
+        );
+        for (const grant of group) {
+          resolved.set(grant.grantId, unavailableSourceFor(grant, "error"));
         }
       }
     }
 
-    const discoveryFailed = googleDiscoveryFailed || microsoftDiscoveryFailed;
-    const connectedProviderCount = grants.length + microsoftAccounts.length;
-    const failedStatus =
-      !discoveryFailed && !providerQueryFailed && connectedProviderCount === 0
-        ? "disconnected"
-        : "error";
     return {
-      sources: calendarIds.map(
-        (calendarId, index): CalendarAvailabilitySource =>
-          resolved.get(calendarId) ?? {
-            id: `guest-freebusy-${index + 1}`,
-            status: failedStatus,
-            visibility: "busy_only",
-            events: [],
-            error:
-              failedStatus === "disconnected"
-                ? "Guest free/busy provider is not connected."
-                : "Guest availability source is unavailable.",
-          },
+      sources: grants.map(
+        (grant): CalendarAvailabilitySource =>
+          resolved.get(grant.grantId) ?? unavailableSourceFor(grant, "error"),
       ),
     };
   }
@@ -1544,26 +1670,20 @@ export class CalendarService extends Service {
     return value;
   }
 
-  private async deleteIcsSourceSecretBestEffort(
+  private async deleteUncommittedIcsSourceSecretBestEffort(
     service: CalendarSecretsService,
     sourceId: string,
     secretRef: string,
   ): Promise<void> {
     try {
-      const deleted = await service.delete(secretRef, {
+      await service.delete(secretRef, {
         level: "global",
         agentId: this.agentId(),
         requesterId: this.agentId(),
       });
-      if (deleted) return;
-      throw new ElizaError("Calendar source secret was already absent.", {
-        code: "ICS_SECRET_DELETE_MISSING",
-        context: { sourceId },
-        severity: "ephemeral",
-      });
     } catch {
-      // error-policy:J6 Source deletion/rotation is already durable; an
-      // unreachable secret backend may leave only an inert opaque-key orphan.
+      // error-policy:J6 A staged secret has not entered durable source state;
+      // teardown failure is observable without exposing its capability value.
       this.runtime.reportError(
         "calendar:ics-secret-teardown",
         new ElizaError("Calendar source secret cleanup failed.", {
@@ -1575,7 +1695,95 @@ export class CalendarService extends Service {
     }
   }
 
+  private async performIcsSecretCleanupDrain(): Promise<void> {
+    const pending = await this.repo.listIcsSecretCleanup(this.agentId());
+    if (pending.length === 0) return;
+    const service = this.requireIcsSecretsService();
+    for (const cleanup of pending) {
+      try {
+        await service.delete(cleanup.secretRef, {
+          level: "global",
+          agentId: this.agentId(),
+          requesterId: this.agentId(),
+        });
+        await this.repo.acknowledgeIcsSecretCleanup(this.agentId(), cleanup.id);
+      } catch {
+        // error-policy:J1 The durable worker records a retryable failure
+        // without acknowledging the outbox row or retaining secret material in
+        // diagnostics.
+        const attemptedAt = new Date().toISOString();
+        try {
+          await this.repo.recordIcsSecretCleanupFailure({
+            agentId: this.agentId(),
+            cleanupId: cleanup.id,
+            attemptedAt,
+            errorCode: "ICS_SECRET_DELETE_FAILED",
+          });
+        } catch (persistenceError) {
+          throw new ElizaError(
+            "Calendar secret cleanup failure could not be recorded.",
+            {
+              code: "ICS_SECRET_CLEANUP_PERSIST_FAILED",
+              context: {
+                cleanupId: cleanup.id,
+                sourceId: cleanup.sourceId,
+                reason: cleanup.reason,
+              },
+              cause: persistenceError,
+              severity: "fatal",
+            },
+          );
+        }
+        this.runtime.reportError(
+          "calendar:ics-secret-cleanup",
+          new ElizaError("Calendar source secret cleanup will be retried.", {
+            code: "ICS_SECRET_DELETE_FAILED",
+            context: {
+              cleanupId: cleanup.id,
+              sourceId: cleanup.sourceId,
+              reason: cleanup.reason,
+              attemptCount: cleanup.attemptCount + 1,
+            },
+            severity: "ephemeral",
+          }),
+        );
+      }
+    }
+  }
+
+  private async drainIcsSecretCleanup(): Promise<void> {
+    if (this.icsSecretCleanupDrain) {
+      await this.icsSecretCleanupDrain;
+      return;
+    }
+    const drain = this.performIcsSecretCleanupDrain();
+    this.icsSecretCleanupDrain = drain;
+    try {
+      await drain;
+    } finally {
+      if (this.icsSecretCleanupDrain === drain) {
+        this.icsSecretCleanupDrain = null;
+      }
+    }
+  }
+
+  private async drainIcsSecretCleanupAtBoundary(
+    operation: string,
+  ): Promise<void> {
+    try {
+      await this.drainIcsSecretCleanup();
+    } catch (error) {
+      // error-policy:J1 Cleanup is an independent durable effect; its boundary
+      // reports an unavailable worker while preserving every unacknowledged
+      // row for a later boot or ICS operation.
+      this.runtime.reportError("calendar:ics-secret-cleanup-worker", error, {
+        operation,
+      });
+    }
+  }
+
   async listIcsCalendarSources(): Promise<LifeOpsIcsCalendarSource[]> {
+    await this.drainIcsSecretCleanupAtBoundary("list");
     const sources = await this.repo.listIcsCalendarSources(this.agentId());
     return sources.map(publicIcsCalendarSource);
   }
@@ -1583,6 +1791,7 @@ export class CalendarService extends Service {
   async createIcsCalendarSource(
     request: CreateLifeOpsIcsCalendarSourceRequest,
   ): Promise<LifeOpsIcsCalendarSource> {
+    await this.drainIcsSecretCleanupAtBoundary("create");
     const name = requireNonEmptyString(request.name, "name");
     const sourceUrl = normalizeIcsSubscriptionUrl(
       requireNonEmptyString(request.url, "url"),
@@ -1624,7 +1833,11 @@ export class CalendarService extends Service {
     } catch (error) {
       // error-policy:J1 The CRUD boundary compensates the secret write and
       // translates the expected duplicate-source constraint.
-      await this.deleteIcsSourceSecretBestEffort(secrets, sourceId, secretRef);
+      await this.deleteUncommittedIcsSourceSecretBestEffort(
+        secrets,
+        sourceId,
+        secretRef,
+      );
       if (
         error instanceof Error &&
         /calendar_sources_agent_fingerprint_unique/i.test(error.message)
@@ -1643,6 +1856,7 @@ export class CalendarService extends Service {
     sourceId: string,
     request: UpdateLifeOpsIcsCalendarSourceRequest,
   ): Promise<LifeOpsIcsCalendarSource> {
+    await this.drainIcsSecretCleanupAtBoundary("update");
     const normalizedSourceId = requireNonEmptyString(sourceId, "sourceId");
     const existing = await this.repo.getIcsCalendarSource(
       this.agentId(),
@@ -1747,7 +1961,14 @@ export class CalendarService extends Service {
     }
 
     let replacement:
-      | { secretRef: string; urlFingerprint: string; origin: string }
+      | {
+          secretRef: string;
+          urlFingerprint: string;
+          origin: string;
+          retiredSecretRef: string;
+          cleanupId: string;
+          cleanupAt: string;
+        }
       | undefined;
     let replacementSecrets: CalendarSecretsService | null = null;
     if (request.url !== undefined) {
@@ -1770,6 +1991,9 @@ export class CalendarService extends Service {
           secretRef: replacementSecretRef,
           urlFingerprint,
           origin: sourceUrl.origin,
+          retiredSecretRef: existing.secretRef,
+          cleanupId: crypto.randomUUID(),
+          cleanupAt: new Date().toISOString(),
         };
       }
     }
@@ -1787,7 +2011,7 @@ export class CalendarService extends Service {
       // error-policy:J1 The URL-rotation boundary retires the staged secret
       // before translating an expected duplicate-source constraint.
       if (replacement && replacementSecrets) {
-        await this.deleteIcsSourceSecretBestEffort(
+        await this.deleteUncommittedIcsSourceSecretBestEffort(
           replacementSecrets,
           normalizedSourceId,
           replacement.secretRef,
@@ -1807,7 +2031,7 @@ export class CalendarService extends Service {
     }
     if (!updated) {
       if (replacement && replacementSecrets) {
-        await this.deleteIcsSourceSecretBestEffort(
+        await this.deleteUncommittedIcsSourceSecretBestEffort(
           replacementSecrets,
           normalizedSourceId,
           replacement.secretRef,
@@ -1819,22 +2043,22 @@ export class CalendarService extends Service {
         "ICS_SOURCE_NOT_FOUND",
       );
     }
-    if (replacement && replacementSecrets) {
-      await this.deleteIcsSourceSecretBestEffort(
-        replacementSecrets,
-        normalizedSourceId,
-        existing.secretRef,
-      );
+    if (replacement) {
+      await this.drainIcsSecretCleanupAtBoundary("url-rotation");
     }
     return publicIcsCalendarSource(updated);
   }
 
   async deleteIcsCalendarSource(sourceId: string): Promise<void> {
+    await this.drainIcsSecretCleanupAtBoundary("delete");
     const normalizedSourceId = requireNonEmptyString(sourceId, "sourceId");
-    const secrets = this.requireIcsSecretsService();
     const deleted = await this.repo.deleteIcsCalendarSource(
       this.agentId(),
       normalizedSourceId,
+      {
+        id: crypto.randomUUID(),
+        createdAt: new Date().toISOString(),
+      },
     );
     if (!deleted) {
       throw new CalendarServiceError(
@@ -1843,11 +2067,7 @@ export class CalendarService extends Service {
         "ICS_SOURCE_NOT_FOUND",
       );
     }
-    await this.deleteIcsSourceSecretBestEffort(
-      secrets,
-      deleted.id,
-      deleted.secretRef,
-    );
+    await this.drainIcsSecretCleanupAtBoundary("source-delete");
   }
 
   async syncIcsCalendarSource(
@@ -1859,6 +2079,7 @@ export class CalendarService extends Service {
       signal?: AbortSignal;
     } = {},
   ): Promise<LifeOpsIcsCalendarSyncResponse> {
+    await this.drainIcsSecretCleanupAtBoundary("sync");
     const normalizedSourceId = requireNonEmptyString(sourceId, "sourceId");
     const now = options.now ?? new Date();
     const attemptedAt = now.toISOString();
@@ -3080,6 +3301,9 @@ export class CalendarService extends Service {
   async runGoogleCalendarWatchScheduledTask(
     record: ScheduledTaskDispatchRecord,
   ): Promise<DispatchResult | undefined> {
+    if (record.metadata?.calendarGoogleWatchOperation === "maintenance") {
+      await this.drainIcsSecretCleanupAtBoundary("maintenance");
+    }
     return this.googleWatch.runScheduledTask(record);
   }
 
@@ -3416,11 +3640,38 @@ export class CalendarService extends Service {
         syncedAt,
       }),
     );
+    // Quarantined events keep the batch and cursor moving, so they must
+    // surface as a partial source instead of silently narrowing the feed.
+    const quarantineError: LifeOpsCalendarSourceError | null =
+      batch.issues.length > 0
+        ? {
+            code: "MICROSOFT_GRAPH_EVENTS_QUARANTINED",
+            message: `${batch.issues.length} Microsoft calendar event${
+              batch.issues.length === 1 ? " was" : "s were"
+            } quarantined as invalid.`,
+            retryable: false,
+          }
+        : null;
+    if (quarantineError) {
+      this.runtime.reportError(
+        "calendar:microsoft-sync",
+        new ElizaError(quarantineError.message, {
+          code: quarantineError.code,
+          context: {
+            grantId: account.grant.id,
+            calendarId: args.calendarId,
+            issueCount: batch.issues.length,
+            issues: batch.issues.slice(0, 20),
+          },
+          severity: "fatal",
+        }),
+      );
+    }
     return {
       calendarId: args.calendarId,
       events: nextEvents,
       source: "synced",
-      state: "complete",
+      state: quarantineError ? "partial" : "complete",
       sources: [
         calendarSourceHealth({
           calendar: {
@@ -3432,9 +3683,9 @@ export class CalendarService extends Service {
             summary: args.calendarSummary,
             accessRole: args.calendarAccessRole,
           },
-          status: "fresh",
+          status: quarantineError ? "stale" : "fresh",
           syncedAt,
-          error: null,
+          error: quarantineError,
         }),
       ],
       timeMin: args.timeMin,
@@ -4897,6 +5148,12 @@ export class CalendarService extends Service {
         "CALENDAR_RECURRENCE_SPLIT_EVENT_BOUNDS_INVALID",
       );
     }
+    assertRecurrenceStartMatchesRule({
+      recurrence: context.plan.followingRecurrence,
+      startAt: new Date(startAt),
+      timeZone: args.timeZone ?? context.timeZone,
+      label: "Following recurrence",
+    });
     const title = args.request.title ?? context.master.title;
     if (!title.trim()) {
       fail(

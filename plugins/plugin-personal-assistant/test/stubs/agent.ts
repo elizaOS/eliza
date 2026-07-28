@@ -157,8 +157,11 @@ export async function extractActionParamsViaLlm(): Promise<unknown> {
   return null;
 }
 
-export function renderGroundedActionReply(args?: { text?: string }): string {
-  return args?.text ?? "";
+export function renderGroundedActionReply(args?: {
+  fallback?: string;
+  text?: string;
+}): string {
+  return args?.fallback ?? args?.text ?? "";
 }
 
 // Integration telemetry is self-contained (only the core logger), so the test

@@ -17,6 +17,7 @@ export * from "./food/index.js";
 export * from "./goal-grounding.js";
 export * from "./goal-semantic-evaluator.js";
 export * from "./google-plugin-delegates.js";
+export * from "./guest-availability-grants.js";
 export * from "./household/index.js";
 export * from "./household-operations/index.js";
 export * from "./implicit-referents/candidate-sources.js";

@@ -19,21 +19,21 @@ clarification, and verifiable end-state correctness.
 ```
 +------------------+     +-------------------+     +----------------------+
 |  Scenario Corpus |---->|  LifeOpsBench     |<----|  Agent Adapter        |
-|  (744 static +   |     |  Runner           |     |  (Eliza | Hermes |    |
-|   738 live)      |     |  (orchestrator)   |     |   OpenClaw |       |
+|  (base cases +   |     |  Runner           |     |  (Eliza | Hermes |    |
+|   language runs) |     |  (orchestrator)   |     |   OpenClaw |       |
 +------------------+     +-------------------+     |   PerfectAgent | …)   |
         |                        |                 +----------------------+
         v                        v                          |
 +------------------+     +-------------------+              |
 |  Persona Library |     |  LifeWorld        |<-------------+ tool calls
-|  (23 personas)   |     |  (in-memory state)|
+|  (32 personas)   |     |  (in-memory state)|
 +------------------+     +-------------------+
                                  |
                                  v
                          +-----------------+
                          |  Scorer         |
                          |  state_hash +   |
-                         |  substring +    |
+                         |  semantic judge |
                          |  pass^k +       |
                          |  per-domain     |
                          +-----------------+
@@ -60,19 +60,23 @@ uv sync
 # or
 pip install -e .[anthropic,test]
 
-# List all scenarios. 1482 base scenarios are expanded 10x under fixed
-# prompt-prefix framings (polite/urgent/mobile/…) into 16302 robustness runs;
-# each edge variant shares its base's ground-truth actions, required outputs
-# and world seed — only the prompt wording differs. `--count-scenarios` prints
-# the base-vs-variant split explicitly.
+# List all scenarios. Every base scenario is expanded under ten model-generated
+# language challenges covering vague referents, corrections, colloquial/noisy
+# language, code switching, underspecification, stress, relative time, and
+# handoffs. `--count-scenarios` prints the current base-vs-run split.
 python3 -m eliza_lifeops_bench --list-scenarios
 
 # Run the real elizaOS adapter (the CLI default)
 python3 -m eliza_lifeops_bench --agent eliza --domain calendar
 
 # Check harness conformance explicitly; this is not agent evidence
-python3 -m eliza_lifeops_bench --agent perfect --scenario smoke_static_calendar_01
+python3 -m eliza_lifeops_bench --agent perfect \
+  --scenario smoke_static_calendar_01 --offline-conformance
 ```
+
+`LIFEOPS_PLANNER_PROMPT_FILE` is optional: when unset, adapters use the
+built-in planner prompt. Once explicitly set, a missing, unreadable, empty, or
+malformed artifact fails before any model call.
 
 Expected output (truncated) for an adapter-conformance run:
 
@@ -95,8 +99,8 @@ Expected output (truncated) for an adapter-conformance run:
 
 Note: `--agent perfect` and `--agent wrong` use per-scenario agent
 factories and are limited to explicit harness-conformance checks. The CLI
-defaults to `--agent eliza`. LIVE-mode runs default
-to Cerebras for the simulated user and Anthropic for the judge. The provider
+defaults to `--agent eliza`. Publishable STATIC and LIVE runs default to
+Cerebras for the simulated user and Anthropic for the judge. The provider
 pair is configurable with `--evaluator-provider` / `--judge-provider` (or
 `LIFEOPS_BENCH_EVALUATOR_PROVIDER` / `LIFEOPS_BENCH_JUDGE_PROVIDER`), and
 each selected provider requires its own credential. Keep the two model IDs
@@ -113,13 +117,25 @@ CEREBRAS_API_KEY=... python3 -m eliza_lifeops_bench \
   --judge-model gpt-oss-120b
 ```
 
-A default or `--suite full` run includes LIVE scenarios and fails clearly
-when a selected credential is unavailable; pass `--mode static` when a
-deliberately static-only run is intended. The result JSON records both
-provider names and both model IDs. Each LIVE `ScenarioResult` also carries a
+A default or `--suite full` run includes LIVE scenarios, and semantic STATIC
+also requires the evaluator/judge boundary. Both fail clearly when a selected
+credential is unavailable. Use `--offline-conformance` only for an explicitly
+non-publishable, deterministic harness check. The result JSON records both
+provider names and both model IDs. Each semantically evaluated
+`ScenarioResult` also carries a
 scenario-local `evaluator_trace` with the exact simulated-user and judge
 input messages, output text, token/latency/cost telemetry, and raw provider
 response. Traces are isolated even when scenarios run concurrently.
+
+For STATIC runs, structural facts remain deterministic: state hashes and
+action names/parameters prove what happened. Natural-language
+`required_outputs` and `static_rubric` items are graded together in one
+structured judge call. Equivalent paraphrases can pass; copied keywords with
+wrong facts cannot. Every positive grade must cite a meaningful verbatim
+fragment from an actual executor or eligible tool transcript line, and the
+returned criterion IDs must match the requested set exactly. Missing,
+malformed, duplicated, or extra coverage invalidates the judge trace and
+blocks result publication.
 
 ### Authenticated execution for evidence-gated LIVE scenarios
 
@@ -136,7 +152,6 @@ export LIFEOPS_BENCH_TRUSTED_EXECUTOR_REQUEST_KEY_ID=request-key-v1
 export LIFEOPS_BENCH_TRUSTED_EXECUTOR_RECEIPT_KEY_ID=receipt-key-v1
 export LIFEOPS_BENCH_TRUSTED_EXECUTOR_ALLOWED_PROVIDERS=calendar-sandbox
 export LIFEOPS_BENCH_TRUSTED_EXECUTOR_ALLOWED_BOUNDARIES=sandbox_connector
-export LIFEOPS_BENCH_TRUSTED_EXECUTOR_BEARER_TOKEN=...
 python3 -m eliza_lifeops_bench --agent eliza --scenario <gated-scenario-id>
 ```
 
@@ -180,11 +195,26 @@ an exact contract registry, injected connector and server-owned evaluator
 interfaces, durable SQLite replay/idempotency state, signed terminal artifacts,
 and a bounded `ThreadingHTTPServer` handler.
 `eliza_lifeops_bench.runtime_connector` supplies a separate-process native
-elizaOS action connector and a structured evaluator for contract G10. The
-production registry deliberately contains only that implemented contract; the
-other 47 evidence contracts fail closed before dispatch. Real-socket protocol
-tests and the deterministic test connector remain test coverage, not provider
-evidence. See `PLAN.md` for the three-process deployment and acceptance bar.
+elizaOS action connector and the production registry for all 53 contracts.
+Every contract has two server-owned typed artifact schemas mapped to its exact
+assertions. The signer accepts only a complete, content-addressed terminal
+snapshot assembled by server-owned capture or a registered native evaluator
+and tied to the action lineage; action-authored `terminalSnapshot` data is
+discarded. Missing, altered, extra, stale, or cross-contract artifacts remain
+nonterminal. Seven cases have native evaluators: G10, G15, G30, G34, G35, G36,
+and G38.
+The current runtime provenance schema is intentionally non-publishable:
+`local_nonpublishable/not_applicable` and
+`provider_backed/not_verified` both carry `release_evidence: false`. The Python
+HTTP connector validates either exact shape but rejects it at the release gate
+until a future server-owned provider readback is verified. Merely configuring a
+provider, passing a local durable receipt, or returning action-authored
+`terminalSnapshot` data cannot cross that gate. A `provider_accepted` receipt
+must additionally bind its domain idempotency key to the authenticated outer
+key.
+Real-socket protocol tests and deterministic test connectors remain test
+coverage, not provider evidence. See `PLAN.md` for the three-process deployment
+and acceptance bar.
 
 ## Running with each backend
 
@@ -246,15 +276,14 @@ packages/benchmarks/lifeops-bench/
     __main__.py              CLI (argparse front-end)
     types.py                 Scenario / Action / MessageTurn / BenchmarkResult dataclasses
     runner.py                Orchestration + umbrella action executor
-    evaluator.py             LIVE-mode simulated-user + judge wiring
-    scorer.py                state_hash, output_substring, pass@k aggregation
+    evaluator.py             simulated-user + independent semantic judge wiring
+    scorer.py                state/action/semantic-response + pass@k aggregation
     corpus_audit.py           Rebuilds the module/persona/no-effect inventory
     lifeworld/               In-memory hashable world (entities + snapshots)
-    scenarios/               1482 base scenarios (744 static + 738 live) by domain;
-                             __init__.py expands each 10x under fixed prompt-prefix
-                             framings into 16302 robustness runs (variant shares its
-                             base's ground-truth/required-outputs/world-seed)
-      _personas.py           23 reusable personas
+    scenarios/               base scenarios by domain; __init__.py expands each
+                             under ten model-generated language challenges while
+                             preserving hidden goals, ground truth, and world seeds
+      _personas.py           32 reusable personas
       _smoke_scenarios.py    Two original smoke scenarios (kept at front of list)
       _authoring/            Candidate-generator pipeline + spec
         spec.md              Authoring guide (also fed to Cerebras as a prompt)
@@ -311,13 +340,11 @@ and judge models and spend real inference budget.
 ## Known gaps
 
 See [`LIFEOPS_BENCH_GAPS.md`](./LIFEOPS_BENCH_GAPS.md) and
-[`corpus-audit.json`](./corpus-audit.json). The current base corpus contains
-346 action occurrences across 304 STATIC scenarios whose semantics are not
-modeled by LifeWorld. Every such dispatch now returns an explicit non-success
-result (`ok=false`, `status=unsupported`, `noEffect=true`); none can masquerade
-as a successful empty result. The generated audit retains every affected
-scenario, action, arguments, and reason, while modeled reads and conversational
-terminals live in a separate exemption registry.
+[`corpus-audit.json`](./corpus-audit.json). The generated audit replays every
+base scenario in authored action order and records unsupported operations,
+execution errors, mutations, and modeled no-mutation projections. Missing
+scheduled-task mutation targets fail rather than being invented by the
+executor.
 
 ## Pointers
 

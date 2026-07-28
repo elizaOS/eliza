@@ -1,8 +1,8 @@
 /**
  * Real-PGlite integration proof for the production parenting action over the
- * knowledge graph, household authorization, owner locale store, policy engine,
- * and reviewed handoff resolver. Safety results are deterministic fixtures;
- * this suite does not claim a live-model classification.
+ * knowledge graph, household authorization, subject-location evidence, policy
+ * engine, and reviewed handoff resolver. Safety results are deterministic
+ * fixtures; this suite does not claim a live-model classification.
  */
 
 import { randomUUID } from "node:crypto";
@@ -47,6 +47,11 @@ import {
   type ParentingGuidanceDelivery,
   ParentingGuidanceService,
 } from "./service.js";
+import {
+  createParentingSubjectLocationAttribute,
+  PARENTING_CURRENT_LOCATION_ATTRIBUTE,
+  type ParentingSubjectLocationSource,
+} from "./subject-location.js";
 import type {
   ParentingRiskSignal,
   ParentingSafetyAssessment,
@@ -106,6 +111,7 @@ describe("parenting guidance production wiring — real PGlite", () => {
   const schoolAgeChildId = `ent_parenting_school_${randomUUID()}`;
   const teenChildId = `ent_parenting_teen_${randomUUID()}`;
   const ungrantedCoParentId = `ent_parenting_coparent_${randomUUID()}`;
+  const authorizedCoParentId = `ent_parenting_authorized_coparent_${randomUUID()}`;
   const action = createParentingGuidanceAction({
     resolveAuthenticatedPrincipal: resolveAuthenticatedFamilyPrincipal,
   });
@@ -136,6 +142,20 @@ describe("parenting guidance production wiring — real PGlite", () => {
           evidence: ["Owner-confirmed record visibility."],
           updatedAt: now,
         },
+        [PARENTING_CURRENT_LOCATION_ATTRIBUTE]:
+          createParentingSubjectLocationAttribute({
+            tenantAgentId: runtime.agentId,
+            subjectEntityId: input.entityId,
+            locale: "en-US",
+            jurisdiction: "US",
+            observedAt: now,
+            expiresAt: new Date(
+              Date.parse(now) + 12 * 60 * 60 * 1_000,
+            ).toISOString(),
+            source: "caregiver_presence_confirmation",
+            verifiedByEntityId: SELF_ENTITY_ID,
+            verificationEvidenceId: `presence:${input.entityId}:${now}`,
+          }),
       },
       tags: ["parenting-guidance-integration"],
       visibility: "owner_only",
@@ -175,6 +195,60 @@ describe("parenting guidance production wiring — real PGlite", () => {
         note: "Owner confirmed locale for parenting handoff tests.",
       },
     );
+  }
+
+  async function setSubjectLocation(
+    subjectEntityId: string,
+    options: {
+      locale?: string;
+      jurisdiction?: string;
+      observedAt?: string;
+      expiresAt?: string;
+      source?: ParentingSubjectLocationSource;
+      verifiedByEntityId?: string;
+      tenantAgentId?: string;
+      remove?: boolean;
+    } = {},
+  ): Promise<void> {
+    const graph = resolveKnowledgeGraphService(runtime);
+    if (!graph) throw new Error("knowledge graph unavailable");
+    const entityStore = graph.getEntityStore(runtime.agentId);
+    const entity = await entityStore.get(subjectEntityId);
+    if (!entity) throw new Error(`subject ${subjectEntityId} unavailable`);
+    const attributes = { ...entity.attributes };
+    if (options.remove) {
+      delete attributes[PARENTING_CURRENT_LOCATION_ATTRIBUTE];
+    } else {
+      const observedAt =
+        options.observedAt ?? new Date(Date.now() - 60 * 1_000).toISOString();
+      attributes[PARENTING_CURRENT_LOCATION_ATTRIBUTE] =
+        createParentingSubjectLocationAttribute({
+          tenantAgentId: options.tenantAgentId ?? runtime.agentId,
+          subjectEntityId,
+          locale: options.locale ?? "en-US",
+          jurisdiction: options.jurisdiction ?? "US",
+          observedAt,
+          expiresAt:
+            options.expiresAt ??
+            new Date(
+              Date.parse(observedAt) + 12 * 60 * 60 * 1_000,
+            ).toISOString(),
+          source: options.source ?? "caregiver_presence_confirmation",
+          verifiedByEntityId: options.verifiedByEntityId ?? SELF_ENTITY_ID,
+          verificationEvidenceId: `presence:${subjectEntityId}:${randomUUID()}`,
+        });
+    }
+    await entityStore.upsert({
+      entityId: entity.entityId,
+      type: entity.type,
+      preferredName: entity.preferredName,
+      ...(entity.fullName ? { fullName: entity.fullName } : {}),
+      identities: entity.identities,
+      attributes,
+      tags: entity.tags,
+      visibility: entity.visibility,
+      state: entity.state,
+    });
   }
 
   function useRisk(overrides: RiskOverrides): void {
@@ -251,6 +325,16 @@ describe("parenting guidance production wiring — real PGlite", () => {
       visibility: "owner_only",
       state: {},
     });
+    await graph.getEntityStore(runtime.agentId).upsert({
+      entityId: authorizedCoParentId,
+      type: "person",
+      preferredName: "Authorized co-parent test principal",
+      identities: [],
+      attributes: {},
+      tags: ["parenting-guidance-integration"],
+      visibility: "owner_only",
+      state: {},
+    });
     await household.bindRole({
       entityId: ungrantedCoParentId,
       role: "co_parent",
@@ -258,7 +342,22 @@ describe("parenting guidance production wiring — real PGlite", () => {
       boundByEntityId: SELF_ENTITY_ID,
       evidence: "Owner confirmed the co-parent relationship for access tests.",
     });
-    await setLocale("en-US");
+    await household.bindRole({
+      entityId: authorizedCoParentId,
+      role: "co_parent",
+      subjectEntityIds: [schoolAgeChildId],
+      boundByEntityId: SELF_ENTITY_ID,
+      evidence:
+        "Owner confirmed the co-parent relationship for subject-location tests.",
+    });
+    await household.issueGrant({
+      principalEntityId: authorizedCoParentId,
+      role: "co_parent",
+      subjectEntityIds: [schoolAgeChildId],
+      scopes: ["household.visibility"],
+      issuedByEntityId: SELF_ENTITY_ID,
+    });
+    await setLocale("en-GB");
   }, 180_000);
 
   afterAll(async () => {
@@ -376,7 +475,38 @@ describe("parenting guidance production wiring — real PGlite", () => {
     expect(classifierCalls).toBe(0);
   });
 
+  it("denies an otherwise authorized co-parent access to another child", async () => {
+    let classifierCalls = 0;
+    registerParentingSafetyClassifier(runtime, {
+      classify: async ({ assessedAt }) => {
+        classifierCalls += 1;
+        return {
+          status: "classified",
+          assessment: assessment(assessedAt),
+        };
+      },
+    });
+    const childScopedService = new ParentingGuidanceService({
+      runtime,
+      resolveAuthenticatedPrincipal: async () => authorizedCoParentId,
+    });
+
+    await expect(
+      childScopedService.advise({
+        message: ownerMessage(
+          "This request is for a different child than the active grant.",
+        ),
+        subjectEntityId: teenChildId,
+        topic: "communication",
+      }),
+    ).rejects.toMatchObject({
+      code: "PARENTING_GUIDANCE_ACCESS_DENIED",
+    });
+    expect(classifierCalls).toBe(0);
+  });
+
   it("stops on unknown risk instead of assuming ordinary guidance is safe", async () => {
+    await setSubjectLocation(schoolAgeChildId);
     useRisk({ selfHarm: "unknown" });
     const { guidance } = await run({
       text: "They said something scary and I cannot tell what they meant.",
@@ -395,7 +525,7 @@ describe("parenting guidance production wiring — real PGlite", () => {
   });
 
   it("resolves exact US emergency and crisis resources for urgent risk", async () => {
-    await setLocale("en-US");
+    await setSubjectLocation(schoolAgeChildId);
     useRisk({ immediateDanger: "present", selfHarm: "present" });
     const { result, guidance } = await run({
       text: "My child says they are going to hurt themselves right now.",
@@ -447,7 +577,7 @@ describe("parenting guidance production wiring — real PGlite", () => {
   ] as const)(
     "routes $label language to its reviewed human boundary",
     async ({ risk, status, kind }) => {
-      await setLocale("en-US");
+      await setSubjectLocation(schoolAgeChildId);
       useRisk(risk);
       const { guidance } = await run({
         text: "The classifier fixture represents this sensitive request.",
@@ -487,20 +617,31 @@ describe("parenting guidance production wiring — real PGlite", () => {
     expect(guidance.decision.omissionNotice).toMatch(/contents are omitted/u);
   });
 
-  it("returns no guessed contacts when locale evidence is missing or unsupported", async () => {
+  it("returns no guessed contacts when subject location is missing or unsupported", async () => {
     useRisk({ selfHarm: "present" });
-    await resolveOwnerFactStore(runtime).clear();
+    await setSubjectLocation(schoolAgeChildId, { remove: true });
     const missing = await run({
       text: "The child may hurt themselves now.",
+      injected: {
+        locale: "en-US",
+        currentLocation: {
+          locale: "en-US",
+          jurisdiction: "US",
+          source: "planner_claim",
+        },
+      },
     });
     expect(missing.guidance.handoffResources).toMatchObject({
       status: "unavailable",
-      unavailableReason: "locale_missing",
+      unavailableReason: "location_missing",
       resources: [],
     });
     expect(missing.result.text).toMatch(/no contact was guessed/u);
 
-    await setLocale("en-GB");
+    await setSubjectLocation(schoolAgeChildId, {
+      locale: "en-GB",
+      jurisdiction: "GB",
+    });
     const unsupported = await run({
       text: "The child may hurt themselves now.",
     });
@@ -512,29 +653,20 @@ describe("parenting guidance production wiring — real PGlite", () => {
     expect(JSON.stringify(unsupported.guidance.handoffResources)).not.toContain(
       "911",
     );
-    await setLocale("en-US");
+    await setSubjectLocation(schoolAgeChildId);
   });
 
-  it("rejects stale inferred locale and home locale during active travel", async () => {
+  it("uses the child's co-parent-verified location while the owner travels elsewhere", async () => {
     useRisk({ selfHarm: "present" });
-    await setLocale("en-US", {
-      source: "connector_inferred",
-      recordedAt: "2025-01-01T00:00:00.000Z",
+    await setLocale("en-GB", {
+      source: "profile_save",
     });
-    const stale = await run({
-      text: "The child may hurt themselves now.",
+    await setSubjectLocation(schoolAgeChildId, {
+      locale: "en-US",
+      jurisdiction: "US",
+      verifiedByEntityId: authorizedCoParentId,
+      source: "caregiver_presence_confirmation",
     });
-    expect(stale.guidance.localeEvidence).toMatchObject({
-      status: "unavailable",
-      unavailableReason: "locale_stale",
-    });
-    expect(stale.guidance.handoffResources).toMatchObject({
-      status: "unavailable",
-      unavailableReason: "locale_stale",
-      resources: [],
-    });
-
-    await setLocale("en-US");
     const now = Date.now();
     await resolveOwnerFactStore(runtime).setActiveTravel(
       {
@@ -545,17 +677,24 @@ describe("parenting guidance production wiring — real PGlite", () => {
       {
         source: "profile_save",
         recordedAt: new Date(now).toISOString(),
-        note: "Active travel fixture without an authoritative jurisdiction.",
+        note: "Owner is traveling in another jurisdiction.",
       },
     );
     try {
-      const inTransit = await run({
+      const routedByChildLocation = await run({
         text: "The child may hurt themselves now.",
       });
-      expect(inTransit.guidance.handoffResources).toMatchObject({
-        status: "unavailable",
-        unavailableReason: "locale_in_transit",
-        resources: [],
+      expect(routedByChildLocation.guidance.localeEvidence).toMatchObject({
+        status: "resolved",
+        subjectEntityId: schoolAgeChildId,
+        locale: "en-US",
+        jurisdiction: "US",
+        source: "subject_location_graph",
+        verifiedByEntityId: authorizedCoParentId,
+      });
+      expect(routedByChildLocation.guidance.handoffResources).toMatchObject({
+        status: "resolved",
+        jurisdiction: "US",
       });
     } finally {
       // Shared runtime state must not leak into later cases when an assertion
@@ -565,11 +704,73 @@ describe("parenting guidance production wiring — real PGlite", () => {
         recordedAt: new Date().toISOString(),
         note: "Travel fixture cleanup.",
       });
+      await setSubjectLocation(schoolAgeChildId);
     }
   });
 
-  it("fails both guidance and handoff resources closed after their review windows", async () => {
-    await setLocale("en-US");
+  it("fails closed for stale, cross-child, or cross-tenant location assertions", async () => {
+    useRisk({ selfHarm: "present" });
+    const now = Date.now();
+    await setSubjectLocation(schoolAgeChildId, {
+      observedAt: new Date(now - 48 * 60 * 60 * 1_000).toISOString(),
+      expiresAt: new Date(now - 24 * 60 * 60 * 1_000).toISOString(),
+    });
+    const stale = await run({
+      text: "The child may hurt themselves now.",
+    });
+    expect(stale.guidance.localeEvidence).toMatchObject({
+      status: "unavailable",
+      unavailableReason: "location_stale",
+    });
+    expect(stale.guidance.handoffResources).toMatchObject({
+      status: "unavailable",
+      unavailableReason: "location_stale",
+      resources: [],
+    });
+
+    await setSubjectLocation(schoolAgeChildId, {
+      source: "professional_presence_confirmation",
+      verifiedByEntityId: authorizedCoParentId,
+    });
+    const mismatchedVerifierRole = await run({
+      text: "The child may hurt themselves now.",
+    });
+    expect(mismatchedVerifierRole.guidance.localeEvidence).toMatchObject({
+      status: "unavailable",
+      unavailableReason: "location_untrusted",
+    });
+
+    await setSubjectLocation(teenChildId, {
+      verifiedByEntityId: authorizedCoParentId,
+    });
+    const crossChild = await run({
+      text: "The teen may hurt themselves now.",
+      childId: teenChildId,
+    });
+    expect(crossChild.guidance.localeEvidence).toMatchObject({
+      status: "unavailable",
+      unavailableReason: "location_untrusted",
+    });
+
+    await setSubjectLocation(schoolAgeChildId, {
+      tenantAgentId: `foreign-${runtime.agentId}`,
+    });
+    const crossTenant = await run({
+      text: "The child may hurt themselves now.",
+    });
+    expect(crossTenant.guidance.localeEvidence).toMatchObject({
+      status: "unavailable",
+      unavailableReason: "location_untrusted",
+    });
+    expect(crossTenant.result.text).toMatch(
+      /no contact was guessed from the owner's profile or travel location/u,
+    );
+
+    await setSubjectLocation(schoolAgeChildId);
+    await setSubjectLocation(teenChildId);
+  });
+
+  it("stops guidance without inventing a clinical handoff after source review expiry", async () => {
     useRisk({});
     const staleService = new ParentingGuidanceService({
       runtime,
@@ -589,8 +790,8 @@ describe("parenting guidance production wiring — real PGlite", () => {
       /past their required review date/u,
     );
     expect(guidance.handoffResources).toMatchObject({
-      status: "unavailable",
-      unavailableReason: "resource_review_expired",
+      status: "not_required",
+      unavailableReason: null,
       resources: [],
     });
   });

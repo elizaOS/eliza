@@ -443,7 +443,7 @@ describe("school source facts — real PGlite", () => {
     );
     const corrected = await service.ingestSchoolNotice(
       noticeInput({
-        authority: "school_notice",
+        authority: "signed_school_correction",
         artifact: sourceArtifact({
           kind: "gmail",
           reference: `${noticeKey}:gmail-correction`,
@@ -561,6 +561,13 @@ describe("school source facts — real PGlite", () => {
       type: "supersedes_source_fact",
     });
     expect(supersession).toHaveLength(1);
+    const contradiction = await relationshipStore.list({
+      fromEntityId: corrected.sourceFact.id,
+      toEntityId: first.sourceFact.id,
+      type: "contradicts_source_fact",
+    });
+    expect(contradiction).toHaveLength(1);
+    expect(corrected.sourceFact.authority).toBe("signed_school_correction");
     const currentBundles = await service.listCurrentActionBundles(noticeKey);
     expect(currentBundles).toEqual([
       expect.objectContaining({ id: corrected.actionBundle.id }),

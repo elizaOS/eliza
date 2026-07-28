@@ -102,6 +102,12 @@ export interface CalendarMutationApprovalResult {
     | "done"
     | "rejected"
     | "expired";
+  /** Timestamp read back from the durable approval row after enqueue/replay. */
+  readonly acceptedAt: string;
+  /** Stable queue-level intent key which made duplicate enqueue safe. */
+  readonly idempotencyKey: string;
+  /** True only when the queue verified and returned an existing request. */
+  readonly replayed: boolean;
   readonly text: string;
 }
 

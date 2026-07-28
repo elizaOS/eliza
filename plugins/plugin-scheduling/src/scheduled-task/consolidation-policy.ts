@@ -13,6 +13,7 @@
  * combined card; `sequential` staggers; `parallel` fires all at once.
  */
 
+import { resolveLocalHHMMToIso } from "./local-time.js";
 import type {
   AnchorConsolidationPolicy,
   AnchorContext,
@@ -73,62 +74,11 @@ function todayIsoWithLocalHHMM(
   hhmm: string,
   tz: string,
 ): { atIso: string } | null {
-  const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(hhmm);
-  if (!match) return null;
-  const hour = Number.parseInt(match[1] ?? "0", 10);
-  const minute = Number.parseInt(match[2] ?? "0", 10);
-  // Start from the local-date string for the given tz, then construct an
-  // ISO that represents that local hour/minute.
   try {
-    const formatter = new Intl.DateTimeFormat("en-CA", {
-      timeZone: tz,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    });
-    const parts = formatter.formatToParts(new Date(nowIso));
-    const y = Number.parseInt(
-      parts.find((p) => p.type === "year")?.value ?? "1970",
-      10,
-    );
-    const mo = Number.parseInt(
-      parts.find((p) => p.type === "month")?.value ?? "01",
-      10,
-    );
-    const d = Number.parseInt(
-      parts.find((p) => p.type === "day")?.value ?? "01",
-      10,
-    );
-    // Build a UTC iso then offset by the tz offset from this date.
-    // Simplest correct approach: ask Intl for the offset minutes for this
-    // local datetime by formatting an offset.
-    const localDate = new Date(Date.UTC(y, mo - 1, d, hour, minute, 0));
-    // Compute the offset by formatting localDate in the tz and reading
-    // longOffset; fall back to UTC if not supported.
-    const offsetFormatter = new Intl.DateTimeFormat("en-US", {
-      timeZone: tz,
-      timeZoneName: "longOffset",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    });
-    const tzParts = offsetFormatter.formatToParts(localDate);
-    const offsetStr =
-      tzParts.find((p) => p.type === "timeZoneName")?.value ?? "GMT";
-    const offsetMatch = /GMT([+-]\d{1,2})(?::?(\d{2}))?/.exec(offsetStr);
-    let offsetMinutes = 0;
-    if (offsetMatch) {
-      const sign = offsetMatch[1]?.startsWith("-") ? -1 : 1;
-      const oh = Math.abs(Number.parseInt(offsetMatch[1] ?? "0", 10));
-      const om = Number.parseInt(offsetMatch[2] ?? "0", 10);
-      offsetMinutes = sign * (oh * 60 + om);
-    }
-    const atMs = localDate.getTime() - offsetMinutes * 60_000;
-    return { atIso: new Date(atMs).toISOString() };
+    const atIso = resolveLocalHHMMToIso(new Date(nowIso), hhmm, tz);
+    return atIso ? { atIso } : null;
   } catch {
+    // error-policy:J3 owner-provided timezone data yields an explicit invalid anchor.
     return null;
   }
 }

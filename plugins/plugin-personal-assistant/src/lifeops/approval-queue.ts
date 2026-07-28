@@ -20,6 +20,7 @@ import {
   type ApprovalAction,
   type ApprovalChannel,
   type ApprovalEnqueueInput,
+  type ApprovalEnqueueResult,
   ApprovalIdempotencyConflictError,
   type ApprovalListFilter,
   ApprovalNotFoundError,
@@ -113,6 +114,9 @@ const VALID_CHANNELS: ReadonlySet<ApprovalChannel> = new Set([
   "x_dm",
   "email",
   "google_calendar",
+  "microsoft_calendar",
+  "apple_calendar",
+  "ics_calendar",
   "browser",
   "phone",
   "internal",
@@ -930,10 +934,7 @@ export interface ApprovalQueueOptions {
   readonly agentId: string;
 }
 
-export interface TransactionalApprovalEnqueueResult {
-  readonly request: ApprovalRequest;
-  readonly reused: boolean;
-}
+export type TransactionalApprovalEnqueueResult = ApprovalEnqueueResult;
 
 export class PgApprovalQueue implements ApprovalQueue {
   private readonly runtime: IAgentRuntime;
@@ -945,9 +946,15 @@ export class PgApprovalQueue implements ApprovalQueue {
   }
 
   async enqueue(input: ApprovalEnqueueInput): Promise<ApprovalRequest> {
+    return (await this.enqueueWithResult(input)).request;
+  }
+
+  async enqueueWithResult(
+    input: ApprovalEnqueueInput,
+  ): Promise<ApprovalEnqueueResult> {
     const inserted = await this.insertApproval(input);
     if (inserted.reused) {
-      return inserted.request;
+      return inserted;
     }
     try {
       await this.surfaceEnqueuedApproval(inserted.request);
@@ -965,7 +972,7 @@ export class PgApprovalQueue implements ApprovalQueue {
         { cause: error },
       );
     }
-    return inserted.request;
+    return inserted;
   }
 
   async enqueueConfirmed(

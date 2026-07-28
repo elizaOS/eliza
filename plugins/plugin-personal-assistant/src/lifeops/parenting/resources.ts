@@ -7,6 +7,7 @@
  */
 
 import { ElizaError, type IAgentRuntime } from "@elizaos/core";
+import type { ParentingLocaleEvidence } from "./subject-location.js";
 import type { ParentingHandoffKind } from "./types.js";
 
 export type ParentingHandoffContact =
@@ -40,41 +41,11 @@ export interface ParentingHandoffResource {
   readonly reviewExpiresAt: string;
 }
 
-export type ParentingLocaleEvidence =
-  | {
-      readonly status: "resolved";
-      readonly locale: string;
-      readonly source: "configured_owner_locale" | "runtime_locale_provider";
-      readonly observedAt: string;
-      readonly provenance:
-        | "first_run"
-        | "profile_save"
-        | "connector_inferred"
-        | null;
-      readonly unavailableReason: null;
-    }
-  | {
-      readonly status: "unavailable";
-      readonly locale: string | null;
-      readonly source: "unavailable";
-      readonly observedAt: string | null;
-      readonly provenance:
-        | "first_run"
-        | "profile_save"
-        | "connector_inferred"
-        | null;
-      readonly unavailableReason:
-        | "locale_missing"
-        | "locale_untrusted"
-        | "locale_stale"
-        | "locale_in_transit";
-    };
-
 export type ParentingHandoffResourceUnavailableReason =
+  | "location_missing"
+  | "location_untrusted"
+  | "location_stale"
   | "locale_missing"
-  | "locale_untrusted"
-  | "locale_stale"
-  | "locale_in_transit"
   | "locale_invalid"
   | "locale_missing_region"
   | "locale_unsupported"

@@ -71,6 +71,9 @@ export type ApprovalChannel =
   | "x_dm"
   | "email"
   | "google_calendar"
+  | "microsoft_calendar"
+  | "apple_calendar"
+  | "ics_calendar"
   | "browser"
   | "phone"
   | "internal";
@@ -286,6 +289,15 @@ export interface ApprovalRequest {
   readonly resolutionReason: string | null;
 }
 
+/**
+ * Atomic enqueue outcome. `reused` comes from the idempotency-constrained
+ * insert itself; consumers must not reconstruct it from row state or time.
+ */
+export interface ApprovalEnqueueResult {
+  readonly request: ApprovalRequest;
+  readonly reused: boolean;
+}
+
 /** Input to `enqueue` — server fills in id, timestamps, and initial state. */
 export interface ApprovalEnqueueInput {
   readonly requestedBy: string;
@@ -392,6 +404,9 @@ export class ApprovalNotFoundError extends Error {
  */
 export interface ApprovalQueue {
   enqueue(input: ApprovalEnqueueInput): Promise<ApprovalRequest>;
+  enqueueWithResult(
+    input: ApprovalEnqueueInput,
+  ): Promise<ApprovalEnqueueResult>;
   /**
    * Persist an already-confirmed owner gesture without emitting a second
    * approval prompt. The same immutable queue and transition rules apply.

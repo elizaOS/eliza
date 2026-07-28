@@ -10,24 +10,25 @@
  *   await getDefaultTriageService().triage(runtime, { sources: ["my-source"] });
  */
 
+import { ElizaError } from "../../../errors.ts";
 import { logger } from "../../../logger.ts";
 import type { IAgentRuntime } from "../../../types/index.ts";
 import { filterInMemory } from "./adapters/base.ts";
+import { getDeferredMessageScheduler } from "./deferred-send-scheduler.ts";
 import {
 	getDefaultMessageRefStore,
 	type MessageRefStore,
 } from "./message-ref-store.ts";
 import { rankScored, scoreMessages } from "./triage-engine.ts";
-import {
-	type DraftRecord,
-	type DraftRequest,
-	type ManageOperation,
-	type ManageResult,
-	type MessageAdapter,
-	type MessageRef,
-	type MessageSource,
-	NotYetImplementedError,
-	type SearchMessagesFilters,
+import type {
+	DraftRecord,
+	DraftRequest,
+	ManageOperation,
+	ManageResult,
+	MessageAdapter,
+	MessageRef,
+	MessageSource,
+	SearchMessagesFilters,
 } from "./types.ts";
 
 export interface TriageOptions {
@@ -41,6 +42,12 @@ export interface TriageOptions {
 
 export class TriageService {
 	private adapters = new Map<MessageSource, MessageAdapter>();
+	private sendsInFlight = new Map<string, Promise<DraftRecord>>();
+	private persistedSendsInFlight = new Map<string, Promise<DraftRecord>>();
+	private schedulesInFlight = new Map<
+		string,
+		{ sendAtMs: number; promise: Promise<DraftRecord> }
+	>();
 	// Keyed by `${source}:${messageId}` → owning adapter, populated as messages
 	// flow through triage(). Used to route MESSAGE without a per-call hint.
 	private adapterByMessageId = new Map<string, MessageAdapter>();
@@ -346,17 +353,166 @@ export class TriageService {
 		draftId: string,
 	): Promise<DraftRecord> {
 		const record = this.store.getDraft(draftId);
-		if (!record) throw new Error(`No draft found for id ${draftId}`);
+		if (!record) {
+			throw new ElizaError(`No draft found for id ${draftId}`, {
+				code: "MESSAGE_DRAFT_NOT_FOUND",
+				context: { draftId },
+				severity: "ephemeral",
+			});
+		}
 		if (record.sent) return record;
+		const sendKey = `${String(runtime.agentId)}:${record.source}:${draftId}`;
+		const pending = this.sendsInFlight.get(sendKey);
+		if (pending) return pending;
+
+		const send = this.sendDraftOnce(runtime, record);
+		this.sendsInFlight.set(sendKey, send);
+		try {
+			return await send;
+		} finally {
+			if (this.sendsInFlight.get(sendKey) === send) {
+				this.sendsInFlight.delete(sendKey);
+			}
+		}
+	}
+
+	private async sendDraftOnce(
+		runtime: IAgentRuntime,
+		record: DraftRecord,
+	): Promise<DraftRecord> {
 		const adapter = this.adapters.get(record.source);
-		if (!adapter) {
-			throw new NotYetImplementedError(
-				`waiting on T5X: ${record.source} adapter (sendDraft)`,
+		if (!adapter || !adapter.isAvailable(runtime)) {
+			throw new ElizaError(
+				`The ${record.source} message adapter is unavailable.`,
+				{
+					code: "MESSAGE_ADAPTER_UNAVAILABLE",
+					context: { draftId: record.draftId, source: record.source },
+					severity: "ephemeral",
+				},
 			);
 		}
-		const { externalId } = await adapter.sendDraft(runtime, draftId);
-		const updated = this.store.markDraftSent(draftId, externalId);
-		return updated ?? record;
+		const { externalId } = await adapter.sendDraft(runtime, record.draftId);
+		if (typeof externalId !== "string" || externalId.trim().length === 0) {
+			throw new ElizaError(
+				`The ${record.source} adapter did not return an accepted message identifier.`,
+				{
+					code: "MESSAGE_PROVIDER_RECEIPT_MISSING",
+					context: { draftId: record.draftId, source: record.source },
+					severity: "fatal",
+				},
+			);
+		}
+		const updated =
+			this.store.markDraftSent(record.draftId, externalId) ??
+			({
+				...record,
+				sent: true,
+				sentExternalId: externalId,
+			} satisfies DraftRecord);
+		this.store.saveDraft(updated);
+		return updated;
+	}
+
+	/**
+	 * Dispatch a draft snapshot loaded from a durable ScheduledTask row.
+	 *
+	 * Adapter draft caches are process-local, so the snapshot is re-created
+	 * through the live adapter before send. The ScheduledTask runner's atomic
+	 * fire claim is the cross-process once-only guard; the in-flight map above
+	 * closes the same-process race.
+	 */
+	async sendPersistedDraft(
+		runtime: IAgentRuntime,
+		snapshot: DraftRecord,
+	): Promise<DraftRecord> {
+		const sendKey = `${String(runtime.agentId)}:${snapshot.source}:${snapshot.draftId}`;
+		const pending = this.persistedSendsInFlight.get(sendKey);
+		if (pending) return pending;
+		const send = this.sendPersistedDraftOnce(runtime, snapshot);
+		this.persistedSendsInFlight.set(sendKey, send);
+		try {
+			return await send;
+		} finally {
+			if (this.persistedSendsInFlight.get(sendKey) === send) {
+				this.persistedSendsInFlight.delete(sendKey);
+			}
+		}
+	}
+
+	private async sendPersistedDraftOnce(
+		runtime: IAgentRuntime,
+		snapshot: DraftRecord,
+	): Promise<DraftRecord> {
+		const adapter = this.adapters.get(snapshot.source);
+		if (!adapter || !adapter.isAvailable(runtime)) {
+			throw new ElizaError(
+				`The ${snapshot.source} message adapter is unavailable.`,
+				{
+					code: "MESSAGE_ADAPTER_UNAVAILABLE",
+					context: {
+						draftId: snapshot.draftId,
+						source: snapshot.source,
+					},
+					severity: "ephemeral",
+				},
+			);
+		}
+		const recreated = await adapter.createDraft(runtime, {
+			source: snapshot.source,
+			inReplyToId: snapshot.inReplyToId,
+			threadId: snapshot.threadId,
+			to: snapshot.to,
+			subject: snapshot.subject,
+			body: snapshot.body,
+			worldId: snapshot.worldId,
+			channelId: snapshot.channelId,
+			metadata: snapshot.metadata,
+		});
+		if (
+			typeof recreated.draftId !== "string" ||
+			recreated.draftId.trim().length === 0
+		) {
+			throw new ElizaError(
+				`The ${snapshot.source} adapter did not return a draft identifier.`,
+				{
+					code: "MESSAGE_PROVIDER_DRAFT_RECEIPT_MISSING",
+					context: {
+						draftId: snapshot.draftId,
+						source: snapshot.source,
+					},
+					severity: "fatal",
+				},
+			);
+		}
+		const hydrated: DraftRecord = {
+			...snapshot,
+			draftId: recreated.draftId,
+			preview: recreated.preview,
+			sent: false,
+		};
+		this.store.saveDraft(hydrated);
+		const sent = await this.sendDraft(runtime, hydrated.draftId);
+		if (hydrated.draftId === snapshot.draftId) return sent;
+		if (!sent.sentExternalId) {
+			throw new ElizaError(
+				`The ${snapshot.source} adapter returned a sent draft without provider receipt proof.`,
+				{
+					code: "MESSAGE_PROVIDER_RECEIPT_MISSING",
+					context: {
+						draftId: snapshot.draftId,
+						source: snapshot.source,
+					},
+					severity: "fatal",
+				},
+			);
+		}
+		const original: DraftRecord = {
+			...snapshot,
+			sent: true,
+			sentExternalId: sent.sentExternalId,
+		};
+		this.store.saveDraft(original);
+		return original;
 	}
 
 	async scheduleDraftSend(
@@ -365,17 +521,113 @@ export class TriageService {
 		sendAtMs: number,
 	): Promise<DraftRecord> {
 		const record = this.store.getDraft(draftId);
-		if (!record) throw new Error(`No draft found for id ${draftId}`);
-		if (record.sent) return record;
+		if (!record) {
+			throw new ElizaError(`No draft found for id ${draftId}`, {
+				code: "MESSAGE_DRAFT_NOT_FOUND",
+				context: { draftId },
+				severity: "ephemeral",
+			});
+		}
+		if (record.sent) {
+			throw new ElizaError(`Draft ${draftId} has already been sent.`, {
+				code: "MESSAGE_DRAFT_ALREADY_SENT",
+				context: { draftId, source: record.source },
+				severity: "ephemeral",
+			});
+		}
+		if (record.scheduledForMs !== undefined) {
+			if (
+				record.scheduledForMs === sendAtMs &&
+				record.scheduledId &&
+				record.scheduleCommit
+			) {
+				const replayed: DraftRecord = {
+					...record,
+					scheduleCommit: { ...record.scheduleCommit, replayed: true },
+				};
+				this.store.saveDraft(replayed);
+				return replayed;
+			}
+			throw new ElizaError(
+				`Draft ${draftId} is already scheduled for ${new Date(record.scheduledForMs).toISOString()}.`,
+				{
+					code: "MESSAGE_DRAFT_ALREADY_SCHEDULED",
+					context: {
+						draftId,
+						scheduledForMs: record.scheduledForMs,
+						requestedSendAtMs: sendAtMs,
+					},
+					severity: "ephemeral",
+				},
+			);
+		}
+		const scheduleKey = `${String(runtime.agentId)}:${record.source}:${draftId}`;
+		const pending = this.schedulesInFlight.get(scheduleKey);
+		if (pending) {
+			if (pending.sendAtMs !== sendAtMs) {
+				throw new ElizaError(
+					`Concurrent schedule requests for draft ${draftId} specified different delivery times.`,
+					{
+						code: "MESSAGE_DRAFT_SCHEDULE_CONFLICT",
+						context: {
+							draftId,
+							existingSendAtMs: pending.sendAtMs,
+							requestedSendAtMs: sendAtMs,
+						},
+						severity: "ephemeral",
+					},
+				);
+			}
+			const scheduled = await pending.promise;
+			if (!scheduled.scheduleCommit) {
+				throw new ElizaError(
+					`Concurrent schedule for draft ${draftId} returned without commit proof.`,
+					{
+						code: "MESSAGE_DRAFT_SCHEDULE_RECEIPT_MISSING",
+						context: { draftId, sendAtMs },
+						severity: "fatal",
+					},
+				);
+			}
+			const replayed: DraftRecord = {
+				...scheduled,
+				scheduleCommit: { ...scheduled.scheduleCommit, replayed: true },
+			};
+			this.store.saveDraft(replayed);
+			return replayed;
+		}
+
+		const schedule = this.scheduleDraftSendOnce(runtime, record, sendAtMs);
+		this.schedulesInFlight.set(scheduleKey, { sendAtMs, promise: schedule });
+		try {
+			return await schedule;
+		} finally {
+			if (this.schedulesInFlight.get(scheduleKey)?.promise === schedule) {
+				this.schedulesInFlight.delete(scheduleKey);
+			}
+		}
+	}
+
+	private async scheduleDraftSendOnce(
+		runtime: IAgentRuntime,
+		record: DraftRecord,
+		sendAtMs: number,
+	): Promise<DraftRecord> {
+		const draftId = record.draftId;
 		const adapter = this.adapters.get(record.source);
-		if (!adapter) {
-			throw new NotYetImplementedError(
-				`no adapter for ${record.source} (scheduleSend)`,
+		if (!adapter || !adapter.isAvailable(runtime)) {
+			throw new ElizaError(
+				`The ${record.source} message adapter is unavailable.`,
+				{
+					code: "MESSAGE_ADAPTER_UNAVAILABLE",
+					context: { draftId, source: record.source },
+					severity: "ephemeral",
+				},
 			);
 		}
 
-		// Prefer adapter-native scheduling when supported. Otherwise enqueue a
-		// process-local timer — this is non-durable and fine for a Wave 1 hook.
+		// A connector-owned remote schedule is authoritative when available.
+		// Every other adapter must use the one durable ScheduledTask runner.
 		if (
 			adapter.capabilities().send.schedule === true &&
 			adapter.scheduleSend != null
@@ -385,55 +637,55 @@ export class TriageService {
 				draftId,
 				sendAtMs,
 			);
-			const updated = this.store.markDraftScheduled(
-				draftId,
-				sendAtMs,
+			if (typeof scheduledId !== "string" || scheduledId.trim().length === 0) {
+				throw new ElizaError(
+					`The ${record.source} adapter did not return a schedule identifier.`,
+					{
+						code: "MESSAGE_PROVIDER_SCHEDULE_RECEIPT_MISSING",
+						context: { draftId, source: record.source },
+						severity: "fatal",
+					},
+				);
+			}
+			const committedAt = new Date().toISOString();
+			const scheduleCommit: NonNullable<DraftRecord["scheduleCommit"]> = {
+				kind: "provider_accepted",
+				id: scheduledId,
+				committedAt,
+				idempotencyKey: `message-native-schedule:${record.source}:${draftId}:${sendAtMs}`,
+				replayed: false,
+			};
+			const updated: DraftRecord = {
+				...record,
+				scheduledForMs: sendAtMs,
 				scheduledId,
-			);
-			return updated ?? record;
+				scheduleCommit,
+			};
+			this.store.saveDraft(updated);
+			return updated;
 		}
 
-		const scheduledId = enqueueLocalDeferredSend(
-			this,
-			runtime,
-			draftId,
-			sendAtMs,
-		);
-		const updated = this.store.markDraftScheduled(
-			draftId,
-			sendAtMs,
-			scheduledId,
-		);
-		return updated ?? record;
-	}
-}
-
-// Process-local deferred-send queue. Non-durable; survives only as long as the
-// process. Adapter-native scheduling should be preferred when available.
-const localTimers = new Map<string, NodeJS.Timeout>();
-
-function enqueueLocalDeferredSend(
-	service: TriageService,
-	runtime: IAgentRuntime,
-	draftId: string,
-	sendAtMs: number,
-): string {
-	const scheduledId = `local:${draftId}:${sendAtMs}`;
-	const existing = localTimers.get(scheduledId);
-	if (existing) return scheduledId;
-	const delayMs = Math.max(0, sendAtMs - Date.now());
-	const timer = setTimeout(() => {
-		localTimers.delete(scheduledId);
-		service.sendDraft(runtime, draftId).catch((err) => {
-			logger.error(
-				`[TriageService] deferred sendDraft failed draftId=${draftId}: ${err instanceof Error ? err.message : String(err)}`,
+		const scheduler = getDeferredMessageScheduler(runtime);
+		if (!scheduler) {
+			throw new ElizaError(
+				"Durable deferred message scheduling is unavailable on this runtime.",
+				{
+					code: "DEFERRED_MESSAGE_SCHEDULER_UNAVAILABLE",
+					context: { draftId, source: record.source, sendAtMs },
+					severity: "fatal",
+				},
 			);
-		});
-	}, delayMs);
-	// Don't keep the event loop alive solely for a deferred send.
-	if (typeof timer.unref === "function") timer.unref();
-	localTimers.set(scheduledId, timer);
-	return scheduledId;
+		}
+		const scheduled = await scheduler.schedule({ draft: record, sendAtMs });
+		const updated: DraftRecord = {
+			...record,
+			scheduledForMs: scheduled.scheduledForMs,
+			scheduledId: scheduled.scheduledId,
+			scheduleCommit: scheduled.commit,
+		};
+		this.store.saveDraft(updated);
+		return updated;
+	}
 }
 
 // Shared, process-wide triage registry. Connector plugins register their

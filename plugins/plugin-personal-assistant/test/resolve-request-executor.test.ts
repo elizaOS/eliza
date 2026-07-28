@@ -144,6 +144,9 @@ class RecordingQueue implements ApprovalQueue {
   async enqueue(_input: ApprovalEnqueueInput): Promise<ApprovalRequest> {
     throw new Error("not under test");
   }
+  async enqueueWithResult(_input: ApprovalEnqueueInput): Promise<never> {
+    throw new Error("not under test");
+  }
   async list(
     _filter: ApprovalListFilter,
   ): Promise<ReadonlyArray<ApprovalRequest>> {

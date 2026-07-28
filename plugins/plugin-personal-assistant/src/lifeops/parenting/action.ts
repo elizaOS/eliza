@@ -149,7 +149,7 @@ export function createParentingGuidanceAction(
       "risk:sensitive",
     ],
     description:
-      "Offer cited, developmentally contextual educational options for ordinary parenting boundaries, routines, communication, emotion coaching, independence, or positive discipline. For vague or safety-sensitive language, use the dedicated structural classifier and stop at privacy, crisis, safeguarding, clinical, medication, or legal boundaries with verified locale-specific human resources. Never diagnose, change medication, interpret custody law, reveal private child records, or simulate a therapist.",
+      "Offer cited, developmentally contextual educational options for ordinary parenting boundaries, routines, communication, emotion coaching, independence, or positive discipline. For vague or safety-sensitive language, use the dedicated structural classifier and stop at privacy, crisis, safeguarding, clinical, medication, or legal boundaries with human resources selected only from fresh verified current-location evidence for the child. Never diagnose, change medication, interpret custody law, reveal private child records, or simulate a therapist.",
     descriptionCompressed:
       "cited parenting education|vague-language inference|privacy/safety/clinical/legal stop|verified local human handoff",
     routingHint:
@@ -304,7 +304,7 @@ export function createParentingGuidanceAction(
         {
           name: "{{agentName}}",
           content: {
-            text: "Ordinary parenting guidance stops; I’ll route this to verified emergency and crisis resources for the configured locale.",
+            text: "Ordinary parenting guidance stops; I’ll route this using fresh, verified current-location evidence for the child.",
             action: PARENTING_GUIDANCE_ACTION,
           },
         },

@@ -66,6 +66,19 @@ export interface IcsCalendarSourceRecord {
   updatedAt: string;
 }
 
+export interface IcsSecretCleanupRecord {
+  id: string;
+  agentId: string;
+  sourceId: string;
+  secretRef: string;
+  reason: "source_deleted" | "url_rotated";
+  attemptCount: number;
+  lastAttemptAt: string | null;
+  lastErrorCode: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface IcsCalendarSyncLease {
   source: IcsCalendarSourceRecord;
   generation: number;
@@ -200,6 +213,31 @@ function parseIcsCalendarSource(
     syncGeneration: toNumber(row.sync_generation),
     leaseToken: row.lease_token ? toText(row.lease_token) : null,
     leaseExpiresAt: row.lease_expires_at ? toText(row.lease_expires_at) : null,
+    createdAt: toText(row.created_at),
+    updatedAt: toText(row.updated_at),
+  };
+}
+
+function parseIcsSecretCleanup(
+  row: Record<string, unknown>,
+): IcsSecretCleanupRecord {
+  const reason = toText(row.reason);
+  if (reason !== "source_deleted" && reason !== "url_rotated") {
+    throw new ElizaError("Calendar secret cleanup reason is invalid.", {
+      code: "ICS_SECRET_CLEANUP_INVALID_STATE",
+      context: { cleanupId: toText(row.id), reason },
+      severity: "fatal",
+    });
+  }
+  return {
+    id: toText(row.id),
+    agentId: toText(row.agent_id),
+    sourceId: toText(row.source_id),
+    secretRef: toText(row.secret_ref),
+    reason,
+    attemptCount: toNumber(row.attempt_count),
+    lastAttemptAt: row.last_attempt_at ? toText(row.last_attempt_at) : null,
+    lastErrorCode: row.last_error_code ? toText(row.last_error_code) : null,
     createdAt: toText(row.created_at),
     updatedAt: toText(row.updated_at),
   };
@@ -646,6 +684,9 @@ export class CalendarRepository {
       secretRef: string;
       urlFingerprint: string;
       origin: string;
+      retiredSecretRef: string;
+      cleanupId: string;
+      cleanupAt: string;
     };
   }): Promise<IcsCalendarSourceRecord | null> {
     const replacement = args.replacement;
@@ -674,6 +715,11 @@ export class CalendarRepository {
       WHERE agent_id = ${sqlQuote(args.agentId)}
         AND id = ${sqlQuote(args.sourceId)}
         AND provider = 'ics'
+        ${
+          replacement
+            ? `AND secret_ref = ${sqlQuote(replacement.retiredSecretRef)}`
+            : ""
+        }
       RETURNING *`;
     const statement = replacement
       ? `WITH updated_source AS (
@@ -684,6 +730,24 @@ export class CalendarRepository {
            WHERE event.agent_id = ${sqlQuote(args.agentId)}
              AND event.provider = 'ics'
              AND event.grant_id = updated_source.id
+        ), cleanup AS (
+          INSERT INTO app_calendar.life_calendar_secret_cleanup (
+            id, agent_id, source_id, secret_ref, reason, attempt_count,
+            last_attempt_at, last_error_code, created_at, updated_at
+          )
+          SELECT
+            ${sqlQuote(replacement.cleanupId)},
+            ${sqlQuote(args.agentId)},
+            updated_source.id,
+            ${sqlQuote(replacement.retiredSecretRef)},
+            'url_rotated',
+            0,
+            NULL,
+            NULL,
+            ${sqlQuote(replacement.cleanupAt)},
+            ${sqlQuote(replacement.cleanupAt)}
+          FROM updated_source
+          ON CONFLICT (agent_id, secret_ref) DO NOTHING
         )
         SELECT * FROM updated_source`
       : updateStatement;
@@ -695,6 +759,7 @@ export class CalendarRepository {
   async deleteIcsCalendarSource(
     agentId: string,
     sourceId: string,
+    cleanup: { id: string; createdAt: string },
   ): Promise<IcsCalendarSourceRecord | null> {
     const rows = await executeRawSql(
       this.runtime,
@@ -709,11 +774,75 @@ export class CalendarRepository {
          WHERE agent_id = ${sqlQuote(agentId)}
            AND provider = 'ics'
            AND grant_id = ${sqlQuote(sourceId)}
+      ), cleanup AS (
+        INSERT INTO app_calendar.life_calendar_secret_cleanup (
+          id, agent_id, source_id, secret_ref, reason, attempt_count,
+          last_attempt_at, last_error_code, created_at, updated_at
+        )
+        SELECT
+          ${sqlQuote(cleanup.id)},
+          ${sqlQuote(agentId)},
+          source.id,
+          source.secret_ref,
+          'source_deleted',
+          0,
+          NULL,
+          NULL,
+          ${sqlQuote(cleanup.createdAt)},
+          ${sqlQuote(cleanup.createdAt)}
+        FROM source
+        ON CONFLICT (agent_id, secret_ref) DO NOTHING
       )
       SELECT * FROM source`,
     );
     const row = rows[0];
     return row ? parseIcsCalendarSource(row) : null;
+  }
+
+  async listIcsSecretCleanup(
+    agentId: string,
+    limit = 100,
+  ): Promise<IcsSecretCleanupRecord[]> {
+    const boundedLimit = Math.max(1, Math.min(1_000, Math.floor(limit)));
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM app_calendar.life_calendar_secret_cleanup
+        WHERE agent_id = ${sqlQuote(agentId)}
+        ORDER BY created_at ASC, id ASC
+        LIMIT ${boundedLimit}`,
+    );
+    return rows.map(parseIcsSecretCleanup);
+  }
+
+  async acknowledgeIcsSecretCleanup(
+    agentId: string,
+    cleanupId: string,
+  ): Promise<void> {
+    await executeRawSql(
+      this.runtime,
+      `DELETE FROM app_calendar.life_calendar_secret_cleanup
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND id = ${sqlQuote(cleanupId)}`,
+    );
+  }
+
+  async recordIcsSecretCleanupFailure(args: {
+    agentId: string;
+    cleanupId: string;
+    attemptedAt: string;
+    errorCode: string;
+  }): Promise<void> {
+    await executeRawSql(
+      this.runtime,
+      `UPDATE app_calendar.life_calendar_secret_cleanup
+          SET attempt_count = attempt_count + 1,
+              last_attempt_at = ${sqlQuote(args.attemptedAt)},
+              last_error_code = ${sqlQuote(args.errorCode)},
+              updated_at = ${sqlQuote(args.attemptedAt)}
+        WHERE agent_id = ${sqlQuote(args.agentId)}
+          AND id = ${sqlQuote(args.cleanupId)}`,
+    );
   }
 
   async claimIcsCalendarSync(args: {

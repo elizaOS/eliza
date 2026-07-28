@@ -1,13 +1,17 @@
 # Agentic parent suite: capability audit and implementation plan
 
 **Status:** implementation contract; delivery status is tracked below
-**Date:** 2026-07-26
+**Date:** 2026-07-28
 **Input reviewed:** the nine-page parent-assistant design brief, all nine pages, including a
 rendered visual review
 **Product boundary:** extend LifeOps through the existing elizaOS runtime,
 calendar, scheduling, approval, entity, connector, and scenario infrastructure.
 Do not create a second scheduler, a second household graph, persona-specific
 runtime rails, or behavior inferred from prompt text.
+**P0 evidence audience:** a globally mobile parent coordinating children across
+a co-parent, partner, caregivers, and several calendar providers. This is the
+highest-priority research and release-evidence audience, not a demographic
+runtime mode.
 
 ## Executive conclusion
 
@@ -65,11 +69,12 @@ authoritative household ingestion, guest free/busy, family roles and scoped
 access, schedule proposals versus agreements, dependency-aware conflict
 detection, append-only shared records, school and community sources, meal/cart
 execution, inventory confidence, seasonal opportunity tracking, and
-evidence-backed safety policies. A realistic estimate is roughly 70% of the
-generic orchestration substrate but only 25-35% of the parent-domain product.
-This branch now implements several of those primitives, as the delivery ledger
-records, but the complete product claim remains blocked by production
-composition and real-provider, live-model, and human-reviewed evidence.
+evidence-backed safety policies. This branch now implements several of those
+primitives, as the delivery ledger records, but the complete product claim
+remains blocked by production composition and real-provider, live-model, and
+human-reviewed evidence. The ledger reports each capability along explicit
+maturity and evidence axes; unsupported percentage-complete estimates are not
+used.
 
 The first implementation milestone should not be “all nine categories.” It
 should be one trusted loop for a world-traveling co-parent:
@@ -120,24 +125,26 @@ row to complete.
 
 | Work package | Production implementation | Real E2E | Evidence reviewed | Status |
 | --- | --- | --- | --- | --- |
-| Calendar source registry and health | Account/grant isolation, complete/partial/unavailable health, paged reads, durable cursors, tombstones, 410 recovery, owner-visible provider/account/calendar identity, reconnect affordances, a typed owner-only list/select/connect/reconnect action and provider, and exact-source SQL compare-and-swap settings are implemented. ICS selection and provider state commit in one transaction. Google watch channels have durable bindings, strict webhook validation, scheduled retry/renewal, restart reconstruction, delivery health, quota classification, and controlled 410 resync | The complete calendar lane passes 379 tests with two intentional skips, including real-PGlite cross-runtime races, stale UI/agent writes, ICS rollback, namespace collision, and action/provider cases; live Google OAuth, uniquely routed public webhook delivery, edge abuse controls, and multi-account proof remain pending | Automated and five-iteration rendered source-manager artifacts reviewed; live provider logs pending | Evidence pending |
-| Guest free/busy and deterministic availability | Privacy-only Google adapter, deterministic engine, explicit source selection, and owner-visible source truth are implemented; production guest grant acquisition remains incomplete | DST, all-day, RSVP, stale/error, private-busy, malformed-input, and source-selection suites pass; live guest calendar pending | Automated and rendered UI artifacts reviewed; live guest logs pending | In progress |
+| Calendar source registry and health | Account/grant isolation, complete/partial/unavailable health, paged reads, durable cursors, tombstones, 410 recovery, owner-visible provider/account/calendar identity, reconnect affordances, a typed owner-only list/select/connect/reconnect action and provider, and exact-source SQL compare-and-swap settings are implemented. ICS selection and provider state commit in one transaction. Google watch channels have durable bindings, strict notification validation, explicit-off configuration, application-level 60/IP/minute and 256-bucket limits, a 1 KiB body bound, scheduled retry/renewal, restart reconstruction, delivery health, quota classification, and controlled 410 resync. ICS secret rotation/deletion uses a transactional, scheduler-drained cleanup outbox. Local date conversion now uses compatible disambiguation for repeated, skipped-midnight, and skipped-date transitions | The complete calendar lane passes 484 tests with two intentional skips across 50 passing and one skipped files; Google passes 57 tests across seven files. Real-PGlite cases cover cross-runtime races, stale UI/agent writes, ICS rollback and cleanup retry, namespace collision, and action/provider registration; focused date tests cover New York, Santiago, and Apia transitions. Live Google OAuth, a uniquely routed public origin, upstream/edge WAF and volumetric limits, distributed limiting, and multi-account proof remain pending | Automated and five-iteration rendered source-manager artifacts reviewed; live provider logs pending | Evidence pending |
+| Guest free/busy and deterministic availability | Privacy-only Google and Microsoft adapters, deterministic interval logic, explicit source selection, and owner-visible source truth are implemented. A graph-backed resolver accepts only opaque host-issued grant IDs and validates exact principal, purpose, consent, expiry/revocation, provider/account/provider-grant/calendar, verified guest identity, and non-self household scope before provider I/O | DST, all-day, RSVP, stale/error, private-busy, malformed-input, raw-address non-probing, cross-principal, revoked, expired, and source-selection suites pass; trusted acquisition/revocation UX and a live two-account guest journey remain pending | Automated and rendered UI artifacts reviewed; live guest logs pending | In progress |
 | Scheduling drafts, approvals, and materialization | Direct sends are removed; immutable hash-bound drafts, the production durable approval service, atomic confirmed approval insertion, an exact owner-editor gateway, version-bound mutation execution, immutable provider snapshots, replay after cache eviction, agent/provider/grant/calendar binding, and truthful organizer-delete versus attendee-decline results are implemented. Whole-series master binding is enforced; provider materialization exists but is not live-evidenced | Real PGlite approval, ledger, owner-gateway, replay, cross-agent forgery, pending-recovery, version-conflict, invitation-decline, and executor safety tests pass; real provider invitation/update/cancel receipts remain pending | Automated receipts reviewed; live provider receipt and conversational trajectory pending | Evidence pending |
+| Deferred outbound message scheduling | Connector-native schedules remain authoritative when available. Other MESSAGE drafts persist their complete snapshot as one canonical `ScheduledTask`; atomic claims prevent concurrent duplicate attempts. A per-process attempt marker commits before connector egress, and startup reconciliation turns a prior-process marker into an owner-visible terminal `acceptance: unknown`, reports the incident, and never retries automatically | Six real-PGlite cases cover restart, schedule replay, concurrent claim, marker-before-egress ordering, missing payload, disconnection, ambiguous connector failure, and interrupted-process reconciliation. Exactly-once delivery is not claimed: provider idempotency or readback is still required to distinguish accepted-before-crash from not sent | Durable rows and typed failure state reviewed; real connector schedule/send/readback evidence pending | Partial |
 | Household roles and scoped access grants | Graph-backed owner/co-parent/partner/caregiver/child/professional roles, hierarchical scopes, subject isolation, expiry, revocation, and safe owner actions are implemented. Each expiring grant now creates one structural ScheduledTask warning with a transactional intent, exact task/grant/expiry binding, revocation cancellation, no auto-extension, startup reconciliation, and scoped owner-only disclosure | The real-PGlite household lane passes 18 cases and 115 assertions, including scheduling outage recovery, concurrent fire deduplication, tamper rejection, terminal-state preservation, and a revocation-versus-materialization race that leaves no live watcher; live multi-principal connector proof and rendered warning UX remain pending | Automated artifacts reviewed; live connector logs and warning UI pending | Evidence pending |
 | Schedule proposals and agreements | Owner-side proposal inbox, immutable schedule and resource-capacity proposals, exact approval subjects, expiry/freshness checks, CAS decisions, authenticated affected-party response ingress with verified EntityStore principal matching, and durable replay receipts are implemented; calendar materialization remains open | Real PGlite proposal, stale-state, concurrency, authenticated co-parent identity, negative impersonation, and replay cases pass; live provider response and calendar write remain pending | Automated owner and affected-party receipts reviewed; live provider receipts pending | In progress |
 | G48 household resource capacity | Append-only caregiver, vehicle, and car-seat resources; authorization, availability, freshness, accessibility, handoff, transition, distinct-driver, and restraint constraints; immutable no-effect proposals; exact shared-queue reviews; resource/evidence invalidation; and one shared ScheduledTask expiry watcher are implemented. Live source composition and downstream reservation/materialization remain absent | Real PGlite CAS/restart/concurrency, non-overlap shared-resource conflict, stale/contradictory evidence, proposal idempotency/invalidation, owner action routing, and authenticated co-parent replay-receipt cases pass; live source/provider journey pending | Automated artifacts reviewed; live provider/model/UI evidence pending | Partial |
 | Append-only household audit and scoped export | Transactional LifeOps audit rows plus owner, details, and free/busy-only export policies implemented in #17178 | Real PGlite unrelated-child isolation and secret-redaction cases pass; external principal delivery pending | Automated artifacts reviewed; live export delivery pending | Evidence pending |
 | Microsoft and ICS/webcal calendar sources | Microsoft Graph calendar/delta/free-busy reads and idempotent one-off creation are implemented with exact writable-target resolution, delegated `Calendars.ReadWrite`, deterministic transaction IDs, explicit attendee-notification approval, and persisted provider receipts. Update/delete remain fail-closed without an atomic provider precondition, recurrence remains fail-closed until lossless mapping, and push/watch ingestion remains absent. Guarded ICS/webcal lifecycle and atomic source selection are implemented | Graph loopback HTTP plus real-PGlite creation/restart/cursor/410/privacy tests and ICS real-PGlite lifecycle/rollback tests pass; live tenant and external subscription proof pending | Automated artifacts reviewed; live provider logs pending | Partial |
 | School and activity-source ingestion | Versioned source facts, authority/contradiction/supersession, snapshot integrity, prompt-injection isolation, action bundles, and correction reconciliation are implemented; raw Gmail/Drive/PDF/photo/portal adapters and downstream materializers remain absent | Real PGlite restart, ambiguity, correction, cancellation, replay, concurrency, and provenance cases pass; live school-source journey pending | Automated artifacts reviewed; raw source and downstream receipts pending | Partial |
+| Owner-private destination and disclosure boundary | A process-local `TrustedDeliveryAudience` is attested from canonical room/principal state, cannot be minted through request content or JSON, and binds owner, actor, agent, room, membership, room type, principal provenance, and expiry. Owner-exclusive disclosure gates cannot be loosened by action role policy. Providers, actions, cached state, callbacks, streams, tool results, emitted events, persisted/returned memories, and final response egress fail closed and revalidate the audience. Service-token/API gateways remain external; personal-assistant and inbox private surfaces require owner-exclusive evidence; Discord GroupDM is shared and entity-targeted DM participation is established before dedupe reservation | Focused suites pass 90 core, six agent API/fallback, 51 Discord including real PGlite, eight personal-assistant, and five inbox tests; all five package typechecks pass. A live multi-principal connector/API journey, sibling/group disclosure capture, and provider payload/log review remain pending. Discord duplicate suppression still returns an untyped `undefined`, so a generic MESSAGE caller could narrate a duplicate no-op as persisted success | Automated artifacts reviewed; live external-principal and recipient proof pending | Partial |
 | Authenticated family communication and child-safe week | Connector-stamped identity must resolve to one verified household entity before family proposals or child-week projection; short-lived message attestations, proposal quarantine, privacy omissions, co-parent response state, and the shared scheduler SLA watcher are implemented. Raw acoustic speaker identity, rich calendar/school projection, and provider delivery/read/reply event bridges remain absent | Real PGlite family, identity-spoof, ambiguity, scope, privacy, replay, restart, and watcher cases pass; authenticated voice hardware and live co-parent provider journey pending | Automated artifacts reviewed; voice, provider-event, and child-surface evidence pending | Partial |
 | Action bundles, responsibility ownership, and weekly brief | Household operations now model actionable context, C/P/E/M ownership, non-use, vendor history, seasonal windows, and weekly briefs; automatic calendar/oracle composition and assignment delivery remain absent | Real PGlite authorization, restart, visibility, non-use, and brief tests pass; live assignment/closure journey pending | Automated artifacts reviewed; connector and closure evidence pending | Partial |
 | Weather, maps, and local-activity sources | Typed NWS, Google Routes v2, and Ticketmaster adapters with provenance, freshness, partial/unavailable health, and constrained curation are registered; production planning consumers remain absent | Loopback HTTP contract and failure-semantics tests pass; live NWS/credentialed provider evidence pending | Automated artifacts reviewed; live source logs pending | Partial |
 | Household items, vendors, and seasonal almanac | Typed item observations/confidence, child size history, vendors/service records, seasonal opportunity windows, responsibility ownership, and visibility policy are implemented; receipt/photo/barcode capture and approved outreach/registration remain absent | Real PGlite restart and policy tests pass; live capture and provider effects pending | Automated artifacts reviewed; external receipts pending | Partial |
 | Food constraints, inventory, cart, and order recovery | Hard allergy/diet constraints, custody headcount, inventory confidence, leftovers, meal planning, immutable shopping handoffs, and approval-bound Instacart Products Link creation are implemented; cart, checkout, order, substitution, delivery, refund, and recovery are not | Real PGlite approval/restart/idempotency plus loopback Products Link tests pass; live retailer journey pending | Automated artifacts reviewed; real cart/order receipts pending | Partial - L2 only |
 | Childcare/work scenario model | Versioned assumptions, household-wide deterministic calculations, missing-input disclosure, sensitivity, and ranges are exposed through the finance action | Deterministic formula/action tests pass; live payroll/benefits/childcare acquisition and persona journey pending | Automated artifacts reviewed; live input provenance pending | Partial |
-| Source-grounded parenting guidance and handoff | Vetted source/edition records, privacy policy, ordinary-guidance boundaries, high-risk stop rules, and human handoff decisions are implemented; the general conversational action and locale-aware resource handoff remain absent | Deterministic grounding, privacy, safety, and handoff tests pass; live model and professional-resource journey pending | Automated artifacts reviewed; live trajectory and handoff evidence pending | Partial |
-| World-traveling co-parent persona and G1-G48 corpus | Data-only persona plus exact 48-case M1 live corpus and evidence-gated catalog are implemented. Every case now carries a versioned contract hash, exact pre-dispatch action policy, and final-state receipt requirement. The runner retains and re-verifies signed request/payload/artifact evidence, and a separate reference executor enforces the same contracts with durable replay/idempotency | Fifty-nine evidence protocol and real-loopback server tests pass, including unrelated-action rejection, signature/payload/artifact tampering, final-state supersession, contract drift, duplicate IDs, restart persistence, concurrent retry, bounded transport, and all 48 contract registrations. The loopback connector is deterministic protocol proof, not provider evidence. G1 has a reviewed provenance-valid live-model failure; all 48 real-provider journeys remain unverified | G1 failure artifact and protocol artifacts reviewed; provider receipts and successful trajectories, screenshots, and video pending | Evidence pending |
-| Existing Jordan J1 live verification | Exact ten-case J1 catalog is authored | No case has qualifying live-model plus provider evidence | No qualifying artifacts reviewed | Evidence pending |
+| Source-grounded parenting guidance and handoff | The registered `PARENTING_GUIDANCE` action enforces graph authorization before model exposure, uses reviewed source/edition records, cites each offered option, aggregates simultaneous risk categories, applies a deterministic high-recall backstop to model classification, and fails closed on unavailable evidence. Exact US handoff records exist. Resource routing now requires a fresh, tenant- and child-bound graph assertion whose verifier has the correct role and active child-specific scope; owner profile/travel and planner parameters cannot select jurisdiction. Exact G35/G36 native evaluators read registered action output plus household, graph, and owner state. A production subject-location acquisition/confirmation surface, multilingual/international resources, durable decision audit, and a host-issued sensitive-disclosure attestation remain incomplete | Thirty-five focused parenting tests, fifteen real-PGlite production-composition tests, four Python parenting-runtime cases, and seven trusted-runtime TypeScript cases cover traveling-owner/child-elsewhere, stale/missing/untrusted location, planner injection, verifier-role, cross-child, cross-tenant, ordinary guidance, teen privacy, and multi-risk stopping. They are deterministic registered-model evidence, not a live-model or real-handoff journey | Automated artifacts reviewed; acquisition UX, adversarial live trajectory, professional review, and real handoff evidence pending | Partial |
+| World-traveling co-parent persona and G1-G48 corpus | Data-only persona plus an exact 48-case M1 catalog are implemented. All 48 server-owned typed evaluator contracts are registered with versioned action policies and content-addressed final-state requirements. G10, G15, G30, G34, G35, G36, and G38 have native final-state adapters/evaluators; the other 41 require exact lineage-bound terminal snapshots that their production actions do not yet emit. STATIC natural-language criteria now run through an independent semantic judge by default; literal conformance is an explicit offline mode | The native contract/policy/connector lane passes 59 Python tests; the STATIC semantic-judge lane passes 33 at this point in the branch. Protocol tests cover tampering, final-state supersession, contract drift, duplicate IDs, restart persistence, concurrent retry, and bounded transport. They prove evaluator and harness behavior, not the 41 missing production emissions or any complete domain journey. Shared-key HMAC integrity is not independent attestation or non-repudiation. G1 has a reviewed provenance-valid live-model failure; all 48 complete evidence bundles remain absent | G1 failure artifact and protocol artifacts reviewed; native production emissions, provider receipts, successful trajectories, screenshots, and video pending | Evidence pending |
+| Existing J1 co-parenting corpus | The diagnostic target is ten, but the branch contains 21 authored cases: eight LifeOpsBench cases and thirteen scenario-runner cases. This is an over-target corpus count, not duplicate proof of capability | No case has qualifying live-model plus real/sandbox-provider evidence. The scenario-runner profile uses a mocked LifeOps environment, fake connector grants, a disabled scheduler, one shared runtime, and payload-inferred effects; LifeOpsBench uses deterministic LifeWorld and no J1 `TrustedEvidenceRequirement` | No qualifying artifacts reviewed | Evidence pending |
 
 Every incomplete row is a release blocker for the complete suite. Individual
 pull requests may land dependency-ordered slices, but no document, issue, or
@@ -160,7 +167,7 @@ and a reviewed final outcome.
 | G13-G24 | School fact reconciliation, household audit, approval queue, messaging connectors, connector-authenticated family proposal capture, child-safe projection, and co-parent response SLA state | Raw school sources, acoustic speaker identity, recipient resolution, scoped export receipt, provider delivery/read/reply bridge, and real sends only after approval |
 | G25-G28 | Food constraints, inventory confidence, meal plan, approval-bound Products Link handoff | Conversational composition and the retailer cart/order/substitution/delivery/recovery lifecycle |
 | G29-G32 | Vendor/item history, seasonal windows, C/P/E/M, non-use, weekly brief, weather/routes/activity adapters | Calendar/oracle composition and approved outreach, registration, purchase, and closure receipts |
-| G33-G36 | Deterministic childcare/work model and source-grounded parenting safety policy | Guided source acquisition, conversational surface, locale-aware human handoff, and reviewed live trajectories |
+| G33-G36 | Deterministic childcare/work model plus a registered, graph-authorized, source-grounded parenting action with multi-risk routing, deterministic classifier backstop, and child-bound current-jurisdiction resolver | Production location acquisition/confirmation, multilingual resources, durable decision audit, and reviewed adversarial live trajectories |
 | G37-G38 | Child/private visibility policy and structural non-use signals | Production child projection/export and assignment-delivery/non-use responsibility renegotiation |
 | G39 | Google pagination, durable cursor, tombstones, and 410 recovery | Real provider account with more than one page and reviewed cursor/restart artifacts |
 | G40 | Durable Google watch registration/bindings, strict notification validation, duplicate/out-of-order reconciliation, one-shot scheduled retry, renewal/reconstruction maintenance, 403 quota retry, 410 full resync, delivery health, and visible source freshness | Uniquely routed public-domain webhook delivery from a real Google account, edge WAF/rate-limit proof, reviewed renewal/restart/quota artifacts, and live source-health UI proof |
@@ -170,19 +177,30 @@ and a reviewed final outcome.
 | G47 | Registered child-week action, connector-authenticated child identity, exact-subject grant enforcement, structural privacy omission, and household-agreement projection | Trusted rich calendar/school adapters, child UI, and live privacy capture |
 | G48 | Append-only caregiver, vehicle, and car-seat records; authorization and fresh availability evidence; caregiver/passenger/accessibility capacity; child/vehicle/restraint compatibility; handoff windows and principals; distinct driver/restraint matching; exact transition evidence; non-overlap conflict solving; immutable no-effect proposals; exact shared-queue reviews; source/resource invalidation; one shared ScheduledTask watcher; and authenticated co-parent response receipts | Live calendar/free-busy/maps and physical-resource evidence composition, provider notification/UI, live-model trajectory, and a reviewed real-provider G48 journey |
 
-### Branch verification snapshot (2026-07-27)
+### Branch verification snapshot (2026-07-28)
 
 The following evidence checks the implementation boundary described above. It
 does not advance a persona case to complete because the only live-model
 trajectory failed and no required real-provider journey has been captured:
 
-- the complete calendar plugin lane passed 379 tests with two explicitly
-  skipped live-provider cases. That includes cross-runtime exact-source CAS,
-  stale UI and agent conflict rejection, atomic ICS selection rollback,
-  collision-safe source identity, source action/provider registration, and
-  Microsoft one-off creation. The Google connector suite separately passed 38,
-  the shared connector shim suite passed 30, and the public-route audit passed
-  five;
+- the complete calendar plugin lane passed 484 tests with two explicitly
+  skipped live-provider cases across 50 passing and one skipped files. That
+  includes cross-runtime exact-source CAS, stale UI and agent conflict
+  rejection, atomic ICS selection and secret-cleanup rollback, cleanup retry,
+  collision-safe source identity, source action/provider registration,
+  application-level webhook admission controls, and Microsoft one-off
+  creation. Compatible local-date conversion is pinned through primitive and
+  availability paths for repeated times, a skipped midnight, and a
+  jurisdiction that skipped an entire date. The Google connector suite
+  separately passed all 57 tests across seven files; the shared connector shim
+  suite passed 30;
+- the same oscillating local-to-instant algorithm was removed from personal
+  assistant, health, and the managed-cloud Google calendar path. Scheduling's
+  fallback anchors and consolidation policy now delegate to its existing
+  canonical compatible resolver. Sixty-five focused cases pass across the four
+  packages, including production day-boundary, health sleep-cycle, managed
+  all-day feed, and built-in/fallback anchor paths; all four package typechecks
+  pass;
 - source-manager component and hook tests passed 60 assertions, its focused
   accessibility/visual audit passed 63 checks, and five rendered iterations
   were manually inspected;
@@ -199,8 +217,47 @@ trajectory failed and no required real-provider journey has been captured:
   assertions, including durable outage reconciliation, concurrent firing,
   structural tamper rejection, every terminal state, and a revocation race
   that leaves its only historical watcher dismissed and emits no notification;
-- the complete personal-assistant suite passed 1,629 tests in 204 files with
-  eight intentional skips, followed by a clean TypeScript typecheck;
+- the complete personal-assistant suite passed 1,680 tests in 210 files with
+  eight intentional skips in both the unit and post-merge lanes, followed by a
+  clean TypeScript typecheck. The full calendar plugin lanes passed 479 (unit)
+  and 490 (post-merge) with the sole exception of one live-provider file whose
+  `googleapis` dependency is absent from the light-install worktree; Discord
+  passed 476 including the new delivery-audience attestation coverage;
+  scheduling 296, Google connector 57, native-calendar bridge 26, core
+  triage/security 311, agent approval store 18, scenario-runner corpus guards
+  36, and the runtime-migrator partial-index suite 195;
+- five graph-dependent personal-assistant services now await the exact runtime
+  dependency load promises before initialization. A real-PGlite startup case
+  proves one start and one registration per service, and the calendar-source
+  authorization host binds before the already-loaded calendar-plugin return so
+  there remains one canonical callable `CALENDAR_SOURCES`;
+- Google OAuth now rejects identity-only completion with no recognized
+  connector capability, fails closed on missing or invalid requested-scope
+  metadata, and tolerates provider-added unknown granted scopes without
+  discarding valid requested capabilities. Calendar display reads opt into
+  start-time ordering while incremental sync omits it so the provider can
+  return a next sync token; illegal sync-token-plus-ordering requests fail
+  before I/O, and provider quota failures remain transient;
+- canonical CALENDAR and personal-assistant CALENDAR actions both require
+  exactly one text-bound effect receipt on success. Calendar receipts cover
+  read, no-op, failure, approval, and durable preferences; the actions still
+  attest their own receipts, so these tests do not prove independent provider
+  commitment;
+- deferred non-native MESSAGE scheduling uses one persisted `ScheduledTask`
+  snapshot rather than a process timer. Six real-PGlite cases prove restart
+  replay, atomic concurrent claims, a marker persisted before connector
+  egress, typed failure, and prior-process reconciliation to a terminal
+  owner-visible unknown outcome without retry. Provider-level exactly-once
+  remains unclaimed;
+- owner-private disclosure now requires a process-local canonical audience
+  attestation and revalidation at action/provider execution and response
+  egress. Core passed 90 focused cases, agent API/fallback six, Discord 51
+  including real PGlite, personal assistant eight, and inbox five; all five
+  package typechecks passed. Tests cover forged request/body labels,
+  service-gateway impersonation, stale or changed membership, cached provider
+  state, action-result arrays, callbacks/streams/events, persistence, GroupDM
+  classification, and recipient participation before Discord dedupe. This is
+  production boundary proof, not a live external-principal delivery journey;
 - a real G1 run used `hermes-direct` with Ollama
   `lifeops-eliza-0_8b-64k:latest`, a `llama3.2:3b` simulated user, and a
   `gemma3:latest` independent judge. The provenance-bound 12-turn artifact
@@ -214,13 +271,20 @@ trajectory failed and no required real-provider journey has been captured:
   evaluator and judge identity, stamps every agent turn, names artifacts for
   the acting model, and refuses to publish an artifact missing acting-agent
   provenance. Its evidence gate validates complete action batches before
-  dispatch, hides the assertion vocabulary from the executor request, pins
+  dispatch, hides assertion vocabulary from the executor request, pins
   providers/boundaries/contracts to a signing key, requires a signed terminal
   snapshot, retains inspectable artifacts, and re-verifies them during scoring.
-  Fifty-nine protocol and real-loopback reference-server tests plus the focused
-  budget, telemetry, live-scenario, scaffold, scorer, and CLI suites pass under
-  the package's Python 3.12 environment. This still does not substitute for a
-  deployed real-provider executor; and
+  All 48 server-owned evaluator contracts are registered. G10, G15, G30, G34,
+  G35, G36, and G38 have exact native result paths; the other 41 remain
+  nonterminal until their production actions emit the required lineage-bound
+  snapshots. The native contract/policy/connector lane passes 59 Python tests.
+  STATIC prose criteria now use an independent semantic judge by default,
+  require transcript citations per criterion, preserve typed invalid parses and
+  judge provenance, and pass 33 focused tests; literal matching is an explicit
+  offline conformance mode. Shared-key HMAC integrity is not independent
+  attestation.
+  None of this substitutes for a deployed real-provider executor or a complete
+  evidence bundle; and
 - the full app audit produced 252 view records: 218 good, 25 needing manual
   review, nine pre-existing unrelated `needs-work`, and zero broken. The
   calendar surface was good on desktop and `needs-eyeball` on three smaller
@@ -270,7 +334,7 @@ The strongest ideas in the brief should become acceptance criteria:
 4. **A reminder must lead to action.** A due date needs the responsible person,
    contact, source, link, location, prerequisites, and next safe action.
 5. **Cross-household communication stays factual and approved.** Observation -
-   Need - Request is a useful draft structure. the suite must not invent a
+   Need - Request is a useful draft structure. The suite must not invent a
    feeling, motive, diagnosis, legal conclusion, or concession.
 6. **Shared records survive scrutiny.** Proposed and confirmed schedule changes
    must be distinguishable, versioned, exportable, and scoped to the people who
@@ -304,6 +368,90 @@ The brief needs explicit answers to these questions before implementation:
 
 These are not prompt-writing details. They are domain contracts.
 
+### 1.3 Research method, provenance, and limitations
+
+This is a design audit, not a representative social-science sample. Research
+combined four evidence classes:
+
+- **A - authoritative:** provider documentation, standards, regulation, public
+  agency guidance, and peer-reviewed research. These establish API, safety, or
+  legal constraints within the stated version and jurisdiction.
+- **B - attributable reporting or first-person account:** named journalism,
+  interviews, and builder accounts. These establish that a workflow happened
+  for the described people, not that it is typical.
+- **C - community self-report:** public forum posts and comments. These expose
+  edge cases, vocabulary, and workarounds; they are anecdotal, self-selected,
+  mutable, and not prevalence estimates.
+- **D - private working-session input:** the July 2026 parent session summarized
+  by the brief. It explains the original feature priorities but is not
+  independently inspectable, so this report never treats it as public
+  corroboration.
+
+Sources were collected through requirement-led searches for each category,
+failure-mode-led searches after implementation review, and direct review of the
+brief's named sources. Links were checked on 2026-07-27. Claims are either
+linked inline or mapped below. No source was used to infer prevalence from one
+story. Product requirements are the report author's synthesis unless explicitly
+attributed.
+
+| ID | Source, date, and access | Evidence used | Confidence and limitation |
+| --- | --- | --- | --- |
+| S1 | Lane Brown, [“The Mom Who Runs a Household With a Staff of AI Agents”](https://www.thecut.com/article/jesse-genet-ai-agents-household.html), *New York/The Cut*, 2026-06-17; accessed 2026-07-27 | Bespoke household-agent existence proof, shopping/school/admin scope, cost and maintenance burden | B; named reporting about one unusually resourced household |
+| S2 | Jesse Genet, Sarah Wang, and Katherine Boyle, [builder interview](https://a16z.com/podcast/building-agents-at-home-parenting-work-and-benevolent-neglect/), 2026-04-13; accessed 2026-07-27 | First-person architecture, household-management, curriculum, and operating-practice account | B; participant and investor media, so product enthusiasm and selection bias are expected |
+| S3 | Jessica Contrera, [“When A.I. Is a Member of the Family”](https://www.newyorker.com/magazine/2026/07/20/when-ai-is-a-member-of-the-family), 2026-07-13; accessed 2026-07-27 | Reminder utility, unrequested conversational changes, intimate-data uncertainty, and parent/teen relational risks | B; deeply reported one-family account, not a population sample |
+| S4 | Private parent working session summarized in the nine-page brief, 2026-07 | Original category taxonomy, voice-first priority, “contact plus next action,” meal/cart, seasonal, and communication asks | D; private provenance, no independently reviewable transcript |
+| S5 | Eve Rodsky, [Fair Play Q&A](https://www.everodsky.com/fair-play-q); accessed 2026-07-27 | Conception/Planning/Execution ownership and invisible-work framing | B; framework author's own explanation, not independent outcome evidence |
+| S6 | Daminger and related household cognitive-labor studies ([study one](https://pmc.ncbi.nlm.nih.gov/articles/PMC11761833/), [study two](https://pmc.ncbi.nlm.nih.gov/articles/PMC8223758/)); accessed 2026-07-27 | Anticipation, planning, decision, and monitoring as distinct work; unequal allocation | A for the studied populations; generalization still follows each study's sampling limits |
+| S7 | r/workingmoms, [“Anyone have great executive functioning that can help me out?”](https://www.reddit.com/r/workingmoms/comments/1gfx18c/anyone_have_great_executive_functioning_that_can/), 2024-10-30; accessed 2026-07-27 | Multiple calendars, shared family calendar, immediate capture, voice while driving/carrying a toddler, reminders, paper redundancy, and habit failure | C; rich multi-comment workflow evidence, self-selected and English/US-heavy |
+| S8 | r/workingmoms, [“Moms Who Travel For Work”](https://www.reddit.com/r/workingmoms/comments/u7ag5u/moms_who_travel_for_work/), 2022-04-19; accessed 2026-07-27 | Tentative travel entered immediately, stable routines, backup help, solo-parent burden, careful timing and re-entry | C; parent and at-home-partner viewpoints, not a co-parenting study |
+| S9 | r/workingmoms, [summer-camp signup account](https://www.reddit.com/r/workingmoms/comments/1hxdd51/good_luck_to_everyone_starting_summer_camp_signup/), 2025-01-09; accessed 2026-07-27 | Scarce slots, inconsistent opening dates, coverage-hour gaps, backup plans, checkout races, cost and responsibility failures | C; local-market conditions vary |
+| S10 | r/instacart, [duplicate out-of-stock order account](https://www.reddit.com/r/instacart/comments/1t6piv3/ic_now_creating_duplicate_orders_for_out_of_stock/), 2026-05-07; accessed 2026-07-27 | Provider-created second order after substitution, unexpected delivery, cancellation, charge uncertainty, and the need to distinguish accepted from complete | C; unverified customer/shopper reports, triangulate against provider receipts and policy |
+| S11 | Microsoft Research, [Calendar.help deployment study](https://www.microsoft.com/en-us/research/publication/calendar-help-designing-workflow-based-scheduling-agent-humans-loop/); accessed 2026-07-27 | No-slot, timeout, unexpected-reply, inaccessible-calendar, and human-escalation states | A for the enterprise deployment studied; applying its taxonomy to families is an explicit inference |
+| S12 | Marshall Rosenberg, [NVC introductory chapter](https://www.nonviolentcommunication.com/pdf_files/nvc2-chapter-one.html); accessed 2026-07-27 | Observation, feeling, need, request distinction | A for the framework definition; this suite's omission of system-invented feelings is a product policy, not an NVC claim |
+| S13 | r/SiriFail, [“Literally can't say it any clearer than that”](https://www.reddit.com/r/SiriFail/comments/u55572/literally_cant_say_it_any_clearer_than_that/), 2022-04-16; accessed 2026-07-27 | A reminder command loses or misassigns its object/time; prompted correction works better but remains fallible | C; old, deleted-author, failure-community anecdote used only for adversarial tests |
+| S14 | r/alexa, [“Freaked out by Alexa today”](https://www.reddit.com/r/alexa/comments/1tugvpf/freaked_out_by_alexa_today/), 2026-06-02; accessed 2026-07-27 | An intentional child weather request allegedly expands into ambient family-conversation context and full-name use | C; recent unverified device-specific complaint; comments are excluded as speculation |
+| S15 | r/instacart, [“Consistently double charged for items”](https://www.reddit.com/r/instacart/comments/lxsaqq/consistently_double_charged_for_items/), 2021-03-04; accessed 2026-07-27 | Requested, invoiced, delivered, disputed, and refunded quantities can diverge and create repeated support work | C; old, deleted-author complaint used only as a failure-mode prompt |
+| S16 | r/workingmoms, [“Summer camps”](https://www.reddit.com/r/workingmoms/comments/10qae6d/summer_camps/), 2023-01-31; accessed 2026-07-27 | Missed ownership, unknown school dates, membership windows, deposits, and scarce capacity defeat reminder-only flows | C; US/local-market vent thread |
+| S17 | r/workingmoms, [“traveling for work and leaving kids behind?”](https://www.reddit.com/r/workingmoms/comments/1l34zmt/traveling_for_work_and_leaving_kids_behind/), 2025-06-04; accessed 2026-07-27 | Safety-critical handoff and shared medical/calendar facts matter, but exhaustive micromanagement can undermine the at-home parent's autonomy | C; deleted OP and advice-thread selection bias |
+
+The source set is English-language, US-heavy, and disproportionately drawn from
+r/workingmoms and r/Parenting. Direct child, caregiver, father/nonbinary,
+low-income/hourly, rural, disabled/IEP, survivor, queer/multi-parent,
+limited-English, and non-US research remains thin. Maya is therefore a
+synthetic stress-test composition, not a validated market archetype. Before a
+complete product claim, recruit and compensate those groups, interview both the
+traveling and remaining parent, include children only through an
+ethics-reviewed protocol, and publish de-identified requirement-to-finding
+traceability. Volatile forum sources should be archived where terms permit.
+
+One existing “I stopped being the family calendar” forum thread mentions a
+calendar vendor in the original post. It is retained only as
+vendor-contaminated, low-confidence corroboration; no requirement depends on
+that thread alone.
+
+### 1.4 Brief-page traceability
+
+| Brief page | Requirement cluster | Report sections | Acceptance scenarios/work |
+| --- | --- | --- | --- |
+| 1 | Category rationale, accessibility, maintenance burden, human connection, equity | Executive conclusion; 1.1-1.3; 13-14 | All G cases; setup/maintenance/cost metrics |
+| 2 | Default-parent neutrality, action-linked reminders, factual cross-household communication, append-only records | 6.1-6.3; 7.4-7.6 | G6-G7, G12, G17-G24, G38 |
+| 3 | Calendar/command center, external oracles, messaging, parenting support | 5; 6.1-6.4; 6.10; 8 | G1-G24, G31, G35-G37, G39-G47 |
+| 4 | Meals, inventory, seasonal planning, financial/time modeling | 6.5-6.8; 8 | G25-G34, G38, G48 |
+| 5 | Voice capture as the cross-cutting top-priority interface | 6.9; 10.2; work package 2 | G13, G23 plus voice-to-calendar matrix |
+| 6 | Observation-Need-Request drafting, scoped visibility, approval, export | 6.3; 7.5-7.6; 10.2 | G17-G24 |
+| 7 | Fair Play category cross-check and omitted household domains | 1.1; 6; 7.4; 13 | C/P/E/M assertions across all applicable cases |
+| 8 | Conception/Planning/Execution ownership as the mental-load test | Executive conclusion; 7.4; 13 | G38 plus ownership/closure assertions |
+| 9 | Sequencing, pricing, setup, agent model, safety, export, configurable ownership | 7.4-7.6; 11-16, especially 13.1 | Dependency-ordered work packages and evidence gates |
+
+The brief placed voice-to-calendar, command center, external oracles, and meal
+cart-building together in Phase 1. This plan keeps **safe voice-to-calendar
+capture at P0**, but requires authenticated capture, transcript review, and
+explicit confirmation before calendar mutation. External-oracle adapters can
+ship early after source health and curation are composed. Meal planning can ship
+at L2, while cart/checkout remains later because allergens, price/slot changes,
+duplicate orders, and refunds make it an approval- and receipt-bound
+transaction. This is a deliberate risk-based split, not a dropped priority.
+
 ## 2. Capability maturity model
 
 Every feature claim should state its maturity level. This prevents a fluent
@@ -316,6 +464,19 @@ model response from being mistaken for delegation.
 | L2 | Coordinate | Resolve dependencies, conflicts, owners, visibility, and consent | Propose custody-swap coverage |
 | L3 | Transact | Perform an approved, idempotent external action and retain its receipt | Build and submit a grocery order |
 | L4 | Monitor and close | Observe changes and outcome, recover from failure, and verify completion | Recompute coverage after a flight delay |
+
+Maturity is separate from delivery evidence. Report each capability along both
+axes:
+
+`code exists → registered → configured/authenticated → production-composed →
+live-provider proven → human-reviewed`.
+
+A deterministic unit test can establish code behavior but cannot establish
+authentication, production composition, a provider commit, delivery to the
+right person, or a usable screen. A signed loopback fixture can establish the
+evidence protocol but not the domain outcome. A case advances only when its
+server-owned evaluator observes the final trusted state and a human reviews the
+complete artifact bundle.
 
 The Phase 1 bar should be L4 for calendar/travel coordination, L2-L3 for school
 ingestion and messaging, and L2 for external recommendations. A meal suggestion
@@ -340,9 +501,18 @@ across platforms and provides:
 - REST routes and task-state logs; and
 - structural behavior that never pattern-matches `promptInstructions`.
 
-the suite must contribute new task definitions, gates, completion checks, event
-families, anchors, and pipelines to this runner. It must not add a “the suite
-scheduler.”
+The suite must contribute new task definitions, gates, completion checks, event
+families, anchors, and pipelines to this runner. It must not add a second
+suite-specific scheduler.
+
+Deferred MESSAGE delivery now uses this spine when a connector lacks native
+scheduling. The complete draft snapshot is durable, scheduling is idempotent,
+and an atomic claim allows one attempt. A per-process marker persists before
+connector egress; if that process disappears before recording the result, the
+next process marks the owner-visible task failed with `acceptance: unknown` and
+does not retry. This is truthful at-most-once attempt behavior. Exactly-once
+delivery still requires provider idempotency or readback and must not be
+inferred from the local claim.
 
 ### 3.2 Calendar: substantial, but not yet a family scheduling engine
 
@@ -374,16 +544,17 @@ calendar or subscribed calendar is visible when the connected account has
 reader access. It is not enough to inspect a guest’s private calendar without a
 grant, infer consent, or negotiate cross-household schedule changes.
 
-It is also not yet enough for the model to carry out “connect these sources.”
-The owner-facing source manager and authenticated routes exist, but the agent
-tool surface exposes event search/mutation rather than a typed
-list/select/connect/reconnect source operation. The provenance-valid G1 run
-therefore fell into generic event searches and unrelated contact mutation.
-Source administration needs a least-privilege action with exact provider,
-account, grant, and calendar identity; explicit OAuth/native handoff states;
-immutable owner approval for scope expansion; and a receipt that distinguishes
-selected, connected, excluded, failed, and pending sources. The LLM may explain
-and sequence that action, but must not fabricate a connection from prose.
+The owner-facing source manager, authenticated routes, and typed
+`CALENDAR_SOURCES` action/provider now share one source-administration adapter.
+The owner can list, select, deselect, connect, and reconnect exact
+provider/account/grant/calendar identities; OAuth and native authorization
+remain explicit user handoffs. Selection uses SQL compare-and-swap semantics,
+exact no-op selections perform no durable write, and receipts use opaque
+resource identifiers. Initial ICS configuration and its first synchronization
+have separate applied/failed receipts, so a persisted configuration cannot be
+mistaken for a healthy connected feed. The provenance-valid G1 run predates
+this action and remains useful evidence of why a generic event-search surface
+was insufficient. Live OAuth and provider proof are still required.
 
 The synchronization path now drains provider pages, persists incremental
 `syncToken` state per account/calendar/grant, applies cancellation tombstones,
@@ -391,15 +562,29 @@ recovers a provider 410 with a full snapshot, and reports per-source freshness.
 Google watch channels now persist channel/resource/token bindings, validate the
 provider headers against those bindings, reconcile duplicate or out-of-order
 notifications idempotently, and schedule retry, renewal, and restart
-reconstruction through the shared `ScheduledTask` runner. Production proof
-still needs a uniquely routed, publicly reachable callback domain and a real
-Google account; provider-seam and real-PGlite tests are not a substitute for
-that delivery. The local HTTP host has exactly one `AgentRuntime`, so the fixed
-callback path is unambiguous inside a process. A shared public ingress must
-route the callback to the correct runtime origin before this handler, and must
-apply WAF, volumetric rate limiting, request-size, and timeout controls. The
-per-channel capability token authenticates a notification to the selected
-runtime; it is not an Internet-facing denial-of-service control.
+reconstruction through the shared `ScheduledTask` runner. Webhook delivery is
+explicitly disabled unless configured. Before service or database work, the
+application route enforces the capability binding, rejects non-empty,
+transfer-encoded, or oversized bodies under a 1 KiB metadata/raw-body bound,
+limits requests to 60 per IP per minute, and bounds each runtime to 256 rate
+buckets.
+
+Production proof still needs a uniquely routed, publicly reachable callback
+origin and a real Google account; provider-seam and real-PGlite tests are not a
+substitute for that delivery. The local HTTP host has exactly one
+`AgentRuntime`, so the fixed callback path is unambiguous inside a process. A
+shared public ingress must route the callback to the correct runtime origin
+before plugin dispatch and add upstream header/body/deadline enforcement, an
+edge WAF, volumetric protection, and distributed limiting. The per-channel
+capability token authenticates a notification to the selected runtime; it is
+not Internet-facing denial-of-service protection.
+
+ICS source URL rotation and deletion now enqueue desired secret cleanup in the
+same database transaction as source state. Boot, ICS operations, sync, and the
+existing Google-watch maintenance task drain that outbox; the worker deletes
+the vault value before acknowledging the row and retains failures for retry.
+This is a calendar-domain cleanup outbox, not the general runtime effect ledger
+needed for arbitrary external mutations.
 
 Google exposes pagination, incremental sync tokens, controlled full resync after
 token invalidation, and push notifications
@@ -419,31 +604,29 @@ requires. The native framework and its privacy descriptions compile in the
 full iOS app and the exact build installs and launches in a simulator. This is
 build evidence, not yet an EventKit authorization or transaction round trip.
 
-### 3.3 Conflict detection: useful, incomplete, and currently split
+### 3.3 Conflict detection: calendar-owned, deterministic, and not yet fully composed
 
-LifeOps has a real owner-feed overlap scanner in
-`plugins/plugin-personal-assistant/src/actions/conflict-detect.ts`. It can scan
-today, the next week, or a proposed event. It correctly fails when the calendar
-source is unavailable instead of reporting a false “no conflicts.”
+`CONFLICT_DETECT` now has one calendar-owned deterministic implementation. The
+personal-assistant action is a host authorization and time-zone adapter rather
+than a second conflict engine. It loads the owner’s selected feeds and supports
+privacy-only Google and Microsoft free/busy. Partial, stale, or unavailable
+feeds return `CALENDAR_INCOMPLETE`, `isFree: null`, possible conflicts, and no
+slot proposals; they never become a false “free” result.
 
-The important gap is visible in the loader contract:
+Guest authorization is now enforced at the read boundary rather than inferred
+from an attendee. The production resolver accepts opaque host-issued grant IDs
+only and validates the exact requester principal, `calendar.freebusy` purpose,
+consent timestamp, expiry/revocation, provider, connector account, provider
+grant, calendar, verified guest identity, and, for non-self requests, active
+child/guest household scope before any provider I/O. Raw attendee addresses
+only match events already visible in the selected feeds; they never trigger
+cross-account probing. Missing, revoked, ambiguous, or stale grants fail closed
+without revealing whether an address has a calendar. The remaining gap is
+trusted grant acquisition and consent authoring, issue/revoke mutation and UX,
+lifecycle warnings, and live two-account Google/Microsoft proof.
 
-- attendee free/busy is optional;
-- its default implementation returns an empty list; and
-- production wiring injects only the owner calendar feed.
-
-Therefore a proposal may be checked against the owner’s selected calendars, but
-not truly against a co-parent, caregiver, guest, room, or resource calendar.
-
-There is also a second `CONFLICT_DETECT` action in
-`plugins/plugin-calendar/src/actions/conflict-detect.ts` that explicitly
-returns scaffold failures. The capability should have one canonical owner.
-Before the suite builds on it, consolidate the implementation in the calendar
-domain and remove or replace the scaffold registration.
-
-The canonical calendar conflict action remains too shallow and split: it is
-still based primarily on time overlap and shared attendees. LifeOps now also
-has a deterministic household resource-capacity solver covering caregiver
+Calendar overlap alone is also insufficient. LifeOps has a deterministic
+household resource-capacity solver covering caregiver
 authorization, availability, capability and capacity; vehicle passenger,
 accessibility and distinct-driver constraints; car-seat child/vehicle/
 installation compatibility; handoff windows and principals; preparation and
@@ -469,24 +652,22 @@ negotiation state transition and an external send are separately auditable.
 What remains is live provider delivery/read/reply ingestion and proof that the
 approved version—not a stale draft—is the version a co-parent actually receives.
 
-The negotiation also needs:
-
-- candidate-slot derivation from real availability;
-- constraints and ranked explanations;
-- proposal expiry;
-- per-party acceptance, not one global status;
-- material-change invalidation;
-- counterproposals;
-- idempotent ingestion of inbound responses;
-- a final calendar write after agreement;
-- and explicit distinction between a court/parenting-plan baseline and a
-  voluntary exception.
+The negotiation still needs candidate-slot derivation and ranked explanations
+from the composed live solver, explicit counterproposal semantics, an
+authority-baseline relation between a parenting plan and voluntary exception,
+final provider materialization, and live delivery/read/reply proof. Proposal
+expiry, per-party decisions, material-change invalidation, and idempotent
+authenticated response ingestion are implemented.
 
 ### 3.5 Connectors and adjacent domains
 
 LifeOps currently registers Google, Telegram, Discord, Signal, WhatsApp,
 iMessage, X, Twilio, Calendly, and Duffel. Google supplies Gmail and Calendar;
-Apple Calendar is available through the native bridge. Calendly supplies
+Apple Calendar is available through the native bridge. Microsoft OAuth,
+calendar enumeration, delegated/shared/private reads, delta synchronization,
+privacy-only free/busy, and idempotent one-off creation are implemented.
+Guarded ICS/webcal subscriptions, typed NWS weather, Google Routes, and
+Ticketmaster activity adapters are also implemented. Calendly supplies
 scheduled-event, event-type, availability, booking-link, and cancellation
 capabilities. Duffel supports flight search and approval-gated booking.
 
@@ -501,30 +682,29 @@ Related product substrate includes:
 - voice capture and entity/relationship observation; and
 - the generic browser, web fetch, and web search capabilities.
 
-Missing first-class connectors include Microsoft Outlook/Exchange Calendar,
-CalDAV/webcal, school/SIS portals, community event sources, typed weather,
-maps/travel-time as a domain source, grocery/cart/order providers, retailer
-receipts, and household inventory devices.
+Missing first-class connectors include CalDAV, school/SIS and Google Classroom
+entitlement/subscription flows, caregiver and physical-resource availability,
+airline/hotel/ground-transport change feeds, retailer cart/order/substitution/
+delivery/refund lifecycles, product-recall feeds, receipt/photo/barcode capture,
+and verified current-subject location. Microsoft push/watch and safe
+conditional update/delete are also absent.
 
 ### 3.6 Persona and scenario coverage
 
-The requested persona does not exist as one coherent persona. Current coverage
-is fragmented across:
+The requested persona now exists coherently as Maya Reed in MVP documentation
+and as the data-only `PERSONA_MAYA_TRAVELING_COPARENT` benchmark fixture. She
+combines the two-kid logistics of the earlier Maya material, Jordan’s separated
+co-parenting and child-privacy constraints, Nora’s frequent travel, and the
+calendar/inbox load of the business-owner corpus. This remains a composite test
+persona, not a product mode. LifeOps represents persona differences as owner
+facts, relationships, grants, sources, and structural scheduling knobs through
+one runner.
 
-- **Maya Reed:** two-kid working parent with dense family logistics;
-- **Jordan Ellis:** separated co-parent, factual wording, expense splits, and
-  child privacy;
-- **Nora Klein:** frequent-flying consultant;
-- **Elena:** calendar- and inbox-heavy business owner; and
-- the separate frequent-traveler time-zone corpus.
-
-The right response is a composite test persona, not a product mode. The LifeOps
-architecture explicitly defines persona differences as owner facts plus
-structural scheduling knobs through one runner.
-
-Documentation is stale relative to the scenario corpus. The MVP document calls
-J1 planned, but `co-parenting.catalog.json` now contains ten authored scenarios.
-All ten remain `authored`, not live-verified. Existing J1 scenarios cover:
+Documentation and the catalog target are stale relative to the combined
+scenario corpus. The diagnostic target is ten, but the branch currently has 21
+authored J1 cases: eight in LifeOpsBench and thirteen in the scenario runner.
+All 21 remain authored, not provider-qualified or live-verified. Existing cases
+cover:
 
 - recurring custody rhythm;
 - exchange reminders;
@@ -535,10 +715,25 @@ All ten remain `authored`, not live-verified. Existing J1 scenarios cover:
 - vent/blame boundaries; and
 - no external send before approval.
 
-The frequent-traveler corpus is stronger, including absolute versus wall-clock
-semantics, ambiguous time zones, re-anchoring, lighter pre-trip load,
-biological-night conflicts, messy itineraries, and time-zone history. The
-missing proof is a composite, live, real-connector family journey.
+The count cannot be treated as evidence. Scenario-runner “live” execution
+currently seeds a mocked test environment, LifeOps simulator, and fake
+Google/X grants, disables the scheduler, shares one runtime across cases, and
+infers effects from action payloads. J1 is not in its strict evidence packs.
+The LifeOpsBench cases declare no `TrustedEvidenceRequirement`, so a live model
+still acts against deterministic LifeWorld rather than provider-backed state.
+A provider-qualified isolated execution profile, trusted effect observation,
+and a corrected custody fixture date are required before any J1 case advances.
+
+The parent suite adds 48 declared scenario contracts around the composite
+persona. All 48 now have registered server-owned typed evaluator contracts, but
+registration is not execution coverage. G10, G15, G30, G34, G35, G36, and G38
+have native production-result adapters; the remaining 41 require exact
+content-addressed, lineage-bound terminal snapshots that their production
+actions do not yet emit. All 48 remain incomplete. The frequent-traveler corpus
+remains useful for absolute versus wall-clock semantics, ambiguous time zones,
+re-anchoring, lighter pre-trip load, biological-night conflicts, messy
+itineraries, and time-zone history. The missing proof is native production
+emission plus a composite, live, real-connector family journey.
 
 ## 4. Implicit LLM work versus explicit primitives
 
@@ -606,17 +801,17 @@ Required behavior:
 ### 5.2 “Looking at a guest calendar”
 
 There is no ethical or technical shortcut for reading a guest’s calendar.
-the suite should support four explicit paths:
+The suite should support four explicit paths:
 
 1. **Shared calendar grant.** The guest shares a Google, Microsoft, Apple, or
-   CalDAV calendar with the connected account. the suite reads only the granted
+   CalDAV calendar with the connected account. The suite reads only the granted
    visibility.
-2. **Free/busy grant.** The guest authorizes free/busy only. the suite receives
+2. **Free/busy grant.** The guest authorizes free/busy only. The suite receives
    busy intervals without titles or descriptions. Google supports a
    `freeBusy.query` operation and a `freeBusyReader` ACL role
    ([Google free/busy](https://developers.google.com/workspace/calendar/api/v3/reference/freebusy/query),
    [Google sharing roles](https://developers.google.com/workspace/calendar/api/concepts/sharing)).
-3. **Availability request.** the suite sends an owner-approved request or
+3. **Availability request.** The suite sends an owner-approved request or
    scheduling link. The guest selects acceptable slots without connecting a
    calendar.
 4. **Published ICS/webcal.** The guest or organization supplies a read-only
@@ -626,6 +821,30 @@ the suite should support four explicit paths:
 Never scrape a private calendar, infer permission from an email address, or ask
 one parent to supply another adult’s password. A guest’s denial or revoked
 grant is a valid outcome.
+
+Scheduling is a stateful negotiation, not one free/busy query. In a year of
+real-world Calendar.help deployment, 32% of escalations involved multiple or
+out-of-bounds attendee replies, 27% had no mutually acceptable proposed time,
+26% timed out waiting for a reply, and 7% could not access the organizer’s
+calendar. The reasons were non-exclusive
+([Microsoft Research paper](https://www.microsoft.com/en-us/research/publication/calendar-help-designing-workflow-based-scheduling-agent-humans-loop/)).
+These are product states: unexpected response, no common slot, timeout, and
+source inaccessible—not generic model failures. The study’s human fallback
+also cautions against assuming every unusual negotiation can be reduced to
+calendar arithmetic.
+
+Human accounts expose multi-account failure modes the API contracts do not:
+events from one account may not block availability in another; invitations can
+default to the wrong calendar; and families can create duplicate “family”
+events from separate owners
+([multi-calendar visibility account](https://www.reddit.com/r/productivity/comments/1s9rnlk/a_better_way_to_see_events_from_multiple_calender/),
+[wrong-calendar invitation account](https://www.reddit.com/r/ios/comments/1e1urjm/when_someone_invites_me_to_a_calendar_event_it/),
+[family duplicate account](https://www.reddit.com/r/GoogleCalendar/comments/1ruz1ar/family_calendar_issues/)).
+Every proposal and final write therefore needs an exact organizer and target
+provider/account/grant/calendar, plus a post-write readback. Free/busy sharing
+is the practical privacy boundary: busy intervals should not expose titles,
+locations, participants, descriptions, or notes
+([privacy-focused free/busy account](https://www.reddit.com/r/tutanota/comments/1t4i3ds/calendar_sharing_without_details_only_freebusy/)).
 
 “Guest access” to the family record is a different primitive. A caregiver needs
 a scoped, expiring role, not a calendar OAuth token:
@@ -827,8 +1046,17 @@ Family recurrence requires more than Google instance/series CRUD:
 Google’s documented this-and-following workflow trims the original series and
 creates a new series, with consequences for later exceptions
 ([Google recurring events](https://developers.google.com/workspace/calendar/api/guides/recurringevents)).
-The deterministic calendar layer must perform and verify that transformation;
-the LLM should only interpret the user’s intended scope.
+The deterministic calendar layer now implements a deliberately restricted,
+fail-closed Google split for timed recurrences whose rule is losslessly
+representable. It preserves attendees, rejects moved occurrences unless the
+replacement `DTSTART` satisfies the replacement rule, and uses idempotent
+recovery. Portable deduplication keys use recurrence UID plus original
+occurrence identity; provider-local IDs are source-scoped, and newer
+revision/sequence evidence can supersede provider rank. All-day splits,
+arbitrary later exceptions, broad recurrence syntax, atomic cross-request
+provider transactions, and live Google proof remain open. The LLM only
+interprets requested scope; deterministic code validates and performs the
+transformation.
 
 Current conflict behavior also needs normalization:
 
@@ -918,6 +1146,15 @@ childcare can become part of the mental load; the traveling parent’s absence
 must not silently transfer planning to the adult staying home
 ([travel-ownership discussion](https://www.reddit.com/r/workingmoms/comments/1j7cms2/who_coordinates_kid_things_when_one_parent_is/),
 [business-trip preparation](https://www.reddit.com/r/workingmoms/comments/102iv17/business_travel_for_a_week_how_to_prepare/)).
+Traveling and at-home parents also describe putting even potential travel on a
+shared calendar immediately, keeping routines stable, simplifying nonessential
+standards, arranging backup help, timing video calls around the children, and
+giving the solo parent recovery time after return (S8). A countervailing thread
+warns that safety-critical schedules and medical instructions should be shared
+without turning the traveling parent's preferred routine into remote
+micromanagement (S17). The product therefore needs a tentative-to-confirmed
+handoff, explicit essential versus optional constraints, and authority for the
+at-home adult to vary safe execution.
 
 The travel-impact pipeline should:
 
@@ -933,7 +1170,7 @@ The travel-impact pipeline should:
 
 International child travel is legally sensitive. Passport, consent-letter,
 visa, and custody requirements vary by destination and family circumstances.
-the suite may build an official-source checklist but must not claim the child is
+The suite may build an official-source checklist but must not claim the child is
 “cleared to travel”
 ([U.S. State Department minors guidance](https://travel.state.gov/en/international-travel/planning/personal-needs/minors.html),
 [passport guidance for children under 16](https://travel.state.gov/en/passports/apply/child/under-16.html)).
@@ -973,10 +1210,42 @@ Required safeguards:
 - trusted-support roles; and
 - no marketing promise of universal “court admissibility.”
 
+Every change notification should name the affected child/date and show the
+field, old value, new value, actor, revision, and source. `delivered`, `read`,
+`acknowledged`, `accepted`, `declined`, and `withdrawn` are distinct states;
+neither reading nor silence is agreement. Preserve an original message or
+attachment separately from a suggested neutral rewrite. A digest may reduce
+notification flooding, but it must preserve urgent child-safety content and
+any externally imposed response deadline.
+
+Many families keep a private calendar beside a court-required co-parenting
+system. A static export can therefore be incomplete without being false. Import
+and deduplication must retain independent provenance and must never write back
+to either system without a separate approved mutation. Ordinary sharing should
+strip or warn about GPS EXIF; an original may be retained only in a protected
+evidence scope. Account recovery and device compromise need a survivor-safe
+path that does not reveal a new device or location to another household
+principal.
+
 The record can be append-only, integrity-protected, and exportable. Whether a
 court admits it is a jurisdiction- and case-specific legal question.
 
-### 6.4 School and seasonal planning is an ingestion problem
+Additional first-person reports describe duplicate maintenance, static exports,
+and events that fail to save
+([co-parent export account](https://www.reddit.com/r/coparenting/comments/18i2wa9)).
+Technology-safety practitioners recommend preserving original messages and
+metadata rather than replacing them with edited copies
+([Safety Net messaging-evidence guidance](https://www.techsafety.org/messaging-evidence)).
+
+Anti-automation rules:
+
+- no automatic response, acceptance, conciliation, continuous location, or
+  consent-by-silence;
+- no credential sharing or login as the other parent;
+- no automatic custody or parenting-plan interpretation; and
+- no claim that an export is universally court-admissible.
+
+### 6.4 School and activity intake is an entitlement and source-health problem
 
 Parents receive information through email, portals, PDFs, photos, apps,
 messages, and paper. Summer coverage requires providers, dates, opening times,
@@ -992,9 +1261,12 @@ The pipeline must:
 
 - ingest email, ICS, PDF, image, and portal data;
 - retain the source and extraction confidence;
+- monitor reachability per principal, account, grant, device, and channel;
 - resolve which child the item applies to;
 - deduplicate the same event across sources;
-- detect corrections and cancellations;
+- detect corrections and cancellations using issuer authority, child/program
+  scope, revision identity, issued/effective time, and explicit correction
+  language rather than timestamp alone;
 - extract deadlines, cost, eligibility, location, forms, contacts, and next
   actions;
 - represent waitlist as not-yet-covered;
@@ -1004,6 +1276,39 @@ The pipeline must:
 
 A generic web search is useful for discovery. It is not an authoritative,
 monitorable activity connector.
+
+A parent/guardian relationship does not automatically confer API entitlement.
+Google Classroom guardian invitations can be pending, accepted, expired, or
+cancelled, and administrator/domain policy controls access. Classroom push
+registrations expire after one week and require renewal; an expired
+registration or revoked OAuth grant must render a stale/error source, never “no
+new notices”
+([Classroom push guidance](https://developers.google.com/workspace/classroom/best-practices/push-notifications),
+[guardian-management semantics](https://developers.google.com/workspace/classroom/guides/manage-guardians)).
+OneRoster and Ed-Fi help institutions exchange roster and calendar data, but
+neither is a universal parent-notice, camp, permission-form, or activity feed
+([OneRoster 1.2](https://standards.1edtech.org/oneroster/specifications/standards/v1p2),
+[Ed-Fi school calendar domain](https://docs.ed-fi.org/reference/data-exchange/data-standard/4/model-reference/school-calendar-domain/overview)).
+
+Translation and accessibility are product requirements, not post-processing
+details. Machine translation should expose uncertainty and retain the original;
+it does not replace qualified school translation for rights, consent, IEP,
+discipline, or enrollment matters, and a child must not become the interpreter
+([U.S. Department of Education language access](https://www.ed.gov/laws-and-policy/civil-rights-laws/race-color-and-national-origin-discrimination/race-color-and-national-origin-discrimination-key-issues/equal-education-opportunities-for-english-learners)).
+Accessible extracted views must preserve the original inaccessible source and
+its extraction caveats
+([DOJ Title II web/mobile rule](https://www.ada.gov/resources/2024-03-08-web-rule/)).
+FERPA and COPPA applicability depends on the service’s role, source, contract,
+and processing context; do not turn useful minimization principles into a
+blanket compliance claim
+([Department of Education FERPA app guidance](https://studentprivacy.ed.gov/faq/i-want-use-online-tool-or-application-part-my-course-however-i-am-worried-it-violation-ferpa)).
+
+Anti-automation rules:
+
+- no auto-enrollment or payment in response to scarcity;
+- no inferred guardian authority from a shared inbox or email address;
+- no child-as-interpreter workflow; and
+- no “all clear” result from a stale, revoked, or unreachable source.
 
 ### 6.5 Meal planning is one pipeline, not a recipe generator
 
@@ -1031,13 +1336,25 @@ decision boundary. Hard constraints include allergies, age/choking risk,
 medical diets, religious/ethical preferences, and budget. An LLM-proposed
 “equivalent” product never overrides the product label or allergy policy.
 
+Model restrictions by type: ordinary preference, sensory-safe food/ARFID,
+religious or ethical restriction, diagnosed allergy, and clinician-directed
+diet have different substitution and override rules. Quantity confidence is
+also separate from food-safety confidence; purchase history says nothing about
+storage time or temperature. Exact brand, UPC, package size, lot, and use-by
+identity may be safety critical. A workable plan must account for time, energy,
+equipment, skill, cleanup, leftovers, and an immediate fallback—not only
+ingredients and headcount.
+
 Instacart’s current Developer Platform supports product discovery, shopping-list
-or recipe pages, nearby retailers, and cart-oriented experiences
+or recipe pages, nearby retailers, cart creation, real-time inventory/pricing,
+Marketplace, and contracted in-app checkout capabilities
 ([Instacart developer overview](https://docs.instacart.com/developer_platform_api),
 [shopping-list API](https://docs.instacart.com/developer_platform_api/api/products/create_shopping_list_page)).
 Its standard shopping-list endpoint generates a page where the user selects a
 store, adds matched products, and checks out. That is a valuable approval
-handoff, but it is not by itself a fully monitored household order.
+handoff, but it is not by itself a fully monitored household order. Evaluate
+current contracted APIs rather than assuming the public Products Link provides
+an order-lifecycle connector.
 
 Order execution needs:
 
@@ -1052,9 +1369,175 @@ Order execution needs:
 - refund/cancellation recovery; and
 - an explicit incomplete/error state.
 
-### 6.6 Parenting guidance must remain informational and human-connected
+Refresh approval if price, fees, quantity, delivery slot, address, or
+substitution changes materially. Post-delivery recall matching needs exact
+product identity and an authoritative recovery state. The openFDA food
+enforcement dataset is useful for discovery but updates weekly and explicitly
+must not be the sole public-alert or recall-lifecycle source
+([openFDA food enforcement](https://open.fda.gov/apis/food/enforcement/),
+[FDA recall guidance](https://www.fda.gov/food/buy-store-serve-safe-food/food-recalls-what-you-need-know)).
+First-person reports show that shared ownership works best when planning,
+ordering, cooking, cleanup, leftovers, and fallback meals are assigned as one
+system rather than isolated chores
+([shared meal-ownership account](https://www.reddit.com/r/workingmoms/comments/1bl2ct2/talk_to_me_about_sharing_the_mental_load_of_meal/)).
+Complaint-derived evidence supplies adversarial states rather than prevalence:
+one customer reports a provider-created second order after accepted
+substitutions and checkout, while shopper comments describe unexpected
+“cleanup” deliveries (S10); an older account separates invoiced quantities,
+physical delivery, dispute, and refund (S15). A connector receipt is therefore
+not terminal proof. Preserve parent/child order lineage and reconcile requested,
+approved, checked-out, invoiced, delivered, disputed, cancelled, and refunded
+states.
 
-the suite can retrieve and explain a user-selected parenting framework, suggest
+### 6.6 Household resources are qualified capabilities, not inventory counts
+
+“We own a car seat” is not enough to authorize a pickup. Qualification is
+child-, vehicle-, installation-, caregiver-, location-, and time-specific.
+Track manufacturer/model/serial or lot, child height/weight limits, expiry,
+crash history, recall state, vehicle compatibility, installed position,
+physical custodian, last verification, and whether the assigned caregiver can
+use it correctly. A caregiver and vehicle may both be available while the only
+suitable restraint is at the other household.
+
+Child growth, a recall, crash, vehicle substitution, unknown secondhand
+history, moved installation, or expired training invalidates prior evidence.
+Ordinary pantry or clothing inventory can use confidence decay and lightweight
+corrections; safety-critical resources require verified state. NHTSA and CPSC
+provide authoritative selection/installation and recall/registration sources
+([NHTSA car-seat guidance](https://www.nhtsa.gov/vehicle-safety/car-seats-and-booster-seats),
+[NHTSA caregiver guidance](https://www.nhtsa.gov/car-seats-and-booster-seats/grandparents-car-seat-safety),
+[CPSC recall API](https://www.cpsc.gov/Recalls/CPSC-Recalls-Application-Program-Interface-API-Information?language=en)).
+Parents report alternate-pickup plans failing because the only usable seat is
+physically elsewhere
+([working-parent account](https://www.reddit.com/r/workingmoms/comments/1k11uwn)).
+
+Anti-automation rules:
+
+- never authorize transport merely because a resource is recorded as owned;
+- never recommend an expired, recalled, crash-involved, unknown-history, or
+  incompatible safety resource; and
+- never auto-buy from inferred low stock or stale child-size evidence.
+
+### 6.7 Seasonal planning must respect capacity, values, and source authority
+
+An opportunity window needs open/close times, lead time, capacity,
+age/eligibility, total cost, refund policy, documentation, and terminal
+`declined` or `not_relevant` states. Ranking must include advertised hours,
+aftercare, transport, meals, commute, pickup grace, sibling compatibility, and
+remaining unstructured time. Deadlines should display both source-local and
+owner-local time for a traveling parent.
+
+Weather is evidence, not a cancellation oracle. NWS alerts are typed
+authoritative weather inputs; only the school/provider can cancel its program
+([NWS alerts service](https://www.weather.gov/documentation/services-web-alerts)).
+Camp accreditation is voluntary and licensing varies by jurisdiction, so
+neither is a general quality guarantee
+([American Camp Association selection guidance](https://www.acacamps.org/parents-families/why-accredited-camps/how-choose-camp-safety-tips),
+[camp preparation and hidden-cost guidance](https://www.acacamps.org/press-room/how-to-choose-camp/preparing-for-camp)).
+Family values can include opting out of gifts, cultural/religious practices,
+low-consumption preferences, budget/storage limits, and preserving unscheduled
+time. Do not turn every occasion into a shopping obligation or repeatedly
+reopen a declined item without materially new evidence.
+
+Summer-camp accounts make the state machine concrete. Parents coordinate exact
+weeks across siblings and age bands, several websites, mismatched drop/pickup
+hours, cost, and backup coverage; some slots fill within minutes, cheaper
+programs publish later, and checkout can fail under load (S9). Another account
+adds unknown school dates, membership-only windows, deposits, missed ownership,
+and late discovery after a work crunch (S16). This is a constrained
+week-by-week coverage and scarce-capacity transaction, not an activity
+recommendation list.
+
+Anti-automation rules:
+
+- no autonomous booking, payment, purchase, or weather-driven cancellation;
+- no “covered” status for a waitlist or hours that leave a commute gap; and
+- no repeated alerting after a durable decline unless the source materially
+  changes.
+
+### 6.8 Childcare and work choices require household-wide scenario math
+
+Childcare reliability is a first-class input: closures, illness policy, backup
+lead time, cancellation risk, trust/comfort, simultaneous primary-and-backup
+costs, and late-pickup or attendance consequences. Match care hours against
+commute, shift boundaries, pickup grace, school closures, custody location, and
+two-household transitions.
+
+The model should compare household scenarios, not childcare cost against the
+mother’s wage. Inputs include benefits, taxes, subsidies and cliffs,
+retirement, career progression/re-entry, flexibility, parent wellbeing, and
+who absorbs interruptions. Licensing is a minimum safety framework, not proof
+of quality; add inspection history, exemptions, accessibility, child-specific
+needs, and caregiver fit
+([Childcare.gov licensing](https://childcare.gov/consumer-education/regulated-child-care/child-care-licensing),
+[financial-assistance options](https://www.childcare.gov/consumer-education/get-help-paying-for-child-care/child-care-financial-assistance-options)).
+Tax, leave, and benefit rules must be versioned by filing year, jurisdiction,
+employer, and family facts
+([IRS Topic 602](https://www.irs.gov/taxtopics/tc602),
+[IRS Publication 503](https://www.irs.gov/publications/p503),
+[DOL in-loco-parentis guidance](https://www.dol.gov/agencies/whd/fact-sheets/28B-fmla-in-loco-parentis)).
+
+First-person reports make the operational edge cases concrete: backup care can
+cancel despite advance booking; families may pay primary and sick/backup care
+at the same time; and framing the decision against only the mother’s salary
+hides household economics
+([backup-care account](https://www.reddit.com/r/workingmoms/comments/15a6aaf),
+[simultaneous-care-cost account](https://www.reddit.com/r/workingmoms/comments/1u19oh0),
+[maternal-wage framing account](https://www.reddit.com/r/workingmoms/comments/1dtsyj1)).
+
+Anti-automation rules:
+
+- no recommendation to quit, enroll, alter benefits, claim a credit, or contact
+  an employer/provider;
+- no tax, legal, employment, or eligibility verdict without current facts and
+  appropriate professional review; and
+- no quality conclusion from licensing alone.
+
+### 6.9 Voice is a capture surface, not an authority primitive
+
+Speaker recognition may help diarization; it is not authorization. NIST
+SP 800-63B-4 disallows voice biometric comparison as an authenticator, so a
+purchase, send, permission change, or private disclosure requires an
+authenticated device/session plus an explicit tap, PIN, or equivalent
+confirmation
+([NIST authenticator requirements](https://pages.nist.gov/800-63-4/sp800-63b/authenticators/)).
+
+First-person workflow evidence explains why voice remains P0: parents add
+reminders while driving, cooking, or carrying a toddler because opening the
+calendar is the point where capture otherwise disappears (S7). Failure reports
+show why capture cannot imply commit: a spoken reminder can lose or misassign
+its object or time (S13), and a child-directed weather request may expand into
+ambient family context and full-name use on a consumer device (S14). Show the
+parsed title, time zone, target calendar, subjects, and proposed action; make
+correction cheaper than re-dictation; and never widen an intentional utterance
+into ambient authority.
+
+The capture envelope must expose listening state, partial transcript,
+alternatives/confidence, speaker hypotheses, locale, processing location, and
+raw-audio retention. Child audio should be minimized and ephemeral, without a
+default voiceprint or embedding. Test background television, replay/deepfake
+audio, overlapping speakers, interruption, accents, code-switching, names and
+numbers, permission loss, offline operation, and unsupported locales. A
+selected local-only mode must fail visibly when unavailable instead of silently
+using cloud processing
+([Apple speech permission](https://developer.apple.com/documentation/speech/asking-permission-to-use-speech-recognition),
+[Android on-device recognition](https://developer.android.com/reference/android/speech/SpeechRecognizer)).
+COPPA guidance permits narrow voice use only under specific conditions; it is
+not a blanket license to retain child audio
+([FTC voice-recording guidance](https://www.ftc.gov/news-events/news/press-releases/2017/10/ftc-provides-additional-guidance-coppa-and-voice-recordings),
+[2025 COPPA amendments](https://www.ftc.gov/news-events/news/press-releases/2025/01/ftc-finalizes-changes-childrens-privacy-rule-limiting-companies-ability-monetize-kids-data)).
+
+Anti-automation rules:
+
+- no consequential action based solely on voice;
+- no ambient continuous listening;
+- no silent transcript correction or replacement of the raw audit artifact;
+  and
+- no emotional-companion positioning toward a child.
+
+### 6.10 Parenting guidance must remain informational and human-connected
+
+The suite can retrieve and explain a user-selected parenting framework, suggest
 low-risk options, and prepare reflection prompts. It must not diagnose, imitate
 a clinician, surveil a child’s emotions, or optimize emotional dependence.
 The American Academy of Pediatrics warns that conversational fluency is not
@@ -1066,15 +1549,74 @@ UNICEF and child-safety authorities similarly warn about companion-bot risks
 Required policy:
 
 - cite the framework/source and disclose uncertainty;
+- attach source IDs, editions, and review dates to each option rather than only
+  a flat bibliography;
 - distinguish education from medical or mental-health advice;
-- use age and developmental context;
+- use age/development, neurodivergence, trauma, disability, culture, language,
+  and accessibility context while offering several options rather than a
+  canonical script;
 - provide a concrete human handoff;
-- stop at crisis, safeguarding, abuse, medication, or severe-symptom
-  boundaries;
+- aggregate simultaneous crisis, safeguarding, abuse, medication, severe-
+  symptom, and legal boundaries into a staged handoff plan rather than
+  returning only the first match;
+- resolve resources from fresh current location evidence for the at-risk
+  child/person, not the owner’s home, phone prefix, or travel location;
+- capture immediacy, custody/safe-adult context, existing therapist or safety
+  plan, and whether emergency services are safe to involve;
 - avoid relational simulation such as “I care about you”;
 - do not optimize engagement;
 - keep a child’s private disclosure out of unrelated household exports; and
 - make overstimulation sensing opt-in, transparent, and preferably device-local.
+
+A single LLM classifier is not a safety gate. Use deterministic high-recall
+signals, a trusted moderation/classifier boundary where available,
+conservative failure behavior, and adversarial live evaluation. Never infer a
+mandated-reporting duty or custody disclosure, diagnose, change medication, or
+automatically contact emergency services. A child-private disclosure must not
+automatically route to a household adult who may be unsafe.
+
+CDC now publishes age-banded positive-parenting guidance across childhood
+([CDC positive-parenting tips](https://www.cdc.gov/child-development/positive-parenting-tips/index.html)).
+AAP guidance on child suicide and SAMHSA’s 988 documentation reinforce that a
+human safety pathway is distinct from generic coaching
+([AAP child-suicide guidance](https://www.healthychildren.org/English/tips-tools/ask-the-pediatrician/Pages/what-should-i-do-if-my-child-is-thinking-about-suicide.aspx),
+[SAMHSA 988 FAQ](https://www.samhsa.gov/mental-health/988/faqs)).
+988 georouting is approximate, not verified pinpoint location, and safeguarding
+contacts vary by state, territory, and tribe
+([Child Welfare Information Gateway](https://www.childwelfare.gov/resources/states-territories-tribes/related-organizations/?o=alphabetical&rt=800)).
+Parents report that generic scripts may fail neurodivergent children or feel
+unnatural in a heated interaction, while self-harm can coexist with years of
+professional care
+([neurodivergent-parenting account](https://www.reddit.com/r/ParentingADHD/comments/1kpyopx),
+[script-fit account](https://www.reddit.com/r/Parenting/comments/1g8rx00),
+[self-harm caregiving account](https://www.reddit.com/r/Parenting/comments/1g2e58w)).
+
+### 6.11 Human-evidence matrix
+
+First-person sources are qualitative design evidence, not population estimates.
+Each row triangulates observed work with an official, practitioner, standards,
+or research source and turns it into a falsifiable product requirement.
+
+| Capability | Observed human workflow and failure mode | Product implication | Scenarios | Evidence |
+| --- | --- | --- | --- | --- |
+| Shared calendars and ownership | Families synchronize existing calendars, a wall display, weekly conversation, and reminders; one adult still performs capture and monitoring. Wrong-account invitations and forgotten entries are common | One source registry, explicit C/P/E/M owner, source health, low-friction correction, and no rescue-work default to the mother | G1-G2, G10, G38 | S6-S7; §6.1 inline accounts |
+| Guest scheduling | Humans ask for a few candidate times, exchange links, or share free/busy; inaccessible organizer calendars, no common slot, unexpected replies, and timeouts are normal outcomes | Consent- and purpose-bound guest grant, privacy-only intervals, proposal expiry, counterproposal, and explicit unavailable/timeout state | G3-G4, G9 | S11; §5.2 provider and community sources |
+| Travel coverage | Parents plan one or two weeks ahead, expand travel beyond flight time, recruit backups, and absorb late changes; the remaining parent often inherits invisible coordination | Door-to-door window, current zones, named primary/backup owners, materiality invalidation, recovery time, and closure | G5-G8, G11 | S8, S17; §6.2 inline accounts |
+| Co-parenting | Routine cadence, holidays, school breaks, and voluntary swaps coexist; messages and calendars may also be legal evidence or an abuse channel | Separate baseline from exception; distinguish delivery/read/agreement; preserve originals; bounded notifications; survivor-safe recovery and export | G6-G7, G9, G12, G17-G21, G24 | §6.3 research, practitioner guidance, and accounts |
+| School and activities | Notices arrive through several apps, email, paper, PDFs, portals, and ICS; installation, entitlement, and subscription failure can hide the only important update | Principal/account/grant/channel health, authority-aware revisions, accessible original plus extraction, guardian entitlement, renewal, and correction propagation | G13-G16, G22, G31 | §6.4 provider, accessibility, and parent sources |
+| Household resources | Families coordinate people, vehicles, restraints, keys, medication instructions, and physical custody; “available” resources may be elsewhere or no longer compatible | `ResourceQualification`, exact custodian/location, child/vehicle/caregiver fit, recall/crash/expiry invalidation, and transition evidence | G5, G11, G29-G30, G48 | §6.6 NHTSA/CPSC and parent account |
+| Meals and groceries | Planning, shopping, cooking, cleanup, leftovers, allergies, sensory-safe foods, and fallback meals are one burden; exhaustive inventory tracking is abandoned | Typed restriction severity, confidence decay, exact product identity, material-change reapproval, order lifecycle, recall matching, and fallback | G25-G28 | S10, S15; §6.5 provider and parent sources |
+| Seasonal planning | Camp, clothing, gifting, and maintenance have opening windows, hidden costs, scarcity, growth/climate changes, opt-outs, and coverage gaps | Opportunity-window state, total coverage/cost, durable decline, values/capacity constraints, and authoritative cancellation source | G29-G32 | S9, S16; §6.7 official sources |
+| Childcare and work | Families compare reliability, backup cancellation, care hours, commute, paid-double periods, benefits, career flexibility, and wellbeing; framing cost against only one mother’s wage distorts the decision | Household-wide versioned scenario model with ranges, source year/jurisdiction, reliability, missing inputs, and no automated verdict | G33-G34 | §6.8 official and first-person sources |
+| Voice capture | Voice reduces friction while hands are busy but adds TV/replay, overlapping speakers, names/numbers, correction, locale, and child-privacy failures | Visible `VoiceCaptureEnvelope`, authenticated session, transcript alternatives, explicit confirmation, retention policy, and local-only failure semantics | G13, G23 | S7, S13-S14; NIST/FTC/Apple/Android |
+| Parenting guidance | Parents want several source-grounded options; scripts may not fit neurodivergence or the moment, and safety concerns can coexist with ongoing care | Per-option citations, multi-risk set, current-subject jurisdiction, safe-adult context, conservative classifier, and no diagnosis/contact automation | G35-G37 | S3; §6.10 agency and parent sources |
+| Completion and recovery | Humans distinguish request sent, read, accepted, booked, paid, delivered, installed, and actually done; retries can duplicate sends or purchases | Durable transaction/outbox, independently checked provider receipt, terminal-domain state, recovery action, and idempotent replay | G6, G15, G24, G27-G31, G39-G46 | S10, S15; provider receipt/readback contracts |
+
+The matrix is deliberately cross-domain. A calendar event can be temporally
+valid while the only qualified car seat is elsewhere; a camp can be open while
+its hours do not cover the commute; a grocery link can be generated while the
+unsafe substitution remains unresolved. The product must test the composed
+outcome, not award completion to each narrow adapter in isolation.
 
 ## 7. Required cross-domain primitives
 
@@ -1151,6 +1693,10 @@ interface ResponsibilityAssignment {
 
 The system may own Conception and Planning while a parent, vendor, or delivery
 service owns Execution. Monitoring must not silently revert to Mom.
+Category defaults may be offered as unaccepted suggestions, but an assignment
+becomes authoritative only when the affected family members accept its exact
+scope and time window. Families can renegotiate or end it; gender, historical
+rescue work, and app non-use never silently assign ownership.
 
 ### 7.5 Approval policy
 
@@ -1190,6 +1736,14 @@ Preserve the user’s private original draft, the generated draft, the approved
 revision, and the exact sent body as separate artifacts with appropriate
 visibility.
 
+An owner can export records they are authorized to see. A shared-household,
+child, co-parent, mediator, or legal export requires an exact resource/subject
+scope, requester identity, purpose, redaction policy, and audit receipt; one
+adult’s account ownership is not blanket authority over another adult’s private
+calendar, message, finance, inventory, location, or reflection data. The
+product should provide a verifiable record, not market it as universally
+court-admissible.
+
 ### 7.7 Transaction and completion contract
 
 Every external mutation needs:
@@ -1225,22 +1779,58 @@ application handler:
   last receipt, last successful reconciliation, and the next recovery action.
 
 The Google watch implementation supplies the application-level capability,
-binding, ordering, retry, and health pieces. Edge routing and abuse controls
-remain deployment responsibilities and require public-domain evidence.
+binding, ordering, retry, health, explicit enablement, 1 KiB body admission,
+per-IP rate limit, and bounded runtime bucket map. Opaque public routing,
+upstream header/body/deadline enforcement, multi-instance/distributed limiting,
+edge WAF, and volumetric protection remain deployment responsibilities and
+require public-domain evidence.
+
+### 7.9 Primitive gap matrix
+
+Reuse the existing scheduler, entity/relationship stores, approval queue,
+calendar store, and content-addressed media store. Add the following typed
+records or registries at those boundaries; do not encode them in prompt prose.
+
+| Primitive | Required semantics | Current state |
+| --- | --- | --- |
+| `SourceAccessGrant` / `SourceHealth` | principal, connector account, provider grant, scopes, device/channel, renewal/expiry, last successful fetch/event, freshness, failure, recovery | Calendar-specific identity and health exist; general school/document/channel form is missing |
+| `TrustedDeliveryAudience` / `DisclosureGate` | non-user-mintable owner/actor/agent/room/principal/membership/type/expiry binding; canonical revalidation before private read and every egress; non-overridable owner-exclusive policy | Implemented across core, agent API, personal assistant, inbox, and Discord. Live multi-principal/provider proof and typed duplicate/in-flight connector outcomes remain |
+| `GuestAvailabilityGrant` | requester principal, guest identity, provider/account/grant/calendar, free/busy scope, purpose, consent evidence, issue/expiry/revocation, non-enumerating failure | Opaque graph-backed resolution and exact binding are implemented; trusted acquisition/consent authoring, revoke UX, lifecycle warnings, and live proof are missing |
+| `NoticeRevision` | issuer, child/program scope, authority, issued/effective time, corrects/cancels/supersedes, exact material delta | School source facts cover part of this; raw adapter authority and revision acquisition are missing |
+| `ConsentState` | proposed, delivered, read, acknowledged, accepted, declined, withdrawn, superseded; no silence transition | Schedule proposal decisions exist; provider delivery/read and general consent registry are incomplete |
+| `ResourceQualification` | resource identity, child/vehicle/caregiver compatibility, physical custodian/location, installation/training, expiry/crash/recall, verified time | Household capacity records cover most structural fields; live capture and recall feeds are missing |
+| `RestrictionPolicy` | preference versus sensory-safe, religious/ethical, allergy, and clinician-directed restriction; allowed substitutions and confirmation rules | Food constraints exist; full severity/substitution policy and live commerce enforcement are incomplete |
+| `ProductIdentity` / `RecallMatch` | brand, UPC, model, lot/serial, package size, use-by, distribution, source limitations, affected/cleared state | Missing beyond generic household item identity |
+| `CareOption` | operating hours, commute, closures, illness policy, lead time, reliability, trust, licensing/inspection, accessibility, total cost | Scenario assumptions exist; source acquisition and provider records are missing |
+| `VoiceCaptureEnvelope` | authenticated session/device, visible capture, locale, processing mode, speaker hypotheses, alternatives/confidence, partial state, retention | General ASR/TTS exists; this security/provenance envelope is missing |
+| `RiskSet` / `HandoffPlan` | all detected risks, current subject location, immediacy, language/accessibility, safe contacts, existing care plan, staged routes | Multi-risk decisions and a graph-backed, child/tenant/verifier/scope-bound location resolver exist; production acquisition, safe confirmation UX, and durable decision audit are incomplete |
+| `TemporalIntent` / occurrence identity | instant versus local date/wall clock, IANA zone, recurrence UID/original occurrence, exception/split scope | Calendar, personal assistant, health, managed-cloud Google, and scheduling anchors now share compatible repeated/skipped-time semantics through tested implementations; live cross-provider split/exception proof remains |
+| `EffectTransaction` / durable outbox | run/action/arguments/principal/tenant/account/approval/freshness binding, attempt, independently observed provider commit, delivery state, retry/reconcile | Core receipts validate shape/text binding and suppress unsafe retry; canonical calendar actions require exactly one receipt, but receipts remain action-self-attested. Deferred MESSAGE attempts and ICS secret cleanup now have scoped durable reconciliation. There is no general independently observed effect outbox |
+
+Core effect receipts are useful settlement groundwork, not proof that an
+external provider committed. Canonical calendar actions now require exactly one
+receipt and verify its response binding; the action still attests to its own
+effect. The calendar-domain ICS cleanup outbox and deferred MESSAGE
+attempt-marker recovery solve narrow crash windows but are not a general
+runtime effect ledger. Production-grade completion requires a runtime-owned
+ledger or outbox plus an independent provider callback/readback or
+terminal-domain check. Legacy mutating actions without receipts must remain
+visibly unverified, never be summarized as completed, and must not receive an
+automatic ambiguous retry.
 
 ## 8. Category capability and connector plan
 
 | Brief category | What exists | Needed primitives/capabilities | Connector priority |
 | --- | --- | --- | --- |
-| Calendar and command center | Google/Apple aggregation, CRUD, recurrence, reminders, owner conflicts, trips, deterministic availability, exact source settings UI and agent action/provider, durable Google watch ingestion, Microsoft one-off creation, immutable approved mutation receipts, and household resource-capacity proposals | finish live source/guest/provider evidence, uniquely routed and edge-protected callback ingress, schedule agreement and co-parent delivery, live free/busy/maps/resource composition, one conflict surface, native EventKit proof, Microsoft push plus conditional update/delete, and lossless recurrence semantics | Google and Apple production credentials, public HTTPS/WAF ingress, Microsoft Graph, ICS/webcal, CalDAV, Maps, and typed household-resource evidence adapters |
-| External oracles | web search/fetch, Gmail, documents | saved source adapters, curation constraints, dedupe, freshness, child eligibility, capacity preference | school/SIS, town/library/activity feeds, typed weather |
-| Messaging and coordination | Gmail/iMessage/WhatsApp/etc., approvals, relationship graph | typed ONR draft, fact references, shared scopes, append-only record, delivery/read state, safe export | current messaging connectors, co-parent platform import/export where available |
-| Parenting skills/support | general model, knowledge, health/activity context | vetted corpus, source citations, risk classifier, human handoff, child/privacy policy | professional resources and official guidance, not “companion” connectors |
-| Meal planning/provisioning | generic LLM and payments substrate only | food preferences/allergies, recipe normalization, headcount, inventory confidence, cart/order transaction | Instacart first; retailer-specific APIs later |
-| Inventory/household ops | entities, reminders, recurring charges, home-ops watcher | household-item identity, observations/confidence, size history, vendor/service records, reorder thresholds | receipts/orders, retailer catalogs, barcode/photo capture |
-| Anticipatory/seasonal | scheduler, birthday/gift/travel/home-ops packs | household almanac, opportunity windows, source watcher, CPEM owner, capacity/budget policy | school/camp/activity sources, commerce handoff |
-| Financial/time modeling | transactions, bills, recurring charges | versioned assumptions, deterministic formulas, tax/benefit/care inputs, sensitivity and ranges | payroll/benefits/user import; official regional childcare data |
-| Voice capture | ASR/TTS and chat/action routing | speaker authorization, transcript/proposal review, multi-entity extraction, ambiguity and high-impact confirmation | native voice surfaces; no new voice provider required for first milestone |
+| Calendar and command center | Google/Apple aggregation, CRUD, recurrence, reminders, owner conflicts, trips, deterministic availability, exact source settings UI and agent action/provider, durable Google watch ingestion, Microsoft one-off creation, immutable approved mutation receipts, and household resource-capacity proposals | finish live source/provider evidence and the host-issued guest-grant acquisition/revocation journey; give each callback deployment a unique public route and upstream edge controls beyond the implemented application limits; compose schedule agreement, co-parent delivery, live free/busy/maps/resources, native EventKit, Microsoft push plus conditional update/delete, and lossless recurrence semantics | Google and Apple production credentials, public HTTPS/WAF ingress, Microsoft Graph, ICS/webcal, CalDAV, Maps, and typed household-resource evidence adapters |
+| External oracles | Typed NWS, Google Routes v2, and Ticketmaster adapters plus web search/fetch, Gmail, and documents | production composition, saved-source monitoring, curation constraints, dedupe, child eligibility, capacity preference, and authoritative cancellation boundaries | Google Classroom/SIS, town/library/team feeds, transport-change feeds |
+| Messaging and coordination | Gmail/iMessage/WhatsApp/etc., approvals, graph authorization, typed factual drafts, authenticated family proposal ingress, append-only audit, and a non-user-mintable owner-private audience gate enforced across action/provider/egress boundaries | provider delivery/read/reply bridges, protected evidence export, notification-abuse controls, typed duplicate/in-flight results, and independently verified exact-recipient sends | current messaging connectors first; co-parent platform APIs/import/export only where approved |
+| Parenting skills/support | registered graph-authorized action, reviewed sources, per-option citations, privacy gates, multi-risk routing, deterministic safety backstop, exact US resource records, and a fail-closed graph resolver for fresh child-bound subject-location assertions | production acquisition and confirmation for the subject-location assertion, multilingual/international packs, durable decisions, host-issued disclosure attestation, professional review, and live adversarial evaluation | official guidance and professional-resource registries, never “companion” connectors |
+| Meal planning/provisioning | food constraints, custody headcount, inventory confidence, leftovers, meal plans, immutable shopping handoff, approved Products Link | typed restriction severity, exact product/recall identity, cart/checkout/order/substitution/delivery/refund transaction | current contracted Instacart APIs first; retailer-specific order and receipt APIs later |
+| Inventory/household ops | entities, reminders, item observations/confidence, size history, vendors/service records, resource-capacity solver | capture provenance, safety qualification, physical custody, recall/crash/expiry invalidation, approved reorder/outreach | receipts/orders, CPSC/NHTSA/FDA recalls, retailer catalogs, barcode/photo capture |
+| Anticipatory/seasonal | shared scheduler, almanac, opportunity windows, C/P/E/M, non-use and weekly brief | authoritative opportunity acquisition, total-coverage math, durable decline, values/capacity policy, approved registration/purchase and closure | school/camp/activity feeds, NWS plus provider cancellation source, commerce handoff |
+| Financial/time modeling | transactions, bills, recurring charges, deterministic household-wide childcare/work model | versioned tax/benefit/employer/care sources, reliability, inspections, commute/coverage, sensitivity and human review | payroll/benefits/user import, Childcare.gov/state registries, official tax-year sources |
+| Voice capture | ASR/TTS and chat/action routing | `VoiceCaptureEnvelope`, authenticated session, visible capture, alternatives/confidence, processing/retention policy, ambiguity and high-impact confirmation | native voice surfaces; on-device recognition where supported; no voice-biometric authority |
 
 ### 8.1 Connector build versus connector use
 
@@ -1257,6 +1847,29 @@ visible. Promote a source to a first-class connector when the product needs
 incremental monitoring, typed errors, provider IDs, freshness, permissions,
 idempotent mutations, or completion verification.
 
+For an operator using installed app connectors, Gmail, Google Drive, Outlook
+Email, SharePoint, Google Calendar, and Outlook Calendar can reduce the
+acquisition work. Slack and Teams can supply additional organization notices.
+They do not replace domain contracts: a generic email or drive read does not
+prove guardian entitlement, source freshness, a guest’s calendar consent, or
+transaction completion.
+
+Connector delivery priority:
+
+1. **Finish existing calendar evidence:** live Google multi-account/free-busy,
+   Microsoft tenant, EventKit permission modes, external ICS correction, a
+   uniquely routed public callback behind deployment-edge controls, and
+   host-issued guest-grant acquisition/revocation.
+2. **Build typed school acquisition:** Google Classroom subscription renewal
+   plus selected SIS/OneRoster/Ed-Fi adapters, each with entitlement and source
+   health. Keep Gmail/Drive/PDF/photo as explicit fallback sources.
+3. **Compose travel and resources:** live Routes, itinerary-change feeds,
+   caregiver/resource evidence, qualification and recall monitoring.
+4. **Complete commerce:** contracted cart/checkout plus retailer order,
+   substitution, delivery, cancellation/refund, receipt, and recall lifecycle.
+5. **Broaden interoperability:** CalDAV, approved co-parent exports/APIs,
+   community/activity sources, and regional childcare/resource registries.
+
 ## 9. Primary persona: Maya, world-traveling co-parent
 
 This is a scenario persona and capability contract, not a UI mode or runtime
@@ -1266,8 +1879,9 @@ branch.
 
 **Maya Reed, 41, product executive and consultant**
 
-- travels 25-35% of the time across Pacific, Eastern, European, and Asian time
-  zones;
+- travels frequently across Pacific, Eastern, European, and Asian time zones;
+- is currently the default scheduler for the children and wants responsibility
+  to move to the real owner instead of receiving more automated rescue work;
 - has two children, ages 6 and 11, with a former spouse;
 - has a 15-year-old stepchild with her current partner;
 - follows an alternating custody baseline with holiday exceptions;
@@ -1300,7 +1914,7 @@ branch.
 
 ### 9.3 Trust contract
 
-the suite must:
+The suite must:
 
 - show source, freshness, and proposed-versus-confirmed state;
 - ask before sends, purchases, signatures, custody-impacting changes, and
@@ -1336,6 +1950,15 @@ the suite must:
 
 ### 9.5 Persona variants
 
+Maya is a synthetic composite assembled from the private working-session
+priorities, public first-person accounts, and the system constraints in this
+report. She has not been validated as a representative user segment. The
+variant matrix deliberately tests which assumptions break when income,
+bandwidth, custody safety, gender, language, disability, geography, or legal
+guardianship changes. Section 1.3 records the source and sampling limits; the
+release plan requires interviews and usability sessions with those variant
+groups rather than treating one executive household as universal.
+
 Test the same capability with:
 
 - an hourly worker with rotating shifts, no paid leave, prepaid data, and
@@ -1349,6 +1972,42 @@ Test the same capability with:
 - a rural family with long travel times and scarce providers; and
 - queer/multi-parent guardianship where legal guardian and daily caregiver
   differ.
+
+### 9.6 Persona-by-capability regression design
+
+Maya is the primary composed journey; variants are counterfactual tests of the
+same policies, not smaller personas with relaxed safety. Every variant runs the
+relevant G1-G48 contracts and the invariant column below.
+
+| Persona axis | Required scenario variation | Invariants |
+| --- | --- | --- |
+| Maya, globally mobile co-parent | Multiple Google/Microsoft/Apple/ICS sources, former spouse, current partner, three children, caregiver, child elsewhere while owner travels | Current-subject jurisdiction; no work-title leak; no silent custody mutation; destination/home time shown explicitly |
+| Rotating-shift/hourly worker | Variable roster, no paid leave, prepaid data, subsidy cliff, late pickup penalty | No availability guess from missing roster; household-wide range; low-bandwidth recovery; no executive-calendar assumptions |
+| Single/rural/transit-limited parent | Long routes, scarce care, kin/community backup, transit transfers | No “free” slot without door-to-door capacity; waitlist is not coverage; degraded source is visible |
+| High-conflict/survivor co-parent | Court-required channel, notification flooding, compromised device, unsafe continuous location | No silence-as-consent; protected originals; safe recovery; bounded notifications; no automatic conciliatory reply |
+| Father/nonbinary default parent | Same household load and source mix with different gender/role facts | No maternal ownership language; C/P/E/M and rescue-work policies remain identical |
+| Limited-English/low-literacy/voice-first | Code-switching, inaccessible PDF, low-confidence names/numbers, offline/local-only preference | Original retained; translation uncertainty; explicit confirmation; no child interpreter; no silent cloud fallback |
+| Disability/IEP/access needs | Accessible transport, trained caregiver, equipment/medication instructions, IEP notices | Exact subject/scope; resource qualification; no generic substitution; qualified human handoff |
+| Multi-parent/guardian household | Legal guardian differs from daily caregiver; selected children and resources shared | Relationship is not authority; exact child scopes; minimum necessary disclosure; independent approvals |
+| Teen privacy | Private disclosure, co-parent export, possible safety signal, existing clinician plan | Private content withheld absent host-issued authority; omission visible without leak; multi-risk staged route |
+
+Capability test assertions:
+
+- **identity:** similar names, multiple households, cross-tenant IDs, revoked
+  roles, and compromised connector claims never resolve by guess;
+- **time:** DST, all-day dates, date-line crossings, current subject location,
+  owner travel, and ambiguous wall-clock language remain explicit;
+- **privacy:** titles, child-private notes, finance, inventory, audio, and
+  location obey exact resource and child scopes;
+- **consent:** proposed, delivered, read, acknowledged, accepted, declined, and
+  withdrawn never collapse;
+- **fairness:** non-use triggers renegotiation rather than invisible rescue by
+  the default parent;
+- **safety:** combined risk, prompt injection, unavailable classifier, stale
+  resources, unsafe caregiver/resource substitutions, and voice replay fail
+  conservatively; and
+- **completion:** every provider effect is idempotent, independently observed,
+  recoverable, and linked to the exact approved revision.
 
 ## 10. End-to-end scenario and capability matrix
 
@@ -1446,6 +2105,69 @@ Every scenario below requires:
 7. **Persona regression corpus:** Maya plus variants, Jordan J1, traveler C1,
    child voice, rotating shift, elderly, and neurotypical controls.
 
+### 10.5 Required real worlds and end-to-end paths
+
+| World | Setup | Required happy path | Required failure/adversarial path |
+| --- | --- | --- | --- |
+| Google calendar | Two owner accounts, household/shared source, private work source, guest free/busy grant, >1 result page, watch callback | Enumerate/select, ingest, dedupe, query guest intervals, propose, approve, create/update/cancel, observe callback and receipt | Revoked guest grant, per-calendar free/busy error, 410 cursor reset, duplicate/out-of-order webhook, quota, wrong account, stale ETag |
+| Microsoft calendar | Delegated tenant, shared/private calendar, writable target | OAuth, enumerate, delta read, private-busy, getSchedule, approved create, restart replay | Consent/scope loss, pagination/delta invalidation, unsupported recurrence, conditional update/delete rejection, private-title probe |
+| Apple EventKit | Full-access and write-only modes on installed current build | Full read/create/update/delete; write-only create receipt with availability unknown | Denial, revocation, permission transition, unsupported attendee/recurrence, wrong/stale installed build |
+| ICS/webcal | External HTTPS feed with redirects, ETag, recurrence, correction, cancellation | Connect, first sync, incremental refresh, correction propagation, reconnect | SSRF redirect, malformed body, first-sync failure after config persistence, stale/revoked feed, oversized response |
+| Co-parent messaging | Two real principals and devices/accounts, exact proposal and parenting-plan baseline | Approved exact-version delivery, read/reply ingestion, per-party decision, provider receipt, calendar materialization | Wrong recipient, spoofed claim, silence, notification flood, stale approval, counterproposal, revoked access, compromised device |
+| School notice | Guardian-entitled source plus Gmail/Drive/PDF/image fallback | Entitlement, monitored subscription, child resolution, accessible extraction, revision/correction, action bundle | Expired subscription, revoked role, prompt injection, ambiguous child, contradictory issuer, inaccessible/low-confidence source |
+| Travel/resources | Live itinerary and Routes plus caregiver, vehicle, restraint evidence | Door-to-door impact, qualified primary/backup coverage, scoped expiring access, change recompute, closure | Child elsewhere, route unavailable, car seat elsewhere/recalled/stale, handoff gap, itinerary material change |
+| Commerce | Contracted retailer sandbox/account and exact product constraints | Approved cart/checkout, receipt, delivery monitoring, product/lot capture | Duplicate retry, price/fee/slot change, allergen substitution, unavailable item, cancellation/refund, post-delivery recall |
+| Voice | Authenticated native device/session, adult/child/guest speakers, supported and unsupported locales | Visible capture, reviewed transcript/proposals, explicit confirmation, local-only path when available | TV/replayed audio, overlap, code-switching, ambiguous names/numbers, permission loss, offline/local-only unavailable |
+| Parenting | Real household graph, child/teen scopes, fresh subject-location evidence, reviewed resources, live model | Ordinary cited options and human next step; exact jurisdiction resources when needed | Combined self-harm/abuse/medication, hostile prompt, model failure/false negative, stale location/source, unsafe adult, cross-child/tenant request |
+
+The complete travel journey must exercise these in one composed path: calendar
+and school/travel source ingestion → temporal normalization → maps and physical
+resource qualification → deterministic conflicts → minimally disclosed
+proposal → exact multi-party approval → provider mutation → source/callback
+monitoring → material-change invalidation → recovery and closure. Passing ten
+separate adapters does not prove that journey.
+
+### 10.6 Evidence contract and evaluator completeness
+
+All 48 G cases now have a registered, server-owned typed evaluator contract.
+Registration is fail-closed protocol coverage, not a completed production
+evaluator path. G10, G15, G30, G34, G35, G36, and G38 currently receive native
+terminal state from their runtime paths; the other 41 production actions do
+not yet emit their exact contract state. A scenario-side declaration,
+model-reported assertion, or synthetic terminal snapshot cannot substitute for
+that adapter. Each production path must give its registered evaluator the
+trusted final provider/database state needed to reject:
+
+- an action name or argument outside the versioned policy;
+- an approval that does not resolve to the exact principal, tenant, account,
+  payload hash, consequence, and unexpired source versions;
+- a self-attested receipt without the required provider readback/callback;
+- an earlier successful state superseded by a later failure;
+- duplicate send/purchase/calendar effects;
+- hidden partial/stale/unavailable sources;
+- a privacy leak in logs, trajectory, screenshot, export, or provider payload;
+  and
+- any missing artifact.
+
+The per-case evidence bundle is:
+
+1. live-model native JSONL and report, including all tool inputs and outputs;
+2. acting model/provider and independent evaluator/judge provenance;
+3. structured backend logs and frontend console/network logs;
+4. provider request/response IDs or callbacks plus database/domain records;
+5. before/after desktop and mobile screenshots and an MP4 walkthrough for
+   visible flows;
+6. native/device capture for EventKit or voice;
+7. an exercised error/adversarial branch and recovery;
+8. manual review notes naming what the reviewer actually inspected; and
+9. a signed final snapshot whose artifacts are content-hashed and reverified.
+
+The HMAC layer protects integrity only while its shared key remains secret. It
+does not provide independent attestation. Key rotation, replay windows, signer
+identity, and a verifier outside the acting runtime need explicit tests.
+Until all 48 production paths emit evaluable terminal state and all complete
+bundles pass, the suite remains **0/48 complete**.
+
 ## 11. Implementation plan
 
 ### Phase 0 - ratify contracts and correct current boundaries
@@ -1454,11 +2176,15 @@ Every scenario below requires:
 
 1. **Primitive implemented:** Maya composite persona and capability ledger,
    without a demographic runtime mode.
-2. **Truth corrected:** J1 is ten authored/zero verified, not unimplemented.
-3. **Still required:** bring all ten J1 scenarios to live-verified status with
-   hand-read trajectories and real/sandbox connector evidence.
-4. **Still required:** consolidate `CONFLICT_DETECT` into one calendar-owned
-   implementation.
+2. **Truth corrected:** J1 has a target of ten, 21 authored cases across two
+   harnesses, and zero provider-qualified/verified cases.
+3. **Still required:** deduplicate or explicitly map the 21 cases to the ten
+   intended capabilities, then execute each retained case in an isolated,
+   provider-qualified profile with trusted state/effect evaluation, hand-read
+   trajectories, and real/sandbox connector evidence.
+4. **Primitive implemented:** one calendar-owned `CONFLICT_DETECT`; the
+   personal-assistant boundary now supplies authorization and time-zone
+   context, and incomplete feeds fail closed.
 5. **Primitive implemented:** scheduling produces typed drafts routed through
    approval and never dispatches directly.
 6. **Primitive implemented:** source freshness and partial/unavailable calendar
@@ -1466,6 +2192,10 @@ Every scenario below requires:
 7. **Primitive implemented:** household roles, access scopes, immutable
    proposal/agreement hashes, material-change invalidation, CPEM ownership, and
    audit contracts.
+8. **Still required, brief-priority P0:** secure native voice-to-calendar
+   capture with authenticated session/device provenance, visible recording,
+   alternatives/confidence, retention/processing controls, and explicit
+   confirmation before consequential effects.
 
 **Exit:** no scheduling path can report a clean result from an unavailable
 source or send a co-parent message without approval.
@@ -1475,17 +2205,20 @@ source or send a co-parent message without approval.
 **Goal:** complete scenarios G1-G24 at L2-L4.
 
 1. **Partial:** Google privacy-only free/busy is implemented; complete live
-   account/guest wiring and attendee-response ingestion.
-2. **Read path implemented:** Microsoft Graph calendar/delta/free-busy requires
-   a live delegated/shared tenant journey; writes remain a product decision.
+   account/guest-grant acquisition and attendee-response ingestion.
+2. **Read plus narrow write implemented:** Microsoft Graph calendar/delta/
+   free-busy and idempotent one-off create require a live delegated/shared
+   tenant journey; push/watch, conditional update/delete, and lossless
+   recurrence remain fail-closed gaps.
 3. **Primitive implemented:** hardened ICS/webcal lifecycle and monitoring;
    prove an external subscription and correction flow.
 4. **Primitive implemented:** provider-neutral source registry, sync health,
    source UI, and Google watch lifecycle; prove real OAuth plus uniquely routed,
    edge-protected webhook delivery.
-5. **Still required:** expose least-privilege source enumeration, selection,
-   connection, and reconnection as a typed agent action backed by the same
-   registry and authenticated routes; keep OAuth/native handoff owner-driven.
+5. **Primitive implemented:** least-privilege source enumeration, selection,
+   connection, and reconnection use one typed agent action, provider, registry,
+   and authenticated-route adapter. OAuth/native handoff remains owner-driven;
+   live provider evidence remains required.
 6. **Still required:** compose the availability and household
    resource-capacity engines with live calendar/free-busy/maps/resource sources
    and one owner-facing conflict surface.
@@ -1560,33 +2293,36 @@ contracts are proven.
    care, reliability, and re-entry sources.
 3. **Primitive implemented:** ranges and sensitivity are explicit and
    missing-as-zero is rejected.
-4. **Primitive implemented:** vetted guidance source/edition provenance and
-   grounding policy; add the general conversational surface.
-5. **Partial:** high-risk stop rules, privacy policy, and human-handoff
-   decisions exist; add locale-aware professional resources and live proof.
+4. **Primitive implemented:** a registered graph-authorized conversational
+   parenting action, vetted source editions, per-option citations, grounding
+   policy, deterministic safety backstop, and multi-risk aggregation.
+5. **Partial:** high-risk stop rules, privacy policy, exact US resource records,
+   and a fail-closed child-bound current-jurisdiction resolver exist; add
+   production location acquisition/confirmation, multilingual/international
+   packs, durable decision audit, host-issued sensitive-disclosure authority,
+   professional review, and live adversarial proof.
 6. **Still required:** consent-based parent-capacity check-ins without ambient
    mood surveillance.
 
 **Exit:** outputs are transparent decision support, never verdicts,
 diagnoses, or emotional dependency.
 
-## 12. Implementation work packages
+## 12. Remaining implementation work packages
 
-| Work package | Likely owner package | Deliverables |
-| --- | --- | --- |
-| Calendar source registry and health | `plugin-calendar`, shared contracts | source DTOs, per-source sync state, UI state, partial failure |
-| Free/busy and availability | `plugin-google`, new Microsoft connector, `plugin-calendar` | provider adapters, solver, reasons, conflict types |
-| Schedule proposals and approvals | `plugin-personal-assistant`, `plugin-scheduling` registries | proposal state machine, approval tasks, final materialization |
-| Household access | Entity/Relationship stores plus shared contracts | typed roles, resource scopes, expiring grants |
-| Shared audit/export | personal-assistant or a reusable audit package after design review | append-only events, hashes, scoped export |
-| School ingestion | inbox/documents/calendar | source adapters, extraction, provenance, dedupe, corrections |
-| Action bundles and CPEM | personal-assistant plus scheduler context | contacts/links/dependencies/owners/completion |
-| External oracles | source-specific plugins | typed weather, events, maps, ranking constraints |
-| Household inventory | personal-assistant domain or dedicated plugin after contract ratification | item observations, confidence, depletion, sizes, vendors |
-| Meal/cart/order | dedicated food/commerce plugin | recipes, constraints, cart transaction, order monitoring |
-| Financial model | `plugin-finances` | versioned assumptions, deterministic calculations, sensitivity |
-| Parenting guidance | knowledge + policy boundary | vetted sources, risk routing, human handoff |
-| Persona evidence | scenario-runner and LifeOpsBench | Maya corpus, J1 verification, composite journeys |
+| Order | Work package and owner | Deliverables | Exit evidence |
+| --- | --- | --- | --- |
+| 1 | Trusted guest availability in `plugin-calendar` plus host identity/grant store | Host-issued acquisition and revocation for the implemented `GuestAvailabilityGrant`; preserve exact provider/account/grant/calendar, purpose/consent/expiry, non-enumerating failure, and raw-address non-probing | Real two-account Google and Microsoft guest free/busy, revoke/expiry/cross-principal negatives, title-leak inspection |
+| 2 | Voice capture security in native surfaces | `VoiceCaptureEnvelope`, authenticated session/device, visible capture, speaker hypotheses and alternatives, processing/retention policy, explicit high-impact confirmation, and accessible non-voice fallback | Native adult/child/guest/noise/replay/offline/local-only captures with audio and narrated walkthrough |
+| 3 | Current-subject safety jurisdiction acquisition in graph/parenting policy | Build trusted device/check-in/caregiver/professional writers and safe confirmation UX for the implemented short-lived child/tenant/verifier/scope-bound assertion; add custody/safe-adult context without owner-locale fallback | Traveling-owner/child-elsewhere live-model path, real acquisition, stale/unknown/cross-child/unsafe-adult failures, exact resource review |
+| 4 | Runtime-owned effects in `core` plus provider adapters | Durable outbox/ledger bound to run/action/arguments/principal/tenant/account/approval/source versions; independent callback/readback and reconciliation | Crash/restart/concurrent retry, provider accepted-then-failed, duplicate suppression, legacy unverified result, key rotation/replay |
+| 5 | Composed family availability in calendar and personal assistant | One candidate solver combining selected calendars, trusted guests, Routes, qualified caregiver/vehicle/restraint state, custody/source authority, and ranked explanations | Live G5/G48 journeys, partial source and resource invalidation, counterproposal, final provider materialization |
+| 6 | Messaging delivery and consent in connector boundaries | Preserve the implemented trusted owner/private/group audience derivation and recipient participation before dedupe; add typed duplicate/in-flight/sent outcomes, exact send receipt, delivery/read/reply callbacks, consent states, bounded notification policy, protected originals and exports | Real two-principal proposal, sibling/group isolation, wrong recipient/spoof/silence/flood/device-compromise cases, provider artifact review |
+| 7 | School/source acquisition in inbox/documents/calendar | Classroom entitlement and weekly subscription renewal, selected SIS adapters, Gmail/Drive/PDF/image fallback, accessible extraction, `NoticeRevision`, source health | Real correction/cancellation and expired entitlement/subscription journeys with preserved originals |
+| 8 | Resource/product safety in household operations | `ResourceQualification`, `ProductIdentity`, CPSC/NHTSA/FDA recall matches, receipt/photo/barcode capture, physical custodian/location | Real capture and recall invalidation; unsafe/stale/incompatible transport remains blocked |
+| 9 | Commerce lifecycle in food/commerce boundary | Typed restriction/substitution policy, contracted cart/checkout, exact order, delivery, cancellation/refund, recall and recovery state | Real or provider-sandbox G25-G28, duplicate retry and allergen substitution failures, receipt/readback |
+| 10 | Seasonal and childcare acquisition | `CareOption`, regional licensing/inspection, full coverage/cost, almanac source adapters, durable decline, approved registration/outreach | Live camp/childcare source plus waitlist/cancellation/coverage-gap and no-autobook proof |
+| 11 | Parenting policy completion | Durable versioned decisions, source snapshots, classifier provenance, multilingual/international resources, host-issued disclosure attestation, professional review | Live G35/G36 plus combined-risk, unavailable model/source, teen privacy, locale/language/accessibility matrix |
+| 12 | Production evaluator composition in LifeOpsBench and runtime actions | Preserve all 48 registered contracts; add native, lineage-bound terminal-state adapters for every remaining production action plus trusted fixture worlds, approval resolution, provider/database assertions, signer rotation/replay, and evaluator separation | 48 production adapter/evaluator self-tests, then 48 complete manually reviewed evidence bundles; no scenario advances on declaration alone |
 
 New cross-domain behavior should be expressed through typed contracts and
 registries. Avoid letting `plugin-personal-assistant` absorb every provider and
@@ -1598,6 +2334,13 @@ Measure relief and trust, not agent activity:
 
 - material obligations proactively noticed;
 - percentage completed without the default parent prompting;
+- median initial setup time and source-connect success rate;
+- weekly connector/automation maintenance minutes;
+- household cost to operate the assistant, including provider and model spend;
+- success and recovery on low bandwidth, prepaid data, and supported low-end
+  devices;
+- completion rate with keyboard, screen reader, captions/transcript review, and
+  other non-voice accessibility paths;
 - missed and late deadline rate;
 - planning/admin minutes per week;
 - notification burden per household member;
@@ -1617,6 +2360,49 @@ Measure relief and trust, not agent activity:
 Do not optimize messages sent, events booked, activities recommended, time in
 the assistant, or emotional engagement.
 
+### 13.1 Pricing, setup, and adoption research plan
+
+The brief correctly rejects bespoke household-agent economics as the benchmark.
+One highly resourced household is evidence that the workflow can exist, not a
+price point or a representative support burden. A production price should be
+set only after measuring cost-to-serve and durable time-back across the persona
+variants.
+
+Cost-to-serve instrumentation must separate:
+
+- model inference, embeddings, OCR, transcription, and image processing;
+- maps/routes, search, communication, commerce, and other provider fees;
+- background sync, webhook, monitoring, storage, and evidence retention;
+- human support, connector recovery, safety review, and account migration; and
+- transaction or retailer charges that should remain explicit pass-through
+  costs rather than hidden subscription margin.
+
+The initial commercial hypothesis should be a household subscription with a
+visible included usage budget, not a charge per child, caregiver, or calendar.
+Privacy, approval, export, accessibility, and safety controls are core product
+requirements, not premium upsells. High-cost optional workflows should show an
+estimate and require consent before consuming unusual model/provider spend.
+Self-hosted or local-processing paths should retain portable data and make their
+support/connector limitations explicit.
+
+Setup is progressive:
+
+1. connect one high-value read-only source and show source health plus one
+   useful, non-mutating result;
+2. import existing calendars/accounts rather than recreating them;
+3. ask only the next consequential household fact when a real workflow needs
+   it;
+4. make every inferred person, role, source, and preference reviewable; and
+5. measure maintenance and reconnect burden after the novelty period, not only
+   first-session completion.
+
+Pricing research should recruit the persona variants in section 9.5, test
+monthly and annual framing without hiding cancellation/export, and report
+actual median/p95 cost, setup time, support minutes, connector survival,
+low-bandwidth success, and verified weekly time saved. Do not choose a price
+from one anecdote, a stated willingness-to-pay survey alone, or a demo that
+excludes monitoring and recovery costs.
+
 ## 14. Explicit non-goals and guardrails
 
 - No second scheduler or reminder engine.
@@ -1635,30 +2421,47 @@ the assistant, or emotional engagement.
 - No universal “court-admissible” marketing claim.
 - No silent fallthrough from connector error to healthy empty state.
 
-## 15. Recommended first issues
+## 15. Recommended remaining issues
 
-1. **[Parent suite P0] Consolidate conflict detection and wire Google free/busy.**
-2. **[Parent suite P0] Route scheduling negotiation sends through approval policy.**
-3. **[Parent suite P0] Ratify calendar-source health and partial-failure contract.**
-4. **[Parent suite P0] Author Maya world-traveling co-parent persona and composite
-   capability catalog.**
-5. **[Parent suite P0] Live-verify J1 ten of ten with real/sandbox connectors.**
-6. **[Parent suite P1] Household roles, scoped/expiring caregiver access, and
-   private-busy.**
-7. **[Parent suite P1] Schedule-change proposal/agreement/materiality state machine.**
-8. **[Parent suite P1] Append-only household audit and scoped export.**
-9. **[Parent suite P1] Microsoft Graph calendar and free/busy connector.**
-10. **[Parent suite P1] Hardened ICS/webcal school-calendar ingestion.**
-11. **[Parent suite P1] World-traveling co-parent journey G1-G24 with real evidence.**
-12. **[Parent suite P2] School notice ingestion and correction monitoring.**
-13. **[Parent suite P2] Action bundle, CPEM ownership, and household weekly brief.**
-14. **[Parent suite P2] Typed weather/maps/local-activity oracle pipeline.**
-15. **[Parent suite P2] Household item/vendor/almanac primitives.**
-16. **[Parent suite P3] Food constraints, inventory confidence, and Instacart cart
-    handoff.**
-17. **[Parent suite P3] Idempotent grocery order and delivery recovery.**
-18. **[Parent suite P4] Childcare/work deterministic scenario model.**
-19. **[Parent suite P4] Source-grounded parenting guidance and human handoff policy.**
+Open dependency-ordered issues from the work packages in section 12 rather than
+reopening primitives already implemented:
+
+1. **[P0 safety] Host-issued guest-availability acquisition, revocation, and
+   live two-account proof for the implemented exact-bound grant resolver.**
+2. **[P0 voice] Authenticated native voice-to-calendar capture with visible
+   recording, alternatives, retention/processing controls, replay defenses,
+   accessible fallback, and consequence confirmation.**
+3. **[P0 safety] Production current-subject location acquisition/confirmation
+   for the fail-closed parenting resource resolver.**
+4. **[P0 integrity] Runtime-owned durable effect ledger/outbox with independent
+   provider observation.**
+5. **[P0 evaluation] Connect every remaining production action to its
+   registered server-owned contract with native terminal-state emission and
+   independent provider/database observation.**
+6. **[P1 scheduling] Compose calendar, guest, Routes, custody, and qualified
+   household resources into one ranked solver and final materialization path.**
+7. **[P1 providers] Capture live Google multi-account/watch, Microsoft tenant,
+   EventKit permission, and external ICS correction evidence.**
+8. **[P1 messaging] Complete the implemented trusted-audience and
+   exact-recipient boundary with typed duplicate/in-flight/sent results,
+   provider delivery/read/reply and consent-state bridges, and abuse-aware
+   notification controls.**
+9. **[P2 school] Classroom entitlement/subscription renewal and selected SIS
+   adapters with source health and accessible revision extraction.**
+10. **[P2 resources] Physical resource qualification, recall feeds, and
+   receipt/photo/barcode capture.**
+11. **[P3 commerce] Contracted cart/checkout plus order, substitution, delivery,
+    cancellation/refund, and recall recovery.**
+12. **[P4 sensitive domains] Parenting decision audit, multilingual resource
+    packs, disclosure attestation, and professional review.**
+13. **[Evidence] Execute G1-G48 and J1 on real/sandbox providers; attach complete
+    trajectories, logs, receipts, screenshots, video, native captures, and
+    manual review notes.**
+
+Each issue should use the same maturity ladder:
+`code exists → registered → configured/authenticated → production-composed →
+live-provider proven → human-reviewed`. Only the last state can close a persona
+case.
 
 ## 16. Decision summary
 

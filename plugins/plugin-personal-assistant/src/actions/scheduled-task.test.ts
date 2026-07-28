@@ -109,6 +109,26 @@ vi.mock("../lifeops/pending-prompts/store.js", () => ({
   })),
 }));
 
+// This unit file isolates planner-parameter wiring. The integration suite
+// exercises the real SQL-backed state log; this seam supplies the same
+// authoritative log shape for the three create-only cases below.
+vi.mock("../lifeops/repository.js", () => ({
+  LifeOpsRepository: class {
+    async listScheduledTaskLog(args: { taskId: string; agentId: string }) {
+      return [
+        {
+          logId: `log-${args.taskId}`,
+          taskId: args.taskId,
+          agentId: args.agentId,
+          occurredAtIso: new Date().toISOString(),
+          transition: "scheduled",
+          rolledUp: false,
+        },
+      ];
+    }
+  },
+}));
+
 vi.mock("./life.js", () => ({
   OWNER_OPERATION_VALIDATE: vi.fn(async () => true),
   runLifeOperationHandler: vi.fn(async () => ({

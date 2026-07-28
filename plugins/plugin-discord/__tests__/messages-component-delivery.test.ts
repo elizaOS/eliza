@@ -61,6 +61,15 @@ function makeRuntime(
 				: (settings[key] ?? undefined),
 		getService: () => null,
 		ensureConnection: async () => {},
+		// Canonical-room collaborators for the delivery-audience attestation
+		// between inbound persistence and dispatch. reportError feeds the same
+		// `errors` collector, so `expect(errors).toEqual([])` also proves the
+		// attestation stayed on its healthy path.
+		getRoom: async () => ({ id: INBOUND_MEMORY.roomId, type: ChannelType.DM }),
+		getParticipantsForRoom: async () => [INBOUND_MEMORY.entityId, AGENT_ID],
+		reportError: (...args: unknown[]) => {
+			errors.push(JSON.stringify(args));
+		},
 		// The callback persists outbound memories via createDiscordMessageMemoryOnce.
 		getMemoryById: async () => null,
 		createMemory: async (memory: Memory) => memory.id,

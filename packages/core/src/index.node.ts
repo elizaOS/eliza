@@ -104,6 +104,10 @@ export * from "./features/basic-capabilities/index";
 export * from "./features/credential-proxy/index.ts";
 export * from "./features/documents/index";
 export type {
+	DeferredMessageScheduleCommit,
+	DeferredMessageScheduleRequest,
+	DeferredMessageScheduleResult,
+	DeferredMessageScheduler,
 	DraftRecord,
 	DraftRequest,
 	ListOptions,
@@ -132,6 +136,7 @@ export {
 	draftReplyAction,
 	getDefaultMessageRefStore,
 	getDefaultTriageService,
+	getDeferredMessageScheduler,
 	getSendPolicy,
 	listInboxAction,
 	MessageRefStore,
@@ -139,6 +144,7 @@ export {
 	messagingTriageActions,
 	NotYetImplementedError,
 	rankScored,
+	registerDeferredMessageScheduler,
 	registerSendPolicy,
 	resetMissingServiceWarning,
 	resolveContactWeight,

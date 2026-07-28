@@ -12,6 +12,7 @@ import {
   type AgentRuntime,
   type Content,
   type createMessageMemory,
+  executePlannedToolCall,
   ModelType,
 } from "@elizaos/core";
 import { extractCompatTextContent } from "./compat-utils.ts";
@@ -21,10 +22,7 @@ export type FallbackParsedAction = {
   parameters?: ActionParameters;
 };
 
-type RuntimeActionLike = Pick<
-  Action,
-  "name" | "similes" | "validate" | "handler"
->;
+type RuntimeActionLike = Action;
 
 async function rewriteFallbackActionText(args: {
   runtime: AgentRuntime;
@@ -180,30 +178,28 @@ export async function executeFallbackParsedActions(
       (await resolveBuiltInFallbackAction(parsed.name)) ??
       lookup.get(parsed.name);
     if (!action || typeof action.handler !== "function") continue;
-
-    if (typeof action.validate === "function") {
-      const valid = await Promise.resolve(
-        action.validate(runtime, message, undefined),
-      );
-      if (!valid) continue;
+    const parsedParameters = { ...(parsed.parameters ?? {}) };
+    if (action.name === "BLOCK" && !Object.hasOwn(parsedParameters, "action")) {
+      parsedParameters.action = "block";
     }
 
     let callbackSeen = false;
-    const actionResult = await Promise.resolve(
-      action.handler(
-        runtime,
+    const actionResult = await executePlannedToolCall(
+      runtime,
+      {
         message,
-        undefined,
-        { parameters: parsed.parameters ?? {} },
-        async (content: unknown) => {
+        activeContexts: action.contexts ?? [],
+        callback: async (content: Content, actionName?: string) => {
           const contentRecord =
             content && typeof content === "object"
               ? (content as Record<string, unknown>)
               : {};
           const actionTag =
-            typeof contentRecord.action === "string"
-              ? contentRecord.action
-              : parsed.name;
+            typeof actionName === "string"
+              ? actionName
+              : typeof contentRecord.action === "string"
+                ? contentRecord.action
+                : action.name;
           const chunk =
             contentRecord && typeof contentRecord === "object"
               ? extractCompatTextContent(contentRecord as Content)
@@ -221,8 +217,9 @@ export async function executeFallbackParsedActions(
           }
           return [];
         },
-        [],
-      ),
+      },
+      { name: action.name, params: parsedParameters },
+      { actions: [action] },
     );
     if (!callbackSeen) {
       const currentText = options?.getCurrentText?.() ?? "";

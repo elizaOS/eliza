@@ -4,16 +4,22 @@
  * runner. The service creates proposals and owner-only SLA notices; it never
  * sends a message, mutates a calendar, purchases, or replies automatically.
  */
-import { type EntityStore, resolveKnowledgeGraphService } from "@elizaos/agent";
+import {
+  type EntityStore,
+  KNOWLEDGE_GRAPH_SERVICE,
+  resolveKnowledgeGraphService,
+} from "@elizaos/agent";
 import { type IAgentRuntime, Service } from "@elizaos/core";
-import type {
-  ScheduledTask,
-  ScheduledTaskRunnerHandle,
+import {
+  type ScheduledTask,
+  type ScheduledTaskRunnerHandle,
+  ScheduledTaskRunnerService,
 } from "@elizaos/plugin-scheduling";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 import {
   createHouseholdCoordinationService,
   getHouseholdCoordinationService,
+  HOUSEHOLD_COORDINATION_SERVICE,
   type HouseholdCoordinationService,
 } from "../household/service.js";
 import { HouseholdCoordinationError } from "../household/types.js";
@@ -1076,6 +1082,14 @@ export class FamilyCommunicationsRuntimeService extends Service {
   static async start(
     runtime: IAgentRuntime,
   ): Promise<FamilyCommunicationsRuntimeService> {
+    await Promise.all([
+      runtime.getServiceLoadPromise(KNOWLEDGE_GRAPH_SERVICE),
+      runtime.getServiceLoadPromise(HOUSEHOLD_COORDINATION_SERVICE),
+      runtime.getServiceLoadPromise(
+        FAMILY_COMMUNICATIONS_SPEAKER_VERIFIER_SERVICE,
+      ),
+      runtime.getServiceLoadPromise(ScheduledTaskRunnerService.serviceType),
+    ]);
     const service = new FamilyCommunicationsRuntimeService(runtime);
     await service.family.initialize();
     return service;

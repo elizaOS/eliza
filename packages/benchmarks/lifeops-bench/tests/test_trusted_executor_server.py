@@ -8,12 +8,13 @@ import hmac
 import json
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from http.server import ThreadingHTTPServer
 from pathlib import Path
+from typing import cast
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -55,9 +56,7 @@ _RECEIPT_KEY_ID = "receipt-key-v1"
 _PROVIDER = "calendar-loopback-sandbox"
 _BOUNDARY = "sandbox_connector"
 _EXECUTOR_VERSION = "reference-executor-v1"
-_CONTRACT_SHA256 = hashlib.sha256(
-    b"server-owned-source-contract-v1"
-).hexdigest()
+_CONTRACT_SHA256 = hashlib.sha256(b"server-owned-source-contract-v1").hexdigest()
 _ASSERTION_IDS = ("G1.world.1", "G1.world.2")
 
 
@@ -115,6 +114,28 @@ def _context(
         contract_version=1,
         contract_sha256=contract_sha256,
         requested_at=requested_at,
+    )
+
+
+def _validated_request(
+    context: TrustedExecutionContext | None = None,
+) -> ValidatedExecutionRequest:
+    selected = context or _context()
+    return ValidatedExecutionRequest(
+        envelope={},
+        run_id=selected.run_id,
+        run_nonce=selected.run_nonce,
+        run_started_at=selected.run_started_at,
+        scenario_id=selected.scenario_id,
+        seed=selected.seed,
+        tool_call_id=selected.tool_call_id,
+        request_ordinal=selected.request_ordinal,
+        action=selected.action,
+        action_sha256=action_sha256(selected.action),
+        contract_id=selected.contract_id,
+        contract_version=selected.contract_version,
+        contract_sha256=selected.contract_sha256,
+        requested_at=selected.requested_at,
     )
 
 
@@ -203,9 +224,13 @@ class SourceContractEvaluator:
     ) -> ContractEvaluation:
         self.requests.append(request)
         sources = execution.payload.get("sources")
-        complete = isinstance(sources, list) and len(sources) == 5 and all(
-            isinstance(item, dict) and item.get("selected") is True
-            for item in sources
+        complete = (
+            isinstance(sources, list)
+            and len(sources) == 5
+            and all(
+                isinstance(item, dict) and item.get("selected") is True
+                for item in sources
+            )
         )
         isolated = isinstance(sources, list) and any(
             isinstance(item, dict)
@@ -310,7 +335,7 @@ def _running_server(
     )
     thread.start()
     try:
-        host, port = server.server_address
+        host, port = cast(tuple[str, int], server.server_address)
         yield f"http://{host}:{port}/execute"
     finally:
         server.shutdown()
@@ -334,11 +359,14 @@ def _authenticated_headers(
     signature: str | None = None,
 ) -> dict[str, str]:
     timestamp_text = _iso(timestamp)
-    request_signature = signature or hmac.new(
-        _REQUEST_KEY,
-        timestamp_text.encode("utf-8") + b"\n" + body,
-        hashlib.sha256,
-    ).hexdigest()
+    request_signature = (
+        signature
+        or hmac.new(
+            _REQUEST_KEY,
+            timestamp_text.encode("utf-8") + b"\n" + body,
+            hashlib.sha256,
+        ).hexdigest()
+    )
     return {
         "Content-Type": "application/json",
         "Accept-Encoding": "identity",
@@ -396,9 +424,7 @@ async def test_allowed_read_returns_verifiable_terminal_artifact_over_socket(
     assert connector.calls[0][1].startswith("lifeops-")
     assert len(connector.calls[0][1]) == len("lifeops-") + 64
     assert len(evaluator.requests) == 1
-    assert "required_assertion_ids" not in json.dumps(
-        evaluator.requests[0].envelope
-    )
+    assert "required_assertion_ids" not in json.dumps(evaluator.requests[0].envelope)
 
 
 @pytest.mark.asyncio
@@ -462,6 +488,68 @@ async def test_same_request_reuses_exact_response_without_second_connector_call(
     assert second == first
     assert len(connector.calls) == 1
     assert len(evaluator.requests) == 1
+
+
+def test_sqlite_builder_crash_rolls_back_unpublished_response_before_retry(
+    tmp_path: Path,
+) -> None:
+    """Prove ledger rollback/rebuild only, not provider-side exactly-once."""
+    store = SqliteReplayStore(tmp_path / "replay.sqlite")
+    request = _validated_request()
+    request_sha256 = hashlib.sha256(b"stable-authenticated-request").hexdigest()
+    attempts: list[tuple[tuple[ActionLineageEntry, ...], Mapping[int, int]]] = []
+
+    def crash_before_publication(
+        lineage: tuple[ActionLineageEntry, ...],
+        policy_counts: Mapping[int, int],
+    ) -> tuple[bytes, int]:
+        attempts.append((lineage, policy_counts))
+        raise RuntimeError("simulated response-builder crash")
+
+    with pytest.raises(RuntimeError, match="simulated response-builder crash"):
+        store.execute_once(
+            request,
+            request_sha256,
+            crash_before_publication,
+        )
+
+    rebuilt_response = b'{"rebuilt":true}'
+
+    def rebuild_after_restart(
+        lineage: tuple[ActionLineageEntry, ...],
+        policy_counts: Mapping[int, int],
+    ) -> tuple[bytes, int]:
+        attempts.append((lineage, policy_counts))
+        return rebuilt_response, 0
+
+    assert (
+        store.execute_once(
+            request,
+            request_sha256,
+            rebuild_after_restart,
+        )
+        == rebuilt_response
+    )
+
+    def must_not_rebuild_persisted_response(
+        _lineage: tuple[ActionLineageEntry, ...],
+        _policy_counts: Mapping[int, int],
+    ) -> tuple[bytes, int]:
+        raise AssertionError("persisted replay unexpectedly rebuilt its response")
+
+    assert (
+        store.execute_once(
+            request,
+            request_sha256,
+            must_not_rebuild_persisted_response,
+        )
+        == rebuilt_response
+    )
+    assert len(attempts) == 2
+    assert all(policy_counts == {} for _, policy_counts in attempts)
+    assert [
+        tuple(entry.request_ordinal for entry in lineage) for lineage, _ in attempts
+    ] == [(1,), (1,)]
 
 
 @pytest.mark.asyncio

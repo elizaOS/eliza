@@ -23,6 +23,7 @@ import {
   GOOGLE_CALENDAR_WEBHOOK_PATH,
   type GoogleCalendarNotificationHeaders,
   type GoogleCalendarWebhookResult,
+  isGoogleCalendarWebhookEnabled,
 } from "../google-watch/index.js";
 import { CalendarServiceError } from "../internal/errors.js";
 import {
@@ -35,6 +36,7 @@ import {
 } from "./mutation-gateway.js";
 
 type CalendarRateLimitKey =
+  | "google_webhook"
   | "google_api_read"
   | "google_api_write"
   | "calendar_create"
@@ -62,6 +64,7 @@ const CONNECTOR_SIDES = [
 ] as const satisfies readonly LifeOpsConnectorSide[];
 
 const CALENDAR_RATE_LIMITS: Record<CalendarRateLimitKey, RateLimitConfig> = {
+  google_webhook: { maxRequests: 60, windowMs: 60_000 },
   google_api_read: { maxRequests: 120, windowMs: 60_000 },
   google_api_write: { maxRequests: 30, windowMs: 60_000 },
   calendar_create: { maxRequests: 20, windowMs: 60_000 },
@@ -72,7 +75,16 @@ const CALENDAR_RATE_LIMITS: Record<CalendarRateLimitKey, RateLimitConfig> = {
   calendar_source_sync: { maxRequests: 30, windowMs: 60_000 },
 };
 
-const rateLimitBuckets = new Map<string, number[]>();
+const runtimeRateLimitBuckets = new WeakMap<
+  IAgentRuntime,
+  Map<string, number[]>
+>();
+const unavailableRuntimeRateLimitBuckets = new Map<string, number[]>();
+const MAX_RATE_LIMIT_BUCKETS_PER_RUNTIME = 256;
+const MAX_RATE_LIMIT_WINDOW_MS = Math.max(
+  ...Object.values(CALENDAR_RATE_LIMITS).map((config) => config.windowMs),
+);
+const MAX_GOOGLE_WEBHOOK_BODY_BYTES = 1_024;
 
 interface GoogleCalendarWebhookService {
   handleGoogleCalendarNotification(
@@ -190,32 +202,53 @@ function singleHeader(req: http.IncomingMessage, name: string): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
-async function requestHasBody(req: http.IncomingMessage): Promise<boolean> {
+type GoogleWebhookBodyInspection = "empty" | "invalid" | "too_large";
+
+function inspectGoogleWebhookBody(
+  req: http.IncomingMessage,
+): GoogleWebhookBodyInspection {
   const rawBody = (req as http.IncomingMessage & { rawBody?: unknown }).rawBody;
-  if (typeof rawBody === "string") return rawBody.length > 0;
-  if (Buffer.isBuffer(rawBody)) return rawBody.length > 0;
+  if (typeof rawBody === "string") {
+    const length = Buffer.byteLength(rawBody);
+    if (length > MAX_GOOGLE_WEBHOOK_BODY_BYTES) return "too_large";
+    if (length > 0) return "invalid";
+  } else if (Buffer.isBuffer(rawBody)) {
+    if (rawBody.length > MAX_GOOGLE_WEBHOOK_BODY_BYTES) return "too_large";
+    if (rawBody.length > 0) return "invalid";
+  } else if (rawBody !== undefined && rawBody !== null) {
+    return "invalid";
+  }
+
   const parsedBody = (req as http.IncomingMessage & { body?: unknown }).body;
-  if (parsedBody !== undefined && parsedBody !== null && parsedBody !== "") {
-    return true;
+  if (typeof parsedBody === "string") {
+    const length = Buffer.byteLength(parsedBody);
+    if (length > MAX_GOOGLE_WEBHOOK_BODY_BYTES) return "too_large";
+    if (length > 0) return "invalid";
+  } else if (Buffer.isBuffer(parsedBody)) {
+    if (parsedBody.length > MAX_GOOGLE_WEBHOOK_BODY_BYTES) return "too_large";
+    if (parsedBody.length > 0) return "invalid";
+  } else if (parsedBody !== undefined && parsedBody !== null) {
+    return "invalid";
   }
-  const contentLength = req.headers["content-length"];
+
+  const transferEncoding = req.headers["transfer-encoding"];
   if (
-    typeof contentLength === "string" &&
-    Number.isFinite(Number(contentLength)) &&
-    Number(contentLength) > 0
+    (typeof transferEncoding === "string" && transferEncoding.trim()) ||
+    (Array.isArray(transferEncoding) && transferEncoding.length > 0)
   ) {
-    return true;
+    return "invalid";
   }
-  for await (const chunk of req) {
-    const length =
-      typeof chunk === "string"
-        ? Buffer.byteLength(chunk)
-        : Buffer.isBuffer(chunk)
-          ? chunk.length
-          : 0;
-    if (length > 0) return true;
+
+  const contentLength = req.headers["content-length"];
+  if (Array.isArray(contentLength)) return "invalid";
+  if (typeof contentLength === "string") {
+    if (!/^(0|[1-9][0-9]*)$/.test(contentLength.trim())) return "invalid";
+    const length = Number(contentLength);
+    if (!Number.isSafeInteger(length)) return "too_large";
+    if (length > MAX_GOOGLE_WEBHOOK_BODY_BYTES) return "too_large";
+    if (length > 0) return "invalid";
   }
-  return false;
+  return "empty";
 }
 
 async function handleGoogleCalendarWebhook(args: {
@@ -224,7 +257,28 @@ async function handleGoogleCalendarWebhook(args: {
   res: http.ServerResponse;
 }): Promise<void> {
   const { runtime, req, res } = args;
-  if (await requestHasBody(req)) {
+  if (!isGoogleCalendarWebhookEnabled(runtime)) {
+    res.writeHead(404);
+    res.end();
+    return;
+  }
+  if (
+    rateLimitRequest({
+      runtime,
+      res,
+      key: "google_webhook",
+      requestIdentity: req.socket?.remoteAddress ?? "unknown",
+    })
+  ) {
+    return;
+  }
+  const body = inspectGoogleWebhookBody(req);
+  if (body === "too_large") {
+    res.writeHead(413);
+    res.end();
+    return;
+  }
+  if (body === "invalid") {
     res.writeHead(400);
     res.end();
     return;
@@ -308,13 +362,38 @@ function rateLimitRequest(args: {
   runtime: IAgentRuntime | null;
   res: http.ServerResponse;
   key: CalendarRateLimitKey;
+  requestIdentity?: string;
 }): boolean {
-  const { runtime, res, key } = args;
+  const { runtime, res, key, requestIdentity = "runtime" } = args;
   const config = CALENDAR_RATE_LIMITS[key];
-  const bucketKey = `${String(runtime?.agentId ?? "unknown")}:${key}`;
+  let buckets = unavailableRuntimeRateLimitBuckets;
+  if (runtime) {
+    buckets = runtimeRateLimitBuckets.get(runtime) ?? new Map();
+    runtimeRateLimitBuckets.set(runtime, buckets);
+  }
+  const bucketKey = `${key}:${requestIdentity}`;
   const now = Date.now();
+  if (
+    !buckets.has(bucketKey) &&
+    buckets.size >= MAX_RATE_LIMIT_BUCKETS_PER_RUNTIME
+  ) {
+    const expiredBefore = now - MAX_RATE_LIMIT_WINDOW_MS;
+    for (const [candidateKey, candidateTimestamps] of buckets) {
+      if (
+        candidateTimestamps.length === 0 ||
+        candidateTimestamps.every((timestamp) => timestamp <= expiredBefore)
+      ) {
+        buckets.delete(candidateKey);
+      }
+    }
+    while (buckets.size >= MAX_RATE_LIMIT_BUCKETS_PER_RUNTIME) {
+      const oldestKey = buckets.keys().next().value;
+      if (typeof oldestKey !== "string") break;
+      buckets.delete(oldestKey);
+    }
+  }
   const cutoff = now - config.windowMs;
-  const timestamps = (rateLimitBuckets.get(bucketKey) ?? []).filter(
+  const timestamps = (buckets.get(bucketKey) ?? []).filter(
     (timestamp) => timestamp > cutoff,
   );
 
@@ -328,12 +407,23 @@ function rateLimitRequest(args: {
       "Retry-After": String(Math.ceil(retryAfterMs / 1_000)),
     });
     res.end(JSON.stringify({ error: "Rate limit exceeded", retryAfterMs }));
+    buckets.delete(bucketKey);
+    buckets.set(bucketKey, timestamps);
     return true;
   }
 
   timestamps.push(now);
-  rateLimitBuckets.set(bucketKey, timestamps);
+  buckets.delete(bucketKey);
+  buckets.set(bucketKey, timestamps);
   return false;
+}
+
+export function __calendarRouteRateLimitBucketCountForTests(
+  runtime: IAgentRuntime | null,
+): number {
+  return runtime
+    ? (runtimeRateLimitBuckets.get(runtime)?.size ?? 0)
+    : unavailableRuntimeRateLimitBuckets.size;
 }
 
 function parseConnectorMode(
@@ -553,7 +643,7 @@ export const calendarHttpRoutes: Route[] = [
     publicReason:
       "Google Calendar must deliver provider-originated change notifications without a user session.",
     publicWrite:
-      "The route verifies an unguessable per-channel capability token plus durable channel and resource bindings before it enqueues a refetch.",
+      "An explicit runtime setting enables the route; bounded body checks and rate limiting precede service access, then an unguessable per-channel capability token plus durable resource bindings authorize a refetch.",
     handler,
   },
 ];

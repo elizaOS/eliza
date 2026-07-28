@@ -4,6 +4,7 @@
  * room/user records the runtime needs on ready and on first contact.
  */
 import {
+	attestDeliveryAudienceFromCanonicalRoom,
 	ChannelType,
 	createUniqueUuid,
 	decodeCallback,
@@ -127,7 +128,13 @@ export async function handleInteractionCreate(
 		}
 		serverId = guild.id;
 	} else {
-		type = ChannelType.DM;
+		// Without a resolvable channel the audience cannot be verified as
+		// owner-only, so classify to the non-private GROUP type — the
+		// delivery-audience attestation then fails closed for owner-private
+		// disclosures instead of minting "direct" evidence from a guess.
+		type = interaction.channel
+			? await service.getChannelType(interaction.channel as Channel)
+			: ChannelType.GROUP;
 		serverId = interactionChannelId;
 	}
 
@@ -260,6 +267,17 @@ export async function handleInteractionCreate(
 				},
 				createdAt: Date.now(),
 			};
+			try {
+				await attestDeliveryAudienceFromCanonicalRoom(service.runtime, memory);
+			} catch (error) {
+				// error-policy:J4 the interaction can still use public actions,
+				// while owner-private components fail closed without evidence.
+				service.runtime.reportError(
+					"DiscordInteraction.deliveryAudience",
+					error,
+					{ roomId, messageId: memory.id },
+				);
+			}
 			const callback: HandlerCallback = async (content) => {
 				const render = buildDiscordReplyPayload(service.runtime, content);
 				const components =

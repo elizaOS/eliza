@@ -264,6 +264,16 @@ export interface ApprovalRequest {
   readonly resolutionReason: string | null;
 }
 
+/**
+ * Atomic enqueue outcome. `reused` is decided by the same insert that owns the
+ * idempotency constraint, so callers never infer replay from request state or
+ * timestamps.
+ */
+export interface ApprovalEnqueueResult {
+  readonly request: ApprovalRequest;
+  readonly reused: boolean;
+}
+
 /** Input to `enqueue` — server fills in id, timestamps, and initial state. */
 export interface ApprovalEnqueueInput {
   readonly requestedBy: string;
@@ -349,6 +359,9 @@ export class ApprovalNotFoundError extends Error {
  */
 export interface ApprovalQueue {
   enqueue(input: ApprovalEnqueueInput): Promise<ApprovalRequest>;
+  enqueueWithResult(
+    input: ApprovalEnqueueInput,
+  ): Promise<ApprovalEnqueueResult>;
   /**
    * Persist an owner gesture that is already confirmed at an authenticated
    * boundary. Implementations must not emit a redundant approval prompt.

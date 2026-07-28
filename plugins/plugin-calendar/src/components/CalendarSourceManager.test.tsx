@@ -2,12 +2,14 @@
 
 /**
  * Exercises the accessible calendar source disclosure with real presentation
- * rows and deterministic hook state, including recovery and failed writes.
+ * rows and deterministic hook state, including recovery, failed writes, and
+ * ICS subscription create/remove against a spied calendar client.
  */
 
 import type {
   LifeOpsCalendarSourceHealth,
   LifeOpsCalendarSummary,
+  LifeOpsIcsCalendarSource,
 } from "@elizaos/shared";
 import {
   cleanup,
@@ -16,7 +18,12 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import type { ButtonHTMLAttributes, ForwardedRef, ReactNode } from "react";
+import type {
+  ButtonHTMLAttributes,
+  ForwardedRef,
+  InputHTMLAttributes,
+  ReactNode,
+} from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { UseCalendarSourcesResult } from "../hooks/useCalendarSources.js";
 
@@ -25,6 +32,13 @@ const sourceState = vi.hoisted(() => ({
 }));
 const dispatchFocusConnector = vi.hoisted(() => vi.fn());
 const dispatchNavigateViewEvent = vi.hoisted(() => vi.fn());
+
+const uiClient = vi.hoisted(() => ({
+  getLifeOpsIcsCalendarSources: vi.fn(),
+  createLifeOpsIcsCalendarSource: vi.fn(),
+  deleteLifeOpsIcsCalendarSource: vi.fn(),
+  syncLifeOpsIcsCalendarSource: vi.fn(),
+}));
 
 vi.mock("../hooks/useCalendarSources.js", () => ({
   useCalendarSources: () => sourceState.current,
@@ -37,6 +51,33 @@ vi.mock("@elizaos/ui/agent-surface", () => ({
 vi.mock("@elizaos/ui/events", () => ({
   dispatchFocusConnector,
   dispatchNavigateViewEvent,
+}));
+
+const appValue = vi.hoisted(() => ({
+  t: (key: string, opts?: Record<string, unknown>) => {
+    const template =
+      typeof opts?.defaultValue === "string" ? opts.defaultValue : key;
+    return template.replace(/\{\{(\w+)\}\}/g, (_, name: string) =>
+      String(opts?.[name] ?? ""),
+    );
+  },
+}));
+
+vi.mock("@elizaos/ui/state", () => ({
+  useAppSelector: <T,>(selector: (value: typeof appValue) => T) =>
+    selector(appValue),
+}));
+
+// The component imports `../api/client-calendar.js` for its side effect, which
+// augments `ElizaClient.prototype`; provide a throwaway class so that import
+// resolves while tests exercise the spied `client` object.
+vi.mock("@elizaos/ui", () => ({
+  ElizaClient: class {},
+}));
+
+vi.mock("@elizaos/ui/api", () => ({
+  client: uiClient,
+  ElizaClient: class {},
 }));
 
 vi.mock("@elizaos/ui/components", async () => {
@@ -53,7 +94,11 @@ vi.mock("@elizaos/ui/components", async () => {
       },
       ref: ForwardedRef<HTMLButtonElement>,
     ) => (
-      <button ref={ref} type="button" {...props}>
+      <button
+        ref={ref}
+        type={props.type === "submit" ? "submit" : "button"}
+        {...props}
+      >
         {children}
       </button>
     ),
@@ -80,7 +125,37 @@ vi.mock("@elizaos/ui/components", async () => {
       />
     ),
   );
-  return { Button, Switch };
+  const Input = React.forwardRef(
+    (
+      props: InputHTMLAttributes<HTMLInputElement>,
+      ref: ForwardedRef<HTMLInputElement>,
+    ) => <input ref={ref} {...props} />,
+  );
+  const ConfirmDialog = ({
+    open,
+    message,
+    confirmLabel = "Confirm",
+    onConfirm,
+    onCancel,
+  }: {
+    open: boolean;
+    message: string;
+    confirmLabel?: string;
+    onConfirm: () => void;
+    onCancel: () => void;
+  }) =>
+    open ? (
+      <div data-testid="confirm-dialog">
+        <span>{message}</span>
+        <button type="button" data-testid="confirm-remove" onClick={onConfirm}>
+          {confirmLabel}
+        </button>
+        <button type="button" onClick={onCancel}>
+          cancel
+        </button>
+      </div>
+    ) : null;
+  return { Button, Switch, Input, ConfirmDialog };
 });
 
 import { CalendarSourceManager } from "./CalendarSourceManager.js";
@@ -193,10 +268,31 @@ const mixedHealth: LifeOpsCalendarSourceHealth[] = [
   }),
 ];
 
+function icsSource(
+  over: Partial<LifeOpsIcsCalendarSource> = {},
+): LifeOpsIcsCalendarSource {
+  return {
+    id: "ics-source-1",
+    provider: "ics",
+    name: "Team holidays",
+    enabled: true,
+    origin: "https://feeds.example.com",
+    urlFingerprint: "fp-1",
+    syncStatus: "fresh",
+    lastSyncedAt: "2026-07-26T12:00:00.000Z",
+    lastAttemptedAt: "2026-07-26T12:00:00.000Z",
+    error: null,
+    createdAt: "2026-07-01T00:00:00.000Z",
+    updatedAt: "2026-07-26T12:00:00.000Z",
+    ...over,
+  };
+}
+
 describe("CalendarSourceManager", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     sourceState.current = defaultState();
+    uiClient.getLifeOpsIcsCalendarSources.mockResolvedValue({ sources: [] });
   });
 
   afterEach(() => cleanup());
@@ -363,5 +459,199 @@ describe("CalendarSourceManager", () => {
       viewPath: "/settings",
       subview: "connectors",
     });
+  });
+
+  it("lists ICS subscriptions with sync truth and distinguishes error rows", async () => {
+    uiClient.getLifeOpsIcsCalendarSources.mockResolvedValue({
+      sources: [
+        icsSource(),
+        icsSource({
+          id: "ics-source-2",
+          name: "Broken feed",
+          origin: "https://broken.example.com",
+          syncStatus: "error",
+          error: {
+            code: "ICS_FETCH_FAILED",
+            message: "Feed returned 404.",
+            retryable: true,
+          },
+        }),
+      ],
+    });
+
+    render(<CalendarSourceManager sourceHealth={mixedHealth} defaultOpen />);
+
+    await waitFor(() => expect(screen.getByText("Team holidays")).toBeTruthy());
+    expect(screen.getByText(/Synced/)).toBeTruthy();
+    expect(screen.getByText("Broken feed")).toBeTruthy();
+    expect(screen.getByText(/Feed returned 404\./)).toBeTruthy();
+  });
+
+  it("renders a designed error state with retry when the subscription list fails", async () => {
+    uiClient.getLifeOpsIcsCalendarSources
+      .mockRejectedValueOnce(new Error("subscriptions boom"))
+      .mockResolvedValueOnce({ sources: [icsSource()] });
+
+    render(<CalendarSourceManager sourceHealth={mixedHealth} defaultOpen />);
+
+    await waitFor(() =>
+      expect(screen.getByText("subscriptions boom")).toBeTruthy(),
+    );
+    expect(screen.queryByText("No calendar subscriptions yet.")).toBeNull();
+
+    const alert = screen
+      .getByText("subscriptions boom")
+      .closest("[role='alert']") as HTMLElement;
+    fireEvent.click(
+      Array.from(alert.querySelectorAll("button")).find(
+        (button) => button.textContent === "Retry",
+      ) as HTMLButtonElement,
+    );
+
+    await waitFor(() => expect(screen.getByText("Team holidays")).toBeTruthy());
+  });
+
+  it("subscribes with name and URL, triggers the first sync, and refreshes feed truth", async () => {
+    const onSelectionChanged = vi.fn();
+    const created = icsSource({ id: "ics-new", name: "Race calendar" });
+    uiClient.getLifeOpsIcsCalendarSources
+      .mockResolvedValueOnce({ sources: [] })
+      .mockResolvedValueOnce({ sources: [created] });
+    uiClient.createLifeOpsIcsCalendarSource.mockResolvedValue({
+      source: created,
+    });
+    uiClient.syncLifeOpsIcsCalendarSource.mockResolvedValue({
+      source: created,
+      outcome: "complete",
+      acceptedEvents: 4,
+      prunedEvents: 0,
+      tombstones: 0,
+    });
+
+    render(
+      <CalendarSourceManager
+        sourceHealth={mixedHealth}
+        onSelectionChanged={onSelectionChanged}
+        defaultOpen
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByText("No calendar subscriptions yet.")).toBeTruthy(),
+    );
+
+    fireEvent.change(screen.getByLabelText("Subscription name"), {
+      target: { value: "  Race calendar  " },
+    });
+    fireEvent.change(screen.getByLabelText("Subscription URL"), {
+      target: { value: " https://feeds.example.com/races.ics " },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Subscribe" }));
+
+    await waitFor(() =>
+      expect(uiClient.createLifeOpsIcsCalendarSource).toHaveBeenCalledWith({
+        name: "Race calendar",
+        url: "https://feeds.example.com/races.ics",
+      }),
+    );
+    await waitFor(() =>
+      expect(uiClient.syncLifeOpsIcsCalendarSource).toHaveBeenCalledWith(
+        "ics-new",
+      ),
+    );
+    await waitFor(() => expect(screen.getByText("Race calendar")).toBeTruthy());
+    expect(onSelectionChanged).toHaveBeenCalledTimes(1);
+    expect(
+      (screen.getByLabelText("Subscription name") as HTMLInputElement).value,
+    ).toBe("");
+  });
+
+  it("keeps the entered name and URL visible when subscribing fails", async () => {
+    uiClient.createLifeOpsIcsCalendarSource.mockRejectedValue(
+      new Error("URL must use https or webcal."),
+    );
+
+    render(<CalendarSourceManager sourceHealth={mixedHealth} defaultOpen />);
+    await waitFor(() =>
+      expect(uiClient.getLifeOpsIcsCalendarSources).toHaveBeenCalled(),
+    );
+
+    fireEvent.change(screen.getByLabelText("Subscription name"), {
+      target: { value: "Bad feed" },
+    });
+    fireEvent.change(screen.getByLabelText("Subscription URL"), {
+      target: { value: "ftp://nope" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Subscribe" }));
+
+    await waitFor(() =>
+      expect(screen.getByText("URL must use https or webcal.")).toBeTruthy(),
+    );
+    expect(
+      (screen.getByLabelText("Subscription name") as HTMLInputElement).value,
+    ).toBe("Bad feed");
+    expect(uiClient.syncLifeOpsIcsCalendarSource).not.toHaveBeenCalled();
+  });
+
+  it("removes a subscription only after confirmation and refreshes feed truth", async () => {
+    const onSelectionChanged = vi.fn();
+    uiClient.getLifeOpsIcsCalendarSources
+      .mockResolvedValueOnce({ sources: [icsSource()] })
+      .mockResolvedValueOnce({ sources: [] });
+    uiClient.deleteLifeOpsIcsCalendarSource.mockResolvedValue({
+      deleted: true,
+    });
+
+    render(
+      <CalendarSourceManager
+        sourceHealth={mixedHealth}
+        onSelectionChanged={onSelectionChanged}
+        defaultOpen
+      />,
+    );
+    await waitFor(() => expect(screen.getByText("Team holidays")).toBeTruthy());
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Remove subscription Team holidays",
+      }),
+    );
+    expect(uiClient.deleteLifeOpsIcsCalendarSource).not.toHaveBeenCalled();
+    expect(screen.getByTestId("confirm-dialog").textContent).toContain(
+      "Team holidays",
+    );
+
+    fireEvent.click(screen.getByTestId("confirm-remove"));
+
+    await waitFor(() =>
+      expect(uiClient.deleteLifeOpsIcsCalendarSource).toHaveBeenCalledWith(
+        "ics-source-1",
+      ),
+    );
+    await waitFor(() =>
+      expect(screen.getByText("No calendar subscriptions yet.")).toBeTruthy(),
+    );
+    expect(onSelectionChanged).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a subscription listed with a visible error when removal fails", async () => {
+    uiClient.getLifeOpsIcsCalendarSources.mockResolvedValue({
+      sources: [icsSource()],
+    });
+    uiClient.deleteLifeOpsIcsCalendarSource.mockRejectedValue(
+      new Error("removal boom"),
+    );
+
+    render(<CalendarSourceManager sourceHealth={mixedHealth} defaultOpen />);
+    await waitFor(() => expect(screen.getByText("Team holidays")).toBeTruthy());
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Remove subscription Team holidays",
+      }),
+    );
+    fireEvent.click(screen.getByTestId("confirm-remove"));
+
+    await waitFor(() => expect(screen.getByText("removal boom")).toBeTruthy());
+    expect(screen.getByText("Team holidays")).toBeTruthy();
   });
 });

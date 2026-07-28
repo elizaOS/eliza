@@ -16,7 +16,12 @@
  * task card. Only the discord.js SDK objects are stubbed — no bot token, no
  * network.
  */
-import { encodeReplyCallback } from "@elizaos/core";
+import {
+	ChannelType,
+	encodeReplyCallback,
+	getTrustedDeliveryAudience,
+	type Memory,
+} from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { handleInteractionCreate } from "../discord-interactions";
 
@@ -33,6 +38,11 @@ function makeService(
 	options: { channelSendable?: boolean } = {},
 ) {
 	const sends: CapturedSend[] = [];
+	// A sendable channel models a 1:1 DM; the sendless variant models a group
+	// DM, so the resolved channel type (and the attested audience) differ too.
+	const channelType = options.channelSendable
+		? ChannelType.DM
+		: ChannelType.GROUP;
 	const channel = options.channelSendable
 		? {
 				id: "chan-1",
@@ -71,13 +81,24 @@ function makeService(
 		timeouts: [],
 		userSelections: new Map(),
 		resolveDiscordEntityId: vi.fn(() => "00000000-0000-0000-0000-000000000001"),
-		getChannelType: vi.fn(),
+		getChannelType: vi.fn(async () => channelType),
 		runtime: {
 			agentId: "00000000-0000-0000-0000-0000000000aa",
 			messageService,
 			getSetting: (key: string): string | undefined =>
 				key === "ELIZA_APP_URL" ? appUrl : undefined,
 			ensureConnection: vi.fn(async () => {}),
+			// Canonical-room collaborators for the delivery-audience attestation
+			// on the button-replay turn.
+			getRoom: vi.fn(async (roomId: string) => ({
+				id: roomId,
+				type: channelType,
+			})),
+			getParticipantsForRoom: vi.fn(async () => [
+				"00000000-0000-0000-0000-000000000001",
+				"00000000-0000-0000-0000-0000000000aa",
+			]),
+			reportError: vi.fn(),
 			logger: { info: noop, warn: noop, debug: noop, error: noop },
 		},
 	};
@@ -120,13 +141,18 @@ function makeCodecButtonInteraction(channel: unknown, follows: CapturedSend[]) {
 
 describe("#14527 button-tap replay renders link-out blocks natively", () => {
 	it("attaches an Open task link button to a post-tap task reply", async () => {
-		const { service, channel } = makeService("https://app.test", {
+		const { service, channel, messageService } = makeService("https://app.test", {
 			channelSendable: true,
 		});
 		const follows: CapturedSend[] = [];
 		const interaction = makeCodecButtonInteraction(channel, follows);
 
 		await handleInteractionCreate(service as never, interaction as never);
+
+		// The replayed turn carries canonical-room audience evidence: a DM tap
+		// attests as "direct", which owner-private disclosure gates consume.
+		const replayed = messageService.handleMessage.mock.calls[0]?.[1] as Memory;
+		expect(getTrustedDeliveryAudience(replayed)?.kind).toBe("direct");
 
 		// Delivered through the interaction token, not channel.send.
 		expect(interaction.followUp).toHaveBeenCalledTimes(1);
@@ -170,13 +196,18 @@ describe("#14527 button-tap replay renders link-out blocks natively", () => {
 	it("delivers via followUp in a group DM where channel.send is unavailable", async () => {
 		// The live 2026-07-16 bug: a group-DM button tap ran the turn but the
 		// reply used channel.send (the bot is not a member) and vanished.
-		const { service, channel } = makeService("https://app.test", {
+		const { service, channel, messageService } = makeService("https://app.test", {
 			channelSendable: false,
 		});
 		const follows: CapturedSend[] = [];
 		const interaction = makeCodecButtonInteraction(channel, follows);
 
 		await handleInteractionCreate(service as never, interaction as never);
+
+		// A group DM attests as "group", never "direct": the audience is not
+		// owner-only, so owner-private disclosure fails closed downstream.
+		const replayed = messageService.handleMessage.mock.calls[0]?.[1] as Memory;
+		expect(getTrustedDeliveryAudience(replayed)?.kind).toBe("group");
 
 		expect(interaction.followUp).toHaveBeenCalledTimes(1);
 		expect(follows[0]?.content).toContain("Opening your task.");

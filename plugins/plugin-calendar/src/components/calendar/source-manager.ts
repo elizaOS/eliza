@@ -167,6 +167,22 @@ function providerLabel(provider: LifeOpsCalendarProvider): string {
   return PROVIDER_LABELS[provider];
 }
 
+// Every identity key in the model is minted from a discovery calendar or a
+// feed-health row, so at least one side always resolves. A miss means the
+// join itself is broken; surface that instead of mislabeling the source.
+function identityProvider(
+  calendar: LifeOpsCalendarSummary | undefined,
+  health: LifeOpsCalendarSourceHealth | undefined,
+): LifeOpsCalendarProvider {
+  const provider = calendar?.provider ?? health?.key.provider;
+  if (!provider) {
+    throw new Error(
+      "Calendar source identity resolved with neither discovery nor feed-health truth.",
+    );
+  }
+  return provider;
+}
+
 function calendarLabel(
   calendar: LifeOpsCalendarSummary | undefined,
   health: LifeOpsCalendarSourceHealth | undefined,
@@ -191,8 +207,8 @@ function sortIdentityKeys(
       return leftCalendar?.primary ? -1 : 1;
     }
     const providerOrder = compareText(
-      providerLabel((leftCalendar ?? leftHealth?.key)?.provider ?? "ics"),
-      providerLabel((rightCalendar ?? rightHealth?.key)?.provider ?? "ics"),
+      providerLabel(identityProvider(leftCalendar, leftHealth)),
+      providerLabel(identityProvider(rightCalendar, rightHealth)),
     );
     if (providerOrder !== 0) return providerOrder;
     const accountOrder = compareText(
@@ -237,7 +253,7 @@ export function toCalendarSourceManagerModel(
   ).map((identityKey) => {
     const calendar = calendarsByIdentity.get(identityKey);
     const health = healthByIdentity.get(identityKey);
-    const provider = calendar?.provider ?? health?.key.provider ?? "ics";
+    const provider = identityProvider(calendar, health);
     const actionStem = safeActionStem(identityKey);
     const collisionIndex = (usedActionIds.get(actionStem) ?? 0) + 1;
     usedActionIds.set(actionStem, collisionIndex);

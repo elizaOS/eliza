@@ -12,6 +12,7 @@ export {
   RESERVED_SCHEDULED_TASK_CHANNEL_KEYS,
   registerScheduledTaskChannelDispatcher,
   type ScheduledTaskChannelDispatcherContribution,
+  unregisterScheduledTaskChannelDispatcher,
 } from "./channel-dispatcher-registry.js";
 export {
   type CompletionCheckRegistry,

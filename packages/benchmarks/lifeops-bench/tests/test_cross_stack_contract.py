@@ -83,82 +83,83 @@ EXPECTED_CONTRACT: dict[str, Any] = {
     # because they only appear in the inline conformance corpus, not in bench
     # scenarios that could drift).
     # -----------------------------------------------------------------------
-    "python_runner_umbrella_actions": sorted([
-        "BOOK_TRAVEL",
-        "BLOCK",
-        "BLOCK_BLOCK",
-        "BLOCK_UNBLOCK",
-        "BLOCK_LIST_ACTIVE",
-        "BLOCK_RELEASE",
-        "BLOCK_STATUS",
-        "BLOCK_REQUEST_PERMISSION",
-        "CALENDAR",
-        "ENTITY",
-        "HEALTH",
-        "LIFE",
-        "LIFE_COMPLETE",
-        "LIFE_CREATE",
-        "LIFE_DELETE",
-        "LIFE_REVIEW",
-        "LIFE_SKIP",
-        "LIFE_SNOOZE",
-        "LIFE_UPDATE",
-        "MESSAGE",
-        "MONEY",
-        "MONEY_DASHBOARD",
-        "MONEY_LIST_TRANSACTIONS",
-        "MONEY_LIST_SOURCES",
-        "MONEY_RECURRING_CHARGES",
-        "MONEY_SPENDING_SUMMARY",
-        "MONEY_SUBSCRIPTION_STATUS",
-        "MONEY_SUBSCRIPTION_AUDIT",
-        "MONEY_SUBSCRIPTION_CANCEL",
-        "SCHEDULED_TASK_CREATE",
-        "SCHEDULED_TASK_SNOOZE",
-        "SCHEDULED_TASK_UPDATE",
-        "SCHEDULED_TASKS",
-        "SCHEDULED_TASKS_ACKNOWLEDGE",
-        "SCHEDULED_TASKS_CANCEL",
-        "SCHEDULED_TASKS_COMPLETE",
-        "SCHEDULED_TASKS_DISMISS",
-        "SCHEDULED_TASKS_GET",
-        "SCHEDULED_TASKS_HISTORY",
-        "SCHEDULED_TASKS_LIST",
-        "SCHEDULED_TASKS_REOPEN",
-        "SCHEDULED_TASKS_SKIP",
-        "SCHEDULED_TASKS_SNOOZE",
-        "SCHEDULED_TASKS_UPDATE",
-        "SCHEDULED_TASKS_CREATE",
-        # Promoted CALENDAR_* aliases (auto-derived from manifest by
-        # runner._build_action_handlers via the ``CALENDAR`` umbrella).
-        "CALENDAR_BULK_RESCHEDULE",
-        "CALENDAR_CHECK_AVAILABILITY",
-        "CALENDAR_CREATE_EVENT",
-        "CALENDAR_DELETE_EVENT",
-        "CALENDAR_FEED",
-        "CALENDAR_NEXT_EVENT",
-        "CALENDAR_PROPOSE_TIMES",
-        "CALENDAR_SEARCH_EVENTS",
-        "CALENDAR_SOURCES",
-        "CALENDAR_TRIP_WINDOW",
-        "CALENDAR_UPDATE_EVENT",
-        "CALENDAR_UPDATE_PREFERENCES",
-        # Promoted MESSAGE_* aliases
-        "MESSAGE_SEND",
-        "MESSAGE_DRAFT_REPLY",
-        "MESSAGE_MANAGE",
-        "MESSAGE_TRIAGE",
-        "MESSAGE_SEARCH_INBOX",
-        "MESSAGE_LIST_CHANNELS",
-        "MESSAGE_READ_CHANNEL",
-        "MESSAGE_READ_WITH_CONTACT",
-        # Contact-create aliases (P1-5)
-        "ENTITY_CREATE_CONTACT",
-        "CONTACT_CREATE",
-        # Conversational terminal
-        "REPLY",
-    ]),
-
+    "python_runner_umbrella_actions": sorted(
+        [
+            "BOOK_TRAVEL",
+            "BLOCK",
+            "BLOCK_BLOCK",
+            "BLOCK_UNBLOCK",
+            "BLOCK_LIST_ACTIVE",
+            "BLOCK_RELEASE",
+            "BLOCK_STATUS",
+            "BLOCK_REQUEST_PERMISSION",
+            "CALENDAR",
+            "ENTITY",
+            "HEALTH",
+            "LIFE",
+            "LIFE_COMPLETE",
+            "LIFE_CREATE",
+            "LIFE_DELETE",
+            "LIFE_REVIEW",
+            "LIFE_SKIP",
+            "LIFE_SNOOZE",
+            "LIFE_UPDATE",
+            "MESSAGE",
+            "MONEY",
+            "MONEY_DASHBOARD",
+            "MONEY_LIST_TRANSACTIONS",
+            "MONEY_LIST_SOURCES",
+            "MONEY_RECURRING_CHARGES",
+            "MONEY_SPENDING_SUMMARY",
+            "MONEY_SUBSCRIPTION_STATUS",
+            "MONEY_SUBSCRIPTION_AUDIT",
+            "MONEY_SUBSCRIPTION_CANCEL",
+            "SCHEDULED_TASK_CREATE",
+            "SCHEDULED_TASK_SNOOZE",
+            "SCHEDULED_TASK_UPDATE",
+            "SCHEDULED_TASKS",
+            "SCHEDULED_TASKS_ACKNOWLEDGE",
+            "SCHEDULED_TASKS_CANCEL",
+            "SCHEDULED_TASKS_COMPLETE",
+            "SCHEDULED_TASKS_DISMISS",
+            "SCHEDULED_TASKS_GET",
+            "SCHEDULED_TASKS_HISTORY",
+            "SCHEDULED_TASKS_LIST",
+            "SCHEDULED_TASKS_REOPEN",
+            "SCHEDULED_TASKS_SKIP",
+            "SCHEDULED_TASKS_SNOOZE",
+            "SCHEDULED_TASKS_UPDATE",
+            "SCHEDULED_TASKS_CREATE",
+            # Promoted CALENDAR_* aliases (auto-derived from manifest by
+            # runner._build_action_handlers via the ``CALENDAR`` umbrella).
+            "CALENDAR_BULK_RESCHEDULE",
+            "CALENDAR_CHECK_AVAILABILITY",
+            "CALENDAR_CREATE_EVENT",
+            "CALENDAR_DELETE_EVENT",
+            "CALENDAR_FEED",
+            "CALENDAR_NEXT_EVENT",
+            "CALENDAR_PROPOSE_TIMES",
+            "CALENDAR_SEARCH_EVENTS",
+            "CALENDAR_SOURCES",
+            "CALENDAR_TRIP_WINDOW",
+            "CALENDAR_UPDATE_EVENT",
+            "CALENDAR_UPDATE_PREFERENCES",
+            # Promoted MESSAGE_* aliases
+            "MESSAGE_SEND",
+            "MESSAGE_DRAFT_REPLY",
+            "MESSAGE_MANAGE",
+            "MESSAGE_TRIAGE",
+            "MESSAGE_SEARCH_INBOX",
+            "MESSAGE_LIST_CHANNELS",
+            "MESSAGE_READ_CHANNEL",
+            "MESSAGE_READ_WITH_CONTACT",
+            # Contact-create aliases (P1-5)
+            "ENTITY_CREATE_CONTACT",
+            "CONTACT_CREATE",
+            # Conversational terminal
+            "REPLY",
+        ]
+    ),
     # -----------------------------------------------------------------------
     # Scorer: _UMBRELLA_SUBACTIONS — umbrella → (discriminator_field, sorted subactions).
     # Only the main umbrellas that planners actually emit.
@@ -170,59 +171,133 @@ EXPECTED_CONTRACT: dict[str, Any] = {
         },
         "BLOCK": {
             "field": "subaction",
-            "values": sorted(["block", "unblock", "status", "request_permission", "release", "list_active"]),
+            "values": sorted(
+                [
+                    "block",
+                    "unblock",
+                    "status",
+                    "request_permission",
+                    "release",
+                    "list_active",
+                ]
+            ),
         },
         "CALENDAR": {
             "field": "subaction",
-            "values": sorted([
-                "create_event", "update_event", "delete_event",
-                "propose_times", "search_events", "check_availability",
-                "next_event", "update_preferences",
-            ]),
+            "values": sorted(
+                [
+                    "create_event",
+                    "update_event",
+                    "delete_event",
+                    "propose_times",
+                    "search_events",
+                    "check_availability",
+                    "next_event",
+                    "update_preferences",
+                ]
+            ),
         },
         "ENTITY": {
             "field": "subaction",
-            "values": sorted([
-                "create", "add", "create_contact", "read", "list",
-                "update", "set_identity", "set_relationship", "log_interaction", "merge",
-            ]),
+            "values": sorted(
+                [
+                    "create",
+                    "add",
+                    "create_contact",
+                    "read",
+                    "list",
+                    "update",
+                    "set_identity",
+                    "set_relationship",
+                    "log_interaction",
+                    "merge",
+                ]
+            ),
         },
         "HEALTH": {
             "field": "subaction",
-            "values": sorted(["today", "trend", "trends", "by_metric", "status", "summary"]),
+            "values": sorted(
+                [
+                    "today",
+                    "trend",
+                    "trends",
+                    "by_metric",
+                    "status",
+                    "summary",
+                    "delete_metric",
+                ]
+            ),
         },
         "LIFE": {
             "field": "subaction",
-            "values": sorted([
-                "create", "complete", "snooze", "review", "delete",
-                "update", "skip", "list",
-                "policy_set_reminder", "policy_configure_escalation",
-            ]),
+            "values": sorted(
+                [
+                    "create",
+                    "complete",
+                    "snooze",
+                    "review",
+                    "delete",
+                    "update",
+                    "skip",
+                    "list",
+                    "policy_set_reminder",
+                    "policy_configure_escalation",
+                ]
+            ),
         },
         "MESSAGE": {
             "field": "operation",
-            "values": sorted([
-                "send", "draft_reply", "manage", "triage",
-                "search_inbox", "list_channels", "read_channel", "read_with_contact",
-            ]),
+            "values": sorted(
+                [
+                    "send",
+                    "draft_reply",
+                    "manage",
+                    "triage",
+                    "search_inbox",
+                    "list_channels",
+                    "read_channel",
+                    "read_with_contact",
+                ]
+            ),
         },
         "MONEY": {
             "field": "subaction",
-            "values": sorted([
-                "dashboard", "list_sources", "list_transactions", "spending_summary",
-                "recurring_charges", "add_source", "remove_source", "import_csv",
-                "subscription_audit", "subscription_cancel", "subscription_status",
-            ]),
+            "values": sorted(
+                [
+                    "dashboard",
+                    "list_sources",
+                    "list_transactions",
+                    "spending_summary",
+                    "recurring_charges",
+                    "add_source",
+                    "remove_source",
+                    "import_csv",
+                    "subscription_audit",
+                    "subscription_cancel",
+                    "subscription_status",
+                ]
+            ),
         },
         "SCHEDULED_TASK": {
             "field": "subaction",
-            "values": sorted([
-                "list", "get", "create", "update", "snooze", "skip",
-                "complete", "acknowledge", "dismiss", "cancel", "reopen", "history",
-            ]),
+            "values": sorted(
+                [
+                    "list",
+                    "get",
+                    "create",
+                    "update",
+                    "snooze",
+                    "skip",
+                    "complete",
+                    "acknowledge",
+                    "dismiss",
+                    "cancel",
+                    "reopen",
+                    "history",
+                ]
+            ),
         },
     },
-
     # -----------------------------------------------------------------------
     # TS fake backend: case labels in LifeOpsFakeBackend.applyAction's switch.
     # The TS backend handles a SUBSET of the Python runner actions.
@@ -230,121 +305,124 @@ EXPECTED_CONTRACT: dict[str, Any] = {
     # absent — these are Python-only because the mutations are modelled only
     # in LifeWorld (not in LifeOpsFakeBackend's in-process stores).
     # -----------------------------------------------------------------------
-    "ts_fake_backend_switch_cases": sorted([
-        # Calendar
-        "CALENDAR",
-        "calendar.create_event",
-        "calendar.move_event",
-        "calendar.cancel_event",
-        "calendar.list_events",
-        # Mail
-        "mail.search",
-        "mail.create_draft",
-        "mail.send",
-        "mail.archive",
-        "mail.mark_read",
-        # Reminders
-        "reminders.create",
-        "reminders.complete",
-        "reminders.list",
-        # Messages (granular dotted)
-        "messages.send",
-        "messages.send_draft",
-        "messages.draft_reply",
-        "messages.manage",
-        "messages.triage",
-        "messages.search_inbox",
-        "messages.list_channels",
-        "messages.read_channel",
-        "messages.read_with_contact",
-        # MESSAGE umbrella
-        "MESSAGE",
-        # Notes
-        "notes.create",
-        # ENTITY umbrella
-        "ENTITY",
-        # Contacts
-        "contacts.search",
-        "contacts.create",
-        # MONEY umbrella
-        "MONEY",
-    ]),
-
+    "ts_fake_backend_switch_cases": sorted(
+        [
+            # Calendar
+            "CALENDAR",
+            "calendar.create_event",
+            "calendar.move_event",
+            "calendar.cancel_event",
+            "calendar.list_events",
+            # Mail
+            "mail.search",
+            "mail.create_draft",
+            "mail.send",
+            "mail.archive",
+            "mail.mark_read",
+            # Reminders
+            "reminders.create",
+            "reminders.complete",
+            "reminders.list",
+            # Messages (granular dotted)
+            "messages.send",
+            "messages.send_draft",
+            "messages.draft_reply",
+            "messages.manage",
+            "messages.triage",
+            "messages.search_inbox",
+            "messages.list_channels",
+            "messages.read_channel",
+            "messages.read_with_contact",
+            # MESSAGE umbrella
+            "MESSAGE",
+            # Notes
+            "notes.create",
+            # ENTITY umbrella
+            "ENTITY",
+            # Contacts
+            "contacts.search",
+            "contacts.create",
+            # MONEY umbrella
+            "MONEY",
+        ]
+    ),
     # -----------------------------------------------------------------------
     # TS fake backend: Python-only actions not in the TS backend.
     # These are expected gaps — TS does not model these mutations.
     # Any NEW entry here means a new TS gap that should be justified.
     # -----------------------------------------------------------------------
-    "ts_python_only_gaps": sorted([
-        "BOOK_TRAVEL",
-        "BLOCK",
-        "BLOCK_BLOCK",
-        "BLOCK_UNBLOCK",
-        "BLOCK_LIST_ACTIVE",
-        "BLOCK_RELEASE",
-        "BLOCK_STATUS",
-        "BLOCK_REQUEST_PERMISSION",
-        "HEALTH",
-        "LIFE",
-        "LIFE_COMPLETE",
-        "LIFE_CREATE",
-        "LIFE_DELETE",
-        "LIFE_REVIEW",
-        "LIFE_SKIP",
-        "LIFE_SNOOZE",
-        "LIFE_UPDATE",
-        "MONEY_DASHBOARD",
-        "MONEY_LIST_TRANSACTIONS",
-        "MONEY_LIST_SOURCES",
-        "MONEY_RECURRING_CHARGES",
-        "MONEY_SPENDING_SUMMARY",
-        "MONEY_SUBSCRIPTION_STATUS",
-        "MONEY_SUBSCRIPTION_AUDIT",
-        "MONEY_SUBSCRIPTION_CANCEL",
-        "SCHEDULED_TASK_CREATE",
-        "SCHEDULED_TASK_SNOOZE",
-        "SCHEDULED_TASK_UPDATE",
-        "SCHEDULED_TASKS",
-        "SCHEDULED_TASKS_ACKNOWLEDGE",
-        "SCHEDULED_TASKS_CANCEL",
-        "SCHEDULED_TASKS_COMPLETE",
-        "SCHEDULED_TASKS_DISMISS",
-        "SCHEDULED_TASKS_GET",
-        "SCHEDULED_TASKS_HISTORY",
-        "SCHEDULED_TASKS_LIST",
-        "SCHEDULED_TASKS_REOPEN",
-        "SCHEDULED_TASKS_SKIP",
-        "SCHEDULED_TASKS_SNOOZE",
-        "SCHEDULED_TASKS_UPDATE",
-        "SCHEDULED_TASKS_CREATE",
-        # Promoted CALENDAR_* / MESSAGE_* / CONTACT_* aliases exist in
-        # Python _ACTION_HANDLERS but resolve through umbrellaToLowercase
-        # in the TS backend — they never need explicit case labels there.
-        # CALENDAR_BULK_RESCHEDULE / CALENDAR_FEED / CALENDAR_TRIP_WINDOW
-        # are auto-derived from manifest entries by _build_action_handlers.
-        "CALENDAR_BULK_RESCHEDULE",
-        "CALENDAR_CHECK_AVAILABILITY",
-        "CALENDAR_CREATE_EVENT",
-        "CALENDAR_DELETE_EVENT",
-        "CALENDAR_FEED",
-        "CALENDAR_NEXT_EVENT",
-        "CALENDAR_PROPOSE_TIMES",
-        "CALENDAR_SEARCH_EVENTS",
-        "CALENDAR_TRIP_WINDOW",
-        "CALENDAR_UPDATE_EVENT",
-        "CALENDAR_UPDATE_PREFERENCES",
-        "MESSAGE_SEND",
-        "MESSAGE_DRAFT_REPLY",
-        "MESSAGE_MANAGE",
-        "MESSAGE_TRIAGE",
-        "MESSAGE_SEARCH_INBOX",
-        "MESSAGE_LIST_CHANNELS",
-        "MESSAGE_READ_CHANNEL",
-        "MESSAGE_READ_WITH_CONTACT",
-        "ENTITY_CREATE_CONTACT",
-        "CONTACT_CREATE",
-        "REPLY",
-    ]),
+    "ts_python_only_gaps": sorted(
+        [
+            "BOOK_TRAVEL",
+            "BLOCK",
+            "BLOCK_BLOCK",
+            "BLOCK_UNBLOCK",
+            "BLOCK_LIST_ACTIVE",
+            "BLOCK_RELEASE",
+            "BLOCK_STATUS",
+            "BLOCK_REQUEST_PERMISSION",
+            "HEALTH",
+            "LIFE",
+            "LIFE_COMPLETE",
+            "LIFE_CREATE",
+            "LIFE_DELETE",
+            "LIFE_REVIEW",
+            "LIFE_SKIP",
+            "LIFE_SNOOZE",
+            "LIFE_UPDATE",
+            "MONEY_DASHBOARD",
+            "MONEY_LIST_TRANSACTIONS",
+            "MONEY_LIST_SOURCES",
+            "MONEY_RECURRING_CHARGES",
+            "MONEY_SPENDING_SUMMARY",
+            "MONEY_SUBSCRIPTION_STATUS",
+            "MONEY_SUBSCRIPTION_AUDIT",
+            "MONEY_SUBSCRIPTION_CANCEL",
+            "SCHEDULED_TASK_CREATE",
+            "SCHEDULED_TASK_SNOOZE",
+            "SCHEDULED_TASK_UPDATE",
+            "SCHEDULED_TASKS",
+            "SCHEDULED_TASKS_ACKNOWLEDGE",
+            "SCHEDULED_TASKS_CANCEL",
+            "SCHEDULED_TASKS_COMPLETE",
+            "SCHEDULED_TASKS_DISMISS",
+            "SCHEDULED_TASKS_GET",
+            "SCHEDULED_TASKS_HISTORY",
+            "SCHEDULED_TASKS_LIST",
+            "SCHEDULED_TASKS_REOPEN",
+            "SCHEDULED_TASKS_SKIP",
+            "SCHEDULED_TASKS_SNOOZE",
+            "SCHEDULED_TASKS_UPDATE",
+            "SCHEDULED_TASKS_CREATE",
+            # Promoted CALENDAR_* / MESSAGE_* / CONTACT_* aliases exist in
+            # Python _ACTION_HANDLERS but resolve through umbrellaToLowercase
+            # in the TS backend — they never need explicit case labels there.
+            # CALENDAR_BULK_RESCHEDULE / CALENDAR_FEED / CALENDAR_TRIP_WINDOW
+            # are auto-derived from manifest entries by _build_action_handlers.
+            "CALENDAR_BULK_RESCHEDULE",
+            "CALENDAR_CHECK_AVAILABILITY",
+            "CALENDAR_CREATE_EVENT",
+            "CALENDAR_DELETE_EVENT",
+            "CALENDAR_FEED",
+            "CALENDAR_NEXT_EVENT",
+            "CALENDAR_PROPOSE_TIMES",
+            "CALENDAR_SEARCH_EVENTS",
+            "CALENDAR_TRIP_WINDOW",
+            "CALENDAR_UPDATE_EVENT",
+            "CALENDAR_UPDATE_PREFERENCES",
+            "MESSAGE_SEND",
+            "MESSAGE_DRAFT_REPLY",
+            "MESSAGE_MANAGE",
+            "MESSAGE_TRIAGE",
+            "MESSAGE_SEARCH_INBOX",
+            "MESSAGE_LIST_CHANNELS",
+            "MESSAGE_READ_CHANNEL",
+            "MESSAGE_READ_WITH_CONTACT",
+            "ENTITY_CREATE_CONTACT",
+            "CONTACT_CREATE",
+            "REPLY",
+        ]
+    ),
 }
 
 # ---------------------------------------------------------------------------
@@ -413,7 +491,7 @@ def _extract_ts_switch_cases() -> list[str]:
                 method_body_end = i
                 break
 
-    method_body = src[method_body_start:method_body_end + 1]
+    method_body = src[method_body_start : method_body_end + 1]
 
     # Extract all `case "..."` string literals inside the switch.
     # Pattern: `case` followed by a double-quoted string literal.
@@ -468,13 +546,9 @@ def _subaction_diff(
         added = sorted(act_vals - exp_vals)
         removed = sorted(exp_vals - act_vals)
         if added:
-            lines.append(
-                f"  {label}/{umbrella}: subaction ADDED — {added}"
-            )
+            lines.append(f"  {label}/{umbrella}: subaction ADDED — {added}")
         if removed:
-            lines.append(
-                f"  {label}/{umbrella}: subaction REMOVED — {removed}"
-            )
+            lines.append(f"  {label}/{umbrella}: subaction REMOVED — {removed}")
     return lines
 
 
@@ -637,9 +711,7 @@ def test_scorer_and_runner_discriminators_agree_for_key_umbrellas() -> None:
         runner_entry = _DISCRIMINATORS.get(umbrella)
 
         if scorer_entry is None:
-            failures.append(
-                f"{umbrella}: missing from scorer _UMBRELLA_SUBACTIONS"
-            )
+            failures.append(f"{umbrella}: missing from scorer _UMBRELLA_SUBACTIONS")
             continue
         # Runner may not have an entry for all umbrellas (e.g. LIFE, BOOK_TRAVEL
         # are handled via explicit _ACTION_HANDLERS entries rather than a single
@@ -684,12 +756,12 @@ def test_calendar_subaction_field_names_agree() -> None:
 
     runner_field, _ = _DISCRIMINATORS["CALENDAR"]
     scorer_field, _ = _UMBRELLA_SUBACTIONS["CALENDAR"]
-    assert runner_field == "subaction", (
-        f"runner _DISCRIMINATORS['CALENDAR'] uses field {runner_field!r}, expected 'subaction'"
-    )
-    assert scorer_field == "subaction", (
-        f"scorer _UMBRELLA_SUBACTIONS['CALENDAR'] uses field {scorer_field!r}, expected 'subaction'"
-    )
+    assert (
+        runner_field == "subaction"
+    ), f"runner _DISCRIMINATORS['CALENDAR'] uses field {runner_field!r}, expected 'subaction'"
+    assert (
+        scorer_field == "subaction"
+    ), f"scorer _UMBRELLA_SUBACTIONS['CALENDAR'] uses field {scorer_field!r}, expected 'subaction'"
 
 
 def test_message_operation_field_name_agrees() -> None:
@@ -699,44 +771,40 @@ def test_message_operation_field_name_agrees() -> None:
 
     runner_field, _ = _DISCRIMINATORS["MESSAGE"]
     scorer_field, _ = _UMBRELLA_SUBACTIONS["MESSAGE"]
-    assert runner_field == "operation", (
-        f"runner _DISCRIMINATORS['MESSAGE'] uses field {runner_field!r}, expected 'operation'"
-    )
-    assert scorer_field == "operation", (
-        f"scorer _UMBRELLA_SUBACTIONS['MESSAGE'] uses field {scorer_field!r}, expected 'operation'"
-    )
+    assert (
+        runner_field == "operation"
+    ), f"runner _DISCRIMINATORS['MESSAGE'] uses field {runner_field!r}, expected 'operation'"
+    assert (
+        scorer_field == "operation"
+    ), f"scorer _UMBRELLA_SUBACTIONS['MESSAGE'] uses field {scorer_field!r}, expected 'operation'"
 
 
 def test_ts_backend_handles_calendar_umbrella() -> None:
     """TS backend must have a `CALENDAR` case (P0-5 fix)."""
     ts_cases = set(_extract_ts_switch_cases())
-    assert "CALENDAR" in ts_cases, (
-        "TS fake backend is missing the CALENDAR umbrella case — P0-5 regression"
-    )
+    assert (
+        "CALENDAR" in ts_cases
+    ), "TS fake backend is missing the CALENDAR umbrella case — P0-5 regression"
 
 
 def test_ts_backend_handles_message_umbrella() -> None:
     """TS backend must have a `MESSAGE` case (P0-4 fix)."""
     ts_cases = set(_extract_ts_switch_cases())
-    assert "MESSAGE" in ts_cases, (
-        "TS fake backend is missing the MESSAGE umbrella case — P0-4 regression"
-    )
+    assert (
+        "MESSAGE" in ts_cases
+    ), "TS fake backend is missing the MESSAGE umbrella case — P0-4 regression"
 
 
 def test_ts_backend_handles_entity_umbrella() -> None:
     """TS backend must have an `ENTITY` case (P1-5)."""
     ts_cases = set(_extract_ts_switch_cases())
-    assert "ENTITY" in ts_cases, (
-        "TS fake backend is missing the ENTITY umbrella case"
-    )
+    assert "ENTITY" in ts_cases, "TS fake backend is missing the ENTITY umbrella case"
 
 
 def test_ts_backend_handles_money_umbrella() -> None:
     """TS backend must have a `MONEY` case."""
     ts_cases = set(_extract_ts_switch_cases())
-    assert "MONEY" in ts_cases, (
-        "TS fake backend is missing the MONEY umbrella case"
-    )
+    assert "MONEY" in ts_cases, "TS fake backend is missing the MONEY umbrella case"
 
 
 # ---------------------------------------------------------------------------

@@ -16,7 +16,6 @@ import type {
   ActionResult,
   AgentRuntime,
   Memory,
-  Plugin,
   RouteBodyValue,
   RouteRequest,
   RouteResponse,
@@ -51,6 +50,11 @@ import {
   judgeIndependenceRequired,
 } from "./judge-independence.ts";
 import { redactForScenarioReport } from "./redaction.ts";
+import {
+  loadScenarioRequiredPlugin,
+  pluginPackageIsRegistered,
+  resolveRequiredPluginPackages,
+} from "./required-plugins.ts";
 import { applyScenarioSeedStep } from "./seeds.ts";
 import type {
   FinalCheckReport,
@@ -508,83 +512,6 @@ function withTimeout<T>(
       },
     );
   });
-}
-
-function resolveRequiredPlugins(scenario: ScenarioDefinition): string[] {
-  const requires = (scenario as { requires?: { plugins?: unknown } }).requires;
-  const plugins = requires?.plugins;
-  if (!Array.isArray(plugins)) return [];
-  return plugins.filter((p): p is string => typeof p === "string");
-}
-
-function pluginIsRegistered(runtime: AgentRuntime, name: string): boolean {
-  const plugins =
-    (runtime as { plugins?: Array<{ name?: unknown }> }).plugins ?? [];
-  const normalized = name.replace(/^@elizaos\/plugin-/, "");
-  return plugins.some((p) => {
-    const pn = typeof p.name === "string" ? p.name : "";
-    return pn === name || pn === normalized;
-  });
-}
-
-async function loadRequiredPlugin(pkg: string): Promise<Plugin | null> {
-  if (pkg === "@elizaos/plugin-app-control") {
-    const mod = (await import("@elizaos/plugin-app-control")) as {
-      appAction?: Action;
-      appControlPlugin?: Plugin;
-      backgroundAction?: Action;
-      viewsAction?: Action;
-      settingsAction?: Action;
-    };
-    // settingsAction is load-bearing for the app-permissions / semantic-SETTINGS
-    // scenarios (#14622): without it the polymorphic SETTINGS action is never
-    // registered here, so chat can never route a permission grant/revoke to it —
-    // required, not optional, for the same reason app/background/views are.
-    if (
-      !mod.appAction ||
-      !mod.backgroundAction ||
-      !mod.viewsAction ||
-      !mod.settingsAction
-    )
-      return null;
-    return {
-      name: "app-control",
-      description: "App control deterministic scenario actions",
-      actions: [
-        mod.appAction,
-        mod.backgroundAction,
-        mod.viewsAction,
-        mod.settingsAction,
-      ],
-      responseHandlerEvaluators:
-        mod.appControlPlugin?.responseHandlerEvaluators,
-    };
-  }
-  const mod = (await import(pkg)) as Record<string, unknown>;
-  const isPlugin = (value: unknown): value is Plugin => {
-    if (value === null || typeof value !== "object") return false;
-    const obj = value as Record<string, unknown>;
-    if (typeof obj.name !== "string") return false;
-    // A Plugin carries at least one registrable surface; this distinguishes it
-    // from unrelated named exports that merely happen to have a `name` field.
-    return (
-      Array.isArray(obj.actions) ||
-      Array.isArray(obj.providers) ||
-      Array.isArray(obj.services) ||
-      Array.isArray(obj.evaluators) ||
-      Array.isArray(obj.routes) ||
-      typeof obj.init === "function" ||
-      typeof obj.models === "object"
-    );
-  };
-  // Known export names first, then any Plugin-shaped named export: roughly half
-  // of first-party plugins export only `const <name>Plugin` with no default,
-  // which the fixed-name lookup alone would fail to resolve.
-  const candidate =
-    [mod.default, mod.elizaPlugin, mod.plugin, mod.schedulingPlugin].find(
-      isPlugin,
-    ) ?? Object.values(mod).find(isPlugin);
-  return candidate ? (candidate as Plugin) : null;
 }
 
 function normalizeChannelType(value: unknown): ChannelType {
@@ -2252,7 +2179,7 @@ export async function runScenario(
 
     // Seeds may register fixture plugins, so check declared plugin requirements
     // after seeding and try to load package-named requirements that are present.
-    const requiredPlugins = resolveRequiredPlugins(scenario);
+    const requiredPlugins = resolveRequiredPluginPackages(scenario);
     // Track packages we successfully auto-loaded: a plugin's internal
     // `plugin.name` often differs from its package name (e.g. "plugin-health",
     // "@elizaos/plugin-linear-ts"), so a post-load name check can falsely report
@@ -2260,9 +2187,9 @@ export async function runScenario(
     const autoLoaded = new Set<string>();
     for (const pkg of requiredPlugins) {
       if (!pkg.startsWith("@")) continue;
-      if (pluginIsRegistered(runtime, pkg)) continue;
+      if (pluginPackageIsRegistered(runtime, pkg)) continue;
       try {
-        const candidate = await loadRequiredPlugin(pkg);
+        const candidate = await loadScenarioRequiredPlugin(pkg, "simulated");
         if (candidate) {
           await runtime.registerPlugin(candidate);
           autoLoaded.add(pkg);
@@ -2274,7 +2201,7 @@ export async function runScenario(
       }
     }
     const missing = requiredPlugins.filter(
-      (p) => !pluginIsRegistered(runtime, p) && !autoLoaded.has(p),
+      (p) => !pluginPackageIsRegistered(runtime, p) && !autoLoaded.has(p),
     );
     if (missing.length > 0) {
       report.status = "skipped";

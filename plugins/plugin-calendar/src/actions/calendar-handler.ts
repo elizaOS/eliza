@@ -10,18 +10,23 @@
  * grounding the reply in real event data. `plugin-lifeops` consumes this as the
  * calendar assistant action.
  */
+import { createHash } from "node:crypto";
 import { renderGroundedActionReply } from "@elizaos/agent";
 import type {
   Action,
   ActionExample,
   ActionResult,
+  EffectReceipt,
   HandlerCallback,
   HandlerOptions,
   IAgentRuntime,
   Memory,
   State,
 } from "@elizaos/core";
-import { resolveOptimizedPromptForRuntime } from "@elizaos/core";
+import {
+  normalizeEffectReceipt,
+  resolveOptimizedPromptForRuntime,
+} from "@elizaos/core";
 import type {
   CreateLifeOpsCalendarEventAttendee,
   CreateLifeOpsCalendarEventRequest,
@@ -29,7 +34,9 @@ import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
   LifeOpsCalendarRecurrenceScope,
+  LifeOpsNextCalendarEventContext,
 } from "@elizaos/shared";
+import { CALENDAR_DETAILS_PARAMETER_SCHEMA } from "../calendar-action-schema.js";
 import { resolveDefaultTimeZone } from "../internal/constants.js";
 import {
   detailArray,
@@ -63,6 +70,7 @@ import { CalendarService } from "../service/CalendarService.js";
 import type {
   CalendarActionDeps,
   CalendarModelCallArgs,
+  CalendarMutationApprovalResult,
   CalendarTravelBufferResult,
   CalendarTravelIntent,
 } from "./deps.js";
@@ -3200,6 +3208,303 @@ function normalizeCalendarAttendees(
   return normalized.length > 0 ? normalized : undefined;
 }
 
+type CalendarEffectIdentityValue = string | number | boolean | null;
+
+function calendarEffectId(
+  namespace: string,
+  values: readonly CalendarEffectIdentityValue[],
+): string {
+  const digest = createHash("sha256")
+    .update(JSON.stringify([namespace, ...values]))
+    .digest("hex");
+  return `${namespace}:${digest}`;
+}
+
+function validCalendarTimestamp(
+  value: string | null | undefined,
+): string | null {
+  if (!value) return null;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : null;
+}
+
+function latestCalendarTimestamp(
+  values: readonly (string | null | undefined)[],
+  fallback: string,
+): string {
+  let latest: string | null = null;
+  let latestMs = Number.NEGATIVE_INFINITY;
+  for (const value of values) {
+    const normalized = validCalendarTimestamp(value);
+    if (!normalized) continue;
+    const timestamp = Date.parse(normalized);
+    if (timestamp > latestMs) {
+      latest = normalized;
+      latestMs = timestamp;
+    }
+  }
+  return latest ?? fallback;
+}
+
+function calendarMessageObservedAt(message: Memory): string {
+  const createdAt = message.createdAt;
+  if (typeof createdAt === "number" && Number.isFinite(createdAt)) {
+    return new Date(createdAt).toISOString();
+  }
+  return new Date().toISOString();
+}
+
+function calendarRequestNoopReceipt(args: {
+  message: Memory;
+  operation: string;
+  discriminator?: string;
+  reason: string;
+}): EffectReceipt {
+  const observedAt = calendarMessageObservedAt(args.message);
+  const resourceId = calendarEffectId("calendar-request-resource-v1", [
+    String(args.message.id),
+    args.operation,
+    args.discriminator ?? null,
+  ]);
+  return normalizeEffectReceipt({
+    receiptId: calendarEffectId("calendar-request-receipt-v1", [
+      resourceId,
+      observedAt,
+      args.reason,
+    ]),
+    operation: args.operation,
+    resource: {
+      kind: "calendar.request",
+      id: resourceId,
+    },
+    artifacts: [],
+    idempotency: { key: null, replayed: false },
+    observedAt,
+    outcome: "noop",
+    reason: args.reason,
+  });
+}
+
+function calendarFailedReceipt(args: {
+  message: Memory;
+  operation: string;
+  discriminator?: string;
+  code: string;
+  retryable: boolean;
+  acceptance?: "rejected" | "unknown";
+}): EffectReceipt {
+  const observedAt = new Date().toISOString();
+  const resourceId = calendarEffectId("calendar-operation-resource-v1", [
+    String(args.message.id),
+    args.operation,
+    args.discriminator ?? null,
+  ]);
+  return normalizeEffectReceipt({
+    receiptId: calendarEffectId("calendar-failed-receipt-v1", [
+      resourceId,
+      args.code,
+      observedAt,
+    ]),
+    operation: args.operation,
+    resource: {
+      kind: "calendar.operation",
+      id: resourceId,
+    },
+    artifacts: [],
+    idempotency: { key: null, replayed: false },
+    observedAt,
+    outcome: "failed",
+    failure: {
+      code: args.code,
+      retryable: args.retryable,
+      acceptance: args.acceptance ?? "rejected",
+    },
+  });
+}
+
+function calendarFeedReadReceipt(args: {
+  feed: LifeOpsCalendarFeed;
+  operation: string;
+  events?: readonly LifeOpsCalendarEvent[];
+  discriminator?: string;
+  reason?: string;
+}): EffectReceipt {
+  const events = args.events ?? args.feed.events;
+  const eventVersions = [...events]
+    .map((event) => [
+      event.id,
+      event.externalId,
+      event.status,
+      event.updatedAt,
+      event.syncedAt,
+    ])
+    .sort((left, right) =>
+      JSON.stringify(left).localeCompare(JSON.stringify(right)),
+    );
+  const sourceVersions = args.feed.sources
+    .map((source) => [
+      source.status,
+      source.syncedAt,
+      source.changeDelivery?.status ?? null,
+      source.changeDelivery?.lastSuccessfulSyncAt ?? null,
+    ])
+    .sort((left, right) =>
+      JSON.stringify(left).localeCompare(JSON.stringify(right)),
+    );
+  const resourceId = calendarEffectId("calendar-feed-resource-v1", [
+    args.feed.calendarId,
+    args.feed.timeMin,
+    args.feed.timeMax,
+    args.discriminator ?? null,
+  ]);
+  const version = calendarEffectId("calendar-feed-version-v1", [
+    args.feed.state,
+    args.feed.source,
+    args.feed.syncedAt,
+    JSON.stringify(sourceVersions),
+    JSON.stringify(eventVersions),
+  ]);
+  const observedAt = latestCalendarTimestamp(
+    [
+      args.feed.syncedAt,
+      ...args.feed.sources.flatMap((source) => [
+        source.syncedAt,
+        source.changeDelivery?.lastSuccessfulSyncAt,
+        source.changeDelivery?.lastNotificationAt,
+      ]),
+      ...events.flatMap((event) => [event.updatedAt, event.syncedAt]),
+    ],
+    new Date().toISOString(),
+  );
+  return normalizeEffectReceipt({
+    receiptId: calendarEffectId("calendar-feed-read-receipt-v1", [
+      args.operation,
+      resourceId,
+      version,
+      observedAt,
+    ]),
+    operation: args.operation,
+    resource: {
+      kind: "calendar.feed",
+      id: resourceId,
+      version,
+    },
+    artifacts: [],
+    idempotency: { key: null, replayed: false },
+    observedAt,
+    outcome: "noop",
+    reason:
+      args.reason ??
+      "The operation read an authoritative calendar snapshot without changing it.",
+  });
+}
+
+function calendarNextEventReadReceipt(
+  context: LifeOpsNextCalendarEventContext,
+): EffectReceipt {
+  const event = context.event;
+  const sourceVersions = context.calendarSources
+    .map((source) => [
+      source.status,
+      source.syncedAt,
+      source.changeDelivery?.status ?? null,
+      source.changeDelivery?.lastSuccessfulSyncAt ?? null,
+    ])
+    .sort((left, right) =>
+      JSON.stringify(left).localeCompare(JSON.stringify(right)),
+    );
+  const resourceId = calendarEffectId("calendar-next-event-resource-v1", [
+    event?.calendarId ?? null,
+    event?.id ?? null,
+  ]);
+  const version = calendarEffectId("calendar-next-event-version-v1", [
+    context.calendarFeedState,
+    event?.externalId ?? null,
+    event?.status ?? null,
+    event?.updatedAt ?? null,
+    event?.syncedAt ?? null,
+    JSON.stringify(sourceVersions),
+  ]);
+  const observedAt = latestCalendarTimestamp(
+    [
+      event?.updatedAt,
+      event?.syncedAt,
+      ...context.calendarSources.flatMap((source) => [
+        source.syncedAt,
+        source.changeDelivery?.lastSuccessfulSyncAt,
+        source.changeDelivery?.lastNotificationAt,
+      ]),
+    ],
+    new Date().toISOString(),
+  );
+  return normalizeEffectReceipt({
+    receiptId: calendarEffectId("calendar-next-event-read-receipt-v1", [
+      resourceId,
+      version,
+      observedAt,
+    ]),
+    operation: "calendar.event.next.read",
+    resource: {
+      kind: "calendar.next_event",
+      id: resourceId,
+      version,
+    },
+    artifacts: [],
+    idempotency: { key: null, replayed: false },
+    observedAt,
+    outcome: "noop",
+    reason:
+      "The operation read the next-event projection without changing calendar state.",
+  });
+}
+
+function calendarApprovalReceipt(
+  approval: CalendarMutationApprovalResult,
+): EffectReceipt {
+  const operation = `calendar.approval.${approval.action}`;
+  const receiptId = calendarEffectId("calendar-approval-receipt-v1", [
+    approval.requestId,
+    approval.action,
+    approval.state,
+    approval.acceptedAt,
+    approval.idempotencyKey,
+    approval.replayed,
+  ]);
+  const base = {
+    receiptId,
+    operation,
+    resource: {
+      kind: "calendar.approval_request",
+      id: approval.requestId,
+      version: approval.state,
+    },
+    artifacts: [],
+    idempotency: {
+      key: approval.idempotencyKey,
+      replayed: approval.replayed,
+    },
+    observedAt: approval.acceptedAt,
+  } as const;
+  return normalizeEffectReceipt(
+    approval.replayed
+      ? {
+          ...base,
+          outcome: "noop",
+          reason:
+            "The approval queue returned the existing idempotent request without persisting a duplicate.",
+        }
+      : {
+          ...base,
+          outcome: "applied",
+          commit: {
+            kind: "durable",
+            id: approval.requestId,
+            committedAt: approval.acceptedAt,
+          },
+        },
+  );
+}
+
 export type CalendarHandlerAction = Action & {
   suppressPostActionContinuation?: boolean;
 };
@@ -3249,6 +3554,7 @@ const calendarAction: CalendarHandlerAction = {
     "capability:write",
     "capability:update",
     "capability:delete",
+    "effect:receipt-required",
     "surface:remote-api",
   ],
   description:
@@ -3356,13 +3662,24 @@ const calendarAction: CalendarHandlerAction = {
       success: boolean;
       text: string;
       data?: T;
-    }) => {
+      effectReceipt: EffectReceipt;
+    }): Promise<ActionResult> => {
+      const effectReceipt = normalizeEffectReceipt(payload.effectReceipt);
+      const text = payload.text.trim();
       await callback?.({
-        text: payload.text,
+        text,
         source: "action",
         action: "CALENDAR",
       });
-      return payload;
+      return {
+        success: payload.success,
+        text,
+        userFacingText: text,
+        verifiedUserFacing: true,
+        effectReceipts: [effectReceipt],
+        userFacingEffectReceiptIds: [effectReceipt.receiptId],
+        ...(payload.data !== undefined ? { data: payload.data } : {}),
+      };
     };
     const renderReply = (
       scenario: string,
@@ -3392,6 +3709,13 @@ const calendarAction: CalendarHandlerAction = {
           llmPlan,
           suggestedSubaction: llmPlan.subaction,
         }),
+        effectReceipt: calendarRequestNoopReceipt({
+          message,
+          operation: "calendar.request.evaluate",
+          discriminator: llmPlan.subaction ?? undefined,
+          reason:
+            "The request required a conversational reply without executing a calendar operation.",
+        }),
         data: {
           noop: true,
           ...(llmPlan.subaction
@@ -3409,6 +3733,13 @@ const calendarAction: CalendarHandlerAction = {
         text: await renderReply("reply_only", fallback, {
           llmPlan,
           suggestedSubaction: llmPlan.subaction,
+        }),
+        effectReceipt: calendarRequestNoopReceipt({
+          message,
+          operation: "calendar.request.evaluate",
+          discriminator: llmPlan.subaction ?? undefined,
+          reason:
+            "No unambiguous calendar operation was selected, so calendar state was unchanged.",
         }),
         data: {
           noop: true,
@@ -3434,6 +3765,7 @@ const calendarAction: CalendarHandlerAction = {
           text: await renderReply("next_event", fallback, {
             event: context,
           }),
+          effectReceipt: calendarNextEventReadReceipt(context),
           data: toActionData(context),
         });
       }
@@ -3480,6 +3812,12 @@ const calendarAction: CalendarHandlerAction = {
                 missing: ["title"],
               },
             ),
+            effectReceipt: calendarRequestNoopReceipt({
+              message,
+              operation: "calendar.event.create",
+              reason:
+                "The create request was missing a title, so no approval or calendar event was created.",
+            }),
             data: {
               actionName: "CALENDAR",
               subaction: "create_event",
@@ -3523,6 +3861,13 @@ const calendarAction: CalendarHandlerAction = {
                 calendarContext?.calendarTimeZone ??
                 resolveCalendarTimeZone(details),
             }),
+            effectReceipt: calendarRequestNoopReceipt({
+              message,
+              operation: "calendar.event.create",
+              discriminator: title,
+              reason:
+                "The create request was missing a time, so no approval or calendar event was created.",
+            }),
             data: {
               actionName: "CALENDAR",
               subaction: "create_event",
@@ -3553,6 +3898,13 @@ const calendarAction: CalendarHandlerAction = {
               return respond({
                 success: false,
                 text: `I couldn't prepare the travel buffer, so I did not queue or create the event: ${error.message}`,
+                effectReceipt: calendarFailedReceipt({
+                  message,
+                  operation: "calendar.travel_buffer.prepare",
+                  discriminator: title,
+                  code: error.code,
+                  retryable: true,
+                }),
                 data: {
                   actionName: "CALENDAR",
                   subaction: "create_event",
@@ -3573,6 +3925,7 @@ const calendarAction: CalendarHandlerAction = {
         return respond({
           success: true,
           text: approval.text,
+          effectReceipt: calendarApprovalReceipt(approval),
           data: {
             actionName: "CALENDAR",
             subaction: "create_event",
@@ -3602,6 +3955,12 @@ const calendarAction: CalendarHandlerAction = {
                   missing: ["target event"],
                 },
               ),
+              effectReceipt: calendarRequestNoopReceipt({
+                message,
+                operation: "calendar.event.update",
+                reason:
+                  "The update request did not identify a target, so no approval or calendar event was changed.",
+              }),
             });
           }
           const feedRequest =
@@ -3647,6 +4006,13 @@ const calendarAction: CalendarHandlerAction = {
               text: await renderReply("update_event_not_found", fallback, {
                 titleHint,
               }),
+              effectReceipt: calendarRequestNoopReceipt({
+                message,
+                operation: "calendar.event.update",
+                discriminator: titleHint,
+                reason:
+                  "No matching event was found, so no update approval was created.",
+              }),
             });
           }
           if (candidates.length > 1) {
@@ -3662,6 +4028,13 @@ const calendarAction: CalendarHandlerAction = {
                 titleHint,
                 candidates,
               }),
+              effectReceipt: calendarRequestNoopReceipt({
+                message,
+                operation: "calendar.event.update",
+                discriminator: titleHint,
+                reason:
+                  "Multiple events matched the request, so no update approval was created.",
+              }),
             });
           }
           targetEvent = candidates.at(0) ?? null;
@@ -3673,6 +4046,13 @@ const calendarAction: CalendarHandlerAction = {
                 "i couldn't find a unique event to update.",
                 { titleHint },
               ),
+              effectReceipt: calendarRequestNoopReceipt({
+                message,
+                operation: "calendar.event.update",
+                discriminator: titleHint,
+                reason:
+                  "A unique target could not be resolved, so no update approval was created.",
+              }),
             });
           }
           resolvedEventId = targetEvent.externalId;
@@ -3688,6 +4068,12 @@ const calendarAction: CalendarHandlerAction = {
                 missing: ["event target"],
               },
             ),
+            effectReceipt: calendarRequestNoopReceipt({
+              message,
+              operation: "calendar.event.update",
+              reason:
+                "The update request did not resolve an event identifier, so calendar state was unchanged.",
+            }),
           });
         }
         if (!targetEvent) {
@@ -3785,6 +4171,13 @@ const calendarAction: CalendarHandlerAction = {
                 ),
               },
             ),
+            effectReceipt: calendarRequestNoopReceipt({
+              message,
+              operation: "calendar.event.update",
+              discriminator: resolvedEventId,
+              reason:
+                "The recurrence scope was ambiguous, so no update approval was created.",
+            }),
             data: {
               actionName: "CALENDAR",
               subaction: "update_event",
@@ -3832,6 +4225,7 @@ const calendarAction: CalendarHandlerAction = {
         return respond({
           success: true,
           text: approval.text,
+          effectReceipt: calendarApprovalReceipt(approval),
           data: {
             actionName: "CALENDAR",
             subaction: "update_event",
@@ -3866,6 +4260,12 @@ const calendarAction: CalendarHandlerAction = {
                   missing: ["target event"],
                 },
               ),
+              effectReceipt: calendarRequestNoopReceipt({
+                message,
+                operation: "calendar.event.delete",
+                reason:
+                  "The delete request did not identify a target, so no approval or calendar event was changed.",
+              }),
             });
           }
           const feedRequest =
@@ -3911,6 +4311,13 @@ const calendarAction: CalendarHandlerAction = {
               text: await renderReply("delete_event_not_found", fallback, {
                 titleHint,
               }),
+              effectReceipt: calendarRequestNoopReceipt({
+                message,
+                operation: "calendar.event.delete",
+                discriminator: titleHint,
+                reason:
+                  "No matching event was found, so no cancellation approval was created.",
+              }),
             });
           }
 
@@ -3926,6 +4333,13 @@ const calendarAction: CalendarHandlerAction = {
                 candidateCount: candidates.length,
                 titleHint,
                 candidates,
+              }),
+              effectReceipt: calendarRequestNoopReceipt({
+                message,
+                operation: "calendar.event.delete",
+                discriminator: titleHint,
+                reason:
+                  "Multiple events matched the request, so no cancellation approval was created.",
               }),
             });
           }
@@ -3956,6 +4370,12 @@ const calendarAction: CalendarHandlerAction = {
               "delete_event_not_found",
               "i couldn't find a unique event to delete.",
             ),
+            effectReceipt: calendarRequestNoopReceipt({
+              message,
+              operation: "calendar.event.delete",
+              reason:
+                "A unique target could not be resolved, so no cancellation approval was created.",
+            }),
           });
         }
         if (
@@ -3978,6 +4398,13 @@ const calendarAction: CalendarHandlerAction = {
                 ),
               },
             ),
+            effectReceipt: calendarRequestNoopReceipt({
+              message,
+              operation: "calendar.event.delete",
+              discriminator: targetEvent.externalId,
+              reason:
+                "The recurrence scope was ambiguous, so no cancellation approval was created.",
+            }),
             data: {
               actionName: "CALENDAR",
               subaction: "delete_event",
@@ -4014,6 +4441,7 @@ const calendarAction: CalendarHandlerAction = {
         return respond({
           success: true,
           text: approval.text,
+          effectReceipt: calendarApprovalReceipt(approval),
           data: {
             actionName: "CALENDAR",
             subaction: "delete_event",
@@ -4049,6 +4477,14 @@ const calendarAction: CalendarHandlerAction = {
             text: await renderReply("trip_window_not_found", fallback, {
               location: tripWindowIntent.location,
             }),
+            effectReceipt: calendarFeedReadReceipt({
+              feed,
+              events: [],
+              operation: "calendar.trip_window.read",
+              discriminator: tripWindowIntent.location,
+              reason:
+                "The trip-window lookup completed without finding a matching itinerary and changed no calendar state.",
+            }),
             data: toActionData({
               ...feed,
               location: tripWindowIntent.location,
@@ -4065,6 +4501,12 @@ const calendarAction: CalendarHandlerAction = {
           text: await renderReply("trip_window_results", fallback, {
             location: tripWindowIntent.location,
             events: itineraryEvents,
+          }),
+          effectReceipt: calendarFeedReadReceipt({
+            feed,
+            events: itineraryEvents,
+            operation: "calendar.trip_window.read",
+            discriminator: tripWindowIntent.location,
           }),
           data: toActionData({
             ...feed,
@@ -4146,6 +4588,12 @@ const calendarAction: CalendarHandlerAction = {
                   events: filteredEvents,
                   label,
                 }),
+                effectReceipt: calendarFeedReadReceipt({
+                  feed,
+                  events: filteredEvents,
+                  operation: "calendar.event.search",
+                  discriminator: currentMessageText || intent,
+                }),
                 data: toActionData({
                   ...feed,
                   query: currentMessageText || intent,
@@ -4171,6 +4619,11 @@ const calendarAction: CalendarHandlerAction = {
                   label,
                   events: feed.events,
                 }),
+                effectReceipt: calendarFeedReadReceipt({
+                  feed,
+                  operation: "calendar.feed.read",
+                  discriminator: label,
+                }),
                 data: toActionData(feed),
               });
             }
@@ -4187,6 +4640,11 @@ const calendarAction: CalendarHandlerAction = {
                 label,
                 events: feed.events,
               }),
+              effectReceipt: calendarFeedReadReceipt({
+                feed,
+                operation: "calendar.feed.read",
+                discriminator: label,
+              }),
               data: toActionData(feed),
             });
           }
@@ -4199,6 +4657,12 @@ const calendarAction: CalendarHandlerAction = {
                 missing: ["search target"],
               },
             ),
+            effectReceipt: calendarRequestNoopReceipt({
+              message,
+              operation: "calendar.event.search",
+              reason:
+                "The search target remained ambiguous, so no calendar lookup result was claimed.",
+            }),
           });
         }
         const rankedEvents: RankedCalendarSearchCandidate[] = feed.events
@@ -4280,6 +4744,12 @@ const calendarAction: CalendarHandlerAction = {
             events: filteredEvents,
             label,
           }),
+          effectReceipt: calendarFeedReadReceipt({
+            feed,
+            events: filteredEvents,
+            operation: "calendar.event.search",
+            discriminator: JSON.stringify(queriesForSearch),
+          }),
           data: toActionData({
             ...feed,
             query,
@@ -4296,6 +4766,11 @@ const calendarAction: CalendarHandlerAction = {
           label,
           events: feed.events,
         }),
+        effectReceipt: calendarFeedReadReceipt({
+          feed,
+          operation: "calendar.feed.read",
+          discriminator: label,
+        }),
         data: toActionData(feed),
       });
     } catch (error) {
@@ -4304,6 +4779,12 @@ const calendarAction: CalendarHandlerAction = {
           return respond({
             success: false,
             text: buildAppleCalendarPermissionRequestText(subaction),
+            effectReceipt: calendarFailedReceipt({
+              message,
+              operation: `calendar.${subaction}`,
+              code: error.code ?? "APPLE_CALENDAR_PERMISSION_REQUIRED",
+              retryable: false,
+            }),
           });
         }
         const fallback = buildCalendarServiceErrorFallback(error, intent);
@@ -4312,6 +4793,18 @@ const calendarAction: CalendarHandlerAction = {
           text: await renderReply("service_error", fallback, {
             status: error.status,
             subaction,
+          }),
+          effectReceipt: calendarFailedReceipt({
+            message,
+            operation: `calendar.${subaction}`,
+            code: error.code ?? `CALENDAR_SERVICE_${error.status}`,
+            retryable: error.status >= 500,
+            acceptance:
+              subaction === "create_event" ||
+              subaction === "update_event" ||
+              subaction === "delete_event"
+                ? "unknown"
+                : "rejected",
           }),
         });
       }
@@ -4375,7 +4868,7 @@ const calendarAction: CalendarHandlerAction = {
         'recurrence (RFC 5545 RRULE line(s) like "RRULE:FREQ=WEEKLY;BYDAY=MO" for repeating events), and recurrenceScope ' +
         '("instance" for one occurrence, "this_and_following" to split at the selected occurrence, "series" for the whole series).',
       required: false,
-      schema: { type: "object" as const },
+      schema: CALENDAR_DETAILS_PARAMETER_SCHEMA,
     },
   ],
   examples: [

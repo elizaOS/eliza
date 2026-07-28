@@ -25,6 +25,7 @@ import {
   type ConnectorOAuthCallbackResult,
   type ConnectorOAuthStartRequest,
   type ConnectorOAuthStartResult,
+  ElizaError,
   type IAgentRuntime,
   logger,
 } from "@elizaos/core";
@@ -98,6 +99,10 @@ function nonEmptyString(value: unknown): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
 function readSetting(runtime: IAgentRuntime, key: string): string | undefined {
   return nonEmptyString(runtime.getSetting?.(key));
 }
@@ -142,9 +147,54 @@ function normalizeRequestedCapabilities(scopes: readonly string[] | undefined): 
     if (identityScopes.has(value.trim().toLowerCase())) {
       continue;
     }
-    throw new Error(`Google OAuth capability or scope is not recognized: ${value}`);
+    throw new ElizaError(`Google OAuth capability or scope is not recognized: ${value}`, {
+      code: "GOOGLE_OAUTH_SCOPE_UNRECOGNIZED",
+      context: { scope: value },
+      severity: "fatal",
+    });
+  }
+  if (requested.size === 0) {
+    throw new ElizaError(
+      "Google OAuth requires at least one Gmail, Calendar, Drive, or Meet capability.",
+      {
+        code: "GOOGLE_OAUTH_CAPABILITY_REQUIRED",
+        context: { scopes: [...scopes] },
+        severity: "fatal",
+      }
+    );
   }
   return [...requested];
+}
+
+function normalizeGrantedCapabilities(scopes: readonly string[]): {
+  capabilities: GoogleCapability[];
+  ignoredScopes: string[];
+} {
+  const capabilities = new Set<GoogleCapability>();
+  const ignoredScopes: string[] = [];
+  const identityScopes = new Set(GOOGLE_IDENTITY_SCOPES.map((scope) => scope.toLowerCase()));
+
+  // error-policy:J3 Provider-returned scopes are untrusted external input. Keep
+  // exact recognized capabilities, retain unknown scopes as metadata, and make
+  // an empty connector grant an explicit failure instead of inventing access.
+  for (const scope of scopes) {
+    const normalized = scope.trim();
+    if (!normalized) continue;
+    if (isGoogleCapability(normalized)) {
+      capabilities.add(normalized);
+      continue;
+    }
+    const matched = matchCapabilityFromScope(normalized);
+    if (matched) {
+      capabilities.add(matched);
+      continue;
+    }
+    if (!identityScopes.has(normalized.toLowerCase())) {
+      ignoredScopes.push(normalized);
+    }
+  }
+
+  return { capabilities: [...capabilities], ignoredScopes };
 }
 
 function matchCapabilityFromScope(scope: string): GoogleCapability | undefined {
@@ -172,12 +222,42 @@ function purposesForCapabilities(
   return [...groups].map((group) => GROUP_PURPOSE[group]);
 }
 
-function parseScopeString(value: string | undefined): string[] {
-  if (!value) return [];
+function parseScopeString(value: unknown): string[] {
+  if (value === undefined || value === null || value === "") return [];
+  if (typeof value !== "string") {
+    throw new ElizaError("Google token exchange returned an invalid scope field.", {
+      code: "GOOGLE_OAUTH_SCOPE_PAYLOAD_INVALID",
+      context: { valueType: typeof value },
+      severity: "fatal",
+    });
+  }
   return value
     .split(/\s+/)
     .map((scope) => scope.trim())
     .filter(Boolean);
+}
+
+function requestedScopesFromMetadata(metadata: unknown): string[] {
+  if (!isRecord(metadata) || metadata.requestedScopes === undefined) {
+    throw new ElizaError(
+      "Google OAuth callback is missing the scopes bound to the authorization request.",
+      {
+        code: "GOOGLE_OAUTH_REQUESTED_SCOPES_MISSING",
+        severity: "fatal",
+      }
+    );
+  }
+  const scopes = metadata.requestedScopes;
+  if (!Array.isArray(scopes) || scopes.some((scope) => typeof scope !== "string")) {
+    throw new ElizaError("Google OAuth callback contains invalid requested-scope metadata.", {
+      code: "GOOGLE_OAUTH_REQUESTED_SCOPES_INVALID",
+      context: {
+        valueType: Array.isArray(scopes) ? "array-with-non-string" : typeof scopes,
+      },
+      severity: "fatal",
+    });
+  }
+  return scopes;
 }
 
 function roleFromMetadata(metadata: unknown): ConnectorAccountRole {
@@ -386,13 +466,38 @@ export function createGoogleConnectorAccountProvider(
       });
 
       const grantedScopes = parseScopeString(tokens.scope);
-      const grantedCapabilities = normalizeRequestedCapabilities(
+      const normalizedGrant =
         grantedScopes.length > 0
-          ? grantedScopes
-          : ((request.flow.metadata as Record<string, unknown> | undefined)?.requestedScopes as
-              | string[]
-              | undefined)
-      );
+          ? normalizeGrantedCapabilities(grantedScopes)
+          : {
+              capabilities: normalizeRequestedCapabilities(
+                requestedScopesFromMetadata(request.flow.metadata)
+              ),
+              ignoredScopes: [],
+            };
+      const grantedCapabilities = normalizedGrant.capabilities;
+      if (normalizedGrant.ignoredScopes.length > 0) {
+        logger.warn(
+          {
+            src: "plugin:google:oauth",
+            ignoredScopes: normalizedGrant.ignoredScopes,
+          },
+          "[GoogleConnectorAccountProvider] Ignoring unmapped scopes returned by Google"
+        );
+      }
+      if (grantedCapabilities.length === 0) {
+        throw new ElizaError(
+          "Google OAuth completed without a usable Gmail, Calendar, Drive, or Meet capability.",
+          {
+            code: "GOOGLE_OAUTH_CAPABILITY_NOT_GRANTED",
+            context: {
+              grantedScopes,
+              ignoredScopes: normalizedGrant.ignoredScopes,
+            },
+            severity: "fatal",
+          }
+        );
+      }
       const purposes = purposesForCapabilities(grantedCapabilities);
 
       let identity = parseIdTokenClaims(tokens.id_token);

@@ -59,6 +59,7 @@ import {
   FOOD_APPROVAL_WORKFLOW_ID,
   getFoodDomainService,
 } from "../lifeops/food/index.js";
+import { HOUSEHOLD_SCHEDULE_PROPOSAL_APPROVAL_WORKFLOW_ID } from "../lifeops/household/types.js";
 import { LifeOpsRepository } from "../lifeops/repository.js";
 import {
   getResourceCapacityService,
@@ -137,7 +138,8 @@ function isHouseholdProposalApprovalWorkflow(
   return (
     request.action === "execute_workflow" &&
     request.payload.action === "execute_workflow" &&
-    request.payload.workflowId === "household.schedule.proposal.approval"
+    request.payload.workflowId ===
+      HOUSEHOLD_SCHEDULE_PROPOSAL_APPROVAL_WORKFLOW_ID
   );
 }
 
@@ -148,7 +150,7 @@ function readHouseholdProposalApprovalTarget(
   if (
     request.action !== "execute_workflow" ||
     payload.action !== "execute_workflow" ||
-    payload.workflowId !== "household.schedule.proposal.approval"
+    payload.workflowId !== HOUSEHOLD_SCHEDULE_PROPOSAL_APPROVAL_WORKFLOW_ID
   ) {
     return null;
   }
@@ -400,6 +402,7 @@ function trackingApprovalQueue(
   };
   return {
     enqueue: (input) => queue.enqueue(input),
+    enqueueWithResult: (input) => queue.enqueueWithResult(input),
     enqueueConfirmed: (input, resolution) =>
       queue.enqueueConfirmed(input, resolution),
     list: (filter) => queue.list(filter),
@@ -438,8 +441,7 @@ function readApprovalEffectProof(
     typeof raw.state !== "string" ||
     typeof raw.updatedAt !== "string" ||
     !Number.isFinite(Date.parse(raw.updatedAt)) ||
-    (raw.idempotencyKey !== null &&
-      typeof raw.idempotencyKey !== "string")
+    (raw.idempotencyKey !== null && typeof raw.idempotencyKey !== "string")
   ) {
     return null;
   }
@@ -566,8 +568,7 @@ async function completeResolveRequestResult(args: {
 
   if (args.result.success !== true) {
     const result =
-      typeof args.result.text === "string" &&
-      args.result.text.trim().length > 0
+      typeof args.result.text === "string" && args.result.text.trim().length > 0
         ? args.result
         : {
             ...args.result,
@@ -578,11 +579,7 @@ async function completeResolveRequestResult(args: {
       args.callback,
       result,
       lifeOpsFailedEffect({
-        receiptId: approvalReceiptId(
-          args.message,
-          operation,
-          requestId,
-        ),
+        receiptId: approvalReceiptId(args.message, operation, requestId),
         operation,
         resource: { kind: "lifeops.approval_request", id: requestId },
         artifacts: [],
@@ -610,18 +607,12 @@ async function completeResolveRequestResult(args: {
       args.callback,
       args.result,
       lifeOpsNoopEffect({
-        receiptId: approvalReceiptId(
-          args.message,
-          operation,
-          requestId,
-        ),
+        receiptId: approvalReceiptId(args.message, operation, requestId),
         operation,
         resource: {
           kind: "lifeops.approval_request",
           id: requestId,
-          ...(proof
-            ? { version: `${proof.state}:${proof.updatedAt}` }
-            : {}),
+          ...(proof ? { version: `${proof.state}:${proof.updatedAt}` } : {}),
         },
         artifacts: approvalArtifacts(data, provider),
         idempotency: { key: idempotencyKey, replayed: true },
@@ -633,7 +624,9 @@ async function completeResolveRequestResult(args: {
   }
 
   const committedAt = provider?.acceptedAt ?? proof?.updatedAt;
-  const commitId = provider?.id ?? (proof ? `${proof.requestId}:${proof.state}:${proof.updatedAt}` : null);
+  const commitId =
+    provider?.id ??
+    (proof ? `${proof.requestId}:${proof.state}:${proof.updatedAt}` : null);
   if (!committedAt || !commitId) {
     const failure: ActionResult = {
       ...args.result,
@@ -648,11 +641,7 @@ async function completeResolveRequestResult(args: {
       args.callback,
       failure,
       lifeOpsFailedEffect({
-        receiptId: approvalReceiptId(
-          args.message,
-          operation,
-          requestId,
-        ),
+        receiptId: approvalReceiptId(args.message, operation, requestId),
         operation,
         resource: { kind: "lifeops.approval_request", id: requestId },
         artifacts: [],
@@ -671,11 +660,7 @@ async function completeResolveRequestResult(args: {
     args.callback,
     args.result,
     lifeOpsAppliedEffect({
-      receiptId: approvalReceiptId(
-        args.message,
-        operation,
-        commitId,
-      ),
+      receiptId: approvalReceiptId(args.message, operation, commitId),
       operation,
       resource: {
         kind: "lifeops.approval_request",
@@ -1442,7 +1427,9 @@ export async function executeApprovedRequest(args: {
         `[approval] action/payload mismatch: action=execute_workflow, payload.action=${payload.action}`,
       );
     }
-    if (payload.workflowId === "household.schedule.proposal.approval") {
+    if (
+      payload.workflowId === HOUSEHOLD_SCHEDULE_PROPOSAL_APPROVAL_WORKFLOW_ID
+    ) {
       return denied("HOUSEHOLD_APPROVAL_REQUIRES_TYPED_RESOLVER");
     }
     if (payload.workflowId === RESOURCE_CAPACITY_REVIEW_WORKFLOW_ID) {
@@ -1937,16 +1924,14 @@ async function resolveApprovalRequest(
         updated,
       );
     }
-    const durableExecutionReplay =
-      intent === "approve" &&
-      (targeted.state === "approved" ||
-        targeted.state === "executing" ||
-        targeted.state === "done") &&
-      (Boolean(verifySchedulingApprovalContent(targeted.payload)) ||
-        targeted.action === "schedule_event" ||
-        targeted.action === "modify_event" ||
-        targeted.action === "cancel_event");
-    const updated = durableExecutionReplay
+    // A failed pre-dispatch capability check deliberately leaves the request
+    // approved (for example, Twilio credentials may be added later). Reusing
+    // that persisted approval is the only legal retry: approving it again is
+    // an invalid approved -> approved transition, while minting a fresh row
+    // would ask the owner to repeat consent they already granted.
+    const approvedExecutionRetry =
+      intent === "approve" && targeted.state === "approved";
+    const updated = approvedExecutionRetry
       ? targeted
       : intent === "approve"
         ? await queue.approve(extracted.requestId, resolution)

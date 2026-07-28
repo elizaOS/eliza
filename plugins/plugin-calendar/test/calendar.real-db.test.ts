@@ -107,6 +107,9 @@ const reminderPlans: LifeOpsReminderPlan[] = [];
 function fakeGate(): CalendarHostGate {
   return {
     getGoogleConnectorAccounts: async () => [],
+    resolveGuestAvailabilityGrants: async () => {
+      throw new Error("Guest availability is outside this test.");
+    },
     requireGoogleCalendarGrant: async () => {
       throw new Error("no google grant in this test");
     },

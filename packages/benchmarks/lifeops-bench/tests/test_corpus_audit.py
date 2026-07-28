@@ -23,18 +23,25 @@ def test_generated_corpus_audit_is_current() -> None:
 def test_live_openings_and_personas_have_no_hidden_bypass() -> None:
     audit = build_corpus_audit()
     corpus = audit["baseCorpus"]
+    live_count = sum(scenario.mode.value == "live" for scenario in CORE_SCENARIOS)
 
-    assert corpus["live"] == 738
+    assert corpus["live"] == live_count
     assert corpus["liveModelGeneratedOpenings"] == corpus["live"]
     assert corpus["liveAuthoredGoalLeaks"] == 0
+    assert corpus["modelGeneratedOpenings"] == sum(
+        scenario.opening_mode == "simulated" for scenario in CORE_SCENARIOS
+    )
+    assert (
+        corpus["staticModelGeneratedOpenings"] + corpus["staticAuthoredOpenings"]
+        == corpus["static"]
+    )
     assert audit["personaIdsOutsideLibrary"] == []
-    assert len(audit["personas"]) == 23
+    assert len(audit["personas"]) == 32
 
 
 def test_scenario_ids_are_stable_machine_identifiers() -> None:
     assert all(
-        re.fullmatch(r"[a-z0-9_.-]+", scenario.id)
-        for scenario in CORE_SCENARIOS
+        re.fullmatch(r"[a-z0-9_.-]+", scenario.id) for scenario in CORE_SCENARIOS
     )
 
 
@@ -42,8 +49,18 @@ def test_no_effect_operations_are_explicit_failures() -> None:
     audit = build_corpus_audit()
     gaps = audit["noEffectGaps"]
 
-    assert gaps["affectedScenarioCount"] == 304
-    assert gaps["actionOccurrenceCount"] == 346
+    assert gaps["affectedScenarioCount"] == len(
+        {item["scenarioId"] for item in gaps["occurrences"]}
+    )
+    assert gaps["actionOccurrenceCount"] == len(gaps["occurrences"])
+    assert gaps["operationCounts"] == {
+        operation: sum(item["operation"] == operation for item in gaps["occurrences"])
+        for operation in sorted({item["operation"] for item in gaps["occurrences"]})
+    }
+    assert not any(
+        item["operation"].startswith(("MESSAGE/", "ENTITY/"))
+        for item in gaps["occurrences"]
+    )
     assert audit["unclassifiedSuccessfulNoEffects"] == []
     assert audit["executionErrors"] == []
     assert all(

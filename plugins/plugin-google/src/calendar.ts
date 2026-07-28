@@ -192,6 +192,10 @@ export class GoogleCalendarClient {
         timeZone: params.timeZone,
         pageToken,
         maxResults: params.limit,
+        // This display-oriented adapter opts into chronological ordering; it
+        // never carries a syncToken, so the nextSyncToken suppression that
+        // orderBy causes cannot break incremental sync here.
+        orderBy: "startTime",
       });
       events.push(...page.events);
       pageToken = nextPageToken(page.nextPageToken, seenPageTokens, "event list");
@@ -207,6 +211,15 @@ export class GoogleCalendarClient {
     if (params.syncToken && (params.timeMin || params.timeMax)) {
       throw invalidCalendarRequest(
         "Google Calendar event syncToken cannot be combined with timeMin or timeMax.",
+        {
+          accountId: params.accountId,
+          calendarId: params.calendarId ?? "primary",
+        }
+      );
+    }
+    if (params.syncToken && params.orderBy) {
+      throw invalidCalendarRequest(
+        "Google Calendar event syncToken cannot be combined with orderBy.",
         {
           accountId: params.accountId,
           calendarId: params.calendarId ?? "primary",
@@ -229,7 +242,10 @@ export class GoogleCalendarClient {
         ...(params.pageToken ? { pageToken: params.pageToken } : {}),
         ...(params.syncToken ? { syncToken: params.syncToken } : {}),
         singleEvents: true,
-        ...(!params.syncToken ? { orderBy: "startTime" as const } : {}),
+        // orderBy is strictly opt-in: Google suppresses nextSyncToken on any
+        // events.list request that carries it, which would silently disable
+        // incremental sync for callers draining the full window.
+        ...(params.orderBy ? { orderBy: params.orderBy } : {}),
         ...(params.syncToken
           ? { showDeleted: true }
           : params.showDeleted !== undefined
@@ -1050,9 +1066,48 @@ function conditionalRequestOptions(
   return { headers: { "If-Match": normalized } };
 }
 
+// Google reports per-user/per-project quota exhaustion as HTTP 403 with a
+// usageLimits reason code. Those are documented retry-with-backoff conditions,
+// so they must surface as transient transport failures, not as a definitive
+// "the mutation was rejected" outcome.
+const TRANSIENT_403_REASONS = new Set([
+  "rateLimitExceeded",
+  "userRateLimitExceeded",
+  "quotaExceeded",
+]);
+
+function googleErrorReasons(error: unknown): string[] {
+  if (!isRecord(error)) return [];
+  const reasons: string[] = [];
+  const collect = (value: unknown): void => {
+    if (!Array.isArray(value)) return;
+    for (const entry of value) {
+      if (isRecord(entry) && typeof entry.reason === "string" && entry.reason.trim()) {
+        reasons.push(entry.reason.trim());
+      }
+    }
+  };
+  // googleapis surfaces reason codes both on the error itself and inside the
+  // response body, depending on gaxios version; read both locations.
+  collect(error.errors);
+  const response = isRecord(error.response) ? error.response : undefined;
+  const data = response && isRecord(response.data) ? response.data : undefined;
+  const dataError = data && isRecord(data.error) ? data.error : undefined;
+  collect(dataError?.errors);
+  return reasons;
+}
+
 function isDefinitiveClientRejection(error: unknown): boolean {
   const status = googleErrorStatus(error);
-  return status !== undefined && status >= 400 && status < 500 && status !== 408 && status !== 429;
+  if (status === undefined || status < 400 || status >= 500) return false;
+  if (status === 408 || status === 429) return false;
+  if (
+    status === 403 &&
+    googleErrorReasons(error).some((reason) => TRANSIENT_403_REASONS.has(reason))
+  ) {
+    return false;
+  }
+  return true;
 }
 
 async function recoverIdempotentCreate(args: {

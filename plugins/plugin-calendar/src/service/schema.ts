@@ -136,6 +136,29 @@ export const calendarSources = calendarPgSchema.table(
   ],
 );
 
+export const calendarSecretCleanup = calendarPgSchema.table(
+  "life_calendar_secret_cleanup",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    sourceId: text("source_id").notNull(),
+    secretRef: text("secret_ref").notNull(),
+    reason: text("reason").notNull(),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    lastAttemptAt: text("last_attempt_at"),
+    lastErrorCode: text("last_error_code"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    unique("calendar_secret_cleanup_agent_ref_unique").on(
+      t.agentId,
+      t.secretRef,
+    ),
+    index("calendar_secret_cleanup_drain_idx").on(t.agentId, t.createdAt, t.id),
+  ],
+);
+
 export const calendarFeedPreferences = calendarPgSchema.table(
   "life_calendar_feed_preferences",
   {
@@ -222,6 +245,7 @@ export const calendarSchema = {
   calendarEvents,
   calendarSyncStates,
   calendarSources,
+  calendarSecretCleanup,
   calendarFeedPreferences,
   googleCalendarWatchChannels,
 };

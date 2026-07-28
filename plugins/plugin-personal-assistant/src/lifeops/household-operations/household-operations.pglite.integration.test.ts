@@ -363,6 +363,35 @@ describe("household operations — real PGlite and runtime graph", () => {
       accessWindows: vendor.accessWindows,
     });
 
+    // An "available" claim with no cited calendar sources is a bare model
+    // assertion, not evidence — it must be a typed invalid, never a brief
+    // whose ready_for_outreach_draft gate opened on nothing.
+    await expect(
+      service.generateWeeklyBrief({
+        principalEntityId: SELF_ENTITY_ID,
+        householdId,
+        window: {
+          startsAt: "2027-03-10T00:00:00.000Z",
+          endsAt: "2027-03-17T00:00:00.000Z",
+        },
+        calendarChecks: [
+          {
+            subjectKey: maintenanceSubjectKey,
+            window: {
+              startsAt: "2027-03-11T17:00:00.000Z",
+              endsAt: "2027-03-15T21:00:00.000Z",
+            },
+            state: "available",
+            checkedAt: currentDate().toISOString(),
+            sourceRefs: [],
+            conflictRefs: [],
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({
+      code: "HOUSEHOLD_OPERATIONS_INVALID_CONTRACT",
+    });
+
     const readyBrief = await service.generateWeeklyBrief({
       principalEntityId: SELF_ENTITY_ID,
       householdId,

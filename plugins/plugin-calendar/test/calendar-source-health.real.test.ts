@@ -6,76 +6,27 @@
 import { PGlite } from "@electric-sql/pglite";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { GoogleCalendarSyncTokenExpiredError } from "@elizaos/plugin-google";
+import { RuntimeMigrator } from "@elizaos/plugin-sql/runtime-migrator";
 import type {
   LifeOpsConnectorGrant,
   LifeOpsGoogleConnectorStatus,
 } from "@elizaos/shared";
-import { sql } from "drizzle-orm";
+import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { drizzle } from "drizzle-orm/pglite";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { createConflictDetectAction } from "../src/actions/conflict-detect.js";
 import {
-  __resetConflictDetectLoaderForTests,
-  createConflictDetectAction,
-} from "../src/actions/conflict-detect.js";
-import {
+  CALENDAR_GUEST_AVAILABILITY_PURPOSE,
+  type CalendarGuestAvailabilityGrant,
   type CalendarHostGate,
   CalendarService,
-  ensureCalendarFeedPreferenceTable,
+  calendarSchema,
 } from "../src/service/index.js";
 
 const AGENT_ID = "calendar-source-health-agent";
 const INTERNAL_URL = new URL("http://internal.local/api/calendar");
 const TIME_MIN = "2026-07-27T00:00:00.000Z";
 const TIME_MAX = "2026-07-28T00:00:00.000Z";
-
-const CREATE_EVENTS_TABLE = `CREATE TABLE app_calendar.life_calendar_events (
-  id TEXT PRIMARY KEY,
-  agent_id TEXT NOT NULL,
-  provider TEXT NOT NULL DEFAULT 'google',
-  side TEXT NOT NULL DEFAULT 'owner',
-  calendar_id TEXT NOT NULL,
-  external_event_id TEXT NOT NULL,
-  connector_account_id TEXT,
-  purge_resync_required BOOLEAN NOT NULL DEFAULT false,
-  purge_resync_reason TEXT,
-  grant_id TEXT,
-  title TEXT NOT NULL DEFAULT '',
-  description TEXT NOT NULL DEFAULT '',
-  location TEXT NOT NULL DEFAULT '',
-  status TEXT NOT NULL DEFAULT '',
-  start_at TEXT NOT NULL,
-  end_at TEXT NOT NULL,
-  is_all_day BOOLEAN NOT NULL DEFAULT false,
-  timezone TEXT,
-  html_link TEXT,
-  conference_link TEXT,
-  organizer_json TEXT,
-  attendees_json TEXT NOT NULL DEFAULT '[]',
-  metadata_json TEXT NOT NULL DEFAULT '{}',
-  synced_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  CONSTRAINT calendar_events_source_external_unique
-    UNIQUE (agent_id, provider, side, grant_id, calendar_id, external_event_id)
-)`;
-
-const CREATE_SYNC_TABLE = `CREATE TABLE app_calendar.life_calendar_sync_states (
-  id TEXT PRIMARY KEY,
-  agent_id TEXT NOT NULL,
-  provider TEXT NOT NULL DEFAULT 'google',
-  side TEXT NOT NULL DEFAULT 'owner',
-  calendar_id TEXT NOT NULL,
-  connector_account_id TEXT,
-  grant_id TEXT,
-  purge_resync_required BOOLEAN NOT NULL DEFAULT false,
-  purge_resync_reason TEXT,
-  window_start_at TEXT NOT NULL,
-  window_end_at TEXT NOT NULL,
-  next_sync_token TEXT,
-  synced_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  CONSTRAINT calendar_sync_states_source_unique
-    UNIQUE (agent_id, provider, side, grant_id, calendar_id)
-)`;
 
 function grant(accountId: string): LifeOpsConnectorGrant {
   const timestamp = "2026-07-26T00:00:00.000Z";
@@ -129,6 +80,40 @@ function status(
 
 const GRANT_A = grant("account-a");
 const GRANT_B = grant("account-b");
+const GUEST_ONE_GRANT_ID = "gav_a93a2e0839424cb5895b76937ea99611";
+const GUEST_TWO_GRANT_ID = "gav_a652ef2d80384c61a2bfc5ec80f14b88";
+const GUEST_MISSING_GRANT_ID = "gav_b4d038153764446b8eafc95ea9d596aa";
+const GUEST_ONE_CALENDAR = "child-one@example.test";
+const GUEST_TWO_CALENDAR = "child-two@example.test";
+const GUEST_MISSING_CALENDAR = "unshared-child@example.test";
+
+function guestGrant(
+  grantId: string,
+  calendarId: string,
+  connectorGrant: LifeOpsConnectorGrant,
+): CalendarGuestAvailabilityGrant {
+  return {
+    grantId,
+    principalEntityId: SELF_ENTITY_ID,
+    guestEntityId: `guest-${grantId}`,
+    provider: "google",
+    side: "owner",
+    connectorAccountId: connectorGrant.connectorAccountId,
+    providerGrantId: connectorGrant.id,
+    calendarId,
+    purpose: CALENDAR_GUEST_AVAILABILITY_PURPOSE,
+    consentRecordedAt: "2026-07-01T00:00:00.000Z",
+    expiresAt: "2099-07-01T00:00:00.000Z",
+  };
+}
+
+const GUEST_GRANTS = new Map(
+  [
+    guestGrant(GUEST_ONE_GRANT_ID, GUEST_ONE_CALENDAR, GRANT_A),
+    guestGrant(GUEST_TWO_GRANT_ID, GUEST_TWO_CALENDAR, GRANT_B),
+    guestGrant(GUEST_MISSING_GRANT_ID, GUEST_MISSING_CALENDAR, GRANT_B),
+  ].map((authorization) => [authorization.grantId, authorization]),
+);
 
 function googleEvent(accountId: string) {
   return {
@@ -194,12 +179,12 @@ async function runConflictAction(parameters: Record<string, unknown>) {
 beforeAll(async () => {
   pg = new PGlite();
   const db = drizzle(pg);
-  await db.execute(sql.raw("CREATE SCHEMA IF NOT EXISTS app_calendar"));
-  await db.execute(sql.raw(CREATE_EVENTS_TABLE));
-  await db.execute(sql.raw(CREATE_SYNC_TABLE));
-  await ensureCalendarFeedPreferenceTable(
-    async (statement) =>
-      (await pg.query<Record<string, unknown>>(statement)).rows,
+  // Tables come from the production drizzle schema applied through plugin-sql's
+  // RuntimeMigrator — the same path agent boot runs — so schema drift fails the
+  // suite instead of leaving it green against a hand-maintained copy.
+  await new RuntimeMigrator(db).migrate(
+    "@elizaos/plugin-calendar",
+    calendarSchema,
   );
 
   runtime = {
@@ -332,6 +317,18 @@ beforeAll(async () => {
 
   const gate: CalendarHostGate = {
     getGoogleConnectorAccounts: async () => [status(GRANT_A), status(GRANT_B)],
+    resolveGuestAvailabilityGrants: async (request) =>
+      request.grantIds.map((grantId) => {
+        const authorization = GUEST_GRANTS.get(grantId);
+        if (
+          !authorization ||
+          authorization.principalEntityId !== request.principalEntityId ||
+          authorization.purpose !== request.purpose
+        ) {
+          throw new Error("Guest availability grant is not authorized.");
+        }
+        return authorization;
+      }),
     requireGoogleCalendarGrant: async (_requestUrl, _mode, _side, grantId) => {
       const resolved = [GRANT_A, GRANT_B].find(
         (candidate) => candidate.id === grantId,
@@ -361,7 +358,6 @@ beforeEach(async () => {
   accountAAccessRole = "owner";
   freeBusyErrors.clear();
   freeBusyRequests.length = 0;
-  __resetConflictDetectLoaderForTests();
   eventPageRequests.length = 0;
   await pg.query("DELETE FROM app_calendar.life_calendar_events");
   await pg.query("DELETE FROM app_calendar.life_calendar_sync_states");
@@ -512,13 +508,10 @@ describe("CalendarService source truth", () => {
     ).toBe(true);
   });
 
-  it("resolves each guest through eligible owner accounts without returning guest identifiers", async () => {
-    const firstGuest = "child-one@example.test";
-    const secondGuest = "child-two@example.test";
-    freeBusyErrors.set("account-a", new Set([secondGuest]));
-
+  it("queries each guest only through the account bound by its host grant", async () => {
     const result = await calendar.getCalendarFreeBusy(INTERNAL_URL, {
-      calendarIds: [firstGuest, secondGuest],
+      principalEntityId: SELF_ENTITY_ID,
+      guestAvailabilityGrantIds: [GUEST_ONE_GRANT_ID, GUEST_TWO_GRANT_ID],
       timeMin: "2026-07-27T15:30:00.000Z",
       timeMax: "2026-07-27T16:00:00.000Z",
       timeZone: "UTC",
@@ -527,9 +520,12 @@ describe("CalendarService source truth", () => {
     expect(freeBusyRequests).toEqual([
       {
         accountId: "account-a",
-        calendarIds: [firstGuest, secondGuest],
+        calendarIds: [GUEST_ONE_CALENDAR],
       },
-      { accountId: "account-b", calendarIds: [secondGuest] },
+      {
+        accountId: "account-b",
+        calendarIds: [GUEST_TWO_CALENDAR],
+      },
     ]);
     expect(result.sources).toHaveLength(2);
     expect(result.sources.every((source) => source.status === "fresh")).toBe(
@@ -539,19 +535,17 @@ describe("CalendarService source truth", () => {
       result.sources.every((source) => source.visibility === "busy_only"),
     ).toBe(true);
     const serialized = JSON.stringify(result);
-    expect(serialized).not.toContain(firstGuest);
-    expect(serialized).not.toContain(secondGuest);
+    expect(serialized).not.toContain(GUEST_ONE_CALENDAR);
+    expect(serialized).not.toContain(GUEST_TWO_CALENDAR);
     expect(serialized).not.toContain("notFound");
   });
 
-  it("fails closed per guest when every owner account lacks that calendar", async () => {
-    const firstGuest = "child-one@example.test";
-    const missingGuest = "unshared-child@example.test";
-    freeBusyErrors.set("account-a", new Set([missingGuest]));
-    freeBusyErrors.set("account-b", new Set([missingGuest]));
+  it("fails closed without trying another account when a bound calendar is unavailable", async () => {
+    freeBusyErrors.set("account-b", new Set([GUEST_MISSING_CALENDAR]));
 
     const result = await calendar.getCalendarFreeBusy(INTERNAL_URL, {
-      calendarIds: [firstGuest, missingGuest],
+      principalEntityId: SELF_ENTITY_ID,
+      guestAvailabilityGrantIds: [GUEST_ONE_GRANT_ID, GUEST_MISSING_GRANT_ID],
       timeMin: "2026-07-27T15:30:00.000Z",
       timeMax: "2026-07-27T16:00:00.000Z",
     });
@@ -560,7 +554,17 @@ describe("CalendarService source truth", () => {
       "fresh",
       "error",
     ]);
-    expect(JSON.stringify(result)).not.toContain(missingGuest);
+    expect(freeBusyRequests).toEqual([
+      {
+        accountId: "account-a",
+        calendarIds: [GUEST_ONE_CALENDAR],
+      },
+      {
+        accountId: "account-b",
+        calendarIds: [GUEST_MISSING_CALENDAR],
+      },
+    ]);
+    expect(JSON.stringify(result)).not.toContain(GUEST_MISSING_CALENDAR);
   });
 
   it("uses production free/busy by default and exposes only anonymous busy conflicts", async () => {
@@ -574,6 +578,7 @@ describe("CalendarService source truth", () => {
         startISO: "2026-07-27T15:30:00.000Z",
         endISO: "2026-07-27T16:00:00.000Z",
         attendees: ["child@example.test"],
+        guestAvailabilityGrantIds: [GUEST_ONE_GRANT_ID],
       },
     })) as {
       success: boolean;

@@ -811,8 +811,14 @@ function generateCreateIndexSQL(index: SchemaIndexWithTableRef): string {
       if (c.isExpression) {
         return c.expression;
       }
-      // Only add DESC if explicitly set to false, no NULLS clause by default
-      return `"${c.expression}"${c.asc === false ? " DESC" : ""}`;
+      const desc = c.asc === false;
+      // NULLS ordering follows drizzle-kit: omitted only when it matches the
+      // Drizzle default (ASC … NULLS LAST), spelled out for everything else —
+      // including DESC … NULLS LAST, where PostgreSQL's own default would
+      // otherwise flip to NULLS FIRST.
+      const nulls =
+        c.nulls && !(!desc && c.nulls === "last") ? ` NULLS ${c.nulls.toUpperCase()}` : "";
+      return `"${c.expression}"${desc ? " DESC" : ""}${nulls}`;
     })
     .join(", ");
 
@@ -829,8 +835,15 @@ function generateCreateIndexSQL(index: SchemaIndexWithTableRef): string {
     tableRef = `"${indexTable || ""}"`;
   }
 
-  // Include schema in table reference for correct index creation
-  return `CREATE ${unique}INDEX IF NOT EXISTS "${indexName}" ON ${tableRef} USING ${method} (${columns});`;
+  // Partial-index predicate — without it a declared partial unique index
+  // (e.g. UNIQUE ... WHERE "idempotency_key" IS NOT NULL) silently becomes a
+  // full unique index, diverging from the committed SQL migrations.
+  const where = index.where ? ` WHERE ${index.where}` : "";
+
+  // CONCURRENTLY is intentionally never emitted: executeMigration runs all
+  // statements inside one BEGIN/COMMIT, and CREATE INDEX CONCURRENTLY cannot
+  // run inside a transaction block.
+  return `CREATE ${unique}INDEX IF NOT EXISTS "${indexName}" ON ${tableRef} USING ${method} (${columns})${where};`;
 }
 
 /**

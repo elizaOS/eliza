@@ -310,12 +310,28 @@ describe("ApprovalQueue integration (real PGlite)", () => {
       subjectUserId: "owner-idempotency",
       idempotencyKey: "approval-integration:same-message",
     });
-    const [first, concurrentRetry] = await Promise.all([
-      queue.enqueue(input),
-      queue.enqueue(input),
+    const outcomes = await Promise.all([
+      queue.enqueueWithResult(input),
+      queue.enqueueWithResult(input),
     ]);
+    expect(outcomes.map((outcome) => outcome.reused).sort()).toEqual([
+      false,
+      true,
+    ]);
+    const first = outcomes.find((outcome) => !outcome.reused)?.request;
+    const concurrentRetry = outcomes.find((outcome) => outcome.reused)?.request;
+    if (!first || !concurrentRetry) {
+      throw new Error(
+        "expected one inserted and one atomically reused request",
+      );
+    }
     expect(concurrentRetry.id).toBe(first.id);
     expect(first.idempotencyKey).toBe(input.idempotencyKey);
+    const sequentialReplay = await queue.enqueueWithResult(input);
+    expect(sequentialReplay).toMatchObject({
+      reused: true,
+      request: { id: first.id, idempotencyKey: input.idempotencyKey },
+    });
     const rows = await queue.list({
       subjectUserId: "owner-idempotency",
       state: null,

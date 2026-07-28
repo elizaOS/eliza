@@ -108,7 +108,21 @@
   },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",
-    "pluginParameters": {}
+    "pluginParameters": {
+      "GOOGLE_CALENDAR_WEBHOOK_ENABLED": {
+        "type": "boolean",
+        "description": "Explicitly enables the public Google Calendar push-notification endpoint and watch creation.",
+        "required": false,
+        "default": false,
+        "sensitive": false
+      },
+      "GOOGLE_CALENDAR_WEBHOOK_URL": {
+        "type": "string",
+        "description": "Public HTTPS callback URL ending in /api/lifeops/calendar/google/webhook.",
+        "required": false,
+        "sensitive": false
+      }
+    }
   },
   "elizaos": {
     "app": {

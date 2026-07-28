@@ -2,8 +2,9 @@
  * Production orchestration for conversational parenting guidance. It binds
  * the current message to an authenticated household principal and graph child,
  * obtains a separate structural safety classification, evaluates the reviewed
- * policy, and resolves exact-locale handoff resources without allowing model
- * parameters to grant access or authorize disclosure.
+ * policy, and resolves handoff resources from fresh graph-backed location
+ * evidence for the subject without allowing owner state or model parameters
+ * to select a jurisdiction, grant access, or authorize disclosure.
  */
 
 import crypto from "node:crypto";
@@ -25,23 +26,20 @@ import {
   type HouseholdRole,
   type HouseholdRoleBinding,
 } from "../household/index.js";
-import {
-  type OwnerActiveTravel,
-  type OwnerFactProvenanceSource,
-  type OwnerFacts,
-  resolveOwnerFactStore,
-} from "../owner/fact-store.js";
 import { evaluateParentingGuidance } from "./policy.js";
 import {
   getParentingHandoffResourceResolver,
   type ParentingHandoffContact,
   type ParentingHandoffResourceResolution,
-  type ParentingLocaleEvidence,
 } from "./resources.js";
 import {
   getParentingSafetyClassifier,
   type ParentingSafetyClassificationStatus,
 } from "./safety-classifier.js";
+import {
+  graphBackedParentingSubjectLocationResolver,
+  type ParentingLocaleEvidence,
+} from "./subject-location.js";
 import {
   PARENTING_AGE_BANDS,
   PARENTING_GUIDANCE_VERSION,
@@ -60,13 +58,6 @@ export const PARENTING_RECORD_SCOPE_ATTRIBUTE =
   "lifeops.parenting.recordScope" as const;
 
 const MAX_CONTEXT_LENGTH = 32_768;
-const CONNECTOR_LOCALE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1_000;
-const TRUSTED_LOCALE_PROVENANCE = new Set<OwnerFactProvenanceSource>([
-  "first_run",
-  "profile_save",
-  "connector_inferred",
-]);
-
 export type ParentingGuidanceErrorCode =
   | "PARENTING_GUIDANCE_ACCESS_DENIED"
   | "PARENTING_GUIDANCE_CONTEXT_INCOMPLETE"
@@ -129,15 +120,7 @@ export interface ParentingGuidanceServiceDependencies {
   readonly resolveHousehold?: (
     runtime: IAgentRuntime,
   ) => HouseholdCoordinationService;
-  readonly localeResolver?: ParentingLocaleResolver;
   readonly requestId?: () => string;
-}
-
-export interface ParentingLocaleResolver {
-  resolve(input: {
-    readonly runtime: IAgentRuntime;
-    readonly requestedAt: string;
-  }): Promise<ParentingLocaleEvidence>;
 }
 
 interface SubjectContext {
@@ -321,165 +304,6 @@ function validateFramework(
   );
 }
 
-function trustedLocaleProvenance(
-  value: OwnerFactProvenanceSource,
-): value is "first_run" | "profile_save" | "connector_inferred" {
-  return TRUSTED_LOCALE_PROVENANCE.has(value);
-}
-
-function activeTravelAt(
-  travel: OwnerActiveTravel,
-  requestedAt: number,
-): boolean | null {
-  const startsAt = Date.parse(travel.startIso);
-  const endsAt = travel.endIso === undefined ? null : Date.parse(travel.endIso);
-  if (
-    !Number.isFinite(startsAt) ||
-    (endsAt !== null && !Number.isFinite(endsAt))
-  ) {
-    return null;
-  }
-  return startsAt <= requestedAt && (endsAt === null || requestedAt <= endsAt);
-}
-
-function unavailableLocale(
-  input: {
-    locale: string | null;
-    observedAt: string | null;
-    provenance: "first_run" | "profile_save" | "connector_inferred" | null;
-  },
-  unavailableReason:
-    | "locale_missing"
-    | "locale_untrusted"
-    | "locale_stale"
-    | "locale_in_transit",
-): ParentingLocaleEvidence {
-  return {
-    status: "unavailable",
-    ...input,
-    source: "unavailable",
-    unavailableReason,
-  };
-}
-
-/**
- * Uses only persisted locale facts with trusted provenance. Connector-derived
- * locales expire, and any active travel window suppresses a home locale
- * because a timezone cannot prove the jurisdiction needed for emergency
- * contacts.
- */
-export class ConfiguredOwnerParentingLocaleResolver
-  implements ParentingLocaleResolver
-{
-  async resolve(input: {
-    readonly runtime: IAgentRuntime;
-    readonly requestedAt: string;
-  }): Promise<ParentingLocaleEvidence> {
-    const requestedAt = Date.parse(input.requestedAt);
-    if (!Number.isFinite(requestedAt)) {
-      throw new ParentingGuidanceError(
-        "requestedAt must be a valid ISO-8601 timestamp",
-        "PARENTING_GUIDANCE_CONTEXT_INCOMPLETE",
-        { requestedAt: input.requestedAt },
-      );
-    }
-    const facts: OwnerFacts = await resolveOwnerFactStore(input.runtime).read();
-    const locale = facts.locale;
-    if (!locale) {
-      return unavailableLocale(
-        { locale: null, observedAt: null, provenance: null },
-        "locale_missing",
-      );
-    }
-    const provenance = trustedLocaleProvenance(locale.provenance.source)
-      ? locale.provenance.source
-      : null;
-    const observedAt = Date.parse(locale.provenance.recordedAt);
-    if (provenance === null || !Number.isFinite(observedAt)) {
-      return unavailableLocale(
-        {
-          locale: locale.value,
-          observedAt: locale.provenance.recordedAt,
-          provenance,
-        },
-        "locale_untrusted",
-      );
-    }
-    const activeTravel = facts.activeTravel
-      ? activeTravelAt(facts.activeTravel.value, requestedAt)
-      : false;
-    if (activeTravel === null) {
-      return unavailableLocale(
-        {
-          locale: locale.value,
-          observedAt: locale.provenance.recordedAt,
-          provenance,
-        },
-        "locale_untrusted",
-      );
-    }
-    if (activeTravel) {
-      return unavailableLocale(
-        {
-          locale: locale.value,
-          observedAt: locale.provenance.recordedAt,
-          provenance,
-        },
-        "locale_in_transit",
-      );
-    }
-    if (
-      observedAt > requestedAt ||
-      (provenance === "connector_inferred" &&
-        requestedAt - observedAt > CONNECTOR_LOCALE_MAX_AGE_MS)
-    ) {
-      return unavailableLocale(
-        {
-          locale: locale.value,
-          observedAt: locale.provenance.recordedAt,
-          provenance,
-        },
-        "locale_stale",
-      );
-    }
-    return {
-      status: "resolved",
-      locale: locale.value,
-      source: "configured_owner_locale",
-      observedAt: locale.provenance.recordedAt,
-      provenance,
-      unavailableReason: null,
-    };
-  }
-}
-
-export const configuredOwnerParentingLocaleResolver =
-  new ConfiguredOwnerParentingLocaleResolver();
-
-const LOCALE_RESOLVER_KEY = Symbol.for(
-  "@elizaos/plugin-personal-assistant:parenting-locale-resolver",
-);
-
-interface ParentingLocaleRuntime extends IAgentRuntime {
-  [LOCALE_RESOLVER_KEY]?: ParentingLocaleResolver;
-}
-
-export function registerParentingLocaleResolver(
-  runtime: IAgentRuntime,
-  resolver: ParentingLocaleResolver,
-): void {
-  (runtime as ParentingLocaleRuntime)[LOCALE_RESOLVER_KEY] = resolver;
-}
-
-export function getParentingLocaleResolver(
-  runtime: IAgentRuntime,
-): ParentingLocaleResolver {
-  return (
-    (runtime as ParentingLocaleRuntime)[LOCALE_RESOLVER_KEY] ??
-    configuredOwnerParentingLocaleResolver
-  );
-}
-
 function guidanceUncertainty(
   decision: ParentingGuidanceDecision,
   resources: ParentingHandoffResourceResolution,
@@ -488,23 +312,34 @@ function guidanceUncertainty(
     return "These reviewed sources support general educational options, not a diagnosis, prediction about the child, or personalized clinical judgment.";
   }
   if (resources.status === "resolved") {
-    return "The handoff records were reviewed for the configured locale, but service availability and local requirements can change; verify details on the linked official source.";
+    return "The handoff records were reviewed for the child's verified current jurisdiction, but service availability and local requirements can change; verify details on the linked official source.";
   }
   if (decision.handoff) {
-    return "The assistant could not verify a complete, current contact set for the configured locale and will not guess a number or authority.";
+    return "The assistant could not verify the child's current jurisdiction and a complete contact set, so it will not guess a number or authority from the owner's location.";
   }
   return "The available structural evidence is not sufficient for ordinary guidance.";
 }
 
-function humanNextStep(decision: ParentingGuidanceDecision): string {
+function humanNextStep(
+  decision: ParentingGuidanceDecision,
+  resources: ParentingHandoffResourceResolution,
+): string {
+  const locationUnavailable =
+    decision.handoff !== null && resources.status === "unavailable";
   switch (decision.status) {
     case "educational_options":
       return "Choose one small option to try, compare notes with another trusted caregiver, and contact the child's pediatrician or school support person if the concern persists or disrupts daily functioning.";
     case "evidence_unavailable":
       return "Try again after the reviewed source catalog is restored or ask a trusted pediatric or school professional for general educational resources; this is an evidence-maintenance stop, not a clinical judgment.";
     case "urgent_safety_handoff":
+      if (locationUnavailable) {
+        return "Confirm where the child is now. If anyone may be in immediate danger, contact emergency services for that physical location through a trusted local source, or ask a nearby trusted adult to do so while staying with the child if safe.";
+      }
       return "Stay with the child if it is safe to do so and contact the resolved emergency or crisis service now; do not rely on this guidance as the safety response.";
     case "safeguarding_handoff":
+      if (locationUnavailable) {
+        return "Confirm where the child is now, preserve factual observations, and use an official source for that jurisdiction to reach child-safeguarding authorities; do not investigate or confront an alleged person yourself.";
+      }
       return "Contact the resolved child-safeguarding authority promptly, preserve factual observations, and do not investigate or confront an alleged person yourself.";
     case "professional_handoff":
       return "Contact the child's existing pediatrician, prescriber, or an appropriately licensed mental-health professional and share the factual timeline without changing medication on this assistant's advice.";
@@ -550,7 +385,9 @@ export function renderParentingGuidanceDelivery(
     lines.push(delivery.decision.frameworkNotice);
   }
   if (delivery.handoffResources.status === "resolved") {
-    lines.push("Verified handoff resources for the configured locale:");
+    lines.push(
+      "Verified handoff resources for the child's current jurisdiction:",
+    );
     for (const resource of delivery.handoffResources.resources) {
       lines.push(`- ${resource.title} (${resource.publisher})`);
       for (const contact of resource.contacts) {
@@ -563,7 +400,7 @@ export function renderParentingGuidanceDelivery(
     delivery.handoffResources.status === "unavailable"
   ) {
     lines.push(
-      `Locale-specific contacts are unavailable (${delivery.handoffResources.unavailableReason}); no contact was guessed.`,
+      `Current-location-specific contacts are unavailable (${delivery.handoffResources.unavailableReason}); no contact was guessed from the owner's profile or travel location.`,
     );
   }
   lines.push(`Uncertainty: ${delivery.uncertaintyNotice}`);
@@ -714,16 +551,14 @@ export class ParentingGuidanceService {
       requestedSubjectEntityId: input.subjectEntityId,
       requestedAgeBand: input.ageBand,
     });
-    const [classification, locale] = await Promise.all([
+    const [classification, locationEvidence] = await Promise.all([
       getParentingSafetyClassifier(this.deps.runtime).classify({
         text,
         assessedAt: requestedAt,
       }),
-      (
-        this.deps.localeResolver ??
-        getParentingLocaleResolver(this.deps.runtime)
-      ).resolve({
+      graphBackedParentingSubjectLocationResolver.resolve({
         runtime: this.deps.runtime,
+        subjectEntityId: subject.subjectEntityId,
         requestedAt,
       }),
     ]);
@@ -765,7 +600,7 @@ export class ParentingGuidanceService {
     const handoffResources = await getParentingHandoffResourceResolver(
       this.deps.runtime,
     ).resolve({
-      localeEvidence: locale,
+      localeEvidence: locationEvidence,
       requestedAt,
       kinds: decision.handoff?.kinds ?? [],
     });
@@ -778,10 +613,10 @@ export class ParentingGuidanceService {
       requestedFramework,
       safetyClassificationStatus: classification.status,
       decision,
-      localeEvidence: locale,
+      localeEvidence: locationEvidence,
       handoffResources,
       uncertaintyNotice: guidanceUncertainty(decision, handoffResources),
-      humanNextStep: humanNextStep(decision),
+      humanNextStep: humanNextStep(decision, handoffResources),
       externalEffectsPerformed: false,
     };
   }
@@ -791,7 +626,7 @@ export class ParentingGuidanceRuntimeService extends Service {
   static override serviceType = PARENTING_GUIDANCE_SERVICE;
 
   override capabilityDescription =
-    "Authenticated, source-grounded parenting education with structural safety/privacy gates and exact-locale human handoffs";
+    "Authenticated, source-grounded parenting education with structural safety/privacy gates and subject-location-bound human handoffs";
 
   readonly guidance: ParentingGuidanceService;
 

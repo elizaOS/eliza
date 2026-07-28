@@ -190,6 +190,9 @@ type FakeGoogle = ReturnType<typeof fakeGoogleService>;
 function fakeGate(): CalendarHostGate {
   return {
     getGoogleConnectorAccounts: async () => [],
+    resolveGuestAvailabilityGrants: async () => {
+      throw new Error("Guest availability is outside this test.");
+    },
     requireGoogleCalendarGrant: async () => GRANT_A,
     requireGoogleCalendarWriteGrant: async () => GRANT_A,
     createReminderPlan: async () => {},
@@ -459,6 +462,46 @@ describe("updateCalendarEvent — instance vs series", () => {
       originalSeriesEventId: "standup-master",
       targetOriginalStartAt: "2026-07-15T13:00:00.000Z",
       futureExceptions: "reset",
+    });
+  });
+
+  it("rejects a moved following DTSTART that no longer matches the retained RRULE", async () => {
+    await expect(
+      calendar.updateCalendarEvent(INTERNAL_URL, {
+        grantId: GRANT_A.id,
+        calendarId: "primary",
+        eventId: "standup_20260715T130000Z",
+        startAt: "2026-07-16T13:00:00.000Z",
+        recurrenceScope: "this_and_following",
+        expectedProviderVersion: '"master-etag"',
+        expectedOccurrenceProviderVersion: '"occurrence-etag"',
+        idempotencyKey: "mismatched-start-split-operation",
+      }),
+    ).rejects.toMatchObject({
+      status: 400,
+      code: "CALENDAR_RECURRENCE_START_MISMATCH",
+    });
+    expect(google.updateEvent).not.toHaveBeenCalled();
+    expect(google.createEvent).not.toHaveBeenCalled();
+  });
+
+  it("accepts a moved following DTSTART with an aligned replacement RRULE", async () => {
+    await calendar.updateCalendarEvent(INTERNAL_URL, {
+      grantId: GRANT_A.id,
+      calendarId: "primary",
+      eventId: "standup_20260715T130000Z",
+      startAt: "2026-07-16T13:00:00.000Z",
+      recurrence: ["RRULE:FREQ=WEEKLY;BYDAY=TH;COUNT=4"],
+      recurrenceScope: "this_and_following",
+      expectedProviderVersion: '"master-etag"',
+      expectedOccurrenceProviderVersion: '"occurrence-etag"',
+      idempotencyKey: "aligned-start-split-operation",
+    });
+
+    expect(google.updateEvent).toHaveBeenCalledTimes(1);
+    expect(google.createEvent.mock.calls[0]?.[0]).toMatchObject({
+      start: "2026-07-16T13:00:00.000Z",
+      recurrence: ["RRULE:FREQ=WEEKLY;BYDAY=TH;COUNT=4"],
     });
   });
 

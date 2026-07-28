@@ -9,8 +9,8 @@ import { createServer, type IncomingMessage, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { PGlite } from "@electric-sql/pglite";
 import type { ConnectorAccount, IAgentRuntime } from "@elizaos/core";
-import type { LifeOpsConnectorGrant } from "@elizaos/shared";
-import { sql } from "drizzle-orm";
+import { RuntimeMigrator } from "@elizaos/plugin-sql/runtime-migrator";
+import { type LifeOpsConnectorGrant, SELF_ENTITY_ID } from "@elizaos/shared";
 import { drizzle } from "drizzle-orm/pglite";
 import {
   afterAll,
@@ -27,65 +27,19 @@ import {
   type MicrosoftGraphCalendarPort,
 } from "../src/microsoft/index.js";
 import {
+  CALENDAR_GUEST_AVAILABILITY_PURPOSE,
   type CalendarHostGate,
   CalendarService,
-  ensureCalendarFeedPreferenceTable,
+  calendarSchema,
 } from "../src/service/index.js";
 
 const AGENT_ID = "microsoft-calendar-pglite-agent";
 const INTERNAL_URL = new URL("http://internal.local/api/calendar");
 const GRANT_ID = "connector-account:microsoft:microsoft-owner-account";
+const GUEST_BUSY_GRANT_ID = "gav_8dc3de879aa0484eb316dcc6f291ec79";
+const GUEST_UNKNOWN_GRANT_ID = "gav_c9d8865be7db425b97c5a063bbbc3a29";
 const TIME_MIN = "2026-08-01T00:00:00.000Z";
 const TIME_MAX = "2026-08-02T00:00:00.000Z";
-
-const CREATE_EVENTS_TABLE = `CREATE TABLE app_calendar.life_calendar_events (
-  id TEXT PRIMARY KEY,
-  agent_id TEXT NOT NULL,
-  provider TEXT NOT NULL DEFAULT 'google',
-  side TEXT NOT NULL DEFAULT 'owner',
-  calendar_id TEXT NOT NULL,
-  external_event_id TEXT NOT NULL,
-  connector_account_id TEXT,
-  purge_resync_required BOOLEAN NOT NULL DEFAULT false,
-  purge_resync_reason TEXT,
-  grant_id TEXT,
-  title TEXT NOT NULL DEFAULT '',
-  description TEXT NOT NULL DEFAULT '',
-  location TEXT NOT NULL DEFAULT '',
-  status TEXT NOT NULL DEFAULT '',
-  start_at TEXT NOT NULL,
-  end_at TEXT NOT NULL,
-  is_all_day BOOLEAN NOT NULL DEFAULT false,
-  timezone TEXT,
-  html_link TEXT,
-  conference_link TEXT,
-  organizer_json TEXT,
-  attendees_json TEXT NOT NULL DEFAULT '[]',
-  metadata_json TEXT NOT NULL DEFAULT '{}',
-  synced_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  UNIQUE (
-    agent_id, provider, side, grant_id, calendar_id, external_event_id
-  )
-)`;
-
-const CREATE_SYNC_TABLE = `CREATE TABLE app_calendar.life_calendar_sync_states (
-  id TEXT PRIMARY KEY,
-  agent_id TEXT NOT NULL,
-  provider TEXT NOT NULL DEFAULT 'google',
-  side TEXT NOT NULL DEFAULT 'owner',
-  calendar_id TEXT NOT NULL,
-  connector_account_id TEXT,
-  grant_id TEXT,
-  purge_resync_required BOOLEAN NOT NULL DEFAULT false,
-  purge_resync_reason TEXT,
-  window_start_at TEXT NOT NULL,
-  window_end_at TEXT NOT NULL,
-  next_sync_token TEXT,
-  synced_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  UNIQUE (agent_id, provider, side, grant_id, calendar_id)
-)`;
 
 function account(): MicrosoftCalendarAccount {
   const raw: ConnectorAccount = {
@@ -174,6 +128,23 @@ function graphEvent(args: {
 function gate(): CalendarHostGate {
   return {
     getGoogleConnectorAccounts: async () => [],
+    resolveGuestAvailabilityGrants: async (request) =>
+      request.grantIds.map((grantId) => ({
+        grantId,
+        principalEntityId: SELF_ENTITY_ID,
+        guestEntityId: `guest-${grantId}`,
+        provider: "microsoft",
+        side: "owner",
+        connectorAccountId: "microsoft-owner-account",
+        providerGrantId: GRANT_ID,
+        calendarId:
+          grantId === GUEST_BUSY_GRANT_ID
+            ? "busy@example.test"
+            : "unknown@example.test",
+        purpose: CALENDAR_GUEST_AVAILABILITY_PURPOSE,
+        consentRecordedAt: "2026-07-01T00:00:00.000Z",
+        expiresAt: "2099-07-01T00:00:00.000Z",
+      })),
     requireGoogleCalendarGrant: async () => {
       throw new Error("Google is outside this test.");
     },
@@ -206,6 +177,7 @@ let deltaInFlight = 0;
 let maxDeltaInFlight = 0;
 let deltaRequests: string[] = [];
 let creationPayloads: Array<Record<string, unknown>> = [];
+let extraFullSnapshotEvents: Array<Record<string, unknown>> = [];
 let token: string;
 
 function portForRuntime(): MicrosoftGraphCalendarPort {
@@ -257,12 +229,12 @@ async function feed(forceSync = true) {
 beforeAll(async () => {
   pg = new PGlite();
   const db = drizzle(pg);
-  await db.execute(sql.raw("CREATE SCHEMA IF NOT EXISTS app_calendar"));
-  await db.execute(sql.raw(CREATE_EVENTS_TABLE));
-  await db.execute(sql.raw(CREATE_SYNC_TABLE));
-  await ensureCalendarFeedPreferenceTable(
-    async (statement) =>
-      (await pg.query<Record<string, unknown>>(statement)).rows,
+  // Tables come from the production drizzle schema applied through plugin-sql's
+  // RuntimeMigrator — the same path agent boot runs — so schema drift fails the
+  // suite instead of leaving it green against a hand-maintained copy.
+  await new RuntimeMigrator(db).migrate(
+    "@elizaos/plugin-calendar",
+    calendarSchema,
   );
   const cache = new Map<string, unknown>();
   runtime = {
@@ -447,6 +419,7 @@ beforeAll(async () => {
                       changeKey: "obsolete-1",
                     }),
                   ]),
+              ...extraFullSnapshotEvents,
             ],
             "@odata.deltaLink": `${baseUrl}me/calendars/primary-calendar/calendarView/delta?$deltatoken=${recovered ? "recovered" : "one"}`,
           }),
@@ -474,6 +447,7 @@ beforeEach(async () => {
   maxDeltaInFlight = 0;
   deltaRequests = [];
   creationPayloads = [];
+  extraFullSnapshotEvents = [];
   token = "pglite-wire-token";
   vi.clearAllMocks();
   installService();
@@ -569,9 +543,120 @@ describe("Microsoft Calendar service (Graph HTTP + real PGlite)", {
     );
   });
 
+  it("syncs a zero-duration Graph event as a valid instantaneous event", async () => {
+    extraFullSnapshotEvents = [
+      graphEvent({
+        id: "instant-reminder",
+        subject: "Instant reminder",
+        revision: "2026-07-26T11:00:00Z",
+        changeKey: "instant-1",
+        start: "2026-08-01T18:00:00.0000000",
+        end: "2026-08-01T18:00:00.0000000",
+      }),
+    ];
+    const result = await feed();
+    expect(result.state).toBe("complete");
+    expect(
+      result.events.find((event) => event.externalId === "instant-reminder"),
+    ).toMatchObject({
+      title: "Instant reminder",
+      startAt: "2026-08-01T18:00:00.000Z",
+      endAt: "2026-08-01T18:00:00.000Z",
+    });
+    expect(result.sources[0]?.error).toBeNull();
+    expect(runtime.reportError).not.toHaveBeenCalledWith(
+      "calendar:microsoft-sync",
+      expect.anything(),
+    );
+  });
+
+  it("quarantines malformed Graph events without aborting the batch or blocking the delta cursor", async () => {
+    extraFullSnapshotEvents = [
+      {
+        id: "invalid-time-event",
+        subject: "Broken payload",
+        start: { dateTime: "not-a-timestamp", timeZone: "UTC" },
+        end: { dateTime: "2026-08-01T19:00:00.0000000", timeZone: "UTC" },
+      },
+      graphEvent({
+        id: "backwards-event",
+        subject: "Backwards range",
+        revision: "2026-07-26T11:00:00Z",
+        changeKey: "backwards-1",
+        start: "2026-08-01T17:00:00.0000000",
+        end: "2026-08-01T16:00:00.0000000",
+      }),
+    ];
+    const initial = await feed();
+    expect(initial.events.map((event) => event.title).sort()).toEqual([
+      "Old event",
+      "School pickup",
+    ]);
+    const stored = await pg.query<{ external_event_id: string }>(
+      `SELECT external_event_id FROM app_calendar.life_calendar_events
+       ORDER BY external_event_id`,
+    );
+    expect(stored.rows.map((row) => row.external_event_id)).toEqual([
+      "obsolete-event",
+      "pickup-occurrence",
+    ]);
+    const syncState = await pg.query<{ next_sync_token: string }>(
+      "SELECT next_sync_token FROM app_calendar.life_calendar_sync_states",
+    );
+    expect(syncState.rows[0]?.next_sync_token).toContain("$deltatoken=one");
+
+    extraFullSnapshotEvents = [];
+    const followUp = await feed();
+    expect(followUp.state).toBe("complete");
+    expect(followUp.events.map((event) => event.title)).toEqual([
+      "Updated school pickup",
+    ]);
+    expect(followUp.sources[0]?.error).toBeNull();
+  });
+
+  it("surfaces quarantined event issues as partial source health and reported errors", async () => {
+    extraFullSnapshotEvents = [
+      {
+        id: "invalid-time-event",
+        subject: "Broken payload",
+        start: { dateTime: "not-a-timestamp", timeZone: "UTC" },
+        end: { dateTime: "2026-08-01T19:00:00.0000000", timeZone: "UTC" },
+      },
+    ];
+    const result = await feed();
+    expect(result.state).toBe("partial");
+    expect(result.sources).toHaveLength(1);
+    expect(result.sources[0]).toMatchObject({
+      status: "stale",
+      error: {
+        code: "MICROSOFT_GRAPH_EVENTS_QUARANTINED",
+        message: "1 Microsoft calendar event was quarantined as invalid.",
+        retryable: false,
+      },
+    });
+    const reported = vi
+      .mocked(runtime.reportError)
+      .mock.calls.filter(([scope]) => scope === "calendar:microsoft-sync");
+    expect(reported).toHaveLength(1);
+    expect(reported[0]?.[1]).toMatchObject({
+      code: "MICROSOFT_GRAPH_EVENTS_QUARANTINED",
+      context: {
+        calendarId: "primary-calendar",
+        issueCount: 1,
+        issues: [
+          {
+            code: "MICROSOFT_GRAPH_INVALID_EVENT_TIME",
+            eventId: "invalid-time-event",
+          },
+        ],
+      },
+    });
+  });
+
   it("keeps guest details private and marks provider errors as unknown", async () => {
     const result = await service.getCalendarFreeBusy(INTERNAL_URL, {
-      calendarIds: ["busy@example.test", "unknown@example.test"],
+      principalEntityId: SELF_ENTITY_ID,
+      guestAvailabilityGrantIds: [GUEST_BUSY_GRANT_ID, GUEST_UNKNOWN_GRANT_ID],
       timeMin: TIME_MIN,
       timeMax: TIME_MAX,
     });

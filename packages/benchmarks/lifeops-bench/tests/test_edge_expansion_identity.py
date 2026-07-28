@@ -1,12 +1,9 @@
-"""Guard: edge-expanded scenarios are prompt-robustness clones, not new work.
+"""Guard model-generated language challenges preserve each scored base contract.
 
 LifeOpsBench inflates its corpus 10x by re-emitting every base scenario under
-fixed prompt-prefix framings (polite/urgent/mobile/…). That is honest
-*prompt-robustness* coverage **only if** a variant changes the prompt wording
-and nothing else: it must share its base's ``ground_truth_actions``,
-``required_outputs`` and ``world_seed``. If a variant ever diverged on any of
-those, the 10x count would silently become uncredited "new" scenarios — the
-exact dishonesty this guard exists to prevent (#8795).
+distinct simulator challenges. A variant may change only its registry identity
+and simulator-facing challenge metadata; its hidden goal, ground truth,
+semantic expectations, persona, and world seed stay identical to the base.
 
 These tests pin the contract so the expansion can never quietly drift.
 """
@@ -25,14 +22,18 @@ from eliza_lifeops_bench.scenarios import (
     count_lifeops_scenarios,
 )
 
-# Fields the expansion is allowed to rewrite (prompt wording / identity only).
-PROMPT_FIELDS: frozenset[str] = frozenset({"id", "name", "instruction", "description"})
+# Fields the expansion is allowed to rewrite (registry/simulator metadata only).
+VARIANT_FIELDS: frozenset[str] = frozenset(
+    {"id", "name", "description", "opening_mode", "opening_challenge"}
+)
 
 # Fields that MUST be byte-identical between a base and each of its variants.
-# Everything in the Scenario dataclass that is not a prompt field — most
+# Everything in the Scenario dataclass that is not a variant field — most
 # importantly the scored ground truth, required outputs, and world seed.
 IDENTITY_FIELDS: tuple[str, ...] = tuple(
-    f.name for f in dataclasses.fields(CORE_SCENARIOS[0]) if f.name not in PROMPT_FIELDS
+    f.name
+    for f in dataclasses.fields(CORE_SCENARIOS[0])
+    if f.name not in VARIANT_FIELDS
 )
 
 
@@ -42,12 +43,15 @@ def _variants_for(base_id: str) -> list:
 
 
 def test_identity_fields_cover_the_scored_contract() -> None:
-    # The three fields #8795 calls out must be in the identity set, not the
-    # prompt set — otherwise the guard would be vacuous.
-    for required in ("ground_truth_actions", "required_outputs", "world_seed"):
-        assert required in IDENTITY_FIELDS, (
-            f"{required} must be an identity field, not a prompt field"
-        )
+    for required in (
+        "instruction",
+        "ground_truth_actions",
+        "required_outputs",
+        "world_seed",
+    ):
+        assert (
+            required in IDENTITY_FIELDS
+        ), f"{required} must be an identity field, not a prompt field"
     assert "persona" in IDENTITY_FIELDS  # scored personas must not drift either
 
 
@@ -62,10 +66,10 @@ def test_each_base_has_exactly_the_declared_variants() -> None:
             f"{base.id} has {len(variants)} edge variants, "
             f"expected {EDGE_EXPANSION_MULTIPLIER}"
         )
-        got = {v.id[len(f"{base.id}--edge-"):] for v in variants}
-        assert got == variant_ids, (
-            f"{base.id} variant suffixes {sorted(got)} != {sorted(variant_ids)}"
-        )
+        got = {v.id[len(f"{base.id}--edge-") :] for v in variants}
+        assert (
+            got == variant_ids
+        ), f"{base.id} variant suffixes {sorted(got)} != {sorted(variant_ids)}"
 
 
 def test_variants_share_base_identity_fields() -> None:
@@ -85,20 +89,21 @@ def test_variants_share_base_identity_fields() -> None:
     )
 
 
-def test_variants_actually_change_the_prompt() -> None:
-    """The expansion is real robustness coverage: prompt fields DO differ."""
+def test_variants_supply_distinct_model_language_challenges() -> None:
     bad: list[str] = []
     for base in CORE_SCENARIOS:
         for variant in _variants_for(base.id):
             if variant.id == base.id:
                 bad.append(f"{variant.id}: id not rewritten")
-            if variant.instruction == base.instruction:
-                bad.append(f"{variant.id}: instruction not reframed")
-            if base.instruction not in variant.instruction:
-                bad.append(
-                    f"{variant.id}: reframed instruction dropped the base instruction"
-                )
-    assert not bad, "edge variants must reframe the prompt:\n" + "\n".join(bad)
+            if variant.instruction != base.instruction:
+                bad.append(f"{variant.id}: hidden goal changed")
+            if variant.opening_mode != "simulated":
+                bad.append(f"{variant.id}: opening is not model-generated")
+            if not variant.opening_challenge:
+                bad.append(f"{variant.id}: language challenge is empty")
+    assert (
+        not bad
+    ), "edge variants must preserve goals and add challenges:\n" + "\n".join(bad)
 
 
 def test_count_summary_states_base_vs_runs() -> None:
@@ -110,10 +115,12 @@ def test_count_summary_states_base_vs_runs() -> None:
     # 10x inflation can never read as 11220 distinct scenarios.
     summary = counts["summary"]
     assert isinstance(summary, str)
-    assert "base" in summary and "robustness" in summary and "runs" in summary
+    assert "base" in summary and "model-generated" in summary and "runs" in summary
 
 
-@pytest.mark.parametrize("seed_field", ["world_seed", "ground_truth_actions", "required_outputs"])
+@pytest.mark.parametrize(
+    "seed_field", ["world_seed", "ground_truth_actions", "required_outputs"]
+)
 def test_guard_is_not_vacuous(seed_field: str) -> None:
     """If a variant's scored field diverged, the identity check must catch it.
 

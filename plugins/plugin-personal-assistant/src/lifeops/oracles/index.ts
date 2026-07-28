@@ -1,5 +1,6 @@
 /** Public contracts and adapters for source-grounded household planning facts. */
 
+export * from "./action.js";
 export * from "./contracts.js";
 export * from "./curation.js";
 export * from "./defaults.js";

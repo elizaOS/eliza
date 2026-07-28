@@ -11,8 +11,13 @@ import { describe, expect, it } from "vitest";
 import {
   createAnchorRegistry,
   createConsolidationRegistry,
+  registerFallbackAnchors,
 } from "./consolidation-policy.js";
-import type { ScheduledTask, ScheduledTaskPriority } from "./types.js";
+import type {
+  AnchorContext,
+  ScheduledTask,
+  ScheduledTaskPriority,
+} from "./types.js";
 
 const baseTask = (overrides: Partial<ScheduledTask> = {}): ScheduledTask => ({
   taskId: "t1",
@@ -137,5 +142,20 @@ describe("AnchorRegistry", () => {
     );
     const got = reg.get("wake.confirmed");
     expect(got?.describe.label).toBe("real");
+  });
+
+  it("resolves the fallback wake anchor through compatible gap handling", async () => {
+    const reg = createAnchorRegistry();
+    registerFallbackAnchors(reg);
+
+    await expect(
+      reg.resolve("wake.confirmed", {
+        nowIso: "2026-09-06T16:00:00.000Z",
+        ownerFacts: {
+          timezone: "America/Santiago",
+          morningWindow: { start: "00:00" },
+        },
+      } as AnchorContext),
+    ).resolves.toEqual({ atIso: "2026-09-06T04:00:00.000Z" });
   });
 });

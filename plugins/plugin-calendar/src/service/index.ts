@@ -40,6 +40,10 @@ export {
   setCalendarFeedIncluded,
 } from "./feed-preferences.js";
 export {
+  CALENDAR_GUEST_AVAILABILITY_PURPOSE,
+  type CalendarGuestAvailabilityGrant,
+  type CalendarGuestAvailabilityGrantRequest,
+  type CalendarGuestAvailabilityProvider,
   type CalendarHostGate,
   createDefaultCalendarHostGate,
   createLifeOpsAuditEvent,
@@ -51,6 +55,7 @@ export {
   ensureCalendarFeedPreferenceTable,
   ensureGoogleCalendarWatchChannelTable,
   ensureIcsCalendarSourceTable,
+  ensureIcsSecretCleanupTable,
   MIGRATED_CALENDAR_TABLES,
 } from "./migration.js";
 export {
@@ -58,6 +63,7 @@ export {
   calendarFeedPreferences,
   calendarPgSchema,
   calendarSchema,
+  calendarSecretCleanup,
   calendarSources,
   calendarSyncStates,
   googleCalendarWatchChannels,

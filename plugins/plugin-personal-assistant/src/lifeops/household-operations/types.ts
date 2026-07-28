@@ -2033,6 +2033,11 @@ export function normalizeCalendarCheck(
   field = "calendarCheck",
 ): HouseholdCalendarCheck {
   const record = requireObject(value, field);
+  const state = enumValue(record.state, `${field}.state`, [
+    "available",
+    "conflicted",
+    "unknown",
+  ] as const);
   return {
     subjectKey: requireOperationsText(
       record.subjectKey,
@@ -2040,17 +2045,16 @@ export function normalizeCalendarCheck(
       300,
     ),
     window: normalizeServiceWindow(record.window, `${field}.window`),
-    state: enumValue(record.state, `${field}.state`, [
-      "available",
-      "conflicted",
-      "unknown",
-    ] as const),
+    state,
     checkedAt: requireOperationsTimestamp(
       record.checkedAt,
       `${field}.checkedAt`,
     ),
+    // "available" unblocks ready_for_outreach_draft, so it must cite the
+    // calendar sources actually consulted — a bare model assertion with no
+    // evidence is invalid, not an availability proof.
     sourceRefs: stringArray(record.sourceRefs, `${field}.sourceRefs`, {
-      allowEmpty: true,
+      allowEmpty: state !== "available",
     }),
     conflictRefs: stringArray(record.conflictRefs, `${field}.conflictRefs`, {
       allowEmpty: true,

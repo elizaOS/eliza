@@ -7,6 +7,7 @@
 import crypto from "node:crypto";
 import {
   type EntityStore,
+  KNOWLEDGE_GRAPH_SERVICE,
   type RelationshipStore,
   resolveKnowledgeGraphService,
 } from "@elizaos/agent";
@@ -23,9 +24,14 @@ import {
 } from "@elizaos/shared";
 import { createApprovalQueue } from "../approval-queue.js";
 import type {
+  ApprovalChannel,
   ApprovalQueue,
   ApprovalRequest,
 } from "../approval-queue.types.js";
+import {
+  type ChannelContribution,
+  getChannelRegistry,
+} from "../channels/index.js";
 import { createLifeOpsCommitmentLedgerRecord } from "../commitments/index.js";
 import {
   cancelHouseholdGrantExpiryWarning,
@@ -35,6 +41,7 @@ import {
 import { HouseholdCoordinationRepository } from "./repository.js";
 import {
   HOUSEHOLD_ACCESS_SCOPES,
+  HOUSEHOLD_SCHEDULE_PROPOSAL_APPROVAL_WORKFLOW_ID,
   type HouseholdAccessGrant,
   type HouseholdAccessScope,
   type HouseholdAuditRecord,
@@ -48,6 +55,7 @@ import {
   type HouseholdScheduleProposal,
   type HouseholdScheduleTerms,
   type HouseholdScopedExport,
+  householdApprovalRequestPrompt,
   isHouseholdRole,
   materialScheduleFingerprint,
   normalizeGrantScopes,
@@ -197,7 +205,10 @@ function approvalPayloadMatches(
 ): boolean {
   if (request.action !== "execute_workflow") return false;
   if (request.payload.action !== "execute_workflow") return false;
-  if (request.payload.workflowId !== "household.schedule.proposal.approval") {
+  if (
+    request.payload.workflowId !==
+    HOUSEHOLD_SCHEDULE_PROPOSAL_APPROVAL_WORKFLOW_ID
+  ) {
     return false;
   }
   return (
@@ -251,6 +262,43 @@ function approvalIdempotencyKey(
     )
     .digest("hex");
   return `household-proposal-approval:${digest}`;
+}
+
+/**
+ * Ordered outbound preference for reaching an affected party. Platforms are
+ * `EntityIdentity.platform` values and mirror the inbound `identityPlatforms`
+ * mapping in inbound-approval.ts, so a decision sent back on the same channel
+ * authenticates against the identity the prompt was delivered to.
+ */
+const PARTY_CONTACT_ROUTES: ReadonlyArray<{
+  channel: Extract<
+    ApprovalChannel,
+    | "telegram"
+    | "signal"
+    | "whatsapp"
+    | "imessage"
+    | "sms"
+    | "email"
+    | "discord"
+    | "x_dm"
+  >;
+  platforms: readonly string[];
+}> = [
+  { channel: "telegram", platforms: ["telegram"] },
+  { channel: "signal", platforms: ["signal"] },
+  { channel: "whatsapp", platforms: ["whatsapp"] },
+  { channel: "imessage", platforms: ["imessage"] },
+  { channel: "sms", platforms: ["phone", "sms", "twilio"] },
+  { channel: "email", platforms: ["email", "gmail", "google"] },
+  { channel: "discord", platforms: ["discord"] },
+  { channel: "x_dm", platforms: ["x", "twitter"] },
+];
+
+interface PartyApprovalContactRoute {
+  channel: ApprovalChannel;
+  target: string;
+  platform: string;
+  send: NonNullable<ChannelContribution["send"]>;
 }
 
 export class HouseholdCoordinationService {
@@ -1080,6 +1128,101 @@ export class HouseholdCoordinationService {
     return { affectedPartyEntityIds, requiredApproverEntityIds };
   }
 
+  /**
+   * Resolve the connector route that can reach an affected party: the first
+   * preference-ordered send-capable registered channel on which the party has
+   * an operator-verified identity. The owner needs no route — the internal
+   * approval surfaces (task, notification, chat choice) already reach them.
+   */
+  private async resolvePartyContactRoute(
+    partyEntityId: string,
+  ): Promise<PartyApprovalContactRoute | null> {
+    if (partyEntityId === SELF_ENTITY_ID) return null;
+    const registry = getChannelRegistry(this.deps.runtime);
+    if (!registry) return null;
+    const entity = await this.deps.entityStore.get(partyEntityId);
+    const verified =
+      entity?.identities.filter((identity) => identity.verified) ?? [];
+    if (verified.length === 0) return null;
+    for (const route of PARTY_CONTACT_ROUTES) {
+      const channel = registry.get(route.channel);
+      const send = channel?.send;
+      if (!send) continue;
+      for (const platform of route.platforms) {
+        const identity = verified.find(
+          (candidate) => candidate.platform.trim().toLowerCase() === platform,
+        );
+        if (identity) {
+          return {
+            channel: route.channel,
+            target: identity.handle,
+            platform,
+            send,
+          };
+        }
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Send the affected party the approval request over their contact route,
+   * teaching the exact command `parseHouseholdInboundApprovalCommand`
+   * accepts. The durable approval row is the source of truth: a failed send
+   * leaves the request pending and owner-visible, and the failure is raised
+   * through reportError so the agent can repair the connector or relay the
+   * request instead of the loop dying silently.
+   */
+  private async deliverPartyApprovalPrompt(input: {
+    proposal: HouseholdScheduleProposal;
+    partyEntityId: string;
+    request: ApprovalRequest;
+    route: PartyApprovalContactRoute;
+  }): Promise<void> {
+    const context = {
+      approvalRequestId: input.request.id,
+      proposalId: input.proposal.proposalId,
+      proposalVersion: input.proposal.version,
+      partyEntityId: input.partyEntityId,
+      channel: input.route.channel,
+    };
+    const prompt = householdApprovalRequestPrompt({
+      approvalRequestId: input.request.id,
+      reason: input.request.reason,
+    });
+    try {
+      const result = await input.route.send({
+        target: input.route.target,
+        message: prompt,
+        metadata: {
+          workflowId: HOUSEHOLD_SCHEDULE_PROPOSAL_APPROVAL_WORKFLOW_ID,
+          ...context,
+        },
+      });
+      if (!result.ok) {
+        this.deps.runtime.reportError(
+          "HouseholdCoordination.partyApprovalDelivery",
+          new HouseholdCoordinationError(
+            `Affected-party approval prompt was not accepted by ${input.route.channel}: ${result.reason}`,
+            "HOUSEHOLD_PARTY_APPROVAL_UNDELIVERED",
+            { ...context, reason: result.reason },
+          ),
+          { ...context, reason: result.reason },
+        );
+      }
+    } catch (error) {
+      // error-policy:J7 the pending approval row stays owner-visible and the
+      // party can still be reached by owner relay; a thrown connector failure
+      // must not strand the remaining parties' prompts, so it is raised via
+      // reportError (RECENT_ERRORS + owner escalation) instead of rethrown.
+      this.deps.runtime.reportError(
+        "HouseholdCoordination.partyApprovalDelivery",
+        error,
+        context,
+      );
+    }
+  }
+
   private async enqueueApprovals(
     proposal: HouseholdScheduleProposal,
   ): Promise<HouseholdProposalApproval[]> {
@@ -1098,6 +1241,7 @@ export class HouseholdCoordinationService {
         approvals.push(existingApproval);
         continue;
       }
+      const route = await this.resolvePartyContactRoute(partyEntityId);
       const request = await this.deps.approvalQueue.enqueue({
         idempotencyKey: approvalIdempotencyKey(proposal, partyEntityId),
         requestedBy: proposal.createdByEntityId,
@@ -1105,7 +1249,7 @@ export class HouseholdCoordinationService {
         action: "execute_workflow",
         payload: {
           action: "execute_workflow",
-          workflowId: "household.schedule.proposal.approval",
+          workflowId: HOUSEHOLD_SCHEDULE_PROPOSAL_APPROVAL_WORKFLOW_ID,
           input: {
             proposalId: proposal.proposalId,
             proposalVersion: proposal.version,
@@ -1114,7 +1258,7 @@ export class HouseholdCoordinationService {
             contentSha256: proposal.contentSha256,
           },
         },
-        channel: "internal",
+        channel: route?.channel ?? "internal",
         reason: `Approve household schedule proposal ${proposal.proposalId} v${proposal.version}`,
         expiresAt: new Date(
           proposal.expiresAt ??
@@ -1136,6 +1280,33 @@ export class HouseholdCoordinationService {
         updatedAt: now,
       };
       approvals.push(await this.deps.repository.insertApprovalLink(approval));
+      if (route) {
+        await this.deliverPartyApprovalPrompt({
+          proposal,
+          partyEntityId,
+          request,
+          route,
+        });
+      } else if (partyEntityId !== SELF_ENTITY_ID) {
+        this.deps.runtime.reportError(
+          "HouseholdCoordination.partyApprovalDelivery",
+          new HouseholdCoordinationError(
+            "No verified contact route can deliver this affected-party approval request; the party cannot answer until a connector identity is verified or the owner relays the command.",
+            "HOUSEHOLD_PARTY_APPROVAL_UNROUTABLE",
+            {
+              approvalRequestId: request.id,
+              proposalId: proposal.proposalId,
+              proposalVersion: proposal.version,
+              partyEntityId,
+            },
+          ),
+          {
+            approvalRequestId: request.id,
+            proposalId: proposal.proposalId,
+            partyEntityId,
+          },
+        );
+      }
     }
     return approvals;
   }
@@ -2021,7 +2192,10 @@ export class HouseholdCoordinationRuntimeService extends Service {
   static async start(
     runtime: IAgentRuntime,
   ): Promise<HouseholdCoordinationRuntimeService> {
-    await runtime.getServiceLoadPromise(ScheduledTaskRunnerService.serviceType);
+    await Promise.all([
+      runtime.getServiceLoadPromise(KNOWLEDGE_GRAPH_SERVICE),
+      runtime.getServiceLoadPromise(ScheduledTaskRunnerService.serviceType),
+    ]);
     const service = new HouseholdCoordinationRuntimeService(runtime);
     await service.coordination.reconcileGrantExpiryWarnings();
     return service;

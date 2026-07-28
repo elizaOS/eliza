@@ -17,6 +17,10 @@ import {
   type RealTestRuntimeResult,
 } from "../../../test/helpers/runtime.js";
 import { createApprovalQueue } from "../approval-queue.js";
+import {
+  createChannelRegistry,
+  registerChannelRegistry,
+} from "../channels/index.js";
 import { executeRawSql } from "../sql.js";
 import {
   authenticatedHouseholdInboundIdentity,
@@ -25,10 +29,19 @@ import {
   processHouseholdInboundApproval,
 } from "./inbound-approval.js";
 import { createHouseholdCoordinationService } from "./service.js";
+import {
+  householdApprovalCommandText,
+  householdApprovalRequestPrompt,
+} from "./types.js";
 
 describe("household inbound approval — real PGlite", () => {
   let runtimeResult: RealTestRuntimeResult;
   let runtime: AgentRuntime;
+  const partySends: Array<{
+    target: string;
+    message: string;
+    metadata?: Record<string, unknown>;
+  }> = [];
 
   beforeAll(async () => {
     runtimeResult = await createLifeOpsTestRuntime();
@@ -36,6 +49,31 @@ describe("household inbound approval — real PGlite", () => {
     const graph = resolveKnowledgeGraphService(runtime);
     if (!graph) throw new Error("knowledge graph unavailable");
     await graph.getEntityStore(runtime.agentId).ensureSelf();
+    const channels = createChannelRegistry();
+    channels.register({
+      kind: "telegram",
+      describe: { label: "Telegram (capture)" },
+      capabilities: {
+        send: true,
+        read: false,
+        reminders: false,
+        voice: false,
+        attachments: false,
+        quietHoursAware: false,
+      },
+      connectorKind: "telegram",
+      async send(payload) {
+        partySends.push(
+          payload as {
+            target: string;
+            message: string;
+            metadata?: Record<string, unknown>;
+          },
+        );
+        return { ok: true, messageId: `capture-telegram-${partySends.length}` };
+      },
+    });
+    registerChannelRegistry(runtime, channels);
   }, 180_000);
 
   afterAll(async () => {
@@ -133,13 +171,17 @@ describe("household inbound approval — real PGlite", () => {
     decision?: "approve" | "reject";
     messageId?: string;
     chatType?: string;
+    accountId?: string | null;
+    text?: string;
   }): Memory {
     const message = createMessageMemory({
       entityId: runtime.agentId,
       agentId: runtime.agentId,
       roomId: runtime.agentId,
       content: {
-        text: `${input.decision ?? "approve"} household approval ${input.approvalRequestId}`,
+        text:
+          input.text ??
+          `${input.decision ?? "approve"} household approval ${input.approvalRequestId}`,
         source: "telegram",
       },
     });
@@ -148,7 +190,9 @@ describe("household inbound approval — real PGlite", () => {
       type: "message",
       provider: "telegram",
       chatType: input.chatType ?? "dm",
-      accountId: "telegram-owner-bot",
+      ...(input.accountId === null
+        ? {}
+        : { accountId: input.accountId ?? "telegram-owner-bot" }),
       telegram: {
         userId: input.handle,
         id: input.handle,
@@ -178,6 +222,48 @@ describe("household inbound approval — real PGlite", () => {
     expect(
       parseHouseholdInboundApprovalCommand(
         `approve household approval ${requestId} and approve every later revision`,
+      ),
+    ).toBeNull();
+  });
+
+  it("parses realistic replies with prose, signatures, and quoted history", () => {
+    const requestId = randomUUID();
+    const command = householdApprovalCommandText("approve", requestId);
+    expect(
+      parseHouseholdInboundApprovalCommand(
+        [
+          "Sounds good, Friday works.",
+          "",
+          `${command} — works for us`,
+          "",
+          "Thanks,",
+          "Jordan",
+          "",
+          "> On Mar 1, Eliza wrote:",
+          `> To approve, reply with this exact line on its own line: ${command}`,
+        ].join("\n"),
+      ),
+    ).toEqual({
+      decision: "approve",
+      approvalRequestId: requestId,
+      reason: "works for us",
+    });
+    // A quoted echo alone is history, not a decision.
+    expect(parseHouseholdInboundApprovalCommand(`> ${command}`)).toBeNull();
+    // Conflicting unquoted commands are ambiguous, never guessed.
+    expect(
+      parseHouseholdInboundApprovalCommand(
+        `${command}\n${householdApprovalCommandText("reject", requestId)}`,
+      ),
+    ).toBeNull();
+    // The delivered prompt itself teaches both commands after prose on the
+    // same line, so an unquoted echo of the whole prompt never parses.
+    expect(
+      parseHouseholdInboundApprovalCommand(
+        householdApprovalRequestPrompt({
+          approvalRequestId: requestId,
+          reason: `Approve household schedule proposal hprop_${requestId} v1`,
+        }),
       ),
     ).toBeNull();
   });
@@ -229,6 +315,64 @@ describe("household inbound approval — real PGlite", () => {
         WHERE approval_request_id = '${pending.approvalRequestId}'`,
     );
     expect(rows).toHaveLength(1);
+  });
+
+  it("delivers the taught approval command to the party's contact channel end-to-end", async () => {
+    const handle = `tg-${randomUUID()}`;
+    const coParentId = await person({ label: "delivered-co-parent", handle });
+    const pending = await pendingProposal(coParentId);
+
+    const delivered = partySends.find((send) => send.target === handle);
+    if (!delivered) throw new Error("approval prompt was not delivered");
+    const approveCommand = householdApprovalCommandText(
+      "approve",
+      pending.approvalRequestId,
+    );
+    expect(delivered.message).toBe(
+      householdApprovalRequestPrompt({
+        approvalRequestId: pending.approvalRequestId,
+        reason: `Approve household schedule proposal ${pending.proposalId} v${pending.proposalVersion}`,
+      }),
+    );
+    expect(delivered.message).toContain(approveCommand);
+    expect(delivered.metadata).toMatchObject({
+      approvalRequestId: pending.approvalRequestId,
+      partyEntityId: coParentId,
+    });
+
+    const queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
+    expect(await queue.byId(pending.approvalRequestId)).toMatchObject({
+      channel: "telegram",
+      state: "pending",
+    });
+
+    const replyText = [
+      "Sounds good — Friday works.",
+      "",
+      `${approveCommand} — confirmed`,
+      "",
+      "Jordan",
+    ].join("\n");
+    const command = parseHouseholdInboundApprovalCommand(replyText);
+    const message = telegramMessage({
+      handle,
+      approvalRequestId: pending.approvalRequestId,
+      text: replyText,
+    });
+    const identity = authenticatedHouseholdInboundIdentity(message);
+    if (!command || !identity)
+      throw new Error("delivered-reply fixture invalid");
+    const result = await processHouseholdInboundApproval({
+      runtime,
+      message,
+      command,
+      identity,
+    });
+    expect(result.status).toBe("processed");
+    expect(await queue.byId(pending.approvalRequestId)).toMatchObject({
+      state: "approved",
+      resolvedBy: coParentId,
+    });
   });
 
   it("reconciles an exact decision committed before receipt persistence", async () => {
@@ -339,5 +483,57 @@ describe("household inbound approval — real PGlite", () => {
     });
     expect(authenticatedHouseholdInboundIdentity(message)).toBeNull();
     expect(message.entityId).toBe(runtime.agentId as UUID);
+  });
+
+  it("rejects a connector message without authenticated account identity", () => {
+    const message = telegramMessage({
+      handle: `tg-${randomUUID()}`,
+      approvalRequestId: randomUUID(),
+      accountId: null,
+    });
+    expect(authenticatedHouseholdInboundIdentity(message)).toBeNull();
+  });
+
+  it("does not collapse the same provider receipt across connector accounts", async () => {
+    const handle = `tg-${randomUUID()}`;
+    const coParentId = await person({ label: "account-bound", handle });
+    const pending = await pendingProposal(coParentId);
+    const messageId = `account-bound-${randomUUID()}`;
+    const original = telegramMessage({
+      handle,
+      approvalRequestId: pending.approvalRequestId,
+      messageId,
+      accountId: "telegram-owner-bot",
+    });
+    const command = parseHouseholdInboundApprovalCommand(
+      String(original.content.text),
+    );
+    const originalIdentity = authenticatedHouseholdInboundIdentity(original);
+    if (!command || !originalIdentity) throw new Error("fixture invalid");
+    await processHouseholdInboundApproval({
+      runtime,
+      message: original,
+      command,
+      identity: originalIdentity,
+    });
+
+    const replay = telegramMessage({
+      handle,
+      approvalRequestId: pending.approvalRequestId,
+      messageId,
+      accountId: "telegram-second-bot",
+    });
+    const replayIdentity = authenticatedHouseholdInboundIdentity(replay);
+    if (!replayIdentity) throw new Error("replay fixture invalid");
+    await expect(
+      processHouseholdInboundApproval({
+        runtime,
+        message: replay,
+        command,
+        identity: replayIdentity,
+      }),
+    ).rejects.toMatchObject<Partial<HouseholdInboundApprovalError>>({
+      code: "HOUSEHOLD_INBOUND_REPLAY_CONFLICT",
+    });
   });
 });

@@ -1,10 +1,9 @@
 /**
- * In-memory store for MessageRefs and drafts, keyed by deterministic IDs.
+ * Bounded turn-local cache for MessageRefs and active draft previews.
  *
- * This is intentionally process-local: adapters fetch from their underlying
- * plugins, but the triage actions need a stable handle to refer to messages
- * and drafts across subsequent agent turns. Long-term persistence is owned
- * by each adapter's underlying plugin.
+ * Connector stores remain authoritative for inbox data. Deferred sends copy
+ * their complete draft snapshot into the canonical ScheduledTask row before
+ * reporting success, so this cache is never relied on across a restart.
  */
 
 import type { DraftRecord, MessageRef, MessageSource } from "./types.ts";
@@ -97,6 +96,7 @@ export class MessageRefStore {
 		draftId: string,
 		sendAtMs: number,
 		scheduledId: string,
+		scheduleCommit: NonNullable<DraftRecord["scheduleCommit"]>,
 	): DraftRecord | null {
 		const existing = this.drafts.get(draftId);
 		if (!existing) return null;
@@ -104,6 +104,7 @@ export class MessageRefStore {
 			...existing,
 			scheduledForMs: sendAtMs,
 			scheduledId,
+			scheduleCommit,
 		};
 		this.drafts.set(draftId, next);
 		return next;

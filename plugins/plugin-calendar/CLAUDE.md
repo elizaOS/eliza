@@ -20,9 +20,10 @@ behind its OWNER/ADMIN role gate.
   which injects a `CalendarConnectorGate` into `CalendarService` at init. Never
   import `@elizaos/plugin-personal-assistant` from this package — the dependency direction
   is `plugin-lifeops -> plugin-calendar`.
-- **Schema namespace is `app_calendar`.** The two calendar tables
-  (`life_calendar_events`, `life_calendar_sync_states`) were carved out of PA's
-  `app_lifeops` schema. `calendarPgSchema = pgSchema("app_calendar")` is
+- **Schema namespace is `app_calendar`.** Calendar events and sync states were
+  carved out of PA's `app_lifeops` schema; ICS sources, the durable secret
+  cleanup outbox, feed preferences, and Google watch channels are
+  calendar-native tables. `calendarPgSchema = pgSchema("app_calendar")` is
   registered via the plugin `schema` field, and `CalendarMigrationService`
   performs a non-destructive one-time copy of any existing `app_lifeops` rows
   (the plugin-finances carve pattern: skip if source missing / target non-empty,
@@ -58,6 +59,13 @@ bun run --cwd plugins/plugin-calendar build:types
 bun run --cwd plugins/plugin-calendar test
 bun run --cwd plugins/plugin-calendar typecheck
 ```
+
+## Google push configuration
+
+- `GOOGLE_CALENDAR_WEBHOOK_ENABLED` must be exactly `true` before the public
+  callback or watch creation is active; omission is fail-closed.
+- `GOOGLE_CALENDAR_WEBHOOK_URL` must be a public HTTPS URL with the exact
+  `/api/lifeops/calendar/google/webhook` path.
 
 <!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->
 ## ⛔ NON-NEGOTIABLE — evidence, trajectories & real end-to-end tests

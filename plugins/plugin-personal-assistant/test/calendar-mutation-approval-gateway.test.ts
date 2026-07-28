@@ -79,26 +79,29 @@ function harness(): {
   const enqueue = vi.fn(async (input: ApprovalEnqueueInput) => {
     const now = new Date(MESSAGE_CREATED_AT);
     return {
-      id: `approval-${input.action}`,
-      createdAt: now,
-      updatedAt: now,
-      state: "pending",
-      requestedBy: input.requestedBy,
-      subjectUserId: input.subjectUserId,
-      action: input.action,
-      payload: input.payload,
-      channel: input.channel,
-      reason: input.reason,
-      idempotencyKey: input.idempotencyKey ?? null,
-      expiresAt: input.expiresAt,
-      resolvedAt: null,
-      resolvedBy: null,
-      resolutionReason: null,
-    } satisfies ApprovalRequest;
+      request: {
+        id: `approval-${input.action}`,
+        createdAt: now,
+        updatedAt: now,
+        state: "pending",
+        requestedBy: input.requestedBy,
+        subjectUserId: input.subjectUserId,
+        action: input.action,
+        payload: input.payload,
+        channel: input.channel,
+        reason: input.reason,
+        idempotencyKey: input.idempotencyKey ?? null,
+        expiresAt: input.expiresAt,
+        resolvedAt: null,
+        resolvedBy: null,
+        resolutionReason: null,
+      } satisfies ApprovalRequest,
+      reused: false,
+    };
   });
   return {
     gateway: createCalendarMutationApprovalGateway({
-      createQueue: () => ({ enqueue }),
+      createQueue: () => ({ enqueueWithResult: enqueue }),
     }),
     enqueue,
   };
@@ -130,7 +133,7 @@ describe("calendar conversational mutation approval gateway", () => {
       travelBuffer,
     };
 
-    await gateway.schedule(args);
+    const result = await gateway.schedule(args);
     await gateway.schedule(args);
 
     const first = enqueue.mock.calls[0]?.[0] as ApprovalEnqueueInput;
@@ -161,6 +164,73 @@ describe("calendar conversational mutation approval gateway", () => {
     expect(first.expiresAt.toISOString()).toBe(
       new Date(MESSAGE_CREATED_AT + 24 * 60 * 60 * 1000).toISOString(),
     );
+    expect(result).toMatchObject({
+      requestId: "approval-schedule_event",
+      acceptedAt: new Date(MESSAGE_CREATED_AT).toISOString(),
+      idempotencyKey: first.idempotencyKey,
+      replayed: false,
+    });
+  });
+
+  it("routes approvals through the provider bound to the mutation target", async () => {
+    const { gateway, enqueue } = harness();
+    const schedule = async (grantId: string) =>
+      gateway.schedule({
+        runtime: runtime(),
+        message: message(),
+        request: {
+          side: "owner",
+          grantId,
+          calendarId: "primary",
+          title: "Provider-bound event",
+          startAt: "2026-08-03T17:00:00.000Z",
+          endAt: "2026-08-03T18:00:00.000Z",
+        },
+        travelBuffer: null,
+      });
+
+    await schedule("apple-calendar");
+    await schedule("connector-account:microsoft:account-a");
+
+    const microsoftTarget = {
+      ...event("organizer"),
+      provider: "microsoft" as const,
+      grantId: "connector-account:microsoft:account-a",
+    };
+    await gateway.modify({
+      runtime: runtime(),
+      message: message(),
+      targetEvent: microsoftTarget,
+      request: {
+        side: "owner",
+        grantId: microsoftTarget.grantId,
+        calendarId: "primary",
+        eventId: microsoftTarget.externalId,
+        title: "Provider-bound event moved",
+        recurrenceScope: "instance",
+        notifyAttendees: false,
+      },
+    });
+    await gateway.cancel({
+      runtime: runtime(),
+      message: message(),
+      targetEvent: microsoftTarget,
+      request: {
+        side: "owner",
+        grantId: microsoftTarget.grantId,
+        calendarId: "primary",
+        eventId: microsoftTarget.externalId,
+        recurrenceScope: "instance",
+        notifyAttendees: false,
+      },
+    });
+
+    expect(enqueue.mock.calls.map(([input]) => input.channel)).toEqual([
+      "apple_calendar",
+      "microsoft_calendar",
+      "microsoft_calendar",
+      "microsoft_calendar",
+    ]);
   });
 
   it("binds the exact update target, patch, scope, and notification choice", async () => {

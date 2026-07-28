@@ -362,9 +362,7 @@ CONFORMANCE_SCENARIOS: list[Scenario] = [
         persona=_PERSONA,
         instruction="mark ship-the-thing as done",
         ground_truth_actions=[
-            Action(
-                name="REMINDER.complete", kwargs={"reminder_id": "rm_existing"}
-            ),
+            Action(name="REMINDER.complete", kwargs={"reminder_id": "rm_existing"}),
         ],
         required_outputs=["completed"],
         first_question_fallback=None,
@@ -379,9 +377,7 @@ CONFORMANCE_SCENARIOS: list[Scenario] = [
         persona=_PERSONA,
         instruction="finish that task and let the boss know",
         ground_truth_actions=[
-            Action(
-                name="REMINDER.complete", kwargs={"reminder_id": "rm_existing"}
-            ),
+            Action(name="REMINDER.complete", kwargs={"reminder_id": "rm_existing"}),
             Action(
                 name="MAIL.send",
                 kwargs={
@@ -453,7 +449,9 @@ def _world_factory_for(scenario: Scenario):
             build_world_for,
         )
 
-        spec_name = "medium_seed_2026" if scenario.world_seed == 2026 else "tiny_seed_42"
+        spec_name = (
+            "medium_seed_2026" if scenario.world_seed == 2026 else "tiny_seed_42"
+        )
         spec = next(s for s in SNAPSHOT_SPECS if s.name == spec_name)
 
         def _factory(_seed: int, _now_iso: str):
@@ -483,6 +481,7 @@ def _run_scenario_sync(
             seeds=1,
             max_cost_usd=10.0,
             per_scenario_timeout_s=15,
+            static_grading_mode="offline_conformance",
         )
         result = await runner.run_one(scenario, scenario.world_seed)
         return result.total_score
@@ -507,19 +506,19 @@ def _diagnose(scenario: Scenario, score: float) -> str:
             seeds=1,
             max_cost_usd=10.0,
             per_scenario_timeout_s=15,
+            static_grading_mode="offline_conformance",
         )
         result = await runner.run_one(scenario, scenario.world_seed)
         emitted = [a for t in result.turns for a in t.agent_actions]
-        emitted_summary = [
-            (a.name, sorted(a.kwargs.keys())) for a in emitted
-        ]
+        emitted_summary = [(a.name, sorted(a.kwargs.keys())) for a in emitted]
         gt_summary = [
-            (a.name, sorted(a.kwargs.keys()))
-            for a in scenario.ground_truth_actions
+            (a.name, sorted(a.kwargs.keys())) for a in scenario.ground_truth_actions
         ]
         substring_misses = [
             req
-            for req, hit in zip(scenario.required_outputs, result.output_substring_matches)
+            for req, hit in zip(
+                scenario.required_outputs, result.output_substring_matches
+            )
             if not hit
         ]
         return (
@@ -562,9 +561,9 @@ def test_wrong_agent_garbage_text_scores_zero(scenario: Scenario) -> None:
     score = _run_scenario_sync(
         scenario, lambda s: WrongAgent(scenario=s, mode="garbage_text")
     )
-    assert score == pytest.approx(0.0, abs=1e-6), (
-        f"garbage_text WrongAgent scored {score:.4f} on {scenario.id} — rubric too lenient"
-    )
+    assert score == pytest.approx(
+        0.0, abs=1e-6
+    ), f"garbage_text WrongAgent scored {score:.4f} on {scenario.id} — rubric too lenient"
 
 
 @pytest.mark.parametrize(
@@ -577,9 +576,9 @@ def test_wrong_agent_wrong_action_scores_zero(scenario: Scenario) -> None:
     score = _run_scenario_sync(
         scenario, lambda s: WrongAgent(scenario=s, mode="wrong_action")
     )
-    assert score == pytest.approx(0.0, abs=1e-6), (
-        f"wrong_action WrongAgent scored {score:.4f} on {scenario.id} — rubric too lenient"
-    )
+    assert score == pytest.approx(
+        0.0, abs=1e-6
+    ), f"wrong_action WrongAgent scored {score:.4f} on {scenario.id} — rubric too lenient"
 
 
 def test_conformance_coverage_table(capsys: pytest.CaptureFixture[str]) -> None:
@@ -592,7 +591,9 @@ def test_conformance_coverage_table(capsys: pytest.CaptureFixture[str]) -> None:
     print(f"  supported actions ({len(supported)}): {', '.join(supported)}")
     print(f"  scenarios under conformance: {len(scenarios)}")
     print(f"  inline conformance scenarios: {len(CONFORMANCE_SCENARIOS)}")
-    print(f"  registry scenarios included: {len(scenarios) - len(CONFORMANCE_SCENARIOS)}")
+    print(
+        f"  registry scenarios included: {len(scenarios) - len(CONFORMANCE_SCENARIOS)}"
+    )
     print(f"  registry scenarios skipped:  {len(skipped)}")
     for sid, missing in skipped:
         print(f"    skipped: {sid}  unsupported={sorted(missing)}")

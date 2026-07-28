@@ -35,8 +35,10 @@ import {
   resolveOptimizedPromptForRuntime,
   runWithTrajectoryPurpose,
 } from "@elizaos/core";
-import type { LifeOpsCalendarEvent } from "@elizaos/shared";
-import type { LifeOpsCalendarFeed } from "@elizaos/shared";
+import type {
+  LifeOpsCalendarEvent,
+  LifeOpsCalendarFeed,
+} from "@elizaos/shared";
 import { hasLifeOpsAccess, INTERNAL_URL } from "../../lifeops/access.js";
 import { PgApprovalQueue } from "../../lifeops/approval-queue.js";
 import type {
@@ -74,6 +76,7 @@ import {
   messageText as getMessageText,
   renderLifeOpsActionReply,
 } from "../../lifeops/voice/grounded-reply.js";
+import { calendarSnapshotEffectProof } from "./calendar-effect-proof.js";
 
 export { SCHEDULE_PLAN_INSTRUCTIONS } from "../../lifeops/optimized-prompt-instructions.js";
 
@@ -666,6 +669,7 @@ export async function runProposeMeetingTimesHandler(
       preferences: effectivePreferences,
       counterparties,
       bundleLocationLabel,
+      calendarSnapshot: calendarSnapshotEffectProof(feed),
     },
   });
 }
@@ -784,6 +788,7 @@ export async function runCheckAvailabilityHandler(
         endAt: c.endAt,
       })),
       timeZone: preferences.timeZone,
+      calendarSnapshot: calendarSnapshotEffectProof(feed),
     },
   });
 }
@@ -829,8 +834,8 @@ export async function runUpdateMeetingPreferencesHandler(
     });
   }
 
-  const updated = await updateLifeOpsMeetingPreferences(runtime, patch);
-  if (!updated) {
+  const update = await updateLifeOpsMeetingPreferences(runtime, patch);
+  if (!update) {
     return respond({
       success: false,
       scenario: "scheduling_preferences_update_failed",
@@ -839,6 +844,7 @@ export async function runUpdateMeetingPreferencesHandler(
     });
   }
 
+  const updated = update.preferences;
   const fallback = `Updated meeting preferences (${updated.preferredStartLocal}–${updated.preferredEndLocal} ${updated.timeZone}, default ${updated.defaultDurationMinutes} min, travel buffer ${updated.travelBufferMinutes} min, ${updated.blackoutWindows.length} blackout window${updated.blackoutWindows.length === 1 ? "" : "s"}).`;
   return respond({
     success: true,
@@ -852,7 +858,11 @@ export async function runUpdateMeetingPreferencesHandler(
       travelBufferMinutes: updated.travelBufferMinutes,
       blackoutWindowCount: updated.blackoutWindows.length,
     },
-    data: { preferences: updated, updatedFields: Object.keys(patch) },
+    data: {
+      preferences: updated,
+      preferenceTaskId: update.taskId,
+      updatedFields: Object.keys(patch),
+    },
   });
 }
 

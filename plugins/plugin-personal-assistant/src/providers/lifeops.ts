@@ -12,6 +12,7 @@
  */
 
 import {
+  evaluateOwnerExclusiveDisclosure,
   getAccountPrivacy,
   getConnectorAccountManager,
   type IAgentRuntime,
@@ -352,11 +353,15 @@ export const lifeOpsProvider: Provider = {
     message: Memory,
     _state: State,
   ): Promise<ProviderResult> {
+    const disclosure = evaluateOwnerExclusiveDisclosure(message);
+    const audience: LifeOpsAudience = disclosure.allowed ? "owner" : "public";
+    if (audience !== "owner") {
+      return { text: "", values: {}, data: {} };
+    }
     const isOwner = await hasLifeOpsAccess(runtime, message);
     if (!isOwner) {
       return { text: "", values: {}, data: {} };
     }
-    const audience: LifeOpsAudience = "owner";
 
     try {
       const service = new LifeOpsService(runtime);

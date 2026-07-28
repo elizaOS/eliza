@@ -3297,7 +3297,10 @@ async function lifeEffectReceiptForResult(args: {
         version: definitionUpdatedAt,
       },
       artifacts: [],
-      idempotency: { key: null, replayed: false },
+      idempotency:
+        audit.eventType === "definition_created"
+          ? { key: definitionId, replayed: false }
+          : { key: null, replayed: false },
       observedAt: audit.createdAt,
       commit: {
         kind: "durable",
@@ -3344,7 +3347,10 @@ async function lifeEffectReceiptForResult(args: {
         version: goalUpdatedAt,
       },
       artifacts: [],
-      idempotency: { key: null, replayed: false },
+      idempotency:
+        audit.eventType === "goal_created"
+          ? { key: goalId, replayed: false }
+          : { key: null, replayed: false },
       observedAt: audit.createdAt,
       commit: {
         kind: "durable",
@@ -3374,6 +3380,27 @@ async function lifeEffectReceiptForResult(args: {
         "occurrence_snoozed",
       ],
     });
+    const replayed = data?.effectReplayed === true;
+    if (replayed) {
+      return lifeOpsNoopEffect({
+        receiptId: lifeEffectReceiptId(args.message, operation, occurrenceId),
+        operation: `lifeops.occurrence.${occurrenceState}`,
+        resource: {
+          kind: "lifeops.occurrence",
+          id: occurrenceId,
+          version: occurrenceUpdatedAt,
+        },
+        artifacts: [
+          {
+            kind: "lifeops.definition",
+            id: definitionIdForOccurrence,
+          },
+        ],
+        idempotency: { key: occurrenceId, replayed: true },
+        observedAt: new Date().toISOString(),
+        reason: `The occurrence was already ${occurrenceState}.`,
+      });
+    }
     return lifeOpsAppliedEffect({
       receiptId: lifeEffectReceiptId(args.message, operation, occurrenceId),
       operation: `lifeops.occurrence.${occurrenceState}`,
@@ -3388,7 +3415,10 @@ async function lifeEffectReceiptForResult(args: {
           id: definitionIdForOccurrence,
         },
       ],
-      idempotency: { key: null, replayed: false },
+      idempotency:
+        occurrenceState === "completed" || occurrenceState === "skipped"
+          ? { key: occurrenceId, replayed: false }
+          : { key: null, replayed: false },
       observedAt: audit.createdAt,
       commit: {
         kind: "durable",
@@ -4721,9 +4751,6 @@ async function runLifeOperationHandlerInner(
           },
         };
       }
-      const existingGoalIds = new Set(
-        (await service.listGoals()).map((record) => record.goal.id),
-      );
       const created = await service.createGoal({
         ownership,
         title: goalDraft.request.title,
@@ -4738,7 +4765,13 @@ async function runLifeOperationHandlerInner(
         },
       });
       await clearDeferredLifeDraftCache(runtime, message);
-      if (existingGoalIds.has(created.goal.id)) {
+      const createAudit = await latestLifeAudit({
+        runtime,
+        ownerType: "goal",
+        ownerId: created.goal.id,
+        eventTypes: ["goal_created"],
+      });
+      if (createAudit.decision.dedup === true) {
         const text = `"${created.goal.title}" is already saved as a goal — nothing new was created.`;
         return {
           success: true,
@@ -5127,27 +5160,39 @@ async function runLifeOperationHandlerInner(
         }
         resolvedTargetId = target.id;
       }
+      const priorOccurrence = await service.repository.getOccurrence(
+        runtime.agentId,
+        resolvedTargetId,
+      );
       const completed = await service.completeOccurrence(resolvedTargetId, {
         note: detailString(details, "note"),
       });
-      const fallback = `Marked "${completed.title}" done.`;
+      const effectReplayed = priorOccurrence?.state === "completed";
+      const fallback = effectReplayed
+        ? `"${completed.title}" was already marked done — nothing changed.`
+        : `Marked "${completed.title}" done.`;
       return {
         success: true,
-        text: await renderLifeActionReply({
-          runtime,
-          message,
-          state,
-          intent,
-          scenario: "completed_occurrence",
-          fallback,
-          context: {
-            completed: {
-              title: completed.title,
-            },
-            note: detailString(details, "note"),
-          },
+        text: effectReplayed
+          ? fallback
+          : await renderLifeActionReply({
+              runtime,
+              message,
+              state,
+              intent,
+              scenario: "completed_occurrence",
+              fallback,
+              context: {
+                completed: {
+                  title: completed.title,
+                },
+                note: detailString(details, "note"),
+              },
+            }),
+        data: toActionData({
+          ...completed,
+          effectReplayed,
         }),
-        data: toActionData(completed),
       };
     }
 
@@ -5189,7 +5234,10 @@ async function runLifeOperationHandlerInner(
             },
           },
         }),
-        data: toActionData(skipped),
+        data: toActionData({
+          ...skipped,
+          effectReplayed: target.state === "skipped",
+        }),
       };
     }
 

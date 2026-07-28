@@ -1280,13 +1280,29 @@ export function CalendarSection({
             })}
           />
         ) : calendar.status === "unavailable" ? (
-          <CalendarStatusIcon label="Calendar unavailable" />
+          <CalendarStatusIcon
+            label={t("lifeopsCalendar.unavailable", {
+              defaultValue: "Calendar unavailable",
+            })}
+          />
         ) : calendar.status === "error" && calendar.events.length === 0 ? (
-          <CalendarStatusIcon label="Calendar could not load" />
+          <CalendarStatusIcon
+            label={t("lifeopsCalendar.loadFailed", {
+              defaultValue: "Calendar could not load",
+            })}
+          />
         ) : calendar.status === "empty" ? (
-          <CalendarStatusIcon label="No events in this range" />
+          <CalendarStatusIcon
+            label={t("lifeopsCalendar.noEvents", {
+              defaultValue: "No events in this range",
+            })}
+          />
         ) : calendar.status === "partial" && calendar.events.length === 0 ? (
-          <CalendarStatusIcon label="No events from available sources" />
+          <CalendarStatusIcon
+            label={t("lifeopsCalendar.noEventsPartial", {
+              defaultValue: "No events from available sources",
+            })}
+          />
         ) : compactLayout ? (
           <AgendaView
             days={days}

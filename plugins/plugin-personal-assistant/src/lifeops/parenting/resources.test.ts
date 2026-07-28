@@ -7,19 +7,24 @@
 import { describe, expect, it } from "vitest";
 import {
   PARENTING_HANDOFF_RESOURCES,
-  type ParentingLocaleEvidence,
   ReviewedParentingHandoffResourceResolver,
 } from "./resources.js";
+import type { ParentingLocaleEvidence } from "./subject-location.js";
 
 const REQUESTED_AT = "2026-07-27T12:00:00.000Z";
 
 function localeEvidence(locale: string): ParentingLocaleEvidence {
   return {
     status: "resolved",
+    subjectEntityId: "child-1",
     locale,
-    source: "runtime_locale_provider",
+    jurisdiction: "US",
+    source: "subject_location_graph",
     observedAt: REQUESTED_AT,
-    provenance: null,
+    expiresAt: "2026-07-28T12:00:00.000Z",
+    verificationSource: "caregiver_presence_confirmation",
+    verifiedByEntityId: "self",
+    verificationEvidenceId: "check-in-1",
     unavailableReason: null,
   };
 }
@@ -63,13 +68,18 @@ describe("ReviewedParentingHandoffResourceResolver", () => {
     {
       localeEvidence: {
         status: "unavailable",
+        subjectEntityId: "child-1",
         locale: null,
+        jurisdiction: null,
         source: "unavailable",
         observedAt: null,
-        provenance: null,
-        unavailableReason: "locale_missing",
+        expiresAt: null,
+        verificationSource: null,
+        verifiedByEntityId: null,
+        verificationEvidenceId: null,
+        unavailableReason: "location_missing",
       } satisfies ParentingLocaleEvidence,
-      reason: "locale_missing",
+      reason: "location_missing",
     },
     {
       localeEvidence: localeEvidence("not_a_locale"),
@@ -149,11 +159,16 @@ describe("ReviewedParentingHandoffResourceResolver", () => {
       new ReviewedParentingHandoffResourceResolver().resolve({
         localeEvidence: {
           status: "unavailable",
+          subjectEntityId: "child-1",
           locale: null,
+          jurisdiction: null,
           source: "unavailable",
           observedAt: null,
-          provenance: null,
-          unavailableReason: "locale_missing",
+          expiresAt: null,
+          verificationSource: null,
+          verifiedByEntityId: null,
+          verificationEvidenceId: null,
+          unavailableReason: "location_missing",
         },
         requestedAt: REQUESTED_AT,
         kinds: [],

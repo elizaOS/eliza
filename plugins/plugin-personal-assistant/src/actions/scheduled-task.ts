@@ -367,10 +367,16 @@ function scheduledTransition(
 ): ScheduledTaskLogEntry["transition"] {
   if (subaction === "create") return "scheduled";
   if (subaction === "update") return "edited";
+  if (subaction === "snooze") return "snoozed";
+  if (subaction === "skip") return "skipped";
+  if (subaction === "complete") return "completed";
   if (subaction === "cancel") return "dismissed";
+  if (subaction === "dismiss") return "dismissed";
+  if (subaction === "reopen") return "reopened";
   if (subaction === "acknowledge" && task.state.status === "completed") {
     return "completed";
   }
+  if (subaction === "acknowledge") return "acknowledged";
   return subaction as ScheduledTaskLogEntry["transition"];
 }
 
@@ -399,11 +405,10 @@ async function completeScheduledTaskResult(args: {
         ? String(args.runtime.agentId)
         : scheduledRequestId(args.message));
   const idempotencyKey =
-    task?.idempotencyKey ??
-    (typeof args.params.idempotencyKey === "string" &&
+    typeof args.params.idempotencyKey === "string" &&
     args.params.idempotencyKey.trim().length > 0
       ? args.params.idempotencyKey.trim()
-      : null);
+      : null;
 
   if (args.result.success === false) {
     const error =

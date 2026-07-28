@@ -7,31 +7,37 @@
  */
 
 import http from "node:http";
+import { KnowledgeGraphService, knowledgeGraphSchema } from "@elizaos/agent";
 import { resolveElizaPluginImportSpecifier } from "@elizaos/agent/runtime/plugin-types";
-import {
-  AgentRuntime,
-  elizaLogger,
-  type Plugin,
-} from "@elizaos/core";
+import { AgentRuntime, elizaLogger, type Plugin } from "@elizaos/core";
 import dotenv from "dotenv";
 import {
+  type BenchmarkSession,
   createSession,
   formatUnknownError,
   toPlugin,
-  type BenchmarkSession,
 } from "./server-utils.js";
 import {
-  TrustedRuntimeActionHandler,
+  parseTrustedRuntimeEvidenceProvenance,
   TRUSTED_RUNTIME_ACTION_PATH,
+  TrustedRuntimeActionHandler,
 } from "./trusted-runtime-action-handler.js";
 
 dotenv.config({ override: false });
 
 const DEFAULT_PLUGINS = [
   "@elizaos/plugin-sql",
+  "@elizaos/plugin-scheduling",
   "@elizaos/plugin-personal-assistant",
   "@elizaos/plugin-calendar",
 ] as const;
+const TRUSTED_EVIDENCE_KNOWLEDGE_GRAPH_PLUGIN: Plugin = {
+  name: "trusted-evidence-knowledge-graph",
+  description:
+    "Production entity and relationship stores used by trusted evidence actions.",
+  schema: knowledgeGraphSchema,
+  services: [KnowledgeGraphService],
+};
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "::1", "localhost"]);
 
 function commaSeparated(value: string | undefined): string[] {
@@ -92,18 +98,19 @@ export async function startTrustedRuntimeServer(): Promise<void> {
       "ELIZA_BENCH_TRUSTED_RUNTIME_ALLOWED_ACTIONS must explicitly allow at least one action",
     );
   }
+  const evidenceProvenance = parseTrustedRuntimeEvidenceProvenance(process.env);
   const configuredPlugins = commaSeparated(
     process.env.ELIZA_BENCH_TRUSTED_RUNTIME_PLUGINS,
   );
   const pluginNames =
-    configuredPlugins.length > 0
-      ? configuredPlugins
-      : [...DEFAULT_PLUGINS];
-  const plugins: Plugin[] = [];
+    configuredPlugins.length > 0 ? configuredPlugins : [...DEFAULT_PLUGINS];
+  const plugins: Plugin[] = [TRUSTED_EVIDENCE_KNOWLEDGE_GRAPH_PLUGIN];
   for (const pluginName of pluginNames) {
     try {
       plugins.push(await loadPlugin(pluginName));
     } catch (error) {
+      // error-policy:J2 Preserve the failing plugin import as the startup
+      // error cause while adding the configured plugin identity.
       throw new Error(
         `trusted runtime could not load ${pluginName}: ${formatUnknownError(error)}`,
         { cause: error },
@@ -147,6 +154,7 @@ export async function startTrustedRuntimeServer(): Promise<void> {
     runtime,
     bearerToken,
     allowedActions: new Set(allowedActionNames),
+    evidenceProvenance,
     resolveSession,
   });
   const server = http.createServer(async (req, res) => {
@@ -167,6 +175,10 @@ export async function startTrustedRuntimeServer(): Promise<void> {
         path: TRUSTED_RUNTIME_ACTION_PATH,
         plugins: pluginNames,
         actions: allowedActionNames,
+        evidenceTier: evidenceProvenance.tier,
+        evidenceProvider: evidenceProvenance.provider,
+        evidenceBoundary: evidenceProvenance.boundary,
+        providerReadback: evidenceProvenance.provider_readback,
       },
       "Trusted runtime action server is ready",
     );
@@ -174,6 +186,8 @@ export async function startTrustedRuntimeServer(): Promise<void> {
 }
 
 startTrustedRuntimeServer().catch((error: unknown) => {
+  // error-policy:J1 Process startup is the outermost boundary; it reports the
+  // failure and exits instead of leaving a partially initialized server alive.
   elizaLogger.error(
     {
       src: "trusted-runtime-server",

@@ -34,6 +34,7 @@ export const SOURCE_AUTHORITY_CLASSES = [
   "school_calendar",
   "school_notice",
   "school_official",
+  "signed_school_correction",
 ] as const;
 export type SourceAuthorityClass = (typeof SOURCE_AUTHORITY_CLASSES)[number];
 
@@ -875,6 +876,7 @@ export function normalizeResponsibilityAssignmentInput(
 }
 
 export function authorityRank(authority: SourceAuthorityClass): number {
+  if (authority === "signed_school_correction") return 60;
   if (authority === "school_official") return 50;
   if (authority === "school_notice") return 40;
   if (authority === "school_calendar") return 30;

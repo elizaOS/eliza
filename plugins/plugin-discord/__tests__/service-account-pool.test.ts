@@ -53,6 +53,8 @@ function makeRuntime() {
 		registerMessageConnector: vi.fn(),
 		registerSendHandler: vi.fn(),
 		ensureConnection: vi.fn().mockResolvedValue(undefined),
+		createMemory: vi.fn(async (memory) => memory.id),
+		getMemoryById: vi.fn(async () => null),
 		ensureRoomExists: vi.fn(async (room) => {
 			rooms.set(String(room.id), room);
 		}),
@@ -387,6 +389,109 @@ describe("DiscordService account-scoped primitives", () => {
 			expect.objectContaining({ accountId: "work" }),
 			expect.objectContaining({ text: "scoped" }),
 		);
+	});
+
+	it("registers an entity-targeted DM recipient before reserving duplicate delivery", async () => {
+		const { graph, runtime, service } = makeService();
+		const recipientEntityId = "00000000-0000-0000-0000-000000000099";
+		const dmChannel = {
+			id: "888888888888888888",
+			type: DiscordChannelType.DM,
+			isTextBased: () => true,
+			isVoiceBased: () => false,
+			isThread: () => false,
+			send: vi.fn(async (payload: { content?: string }) =>
+				makeMessage({
+					id: "999999999999999998",
+					content: payload.content ?? "",
+					url: "https://discord.test/dm/999999999999999998",
+					author: { id: "999999999999999999", username: "bot" },
+				}),
+			),
+		};
+		Object.assign(graph.cachedUser, {
+			dmChannel,
+			displayName: "Recipient",
+		});
+		service.resolveDiscordTargetUserId = vi.fn(async () => graph.cachedUser.id);
+
+		let rejectFirstRecipient!: (reason: Error) => void;
+		let markFirstRecipientStarted!: () => void;
+		const firstRecipientStarted = new Promise<void>((resolve) => {
+			markFirstRecipientStarted = resolve;
+		});
+		const firstRecipientEnsure = new Promise<void>((_resolve, reject) => {
+			rejectFirstRecipient = reject;
+		});
+		let recipientEnsureCalls = 0;
+		runtime.ensureConnection.mockImplementation(async (connection) => {
+			if (connection.entityId !== recipientEntityId) return;
+			recipientEnsureCalls += 1;
+			if (recipientEnsureCalls === 1) {
+				markFirstRecipientStarted();
+				await firstRecipientEnsure;
+			}
+		});
+
+		const target = {
+			source: "discord",
+			accountId: "work",
+			entityId: recipientEntityId,
+		};
+		const content = {
+			text: "dedupe ordering canary 2026-07-27",
+		};
+		const firstOutcome = service
+			.handleSendMessage(runtime as never, target, content)
+			.then(
+				(value) => ({ value }),
+				(error: unknown) => ({ error }),
+			);
+		await firstRecipientStarted;
+
+		const second = await service.handleSendMessage(
+			runtime as never,
+			target,
+			content,
+		);
+		rejectFirstRecipient(new Error("first recipient registration failed"));
+		const first = await firstOutcome;
+
+		expect(first).toEqual({
+			error: expect.objectContaining({
+				message: "first recipient registration failed",
+			}),
+		});
+		expect(second).toMatchObject({
+			entityId: AGENT_ID,
+			roomId: expect.any(String),
+			content: expect.objectContaining({
+				text: "dedupe ordering canary 2026-07-27",
+			}),
+		});
+		expect(recipientEnsureCalls).toBe(2);
+		expect(dmChannel.send).toHaveBeenCalledTimes(1);
+		expect(runtime.createMemory).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not register a recipient for an explicit guild channel target", async () => {
+		const { graph, runtime, service } = makeService();
+		await service.handleSendMessage(
+			runtime as never,
+			{
+				source: "discord",
+				accountId: "work",
+				channelId: graph.textChannel.id,
+			},
+			{ text: "guild channel send canary 2026-07-27" },
+		);
+
+		expect(runtime.ensureConnection).toHaveBeenCalledTimes(1);
+		expect(runtime.ensureConnection).toHaveBeenCalledWith(
+			expect.objectContaining({ entityId: AGENT_ID }),
+		);
+		expect(graph.textChannel.send).toHaveBeenCalledTimes(1);
+		expect(runtime.createMemory).toHaveBeenCalledTimes(1);
 	});
 
 	it("runs slash registration, account lookup, activity, voice status, and channel allowlist logic", async () => {

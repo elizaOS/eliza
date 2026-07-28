@@ -230,6 +230,101 @@ describe("evaluateCalendarAvailability", () => {
     });
   });
 
+  it("starts an all-day event after a skipped local midnight", () => {
+    const input = {
+      range: {
+        start: "2026-09-06T03:00:00.000Z",
+        end: "2026-09-07T03:00:00.000Z",
+      },
+      timeZone: "America/Santiago",
+      sources: [
+        source([
+          {
+            id: "midnight-transition",
+            title: "Local all-day event",
+            isAllDay: true,
+            startDate: "2026-09-06",
+            endDate: "2026-09-07",
+            timeZone: "America/Santiago",
+          },
+        ]),
+      ],
+    } as const;
+    const beforeGap = evaluateCalendarAvailability({
+      ...input,
+      proposal: {
+        startISO: "2026-09-06T03:15:00.000Z",
+        endISO: "2026-09-06T03:45:00.000Z",
+      },
+    });
+
+    expect(beforeGap.conflicts).toHaveLength(0);
+
+    const afterGap = evaluateCalendarAvailability({
+      ...input,
+      proposal: {
+        startISO: "2026-09-06T04:15:00.000Z",
+        endISO: "2026-09-06T04:45:00.000Z",
+      },
+    });
+    expect(afterGap.conflicts).toHaveLength(1);
+    expect(afterGap.conflicts[0]).toMatchObject({
+      eventB: {
+        id: "midnight-transition",
+        startISO: "2026-09-06T04:00:00.000Z",
+        endISO: "2026-09-07T03:00:00.000Z",
+        isAllDay: true,
+      },
+    });
+  });
+
+  it("normalizes an all-day event across Apia's skipped local date", () => {
+    const input = {
+      range: {
+        start: "2011-12-29T10:00:00.000Z",
+        end: "2011-12-31T10:00:00.000Z",
+      },
+      timeZone: "Pacific/Apia",
+      sources: [
+        source([
+          {
+            id: "date-line-transition",
+            title: "Local all-day event",
+            isAllDay: true,
+            startDate: "2011-12-30",
+            endDate: "2012-01-01",
+            timeZone: "Pacific/Apia",
+          },
+        ]),
+      ],
+    } as const;
+    const beforeSkip = evaluateCalendarAvailability({
+      ...input,
+      proposal: {
+        startISO: "2011-12-29T10:15:00.000Z",
+        endISO: "2011-12-29T10:45:00.000Z",
+      },
+    });
+
+    expect(beforeSkip.conflicts).toHaveLength(0);
+
+    const afterSkip = evaluateCalendarAvailability({
+      ...input,
+      proposal: {
+        startISO: "2011-12-30T10:15:00.000Z",
+        endISO: "2011-12-30T10:45:00.000Z",
+      },
+    });
+    expect(afterSkip.conflicts[0]).toMatchObject({
+      eventB: {
+        id: "date-line-transition",
+        startISO: "2011-12-30T10:00:00.000Z",
+        endISO: "2011-12-31T10:00:00.000Z",
+        isAllDay: true,
+      },
+    });
+  });
+
   it("does not block on a transparent all-day annotation", () => {
     const evaluation = evaluateCalendarAvailability({
       range: UTC_DAY,

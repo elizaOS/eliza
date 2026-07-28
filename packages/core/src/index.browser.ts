@@ -50,6 +50,10 @@ export {
 	isYouTubeUrl,
 } from "./features/documents/index";
 export type {
+	DeferredMessageScheduleCommit,
+	DeferredMessageScheduleRequest,
+	DeferredMessageScheduleResult,
+	DeferredMessageScheduler,
 	DraftRecord,
 	DraftRequest,
 	ListOptions,
@@ -69,10 +73,12 @@ export {
 	BaseMessageAdapter,
 	filterInMemory,
 	getDefaultMessageRefStore,
+	getDeferredMessageScheduler,
 	getSendPolicy,
 	MessageRefStore,
 	NotYetImplementedError,
 	rankScored,
+	registerDeferredMessageScheduler,
 	registerSendPolicy,
 	resetMissingServiceWarning,
 	resolveContactWeight,
@@ -123,6 +129,20 @@ export * from "./search";
 // browser-safe; cloud-shared's logger (bundled into the app UI) imports
 // isSensitiveKeyName/redactLogArgs from the root barrel (#12572 follow-up).
 export * from "./security/redact";
+export {
+	disclosureGateFailure,
+	evaluateOwnerExclusiveDisclosure,
+	getTrustedDeliveryAudience,
+	OWNER_EXCLUSIVE_DISCLOSURE_GATE,
+	ownerExclusiveDisclosureWasUsed,
+	PRIVACY_DENIED_TEXT,
+	type OwnerExclusiveDisclosureDecision,
+	type OwnerExclusiveDisclosureDenial,
+	type TrustedDeliveryAudience,
+	type TrustedDeliveryAudienceKind,
+	type TrustedDeliveryAudienceProvenance,
+	trustedDeliveryAudienceCacheKey,
+} from "./security/trusted-delivery-audience";
 export * from "./sensitive-request-policy";
 export * from "./sensitive-requests";
 export * from "./services";

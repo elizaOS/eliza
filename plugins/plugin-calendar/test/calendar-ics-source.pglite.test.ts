@@ -6,7 +6,7 @@
 
 import { PGlite } from "@electric-sql/pglite";
 import { type IAgentRuntime, SECRETS_SERVICE_TYPE } from "@elizaos/core";
-import { sql } from "drizzle-orm";
+import { RuntimeMigrator } from "@elizaos/plugin-sql/runtime-migrator";
 import { drizzle } from "drizzle-orm/pglite";
 import {
   afterAll,
@@ -21,7 +21,7 @@ import { createCalendarFeedConflictLoader } from "../src/actions/conflict-detect
 import {
   type CalendarHostGate,
   CalendarService,
-  ensureCalendarFeedPreferenceTable,
+  calendarSchema,
 } from "../src/service/index.js";
 
 const AGENT_ID = "ics-pglite-agent";
@@ -33,85 +33,12 @@ const WINDOW = {
   timeMax: "2026-07-03T00:00:00.000Z",
 };
 
-const CREATE_EVENTS_TABLE = `CREATE TABLE app_calendar.life_calendar_events (
-  id TEXT PRIMARY KEY,
-  agent_id TEXT NOT NULL,
-  provider TEXT NOT NULL DEFAULT 'google',
-  side TEXT NOT NULL DEFAULT 'owner',
-  calendar_id TEXT NOT NULL,
-  external_event_id TEXT NOT NULL,
-  connector_account_id TEXT,
-  purge_resync_required BOOLEAN NOT NULL DEFAULT false,
-  purge_resync_reason TEXT,
-  grant_id TEXT,
-  title TEXT NOT NULL DEFAULT '',
-  description TEXT NOT NULL DEFAULT '',
-  location TEXT NOT NULL DEFAULT '',
-  status TEXT NOT NULL DEFAULT '',
-  start_at TEXT NOT NULL,
-  end_at TEXT NOT NULL,
-  is_all_day BOOLEAN NOT NULL DEFAULT false,
-  timezone TEXT,
-  html_link TEXT,
-  conference_link TEXT,
-  organizer_json TEXT,
-  attendees_json TEXT NOT NULL DEFAULT '[]',
-  metadata_json TEXT NOT NULL DEFAULT '{}',
-  synced_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  UNIQUE (
-    agent_id, provider, side, grant_id, calendar_id, external_event_id
-  )
-)`;
-
-const CREATE_SYNC_TABLE = `CREATE TABLE app_calendar.life_calendar_sync_states (
-  id TEXT PRIMARY KEY,
-  agent_id TEXT NOT NULL,
-  provider TEXT NOT NULL DEFAULT 'google',
-  side TEXT NOT NULL DEFAULT 'owner',
-  calendar_id TEXT NOT NULL,
-  connector_account_id TEXT,
-  grant_id TEXT,
-  purge_resync_required BOOLEAN NOT NULL DEFAULT false,
-  purge_resync_reason TEXT,
-  window_start_at TEXT NOT NULL,
-  window_end_at TEXT NOT NULL,
-  next_sync_token TEXT,
-  synced_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  UNIQUE (agent_id, provider, side, grant_id, calendar_id)
-)`;
-
-const CREATE_SOURCES_TABLE = `CREATE TABLE app_calendar.life_calendar_sources (
-  id TEXT PRIMARY KEY,
-  agent_id TEXT NOT NULL,
-  provider TEXT NOT NULL DEFAULT 'ics',
-  side TEXT NOT NULL DEFAULT 'owner',
-  name TEXT NOT NULL,
-  enabled BOOLEAN NOT NULL DEFAULT TRUE,
-  secret_ref TEXT NOT NULL,
-  url_fingerprint TEXT NOT NULL,
-  origin TEXT NOT NULL,
-  etag TEXT,
-  last_modified TEXT,
-  content_hash TEXT,
-  sync_status TEXT NOT NULL DEFAULT 'never',
-  last_error_code TEXT,
-  last_error_message TEXT,
-  last_error_retryable BOOLEAN,
-  last_synced_at TEXT,
-  last_attempted_at TEXT,
-  sync_generation INTEGER NOT NULL DEFAULT 0,
-  lease_token TEXT,
-  lease_expires_at TEXT,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  UNIQUE (agent_id, url_fingerprint)
-)`;
-
 function gate(): CalendarHostGate {
   return {
     getGoogleConnectorAccounts: async () => [],
+    resolveGuestAvailabilityGrants: async () => {
+      throw new Error("Guest availability is outside this test.");
+    },
     requireGoogleCalendarGrant: async () => {
       throw new Error("Google is outside this test.");
     },
@@ -174,17 +101,17 @@ let pg: PGlite;
 let runtime: IAgentRuntime;
 let service: CalendarService;
 const secrets = new Map<string, string>();
+let secretDeleteFailure = false;
 
 beforeAll(async () => {
   pg = new PGlite();
   const db = drizzle(pg);
-  await db.execute(sql.raw("CREATE SCHEMA IF NOT EXISTS app_calendar"));
-  await db.execute(sql.raw(CREATE_EVENTS_TABLE));
-  await db.execute(sql.raw(CREATE_SYNC_TABLE));
-  await db.execute(sql.raw(CREATE_SOURCES_TABLE));
-  await ensureCalendarFeedPreferenceTable(
-    async (statement) =>
-      (await pg.query<Record<string, unknown>>(statement)).rows,
+  // Tables come from the production drizzle schema applied through plugin-sql's
+  // RuntimeMigrator — the same path agent boot runs — so schema drift fails the
+  // suite instead of leaving it green against a hand-maintained copy.
+  await new RuntimeMigrator(db).migrate(
+    "@elizaos/plugin-calendar",
+    calendarSchema,
   );
   const secretsService = {
     getGlobal: async (key: string) => secrets.get(key) ?? null,
@@ -192,11 +119,18 @@ beforeAll(async () => {
       secrets.set(key, value);
       return true;
     },
-    delete: async (key: string) => secrets.delete(key),
+    delete: async (key: string) => {
+      if (secretDeleteFailure) {
+        throw new Error("Secret backend is unavailable.");
+      }
+      return secrets.delete(key);
+    },
   };
   runtime = {
     agentId: AGENT_ID,
     adapter: { db },
+    db,
+    initPromise: Promise.resolve(),
     getService: (serviceType: string) =>
       serviceType === SECRETS_SERVICE_TYPE
         ? secretsService
@@ -215,8 +149,10 @@ beforeEach(async () => {
   await pg.query("DELETE FROM app_calendar.life_calendar_events");
   await pg.query("DELETE FROM app_calendar.life_calendar_sync_states");
   await pg.query("DELETE FROM app_calendar.life_calendar_sources");
+  await pg.query("DELETE FROM app_calendar.life_calendar_secret_cleanup");
   await pg.query("DELETE FROM app_calendar.life_calendar_feed_preferences");
   secrets.clear();
+  secretDeleteFailure = false;
   vi.clearAllMocks();
 });
 
@@ -229,6 +165,16 @@ async function createSource(url = SOURCE_URL) {
     name: "Family calendar",
     url,
   });
+}
+
+async function cleanupRows(): Promise<Array<Record<string, unknown>>> {
+  return (
+    await pg.query<Record<string, unknown>>(
+      `SELECT *
+         FROM app_calendar.life_calendar_secret_cleanup
+        ORDER BY created_at ASC, id ASC`,
+    )
+  ).rows;
 }
 
 async function syncBody(
@@ -257,6 +203,40 @@ async function syncBody(
 describe("CalendarService guarded ICS sources (real PGlite)", {
   timeout: 30_000,
 }, () => {
+  it("persists explicit source health when a guarded sync blocks the endpoint", async () => {
+    const blockedUrl =
+      "http://169.254.169.254/latest/meta-data/family.ics?token=private";
+    const source = await service.createIcsCalendarSource({
+      name: "Blocked endpoint calendar",
+      url: blockedUrl,
+    });
+    await expect(
+      service.syncIcsCalendarSource(source.id),
+    ).rejects.toMatchObject({
+      code: "ICS_SOURCE_NETWORK_BLOCKED",
+    });
+    const persisted = await pg.query<{
+      id: string;
+      sync_status: string;
+      last_error_code: string | null;
+    }>(
+      `SELECT id, sync_status, last_error_code
+         FROM app_calendar.life_calendar_sources`,
+    );
+
+    expect(persisted.rows).toEqual([
+      expect.objectContaining({
+        id: source.id,
+        sync_status: "error",
+        last_error_code: "ICS_SOURCE_NETWORK_BLOCKED",
+      }),
+    ]);
+    expect(JSON.stringify(persisted.rows)).not.toContain(
+      "169.254.169.254/latest/meta-data",
+    );
+    expect([...secrets.values()]).toEqual([blockedUrl]);
+  });
+
   it("routes direct enabled updates through the exact-source CAS", async () => {
     const source = await createSource();
     const listed = await service.listCalendars(INTERNAL_URL, {
@@ -434,6 +414,122 @@ describe("CalendarService guarded ICS sources (real PGlite)", {
     );
     expect(partial.outcome).toBe("partial");
     expect(afterPartial.rows).toEqual([{ title: "New family event" }]);
+  });
+
+  it("retains failed URL-rotation cleanup and retries it on the next operation", async () => {
+    const source = await createSource();
+    const retiredSecretRef = [...secrets.keys()][0];
+    if (!retiredSecretRef) throw new Error("Expected the original secret.");
+    secretDeleteFailure = true;
+
+    const replacementUrl =
+      "https://replacement.example.test/retry/family.ics?token=replacement";
+    await expect(
+      service.updateIcsCalendarSource(source.id, { url: replacementUrl }),
+    ).resolves.toMatchObject({
+      origin: "https://replacement.example.test",
+      syncStatus: "never",
+    });
+
+    const retained = await cleanupRows();
+    expect(retained).toHaveLength(1);
+    expect(retained[0]).toMatchObject({
+      source_id: source.id,
+      secret_ref: retiredSecretRef,
+      reason: "url_rotated",
+      attempt_count: 1,
+      last_error_code: "ICS_SECRET_DELETE_FAILED",
+    });
+    expect(JSON.stringify(retained)).not.toContain("replacement");
+    expect(secrets.has(retiredSecretRef)).toBe(true);
+    expect([...secrets.values()]).toContain(replacementUrl);
+
+    secretDeleteFailure = false;
+    await service.listIcsCalendarSources();
+
+    expect(await cleanupRows()).toEqual([]);
+    expect(secrets.has(retiredSecretRef)).toBe(false);
+    expect([...secrets.values()]).toEqual([replacementUrl]);
+  });
+
+  it("retries retained cleanup from recurring maintenance after a failed restart drain", async () => {
+    const source = await createSource();
+    const secretRef = [...secrets.keys()][0];
+    if (!secretRef) throw new Error("Expected the source secret.");
+    secretDeleteFailure = true;
+
+    await service.deleteIcsCalendarSource(source.id);
+
+    expect(
+      (
+        await pg.query(
+          "SELECT id FROM app_calendar.life_calendar_sources WHERE id = $1",
+          [source.id],
+        )
+      ).rows,
+    ).toEqual([]);
+    expect(await cleanupRows()).toHaveLength(1);
+    expect(secrets.has(secretRef)).toBe(true);
+
+    const restarted = await CalendarService.start(runtime);
+    restarted.setGate(gate());
+    service = restarted;
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const retained = await cleanupRows();
+      if (Number(retained[0]?.attempt_count) >= 2) break;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+
+    expect(await cleanupRows()).toEqual([
+      expect.objectContaining({ attempt_count: 2 }),
+    ]);
+    secretDeleteFailure = false;
+    await restarted.runGoogleCalendarWatchScheduledTask({
+      taskId: "calendar-maintenance",
+      metadata: { calendarGoogleWatchOperation: "maintenance" },
+    } as Parameters<CalendarService["runGoogleCalendarWatchScheduledTask"]>[0]);
+
+    expect(await cleanupRows()).toEqual([]);
+    expect(secrets.has(secretRef)).toBe(false);
+  });
+
+  it("rolls back source deletion when its cleanup intent cannot commit", async () => {
+    const source = await createSource();
+    const secretRef = [...secrets.keys()][0];
+    if (!secretRef) throw new Error("Expected the source secret.");
+    await pg.exec(`
+      CREATE FUNCTION reject_calendar_secret_cleanup() RETURNS trigger AS $$
+      BEGIN
+        RAISE EXCEPTION 'forced cleanup outbox failure';
+      END;
+      $$ LANGUAGE plpgsql;
+      CREATE TRIGGER reject_calendar_secret_cleanup_insert
+        BEFORE INSERT ON app_calendar.life_calendar_secret_cleanup
+        FOR EACH ROW EXECUTE FUNCTION reject_calendar_secret_cleanup();
+    `);
+
+    try {
+      await expect(
+        service.deleteIcsCalendarSource(source.id),
+      ).rejects.toThrow();
+
+      expect(
+        (
+          await pg.query(
+            "SELECT id FROM app_calendar.life_calendar_sources WHERE id = $1",
+            [source.id],
+          )
+        ).rows,
+      ).toEqual([{ id: source.id }]);
+      expect(await cleanupRows()).toEqual([]);
+      expect(secrets.has(secretRef)).toBe(true);
+    } finally {
+      await pg.exec(`
+        DROP TRIGGER reject_calendar_secret_cleanup_insert
+          ON app_calendar.life_calendar_secret_cleanup;
+        DROP FUNCTION reject_calendar_secret_cleanup();
+      `);
+    }
   });
 
   it("keeps absent events after a partial parse but prunes them on a complete snapshot", async () => {

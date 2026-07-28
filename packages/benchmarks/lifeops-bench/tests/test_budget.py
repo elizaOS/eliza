@@ -67,18 +67,18 @@ def _budget_world_factory(seed: int, now_iso: str) -> LifeWorld:
     a fake agent fires that action. Most budget tests never get here, but
     we keep it consistent with the rest of the suite."""
     world = LifeWorld(seed=seed, now_iso=now_iso)
-    world.add(EntityKind.REMINDER_LIST, ReminderList(id="list_personal", name="Personal"))
+    world.add(
+        EntityKind.REMINDER_LIST, ReminderList(id="list_personal", name="Personal")
+    )
     return world
 
 
 def _make_scenario(scenario_id: str, *, max_turns: int = 2) -> Scenario:
     """Build a tiny STATIC scenario the budget tests can run against.
 
-    Ground-truth is a single REMINDER.create so PerfectAgent (when used)
-    would score 1.0 — but the budget tests use fake agents that never
-    actually run the script; they only need a structurally-valid scenario
-    so the runner wraps them in `asyncio.wait_for` and the cost ledger
-    fires.
+    Ground truth is a single REMINDER.create. These tests exercise scheduling,
+    provenance, and cost boundaries rather than natural-language grading, so
+    the response contract is structural and the opening is explicitly authored.
     """
     return Scenario(
         id=scenario_id,
@@ -97,25 +97,34 @@ def _make_scenario(scenario_id: str, *, max_turns: int = 2) -> Scenario:
                 },
             )
         ],
-        required_outputs=["done"],
+        required_outputs=[],
         first_question_fallback=None,
         world_seed=999,
         max_turns=max_turns,
+        opening_mode="authored",
     )
 
 
-def _make_turn(*, cost_usd: float = 0.0, content: str = "ok") -> MessageTurn:
+def _make_turn(
+    *,
+    cost_usd: float = 0.0,
+    content: str = "ok",
+    model_name: str | None = None,
+) -> MessageTurn:
     """Build an assistant MessageTurn with the runner's per-turn telemetry attrs.
 
     The runner reads ``cost_usd`` / ``latency_ms`` / ``input_tokens`` /
     ``output_tokens`` via ``getattr`` with a default of 0, so we set them
-    directly as instance attributes.
+    directly as instance attributes. ``model_name`` mimics an adapter that
+    attested which model produced the turn; leaving it ``None`` mimics an
+    agent_fn that reported no per-turn provenance.
     """
     turn = MessageTurn(role="assistant", content=content, tool_calls=None)
     turn.cost_usd = float(cost_usd)  # type: ignore[attr-defined]
     turn.latency_ms = 1  # type: ignore[attr-defined]
     turn.input_tokens = 0  # type: ignore[attr-defined]
     turn.output_tokens = 0  # type: ignore[attr-defined]
+    turn.model_name = model_name
     return turn
 
 
@@ -156,9 +165,9 @@ async def test_per_scenario_timeout_aborts(tmp_path: Path) -> None:
 
     assert len(result.scenarios) == 1
     sr = result.scenarios[0]
-    assert sr.terminated_reason == "timeout", (
-        f"expected timeout, got {sr.terminated_reason!r} (error={sr.error!r})"
-    )
+    assert (
+        sr.terminated_reason == "timeout"
+    ), f"expected timeout, got {sr.terminated_reason!r} (error={sr.error!r})"
     assert sr.total_score == pytest.approx(0.0)
     # The agent_fn started but was cancelled; we don't strictly require
     # invocation count, only that the runner reported timeout.
@@ -213,12 +222,56 @@ async def test_complete_workload_records_exact_counts_and_provenance(
     assert persisted["agent_model_name"] == "agent-model-v1"
     assert persisted["agent_adapter"] == "test-agent"
     assert persisted["agent_provider"] == "local"
+    # Per-turn model_name records only adapter-attested provenance. This
+    # agent_fn never reported one, so every turn stays null — the configured
+    # run-level agent_model_name must never be stamped onto turns it cannot
+    # vouch for.
     assert all(
-        turn["model_name"] == "agent-model-v1"
+        turn["model_name"] is None
         for scenario in persisted["scenarios"]
         for turn in scenario["turns"]
     )
     assert "agent-model-v1" in output_path.name
+
+
+async def test_per_turn_model_name_is_attested_not_configured(
+    tmp_path: Path,
+) -> None:
+    """A turn's model_name is what the adapter attested, verbatim.
+
+    The configured ``agent_model_name`` describes the run; per-turn
+    attribution comes only from the MessageTurn the adapter produced. The
+    two identities must persist independently so a reader can tell attested
+    provenance from configuration.
+    """
+
+    async def attesting_agent(
+        history: list[MessageTurn], tools: list[dict[str, Any]]
+    ) -> MessageTurn:
+        return _make_turn(content="done", model_name="attested-model-b")
+
+    runner = LifeOpsBenchRunner(
+        agent_fn=attesting_agent,
+        world_factory=_budget_world_factory,
+        scenarios=[_make_scenario("completion.attested")],
+        concurrency=1,
+        seeds=1,
+        agent_model_name="agent-model-v1",
+        agent_adapter="test-agent",
+        agent_provider="local",
+    )
+
+    result = await runner.run_filtered()
+
+    assert result.agent_model_name == "agent-model-v1"
+    output_path = Path(
+        LifeOpsBenchRunner.save_results(result, output_dir=str(tmp_path / "attested"))
+    )
+    persisted = json.loads(output_path.read_text(encoding="utf-8"))
+    assert persisted["agent_model_name"] == "agent-model-v1"
+    turns = [turn for scenario in persisted["scenarios"] for turn in scenario["turns"]]
+    assert turns
+    assert all(turn["model_name"] == "attested-model-b" for turn in turns)
 
 
 async def test_publish_rejects_missing_acting_model_provenance(tmp_path: Path) -> None:
@@ -280,9 +333,9 @@ async def test_max_cost_usd_aborts_scenario() -> None:
 
     assert len(result.scenarios) == 1
     sr = result.scenarios[0]
-    assert sr.terminated_reason == "cost_exceeded", (
-        f"expected cost_exceeded, got {sr.terminated_reason!r} (error={sr.error!r})"
-    )
+    assert (
+        sr.terminated_reason == "cost_exceeded"
+    ), f"expected cost_exceeded, got {sr.terminated_reason!r} (error={sr.error!r})"
     assert sr.total_score == pytest.approx(0.0)
     # The agent was invoked at least once before the cap tripped.
     assert call_count["n"] >= 1
@@ -316,9 +369,7 @@ async def test_max_cost_usd_aborts_remaining_scenarios_when_flag_set() -> None:
     ) -> MessageTurn:
         # Capture the scenario instruction so we can confirm only the
         # first one ever entered the agent_fn.
-        last_user = next(
-            (t.content for t in reversed(history) if t.role == "user"), ""
-        )
+        last_user = next((t.content for t in reversed(history) if t.role == "user"), "")
         invoked_ids.append(last_user)
         return _make_turn(cost_usd=10.0)
 
@@ -342,9 +393,9 @@ async def test_max_cost_usd_aborts_remaining_scenarios_when_flag_set() -> None:
     assert reasons == ["cost_exceeded"] * 5, reasons
     # Only ONE scenario actually drove the agent (the first one). The
     # remaining four were short-circuited by the abort flag.
-    assert len(invoked_ids) == 1, (
-        f"expected exactly 1 agent invocation, got {len(invoked_ids)}: {invoked_ids}"
-    )
+    assert (
+        len(invoked_ids) == 1
+    ), f"expected exactly 1 agent invocation, got {len(invoked_ids)}: {invoked_ids}"
     assert all(sr.total_score == pytest.approx(0.0) for sr in result.scenarios)
 
 
@@ -510,7 +561,7 @@ async def test_eval_cost_counted_toward_budget() -> None:
 
 
 async def test_judge_eval_cost_trips_budget_before_user_turn() -> None:
-    """Judge spend must be enforced before the live loop asks for the next user turn."""
+    """Judge spend must stop the loop before a second simulated-user turn."""
 
     call_counts = {"sim": 0, "judge": 0}
 
@@ -575,8 +626,10 @@ async def test_judge_eval_cost_trips_budget_before_user_turn() -> None:
         f"expected judge spend to trip cap; got {sr.terminated_reason!r} "
         f"error={sr.error!r}"
     )
-    assert call_counts["sim"] == 0
+    # Every LIVE scenario has one independently generated opening. The judge
+    # must exhaust the budget before the loop requests a follow-up turn.
+    assert call_counts["sim"] == 1
     assert call_counts["judge"] == 1
-    assert result.eval_cost_usd == pytest.approx(6.0)
+    assert result.eval_cost_usd == pytest.approx(9.0)
     assert result.agent_cost_usd == pytest.approx(0.0)
     assert result.total_cost_usd > runner.max_cost_usd

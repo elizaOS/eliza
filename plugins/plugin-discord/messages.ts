@@ -5,6 +5,7 @@
  */
 import { createHash } from "node:crypto";
 import {
+	attestDeliveryAudienceFromCanonicalRoom,
 	ChannelType,
 	type Content,
 	ContentType,
@@ -1038,7 +1039,7 @@ export class MessageManager {
 			}
 			messageServerId = guild.id;
 		} else {
-			type = ChannelType.DM;
+			type = await this.getChannelType(message.channel as Channel);
 			messageServerId = message.channel.id;
 		}
 		const worldId = createUniqueUuid(this.runtime, messageServerId ?? roomId);
@@ -1170,6 +1171,17 @@ export class MessageManager {
 					accountId: this.accountId,
 				},
 			});
+			try {
+				await attestDeliveryAudienceFromCanonicalRoom(this.runtime, newMessage);
+			} catch (error) {
+				// error-policy:J4 ordinary chat remains available, while every
+				// owner-private component fails closed without this evidence.
+				this.runtime.reportError(
+					"DiscordMessageManager.deliveryAudience",
+					error,
+					{ roomId, messageId: newMessage.id },
+				);
+			}
 
 			// Durable turn / outbox state machine (charter rows D4/D5).
 			//

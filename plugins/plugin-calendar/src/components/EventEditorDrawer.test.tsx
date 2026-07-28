@@ -781,6 +781,179 @@ describe("EventEditorDrawer", () => {
     expect(onChat).toHaveBeenCalledWith(editEvent);
   });
 
+  // ----- provider capability ------------------------------------------------
+
+  function deleteButton(): HTMLButtonElement {
+    return screen
+      .getByText("Delete", { selector: "span.sr-only" })
+      .closest("button") as HTMLButtonElement;
+  }
+
+  function expectNoSaveAffordances(): void {
+    expect(screen.queryByText("Save", { selector: "span.sr-only" })).toBeNull();
+    expect(
+      screen.queryByText("Save and continue", { selector: "span.sr-only" }),
+    ).toBeNull();
+  }
+
+  it("renders Apple events read-only instead of offering saves that dead-end", async () => {
+    const appleEvent: LifeOpsCalendarEvent = {
+      ...editEvent,
+      provider: "apple_calendar",
+      organizer: null,
+      attendees: [],
+      metadata: { appleCalendar: true },
+      grantId: "apple-calendar",
+    };
+
+    render(
+      <EventEditorDrawer
+        open
+        mode="edit"
+        event={appleEvent}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expectNoSaveAffordances();
+    expect(
+      screen.getByTestId("event-editor-read-only-reason").textContent,
+    ).toContain("Apple Calendar");
+    expect(
+      (screen.getByLabelText("Event title") as HTMLInputElement).disabled,
+    ).toBe(true);
+    expect(deleteButton().disabled).toBe(true);
+    expect(screen.getByTestId("event-editor-attendees-read-only")).toBeTruthy();
+  });
+
+  it("renders ICS subscription events read-only with delete disabled and a reason", async () => {
+    const icsEvent: LifeOpsCalendarEvent = {
+      ...editEvent,
+      provider: "ics",
+      organizer: null,
+      attendees: [],
+      metadata: {},
+      grantId: "ics-source-1",
+    };
+
+    render(
+      <EventEditorDrawer open mode="edit" event={icsEvent} onClose={vi.fn()} />,
+    );
+
+    expectNoSaveAffordances();
+    expect(
+      screen.getByTestId("event-editor-read-only-reason").textContent,
+    ).toContain("subscription");
+    expect(deleteButton().disabled).toBe(true);
+  });
+
+  it("renders Microsoft events read-only with an Outlook reason", async () => {
+    const microsoftEvent: LifeOpsCalendarEvent = {
+      ...editEvent,
+      provider: "microsoft",
+      metadata: {},
+    };
+
+    render(
+      <EventEditorDrawer
+        open
+        mode="edit"
+        event={microsoftEvent}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expectNoSaveAffordances();
+    expect(
+      screen.getByTestId("event-editor-read-only-reason").textContent,
+    ).toContain("Outlook");
+    expect(deleteButton().disabled).toBe(true);
+  });
+
+  it("renders a Google event without a provider version read-only with a refresh reason", async () => {
+    const staleEvent: LifeOpsCalendarEvent = {
+      ...editEvent,
+      metadata: {},
+    };
+
+    render(
+      <EventEditorDrawer
+        open
+        mode="edit"
+        event={staleEvent}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expectNoSaveAffordances();
+    expect(
+      screen.getByTestId("event-editor-read-only-reason").textContent,
+    ).toContain("Refresh the calendar");
+    expect(deleteButton().disabled).toBe(true);
+    expect(uiClient.updateLifeOpsCalendarEvent).not.toHaveBeenCalled();
+  });
+
+  it("enables organizer delete when organizer identity is only a matching account email", async () => {
+    const emailOrganizerEvent: LifeOpsCalendarEvent = {
+      ...editEvent,
+      organizer: { email: "Owner@Example.com" },
+      attendees: [],
+      accountEmail: "owner@example.com",
+    };
+    uiClient.deleteLifeOpsCalendarEvent.mockResolvedValue({
+      outcome: "deleted",
+      cancellationMode: "organizer_cancel",
+      event: null,
+    });
+
+    render(
+      <EventEditorDrawer
+        open
+        mode="edit"
+        event={emailOrganizerEvent}
+        onClose={vi.fn()}
+        onDeleted={vi.fn()}
+      />,
+    );
+
+    expect(deleteButton().disabled).toBe(false);
+    fireEvent.click(deleteButton());
+    fireEvent.click(await screen.findByTestId("confirm-delete"));
+
+    await waitFor(() =>
+      expect(uiClient.deleteLifeOpsCalendarEvent).toHaveBeenCalledWith(
+        "evt_1",
+        expect.objectContaining({ cancellationMode: "organizer_cancel" }),
+      ),
+    );
+  });
+
+  it("disables delete with a visible reason when the owner's role is unknown", async () => {
+    const roleUnknownEvent: LifeOpsCalendarEvent = {
+      ...editEvent,
+      organizer: null,
+      attendees: [],
+      accountEmail: undefined,
+    };
+
+    render(
+      <EventEditorDrawer
+        open
+        mode="edit"
+        event={roleUnknownEvent}
+        onClose={vi.fn()}
+      />,
+    );
+
+    // The event itself is still saveable (Google + etag) — only delete lacks
+    // an executor-honorable cancellation mode.
+    expect(screen.getByText("Save", { selector: "span.sr-only" })).toBeTruthy();
+    expect(deleteButton().disabled).toBe(true);
+    expect(
+      screen.getByTestId("event-editor-delete-unavailable").textContent,
+    ).toContain("role");
+  });
+
   it("keeps the drawer open on save-and-continue", async () => {
     uiClient.updateLifeOpsCalendarEvent.mockResolvedValue({
       event: { ...editEvent, title: "Renamed" },

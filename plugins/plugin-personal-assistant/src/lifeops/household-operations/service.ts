@@ -9,6 +9,7 @@
  */
 import {
   type EntityStore,
+  KNOWLEDGE_GRAPH_SERVICE,
   type RelationshipStore,
   resolveKnowledgeGraphService,
 } from "@elizaos/agent";
@@ -1184,6 +1185,7 @@ export class HouseholdOperationsRuntimeService extends Service {
   static async start(
     runtime: IAgentRuntime,
   ): Promise<HouseholdOperationsRuntimeService> {
+    await runtime.getServiceLoadPromise(KNOWLEDGE_GRAPH_SERVICE);
     const service = new HouseholdOperationsRuntimeService(runtime);
     await service.operations.initialize();
     return service;

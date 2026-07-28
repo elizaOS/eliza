@@ -31,6 +31,7 @@ import {
   ensureCalendarFeedPreferenceTable,
   ensureGoogleCalendarWatchChannelTable,
   ensureIcsCalendarSourceTable,
+  ensureIcsSecretCleanupTable,
 } from "../src/service/index.js";
 
 const AGENT_ID = "google-watch-pglite-agent";
@@ -308,6 +309,7 @@ async function initializeDatabase(pg: PGlite): Promise<void> {
     return result.rows;
   };
   await ensureIcsCalendarSourceTable(execute);
+  await ensureIcsSecretCleanupTable(execute);
   await ensureCalendarFeedPreferenceTable(execute);
   await ensureGoogleCalendarWatchChannelTable(execute);
 }
@@ -343,7 +345,12 @@ async function closeServer(server: Server): Promise<void> {
 }
 
 async function createHarness(
-  args: { pg?: PGlite; google?: FakeGoogleCalendar; initialize?: boolean } = {},
+  args: {
+    pg?: PGlite;
+    google?: FakeGoogleCalendar;
+    initialize?: boolean;
+    webhookEnabled?: boolean;
+  } = {},
 ): Promise<Harness> {
   const pg = args.pg ?? new PGlite();
   if (args.initialize !== false) {
@@ -362,6 +369,7 @@ async function createHarness(
     initPromise: Promise.resolve(),
     getSetting: (key: string) => {
       const values: Record<string, string> = {
+        GOOGLE_CALENDAR_WEBHOOK_ENABLED: String(args.webhookEnabled ?? true),
         GOOGLE_CALENDAR_WEBHOOK_URL: PUBLIC_WEBHOOK_URL,
         GOOGLE_CALENDAR_WATCH_TTL_SECONDS: "3600",
         GOOGLE_CALENDAR_WATCH_RENEWAL_LEAD_MINUTES: "1440",
@@ -397,6 +405,9 @@ async function createHarness(
   calendar = await CalendarService.start(runtime);
   const gate: CalendarHostGate = {
     getGoogleConnectorAccounts: async () => [status(grant(ACCOUNT_ID))],
+    resolveGuestAvailabilityGrants: async () => {
+      throw new Error("Guest availability is outside this test.");
+    },
     requireGoogleCalendarGrant: async () => grant(bindingAccountId),
     requireGoogleCalendarWriteGrant: async () => grant(ACCOUNT_ID),
     createReminderPlan: async () => undefined,
@@ -520,6 +531,35 @@ describe("Google Calendar push lifecycle", { timeout: 30_000 }, () => {
     }
   });
 
+  it("does not create or accept push channels when the webhook is disabled", async () => {
+    const harness = await createHarness({ webhookEnabled: false });
+    harnesses.push(harness);
+
+    const feed = await forceInitialSync(harness);
+    const maintenanceTaskId = await waitForMaintenanceTask(harness);
+    const runner = getScheduledTaskRunner(harness.runtime, {
+      agentId: AGENT_ID,
+    });
+    const maintenance = await runner.fireWithResult(maintenanceTaskId);
+    const response = await postNotification(harness.baseUrl, {
+      channelId: "disabled-channel",
+      channelToken: "disabled-token",
+      resourceId: "disabled-resource",
+      resourceUri: RESOURCE_URI,
+      resourceState: "exists",
+      messageNumber: "2",
+    });
+
+    expect(harness.google.watchRequests).toEqual([]);
+    expect(await watchRows(harness.pg)).toEqual([]);
+    expect(feed.sources[0]?.changeDelivery).toMatchObject({
+      mode: "polling",
+      status: "unconfigured",
+    });
+    expect(maintenance.kind).toBe("fired");
+    expect(response.status).toBe(404);
+  });
+
   it("binds and processes the sync notification that arrives before the watch response", async () => {
     const harness = await createHarness();
     harnesses.push(harness);
@@ -627,6 +667,29 @@ describe("Google Calendar push lifecycle", { timeout: 30_000 }, () => {
     const rows = await watchRows(restarted.pg);
     expect(rows[0]?.last_message_number).toBe("13");
     expect(rows[0]?.pending_message_number).toBeNull();
+  });
+
+  it("does not mutate durable channel state for an invalid capability token", async () => {
+    const harness = await createHarness();
+    harnesses.push(harness);
+    await forceInitialSync(harness);
+    const request = harness.google.watchRequests[0];
+    expect(request).toBeDefined();
+    const beforeRows = await watchRows(harness.pg);
+    const beforeProviderCalls = harness.google.eventPageRequests.length;
+
+    const response = await postNotification(harness.baseUrl, {
+      channelId: request?.channelId ?? "",
+      channelToken: "invalid-capability",
+      resourceId: "resource-1",
+      resourceUri: RESOURCE_URI,
+      resourceState: "exists",
+      messageNumber: "2",
+    });
+
+    expect(response.status).toBe(404);
+    expect(await watchRows(harness.pg)).toEqual(beforeRows);
+    expect(harness.google.eventPageRequests).toHaveLength(beforeProviderCalls);
   });
 
   it("rejects stale tokens, wrong resources, and changed account bindings", async () => {

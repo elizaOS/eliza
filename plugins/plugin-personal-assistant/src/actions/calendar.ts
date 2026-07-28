@@ -20,6 +20,7 @@ import type {
   Action,
   ActionExample,
   ActionResult,
+  EffectReceipt,
   HandlerCallback,
   HandlerOptions,
   IAgentRuntime,
@@ -27,6 +28,8 @@ import type {
   State,
 } from "@elizaos/core";
 import {
+  ElizaError,
+  normalizeEffectReceipt,
   recentConversationTexts,
   resolveActionArgs,
   type SubactionsMap,
@@ -39,15 +42,29 @@ import {
   CalendarService,
   CalendarServiceError,
   createCalendarActionRunner,
+  isAppleCalendarGrant,
+  isMicrosoftCalendarGrantId,
 } from "@elizaos/plugin-calendar";
-import type { LifeOpsCalendarEvent } from "@elizaos/shared";
+import { CALENDAR_DETAILS_PARAMETER_SCHEMA } from "@elizaos/plugin-calendar/calendar-action-schema";
+import type {
+  LifeOpsCalendarEvent,
+  LifeOpsCalendarFeed,
+  LifeOpsCalendarProvider,
+} from "@elizaos/shared";
 import { hasLifeOpsAccess, INTERNAL_URL } from "../lifeops/access.js";
+import {
+  completeLifeOpsEffect,
+  lifeOpsAppliedEffect,
+  lifeOpsFailedEffect,
+  lifeOpsNoopEffect,
+} from "../lifeops/action-effect-result.js";
 import { createApprovalQueue } from "../lifeops/approval-queue.js";
 import type {
   ApprovalAction,
+  ApprovalChannel,
   ApprovalEnqueueInput,
+  ApprovalEnqueueResult,
   ApprovalPayload,
-  ApprovalRequest,
   CalendarCancellationMode,
   CalendarSeriesMasterBinding,
 } from "../lifeops/approval-queue.types.js";
@@ -71,6 +88,10 @@ import {
   resolveCreateEventTravelIntent,
 } from "../travel-time/calendar-create.js";
 import { TravelTimeUnavailableError } from "../travel-time/service.js";
+import {
+  calendarSnapshotEffectProof,
+  readCalendarSnapshotEffectProof,
+} from "./lib/calendar-effect-proof.js";
 import {
   runCheckAvailabilityHandler,
   runProposeMeetingTimesHandler,
@@ -103,7 +124,9 @@ type CalendarApprovalPayload = Extract<
 >;
 
 interface CalendarApprovalQueue {
-  enqueue(input: ApprovalEnqueueInput): Promise<ApprovalRequest>;
+  enqueueWithResult(
+    input: ApprovalEnqueueInput,
+  ): Promise<ApprovalEnqueueResult>;
 }
 
 function approvalSafeLabel(value: string): string {
@@ -219,6 +242,35 @@ function calendarApprovalIdempotencyKey(
   return `calendar-conversation:${messageId}:${digest}`;
 }
 
+function calendarApprovalChannel(
+  provider: LifeOpsCalendarProvider,
+): ApprovalChannel {
+  switch (provider) {
+    case "google":
+      return "google_calendar";
+    case "microsoft":
+      return "microsoft_calendar";
+    case "apple_calendar":
+      return "apple_calendar";
+    case "ics":
+      return "ics_calendar";
+  }
+}
+
+/**
+ * The create path binds a grant rather than an existing provider event, so
+ * the provider is derived from the grant-id namespace the calendar service
+ * used to prepare the request (Apple and Microsoft grants are recognizable;
+ * every remaining writable grant is Google).
+ */
+function boundCalendarProviderForGrant(
+  grantId: string,
+): LifeOpsCalendarProvider {
+  if (isAppleCalendarGrant(grantId)) return "apple_calendar";
+  if (isMicrosoftCalendarGrantId(grantId)) return "microsoft";
+  return "google";
+}
+
 async function enqueueCalendarApproval(args: {
   runtime: IAgentRuntime;
   message: Memory;
@@ -227,29 +279,46 @@ async function enqueueCalendarApproval(args: {
     ApprovalAction,
     "schedule_event" | "modify_event" | "cancel_event"
   >;
+  provider: LifeOpsCalendarProvider;
   payload: CalendarApprovalPayload;
   reason: string;
 }): Promise<CalendarMutationApprovalResult> {
   const identity = requireApprovalMessageIdentity(args.message);
-  const request = await args.queue.enqueue({
+  const idempotencyKey = calendarApprovalIdempotencyKey(
+    identity.messageId,
+    args.payload,
+  );
+  const enqueued = await args.queue.enqueueWithResult({
     requestedBy: "PERSONAL_ASSISTANT:CALENDAR",
     subjectUserId: String(args.message.entityId),
     action: args.action,
     payload: args.payload,
-    channel: "google_calendar",
+    channel: calendarApprovalChannel(args.provider),
     reason: args.reason,
-    idempotencyKey: calendarApprovalIdempotencyKey(
-      identity.messageId,
-      args.payload,
-    ),
+    idempotencyKey,
     expiresAt: new Date(identity.createdAt + 24 * 60 * 60 * 1000),
   });
+  const { request } = enqueued;
+  if (
+    request.idempotencyKey !== idempotencyKey ||
+    !Number.isFinite(request.createdAt.getTime())
+  ) {
+    throw new CalendarServiceError(
+      500,
+      "The calendar approval queue returned incomplete persistence proof.",
+      "CALENDAR_APPROVAL_PERSISTENCE_PROOF_REQUIRED",
+    );
+  }
   return {
     requestId: request.id,
     action: args.action,
     state: request.state,
-    text:
-      request.state === "pending"
+    acceptedAt: request.createdAt.toISOString(),
+    idempotencyKey: request.idempotencyKey,
+    replayed: enqueued.reused,
+    text: enqueued.reused
+      ? `${request.reason}\nThe bound approval request is already ${request.state}.`
+      : request.state === "pending"
         ? buildApprovalChoiceText({
             requestId: request.id,
             reason: request.reason,
@@ -321,6 +390,7 @@ export function createCalendarMutationApprovalGateway(options?: {
         message: args.message,
         queue: resolveQueue(args.runtime),
         action: "schedule_event",
+        provider: boundCalendarProviderForGrant(args.request.grantId),
         payload,
         reason: `Create "${approvalSafeLabel(payload.title)}" at ${new Date(payload.startsAtMs).toISOString()} on the bound calendar${travel}, ${notification}.`,
       });
@@ -385,6 +455,7 @@ export function createCalendarMutationApprovalGateway(options?: {
         message: args.message,
         queue: resolveQueue(args.runtime),
         action: "modify_event",
+        provider: args.targetEvent.provider,
         payload,
         reason:
           payload.recurrenceScope === "this_and_following"
@@ -428,6 +499,7 @@ export function createCalendarMutationApprovalGateway(options?: {
         message: args.message,
         queue: resolveQueue(args.runtime),
         action: "cancel_event",
+        provider: args.targetEvent.provider,
         payload,
         reason:
           payload.recurrenceScope === "this_and_following"
@@ -553,6 +625,232 @@ function getParams(
 ): OwnerCalendarParameters {
   return ((options?.parameters as OwnerCalendarParameters | undefined) ??
     {}) as OwnerCalendarParameters;
+}
+
+function calendarEffectRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function calendarEffectString(
+  value: Record<string, unknown> | null,
+  field: string,
+): string | null {
+  const candidate = value?.[field];
+  return typeof candidate === "string" && candidate.trim()
+    ? candidate.trim()
+    : null;
+}
+
+function calendarEffectMessageProof(message: Memory): {
+  id: string;
+  observedAt: string;
+} {
+  const id =
+    message.id !== undefined && message.id !== null
+      ? String(message.id)
+      : `room:${String(message.roomId)}`;
+  if (!Number.isFinite(message.createdAt)) {
+    throw new ElizaError(
+      "Calendar settlement requires the persisted source-message timestamp",
+      {
+        code: "CALENDAR_EFFECT_MESSAGE_TIME_REQUIRED",
+        context: { messageId: id },
+        severity: "fatal",
+      },
+    );
+  }
+  return {
+    id,
+    observedAt: new Date(message.createdAt as number).toISOString(),
+  };
+}
+
+function calendarEffectReceiptId(
+  message: Memory,
+  operation: string,
+  resourceId: string,
+): string {
+  const messageId =
+    message.id !== undefined && message.id !== null
+      ? String(message.id)
+      : `room:${String(message.roomId)}`;
+  return `${ACTION_NAME}:${operation}:${messageId}:${resourceId}`;
+}
+
+function existingCalendarEffectReceipt(
+  result: ActionResult,
+): EffectReceipt | null {
+  if (result.effectReceipts === undefined) return null;
+  if (result.effectReceipts.length !== 1) {
+    throw new ElizaError(
+      "Calendar action must settle exactly one effect receipt",
+      {
+        code: "CALENDAR_EFFECT_RECEIPT_CARDINALITY_INVALID",
+        context: { receiptCount: result.effectReceipts.length },
+        severity: "fatal",
+      },
+    );
+  }
+  return normalizeEffectReceipt(result.effectReceipts[0]);
+}
+
+function calendarWrapperEffectReceipt(args: {
+  message: Memory;
+  subaction: OwnerCalendarSubaction | "resolve";
+  result: ActionResult;
+}): EffectReceipt {
+  const existing = existingCalendarEffectReceipt(args.result);
+  if (existing) return existing;
+
+  const data = calendarEffectRecord(args.result.data);
+  const messageProof = calendarEffectMessageProof(args.message);
+  const operation =
+    args.subaction === "bulk_reschedule"
+      ? "calendar.bulk_reschedule.preview"
+      : args.subaction === "propose_times"
+        ? "calendar.propose_times.preview"
+        : args.subaction === "check_availability"
+          ? "calendar.check_availability.read"
+          : args.subaction === "update_preferences"
+            ? "calendar.meeting_preferences.update"
+            : `calendar.${args.subaction}`;
+
+  if (data?.noop === true) {
+    return lifeOpsNoopEffect({
+      receiptId: calendarEffectReceiptId(
+        args.message,
+        operation,
+        messageProof.id,
+      ),
+      operation,
+      resource: { kind: "runtime.message", id: messageProof.id },
+      artifacts: [],
+      idempotency: { key: null, replayed: false },
+      observedAt: messageProof.observedAt,
+      reason:
+        "The request was clarified, blocked by owner policy, or intentionally left calendar state unchanged.",
+    });
+  }
+
+  if (args.result.success !== true) {
+    const failureCode =
+      calendarEffectString(data, "error") ?? "CALENDAR_OPERATION_REJECTED";
+    return lifeOpsFailedEffect({
+      receiptId: calendarEffectReceiptId(
+        args.message,
+        operation,
+        messageProof.id,
+      ),
+      operation,
+      resource: { kind: "runtime.message", id: messageProof.id },
+      artifacts: [],
+      idempotency: { key: null, replayed: false },
+      observedAt: messageProof.observedAt,
+      failure: {
+        code: failureCode,
+        retryable:
+          failureCode === "CALENDAR_UNAVAILABLE" ||
+          failureCode === "CALENDAR_INCOMPLETE" ||
+          failureCode === "PREFERENCES_UPDATE_FAILED",
+        acceptance:
+          failureCode === "PREFERENCES_UPDATE_FAILED" ? "unknown" : "rejected",
+      },
+    });
+  }
+
+  if (
+    args.subaction === "bulk_reschedule" ||
+    args.subaction === "propose_times" ||
+    args.subaction === "check_availability"
+  ) {
+    const snapshot = readCalendarSnapshotEffectProof(data?.calendarSnapshot);
+    if (!snapshot) {
+      throw new ElizaError(
+        "Calendar read completed without authoritative snapshot proof",
+        {
+          code: "CALENDAR_EFFECT_SNAPSHOT_PROOF_REQUIRED",
+          context: { operation },
+          severity: "fatal",
+        },
+      );
+    }
+    const base = {
+      receiptId: calendarEffectReceiptId(
+        args.message,
+        operation,
+        snapshot.resource.id,
+      ),
+      operation,
+      resource: snapshot.resource,
+      artifacts: snapshot.artifacts,
+      idempotency: { key: null, replayed: false },
+      observedAt: snapshot.observedAt,
+    } as const;
+    return args.subaction === "check_availability"
+      ? lifeOpsNoopEffect({
+          ...base,
+          reason:
+            "Availability was evaluated against the complete synchronized calendar snapshot without changing it.",
+        })
+      : normalizeEffectReceipt({
+          ...base,
+          outcome: "preview",
+        });
+  }
+
+  if (args.subaction === "update_preferences") {
+    const preferences = calendarEffectRecord(data?.preferences);
+    const taskId = calendarEffectString(data, "preferenceTaskId");
+    const updatedAt = calendarEffectString(preferences, "updatedAt");
+    if (!taskId || !updatedAt || !Number.isFinite(Date.parse(updatedAt))) {
+      throw new ElizaError(
+        "Meeting preferences completed without persisted task proof",
+        {
+          code: "CALENDAR_PREFERENCES_EFFECT_PROOF_REQUIRED",
+          context: { taskId, updatedAt },
+          severity: "fatal",
+        },
+      );
+    }
+    return lifeOpsAppliedEffect({
+      receiptId: calendarEffectReceiptId(args.message, operation, taskId),
+      operation,
+      resource: {
+        kind: "lifeops.scheduled_task",
+        id: taskId,
+        version: updatedAt,
+      },
+      artifacts: [],
+      idempotency: { key: null, replayed: false },
+      observedAt: updatedAt,
+      commit: {
+        kind: "durable",
+        id: taskId,
+        committedAt: updatedAt,
+      },
+    });
+  }
+
+  throw new ElizaError("Calendar success completed without an effect receipt", {
+    code: "CALENDAR_EFFECT_RECEIPT_REQUIRED",
+    context: { subaction: args.subaction },
+    severity: "fatal",
+  });
+}
+
+async function completeCalendarActionEffect(args: {
+  callback: HandlerCallback | undefined;
+  message: Memory;
+  subaction: OwnerCalendarSubaction | "resolve";
+  result: ActionResult;
+}): Promise<ActionResult> {
+  return completeLifeOpsEffect(
+    args.callback,
+    args.result,
+    calendarWrapperEffectReceipt(args),
+  );
 }
 
 /**
@@ -956,15 +1254,14 @@ async function handleBulkReschedulePreview(args: {
   );
   const service = resolveCalendarService(args.runtime);
 
-  let events: readonly LifeOpsCalendarEvent[] = [];
+  let feed: LifeOpsCalendarFeed;
   try {
-    const feed = await service.getCalendarFeed(INTERNAL_URL, {
+    feed = await service.getCalendarFeed(INTERNAL_URL, {
       includeHiddenCalendars: true,
       timeMin,
       timeMax,
       timeZone,
     });
-    events = feed.events;
   } catch (error) {
     if (error instanceof CalendarServiceError) {
       const failureText =
@@ -989,8 +1286,27 @@ async function handleBulkReschedulePreview(args: {
     }
     throw error;
   }
+  if (feed.state !== "complete") {
+    const failureText =
+      "I can't scope the full calendar cohort because one or more selected calendars are stale or unavailable. I won't present a bulk reschedule preview until every source is current.";
+    await args.callback?.({
+      text: failureText,
+      source: "action",
+      action: ACTION_NAME,
+    });
+    return {
+      text: failureText,
+      success: false,
+      data: {
+        actionName: ACTION_NAME,
+        subaction: "bulk_reschedule",
+        error: "CALENDAR_INCOMPLETE",
+        feedState: feed.state,
+      },
+    };
+  }
 
-  const matches = events
+  const matches = feed.events
     .filter((event) => eventMatchesBulkRescheduleCohort(event, cohortLabel))
     .sort(
       (left, right) => Date.parse(left.startAt) - Date.parse(right.startAt),
@@ -1030,6 +1346,7 @@ async function handleBulkReschedulePreview(args: {
         startAt: event.startAt,
         endAt: event.endAt,
       })),
+      calendarSnapshot: calendarSnapshotEffectProof(feed),
     },
   };
 }
@@ -1151,6 +1468,7 @@ export const calendarAction: Action & {
     "capability:write",
     "capability:update",
     "capability:delete",
+    "effect:receipt-required",
     "surface:remote-api",
     "surface:internal",
   ],
@@ -1192,8 +1510,16 @@ export const calendarAction: Action & {
   ): Promise<ActionResult> => {
     if (!(await hasLifeOpsAccess(runtime, message))) {
       const text = "Calendar actions are restricted to the owner.";
-      await callback?.({ text });
-      return { text, success: false, data: { error: "PERMISSION_DENIED" } };
+      return completeCalendarActionEffect({
+        callback,
+        message,
+        subaction: "resolve",
+        result: {
+          text,
+          success: false,
+          data: { error: "PERMISSION_DENIED" },
+        },
+      });
     }
     const resolved = await resolveActionArgs<
       OwnerCalendarSubaction,
@@ -1210,33 +1536,54 @@ export const calendarAction: Action & {
       const text =
         resolved.clarification ||
         "Tell me whether you want to view your calendar, create an event, check availability, propose times, or adjust scheduling preferences.";
-      await callback?.({ text });
-      return {
-        text,
-        success: false,
-        data: {
-          error: "MISSING_SUBACTION",
-          missing: resolved.missing,
-          noop: true,
+      return completeCalendarActionEffect({
+        callback,
+        message,
+        subaction: "resolve",
+        result: {
+          text,
+          success: false,
+          data: {
+            error: "MISSING_SUBACTION",
+            missing: resolved.missing,
+            noop: true,
+          },
         },
-      };
+      });
     }
     const subaction = normalizeSubaction(resolved.subaction);
     if (!subaction) {
       const text =
         "Tell me whether you want to view your calendar, create an event, check availability, propose times, or adjust scheduling preferences.";
-      await callback?.({ text });
-      return {
-        text,
-        success: false,
-        data: { error: "MISSING_SUBACTION", noop: true },
-      };
+      return completeCalendarActionEffect({
+        callback,
+        message,
+        subaction: "resolve",
+        result: {
+          text,
+          success: false,
+          data: { error: "MISSING_SUBACTION", noop: true },
+        },
+      });
     }
     const mergedOptions: HandlerOptions = {
       ...(options ?? {}),
       parameters: resolved.params as HandlerOptions["parameters"],
     };
-    return route(subaction, runtime, message, state, mergedOptions, callback);
+    const result = await route(
+      subaction,
+      runtime,
+      message,
+      state,
+      mergedOptions,
+      undefined,
+    );
+    return completeCalendarActionEffect({
+      callback,
+      message,
+      subaction,
+      result,
+    });
   },
   parameters: [
     {
@@ -1291,32 +1638,7 @@ export const calendarAction: Action & {
       descriptionCompressed:
         "details create|update|delete: calendarId,start/end,eventId,location; title/window TOP",
       required: false,
-      schema: {
-        type: "object" as const,
-        properties: {
-          calendarId: { type: "string" as const },
-          timeMin: { type: "string" as const },
-          timeMax: { type: "string" as const },
-          timeZone: { type: "string" as const },
-          forceSync: { type: "boolean" as const },
-          windowDays: { type: "number" as const },
-          windowPreset: { type: "string" as const },
-          start: { type: "string" as const },
-          end: { type: "string" as const },
-          startAt: { type: "string" as const },
-          endAt: { type: "string" as const },
-          durationMinutes: { type: "number" as const },
-          eventId: { type: "string" as const },
-          newTitle: { type: "string" as const },
-          description: { type: "string" as const },
-          location: { type: "string" as const },
-          travelOriginAddress: { type: "string" as const },
-          attendees: {
-            type: "array" as const,
-            items: { type: "string" as const },
-          },
-        },
-      },
+      schema: CALENDAR_DETAILS_PARAMETER_SCHEMA,
     },
     {
       name: "durationMinutes",

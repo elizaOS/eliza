@@ -32,7 +32,6 @@ export function registerPersonalAssistantConflictDetectHost(
 }
 
 export {
-  __resetConflictDetectLoaderForTests,
   type ConflictDetectEvent,
   type ConflictDetectHostAdapter,
   type ConflictDetectLoadBatch,
@@ -46,5 +45,4 @@ export {
   type ConflictSeverity,
   createCalendarFeedConflictLoader,
   registerConflictDetectHostAdapter,
-  setConflictDetectLoader,
 } from "@elizaos/plugin-calendar";

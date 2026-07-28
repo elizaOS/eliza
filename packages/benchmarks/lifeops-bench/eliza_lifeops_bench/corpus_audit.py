@@ -3,7 +3,7 @@
 The audit separates modeled read/terminal operations from explicit no-effect
 failures, preserving every affected scenario and action in machine-readable
 form. It is generated from the registered base corpus, never from edge copies,
-so counts describe authored contracts rather than prompt-prefix multiplication.
+so counts describe authored contracts rather than language-challenge runs.
 """
 
 from __future__ import annotations
@@ -32,11 +32,43 @@ _SNAPSHOT_PATHS = {
 # state-preserving operation is an audit failure rather than an implicit
 # exemption.
 MODELED_NO_MUTATION_OPERATIONS: dict[str, str] = {
+    "BLOCK_LIST_ACTIVE/list_active": "modeled_read",
+    "BLOCK_STATUS/status": "modeled_read",
+    "BOOK_TRAVEL": "modeled_read",
+    "BOOK_TRAVEL/prepare": "modeled_read",
+    "BOOK_TRAVEL/search": "modeled_read",
     "CALENDAR/check_availability": "modeled_read",
     "CALENDAR/next_event": "modeled_read",
+    "CALENDAR/propose_times": "modeled_read",
     "CALENDAR/search_events": "modeled_read",
+    "ENTITY/list": "modeled_read",
+    "ENTITY/log_interaction": "privacy_guard_or_persisted_write",
     "HEALTH/by_metric": "modeled_read",
+    "HEALTH/status": "modeled_read",
+    "HEALTH/summary": "modeled_read",
+    "HEALTH/today": "modeled_read",
+    "HEALTH/trend": "modeled_read",
+    "HEALTH/trends": "modeled_read",
+    "MESSAGE/list_channels": "modeled_read",
+    "MESSAGE/read_channel": "modeled_read",
+    "MESSAGE/read_with_contact": "modeled_read",
+    "MESSAGE/search_inbox": "modeled_read",
+    "MESSAGE/triage": "modeled_read_or_policy_write",
     "MONEY/list_transactions": "modeled_read",
+    "MONEY/dashboard": "modeled_read",
+    "MONEY/list_sources": "modeled_read",
+    "MONEY/recurring_charges": "modeled_read",
+    "MONEY/spending_summary": "modeled_read",
+    "MONEY/subscription_audit": "modeled_read",
+    "MONEY/subscription_status": "modeled_read",
+    "MONEY_DASHBOARD/dashboard": "modeled_read",
+    "MONEY_LIST_SOURCES/list_sources": "modeled_read",
+    "MONEY_LIST_TRANSACTIONS/list_transactions": "modeled_read",
+    "MONEY_RECURRING_CHARGES/recurring_charges": "modeled_read",
+    "MONEY_SPENDING_SUMMARY/spending_summary": "modeled_read",
+    "MONEY_SUBSCRIPTION_AUDIT/audit": "modeled_read",
+    "MONEY_SUBSCRIPTION_STATUS/status": "modeled_read",
+    "MONEY_SUBSCRIPTION_STATUS/subscription_status": "modeled_read",
     "REPLY": "conversational_terminal",
 }
 
@@ -60,7 +92,7 @@ _NO_EFFECT_ACTION_NAMES = frozenset(
     }
 )
 
-_NO_EFFECT_UMBRELLA_OPERATIONS = frozenset(
+_AUDITED_UMBRELLA_OPERATIONS = frozenset(
     {
         "CALENDAR/bulk_reschedule",
         "CALENDAR/propose_times",
@@ -92,18 +124,48 @@ def _operation_key(action: Action) -> str:
     )
 
 
-def _declared_no_effect_candidate(action: Action, operation: str) -> bool:
+def _audited_operation_candidate(action: Action, operation: str) -> bool:
     normalized = _normalize_action(action)
     if normalized.name in _NO_EFFECT_ACTION_NAMES:
         return True
     if operation == "LIFE_DELETE/delete":
         target = normalized.kwargs.get("target")
         return not isinstance(target, str) or not target.startswith("reminder_")
-    if operation == "MESSAGE/draft_reply":
-        return normalized.kwargs.get("source") != "gmail"
     if operation.startswith("HEALTH/"):
         return operation != "HEALTH/by_metric"
-    return operation in _NO_EFFECT_UMBRELLA_OPERATIONS
+    return operation in _AUDITED_UMBRELLA_OPERATIONS
+
+
+def _expected_modeled_mutation(action: Action, operation: str) -> bool:
+    normalized = _normalize_action(action)
+    if operation in {
+        "BLOCK/block",
+        "BLOCK_BLOCK/block",
+        "BLOCK_RELEASE/release",
+        "BLOCK_REQUEST_PERMISSION/request_permission",
+        "BLOCK_UNBLOCK/unblock",
+        "BOOK_TRAVEL/hold",
+        "CALENDAR/update_preferences",
+        "HEALTH/delete_metric",
+        "LIFE_DELETE/delete",
+        "LIFE_SKIP/skip",
+        "LIFE_UPDATE/update",
+    }:
+        return True
+    if operation == "MESSAGE/draft_reply":
+        return True
+    if operation == "MESSAGE/triage":
+        content = normalized.kwargs.get("content")
+        return isinstance(content, str) and bool(content.strip())
+    if operation == "ENTITY/log_interaction":
+        return (
+            normalized.kwargs.get(
+                "storeAllowed",
+                normalized.kwargs.get("store_allowed", True),
+            )
+            is not False
+        )
+    return False
 
 
 def _scenario_action(
@@ -170,6 +232,7 @@ def _module_inventory() -> list[dict[str, Any]]:
         scenarios = _module_scenarios(module_name)
         static = [item for item in scenarios if item.mode is ScenarioMode.STATIC]
         live = [item for item in scenarios if item.mode is ScenarioMode.LIVE]
+        opening_modes = {item.opening_mode for item in scenarios}
         inventory.append(
             {
                 "module": module_name,
@@ -178,10 +241,12 @@ def _module_inventory() -> list[dict[str, Any]]:
                 "live": len(live),
                 "openingDelivery": (
                     "mixed"
-                    if static and live
-                    else "model_generated"
-                    if live
-                    else "authored_static"
+                    if len(opening_modes) > 1
+                    else (
+                        "model_generated"
+                        if opening_modes == {"simulated"}
+                        else "authored"
+                    )
                 ),
                 "staticRequiredOutputContracts": sum(
                     bool(item.required_outputs) for item in static
@@ -190,8 +255,7 @@ def _module_inventory() -> list[dict[str, Any]]:
                     item.opening_mode == "authored" for item in live
                 ),
                 "trustedEvidenceContracts": sum(
-                    item.trusted_evidence_requirement is not None
-                    for item in scenarios
+                    item.trusted_evidence_requirement is not None for item in scenarios
                 ),
             }
         )
@@ -228,6 +292,7 @@ def build_corpus_audit(
     }
     gaps: list[dict[str, Any]] = []
     exemptions: list[dict[str, Any]] = []
+    mutations: list[dict[str, Any]] = []
     unclassified_successes: list[dict[str, Any]] = []
     execution_errors: list[dict[str, Any]] = []
 
@@ -243,15 +308,15 @@ def build_corpus_audit(
                 }
             )
             continue
-        world = base_world
-        world.now_iso = scenario.now_iso
+        world = base_world.fork(now_iso=scenario.now_iso)
         for action_index, action in enumerate(scenario.ground_truth_actions):
             operation = _operation_key(action)
-            if (
+            audited_candidate = not (
                 operation not in MODELED_NO_MUTATION_OPERATIONS
-                and not _declared_no_effect_candidate(action, operation)
-            ):
-                continue
+                and not _audited_operation_candidate(action, operation)
+                and not _expected_modeled_mutation(action, operation)
+            )
+            before_revision = world.mutation_revision
             try:
                 result = _execute_action(action, world)
             except Exception as exc:  # error-policy:J1 audit boundary translation
@@ -265,6 +330,8 @@ def build_corpus_audit(
                     }
                 )
                 continue
+            if not audited_candidate:
+                continue
             record = _scenario_action(
                 scenario,
                 action,
@@ -272,13 +339,27 @@ def build_corpus_audit(
                 operation=operation,
                 result=result,
             )
+            changed = world.mutation_revision != before_revision
             if result.get("noop") is True:
                 unclassified_successes.append(
                     {**record, "auditReason": "legacy noop marker remains"}
                 )
             elif result.get("noEffect") is True:
                 gaps.append(record)
-            elif operation in MODELED_NO_MUTATION_OPERATIONS:
+            elif changed:
+                mutations.append(record)
+            elif _expected_modeled_mutation(action, operation):
+                unclassified_successes.append(
+                    {
+                        **record,
+                        "auditReason": (
+                            "operation is modeled as a mutation but preserved world state"
+                        ),
+                    }
+                )
+            elif (
+                operation in MODELED_NO_MUTATION_OPERATIONS and result.get("ok") is True
+            ):
                 exemptions.append(
                     {
                         **record,
@@ -295,19 +376,24 @@ def build_corpus_audit(
                         ),
                     }
                 )
+            else:
+                unclassified_successes.append(
+                    {
+                        **record,
+                        "auditReason": (
+                            "audited operation returned an unclassified result shape"
+                        ),
+                    }
+                )
 
-    static = [
-        item for item in base_scenarios if item.mode is ScenarioMode.STATIC
-    ]
+    static = [item for item in base_scenarios if item.mode is ScenarioMode.STATIC]
     live = [item for item in base_scenarios if item.mode is ScenarioMode.LIVE]
     operation_counts = Counter(item["operation"] for item in gaps)
     affected_scenarios = {item["scenarioId"] for item in gaps}
     persona_ids = {item.persona.id for item in base_scenarios}
-    library_persona_ids = {
-        item["id"] for item in _persona_inventory(base_scenarios)
-    }
+    library_persona_ids = {item["id"] for item in _persona_inventory(base_scenarios)}
     return {
-        "schema": "lifeops.corpus-audit.v1",
+        "schema": "lifeops.corpus-audit.v2",
         "baseCorpus": {
             "total": len(base_scenarios),
             "static": len(static),
@@ -318,12 +404,20 @@ def build_corpus_audit(
             "liveAuthoredGoalLeaks": sum(
                 item.opening_mode == "authored" for item in live
             ),
-            "staticSubstringContracts": sum(
+            "modelGeneratedOpenings": sum(
+                item.opening_mode == "simulated" for item in base_scenarios
+            ),
+            "staticModelGeneratedOpenings": sum(
+                item.opening_mode == "simulated" for item in static
+            ),
+            "staticAuthoredOpenings": sum(
+                item.opening_mode == "authored" for item in static
+            ),
+            "staticSemanticOutputContracts": sum(
                 bool(item.required_outputs) for item in static
             ),
             "trustedEvidenceContracts": sum(
-                item.trusted_evidence_requirement is not None
-                for item in live
+                item.trusted_evidence_requirement is not None for item in live
             ),
         },
         "scenarioModules": _module_inventory(),
@@ -337,6 +431,7 @@ def build_corpus_audit(
             "occurrences": gaps,
         },
         "modeledNoMutationOccurrences": exemptions,
+        "modeledMutationOccurrences": mutations,
         "unclassifiedSuccessfulNoEffects": unclassified_successes,
         "executionErrors": execution_errors,
     }
@@ -347,12 +442,15 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="lifeops-corpus-audit")
     parser.add_argument("--output", type=Path)
     args = parser.parse_args(argv)
-    document = json.dumps(
-        build_corpus_audit(),
-        ensure_ascii=False,
-        indent=2,
-        sort_keys=True,
-    ) + "\n"
+    document = (
+        json.dumps(
+            build_corpus_audit(),
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n"
+    )
     if args.output is None:
         print(document, end="")
     else:

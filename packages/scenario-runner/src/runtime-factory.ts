@@ -23,6 +23,15 @@ import {
   type LiveProviderName,
   selectLiveProvider,
 } from "@elizaos/core/testing";
+import {
+  DEFAULT_SCENARIO_EXECUTION_PROFILE,
+  type ScenarioExecutionProfile,
+} from "@elizaos/scenario-runner/schema";
+import {
+  assertProviderQualifiedPluginPackages,
+  loadScenarioRequiredPlugin,
+  pluginPackageIsRegistered,
+} from "./required-plugins.ts";
 
 // Test helpers loaded lazily so the build rootDir stays within src/.
 async function loadTestMocks() {
@@ -115,6 +124,8 @@ async function createScenarioKnowledgeGraphPlugin(): Promise<Plugin> {
 export interface RuntimeFactoryResult {
   runtime: AgentRuntime;
   pgliteDir: string;
+  executionProfile: ScenarioExecutionProfile;
+  registeredPluginPackages: readonly string[];
   providerName: LiveProviderName | typeof DETERMINISTIC_LLM_PROXY_PROVIDER_NAME;
   providerConfig:
     | LiveProviderConfig
@@ -205,6 +216,122 @@ export interface CreateScenarioRuntimeOptions {
   preferredProvider?: LiveProviderName;
   extraPlugins?: Plugin[];
   useDeterministicLlmProxy?: boolean;
+  executionProfile?: ScenarioExecutionProfile;
+  requiredPlugins?: readonly string[];
+}
+
+type LoadedScenarioTestMocks = Awaited<ReturnType<typeof loadTestMocks>>;
+type MockedScenarioEnvironment = Awaited<
+  ReturnType<LoadedScenarioTestMocks["prepareMockedTestEnvironment"]>
+>;
+
+export type ScenarioExecutionEnvironment =
+  | {
+      executionProfile: "simulated";
+      testMocks: LoadedScenarioTestMocks;
+      mockedEnvironment: MockedScenarioEnvironment;
+    }
+  | {
+      executionProfile: "provider-qualified";
+      testMocks: null;
+      mockedEnvironment: null;
+    };
+
+const PROVIDER_BASE_URL_ENV_NAMES = new Set([
+  "ANTHROPIC_BASE_URL",
+  "CEREBRAS_BASE_URL",
+  "GITHUB_API_URL",
+  "NTFY_BASE_URL",
+  "OPENAI_BASE_URL",
+]);
+
+function isForbiddenProviderBaseUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    const hostname = parsed.hostname.toLowerCase();
+    return (
+      hostname === "localhost" ||
+      hostname === "::1" ||
+      hostname === "0.0.0.0" ||
+      hostname.startsWith("127.") ||
+      hostname.endsWith(".localhost") ||
+      hostname.includes("mock") ||
+      hostname.includes("fixture")
+    );
+  } catch {
+    return true;
+  }
+}
+
+export function providerQualifiedEnvironmentProblems(
+  env: NodeJS.ProcessEnv = process.env,
+): string[] {
+  const problems = new Set<string>();
+  for (const [name, rawValue] of Object.entries(env)) {
+    const value = rawValue?.trim();
+    if (!value) continue;
+    if (name.startsWith("ELIZA_MOCK_")) {
+      problems.add(`${name} is a mock override`);
+      continue;
+    }
+    if (
+      name.includes("FIXTURE") &&
+      (name.endsWith("_BASE") || name.endsWith("_BASE_URL"))
+    ) {
+      problems.add(`${name} is a fixture endpoint`);
+      continue;
+    }
+    if (
+      (PROVIDER_BASE_URL_ENV_NAMES.has(name) ||
+        name.endsWith("_PROVIDER_BASE_URL")) &&
+      isForbiddenProviderBaseUrl(value)
+    ) {
+      problems.add(`${name} is not a production provider endpoint`);
+    }
+  }
+  if (envFlag(env.SCENARIO_USE_LLM_PROXY)) {
+    problems.add("SCENARIO_USE_LLM_PROXY enables the deterministic proxy");
+  }
+  if (envFlag(env.ELIZA_SCENARIO_USE_LLM_PROXY)) {
+    problems.add("ELIZA_SCENARIO_USE_LLM_PROXY enables the deterministic proxy");
+  }
+  if (envFlag(env.ELIZA_DISABLE_LIFEOPS_SCHEDULER)) {
+    problems.add("ELIZA_DISABLE_LIFEOPS_SCHEDULER disables the scheduler");
+  }
+  if (envFlag(env.ELIZA_BLOCK_REAL_GMAIL_WRITES)) {
+    problems.add("ELIZA_BLOCK_REAL_GMAIL_WRITES enables connector test mode");
+  }
+  return [...problems].sort();
+}
+
+export function assertProviderQualifiedEnvironment(
+  env: NodeJS.ProcessEnv = process.env,
+): void {
+  const problems = providerQualifiedEnvironmentProblems(env);
+  if (problems.length > 0) {
+    throw new Error(
+      `[scenario-runner] provider-qualified environment preflight failed: ${problems.join("; ")}`,
+    );
+  }
+}
+
+export async function prepareScenarioExecutionEnvironment(
+  executionProfile: ScenarioExecutionProfile,
+  testMocksLoader: () => Promise<LoadedScenarioTestMocks> = loadTestMocks,
+): Promise<ScenarioExecutionEnvironment> {
+  if (executionProfile === "provider-qualified") {
+    assertProviderQualifiedEnvironment();
+    return {
+      executionProfile,
+      testMocks: null,
+      mockedEnvironment: null,
+    };
+  }
+  const testMocks = await testMocksLoader();
+  const mockedEnvironment = await testMocks.prepareMockedTestEnvironment({
+    seedLifeOpsSimulator: true,
+  });
+  return { executionProfile, testMocks, mockedEnvironment };
 }
 
 const SAVE_TRAJECTORY_ENV_FLAGS = [
@@ -453,27 +580,46 @@ export function scenarioPgliteDirOverride(
 export async function createScenarioRuntime(
   options?: CreateScenarioRuntimeOptions,
 ): Promise<RuntimeFactoryResult> {
+  const executionProfile =
+    options?.executionProfile ?? DEFAULT_SCENARIO_EXECUTION_PROFILE;
+  if (executionProfile === "provider-qualified") {
+    assertProviderQualifiedEnvironment();
+    if (options?.useDeterministicLlmProxy === true) {
+      throw new Error(
+        "[scenario-runner] provider-qualified execution cannot use the deterministic LLM proxy",
+      );
+    }
+    if ((options?.extraPlugins?.length ?? 0) > 0) {
+      throw new Error(
+        "[scenario-runner] provider-qualified execution accepts only scenario-declared plugin packages; extraPlugins are simulated/test injection",
+      );
+    }
+    assertProviderQualifiedPluginPackages(options?.requiredPlugins ?? []);
+  }
   const providerConfig = resolveScenarioProviderConfig(options);
   if (!providerConfig) {
     throw new Error(
       "[scenario-runner] no LLM provider configured. Set GROQ_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY / GOOGLE_GENERATIVE_AI_API_KEY / OPENROUTER_API_KEY, set ELIZA_CHAT_VIA_CLI=claude|claude-sdk|codex|codex-sdk on a subscription-only host, or enable deterministic test mode with SCENARIO_USE_LLM_PROXY=1.",
     );
   }
-  const {
-    prepareMockedTestEnvironment,
-    seedLifeOpsSimulatorRuntime,
-    seedBenchmarkLifeOpsFixtures,
-    seedGoogleConnectorGrant,
-    seedXConnectorGrant,
-    createDeterministicLlmProxyPlugin,
-  } = await loadTestMocks();
-  const mockedEnvironment = await prepareMockedTestEnvironment({
-    seedLifeOpsSimulator: true,
-  });
+  if (
+    executionProfile === "provider-qualified" &&
+    providerConfig.name === DETERMINISTIC_LLM_PROXY_PROVIDER_NAME
+  ) {
+    throw new Error(
+      "[scenario-runner] provider-qualified execution requires a live model provider",
+    );
+  }
+  const preparedEnvironment =
+    await prepareScenarioExecutionEnvironment(executionProfile);
+  const { testMocks, mockedEnvironment } = preparedEnvironment;
   for (const [key, value] of Object.entries(providerConfig.env)) {
     process.env[key] = value;
   }
   clearLlmWireMockEnvForLiveProvider(providerConfig.name);
+  if (executionProfile === "provider-qualified") {
+    assertProviderQualifiedEnvironment();
+  }
 
   const explicitPgliteDir = scenarioPgliteDirOverride();
   const pgliteDir =
@@ -496,19 +642,24 @@ export async function createScenarioRuntime(
     process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER;
   const prevSkillsSyncCatalogOnStart = process.env.SKILLS_SYNC_CATALOG_ON_START;
   const prevSkillsDir = process.env.SKILLS_DIR;
-  const scenarioSkillsRoot = prevSkillsDir?.trim()
-    ? null
-    : fs.mkdtempSync(path.join(os.tmpdir(), "scenario-runner-skills-"));
+  const scenarioSkillsRoot =
+    executionProfile === "simulated" && !prevSkillsDir?.trim()
+      ? fs.mkdtempSync(path.join(os.tmpdir(), "scenario-runner-skills-"))
+      : null;
   let scenarioHostsRoot: string | null = null;
   process.env.PGLITE_DATA_DIR = pgliteDir;
   process.env.ELIZA_DISABLE_ACTIVITY_TRACKER = "1";
   process.env.ELIZA_DISABLE_PROACTIVE_AGENT = "1";
-  process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER = "1";
+  if (executionProfile === "simulated") {
+    process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER = "1";
+  }
   if (scenarioSkillsRoot) {
     process.env.SKILLS_DIR = scenarioSkillsRoot;
   }
-  process.env.SKILLS_SYNC_CATALOG_ON_START =
-    prevSkillsSyncCatalogOnStart ?? "false";
+  if (executionProfile === "simulated") {
+    process.env.SKILLS_SYNC_CATALOG_ON_START =
+      prevSkillsSyncCatalogOnStart ?? "false";
+  }
   if (!process.env.LOCAL_EMBEDDING_DIMENSIONS?.trim()) {
     process.env.LOCAL_EMBEDDING_DIMENSIONS = "384";
   }
@@ -516,6 +667,7 @@ export async function createScenarioRuntime(
     process.env.EMBEDDING_DIMENSION = "384";
   }
   if (
+    executionProfile === "simulated" &&
     !prevWebsiteBlockerHostsFilePath?.trim() &&
     !prevSelfControlHostsFilePath?.trim()
   ) {
@@ -535,6 +687,18 @@ export async function createScenarioRuntime(
   const character = createCharacter({
     name: options?.characterName ?? "ScenarioAgent",
   });
+  const scenarioRuntimeSettings =
+    executionProfile === "simulated"
+      ? {
+          SKILLS_SYNC_CATALOG_ON_START:
+            process.env.SKILLS_SYNC_CATALOG_ON_START ?? "false",
+          ...(process.env.SKILLS_DIR
+            ? { SKILLS_DIR: process.env.SKILLS_DIR }
+            : {}),
+          ACTION_CALLBACK_VOICE_REWRITE: "false",
+          LIFEOPS_INBOX_PRIORITY_SCORING: "false",
+        }
+      : {};
   const runtime = new AgentRuntimeCtor({
     character,
     plugins: [],
@@ -546,20 +710,9 @@ export async function createScenarioRuntime(
     // throwaway temp dir and the boot-time catalog sync stays off — otherwise
     // every scenario hits the real registry at boot (network dependency) and
     // pollutes ./skills in the repo.
-    settings: {
-      SKILLS_SYNC_CATALOG_ON_START:
-        process.env.SKILLS_SYNC_CATALOG_ON_START ?? "false",
-      ...(process.env.SKILLS_DIR ? { SKILLS_DIR: process.env.SKILLS_DIR } : {}),
-      // Scenarios assert the raw action-callback text; the character-voice
-      // rewrite (services/message) would spend an unfixtured TEXT_SMALL call and
-      // restyle that text, so keep it off in the deterministic harness.
-      ACTION_CALLBACK_VOICE_REWRITE: "false",
-      // LifeOps inbox priority scoring is a background TEXT_SMALL batch; under
-      // the strict proxy it has no fixtures, and its reported failure leaks
-      // into the RECENT_ERRORS provider text that strict turn fixtures key on
-      // (deterministic-pr-smoke went red exactly this way).
-      LIFEOPS_INBOX_PRIORITY_SCORING: "false",
-    },
+    // These settings exist only to keep the legacy simulated harness
+    // deterministic. Provider-qualified runs inherit the production defaults.
+    settings: scenarioRuntimeSettings,
   });
 
   const { default: pluginSql } = (await import("@elizaos/plugin-sql")) as {
@@ -590,6 +743,7 @@ export async function createScenarioRuntime(
   // assumes that shape (vector columns sized at boot) still works.
   // Opt back into the real plugin with `ELIZA_BENCH_SKIP_EMBEDDING=0`.
   const skipEmbeddingPlugin =
+    executionProfile === "simulated" &&
     (process.env.ELIZA_BENCH_SKIP_EMBEDDING ?? "1") !== "0";
   if (skipEmbeddingPlugin) {
     const EMBEDDING_DIMENSIONS = 1024;
@@ -622,7 +776,12 @@ export async function createScenarioRuntime(
 
   applyRuntimeSettings(runtime, providerConfig.env);
   if (providerConfig.name === DETERMINISTIC_LLM_PROXY_PROVIDER_NAME) {
-    const deterministicLlmProxyPlugin = createDeterministicLlmProxyPlugin({
+    if (!testMocks) {
+      throw new Error(
+        "[scenario-runner] deterministic proxy requested without the simulated test environment",
+      );
+    }
+    const deterministicLlmProxyPlugin = testMocks.createDeterministicLlmProxyPlugin({
       strict: shouldUseStrictDeterministicLlmProxy(),
       resolve: resolveScenarioDeterministicLlmCall,
     });

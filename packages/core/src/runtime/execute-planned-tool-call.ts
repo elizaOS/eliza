@@ -7,7 +7,13 @@
  */
 import { validateToolArgs } from "../actions/validate-tool-args";
 import { evaluateConnectorAccountPolicies } from "../connectors/account-manager";
+import { ElizaError } from "../errors";
 import { checkSenderRole } from "../roles";
+import {
+	authorizeOwnerExclusiveDisclosure,
+	PRIVACY_DENIED_TEXT,
+	revalidateOwnerExclusiveDisclosure,
+} from "../security/trusted-delivery-audience";
 import {
 	emitStreamingHook,
 	getStreamingContext,
@@ -269,6 +275,21 @@ export async function executePlannedToolCall(
 	if (gateFailure) {
 		return emitToolResult(toolCall, failureResult(action.name, gateFailure));
 	}
+	if (action.disclosureGate?.require === "owner_exclusive") {
+		const disclosure = await authorizeOwnerExclusiveDisclosure(
+			runtime,
+			executorCtx.message,
+		);
+		if (!disclosure.allowed) {
+			return emitToolResult(
+				toolCall,
+				failureResult(
+					action.name,
+					`Owner-private disclosure denied: ${disclosure.reason}`,
+				),
+			);
+		}
+	}
 
 	const normalizedArgs = expandEnumShortForm(
 		action,
@@ -390,10 +411,38 @@ export async function executePlannedToolCall(
 			});
 	}
 
-	const resultForEvent = await settleActionHandler({
+	const ownerExclusive = action.disclosureGate?.require === "owner_exclusive";
+	const protectedCallback =
+		ownerExclusive && executorCtx.callback
+			? async (
+					...callbackArgs: Parameters<NonNullable<typeof executorCtx.callback>>
+				) => {
+					const disclosure = await revalidateOwnerExclusiveDisclosure(
+						runtime,
+						executorCtx.message,
+					);
+					if (disclosure.allowed) {
+						return executorCtx.callback?.(...callbackArgs) ?? [];
+					}
+					return (
+						executorCtx.callback?.(
+							{
+								text: PRIVACY_DENIED_TEXT,
+								actions: ["PRIVACY_DENIED"],
+								data: {
+									privacyDenied: true,
+									privacyReason: disclosure.reason,
+								},
+							},
+							"PRIVACY_DENIED",
+						) ?? []
+					);
+				}
+			: executorCtx.callback;
+	let resultForEvent = await settleActionHandler({
 		runtime,
 		action,
-		callback: executorCtx.callback,
+		callback: protectedCallback,
 		invoke: (actionCallback) =>
 			runWithMessageTrajectoryContext(
 				runtime,
@@ -443,6 +492,18 @@ export async function executePlannedToolCall(
 				},
 			),
 	});
+	if (ownerExclusive) {
+		const disclosure = await revalidateOwnerExclusiveDisclosure(
+			runtime,
+			executorCtx.message,
+		);
+		if (!disclosure.allowed) {
+			resultForEvent = failureResult(action.name, PRIVACY_DENIED_TEXT, {
+				privacyDenied: true,
+				privacyReason: disclosure.reason,
+			});
+		}
+	}
 	const suppressActionResult = shouldSuppressActionResultClipboard(
 		action,
 		resultForEvent,
@@ -480,6 +541,18 @@ export async function executePlannedToolCall(
 					"emitEvent failed",
 				);
 			});
+	}
+	if (ownerExclusive) {
+		const disclosure = await revalidateOwnerExclusiveDisclosure(
+			runtime,
+			executorCtx.message,
+		);
+		if (!disclosure.allowed) {
+			resultForEvent = failureResult(action.name, PRIVACY_DENIED_TEXT, {
+				privacyDenied: true,
+				privacyReason: disclosure.reason,
+			});
+		}
 	}
 
 	return emitToolResult(toolCall, resultForEvent, {
@@ -541,16 +614,22 @@ async function resolveToolCallUserRoles(
 			return [result.role as RoleGateRole];
 		}
 	} catch (error) {
-		runtime.logger.debug(
-			{
-				src: "execute-planned-tool-call",
-				error: error instanceof Error ? error.message : String(error),
+		// error-policy:J2 A role-store failure cannot be converted into a role
+		// because doing so would authorize actions without canonical evidence.
+		throw new ElizaError("Failed to resolve the tool caller's role", {
+			code: "ACTION_CALLER_ROLE_LOOKUP_FAILED",
+			cause: error,
+			context: {
+				messageId: message.id,
+				roomId: message.roomId,
+				entityId: message.entityId,
 			},
-			"sender role lookup failed; defaulting to USER",
-		);
+		});
 	}
 
-	return ["USER"];
+	// A missing canonical room/world is not evidence of an authenticated user.
+	// GUEST is the non-authorizing floor for actions that require USER or above.
+	return ["GUEST"];
 }
 
 function plannedToolCallToStreamingToolCall(

@@ -328,6 +328,12 @@ export interface GoogleCalendarEventListPageInput extends GoogleAccountRef {
   syncToken?: string;
   timeZone?: string;
   showDeleted?: boolean;
+  /**
+   * Google suppresses nextSyncToken on any events.list request that carries
+   * orderBy, so sync drains must leave this unset; only display paths that
+   * need provider-side ordering opt in.
+   */
+  orderBy?: "startTime" | "updated";
 }
 
 export interface GoogleCalendarEventListPage {

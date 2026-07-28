@@ -11,6 +11,7 @@ and update the owning pack catalog.
 ## Table of contents
 
 - [Static vs Live mode](#static-vs-live-mode)
+- [Static semantic expectations](#static-semantic-expectations)
 - [Persona design](#persona-design)
 - [Ground-truth actions: umbrella vs fine-grained](#ground-truth-actions-umbrella-vs-fine-grained)
 - [First-question fallback](#first-question-fallback)
@@ -25,26 +26,50 @@ and update the owning pack catalog.
 | ------------------------------------------------------ | --------------------------------------------------------- |
 | The task is fully specified by the instruction         | The task naturally needs back-and-forth (negotiation)     |
 | You can predict ground-truth actions deterministically | The world should mutate mid-run (REALM-style disruptions) |
-| You want cheap, fast, large-scale eval                 | You're testing satisfaction-of-intent, not just correctness |
+| One terminal response can be judged after execution   | You're testing satisfaction across a continuing dialogue    |
 | The fallback can answer the most likely clarifier      | Neither side can be canned without breaking realism       |
 
-STATIC scenarios are cheap (no per-turn LLM calls on the user side
-once the agent commits to a plan; one optional fallback turn). LIVE
-scenarios are slower and more expensive — every agent turn triggers a
-simulated-user turn, plus a judge call from the configured
-`live_judge_min_turn` onward.
+Publishable STATIC runs generate a simulated opening when
+`opening_mode="simulated"` and make one semantic judge call after execution.
+LIVE runs generate a user turn after every executor turn and may judge
+satisfaction repeatedly from `live_judge_min_turn` onward. The explicit
+`--offline-conformance` lane instead uses authored STATIC openings and literal
+output canaries; its artifacts cannot be published as benchmark results.
 
-Every LIVE `instruction` is a hidden evaluator goal. The independent persona
-model generates the opening in its own words, using indirect references and
-withholding at least one material detail for later clarification or
-correction. The executor never receives the authored goal verbatim. Write the
-complete hidden intent and behavioral constraints; do not treat
-`instruction` as a user-facing opening.
+Whenever `opening_mode="simulated"`, `instruction` is a hidden user goal. The
+independent persona model renders the opening and continuations in its own
+words. Edge-expanded runs also supply `opening_challenge`, which asks the model
+for vague referents, corrections, colloquial/noisy language, code switching,
+underspecification, stress, relative time, or a fragmented handoff without
+changing the goal. The executor never receives the authored goal verbatim, and
+near-verbatim generated openings fail before execution.
+
+Success criteria, world assertions, required outputs, and static rubrics are
+judge-only data. They must never be copied into the simulated-user prompt; the
+persona receives only its profile, hidden user goal, optional language
+challenge, and current world snapshot.
+
+## Static semantic expectations
+
+Use `required_outputs` for facts or outcomes the terminal response must
+communicate, not keywords it must contain. Publishable runs grade each item by
+meaning, so an accurate paraphrase passes and a sentence that repeats the right
+token with the wrong date, person, quantity, or status fails.
+
+Use `static_rubric` for response qualities such as a consent explanation,
+grounded uncertainty, or appropriate tone. Keep machine-verifiable details in
+`ground_truth_actions`: IDs, subactions, timestamps, recurrence, approval
+flags, and other structural parameters do not belong in prose criteria.
+
+The judge returns every `output_N` and `rubric_N` ID exactly once. A positive
+grade must cite a meaningful verbatim fragment from an eligible executor or
+tool transcript line. User text, invented line IDs, tiny common-word quotes,
+missing criteria, duplicates, and extra criteria fail closed.
 
 ## Persona design
 
 Personas live in `eliza_lifeops_bench/scenarios/_personas.py`. There
-are 23 today; add a new one only if existing personas don't fit. Each
+are 32 registered personas; add a new one only if existing personas don't fit. Each
 persona carries:
 
 - `id` — snake_case lowercase, used for cross-references (`PERSONA_RIA_PM` → `ria_pm`).
@@ -91,9 +116,14 @@ Supported (action, subaction) pairs at time of writing:
 | `HEALTH`               | `by_metric` is modeled; other projections fail explicitly until implemented                                                   |
 | `MONEY`                | `list_transactions` is modeled; other projections fail explicitly until implemented                                          |
 | `SUBSCRIPTIONS_CANCEL` | resolves by `serviceSlug` first, then `serviceName` (case-insensitive)                                                        |
-| `BOOK_TRAVEL`          | explicit unsupported result until LifeWorld has travel bookings                                                               |
-| `APP_BLOCK`, `WEBSITE_BLOCK` | explicit unsupported result until LifeWorld has device/focus enforcement state                                         |
-| `SCHEDULED_TASK_CREATE` | folded into reminders on `list_personal`                                                                                     |
+| `BOOK_TRAVEL`          | `search` / `prepare` project provider offers; `hold` persists an approval-gated reservation; purchase/cancellation remain external |
+| `BLOCK` / `BLOCK_*`    | `block`, `request_permission`, `unblock`, and `release` persist rule state; `status` / `list_active` are projections          |
+| `SCHEDULED_TASK_CREATE` / `UPDATE` / `SNOOZE` and `SCHEDULED_TASKS/*` | first-class scheduled-task state; mutations require a seeded or earlier-created target |
+
+Scheduled-task create actions must omit `taskId`, which is server-owned.
+Create-then-mutate scenarios must take the later target from the create tool
+receipt; the deterministic executor exposes the same lineage through its
+stable receipt ID. Corpus validation rejects invented mutation targets.
 
 ### Fine-grained (legacy / inline conformance)
 
@@ -223,6 +253,10 @@ These tests check:
 - The static fallback ratio stays above the corpus threshold.
 - Every LIVE opening is model-generated and every scenario id is a stable
   `[a-z0-9_.-]` identifier.
+- Edge variants preserve the exact hidden goal and structural contracts while
+  using a model-generated language challenge rather than a fixed prefix.
+- Scheduled-task updates, snoozes, and state changes target seeded state or a
+  task created earlier in the same authored action sequence.
 - Every unmodeled LifeWorld operation returns explicit non-success, while
   modeled read/terminal no-mutation exceptions are inventoried separately.
 

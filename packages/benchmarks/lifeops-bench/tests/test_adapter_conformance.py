@@ -110,9 +110,7 @@ def _world_factory_for(scenario: Scenario) -> Callable[[int, str], Any]:
 
 
 _WRONG_ACTION_NAME = "CONTACTS.delete"
-_WRONG_ACTION_KWARGS: dict[str, Any] = {
-    "id": "definitely_not_a_real_contact_id"
-}
+_WRONG_ACTION_KWARGS: dict[str, Any] = {"id": "definitely_not_a_real_contact_id"}
 
 
 class _MockScript:
@@ -189,7 +187,9 @@ def _render_hermes_response(prose: str, calls: list[tuple[str, dict[str, Any]]])
     return "\n".join(blocks) if blocks else "Done."
 
 
-def _build_hermes_mock_agent(script: _MockScript) -> tuple[OpenAICompatAgent, httpx.AsyncClient]:
+def _build_hermes_mock_agent(
+    script: _MockScript,
+) -> tuple[OpenAICompatAgent, httpx.AsyncClient]:
     """Wire an OpenAICompatAgent against a mocked HermesClient."""
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -280,6 +280,7 @@ def _ensure_eliza_adapter_importable() -> None:
     even when the package isn't pip-installed in the active env."""
     try:
         import eliza_adapter  # noqa: F401
+
         return
     except ImportError:
         pass
@@ -375,7 +376,9 @@ def _build_eliza_mock_agent(
 
 async def _drive_scenario(
     scenario: Scenario,
-    agent_fn: Callable[[list[MessageTurn], list[dict[str, Any]]], Awaitable[MessageTurn]],
+    agent_fn: Callable[
+        [list[MessageTurn], list[dict[str, Any]]], Awaitable[MessageTurn]
+    ],
 ) -> float:
     runner = LifeOpsBenchRunner(
         agent_fn=agent_fn,
@@ -385,6 +388,7 @@ async def _drive_scenario(
         seeds=1,
         max_cost_usd=1000.0,
         per_scenario_timeout_s=30,
+        static_grading_mode="offline_conformance",
     )
     result = await runner.run_one(scenario, scenario.world_seed)
     return result.total_score
@@ -396,7 +400,9 @@ async def _drive_scenario(
 
 
 @pytest.mark.parametrize(
-    "scenario", SAMPLED_SCENARIOS, ids=lambda s: s.id,
+    "scenario",
+    SAMPLED_SCENARIOS,
+    ids=lambda s: s.id,
 )
 async def test_hermes_adapter_perfect_mock_scores_one(scenario: Scenario) -> None:
     """Hermes adapter + PerfectAgent-style mock must score 1.0."""
@@ -406,13 +412,15 @@ async def test_hermes_adapter_perfect_mock_scores_one(scenario: Scenario) -> Non
         score = await _drive_scenario(scenario, agent)
     finally:
         await http_client.aclose()
-    assert score == pytest.approx(1.0, abs=1e-6), (
-        f"Hermes adapter scored {score:.4f} on {scenario.id} with PerfectAgent mock"
-    )
+    assert score == pytest.approx(
+        1.0, abs=1e-6
+    ), f"Hermes adapter scored {score:.4f} on {scenario.id} with PerfectAgent mock"
 
 
 @pytest.mark.parametrize(
-    "scenario", SAMPLED_SCENARIOS, ids=lambda s: s.id,
+    "scenario",
+    SAMPLED_SCENARIOS,
+    ids=lambda s: s.id,
 )
 async def test_hermes_adapter_wrong_mock_scores_zero(scenario: Scenario) -> None:
     """Hermes adapter + WrongAgent-style mock must score 0.0."""
@@ -422,9 +430,9 @@ async def test_hermes_adapter_wrong_mock_scores_zero(scenario: Scenario) -> None
         score = await _drive_scenario(scenario, agent)
     finally:
         await http_client.aclose()
-    assert score == pytest.approx(0.0, abs=1e-6), (
-        f"Hermes adapter scored {score:.4f} on {scenario.id} with WrongAgent mock"
-    )
+    assert score == pytest.approx(
+        0.0, abs=1e-6
+    ), f"Hermes adapter scored {score:.4f} on {scenario.id} with WrongAgent mock"
 
 
 # ---------------------------------------------------------------------------
@@ -433,7 +441,9 @@ async def test_hermes_adapter_wrong_mock_scores_zero(scenario: Scenario) -> None
 
 
 @pytest.mark.parametrize(
-    "scenario", SAMPLED_SCENARIOS, ids=lambda s: s.id,
+    "scenario",
+    SAMPLED_SCENARIOS,
+    ids=lambda s: s.id,
 )
 async def test_cerebras_direct_adapter_perfect_mock_scores_one(
     scenario: Scenario,
@@ -445,13 +455,15 @@ async def test_cerebras_direct_adapter_perfect_mock_scores_one(
         score = await _drive_scenario(scenario, agent)
     finally:
         await http_client.aclose()
-    assert score == pytest.approx(1.0, abs=1e-6), (
-        f"Cerebras adapter scored {score:.4f} on {scenario.id} with PerfectAgent mock"
-    )
+    assert score == pytest.approx(
+        1.0, abs=1e-6
+    ), f"Cerebras adapter scored {score:.4f} on {scenario.id} with PerfectAgent mock"
 
 
 @pytest.mark.parametrize(
-    "scenario", SAMPLED_SCENARIOS, ids=lambda s: s.id,
+    "scenario",
+    SAMPLED_SCENARIOS,
+    ids=lambda s: s.id,
 )
 async def test_cerebras_direct_adapter_wrong_mock_scores_zero(
     scenario: Scenario,
@@ -463,9 +475,9 @@ async def test_cerebras_direct_adapter_wrong_mock_scores_zero(
         score = await _drive_scenario(scenario, agent)
     finally:
         await http_client.aclose()
-    assert score == pytest.approx(0.0, abs=1e-6), (
-        f"Cerebras adapter scored {score:.4f} on {scenario.id} with WrongAgent mock"
-    )
+    assert score == pytest.approx(
+        0.0, abs=1e-6
+    ), f"Cerebras adapter scored {score:.4f} on {scenario.id} with WrongAgent mock"
 
 
 # ---------------------------------------------------------------------------
@@ -476,6 +488,7 @@ async def test_cerebras_direct_adapter_wrong_mock_scores_zero(
 def _eliza_adapter_available() -> bool:
     try:
         import eliza_adapter.lifeops_bench  # noqa: F401
+
         return True
     except ImportError:
         return False
@@ -486,16 +499,18 @@ def _eliza_adapter_available() -> bool:
     reason="eliza_adapter not importable; install packages/benchmarks/eliza-adapter to run",
 )
 @pytest.mark.parametrize(
-    "scenario", SAMPLED_SCENARIOS, ids=lambda s: s.id,
+    "scenario",
+    SAMPLED_SCENARIOS,
+    ids=lambda s: s.id,
 )
 async def test_eliza_adapter_perfect_mock_scores_one(scenario: Scenario) -> None:
     """Eliza adapter + PerfectAgent-style mock must score 1.0."""
     script = _MockScript(scenario, mode="perfect")
     agent_fn = _build_eliza_mock_agent(script)
     score = await _drive_scenario(scenario, agent_fn)
-    assert score == pytest.approx(1.0, abs=1e-6), (
-        f"Eliza adapter scored {score:.4f} on {scenario.id} with PerfectAgent mock"
-    )
+    assert score == pytest.approx(
+        1.0, abs=1e-6
+    ), f"Eliza adapter scored {score:.4f} on {scenario.id} with PerfectAgent mock"
 
 
 @pytest.mark.skipif(
@@ -503,16 +518,18 @@ async def test_eliza_adapter_perfect_mock_scores_one(scenario: Scenario) -> None
     reason="eliza_adapter not importable; install packages/benchmarks/eliza-adapter to run",
 )
 @pytest.mark.parametrize(
-    "scenario", SAMPLED_SCENARIOS, ids=lambda s: s.id,
+    "scenario",
+    SAMPLED_SCENARIOS,
+    ids=lambda s: s.id,
 )
 async def test_eliza_adapter_wrong_mock_scores_zero(scenario: Scenario) -> None:
     """Eliza adapter + WrongAgent-style mock must score 0.0."""
     script = _MockScript(scenario, mode="wrong")
     agent_fn = _build_eliza_mock_agent(script)
     score = await _drive_scenario(scenario, agent_fn)
-    assert score == pytest.approx(0.0, abs=1e-6), (
-        f"Eliza adapter scored {score:.4f} on {scenario.id} with WrongAgent mock"
-    )
+    assert score == pytest.approx(
+        0.0, abs=1e-6
+    ), f"Eliza adapter scored {score:.4f} on {scenario.id} with WrongAgent mock"
 
 
 # ---------------------------------------------------------------------------

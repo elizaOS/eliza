@@ -79,7 +79,17 @@ export interface CalendarAvailabilityRange {
 export interface CalendarAvailabilityProposal {
   readonly startISO: string;
   readonly endISO: string;
+  /**
+   * Attendee identities participate only in conflicts already visible in the
+   * owner's feed. They never authorize an external free/busy lookup.
+   */
   readonly attendees?: readonly string[];
+  /**
+   * Opaque host-issued references for external guest availability. The host
+   * resolves provider/account/calendar coordinates after authenticating the
+   * principal and validating purpose, consent, and expiry.
+   */
+  readonly guestAvailabilityGrantIds?: readonly string[];
 }
 
 export interface CalendarAvailabilityPolicy {
@@ -333,9 +343,9 @@ function resolveEventBounds(
       event.id,
     );
     const endMs = localDateStartMs(endDate, timeZone, "endDate", event.id);
-    if (endMs <= startMs) {
+    if (endMs < startMs) {
       return invalidAvailabilityInput(
-        "All-day event endDate must be after startDate.",
+        "All-day event endDate must not precede startDate.",
         { eventId: event.id, startDate: event.startDate, endDate },
       );
     }
@@ -355,9 +365,12 @@ function resolveEventBounds(
   }
   const startMs = parseInstant(event.startISO, "startISO", event.id);
   const endMs = parseInstant(event.endISO, "endISO", event.id);
-  if (endMs <= startMs) {
+  // Google caches endTimeUnspecified events with end == start, so an
+  // instantaneous event is valid provider data, not corruption. Only a
+  // reversed interval fails the scan.
+  if (endMs < startMs) {
     return invalidAvailabilityInput(
-      "Availability event endISO must be after startISO.",
+      "Availability event endISO must not precede startISO.",
       { eventId: event.id, startISO: event.startISO, endISO: event.endISO },
     );
   }
@@ -424,7 +437,12 @@ function normalizeSourceEvents(args: {
     }
 
     const bounds = resolveEventBounds(event, args.timeZone);
+    // An instantaneous event is an empty half-open interval: it reserves no
+    // time, so it can never double-book a window. It must not enter the
+    // blocker set because the pairwise overlap formula assumes non-empty
+    // intervals and would report a phantom conflict for any window spanning it.
     if (
+      bounds.endMs === bounds.startMs ||
       bounds.startMs >= args.rangeEndMs ||
       bounds.endMs <= args.rangeStartMs
     ) {

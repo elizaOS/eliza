@@ -8,20 +8,30 @@ import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+// A pure reformat of the Swift source must not break the contract, so every
+// assertion runs against whitespace-collapsed text: tokens and semantic
+// content, never indentation or line breaks.
+function collapse(value: string): string {
+  return value.replace(/\s+/g, " ");
+}
+
 const currentDir = new URL(".", import.meta.url).pathname;
-const swiftSource = readFileSync(
-  resolve(currentDir, "../ios/Sources/CalendarPlugin/CalendarPlugin.swift"),
-  "utf8",
+const swiftSource = collapse(
+  readFileSync(
+    resolve(currentDir, "../ios/Sources/CalendarPlugin/CalendarPlugin.swift"),
+    "utf8",
+  ),
 );
-const definitionsSource = readFileSync(
-  resolve(currentDir, "./definitions.ts"),
-  "utf8",
+const definitionsSource = collapse(
+  readFileSync(resolve(currentDir, "./definitions.ts"), "utf8"),
 );
 
-function sourceBetween(start: string, end: string): string {
+// Omitting `end` slices to end-of-file, for members that close out the class.
+function sourceBetween(start: string, end?: string): string {
   const startIndex = swiftSource.indexOf(start);
-  const endIndex = swiftSource.indexOf(end, startIndex + start.length);
   expect(startIndex).toBeGreaterThanOrEqual(0);
+  if (end === undefined) return swiftSource.slice(startIndex);
+  const endIndex = swiftSource.indexOf(end, startIndex + start.length);
   expect(endIndex).toBeGreaterThan(startIndex);
   return swiftSource.slice(startIndex, endIndex);
 }
@@ -65,12 +75,9 @@ describe("Apple Calendar Swift bridge contract", () => {
     expect(createBody).toContain("guard hasFullAccess() || writeOnly");
     expect(createBody).toContain("writeOnly: writeOnly");
 
-    const applyBody = sourceBetween(
-      "private func applyEventPayload",
-      "\n    }\n}",
-    );
+    const applyBody = sourceBetween("private func applyEventPayload");
     expect(applyBody).toContain(
-      'requestedCalendarId == "primary" ||\n                        requestedCalendarId == "default"',
+      'requestedCalendarId == "primary" || requestedCalendarId == "default"',
     );
     expect(applyBody).toContain("writeOnlyDefaultCalendarError()");
     expect(applyBody).toContain(
@@ -82,7 +89,7 @@ describe("Apple Calendar Swift bridge contract", () => {
     );
 
     for (const writeOnlyBranch of applyBody.matchAll(
-      /if writeOnly \{([\s\S]*?)\n\s*\} else \{/g,
+      /if writeOnly \{(.*?)\} else \{/g,
     )) {
       expect(writeOnlyBranch[1]).not.toContain("eventStore.calendars(for:");
       expect(writeOnlyBranch[1]).not.toContain("calendar(withIdentifier:");
@@ -123,14 +130,17 @@ describe("Apple Calendar Swift bridge contract", () => {
     expect(swiftSource).toContain(
       'nativeError("Calendar event startAt and endAt are required.")',
     );
+    // `[^}]*` keeps the match inside the interface body (its scalar members
+    // precede any nested object type), so each field is a required direct
+    // member, not a hit in some later declaration.
     expect(definitionsSource).toMatch(
-      /interface AppleCalendarEventInput \{[\s\S]*?\n\s+title: string;/,
+      /interface AppleCalendarEventInput \{[^}]* title: string;/,
     );
     expect(definitionsSource).toMatch(
-      /interface AppleCalendarEventInput \{[\s\S]*?\n\s+startAt: string;/,
+      /interface AppleCalendarEventInput \{[^}]* startAt: string;/,
     );
     expect(definitionsSource).toMatch(
-      /interface AppleCalendarEventInput \{[\s\S]*?\n\s+endAt: string;/,
+      /interface AppleCalendarEventInput \{[^}]* endAt: string;/,
     );
   });
 
@@ -172,7 +182,7 @@ describe("Apple Calendar Swift bridge contract", () => {
     }
 
     expect(swiftSource).toContain(
-      '"error": "unsupported_feature",\n                "message": "Apple Calendar recurrence editing is not supported by this bridge."',
+      '"error": "unsupported_feature", "message": "Apple Calendar recurrence editing is not supported by this bridge."',
     );
     expect(swiftSource).toContain(
       'nativeError("Calendar event attendees must be an array.")',

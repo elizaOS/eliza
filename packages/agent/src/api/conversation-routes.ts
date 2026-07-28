@@ -22,6 +22,7 @@ import type http from "node:http";
 import path from "node:path";
 import type { RouteRequestContext } from "@elizaos/core";
 import {
+  attestAuthenticatedApiDeliveryAudience,
   type AgentRuntime,
   ChannelType,
   type Content,
@@ -36,6 +37,7 @@ import {
   recordRoleGrant,
   shouldSkipResponseMemoryPersistence,
   stringToUuid,
+  type TrustedApiPrincipal,
   type UUID,
   validateUuid,
 } from "@elizaos/core";
@@ -50,6 +52,7 @@ import {
 } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
 import { resolveStateDir } from "../config/paths.ts";
+import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
 import {
   type SerializedMessageAttachment,
   selectAttachmentsForViewer,
@@ -76,6 +79,7 @@ import {
   persistExactConversationMemory,
   readChatRequestPayload,
   releaseChatMessageId,
+  resolveTrustedApiPrincipal,
   resolveNoResponseFallback,
   setChatMessageIdOutcome,
   writeChatStatusSse,
@@ -259,6 +263,7 @@ export interface ConversationRouteState {
 
 export interface ConversationRouteContext extends RouteRequestContext {
   state: ConversationRouteState;
+  callerAuthorization?: AgentHttpRequestAuthorization;
 }
 
 function beginActiveChatTurn(state: ConversationRouteState): () => void {
@@ -547,10 +552,24 @@ function ensureAdminEntityId(state: ConversationRouteState): UUID {
 function resolveConversationCaller(
   req: http.IncomingMessage,
   state: ConversationRouteState,
+  principal: TrustedApiPrincipal,
   runtime: AgentRuntime | null = state.runtime,
 ): { entityId: UUID; role: WaifuChatWorldRole; userName: string } {
   const access = resolveWaifuChatAccess(req);
-  if (!access) {
+  if (access) {
+    return {
+      entityId: stringToUuid(
+        `waifu-wallet:${access.walletAddress.toLowerCase()}`,
+      ),
+      role: waifuChatRoleToWorldRole(access.role),
+      userName: access.walletAddress,
+    };
+  }
+
+  if (
+    principal.kind === "owner_session" ||
+    principal.kind === "owner_api_token"
+  ) {
     return {
       entityId: ensureAdminEntityIdForRuntime(state, runtime),
       role: "OWNER",
@@ -559,11 +578,9 @@ function resolveConversationCaller(
   }
 
   return {
-    entityId: stringToUuid(
-      `waifu-wallet:${access.walletAddress.toLowerCase()}`,
-    ),
-    role: waifuChatRoleToWorldRole(access.role),
-    userName: access.walletAddress,
+    entityId: stringToUuid(`conversation-external:${principal.principalId}`),
+    role: "GUEST",
+    userName: "External API caller",
   };
 }
 
@@ -1835,6 +1852,10 @@ export async function handleConversationRoutes(
   ctx: ConversationRouteContext,
 ): Promise<boolean> {
   const { req, res, method, pathname, readJsonBody, json, error, state } = ctx;
+  const trustedApiPrincipal = resolveTrustedApiPrincipal(
+    req,
+    ctx.callerAuthorization,
+  );
   const requestUrl = new URL(
     req.url === undefined ? "" : req.url,
     `http://${req.headers.host === undefined ? "localhost" : req.headers.host}`,
@@ -2134,7 +2155,7 @@ export async function handleConversationRoutes(
           state,
           runtime,
           conv,
-          resolveConversationCaller(req, state, runtime),
+          resolveConversationCaller(req, state, trustedApiPrincipal, runtime),
         );
         await syncConversationRoomState(state, conv);
         if (body.includeGreeting === true) {
@@ -2579,7 +2600,12 @@ export async function handleConversationRoutes(
     if (createdConversation) {
       prepareConversationConnectionRoom(runtime, conv.roomId);
     }
-    const caller = resolveConversationCaller(req, state, runtime);
+    const caller = resolveConversationCaller(
+      req,
+      state,
+      trustedApiPrincipal,
+      runtime,
+    );
     try {
       await ensureConversationRoom(state, runtime, conv, caller);
     } catch (err) {
@@ -2876,7 +2902,12 @@ export async function handleConversationRoutes(
       return failStream("Agent is not running");
     }
 
-    const caller = resolveConversationCaller(req, state, runtime);
+    const caller = resolveConversationCaller(
+      req,
+      state,
+      trustedApiPrincipal,
+      runtime,
+    );
     const userId = caller.entityId;
     const turnStartedAt = Date.now();
 
@@ -2911,6 +2942,11 @@ export async function handleConversationRoutes(
         establishConversationConnection(connectionDescriptor),
       );
       assertConversationConnectionRuntime(state.runtime, connectionDescriptor);
+      await attestAuthenticatedApiDeliveryAudience(
+        runtime,
+        userMessage,
+        trustedApiPrincipal,
+      );
     } catch (err) {
       releaseChatMessageId(conv.roomId, clientMessageId ?? null);
       return failStream(
@@ -3532,7 +3568,12 @@ export async function handleConversationRoutes(
       error(res, "Agent is not running", 503);
       return true;
     }
-    const caller = resolveConversationCaller(req, state, runtime);
+    const caller = resolveConversationCaller(
+      req,
+      state,
+      trustedApiPrincipal,
+      runtime,
+    );
     const userId = caller.entityId;
     const turnStartedAt = Date.now();
 
@@ -3577,6 +3618,21 @@ export async function handleConversationRoutes(
     }
     bindClientUserMemoryId(conv.roomId, clientMessageId ?? null, userMessages);
     const { userMessage, messageToStore } = userMessages;
+    try {
+      await attestAuthenticatedApiDeliveryAudience(
+        runtime,
+        userMessage,
+        trustedApiPrincipal,
+      );
+    } catch (err) {
+      releaseChatMessageId(conv.roomId, clientMessageId ?? null);
+      error(
+        res,
+        `Failed to attest conversation audience: ${getErrorMessage(err)}`,
+        500,
+      );
+      return true;
+    }
 
     try {
       assertConversationConnectionRuntime(state.runtime, connectionDescriptor);
@@ -3820,7 +3876,7 @@ export async function handleConversationRoutes(
         state,
         runtime,
         conv,
-        resolveConversationCaller(req, state, runtime),
+        resolveConversationCaller(req, state, trustedApiPrincipal, runtime),
       );
     } catch (err) {
       error(

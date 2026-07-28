@@ -55,6 +55,9 @@ async function runCreate(
     requestId: "approval-travel",
     action: "schedule_event" as const,
     state: "pending" as const,
+    acceptedAt: "2026-07-27T12:00:00.000Z",
+    idempotencyKey: "calendar-approval:travel",
+    replayed: false,
     text: "travel schedule approval queued",
   }));
   const service = {

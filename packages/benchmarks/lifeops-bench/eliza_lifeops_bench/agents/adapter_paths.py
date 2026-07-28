@@ -9,6 +9,7 @@ instead of through the orchestrator. The orchestrator injects
 from __future__ import annotations
 
 import importlib
+import importlib.util
 import sys
 from pathlib import Path
 
@@ -27,11 +28,9 @@ def ensure_benchmark_adapter_importable(name: str) -> None:
     except KeyError as exc:
         raise ValueError(f"unknown benchmark adapter {name!r}") from exc
 
-    try:
+    if importlib.util.find_spec(package_name) is not None:
         importlib.import_module(package_name)
         return
-    except ImportError:
-        pass
 
     benchmarks_dir = Path(__file__).resolve().parents[3]
     candidate = benchmarks_dir / source_dir

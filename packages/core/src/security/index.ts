@@ -55,6 +55,26 @@ export {
 	scrubIncomingMessageTextForStorage,
 } from "./incoming-message-security.js";
 export {
+	attestAuthenticatedApiDeliveryAudience,
+	attestDeliveryAudienceFromCanonicalRoom,
+	authorizeOwnerExclusiveDisclosure,
+	disclosureGateFailure,
+	evaluateOwnerExclusiveDisclosure,
+	getTrustedDeliveryAudience,
+	markOwnerExclusiveDisclosureUsed,
+	OWNER_EXCLUSIVE_DISCLOSURE_GATE,
+	ownerExclusiveDisclosureWasUsed,
+	PRIVACY_DENIED_TEXT,
+	revalidateOwnerExclusiveDisclosure,
+	type OwnerExclusiveDisclosureDecision,
+	type OwnerExclusiveDisclosureDenial,
+	type TrustedApiPrincipal,
+	type TrustedDeliveryAudience,
+	type TrustedDeliveryAudienceKind,
+	type TrustedDeliveryAudienceProvenance,
+	trustedDeliveryAudienceCacheKey,
+} from "./trusted-delivery-audience.js";
+export {
 	type AssembleContextPackRequest,
 	assembleContextPack,
 	buildScrubRequestDraft,

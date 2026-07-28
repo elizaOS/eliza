@@ -68,6 +68,18 @@ describe("built-in anchors", () => {
     ).toEqual({ atIso: "2026-06-23T11:00:00.000Z" });
   });
 
+  it("moves a skipped Santiago morning-window start forward compatibly", () => {
+    expect(
+      anchor("morning.start").resolve(
+        ctx({
+          nowIso: "2026-09-06T16:00:00.000Z",
+          timezone: "America/Santiago",
+          morningWindow: { start: "00:00" },
+        }),
+      ),
+    ).toEqual({ atIso: "2026-09-06T04:00:00.000Z" });
+  });
+
   it("resolves lunch.start to local noon", () => {
     expect(anchor("lunch.start").resolve(ctx({}))).toEqual({
       atIso: "2026-06-23T12:00:00.000Z",

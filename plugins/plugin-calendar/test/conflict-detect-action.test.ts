@@ -61,6 +61,8 @@ const OWNER_EVENT: ConflictDetectEvent = {
   endISO: "2026-05-11T10:00:00.000Z",
   attendees: ["owner@example.com"],
 };
+const GUEST_GRANT_ID = "gav_5ff8ec0542374abf9870736d4bea22a5";
+const SECOND_GUEST_GRANT_ID = "gav_fcecd5ee120749ac9381c4d3184ff3ae";
 
 function calendarFeedEvent(args: {
   id: string;
@@ -199,6 +201,73 @@ describe("calendar-owned CONFLICT_DETECT action", () => {
     ]);
   });
 
+  it("merges host-adapter registrations so a loader binds after authorization", async () => {
+    const authorizeCalls: string[] = [];
+    const feedCalls: string[] = [];
+    const action = createConflictDetectAction({
+      now: () => new Date("2026-05-11T12:00:00.000Z"),
+    });
+    const testRuntime = runtime();
+    registerConflictDetectHostAdapter(testRuntime, {
+      authorize: async () => {
+        authorizeCalls.push("host");
+        return true;
+      },
+      resolveTimeZone: async () => "UTC",
+    });
+    registerConflictDetectHostAdapter(testRuntime, {
+      loader: {
+        loadFeed: async () => {
+          feedCalls.push("host");
+          return [OWNER_EVENT];
+        },
+      },
+    });
+
+    const result = await invoke(
+      action,
+      { subaction: "scan_today" },
+      testRuntime,
+    );
+
+    expect(result.success).toBe(true);
+    expect(authorizeCalls).toEqual(["host"]);
+    expect(feedCalls).toEqual(["host"]);
+  });
+
+  it("prefers an instance loader over the runtime host adapter's loader", async () => {
+    const feedCalls: string[] = [];
+    const action = createConflictDetectAction({
+      authorize: async () => true,
+      resolveTimeZone: async () => "UTC",
+      now: () => new Date("2026-05-11T12:00:00.000Z"),
+      loader: {
+        loadFeed: async () => {
+          feedCalls.push("deps");
+          return [];
+        },
+      },
+    });
+    const testRuntime = runtime();
+    registerConflictDetectHostAdapter(testRuntime, {
+      loader: {
+        loadFeed: async () => {
+          feedCalls.push("host");
+          return [];
+        },
+      },
+    });
+
+    const result = await invoke(
+      action,
+      { subaction: "scan_today" },
+      testRuntime,
+    );
+
+    expect(result.success).toBe(true);
+    expect(feedCalls).toEqual(["deps"]);
+  });
+
   it("marks a guest proposal partial when no real free/busy loader exists", async () => {
     const action = testAction({ feed: [] });
     const result = await invoke(action, {
@@ -207,6 +276,7 @@ describe("calendar-owned CONFLICT_DETECT action", () => {
         startISO: "2026-05-11T09:00:00.000Z",
         endISO: "2026-05-11T10:00:00.000Z",
         attendees: ["guest@example.com"],
+        guestAvailabilityGrantIds: [GUEST_GRANT_ID],
       },
     });
 
@@ -230,6 +300,7 @@ describe("calendar-owned CONFLICT_DETECT action", () => {
         startISO: "2026-05-11T09:00:00.000Z",
         endISO: "2026-05-11T10:00:00.000Z",
         attendees: ["guest@example.com"],
+        guestAvailabilityGrantIds: [GUEST_GRANT_ID],
       },
     });
 
@@ -244,6 +315,74 @@ describe("calendar-owned CONFLICT_DETECT action", () => {
     });
   });
 
+  it("passes only opaque grants and time bounds to the free/busy loader", async () => {
+    const loadFreeBusy = vi.fn(async () => []);
+    const action = createConflictDetectAction({
+      authorize: async () => true,
+      resolveTimeZone: async () => "UTC",
+      loader: {
+        loadFeed: async () => [],
+        loadFreeBusy,
+      },
+    });
+    await invoke(action, {
+      subaction: "scan_event_proposal",
+      proposal: {
+        startISO: "2026-05-11T09:00:00.000Z",
+        endISO: "2026-05-11T10:00:00.000Z",
+        attendees: ["private-guest@example.com"],
+        guestAvailabilityGrantIds: [GUEST_GRANT_ID],
+      },
+    });
+
+    expect(loadFreeBusy).toHaveBeenCalledWith({
+      runtime: expect.any(Object),
+      guestAvailabilityGrantIds: [GUEST_GRANT_ID],
+      range: {
+        start: "2026-05-11T09:00:00.000Z",
+        end: "2026-05-11T10:00:00.000Z",
+      },
+    });
+    expect(JSON.stringify(loadFreeBusy.mock.calls)).not.toContain(
+      "private-guest@example.com",
+    );
+  });
+
+  it("uses raw attendees only for local shared-attendee conflicts", async () => {
+    const loadFreeBusy = vi.fn(async () => []);
+    const action = createConflictDetectAction({
+      authorize: async () => true,
+      resolveTimeZone: async () => "UTC",
+      now: () => new Date("2026-05-11T12:00:00.000Z"),
+      loader: {
+        loadFeed: async () => [OWNER_EVENT],
+        loadFreeBusy,
+      },
+    });
+    const result = await invoke(action, {
+      subaction: "scan_event_proposal",
+      proposal: {
+        startISO: "2026-05-11T09:00:00.000Z",
+        endISO: "2026-05-11T10:00:00.000Z",
+        attendees: ["owner@example.com"],
+      },
+    });
+
+    expect(loadFreeBusy).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      success: true,
+      data: {
+        completeness: "partial",
+        definitive: false,
+        conflicts: [
+          expect.objectContaining({
+            reasons: expect.arrayContaining(["shared_attendee"]),
+          }),
+        ],
+      },
+    });
+  });
+
   it("keeps an empty multi-guest response partial without per-guest coverage", async () => {
     const action = testAction({ feed: [], freeBusy: [] });
     const result = await invoke(action, {
@@ -252,6 +391,7 @@ describe("calendar-owned CONFLICT_DETECT action", () => {
         startISO: "2026-05-11T09:00:00.000Z",
         endISO: "2026-05-11T10:00:00.000Z",
         attendees: ["first@example.com", "second@example.com"],
+        guestAvailabilityGrantIds: [GUEST_GRANT_ID, SECOND_GUEST_GRANT_ID],
       },
     });
 
@@ -288,6 +428,7 @@ describe("calendar-owned CONFLICT_DETECT action", () => {
           startISO: "2026-05-11T09:00:00.000Z",
           endISO: "2026-05-11T10:00:00.000Z",
           attendees: ["guest@example.com"],
+          guestAvailabilityGrantIds: [GUEST_GRANT_ID],
         },
       },
       testRuntime,
@@ -361,6 +502,7 @@ describe("calendar-owned CONFLICT_DETECT action", () => {
         startISO: "2026-05-11T09:00:00.000Z",
         endISO: "2026-05-11T10:00:00.000Z",
         attendees: ["guest@example.com"],
+        guestAvailabilityGrantIds: [GUEST_GRANT_ID],
       },
     });
 

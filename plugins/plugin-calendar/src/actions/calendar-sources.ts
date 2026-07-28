@@ -5,6 +5,12 @@
  * Selection writes require the version returned by `list`; authorization
  * operations return explicit pending/configuration states and never claim a
  * provider is connected merely because an OAuth URL or permission card exists.
+ * ICS/webcal subscription URLs are capability secrets: they must never enter
+ * this action's parameter schema or results (anything on the agent surface
+ * transits model context and trajectories), so creating a subscription is an
+ * owner handoff to the source-manager UI, never an agent operation. Hosts may
+ * substitute their own authorization gate through `CalendarSourcesActionDeps`
+ * or the runtime-keyed `registerCalendarSourcesHostAdapter` registry.
  */
 
 import { createHash } from "node:crypto";
@@ -23,6 +29,7 @@ import {
 } from "@elizaos/core";
 import type {
   LifeOpsCalendarProvider,
+  LifeOpsCalendarSourceAdministrationSnapshot,
   LifeOpsCalendarSourceKey,
   LifeOpsIcsCalendarSyncResponse,
 } from "@elizaos/shared";
@@ -78,7 +85,7 @@ export type CalendarSourceConnectionIntent =
     }
   | {
       state: "configuration_required";
-      provider: "google" | "microsoft";
+      provider: "google" | "microsoft" | "ics";
       operation: "connect" | "reconnect";
       connected: false;
       connectorId: string;
@@ -88,7 +95,7 @@ export type CalendarSourceConnectionIntent =
   | {
       state: "connected";
       provider: "ics";
-      operation: "connect" | "reconnect";
+      operation: "reconnect";
       connected: true;
       sourceId: string;
       sync: LifeOpsIcsCalendarSyncResponse;
@@ -97,10 +104,9 @@ export type CalendarSourceConnectionIntent =
   | {
       state: "configured_sync_failed";
       provider: "ics";
-      operation: "connect" | "reconnect";
+      operation: "reconnect";
       connected: false;
       sourceId: string;
-      configurationCommittedAt: string | null;
       sourceUpdatedAt: string;
       reason: string;
       errorCode: string;
@@ -108,17 +114,40 @@ export type CalendarSourceConnectionIntent =
       completion: "partial_failure";
     };
 
+export interface CalendarSourcesActionDeps {
+  readonly authorize?: (
+    runtime: IAgentRuntime,
+    message: Memory,
+  ) => Promise<boolean>;
+}
+
+export type CalendarSourcesHostAdapter = Pick<
+  CalendarSourcesActionDeps,
+  "authorize"
+>;
+
+const hostAdapters = new WeakMap<IAgentRuntime, CalendarSourcesHostAdapter>();
+
+/**
+ * Bind host-owned authorization to one runtime. The runtime-keyed registry
+ * lets an already-registered calendar action gain the host adapter without
+ * cross-runtime state or plugin-order dependence.
+ */
+export function registerCalendarSourcesHostAdapter(
+  runtime: IAgentRuntime,
+  adapter: CalendarSourcesHostAdapter,
+): void {
+  hostAdapters.set(runtime, adapter);
+}
+
+/**
+ * Untrusted argument bag merged from message content and planner parameters.
+ * Fields are `unknown` on purpose: every read is validated at its point of use
+ * (`operationValue`, `providerValue`, `stringValue`, `requireExpectedVersion`),
+ * so no field carries a type the merge never verified.
+ */
 interface CalendarSourceActionParams {
-  operation?: CalendarSourceOperation | string;
-  subaction?: CalendarSourceOperation | string;
-  provider?: LifeOpsCalendarProvider | string;
-  grantId?: string;
-  connectorAccountId?: string;
-  calendarId?: string;
-  expectedVersion?: number;
-  forceSync?: boolean;
-  name?: string;
-  url?: string;
+  readonly [key: string]: unknown;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -487,11 +516,12 @@ function icsSyncRetryable(error: CalendarServiceError | ElizaError): boolean {
 
 async function configuredIcsSyncFailure(args: {
   service: CalendarService;
-  operation: "connect" | "reconnect";
   sourceId: string;
-  configurationCommittedAt: string | null;
   error: CalendarServiceError | ElizaError;
 }): Promise<CalendarSourceConnectionIntent> {
+  if (args.error instanceof CalendarServiceError && args.error.status === 404) {
+    throw args.error;
+  }
   const source = (await args.service.listIcsCalendarSources()).find(
     (entry) => entry.id === args.sourceId,
   );
@@ -505,10 +535,9 @@ async function configuredIcsSyncFailure(args: {
   return {
     state: "configured_sync_failed",
     provider: "ics",
-    operation: args.operation,
+    operation: "reconnect",
     connected: false,
     sourceId: source.id,
-    configurationCommittedAt: args.configurationCommittedAt,
     sourceUpdatedAt: source.updatedAt,
     reason: args.error.message,
     errorCode:
@@ -520,84 +549,52 @@ async function configuredIcsSyncFailure(args: {
   };
 }
 
-async function connectIcs(args: {
+// Capability-bearing ICS/webcal URLs must never transit model context or
+// trajectories, so subscription creation is not offered on the agent surface:
+// connect hands the owner to the source-manager UI, which owns the URL.
+function icsSubscriptionHandoff(): CalendarSourceConnectionIntent {
+  return {
+    state: "configuration_required",
+    provider: "ics",
+    operation: "connect",
+    connected: false,
+    connectorId: "ics",
+    reason:
+      "ICS/webcal subscription URLs are capability secrets and never pass through me. Add the subscription in Settings → Calendar sources; once it exists I can list, select, and reconnect it.",
+    completion: "configuration_required",
+  };
+}
+
+async function reconnectIcs(args: {
   runtime: IAgentRuntime;
-  operation: "connect" | "reconnect";
-  name: string | null;
-  url: string | null;
   sourceId: string | null;
 }): Promise<CalendarSourceConnectionIntent> {
   const service = resolveCalendarService(args.runtime);
-  if (args.operation === "reconnect") {
-    if (!args.sourceId) {
-      throw new CalendarServiceError(
-        400,
-        "ICS reconnect requires the exact connectorAccountId/source id from a fresh source list.",
-        "CALENDAR_SOURCE_ACCOUNT_REQUIRED",
-      );
-    }
-    try {
-      const sync = await service.syncIcsCalendarSource(args.sourceId);
-      return {
-        state: "connected",
-        provider: "ics",
-        operation: "reconnect",
-        connected: true,
-        sourceId: args.sourceId,
-        sync,
-        completion: "completed",
-      };
-    } catch (error) {
-      // error-policy:J1 Reconnect has no new configuration commit, but the
-      // source's durable failed-sync revision remains a precise visible outcome.
-      if (
-        error instanceof CalendarServiceError ||
-        error instanceof ElizaError
-      ) {
-        return configuredIcsSyncFailure({
-          service,
-          operation: args.operation,
-          sourceId: args.sourceId,
-          configurationCommittedAt: null,
-          error,
-        });
-      }
-      throw error;
-    }
-  }
-  if (!args.name || !args.url) {
+  if (!args.sourceId) {
     throw new CalendarServiceError(
       400,
-      "ICS connect requires both a source name and an https/webcal URL.",
-      "CALENDAR_ICS_CONFIGURATION_REQUIRED",
+      "ICS reconnect requires the exact connectorAccountId/source id from a fresh source list.",
+      "CALENDAR_SOURCE_ACCOUNT_REQUIRED",
     );
   }
-  const source = await service.createIcsCalendarSource({
-    name: args.name,
-    url: args.url,
-    enabled: true,
-  });
   try {
-    const sync = await service.syncIcsCalendarSource(source.id);
+    const sync = await service.syncIcsCalendarSource(args.sourceId);
     return {
       state: "connected",
       provider: "ics",
-      operation: "connect",
+      operation: "reconnect",
       connected: true,
-      sourceId: source.id,
+      sourceId: args.sourceId,
       sync,
       completion: "completed",
     };
   } catch (error) {
-    // error-policy:J1 The source record is already durable. Return that exact
-    // configured-but-failed state rather than claiming connection or hiding
-    // the source id needed for remediation.
+    // error-policy:J1 Reconnect has no new configuration commit, but the
+    // source's durable failed-sync revision remains a precise visible outcome.
     if (error instanceof CalendarServiceError || error instanceof ElizaError) {
       return configuredIcsSyncFailure({
         service,
-        operation: args.operation,
-        sourceId: source.id,
-        configurationCommittedAt: source.updatedAt,
+        sourceId: args.sourceId,
         error,
       });
     }
@@ -622,13 +619,12 @@ async function connectionIntent(args: {
     return applePermissionIntent(args.operation);
   }
   if (provider === "ics") {
-    return connectIcs({
-      runtime: args.runtime,
-      operation: args.operation,
-      name: stringValue(args.params.name),
-      url: stringValue(args.params.url),
-      sourceId: stringValue(args.params.connectorAccountId),
-    });
+    return args.operation === "reconnect"
+      ? reconnectIcs({
+          runtime: args.runtime,
+          sourceId: stringValue(args.params.connectorAccountId),
+        })
+      : icsSubscriptionHandoff();
   }
   return beginOAuthIntent({
     runtime: args.runtime,
@@ -646,11 +642,15 @@ function connectionText(intent: CalendarSourceConnectionIntent): string {
     case "permission_required":
       return applePermissionText(intent);
     case "configuration_required":
-      return `${intent.reason}\n\n[CONFIG:${intent.connectorId}]`;
+      // [CONFIG:<id>] renders a plugin-configuration card; ICS has no plugin
+      // config — its destination is the source-manager UI named in the reason.
+      return intent.provider === "ics"
+        ? intent.reason
+        : `${intent.reason}\n\n[CONFIG:${intent.connectorId}]`;
     case "connected":
       return `ICS source ${intent.sourceId} connected and synchronized (${intent.sync.outcome}).`;
     case "configured_sync_failed":
-      return `ICS source ${intent.sourceId} was saved, but synchronization failed (${intent.errorCode}): ${intent.reason}`;
+      return `ICS source ${intent.sourceId} remains configured, but synchronization failed (${intent.errorCode}): ${intent.reason}`;
   }
 }
 
@@ -666,6 +666,41 @@ function opaqueEffectId(
     .update(JSON.stringify([domain, ...values]))
     .digest("hex");
   return `${domain}:${digest}`;
+}
+
+export function listEffectReceipt(
+  snapshot: LifeOpsCalendarSourceAdministrationSnapshot,
+): EffectReceipt {
+  const sourceIdentities = snapshot.sources.map((source) => [
+    source.key.provider,
+    source.key.side,
+    source.key.grantId,
+    source.key.connectorAccountId,
+    source.key.calendarId,
+    source.selectionVersion,
+    source.health.status,
+  ]);
+  const resourceId = opaqueEffectId("calendar-source-list-resource-v1", [
+    snapshot.state,
+    JSON.stringify(sourceIdentities),
+  ]);
+  return {
+    receiptId: opaqueEffectId("calendar-source-list-receipt-v1", [
+      resourceId,
+      snapshot.observedAt,
+    ]),
+    operation: "calendar.source.list",
+    resource: {
+      kind: "calendar.source.snapshot",
+      id: resourceId,
+      version: snapshot.observedAt,
+    },
+    artifacts: [],
+    idempotency: { key: null, replayed: false },
+    observedAt: snapshot.observedAt,
+    outcome: "noop",
+    reason: "The operation observed calendar-source state without changing it.",
+  };
 }
 
 export function selectionEffectReceipt(args: {
@@ -793,57 +828,30 @@ function connectionEffectReceipts(
   if (intent.state !== "configured_sync_failed") return [];
 
   const identity = ["ics", intent.sourceId] as const;
-  const resourceId = opaqueEffectId("calendar-source-resource-v1", identity);
-  const receipts: EffectReceipt[] = [];
-  if (intent.configurationCommittedAt) {
-    receipts.push({
-      receiptId: opaqueEffectId("calendar-source-configuration-receipt-v1", [
+  return [
+    {
+      receiptId: opaqueEffectId("calendar-source-sync-failure-receipt-v1", [
         ...identity,
-        intent.configurationCommittedAt,
+        intent.sourceUpdatedAt,
+        intent.errorCode,
       ]),
-      operation: "calendar.source.configure",
+      operation: "calendar.source.sync",
       resource: {
         kind: "calendar.source.ics",
-        id: resourceId,
-        version: intent.configurationCommittedAt,
+        id: opaqueEffectId("calendar-source-resource-v1", identity),
+        version: intent.sourceUpdatedAt,
       },
       artifacts: [],
       idempotency: { key: null, replayed: false },
-      observedAt: intent.configurationCommittedAt,
-      outcome: "applied",
-      commit: {
-        kind: "durable",
-        id: opaqueEffectId("calendar-source-configuration-commit-v1", [
-          ...identity,
-          intent.configurationCommittedAt,
-        ]),
-        committedAt: intent.configurationCommittedAt,
+      observedAt: intent.sourceUpdatedAt,
+      outcome: "failed",
+      failure: {
+        code: intent.errorCode,
+        retryable: intent.retryable,
+        acceptance: "rejected",
       },
-    });
-  }
-  receipts.push({
-    receiptId: opaqueEffectId("calendar-source-sync-failure-receipt-v1", [
-      ...identity,
-      intent.sourceUpdatedAt,
-      intent.errorCode,
-    ]),
-    operation: "calendar.source.sync",
-    resource: {
-      kind: "calendar.source.ics",
-      id: resourceId,
-      version: intent.sourceUpdatedAt,
     },
-    artifacts: [],
-    idempotency: { key: null, replayed: false },
-    observedAt: intent.sourceUpdatedAt,
-    outcome: "failed",
-    failure: {
-      code: intent.errorCode,
-      retryable: intent.retryable,
-      acceptance: "rejected",
-    },
-  });
-  return receipts;
+  ];
 }
 
 function connectionAwaitsUser(intent: CalendarSourceConnectionIntent): boolean {
@@ -865,265 +873,291 @@ async function resultWithCallback(
   return result;
 }
 
-export const calendarSourcesAction: Action = {
-  name: ACTION_NAME,
-  similes: [
-    "LIST_CALENDAR_SOURCES",
-    "SELECT_CALENDAR_SOURCE",
-    "DESELECT_CALENDAR_SOURCE",
-    "CONNECT_CALENDAR_SOURCE",
-    "RECONNECT_CALENDAR_SOURCE",
-    "MANAGE_CALENDAR_SOURCES",
-  ],
-  description:
-    "List and administer exact owner calendar sources across Google, Microsoft, Apple, and ICS. Use list before select/deselect; echo provider, grantId, connectorAccountId, calendarId, and version exactly. Connect/reconnect returns OAuth, device-permission, configuration, or verified ICS states and never implies authorization is complete.",
-  descriptionCompressed:
-    "calendar source list|select|deselect|connect|reconnect exact identity versioned",
-  tags: [
-    "domain:calendar",
-    "capability:read",
-    "capability:update",
-    "surface:internal",
-  ],
-  contexts: ["general", "calendar", "connectors"],
-  roleGate: { minRole: "OWNER" },
-  subActions: [...SOURCE_OPERATIONS],
-  routingHint:
-    "calendar provider/account/source connection, reconnection, health, or feed selection -> CALENDAR_SOURCES; calendar event reads/writes -> CALENDAR",
-  suppressPostActionContinuation: true,
-  validate: (runtime, message) => hasOwnerAccess(runtime, message),
-  handler: async (runtime, message, _state, options, callback) => {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return resultWithCallback(
-        {
-          success: false,
-          text: "Calendar source administration is restricted to the owner.",
-          data: {
-            actionName: ACTION_NAME,
-            error: "PERMISSION_DENIED",
-          },
-        },
-        callback,
-      );
-    }
-    const params = actionParams(message, options as HandlerOptions | undefined);
-    const operation = operationValue(params.operation ?? params.subaction);
-    if (!operation) {
-      return resultWithCallback(
-        {
-          success: false,
-          text: "Choose a calendar source operation: list, select, deselect, connect, or reconnect.",
-          data: {
-            actionName: ACTION_NAME,
-            error: "MISSING_OPERATION",
-          },
-        },
-        callback,
-      );
-    }
-    try {
-      if (operation === "list") {
-        const snapshot = await listCalendarSourceAdministration(runtime, {
-          forceSync: params.forceSync === true,
-        });
-        return resultWithCallback(
-          {
-            success: true,
-            text: renderCalendarSourceListText(snapshot),
-            data: {
-              actionName: ACTION_NAME,
-              operation,
-              snapshot,
-            },
-          },
-          callback,
-        );
-      }
-      if (operation === "select" || operation === "deselect") {
-        const key = requireSelectionKey(params);
-        const receipt = await setCalendarSourceSelection(runtime, {
-          key,
-          includeInFeed: operation === "select",
-          expectedVersion: requireExpectedVersion(params.expectedVersion),
-        });
-        const text = `${safeLabel(receipt.source.summary, "Calendar source")} is ${receipt.source.includeInFeed ? "selected" : "deselected"} at version ${receipt.currentVersion}.`;
-        const effectReceipt = selectionEffectReceipt({ key, receipt });
-        return resultWithCallback(
-          {
-            success: true,
-            text,
-            userFacingText: text,
-            verifiedUserFacing: true,
-            effectReceipts: [effectReceipt],
-            userFacingEffectReceiptIds: [effectReceipt.receiptId],
-            data: {
-              actionName: ACTION_NAME,
-              operation,
-              receipt,
-            },
-          },
-          callback,
-        );
-      }
-      const intent = await connectionIntent({
-        runtime,
-        operation,
-        params,
-      });
-      const text = connectionText(intent);
-      const effectReceipts = connectionEffectReceipts(intent);
-      return resultWithCallback(
-        {
-          success: connectionSucceeded(intent),
-          text,
-          ...(effectReceipts.length > 0
-            ? {
-                userFacingText: text,
-                verifiedUserFacing: true,
-                effectReceipts,
-                userFacingEffectReceiptIds: effectReceipts.map(
-                  (receipt) => receipt.receiptId,
-                ),
-              }
-            : {}),
-          data: {
-            actionName: ACTION_NAME,
-            operation,
-            connection: intent,
-            completion: intent.completion,
-            ...(connectionAwaitsUser(intent)
-              ? {
-                  awaitingUserAction: true,
-                  awaitingUserInput: true,
-                }
-              : {}),
-          },
-        },
-        callback,
-      );
-    } catch (error) {
-      // error-policy:J1 Action boundary translates typed domain/configuration
-      // failures into tool-visible failure data; unexpected programmer errors
-      // still throw into the planner loop.
-      if (
-        error instanceof CalendarServiceError ||
-        error instanceof ElizaError
-      ) {
+function defaultAuthorize(
+  runtime: IAgentRuntime,
+  message: Memory,
+): Promise<boolean> {
+  return hasOwnerAccess(runtime, message);
+}
+
+/**
+ * Build the source-administration action with a host-specific authorization
+ * adapter. The default instance keeps the core owner gate; hosts substitute
+ * theirs through `deps` or the runtime-keyed host-adapter registry.
+ */
+export function createCalendarSourcesAction(
+  deps: CalendarSourcesActionDeps = {},
+): Action {
+  const authorize = (runtime: IAgentRuntime, message: Memory) =>
+    (
+      deps.authorize ??
+      hostAdapters.get(runtime)?.authorize ??
+      defaultAuthorize
+    )(runtime, message);
+  return {
+    name: ACTION_NAME,
+    similes: [
+      "LIST_CALENDAR_SOURCES",
+      "SELECT_CALENDAR_SOURCE",
+      "DESELECT_CALENDAR_SOURCE",
+      "CONNECT_CALENDAR_SOURCE",
+      "RECONNECT_CALENDAR_SOURCE",
+      "MANAGE_CALENDAR_SOURCES",
+    ],
+    description:
+      "List and administer exact owner calendar sources across Google, Microsoft, Apple, and ICS. Use list before select/deselect; echo provider, grantId, connectorAccountId, calendarId, and version exactly. Connect/reconnect returns OAuth, device-permission, configuration, or verified ICS states and never implies authorization is complete. New ICS/webcal subscriptions are added by the owner in the source-manager UI; subscription URLs never pass through this action.",
+    descriptionCompressed:
+      "calendar source list|select|deselect|connect|reconnect exact identity versioned; ics create=owner UI only",
+    tags: [
+      "domain:calendar",
+      "capability:read",
+      "capability:update",
+      "effect:receipt-required",
+      "surface:internal",
+    ],
+    contexts: ["general", "calendar", "connectors"],
+    roleGate: { minRole: "OWNER" },
+    subActions: [...SOURCE_OPERATIONS],
+    routingHint:
+      "calendar provider/account/source connection, reconnection, health, or feed selection -> CALENDAR_SOURCES; calendar event reads/writes -> CALENDAR",
+    suppressPostActionContinuation: true,
+    validate: authorize,
+    handler: async (runtime, message, _state, options, callback) => {
+      if (!(await authorize(runtime, message))) {
         return resultWithCallback(
           {
             success: false,
-            text: error.message,
+            text: "Calendar source administration is restricted to the owner.",
+            data: {
+              actionName: ACTION_NAME,
+              error: "PERMISSION_DENIED",
+            },
+          },
+          callback,
+        );
+      }
+      const params = actionParams(
+        message,
+        options as HandlerOptions | undefined,
+      );
+      const operation = operationValue(params.operation ?? params.subaction);
+      if (!operation) {
+        return resultWithCallback(
+          {
+            success: false,
+            text: "Choose a calendar source operation: list, select, deselect, connect, or reconnect.",
+            data: {
+              actionName: ACTION_NAME,
+              error: "MISSING_OPERATION",
+            },
+          },
+          callback,
+        );
+      }
+      try {
+        if (operation === "list") {
+          const snapshot = await listCalendarSourceAdministration(runtime, {
+            forceSync: params.forceSync === true,
+          });
+          const text = renderCalendarSourceListText(snapshot);
+          const effectReceipt = listEffectReceipt(snapshot);
+          return resultWithCallback(
+            {
+              success: true,
+              text,
+              userFacingText: text,
+              verifiedUserFacing: true,
+              effectReceipts: [effectReceipt],
+              userFacingEffectReceiptIds: [effectReceipt.receiptId],
+              data: {
+                actionName: ACTION_NAME,
+                operation,
+                snapshot,
+              },
+            },
+            callback,
+          );
+        }
+        if (operation === "select" || operation === "deselect") {
+          const key = requireSelectionKey(params);
+          const receipt = await setCalendarSourceSelection(runtime, {
+            key,
+            includeInFeed: operation === "select",
+            expectedVersion: requireExpectedVersion(params.expectedVersion),
+          });
+          const text = `${safeLabel(receipt.source.summary, "Calendar source")} is ${receipt.source.includeInFeed ? "selected" : "deselected"} at version ${receipt.currentVersion}.`;
+          const effectReceipt = selectionEffectReceipt({ key, receipt });
+          return resultWithCallback(
+            {
+              success: true,
+              text,
+              userFacingText: text,
+              verifiedUserFacing: true,
+              effectReceipts: [effectReceipt],
+              userFacingEffectReceiptIds: [effectReceipt.receiptId],
+              data: {
+                actionName: ACTION_NAME,
+                operation,
+                receipt,
+              },
+            },
+            callback,
+          );
+        }
+        const intent = await connectionIntent({
+          runtime,
+          operation,
+          params,
+        });
+        const text = connectionText(intent);
+        const effectReceipts = connectionEffectReceipts(intent);
+        const appliedReceiptIds = effectReceipts
+          .filter((receipt) => receipt.outcome === "applied")
+          .map((receipt) => receipt.receiptId);
+        const userFacingEffectReceiptIds =
+          appliedReceiptIds.length > 0
+            ? appliedReceiptIds
+            : effectReceipts.map((receipt) => receipt.receiptId);
+        return resultWithCallback(
+          {
+            success: connectionSucceeded(intent),
+            text,
+            ...(effectReceipts.length > 0
+              ? {
+                  userFacingText: text,
+                  verifiedUserFacing: true,
+                  effectReceipts,
+                  userFacingEffectReceiptIds,
+                }
+              : {}),
             data: {
               actionName: ACTION_NAME,
               operation,
-              error:
-                error instanceof CalendarServiceError
-                  ? (error.code ?? "CALENDAR_SOURCE_ERROR")
-                  : error.code,
-              ...(error instanceof CalendarServiceError
-                ? { status: error.status }
+              connection: intent,
+              completion: intent.completion,
+              ...(connectionAwaitsUser(intent)
+                ? {
+                    awaitingUserAction: true,
+                    awaitingUserInput: true,
+                  }
                 : {}),
             },
           },
           callback,
         );
+      } catch (error) {
+        // error-policy:J1 Action boundary translates typed domain/configuration
+        // failures into tool-visible failure data; unexpected programmer errors
+        // still throw into the planner loop.
+        if (
+          error instanceof CalendarServiceError ||
+          error instanceof ElizaError
+        ) {
+          return resultWithCallback(
+            {
+              success: false,
+              text: error.message,
+              data: {
+                actionName: ACTION_NAME,
+                operation,
+                error:
+                  error instanceof CalendarServiceError
+                    ? (error.code ?? "CALENDAR_SOURCE_ERROR")
+                    : error.code,
+                ...(error instanceof CalendarServiceError
+                  ? { status: error.status }
+                  : {}),
+              },
+            },
+            callback,
+          );
+        }
+        throw error;
       }
-      throw error;
-    }
-  },
-  parameters: [
-    {
-      name: "operation",
-      description:
-        "Calendar source operation. Always list before select/deselect so the exact identity and current version are available.",
-      required: true,
-      schema: { type: "string", enum: [...SOURCE_OPERATIONS] },
     },
-    {
-      name: "provider",
-      description:
-        "Exact provider for selection or connection: google, microsoft, apple_calendar, or ics.",
-      required: false,
-      schema: {
-        type: "string",
-        enum: ["google", "microsoft", "apple_calendar", "ics"],
-      },
-    },
-    {
-      name: "grantId",
-      description: "Exact grantId copied from a fresh list result.",
-      required: false,
-      schema: { type: "string" },
-    },
-    {
-      name: "connectorAccountId",
-      description:
-        "Exact connectorAccountId copied from a fresh list result. Required for reconnect and selection.",
-      required: false,
-      schema: { type: "string" },
-    },
-    {
-      name: "calendarId",
-      description: "Exact calendarId copied from a fresh list result.",
-      required: false,
-      schema: { type: "string" },
-    },
-    {
-      name: "expectedVersion",
-      description:
-        "Non-negative selection version copied from the same fresh list row.",
-      required: false,
-      schema: { type: "number", minimum: 0 },
-    },
-    {
-      name: "forceSync",
-      description:
-        "For list only: ask providers for fresh health rather than preferring cache.",
-      required: false,
-      schema: { type: "boolean" },
-    },
-    {
-      name: "name",
-      description: "Owner-visible source name for a new ICS subscription.",
-      required: false,
-      schema: { type: "string" },
-    },
-    {
-      name: "url",
-      description:
-        "HTTPS or webcal URL for a new ICS subscription. The capability-bearing URL is never returned.",
-      required: false,
-      schema: { type: "string" },
-    },
-  ],
-  examples: [
-    [
+    parameters: [
       {
-        name: "{{name1}}",
-        content: { text: "Which calendars are connected and healthy?" },
+        name: "operation",
+        description:
+          "Calendar source operation. Always list before select/deselect so the exact identity and current version are available.",
+        required: true,
+        schema: { type: "string", enum: [...SOURCE_OPERATIONS] },
       },
       {
-        name: "{{agentName}}",
-        content: {
-          text: "I’ll inspect every exact calendar source and its health.",
-          actions: [ACTION_NAME],
+        name: "provider",
+        description:
+          "Exact provider for selection or connection: google, microsoft, apple_calendar, or ics.",
+        required: false,
+        schema: {
+          type: "string",
+          enum: ["google", "microsoft", "apple_calendar", "ics"],
         },
       },
-    ],
-    [
       {
-        name: "{{name1}}",
-        content: { text: "Connect my work Google calendar read-only." },
+        name: "grantId",
+        description: "Exact grantId copied from a fresh list result.",
+        required: false,
+        schema: { type: "string" },
       },
       {
-        name: "{{agentName}}",
-        content: {
-          text: "I’ll start least-privilege Google Calendar authorization. I won’t claim it is connected until authorization completes.",
-          actions: [ACTION_NAME],
+        name: "connectorAccountId",
+        description:
+          "Exact connectorAccountId copied from a fresh list result. Required for reconnect and selection.",
+        required: false,
+        schema: { type: "string" },
+      },
+      {
+        name: "calendarId",
+        description: "Exact calendarId copied from a fresh list result.",
+        required: false,
+        schema: { type: "string" },
+      },
+      {
+        name: "expectedVersion",
+        description:
+          "Non-negative selection version copied from the same fresh list row.",
+        required: false,
+        schema: { type: "number", minimum: 0 },
+      },
+      {
+        name: "forceSync",
+        description:
+          "For list only: ask providers for fresh health rather than preferring cache.",
+        required: false,
+        schema: { type: "boolean" },
+      },
+    ],
+    examples: [
+      [
+        {
+          name: "{{name1}}",
+          content: { text: "Which calendars are connected and healthy?" },
         },
-      },
+        {
+          name: "{{agentName}}",
+          content: {
+            text: "I’ll inspect every exact calendar source and its health.",
+            actions: [ACTION_NAME],
+          },
+        },
+      ],
+      [
+        {
+          name: "{{name1}}",
+          content: { text: "Connect my work Google calendar read-only." },
+        },
+        {
+          name: "{{agentName}}",
+          content: {
+            text: "I’ll start least-privilege Google Calendar authorization. I won’t claim it is connected until authorization completes.",
+            actions: [ACTION_NAME],
+          },
+        },
+      ],
     ],
-  ],
-};
+  };
+}
+
+export const calendarSourcesAction: Action = createCalendarSourcesAction();
 
 export default calendarSourcesAction;

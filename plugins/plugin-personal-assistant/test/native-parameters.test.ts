@@ -64,7 +64,10 @@ function makeRuntime(): IAgentRuntime {
 
 function makeMessage(text = "reject req-1"): Memory {
   return {
+    id: "message-native-parameters",
     entityId: "owner-1",
+    roomId: "room-native-parameters",
+    createdAt: Date.parse("2026-07-06T12:00:00.000Z"),
     content: { text },
   } as Memory;
 }
@@ -127,6 +130,8 @@ describe("LifeOps native options.parameters migration", () => {
       id: "req-1",
       action: "send_message",
       state: "rejected",
+      updatedAt: new Date("2026-07-27T12:00:00.000Z"),
+      idempotencyKey: null,
     });
 
     const result = await resolveRequestAction.handler(
@@ -175,6 +180,8 @@ describe("LifeOps native options.parameters migration", () => {
       id: "req-1",
       action: "send_message",
       state: "rejected",
+      updatedAt: new Date("2026-07-27T12:00:00.000Z"),
+      idempotencyKey: null,
     });
 
     const result = await rejectVirtual.handler(

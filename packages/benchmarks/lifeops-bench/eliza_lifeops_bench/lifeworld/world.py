@@ -16,27 +16,40 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import asdict, dataclass, fields, is_dataclass, replace
+from datetime import datetime, timedelta, timezone
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .entities import (
     ENTITY_CLASS_FOR_KIND,
     Calendar,
     CalendarEvent,
+    CalendarTimeProposal,
+    ChatChannel,
+    ChatDraft,
     ChatMessage,
     Contact,
     Conversation,
+    EmailFolder,
     EmailMessage,
     EmailThread,
     EntityKind,
     FinancialAccount,
     FinancialTransaction,
+    FocusBlock,
+    FocusPermissionRequest,
     HealthMetric,
+    InteractionRecord,
     LocationPoint,
+    MessageSource,
+    MessageTriagePolicy,
     Note,
     Reminder,
     ReminderList,
     ScheduledTask,
     Subscription,
+    TravelHold,
+    TravelOffer,
     WorkoutRecord,
 )
 
@@ -62,7 +75,14 @@ class LifeWorld:
         EntityKind.EMAIL: "emails",
         EntityKind.EMAIL_THREAD: "email_threads",
         EntityKind.CHAT_MESSAGE: "chat_messages",
+        EntityKind.CHAT_DRAFT: "chat_drafts",
         EntityKind.CONVERSATION: "conversations",
+        EntityKind.MESSAGE_TRIAGE_POLICY: "message_triage_policies",
+        EntityKind.INTERACTION_RECORD: "interaction_records",
+        EntityKind.FOCUS_BLOCK: "focus_blocks",
+        EntityKind.FOCUS_PERMISSION_REQUEST: "focus_permission_requests",
+        EntityKind.TRAVEL_OFFER: "travel_offers",
+        EntityKind.TRAVEL_HOLD: "travel_holds",
         EntityKind.CALENDAR_EVENT: "calendar_events",
         EntityKind.CALENDAR: "calendars",
         EntityKind.REMINDER: "reminders",
@@ -76,16 +96,35 @@ class LifeWorld:
         EntityKind.SCHEDULED_TASK: "scheduled_tasks",
         EntityKind.WORKOUT: "workouts",
     }
+    _OMIT_WHEN_EMPTY = frozenset(
+        {
+            EntityKind.CHAT_DRAFT,
+            EntityKind.MESSAGE_TRIAGE_POLICY,
+            EntityKind.INTERACTION_RECORD,
+            EntityKind.FOCUS_BLOCK,
+            EntityKind.FOCUS_PERMISSION_REQUEST,
+            EntityKind.TRAVEL_OFFER,
+            EntityKind.TRAVEL_HOLD,
+        }
+    )
 
     def __init__(self, *, seed: int, now_iso: str) -> None:
         self.seed: int = seed
         self.now_iso: str = now_iso
+        self._mutation_revision: int = 0
 
         self.contacts: dict[str, Contact] = {}
         self.emails: dict[str, EmailMessage] = {}
         self.email_threads: dict[str, EmailThread] = {}
         self.chat_messages: dict[str, ChatMessage] = {}
+        self.chat_drafts: dict[str, ChatDraft] = {}
         self.conversations: dict[str, Conversation] = {}
+        self.message_triage_policies: dict[str, MessageTriagePolicy] = {}
+        self.interaction_records: dict[str, InteractionRecord] = {}
+        self.focus_blocks: dict[str, FocusBlock] = {}
+        self.focus_permission_requests: dict[str, FocusPermissionRequest] = {}
+        self.travel_offers: dict[str, TravelOffer] = {}
+        self.travel_holds: dict[str, TravelHold] = {}
         self.calendar_events: dict[str, CalendarEvent] = {}
         self.calendars: dict[str, Calendar] = {}
         self.reminders: dict[str, Reminder] = {}
@@ -114,6 +153,7 @@ class LifeWorld:
         if entity.id in store:
             raise ValueError(f"{kind.value} id already exists: {entity.id}")
         store[entity.id] = entity
+        self._mutation_revision += 1
 
     def get(self, kind: EntityKind, entity_id: str) -> Any | None:
         return self._store(kind).get(entity_id)
@@ -129,6 +169,7 @@ class LifeWorld:
             raise ValueError(f"unknown fields for {kind.value}: {sorted(unknown)}")
         updated = replace(current, **patches)
         store[entity_id] = updated
+        self._mutation_revision += 1
         return updated
 
     def delete(self, kind: EntityKind, entity_id: str) -> None:
@@ -136,6 +177,20 @@ class LifeWorld:
         if entity_id not in store:
             raise KeyError(f"{kind.value} not found: {entity_id}")
         del store[entity_id]
+        self._mutation_revision += 1
+
+    @property
+    def mutation_revision(self) -> int:
+        """Monotonic in-process mutation counter used by the corpus audit."""
+        return self._mutation_revision
+
+    def fork(self, *, now_iso: str | None = None) -> LifeWorld:
+        """Create isolated stores while sharing frozen records between audit runs."""
+        forked = LifeWorld(seed=self.seed, now_iso=now_iso or self.now_iso)
+        for kind in EntityKind:
+            forked._store(kind).update(self._store(kind))
+        forked._mutation_revision = self._mutation_revision
+        return forked
 
     # ----------------------------------------------------------- Email helpers
 
@@ -246,6 +301,129 @@ class LifeWorld:
     def move_event(self, event_id: str, *, start: str, end: str) -> CalendarEvent:
         return self.update(EntityKind.CALENDAR_EVENT, event_id, start=start, end=end)
 
+    def update_calendar_preferences(
+        self,
+        *,
+        calendar_id: str,
+        preferences: dict[str, Any],
+        expected_version: int | None = None,
+    ) -> tuple[Calendar, bool]:
+        """Merge owner preferences with optimistic concurrency and replay safety."""
+        calendar = self.calendars.get(calendar_id)
+        if calendar is None:
+            raise KeyError(f"unknown calendar_id: {calendar_id}")
+        if (
+            expected_version is not None
+            and expected_version != calendar.preferences_version
+        ):
+            raise ValueError(
+                "calendar preference version conflict: "
+                f"expected {expected_version}, found {calendar.preferences_version}"
+            )
+        merged = {**calendar.preferences, **preferences}
+        if merged == calendar.preferences:
+            return calendar, True
+        updated = self.update(
+            EntityKind.CALENDAR,
+            calendar_id,
+            preferences=merged,
+            preferences_version=calendar.preferences_version + 1,
+            preferences_updated_at=self.now_iso,
+        )
+        return updated, False
+
+    def propose_calendar_times(
+        self,
+        *,
+        window_start: str,
+        window_end: str,
+        duration_minutes: int,
+        slot_count: int,
+        calendar_ids: list[str] | None = None,
+        time_zone: str | None = None,
+    ) -> list[CalendarTimeProposal]:
+        """Project deterministic free slots from events and owner preferences."""
+        start = _parse_aware_datetime(window_start, field="window_start")
+        end = _parse_aware_datetime(window_end, field="window_end")
+        if start >= end:
+            raise ValueError("calendar proposal window_start must be before window_end")
+        if duration_minutes <= 0 or duration_minutes > 24 * 60:
+            raise ValueError(
+                "calendar proposal duration_minutes must be between 1 and 1440"
+            )
+        if slot_count <= 0 or slot_count > 50:
+            raise ValueError("calendar proposal slot_count must be between 1 and 50")
+
+        selected_ids = list(dict.fromkeys(calendar_ids or sorted(self.calendars)))
+        missing_ids = [item for item in selected_ids if item not in self.calendars]
+        if missing_ids:
+            raise KeyError(f"unknown calendar ids: {missing_ids}")
+        if not selected_ids:
+            raise ValueError("calendar proposal requires at least one calendar")
+
+        preferences: dict[str, Any] = {}
+        for calendar_id in selected_ids:
+            preferences.update(self.calendars[calendar_id].preferences)
+        zone_name = time_zone or preferences.get("timeZone") or "UTC"
+        if not isinstance(zone_name, str) or not zone_name:
+            raise ValueError("calendar proposal timeZone must be a non-empty string")
+        try:
+            local_zone = ZoneInfo(zone_name)
+        except ZoneInfoNotFoundError as exc:
+            raise ValueError(
+                f"unknown calendar proposal timeZone: {zone_name}"
+            ) from exc
+
+        busy: list[tuple[datetime, datetime]] = []
+        for event in self.calendar_events.values():
+            if event.calendar_id not in selected_ids or event.status == "cancelled":
+                continue
+            event_start = _parse_aware_datetime(
+                event.start, field=f"event {event.id} start"
+            )
+            event_end = _parse_aware_datetime(event.end, field=f"event {event.id} end")
+            busy.append((event_start, event_end))
+
+        step = timedelta(minutes=15)
+        duration = timedelta(minutes=duration_minutes)
+        cursor = start
+        proposals: list[CalendarTimeProposal] = []
+        while cursor + duration <= end and len(proposals) < slot_count:
+            candidate_end = cursor + duration
+            if _calendar_candidate_matches_preferences(
+                cursor,
+                candidate_end,
+                preferences=preferences,
+                local_zone=local_zone,
+            ) and not any(
+                cursor < busy_end and candidate_end > busy_start
+                for busy_start, busy_end in busy
+            ):
+                start_iso = _datetime_to_iso(cursor)
+                end_iso = _datetime_to_iso(candidate_end)
+                digest = hashlib.sha256(
+                    json.dumps(
+                        {
+                            "calendar_ids": selected_ids,
+                            "start": start_iso,
+                            "end": end_iso,
+                        },
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ).encode("utf-8")
+                ).hexdigest()[:12]
+                proposals.append(
+                    CalendarTimeProposal(
+                        id=f"calendar_slot_{digest}",
+                        start=start_iso,
+                        end=end_iso,
+                        duration_minutes=duration_minutes,
+                        calendar_ids=selected_ids,
+                    )
+                )
+            cursor += step
+        return proposals
+
     # -------------------------------------------------------- Reminder helpers
 
     def create_reminder(
@@ -258,6 +436,7 @@ class LifeWorld:
         due_at: str | None = None,
         priority: str = "none",
         tags: list[str] | None = None,
+        schedule: dict[str, Any] | None = None,
     ) -> Reminder:
         if list_id not in self.reminder_lists:
             raise KeyError(f"unknown reminder list: {list_id}")
@@ -270,14 +449,13 @@ class LifeWorld:
             completed_at=None,
             priority=priority,  # type: ignore[arg-type]
             tags=list(tags or []),
+            schedule=dict(schedule or {}),
         )
         self.add(EntityKind.REMINDER, reminder)
         return reminder
 
     def complete_reminder(self, reminder_id: str) -> Reminder:
-        return self.update(
-            EntityKind.REMINDER, reminder_id, completed_at=self.now_iso
-        )
+        return self.update(EntityKind.REMINDER, reminder_id, completed_at=self.now_iso)
 
     def snooze_reminder(self, reminder_id: str, *, new_due_at: str) -> Reminder:
         """Push a reminder's due time. Used for the LIFE_SNOOZE umbrella subaction."""
@@ -285,15 +463,15 @@ class LifeWorld:
 
     def touch_reminder_list_reviewed(self, list_id: str) -> ReminderList:
         """Stamp last_reviewed_at on a reminder list. Used by LIFE_REVIEW."""
-        return self.update(EntityKind.REMINDER_LIST, list_id, last_reviewed_at=self.now_iso)
+        return self.update(
+            EntityKind.REMINDER_LIST, list_id, last_reviewed_at=self.now_iso
+        )
 
     # ----------------------------------------------------- Subscription helpers
 
     def cancel_subscription(self, subscription_id: str) -> Subscription:
         """Mark a subscription as cancelled. Used by MONEY_SUBSCRIPTION_CANCEL."""
-        return self.update(
-            EntityKind.SUBSCRIPTION, subscription_id, status="cancelled"
-        )
+        return self.update(EntityKind.SUBSCRIPTION, subscription_id, status="cancelled")
 
     # ------------------------------------------------------- Health helpers
 
@@ -351,6 +529,265 @@ class LifeWorld:
             last_activity_at=self.now_iso,
         )
         return msg
+
+    def create_chat_draft(
+        self,
+        *,
+        draft_id: str,
+        channel: ChatChannel | None,
+        target: str,
+        target_kind: str,
+        conversation_id: str | None,
+        text: str | None,
+        requires_confirmation: bool,
+        privacy_constraints: list[str] | None = None,
+        directives: dict[str, Any] | None = None,
+    ) -> tuple[ChatDraft, bool]:
+        """Persist an unsent chat draft and make identical retries idempotent."""
+        candidate = ChatDraft(
+            id=draft_id,
+            channel=channel,
+            target=target,
+            target_kind=target_kind,
+            conversation_id=conversation_id,
+            text=text,
+            requires_confirmation=requires_confirmation,
+            privacy_constraints=list(privacy_constraints or []),
+            directives=dict(directives or {}),
+            created_at=self.now_iso,
+            updated_at=self.now_iso,
+        )
+        existing = self.chat_drafts.get(draft_id)
+        if existing is not None:
+            if (
+                replace(existing, created_at=self.now_iso, updated_at=self.now_iso)
+                != candidate
+            ):
+                raise ValueError(f"chat draft idempotency conflict: {draft_id}")
+            return existing, True
+        self.add(EntityKind.CHAT_DRAFT, candidate)
+        return candidate, False
+
+    def create_message_triage_policy(
+        self,
+        *,
+        policy_id: str,
+        directive: str,
+        sources: list[MessageSource],
+        folder: EmailFolder | None,
+    ) -> tuple[MessageTriagePolicy, bool]:
+        """Persist a structured triage rule and make identical retries idempotent."""
+        candidate = MessageTriagePolicy(
+            id=policy_id,
+            directive=directive,
+            sources=list(sources),
+            folder=folder,
+            created_at=self.now_iso,
+            updated_at=self.now_iso,
+        )
+        existing = self.message_triage_policies.get(policy_id)
+        if existing is not None:
+            if (
+                replace(existing, created_at=self.now_iso, updated_at=self.now_iso)
+                != candidate
+            ):
+                raise ValueError(
+                    f"message triage policy idempotency conflict: {policy_id}"
+                )
+            return existing, True
+        self.add(EntityKind.MESSAGE_TRIAGE_POLICY, candidate)
+        return candidate, False
+
+    def create_interaction_record(
+        self,
+        *,
+        record_id: str,
+        entity_id: str | None,
+        subject_name: str,
+        notes: str,
+        channel: MessageSource | None,
+        occurred_at: str,
+        source_name_mismatch: bool,
+    ) -> tuple[InteractionRecord, bool]:
+        """Persist a relationship interaction and make identical retries idempotent."""
+        candidate = InteractionRecord(
+            id=record_id,
+            entity_id=entity_id,
+            subject_name=subject_name,
+            notes=notes,
+            channel=channel,
+            occurred_at=occurred_at,
+            created_at=self.now_iso,
+            source_name_mismatch=source_name_mismatch,
+        )
+        existing = self.interaction_records.get(record_id)
+        if existing is not None:
+            if replace(existing, created_at=self.now_iso) != candidate:
+                raise ValueError(
+                    f"interaction record idempotency conflict: {record_id}"
+                )
+            return existing, True
+        self.add(EntityKind.INTERACTION_RECORD, candidate)
+        return candidate, False
+
+    # -------------------------------------------------------- Focus helpers
+
+    def create_focus_permission_request(
+        self,
+        *,
+        request_id: str,
+        hostnames: list[str],
+        package_names: list[str],
+        reason: str,
+        confirmation_required: bool,
+        no_bypass: bool,
+        mode: str | None,
+    ) -> tuple[FocusPermissionRequest, bool]:
+        """Persist an approval request while making identical retries idempotent."""
+        candidate = FocusPermissionRequest(
+            id=request_id,
+            hostnames=list(hostnames),
+            package_names=list(package_names),
+            status="pending",
+            reason=reason,
+            confirmation_required=confirmation_required,
+            no_bypass=no_bypass,
+            created_at=self.now_iso,
+            updated_at=self.now_iso,
+            mode=mode,
+        )
+        existing = self.focus_permission_requests.get(request_id)
+        if existing is not None:
+            if (
+                replace(
+                    existing,
+                    status="pending",
+                    updated_at=candidate.updated_at,
+                )
+                != candidate
+            ):
+                raise ValueError(f"focus permission idempotency conflict: {request_id}")
+            return existing, True
+        self.add(EntityKind.FOCUS_PERMISSION_REQUEST, candidate)
+        return candidate, False
+
+    def create_focus_block(
+        self,
+        *,
+        block_id: str,
+        hostnames: list[str],
+        package_names: list[str],
+        status: str,
+        mode: str | None,
+        duration_minutes: int | None,
+        schedule: dict[str, Any] | None,
+        exceptions: list[dict[str, Any]],
+        policy: str | None,
+        permission_request_id: str | None,
+        expires_at: str | None,
+    ) -> tuple[FocusBlock, bool]:
+        """Persist an enforcement rule while making identical retries idempotent."""
+        if status not in {"active", "scheduled"}:
+            raise ValueError(f"invalid initial focus block status: {status}")
+        candidate = FocusBlock(
+            id=block_id,
+            hostnames=list(hostnames),
+            package_names=list(package_names),
+            status=status,  # type: ignore[arg-type]
+            created_at=self.now_iso,
+            updated_at=self.now_iso,
+            mode=mode,
+            duration_minutes=duration_minutes,
+            schedule=dict(schedule) if schedule is not None else None,
+            exceptions=[dict(item) for item in exceptions],
+            policy=policy,
+            permission_request_id=permission_request_id,
+            expires_at=expires_at,
+        )
+        existing = self.focus_blocks.get(block_id)
+        if existing is not None:
+            if (
+                replace(
+                    existing,
+                    status=candidate.status,
+                    updated_at=candidate.updated_at,
+                    released_at=None,
+                    release_reason=None,
+                )
+                != candidate
+            ):
+                raise ValueError(f"focus block idempotency conflict: {block_id}")
+            return existing, True
+        self.add(EntityKind.FOCUS_BLOCK, candidate)
+        return candidate, False
+
+    def release_focus_blocks(
+        self,
+        block_ids: list[str],
+        *,
+        reason: str,
+    ) -> tuple[list[FocusBlock], list[FocusBlock]]:
+        """Release existing rules and report already-released retries separately."""
+        unique_ids = list(dict.fromkeys(block_ids))
+        missing = [
+            block_id for block_id in unique_ids if block_id not in self.focus_blocks
+        ]
+        if missing:
+            raise KeyError(f"focus block not found: {missing}")
+        released: list[FocusBlock] = []
+        replayed: list[FocusBlock] = []
+        for block_id in unique_ids:
+            current = self.focus_blocks[block_id]
+            if current.status == "released":
+                replayed.append(current)
+                continue
+            released.append(
+                self.update(
+                    EntityKind.FOCUS_BLOCK,
+                    block_id,
+                    status="released",
+                    updated_at=self.now_iso,
+                    released_at=self.now_iso,
+                    release_reason=reason,
+                )
+            )
+        return released, replayed
+
+    # ------------------------------------------------------- Travel helpers
+
+    def create_travel_hold(
+        self,
+        *,
+        hold_id: str,
+        offer: TravelOffer,
+        passengers: int,
+        approval_required: bool,
+        approval_queue: str | None,
+    ) -> tuple[TravelHold, bool]:
+        """Reserve an offer without converting the reservation into a booking."""
+        candidate = TravelHold(
+            id=hold_id,
+            offer_id=offer.id,
+            kind=offer.kind,
+            destination=offer.destination,
+            passengers=passengers,
+            status="awaiting_approval" if approval_required else "held",
+            approval_required=approval_required,
+            created_at=self.now_iso,
+            updated_at=self.now_iso,
+            origin=offer.origin,
+            departure_date=offer.departure_date,
+            return_date=offer.return_date,
+            hotel_check_in=offer.hotel_check_in,
+            approval_queue=approval_queue,
+        )
+        existing = self.travel_holds.get(hold_id)
+        if existing is not None:
+            if existing != candidate:
+                raise ValueError(f"travel hold idempotency conflict: {hold_id}")
+            return existing, True
+        self.add(EntityKind.TRAVEL_HOLD, candidate)
+        return candidate, False
 
     def ensure_synthetic_conversation(
         self,
@@ -443,6 +880,7 @@ class LifeWorld:
         duration_minutes: int,
         calories: int | None = None,
         source: str = "manual",
+        recorded_at: str | None = None,
         distance_km: float | None = None,
         notes: str = "",
     ) -> WorkoutRecord:
@@ -452,7 +890,7 @@ class LifeWorld:
             duration_minutes=duration_minutes,
             calories=calories,
             source=source,  # type: ignore[arg-type]
-            recorded_at=self.now_iso,
+            recorded_at=recorded_at or self.now_iso,
             distance_km=distance_km,
             notes=notes,
         )
@@ -487,7 +925,9 @@ class LifeWorld:
             output=dict(output) if isinstance(output, dict) else output,
             subject=dict(subject) if isinstance(subject, dict) else subject,
             priority=priority,
-            should_fire=dict(should_fire) if isinstance(should_fire, dict) else should_fire,
+            should_fire=(
+                dict(should_fire) if isinstance(should_fire, dict) else should_fire
+            ),
             completion_check=(
                 dict(completion_check)
                 if isinstance(completion_check, dict)
@@ -512,9 +952,7 @@ class LifeWorld:
         stores: dict[str, dict[str, dict[str, Any]]] = {}
         for kind in EntityKind:
             store = self._store(kind)
-            stores[kind.value] = {
-                eid: asdict(entity) for eid, entity in store.items()
-            }
+            stores[kind.value] = {eid: asdict(entity) for eid, entity in store.items()}
         return WorldSnapshot(
             seed=self.seed,
             now_iso=self.now_iso,
@@ -531,6 +969,7 @@ class LifeWorld:
             raw = snapshot.stores.get(kind.value, {})
             for eid, payload in raw.items():
                 store[eid] = _construct_dataclass(cls, payload)
+        self._mutation_revision += 1
 
     def to_json(self) -> str:
         snap = self.snapshot()
@@ -542,6 +981,7 @@ class LifeWorld:
             "stores": {
                 kind: dict(sorted(snap.stores[kind].items()))
                 for kind in sorted(snap.stores)
+                if snap.stores[kind] or EntityKind(kind) not in self._OMIT_WHEN_EMPTY
             },
         }
         return json.dumps(document, sort_keys=True, separators=(",", ":"))
@@ -564,6 +1004,124 @@ class LifeWorld:
 
     def counts(self) -> dict[str, int]:
         return {kind.value: len(self._store(kind)) for kind in EntityKind}
+
+
+def _parse_aware_datetime(value: str, *, field: str) -> datetime:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{field} must be a non-empty ISO date/time")
+    normalized = value.strip()
+    if normalized.endswith("Z"):
+        normalized = normalized[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError as exc:
+        raise ValueError(f"{field} must be a valid ISO date/time: {value!r}") from exc
+    if parsed.tzinfo is None:
+        raise ValueError(f"{field} must include a timezone offset")
+    return parsed.astimezone(timezone.utc)
+
+
+def _datetime_to_iso(value: datetime) -> str:
+    return value.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _parse_local_minute(value: Any, *, field: str) -> int | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError(f"{field} must use HH:MM local time")
+    pieces = value.split(":")
+    if len(pieces) != 2 or not all(piece.isdigit() for piece in pieces):
+        raise ValueError(f"{field} must use HH:MM local time")
+    hour, minute = (int(piece) for piece in pieces)
+    if hour > 23 or minute > 59:
+        raise ValueError(f"{field} must use HH:MM local time")
+    return hour * 60 + minute
+
+
+def _minute_in_window(
+    minute: int,
+    *,
+    start: int,
+    end: int,
+    include_end: bool,
+) -> bool:
+    if start <= end:
+        return start <= minute <= end if include_end else start <= minute < end
+    return (
+        minute >= start or minute <= end
+        if include_end
+        else minute >= start or minute < end
+    )
+
+
+def _calendar_candidate_matches_preferences(
+    start: datetime,
+    end: datetime,
+    *,
+    preferences: dict[str, Any],
+    local_zone: ZoneInfo,
+) -> bool:
+    local_start = start.astimezone(local_zone)
+    local_end = end.astimezone(local_zone)
+    start_minute = local_start.hour * 60 + local_start.minute
+    end_minute = local_end.hour * 60 + local_end.minute
+
+    preferred_start = _parse_local_minute(
+        preferences.get("preferredStartLocal"),
+        field="preferredStartLocal",
+    )
+    preferred_end = _parse_local_minute(
+        preferences.get("preferredEndLocal"),
+        field="preferredEndLocal",
+    )
+    if preferred_start is not None and start_minute < preferred_start:
+        return False
+    if preferred_end is not None and end_minute > preferred_end:
+        return False
+
+    blackouts = preferences.get("blackoutWindows", [])
+    if not isinstance(blackouts, list):
+        raise ValueError("blackoutWindows must be a list")
+    for index, blackout in enumerate(blackouts):
+        if not isinstance(blackout, dict):
+            raise ValueError(f"blackoutWindows[{index}] must be an object")
+        days = blackout.get("daysOfWeek")
+        if days is not None:
+            if not isinstance(days, list) or any(
+                isinstance(day, bool) or not isinstance(day, int) or day < 1 or day > 7
+                for day in days
+            ):
+                raise ValueError(
+                    f"blackoutWindows[{index}].daysOfWeek must contain ISO weekdays 1-7"
+                )
+            if local_start.isoweekday() not in days:
+                continue
+        blackout_start = _parse_local_minute(
+            blackout.get("startLocal"),
+            field=f"blackoutWindows[{index}].startLocal",
+        )
+        blackout_end = _parse_local_minute(
+            blackout.get("endLocal"),
+            field=f"blackoutWindows[{index}].endLocal",
+        )
+        # Anchor-only blackouts are structural preferences that cannot reject
+        # a concrete slot until an anchor resolver supplies an actual window.
+        if blackout_start is None or blackout_end is None:
+            continue
+        if _minute_in_window(
+            start_minute,
+            start=blackout_start,
+            end=blackout_end,
+            include_end=False,
+        ) or _minute_in_window(
+            end_minute,
+            start=blackout_start,
+            end=blackout_end,
+            include_end=True,
+        ):
+            return False
+    return True
 
 
 def _construct_dataclass(cls: type, payload: dict[str, Any]) -> Any:

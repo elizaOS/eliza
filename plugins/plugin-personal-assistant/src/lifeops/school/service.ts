@@ -8,6 +8,7 @@
  */
 import {
   type EntityStore,
+  KNOWLEDGE_GRAPH_SERVICE,
   type RelationshipStore,
   resolveKnowledgeGraphService,
 } from "@elizaos/agent";
@@ -398,7 +399,13 @@ export class SchoolSourceFactService {
         extraction.kind === "correction" || extraction.kind === "cancellation"
           ? [`${SCHOOL_NOTICE_FACT_PREFIX}${noticeKey}`]
           : [],
-      contradictsStableFactKeys: [],
+      // A correction both disagrees with and replaces the prior operational
+      // fact. Keeping both edges lets consumers distinguish factual conflict
+      // from the authority decision that resolves it.
+      contradictsStableFactKeys:
+        extraction.kind === "correction"
+          ? [`${SCHOOL_NOTICE_FACT_PREFIX}${noticeKey}`]
+          : [],
     });
     const sourceFact = await this.deps.repository.putFact(artifact, candidate);
     await this.linkDeclaredFactRelationships(sourceFact, artifact.observedAt);
@@ -884,6 +891,7 @@ export class SchoolSourceFactRuntimeService extends Service {
   static async start(
     runtime: IAgentRuntime,
   ): Promise<SchoolSourceFactRuntimeService> {
+    await runtime.getServiceLoadPromise(KNOWLEDGE_GRAPH_SERVICE);
     return new SchoolSourceFactRuntimeService(runtime);
   }
 

@@ -54,11 +54,16 @@ import {
 	isAdminRank,
 } from "../roles";
 import {
+	ownerExclusiveDisclosureWasUsed,
+	PRIVACY_DENIED_TEXT,
+	revalidateOwnerExclusiveDisclosure,
+} from "../security/trusted-delivery-audience";
+import {
 	type ActionCatalog,
 	buildActionCatalog,
 	type LocalizedActionExampleResolver,
 } from "../runtime/action-catalog";
-import { actionGateFailure, canActionRun } from "../runtime/action-gate";
+import { canActionRun } from "../runtime/action-gate";
 import {
 	parentAliasesForCandidateAction,
 	retrieveActions,
@@ -192,7 +197,6 @@ import {
 	getModelStreamChunkDeliveryDepth,
 	getStreamingContext,
 	runWithStreamingContext,
-	runWithSuppressedModelStream,
 	type StreamingContext,
 } from "../streaming-context";
 import {
@@ -6836,91 +6840,46 @@ export async function runShortcutGate(args: {
 	const action = args.runtime.actions.find((a) => a.name === target.name);
 	if (!action) return null;
 
-	// #12087 Item 3: enforce the target action's DECLARED gate (roleGate +
-	// contextGate + private-action + ACTION_ROLE_POLICY) via the same chokepoint
-	// the planned-tool-call executor uses, BEFORE validate()/handler(). Previously
-	// the shortcut path invoked the handler directly, so a shortcut lacking
-	// `requiresElevated` that targeted an OWNER-gated action (e.g. SECRETS) let any
-	// USER execute it — the registry's coarse auth/elevated flags were the only
-	// protection. Shortcuts execute before planner context selection, so seed the
-	// same general context that command actions use while preserving role gates.
-	const gateFailure = actionGateFailure(action, {
-		message: args.message,
-		userRoles: [args.senderRole],
-		activeContexts: ["general"],
-	});
-	if (gateFailure) {
-		args.runtime.logger?.debug?.(
-			{ src: "shortcut-gate", action: action.name, reason: gateFailure },
-			"shortcut target action failed the role/context gate; falling through to pipeline",
-		);
-		return null;
-	}
-
-	let valid = false;
-	try {
-		valid = await action.validate(args.runtime, args.message, args.state);
-	} catch (err) {
-		args.runtime.logger?.warn?.(
-			{
-				src: "shortcut-gate",
-				shortcut: match.shortcut.id,
-				action: action.name,
-				err,
-			},
-			"shortcut action validate() threw; falling through to pipeline",
-		);
-		return null;
-	}
-	if (!valid) return null;
-
 	let captured: string | undefined;
-	let shortcutActionResult: ActionResult | undefined;
-	try {
-		// The shortcut action runs its handler here, outside the planned-tool-call
-		// executor. Detach the visible token stream so an action's *internal*
-		// `runtime.useModel` calls (e.g. the compactor's ledger extraction) do not
-		// masquerade as the reply (#16230); the designed reply reaches the client
-		// through `captured` below, not the raw model stream.
-		shortcutActionResult = await runWithSuppressedModelStream(() =>
-			action.handler(
-				args.runtime,
-				args.message,
-				args.state,
-				{ ...target.parameters, ...match.parameters, mode: "simple" },
-				async (content) => {
-					if (typeof content?.text === "string" && content.text) {
-						captured = content.text;
-					}
-					return [];
-				},
-			),
-		);
-	} catch (err) {
-		args.runtime.logger?.warn?.(
-			{ src: "shortcut-gate", shortcut: match.shortcut.id, err },
-			"shortcut action failed; falling through to pipeline",
-		);
-		return null;
-	}
+	// Shortcuts enter the same executor as planner-selected tools so component
+	// gates, argument validation, callback buffering, audience revalidation, and
+	// action events remain one non-bypassable contract.
+	const shortcutActionResult = await executePlannedToolCall(
+		args.runtime,
+		{
+			message: args.message,
+			state: args.state,
+			userRoles: [args.senderRole],
+			activeContexts: ["general"],
+			callback: async (content) => {
+				if (typeof content?.text === "string" && content.text) {
+					captured = content.text;
+				}
+				return [];
+			},
+		},
+		{
+			name: action.name,
+			params: { ...target.parameters, ...match.parameters, mode: "simple" },
+		},
+		{ actions: [action] },
+	);
 	if (captured === undefined) return null;
 	let actionResult: ActionResult | undefined;
-	if (shortcutActionResult) {
-		if (shouldSuppressActionResultClipboard(action, shortcutActionResult)) {
-			actionResult = projectActionResultForClipboard(
-				action,
-				shortcutActionResult,
-				action.name,
-			);
-		} else {
-			actionResult = {
-				...shortcutActionResult,
-				data: {
-					...shortcutActionResult.data,
-					actionName: action.name,
-				},
-			};
-		}
+	if (shouldSuppressActionResultClipboard(action, shortcutActionResult)) {
+		actionResult = projectActionResultForClipboard(
+			action,
+			shortcutActionResult,
+			action.name,
+		);
+	} else {
+		actionResult = {
+			...shortcutActionResult,
+			data: {
+				...shortcutActionResult.data,
+				actionName: action.name,
+			},
+		};
 	}
 	const resultState = actionResult
 		? withActionResultsForPrompt(args.state, [actionResult])
@@ -9585,6 +9544,75 @@ function enforceEffectGroundedVisibleContent(
 	return response;
 }
 
+/**
+ * Revalidate a turn that consumed owner-private data immediately before any
+ * visible or durable egress. The replacement is constructed from constants so
+ * no text, attachment, or structured payload from the private result survives.
+ */
+export async function enforceTrustedDeliveryAudienceAtEgress(
+	runtime: IAgentRuntime,
+	message: Memory,
+	response: Content,
+): Promise<Content> {
+	if (!ownerExclusiveDisclosureWasUsed(message)) return response;
+	const disclosure = await revalidateOwnerExclusiveDisclosure(runtime, message);
+	if (disclosure.allowed) return response;
+	runtime.logger.warn(
+		{
+			src: "service:message",
+			messageId: message.id,
+			roomId: message.roomId,
+			reason: disclosure.reason,
+		},
+		"Suppressed owner-private response after delivery audience changed",
+	);
+	return {
+		text: PRIVACY_DENIED_TEXT,
+		actions: ["PRIVACY_DENIED"],
+		data: {
+			privacyDenied: true,
+			privacyReason: disclosure.reason,
+		},
+	};
+}
+
+/**
+ * Apply the final audience check to the complete message-service result shape.
+ * Actions mode can accumulate several response memories, so a denied turn must
+ * replace every one rather than sanitizing only the top-level chat content.
+ */
+export async function enforceTrustedDeliveryAudienceOnResult(
+	runtime: IAgentRuntime,
+	message: Memory,
+	responseContent: Content | null,
+	responseMessages: Memory[],
+): Promise<{
+	responseContent: Content | null;
+	responseMessages: Memory[];
+}> {
+	if (!ownerExclusiveDisclosureWasUsed(message)) {
+		return { responseContent, responseMessages };
+	}
+	const finalContent = await enforceTrustedDeliveryAudienceAtEgress(
+		runtime,
+		message,
+		responseContent ?? {},
+	);
+	if (
+		!isRecord(finalContent.data) ||
+		finalContent.data.privacyDenied !== true
+	) {
+		return { responseContent, responseMessages };
+	}
+	return {
+		responseContent: finalContent,
+		responseMessages: responseMessages.map((responseMemory) => ({
+			...responseMemory,
+			content: { ...finalContent },
+		})),
+	};
+}
+
 export function wrapSingleTurnVisibleCallback(
 	runtime: Pick<IAgentRuntime, "agentId" | "logger"> &
 		Partial<Pick<IAgentRuntime, "character" | "useModel">> & {
@@ -9597,6 +9625,15 @@ export function wrapSingleTurnVisibleCallback(
 	if (!callback) return callback;
 	const fullRuntime = runtime as IAgentRuntime;
 	const deliver = async (response: Content, actionName?: string) => {
+		const fullMessage = message as Memory;
+		response = await enforceTrustedDeliveryAudienceAtEgress(
+			fullRuntime,
+			fullMessage,
+			response,
+		);
+		if (isRecord(response.data) && response.data.privacyDenied === true) {
+			actionName = "PRIVACY_DENIED";
+		}
 		if (response.transcriptVisibility === "internal") {
 			return [];
 		}
@@ -9611,11 +9648,9 @@ export function wrapSingleTurnVisibleCallback(
 				// Record the raw form too: planner-echo suppression compares the
 				// planner's unsanitized finalMessage against this set, and must
 				// still recognize a delivery whose wire text was sanitized.
-					rawUnsanitizedText = response.text.trim()
-						? response.text
-						: undefined;
-					response = { ...response, text: sanitized };
-				}
+				rawUnsanitizedText = response.text.trim() ? response.text : undefined;
+				response = { ...response, text: sanitized };
+			}
 		}
 		response = enforceEffectGroundedVisibleContent(
 			fullRuntime,
@@ -10275,6 +10310,12 @@ export class DefaultMessageService implements IMessageService {
 				const wrappedOnStreamChunk: StreamChunkCallback | undefined =
 					userOnStreamChunk
 						? async (chunk, messageId, accumulated) => {
+								// Sensitive turns deliver once through the final callback,
+								// where the audience is re-read. Streaming bytes cannot be
+								// recalled if room membership changes mid-generation.
+								if (ownerExclusiveDisclosureWasUsed(message)) {
+									return;
+								}
 								let streamText: string;
 								// If we have accumulated text, also sync streamTextFallback so the
 								// fallback path has accurate state if the stream source later changes.
@@ -11203,6 +11244,11 @@ export class DefaultMessageService implements IMessageService {
 						runtime,
 						earlyContent,
 					);
+					earlyContent = await enforceTrustedDeliveryAudienceAtEgress(
+						runtime,
+						message,
+						earlyContent,
+					);
 					const earlyMemory: Memory = {
 						id: earlyResponseId,
 						entityId: runtime.agentId,
@@ -11591,6 +11637,13 @@ export class DefaultMessageService implements IMessageService {
 			if (responseContent && message.id) {
 				responseContent.inReplyTo = createUniqueUuid(runtime, message.id);
 			}
+			if (responseContent) {
+				responseContent = await enforceTrustedDeliveryAudienceAtEgress(
+					runtime,
+					message,
+					responseContent,
+				);
+			}
 
 			// Save response memory to database.
 			// - simple mode: persists after hooks in the branch below.
@@ -11613,6 +11666,11 @@ export class DefaultMessageService implements IMessageService {
 					}
 					// Update the content in case inReplyTo was added
 					if (responseContent) {
+						responseContent = await enforceTrustedDeliveryAudienceAtEgress(
+							runtime,
+							message,
+							responseContent,
+						);
 						responseMemory.content = responseContent;
 					}
 					if (shouldSkipResponseMemoryPersistence(responseMemory)) {
@@ -11676,6 +11734,12 @@ export class DefaultMessageService implements IMessageService {
 						runtime,
 						deliverableResponseContent,
 					);
+					deliverableResponseContent =
+						await enforceTrustedDeliveryAudienceAtEgress(
+							runtime,
+							message,
+							deliverableResponseContent,
+						);
 					responseContent = deliverableResponseContent;
 					// Registered BEFORE the callback fires so a follow-up prompted
 					// by this delivery always finds the barrier pending; released
@@ -11706,7 +11770,12 @@ export class DefaultMessageService implements IMessageService {
 								) {
 									continue;
 								}
-								responseMemory.content = deliverableResponseContent;
+								responseMemory.content =
+									await enforceTrustedDeliveryAudienceAtEgress(
+										runtime,
+										message,
+										deliverableResponseContent,
+									);
 								if (shouldSkipResponseMemoryPersistence(responseMemory)) {
 									runtime.logger.debug(
 										{ src: "service:message", memoryId: responseMemory.id },
@@ -11814,7 +11883,7 @@ export class DefaultMessageService implements IMessageService {
 
 			// Construct a minimal content object indicating the terminal decision
 			const terminalAction = terminalDecision ?? "IGNORE";
-			const terminalContent: Content = {
+			let terminalContent: Content = {
 				thought:
 					terminalAction === "STOP"
 						? "Agent decided to stop and end the run."
@@ -11832,6 +11901,11 @@ export class DefaultMessageService implements IMessageService {
 						message,
 					}),
 				),
+			);
+			terminalContent = await enforceTrustedDeliveryAudienceAtEgress(
+				runtime,
+				message,
+				terminalContent,
 			);
 
 			const terminalMemory: Memory = {
@@ -11869,6 +11943,13 @@ export class DefaultMessageService implements IMessageService {
 
 		// Clean up the response ID
 		clearLatestResponseId(runtime.agentId, message.roomId, responseId);
+		({ responseContent, responseMessages } =
+			await enforceTrustedDeliveryAudienceOnResult(
+				runtime,
+				message,
+				responseContent,
+				responseMessages,
+			));
 
 		// Post-turn evaluation runs first as one structured call over registered
 		// evaluator items. ALWAYS_AFTER actions remain available for plugin hooks
@@ -11985,7 +12066,6 @@ export class DefaultMessageService implements IMessageService {
 				duration: Date.now() - startTime,
 			} as RunEventPayload),
 		);
-
 		return {
 			didRespond,
 			responseContent,

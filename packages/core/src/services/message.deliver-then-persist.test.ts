@@ -17,10 +17,19 @@ import { createCharacter } from "../character";
 import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
 import { inferenceTimingRegistry } from "../inference-timing";
 import { AgentRuntime } from "../runtime";
+import {
+	attestDeliveryAudienceFromCanonicalRoom,
+	authorizeOwnerExclusiveDisclosure,
+	PRIVACY_DENIED_TEXT,
+} from "../security";
 import type { Content, Memory } from "../types";
+import { EventType } from "../types";
 import { ModelType } from "../types/model";
 import { asUUID, ChannelType, type UUID } from "../types/primitives";
-import { DefaultMessageService } from "./message";
+import {
+	DefaultMessageService,
+	enforceTrustedDeliveryAudienceOnResult,
+} from "./message";
 
 /** The Stage-1 HANDLE_RESPONSE tool-call envelope a live model emits. */
 function stage1DirectReply(replyText: string) {
@@ -69,6 +78,8 @@ interface HarnessOptions {
 	 * race tests. Later reply writes (follow-up turns) are never held.
 	 */
 	holdReplyPersist?: boolean;
+	/** Deterministic interleaving point after Stage-1 reads state, before egress. */
+	beforeStage1Return?: (runtime: AgentRuntime) => Promise<void>;
 }
 
 async function createHarness(opts: HarnessOptions = {}) {
@@ -98,6 +109,7 @@ async function createHarness(opts: HarnessOptions = {}) {
 				JSON.stringify((params as { messages?: unknown }).messages ?? null),
 			);
 			order.push(`stage1:${invocation}`);
+			await opts.beforeStage1Return?.(runtime);
 			return stage1DirectReply(
 				invocation === 1 ? replyText : followUpReplyText,
 			);
@@ -262,6 +274,118 @@ describe("simple-path deliver-then-persist ordering", () => {
 		const replies = await h.storedReplies();
 		expect(replies).toHaveLength(1);
 		expect(replies[0].content.text).toBe(h.replyText);
+	});
+
+	it("replaces private callback, persistence, event, and returned content when membership changes", async () => {
+		const guest = asUUID(v4());
+		let privateRoomId: UUID | undefined;
+		const h = await createHarness({
+			beforeStage1Return: async (runtime) => {
+				if (!privateRoomId) throw new Error("private room not initialized");
+				await runtime.addParticipant(guest, privateRoomId);
+			},
+		});
+		privateRoomId = h.roomId;
+		const turn = h.makeMessage();
+		h.runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", turn.entityId);
+		h.runtime.registerProvider({
+			name: "OWNER_PRIVATE_TEST_CONTEXT",
+			disclosureGate: { require: "owner_exclusive" },
+			alwaysInResponseState: true,
+			get: async () => ({ text: "OWNER_PRIVATE_PROVIDER_CANARY" }),
+		});
+		await attestDeliveryAudienceFromCanonicalRoom(h.runtime, turn);
+
+		const delivered: Content[] = [];
+		const messageSentContents: Content[] = [];
+		const emitEvent = h.runtime.emitEvent.bind(h.runtime);
+		h.runtime.emitEvent = (async (event, payload) => {
+			if (event === EventType.MESSAGE_SENT) {
+				const sentMessage = (payload as { message?: Memory }).message;
+				if (sentMessage) messageSentContents.push(sentMessage.content);
+			}
+			return emitEvent(event, payload);
+		}) as AgentRuntime["emitEvent"];
+
+		const result = await h.service.handleMessage(
+			h.runtime,
+			turn,
+			async (content) => {
+				delivered.push(content);
+				return [];
+			},
+		);
+		const stored = await h.runtime.getMemories({
+			roomId: h.roomId,
+			tableName: "messages",
+			count: 100,
+		});
+		const observable = JSON.stringify({
+			delivered,
+			messageSentContents,
+			responseContent: result.responseContent,
+			responseMessages: result.responseMessages.map((memory) => memory.content),
+			stored: stored.filter((memory) => memory.entityId === h.runtime.agentId),
+		});
+
+		expect(observable).not.toContain(h.replyText);
+		expect(observable).not.toContain("OWNER_PRIVATE_PROVIDER_CANARY");
+		expect(delivered).toEqual([
+			expect.objectContaining({ text: PRIVACY_DENIED_TEXT }),
+		]);
+		expect(result.responseContent?.text).toBe(PRIVACY_DENIED_TEXT);
+		expect(
+			stored.some(
+				(memory) =>
+					memory.entityId === h.runtime.agentId &&
+					memory.content.text === PRIVACY_DENIED_TEXT,
+			),
+		).toBe(true);
+	});
+
+	it("rewrites every actions-mode response memory after the audience changes", async () => {
+		const h = await createHarness();
+		const turn = h.makeMessage();
+		h.runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", turn.entityId);
+		await attestDeliveryAudienceFromCanonicalRoom(h.runtime, turn);
+		expect(
+			await authorizeOwnerExclusiveDisclosure(h.runtime, turn),
+		).toMatchObject({ allowed: true });
+		await h.runtime.addParticipant(asUUID(v4()), h.roomId);
+
+		const actionCanary = "OWNER_PRIVATE_ACTION_RESULT_CANARY";
+		const responseMessages: Memory[] = ["first", "second"].map(
+			(label, index) => ({
+				id: asUUID(v4()),
+				entityId: h.runtime.agentId,
+				agentId: h.runtime.agentId,
+				roomId: h.roomId,
+				createdAt: Date.now() + index,
+				content: {
+					text: `${label}: ${actionCanary}`,
+					data: { actionCanary },
+				},
+			}),
+		);
+
+		const result = await enforceTrustedDeliveryAudienceOnResult(
+			h.runtime,
+			turn,
+			{
+				text: `top-level: ${actionCanary}`,
+				data: { actionCanary },
+			},
+			responseMessages,
+		);
+
+		expect(JSON.stringify(result)).not.toContain(actionCanary);
+		expect(result.responseContent?.text).toBe(PRIVACY_DENIED_TEXT);
+		expect(result.responseMessages).toHaveLength(2);
+		expect(
+			result.responseMessages.every(
+				(memory) => memory.content.text === PRIVACY_DENIED_TEXT,
+			),
+		).toBe(true);
 	});
 
 	it("still persists the reply when the delivery callback throws, then rethrows that exact error", async () => {

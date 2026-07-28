@@ -7,6 +7,47 @@
 import { ElizaError } from "@elizaos/core";
 import { isValidTimeZone } from "@elizaos/shared";
 
+export const HOUSEHOLD_SCHEDULE_PROPOSAL_APPROVAL_WORKFLOW_ID =
+  "household.schedule.proposal.approval" as const;
+
+/**
+ * The exact decision line an affected party sends back over a connector.
+ * Outbound approval prompts and the inbound parser both derive from this
+ * builder so the taught command and the accepted grammar cannot drift.
+ */
+export function householdApprovalCommandText(
+  decision: "approve" | "reject",
+  approvalRequestId: string,
+): string {
+  return `${decision} household approval ${approvalRequestId}`;
+}
+
+/**
+ * Connector-delivered approval request for an affected party. The taught
+ * commands are embedded after prose on the same line so a quoted echo of this
+ * prompt in an email reply can never satisfy the full-line inbound parser.
+ */
+export function householdApprovalRequestPrompt(input: {
+  approvalRequestId: string;
+  reason: string;
+}): string {
+  const approve = householdApprovalCommandText(
+    "approve",
+    input.approvalRequestId,
+  );
+  const reject = householdApprovalCommandText(
+    "reject",
+    input.approvalRequestId,
+  );
+  return [
+    input.reason,
+    "",
+    `To approve, reply with this exact line on its own line: ${approve}`,
+    `To decline, reply with this exact line on its own line: ${reject}`,
+    `You can add a short note after the command, for example: "${approve} — works for us".`,
+  ].join("\n");
+}
+
 export const HOUSEHOLD_ROLES = [
   "owner",
   "co_parent",
@@ -196,6 +237,8 @@ export type HouseholdErrorCode =
   | "HOUSEHOLD_GRANT_EXPIRED"
   | "HOUSEHOLD_GRANT_REVOKED"
   | "HOUSEHOLD_INVALID_CONTRACT"
+  | "HOUSEHOLD_PARTY_APPROVAL_UNDELIVERED"
+  | "HOUSEHOLD_PARTY_APPROVAL_UNROUTABLE"
   | "HOUSEHOLD_PROPOSAL_CONFLICT"
   | "HOUSEHOLD_PROPOSAL_NOT_FOUND"
   | "HOUSEHOLD_STALE_APPROVAL"

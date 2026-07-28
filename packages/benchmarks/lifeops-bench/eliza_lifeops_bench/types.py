@@ -16,6 +16,7 @@ DisruptionKind = Literal[
 ExpectedWorldMutation = Literal["changed", "unchanged", "optional"]
 ScenarioTier = Literal["T1", "T2", "T3", "T4"]
 ScenarioOpeningMode = Literal["authored", "simulated"]
+StaticGradingMode = Literal["semantic", "offline_conformance"]
 TrustedActionRisk = Literal["read", "proposal", "approved_write"]
 TrustedEvidenceBoundary = Literal[
     "production_connector",
@@ -228,6 +229,21 @@ class Scenario:
     tier: ScenarioTier | None = None
     trusted_evidence_requirement: TrustedEvidenceRequirement | None = None
     opening_mode: ScenarioOpeningMode = "simulated"
+    # Optional language stressor used by the simulated-user model for both
+    # STATIC and LIVE turns. It shapes surface wording without changing the
+    # hidden goal, ground truth, or world contract.
+    opening_challenge: str | None = None
+    # STATIC-only wording-class assertions graded per-criterion by the LLM
+    # judge (see LifeOpsEvaluator.judge_static_semantics). Structural facts —
+    # ids, subactions, timestamps, recurrence — belong in ground-truth action
+    # kwargs where deterministic matching can verify them; rubric criteria
+    # cover phrasing and content quality that deterministic checks cannot.
+    static_rubric: list[str] = field(default_factory=list)
+    # Kwarg names (canonical spelling) whose values are free-form prose for
+    # this scenario, excluded from deterministic kwarg equality the same way
+    # the global _SOFT_KWARGS set is. Wording quality for these fields is
+    # graded semantically via static_rubric instead of verbatim equality.
+    soft_kwargs: list[str] = field(default_factory=list)
 
 
 def attach_usage_cache_fields(turn: Any, usage: dict[str, Any]) -> None:
@@ -317,7 +333,9 @@ def compute_cache_hit_pct(
     ):
         return None
     denominator = (
-        int(input_tokens) + int(cache_creation_input_tokens) + int(cache_read_input_tokens)
+        int(input_tokens)
+        + int(cache_creation_input_tokens)
+        + int(cache_read_input_tokens)
     )
     if denominator <= 0:
         return 0.0
@@ -367,7 +385,7 @@ class TurnResult:
 
 @dataclass
 class EvaluatorTraceEntry:
-    """Exact live-evaluator call inputs, outputs, telemetry, and provider payload."""
+    """Exact evaluator/judge inputs, outputs, telemetry, and provider payload."""
 
     turn_number: int
     role: Literal["simulated_user", "judge"]
@@ -384,6 +402,19 @@ class EvaluatorTraceEntry:
     raw_provider_response: dict[str, Any]
     accepted_verdict: bool | None = None
     verdict_reason: str | None = None
+    # Which judging surface produced this entry (None for simulated_user).
+    # The scorer keys off "static_semantic" entries to fold semantic verdicts
+    # into STATIC scoring without re-running the judge.
+    judge_kind: Literal["live_satisfaction", "static_semantic"] | None = None
+    # Enforced per-criterion verdicts (id, met, evidence_line_id, evidence).
+    # A positive claim without eligible transcript evidence is already
+    # downgraded here. None when the judge output or criterion coverage was
+    # invalid, or when the entry is not a judge verdict.
+    criterion_verdicts: list[dict[str, Any]] | None = None
+    # True when the judge returned unparseable output. Distinguishes "the
+    # judge failed to produce a verdict" from "the judge found every
+    # criterion unmet" in recorded traces.
+    verdict_invalid: bool = False
 
 
 @dataclass
@@ -392,6 +423,7 @@ class ScenarioResult:
 
     scenario_id: str
     seed: int
+    static_grading_mode: StaticGradingMode | None
     turns: list[TurnResult]
     state_hash_match: bool
     output_substring_matches: list[bool]
@@ -443,3 +475,7 @@ class BenchmarkResult:
     workload_sha256: str = ""
     evaluator_provider: str | None = None
     judge_provider: str | None = None
+    static_grading_mode: StaticGradingMode = "semantic"
+    static_run_count: int = 0
+    semantic_static_run_count: int = 0
+    semantic_static_judged_count: int = 0

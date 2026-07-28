@@ -7,10 +7,13 @@
  * values make an option incomplete instead of silently becoming zero.
  */
 
-import { ElizaError } from "@elizaos/core";
+import { createHash } from "node:crypto";
+import { ElizaError, stableStringify } from "@elizaos/core";
 
 export const CHILDCARE_WORK_SCENARIO_VERSION =
   "childcare-work-scenario.v1" as const;
+export const CHILDCARE_WORK_FORMULA_SET_ID =
+  "childcare-work-scenario.formula-set.v1" as const;
 
 export interface UsdRange {
   readonly minUsd: number;
@@ -180,6 +183,8 @@ export interface ChildcareWorkScenarioResult {
   readonly comparisons: readonly ChildcareWorkComparison[];
   readonly missingAssumptions: readonly MissingScenarioAssumption[];
   readonly guardrails: readonly string[];
+  readonly inputRevisionIds: readonly string[];
+  readonly comparableFormulaSetId: typeof CHILDCARE_WORK_FORMULA_SET_ID;
 }
 
 interface RangeContribution {
@@ -727,6 +732,22 @@ export function evaluateChildcareWorkScenario(
     options,
     comparisons,
     missingAssumptions,
+    inputRevisionIds: input.options.map(
+      (option) =>
+        `sha256:${createHash("sha256")
+          .update(
+            stableStringify({
+              schemaVersion: input.schemaVersion,
+              scenarioId: input.scenarioId,
+              householdId: input.householdId,
+              asOf: input.asOf,
+              currency: input.currency,
+              option,
+            }),
+          )
+          .digest("hex")}`,
+    ),
+    comparableFormulaSetId: CHILDCARE_WORK_FORMULA_SET_ID,
     guardrails: [
       "This is household decision support, not a recommendation about which adult should work.",
       "Current cash flow, non-cash compensation, schedule reliability, and re-entry effects are separate.",

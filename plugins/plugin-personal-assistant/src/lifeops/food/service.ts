@@ -5,6 +5,7 @@
  */
 import {
   type EntityStore,
+  KNOWLEDGE_GRAPH_SERVICE,
   type RelationshipStore,
   resolveKnowledgeGraphService,
 } from "@elizaos/agent";
@@ -346,6 +347,9 @@ export class FoodDomainService {
   }): Promise<{
     handoff: FoodShoppingHandoff;
     approvalRequest: ApprovalRequest;
+    // True only when the exact prior intent (handoff + bound approval) already
+    // exists, so effect receipts can report idempotent replay truthfully.
+    replayed: boolean;
   }> {
     this.assertOwnerPrincipal(input.principalEntityId);
     const evaluation = await this.currentCanonicalEvaluation(input.evaluation);
@@ -372,7 +376,7 @@ export class FoodDomainService {
           { handoffId: handoff.handoffId },
         );
       }
-      return { handoff, approvalRequest: existing };
+      return { handoff, approvalRequest: existing, replayed: true };
     }
     const approvalRequest = await this.deps.approvalQueue.enqueue({
       requestedBy: `food-domain:${this.deps.agentId}`,
@@ -400,7 +404,7 @@ export class FoodDomainService {
       approvalRequest.id,
       this.now().toISOString(),
     );
-    return { handoff, approvalRequest };
+    return { handoff, approvalRequest, replayed: false };
   }
 
   private async approvedRequestFor(
@@ -712,6 +716,7 @@ export class FoodDomainRuntimeService extends Service {
   static async start(
     runtime: IAgentRuntime,
   ): Promise<FoodDomainRuntimeService> {
+    await runtime.getServiceLoadPromise(KNOWLEDGE_GRAPH_SERVICE);
     const service = new FoodDomainRuntimeService(runtime);
     await service.food.initialize();
     return service;

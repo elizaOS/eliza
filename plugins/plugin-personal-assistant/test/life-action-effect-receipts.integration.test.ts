@@ -13,6 +13,7 @@ import type {
   Memory,
   UUID,
 } from "@elizaos/core";
+import { executePlannedToolCall } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   OWNER_OPERATION_TAGS,
@@ -112,6 +113,57 @@ afterAll(async () => {
 });
 
 describe("owner life action effect receipts — real PGlite", () => {
+  it("delivers strict receipts through the canonical action executor", async () => {
+    const callback = vi.fn<HandlerCallback>(async () => []);
+    const message = {
+      id: crypto.randomUUID() as UUID,
+      agentId: runtime.agentId,
+      entityId: runtime.agentId,
+      roomId: crypto.randomUUID() as UUID,
+      content: {
+        source: "autonomy",
+        text: "Create an executor-backed daily receipt task",
+      },
+    } as Memory;
+    const result = await executePlannedToolCall(
+      runtime,
+      {
+        message,
+        callback,
+        userRoles: ["OWNER"],
+        activeContexts: ["general"],
+      },
+      {
+        name: "OWNER_TODOS",
+        params: {
+          action: "create",
+          intent: "Create an executor-backed daily receipt task",
+          title: "Executor receipt task",
+          details: {
+            confirmed: true,
+            kind: "habit",
+            cadence: {
+              kind: "daily",
+              windows: ["morning"],
+            },
+            timeZone: "UTC",
+          },
+        },
+      },
+    );
+
+    const applied = receipt(result);
+    expect(applied).toMatchObject({
+      outcome: "applied",
+      operation: "lifeops.definition.create",
+    });
+    expect(callback).toHaveBeenCalledOnce();
+    expect(callback.mock.calls[0]?.[0]).toMatchObject({
+      text: result.text,
+      effectReceiptIds: [applied.receiptId],
+    });
+  }, 120_000);
+
   it("binds create, update, delete, and duplicate replay to repository truth", async () => {
     expect(OWNER_OPERATION_TAGS).toContain("effect:receipt-required");
     const created = await invoke(
@@ -133,7 +185,7 @@ describe("owner life action effect receipts — real PGlite", () => {
         id: expect.any(String),
         committedAt: expect.any(String),
       },
-      idempotency: { key: null, replayed: false },
+      idempotency: { key: expect.any(String), replayed: false },
     });
     const definition = (created.result.data as { definition: { id: string } })
       .definition;
@@ -166,6 +218,45 @@ describe("owner life action effect receipts — real PGlite", () => {
       idempotency: { key: definition.id, replayed: true },
     });
     expect(duplicate.result.text).toMatch(/already saved|nothing new/i);
+
+    const goalParams = {
+      action: "create",
+      kind: "goal",
+      title: "Receipt replay goal",
+      intent: "Track a weekly receipt replay review",
+      details: {
+        confirmed: true,
+        cadence: { kind: "weekly" },
+        supportStrategy: { approach: "weekly_review" },
+        successCriteria: {
+          summary: "Review receipt replay once per week",
+          metric: "review_completed",
+        },
+      },
+    };
+    const createdGoal = await invoke(
+      goalParams,
+      "Track a weekly receipt replay review",
+    );
+    expect(receipt(createdGoal.result)).toMatchObject({
+      outcome: "applied",
+      operation: "lifeops.goal.create",
+      resource: { kind: "lifeops.goal", id: expect.any(String) },
+      idempotency: { key: expect.any(String), replayed: false },
+    });
+    const createdGoalId = (createdGoal.result.data as { goal: { id: string } })
+      .goal.id;
+    const replayedGoal = await invoke(
+      goalParams,
+      "Track that same weekly receipt replay review again",
+    );
+    expect(receipt(replayedGoal.result)).toMatchObject({
+      outcome: "noop",
+      operation: "lifeops.goal.create",
+      resource: { kind: "lifeops.goal", id: createdGoalId },
+      idempotency: { key: createdGoalId, replayed: true },
+    });
+    expect(replayedGoal.result.text).toMatch(/already saved|nothing new/i);
 
     const deletionSeed = await invoke(
       recurringDefinitionParams("Delete receipt target"),
@@ -227,7 +318,9 @@ describe("owner life action effect receipts — real PGlite", () => {
       expect(occurrences.length).toBeGreaterThan(0);
       const occurrenceId = occurrences.find(
         (occurrence) =>
-          occurrence.state === "visible" || occurrence.state === "snoozed",
+          !["completed", "skipped", "expired", "muted"].includes(
+            occurrence.state,
+          ),
       )?.id;
       if (!occurrenceId) {
         throw new Error("Expected a materialized occurrence");
@@ -259,6 +352,25 @@ describe("owner life action effect receipts — real PGlite", () => {
       await expect(
         service.repository.getOccurrence(runtime.agentId, occurrenceId),
       ).resolves.toMatchObject({ state: transition.expectedState });
+
+      if (transition.action === "complete") {
+        const replayed = await invoke(
+          {
+            action: "complete",
+            kind: "definition",
+            target: occurrenceId,
+            intent: "Complete that already completed item",
+            details: { occurrenceId },
+          },
+          "Complete that already completed item",
+        );
+        expect(receipt(replayed.result)).toMatchObject({
+          outcome: "noop",
+          operation: "lifeops.occurrence.completed",
+          resource: { id: occurrenceId },
+          idempotency: { key: occurrenceId, replayed: true },
+        });
+      }
     }
   }, 120_000);
 
@@ -306,7 +418,7 @@ describe("owner life action effect receipts — real PGlite", () => {
       outcome: "failed",
       operation: "lifeops.owner.complete",
       failure: {
-        code: "LIFEOPS_OPERATION_REJECTED",
+        code: "LIFEOPS_SERVICE_ERROR",
         retryable: false,
         acceptance: "rejected",
       },

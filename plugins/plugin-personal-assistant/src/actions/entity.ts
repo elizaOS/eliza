@@ -17,6 +17,7 @@
 import type {
   Action,
   ActionResult,
+  EffectReceipt,
   HandlerOptions,
   IAgentRuntime,
   Memory,
@@ -24,13 +25,22 @@ import type {
 } from "@elizaos/core";
 import {
   recentConversationTexts as collectRecentConversationTexts,
+  ElizaError,
   ModelType,
 } from "@elizaos/core";
 import {
+  type Entity,
+  type EntityIdentity,
+  foldIdentity,
   LIFEOPS_MESSAGE_CHANNELS,
   type LifeOpsMessageChannel,
 } from "@elizaos/shared";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
+import {
+  completeLifeOpsEffect,
+  lifeOpsAppliedEffect,
+  lifeOpsNoopEffect,
+} from "../lifeops/action-effect-result.js";
 import { runLifeOpsJsonModel } from "../lifeops/google/format-helpers.js";
 import { LifeOpsRepository } from "../lifeops/repository.js";
 import { LifeOpsService } from "../lifeops/service.js";
@@ -189,7 +199,14 @@ async function resolveRelationshipId(
 ): Promise<string | null> {
   const explicitRelationshipId = normalizedNonEmpty(params.relationshipId);
   if (explicitRelationshipId) {
-    if (UUID_PATTERN.test(explicitRelationshipId)) {
+    const exactRelationship = await service.getRelationship(
+      explicitRelationshipId,
+    );
+    if (
+      exactRelationship ||
+      UUID_PATTERN.test(explicitRelationshipId) ||
+      explicitRelationshipId.startsWith("ent_")
+    ) {
       return explicitRelationshipId;
     }
 
@@ -455,6 +472,48 @@ function formatRelationshipLine(rel: {
   return `- ${rel.name} (${rel.primaryChannel}: ${rel.primaryHandle})${last}`;
 }
 
+function appliedEntityEffect(args: {
+  operation: string;
+  resourceKind: string;
+  resourceId: string;
+  version: string;
+  committedAt: string;
+  artifacts?: EffectReceipt["artifacts"];
+}): EffectReceipt {
+  return lifeOpsAppliedEffect({
+    receiptId: `${args.operation}:${args.resourceId}:${args.version}`,
+    operation: args.operation,
+    resource: {
+      kind: args.resourceKind,
+      id: args.resourceId,
+      version: args.version,
+    },
+    artifacts: args.artifacts ?? [],
+    idempotency: { key: null, replayed: false },
+    observedAt: args.committedAt,
+    commit: {
+      kind: "durable",
+      id: args.resourceId,
+      committedAt: args.committedAt,
+    },
+  });
+}
+
+function entityReadEffect(agentId: string, observedAt: string): EffectReceipt {
+  return lifeOpsNoopEffect({
+    receiptId: `lifeops.entity.read:${agentId}:${observedAt}`,
+    operation: "lifeops.entity.read",
+    resource: {
+      kind: "lifeops.entity.catalog",
+      id: agentId,
+    },
+    artifacts: [],
+    idempotency: { key: null, replayed: false },
+    observedAt,
+    reason: "The entity catalog was read without changing it.",
+  });
+}
+
 export const entityAction: Action & {
   suppressPostActionContinuation?: boolean;
 } = {
@@ -481,6 +540,7 @@ export const entityAction: Action & {
     "capability:write",
     "capability:update",
     "capability:delete",
+    "effect:receipt-required",
     "surface:internal",
   ],
   contexts: ["contacts", "tasks", "calendar", "messaging", "memory"],
@@ -505,6 +565,7 @@ export const entityAction: Action & {
       context?: Record<string, unknown>;
       data?: T;
       values?: ActionResult["values"];
+      receipt?: EffectReceipt;
     }): Promise<ActionResult> => {
       const text = await renderLifeOpsActionReply({
         runtime,
@@ -515,17 +576,31 @@ export const entityAction: Action & {
         fallback: payload.fallback,
         context: payload.context,
       });
-      await callback?.({
-        text,
-        source: "action",
-        action: "ENTITY",
-      });
-      return {
+      const result: ActionResult = {
         text,
         success: payload.success,
         ...(payload.values ? { values: payload.values } : {}),
         ...(payload.data ? { data: payload.data } : {}),
       };
+      if (payload.success) {
+        if (!payload.receipt) {
+          throw new ElizaError(
+            "Successful ENTITY outcomes require an exact effect receipt",
+            {
+              code: "ENTITY_EFFECT_RECEIPT_REQUIRED",
+              context: {},
+              severity: "fatal",
+            },
+          );
+        }
+        return completeLifeOpsEffect(callback, result, payload.receipt);
+      }
+      await callback?.({
+        text,
+        source: "action",
+        action: "ENTITY",
+      });
+      return result;
     };
 
     if (!(await hasLifeOpsAccess(runtime, message))) {
@@ -586,6 +661,7 @@ export const entityAction: Action & {
 
     if (subaction === "read") {
       const contacts = await service.listRelationships({ limit: 50 });
+      const observedAt = new Date().toISOString();
       const fallback =
         contacts.length === 0
           ? "You have no contacts in your Rolodex yet."
@@ -596,6 +672,7 @@ export const entityAction: Action & {
         fallback,
         context: { contactCount: contacts.length },
         data: { subaction, contacts },
+        receipt: entityReadEffect(String(runtime.agentId), observedAt),
       });
     }
 
@@ -643,6 +720,13 @@ export const entityAction: Action & {
           handle: rel.primaryHandle,
         },
         data: { subaction, relationship: rel },
+        receipt: appliedEntityEffect({
+          operation: "lifeops.entity.contact.save",
+          resourceKind: "lifeops.entity.contact",
+          resourceId: rel.id,
+          version: rel.updatedAt,
+          committedAt: rel.updatedAt,
+        }),
       });
     }
 
@@ -681,12 +765,17 @@ export const entityAction: Action & {
         fallback: `Logged interaction with ${rel.name} on ${channel}.`,
         context: { name: rel.name, channel },
         data: { subaction, interaction },
+        receipt: appliedEntityEffect({
+          operation: "lifeops.entity.interaction.log",
+          resourceKind: "lifeops.entity.interaction",
+          resourceId: interaction.id,
+          version: interaction.createdAt,
+          committedAt: interaction.createdAt,
+        }),
       });
     }
 
     if (subaction === "set_identity") {
-      // Route through `EntityStore.observeIdentity` with `verified: true` so
-      // the user-asserted identity wins over any ambient platform observation.
       const platform = normalizedNonEmpty(params.platform);
       const handle = normalizedNonEmpty(params.handle);
       if (!platform || !handle) {
@@ -701,29 +790,100 @@ export const entityAction: Action & {
       const repository = new LifeOpsRepository(runtime);
       const entityStore = await repository.entityStore(runtime.agentId);
       const evidence = normalizedNonEmpty(params.evidence) ?? "user_chat";
-      const observation = await entityStore.observeIdentity({
+      const requestedEntityId = normalizedNonEmpty(params.entityId);
+      let observedEntity: Entity;
+      let mergedFrom: string[] = [];
+
+      if (requestedEntityId) {
+        const requestedEntity = await entityStore.get(requestedEntityId);
+        if (!requestedEntity) {
+          return respond({
+            success: false,
+            scenario: "entity_set_identity_target_not_found",
+            fallback: `I couldn't find entity ${requestedEntityId}, so I did not attach the identity.`,
+            context: { entityId: requestedEntityId },
+            data: { subaction, error: "NOT_FOUND" },
+          });
+        }
+        const identityMatches = await entityStore.resolve({
+          identity: { platform, handle },
+        });
+        const conflictingEntityIds = identityMatches
+          .map((candidate) => candidate.entity.entityId)
+          .filter((entityId) => entityId !== requestedEntityId);
+        if (conflictingEntityIds.length > 0 && params.confirmed !== true) {
+          return respond({
+            success: false,
+            scenario: "entity_set_identity_conflict",
+            fallback:
+              "That identity is already attached to another entity. Confirm the merge before I move it.",
+            context: {
+              entityId: requestedEntityId,
+              conflictingEntityIds,
+            },
+            data: {
+              subaction,
+              error: "IDENTITY_CONFLICT",
+              conflictingEntityIds,
+            },
+          });
+        }
+        observedEntity =
+          conflictingEntityIds.length > 0
+            ? await entityStore.merge(requestedEntityId, conflictingEntityIds)
+            : requestedEntity;
+        mergedFrom = conflictingEntityIds;
+      } else {
+        const observation = await entityStore.observeIdentity({
+          platform,
+          handle,
+          ...(normalizedNonEmpty(params.displayName)
+            ? { displayName: params.displayName as string }
+            : {}),
+          evidence: [evidence],
+          confidence: 1,
+          suggestedType: "person",
+        });
+        if (observation.conflict) {
+          return respond({
+            success: false,
+            scenario: "entity_set_identity_conflict",
+            fallback:
+              "That identity matches multiple entities. Choose the target entity before I change the graph.",
+            context: {
+              conflictingEntityIds: observation.mergedFrom ?? [],
+            },
+            data: {
+              subaction,
+              error: "IDENTITY_CONFLICT",
+              conflictingEntityIds: observation.mergedFrom ?? [],
+            },
+          });
+        }
+        observedEntity = observation.entity;
+        mergedFrom = observation.mergedFrom ?? [];
+      }
+
+      const observedAt = new Date().toISOString();
+      const verifiedIdentity: EntityIdentity = {
         platform,
         handle,
         ...(normalizedNonEmpty(params.displayName)
           ? { displayName: params.displayName as string }
           : {}),
-        evidence: [evidence],
+        verified: true,
         confidence: 1,
-        ...(normalizedNonEmpty(params.entityId)
-          ? { suggestedType: "person" }
-          : {}),
-      });
-      // Force-mark this identity as verified — the canonical surface for
-      // user-asserted identities per IMPL §5.1.
-      const verifiedIdentities = observation.entity.identities.map(
-        (identity) =>
-          identity.platform === platform && identity.handle === handle
-            ? { ...identity, verified: true }
-            : identity,
-      );
+        addedAt: observedAt,
+        addedVia: "user_chat",
+        evidence: [evidence],
+      };
       const merged = await entityStore.upsert({
-        ...observation.entity,
-        identities: verifiedIdentities,
+        ...observedEntity,
+        identities: foldIdentity(observedEntity.identities, verifiedIdentity),
+        state: {
+          ...observedEntity.state,
+          lastObservedAt: observedAt,
+        },
       });
       return respond({
         success: true,
@@ -737,8 +897,19 @@ export const entityAction: Action & {
         data: {
           subaction,
           entity: merged,
-          mergedFrom: observation.mergedFrom ?? null,
+          mergedFrom: mergedFrom.length > 0 ? mergedFrom : null,
         },
+        receipt: appliedEntityEffect({
+          operation: "lifeops.entity.identity.set",
+          resourceKind: "lifeops.entity",
+          resourceId: merged.entityId,
+          version: merged.updatedAt,
+          committedAt: merged.updatedAt,
+          artifacts: mergedFrom.map((sourceEntityId) => ({
+            kind: "lifeops.entity.merge_source",
+            id: sourceEntityId,
+          })),
+        }),
       });
     }
 
@@ -776,6 +947,13 @@ export const entityAction: Action & {
         fallback: `Recorded ${fromEntityId} -[${relationshipType}]-> ${toEntityId}.`,
         context: { fromEntityId, toEntityId, relationshipType },
         data: { subaction, relationship: edge },
+        receipt: appliedEntityEffect({
+          operation: "lifeops.entity.relationship.set",
+          resourceKind: "lifeops.entity.relationship",
+          resourceId: edge.relationshipId,
+          version: edge.updatedAt,
+          committedAt: edge.updatedAt,
+        }),
       });
     }
 
@@ -807,6 +985,17 @@ export const entityAction: Action & {
           sourceCount: sourceEntityIds.length,
         },
         data: { subaction, entity: merged, sourceEntityIds },
+        receipt: appliedEntityEffect({
+          operation: "lifeops.entity.merge",
+          resourceKind: "lifeops.entity",
+          resourceId: merged.entityId,
+          version: merged.updatedAt,
+          committedAt: merged.updatedAt,
+          artifacts: sourceEntityIds.map((sourceEntityId) => ({
+            kind: "lifeops.entity.merge_source",
+            id: sourceEntityId,
+          })),
+        }),
       });
     }
 
