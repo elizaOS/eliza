@@ -141,7 +141,7 @@ jobs:
           ISO_MAX_BYTES: ${{ env.ELIZAOS_ISO_MAX_BYTES || '3221225472' }}
         run: |
           set -euo pipefail
-          ISO=$(find "${LINUX_DIR}/out" \( -name "binary.iso" -o -name "elizaos-live-${ELIZAOS_ARCH}-*.iso" -o -name "elizaos-linux-${ELIZAOS_ARCH}-*.iso" \) | sort | tail -1)
+          ISO=$(find "${LINUX_DIR}/out" \( -name "binary.iso" -o -name "tails-${ELIZAOS_ARCH}-*.iso" -o -name "elizaos-live-${ELIZAOS_ARCH}-*.iso" -o -name "elizaos-linux-${ELIZAOS_ARCH}-*.iso" \) | sort | tail -1)
           if [ -z "$ISO" ]; then
             echo "ERROR: ISO not found after build"
             exit 1

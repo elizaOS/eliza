@@ -90,6 +90,7 @@ bash -n build.sh build-iso.sh tails/auto/build \
 grep -Fq 'if [ -f "${SRC}/binary.iso" ]' build-iso.sh
 grep -Fq 'find "${SRC}" -maxdepth 1 -name' build-iso.sh
 grep -Fq "sort -nr" build-iso.sh
+grep -Fq -- '-name "tails-${ELIZAOS_ARCH}-*.iso"' ../../../.github/workflows/build-linux-iso.yml
 bash scripts/build-cache-contract.test.sh
 bash scripts/submodule-checkout.test.sh
 node --test scripts/package-list-contract.test.mjs
