@@ -635,7 +635,7 @@ test("agent navigate by viewId-only resolves the registered canonical path", asy
   await expect(page).toHaveURL(/\/model-tester(?:[?#]|$)/, {
     timeout: 30_000,
   });
-  await expect(page.getByTestId("model-tester-shell").first()).toBeVisible({
+  await expect(page.locator('[data-agent-id="run-all"]').first()).toBeVisible({
     timeout: 60_000,
   });
 });
