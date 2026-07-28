@@ -83,7 +83,7 @@ jobs:
       - name: Validate benchmark helpers
         run: bunx vitest run packages/agent/scripts/cerebras-chat-flow-latency.test.ts --coverage.enabled=false
 
-      - name: Measure every provider in parallel and reused
+      - name: Measure every provider in parallel and max-cached
         id: provider_latency_live
         env:
           CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
