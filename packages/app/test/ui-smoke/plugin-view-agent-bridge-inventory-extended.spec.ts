@@ -77,7 +77,15 @@ const PLUGIN_VIEW_TARGETS: readonly PluginViewTarget[] = [
     // The dynamic route mounts CalendarSpatialView, whose spatial `agent`
     // values are the canonical bridge ids.
     ready: { text: "Design sync" },
-    requiredIds: ["prev", "today", "next", "new", "mode"],
+    requiredIds: [
+      "prev",
+      "today",
+      "next",
+      "new",
+      "mode:day",
+      "mode:week",
+      "mode:month",
+    ],
   },
   {
     label: "Inbox",
