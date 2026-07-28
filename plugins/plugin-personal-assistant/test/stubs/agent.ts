@@ -13,6 +13,10 @@ import path from "node:path";
 // dispatch path instead of a bypass.
 export { checkRateLimit } from "../../../../packages/agent/src/api/rate-limiter.ts";
 export {
+  ApprovalNotFoundError,
+  ApprovalStateTransitionError,
+} from "../../../../packages/agent/src/services/approval/types.ts";
+export {
   createGlobalPauseStore,
   GLOBAL_PAUSE_SERVICE,
   GlobalPauseService,

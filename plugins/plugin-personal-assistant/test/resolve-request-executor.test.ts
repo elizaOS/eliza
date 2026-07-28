@@ -69,6 +69,7 @@ const docMocks = vi.hoisted(() => ({
     resolutionReason: null,
   })),
   list: vi.fn(async (): Promise<unknown[]> => []),
+  byId: vi.fn(),
   approve: vi.fn(),
   reject: vi.fn(),
   markExecuting: vi.fn(),
@@ -81,14 +82,22 @@ const docMocks = vi.hoisted(() => ({
   })),
 }));
 
-vi.mock("@elizaos/agent", () => ({
-  hasOwnerAccess: docMocks.hasOwnerAccess,
-}));
+vi.mock("@elizaos/agent", async () => {
+  const approvalTypes = await import(
+    "../../../packages/agent/src/services/approval/types.ts"
+  );
+  return {
+    hasOwnerAccess: docMocks.hasOwnerAccess,
+    ApprovalNotFoundError: approvalTypes.ApprovalNotFoundError,
+    ApprovalStateTransitionError: approvalTypes.ApprovalStateTransitionError,
+  };
+});
 
 vi.mock("../src/lifeops/approval-queue.js", () => ({
   createApprovalQueue: () => ({
     enqueue: docMocks.enqueue,
     list: docMocks.list,
+    byId: docMocks.byId,
     approve: docMocks.approve,
     reject: docMocks.reject,
     markExecuting: docMocks.markExecuting,
@@ -246,6 +255,7 @@ afterEach(() => {
   docMocks.schedule.mockClear();
   docMocks.list.mockReset();
   docMocks.list.mockResolvedValue([]);
+  docMocks.byId.mockReset();
   docMocks.approve.mockReset();
   docMocks.reject.mockReset();
   docMocks.markExecuting.mockReset();
@@ -419,6 +429,7 @@ describe("executeApprovedRequest", () => {
         bcc: [],
         subject: "Launch deck",
         body: "I'll send the deck by 2026-07-10 and include the pricing appendix.",
+        threadId: null,
         replyToMessageId: null,
       },
     });
@@ -728,6 +739,7 @@ describe("RESOLVE_REQUEST reject path", () => {
       fromPhoneNumber: "+15550999",
     });
     docMocks.list.mockResolvedValue([pending]);
+    docMocks.byId.mockResolvedValue(pending);
     docMocks.reject.mockResolvedValue({ ...pending, state: "rejected" });
     const { texts, callback } = collectTexts();
 
@@ -784,6 +796,7 @@ describe("RESOLVE_REQUEST ambiguous-target chips (#14733)", () => {
           bcc: [],
           subject: "Q2 report",
           body: "Attached.",
+          threadId: null,
           replyToMessageId: null,
         },
       }),
@@ -846,6 +859,7 @@ describe("RESOLVE_REQUEST ambiguous-target chips (#14733)", () => {
     const runtime = makeRuntime();
     const [first, second] = pendingPair();
     docMocks.list.mockResolvedValue([first, second]);
+    docMocks.byId.mockResolvedValue(second);
     docMocks.reject.mockResolvedValue({ ...second, state: "rejected" });
 
     // Build the chips for a reject intent and simulate the tap: the value is

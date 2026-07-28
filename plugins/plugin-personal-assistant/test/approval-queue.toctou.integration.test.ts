@@ -18,6 +18,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
+import { schedulingPlugin } from "@elizaos/plugin-scheduling";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createRealTestRuntime } from "../../../packages/test/helpers/real-runtime.ts";
 import { PgApprovalQueue } from "../src/lifeops/approval-queue.js";
@@ -116,7 +117,7 @@ function spendMoneyInput(
 beforeAll(async () => {
   setIsolatedEnv();
   const result = await createRealTestRuntime({
-    plugins: [personalAssistantPlugin],
+    plugins: [schedulingPlugin, personalAssistantPlugin],
   });
   runtime = result.runtime;
   cleanup = result.cleanup;

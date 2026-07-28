@@ -8,7 +8,11 @@
  * planner learns about pending rows from the `pendingApprovals` provider
  * (../providers/pending-approvals.ts), which routes decisions here (#14630).
  */
-import { hasOwnerAccess } from "@elizaos/agent";
+import {
+  hasOwnerAccess,
+  ApprovalNotFoundError as RuntimeApprovalNotFoundError,
+  ApprovalStateTransitionError as RuntimeApprovalStateTransitionError,
+} from "@elizaos/agent";
 import type {
   Action,
   ActionExample,
@@ -35,9 +39,9 @@ import { createApprovalQueue } from "../lifeops/approval-queue.js";
 import {
   ApprovalNotFoundError,
   type ApprovalQueue,
+  ApprovalQueueCompatibilityError,
   type ApprovalRequest,
   ApprovalStateTransitionError,
-  ApprovalTransitionConflictError,
 } from "../lifeops/approval-queue.types.js";
 import { extractCommitmentLedgerRecords } from "../lifeops/commitments/index.js";
 import { LifeOpsRepository } from "../lifeops/repository.js";
@@ -568,6 +572,142 @@ export async function executeApprovedRequest(args: {
   };
 }
 
+interface SettledDecision {
+  readonly text: string;
+  readonly result: ActionResult;
+}
+
+function completedApprovalReplay(request: ApprovalRequest): SettledDecision {
+  const text = `Request ${request.id} already completed successfully — nothing was executed again.`;
+  return {
+    text,
+    result: {
+      text,
+      success: true,
+      data: {
+        requestId: request.id,
+        state: request.state,
+        action: request.action,
+        alreadyResolved: true,
+        duplicateSuppressed: true,
+        executed: false,
+      },
+    },
+  };
+}
+
+function rejectedDecisionReplay(request: ApprovalRequest): SettledDecision {
+  const text = `Request ${request.id} was already rejected — nothing was dispatched.`;
+  return {
+    text,
+    result: {
+      text,
+      success: true,
+      data: {
+        requestId: request.id,
+        state: request.state,
+        action: request.action,
+        alreadyResolved: true,
+        duplicateSuppressed: true,
+        executed: false,
+      },
+    },
+  };
+}
+
+function executionOutcomeUnknown(request: ApprovalRequest): SettledDecision {
+  const text = `Request ${request.id} already claimed execution, but no durable completion is recorded. I did not retry the operation because its external outcome must be reconciled first.`;
+  return {
+    text,
+    result: {
+      text,
+      success: false,
+      data: {
+        error: "APPROVAL_EXECUTION_OUTCOME_UNKNOWN",
+        requestId: request.id,
+        state: request.state,
+        action: request.action,
+        duplicateSuppressed: true,
+        executed: false,
+      },
+    },
+  };
+}
+
+function conflictingDecision(
+  intent: ResolveSubaction,
+  request: ApprovalRequest,
+): SettledDecision {
+  const text = `Request ${request.id} is already "${request.state}" — I did not ${intent} it, and nothing was executed.`;
+  return {
+    text,
+    result: {
+      text,
+      success: false,
+      data: {
+        error: "APPROVAL_DECISION_CONFLICT",
+        requestId: request.id,
+        state: request.state,
+        action: request.action,
+        attempted: intent,
+        executed: false,
+      },
+    },
+  };
+}
+
+/**
+ * Classify terminal or claimed rows before attempting another transition.
+ * `approved` deliberately falls through: it is the durable outbox state, not
+ * proof of execution, so a replay after a pre-dispatch crash may claim it.
+ */
+function classifySettledDecision(
+  intent: ResolveSubaction,
+  request: ApprovalRequest,
+): SettledDecision | null {
+  if (request.state === "executing") {
+    return executionOutcomeUnknown(request);
+  }
+  if (intent === "approve") {
+    if (request.state === "done") return completedApprovalReplay(request);
+    if (request.state === "rejected" || request.state === "expired") {
+      return conflictingDecision(intent, request);
+    }
+    return null;
+  }
+  if (request.state === "rejected") return rejectedDecisionReplay(request);
+  if (request.state === "done" || request.state === "expired") {
+    return conflictingDecision(intent, request);
+  }
+  return null;
+}
+
+function isKnownApprovalNotFound(
+  error: unknown,
+): error is ApprovalNotFoundError | RuntimeApprovalNotFoundError {
+  return (
+    error instanceof ApprovalNotFoundError ||
+    error instanceof RuntimeApprovalNotFoundError
+  );
+}
+
+function isKnownApprovalTransition(
+  error: unknown,
+): error is ApprovalStateTransitionError | RuntimeApprovalStateTransitionError {
+  return (
+    error instanceof ApprovalStateTransitionError ||
+    error instanceof RuntimeApprovalStateTransitionError
+  );
+}
+
+async function returnSettledDecision(
+  settled: SettledDecision,
+  callback: HandlerCallback | undefined,
+): Promise<ActionResult> {
+  await callback?.({ text: settled.text });
+  return settled.result;
+}
+
 async function resolveApprovalRequest(
   runtime: IAgentRuntime,
   message: Memory,
@@ -583,7 +723,24 @@ async function resolveApprovalRequest(
   if (!subjectUserId) {
     return denied("MISSING_SUBJECT_USER");
   }
-  const queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
+  let queue: ApprovalQueue;
+  try {
+    queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
+  } catch (error) {
+    // error-policy:J1 the action boundary converts an incompatible registered
+    // queue into a typed denial before any owner decision can be mutated.
+    if (error instanceof ApprovalQueueCompatibilityError) {
+      return {
+        text: "",
+        success: false,
+        data: {
+          error: "APPROVAL_QUEUE_INCOMPATIBLE",
+          missingMethods: error.missingMethods,
+        },
+      };
+    }
+    throw error;
+  }
   const pending = await queue.list({
     subjectUserId,
     state: "pending",
@@ -629,58 +786,74 @@ async function resolveApprovalRequest(
     resolvedBy: subjectUserId,
     resolutionReason: extracted.reason ?? `user ${intent}d`,
   };
-  try {
-    const updated =
-      intent === "approve"
-        ? await queue.approve(extracted.requestId, resolution)
-        : await queue.reject(extracted.requestId, resolution);
-    if (intent === "approve") {
-      return executeApprovedRequest({
+  // `approved` is the durable outbox record and `markExecuting` is its atomic
+  // consume claim. Re-reading after a lost CAS lets a pre-claim crash resume,
+  // while an `executing` row is never retried because the provider may already
+  // have accepted the destructive operation. Only `done` proves completion.
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const current = await queue.byId(extracted.requestId);
+    if (!current) return denied("REQUEST_NOT_FOUND");
+    const settled = classifySettledDecision(intent, current);
+    if (settled) return returnSettledDecision(settled, callback);
+
+    try {
+      if (intent === "reject") {
+        const rejected = await queue.reject(current.id, resolution);
+        logger.info(
+          `[OwnerResolveRequest] ${intent} ${rejected.id} by ${subjectUserId}`,
+        );
+        const text = `Rejected request ${rejected.id}.`;
+        await callback?.({ text });
+        return {
+          text,
+          success: true,
+          data: {
+            requestId: rejected.id,
+            state: rejected.state,
+            action: rejected.action,
+          },
+        };
+      }
+
+      const approved =
+        current.state === "approved"
+          ? current
+          : await queue.approve(current.id, resolution);
+      return await executeApprovedRequest({
         runtime,
         queue,
-        request: updated,
+        request: approved,
         callback,
       });
+    } catch (error) {
+      // error-policy:J1 queue CAS failures are translated at the action
+      // boundary after an authoritative re-read; unrelated errors propagate.
+      if (isKnownApprovalNotFound(error)) {
+        return denied("REQUEST_NOT_FOUND");
+      }
+      if (isKnownApprovalTransition(error)) {
+        continue;
+      }
+      throw error;
     }
-    logger.info(
-      `[OwnerResolveRequest] ${intent} ${updated.id} by ${subjectUserId}`,
-    );
-    const text = `Rejected request ${updated.id}.`;
-    if (callback) await callback({ text });
-    return {
-      text,
-      success: true,
-      data: {
-        requestId: updated.id,
-        state: updated.state,
-        action: updated.action,
-      },
-    };
-  } catch (error) {
-    if (error instanceof ApprovalNotFoundError) {
-      return denied("REQUEST_NOT_FOUND");
-    }
-    // Lost compare-and-swap race (e.g. the request expired while the owner's
-    // approval was in flight). Must be matched before the parent
-    // ApprovalStateTransitionError and surfaced: nothing was executed.
-    if (error instanceof ApprovalTransitionConflictError) {
-      const text = `Request ${error.requestId} changed state to "${error.from}" while I was resolving it — nothing was executed.`;
-      if (callback) await callback({ text });
-      return {
-        text,
-        success: false,
-        data: {
-          error: "TRANSITION_CONFLICT",
-          requestId: error.requestId,
-          state: error.from,
-        },
-      };
-    }
-    if (error instanceof ApprovalStateTransitionError) {
-      return denied("INVALID_STATE_TRANSITION");
-    }
-    throw error;
   }
+
+  const latest = await queue.byId(extracted.requestId);
+  if (!latest) return denied("REQUEST_NOT_FOUND");
+  const settled = classifySettledDecision(intent, latest);
+  if (settled) return returnSettledDecision(settled, callback);
+  const text = `Request ${latest.id} kept changing state while I was resolving it — nothing was executed.`;
+  await callback?.({ text });
+  return {
+    text,
+    success: false,
+    data: {
+      error: "TRANSITION_CONFLICT",
+      requestId: latest.id,
+      state: latest.state,
+      executed: false,
+    },
+  };
 }
 
 export const resolveRequestAction: Action & {
