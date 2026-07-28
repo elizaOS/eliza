@@ -2584,6 +2584,15 @@ export class ElizaSandboxService {
             // failure here fails the provision (retryable by the wake job)
             // instead of booting empty (#15603 B6).
             if (restoreOverride?.kind === "from-backup") throw error;
+            if (error instanceof SnapshotPayloadTooLargeError) {
+              // Size refusal fails CLOSED even on an ordinary provision: the
+              // chain is intact, only too large — booting empty would silently
+              // drop every byte of it. The one consent path is wake's
+              // forceFreshBoot.
+              throw new Error(
+                `Restore refused: ${error.message}. Booting empty would discard this agent's state; wake with forceFreshBoot to explicitly accept the data loss.`,
+              );
+            }
             if (!isUnrecoverableSnapshotError(error)) throw error;
             await this.degradeUnrecoverableSnapshot(rec.id, backup?.id, error);
             backup = undefined;
@@ -2617,6 +2626,12 @@ export class ElizaSandboxService {
               // restore point that cannot be pushed fails the provision rather
               // than degrading (#15603 B6).
               throw error;
+            } else if (error instanceof SnapshotPayloadTooLargeError) {
+              // Same fail-closed rule as the fetch branch: an oversized state
+              // is refused, never silently traded for an empty boot.
+              throw new Error(
+                `Restore refused: ${error.message}. Booting empty would discard this agent's state; wake with forceFreshBoot to explicitly accept the data loss.`,
+              );
             } else if (isUnrecoverableSnapshotError(error)) {
               await this.degradeUnrecoverableSnapshot(rec.id, backup?.id, error);
             } else {
@@ -6850,6 +6865,7 @@ export class ElizaSandboxService {
 
   async shutdown(agentId: string, orgId: string): Promise<{ success: boolean; error?: string }> {
     let snapshotAgentId: string | null = null;
+    let captureUnsupported = false;
     let preShutdownSnapshot: {
       stateData: AgentBackupStateData;
       sizeBytes: number;
@@ -6858,13 +6874,32 @@ export class ElizaSandboxService {
 
     const snapshotSource = await this.getAgentForWrite(agentId, orgId);
     if (snapshotSource?.status === "running" && snapshotSource.bridge_url) {
-      preShutdownSnapshot = await this.fetchSnapshotState(snapshotSource).catch((error) => {
-        logger.warn("[agent-sandbox] Pre-shutdown backup fetch failed", {
-          agentId,
-          error: error instanceof Error ? error.message : String(error),
-        });
-        return null;
-      });
+      try {
+        preShutdownSnapshot = await this.fetchSnapshotState(snapshotSource);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (message === SNAPSHOT_ENDPOINT_UNSUPPORTED) {
+          // The deployed image cannot snapshot by construction; requiring a
+          // capture it can never produce would make this agent unstoppable.
+          captureUnsupported = true;
+          logger.warn(
+            "[agent-sandbox] Shutdown proceeding without capture: image has no snapshot endpoint",
+            { agentId },
+          );
+        } else {
+          // Fail CLOSED: stopping the container without a current capture
+          // silently discards everything since the last backup. A shutdown
+          // that cannot prove a capture leaves the agent running and says so.
+          logger.error("[agent-sandbox] Shutdown refused: pre-stop capture failed", {
+            agentId,
+            error: message,
+          });
+          return {
+            success: false,
+            error: `Refusing to stop without a current backup: ${message}`,
+          };
+        }
+      }
     }
 
     const result = await dbWrite.transaction(async (tx) => {
@@ -6909,11 +6944,19 @@ export class ElizaSandboxService {
         } as const;
       }
 
-      if (
-        preShutdownSnapshot &&
-        rec.status === "running" &&
-        rec.bridge_url === preShutdownSnapshot.bridgeUrl
-      ) {
+      if (rec.status === "running" && rec.bridge_url && !captureUnsupported) {
+        // The capture must be OF THIS generation. A capture taken against a
+        // different bridge_url (the row moved between the unlocked fetch and
+        // this locked read) is some other container's state; persisting it
+        // would masquerade as current, and stopping without persisting would
+        // silently discard the delta. Both refuse.
+        if (!preShutdownSnapshot || rec.bridge_url !== preShutdownSnapshot.bridgeUrl) {
+          return {
+            success: false,
+            error:
+              "Refusing to stop: the agent's lifecycle generation moved after the pre-stop capture; retry the shutdown.",
+          } as const;
+        }
         await this.persistSnapshotWithinTransaction(
           tx,
           rec.id,
@@ -7158,10 +7201,36 @@ export class ElizaSandboxService {
       }
     }
     if (!backupId) {
-      const existing = await agentSandboxesRepository.getLatestBackup(rec.id);
-      if (existing) {
-        backupId = existing.id;
-      } else {
+      // The fallback destroys newer compute state in favor of whatever this
+      // resolves to, so "a backup row exists" is not enough: it must be PROVEN
+      // restorable (fresh verified stamp, or a live decrypt+chain+hash
+      // verification right now) before the container is stopped. The wake gate
+      // already implements exactly that proof, alternative scan included.
+      const gate = await runWakeRestoreIntegrityGate({
+        sandboxRecordId: rec.id,
+        agentName: rec.agent_name,
+      });
+      if (!gate.ok) {
+        logger.error("[agent-sandbox] Sleep aborted: no restorable backup proven", {
+          agentId,
+          sandboxRecordId: rec.id,
+          failure: gate.failure.kind,
+        });
+        return {
+          success: false,
+          containerRemoved: false,
+          error: `Refusing to deactivate on an unproven backup; agent was left running. ${formatWakeRestoreIntegrityError(gate.failure)}`,
+        };
+      }
+      if (gate.backupId) {
+        backupId = gate.backupId;
+      } else if (gate.verification === "disabled") {
+        // Kill switch: with the gate off, keep the pre-gate behavior of
+        // accepting the latest backup rather than inventing a third mode.
+        const existing = await agentSandboxesRepository.getLatestBackup(rec.id);
+        if (existing) backupId = existing.id;
+      }
+      if (!backupId) {
         logger.error("[agent-sandbox] Sleep aborted: no durable backup available", {
           agentId,
           sandboxRecordId: rec.id,
