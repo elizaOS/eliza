@@ -14,6 +14,7 @@ import {
   AgentSnapshotBudgetExceededError,
   createAgentSnapshot,
   createLocalAgentBackup,
+  fetchAgentScopedRowsBatched,
   listLocalAgentBackups,
   restoreAgentSnapshot,
   restoreLocalAgentBackup,
@@ -424,5 +425,98 @@ describe("source-side snapshot budget (#17172 §1)", () => {
     await fixtureRoot();
     const snapshot = await createAgentSnapshot(runtime(), config);
     expect(snapshot.manifest.components.media.files.length).toBeGreaterThan(0);
+  });
+});
+
+describe("keyset-batched Postgres capture (#17172 §1)", () => {
+  /** A pool double that serves `total` rows with sequential ids, in pages. */
+  function pagingPool(total: number) {
+    const statements: string[] = [];
+    const all = Array.from({ length: total }, (_, i) => ({
+      id: i + 1,
+      payload: "x",
+    }));
+    return {
+      statements,
+      pageSizes: [] as number[],
+      query(text: string, values: unknown[]) {
+        statements.push(text);
+        const limitMatch = text.match(/LIMIT (\d+)/);
+        const limit = limitMatch ? Number(limitMatch[1]) : all.length;
+        // The keyset param is appended after the base params.
+        const after = values.length > 1 ? Number(values[values.length - 1]) : 0;
+        const rows = all.filter((r) => r.id > after).slice(0, limit);
+        this.pageSizes.push(rows.length);
+        return Promise.resolve({ rows });
+      },
+    };
+  }
+
+  test("walks the whole table in ordered batches without duplicates or gaps", async () => {
+    const pool = pagingPool(1200);
+    const rows = await fetchAgentScopedRowsBatched(
+      pool as never,
+      (keyset) => `SELECT * FROM "t" WHERE "agent_id" = $1 ${keyset}`,
+      ["agent-1"],
+      undefined,
+      "t",
+      '"id"',
+    );
+
+    expect(rows).toHaveLength(1200);
+    const ids = rows.map((r) => r.id as number);
+    expect(ids).toEqual([...ids].sort((a, b) => a - b));
+    expect(new Set(ids).size).toBe(1200);
+    // More than one round-trip: the point is that no single statement returned
+    // the whole table.
+    expect(pool.statements.length).toBeGreaterThan(1);
+    expect(Math.max(...pool.pageSizes)).toBeLessThanOrEqual(500);
+  });
+
+  test("every statement is ordered and bounded by a LIMIT", async () => {
+    const pool = pagingPool(700);
+    await fetchAgentScopedRowsBatched(
+      pool as never,
+      (keyset) => `SELECT * FROM "t" WHERE "agent_id" = $1 ${keyset}`,
+      ["agent-1"],
+      undefined,
+      "t",
+      '"id"',
+    );
+    for (const sql of pool.statements) {
+      expect(sql).toMatch(/ORDER BY "id"/);
+      expect(sql).toMatch(/LIMIT \d+/);
+    }
+    // Pages after the first must resume from the last id, not re-scan.
+    expect(pool.statements.slice(1).every((s) => /"id" > \$2/.test(s))).toBe(
+      true,
+    );
+  });
+
+  test("an over-budget table is refused mid-walk, before the rest is read", async () => {
+    const pool = pagingPool(5000);
+    // A budget far smaller than the full table but bigger than one batch.
+    const budget = new (class {
+      private used = 0;
+      check() {}
+      chargeRaw(bytes: number) {
+        this.used += bytes;
+        if (this.used > 20_000) throw new Error("over budget");
+      }
+    })();
+
+    await expect(
+      fetchAgentScopedRowsBatched(
+        pool as never,
+        (keyset) => `SELECT * FROM "t" WHERE "agent_id" = $1 ${keyset}`,
+        ["agent-1"],
+        budget as never,
+        "t",
+        '"id"',
+      ),
+    ).rejects.toThrow("over budget");
+
+    // Stopped early: it never issued the statements needed to read 5000 rows.
+    expect(pool.statements.length).toBeLessThan(10);
   });
 });
