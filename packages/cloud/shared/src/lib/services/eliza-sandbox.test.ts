@@ -27,7 +27,11 @@ import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes"
 import type { DockerNode } from "../../db/repositories/docker-nodes";
 import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
 import { sharedRuntimeHistoryRepository } from "../../db/repositories/shared-runtime-history";
-import type { StoredAgentSandboxBackup } from "../../db/schemas/agent-sandboxes";
+import type {
+  AgentBackupStateData,
+  NewAgentSandboxBackup,
+  StoredAgentSandboxBackup,
+} from "../../db/schemas/agent-sandboxes";
 import { runWithCloudBindings } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
 import { apiKeysService } from "./api-keys";
@@ -754,6 +758,64 @@ describe("ElizaSandboxService state restore auth", () => {
       config: { restored: true },
       workspaceFiles: {},
     });
+  });
+
+  test("refuses an oversized legacy-v1 restore before making an outbound request", async () => {
+    const { ElizaSandboxService, SnapshotPayloadTooLargeError } = await import(
+      "./eliza-sandbox.ts?actual"
+    );
+    const { AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES } = await import("@elizaos/shared");
+    let fetchCalls = 0;
+    globalThis.fetch = mock(async () => {
+      fetchCalls += 1;
+      return Response.json({ ok: true });
+    });
+
+    const emptyState = {
+      memories: [],
+      config: { blob: "" },
+      workspaceFiles: {},
+    };
+    const fixedBytes = Buffer.byteLength(JSON.stringify(emptyState), "utf8");
+    // A multibyte value proves the gate measures serialized bytes rather than
+    // JavaScript characters while keeping the adversarial allocation smaller.
+    const blob = "€".repeat(Math.floor((AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES - fixedBytes) / 3) + 1);
+    const expectedPayloadBytes = fixedBytes + Buffer.byteLength(blob, "utf8");
+
+    const push = (
+      new ElizaSandboxService() as unknown as {
+        pushState: (
+          bridgeUrl: string,
+          state: {
+            memories: unknown[];
+            config: Record<string, unknown>;
+            workspaceFiles: object;
+          },
+          options: {
+            trusted: true;
+            authRec: Pick<AgentSandbox, "id" | "environment_vars">;
+          },
+        ) => Promise<void>;
+      }
+    ).pushState(
+      "https://runtime.example",
+      { ...emptyState, config: { blob } },
+      { trusted: true, authRec: customSandbox() },
+    );
+
+    await expect(push).rejects.toMatchObject({
+      name: "SnapshotPayloadTooLargeError",
+      code: "SNAPSHOT_PAYLOAD_TOO_LARGE",
+      payloadBytes: expectedPayloadBytes,
+      limitBytes: AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES,
+      context: {
+        payloadBytes: expectedPayloadBytes,
+        limitBytes: AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES,
+      },
+      severity: "fatal",
+    });
+    await expect(push).rejects.toBeInstanceOf(SnapshotPayloadTooLargeError);
+    expect(fetchCalls).toBe(0);
   });
 
   test("keeps legacy bridge URL restores unauthenticated when no sandbox record is supplied", async () => {
@@ -1684,6 +1746,109 @@ describe("ElizaSandboxService provision — node attribution guard (C1b)", () =>
       expect((runningUpdate[1] as { node_id?: string }).node_id).toBe("node-1");
     },
   );
+});
+
+describe("ElizaSandboxService snapshot — incremental chain wire budget", () => {
+  const sandboxRecordId = "e06bb509-6c52-4c33-a9f7-66addc43e8c8";
+  const baseState: AgentBackupStateData = {
+    memories: [],
+    config: { stable: "x".repeat(8 * 1024) },
+    workspaceFiles: {},
+  };
+  const nextState: AgentBackupStateData = {
+    memories: [],
+    config: { stable: "x".repeat(8 * 1024), changed: true },
+    workspaceFiles: {},
+  };
+
+  function backupRow(sizeBytes: number | null): AgentSandboxBackup {
+    const createdAt = new Date("2026-07-28T00:00:00.000Z");
+    return {
+      id: "11111111-1111-4111-8111-111111111111",
+      sandbox_record_id: sandboxRecordId,
+      snapshot_type: "auto",
+      state_data: baseState,
+      snapshot_schema_version: 1,
+      state_data_storage: "inline",
+      state_data_key: null,
+      state_data_descriptor: null,
+      storage_commit_state: "complete",
+      storage_commit_error: null,
+      storage_commit_updated_at: createdAt,
+      size_bytes: sizeBytes,
+      backup_kind: "full",
+      parent_backup_id: null,
+      content_hash: null,
+      created_at: createdAt,
+      verification_status: null,
+      verified_at: null,
+      verification_error: null,
+    };
+  }
+
+  async function buildInput(latest: AgentSandboxBackup): Promise<NewAgentSandboxBackup> {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const latestSpy = spyOn(agentSandboxesRepository, "getLatestBackup").mockResolvedValue(latest);
+    const reconstructSpy = spyOn(
+      agentSandboxesRepository,
+      "getReconstructedBackupState",
+    ).mockResolvedValue(baseState);
+    const listSpy = spyOn(agentSandboxesRepository, "listBackups").mockResolvedValue([latest]);
+
+    try {
+      return await (
+        new ElizaSandboxService() as unknown as {
+          buildBackupInput(
+            sandboxId: string,
+            type: "auto",
+            stateData: AgentBackupStateData,
+            sizeBytes: number,
+          ): Promise<NewAgentSandboxBackup>;
+        }
+      ).buildBackupInput(
+        sandboxRecordId,
+        "auto",
+        nextState,
+        Buffer.byteLength(JSON.stringify(nextState), "utf8"),
+      );
+    } finally {
+      latestSpy.mockRestore();
+      reconstructSpy.mockRestore();
+      listSpy.mockRestore();
+    }
+  }
+
+  test("retains an incremental only while projected chain inputs fit", async () => {
+    const result = await buildInput(backupRow(1024));
+
+    expect(result).toMatchObject({
+      backup_kind: "incremental",
+      parent_backup_id: "11111111-1111-4111-8111-111111111111",
+    });
+    expect(result.size_bytes).toBeGreaterThan(0);
+  });
+
+  test("forces a full backup when the next delta would exceed 128 MiB", async () => {
+    const { AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES } = await import("@elizaos/shared");
+    const result = await buildInput(backupRow(AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES));
+
+    expect(result).toMatchObject({
+      backup_kind: "full",
+      state_data: nextState,
+      size_bytes: Buffer.byteLength(JSON.stringify(nextState), "utf8"),
+    });
+    expect(result.parent_backup_id).toBeUndefined();
+  });
+
+  test("forces a full backup when an ancestor size is unrecorded", async () => {
+    const result = await buildInput(backupRow(null));
+
+    expect(result).toMatchObject({
+      backup_kind: "full",
+      state_data: nextState,
+    });
+    expect(result.parent_backup_id).toBeUndefined();
+  });
 });
 
 describe("ElizaSandboxService snapshot — endpoint capability", () => {
@@ -5629,6 +5794,28 @@ describe("isUnrecoverableSnapshotError (permanent-vs-transient classification)",
     const err = await realAeadDecryptError();
     expect(err.name).toBe("AeadError");
     expect(isUnrecoverableSnapshotError(err)).toBe(true);
+  });
+
+  test("classifies an oversized restore push as non-retryable without permitting chain pruning", async () => {
+    const {
+      isPermanentlyLostSnapshot,
+      isUnrecoverableSnapshotError,
+      SnapshotPayloadTooLargeError,
+    } = await import("./eliza-sandbox.ts?actual");
+    const error = new SnapshotPayloadTooLargeError(129, 128);
+
+    expect(isUnrecoverableSnapshotError(error)).toBe(true);
+    expect(isPermanentlyLostSnapshot(error)).toBe(false);
+    expect(error).toMatchObject({
+      code: "SNAPSHOT_PAYLOAD_TOO_LARGE",
+      payloadBytes: 129,
+      limitBytes: 128,
+      context: {
+        payloadBytes: 129,
+        limitBytes: 128,
+      },
+      severity: "fatal",
+    });
   });
 
   test("classifies permanent snapshot HTTP rejections (401/403/404/410) as unrecoverable", async () => {

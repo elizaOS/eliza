@@ -7,6 +7,7 @@ import crypto from "node:crypto";
 import { isIP } from "node:net";
 import { ElizaError } from "@elizaos/core";
 import {
+  AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES,
   AgentSnapshotV1WireLimitError,
   assertAgentSnapshotV1WireByteLength,
   resolveAgentSnapshotV1MaxWireBytes,
@@ -72,6 +73,7 @@ import {
   estimateDeltaBytes,
   incrementalChainDepth,
   planIncrementalBackup,
+  resolveBackupChainBytes,
 } from "./agent-backup-diff";
 import { decryptAgentEnvVars, encryptAgentEnvVarsForStorage } from "./agent-env-crypto";
 import {
@@ -960,6 +962,31 @@ const UNRECOVERABLE_SNAPSHOT_HTTP_STATUSES = new Set([401, 403, 404, 410]);
 // so they must degrade-but-PRESERVE the chain: never prune a snapshot a
 // token-corrected resume could still restore (#15274).
 const PERMANENTLY_LOST_SNAPSHOT_HTTP_STATUSES = new Set([404, 410]);
+
+/**
+ * A reconstructed legacy-v1 restore payload is larger than the receiving
+ * `/api/restore` boundary accepts, so sending it would fail deterministically.
+ * The stored chain remains intact and decryptable.
+ */
+export class SnapshotPayloadTooLargeError extends ElizaError {
+  override readonly name = "SnapshotPayloadTooLargeError";
+
+  constructor(
+    readonly payloadBytes: number,
+    readonly limitBytes: number,
+  ) {
+    super(
+      `State restore refused: reconstructed payload of ${payloadBytes} bytes ` +
+        `exceeds the v1 restorable limit of ${limitBytes} bytes`,
+      {
+        code: "SNAPSHOT_PAYLOAD_TOO_LARGE",
+        context: { payloadBytes, limitBytes },
+        severity: "fatal",
+      },
+    );
+  }
+}
+
 // Anchored on the exact `fetchSnapshotState` / `pushState` throw shapes so only
 // this file's snapshot HTTP throw sites classify — an unrelated error that
 // merely embeds one of these strings does not.
@@ -1005,6 +1032,10 @@ const SNAPSHOT_HTTP_ERROR_SHAPE =
 export function isUnrecoverableSnapshotError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   if (error.name === "AeadError" || error.name === "KeyNotFoundError") return true;
+  // Retrying cannot change a deterministic payload-size breach. It is
+  // intentionally absent from `isPermanentlyLostSnapshot`, because the
+  // underlying chain remains valid and must be preserved.
+  if (error.name === "SnapshotPayloadTooLargeError") return true;
   const match = SNAPSHOT_HTTP_ERROR_SHAPE.exec(error.message);
   return match !== null && UNRECOVERABLE_SNAPSHOT_HTTP_STATUSES.has(Number(match[1]));
 }
@@ -6091,20 +6122,37 @@ export class ElizaSandboxService {
             backupKind: b.backup_kind,
             parentBackupId: b.parent_backup_id,
             createdAtMs: b.created_at.getTime(),
+            sizeBytes: b.size_bytes ?? null,
           }));
           const chainDepth = incrementalChainDepth(nodes, latest.id);
           const plan = planIncrementalBackup({ base: baseState, next: stateData, chainDepth });
           if (plan.kind === "incremental") {
-            return {
-              sandbox_record_id: sandboxRecordId,
-              snapshot_type: type,
-              // The state_data jsonb holds a BackupDelta for incremental rows.
-              state_data: plan.delta,
-              size_bytes: estimateDeltaBytes(plan.delta),
-              backup_kind: "incremental",
-              parent_backup_id: latest.id,
-              content_hash: contentHash,
-            };
+            const deltaBytes = estimateDeltaBytes(plan.delta);
+            const existingChainBytes = resolveBackupChainBytes(nodes, latest.id);
+            if (
+              existingChainBytes !== null &&
+              existingChainBytes + deltaBytes <= AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES
+            ) {
+              return {
+                sandbox_record_id: sandboxRecordId,
+                snapshot_type: type,
+                // The state_data jsonb holds a BackupDelta for incremental rows.
+                state_data: plan.delta,
+                size_bytes: deltaBytes,
+                backup_kind: "incremental",
+                parent_backup_id: latest.id,
+                content_hash: contentHash,
+              };
+            }
+            logger.info(
+              "[agent-sandbox] Storing a full backup: incremental chain exceeds the restorable wire budget",
+              {
+                sandboxRecordId,
+                existingChainBytes,
+                deltaBytes,
+                limitBytes: AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES,
+              },
+            );
           }
         }
       } catch (error) {
@@ -12087,9 +12135,14 @@ export class ElizaSandboxService {
       authRec?: Pick<AgentSandbox, "id" | "environment_vars">;
     },
   ) {
+    const body = JSON.stringify(state);
+    const payloadBytes = Buffer.byteLength(body, "utf8");
+    if (payloadBytes > AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES) {
+      throw new SnapshotPayloadTooLargeError(payloadBytes, AGENT_SNAPSHOT_V1_MAX_WIRE_BYTES);
+    }
     const requestInit: RequestInit = {
       method: "POST",
-      body: JSON.stringify(state),
+      body,
       signal: AbortSignal.timeout(SNAPSHOT_RESTORE_TIMEOUT_MS),
     };
     const res =
