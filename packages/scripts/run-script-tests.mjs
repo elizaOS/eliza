@@ -120,9 +120,15 @@ function parseJunitDocument(xml) {
   });
   parser.on("opentag", (tag) => {
     if (
-      !["testsuites", "testsuite", "testcase", "failure", "skipped"].includes(
-        tag.name,
-      )
+      ![
+        "testsuites",
+        "testsuite",
+        "properties",
+        "property",
+        "testcase",
+        "failure",
+        "skipped",
+      ].includes(tag.name)
     ) {
       throw new Error(
         `JUnit artifact contains unsupported <${tag.name}> element`,
@@ -133,6 +139,8 @@ function parseJunitDocument(xml) {
       (tag.name === "testsuites" && parent === undefined) ||
       (tag.name === "testsuite" &&
         (parent?.name === "testsuites" || parent?.name === "testsuite")) ||
+      (tag.name === "properties" && parent?.name === "testsuite") ||
+      (tag.name === "property" && parent?.name === "properties") ||
       (tag.name === "testcase" && parent?.name === "testsuite") ||
       ((tag.name === "failure" || tag.name === "skipped") &&
         parent?.name === "testcase");
@@ -145,6 +153,48 @@ function parseJunitDocument(xml) {
       throw new Error(
         "JUnit artifact must contain one complete testsuites root",
       );
+    }
+    if (tag.name === "properties") {
+      if (Object.keys(tag.attributes).length > 0) {
+        throw new Error("JUnit properties container may not have attributes");
+      }
+      if (parent.children.some(({ name }) => name === "properties")) {
+        throw new Error(
+          "JUnit testsuite may contain only one properties container",
+        );
+      }
+    }
+    if (tag.name === "property") {
+      const attributeNames = Object.keys(tag.attributes).sort();
+      if (
+        attributeNames.length !== 2 ||
+        attributeNames[0] !== "name" ||
+        attributeNames[1] !== "value"
+      ) {
+        throw new Error(
+          "JUnit property must contain only name and value attributes",
+        );
+      }
+      const name = tag.attributes.name;
+      const value = tag.attributes.value;
+      if (
+        typeof name !== "string" ||
+        name.trim().length === 0 ||
+        typeof value !== "string" ||
+        value.trim().length === 0
+      ) {
+        throw new Error(
+          "JUnit property must have nonempty name and value attributes",
+        );
+      }
+      if (
+        parent.children.some(
+          (child) =>
+            child.name === "property" && child.attributes.name === name,
+        )
+      ) {
+        throw new Error(`JUnit properties contains duplicate name ${name}`);
+      }
     }
     const node = {
       name: tag.name,
@@ -219,6 +269,7 @@ function reconcileSuite(suite, inheritedFile, identities) {
 
   const actual = { tests: 0, assertions: 0, failures: 0, skipped: 0 };
   for (const child of suite.children) {
+    if (child.name === "properties") continue;
     const counts =
       child.name === "testcase"
         ? reconcileTestcase(child, file)
@@ -340,6 +391,7 @@ export function runScriptTests(options = {}) {
   const reportPath = options.reportPath;
   const junitPath = options.junitPath;
   const writeReport = options.writeReport ?? atomicWriteJson;
+  const readJunit = options.readJunit ?? ((file) => readFileSync(file, "utf8"));
   const resolvedReport = reportPath
     ? resolveReportArtifactPath(REPO_ROOT, reportPath, {
         extension: ".json",
@@ -377,6 +429,8 @@ export function runScriptTests(options = {}) {
       normalizedReportPath,
       reportRecord(inventory, {
         status: "running",
+        childExitCode: null,
+        evidenceExitCode: null,
         command: ["bun", ...bunArgs],
         junit:
           normalizedJunitPath === undefined
@@ -399,6 +453,8 @@ export function runScriptTests(options = {}) {
         reportRecord(inventory, {
           status: "failed",
           exitCode: 1,
+          childExitCode: null,
+          evidenceExitCode: null,
           signal: null,
           spawnError: result.error.message,
           command: ["bun", ...bunArgs],
@@ -413,19 +469,20 @@ export function runScriptTests(options = {}) {
       cause: result.error,
     });
   }
-  let status =
+  const childExitCode =
     typeof result.status === "number" && result.signal === null
       ? result.status
       : 1;
+  let evidenceExitCode = absoluteJunitPath ? 0 : null;
   let junit = null;
   if (absoluteJunitPath && normalizedJunitPath) {
     try {
       junit = validateJunitEvidence(
-        readFileSync(absoluteJunitPath, "utf8"),
+        readJunit(absoluteJunitPath),
         inventory.files.map(({ file }) => file),
         normalizedJunitPath,
       );
-      if (junit.failures > 0) status = status || 1;
+      if (junit.failures > 0) evidenceExitCode = 1;
     } catch (error) {
       // error-policy:J3 malformed, unreadable, or policy-violating JUnit
       // evidence becomes an explicit "invalid" record and a failing exit code
@@ -435,22 +492,25 @@ export function runScriptTests(options = {}) {
         path: normalizedJunitPath,
         error: error instanceof Error ? error.message : String(error),
       };
-      status = status || 1;
+      evidenceExitCode = 1;
     }
   }
+  const exitCode = childExitCode || evidenceExitCode || 0;
   if (normalizedReportPath) {
     writeReport(
       normalizedReportPath,
       reportRecord(inventory, {
-        status: status === 0 ? "passed" : "failed",
-        exitCode: status,
+        status: exitCode === 0 ? "passed" : "failed",
+        exitCode,
+        childExitCode,
+        evidenceExitCode,
         signal: result.signal ?? null,
         command: ["bun", ...bunArgs],
         junit,
       }),
     );
   }
-  return status;
+  return exitCode;
 }
 
 function printUsage() {

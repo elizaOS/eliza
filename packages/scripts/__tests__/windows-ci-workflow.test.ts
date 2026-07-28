@@ -8,6 +8,27 @@ const workflowText = readFileSync(
   new URL("../../../.github/workflows/windows-ci.yml", import.meta.url),
   "utf8",
 );
+const provisioningCompositeText = readFileSync(
+  new URL(
+    "../../cloud/shared/src/lib/services/provisioning-jobs-16639-lane.test.ts",
+    import.meta.url,
+  ),
+  "utf8",
+);
+const scheduledBackupText = readFileSync(
+  new URL(
+    "../../cloud/shared/src/lib/services/provisioning-jobs-scheduled-backup-sentinel.test.ts",
+    import.meta.url,
+  ),
+  "utf8",
+);
+const provisioningDdlText = readFileSync(
+  new URL(
+    "../../cloud/shared/src/lib/services/__tests__/tier-upgrade-pglite-schema.ts",
+    import.meta.url,
+  ),
+  "utf8",
+);
 
 const EXPECTED_LANES = [
   "core-runtime",
@@ -18,7 +39,9 @@ const EXPECTED_LANES = [
 ];
 
 const EXPECTED_COMMANDS = [
-  "node packages/scripts/run-turbo.mjs run typecheck --filter=@elizaos/core --filter=@elizaos/shared --filter=@elizaos/cloud-shared --concurrency=4",
+  "bun run --cwd packages/core typecheck",
+  "bun run --cwd packages/shared typecheck",
+  "bun run --cwd packages/cloud/shared typecheck",
   "bun run --cwd packages/core test",
   "bun run --cwd packages/shared test",
   "bun run --cwd packages/app-core test",
@@ -35,7 +58,8 @@ const EXPECTED_COMMANDS = [
   "bun run --cwd plugins/plugin-app-control test",
   "bun run --cwd plugins/plugin-task-coordinator test",
   "bun run --cwd plugins/plugin-browser test",
-  "node packages/scripts/run-turbo.mjs run build --filter=@elizaos/core --filter=@elizaos/shared --filter=@elizaos/agent --concurrency=4",
+  "bun run --cwd plugins/plugin-coding-tools build",
+  "node packages/scripts/run-turbo.mjs run build --filter=@elizaos/core --filter=@elizaos/shared --filter=@elizaos/agent --concurrency=1",
   "node packages/scripts/run-bash-linux-only.mjs scripts/verify-riscv64-buildpaths.sh",
   "node packages/scripts/run-python.mjs --version",
   "node packages/scripts/test-cloud-run.mjs",
@@ -65,11 +89,48 @@ describe("Windows CI workflow", () => {
     expect(new Set(commands).size).toBe(commands.length);
   });
 
+  test("keeps typecheck failures attributable and Windows builds serial", () => {
+    expect(workflowText).not.toContain(
+      "run typecheck --filter=@elizaos/core --filter=@elizaos/shared --filter=@elizaos/cloud-shared",
+    );
+    expect(workflowText).not.toContain(
+      "run build --filter=@elizaos/core --filter=@elizaos/shared --filter=@elizaos/agent --concurrency=4",
+    );
+    for (const command of [
+      "bun run --cwd packages/core typecheck",
+      "bun run --cwd packages/shared typecheck",
+      "bun run --cwd packages/cloud/shared typecheck",
+      "bun run --cwd plugins/plugin-coding-tools build",
+      "node packages/scripts/run-turbo.mjs run build --filter=@elizaos/core --filter=@elizaos/shared --filter=@elizaos/agent --concurrency=1",
+    ]) {
+      expect(workflowText).toContain(command);
+    }
+  });
+
   test("delegates the Windows PGlite quarantine to the package runner", () => {
     expect(workflowText).not.toContain("--path-ignore-patterns");
     expect(workflowText).not.toContain("Retry-isolated tenant-db PGlite suite");
     expect(workflowText).not.toContain(
       "bun run --cwd packages/cloud/shared test $suite",
     );
+  });
+
+  test("keeps the 16639 composite on plain PGlite DDL", () => {
+    expect(provisioningCompositeText).toContain(
+      'import "./provisioning-jobs-scheduled-backup-sentinel.test.ts"',
+    );
+    expect(scheduledBackupText).toContain(
+      'import { PROVISIONING_JOB_TEST_TABLES } from "./__tests__/tier-upgrade-pglite-schema"',
+    );
+    expect(scheduledBackupText).not.toContain("drizzle-kit/api");
+    expect(scheduledBackupText).not.toContain("pushSchema");
+    expect(provisioningDdlText).toContain(
+      "export const PROVISIONING_JOB_TEST_TABLES",
+    );
+    expect(provisioningDdlText).toContain(
+      '"lifecycle_execution_generation" uuid',
+    );
+    expect(provisioningDdlText).toContain('"execution_generation" uuid');
+    expect(provisioningDdlText).toContain('"execution_quiesced_at" timestamp');
   });
 });
