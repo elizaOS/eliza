@@ -71,15 +71,6 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c
 
-      - name: Detect KVM acceleration
-        id: kvm
-        run: |
-          if [ -e /dev/kvm ]; then
-            echo "have_kvm=true" >> "$GITHUB_OUTPUT"
-          else
-              echo "have_kvm=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Install just + ripgrep
         # ripgrep (rg) is a hard dependency of packages/os/linux/scripts/static-smoke.sh
         # (the static cross-architecture contract step). It is not guaranteed on
@@ -162,50 +153,15 @@ jobs:
             echo "size=$SIZE"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Smoke test ISO (headless QEMU, amd64 only)
-        if: steps.kvm.outputs.have_kvm == 'true'
+      - name: Smoke test ISO (headless QEMU)
+        timeout-minutes: 10
+        env:
+          ELIZAOS_ISO_SMOKE_TIMEOUT_SECONDS: 420
         run: |
           set -euo pipefail
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends qemu-system-x86 ovmf
-          SERIAL_LOG=$(mktemp)
-          timeout 180 qemu-system-x86_64 \
-            -enable-kvm -cdrom "${{ steps.iso.outputs.path }}" -boot d \
-            -m 2G -smp 2 -display none -vga none \
-            -serial "file:$SERIAL_LOG" -no-reboot -nographic 2>/dev/null || true
-          # Tiered match: a strong signal proves elizaOS-specific services
-          # came up; a generic match proves the kernel/userspace booted but
-          # the agent stack did not (surfaced as a warning so the build
-          # doesn't regress while the issue is investigated).
-          #
-          # Strong regex covers two formats:
-          #   1. Description-based "(Starting|Started) elizaOS <word>..."
-          #      — what modern systemd (v245+, Debian trixie ships v257)
-          #      prints because every elizaos-*.service has
-          #      Description=elizaOS <...>.
-          #   2. Unit-name "elizaos-<name>.service" — appears in service
-          #      exit / failure lines and on older systemd.
-          #
-          # Note: elizaos-launcher and elizaos-chat-overlay are user-scope
-          # services (WantedBy=graphical-session.target) and will not start
-          # in this headless QEMU run (-display none). The system-scope
-          # services (agent, first-boot) are the
-          # meaningful signals in this headless smoke test.
-          if grep -qE '(Starting|Started) elizaOS [A-Za-z]|elizaos-(agent|launcher|first-boot|chat-overlay)\.service' "$SERIAL_LOG" 2>/dev/null; then
-            echo "ISO smoke test: elizaOS service markers detected"
-          elif grep -qi 'elizaOS\|eliza\|login:' "$SERIAL_LOG" 2>/dev/null; then
-            echo "::warning::Boot reached generic strings but no elizaos-*.service marker detected — verify the agent stack started."
-            echo "ISO smoke test: weak match (boot OK, elizaOS service markers missing)"
-          else
-            echo "ERROR: boot strings not detected"
-            tail -200 "$SERIAL_LOG" || true
-            exit 1
-          fi
-          rm -f "$SERIAL_LOG"
-
-      - name: Smoke test skipped (no KVM)
-        if: steps.kvm.outputs.have_kvm != 'true'
-        run: echo "::notice::Boot smoke test requires KVM; skipped for amd64."
+          sudo apt-get install -y --no-install-recommends qemu-system-x86 xorriso
+          bash "${LINUX_DIR}/scripts/smoke-test-iso.sh" "${{ steps.iso.outputs.path }}"
 
       - name: Attest SLSA build provenance for ISO
         # Mints a Sigstore-signed in-toto/SLSA provenance attestation
