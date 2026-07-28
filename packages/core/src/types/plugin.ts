@@ -42,6 +42,8 @@ export interface ServiceClass {
 	serviceType: string;
 	/** True when multiple implementations may intentionally share this service type. */
 	allowsMultiple?: boolean;
+	/** A failed implementation prevents process readiness instead of reporting degraded health. */
+	bootCritical?: boolean;
 	/** Factory method to create and start the service */
 	start(runtime: IAgentRuntime): Promise<Service>;
 	/** Stop service for a runtime - optional as not all services implement this */

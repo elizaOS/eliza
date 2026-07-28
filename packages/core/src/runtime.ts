@@ -241,7 +241,10 @@ import {
 	type SendHandlerFunction,
 	type Service,
 	type ServiceClass,
+	type ServiceImplementationHealth,
+	type ServiceRegistrationStatus,
 	ServiceType,
+	type ServiceTypeHealth,
 	type ServiceTypeName,
 	type SetConnectorAccountCredentialRefParams,
 	type State,
@@ -651,6 +654,10 @@ type ServicePromiseHandler = {
 	resolve: ServiceResolver;
 	reject: ServiceRejecter;
 };
+
+type ServiceStartOutcome =
+	| { service: Service; error?: never }
+	| { service: null; error?: ElizaError };
 
 function isTextStreamResult(
 	value: JsonValue | object,
@@ -1122,8 +1129,17 @@ export class AgentRuntime implements IAgentRuntime {
 	private startingServices = new Map<string, Promise<Service | null>>();
 	private serviceRegistrationStatus = new Map<
 		ServiceTypeName,
-		"pending" | "registering" | "registered" | "failed"
+		ServiceRegistrationStatus
 	>(); // status tracking
+	/** Per-class state prevents one healthy implementation from hiding a sibling failure. */
+	private serviceImplementationHealth = new Map<
+		ServiceClass,
+		ServiceImplementationHealth
+	>();
+	private serviceInstancesByClass = new Map<ServiceClass, Service>();
+	/** Service startup happens after plugin registration, so ownership must survive that boundary. */
+	private servicePluginNames = new WeakMap<ServiceClass, string>();
+	private reportedServiceStartFailures = new WeakSet<ElizaError>();
 	public initPromise: Promise<void>;
 	private initResolver:
 		| ((value?: void | PromiseLike<void>) => void)
@@ -2225,6 +2241,18 @@ export class AgentRuntime implements IAgentRuntime {
 					this._createServiceResolver(serviceType);
 				}
 				this.serviceRegistrationStatus.set(serviceType, "pending");
+				this.servicePluginNames.set(
+					service,
+					pluginToRegister.packageName ?? pluginToRegister.name,
+				);
+				this.serviceImplementationHealth.set(service, {
+					serviceType,
+					serviceClass:
+						(service as { name?: string }).name || "AnonymousService",
+					plugin: pluginToRegister.packageName ?? pluginToRegister.name,
+					critical: service.bootCritical === true,
+					status: "pending",
+				});
 				if (!this.serviceTypes.has(serviceType)) {
 					this.serviceTypes.set(serviceType, []);
 				}
@@ -2244,17 +2272,19 @@ export class AgentRuntime implements IAgentRuntime {
 				// Fire-and-forget: cannot await here because _runServiceStart
 				// awaits initPromise which resolves after initialize() completes
 				// (after all registerPlugin calls finish). Awaiting would deadlock.
+				// error-policy:J1 the detached startup boundary reports dispatcher
+				// failures not already reported by the service boundary.
 				this._ensureServiceStarted(serviceType).catch((err) => {
-					this.logger.error(
-						{
-							src: "agent",
-							agentId: this.agentId,
-							plugin: pluginToRegister.name,
-							serviceType,
-							error: err instanceof Error ? err.message : String(err),
-						},
-						"Service start failed",
-					);
+					if (
+						err instanceof ElizaError &&
+						this.reportedServiceStartFailures.has(err)
+					) {
+						return;
+					}
+					this.reportError("AgentRuntime.serviceStartDispatch", err, {
+						plugin: pluginToRegister.name,
+						serviceType,
+					});
 				});
 			}
 		}
@@ -2435,6 +2465,7 @@ export class AgentRuntime implements IAgentRuntime {
 		this.servicePromises.clear();
 		this.servicePromiseHandlers.clear();
 		this.startingServices.clear();
+		this.serviceInstancesByClass.clear();
 	}
 
 	private async _stopServiceInstance(
@@ -4793,10 +4824,15 @@ export class AgentRuntime implements IAgentRuntime {
 		if (!this.isNativeFeatureServiceEnabled(serviceType)) return null;
 		const key = this.resolveServiceTypeAlias(serviceType) as ServiceTypeName;
 		const instances = this.services.get(key);
-		if (instances && instances.length > 0) {
+		const classes = this.serviceTypes.get(key);
+		const hasPendingImplementation = classes?.some(
+			(serviceClass) =>
+				this.serviceImplementationHealth.get(serviceClass)?.status ===
+				"pending",
+		);
+		if (instances && instances.length > 0 && !hasPendingImplementation) {
 			return instances[0];
 		}
-		const classes = this.serviceTypes.get(key);
 		if (!classes || classes.length === 0) {
 			return null;
 		}
@@ -4805,10 +4841,30 @@ export class AgentRuntime implements IAgentRuntime {
 			// Start ALL registered service classes for this type, not just the first.
 			// This supports multiple services of the same type (e.g. multiple wallet services).
 			inFlight = (async () => {
-				let first: Service | null = null;
-				for (const cls of classes) {
-					const result = await this._runServiceStart(key, serviceType, cls);
-					if (result && !first) first = result;
+				let first: Service | null = this.services.get(key)?.[0] ?? null;
+				let lastError: ElizaError | undefined;
+				for (;;) {
+					const pendingClasses = classes.filter(
+						(serviceClass) =>
+							this.serviceImplementationHealth.get(serviceClass)?.status ===
+							"pending",
+					);
+					if (pendingClasses.length === 0) break;
+					for (const cls of pendingClasses) {
+						const outcome = await this._runServiceStart(key, serviceType, cls);
+						if (outcome.service && !first) first = outcome.service;
+						if (outcome.error) lastError = outcome.error;
+					}
+				}
+				this.refreshServiceRegistrationStatus(key);
+				if (!first && lastError) {
+					const handler = this.servicePromiseHandlers.get(serviceType);
+					if (handler) {
+						handler.reject(lastError);
+						this.servicePromiseHandlers.delete(serviceType);
+						this.servicePromises.delete(serviceType);
+					}
+					throw lastError;
 				}
 				return first;
 			})();
@@ -4821,31 +4877,135 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 	}
 
+	private updateServiceImplementationHealth(
+		serviceDef: ServiceClass,
+		key: ServiceTypeName,
+		status: ServiceRegistrationStatus,
+		error?: ElizaError,
+	): void {
+		const current = this.serviceImplementationHealth.get(serviceDef);
+		this.serviceImplementationHealth.set(serviceDef, {
+			serviceType: String(key),
+			serviceClass:
+				current?.serviceClass ??
+				(serviceDef as { name?: string }).name ??
+				"AnonymousService",
+			plugin: current?.plugin ?? this.servicePluginNames.get(serviceDef),
+			critical: current?.critical ?? serviceDef.bootCritical === true,
+			status,
+			...(error
+				? {
+						error: {
+							code: error.code,
+							message: error.message,
+						},
+					}
+				: {}),
+		});
+	}
+
+	private refreshServiceRegistrationStatus(key: ServiceTypeName): void {
+		const classes = this.serviceTypes.get(key) ?? [];
+		const statuses = classes
+			.map(
+				(serviceClass) =>
+					this.serviceImplementationHealth.get(serviceClass)?.status,
+			)
+			.filter((status): status is ServiceRegistrationStatus => Boolean(status));
+		if (statuses.includes("registering")) {
+			this.serviceRegistrationStatus.set(key, "registering");
+		} else if (statuses.includes("pending")) {
+			this.serviceRegistrationStatus.set(key, "pending");
+		} else if (statuses.includes("registered")) {
+			this.serviceRegistrationStatus.set(key, "registered");
+		} else if (statuses.includes("failed")) {
+			this.serviceRegistrationStatus.set(key, "failed");
+		} else {
+			this.serviceRegistrationStatus.delete(key);
+		}
+	}
+
+	private recordServiceStartFailure(
+		key: ServiceTypeName,
+		requestedServiceType: string,
+		serviceDef: ServiceClass,
+		error: unknown,
+	): ElizaError {
+		const serviceClass =
+			(serviceDef as { name?: string }).name || "AnonymousService";
+		const plugin = this.servicePluginNames.get(serviceDef);
+		const context = {
+			agentId: this.agentId,
+			serviceType: String(key),
+			requestedServiceType,
+			serviceClass,
+			...(plugin ? { plugin } : {}),
+		};
+		const structured =
+			error instanceof ElizaError
+				? error
+				: new ElizaError(
+						error instanceof Error
+							? error.message
+							: `Service ${String(key)} failed to start`,
+						{
+							code: "SERVICE_START_FAILED",
+							cause: error,
+							context,
+						},
+					);
+		this.updateServiceImplementationHealth(
+			serviceDef,
+			key,
+			"failed",
+			structured,
+		);
+		this.refreshServiceRegistrationStatus(key);
+		this.reportedServiceStartFailures.add(structured);
+		this.reportError("AgentRuntime.serviceStart", structured, context);
+		return structured;
+	}
+
 	/** Runs one service start; used by _ensureServiceStarted with startingServices dedupe. */
 	private async _runServiceStart(
 		key: ServiceTypeName,
 		serviceType: string,
 		serviceDef: ServiceClass,
-	): Promise<Service | null> {
-		this.serviceRegistrationStatus.set(key, "registering");
+	): Promise<ServiceStartOutcome> {
+		this.updateServiceImplementationHealth(serviceDef, key, "registering");
+		this.refreshServiceRegistrationStatus(key);
 		await this.initPromise;
 		if (typeof serviceDef.start !== "function") {
-			this.logger.error(
-				{ src: "agent", agentId: this.agentId, serviceType },
-				"Service class has no static start method",
+			const error = this.recordServiceStartFailure(
+				key,
+				serviceType,
+				serviceDef,
+				new ElizaError("Service class has no static start method", {
+					code: "SERVICE_START_METHOD_MISSING",
+				}),
 			);
-			this.serviceRegistrationStatus.set(key, "failed");
-			return null;
+			return { service: null, error };
 		}
+		let serviceInstance: Service | null = null;
+		let sendHandlersBefore: Map<string, SendHandlerFunction> | null = null;
+		let messageConnectorsBefore: Map<string, MessageConnector> | null = null;
 		try {
 			if (this.stopped) {
-				this.serviceRegistrationStatus.set(key, "failed");
-				return null;
+				this.serviceImplementationHealth.delete(serviceDef);
+				this.refreshServiceRegistrationStatus(key);
+				return { service: null };
 			}
-			const serviceInstance = await serviceDef.start(this);
+			serviceInstance = await serviceDef.start(this);
 			if (!serviceInstance) {
-				this.serviceRegistrationStatus.set(key, "failed");
-				return null;
+				const error = this.recordServiceStartFailure(
+					key,
+					serviceType,
+					serviceDef,
+					new ElizaError("Service start returned no instance", {
+						code: "SERVICE_START_RETURNED_NO_INSTANCE",
+					}),
+				);
+				return { service: null, error };
 			}
 			if (this.stopped) {
 				await this._stopServiceInstance(
@@ -4853,8 +5013,14 @@ export class AgentRuntime implements IAgentRuntime {
 					serviceInstance,
 					"late service start after runtime stop",
 				);
-				this.serviceRegistrationStatus.set(key, "failed");
-				return null;
+				this.serviceImplementationHealth.delete(serviceDef);
+				this.refreshServiceRegistrationStatus(key);
+				return { service: null };
+			}
+			if (serviceDef.registerSendHandlers) {
+				sendHandlersBefore = new Map(this.sendHandlers);
+				messageConnectorsBefore = new Map(this.messageConnectors);
+				serviceDef.registerSendHandlers(this, serviceInstance);
 			}
 			if (!this.services.has(key)) {
 				this.services.set(key, []);
@@ -4863,30 +5029,48 @@ export class AgentRuntime implements IAgentRuntime {
 			if (serviceList) {
 				serviceList.push(serviceInstance);
 			}
+			this.serviceInstancesByClass.set(serviceDef, serviceInstance);
+			this.updateServiceImplementationHealth(serviceDef, key, "registered");
+			this.refreshServiceRegistrationStatus(key);
 			const handler = this.servicePromiseHandlers.get(serviceType);
 			if (handler) {
 				handler.resolve(serviceInstance);
 				this.servicePromiseHandlers.delete(serviceType);
 			}
-			if (serviceDef.registerSendHandlers) {
-				serviceDef.registerSendHandlers(this, serviceInstance);
-			}
-			this.serviceRegistrationStatus.set(key, "registered");
-			return serviceInstance;
+			return { service: serviceInstance };
 		} catch (error) {
-			this.reportError("AgentRuntime.serviceStart", error, {
-				serviceType,
-			});
-			const handler = this.servicePromiseHandlers.get(serviceType);
-			if (handler) {
-				handler.reject(
-					error instanceof Error ? error : new Error(String(error)),
-				);
-				this.servicePromiseHandlers.delete(serviceType);
-				this.servicePromises.delete(serviceType);
+			// error-policy:J1 each implementation is an independent lifecycle
+			// boundary; preserve sibling startup while recording this failure.
+			if (serviceInstance) {
+				const published = this.services.get(key);
+				const publishedIndex = published?.indexOf(serviceInstance) ?? -1;
+				if (published && publishedIndex >= 0) {
+					published.splice(publishedIndex, 1);
+				}
+				this.serviceInstancesByClass.delete(serviceDef);
 			}
-			this.serviceRegistrationStatus.set(key, "failed");
-			return null;
+			if (sendHandlersBefore) {
+				this.sendHandlers = sendHandlersBefore;
+			}
+			if (messageConnectorsBefore) {
+				this.messageConnectors = messageConnectorsBefore;
+			}
+			if (serviceInstance) {
+				await this._stopServiceInstance(
+					key,
+					serviceInstance,
+					"service start finalization failed",
+				);
+			}
+			return {
+				service: null,
+				error: this.recordServiceStartFailure(
+					key,
+					serviceType,
+					serviceDef,
+					error,
+				),
+			};
 		}
 	}
 
@@ -4984,41 +5168,42 @@ export class AgentRuntime implements IAgentRuntime {
 	 * Get service health information
 	 * @returns Object containing service health status
 	 */
-	getServiceHealth(): Record<
-		string,
-		{
-			status: "pending" | "registering" | "registered" | "failed" | "unknown";
-			instances: number;
-			hasPromise: boolean;
-		}
-	> {
-		const health: Record<
-			string,
-			{
-				status: "pending" | "registering" | "registered" | "failed" | "unknown";
-				instances: number;
-				hasPromise: boolean;
-			}
-		> = {};
+	getServiceHealth(): Record<string, ServiceTypeHealth> {
+		const health: Record<string, ServiceTypeHealth> = {};
 
-		// Check all registered services
-		for (const [serviceType, instances] of this.services) {
+		const serviceTypes = new Set<string>([
+			...this.serviceTypes.keys(),
+			...this.services.keys(),
+			...this.serviceRegistrationStatus.keys(),
+		]);
+		for (const serviceType of serviceTypes) {
+			const implementations = Array.from(
+				this.serviceImplementationHealth.values(),
+			).filter((entry) => entry.serviceType === serviceType);
+			const statuses = implementations.map((entry) => entry.status);
+			const instances =
+				this.services.get(serviceType as ServiceTypeName)?.length ?? 0;
+			const status =
+				statuses.includes("failed") && statuses.includes("registered")
+					? "degraded"
+					: statuses.includes("failed")
+						? "failed"
+						: statuses.includes("registering")
+							? "registering"
+							: statuses.includes("pending")
+								? "pending"
+								: statuses.includes("registered")
+									? "registered"
+									: "unknown";
 			health[serviceType] = {
-				status: this.getServiceRegistrationStatus(serviceType),
-				instances: instances.length,
+				status,
+				instances,
 				hasPromise: this.servicePromises.has(serviceType),
+				implementations: implementations.map((entry) => ({
+					...entry,
+					...(entry.error ? { error: { ...entry.error } } : {}),
+				})),
 			};
-		}
-
-		// Check services that have registration status but no instances yet
-		for (const [serviceType, status] of this.serviceRegistrationStatus) {
-			if (!health[serviceType]) {
-				health[serviceType] = {
-					status,
-					instances: 0,
-					hasPromise: this.servicePromises.has(serviceType),
-				};
-			}
 		}
 
 		return health;
@@ -5041,6 +5226,13 @@ export class AgentRuntime implements IAgentRuntime {
 		);
 
 		this.serviceRegistrationStatus.set(serviceType, "pending");
+		this.serviceImplementationHealth.set(serviceDef, {
+			serviceType,
+			serviceClass:
+				(serviceDef as { name?: string }).name || "AnonymousService",
+			critical: serviceDef.bootCritical === true,
+			status: "pending",
+		});
 		if (!this.servicePromises.has(serviceType)) {
 			this._createServiceResolver(serviceType);
 		}
