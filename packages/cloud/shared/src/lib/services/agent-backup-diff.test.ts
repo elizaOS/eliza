@@ -14,6 +14,7 @@ import {
   planIncrementalBackup,
   reconstructFromChain,
   resolveBackupChain,
+  resolveBackupChainBytes,
   selectPrunableBackupIds,
 } from "./agent-backup-diff";
 
@@ -286,5 +287,42 @@ describe("backup chains", () => {
 
   test("selectPrunableBackupIds returns nothing when under the keep count", () => {
     expect(selectPrunableBackupIds(nodes, 10)).toEqual([]);
+  });
+});
+
+describe("resolveBackupChainBytes (#17172 retained-implies-restorable)", () => {
+  const sized = (
+    id: string,
+    kind: "full" | "incremental",
+    parent: string | null,
+    sizeBytes: number | null,
+  ) => ({ id, backupKind: kind, parentBackupId: parent, createdAtMs: 0, sizeBytes });
+
+  test("sums the stored inputs of the chain, not the reconstructed output", () => {
+    // Reconstruction budgets base-full + every delta; this must match it.
+    const nodes = [
+      sized("a", "full", null, 100),
+      sized("b", "incremental", "a", 20),
+      sized("c", "incremental", "b", 5),
+    ];
+    expect(resolveBackupChainBytes(nodes, "c")).toBe(125);
+    expect(resolveBackupChainBytes(nodes, "b")).toBe(120);
+    expect(resolveBackupChainBytes(nodes, "a")).toBe(100);
+  });
+
+  test("returns null when any ancestor has an unrecorded size, so callers fail closed", () => {
+    // An unprovable total must not be silently treated as small: the caller
+    // stores a full backup instead of extending a chain it cannot bound.
+    const nodes = [sized("a", "full", null, null), sized("b", "incremental", "a", 20)];
+    expect(resolveBackupChainBytes(nodes, "b")).toBeNull();
+  });
+
+  test("ignores rows outside the target's chain", () => {
+    const nodes = [
+      sized("a", "full", null, 100),
+      sized("b", "incremental", "a", 20),
+      sized("other", "full", null, 999_999),
+    ];
+    expect(resolveBackupChainBytes(nodes, "b")).toBe(120);
   });
 });
