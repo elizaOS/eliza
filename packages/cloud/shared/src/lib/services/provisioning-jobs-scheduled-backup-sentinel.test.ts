@@ -13,10 +13,10 @@
  * exclusions the scan already enforces (non-running, warm-pool, null-bridge,
  * recently-backed-up) and the maxAgents cap.
  *
- * Harness mirrors `provisioning-jobs-wake-enqueue.test.ts`: drizzle-kit
- * `pushSchema` applies the real DDL (jobs + its FK closure) to the PGlite
- * connection the service queries through, and fails LOUDLY when the ambient
- * DATABASE_URL is a shared non-PGlite Postgres.
+ * The harness applies the shared provisioning-job DDL directly to the PGlite
+ * connection the service queries through. This keeps the proof isolated from
+ * drizzle-kit's process-level failure behavior and fails loudly when the
+ * ambient DATABASE_URL is a shared non-PGlite Postgres.
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
@@ -30,16 +30,12 @@ process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS = "1";
 process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
 
-import { pushSchema } from "drizzle-kit/api";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../db/client";
 import { agentSandboxes } from "../../db/schemas/agent-sandboxes";
-import { apiKeys } from "../../db/schemas/api-keys";
-import { generations } from "../../db/schemas/generations";
 import { jobs } from "../../db/schemas/jobs";
 import { organizations } from "../../db/schemas/organizations";
-import { usageRecords } from "../../db/schemas/usage-records";
-import { userCharacters } from "../../db/schemas/user-characters";
 import { users } from "../../db/schemas/users";
+import { PROVISIONING_JOB_TEST_TABLES } from "./__tests__/tier-upgrade-pglite-schema";
 import { JOB_TYPES } from "./provisioning-job-types";
 import { provisioningJobService } from "./provisioning-jobs";
 
@@ -107,29 +103,18 @@ beforeAll(async () => {
   if (!CAN_USE_ISOLATED_PGLITE) {
     pgliteReady = false;
     console.warn(
-      "[provisioning-jobs-scheduled-backup-sentinel.test] DATABASE_URL is a non-PGlite Postgres (shared CI DB); this in-process-PGlite isolation suite fails — drizzle-kit pushSchema against a shared connection crashes the bun runner and would mutate the shared schema.",
+      "[provisioning-jobs-scheduled-backup-sentinel.test] DATABASE_URL is a non-PGlite Postgres (shared CI DB); this in-process-PGlite isolation suite fails because its fixture DDL would mutate the shared schema.",
     );
     return;
   }
   try {
-    // The jobs table's FK closure: jobs → apiKeys/generations, generations →
-    // usageRecords, agentSandboxes → userCharacters.
-    const schema = {
-      organizations,
-      users,
-      userCharacters,
-      apiKeys,
-      usageRecords,
-      generations,
-      agentSandboxes,
-      jobs,
-    };
-    const { apply } = await pushSchema(schema as never, dbWrite as never);
-    await apply();
+    for (const ddl of PROVISIONING_JOB_TEST_TABLES) {
+      await dbWrite.execute(sql.raw(ddl));
+    }
   } catch (error) {
     pgliteReady = false;
     console.error(
-      "[provisioning-jobs-scheduled-backup-sentinel.test] PGlite/pushSchema unavailable — cannot drive the scheduled-backup scan against a real DB. Failing all cases.",
+      "[provisioning-jobs-scheduled-backup-sentinel.test] PGlite/DDL unavailable — cannot drive the scheduled-backup scan against a real DB. Failing all cases.",
       error,
     );
   }
