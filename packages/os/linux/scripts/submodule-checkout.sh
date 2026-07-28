@@ -76,12 +76,40 @@ elizaos_fetch_pinned_git_ref() {
     local checkout_path="$1"
     local url="$2"
     local ref="$3"
+    local attempts="${ELIZAOS_GIT_FETCH_ATTEMPTS:-4}"
+    local retry_delay="${ELIZAOS_GIT_FETCH_RETRY_DELAY_SECONDS:-5}"
+    local attempt
+
+    case "${attempts}" in
+        ""|*[!0-9]*|0)
+            echo "ERROR: invalid pinned Git fetch attempt count: ${attempts}" >&2
+            return 64
+            ;;
+    esac
+    case "${retry_delay}" in
+        ""|*[!0-9]*)
+            echo "ERROR: invalid pinned Git fetch retry delay: ${retry_delay}" >&2
+            return 64
+            ;;
+    esac
 
     elizaos_remove_path_recursive "${checkout_path}"
     mkdir -p "$(dirname "${checkout_path}")"
     git init -q "${checkout_path}"
     git -C "${checkout_path}" remote add origin "${url}"
-    git -C "${checkout_path}" fetch --depth 1 origin "${ref}"
+
+    for ((attempt = 1; attempt <= attempts; attempt++)); do
+        if git -C "${checkout_path}" fetch --depth 1 origin "${ref}"; then
+            break
+        fi
+        if [ "${attempt}" -eq "${attempts}" ]; then
+            echo "ERROR: unable to fetch pinned Git ref ${ref} after ${attempts} attempts." >&2
+            return 128
+        fi
+        echo "Pinned Git fetch attempt ${attempt}/${attempts} failed; retrying in ${retry_delay}s." >&2
+        sleep "${retry_delay}"
+    done
+
     git -C "${checkout_path}" checkout -q FETCH_HEAD
 }
 

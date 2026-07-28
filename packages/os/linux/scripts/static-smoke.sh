@@ -84,12 +84,14 @@ bash -n build.sh build-iso.sh tails/auto/build \
     scripts/usb-write.sh \
     scripts/generate-elizaos-brand-assets.sh \
     scripts/run-cool-build.sh \
+    scripts/submodule-checkout.test.sh \
     scripts/submodule-checkout.sh \
     scripts/security-smoke.sh
 grep -Fq 'if [ -f "${SRC}/binary.iso" ]' build-iso.sh
 grep -Fq 'find "${SRC}" -maxdepth 1 -name' build-iso.sh
 grep -Fq "sort -nr" build-iso.sh
 bash scripts/build-cache-contract.test.sh
+bash scripts/submodule-checkout.test.sh
 node --test scripts/package-list-contract.test.mjs
 node --test scripts/resolve-apt-snapshots.test.mjs
 bash -n scripts/sync-runtime-to-chroot.sh
