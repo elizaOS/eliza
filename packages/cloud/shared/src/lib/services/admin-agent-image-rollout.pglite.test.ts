@@ -17,11 +17,16 @@ process.env.MOCK_REDIS = "1";
 process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
 
 import { pushSchema } from "drizzle-kit/api";
-import { closeDatabaseConnectionsForTests, dbWrite } from "../../db/client";
+import { closeDatabaseConnectionsForTests, type DbTransaction, dbWrite } from "../../db/client";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import { type Job, jobsRepository } from "../../db/repositories/jobs";
-import { type AgentSandboxBackup, agentSandboxes } from "../../db/schemas/agent-sandboxes";
+import {
+  type AgentSandboxBackup,
+  agentSandboxes,
+  agentSnapshotRestoreValidations,
+} from "../../db/schemas/agent-sandboxes";
 import { apiKeys } from "../../db/schemas/api-keys";
+import { containers } from "../../db/schemas/containers";
 import { dockerNodes } from "../../db/schemas/docker-nodes";
 import { generations } from "../../db/schemas/generations";
 import { jobExecutionLeases } from "../../db/schemas/job-execution-leases";
@@ -41,6 +46,8 @@ import type {
   VerifiedRestorePointReader,
 } from "./admin-canary-standby";
 import { apiKeysService } from "./api-keys";
+import { dockerNodeManager } from "./docker-node-manager";
+import { countAllocatedWorkloadsOnNodeWithDatabase } from "./docker-node-workload-queries";
 import { type DockerSandboxMetadata, DockerSandboxProvider } from "./docker-sandbox-provider";
 import {
   ElizaSandboxService,
@@ -206,6 +213,78 @@ async function executeRollbackCanary(params: {
     },
     params.actorUserId,
   );
+}
+
+type AdminCanaryUpgradeParams = Parameters<ElizaSandboxService["executeAdminCanaryUpgrade"]>[0];
+
+async function persistMockPausedStandby(
+  tx: DbTransaction,
+  params: AdminCanaryUpgradeParams,
+  cutover: {
+    oldNodeId: string;
+    oldContainerName: string;
+    newNodeId: string;
+    newContainerName: string;
+  },
+  extraValues: Partial<typeof agentSandboxes.$inferInsert> = {},
+): Promise<void> {
+  await tx
+    .update(agentSandboxes)
+    .set({
+      status: "running",
+      sandbox_id: `sandbox-${cutover.newContainerName}`,
+      bridge_url: `https://${cutover.newContainerName}.example`,
+      health_url: `https://${cutover.newContainerName}.example/api/health`,
+      node_id: cutover.newNodeId,
+      container_name: cutover.newContainerName,
+      bridge_port: 19_101,
+      web_ui_port: 22_101,
+      headscale_ip: "100.64.0.21",
+      docker_image: params.targetImage,
+      image_digest: params.targetDigest,
+      previous_docker_image: params.sourceImage,
+      previous_image_digest: params.sourceDigest,
+      environment_revision: 0,
+      rollback_standby_state: "paused",
+      rollback_standby_generation: params.sourceJobId,
+      rollback_standby_rollout_id: params.rolloutId,
+      rollback_standby_source_job_id: params.sourceJobId,
+      rollback_standby_decision_job_id: null,
+      rollback_standby_verified_backup_id: null,
+      rollback_standby_restore_validation_id: null,
+      rollback_standby_restore_validation_aggregate_sha256: null,
+      rollback_standby_restore_candidate_provider_sandbox_id: null,
+      rollback_standby_restore_candidate_replacement_attempt_id: null,
+      rollback_standby_sandbox_id: `sandbox-${cutover.oldContainerName}`,
+      rollback_standby_node_id: cutover.oldNodeId,
+      rollback_standby_container_name: cutover.oldContainerName,
+      rollback_standby_container_id: `container-${cutover.oldContainerName}`,
+      rollback_standby_bridge_url: `https://${cutover.oldContainerName}.example`,
+      rollback_standby_health_url: `https://${cutover.oldContainerName}.example/api/health`,
+      rollback_standby_bridge_port: 19_100,
+      rollback_standby_web_ui_port: 22_100,
+      rollback_standby_headscale_ip: "100.64.0.20",
+      rollback_standby_vpn_node_id: `vpn-${cutover.oldContainerName}`,
+      rollback_standby_docker_image: params.sourceImage,
+      rollback_standby_image_digest: params.sourceDigest,
+      rollback_standby_previous_docker_image: null,
+      rollback_standby_previous_image_digest: null,
+      rollback_standby_environment_revision: 0,
+      rollback_standby_allocation_counted: true,
+      rollback_standby_primary_sandbox_id: `sandbox-${cutover.newContainerName}`,
+      rollback_standby_primary_node_id: cutover.newNodeId,
+      rollback_standby_primary_container_name: cutover.newContainerName,
+      rollback_standby_primary_container_id: `container-${cutover.newContainerName}`,
+      rollback_standby_primary_vpn_node_id: `vpn-${cutover.newContainerName}`,
+      rollback_standby_primary_replacement_attempt_id: REPLACEMENT_ATTEMPT_ID,
+      rollback_standby_created_at: new Date(REPLACEMENT_STARTED_AT),
+      ...extraValues,
+    })
+    .where(eq(agentSandboxes.id, params.agentId));
+  await params.onCutoverInTx(tx, {
+    ...cutover,
+    newDigest: params.targetDigest,
+  });
 }
 
 async function seedAgents(count: number): Promise<{
@@ -523,8 +602,10 @@ beforeAll(async () => {
       apiKeys,
       usageRecords,
       generations,
+      containers,
       dockerNodes,
       agentSandboxes,
+      agentSnapshotRestoreValidations,
       jobs,
       jobExecutionLeases,
     };
@@ -549,6 +630,57 @@ afterAll(async () => {
 });
 
 describe("admin agent image rollout on primary PGlite", () => {
+  test("node capacity sync counts a pre-cutover primary exactly once and converges idempotently", async () => {
+    const seeded = await seedAgents(1);
+    await dbWrite.insert(dockerNodes).values({
+      node_id: "node-1",
+      hostname: "node-1.internal",
+      status: "healthy",
+      enabled: true,
+      capacity: 8,
+      allocated_count: 0,
+    });
+
+    expect(await countAllocatedWorkloadsOnNodeWithDatabase(dbWrite, "node-1")).toBe(1);
+    expect(await dockerNodeManager.syncAllocatedCounts()).toEqual(
+      new Map([["node-1", { before: 0, after: 1 }]]),
+    );
+    expect(await dockerNodeManager.syncAllocatedCounts()).toEqual(new Map());
+    expect(
+      await agentSandboxesRepository.findByIdAndOrg(
+        seeded.targets[0]!.agentId,
+        seeded.organizationId,
+      ),
+    ).toMatchObject({
+      node_id: "node-1",
+      rollback_standby_node_id: null,
+      rollback_standby_allocation_counted: null,
+    });
+  });
+
+  test("node capacity sync counts a post-swap paused standby and primary exactly once", async () => {
+    const seeded = await seedPausedRollbackStandby();
+    await dbWrite.update(dockerNodes).set({ allocated_count: 0 });
+
+    expect(await countAllocatedWorkloadsOnNodeWithDatabase(dbWrite, "node-old")).toBe(1);
+    expect(await countAllocatedWorkloadsOnNodeWithDatabase(dbWrite, "node-blue")).toBe(1);
+    const firstSync = await dockerNodeManager.syncAllocatedCounts();
+    expect(firstSync.size).toBe(2);
+    expect(firstSync.get("node-old")).toEqual({ before: 0, after: 1 });
+    expect(firstSync.get("node-blue")).toEqual({ before: 0, after: 1 });
+    expect(await dockerNodeManager.syncAllocatedCounts()).toEqual(new Map());
+    expect(
+      await agentSandboxesRepository.findByIdAndOrg(
+        seeded.data.agentId,
+        seeded.data.organizationId,
+      ),
+    ).toMatchObject({
+      node_id: "node-blue",
+      rollback_standby_node_id: "node-old",
+      rollback_standby_allocation_counted: true,
+    });
+  });
+
   test("stuck reconciliation cannot flip a row owned by an active restart", async () => {
     const seeded = await seedAgents(0);
     const agentId = "00000000-0000-4000-8000-000000000090";
@@ -2835,26 +2967,13 @@ describe("admin agent image rollout on primary PGlite", () => {
     const execution = spyOn(elizaSandboxService, "executeAdminCanaryUpgrade").mockImplementation(
       async (params) => {
         await dbWrite.transaction(async (tx) => {
-          await tx
-            .update(agentSandboxes)
-            .set({
-              node_id: "node-legacy-blue",
-              container_name: "agent-legacy-blue",
-              docker_image: params.targetImage,
-              image_digest: params.targetDigest,
-              previous_docker_image: params.sourceImage,
-              previous_image_digest: params.sourceDigest,
-            })
-            .where(eq(agentSandboxes.id, params.agentId));
-          await params.onCutoverInTx(tx, {
+          await persistMockPausedStandby(tx, params, {
             oldNodeId: "node-legacy-old",
             oldContainerName: "agent-legacy-old",
             newNodeId: "node-legacy-blue",
             newContainerName: "agent-legacy-blue",
-            newDigest: params.targetDigest,
           });
         });
-        await dbWrite.transaction(params.onConvergedInTx);
         return {
           success: true,
           oldNodeId: "node-legacy-old",
@@ -3408,16 +3527,16 @@ describe("admin agent image rollout on primary PGlite", () => {
     const execution = spyOn(elizaSandboxService, "executeAdminCanaryUpgrade").mockImplementation(
       async (params) => {
         await dbWrite.transaction(async (tx) => {
-          await tx
-            .update(agentSandboxes)
-            .set({
-              sandbox_id: "sandbox-blue",
-              node_id: "node-blue",
-              container_name: "agent-blue",
-              docker_image: params.targetImage,
-              image_digest: params.targetDigest,
-              previous_docker_image: params.sourceImage,
-              previous_image_digest: params.sourceDigest,
+          await persistMockPausedStandby(
+            tx,
+            params,
+            {
+              oldNodeId: "node-1",
+              oldContainerName: "agent-1",
+              newNodeId: "node-blue",
+              newContainerName: "agent-blue",
+            },
+            {
               replacement_cleanup_sandbox_id: "sandbox-1",
               replacement_cleanup_node_id: "node-1",
               replacement_cleanup_container_name: "agent-1",
@@ -3429,15 +3548,8 @@ describe("admin agent image rollout on primary PGlite", () => {
               replacement_cleanup_vpn_registration_started_at: new Date(REPLACEMENT_STARTED_AT),
               replacement_cleanup_allocation_counted: true,
               replacement_cleanup_created_at: new Date(),
-            })
-            .where(eq(agentSandboxes.id, params.agentId));
-          await params.onCutoverInTx(tx, {
-            oldNodeId: "node-1",
-            oldContainerName: "agent-1",
-            newNodeId: "node-blue",
-            newContainerName: "agent-blue",
-            newDigest: params.targetDigest,
-          });
+            },
+          );
         });
         return {
           success: true,
@@ -3818,26 +3930,13 @@ describe("admin agent image rollout on primary PGlite", () => {
       "executeAdminCanaryUpgrade",
     ).mockImplementation(async (params) => {
       await dbWrite.transaction(async (tx) => {
-        await tx
-          .update(agentSandboxes)
-          .set({
-            node_id: "canary-new-node",
-            container_name: "canary-new",
-            docker_image: params.targetImage,
-            image_digest: params.targetDigest,
-            previous_docker_image: params.sourceImage,
-            previous_image_digest: params.sourceDigest,
-          })
-          .where(eq(agentSandboxes.id, params.agentId));
-        await params.onCutoverInTx(tx, {
+        await persistMockPausedStandby(tx, params, {
           oldNodeId: "canary-old-node",
           oldContainerName: "canary-old",
           newNodeId: "canary-new-node",
           newContainerName: "canary-new",
-          newDigest: params.targetDigest,
         });
       });
-      await dbWrite.transaction(params.onConvergedInTx);
       return {
         success: true,
         oldNodeId: "canary-old-node",
@@ -3859,8 +3958,15 @@ describe("admin agent image rollout on primary PGlite", () => {
       expect(ordinaryExecution).toHaveBeenCalledTimes(1);
       expect(canaryExecution).toHaveBeenCalledTimes(1);
       const persisted = await dbWrite.select().from(jobs);
-      expect(persisted).toHaveLength(2);
-      expect(persisted.every((job) => job.status === "completed")).toBe(true);
+      expect(persisted).toHaveLength(3);
+      expect(
+        persisted
+          .filter((job) => job.type !== JOB_TYPES.AGENT_ADMIN_CANARY_RESTORE_VALIDATION)
+          .every((job) => job.status === "completed"),
+      ).toBe(true);
+      expect(
+        persisted.find((job) => job.type === JOB_TYPES.AGENT_ADMIN_CANARY_RESTORE_VALIDATION),
+      ).toMatchObject({ status: "pending" });
       expect(persisted.find((job) => job.type === JOB_TYPES.AGENT_UPGRADE)?.result).toMatchObject({
         oldNodeId: "ordinary-old-node",
         newNodeId: "ordinary-new-node",
@@ -3940,15 +4046,13 @@ describe("admin agent image rollout on primary PGlite", () => {
       "executeAdminCanaryUpgrade",
     ).mockImplementation(async (params) => {
       await dbWrite.transaction(async (tx) => {
-        await params.onCutoverInTx(tx, {
+        await persistMockPausedStandby(tx, params, {
           oldNodeId: "canary-old-node",
           oldContainerName: "canary-old",
           newNodeId: "canary-new-node",
           newContainerName: "canary-new",
-          newDigest: params.targetDigest,
         });
       });
-      await dbWrite.transaction(params.onConvergedInTx);
       return {
         success: true,
         oldNodeId: "canary-old-node",
@@ -3991,8 +4095,15 @@ describe("admin agent image rollout on primary PGlite", () => {
       );
       expect(canaryExecution).toHaveBeenCalledTimes(1);
       const persisted = await dbWrite.select().from(jobs);
-      expect(persisted).toHaveLength(5);
-      expect(persisted.every((job) => job.status === "completed")).toBe(true);
+      expect(persisted).toHaveLength(6);
+      expect(
+        persisted
+          .filter((job) => job.type !== JOB_TYPES.AGENT_ADMIN_CANARY_RESTORE_VALIDATION)
+          .every((job) => job.status === "completed"),
+      ).toBe(true);
+      expect(
+        persisted.find((job) => job.type === JOB_TYPES.AGENT_ADMIN_CANARY_RESTORE_VALIDATION),
+      ).toMatchObject({ status: "pending" });
       expect(persisted.find((job) => job.type === JOB_TYPES.AGENT_SNAPSHOT)?.result).toMatchObject({
         skipped: true,
         reason: SNAPSHOT_ENDPOINT_UNSUPPORTED,
@@ -4036,15 +4147,13 @@ describe("admin agent image rollout on primary PGlite", () => {
       "executeAdminCanaryUpgrade",
     ).mockImplementation(async (params) => {
       await dbWrite.transaction(async (tx) => {
-        await params.onCutoverInTx(tx, {
+        await persistMockPausedStandby(tx, params, {
           oldNodeId: "canary-old-node",
           oldContainerName: "canary-old",
           newNodeId: "canary-new-node",
           newContainerName: "canary-new",
-          newDigest: params.targetDigest,
         });
       });
-      await dbWrite.transaction(params.onConvergedInTx);
       return {
         success: true,
         oldNodeId: "canary-old-node",
@@ -4113,15 +4222,13 @@ describe("admin agent image rollout on primary PGlite", () => {
       "executeAdminCanaryUpgrade",
     ).mockImplementation(async (params) => {
       await dbWrite.transaction(async (tx) => {
-        await params.onCutoverInTx(tx, {
+        await persistMockPausedStandby(tx, params, {
           oldNodeId: "canary-old-node",
           oldContainerName: "canary-old",
           newNodeId: "canary-new-node",
           newContainerName: "canary-new",
-          newDigest: params.targetDigest,
         });
       });
-      await dbWrite.transaction(params.onConvergedInTx);
       return {
         success: true,
         oldNodeId: "canary-old-node",
@@ -4212,26 +4319,13 @@ describe("admin agent image rollout on primary PGlite", () => {
     const execution = spyOn(elizaSandboxService, "executeAdminCanaryUpgrade").mockImplementation(
       async (params) => {
         await dbWrite.transaction(async (tx) => {
-          await tx
-            .update(agentSandboxes)
-            .set({
-              node_id: "node-blue",
-              container_name: "agent-blue",
-              docker_image: params.targetImage,
-              image_digest: params.targetDigest,
-              previous_docker_image: params.sourceImage,
-              previous_image_digest: params.sourceDigest,
-            })
-            .where(eq(agentSandboxes.id, params.agentId));
-          await params.onCutoverInTx(tx, {
+          await persistMockPausedStandby(tx, params, {
             oldNodeId: "node-old",
             oldContainerName: "agent-old",
             newNodeId: "node-blue",
             newContainerName: "agent-blue",
-            newDigest: params.targetDigest,
           });
         });
-        await dbWrite.transaction(params.onConvergedInTx);
         return {
           success: true,
           oldNodeId: "node-old",
@@ -4556,51 +4650,39 @@ describe("admin agent image rollout on primary PGlite", () => {
     }
   });
 
-  test("standby acceptance enqueue preserves exact candidate restore authority", async () => {
+  test("standby acceptance enqueue binds the actor and generation without copying restore authority", async () => {
     const seeded = await seedPausedRollbackStandby();
     await insertCompletedStandbySourceJob(seeded);
-    const backupId = "10000000-0000-4000-8000-000000000009";
-    const restoreValidationId = "10000000-0000-4000-8000-000000000011";
-    const restoreValidationAggregateSha256 = "f".repeat(64);
     const decision = await adminAgentImageRolloutService.decideStandby(
       {
         requestId: "10000000-0000-4000-8000-000000000010",
         sourceJobId: seeded.data.sourceJobId,
         decision: "accept",
-        verifiedBackupId: backupId,
-        restoreValidationId,
-        restoreValidationAggregateSha256,
-        restoreValidatedCandidateProviderSandboxId: "restore-candidate-enqueue",
-        restoreValidatedCandidateReplacementAttemptId: RESTORE_CANDIDATE_REPLACEMENT_ATTEMPT_ID,
       },
       seeded.data.actorUserId,
     );
 
     expect(decision.type).toBe(JOB_TYPES.AGENT_ADMIN_CANARY_STANDBY_DECISION);
-    expect(readAdminCanaryStandbyDecisionJobData(decision)).toMatchObject({
+    const decisionData = readAdminCanaryStandbyDecisionJobData(decision);
+    expect(decisionData).toMatchObject({
       sourceJobId: seeded.data.sourceJobId,
       standbyGeneration: seeded.data.standbyGeneration,
       decision: "accept",
-      verifiedBackupId: backupId,
-      restoreValidationId,
-      restoreValidationAggregateSha256,
-      restoreValidatedCandidateProviderSandboxId: "restore-candidate-enqueue",
-      restoreValidatedCandidateReplacementAttemptId: RESTORE_CANDIDATE_REPLACEMENT_ATTEMPT_ID,
       targetOwnerUserId: seeded.data.targetOwnerUserId,
       targetImage: seeded.data.targetImage,
       targetDigest: seeded.data.targetDigest,
     });
+    expect(decisionData).not.toHaveProperty("verifiedBackupId");
+    expect(decisionData).not.toHaveProperty("restoreValidationId");
+    expect(decisionData).not.toHaveProperty("restoreValidationAggregateSha256");
+    expect(decisionData).not.toHaveProperty("restoreValidatedCandidateProviderSandboxId");
+    expect(decisionData).not.toHaveProperty("restoreValidatedCandidateReplacementAttemptId");
     expect(
       await adminAgentImageRolloutService.decideStandby(
         {
           requestId: "10000000-0000-4000-8000-000000000010",
           sourceJobId: seeded.data.sourceJobId,
           decision: "accept",
-          verifiedBackupId: backupId,
-          restoreValidationId,
-          restoreValidationAggregateSha256,
-          restoreValidatedCandidateProviderSandboxId: "restore-candidate-enqueue",
-          restoreValidatedCandidateReplacementAttemptId: RESTORE_CANDIDATE_REPLACEMENT_ATTEMPT_ID,
         },
         seeded.data.actorUserId,
       ),
@@ -4610,12 +4692,7 @@ describe("admin agent image rollout on primary PGlite", () => {
         {
           requestId: "10000000-0000-4000-8000-000000000010",
           sourceJobId: seeded.data.sourceJobId,
-          decision: "accept",
-          verifiedBackupId: backupId,
-          restoreValidationId,
-          restoreValidationAggregateSha256: "e".repeat(64),
-          restoreValidatedCandidateProviderSandboxId: "restore-candidate-enqueue",
-          restoreValidatedCandidateReplacementAttemptId: RESTORE_CANDIDATE_REPLACEMENT_ATTEMPT_ID,
+          decision: "reject",
         },
         seeded.data.actorUserId,
       ),
@@ -4645,12 +4722,9 @@ describe("admin agent image rollout on primary PGlite", () => {
         success: true,
         decision: "accept",
         outcome: "accepted",
-        verifiedBackupId: backupId,
-        restoreValidationId,
-        restoreValidationAggregateSha256,
-        restoreValidatedCandidateProviderSandboxId: "restore-candidate-enqueue",
-        restoreValidatedCandidateReplacementAttemptId: RESTORE_CANDIDATE_REPLACEMENT_ATTEMPT_ID,
       });
+      expect(completed?.result).not.toHaveProperty("verifiedBackupId");
+      expect(completed?.result).not.toHaveProperty("restoreValidationId");
     } finally {
       execution.mockRestore();
     }
@@ -5196,6 +5270,10 @@ describe("admin agent image rollout on primary PGlite", () => {
       .from(dockerNodes);
     expect(nodeCapacity).toContainEqual({ nodeId: "node-old", allocatedCount: 1 });
     expect(nodeCapacity).toContainEqual({ nodeId: "node-blue", allocatedCount: 0 });
+    expect(await countAllocatedWorkloadsOnNodeWithDatabase(dbWrite, "node-old")).toBe(1);
+    expect(await countAllocatedWorkloadsOnNodeWithDatabase(dbWrite, "node-blue")).toBe(0);
+    expect(await dockerNodeManager.syncAllocatedCounts()).toEqual(new Map());
+    expect(await dockerNodeManager.syncAllocatedCounts()).toEqual(new Map());
     expect(
       await provisioningJobService.enqueueAgentDeleteOnce({
         agentId: seeded.data.agentId,
@@ -5226,9 +5304,14 @@ describe("admin agent image rollout on primary PGlite", () => {
     const restoreValidationAggregateSha256 = "d".repeat(64);
     const restoreValidatedCandidateProviderSandboxId = "restore-candidate-blue";
     const restoreValidatedCandidateReplacementAttemptId = RESTORE_CANDIDATE_REPLACEMENT_ATTEMPT_ID;
+    const receiptCommittedAt = new Date("2026-07-23T10:00:00.000Z");
+    const candidateContainerAbsentAt = new Date("2026-07-23T10:00:01.000Z");
+    const candidateVpnAbsentAt = new Date("2026-07-23T10:00:02.000Z");
+    const candidateVolumeAbsentAt = new Date("2026-07-23T10:00:03.000Z");
+    const candidateRetiredAt = new Date("2026-07-23T10:00:04.000Z");
     const calls: string[] = [];
     const restorePointChecks: Parameters<
-      VerifiedRestorePointReader["assertVerifiedV2CandidateRestoreInTx"]
+      VerifiedRestorePointReader["readVerifiedV2CandidateRestoreInTx"]
     >[1][] = [];
     const provider: SandboxProvider = {
       async create() {
@@ -5243,8 +5326,20 @@ describe("admin agent image rollout on primary PGlite", () => {
       },
     };
     const restorePointReader: VerifiedRestorePointReader = {
-      async assertVerifiedV2CandidateRestoreInTx(_tx, params) {
+      async readVerifiedV2CandidateRestoreInTx(_tx, params) {
         restorePointChecks.push(params);
+        return {
+          verifiedBackupId: backupId,
+          restoreValidationId,
+          restoreValidationAggregateSha256,
+          restoreValidatedCandidateProviderSandboxId,
+          restoreValidatedCandidateReplacementAttemptId,
+          receiptCommittedAt,
+          candidateContainerAbsentAt,
+          candidateVpnAbsentAt,
+          candidateVolumeAbsentAt,
+          candidateRetiredAt,
+        };
       },
     };
     const fetchMock = spyOn(globalThis, "fetch").mockImplementation(async (input) => {
@@ -5294,11 +5389,9 @@ describe("admin agent image rollout on primary PGlite", () => {
 
     expect(restorePointChecks).toEqual([
       {
-        backupId,
-        restoreValidationId,
-        restoreValidationAggregateSha256,
-        restoreValidatedCandidateProviderSandboxId,
-        restoreValidatedCandidateReplacementAttemptId,
+        sourceJobId: seeded.data.sourceJobId,
+        standbyGeneration: seeded.data.standbyGeneration,
+        rolloutId: seeded.data.rolloutId,
         organizationId: seeded.data.organizationId,
         sandboxRecordId: seeded.data.agentId,
         agentId: seeded.data.agentId,
@@ -5334,6 +5427,10 @@ describe("admin agent image rollout on primary PGlite", () => {
       .from(dockerNodes);
     expect(nodeCapacity).toContainEqual({ nodeId: "node-old", allocatedCount: 0 });
     expect(nodeCapacity).toContainEqual({ nodeId: "node-blue", allocatedCount: 1 });
+    expect(await countAllocatedWorkloadsOnNodeWithDatabase(dbWrite, "node-old")).toBe(0);
+    expect(await countAllocatedWorkloadsOnNodeWithDatabase(dbWrite, "node-blue")).toBe(1);
+    expect(await dockerNodeManager.syncAllocatedCounts()).toEqual(new Map());
+    expect(await dockerNodeManager.syncAllocatedCounts()).toEqual(new Map());
     expect(
       await provisioningJobService.enqueueAgentDeleteOnce({
         agentId: seeded.data.agentId,
@@ -5386,7 +5483,7 @@ describe("admin agent image rollout on primary PGlite", () => {
       },
     };
     const restorePointReader: VerifiedRestorePointReader = {
-      async assertVerifiedV2CandidateRestoreInTx() {
+      async readVerifiedV2CandidateRestoreInTx() {
         throw new Error("candidate restore receipt is applying");
       },
     };

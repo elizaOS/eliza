@@ -8,23 +8,26 @@
  * complete only after every object is durable; callers commit it atomically
  * with the backup row before making the restore point visible.
  */
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
 import { orgKey } from "@elizaos/security/kms";
 import { getKmsClient } from "../../db/crypto/kms-client";
 import { ObjectNamespaces } from "../storage/object-namespace";
 import {
   buildObjectKey,
-  deleteObject,
+  deleteObjectsExact,
   getObjectBytes,
+  ObjectWriteOutcomeUnknownError,
   putObjectBytes,
 } from "../storage/object-store";
+import { logger } from "../utils/logger";
 
 const textEncoder = new TextEncoder();
 const DEFAULT_CHUNK_BYTES = 4 * 1024 * 1024;
 const MAX_CHUNK_BYTES = 16 * 1024 * 1024;
 const MAX_CHUNK_COUNT = 5_632;
 const MAX_TOTAL_BYTES = DEFAULT_CHUNK_BYTES * MAX_CHUNK_COUNT;
+const EXACT_DELETE_PAGE_SIZE = 1_000;
 const CHUNK_CONTENT_TYPE = "application/vnd.elizaos.agent-backup-chunk";
 const NONCE_BYTES = 12;
 const AUTH_TAG_BYTES = 16;
@@ -71,6 +74,34 @@ export interface AgentBackupPlannedChunk {
   objectKey: string;
 }
 
+/**
+ * A staged object may have committed after its local transport failed.
+ *
+ * The storage transaction must retain the exact object-set epoch and planned
+ * keys until a separate absence proof closes the ambiguity. Immediate cleanup
+ * is still attempted, but it is not sufficient to quiesce the epoch.
+ */
+export class AgentBackupWriteEpochUnquiescedError extends Error {
+  readonly objectSetId: string;
+  readonly objectKey: string;
+  readonly cleanupFailures: readonly string[];
+
+  constructor(params: {
+    objectSetId: string;
+    objectKey: string;
+    cleanupFailures: readonly string[];
+    cause: ObjectWriteOutcomeUnknownError;
+  }) {
+    super(`Backup write epoch ${params.objectSetId} has an unknown remote commit outcome`, {
+      cause: params.cause,
+    });
+    this.name = "AgentBackupWriteEpochUnquiescedError";
+    this.objectSetId = params.objectSetId;
+    this.objectKey = params.objectKey;
+    this.cleanupFailures = params.cleanupFailures;
+  }
+}
+
 function backupChunkError(code: string, message: string, context?: Record<string, unknown>) {
   return new ElizaError(message, {
     code,
@@ -86,12 +117,18 @@ function abortReason(signal: AbortSignal): Error {
 }
 
 function raceWithAbort<T>(operation: PromiseLike<T>, signal?: AbortSignal): Promise<T> {
-  if (!signal) return Promise.resolve(operation);
-  if (signal.aborted) return Promise.reject(abortReason(signal));
+  const promise = Promise.resolve(operation);
+  if (!signal) return promise;
+  if (signal.aborted) {
+    // error-policy:J5 the caller observes the primary abort; this observes only
+    // a late rejection from work that was already dispatched.
+    void promise.catch(() => undefined);
+    return Promise.reject(abortReason(signal));
+  }
   return new Promise<T>((resolve, reject) => {
     const onAbort = (): void => reject(abortReason(signal));
     signal.addEventListener("abort", onAbort, { once: true });
-    Promise.resolve(operation).then(
+    promise.then(
       (value) => {
         signal.removeEventListener("abort", onAbort);
         resolve(value);
@@ -167,32 +204,59 @@ function chunkAad(identity: AgentBackupChunkIdentity, index: number, plaintextBy
 async function* fixedChunks(
   source: AsyncIterable<Uint8Array>,
   chunkBytes: number,
+  signal: AbortSignal,
 ): AsyncGenerator<Uint8Array> {
+  const iterator = source[Symbol.asyncIterator]();
   let target = new Uint8Array(chunkBytes);
   let used = 0;
-  for await (const input of source) {
-    if (!(input instanceof Uint8Array)) {
-      throw backupChunkError(
-        "AGENT_BACKUP_CHUNK_SOURCE_INVALID",
-        "Backup byte stream emitted a non-Uint8Array value",
-      );
+  let reachedEnd = false;
+  try {
+    while (true) {
+      const next = await raceWithAbort(iterator.next(), signal);
+      if (next.done) {
+        reachedEnd = true;
+        break;
+      }
+      const input = next.value;
+      if (!(input instanceof Uint8Array)) {
+        throw backupChunkError(
+          "AGENT_BACKUP_CHUNK_SOURCE_INVALID",
+          "Backup byte stream emitted a non-Uint8Array value",
+        );
+      }
+      if (input.byteLength > MAX_CHUNK_BYTES) {
+        throw backupChunkError(
+          "AGENT_BACKUP_CHUNK_SOURCE_INVALID",
+          `Backup byte stream emitted a view larger than ${MAX_CHUNK_BYTES} bytes`,
+          { emittedBytes: input.byteLength },
+        );
+      }
+      let offset = 0;
+      while (offset < input.byteLength) {
+        const copied = Math.min(chunkBytes - used, input.byteLength - offset);
+        target.set(input.subarray(offset, offset + copied), used);
+        offset += copied;
+        used += copied;
+        if (used === chunkBytes) {
+          yield target;
+          target = new Uint8Array(chunkBytes);
+          used = 0;
+        }
+      }
     }
-    if (input.byteLength > MAX_CHUNK_BYTES) {
-      throw backupChunkError(
-        "AGENT_BACKUP_CHUNK_SOURCE_INVALID",
-        `Backup byte stream emitted a view larger than ${MAX_CHUNK_BYTES} bytes`,
-        { emittedBytes: input.byteLength },
-      );
-    }
-    let offset = 0;
-    while (offset < input.byteLength) {
-      const copied = Math.min(chunkBytes - used, input.byteLength - offset);
-      target.set(input.subarray(offset, offset + copied), used);
-      offset += copied;
-      used += copied;
-      if (used === chunkBytes) {
-        yield target;
-        used = 0;
+  } finally {
+    if (!reachedEnd && iterator.return) {
+      const cleanup = Promise.resolve(iterator.return());
+      if (signal.aborted) {
+        // error-policy:J6 the caller observes the watchdog failure and owns the
+        // response transport; iterator teardown must not defeat that deadline.
+        void cleanup.catch((error: unknown) => {
+          logger.warn("[AgentBackupChunks] Source iterator cancellation failed", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        });
+      } else {
+        await cleanup;
       }
     }
   }
@@ -247,13 +311,22 @@ function chunkObjectParams(params: {
 
 export async function stageEncryptedAgentBackupChunks(params: {
   identity: AgentBackupChunkIdentity;
+  objectSetId: string;
   source: AsyncIterable<Uint8Array>;
+  signal: AbortSignal;
   createdAt?: Date;
   chunkBytes?: number;
   maxTotalBytes?: number;
   onObjectPlanned?: (planned: AgentBackupPlannedChunk) => Promise<void>;
 }): Promise<AgentBackupChunkDescriptor> {
   validateIdentity(params.identity);
+  if (!UUID_RE.test(params.objectSetId)) {
+    throw backupChunkError(
+      "AGENT_BACKUP_CHUNK_IDENTITY_INVALID",
+      "objectSetId must be a canonical UUID",
+    );
+  }
+  if (params.signal.aborted) throw abortReason(params.signal);
   const chunkBytes = params.chunkBytes ?? DEFAULT_CHUNK_BYTES;
   const maxTotalBytes = params.maxTotalBytes ?? MAX_TOTAL_BYTES;
   assertPositiveInteger(chunkBytes, "chunkBytes", MAX_CHUNK_BYTES);
@@ -266,17 +339,17 @@ export async function stageEncryptedAgentBackupChunks(params: {
       "Backup chunk creation time must be a valid Date",
     );
   }
-  const objectSetId = randomUUID();
+  const objectSetId = params.objectSetId;
   const kms = getKmsClient();
   const keyId = orgKey(params.identity.organizationId, "dek");
-  await kms.getOrCreateKey(keyId);
+  await raceWithAbort(kms.getOrCreateKey(keyId), params.signal);
   const totalHash = createHash("sha256");
   const chunks: AgentBackupEncryptedChunk[] = [];
   const uploadedKeys: string[] = [];
   let totalPlaintextBytes = 0;
 
   try {
-    for await (const plaintext of fixedChunks(params.source, chunkBytes)) {
+    for await (const plaintext of fixedChunks(params.source, chunkBytes, params.signal)) {
       const index = chunks.length;
       if (index >= MAX_CHUNK_COUNT) {
         throw backupChunkError(
@@ -293,10 +366,9 @@ export async function stageEncryptedAgentBackupChunks(params: {
         );
       }
       totalHash.update(plaintext);
-      const encrypted = await kms.encrypt(
-        keyId,
-        plaintext,
-        chunkAad(params.identity, index, plaintext.byteLength),
+      const encrypted = await raceWithAbort(
+        kms.encrypt(keyId, plaintext, chunkAad(params.identity, index, plaintext.byteLength)),
+        params.signal,
       );
       const ciphertext = new Uint8Array(encrypted.ciphertext);
       if (
@@ -322,11 +394,17 @@ export async function stageEncryptedAgentBackupChunks(params: {
       // error-policy:J6 best-effort teardown — track the intended key before
       // PUT because a transport error can occur after object storage commits.
       uploadedKeys.push(expectedObjectKey);
-      await params.onObjectPlanned?.({ index, objectKey: expectedObjectKey });
+      if (params.onObjectPlanned) {
+        await raceWithAbort(
+          params.onObjectPlanned({ index, objectKey: expectedObjectKey }),
+          params.signal,
+        );
+      }
       const objectKey = await putObjectBytes({
         ...objectParams,
         body: ciphertext,
         contentType: CHUNK_CONTENT_TYPE,
+        signal: params.signal,
       });
       if (objectKey !== expectedObjectKey) {
         uploadedKeys.push(objectKey);
@@ -352,16 +430,30 @@ export async function stageEncryptedAgentBackupChunks(params: {
     // error-policy:J6 best-effort teardown — staging is not visible until its
     // descriptor commits, so every possibly-written object must be removed.
     const cleanupFailures: string[] = [];
-    for (const key of uploadedKeys.reverse()) {
-      try {
-        await deleteObject(key);
-      } catch (cleanupError) {
-        // error-policy:J6 best-effort teardown — aggregate every failed delete
-        // and surface the residue instead of hiding it behind the stage error.
-        cleanupFailures.push(
-          `${key}: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`,
-        );
+    if (!params.signal.aborted) {
+      const keys = uploadedKeys.reverse();
+      for (let offset = 0; offset < keys.length; offset += EXACT_DELETE_PAGE_SIZE) {
+        const page = keys.slice(offset, offset + EXACT_DELETE_PAGE_SIZE);
+        try {
+          await deleteObjectsExact(page, params.signal);
+        } catch (cleanupError) {
+          // error-policy:J6 best-effort teardown — aggregate every failed page
+          // and surface the residue instead of hiding it behind the stage error.
+          cleanupFailures.push(
+            `${page[0]}..${page.at(-1)}: ${
+              cleanupError instanceof Error ? cleanupError.message : String(cleanupError)
+            }`,
+          );
+        }
       }
+    }
+    if (error instanceof ObjectWriteOutcomeUnknownError) {
+      throw new AgentBackupWriteEpochUnquiescedError({
+        objectSetId,
+        objectKey: error.objectKey,
+        cleanupFailures,
+        cause: error,
+      });
     }
     if (cleanupFailures.length > 0) {
       throw backupChunkError(

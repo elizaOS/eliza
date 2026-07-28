@@ -21,6 +21,13 @@ import { S3Client } from "@aws-sdk/client-s3";
 
 export type ObjectStorageProvider = "r2" | "supabase" | "s3";
 
+export const OBJECT_STORAGE_TRANSPORT_TIMEOUTS = Object.freeze({
+  connectionTimeout: 10_000,
+  requestTimeout: 120_000,
+  socketTimeout: 30_000,
+  throwOnRequestTimeout: true,
+});
+
 let cached: S3Client | null | undefined;
 
 function readBool(value: string | undefined): boolean | undefined {
@@ -106,6 +113,7 @@ export function getObjectStorageClient(): S3Client | null {
     endpoint: resolveEndpoint(provider),
     forcePathStyle: resolveForcePathStyle(provider),
     credentials,
+    requestHandler: OBJECT_STORAGE_TRANSPORT_TIMEOUTS,
   });
   return cached;
 }
@@ -127,5 +135,6 @@ export function objectStorageConfigured(): boolean {
 }
 
 export function resetObjectStorageClientForTests(): void {
+  cached?.destroy();
   cached = undefined;
 }

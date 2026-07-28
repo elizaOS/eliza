@@ -284,6 +284,66 @@ export class DockerSSHClient {
     this.privateKey = config.privateKey ?? DockerSSHClient.resolvePrivateKey(this.privateKeyPath);
   }
 
+  /**
+   * A timed-out channel cannot remain attached to a pooled session: `ssh2`
+   * may deliver the exec callback after the caller's deadline, at which point
+   * the remote shell has already accepted the command. Hard-closing both the
+   * channel and its transport makes the timeout a quiescence boundary rather
+   * than merely a local Promise race.
+   */
+  private quarantineTimedOutTransport(
+    client: SSHClientType,
+    stream: ClientChannel | undefined,
+    operation: string,
+  ): void {
+    if (this.client === client) {
+      this.client = null;
+      this.connected = false;
+    }
+    if (stream) {
+      try {
+        stream.destroy();
+      } catch (error) {
+        // error-policy:J6 timeout teardown is best-effort after the operation
+        // has already failed, but a channel that could not close is observable.
+        logger.warn(
+          `[docker-ssh] Failed to destroy timed-out ${operation} channel on ${this.hostname}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+    try {
+      client.destroy();
+    } catch (destroyError) {
+      // error-policy:J6 `end` is the remaining transport teardown when the
+      // immediate destroy path itself fails.
+      logger.warn(
+        `[docker-ssh] Failed to destroy timed-out ${operation} transport on ${this.hostname}: ${destroyError instanceof Error ? destroyError.message : String(destroyError)}`,
+      );
+      try {
+        client.end();
+      } catch (endError) {
+        // error-policy:J6 both teardown failures remain observable; the caller
+        // still receives the original timeout rather than fabricated success.
+        logger.warn(
+          `[docker-ssh] Failed to end timed-out ${operation} transport on ${this.hostname}: ${endError instanceof Error ? endError.message : String(endError)}`,
+        );
+      }
+    }
+  }
+
+  private destroyLateExecChannel(stream: ClientChannel | undefined, operation: string): void {
+    if (!stream) return;
+    try {
+      stream.destroy();
+    } catch (error) {
+      // error-policy:J6 the owning transport was already destroyed at timeout;
+      // this closes a callback that ssh2 delivered after that terminal boundary.
+      logger.warn(
+        `[docker-ssh] Failed to destroy late ${operation} channel on ${this.hostname}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
   // ---- Private key resolution ------------------------------------------
 
   /**
@@ -349,9 +409,12 @@ export class DockerSSHClient {
 
     return new Promise<void>((resolve, reject) => {
       const conn = new SSHClientCtor();
+      let settled = false;
 
       const timeout = setTimeout(() => {
-        conn.end();
+        if (settled) return;
+        settled = true;
+        this.quarantineTimedOutTransport(conn, undefined, "connection");
         reject(
           new Error(
             `[docker-ssh] Connection to ${this.hostname}:${this.port} timed out after ${CONNECTION_TIMEOUT_MS}ms`,
@@ -361,6 +424,11 @@ export class DockerSSHClient {
 
       conn.on("ready", () => {
         clearTimeout(timeout);
+        if (settled) {
+          this.quarantineTimedOutTransport(conn, undefined, "late connection");
+          return;
+        }
+        settled = true;
         this.client = conn;
         this.connected = true;
         logger.info(`[docker-ssh] Connected to ${this.hostname}:${this.port}`);
@@ -384,14 +452,24 @@ export class DockerSSHClient {
 
       conn.on("error", (err) => {
         clearTimeout(timeout);
+        if (settled) {
+          if (this.client === conn) {
+            this.connected = false;
+            this.client = null;
+          }
+          return;
+        }
+        settled = true;
         this.connected = false;
         this.client = null;
         reject(new Error(`[docker-ssh] Connection error for ${this.hostname}: ${err.message}`));
       });
 
       conn.on("close", () => {
-        this.connected = false;
-        this.client = null;
+        if (this.client === conn) {
+          this.connected = false;
+          this.client = null;
+        }
       });
 
       conn.connect({
@@ -497,13 +575,7 @@ export class DockerSSHClient {
       const timer = setTimeout(() => {
         if (!settled) {
           settled = true;
-          // Close the SSH channel to signal the remote process (SIGHUP)
-          // and prevent orphaned server-side processes after timeout.
-          try {
-            stream?.close();
-          } catch {
-            /* best-effort */
-          }
+          this.quarantineTimedOutTransport(client, stream, "command");
           reject(
             new Error(
               `[docker-ssh] Command timed out after ${effectiveTimeout}ms on ${this.hostname}: ${cmdFirstToken} [redacted]`,
@@ -513,6 +585,10 @@ export class DockerSSHClient {
       }, effectiveTimeout);
 
       client.exec(command, (err, s) => {
+        if (settled) {
+          this.destroyLateExecChannel(s, "command");
+          return;
+        }
         stream = s;
 
         if (err) {
@@ -588,11 +664,7 @@ export class DockerSSHClient {
       const timer = setTimeout(() => {
         if (!settled) {
           settled = true;
-          try {
-            stream?.close();
-          } catch {
-            /* best-effort */
-          }
+          this.quarantineTimedOutTransport(client, stream, "stdin command");
           reject(
             new Error(
               `[docker-ssh] Command timed out after ${effectiveTimeout}ms on ${this.hostname}: ${cmdFirstToken} [redacted]`,
@@ -602,6 +674,10 @@ export class DockerSSHClient {
       }, effectiveTimeout);
 
       client.exec(command, (err, s) => {
+        if (settled) {
+          this.destroyLateExecChannel(s, "stdin command");
+          return;
+        }
         stream = s;
 
         if (err) {

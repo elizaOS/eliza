@@ -31,7 +31,10 @@ import { waitForUrlReachable } from "./app-reachability";
 import { appsService } from "./apps";
 import { addAppRoute, removeAppRoute } from "./apps-ingress-provisioner";
 import type { ContainerExecutorDeps } from "./container-job-executors";
-import { allocateAppContainerHostPort } from "./docker-port-allocation";
+import {
+  releaseDockerHostPortReservations,
+  reserveAppContainerHostPort,
+} from "./docker-port-allocation";
 import { DockerSSHClient } from "./docker-ssh";
 import { listVerifiedAppOrigins } from "./managed-domains";
 
@@ -158,13 +161,15 @@ function parseSeedNodeIdOrNull(): string | null {
   return nodeId || first;
 }
 
-/**
- * Allocate a collision-safe external host port for the container's app port.
- * Queries sandbox + app-container metadata on the target node before picking.
- */
-async function allocateHostPort(): Promise<number> {
+/** Reserve the app's external port in the shared per-node ownership authority. */
+async function reserveHostPort(ownerId: string): Promise<number> {
   const nodeId = parseSeedNodeIdOrNull() ?? "seed-node";
-  return allocateAppContainerHostPort(nodeId);
+  return reserveAppContainerHostPort({ nodeId, ownerKind: "app", ownerId });
+}
+
+async function releaseHostPort(ownerId: string): Promise<void> {
+  const nodeId = parseSeedNodeIdOrNull() ?? "seed-node";
+  await releaseDockerHostPortReservations({ nodeId, ownerKind: "app", ownerId });
 }
 
 /**
@@ -196,7 +201,8 @@ export function buildContainerExecutorDeps(): ContainerExecutorDeps {
   const provider = new AppContainerProvider({
     ssh,
     nodeId,
-    allocateHostPort,
+    reserveHostPort,
+    releaseHostPort,
     egressProxyUrl,
     dbEgressNetwork,
     ambassadorImage,

@@ -10,12 +10,14 @@ import type { FileHandle } from "node:fs/promises";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
+import type { AgentRuntime, IAgentRuntime, UUID } from "@elizaos/core";
 import {
   ElizaError,
   getSnapshotCaptureBarrier,
   isMobilePlatform,
   logger,
+  SnapshotCaptureBarrier,
+  type SnapshotCaptureBarrierStatus,
 } from "@elizaos/core";
 import { resolveConfigPath, resolveStateDir } from "../config/paths.ts";
 import {
@@ -77,6 +79,22 @@ export interface AgentSnapshotStreamRestoreResult {
   transfer: typeof AGENT_SNAPSHOT_STREAM_TRANSFER;
 }
 
+/**
+ * Filesystem-only target used by a restore-validation process that has not
+ * opened an AgentRuntime, plugin graph, or database adapter.
+ */
+export interface AgentSnapshotRestoreTarget {
+  readonly agentId: UUID;
+  readonly restoreValidationOnly: true;
+  getSetting(key: "PGLITE_DATA_DIR" | "POSTGRES_URL"): string | undefined;
+  quiesceForRestore(): Promise<void>;
+}
+
+export type AgentSnapshotRestoreRuntime =
+  | IAgentRuntime
+  | AgentRuntime
+  | AgentSnapshotRestoreTarget;
+
 const MEDIA_DIR_NAME = "media";
 const BACKUPS_DIR_NAME = "backups";
 const DEFAULT_PGLITE_DIR_NAME = ".elizadb";
@@ -113,10 +131,39 @@ const FILE_COMPONENT_ORDER: readonly AgentSnapshotStreamFileComponent[] = [
   "state",
 ];
 const RESTORE_STAGING_PREFIX = "eliza-agent-snapshot-restore-";
+const restoreTargetBarriers = new WeakMap<object, SnapshotCaptureBarrier>();
 
 interface SnapshotPlanBudget {
   fileCount: number;
   pathBytes: number;
+}
+
+function isRestoreValidationTarget(
+  runtime: AgentSnapshotRestoreRuntime,
+): runtime is AgentSnapshotRestoreTarget {
+  return (
+    "restoreValidationOnly" in runtime && runtime.restoreValidationOnly === true
+  );
+}
+
+function restoreBarrier(
+  runtime: AgentSnapshotRestoreRuntime,
+): SnapshotCaptureBarrier {
+  if (!isRestoreValidationTarget(runtime)) {
+    return getSnapshotCaptureBarrier(runtime);
+  }
+  let barrier = restoreTargetBarriers.get(runtime);
+  if (!barrier) {
+    barrier = new SnapshotCaptureBarrier();
+    restoreTargetBarriers.set(runtime, barrier);
+  }
+  return barrier;
+}
+
+export function getAgentSnapshotRestoreStatus(
+  runtime: AgentSnapshotRestoreRuntime,
+): SnapshotCaptureBarrierStatus {
+  return restoreBarrier(runtime).status();
 }
 
 interface SnapshotStageBudget {
@@ -237,10 +284,13 @@ async function syncDirectoryHierarchy(
   }
 }
 
-function hasPostgresUrl(runtime: IAgentRuntime | AgentRuntime): string | null {
+function hasPostgresUrl(runtime: AgentSnapshotRestoreRuntime): string | null {
   const runtimeSetting = runtime.getSetting?.("POSTGRES_URL");
   if (typeof runtimeSetting === "string" && runtimeSetting.trim()) {
     return runtimeSetting.trim();
+  }
+  if (isRestoreValidationTarget(runtime)) {
+    return null;
   }
   const postgresUrl = process.env.POSTGRES_URL?.trim();
   if (postgresUrl) return postgresUrl;
@@ -255,12 +305,14 @@ function hasPostgresUrl(runtime: IAgentRuntime | AgentRuntime): string | null {
 }
 
 async function resolvePgliteDir(
-  runtime?: IAgentRuntime | AgentRuntime,
+  runtime?: AgentSnapshotRestoreRuntime,
 ): Promise<string> {
   const runtimeSetting = runtime?.getSetting?.("PGLITE_DATA_DIR");
   const configured =
     (typeof runtimeSetting === "string" ? runtimeSetting.trim() : "") ||
-    process.env.PGLITE_DATA_DIR?.trim();
+    (runtime && isRestoreValidationTarget(runtime)
+      ? undefined
+      : process.env.PGLITE_DATA_DIR?.trim());
   if (configured) {
     if (configured === ":memory:" || configured.includes("://")) {
       return configured;
@@ -626,9 +678,13 @@ async function closeDatabaseForSnapshot(
 }
 
 async function quiesceRuntimeForSnapshot(
-  runtime: IAgentRuntime | AgentRuntime,
+  runtime: AgentSnapshotRestoreRuntime,
   postgresUrl: string | null,
 ): Promise<void> {
+  if (isRestoreValidationTarget(runtime)) {
+    await runtime.quiesceForRestore();
+    return;
+  }
   await runtime.stop({ strict: true });
   await closeDatabaseForSnapshot(runtime, postgresUrl);
 }
@@ -676,15 +732,17 @@ async function assertDeviceBridgeSnapshotQuiescent(): Promise<void> {
 }
 
 export async function runExclusiveSnapshotRestore<T>(
-  runtime: IAgentRuntime | AgentRuntime,
+  runtime: AgentSnapshotRestoreRuntime,
   apply: () => Promise<T>,
 ): Promise<T> {
-  const barrier = getSnapshotCaptureBarrier(runtime);
+  const barrier = restoreBarrier(runtime);
   let ownsBarrier = false;
   try {
     barrier.beginDraining();
     ownsBarrier = true;
-    await assertDeviceBridgeSnapshotQuiescent();
+    if (!isRestoreValidationTarget(runtime)) {
+      await assertDeviceBridgeSnapshotQuiescent();
+    }
     await barrier.waitForDrain();
     await quiesceRuntimeForSnapshot(runtime, hasPostgresUrl(runtime));
     barrier.beginCapturing();
@@ -1401,7 +1459,7 @@ async function applySharedRootFileSet(params: {
 }
 
 async function preflightVerifiedSnapshotRestore(
-  runtime: IAgentRuntime | AgentRuntime,
+  runtime: AgentSnapshotRestoreRuntime,
   descriptor: AgentSnapshotStreamDescriptor,
 ): Promise<{
   configPath: string;
@@ -1462,7 +1520,7 @@ async function preflightVerifiedSnapshotRestore(
 
 async function applyVerifiedSnapshotStream(params: {
   descriptor: AgentSnapshotStreamDescriptor;
-  runtime: IAgentRuntime | AgentRuntime;
+  runtime: AgentSnapshotRestoreRuntime;
   stagedFiles: string[];
 }): Promise<void> {
   const { descriptor, runtime, stagedFiles } = params;
@@ -1472,8 +1530,9 @@ async function applyVerifiedSnapshotStream(params: {
   if (database.kind !== "external-postgres-reference") {
     if (!pgliteDir) throw invalidStream("PGlite restore path is missing");
     if (
+      !isRestoreValidationTarget(runtime) &&
       typeof (runtime.adapter as { close?: () => Promise<void> }).close ===
-      "function"
+        "function"
     ) {
       await (runtime.adapter as { close: () => Promise<void> }).close();
     }
@@ -1547,7 +1606,7 @@ function decodeChunkBytes(frame: AgentSnapshotStreamChunkFrame): Buffer {
 }
 
 async function consumeAgentSnapshotStream(
-  runtime: IAgentRuntime | AgentRuntime,
+  runtime: AgentSnapshotRestoreRuntime,
   input: AsyncIterable<Uint8Array | string>,
   expectedBinding: AgentSnapshotUpgradeBinding,
   apply: boolean,
@@ -1787,7 +1846,7 @@ async function consumeAgentSnapshotStream(
 }
 
 export async function restoreAgentSnapshotStream(
-  runtime: IAgentRuntime | AgentRuntime,
+  runtime: AgentSnapshotRestoreRuntime,
   input: AsyncIterable<Uint8Array | string>,
   expectedBinding: AgentSnapshotUpgradeBinding,
 ): Promise<AgentSnapshotStreamRestoreResult> {
@@ -1795,7 +1854,7 @@ export async function restoreAgentSnapshotStream(
 }
 
 export async function validateAgentSnapshotStream(
-  runtime: IAgentRuntime | AgentRuntime,
+  runtime: AgentSnapshotRestoreRuntime,
   input: AsyncIterable<Uint8Array | string>,
   expectedBinding: AgentSnapshotUpgradeBinding,
 ): Promise<AgentSnapshotStreamRestoreResult> {

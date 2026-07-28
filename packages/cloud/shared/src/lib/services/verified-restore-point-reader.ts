@@ -12,7 +12,10 @@ import {
   agentSandboxBackups,
   agentSnapshotRestoreValidations,
 } from "../../db/schemas/agent-sandboxes";
-import type { VerifiedRestorePointReader } from "./admin-canary-standby";
+import type {
+  VerifiedRestorePointAuthority,
+  VerifiedRestorePointReader,
+} from "./admin-canary-standby";
 
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 const IMAGE_DIGEST_PATTERN = /^sha256:[0-9a-f]{64}$/;
@@ -20,7 +23,7 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3
 const PROVIDER_SANDBOX_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/;
 
 type VerifiedRestorePointParams = Parameters<
-  VerifiedRestorePointReader["assertVerifiedV2CandidateRestoreInTx"]
+  VerifiedRestorePointReader["readVerifiedV2CandidateRestoreInTx"]
 >[1];
 
 function invalidRestorePoint(
@@ -33,8 +36,9 @@ function invalidRestorePoint(
     cause,
     context: {
       mismatch,
-      restoreValidationId: params.restoreValidationId,
-      backupId: params.backupId,
+      sourceJobId: params.sourceJobId,
+      standbyGeneration: params.standbyGeneration,
+      rolloutId: params.rolloutId,
       organizationId: params.organizationId,
       sandboxRecordId: params.sandboxRecordId,
       agentId: params.agentId,
@@ -62,10 +66,10 @@ function isDate(value: unknown): value is Date {
  * leaving the caller's lifecycle transaction.
  */
 export class PostgresVerifiedRestorePointReader implements VerifiedRestorePointReader {
-  async assertVerifiedV2CandidateRestoreInTx(
+  async readVerifiedV2CandidateRestoreInTx(
     tx: DbTransaction,
     params: VerifiedRestorePointParams,
-  ): Promise<void> {
+  ): Promise<VerifiedRestorePointAuthority> {
     let rows: Array<{
       validation: typeof agentSnapshotRestoreValidations.$inferSelect;
       backup: typeof agentSandboxBackups.$inferSelect;
@@ -88,7 +92,12 @@ export class PostgresVerifiedRestorePointReader implements VerifiedRestorePointR
           ),
         )
         .where(
-          eq(agentSnapshotRestoreValidations.restore_validation_id, params.restoreValidationId),
+          and(
+            eq(agentSnapshotRestoreValidations.source_job_id, params.sourceJobId),
+            eq(agentSnapshotRestoreValidations.standby_generation, params.standbyGeneration),
+            eq(agentSnapshotRestoreValidations.organization_id, params.organizationId),
+            eq(agentSnapshotRestoreValidations.sandbox_record_id, params.sandboxRecordId),
+          ),
         )
         .limit(2);
     } catch (cause) {
@@ -99,13 +108,9 @@ export class PostgresVerifiedRestorePointReader implements VerifiedRestorePointR
     assertMatch(rows.length === 1, params, "restore_validation_cardinality");
     const { validation, backup } = rows[0];
 
-    assertMatch(validation.restore_validation_id === params.restoreValidationId, params, "id");
-    assertMatch(validation.backup_id === params.backupId, params, "backup_id");
-    assertMatch(
-      validation.aggregate_sha256 === params.restoreValidationAggregateSha256,
-      params,
-      "aggregate_sha256",
-    );
+    assertMatch(validation.source_job_id === params.sourceJobId, params, "source_job_id");
+    assertMatch(validation.standby_generation === params.standbyGeneration, params, "generation");
+    assertMatch(validation.rollout_id === params.rolloutId, params, "rollout_id");
     assertMatch(validation.organization_id === params.organizationId, params, "organization_id");
     assertMatch(
       validation.sandbox_record_id === params.sandboxRecordId,
@@ -120,19 +125,18 @@ export class PostgresVerifiedRestorePointReader implements VerifiedRestorePointR
     );
     assertMatch(validation.target_image === params.targetImage, params, "target_image");
     assertMatch(validation.target_digest === params.targetDigest, params, "target_digest");
+    assertMatch(validation.validation_state === "never_routed_retired", params, "validation_state");
     assertMatch(
-      validation.target_provider_sandbox_id === params.restoreValidatedCandidateProviderSandboxId,
+      validation.candidate_route_mode === "restore_validation_private_control",
       params,
-      "target_provider_sandbox_id",
+      "candidate_route_mode",
     );
     assertMatch(
-      validation.target_replacement_attempt_id ===
-        params.restoreValidatedCandidateReplacementAttemptId,
+      typeof validation.aggregate_sha256 === "string" &&
+        SHA256_PATTERN.test(validation.aggregate_sha256),
       params,
-      "target_replacement_attempt_id",
+      "aggregate_format",
     );
-
-    assertMatch(SHA256_PATTERN.test(validation.aggregate_sha256), params, "aggregate_format");
     assertMatch(SHA256_PATTERN.test(validation.capture_nonce), params, "capture_nonce_format");
     assertMatch(
       Number.isSafeInteger(validation.source_environment_revision) &&
@@ -152,34 +156,74 @@ export class PostgresVerifiedRestorePointReader implements VerifiedRestorePointR
       "target_digest_format",
     );
     assertMatch(
-      PROVIDER_SANDBOX_ID_PATTERN.test(validation.target_provider_sandbox_id),
+      typeof validation.target_provider_sandbox_id === "string" &&
+        PROVIDER_SANDBOX_ID_PATTERN.test(validation.target_provider_sandbox_id),
       params,
       "target_provider_sandbox_id_format",
     );
     assertMatch(
-      UUID_PATTERN.test(validation.target_replacement_attempt_id),
+      typeof validation.target_replacement_attempt_id === "string" &&
+        UUID_PATTERN.test(validation.target_replacement_attempt_id),
       params,
       "target_replacement_attempt_id_format",
+    );
+    assertMatch(
+      typeof validation.target_provider_node_id === "string" &&
+        validation.target_provider_node_id.length > 0,
+      params,
+      "target_provider_node_id",
+    );
+    assertMatch(
+      typeof validation.target_provider_container_name === "string" &&
+        validation.target_provider_container_name.length > 0,
+      params,
+      "target_provider_container_name",
+    );
+    assertMatch(
+      typeof validation.target_provider_volume_path === "string" &&
+        validation.target_provider_volume_path.length > 0,
+      params,
+      "target_provider_volume_path",
+    );
+    assertMatch(
+      typeof validation.target_provider_vpn_node_id === "string" &&
+        validation.target_provider_vpn_node_id.length > 0,
+      params,
+      "target_provider_vpn_node_id",
     );
 
     assertMatch(validation.receipt_state === "committed", params, "receipt_state");
     assertMatch(validation.receipt_schema_version === 2, params, "receipt_schema_version");
     assertMatch(validation.receipt_transfer === "chunked-v1", params, "receipt_transfer");
     assertMatch(
-      Number.isSafeInteger(validation.receipt_file_count) && validation.receipt_file_count >= 0,
+      typeof validation.receipt_file_count === "number" &&
+        Number.isSafeInteger(validation.receipt_file_count) &&
+        validation.receipt_file_count >= 0,
       params,
       "receipt_file_count",
     );
     assertMatch(
-      Number.isSafeInteger(validation.receipt_total_bytes) && validation.receipt_total_bytes >= 0,
+      typeof validation.receipt_total_bytes === "number" &&
+        Number.isSafeInteger(validation.receipt_total_bytes) &&
+        validation.receipt_total_bytes >= 0,
       params,
       "receipt_total_bytes",
     );
-    assertMatch(validation.receipt_requires_restart, params, "receipt_requires_restart");
-    assertMatch(validation.receipt_success, params, "receipt_success");
+    assertMatch(validation.receipt_requires_restart === true, params, "receipt_requires_restart");
+    assertMatch(validation.receipt_success === true, params, "receipt_success");
     assertMatch(isDate(validation.receipt_committed_at), params, "receipt_committed_at");
-    assertMatch(validation.candidate_state === "never_routed_retired", params, "candidate_state");
     assertMatch(validation.route_exposed_at === null, params, "route_exposed_at");
+    assertMatch(
+      isDate(validation.candidate_container_absent_at),
+      params,
+      "candidate_container_absent_at",
+    );
+    assertMatch(isDate(validation.candidate_vpn_absent_at), params, "candidate_vpn_absent_at");
+    assertMatch(
+      isDate(validation.candidate_volume_absent_at),
+      params,
+      "candidate_volume_absent_at",
+    );
     assertMatch(isDate(validation.candidate_retired_at), params, "candidate_retired_at");
     assertMatch(
       validation.candidate_retired_at.getTime() >= validation.receipt_committed_at.getTime(),
@@ -187,7 +231,7 @@ export class PostgresVerifiedRestorePointReader implements VerifiedRestorePointR
       "candidate_retired_before_receipt",
     );
 
-    assertMatch(backup.id === params.backupId, params, "joined_backup_id");
+    assertMatch(backup.id === validation.backup_id, params, "joined_backup_id");
     assertMatch(
       backup.sandbox_record_id === params.sandboxRecordId,
       params,
@@ -200,5 +244,18 @@ export class PostgresVerifiedRestorePointReader implements VerifiedRestorePointR
     assertMatch(backup.verification_error === null, params, "verification_error");
     assertMatch(backup.storage_commit_state === "complete", params, "storage_commit_state");
     assertMatch(backup.content_hash === validation.aggregate_sha256, params, "backup_content_hash");
+
+    return {
+      verifiedBackupId: validation.backup_id,
+      restoreValidationId: validation.restore_validation_id,
+      restoreValidationAggregateSha256: validation.aggregate_sha256,
+      restoreValidatedCandidateProviderSandboxId: validation.target_provider_sandbox_id,
+      restoreValidatedCandidateReplacementAttemptId: validation.target_replacement_attempt_id,
+      receiptCommittedAt: validation.receipt_committed_at,
+      candidateContainerAbsentAt: validation.candidate_container_absent_at,
+      candidateVpnAbsentAt: validation.candidate_vpn_absent_at,
+      candidateVolumeAbsentAt: validation.candidate_volume_absent_at,
+      candidateRetiredAt: validation.candidate_retired_at,
+    };
   }
 }

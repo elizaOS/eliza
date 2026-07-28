@@ -22,54 +22,22 @@ import {
   restoreAgentSnapshot,
   validateAgentSnapshotForRestore,
 } from "../services/agent-backup.ts";
-import {
-  beginCandidateSnapshotRestore,
-  commitCandidateSnapshotRestore,
-  resolveCandidateSnapshotRestoreBinding,
-  verifyCandidateSnapshotRestoreHeaders,
-  verifyCandidateSnapshotRestoreReplay,
-} from "../services/agent-snapshot-restore-binding.ts";
+import { resolveCandidateSnapshotRestoreBinding } from "../services/agent-snapshot-restore-binding.ts";
 import {
   createAgentSnapshotStream,
-  restoreAgentSnapshotStream,
   runExclusiveSnapshotRestore,
-  validateAgentSnapshotStream,
 } from "../services/agent-snapshot-stream.ts";
 import {
   AGENT_SNAPSHOT_STREAM_CONTENT_TYPE,
   AGENT_SNAPSHOT_STREAM_TRANSFER,
 } from "../services/agent-snapshot-stream-protocol.ts";
+import {
+  handleCandidateSnapshotRestore,
+  snapshotProtocolStatus,
+} from "./candidate-snapshot-restore.ts";
 
 const MAX_SNAPSHOT_REQUEST_BODY_BYTES = 4 * 1024;
 export const AGENT_BACKUP_V1_MAX_BODY_BYTES = 128 * 1024 * 1024;
-
-function protocolStatus(error: unknown): number {
-  if (
-    error instanceof ElizaError &&
-    (error.code === "AGENT_SNAPSHOT_RECEIPT_CONFLICT" ||
-      error.code === "AGENT_SNAPSHOT_SOURCE_ATTESTATION_MISMATCH" ||
-      error.code === "AGENT_SNAPSHOT_RESTORE_INDETERMINATE" ||
-      error.code === "AGENT_SNAPSHOT_RESTORE_NOT_ENABLED")
-  ) {
-    return 409;
-  }
-  if (
-    error instanceof ElizaError &&
-    (error.code === "AGENT_SNAPSHOT_MUTATION_ADMISSION_CLOSED" ||
-      error.code === "AGENT_SNAPSHOT_CAPTURE_ALREADY_STARTED" ||
-      error.code === "AGENT_SNAPSHOT_DEVICE_BRIDGE_ACTIVE" ||
-      error.code === "AGENT_SNAPSHOT_DEVICE_BRIDGE_GUARD_UNAVAILABLE")
-  ) {
-    return 503;
-  }
-  return error instanceof ElizaError &&
-    (error.code === "AGENT_SNAPSHOT_STREAM_INVALID" ||
-      error.code === "AGENT_SNAPSHOT_REQUEST_INVALID" ||
-      error.code === "AGENT_SNAPSHOT_BINDING_INVALID" ||
-      error.code === "AGENT_SNAPSHOT_RECEIPT_INVALID")
-    ? 400
-    : 500;
-}
 
 function invalidRequest(message: string, cause?: unknown): ElizaError {
   return new ElizaError(message, {
@@ -186,34 +154,6 @@ async function sendSnapshotStream(
   }
 }
 
-function assertChunkedRestoreRequest(
-  req: http.IncomingMessage,
-  url: URL,
-): void {
-  const queryKeys = [...url.searchParams.keys()];
-  const transfers = url.searchParams.getAll("transfer");
-  if (
-    queryKeys.length !== 1 ||
-    queryKeys[0] !== "transfer" ||
-    transfers.length !== 1 ||
-    transfers[0] !== AGENT_SNAPSHOT_STREAM_TRANSFER
-  ) {
-    throw new ElizaError("Unsupported snapshot restore transfer", {
-      code: "AGENT_SNAPSHOT_STREAM_INVALID",
-      severity: "fatal",
-    });
-  }
-  if (req.headers["content-type"] !== AGENT_SNAPSHOT_STREAM_CONTENT_TYPE) {
-    throw new ElizaError(
-      `Chunked restore requires Content-Type ${AGENT_SNAPSHOT_STREAM_CONTENT_TYPE}`,
-      {
-        code: "AGENT_SNAPSHOT_STREAM_INVALID",
-        severity: "fatal",
-      },
-    );
-  }
-}
-
 export async function handleAgentSnapshotRoutes(args: {
   config: ElizaConfig;
   method: string;
@@ -264,7 +204,7 @@ export async function handleAgentSnapshotRoutes(args: {
         sendJsonError(
           res,
           error instanceof Error ? error.message : "Snapshot failed",
-          protocolStatus(error),
+          snapshotProtocolStatus(error),
         );
       }
     }
@@ -273,7 +213,6 @@ export async function handleAgentSnapshotRoutes(args: {
 
   try {
     if (url.searchParams.has("transfer")) {
-      assertChunkedRestoreRequest(req, url);
       const binding = resolveCandidateSnapshotRestoreBinding();
       if (!binding) {
         throw new ElizaError(
@@ -284,27 +223,13 @@ export async function handleAgentSnapshotRoutes(args: {
           },
         );
       }
-      verifyCandidateSnapshotRestoreHeaders(req.headers, binding);
-      const committed = await beginCandidateSnapshotRestore(binding);
-      if (committed) {
-        const replayed = await validateAgentSnapshotStream(
-          runtime,
-          req,
-          binding,
-        );
-        verifyCandidateSnapshotRestoreReplay(committed, replayed);
-        sendJson(res, committed);
-        return true;
-      }
-      const streamResult = await restoreAgentSnapshotStream(
-        runtime,
-        req,
+      await handleCandidateSnapshotRestore({
         binding,
-      );
-      sendJson(
+        req,
         res,
-        await commitCandidateSnapshotRestore(binding, streamResult),
-      );
+        runtime,
+        url,
+      });
       return true;
     }
     if ([...url.searchParams.keys()].length !== 0) {
@@ -330,7 +255,7 @@ export async function handleAgentSnapshotRoutes(args: {
     sendJsonError(
       res,
       error instanceof Error ? error.message : "Restore failed",
-      protocolStatus(error),
+      snapshotProtocolStatus(error),
     );
   }
   return true;
