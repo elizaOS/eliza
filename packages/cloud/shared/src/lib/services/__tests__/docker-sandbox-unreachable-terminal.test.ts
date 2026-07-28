@@ -14,18 +14,16 @@
  * RESOLVE (after a warn). With stop() resolving, `deleteAgent`'s try succeeds,
  * the row DELETE runs, and the job completes terminally — no re-queue.
  *
- * This test drives the real `DockerSandboxProvider.stop()` with the SSH client
- * mocked to reject (no real SSH) and the in-memory container pre-seeded so no DB
- * lookup is needed.
+ * This test drives the real `DockerSandboxProvider.stop()` with remote SSH,
+ * capacity accounting, and host-port persistence isolated at their boundaries.
+ * The in-memory container seed keeps locator resolution deterministic.
  */
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { dockerNodesRepository } from "../../../db/repositories/docker-nodes";
 
 // Fake SSH client: getClient() returns an object whose exec() rejects with a
 // caller-controlled error. Registered BEFORE importing the provider so the
-// provider binds to this mock. This is the only thing we need to stub — the
-// container meta is pre-seeded in memory (no DB lookup) and the post-stop
-// decrementAllocated is best-effort (its DB call fails gracefully via .catch
-// in the provider, which itself exercises the fall-through path).
+// provider binds to this mock.
 let nextExecError: Error = new Error("unset");
 mock.module("../docker-ssh", () => ({
   DockerSSHClient: {
@@ -40,6 +38,9 @@ mock.module("../docker-ssh", () => ({
 import { DockerSandboxProvider } from "../docker-sandbox-provider";
 
 const SANDBOX_ID = "agent-unreachable-test";
+const releaseHostPorts = mock(async () => 0);
+const decrementAllocated = mock(async (_nodeId: string) => undefined);
+const originalDecrementAllocated = dockerNodesRepository.decrementAllocated;
 
 type ContainerMetaSeed = {
   nodeId: string;
@@ -75,26 +76,35 @@ describe("DockerSandboxProvider.stop() terminal policy on unreachable node", () 
   beforeEach(() => {
     // Headscale deletion is skipped when not configured.
     delete process.env.HEADSCALE_API_KEY;
+    releaseHostPorts.mockClear();
+    decrementAllocated.mockClear();
+    dockerNodesRepository.decrementAllocated = decrementAllocated;
+  });
+
+  afterEach(() => {
+    dockerNodesRepository.decrementAllocated = originalDecrementAllocated;
   });
 
   test("RESOLVES (no throw) when both stop and rm fail with an SSH timeout", async () => {
     nextExecError = new Error(
       "[docker-ssh] Connection to 138.201.80.125:22 timed out after 10000ms",
     );
-    const provider = new DockerSandboxProvider();
+    const provider = new DockerSandboxProvider({ releaseHostPorts });
     seedContainer(provider);
 
     // The fix means this no longer throws: an unreachable node is terminal, so
     // the caller (deleteAgent) proceeds to the row DELETE and the job completes
     // instead of re-queuing and re-running the ~20-65s stop path each cycle.
     await expect(provider.stop(SANDBOX_ID)).resolves.toBeUndefined();
+    expect(releaseHostPorts).not.toHaveBeenCalled();
+    expect(decrementAllocated).toHaveBeenCalledWith("node-1");
   });
 
   test("replacement stop REJECTS when the node is unreachable", async () => {
     nextExecError = new Error(
       "[docker-ssh] Connection to 138.201.80.125:22 timed out after 10000ms",
     );
-    const provider = new DockerSandboxProvider();
+    const provider = new DockerSandboxProvider({ releaseHostPorts });
     seedContainer(provider);
 
     await expect(provider.stopForReplacement(SANDBOX_ID)).rejects.toThrow(
@@ -104,7 +114,7 @@ describe("DockerSandboxProvider.stop() terminal policy on unreachable node", () 
 
   test("replacement stop REJECTS generic not-found failures without container absence proof", async () => {
     nextExecError = new Error("ssh helper binary not found");
-    const provider = new DockerSandboxProvider();
+    const provider = new DockerSandboxProvider({ releaseHostPorts });
     seedContainer(provider);
 
     await expect(provider.stopForReplacement(SANDBOX_ID)).rejects.toThrow(
@@ -114,10 +124,17 @@ describe("DockerSandboxProvider.stop() terminal policy on unreachable node", () 
 
   test("replacement stop accepts an explicit Docker no-such-container response", async () => {
     nextExecError = new Error("Error response from daemon: No such container: agent-x");
-    const provider = new DockerSandboxProvider();
+    const provider = new DockerSandboxProvider({ releaseHostPorts });
     seedContainer(provider);
 
     await expect(provider.stopForReplacement(SANDBOX_ID)).resolves.toBeUndefined();
+    expect(releaseHostPorts).toHaveBeenCalledTimes(1);
+    expect(releaseHostPorts).toHaveBeenCalledWith({
+      nodeId: "node-1",
+      ownerKind: "agent",
+      ownerId: SANDBOX_ID,
+    });
+    expect(decrementAllocated).toHaveBeenCalledWith("node-1");
   });
 
   test("still THROWS when both legs fail for a non-unreachable, non-gone reason", async () => {
@@ -126,7 +143,7 @@ describe("DockerSandboxProvider.stop() terminal policy on unreachable node", () 
     nextExecError = new Error(
       "Error response from daemon: cannot stop container: permission denied",
     );
-    const provider = new DockerSandboxProvider();
+    const provider = new DockerSandboxProvider({ releaseHostPorts });
     seedContainer(provider);
 
     await expect(provider.stop(SANDBOX_ID)).rejects.toThrow(/Failed to stop container/);
@@ -140,7 +157,7 @@ describe("DockerSandboxProvider.stop() terminal policy on unreachable node", () 
     nextExecError = new Error(
       "[docker-ssh] Command timed out after 25000ms on host: docker [redacted]",
     );
-    const provider = new DockerSandboxProvider();
+    const provider = new DockerSandboxProvider({ releaseHostPorts });
     seedContainer(provider);
 
     await expect(provider.stop(SANDBOX_ID)).rejects.toThrow(/Failed to stop container/);
@@ -148,9 +165,16 @@ describe("DockerSandboxProvider.stop() terminal policy on unreachable node", () 
 
   test("RESOLVES when the container is already gone (existing behavior preserved)", async () => {
     nextExecError = new Error("Error response from daemon: No such container: agent-x");
-    const provider = new DockerSandboxProvider();
+    const provider = new DockerSandboxProvider({ releaseHostPorts });
     seedContainer(provider);
 
     await expect(provider.stop(SANDBOX_ID)).resolves.toBeUndefined();
+    expect(releaseHostPorts).toHaveBeenCalledTimes(1);
+    expect(releaseHostPorts).toHaveBeenCalledWith({
+      nodeId: "node-1",
+      ownerKind: "agent",
+      ownerId: SANDBOX_ID,
+    });
+    expect(decrementAllocated).toHaveBeenCalledWith("node-1");
   });
 });
