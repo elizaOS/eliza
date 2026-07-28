@@ -1106,8 +1106,13 @@ describe("ElizaSandboxService wake", () => {
         sandbox_record_id: sleepingSandbox.id,
         snapshot_type: "pre-shutdown",
         state_data: { memories: [], config: {}, workspaceFiles: {} },
+        snapshot_schema_version: 1,
         state_data_storage: "inline",
         state_data_key: null,
+        state_data_descriptor: null,
+        storage_commit_state: "complete",
+        storage_commit_error: null,
+        storage_commit_updated_at: now,
         size_bytes: 2,
         backup_kind: "full",
         parent_backup_id: null,
@@ -1157,6 +1162,7 @@ describe("ElizaSandboxService wake", () => {
       const originalGetLatestBackup = agentSandboxesRepository.getLatestBackup;
       const originalGetBackupById = agentSandboxesRepository.getBackupById;
       const originalGetLatestStoredBackup = agentSandboxesRepository.getLatestStoredBackup;
+      const originalListBackupMetadata = agentSandboxesRepository.listBackupMetadata;
       const originalStampBackupVerification = agentSandboxesRepository.stampBackupVerification;
       const originalGetReconstructedBackupState =
         agentSandboxesRepository.getReconstructedBackupState;
@@ -1174,6 +1180,7 @@ describe("ElizaSandboxService wake", () => {
       // from-backup override, so provision fetches it by id, not "latest".
       agentSandboxesRepository.getBackupById = mock(async () => backup);
       agentSandboxesRepository.getLatestStoredBackup = mock(async () => storedBackup);
+      agentSandboxesRepository.listBackupMetadata = mock(async () => [storedBackup]);
       agentSandboxesRepository.stampBackupVerification = mock(async () => {});
       agentSandboxesRepository.getReconstructedBackupState = mock(async () => ({
         memories: [],
@@ -1205,6 +1212,7 @@ describe("ElizaSandboxService wake", () => {
           restoredBackupId: backup.id,
         });
         expect(requests).toContain("https://runtime.example/api/restore");
+        expect(agentSandboxesRepository.listBackupMetadata).not.toHaveBeenCalled();
         expect(updateSpy).toHaveBeenCalledWith(
           sleepingSandbox.id,
           expect.objectContaining({ status: "running" }),
@@ -1216,6 +1224,7 @@ describe("ElizaSandboxService wake", () => {
         agentSandboxesRepository.getLatestBackup = originalGetLatestBackup;
         agentSandboxesRepository.getBackupById = originalGetBackupById;
         agentSandboxesRepository.getLatestStoredBackup = originalGetLatestStoredBackup;
+        agentSandboxesRepository.listBackupMetadata = originalListBackupMetadata;
         agentSandboxesRepository.stampBackupVerification = originalStampBackupVerification;
         agentSandboxesRepository.getReconstructedBackupState = originalGetReconstructedBackupState;
         createForAgentSpy.mockRestore();

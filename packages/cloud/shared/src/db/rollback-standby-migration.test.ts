@@ -18,6 +18,8 @@ const ROLLOUT_ID = "00000000-0000-4000-8000-000000217183";
 const BLUE_ATTEMPT_ID = "00000000-0000-4000-8000-000000317183";
 const DECISION_JOB_ID = "00000000-0000-4000-8000-000000417183";
 const BACKUP_ID = "00000000-0000-4000-8000-000000517183";
+const RESTORE_VALIDATION_ID = "00000000-0000-4000-8000-000000617183";
+const RESTORE_CANDIDATE_ATTEMPT_ID = "00000000-0000-4000-8000-000000717183";
 const RESTORE_AGGREGATE_SHA256 = "c".repeat(64);
 const migrationUrl = new URL("./migrations/0184_rollback_standby_state.sql", import.meta.url);
 
@@ -28,7 +30,14 @@ let databaseReady = true;
 beforeAll(async () => {
   try {
     ({ closeDatabaseConnectionsForTests: closeDb, dbWrite } = await import("./client"));
-    await dbWrite.execute('CREATE TABLE "agent_sandboxes" ("id" uuid PRIMARY KEY);');
+    await dbWrite.execute(`
+      CREATE TABLE "agent_sandboxes" (
+        "id" uuid PRIMARY KEY,
+        "status" text NOT NULL DEFAULT 'pending',
+        "deletion_attempt_id" uuid,
+        "deletion_started_at" timestamp with time zone
+      );
+    `);
     const migration = readFileSync(fileURLToPath(migrationUrl), "utf8");
     for (const statement of migration.split(/;\s*(?=ALTER TABLE|CREATE INDEX|$)/)) {
       if (statement.trim()) await dbWrite.execute(statement);
@@ -121,10 +130,22 @@ describe("0184 rollback standby state", () => {
         fileURLToPath(new URL("./migrations/meta/_journal.json", import.meta.url)),
         "utf8",
       ),
-    ) as { entries: Array<{ tag: string }> };
+    ) as { entries: Array<{ idx: number; tag: string; when: number }> };
+    const warmClaimEntries = journal.entries.filter(
+      (entry) => entry.tag === "0182_warm_claim_credential_fence",
+    );
+    const rollbackStandbyEntries = journal.entries.filter(
+      (entry) => entry.tag === "0184_rollback_standby_state",
+    );
+    expect(warmClaimEntries).toHaveLength(1);
+    expect(rollbackStandbyEntries).toHaveLength(1);
+    expect(rollbackStandbyEntries[0].idx).toBeGreaterThan(warmClaimEntries[0].idx);
+    expect(rollbackStandbyEntries[0].when).toBeGreaterThan(warmClaimEntries[0].when);
     expect(
-      journal.entries.filter((entry) => entry.tag === "0184_rollback_standby_state"),
-    ).toHaveLength(1);
+      journal.entries.findIndex((entry) => entry.tag === "0184_rollback_standby_state"),
+    ).toBeGreaterThan(
+      journal.entries.findIndex((entry) => entry.tag === "0182_warm_claim_credential_fence"),
+    );
   });
 
   test("accepts the exact pausing and paused phases but rejects partial identity", async () => {
@@ -184,10 +205,12 @@ describe("0184 rollback standby state", () => {
         "rollback_standby_state" = 'retiring',
         "rollback_standby_decision_job_id" = '${DECISION_JOB_ID}',
         "rollback_standby_verified_backup_id" = '${BACKUP_ID}',
-        "rollback_standby_restore_validation_id" = '${BACKUP_ID}',
+        "rollback_standby_restore_validation_id" = '${RESTORE_VALIDATION_ID}',
         "rollback_standby_restore_validation_aggregate_sha256" = '${RESTORE_AGGREGATE_SHA256}',
         "rollback_standby_restore_candidate_provider_sandbox_id" =
-          'restore-candidate-217183'
+          'restore-candidate-217183',
+        "rollback_standby_restore_candidate_replacement_attempt_id" =
+          '${RESTORE_CANDIDATE_ATTEMPT_ID}'
       WHERE "id" = '${AGENT_ID}';
     `);
     const retiring = await dbWrite.execute(`
@@ -195,16 +218,18 @@ describe("0184 rollback standby state", () => {
         "rollback_standby_state",
         "rollback_standby_restore_validation_id",
         "rollback_standby_restore_validation_aggregate_sha256",
-        "rollback_standby_restore_candidate_provider_sandbox_id"
+        "rollback_standby_restore_candidate_provider_sandbox_id",
+        "rollback_standby_restore_candidate_replacement_attempt_id"
       FROM "agent_sandboxes"
       WHERE "id" = '${AGENT_ID}';
     `);
     expect(retiring.rows).toEqual([
       {
         rollback_standby_state: "retiring",
-        rollback_standby_restore_validation_id: BACKUP_ID,
+        rollback_standby_restore_validation_id: RESTORE_VALIDATION_ID,
         rollback_standby_restore_validation_aggregate_sha256: RESTORE_AGGREGATE_SHA256,
         rollback_standby_restore_candidate_provider_sandbox_id: "restore-candidate-217183",
+        rollback_standby_restore_candidate_replacement_attempt_id: RESTORE_CANDIDATE_ATTEMPT_ID,
       },
     ]);
   });

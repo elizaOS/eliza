@@ -75,8 +75,8 @@ import {
 } from "./agent-backup-diff";
 import { decryptAgentEnvVars, encryptAgentEnvVarsForStorage } from "./agent-env-crypto";
 import {
-  agentSnapshotV2CaptureTimeoutMs,
   type AgentSnapshotV2CloudDependencies,
+  agentSnapshotV2CaptureTimeoutMs,
   captureAgentSnapshotV2,
   restoreAgentSnapshotV2,
 } from "./agent-snapshot-v2-cloud";
@@ -8194,9 +8194,7 @@ export class ElizaSandboxService {
 
       let backup = await this.readRestoreValidationBackup(data);
       if (!backup) {
-        const captureTimeoutMs = agentSnapshotV2CaptureTimeoutMs(
-          AGENT_SNAPSHOT_V2_MAX_WIRE_BYTES,
-        );
+        const captureTimeoutMs = agentSnapshotV2CaptureTimeoutMs(AGENT_SNAPSHOT_V2_MAX_WIRE_BYTES);
         const captureStartedAt = Date.now();
         const writeLeaseExpiresAt = new Date(captureStartedAt + captureTimeoutMs);
         const captureController = new AbortController();

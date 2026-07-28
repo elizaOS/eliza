@@ -324,33 +324,74 @@ function armSnapshotGateFor(type: string): () => void {
   };
 }
 
+function adminCanaryCutoverTx(
+  ctx: ReturnType<typeof harness>,
+  atomicAuditWrites: Array<Record<string, unknown>>,
+  plannedRows: Array<Record<string, unknown>>,
+) {
+  const data = ctx.job.data as {
+    rolloutId: string;
+    targetDigest: string;
+    targetImage: string;
+  };
+  const standby = {
+    id: AGENT,
+    organization_id: ORG,
+    user_id: USER,
+    rollback_standby_state: "paused",
+    rollback_standby_source_job_id: ctx.job.id,
+    rollback_standby_generation: ctx.job.id,
+    rollback_standby_rollout_id: data.rolloutId,
+    rollback_standby_primary_sandbox_id: "c-new",
+    rollback_standby_primary_node_id: "node-b",
+    rollback_standby_primary_replacement_attempt_id: "66666666-6666-4666-8666-666666666666",
+    rollback_standby_node_id: "node-a",
+    rollback_standby_environment_revision: 7,
+    image_digest: data.targetDigest,
+    docker_image: data.targetImage,
+  };
+
+  return {
+    update: () => ({
+      set: (updates: Record<string, unknown>) => {
+        const prior =
+          atomicAuditWrites.length === 0 ? ctx.job : { ...ctx.job, ...atomicAuditWrites.at(-1) };
+        atomicAuditWrites.push(updates);
+        return {
+          where: () => ({
+            returning: async () => [{ ...prior, ...updates }],
+          }),
+        };
+      },
+    }),
+    select: () => ({
+      from: () => ({
+        where: () => ({
+          limit: async () => [standby],
+        }),
+      }),
+    }),
+    insert: () => ({
+      values: async (row: Record<string, unknown>) => {
+        plannedRows.push(row);
+      },
+    }),
+  };
+}
+
 describe("executeJob dispatch — success path per job type marks the job completed", () => {
   for (const arm of AGENT_ARMS) {
     test(`${arm.name}: transport success → completed with a result record, no attempt burned`, async () => {
       const ctx = harness(makeJob(arm.type, arm.data));
       const disarmGate = armSnapshotGateFor(arm.type);
       const atomicAuditWrites: Array<Record<string, unknown>> = [];
+      const plannedRows: Array<Record<string, unknown>> = [];
       if (arm.type === JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE) {
         const canarySpy = spyOn(
           elizaSandboxService,
           "executeAdminCanaryUpgrade",
         ).mockImplementation(async (params) => {
-          const tx = {
-            update: () => ({
-              set: (updates: Record<string, unknown>) => {
-                const prior =
-                  atomicAuditWrites.length === 0
-                    ? ctx.job
-                    : { ...ctx.job, ...atomicAuditWrites.at(-1) };
-                atomicAuditWrites.push(updates);
-                return {
-                  where: () => ({
-                    returning: async () => [{ ...prior, ...updates }],
-                  }),
-                };
-              },
-            }),
-          };
+          const tx = adminCanaryCutoverTx(ctx, atomicAuditWrites, plannedRows);
           await params.onCutoverInTx(tx as never, {
             oldNodeId: "node-a",
             oldContainerName: "c-old",
@@ -386,6 +427,19 @@ describe("executeJob dispatch — success path per job type marks the job comple
             standbyPending: true,
             standbyGeneration: ctx.job.id,
           });
+          expect(plannedRows).toHaveLength(2);
+          expect(plannedRows[0]).toMatchObject({
+            source_job_id: ctx.job.id,
+            rollout_id: arm.data.rolloutId,
+            validation_state: "planned",
+          });
+          expect(plannedRows[1]).toMatchObject({
+            type: JOB_TYPES.AGENT_ADMIN_CANARY_RESTORE_VALIDATION,
+            status: "pending",
+            organization_id: ORG,
+            user_id: USER,
+            agent_id: AGENT,
+          });
         } else {
           expect(completed).toBeDefined();
           expect(completed?.[2]?.result).toBeTruthy();
@@ -410,21 +464,11 @@ describe("executeJob dispatch — success path per job type marks the job comple
     );
     if (!arm) throw new Error("admin canary dispatch arm missing");
     const first = harness(makeJob(arm.type, arm.data));
-    let standbyAudit: Record<string, unknown> | undefined;
+    const atomicAuditWrites: Array<Record<string, unknown>> = [];
+    const plannedRows: Array<Record<string, unknown>> = [];
     const canarySpy = spyOn(elizaSandboxService, "executeAdminCanaryUpgrade").mockImplementation(
       async (params) => {
-        const tx = {
-          update: () => ({
-            set: (updates: Record<string, unknown>) => {
-              standbyAudit = updates.result as Record<string, unknown>;
-              return {
-                where: () => ({
-                  returning: async () => [{ ...first.job, ...updates }],
-                }),
-              };
-            },
-          }),
-        };
+        const tx = adminCanaryCutoverTx(first, atomicAuditWrites, plannedRows);
         await params.onCutoverInTx(tx as never, {
           oldNodeId: "node-a",
           oldContainerName: "c-old",
@@ -445,11 +489,25 @@ describe("executeJob dispatch — success path per job type marks the job comple
       expect(completed).toMatchObject({ succeeded: 1, retried: 0, failed: 0 });
       expect(first.retryLaterSpy).not.toHaveBeenCalled();
       expect(completedCall(first)).toBeUndefined();
-      expect(standbyAudit).toMatchObject({
+      expect(atomicAuditWrites).toHaveLength(1);
+      expect(atomicAuditWrites[0]?.result).toMatchObject({
         success: true,
         cleanupPending: false,
         standbyPending: true,
         standbyGeneration: first.job.id,
+      });
+      expect(plannedRows).toHaveLength(2);
+      expect(plannedRows[0]).toMatchObject({
+        source_job_id: first.job.id,
+        rollout_id: arm.data.rolloutId,
+        validation_state: "planned",
+      });
+      expect(plannedRows[1]).toMatchObject({
+        type: JOB_TYPES.AGENT_ADMIN_CANARY_RESTORE_VALIDATION,
+        status: "pending",
+        organization_id: ORG,
+        user_id: USER,
+        agent_id: AGENT,
       });
     } finally {
       first.claimSpy.mockRestore();
@@ -498,7 +556,7 @@ describe("executeJob dispatch — failure path per job type retries (increments 
         expect(res.succeeded).toBe(0);
         expect(res.failed).toBe(1);
         expect(ctx.incrementSpy).toHaveBeenCalledTimes(1);
-        expect(ctx.incrementSpy.mock.calls[0]?.[0]).toBe(ctx.job.id);
+        expect(ctx.incrementSpy.mock.calls[0]?.[0]).toBe(ctx.job);
         expect(completedCall(ctx)).toBeUndefined();
       } finally {
         disarmGate();
