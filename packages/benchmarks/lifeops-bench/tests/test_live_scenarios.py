@@ -185,11 +185,24 @@ def test_parent_suite_scenarios_require_trusted_tool_receipts() -> None:
         if case.trusted_evidence_requirement is not None
     )
     # Version bumps are deliberate: G6/G10/G24 added disruption-driven success
-    # criteria, and G35/G36 moved to the typed PARENTING_GUIDANCE action
-    # surface. Everything else must stay pinned at v1 — an unbumped content
-    # change would silently invalidate the sha the signer registry resolves.
+    # criteria, G35/G36 moved to the typed PARENTING_GUIDANCE action surface,
+    # and G15/G30/G34/G38 gained server-owned native evaluators
+    # (SCHOOL_SOURCES, HOUSEHOLD_OPERATIONS, OWNER_FINANCES). Everything else
+    # must stay pinned at v1 — an unbumped content change would silently
+    # invalidate the sha the signer registry resolves.
     expected_versions = {
-        capability: 2 for capability in ("G6", "G10", "G24", "G35", "G36")
+        capability: 2
+        for capability in (
+            "G6",
+            "G10",
+            "G15",
+            "G24",
+            "G30",
+            "G34",
+            "G35",
+            "G36",
+            "G38",
+        )
     }
     assert all(
         case.trusted_evidence_requirement.contract_version
