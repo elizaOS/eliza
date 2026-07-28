@@ -1674,12 +1674,21 @@ function walletActionMatchesIntent(
   const walletGovOp = normalizeActionName(
     data?.op ?? metadata?.op ?? values?.walletGovOp,
   );
+  const tradeHasExecutionEvidence =
+    values?.tradeActionPrepared === true ||
+    values?.tradeActionSucceeded === true ||
+    normalizeActionName(values?.tradeOutcome) === "SUBMITTED" ||
+    normalizeActionName(data?.outcome) === "SUBMITTED";
   const attributedOperations =
     actionName === "WALLET"
       ? walletSubaction === "GOV"
         ? WALLET_GOV_OP_OPERATIONS.get(walletGovOp)
         : WALLET_ROUTER_SUBACTION_OPERATIONS.get(walletSubaction)
-      : WALLET_ACTION_OPERATIONS.get(actionName);
+      : actionName === "TRADE"
+        ? tradeHasExecutionEvidence
+          ? WALLET_ACTION_OPERATIONS.get(actionName)
+          : undefined
+        : WALLET_ACTION_OPERATIONS.get(actionName);
   if (!attributedOperations) return false;
   const matches = (operation: WalletAttributedOperation) =>
     attributedOperations.includes(operation);

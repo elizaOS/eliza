@@ -973,6 +973,73 @@ describe("generateChatResponse usage reporting", () => {
     },
   );
 
+  it("rejects a successful TRADE inspection as evidence that an order ran", async () => {
+    const runtime = createRuntime({
+      actions: [{ name: "TRADE" }],
+      messageService: {
+        handleMessage: vi.fn(async () => ({
+          didRespond: true,
+          responseContent: { text: "The Hyperliquid order was submitted." },
+          responseMessages: [],
+          actionResults: [
+            {
+              success: true,
+              data: { actionName: "TRADE", account: {} },
+              values: { tradeOutcome: "not_attempted" },
+            },
+          ],
+        })),
+      } as NonNullable<AgentRuntime["messageService"]>,
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("buy ETH on Hyperliquid"),
+      "Chat Agent",
+      { timeoutDuration: 5_000 },
+    );
+
+    expect(result.text).toContain("no wallet action actually ran");
+    expect(result.text).not.toContain("order was submitted");
+  });
+
+  it.each([
+    ["prepared", { tradeActionPrepared: true }],
+    ["submitted", { tradeActionSucceeded: true }],
+  ])("accepts a TRADE order that was %s", async (_status, values) => {
+    const runtime = createRuntime({
+      actions: [{ name: "TRADE" }],
+      messageService: {
+        handleMessage: vi.fn(async () => ({
+          didRespond: true,
+          mode: "actions",
+          responseContent: {
+            text: "The Hyperliquid order flow is active.",
+            actions: ["TRADE"],
+          },
+          responseMessages: [],
+          actionResults: [
+            {
+              success: true,
+              data: { actionName: "TRADE" },
+              values,
+            },
+          ],
+        })),
+      } as NonNullable<AgentRuntime["messageService"]>,
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("buy ETH on Hyperliquid"),
+      "Chat Agent",
+      { timeoutDuration: 5_000 },
+    );
+
+    expect(result.text).toBe("The Hyperliquid order flow is active.");
+    expect(result.usedActionCallbacks).toBe(true);
+  });
+
   it("matches a successful WALLET governance execution", async () => {
     const runtime = createRuntime({
       actions: [{ name: "WALLET", similes: ["WALLET_GOV"] }],
