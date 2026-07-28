@@ -119,6 +119,23 @@ describe("outbound sanitization at the visible-callback boundary", () => {
 		expect(recorded).toEqual([]);
 	});
 
+	it.each([
+		["early", { text: "Early reply.", actions: ["REPLY"] }],
+		["terminal", { text: "", actions: ["IGNORE"] }],
+		["attachment", { attachments: [] }],
+		["voice", { text: "", attachments: [], source: "voice" }],
+	] satisfies Array<[string, Content]>)(
+		"keeps %s message-service delivery unattributed",
+		async (_kind, content) => {
+			const { delivered, wrapped } = buildHarness();
+
+			await wrapped(content);
+
+			expect(delivered).toHaveLength(1);
+			expect(delivered[0].actionName).toBeUndefined();
+		},
+	);
+
 	it("delivers an all-machine-syntax turn as empty text for the connector to degrade", async () => {
 		const { delivered, wrapped } = buildHarness();
 

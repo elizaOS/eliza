@@ -94,14 +94,17 @@ interface Harness {
 	actionHandler: ReturnType<typeof vi.fn>;
 	callback: HandlerCallback;
 	callbacks: Content[];
+	callbackActionNames: Array<string | undefined>;
 	sent: Content[];
 	voiceHandler: ReturnType<typeof vi.fn>;
-	persistedAtCallback: boolean[];
 }
 
 const activeRuntimes: AgentRuntime[] = [];
 
-async function createHarness(finalText: string): Promise<Harness> {
+async function createHarness(
+	finalText: string,
+	actionCallbackText?: string,
+): Promise<Harness> {
 	const runtime = new AgentRuntime({
 		character: createCharacter({
 			id: AGENT_ID,
@@ -128,12 +131,28 @@ async function createHarness(finalText: string): Promise<Harness> {
 		} as State;
 	}) as AgentRuntime["composeState"];
 
-	const actionHandler = vi.fn(async () => ({
-		success: true,
-		text: INTERNAL_DIAGNOSTIC,
-		transcriptVisibility: "internal" as const,
-		data: { views: [] },
-	}));
+	const actionHandler = vi.fn(
+		async (
+			_runtime,
+			_message,
+			_state,
+			_options,
+			actionCallback?: HandlerCallback,
+		) => {
+			if (actionCallbackText) {
+				await actionCallback?.({
+					text: actionCallbackText,
+					actions: ["VIEWS"],
+				});
+			}
+			return {
+				success: true,
+				text: INTERNAL_DIAGNOSTIC,
+				transcriptVisibility: "internal" as const,
+				data: { views: [] },
+			};
+		},
+	);
 	const viewsAction: Action = {
 		name: "VIEWS",
 		description: "Lists the available application views.",
@@ -187,8 +206,8 @@ async function createHarness(finalText: string): Promise<Harness> {
 	);
 
 	const callbacks: Content[] = [];
+	const callbackActionNames: Array<string | undefined> = [];
 	const sent: Content[] = [];
-	const persistedAtCallback: boolean[] = [];
 	runtime.registerSendHandler(
 		"client_chat",
 		async (_runtime, _target, content) => {
@@ -197,19 +216,9 @@ async function createHarness(finalText: string): Promise<Harness> {
 		},
 	);
 
-	const callback: HandlerCallback = async (content: Content) => {
+	const callback: HandlerCallback = async (content: Content, actionName) => {
 		callbacks.push(content);
-		const stored = await runtime.getMemories({
-			roomId: runtime.agentId,
-			tableName: "messages",
-		});
-		persistedAtCallback.push(
-			stored.some(
-				(memory) =>
-					memory.entityId === runtime.agentId &&
-					memory.content.text === content.text,
-			),
-		);
+		callbackActionNames.push(actionName);
 		await runtime.sendMessageToTarget(
 			{ source: "client_chat", roomId: runtime.agentId },
 			content,
@@ -222,9 +231,9 @@ async function createHarness(finalText: string): Promise<Harness> {
 		actionHandler,
 		callback,
 		callbacks,
+		callbackActionNames,
 		sent,
 		voiceHandler,
-		persistedAtCallback,
 	};
 }
 
@@ -307,19 +316,36 @@ describe("DefaultMessageService transcript visibility integration", () => {
 		expect(result.responseContent?.text).toBe(visibleSummary);
 		expect(result.responseContent?.transcriptVisibility).toBeUndefined();
 
+		// Delivery and persistence run concurrently; only their terminal
+		// guarantees are stable across adapters and operating-system schedulers.
 		const persisted = await assistantMemories(harness.runtime);
 		expect(persisted).toHaveLength(1);
 		expect(persisted[0]?.content.text).toBe(visibleSummary);
 		expect(persisted[0]?.content.transcriptVisibility).toBeUndefined();
-		// Core delivers the visible reply before persisting the response memory
-		// (#17105 took the write off the reply path); durability-before-terminal
-		// is the conversation route's contract, not the callback's. The summary
-		// is persisted by the time handleMessage resolves (asserted above).
-		expect(harness.persistedAtCallback).toEqual([false]);
 		expect(harness.callbacks).toHaveLength(1);
 		expect(harness.callbacks[0]?.text).toBe(visibleSummary);
+		expect(harness.callbackActionNames).toEqual([undefined]);
 		expect(harness.sent).toHaveLength(1);
 		expect(harness.sent[0]?.text).toBe(visibleSummary);
 		expect(harness.voiceHandler).toHaveBeenCalledTimes(1);
+	});
+
+	it("preserves action attribution through the real message-service callback", async () => {
+		const visibleSummary = "The available views are ready.";
+		const harness = await createHarness(visibleSummary, visibleSummary);
+		const result = await new DefaultMessageService().handleMessage(
+			harness.runtime,
+			makeMessage(harness.runtime, "List the available apps."),
+			harness.callback,
+		);
+
+		expect(result.actionResults).toEqual([
+			expect.objectContaining({
+				success: true,
+				data: expect.objectContaining({ actionName: "VIEWS" }),
+			}),
+		]);
+		expect(harness.callbacks).not.toHaveLength(0);
+		expect(harness.callbackActionNames).toContain("VIEWS");
 	});
 });

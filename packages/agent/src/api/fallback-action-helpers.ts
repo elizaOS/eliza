@@ -147,7 +147,8 @@ export async function executeFallbackParsedActions(
     getCurrentText?: () => string;
     onCallbackText?: (incoming: string) => void;
   },
-): Promise<void> {
+): Promise<Array<{ actionName: string; success: boolean }>> {
+  const executionResults: Array<{ actionName: string; success: boolean }> = [];
   const runtimeActions = Array.isArray(
     (runtime as { actions?: unknown[] }).actions,
   )
@@ -224,14 +225,21 @@ export async function executeFallbackParsedActions(
         [],
       ),
     );
+    const actionSucceeded = Boolean(
+      actionResult &&
+        typeof actionResult === "object" &&
+        "success" in actionResult &&
+        actionResult.success === true,
+    );
+    executionResults.push({
+      actionName:
+        typeof action.name === "string" && action.name.trim()
+          ? action.name
+          : parsed.name,
+      success: actionSucceeded,
+    });
     if (!callbackSeen) {
       const currentText = options?.getCurrentText?.() ?? "";
-      const actionSucceeded =
-        actionResult &&
-        typeof actionResult === "object" &&
-        "success" in actionResult
-          ? actionResult.success === true
-          : undefined;
       const fallbackText =
         actionResult && typeof actionResult === "object"
           ? typeof actionResult.text === "string"
@@ -263,4 +271,5 @@ export async function executeFallbackParsedActions(
       }
     }
   }
+  return executionResults;
 }

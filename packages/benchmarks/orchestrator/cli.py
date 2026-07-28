@@ -91,7 +91,17 @@ def _build_request(args: argparse.Namespace, adapters: dict[str, Any]) -> RunReq
     if args.all:
         benchmarks = tuple(sorted(adapters.keys()))
     elif args.benchmarks:
-        benchmarks = tuple(args.benchmarks)
+        # Each nargs item may itself be comma-separated (same contract as
+        # --harnesses/--adapters), e.g. --benchmarks "bfcl,mint" tau_bench.
+        split = [
+            part.strip()
+            for item in args.benchmarks
+            for part in str(item).split(",")
+            if part.strip()
+        ]
+        if not split:
+            raise SystemExit("--benchmarks must be a non-empty list of benchmark IDs")
+        benchmarks = tuple(dict.fromkeys(split))
     else:
         benchmarks = tuple(sorted(adapters.keys()))
 
@@ -1244,7 +1254,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--benchmarks",
         nargs="+",
         default=None,
-        help="Benchmark IDs to run (default: all)",
+        help="Benchmark IDs to run (space- or comma-separated; default: all)",
     )
     p_run.add_argument("--agent", default="eliza", help="Agent label for this run")
     p_run.add_argument(

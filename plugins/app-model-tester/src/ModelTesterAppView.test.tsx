@@ -185,8 +185,11 @@ describe("ModelTesterAppView populated render", () => {
     installFetch(() => ({ text: "ok" }));
     render(<ModelTesterAppView {...overlayContext()} />);
 
-    // Wait for the on-mount status fetch to populate.
-    await waitFor(() => expect(screen.getByText("TEXT_SMALL")).toBeTruthy());
+    await waitFor(() =>
+      expect(
+        screen.getByRole("status", { name: "Ready probes" }).textContent,
+      ).toContain("5/8"),
+    );
 
     expect(screen.getByTestId("model-tester-shell")).toBeTruthy();
     expect(
@@ -249,10 +252,11 @@ describe("ModelTesterAppView populated render", () => {
       }),
     );
     render(<ModelTesterAppView {...overlayContext()} />);
-    await waitFor(() => expect(screen.getByText("TEXT_SMALL")).toBeTruthy());
-
-    // text-small available (1) + vad default-ready (1) = 2/8.
-    expect(screen.getByText("2/8")).toBeTruthy();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("status", { name: "Ready probes" }).textContent,
+      ).toContain("2/8"),
+    );
   });
 });
 

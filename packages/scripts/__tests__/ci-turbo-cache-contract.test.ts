@@ -218,7 +218,9 @@ describe("ci-turbo-cache-contract", () => {
     )?.[0];
     expect(typecheckJob).toBeDefined();
     expect(typecheckJob).toMatch(/timeout-minutes:\s*25/);
-    expect(typecheckJob).toMatch(/run:\s*bun run typecheck/);
+    expect(typecheckJob).toMatch(
+      /run:\s*NODE_OPTIONS='--max-old-space-size=8192' node packages\/scripts\/run-turbo\.mjs run typecheck --concurrency=4/,
+    );
     expect(typecheckJob).not.toMatch(/continue-on-error|\|\| true/);
   });
 

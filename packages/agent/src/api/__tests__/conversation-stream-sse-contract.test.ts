@@ -372,10 +372,10 @@ function createPersistedCallbackMessageService(
   const text = "Calendar is ready.";
   return {
     async handleMessage(_runtime, _message, callback) {
-      await callback?.({ text });
+      await callback?.({ text, actions: ["CALENDAR"] }, "CALENDAR");
       return {
         didRespond: true,
-        responseContent: { text },
+        responseContent: { text, actions: ["CALENDAR"] },
         responseMessages: [
           {
             id: messageId,
@@ -388,12 +388,53 @@ function createPersistedCallbackMessageService(
         ],
         persistedResponseMessageIds: [messageId],
         mode: "actions" as const,
+        actionResults: [
+          {
+            success: true,
+            text,
+            data: { actionName: "CALENDAR" },
+          },
+        ],
       };
     },
     shouldRespond: () => ({
       shouldRespond: true,
       skipEvaluation: true,
       reason: "persisted-callback-stream-contract-test",
+    }),
+    deleteMessage: async () => undefined,
+    clearChannel: async () => undefined,
+  } satisfies NonNullable<AgentRuntime["messageService"]>;
+}
+
+function createGenericPersistedCallbackMessageService(
+  messageId: UUID,
+): NonNullable<AgentRuntime["messageService"]> {
+  const text = "Simple delivery is ready.";
+  return {
+    async handleMessage(_runtime, _message, callback) {
+      await callback?.({ text, actions: ["REPLY"] });
+      return {
+        didRespond: true,
+        responseContent: { text, actions: ["REPLY"] },
+        responseMessages: [
+          {
+            id: messageId,
+            entityId: AGENT_ID,
+            agentId: AGENT_ID,
+            roomId: ROOM_ID,
+            content: { text, actions: ["REPLY"] },
+            createdAt: Date.now(),
+          },
+        ],
+        persistedResponseMessageIds: [messageId],
+        mode: "simple" as const,
+      };
+    },
+    shouldRespond: () => ({
+      shouldRespond: true,
+      skipEvaluation: true,
+      reason: "generic-persisted-callback-stream-contract-test",
     }),
     deleteMessage: async () => undefined,
     clearChannel: async () => undefined,
@@ -1017,6 +1058,29 @@ describe("conversation stream SSE contract (#10712)", () => {
     expect(persistAssistantConversationMemory).not.toHaveBeenCalled();
   });
 
+  it("does not request transcript reload for a generic persisted delivery callback", async () => {
+    const responseId = stringToUuid("generic-persisted-callback") as UUID;
+    const { ctx, record, state } = createCtx(
+      createGenericPersistedCallbackMessageService(responseId),
+    );
+    const runtime = state.runtime;
+    if (!runtime) throw new Error("runtime fixture missing");
+    runtime.updateMemory = vi.fn(async () => true);
+
+    await handleConversationRoutes(ctx);
+
+    const done = parseSsePayloads(record.writes).find(
+      (payload) => payload.type === "done",
+    );
+    expect(done).toMatchObject({
+      type: "done",
+      fullText: "Simple delivery is ready.",
+      messageId: responseId,
+    });
+    expect(done).not.toHaveProperty("historyRefreshRequired");
+    expect(runtime.updateMemory).not.toHaveBeenCalled();
+  });
+
   it("reuses the exact message-service commit without a route read or write", async () => {
     const { ctx, record, state } = createCtx(
       createPersistedReplyMessageService(),
@@ -1251,12 +1315,7 @@ describe("conversation stream SSE contract (#10712)", () => {
       expect(messageId).not.toBe(persistedEarlyId);
       expect(messageId).not.toBe(transientFinalId);
       expect(routeOwnedMemory?.id).toBe(messageId);
-      expect(updateMemory).toHaveBeenCalledWith(
-        expect.objectContaining({ id: messageId }),
-      );
-      expect(updateMemory).not.toHaveBeenCalledWith(
-        expect.objectContaining({ id: persistedEarlyId }),
-      );
+      expect(updateMemory).not.toHaveBeenCalled();
     },
   );
 

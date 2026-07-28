@@ -140,6 +140,17 @@ describe("NotificationService", () => {
 			await expect(
 				failing.runtime.getServiceLoadPromise(ServiceType.NOTIFICATION),
 			).rejects.toThrow("Service notification not found or failed to start");
+			expect(failing.runtime.getRecentReportedErrors()).toEqual(
+				expect.arrayContaining([
+					expect.objectContaining({
+						scope: "AgentRuntime.serviceStart",
+						message: "notification cache unavailable",
+						context: expect.objectContaining({
+							serviceType: ServiceType.NOTIFICATION,
+						}),
+					}),
+				]),
+			);
 			await expect(NotificationService.start(failing.runtime)).rejects.toThrow(
 				"notification cache unavailable",
 			);

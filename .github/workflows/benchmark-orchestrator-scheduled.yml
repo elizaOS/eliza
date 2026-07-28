@@ -124,7 +124,9 @@ jobs:
           MODEL: ${{ inputs.model || 'gemma-4-31b' }}
           PYTHONUNBUFFERED: "1"
         run: |
-          set -e
+          # pipefail so an orchestrator crash fails THIS step instead of being
+          # masked by tee and surfacing later as a confusing publishability error.
+          set -eo pipefail
           PYTHONPATH=packages python -m benchmarks.orchestrator run \
             --benchmarks "$BENCHMARKS" \
             --provider "$PROVIDER" \

@@ -74,6 +74,7 @@ import {
   errorResult,
   failureMessage,
   getAcpService,
+  getReadyAcpService,
   getTimeoutMs,
   type HandlerOptionsLike,
   hasExplicitPayload,
@@ -4263,8 +4264,10 @@ export const tasksAction: Action & {
   ],
   validate: async (runtime, message) => {
     const content = contentRecord(message);
-    // Always allow when ACP service is available — action switch handles dispatch.
-    if (!getAcpService(runtime)) {
+    // Registration starts services asynchronously. Validation is the first
+    // consumer on a cold plugin load, so it owns the readiness wait before the
+    // planner decides whether TASKS exists.
+    if (!(await getReadyAcpService(runtime))) {
       const taskService = runtime.getService?.(
         OrchestratorTaskService.serviceType,
       ) as OrchestratorTaskService | null | undefined;

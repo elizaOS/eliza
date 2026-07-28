@@ -18,6 +18,7 @@
 import { computeNextCronRunAtMs } from "@elizaos/core";
 
 import type { AnchorRegistry } from "../anchors/anchor-registry.js";
+import { resolveLocalHHMMToIso } from "./local-time.js";
 import { resolveTriggerTz } from "./trigger-tz.js";
 import type {
   OwnerFactsView,
@@ -49,79 +50,6 @@ function isRepresentableMs(ms: number): boolean {
   return Number.isFinite(ms) && Math.abs(ms) <= MAX_DATE_MS;
 }
 
-function minutesFromHHMM(value: string | undefined): number | null {
-  if (!value) return null;
-  const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(value);
-  if (!match) return null;
-  return Number(match[1]) * 60 + Number(match[2]);
-}
-
-function localParts(
-  date: Date,
-  timeZone: string,
-): { year: number; month: number; day: number; hour: number; minute: number } {
-  const formatter = new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
-  const parts = formatter.formatToParts(date);
-  const read = (type: string): number =>
-    Number(parts.find((part) => part.type === type)?.value ?? 0);
-  return {
-    year: read("year"),
-    month: read("month"),
-    day: read("day"),
-    hour: read("hour") % 24,
-    minute: read("minute"),
-  };
-}
-
-function localHHMMToIso(
-  now: Date,
-  hhmm: string | undefined,
-  timeZone: string,
-): string | null {
-  const minutes = minutesFromHHMM(hhmm);
-  if (minutes === null) return null;
-  const parts = localParts(now, timeZone);
-  const hour = Math.floor(minutes / 60);
-  const minute = minutes % 60;
-  const localAsUtc = Date.UTC(
-    parts.year,
-    parts.month - 1,
-    parts.day,
-    hour,
-    minute,
-  );
-  const offsetFormatter = new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    timeZoneName: "longOffset",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
-  const offsetParts = offsetFormatter.formatToParts(new Date(localAsUtc));
-  const offsetValue =
-    offsetParts.find((part) => part.type === "timeZoneName")?.value ?? "GMT";
-  const offsetMatch = /GMT([+-]\d{1,2})(?::?(\d{2}))?/.exec(offsetValue);
-  let offsetMinutes = 0;
-  if (offsetMatch) {
-    const sign = offsetMatch[1]?.startsWith("-") ? -1 : 1;
-    const hours = Math.abs(Number.parseInt(offsetMatch[1] ?? "0", 10));
-    const minutesPart = Number.parseInt(offsetMatch[2] ?? "0", 10);
-    offsetMinutes = sign * (hours * 60 + minutesPart);
-  }
-  return new Date(localAsUtc - offsetMinutes * MINUTE_MS).toISOString();
-}
-
 function nextWindowStartIso(
   windowKey: string,
   context: ComputeNextFireAtContext,
@@ -131,52 +59,45 @@ function nextWindowStartIso(
   const morningStart = facts.morningWindow?.start;
   const eveningStart = facts.eveningWindow?.start;
   const eveningEnd = facts.eveningWindow?.end;
-  let candidates: string[] = [];
+  let candidateTimes: Array<string | undefined>;
   switch (windowKey) {
     case "morning":
-      candidates = [localHHMMToIso(context.now, morningStart, timeZone) ?? ""];
+      candidateTimes = [morningStart];
       break;
     case "afternoon":
-      candidates = [
-        localHHMMToIso(context.now, facts.morningWindow?.end, timeZone) ?? "",
-      ];
+      candidateTimes = [facts.morningWindow?.end];
       break;
     case "evening":
-      candidates = [localHHMMToIso(context.now, eveningStart, timeZone) ?? ""];
+      candidateTimes = [eveningStart];
       break;
     case "night":
-      candidates = [
-        localHHMMToIso(context.now, eveningEnd, timeZone) ?? "",
-        localHHMMToIso(context.now, "00:00", timeZone) ?? "",
-      ];
+      candidateTimes = [eveningEnd, "00:00"];
       break;
     case "morning_or_night":
-      candidates = [
-        localHHMMToIso(context.now, morningStart, timeZone) ?? "",
-        localHHMMToIso(context.now, eveningEnd, timeZone) ?? "",
-      ];
+      candidateTimes = [morningStart, eveningEnd];
       break;
     case "morning_or_evening":
-      candidates = [
-        localHHMMToIso(context.now, morningStart, timeZone) ?? "",
-        localHHMMToIso(context.now, eveningStart, timeZone) ?? "",
-      ];
+      candidateTimes = [morningStart, eveningStart];
       break;
     default:
       return null;
   }
   const nowMs = context.now.getTime();
-  const upcoming = candidates
+  const today = candidateTimes
+    .map((hhmm) => resolveLocalHHMMToIso(context.now, hhmm, timeZone, 0))
     .map((iso) => parseIsoMs(iso))
-    .filter((ms): ms is number => ms !== null);
-  if (upcoming.length === 0) return null;
-  const future = upcoming.find((ms) => ms >= nowMs);
+    .filter((ms): ms is number => ms !== null)
+    .sort((left, right) => left - right);
+  const future = today.find((ms) => ms >= nowMs);
   if (future !== undefined) return new Date(future).toISOString();
-  // All today's window-starts are in the past; bump to same local-HHMM
-  // tomorrow. The runner re-computes after each fire, so we only need a
-  // coarse "tomorrow morning" candidate here.
-  const earliest = Math.min(...upcoming);
-  return new Date(earliest + 24 * 60 * MINUTE_MS).toISOString();
+
+  const tomorrow = candidateTimes
+    .map((hhmm) => resolveLocalHHMMToIso(context.now, hhmm, timeZone, 1))
+    .map((iso) => parseIsoMs(iso))
+    .filter((ms): ms is number => ms !== null)
+    .sort((left, right) => left - right);
+  const earliest = tomorrow[0];
+  return earliest === undefined ? null : new Date(earliest).toISOString();
 }
 
 async function nextAnchorIso(
@@ -214,23 +135,26 @@ async function nextAnchorIso(
     trigger.anchorKey === "wake.observed" ||
     trigger.anchorKey === "morning.start"
   ) {
-    baseIso = localHHMMToIso(
+    baseIso = resolveLocalHHMMToIso(
       context.now,
       ownerFacts.morningWindow?.start,
       timeZone,
     );
   } else if (trigger.anchorKey === "bedtime.target") {
     baseIso =
-      localHHMMToIso(context.now, ownerFacts.eveningWindow?.end, timeZone) ??
-      localHHMMToIso(context.now, "22:30", timeZone);
+      resolveLocalHHMMToIso(
+        context.now,
+        ownerFacts.eveningWindow?.end,
+        timeZone,
+      ) ?? resolveLocalHHMMToIso(context.now, "22:30", timeZone);
   } else if (trigger.anchorKey === "night.start") {
-    baseIso = localHHMMToIso(
+    baseIso = resolveLocalHHMMToIso(
       context.now,
       ownerFacts.eveningWindow?.start,
       timeZone,
     );
   } else if (trigger.anchorKey === "lunch.start") {
-    baseIso = localHHMMToIso(context.now, "12:00", timeZone);
+    baseIso = resolveLocalHHMMToIso(context.now, "12:00", timeZone);
   }
   if (!baseIso) return null;
   const atMs = Date.parse(baseIso) + trigger.offsetMinutes * MINUTE_MS;
