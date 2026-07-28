@@ -1192,10 +1192,7 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	registerPostConnector(registration: PostConnectorRegistration): void;
 	unregisterPostConnector(source: string, accountId?: string): boolean;
 	getPostConnectors(): PostConnector[];
-	sendMessageToTarget(
-		target: TargetInfo,
-		content: Content,
-	): SendHandlerResult;
+	sendMessageToTarget(target: TargetInfo, content: Content): SendHandlerResult;
 	editMessageOnTarget(
 		target: TargetInfo,
 		messageId: string,

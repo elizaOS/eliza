@@ -2139,8 +2139,7 @@ async function handleSend(
 		} else if (sendResult) {
 			sentMemory = sendResult;
 			const sentMetadata =
-				typeof sentMemory.metadata === "object" &&
-				sentMemory.metadata !== null
+				typeof sentMemory.metadata === "object" && sentMemory.metadata !== null
 					? (sentMemory.metadata as Record<string, unknown>)
 					: undefined;
 			providerMessageId =

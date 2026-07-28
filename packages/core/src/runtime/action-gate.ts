@@ -4,10 +4,11 @@
  * the private-action gate, the operator role policy, the context gate, and the
  * top-level role gate in a fixed precedence.
  */
+
+import { disclosureGateFailure } from "../security/trusted-delivery-audience";
 import type { Action } from "../types/components";
 import type { AgentContext, RoleGate, RoleGateRole } from "../types/contexts";
 import type { Memory } from "../types/memory";
-import { disclosureGateFailure } from "../security/trusted-delivery-audience";
 import { resolveActionRolePolicyRole } from "./action-role-policy";
 import { satisfiesContextGate, satisfiesRoleGate } from "./context-gates";
 import { privateActionAllowedOnTurn } from "./private-action-gate";

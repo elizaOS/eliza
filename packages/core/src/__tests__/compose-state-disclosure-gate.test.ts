@@ -37,9 +37,9 @@ function runtimeHarness(): {
 		source: "discord",
 		type: ChannelType.DM,
 	});
-	vi.spyOn(runtime, "getParticipantsForRoom").mockImplementation(
-		async () => [...participants],
-	);
+	vi.spyOn(runtime, "getParticipantsForRoom").mockImplementation(async () => [
+		...participants,
+	]);
 	return {
 		runtime,
 		setParticipants: (next) => {
@@ -85,23 +85,13 @@ describe("composeState owner-exclusive providers", () => {
 		);
 		await attestDeliveryAudienceFromCanonicalRoom(runtime, turn);
 
-		const first = await runtime.composeState(
-			turn,
-			["PRIVATE"],
-			true,
-			true,
-		);
+		const first = await runtime.composeState(turn, ["PRIVATE"], true, true);
 		expect(first.text).toContain("PRIVATE_PROVIDER_CANARY");
 		expect(get).toHaveBeenCalledTimes(1);
 		expect(runtime.stateCache.has(turn.id as string)).toBe(false);
 
 		setParticipants([OWNER, runtime.agentId, GUEST]);
-		const second = await runtime.composeState(
-			turn,
-			["PRIVATE"],
-			true,
-			true,
-		);
+		const second = await runtime.composeState(turn, ["PRIVATE"], true, true);
 		expect(second.text).not.toContain("PRIVATE_PROVIDER_CANARY");
 		expect(get).toHaveBeenCalledTimes(1);
 	});

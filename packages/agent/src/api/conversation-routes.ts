@@ -22,8 +22,8 @@ import type http from "node:http";
 import path from "node:path";
 import type { RouteRequestContext } from "@elizaos/core";
 import {
-  attestAuthenticatedApiDeliveryAudience,
   type AgentRuntime,
+  attestAuthenticatedApiDeliveryAudience,
   ChannelType,
   type Content,
   createMessageMemory,
@@ -79,8 +79,8 @@ import {
   persistExactConversationMemory,
   readChatRequestPayload,
   releaseChatMessageId,
-  resolveTrustedApiPrincipal,
   resolveNoResponseFallback,
+  resolveTrustedApiPrincipal,
   setChatMessageIdOutcome,
   writeChatStatusSse,
   writeChatTokenSse,

@@ -13,7 +13,14 @@ export default scenario({
   id: "j1-ambiguous-friday-referent-clarified",
   title: "Ambiguous Friday referent triggers a clarifier before any change",
   domain: "lifeops.coparenting",
-  tags: ["lifeops", "coparenting", "ambiguity", "clarification", "mvp", "14789"],
+  tags: [
+    "lifeops",
+    "coparenting",
+    "ambiguity",
+    "clarification",
+    "mvp",
+    "14789",
+  ],
   tier: "T2",
   isolation: "per-scenario",
   requires: {

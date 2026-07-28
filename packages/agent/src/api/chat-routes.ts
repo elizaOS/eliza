@@ -15,9 +15,9 @@ import crypto from "node:crypto";
 import type http from "node:http";
 import { isDeepStrictEqual } from "node:util";
 import {
-  attestAuthenticatedApiDeliveryAudience,
   type ActionResult,
   type AgentRuntime,
+  attestAuthenticatedApiDeliveryAudience,
   ChannelType,
   type Content,
   createMessageMemory,
@@ -44,10 +44,10 @@ import {
   runWithInferenceTiming,
   runWithTrajectoryContext,
   stringToUuid,
+  type TrustedApiPrincipal,
   timeInferenceSpan,
   trackPostDeliveryTask,
   type UUID,
-  type TrustedApiPrincipal,
 } from "@elizaos/core";
 import type {
   ChatFailureKind,
@@ -67,6 +67,7 @@ import {
   resolveStreamingUpdate,
 } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
+import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
 import {
   type CapturedModelUsage,
   estimateTokenCount,
@@ -75,7 +76,6 @@ import {
 import { resolveTrajectoryGrouping } from "../runtime/trajectory-internals.ts";
 import { startTrajectoryStepInDatabase } from "../runtime/trajectory-storage.ts";
 import { syncCharacterIntoConfig } from "../services/character-persistence.ts";
-import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
 import { detectRuntimeModel } from "./agent-model.ts";
 import {
   maybeAugmentChatMessageWithDocuments,

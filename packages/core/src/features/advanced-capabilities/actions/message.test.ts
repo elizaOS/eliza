@@ -451,9 +451,7 @@ describe("MESSAGE op=send owner-binding gate", () => {
 describe("MESSAGE op=send delivery evidence", () => {
 	const recipient = "00000000-0000-0000-0000-0000000000dd";
 
-	function runtimeForOutcome(
-		outcome: Awaited<SendHandlerResult>,
-	): {
+	function runtimeForOutcome(outcome: Awaited<SendHandlerResult>): {
 		runtime: IAgentRuntime;
 		upsertMemory: ReturnType<typeof vi.fn>;
 		createMemory: ReturnType<typeof vi.fn>;
@@ -479,15 +477,12 @@ describe("MESSAGE op=send delivery evidence", () => {
 		return { runtime, upsertMemory, createMemory };
 	}
 
-	async function sendWithOutcome(
-		outcome: Awaited<SendHandlerResult>,
-	): Promise<{
+	async function sendWithOutcome(outcome: Awaited<SendHandlerResult>): Promise<{
 		result: ActionResult;
 		upsertMemory: ReturnType<typeof vi.fn>;
 		createMemory: ReturnType<typeof vi.fn>;
 	}> {
-		const { runtime, upsertMemory, createMemory } =
-			runtimeForOutcome(outcome);
+		const { runtime, upsertMemory, createMemory } = runtimeForOutcome(outcome);
 		const result = await messageAction.handler(
 			runtime,
 			{

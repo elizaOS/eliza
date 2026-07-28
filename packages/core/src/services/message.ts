@@ -54,11 +54,6 @@ import {
 	isAdminRank,
 } from "../roles";
 import {
-	ownerExclusiveDisclosureWasUsed,
-	PRIVACY_DENIED_TEXT,
-	revalidateOwnerExclusiveDisclosure,
-} from "../security/trusted-delivery-audience";
-import {
 	type ActionCatalog,
 	buildActionCatalog,
 	type LocalizedActionExampleResolver,
@@ -193,6 +188,11 @@ import {
 	sanitizeUserVisibleModelOutput,
 	type UserVisibleModelOutput,
 } from "../runtime/user-visible-model-output";
+import {
+	ownerExclusiveDisclosureWasUsed,
+	PRIVACY_DENIED_TEXT,
+	revalidateOwnerExclusiveDisclosure,
+} from "../security/trusted-delivery-audience";
 import {
 	getModelStreamChunkDeliveryDepth,
 	getStreamingContext,

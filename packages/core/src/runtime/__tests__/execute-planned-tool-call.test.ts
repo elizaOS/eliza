@@ -11,7 +11,7 @@ import {
 	getConnectorAccountManager,
 	InMemoryConnectorAccountStorage,
 } from "../../connectors/account-manager";
-import { ElizaError } from "../../errors";
+import type { ElizaError } from "../../errors";
 import {
 	attestDeliveryAudienceFromCanonicalRoom,
 	PRIVACY_DENIED_TEXT,

@@ -113,11 +113,11 @@ import {
 	PII_SWAP_EXEMPT_VALUES_SETTING,
 	type PiiEntityRecognizer,
 	type PiiEntityRecognizerService,
+	PRIVACY_DENIED_TEXT,
 	PseudonymSession,
 	parsePiiSwapList,
-	PRIVACY_DENIED_TEXT,
-	revalidateOwnerExclusiveDisclosure,
 	RegexEntityRecognizer,
+	revalidateOwnerExclusiveDisclosure,
 	trustedDeliveryAudienceCacheKey,
 } from "./security/index.js";
 import { redactWithSecrets } from "./security/redact.js";
