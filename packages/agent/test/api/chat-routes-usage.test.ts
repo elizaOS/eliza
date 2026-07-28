@@ -934,6 +934,78 @@ describe("generateChatResponse usage reporting", () => {
     expect(result.usedActionCallbacks).toBe(true);
   });
 
+  it("matches a successful WALLET governance execution", async () => {
+    const runtime = createRuntime({
+      actions: [{ name: "WALLET", similes: ["WALLET_GOV"] }],
+      messageService: {
+        handleMessage: vi.fn(async () => ({
+          didRespond: true,
+          mode: "actions",
+          responseContent: {
+            text: "The governance proposal was executed.",
+            actions: ["WALLET_GOV"],
+          },
+          responseMessages: [],
+          actionResults: [
+            {
+              success: true,
+              data: {
+                actionName: "WALLET",
+                subaction: "gov",
+                metadata: { op: "execute" },
+              },
+            },
+          ],
+        })),
+      } as NonNullable<AgentRuntime["messageService"]>,
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("execute this onchain governance proposal"),
+      "Chat Agent",
+      { timeoutDuration: 5_000 },
+    );
+
+    expect(result.text).toBe("The governance proposal was executed.");
+    expect(result.usedActionCallbacks).toBe(true);
+  });
+
+  it("rejects a different WALLET governance operation", async () => {
+    const runtime = createRuntime({
+      actions: [{ name: "WALLET", similes: ["WALLET_GOV"] }],
+      messageService: {
+        handleMessage: vi.fn(async () => ({
+          didRespond: true,
+          responseContent: {
+            text: "The governance proposal was executed.",
+          },
+          responseMessages: [],
+          actionResults: [
+            {
+              success: true,
+              data: {
+                actionName: "WALLET",
+                subaction: "gov",
+                metadata: { op: "queue" },
+              },
+            },
+          ],
+        })),
+      } as NonNullable<AgentRuntime["messageService"]>,
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("execute this onchain governance proposal"),
+      "Chat Agent",
+      { timeoutDuration: 5_000 },
+    );
+
+    expect(result.text).toContain("no wallet action actually ran");
+    expect(result.text).not.toContain("proposal was executed");
+  });
+
   it("rejects a successful but unrelated WALLET router subaction", async () => {
     const runtime = createRuntime({
       actions: [{ name: "WALLET", similes: ["TRANSFER", "SWAP"] }],

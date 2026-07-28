@@ -1573,6 +1573,7 @@ type WalletAttributedOperation =
   | "APPROVE"
   | "BALANCE"
   | "BUY"
+  | "EXECUTE"
   | "SELL"
   | "SWAP"
   | "TRADE"
@@ -1589,6 +1590,16 @@ const WALLET_ROUTER_SUBACTION_OPERATIONS = new Map<
   ["PUMP_FUN_BUY", ["BUY", "TRADE"]],
   ["TOKEN_INFO", []],
   ["SEARCH_ADDRESS", ["BALANCE"]],
+]);
+
+const WALLET_GOV_OP_OPERATIONS = new Map<
+  string,
+  readonly WalletAttributedOperation[]
+>([
+  ["PROPOSE", []],
+  ["VOTE", ["APPROVE"]],
+  ["QUEUE", []],
+  ["EXECUTE", ["EXECUTE"]],
 ]);
 
 // This fail-closed boundary intentionally duplicates the wallet plugin's public
@@ -1650,15 +1661,24 @@ function walletActionMatchesIntent(
     record?.values && typeof record.values === "object"
       ? (record.values as Record<string, unknown>)
       : null;
+  const metadata =
+    data?.metadata && typeof data.metadata === "object"
+      ? (data.metadata as Record<string, unknown>)
+      : null;
   const walletSubaction = normalizeActionName(
     data?.subaction ??
       data?.walletSubaction ??
       values?.walletSubaction ??
       values?.subaction,
   );
+  const walletGovOp = normalizeActionName(
+    data?.op ?? metadata?.op ?? values?.walletGovOp,
+  );
   const attributedOperations =
     actionName === "WALLET"
-      ? WALLET_ROUTER_SUBACTION_OPERATIONS.get(walletSubaction)
+      ? walletSubaction === "GOV"
+        ? WALLET_GOV_OP_OPERATIONS.get(walletGovOp)
+        : WALLET_ROUTER_SUBACTION_OPERATIONS.get(walletSubaction)
       : WALLET_ACTION_OPERATIONS.get(actionName);
   if (!attributedOperations) return false;
   const matches = (operation: WalletAttributedOperation) =>
@@ -1681,6 +1701,9 @@ function walletActionMatchesIntent(
   }
   if (/\bapprove\b/i.test(prompt)) {
     return matches("APPROVE");
+  }
+  if (/\bexecute\b/i.test(prompt)) {
+    return matches("EXECUTE");
   }
   if (/\b(balance|portfolio|holdings|funds)\b/i.test(prompt)) {
     return matches("BALANCE");
