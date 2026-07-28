@@ -583,6 +583,186 @@
       "registryKind": "plugin",
       "directory": "adapters/eliza"
     },
+    "@vohlsyr/plugin-chainscope": {
+      "git": {
+        "repo": "Vohlsyr/plugin-chainscope",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@vohlsyr/plugin-chainscope",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Multi-chain wallet and transaction intelligence with OFAC sanctions screening via ChainScope, paid per call in USDC on Base through x402.",
+      "homepage": "https://chainsscope.duckdns.org",
+      "topics": [
+        "x402",
+        "blockchain",
+        "wallet",
+        "multi-chain",
+        "payments"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
+    "@vohlsyr/plugin-concordance": {
+      "git": {
+        "repo": "Vohlsyr/plugin-concordance",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@vohlsyr/plugin-concordance",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Cross-source search and claim corroboration across 18 real-time data sources via Concordance, paid per call in USDC on Base through x402 -- no API keys.",
+      "homepage": "https://concordancehq.duckdns.org",
+      "topics": [
+        "x402",
+        "search",
+        "data",
+        "corroboration",
+        "payments"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
+    "@vohlsyr/plugin-trading-strategy-data": {
+      "git": {
+        "repo": "Vohlsyr/plugin-trading-strategy-data",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@vohlsyr/plugin-trading-strategy-data",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Backtestable crypto trend signals and on-demand backtesting for BTC/ETH/SOL/XRP/ADA via Trading Strategy Data, paid per call in USDC on Base through x402.",
+      "homepage": "https://strategysignals.duckdns.org",
+      "topics": [
+        "x402",
+        "trading",
+        "crypto",
+        "backtest",
+        "payments"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
+    "@vohlsyr/plugin-trustfetch": {
+      "git": {
+        "repo": "Vohlsyr/plugin-trustfetch",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@vohlsyr/plugin-trustfetch",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Prompt-injection scanning and clean webpage fetching for AI agents via TrustFetch, paid per call in USDC on Base through x402.",
+      "homepage": "https://trustfetch.duckdns.org",
+      "topics": [
+        "x402",
+        "security",
+        "prompt-injection",
+        "web-fetch",
+        "payments"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
     "@wasmagent/eliza-rollout-plugin": {
       "git": {
         "repo": "WasmAgent/wasmagent-js",
