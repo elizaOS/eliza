@@ -63,6 +63,8 @@ describe("ChatMessage glass inline edit controls", () => {
     expect(save.textContent).toBe("");
     expect(cancel.className).toContain("pointer-coarse:h-11");
     expect(save.className).toContain("pointer-coarse:h-11");
+    expect(cancel.className).toContain("keyboard-focus-emphasis");
+    expect(save.className).toContain("keyboard-focus-emphasis");
   });
 
   it("restores the message action icons after Cancel", () => {
