@@ -27,6 +27,11 @@ import type {
   LifeOpsNextCalendarEventContext,
 } from "../contracts/index.js";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
+import {
+  evaluateLifeOpsAudiencePolicy,
+  type LifeOpsAudienceGateResult,
+  type LifeOpsAudienceSource,
+} from "../lifeops/audience-policy.js";
 import type { ConnectorStatus } from "../lifeops/connectors/contract.js";
 import { getConnectorRegistry } from "../lifeops/connectors/registry.js";
 import {
@@ -55,6 +60,47 @@ const INTERNAL_URL = new URL("http://127.0.0.1/");
 const GOAL_TITLE_MAX_LENGTH = 80;
 const GOAL_TITLES_MAX_DISPLAYED = 5;
 const MAX_ACCOUNT_LINES = 5;
+
+function lifeOpsPrivateContextSources(
+  runtime: IAgentRuntime,
+): LifeOpsAudienceSource[] {
+  const persona = runtime.character.name;
+  return [
+    {
+      kind: "private_memory",
+      id: "lifeops.owner_profile",
+      classification: "persona_scoped",
+      persona,
+    },
+    {
+      kind: "calendar",
+      id: "lifeops.calendar",
+      classification: "persona_scoped",
+      persona,
+    },
+    {
+      kind: "gmail",
+      id: "lifeops.gmail",
+      classification: "persona_scoped",
+      persona,
+    },
+  ];
+}
+
+export async function resolveLifeOpsProviderAudienceGate(
+  runtime: IAgentRuntime,
+  message: Memory,
+  sources: readonly LifeOpsAudienceSource[] = lifeOpsPrivateContextSources(
+    runtime,
+  ),
+): Promise<LifeOpsAudienceGateResult> {
+  return evaluateLifeOpsAudiencePolicy({
+    runtime,
+    message,
+    sources,
+    hasOwnerAccess: hasLifeOpsAccess,
+  });
+}
 
 function formatCount(label: string, count: number): string {
   return `${label}: ${count}`;
@@ -352,9 +398,18 @@ export const lifeOpsProvider: Provider = {
     message: Memory,
     _state: State,
   ): Promise<ProviderResult> {
-    const isOwner = await hasLifeOpsAccess(runtime, message);
-    if (!isOwner) {
-      return { text: "", values: {}, data: {} };
+    const audienceGate = await resolveLifeOpsProviderAudienceGate(
+      runtime,
+      message,
+    );
+    if (!audienceGate.canLoadPrivateContext) {
+      return {
+        text: "",
+        values: {},
+        data: {
+          lifeOpsAudienceReceipts: audienceGate.receipts,
+        },
+      };
     }
     const audience: LifeOpsAudience = "owner";
 
@@ -711,6 +766,7 @@ export const lifeOpsProvider: Provider = {
           agentActiveGoals: overview.agentOps.summary.activeGoalCount,
         },
         data: {
+          lifeOpsAudienceReceipts: audienceGate.receipts,
           ownerProfile,
           overview: {
             ...overview,
