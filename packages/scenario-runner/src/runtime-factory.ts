@@ -293,7 +293,9 @@ export function providerQualifiedEnvironmentProblems(
     problems.add("SCENARIO_USE_LLM_PROXY enables the deterministic proxy");
   }
   if (envFlag(env.ELIZA_SCENARIO_USE_LLM_PROXY)) {
-    problems.add("ELIZA_SCENARIO_USE_LLM_PROXY enables the deterministic proxy");
+    problems.add(
+      "ELIZA_SCENARIO_USE_LLM_PROXY enables the deterministic proxy",
+    );
   }
   if (envFlag(env.ELIZA_DISABLE_LIFEOPS_SCHEDULER)) {
     problems.add("ELIZA_DISABLE_LIFEOPS_SCHEDULER disables the scheduler");
@@ -714,12 +716,15 @@ export async function createScenarioRuntime(
     // deterministic. Provider-qualified runs inherit the production defaults.
     settings: scenarioRuntimeSettings,
   });
+  const registeredPluginPackages = new Set<string>();
 
   const { default: pluginSql } = (await import("@elizaos/plugin-sql")) as {
     default: Plugin;
   };
   await runtime.registerPlugin(pluginSql);
+  registeredPluginPackages.add("@elizaos/plugin-sql");
   await runtime.registerPlugin(trajectoriesPlugin);
+  registeredPluginPackages.add("@elizaos/plugin-trajectories");
   await runtime.registerPlugin(await createScenarioKnowledgeGraphPlugin());
 
   // Basic capabilities: REPLY, CHOICE, IGNORE, NONE actions, core providers
@@ -781,10 +786,11 @@ export async function createScenarioRuntime(
         "[scenario-runner] deterministic proxy requested without the simulated test environment",
       );
     }
-    const deterministicLlmProxyPlugin = testMocks.createDeterministicLlmProxyPlugin({
-      strict: shouldUseStrictDeterministicLlmProxy(),
-      resolve: resolveScenarioDeterministicLlmCall,
-    });
+    const deterministicLlmProxyPlugin =
+      testMocks.createDeterministicLlmProxyPlugin({
+        strict: shouldUseStrictDeterministicLlmProxy(),
+        resolve: resolveScenarioDeterministicLlmCall,
+      });
     await runtime.registerPlugin(deterministicLlmProxyPlugin);
     const runtimeWithScenarioFixtures = runtime as AgentRuntime & {
       scenarioLlmFixtures?: unknown;
@@ -841,107 +847,129 @@ export async function createScenarioRuntime(
     }
   }
 
-  const agentSkillsModule = (await import(
-    "@elizaos/plugin-agent-skills"
-  )) as Record<string, unknown>;
-  const agentSkillsPlugin = extractPlugin(agentSkillsModule, [
-    "default",
-    "agentSkillsPlugin",
-  ]);
-  if (!agentSkillsPlugin) {
-    throw new Error(
-      "[scenario-runner] @elizaos/plugin-agent-skills did not export a Plugin",
-    );
-  }
-  await runtime.registerPlugin(agentSkillsPlugin);
+  if (executionProfile === "simulated") {
+    const agentSkillsModule = (await import(
+      "@elizaos/plugin-agent-skills"
+    )) as Record<string, unknown>;
+    const agentSkillsPlugin = extractPlugin(agentSkillsModule, [
+      "default",
+      "agentSkillsPlugin",
+    ]);
+    if (!agentSkillsPlugin) {
+      throw new Error(
+        "[scenario-runner] @elizaos/plugin-agent-skills did not export a Plugin",
+      );
+    }
+    await runtime.registerPlugin(agentSkillsPlugin);
+    registeredPluginPackages.add("@elizaos/plugin-agent-skills");
 
-  const schedulingModule = (await import(
-    "@elizaos/plugin-scheduling"
-  )) as Record<string, unknown>;
-  const schedulingPlugin = extractPlugin(schedulingModule, [
-    "default",
-    "schedulingPlugin",
-  ]);
-  if (!schedulingPlugin) {
-    throw new Error(
-      "[scenario-runner] @elizaos/plugin-scheduling did not export a Plugin",
-    );
-  }
-  await runtime.registerPlugin(schedulingPlugin);
+    const schedulingModule = (await import(
+      "@elizaos/plugin-scheduling"
+    )) as Record<string, unknown>;
+    const schedulingPlugin = extractPlugin(schedulingModule, [
+      "default",
+      "schedulingPlugin",
+    ]);
+    if (!schedulingPlugin) {
+      throw new Error(
+        "[scenario-runner] @elizaos/plugin-scheduling did not export a Plugin",
+      );
+    }
+    await runtime.registerPlugin(schedulingPlugin);
+    registeredPluginPackages.add("@elizaos/plugin-scheduling");
 
-  const lifeOpsModule = (await import(
-    "@elizaos/plugin-personal-assistant/plugin"
-  )) as Record<string, unknown>;
-  const lifeOpsPlugin = extractPlugin(lifeOpsModule, [
-    "default",
-    "personalAssistantPlugin",
-  ]);
-  if (!lifeOpsPlugin) {
-    throw new Error(
-      "[scenario-runner] @elizaos/plugin-personal-assistant did not export a Plugin",
-    );
-  }
-  await runtime.registerPlugin(lifeOpsPlugin);
+    const lifeOpsModule = (await import(
+      "@elizaos/plugin-personal-assistant/plugin"
+    )) as Record<string, unknown>;
+    const lifeOpsPlugin = extractPlugin(lifeOpsModule, [
+      "default",
+      "personalAssistantPlugin",
+    ]);
+    if (!lifeOpsPlugin) {
+      throw new Error(
+        "[scenario-runner] @elizaos/plugin-personal-assistant did not export a Plugin",
+      );
+    }
+    await runtime.registerPlugin(lifeOpsPlugin);
+    registeredPluginPackages.add("@elizaos/plugin-personal-assistant/plugin");
 
-  // The LifeOps dashboard HTTP routes (/api/lifeops/*) live on a separate
-  // routes-only plugin, not the main lifeops plugin. Register it so api-turn
-  // scenarios can exercise reminder/scheduling/inbox outcomes on the keyless
-  // pr-deterministic lane (the executor's api server is built from
-  // `runtime.routes`). It is routes-only — no services/actions/providers — so
-  // it only adds endpoints; non-api scenarios are unaffected. Its sole
-  // dependency (@elizaos/plugin-google) is already registered above.
-  const routesModule = (await import(
-    "@elizaos/plugin-personal-assistant"
-  )) as Record<string, unknown>;
-  const lifeOpsRoutesPlugin = extractPlugin(routesModule, [
-    "personalAssistantRoutesPlugin",
-  ]);
-  if (!lifeOpsRoutesPlugin) {
-    throw new Error(
-      "[scenario-runner] @elizaos/plugin-personal-assistant did not export personalAssistantRoutesPlugin",
-    );
-  }
-  await runtime.registerPlugin(lifeOpsRoutesPlugin);
+    // Dashboard routes remain a compatibility-harness capability. Qualified
+    // runs receive only packages declared by the scenario, preventing an
+    // ambient route bundle from making a missing production dependency pass.
+    const routesModule = (await import(
+      "@elizaos/plugin-personal-assistant"
+    )) as Record<string, unknown>;
+    const lifeOpsRoutesPlugin = extractPlugin(routesModule, [
+      "personalAssistantRoutesPlugin",
+    ]);
+    if (!lifeOpsRoutesPlugin) {
+      throw new Error(
+        "[scenario-runner] @elizaos/plugin-personal-assistant did not export personalAssistantRoutesPlugin",
+      );
+    }
+    await runtime.registerPlugin(lifeOpsRoutesPlugin);
+    registeredPluginPackages.add("@elizaos/plugin-personal-assistant");
 
-  for (const extra of options?.extraPlugins ?? []) {
-    await runtime.registerPlugin(extra);
+    for (const extra of options?.extraPlugins ?? []) {
+      await runtime.registerPlugin(extra);
+    }
+  } else {
+    for (const packageName of options?.requiredPlugins ?? []) {
+      if (!pluginPackageIsRegistered(runtime, packageName)) {
+        const plugin = await loadScenarioRequiredPlugin(
+          packageName,
+          executionProfile,
+        );
+        if (!plugin) {
+          throw new Error(
+            `[scenario-runner] provider-qualified required package ${packageName} did not export a production Plugin`,
+          );
+        }
+        await runtime.registerPlugin(plugin);
+      }
+      registeredPluginPackages.add(packageName);
+    }
   }
 
   await runtime.initialize();
   const cleanupRuntimeFixtures =
-    await mockedEnvironment.applyRuntimeFixtures?.(runtime);
-  await seedGoogleConnectorGrant(runtime);
-  await seedXConnectorGrant(runtime);
-  await seedBenchmarkLifeOpsFixtures(runtime);
-  await seedLifeOpsSimulatorRuntime(runtime);
+    mockedEnvironment && testMocks
+      ? await mockedEnvironment.applyRuntimeFixtures?.(runtime)
+      : undefined;
+  if (executionProfile === "simulated" && testMocks) {
+    await testMocks.seedGoogleConnectorGrant(runtime);
+    await testMocks.seedXConnectorGrant(runtime);
+    await testMocks.seedBenchmarkLifeOpsFixtures(runtime);
+    await testMocks.seedLifeOpsSimulatorRuntime(runtime);
 
-  // Deterministic scenarios share one runtime; seed first-run as already
-  // complete so the firstRun provider stays silent and action-routing is
-  // order-independent. Without this, scenarios run in --lane discovery order
-  // can see a "first-run pending" planner context the strict fixtures do not
-  // cover when a later scenario is routed last.
-  await runtime.setCache("eliza:lifeops:first-run:v1", {
-    status: "complete",
-    partialAnswers: {},
-    completionCount: 1,
-    completedAt: "1970-01-01T00:00:00.000Z",
-  });
+    // The shared simulated runtime treats onboarding as complete so action
+    // routing is independent of scenario discovery order.
+    await runtime.setCache("eliza:lifeops:first-run:v1", {
+      status: "complete",
+      partialAnswers: {},
+      completionCount: 1,
+      completedAt: "1970-01-01T00:00:00.000Z",
+    });
 
-  // Remove upstream actions that reliably steal action-selection from the
-  // domain actions scenarios actually care about. UPDATE_ENTITY's description
-  // ("Add or edit contact details for a person you are talking to or
-  // observing. Use this to modify entity profiles, metadata, or attributes.")
-  // is broad enough that small-model classifiers pick it for any request that
-  // mentions a person or fact ("remember my favorite color is blue",
-  // "remind me to email Alex"), which crowds out CREATE_TASK, MESSAGE,
-  // CONTACT, OWNER_REMINDERS, etc. For the scenario runner — which is testing
-  // user-facing action routing, not profile editing — dropping it unblocks
-  // the realistic cases. Real runtimes keep UPDATE_ENTITY enabled.
-  const bannedActions = new Set(["UPDATE_ENTITY"]);
-  const runtimeActions = runtime.actions;
-  for (let i = runtimeActions.length - 1; i >= 0; i -= 1) {
-    if (bannedActions.has(runtimeActions[i].name)) {
-      runtimeActions.splice(i, 1);
+    // UPDATE_ENTITY is excluded only from the compatibility harness because
+    // its broad description crowds out the domain actions those deterministic
+    // fixtures target. Qualified runs retain production action selection.
+    const bannedActions = new Set(["UPDATE_ENTITY"]);
+    const runtimeActions = runtime.actions;
+    for (let i = runtimeActions.length - 1; i >= 0; i -= 1) {
+      if (bannedActions.has(runtimeActions[i].name)) {
+        runtimeActions.splice(i, 1);
+      }
+    }
+  } else {
+    assertProviderQualifiedEnvironment();
+    const missingRequiredPlugins = (options?.requiredPlugins ?? []).filter(
+      (packageName) => !pluginPackageIsRegistered(runtime, packageName),
+    );
+    if (missingRequiredPlugins.length > 0) {
+      throw new Error(
+        `[scenario-runner] provider-qualified runtime is missing declared plugin(s) after initialization: ${missingRequiredPlugins.join(", ")}`,
+      );
     }
   }
 
@@ -1013,6 +1041,9 @@ export async function createScenarioRuntime(
       delete process.env.SKILLS_DIR;
     }
     await runCleanupStep("mocked environment", async () => {
+      if (!mockedEnvironment) {
+        return;
+      }
       try {
         await mockedEnvironment.cleanup();
       } catch (err) {
@@ -1051,6 +1082,8 @@ export async function createScenarioRuntime(
   return {
     runtime,
     pgliteDir,
+    executionProfile,
+    registeredPluginPackages: [...registeredPluginPackages].sort(),
     providerName: providerConfig.name,
     providerConfig,
     cleanup,

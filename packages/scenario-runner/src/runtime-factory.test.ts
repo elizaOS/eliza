@@ -19,19 +19,21 @@ describe("scenario runtime deterministic LLM proxy mode", () => {
     ).toBe(true);
   });
 
-  it.each([
-    "SCENARIO_USE_LLM_PROXY",
-    "ELIZA_SCENARIO_USE_LLM_PROXY",
-  ])("can be enabled by %s", (name) => {
-    expect(shouldUseDeterministicLlmProxy({}, { [name]: "1" })).toBe(true);
-  });
+  it.each(["SCENARIO_USE_LLM_PROXY", "ELIZA_SCENARIO_USE_LLM_PROXY"])(
+    "can be enabled by %s",
+    (name) => {
+      expect(shouldUseDeterministicLlmProxy({}, { [name]: "1" })).toBe(true);
+    },
+  );
 
-  it.each([
-    "SCENARIO_LLM_PROXY_STRICT",
-    "ELIZA_SCENARIO_LLM_PROXY_STRICT",
-  ])("can enable strict fixture mode by %s", (name) => {
-    expect(shouldUseStrictDeterministicLlmProxy({ [name]: "true" })).toBe(true);
-  });
+  it.each(["SCENARIO_LLM_PROXY_STRICT", "ELIZA_SCENARIO_LLM_PROXY_STRICT"])(
+    "can enable strict fixture mode by %s",
+    (name) => {
+      expect(shouldUseStrictDeterministicLlmProxy({ [name]: "true" })).toBe(
+        true,
+      );
+    },
+  );
 
   it("resolves a no-key deterministic provider config in proxy mode", () => {
     const providerConfig = resolveScenarioProviderConfig(
@@ -149,20 +151,17 @@ describe("clearLlmWireMockEnvForLiveProvider", () => {
     ELIZA_MOCK_GOOGLE_BASE: "http://127.0.0.1:50103",
   });
 
-  it.each([
-    "openai",
-    "anthropic",
-    "groq",
-    "google",
-    "openrouter",
-  ] as const)("drops the LLM wire-mock base overrides for the live %s provider", (providerName) => {
-    const env = mockEnv();
-    clearLlmWireMockEnvForLiveProvider(providerName, env);
-    expect(env.ELIZA_MOCK_OPENAI_BASE).toBeUndefined();
-    expect(env.ELIZA_MOCK_ANTHROPIC_BASE).toBeUndefined();
-    // Connector mocks are unrelated to the LLM path and must survive.
-    expect(env.ELIZA_MOCK_GOOGLE_BASE).toBe("http://127.0.0.1:50103");
-  });
+  it.each(["openai", "anthropic", "groq", "google", "openrouter"] as const)(
+    "drops the LLM wire-mock base overrides for the live %s provider",
+    (providerName) => {
+      const env = mockEnv();
+      clearLlmWireMockEnvForLiveProvider(providerName, env);
+      expect(env.ELIZA_MOCK_OPENAI_BASE).toBeUndefined();
+      expect(env.ELIZA_MOCK_ANTHROPIC_BASE).toBeUndefined();
+      // Connector mocks are unrelated to the LLM path and must survive.
+      expect(env.ELIZA_MOCK_GOOGLE_BASE).toBe("http://127.0.0.1:50103");
+    },
+  );
 
   it("keeps the LLM wire mocks for the deterministic proxy lane", () => {
     const env = mockEnv();

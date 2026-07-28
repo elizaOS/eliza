@@ -88,7 +88,27 @@ function aggregateReport(
     startedAtIso,
     completedAtIso,
     providerName,
+    executionProfile: null,
     scenarios: reports,
+    // CLI fixtures carry no evidence blocks, so every scenario is honestly
+    // unreported — mirrors what aggregateEvidence derives for them.
+    evidenceSummary: {
+      reportedScenarioCount: 0,
+      unreportedScenarioCount: reports.length,
+      qualificationCounts: {
+        qualified: 0,
+        unqualified: 0,
+        ineligible: 0,
+      },
+      publishableScenarioCount: 0,
+      observationCounts: {
+        "durable-approval": 0,
+        "durable-draft": 0,
+        "provider-effect": 0,
+        "provider-no-effect": 0,
+        "scheduled-task": 0,
+      },
+    },
     totals: {
       ...totals,
       costUsd: 0,
@@ -112,6 +132,8 @@ function createDependencies(
     createScenarioRuntime: vi.fn(async () => ({
       runtime: {} as never,
       pgliteDir: tmpdir(),
+      executionProfile: "simulated" as const,
+      registeredPluginPackages: [],
       providerName: DETERMINISTIC_PROVIDER_NAME,
       providerConfig: {
         name: DETERMINISTIC_PROVIDER_NAME,
@@ -419,7 +441,9 @@ describe("scenario-runner CLI", () => {
     );
 
     expect(code).toBe(0);
-    const persisted = vi.mocked(dependencies.writeReport).mock.calls.at(-1)?.[0];
+    const persisted = vi
+      .mocked(dependencies.writeReport)
+      .mock.calls.at(-1)?.[0];
     expect(JSON.stringify(persisted)).not.toContain("secret-token-value");
     expect(JSON.stringify(persisted)).toContain("[REDACTED]");
   });

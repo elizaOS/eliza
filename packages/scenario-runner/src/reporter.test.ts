@@ -15,6 +15,7 @@ import {
   buildAggregate,
   printStdoutSummary,
   sumTrajectoryCostUsd,
+  validateAggregateEvidenceReport,
   validateScenarioEvidenceReport,
   writeFileAtomic,
   writeReportBundle,
@@ -643,6 +644,7 @@ describe("scenario report aggregation", () => {
       { ...report.scenarios[0], id: "email|send:urgent" },
     ];
     report.totalCount = report.scenarios.length;
+    report.evidenceSummary.unreportedScenarioCount = report.scenarios.length;
 
     writeReportBundle(report, outDir);
 
@@ -670,6 +672,23 @@ describe("scenario report aggregation", () => {
     expect(readdirSync(outDir).filter((name) => name.endsWith(".tmp"))).toEqual(
       [],
     );
+  });
+
+  it("rejects forged aggregate profiles and publishability summaries before serialization", () => {
+    const forgedProfile = aggregateReport();
+    forgedProfile.executionProfile = "provider-qualified";
+    expect(() => validateAggregateEvidenceReport(forgedProfile)).toThrow(
+      /aggregate executionProfile .* does not match scenario reports/,
+    );
+
+    const forgedSummary = aggregateReport();
+    forgedSummary.evidenceSummary.publishableScenarioCount = 1;
+    const outDir = makeTempDir("scenario-forged-summary-");
+    const target = path.join(outDir, "matrix.json");
+    expect(() => writeReportBundle(forgedSummary, outDir)).toThrow(
+      /aggregate evidenceSummary does not match/,
+    );
+    expect(existsSync(target)).toBe(false);
   });
 
   it("prints pipe-safe single-line failure summaries", () => {

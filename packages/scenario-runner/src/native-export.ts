@@ -1262,10 +1262,7 @@ export function exportScenarioNativeJsonl(
       categories: privacyCategories(privacyStats),
     },
   };
-  writeFileAtomic(
-    manifestPath,
-    `${JSON.stringify(manifest, null, 2)}\n`,
-  );
+  writeFileAtomic(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
   logger.info(
     `[scenario-runner] wrote ${rows.length} redacted eliza_native_v1 row(s) from ${files.length} trajectory file(s) → ${outPath} (passed=${passedRows} failed=${failedRows} skipped=${skippedScenarioRows} unknown=${unknownOutcomeRows} redactions=${privacyStats.redactionsTotal} residuals=${privacyStats.residualTotal}) (manifest → ${manifestPath}; privacy attestation → ${privacyAttestationPath})`,
   );

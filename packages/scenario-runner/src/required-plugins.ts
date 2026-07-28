@@ -57,6 +57,11 @@ export function providerQualifiedPluginPackageProblem(
 export function assertProviderQualifiedPluginPackages(
   packageNames: readonly string[],
 ): void {
+  if (packageNames.length === 0) {
+    throw new Error(
+      "[scenario-runner] provider-qualified execution requires a non-empty scenario-declared production plugin set",
+    );
+  }
   const problems = packageNames
     .map(providerQualifiedPluginPackageProblem)
     .filter((problem): problem is string => problem !== null);
@@ -114,8 +119,7 @@ async function loadSimulatedAppControlPlugin(): Promise<Plugin | null> {
       mod.viewsAction,
       mod.settingsAction,
     ],
-    responseHandlerEvaluators:
-      mod.appControlPlugin?.responseHandlerEvaluators,
+    responseHandlerEvaluators: mod.appControlPlugin?.responseHandlerEvaluators,
   };
 }
 

@@ -31,8 +31,10 @@ import {
 import type { VoiceWorkbenchScenarioRun } from "@elizaos/plugin-local-inference/voice-workbench";
 import {
   type CapturedAction,
+  DEFAULT_SCENARIO_EXECUTION_PROFILE,
   type ScenarioContext,
   type ScenarioDefinition,
+  type ScenarioExecutionProfile,
   type ScenarioFinalCheck,
   type ScenarioJudgeRubric,
   type ScenarioLane,
@@ -51,6 +53,7 @@ import {
 } from "./judge-independence.ts";
 import { redactForScenarioReport } from "./redaction.ts";
 import {
+  assertProviderQualifiedPluginPackages,
   loadScenarioRequiredPlugin,
   pluginPackageIsRegistered,
   resolveRequiredPluginPackages,
@@ -68,6 +71,8 @@ export interface ExecutorOptions {
   providerName: string;
   minJudgeScore: number;
   turnTimeoutMs: number;
+  executionProfile?: ScenarioExecutionProfile;
+  runDir?: string;
 }
 
 /**
@@ -80,11 +85,95 @@ export interface ExecutorOptions {
 export function skippedFinalCheckFailure(
   lane: ScenarioLane,
   result: Pick<FinalCheckReport, "status" | "label" | "detail">,
+  executionProfile: ScenarioExecutionProfile = "simulated",
 ): string | null {
-  if (result.status !== "skipped" || lane !== "pr-deterministic") {
+  if (
+    result.status !== "skipped" ||
+    (lane !== "pr-deterministic" && executionProfile !== "provider-qualified")
+  ) {
     return null;
   }
-  return `finalCheck "${result.label}" skipped (${result.detail}) — a missing dependency is a failure in the pr-deterministic lane`;
+  return `finalCheck "${result.label}" skipped (${result.detail}) — a missing dependency is a failure in ${executionProfile === "provider-qualified" ? "provider-qualified execution" : "the pr-deterministic lane"}`;
+}
+
+const TRUSTED_PROVIDER_CHECK_TYPES = new Set([
+  "providerEffectObserved",
+  "providerNoEffectObserved",
+]);
+
+function scenarioHasIndependentJudgeWork(
+  scenario: ScenarioDefinition,
+): boolean {
+  if (
+    scenario.turns.some(
+      (turn) =>
+        turn.responseJudge !== undefined &&
+        typeof turn.responseJudge.rubric === "string" &&
+        turn.responseJudge.rubric.trim().length > 0,
+    )
+  ) {
+    return true;
+  }
+  return (scenario.finalChecks ?? []).some(
+    (check) =>
+      check.type === "judgeRubric" &&
+      typeof check.rubric === "string" &&
+      check.rubric.trim().length > 0,
+  );
+}
+
+/**
+ * Provider-qualified execution is deliberately a small, production-shaped
+ * subset. Every rejected construct either injects state, bypasses the model,
+ * advances the scheduler artificially, or relies on a mock-only cleanup.
+ */
+export function providerQualifiedScenarioProblems(
+  scenario: ScenarioDefinition,
+): string[] {
+  const problems: string[] = [];
+  const requiredPlugins = resolveRequiredPluginPackages(scenario);
+  try {
+    assertProviderQualifiedPluginPackages(requiredPlugins);
+  } catch (error) {
+    problems.push(error instanceof Error ? error.message : String(error));
+  }
+  if ((scenario.seed?.length ?? 0) > 0) {
+    problems.push(
+      "provider-qualified scenarios cannot declare seed steps; observe production state instead of injecting fixtures or logical time",
+    );
+  }
+  const forbiddenTurns = scenario.turns
+    .filter((turn) => turn.kind === "action" || turn.kind === "tick")
+    .map((turn) => `${turn.name}:${turn.kind}`);
+  if (forbiddenTurns.length > 0) {
+    problems.push(
+      `provider-qualified scenarios cannot bypass model/scheduler routing with direct action or tick turns (${forbiddenTurns.join(", ")})`,
+    );
+  }
+  if (
+    (scenario.cleanup ?? []).some(
+      (cleanup) => cleanup.type === "gmailDeleteDrafts",
+    )
+  ) {
+    problems.push(
+      "provider-qualified scenarios cannot use gmailDeleteDrafts because it targets the loopback connector mock",
+    );
+  }
+  if (!scenarioHasIndependentJudgeWork(scenario)) {
+    problems.push(
+      "provider-qualified scenarios require at least one responseJudge or judgeRubric evaluated by the independent judge",
+    );
+  }
+  if (
+    !(scenario.finalChecks ?? []).some((check) =>
+      TRUSTED_PROVIDER_CHECK_TYPES.has(check.type),
+    )
+  ) {
+    problems.push(
+      "provider-qualified scenarios require providerEffectObserved or providerNoEffectObserved as a final check",
+    );
+  }
+  return problems;
 }
 
 const DEFAULT_TURN_TIMEOUT_MS = 120_000;
@@ -310,7 +399,9 @@ function resetScenarioLlmFixtures(runtime: AgentRuntime): void {
 async function resetSharedSchedulingState(
   runtime: AgentRuntime,
 ): Promise<void> {
-  if (!pluginIsRegistered(runtime, "@elizaos/plugin-personal-assistant")) {
+  if (
+    !pluginPackageIsRegistered(runtime, "@elizaos/plugin-personal-assistant")
+  ) {
     return;
   }
   const { resetLifeOpsScenarioState } = (await import(
@@ -2079,6 +2170,8 @@ export async function runScenario(
   opts: ExecutorOptions,
 ): Promise<ScenarioReport> {
   const startedAt = Date.now();
+  const executionProfile =
+    opts.executionProfile ?? DEFAULT_SCENARIO_EXECUTION_PROFILE;
   let logicalNow = new Date();
   const ctx: RunnerContext = {
     scenarioId: scenario.id,
@@ -2110,7 +2203,79 @@ export async function runScenario(
     actionsCalled: [],
     failedAssertions: [],
     providerName: opts.providerName,
+    executionProfile,
+    evidence:
+      executionProfile === "simulated"
+        ? {
+            schemaVersion: 1,
+            executionProfile: "simulated",
+            qualification: {
+              status: "ineligible",
+              publishable: false,
+              reasons: [
+                "simulated execution is diagnostic-only and cannot produce publishable provider evidence",
+              ],
+            },
+          }
+        : {
+            schemaVersion: 1,
+            executionProfile: "provider-qualified",
+            qualification: {
+              status: "unqualified",
+              publishable: false,
+              reasons: [
+                "provider evidence observation has not completed successfully",
+              ],
+            },
+            observerProvenance: [],
+            trajectoryHashes: [],
+            observations: [],
+          },
   };
+  if (
+    scenario.executionProfile !== undefined &&
+    scenario.executionProfile !== executionProfile
+  ) {
+    report.status = "failed";
+    report.error = `scenario declares executionProfile=${scenario.executionProfile} but executor received ${executionProfile}`;
+    report.durationMs = Date.now() - startedAt;
+    return report;
+  }
+  if (executionProfile === "provider-qualified") {
+    const preflightProblems = providerQualifiedScenarioProblems(scenario);
+    const missingPlugins = resolveRequiredPluginPackages(scenario).filter(
+      (packageName) => !pluginPackageIsRegistered(runtime, packageName),
+    );
+    if (missingPlugins.length > 0) {
+      preflightProblems.push(
+        `declared production plugin(s) not registered before execution: ${missingPlugins.join(", ")}`,
+      );
+    }
+    if (
+      runtime.getService("lifeops_scheduled_task_runner") === null ||
+      runtime.getService("lifeops_scheduled_task_runner") === undefined
+    ) {
+      preflightProblems.push(
+        "production scheduled-task runner service is not registered and active",
+      );
+    }
+    if (!(await isJudgeIndependent())) {
+      preflightProblems.push(
+        "independent judge is unavailable; configure its dedicated provider credentials",
+      );
+    }
+    if (!opts.runDir) {
+      preflightProblems.push(
+        "provider-qualified execution requires runDir so exact trajectory files can be hashed",
+      );
+    }
+    if (preflightProblems.length > 0) {
+      report.status = "failed";
+      report.error = `provider-qualified preflight failed: ${preflightProblems.join("; ")}`;
+      report.durationMs = Date.now() - startedAt;
+      return report;
+    }
+  }
   // Every numeric LLM-judge score produced while running this scenario (turn
   // responseJudge + judgeRubric final checks). The minimum — the binding
   // quality constraint — is serialized as report.judgeScore (#8795).

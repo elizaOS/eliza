@@ -847,6 +847,55 @@ function aggregateEvidence(
   return summary;
 }
 
+function evidenceSummaryMatches(
+  actual: AggregateReport["evidenceSummary"],
+  expected: AggregateReport["evidenceSummary"],
+): boolean {
+  return (
+    actual.reportedScenarioCount === expected.reportedScenarioCount &&
+    actual.unreportedScenarioCount === expected.unreportedScenarioCount &&
+    actual.qualificationCounts.qualified ===
+      expected.qualificationCounts.qualified &&
+    actual.qualificationCounts.unqualified ===
+      expected.qualificationCounts.unqualified &&
+    actual.qualificationCounts.ineligible ===
+      expected.qualificationCounts.ineligible &&
+    actual.publishableScenarioCount === expected.publishableScenarioCount &&
+    actual.observationCounts["durable-approval"] ===
+      expected.observationCounts["durable-approval"] &&
+    actual.observationCounts["durable-draft"] ===
+      expected.observationCounts["durable-draft"] &&
+    actual.observationCounts["provider-effect"] ===
+      expected.observationCounts["provider-effect"] &&
+    actual.observationCounts["provider-no-effect"] ===
+      expected.observationCounts["provider-no-effect"] &&
+    actual.observationCounts["scheduled-task"] ===
+      expected.observationCounts["scheduled-task"]
+  );
+}
+
+/**
+ * Protect every serialization path from a hand-built aggregate whose profile
+ * or publishability summary disagrees with its per-scenario evidence.
+ */
+export function validateAggregateEvidenceReport(report: AggregateReport): void {
+  for (const scenario of report.scenarios) {
+    validateScenarioEvidenceReport(scenario);
+  }
+  const expectedProfile = aggregateExecutionProfile(report.scenarios);
+  if (report.executionProfile !== expectedProfile) {
+    throw new Error(
+      `aggregate executionProfile "${report.executionProfile}" does not match scenario reports "${expectedProfile}"`,
+    );
+  }
+  const expectedSummary = aggregateEvidence(report.scenarios);
+  if (!evidenceSummaryMatches(report.evidenceSummary, expectedSummary)) {
+    throw new Error(
+      "aggregate evidenceSummary does not match validated scenario evidence",
+    );
+  }
+}
+
 /**
  * Walk `<runDir>/trajectories/**\/*.json` and sum the real per-trajectory LLM
  * spend so the aggregate report's `totalCostUsd` reflects what the run actually
@@ -929,6 +978,7 @@ export function buildAggregate(
 }
 
 export function writeReport(report: AggregateReport, filePath: string): void {
+  validateAggregateEvidenceReport(report);
   mkdirSync(path.dirname(filePath), { recursive: true });
   writeFileAtomic(filePath, `${JSON.stringify(report, null, 2)}\n`);
   logger.info(`[scenario-runner] wrote report → ${filePath}`);
@@ -953,6 +1003,7 @@ export function writeReportBundle(
   report: AggregateReport,
   reportDir: string,
 ): void {
+  validateAggregateEvidenceReport(report);
   mkdirSync(reportDir, { recursive: true });
 
   const matrixPath = path.join(reportDir, "matrix.json");
@@ -1345,6 +1396,7 @@ export function writeScenarioRunViewer(
   runDir: string,
   options: { nativeJsonlPath?: string } = {},
 ): { viewerIndex: string; viewerData: string; nativeManifest?: string } {
+  validateAggregateEvidenceReport(report);
   const viewerDir = path.join(runDir, "viewer");
   mkdirSync(viewerDir, { recursive: true });
   const viewerIndex = path.join(viewerDir, "index.html");
@@ -1368,6 +1420,7 @@ export function writeScenarioRunViewer(
 }
 
 export function printStdoutSummary(report: AggregateReport): void {
+  validateAggregateEvidenceReport(report);
   const lines: string[] = [];
   lines.push("");
   lines.push(
