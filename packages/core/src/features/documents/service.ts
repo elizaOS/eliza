@@ -18,13 +18,22 @@
  */
 import { existsSync, statSync } from "node:fs";
 import { filterByAccessContext } from "../../access-control/filter";
+import {
+	DOCUMENT_LIST_MAX_LIMIT,
+	DOCUMENT_LIST_MAX_OFFSET,
+	queryDocumentsWithCompatibility,
+} from "../../database/document-list-query";
 import { createUniqueUuid } from "../../entities";
+import { ElizaError } from "../../errors";
 import { logger } from "../../logger";
 import { checkSenderRole } from "../../roles";
 import {
 	type AccessContext,
 	type Content,
 	type CustomMetadata,
+	type DocumentListCursor,
+	type DocumentListQueryParams,
+	type DocumentListRequesterRole,
 	type IAgentRuntime,
 	type Memory,
 	MemoryType,
@@ -75,6 +84,47 @@ import {
  */
 export type SearchMode = "hybrid" | "vector" | "keyword";
 
+/** Filters and pagination accepted by document list operations. */
+export interface DocumentListOptions {
+	limit?: number;
+	offset?: number;
+	cursor?: DocumentListCursor;
+	query?: string;
+	scope?: DocumentVisibilityScope;
+	scopedToEntityId?: UUID;
+	addedBy?: UUID;
+	timeRangeStart?: number;
+	timeRangeEnd?: number;
+	tags?: string[];
+}
+
+/** Machine-readable outcome of a document list request. */
+export type DocumentListStatus =
+	| "ok"
+	| "query_miss"
+	| "filter_miss"
+	| "page_exhausted"
+	| "empty_store";
+
+/** Complete document-list semantics after visibility, filtering, and pagination. */
+export interface DocumentListResult {
+	status: DocumentListStatus;
+	documents: Memory[];
+	availableDocuments: Memory[];
+	query?: string;
+	limit: number;
+	offset: number;
+	cursor?: DocumentListCursor;
+	totalVisible: number;
+	totalAvailable: number;
+	totalMatched: number;
+	hasMore: boolean;
+	availableOffset: number;
+	availableHasMore: boolean;
+	nextCursor?: DocumentListCursor;
+	availableNextCursor?: DocumentListCursor;
+}
+
 /** Weight given to the normalized vector score in hybrid mode. */
 const HYBRID_VECTOR_WEIGHT = 0.6;
 /** Weight given to the normalized BM25 score in hybrid mode. */
@@ -102,6 +152,86 @@ const DOCUMENT_ADDED_FROM_VALUES = new Set<DocumentAddedFrom>([
 	"default-seed",
 	"character",
 ]);
+
+/** Requester identity and role resolved once for document authorization. */
+export interface DocumentRequester {
+	entityId: UUID;
+	roomIds: UUID[];
+	role: DocumentListRequesterRole;
+}
+
+async function resolveDocumentRequesterRole(
+	runtime: IAgentRuntime,
+	message?: Memory,
+): Promise<Pick<DocumentRequester, "entityId" | "role">> {
+	if (!message?.entityId) {
+		return { entityId: runtime.agentId, role: "RUNTIME" };
+	}
+	if (message.entityId === runtime.agentId) {
+		return { entityId: runtime.agentId, role: "AGENT" };
+	}
+
+	try {
+		const result = await checkSenderRole(runtime, message);
+		return {
+			entityId: message.entityId,
+			role:
+				result?.role === "OWNER" || result?.role === "ADMIN"
+					? result.role
+					: "USER",
+		};
+	} catch (cause) {
+		// error-policy:J2 Preserve role-resolution context and fail the read/write.
+		const error = new ElizaError("Document requester role lookup failed", {
+			code: "DOCUMENT_ROLE_LOOKUP_FAILED",
+			cause,
+			context: {
+				agentId: runtime.agentId,
+				entityId: message.entityId,
+				roomId: message.roomId,
+			},
+			severity: "ephemeral",
+		});
+		runtime.reportError("DocumentService.resolveRequesterRole", error, {
+			agentId: runtime.agentId,
+			entityId: message.entityId,
+			roomId: message.roomId,
+		});
+		throw error;
+	}
+}
+
+export async function resolveDocumentRequester(
+	runtime: IAgentRuntime,
+	message?: Memory,
+): Promise<DocumentRequester> {
+	const requester = await resolveDocumentRequesterRole(runtime, message);
+	try {
+		const roomIds = await runtime.getRoomsForParticipants([requester.entityId]);
+		return {
+			...requester,
+			roomIds: [...new Set(roomIds)],
+		};
+	} catch (cause) {
+		// error-policy:J2 Preserve room-resolution context and fail the read.
+		const error = new ElizaError("Document requester room lookup failed", {
+			code: "DOCUMENT_ROOM_LOOKUP_FAILED",
+			cause,
+			context: {
+				agentId: runtime.agentId,
+				entityId: requester.entityId,
+				roomId: message?.roomId,
+			},
+			severity: "ephemeral",
+		});
+		runtime.reportError("DocumentService.resolveRequesterRooms", error, {
+			agentId: runtime.agentId,
+			entityId: requester.entityId,
+			roomId: message?.roomId,
+		});
+		throw error;
+	}
+}
 
 function normalizeDocumentScope(
 	scope: AddDocumentOptions["scope"] | undefined,
@@ -297,31 +427,15 @@ export class DocumentService extends Service {
 		return memory.metadata?.type === MemoryType.FRAGMENT;
 	}
 
-	private async getSenderDocumentRole(
-		message?: Memory,
-	): Promise<"OWNER" | "ADMIN" | "USER" | "AGENT" | "RUNTIME"> {
-		if (!message?.entityId) {
-			return "RUNTIME";
-		}
-		if (message.entityId === this.runtime.agentId) {
-			return "AGENT";
-		}
-
-		const role = await checkSenderRole(this.runtime, message).catch(() => null);
-		// Record OWNER/ADMIN provenance verbatim (the comparison narrows the return
-		// type to the DocumentAddedByRole subset); everyone else is a plain USER.
-		if (role?.role === "OWNER" || role?.role === "ADMIN") {
-			return role.role;
-		}
-		return "USER";
-	}
-
 	async canAccessDocument(memory: Memory, message?: Memory): Promise<boolean> {
 		if (!message?.entityId || message.entityId === this.runtime.agentId) {
 			return true;
 		}
 
-		const senderRole = await this.getSenderDocumentRole(message);
+		const { role: senderRole } = await resolveDocumentRequesterRole(
+			this.runtime,
+			message,
+		);
 		if (senderRole === "OWNER") return true;
 
 		const metadata = (memory.metadata ?? {}) as Record<string, unknown>;
@@ -382,87 +496,107 @@ export class DocumentService extends Service {
 
 	async listDocuments(
 		message?: Memory,
-		options: {
-			limit?: number;
-			offset?: number;
-			query?: string;
-			scope?: DocumentVisibilityScope;
-			scopedToEntityId?: UUID;
-			addedBy?: UUID;
-			timeRangeStart?: number;
-			timeRangeEnd?: number;
-			tags?: string[];
-		} = {},
+		options: DocumentListOptions = {},
 	): Promise<Memory[]> {
-		const limit = Math.max(1, Math.min(options.limit ?? 25, 100));
-		const offset = Math.max(0, options.offset ?? 0);
-		const memories = await this.runtime.getMemories({
-			tableName: DOCUMENTS_TABLE,
+		return (await this.listDocumentsDetailed(message, options)).documents;
+	}
+
+	async listDocumentsDetailed(
+		message?: Memory,
+		options: DocumentListOptions = {},
+	): Promise<DocumentListResult> {
+		const limit =
+			typeof options.limit === "number" && Number.isFinite(options.limit)
+				? Math.max(
+						1,
+						Math.min(Math.floor(options.limit), DOCUMENT_LIST_MAX_LIMIT),
+					)
+				: 25;
+		const offset = options.offset ?? 0;
+		if (
+			!Number.isSafeInteger(offset) ||
+			offset < 0 ||
+			offset > DOCUMENT_LIST_MAX_OFFSET
+		) {
+			throw new ElizaError(
+				`Document list offset must be an integer between 0 and ${DOCUMENT_LIST_MAX_OFFSET}`,
+				{
+					code: "DOCUMENT_LIST_INVALID_PAGINATION",
+					context: { offset },
+				},
+			);
+		}
+		if (options.cursor && offset !== 0) {
+			throw new ElizaError(
+				"Document list cursor cannot be combined with a non-zero offset",
+				{
+					code: "DOCUMENT_LIST_INVALID_PAGINATION",
+					context: { offset },
+				},
+			);
+		}
+
+		const requester = await resolveDocumentRequester(this.runtime, message);
+		const query = options.query?.trim();
+		const normalizedQuery = query?.toLowerCase();
+		const queryParams: DocumentListQueryParams = {
 			agentId: this.runtime.agentId,
-			count: Math.max((limit + offset) * 4, 50),
-		});
-		const documents = await this.filterVisibleMemories(
-			memories.filter((memory) => this.isDocumentMemory(memory)),
-			message,
+			requesterEntityId: requester.entityId,
+			requesterRoomIds: requester.roomIds,
+			requesterRole: requester.role,
+			limit,
+			offset,
+			...(options.cursor ? { cursor: options.cursor } : {}),
+			...(normalizedQuery ? { query: normalizedQuery } : {}),
+			...(options.scope ? { scope: options.scope } : {}),
+			...(options.scopedToEntityId
+				? { scopedToEntityId: options.scopedToEntityId }
+				: {}),
+			...(options.addedBy ? { addedBy: options.addedBy } : {}),
+			...(options.timeRangeStart !== undefined
+				? { timeRangeStart: options.timeRangeStart }
+				: {}),
+			...(options.timeRangeEnd !== undefined
+				? { timeRangeEnd: options.timeRangeEnd }
+				: {}),
+			...(options.tags?.length ? { tags: options.tags } : {}),
+		};
+		const stored = await queryDocumentsWithCompatibility(
+			this.runtime.adapter,
+			queryParams,
 		);
-		const query = options.query?.trim().toLowerCase();
-		const filtered = documents.filter((memory) => {
-			const metadata = (memory.metadata ?? {}) as Record<string, unknown>;
-			if (options.scope && metadata.scope !== options.scope) return false;
-			if (
-				options.scopedToEntityId &&
-				metadata.scopedToEntityId !== options.scopedToEntityId
-			) {
-				return false;
-			}
-			if (options.addedBy && metadata.addedBy !== options.addedBy) return false;
+		const status: DocumentListStatus =
+			stored.totalVisible === 0
+				? "empty_store"
+				: stored.totalAvailable === 0
+					? "filter_miss"
+					: normalizedQuery && stored.totalMatched === 0
+						? "query_miss"
+						: stored.documents.length === 0
+							? "page_exhausted"
+							: "ok";
 
-			if (options.tags && options.tags.length > 0) {
-				const docTags = Array.isArray(metadata.tags)
-					? (metadata.tags as unknown[]).filter(
-							(value): value is string => typeof value === "string",
-						)
-					: [];
-				const wanted = options.tags;
-				if (!wanted.every((tag) => docTags.includes(tag))) return false;
-			}
-
-			const docTimestamp =
-				typeof metadata.timestamp === "number"
-					? metadata.timestamp
-					: typeof memory.createdAt === "number"
-						? memory.createdAt
-						: 0;
-			if (
-				typeof options.timeRangeStart === "number" &&
-				docTimestamp < options.timeRangeStart
-			) {
-				return false;
-			}
-			if (
-				typeof options.timeRangeEnd === "number" &&
-				docTimestamp > options.timeRangeEnd
-			) {
-				return false;
-			}
-
-			if (query) {
-				const haystack = [
-					memory.content.text,
-					metadata.title,
-					metadata.filename,
-					metadata.originalFilename,
-					metadata.source,
-				]
-					.filter((value): value is string => typeof value === "string")
-					.join("\n")
-					.toLowerCase();
-				if (!haystack.includes(query)) return false;
-			}
-
-			return true;
-		});
-		return filtered.slice(offset, offset + limit);
+		return {
+			status,
+			documents: stored.documents,
+			availableDocuments:
+				status === "query_miss" ? stored.availableDocuments : [],
+			query,
+			limit,
+			offset,
+			...(options.cursor ? { cursor: options.cursor } : {}),
+			totalVisible: stored.totalVisible,
+			totalAvailable: stored.totalAvailable,
+			totalMatched: stored.totalMatched,
+			hasMore: stored.hasMore,
+			availableOffset: offset,
+			availableHasMore:
+				status === "query_miss" ? stored.availableHasMore : false,
+			...(stored.nextCursor ? { nextCursor: stored.nextCursor } : {}),
+			...(status === "query_miss" && stored.availableNextCursor
+				? { availableNextCursor: stored.availableNextCursor }
+				: {}),
+		};
 	}
 
 	async deleteDocument(documentId: UUID, message?: Memory): Promise<void> {

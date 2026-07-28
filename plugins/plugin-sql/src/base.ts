@@ -25,6 +25,10 @@ import {
   type CreateOAuthFlowStateParams,
   DatabaseAdapter,
   type DeleteConnectorAccountParams,
+  DOCUMENT_LIST_QUERY_CAPABILITY_VERSION,
+  type DocumentListCursor,
+  type DocumentListQueryParams,
+  type DocumentListQueryResult,
   ElizaError,
   type EntitiesForRoomsResult,
   type Entity,
@@ -60,6 +64,7 @@ import {
   type TaskMetadata,
   type UpsertConnectorAccountParams,
   type UUID,
+  validateDocumentListQueryParams,
   type World,
 } from "@elizaos/core";
 
@@ -170,6 +175,38 @@ function normalizeAgentBio(value: unknown): string[] | undefined {
 /** Escape an ILIKE literal so user keywords match literally (no `%`/`_` wildcards). */
 function escapeIlikeLiteral(value: string): string {
   return value.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_");
+}
+
+function documentVisibilityCondition(params: DocumentListQueryParams): SQL | undefined {
+  if (
+    params.requesterRole === "OWNER" ||
+    params.requesterRole === "AGENT" ||
+    params.requesterRole === "RUNTIME"
+  ) {
+    return undefined;
+  }
+
+  return sql`(
+    COALESCE(${memoryTable.metadata}->>'scope', 'global') = 'global'
+    OR (
+      ${memoryTable.metadata}->>'scope' = 'user-private'
+      AND (
+        ${memoryTable.metadata}->>'scopedToEntityId' = ${params.requesterEntityId}
+        OR ${memoryTable.metadata}->>'addedBy' = ${params.requesterEntityId}
+        OR ${memoryTable.entityId} = ${params.requesterEntityId}
+      )
+    )
+  )`;
+}
+
+function documentTimestampExpression(): SQL {
+  return sql`COALESCE(
+    CASE
+      WHEN jsonb_typeof(${memoryTable.metadata}->'timestamp') = 'number'
+      THEN (${memoryTable.metadata}->>'timestamp')::double precision
+    END,
+    EXTRACT(EPOCH FROM ${memoryTable.createdAt}) * 1000
+  )`;
 }
 
 function isMessageSearchObjectsMissing(error: unknown): boolean {
@@ -333,6 +370,7 @@ import type { StoreContext } from "./stores/types";
 import type { DrizzleDatabase } from "./types";
 
 export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase> {
+  readonly documentListQueryCapability = DOCUMENT_LIST_QUERY_CAPABILITY_VERSION;
   protected readonly maxRetries: number = 3;
   protected readonly baseDelay: number = 1000;
   protected readonly maxDelay: number = 10000;
@@ -1554,6 +1592,277 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   async deleteComponent(componentId: UUID): Promise<void> {
     return this.withDatabase(async () => {
       await this.db.delete(componentTable).where(eq(componentTable.id, componentId));
+    });
+  }
+
+  async queryDocuments(params: DocumentListQueryParams): Promise<DocumentListQueryResult> {
+    validateDocumentListQueryParams(params);
+    return this.withEntityContext(params.requesterEntityId, async (tx) => {
+      const visibleConditions: SQL[] = [
+        eq(memoryTable.type, "documents"),
+        eq(memoryTable.agentId, params.agentId),
+        sql`${memoryTable.metadata}->>'type' = 'document'`,
+        params.requesterRoomIds.length > 0
+          ? inArray(memoryTable.roomId, params.requesterRoomIds)
+          : sql`false`,
+      ];
+      const visibility = documentVisibilityCondition(params);
+      if (visibility) visibleConditions.push(visibility);
+
+      const availableConditions: SQL[] = [];
+      if (params.scope) {
+        availableConditions.push(
+          sql`COALESCE(${memoryTable.metadata}->>'scope', 'global') = ${params.scope}`
+        );
+      }
+      if (params.scopedToEntityId) {
+        availableConditions.push(
+          sql`${memoryTable.metadata}->>'scopedToEntityId' = ${params.scopedToEntityId}`
+        );
+      }
+      if (params.addedBy) {
+        availableConditions.push(sql`${memoryTable.metadata}->>'addedBy' = ${params.addedBy}`);
+      }
+      if (params.timeRangeStart !== undefined) {
+        availableConditions.push(sql`${documentTimestampExpression()} >= ${params.timeRangeStart}`);
+      }
+      if (params.timeRangeEnd !== undefined) {
+        availableConditions.push(sql`${documentTimestampExpression()} <= ${params.timeRangeEnd}`);
+      }
+      if (params.tags?.length) {
+        availableConditions.push(
+          sql`COALESCE(${memoryTable.metadata}->'tags', '[]'::jsonb) @> ${JSON.stringify(
+            params.tags
+          )}::jsonb`
+        );
+      }
+      const availableCondition =
+        availableConditions.length > 0 ? and(...availableConditions) : sql`true`;
+
+      const normalizedQuery = params.query?.trim();
+      let queryCondition: SQL = sql`true`;
+      if (normalizedQuery) {
+        const pattern = `%${escapeIlikeLiteral(normalizedQuery)}%`;
+        queryCondition = sql`CONCAT_WS(
+            E'\n',
+            COALESCE(${memoryTable.content}->>'text', ''),
+            COALESCE(${memoryTable.metadata}->>'title', ''),
+            COALESCE(${memoryTable.metadata}->>'filename', ''),
+            COALESCE(${memoryTable.metadata}->>'originalFilename', ''),
+            COALESCE(${memoryTable.metadata}->>'source', '')
+          ) ILIKE ${pattern} ESCAPE '\\'`;
+      }
+
+      type DocumentRow = {
+        id: string;
+        type: string;
+        createdAt: Date | string;
+        cursorCreatedAt: Date | string;
+        content: unknown;
+        entityId: string | null;
+        agentId: string;
+        roomId: string | null;
+        worldId: string | null;
+        unique: boolean;
+        metadata: unknown;
+      };
+      const databaseTimestampToMs = (value: Date | string): number => {
+        const milliseconds =
+          value instanceof Date
+            ? value.getTime()
+            : Date.parse(
+                /(?:Z|[+-]\d{2}(?::?\d{2})?)$/i.test(value) ? value : `${value.replace(" ", "T")}Z`
+              );
+        if (!Number.isFinite(milliseconds)) {
+          throw new ElizaError("Document list query returned an invalid timestamp", {
+            code: "DOCUMENT_LIST_TIMESTAMP_INVALID",
+            context: { agentId: params.agentId, value },
+            severity: "fatal",
+          });
+        }
+        return milliseconds;
+      };
+      const mapDocument = (row: DocumentRow): Memory => ({
+        id: row.id as UUID,
+        createdAt: databaseTimestampToMs(row.createdAt),
+        content:
+          typeof row.content === "string"
+            ? JSON.parse(row.content)
+            : (row.content as Memory["content"]),
+        entityId: row.entityId as UUID,
+        agentId: row.agentId as UUID,
+        roomId: row.roomId as UUID,
+        worldId: (row.worldId ?? undefined) as UUID | undefined,
+        unique: row.unique,
+        metadata:
+          typeof row.metadata === "string"
+            ? JSON.parse(row.metadata)
+            : (row.metadata as MemoryMetadata),
+      });
+
+      type Page = {
+        documents: Memory[];
+        hasMore: boolean;
+        nextCursor?: DocumentListCursor;
+      };
+      const buildPage = (rows: DocumentRow[]): Page => {
+        const hasMore = rows.length > params.limit;
+        const pageRows = rows.slice(0, params.limit);
+        const documents = pageRows.map(mapDocument);
+        const last = pageRows.at(-1);
+        return {
+          documents,
+          hasMore,
+          ...(hasMore && last
+            ? {
+                nextCursor: {
+                  createdAt: databaseTimestampToMs(last.cursorCreatedAt),
+                  id: last.id as UUID,
+                },
+              }
+            : {}),
+        };
+      };
+
+      const cursorCondition = params.cursor
+        ? sql`(
+            cursor_created_at < (
+              timestamp 'epoch' + ${params.cursor.createdAt} * interval '1 millisecond'
+            )
+            OR (
+              cursor_created_at = (
+                timestamp 'epoch' + ${params.cursor.createdAt} * interval '1 millisecond'
+              )
+              AND id < ${params.cursor.id}::uuid
+            )
+          )`
+        : sql`true`;
+      const offsetClause = params.cursor ? sql`` : sql`OFFSET ${params.offset}`;
+      const pageSize = params.limit + 1;
+      const result = await tx.execute(sql`
+        WITH visible AS MATERIALIZED (
+          SELECT
+            ${memoryTable.id} AS id,
+            ${memoryTable.type} AS type,
+            ${memoryTable.createdAt} AS created_at,
+            date_trunc('milliseconds', ${memoryTable.createdAt}) AS cursor_created_at,
+            ${memoryTable.content} AS content,
+            ${memoryTable.entityId} AS entity_id,
+            ${memoryTable.agentId} AS agent_id,
+            ${memoryTable.roomId} AS room_id,
+            ${memoryTable.worldId} AS world_id,
+            ${memoryTable.unique} AS unique,
+            ${memoryTable.metadata} AS metadata,
+            (${availableCondition}) AS is_available,
+            ((${availableCondition}) AND (${queryCondition})) AS is_matched
+          FROM ${memoryTable}
+          WHERE ${and(...visibleConditions)}
+        ),
+        counts AS MATERIALIZED (
+          SELECT
+            COUNT(*) AS total_visible,
+            COUNT(*) FILTER (WHERE is_available) AS total_available,
+            COUNT(*) FILTER (WHERE is_matched) AS total_matched
+          FROM visible
+        ),
+        matched_page AS MATERIALIZED (
+          SELECT visible.*, 'matched'::text AS page_kind
+          FROM visible
+          WHERE is_matched AND ${cursorCondition}
+          ORDER BY cursor_created_at DESC, id DESC
+          LIMIT ${pageSize}
+          ${offsetClause}
+        ),
+        available_page AS MATERIALIZED (
+          SELECT visible.*, 'available'::text AS page_kind
+          FROM visible
+          CROSS JOIN counts
+          WHERE
+            ${Boolean(normalizedQuery)}
+            AND counts.total_matched = 0
+            AND is_available
+            AND ${cursorCondition}
+          ORDER BY cursor_created_at DESC, id DESC
+          LIMIT ${pageSize}
+          ${offsetClause}
+        ),
+        page_rows AS (
+          SELECT * FROM matched_page
+          UNION ALL
+          SELECT * FROM available_page
+        )
+        SELECT
+          counts.total_visible AS "totalVisible",
+          counts.total_available AS "totalAvailable",
+          counts.total_matched AS "totalMatched",
+          page_rows.page_kind AS "pageKind",
+          page_rows.id,
+          page_rows.type,
+          page_rows.created_at AS "createdAt",
+          page_rows.cursor_created_at AS "cursorCreatedAt",
+          page_rows.content,
+          page_rows.entity_id AS "entityId",
+          page_rows.agent_id AS "agentId",
+          page_rows.room_id AS "roomId",
+          page_rows.world_id AS "worldId",
+          page_rows.unique,
+          page_rows.metadata
+        FROM counts
+        LEFT JOIN page_rows ON true
+        ORDER BY
+          CASE page_rows.page_kind WHEN 'matched' THEN 0 ELSE 1 END,
+          page_rows.cursor_created_at DESC,
+          page_rows.id DESC
+      `);
+      type QueryRow = Partial<DocumentRow> & {
+        totalVisible: unknown;
+        totalAvailable: unknown;
+        totalMatched: unknown;
+        pageKind: "matched" | "available" | null;
+      };
+      const rows = result.rows as QueryRow[];
+      const countRow = rows[0];
+      if (!countRow) {
+        throw new ElizaError("Document list query returned no count row", {
+          code: "DOCUMENT_LIST_COUNT_MISSING",
+          context: { agentId: params.agentId },
+          severity: "fatal",
+        });
+      }
+      const parseCount = (value: unknown, label: string): number => {
+        const parsed = Number(value);
+        if (!Number.isSafeInteger(parsed) || parsed < 0) {
+          throw new ElizaError("Document list query returned an invalid count", {
+            code: "DOCUMENT_LIST_COUNT_INVALID",
+            context: { agentId: params.agentId, label, value: String(value) },
+            severity: "fatal",
+          });
+        }
+        return parsed;
+      };
+      const totalVisible = parseCount(countRow.totalVisible, "visible");
+      const totalAvailable = parseCount(countRow.totalAvailable, "available");
+      const totalMatched = parseCount(countRow.totalMatched, "matched");
+      const matchedRows = rows.filter(
+        (row): row is QueryRow & DocumentRow => row.pageKind === "matched"
+      );
+      const availableRows = rows.filter(
+        (row): row is QueryRow & DocumentRow => row.pageKind === "available"
+      );
+      const matchedPage = buildPage(matchedRows);
+      const availablePage = buildPage(availableRows);
+
+      return {
+        documents: matchedPage.documents,
+        availableDocuments: availablePage.documents,
+        totalVisible,
+        totalAvailable,
+        totalMatched,
+        hasMore: matchedPage.hasMore,
+        availableHasMore: availablePage.hasMore,
+        ...(matchedPage.nextCursor ? { nextCursor: matchedPage.nextCursor } : {}),
+        ...(availablePage.nextCursor ? { availableNextCursor: availablePage.nextCursor } : {}),
+      };
     });
   }
 
@@ -3333,17 +3642,18 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
    * @returns {Promise<UUID[]>} A Promise that resolves to an array of room IDs.
    */
   async getRoomsForParticipants(entityIds: UUID[]): Promise<UUID[]> {
-    return this.withDatabase(async () => {
-      const result = await this.db
-        .selectDistinct({ roomId: participantTable.roomId })
-        .from(participantTable)
-        .innerJoin(roomTable, eq(participantTable.roomId, roomTable.id))
-        .where(
-          and(inArray(participantTable.entityId, entityIds), eq(roomTable.agentId, this.agentId))
-        );
-
-      return result.map((row) => row.roomId as UUID);
-    });
+    const roomIds = new Set<UUID>();
+    for (const entityId of entityIds) {
+      const result = await this.withEntityContext(entityId, async (tx) =>
+        tx
+          .selectDistinct({ roomId: participantTable.roomId })
+          .from(participantTable)
+          .innerJoin(roomTable, eq(participantTable.roomId, roomTable.id))
+          .where(and(eq(participantTable.entityId, entityId), eq(roomTable.agentId, this.agentId)))
+      );
+      for (const row of result) roomIds.add(row.roomId as UUID);
+    }
+    return [...roomIds];
   }
 
   /**

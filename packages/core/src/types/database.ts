@@ -14,7 +14,7 @@ import type {
 	Room,
 	World,
 } from "./environment";
-import type { Memory, MemoryMetadata } from "./memory";
+import type { Memory, MemoryMetadata, MemoryScope } from "./memory";
 import type {
 	PairingAllowlistEntry,
 	PairingChannel,
@@ -35,6 +35,60 @@ export interface MessageSearchHit {
 	memory: Memory;
 	ftsRank: number;
 	trigramSimilarity: number;
+}
+
+/** Stable newest-first cursor for document-list pagination. */
+export interface DocumentListCursor {
+	createdAt: number;
+	id: UUID;
+}
+
+/** Visibility scopes understood by the document-list storage query. */
+export type DocumentListScope = Extract<
+	MemoryScope,
+	"global" | "owner-private" | "user-private" | "agent-private"
+>;
+
+/** Requester roles used to enforce document visibility inside the adapter. */
+export type DocumentListRequesterRole =
+	| "OWNER"
+	| "ADMIN"
+	| "USER"
+	| "AGENT"
+	| "RUNTIME";
+
+/**
+ * Fully pushed-down document-list query. `requesterEntityId` is isolation
+ * context, never a row predicate; document ownership filters are explicit.
+ */
+export interface DocumentListQueryParams {
+	agentId: UUID;
+	requesterEntityId: UUID;
+	requesterRoomIds: UUID[];
+	requesterRole: DocumentListRequesterRole;
+	limit: number;
+	offset: number;
+	cursor?: DocumentListCursor;
+	query?: string;
+	scope?: DocumentListScope;
+	scopedToEntityId?: UUID;
+	addedBy?: UUID;
+	timeRangeStart?: number;
+	timeRangeEnd?: number;
+	tags?: string[];
+}
+
+/** Exact counts and bounded pages returned by a document-list adapter query. */
+export interface DocumentListQueryResult {
+	documents: Memory[];
+	availableDocuments: Memory[];
+	totalVisible: number;
+	totalAvailable: number;
+	totalMatched: number;
+	hasMore: boolean;
+	availableHasMore: boolean;
+	nextCursor?: DocumentListCursor;
+	availableNextCursor?: DocumentListCursor;
 }
 
 /** Run status enumeration (database). */
@@ -969,6 +1023,17 @@ export interface IDatabaseAdapter<DB extends object = object> {
 		 */
 		accessContext?: AccessContext;
 	}): Promise<Memory[]>;
+
+	/**
+	 * Query visible documents with filtering, exact counts, and bounded pages.
+	 * Adapters advertise `documentListQueryCapability: 1` only when this method
+	 * implements the complete native contract. Older adapters remain compatible
+	 * through the bounded core fallback.
+	 */
+	readonly documentListQueryCapability?: 1;
+	queryDocuments?(
+		params: DocumentListQueryParams,
+	): Promise<DocumentListQueryResult>;
 
 	getMemoriesByIds(ids: UUID[], tableName?: string): Promise<Memory[]>;
 

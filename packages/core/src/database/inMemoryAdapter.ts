@@ -29,6 +29,8 @@ import type {
 	CreateOAuthFlowStateParams,
 	DeleteConnectorAccountParams,
 	DeleteOAuthFlowStateParams,
+	DocumentListQueryParams,
+	DocumentListQueryResult,
 	EntitiesForRoomsResult,
 	Entity,
 	GetConnectorAccountCredentialRefParams,
@@ -66,6 +68,10 @@ import type {
 } from "../types";
 import { DEFAULT_UUID } from "../types/primitives";
 import { isPlainObject } from "../utils/type-guards";
+import {
+	DOCUMENT_LIST_QUERY_CAPABILITY_VERSION,
+	queryDocumentsInMemory,
+} from "./document-list-query";
 
 function asUuid(id: string): UUID {
 	return id as UUID;
@@ -251,6 +257,7 @@ function dataContainsFilter(
 export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	Record<string, never>
 > {
+	readonly documentListQueryCapability = DOCUMENT_LIST_QUERY_CAPABILITY_VERSION;
 	db: Record<string, never> = {};
 
 	private ready = false;
@@ -806,6 +813,15 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		// Components are already stored as whole records; patch operations are not modeled here.
 	}
 
+	async queryDocuments(
+		params: DocumentListQueryParams,
+	): Promise<DocumentListQueryResult> {
+		const documents = Array.from(this.memoriesByRoom.entries())
+			.filter(([key]) => key.startsWith("documents:"))
+			.flatMap(([, memories]) => memories);
+		return queryDocumentsInMemory(documents, params);
+	}
+
 	async getMemories(params: {
 		entityId?: UUID;
 		agentId?: UUID;
@@ -826,12 +842,23 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		accessContext?: AccessContext;
 	}): Promise<Memory[]> {
 		const effectiveLimit = params.limit ?? params.count ?? Infinity;
-		const roomId = params.roomId ?? DEFAULT_UUID;
 		const tableName = params.tableName;
-		let all = this.memoriesByRoom.get(roomTableKey(tableName, roomId)) ?? [];
+		let all =
+			params.roomId !== undefined
+				? (this.memoriesByRoom.get(roomTableKey(tableName, params.roomId)) ??
+					[])
+				: Array.from(this.memoriesByRoom.entries())
+						.filter(([key]) => key.startsWith(`${tableName}:`))
+						.flatMap(([, memories]) => memories);
 
 		if (params.worldId) {
 			all = all.filter((memory) => memory.worldId === params.worldId);
+		}
+		if (params.agentId) {
+			all = all.filter((memory) => memory.agentId === params.agentId);
+		}
+		if (params.unique) {
+			all = all.filter((memory) => memory.unique);
 		}
 
 		// Filter by timestamp range (start/end are timestamps in milliseconds)

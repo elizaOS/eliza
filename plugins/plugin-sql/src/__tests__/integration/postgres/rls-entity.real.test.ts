@@ -8,11 +8,12 @@
  * `set_config('app.entity_id', $1, true)` form — this exercises the real
  * production code path, not a raw-interpolation stand-in.
  */
-import { stringToUuid, type UUID } from "@elizaos/core";
+import { MemoryType, stringToUuid, type UUID } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import { Client } from "pg";
 import { v4 as uuidv4 } from "uuid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { PgDatabaseAdapter } from "../../../pg/adapter";
 import { PostgresConnectionManager } from "../../../pg/manager";
 import { bootstrapPostgresRlsSchema, toPostgresSuperuserUrl } from "./rls-test-helpers";
 
@@ -35,6 +36,8 @@ describe.skipIf(!process.env.POSTGRES_URL)("PostgreSQL RLS Entity Integration", 
   const room1Id = uuidv4();
   const room2Id = uuidv4();
   const agentId = uuidv4();
+  const room1DocumentId = uuidv4();
+  const room2DocumentId = uuidv4();
 
   beforeAll(async () => {
     await bootstrapPostgresRlsSchema(POSTGRES_URL);
@@ -158,7 +161,6 @@ describe.skipIf(!process.env.POSTGRES_URL)("PostgreSQL RLS Entity Integration", 
        VALUES (gen_random_uuid(), $1, $2, '{"text": "Message in room2"}', 'message', NOW())`,
       [agentId, room2Id]
     );
-
     console.log("[RLS Test] Test data setup complete");
   });
 
@@ -222,6 +224,63 @@ describe.skipIf(!process.env.POSTGRES_URL)("PostgreSQL RLS Entity Integration", 
     expect(result.rows).toHaveLength(2);
     expect(result.rows.map((r: { room_id: string }) => r.room_id)).toContain(room1Id);
     expect(result.rows.map((r: { room_id: string }) => r.room_id)).toContain(room2Id);
+  });
+
+  it("keeps document role visibility within real PostgreSQL room RLS", async () => {
+    await superuserClient.query(
+      `INSERT INTO memories (id, agent_id, room_id, content, type, metadata, created_at)
+       VALUES
+         ($1, $3, $4, '{"text": "Document in room1"}', 'documents',
+          '{"type":"document","timestamp":1000,"scope":"global"}'::jsonb, NOW()),
+         ($2, $3, $5, '{"text": "Document in room2"}', 'documents',
+          '{"type":"document","timestamp":1000,"scope":"global"}'::jsonb, NOW())`,
+      [room1DocumentId, room2DocumentId, agentId, room1Id, room2Id]
+    );
+    try {
+      const adapter = new PgDatabaseAdapter(agentId as UUID, manager);
+      const base = {
+        agentId: agentId as UUID,
+        requesterRole: "USER" as const,
+        limit: 10,
+        offset: 0,
+      };
+      const aliceRooms = await adapter.getRoomsForParticipants([aliceId as UUID]);
+      const bobRooms = await adapter.getRoomsForParticipants([bobId as UUID]);
+
+      const alice = await adapter.queryDocuments({
+        ...base,
+        requesterEntityId: aliceId as UUID,
+        requesterRoomIds: [room1Id as UUID],
+      });
+      const bob = await adapter.queryDocuments({
+        ...base,
+        requesterEntityId: bobId as UUID,
+        requesterRoomIds: [room1Id as UUID, room2Id as UUID],
+      });
+      const aliceOwner = await adapter.queryDocuments({
+        ...base,
+        requesterEntityId: aliceId as UUID,
+        requesterRoomIds: [room1Id as UUID, room2Id as UUID],
+        requesterRole: "OWNER",
+      });
+
+      expect(alice.documents.map((memory) => memory.id)).toEqual([room1DocumentId]);
+      expect(bob.documents.map((memory) => memory.id).sort()).toEqual(
+        [room1DocumentId, room2DocumentId].sort()
+      );
+      expect(aliceOwner.documents.map((memory) => memory.id)).toEqual([room1DocumentId]);
+      expect(aliceRooms).toEqual([room1Id]);
+      expect(bobRooms.sort()).toEqual([room1Id, room2Id].sort());
+      expect(alice.totalVisible).toBe(1);
+      expect(bob.totalVisible).toBe(2);
+      expect(aliceOwner.totalVisible).toBe(1);
+      expect(alice.documents[0]?.metadata?.type).toBe(MemoryType.DOCUMENT);
+    } finally {
+      await superuserClient.query(`DELETE FROM memories WHERE id IN ($1, $2)`, [
+        room1DocumentId,
+        room2DocumentId,
+      ]);
+    }
   });
 
   it("should allow Charlie to see ONLY room2 memories", async () => {

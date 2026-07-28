@@ -16,7 +16,7 @@ import {
 	type SubactionsMap,
 } from "../../actions/resolve-action-args";
 import { logger } from "../../logger";
-import { checkSenderRole, hasRoleAccess, isAgentSelf } from "../../roles";
+import { hasRoleAccess, isAgentSelf } from "../../roles";
 import type {
 	Action,
 	ActionExample,
@@ -31,7 +31,12 @@ import type {
 	UUID,
 } from "../../types";
 import { addDocumentFromFilePath } from "./docs-loader.ts";
-import { DocumentService, type SearchMode } from "./service.ts";
+import {
+	type DocumentListResult,
+	DocumentService,
+	resolveDocumentRequester,
+	type SearchMode,
+} from "./service.ts";
 import type {
 	DocumentAddedByRole,
 	DocumentAddedFrom,
@@ -284,12 +289,7 @@ async function getAddedByRole(
 	runtime: IAgentRuntime,
 	message: Memory,
 ): Promise<DocumentAddedByRole> {
-	if (!message.entityId) return "RUNTIME";
-	if (message.entityId === runtime.agentId) return "AGENT";
-	const role = await checkSenderRole(runtime, message).catch(() => null);
-	// The comparison narrows role.role to the returned union subset (OWNER|ADMIN).
-	if (role?.role === "OWNER" || role?.role === "ADMIN") return role.role;
-	return "USER";
+	return (await resolveDocumentRequester(runtime, message)).role;
 }
 
 async function ensureWriteAccess(
@@ -775,6 +775,43 @@ function parseTimestampParam(value: unknown): number | undefined {
 	return undefined;
 }
 
+function formatDocumentList(documents: Memory[]): string {
+	return `Available documents:\n${documents
+		.map((document, index) => {
+			const metadata = document.metadata as Record<string, unknown> | undefined;
+			const title =
+				typeof metadata?.title === "string"
+					? metadata.title
+					: typeof metadata?.filename === "string"
+						? metadata.filename
+						: `Document ${index + 1}`;
+			return `${index + 1}. ${title} (${document.id})`;
+		})
+		.join("\n")}`;
+}
+
+function formatDocumentListResult(result: DocumentListResult): string {
+	switch (result.status) {
+		case "empty_store":
+			return "No documents are available.";
+		case "filter_miss":
+			return "No documents matched the requested filters.";
+		case "query_miss":
+			if (result.availableDocuments.length === 0) {
+				return `No documents matched ${JSON.stringify(result.query)}. Available-document offset ${result.availableOffset} is past the ${result.totalAvailable} documents allowed by the requested filters.`;
+			}
+			return `No documents matched ${JSON.stringify(result.query)}. Showing available documents${result.availableOffset > 0 ? ` from offset ${result.availableOffset}` : ""} instead:\n${formatDocumentList(result.availableDocuments)}`;
+		case "page_exhausted": {
+			const matchDescription = result.query
+				? `documents matching ${JSON.stringify(result.query)}`
+				: "available documents";
+			return `Offset ${result.offset} is past the ${result.totalMatched} ${matchDescription}.`;
+		}
+		case "ok":
+			return formatDocumentList(result.documents);
+	}
+}
+
 async function handleList(
 	service: DocumentService,
 	message: Memory,
@@ -802,7 +839,7 @@ async function handleList(
 			? Math.floor(params.offset)
 			: undefined;
 
-	const documents = await service.listDocuments(message, {
+	const listResult = await service.listDocumentsDetailed(message, {
 		limit: getLimit(params.limit, 25),
 		offset,
 		query: params.query,
@@ -813,27 +850,29 @@ async function handleList(
 		timeRangeEnd,
 		tags: Array.isArray(params.tags) ? params.tags : undefined,
 	});
-	const text =
-		documents.length === 0
-			? "No documents are available."
-			: `Available documents:\n${documents
-					.map((document, index) => {
-						const metadata = document.metadata as
-							| Record<string, unknown>
-							| undefined;
-						const title =
-							typeof metadata?.title === "string"
-								? metadata.title
-								: typeof metadata?.filename === "string"
-									? metadata.filename
-									: `Document ${index + 1}`;
-						return `${index + 1}. ${title} (${document.id})`;
-					})
-					.join("\n")}`;
+	const text = formatDocumentListResult(listResult);
+	const listData = {
+		documents: listResult.documents,
+		availableDocuments: listResult.availableDocuments,
+		status: listResult.status,
+		...(listResult.query ? { query: listResult.query } : {}),
+		limit: listResult.limit,
+		offset: listResult.offset,
+		totalVisible: listResult.totalVisible,
+		totalAvailable: listResult.totalAvailable,
+		totalMatched: listResult.totalMatched,
+		hasMore: listResult.hasMore,
+		availableOffset: listResult.availableOffset,
+		availableHasMore: listResult.availableHasMore,
+		...(listResult.nextCursor ? { nextCursor: listResult.nextCursor } : {}),
+		...(listResult.availableNextCursor
+			? { availableNextCursor: listResult.availableNextCursor }
+			: {}),
+	};
 	await emit(callback, { text, actions: ["DOCUMENT"] });
 	return result(true, text, "list", {
-		values: { documents },
-		data: { documents },
+		values: listData,
+		data: listData,
 	});
 }
 
