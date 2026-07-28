@@ -126,7 +126,9 @@ jobs:
         run: bun run build
 
       - name: Run typecheck
-        run: bun run typecheck
+        # The full graph starts native TypeScript workers; eight concurrent
+        # processes can exhaust a four-vCPU hosted runner before diagnostics.
+        run: NODE_OPTIONS='--max-old-space-size=8192' node packages/scripts/run-turbo.mjs run typecheck --concurrency=4
 
   build:
     name: Build
