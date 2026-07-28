@@ -1842,6 +1842,51 @@ export class DiscordService extends Service implements IDiscordService {
 					const outboundReplyToMessageId =
 						discordReplyReferenceFromContent(content);
 					if (textContent || files.length > 0) {
+						const clientUser = client.user;
+						if (dmRecipient) {
+							// Durable room membership must exist before delivery
+							// reservation or the external send. A failed write leaves a
+							// concurrent identical request free to deliver, while a
+							// successful write remains useful if Discord later rejects the
+							// message.
+							await this.runtime.ensureConnection({
+								entityId: dmRecipient.entityId,
+								roomId,
+								userName: dmRecipient.userName,
+								userId: dmRecipient.discordUserId as UUID,
+								name: dmRecipient.name,
+								source: "discord",
+								channelId: targetChannel.id,
+								messageServerId: stringToUuid(serverId),
+								type: channelType,
+								worldId,
+								worldName,
+								metadata: {
+									accountId,
+								},
+							});
+						}
+						await this.runtime.ensureConnection({
+							entityId: runtime.agentId,
+							roomId,
+							roomName:
+								"name" in targetChannel &&
+								typeof targetChannel.name === "string"
+									? targetChannel.name
+									: clientUser.displayName || clientUser.username || undefined,
+							userName: clientUser.username ? clientUser.username : undefined,
+							name: clientUser.displayName || clientUser.username || undefined,
+							source: "discord",
+							channelId: targetChannel.id,
+							messageServerId: stringToUuid(serverId),
+							type: channelType,
+							worldId,
+							worldName,
+							metadata: {
+								accountId,
+							},
+						});
+
 						const outboundDedupe = beginDiscordOutboundDelivery({
 							accountId,
 							channelId: targetChannel.id,
@@ -1872,27 +1917,6 @@ export class DiscordService extends Service implements IDiscordService {
 							return;
 						}
 						outboundReservation = outboundDedupe.reservation;
-						if (dmRecipient) {
-							// Participant registration precedes the external send so a
-							// successful Discord delivery can always be discovered through
-							// the recipient's runtime rooms.
-							await this.runtime.ensureConnection({
-								entityId: dmRecipient.entityId,
-								roomId,
-								userName: dmRecipient.userName,
-								userId: dmRecipient.discordUserId as UUID,
-								name: dmRecipient.name,
-								source: "discord",
-								channelId: targetChannel.id,
-								messageServerId: stringToUuid(serverId),
-								type: channelType,
-								worldId,
-								worldName,
-								metadata: {
-									accountId,
-								},
-							});
-						}
 						if (textContent) {
 							const chunks = splitMessage(textContent, MAX_MESSAGE_LENGTH);
 							if (chunks.length > 1) {
@@ -1957,27 +1981,6 @@ export class DiscordService extends Service implements IDiscordService {
 						outboundReservation = undefined;
 						runtime.logger.warn("No text content or attachments provided");
 					}
-
-					const clientUser = client.user;
-					await this.runtime.ensureConnection({
-						entityId: runtime.agentId,
-						roomId,
-						roomName:
-							"name" in targetChannel && typeof targetChannel.name === "string"
-								? targetChannel.name
-								: clientUser.displayName || clientUser.username || undefined,
-						userName: clientUser.username ? clientUser.username : undefined,
-						name: clientUser.displayName || clientUser.username || undefined,
-						source: "discord",
-						channelId: targetChannel.id,
-						messageServerId: stringToUuid(serverId),
-						type: channelType,
-						worldId,
-						worldName,
-						metadata: {
-							accountId,
-						},
-					});
 
 					let lastPersistedMemory: Memory | undefined;
 					for (const sentMsg of sentMessages) {

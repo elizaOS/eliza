@@ -512,6 +512,79 @@ describe("DiscordService account-scoped primitives", () => {
 		expect(runtime.createMemory).toHaveBeenCalledTimes(1);
 	});
 
+	it("allows a concurrent request to deliver when the first participant write fails", async () => {
+		const { graph, runtime, service } = makeService();
+		const target = {
+			source: "discord",
+			accountId: "work",
+			entityId: graph.cachedUser.id as UUID,
+		};
+		const content = { text: "deliver exactly once after durable membership" };
+		let rejectFirstWrite: ((error: Error) => void) | undefined;
+		let markFirstWriteStarted: (() => void) | undefined;
+		const firstWriteStarted = new Promise<void>((resolve) => {
+			markFirstWriteStarted = resolve;
+		});
+		const firstWrite = new Promise<void>((_resolve, reject) => {
+			rejectFirstWrite = reject;
+		});
+		runtime.ensureConnection
+			.mockImplementationOnce(async () => {
+				markFirstWriteStarted?.();
+				return firstWrite;
+			})
+			.mockResolvedValue(undefined);
+
+		const firstAttempt = service.handleSendMessage(
+			runtime as never,
+			target,
+			content,
+		);
+		await firstWriteStarted;
+		expect(runtime.ensureConnection).toHaveBeenCalledTimes(1);
+
+		const secondAttempt = service.handleSendMessage(
+			runtime as never,
+			target,
+			content,
+		);
+		await expect(secondAttempt).resolves.toMatchObject({
+			entityId: AGENT_ID,
+			content: { text: content.text },
+		});
+
+		rejectFirstWrite?.(new Error("first participant write failed"));
+		await expect(firstAttempt).rejects.toThrow(
+			"first participant write failed",
+		);
+		expect(graph.dmChannel.send).toHaveBeenCalledTimes(1);
+		expect(runtime.createMemory).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not register a DM recipient for a guild-channel send", async () => {
+		const { graph, runtime, service } = makeService();
+
+		await service.handleSendMessage(
+			runtime as never,
+			{
+				source: "discord",
+				accountId: "work",
+				channelId: graph.textChannel.id,
+			},
+			{ text: "guild delivery" },
+		);
+
+		expect(runtime.ensureConnection).toHaveBeenCalledTimes(1);
+		expect(runtime.ensureConnection).toHaveBeenCalledWith(
+			expect.objectContaining({
+				entityId: AGENT_ID,
+				channelId: graph.textChannel.id,
+				type: CoreChannelType.GROUP,
+			}),
+		);
+		expect(graph.textChannel.send).toHaveBeenCalledTimes(1);
+	});
+
 	it("registers account connectors and scopes wrapper calls to the selected account", async () => {
 		const { runtime, service } = makeService();
 		DiscordService.registerSendHandlers(runtime as never, service);
