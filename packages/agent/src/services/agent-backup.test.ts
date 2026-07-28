@@ -11,6 +11,7 @@ import type { AgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, test } from "vitest";
 import {
   type AgentBackupStateData,
+  AgentSnapshotBudgetExceededError,
   createAgentSnapshot,
   createLocalAgentBackup,
   listLocalAgentBackups,
@@ -334,5 +335,94 @@ describe("agent backup manifest", () => {
     expect(await readText(path.join(root, "eliza.json"))).toBe(
       '{"name":"fixture"}\n',
     );
+  });
+});
+
+describe("source-side snapshot budget (#17172 §1)", () => {
+  afterEach(() => {
+    restoreEnv();
+  });
+
+  async function fixtureRoot(): Promise<{ root: string; pgliteDir: string }> {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "eliza-budget-"));
+    const pgliteDir = path.join(root, "pglite");
+    process.env.ELIZA_STATE_DIR = root;
+    process.env.PGLITE_DATA_DIR = pgliteDir;
+    delete process.env.POSTGRES_URL;
+    delete process.env.DATABASE_URL;
+    await writeFixtureState(root, pgliteDir);
+    return { root, pgliteDir };
+  }
+
+  const config = {
+    agents: { defaults: { workspace: "/tmp/workspace" } },
+  } as never;
+  const runtime = () => runtimeStub("11111111-1111-4111-8111-111111111111");
+
+  test("refuses a capture whose files exceed the byte budget", async () => {
+    const { root } = await fixtureRoot();
+    // A media file comfortably past a deliberately tiny budget.
+    await fs.writeFile(
+      path.join(root, "media", "big.bin"),
+      Buffer.alloc(64 * 1024, 7),
+    );
+
+    await expect(
+      createAgentSnapshot(runtime(), config, { maxRawBytes: 4096 }),
+    ).rejects.toBeInstanceOf(AgentSnapshotBudgetExceededError);
+  });
+
+  test("refuses BEFORE reading the oversized file, not after materializing it", async () => {
+    // The refusal must come from the declared size: an entry transiently costs
+    // ~2.33x its bytes, so charging post-read is charging post-damage.
+    const { root } = await fixtureRoot();
+    const bigPath = path.join(root, "media", "big.bin");
+    await fs.writeFile(bigPath, Buffer.alloc(256 * 1024, 3));
+
+    const realReadFile = fs.readFile;
+    const readPaths: string[] = [];
+    // biome-ignore lint/suspicious/noExplicitAny: test double for a node API
+    (fs as any).readFile = async (target: any, ...rest: any[]) => {
+      readPaths.push(String(target));
+      // biome-ignore lint/suspicious/noExplicitAny: forwarding to the real API
+      return (realReadFile as any)(target, ...rest);
+    };
+    try {
+      await expect(
+        createAgentSnapshot(runtime(), config, { maxRawBytes: 4096 }),
+      ).rejects.toBeInstanceOf(AgentSnapshotBudgetExceededError);
+      expect(readPaths).not.toContain(bigPath);
+    } finally {
+      // biome-ignore lint/suspicious/noExplicitAny: restoring the real API
+      (fs as any).readFile = realReadFile;
+    }
+  });
+
+  test("refuses a capture with more files than the count budget", async () => {
+    const { root } = await fixtureRoot();
+    const mediaDir = path.join(root, "media");
+    for (let i = 0; i < 8; i++) {
+      await fs.writeFile(path.join(mediaDir, `f${i}.bin`), "x");
+    }
+
+    await expect(
+      createAgentSnapshot(runtime(), config, { maxFiles: 3 }),
+    ).rejects.toBeInstanceOf(AgentSnapshotBudgetExceededError);
+  });
+
+  test("an already-aborted signal stops the capture", async () => {
+    await fixtureRoot();
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      createAgentSnapshot(runtime(), config, { signal: controller.signal }),
+    ).rejects.toThrow();
+  });
+
+  test("a capture within budget still succeeds unchanged", async () => {
+    await fixtureRoot();
+    const snapshot = await createAgentSnapshot(runtime(), config);
+    expect(snapshot.manifest.components.media.files.length).toBeGreaterThan(0);
   });
 });
