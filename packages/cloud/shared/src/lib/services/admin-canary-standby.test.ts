@@ -1,6 +1,6 @@
 /**
- * Proves the actor-bound rollback-standby decision contract rejects ambiguous
- * backup authority, identity drift, and malformed durable job payloads.
+ * Proves rollback-standby decisions carry actor intent while restore authority
+ * is resolved from durable server state inside the lifecycle transaction.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -14,11 +14,6 @@ import {
 
 const DIGEST_A = `sha256:${"a".repeat(64)}`;
 const DIGEST_B = `sha256:${"b".repeat(64)}`;
-const BACKUP_ID = "00000000-0000-4000-8000-000000217183";
-const RESTORE_VALIDATION_ID = "00000000-0000-4000-8000-000000317183";
-const RESTORE_AGGREGATE_SHA256 = "c".repeat(64);
-const RESTORE_CANDIDATE_ID = "restore-candidate-217183";
-const RESTORE_CANDIDATE_ATTEMPT_ID = "00000000-0000-4000-8000-000000917183";
 
 function decisionJobData(
   overrides: Partial<AdminCanaryStandbyDecisionJobData> = {},
@@ -27,11 +22,6 @@ function decisionJobData(
     requestId: "00000000-0000-4000-8000-000000017183",
     sourceJobId: "00000000-0000-4000-8000-000000117183",
     decision: "accept",
-    verifiedBackupId: BACKUP_ID,
-    restoreValidationId: RESTORE_VALIDATION_ID,
-    restoreValidationAggregateSha256: RESTORE_AGGREGATE_SHA256,
-    restoreValidatedCandidateProviderSandboxId: RESTORE_CANDIDATE_ID,
-    restoreValidatedCandidateReplacementAttemptId: RESTORE_CANDIDATE_ATTEMPT_ID,
     standbyGeneration: "00000000-0000-4000-8000-000000117183",
     rolloutId: "00000000-0000-4000-8000-000000317183",
     actorUserId: "00000000-0000-4000-8000-000000417183",
@@ -49,91 +39,29 @@ function decisionJobData(
 }
 
 describe("admin canary rollback standby decision contract", () => {
-  test("accept requires exact candidate restore proof while reject forbids restore authority", () => {
+  test("accept and reject carry intent without caller-supplied restore authority", () => {
     expect(() =>
       assertAdminCanaryStandbyDecisionInput({
         requestId: decisionJobData().requestId,
         sourceJobId: decisionJobData().sourceJobId,
         decision: "accept",
       }),
-    ).toThrow("accept decisions require verifiedBackupId");
-
-    expect(() =>
-      assertAdminCanaryStandbyDecisionInput({
-        requestId: decisionJobData().requestId,
-        sourceJobId: decisionJobData().sourceJobId,
-        decision: "accept",
-        verifiedBackupId: BACKUP_ID,
-      }),
-    ).toThrow("accept decisions require restoreValidationId");
-
-    expect(() =>
-      assertAdminCanaryStandbyDecisionInput({
-        requestId: decisionJobData().requestId,
-        sourceJobId: decisionJobData().sourceJobId,
-        decision: "accept",
-        verifiedBackupId: BACKUP_ID,
-        restoreValidationId: RESTORE_VALIDATION_ID,
-      }),
-    ).toThrow("accept decisions require restoreValidationAggregateSha256");
-
-    expect(() =>
-      assertAdminCanaryStandbyDecisionInput({
-        requestId: decisionJobData().requestId,
-        sourceJobId: decisionJobData().sourceJobId,
-        decision: "accept",
-        verifiedBackupId: BACKUP_ID,
-        restoreValidationId: RESTORE_VALIDATION_ID,
-        restoreValidationAggregateSha256: RESTORE_AGGREGATE_SHA256,
-      }),
-    ).toThrow("accept decisions require restoreValidatedCandidateProviderSandboxId");
+    ).not.toThrow();
 
     expect(() =>
       assertAdminCanaryStandbyDecisionInput({
         requestId: decisionJobData().requestId,
         sourceJobId: decisionJobData().sourceJobId,
         decision: "reject",
-        verifiedBackupId: decisionJobData().verifiedBackupId,
-      }),
-    ).toThrow("reject decisions cannot include restore validation authority");
-
-    expect(() =>
-      assertAdminCanaryStandbyDecisionJobData(
-        decisionJobData({
-          decision: "reject",
-          verifiedBackupId: undefined,
-          restoreValidationId: undefined,
-          restoreValidationAggregateSha256: undefined,
-          restoreValidatedCandidateProviderSandboxId: undefined,
-          restoreValidatedCandidateReplacementAttemptId: undefined,
-        }),
-      ),
-    ).not.toThrow();
-
-    expect(() =>
-      assertAdminCanaryStandbyDecisionInput({
-        requestId: decisionJobData().requestId,
-        sourceJobId: decisionJobData().sourceJobId,
-        decision: "accept",
-        verifiedBackupId: BACKUP_ID,
-        restoreValidationId: RESTORE_VALIDATION_ID,
-        restoreValidationAggregateSha256: RESTORE_AGGREGATE_SHA256,
-        restoreValidatedCandidateProviderSandboxId: RESTORE_CANDIDATE_ID,
-        restoreValidatedCandidateReplacementAttemptId: RESTORE_CANDIDATE_ATTEMPT_ID,
       }),
     ).not.toThrow();
 
-    expect(() =>
-      assertAdminCanaryStandbyDecisionInput({
-        requestId: decisionJobData().requestId,
-        sourceJobId: decisionJobData().sourceJobId,
-        decision: "accept",
-        verifiedBackupId: BACKUP_ID,
-        restoreValidationId: RESTORE_VALIDATION_ID,
-        restoreValidationAggregateSha256: RESTORE_AGGREGATE_SHA256,
-        restoreValidatedCandidateProviderSandboxId: RESTORE_CANDIDATE_ID,
-      }),
-    ).toThrow("accept decisions require restoreValidatedCandidateReplacementAttemptId");
+    const durableData = decisionJobData();
+    expect(durableData).not.toHaveProperty("verifiedBackupId");
+    expect(durableData).not.toHaveProperty("restoreValidationId");
+    expect(durableData).not.toHaveProperty("restoreValidationAggregateSha256");
+    expect(durableData).not.toHaveProperty("restoreValidatedCandidateProviderSandboxId");
+    expect(durableData).not.toHaveProperty("restoreValidatedCandidateReplacementAttemptId");
   });
 
   test("durable data binds actor identity, exact digests, and decision time", () => {
@@ -162,14 +90,12 @@ describe("admin canary rollback standby decision contract", () => {
 
   test("an uncomposed restore-point reader fails closed", async () => {
     await expect(
-      new UnconfiguredVerifiedRestorePointReader().assertVerifiedV2CandidateRestoreInTx(
+      new UnconfiguredVerifiedRestorePointReader().readVerifiedV2CandidateRestoreInTx(
         undefined as never,
         {
-          backupId: BACKUP_ID,
-          restoreValidationId: RESTORE_VALIDATION_ID,
-          restoreValidationAggregateSha256: RESTORE_AGGREGATE_SHA256,
-          restoreValidatedCandidateProviderSandboxId: RESTORE_CANDIDATE_ID,
-          restoreValidatedCandidateReplacementAttemptId: RESTORE_CANDIDATE_ATTEMPT_ID,
+          sourceJobId: decisionJobData().sourceJobId,
+          standbyGeneration: decisionJobData().standbyGeneration,
+          rolloutId: decisionJobData().rolloutId,
           organizationId: decisionJobData().organizationId,
           sandboxRecordId: decisionJobData().agentId,
           agentId: decisionJobData().agentId,

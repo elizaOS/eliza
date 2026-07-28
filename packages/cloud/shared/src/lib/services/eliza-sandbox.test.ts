@@ -1245,6 +1245,7 @@ describe("ElizaSandboxService wake", () => {
       const originalGetLatestBackup = agentSandboxesRepository.getLatestBackup;
       const originalGetBackupById = agentSandboxesRepository.getBackupById;
       const originalGetLatestStoredBackup = agentSandboxesRepository.getLatestStoredBackup;
+      const originalListBackupMetadata = agentSandboxesRepository.listBackupMetadata;
       const originalStampBackupVerification = agentSandboxesRepository.stampBackupVerification;
       const originalGetReconstructedBackupState =
         agentSandboxesRepository.getReconstructedBackupState;
@@ -1262,6 +1263,7 @@ describe("ElizaSandboxService wake", () => {
       // from-backup override, so provision fetches it by id, not "latest".
       agentSandboxesRepository.getBackupById = mock(async () => backup);
       agentSandboxesRepository.getLatestStoredBackup = mock(async () => storedBackup);
+      agentSandboxesRepository.listBackupMetadata = mock(async () => [storedBackup]);
       agentSandboxesRepository.stampBackupVerification = mock(async () => {});
       agentSandboxesRepository.getReconstructedBackupState = mock(async () => ({
         memories: [],
@@ -1293,6 +1295,7 @@ describe("ElizaSandboxService wake", () => {
           restoredBackupId: backup.id,
         });
         expect(requests).toContain("https://runtime.example/api/restore");
+        expect(agentSandboxesRepository.listBackupMetadata).not.toHaveBeenCalled();
         expect(updateSpy).toHaveBeenCalledWith(
           sleepingSandbox.id,
           expect.objectContaining({ status: "running" }),
@@ -1304,6 +1307,7 @@ describe("ElizaSandboxService wake", () => {
         agentSandboxesRepository.getLatestBackup = originalGetLatestBackup;
         agentSandboxesRepository.getBackupById = originalGetBackupById;
         agentSandboxesRepository.getLatestStoredBackup = originalGetLatestStoredBackup;
+        agentSandboxesRepository.listBackupMetadata = originalListBackupMetadata;
         agentSandboxesRepository.stampBackupVerification = originalStampBackupVerification;
         agentSandboxesRepository.getReconstructedBackupState = originalGetReconstructedBackupState;
         createForAgentSpy.mockRestore();
