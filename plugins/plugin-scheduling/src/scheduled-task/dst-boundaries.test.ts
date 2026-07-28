@@ -10,16 +10,22 @@
  *    (01:00:00Z). Fall-back: 2026-10-25 03:00 CEST -> 02:00 CET (01:00:00Z).
  *  - Australia/Lord_Howe fall-back: 2026-04-05 02:00 LHDT -> 01:30 LHST
  *    (15:00:00Z Apr 4). The repeated local span is 30 minutes, not an hour.
+ *    Spring-forward is 2026-10-04 02:00 LHST -> 02:30 LHDT
+ *    (15:30:00Z Oct 3), so the skipped span is also 30 minutes.
  *
- * Where behavior at a nonexistent/ambiguous local time is a judgment call the
- * tests PIN the current behavior with an explicit comment instead of
- * asserting an ideal; anything producing NaN/invalid dates would be a bug
- * (none found — asserted throughout via `Number.isFinite(Date.parse(...))`).
+ * Wall-clock anchors follow Temporal-compatible disambiguation: repeated times
+ * choose the earlier instant and skipped times move forward by the transition
+ * gap. Cron preserves its separately documented skip/dedupe semantics.
  */
 
 import { describe, expect, it } from "vitest";
 
+import {
+  createAnchorRegistry,
+  registerAppLifeOpsAnchors,
+} from "../anchors/anchor-registry.js";
 import { isScheduledTaskDue, markWindowFireIfNeeded } from "./due.js";
+import { InvalidLocalTimeError, resolveLocalHHMMToIso } from "./local-time.js";
 import { computeNextFireAt } from "./next-fire-at.js";
 import type {
   OwnerFactsView,
@@ -31,6 +37,8 @@ const MINUTE_MS = 60_000;
 const NY = "America/New_York";
 const BERLIN = "Europe/Berlin";
 const LORD_HOWE = "Australia/Lord_Howe";
+const SANTIAGO = "America/Santiago";
+const APIA = "Pacific/Apia";
 
 function makeTask(args: {
   trigger: ScheduledTaskTrigger;
@@ -103,11 +111,7 @@ describe("local HH:MM resolution at DST boundaries (relative_to_anchor)", () => 
     );
   }
 
-  it("NY spring-forward: nonexistent 02:30 maps FORWARD to 03:30 EDT (pinned)", async () => {
-    // 02:30 local does not exist on 2026-03-08. Current behavior: the
-    // offset is sampled at the wall-clock-as-UTC instant (still EST), so the
-    // result lands one hour after the requested wall time. Judgment call —
-    // pinned, not asserted as ideal. It is a valid instant, never NaN.
+  it("NY spring-forward: nonexistent 02:30 moves forward to 03:30 EDT", async () => {
     const iso = await resolveMorningStart(
       "2026-03-08T15:00:00.000Z",
       "02:30",
@@ -118,7 +122,7 @@ describe("local HH:MM resolution at DST boundaries (relative_to_anchor)", () => 
     expect(Number.isFinite(Date.parse(iso ?? ""))).toBe(true);
   });
 
-  it("NY fall-back: ambiguous 01:30 resolves to the FIRST (EDT) occurrence (pinned)", async () => {
+  it("NY fall-back: ambiguous 01:30 resolves to the first EDT occurrence", async () => {
     const iso = await resolveMorningStart(
       "2026-11-01T15:00:00.000Z",
       "01:30",
@@ -129,27 +133,44 @@ describe("local HH:MM resolution at DST boundaries (relative_to_anchor)", () => 
     expect(localHourMinute(iso ?? "", NY)).toBe("01:30");
   });
 
-  it("Berlin spring-forward: nonexistent 02:30 maps BACKWARD to 01:30 CET (pinned)", async () => {
-    // Asymmetric with NY: Berlin's wall-clock-as-UTC instant falls on the
-    // CEST side of the transition, so the result lands one hour BEFORE the
-    // requested wall time. Pinned current behavior; still a valid instant.
+  it("Berlin spring-forward: nonexistent 02:30 moves forward to 03:30 CEST", async () => {
     const iso = await resolveMorningStart(
       "2026-03-29T12:00:00.000Z",
       "02:30",
       BERLIN,
     );
-    expect(iso).toBe("2026-03-29T00:30:00.000Z");
-    expect(localHourMinute(iso ?? "", BERLIN)).toBe("01:30");
+    expect(iso).toBe("2026-03-29T01:30:00.000Z");
+    expect(localHourMinute(iso ?? "", BERLIN)).toBe("03:30");
   });
 
-  it("Berlin fall-back: ambiguous 02:30 resolves to the SECOND (CET) occurrence (pinned)", async () => {
+  it("Berlin fall-back: ambiguous 02:30 resolves to the first CEST occurrence", async () => {
     const iso = await resolveMorningStart(
       "2026-10-25T12:00:00.000Z",
       "02:30",
       BERLIN,
     );
-    expect(iso).toBe("2026-10-25T01:30:00.000Z");
+    expect(iso).toBe("2026-10-25T00:30:00.000Z");
     expect(localHourMinute(iso ?? "", BERLIN)).toBe("02:30");
+  });
+
+  it("Lord Howe spring-forward moves a skipped 02:15 by the 30-minute gap", async () => {
+    const iso = await resolveMorningStart(
+      "2026-10-04T06:00:00.000Z",
+      "02:15",
+      LORD_HOWE,
+    );
+    expect(iso).toBe("2026-10-03T15:45:00.000Z");
+    expect(localHourMinute(iso ?? "", LORD_HOWE)).toBe("02:45");
+  });
+
+  it("Lord Howe fall-back resolves repeated 01:45 to the first LHDT occurrence", async () => {
+    const iso = await resolveMorningStart(
+      "2026-04-05T06:00:00.000Z",
+      "01:45",
+      LORD_HOWE,
+    );
+    expect(iso).toBe("2026-04-04T14:45:00.000Z");
+    expect(localHourMinute(iso ?? "", LORD_HOWE)).toBe("01:45");
   });
 
   it("due evaluation agrees with the resolved instant on the NY spring-forward day", async () => {
@@ -175,6 +196,217 @@ describe("local HH:MM resolution at DST boundaries (relative_to_anchor)", () => 
     });
     expect(at.due).toBe(true);
     expect(at.occurrenceAtIso).toBe("2026-03-08T07:30:00.000Z");
+  });
+
+  it("distinguishes an absent time from a malformed supplied time", () => {
+    expect(
+      resolveLocalHHMMToIso(
+        new Date("2026-05-11T12:00:00.000Z"),
+        undefined,
+        "UTC",
+      ),
+    ).toBeNull();
+
+    for (const malformed of ["", "7:30", "24:00", "12:60", "noon"]) {
+      try {
+        resolveLocalHHMMToIso(
+          new Date("2026-05-11T12:00:00.000Z"),
+          malformed,
+          "UTC",
+        );
+        throw new Error(`expected ${JSON.stringify(malformed)} to fail`);
+      } catch (error) {
+        expect(error).toBeInstanceOf(InvalidLocalTimeError);
+        expect(error).toMatchObject({
+          code: "invalid_local_time",
+          reason: "malformed_hhmm",
+          localTime: malformed,
+        });
+      }
+    }
+  });
+
+  it("returns a typed error for an invalid timezone", () => {
+    expect(() =>
+      resolveLocalHHMMToIso(
+        new Date("2026-05-11T12:00:00.000Z"),
+        "09:00",
+        "Mars/Olympus",
+      ),
+    ).toThrow(
+      expect.objectContaining({
+        code: "invalid_local_time",
+        reason: "invalid_time_zone",
+        timeZone: "Mars/Olympus",
+      }),
+    );
+  });
+
+  it("does not silently replace a malformed bedtime with the default", async () => {
+    const task = makeTask({
+      trigger: {
+        kind: "relative_to_anchor",
+        anchorKey: "bedtime.target",
+        offsetMinutes: 0,
+      },
+    });
+    const context = {
+      now: new Date("2026-05-11T12:00:00.000Z"),
+      ownerFacts: { timezone: "UTC", eveningWindow: { end: "25:00" } },
+      anchors: null,
+    } satisfies Parameters<typeof computeNextFireAt>[1];
+
+    await expect(computeNextFireAt(task, context)).rejects.toMatchObject({
+      code: "invalid_local_time",
+      reason: "malformed_hhmm",
+      localTime: "25:00",
+    });
+    await expect(
+      isScheduledTaskDue(task, {
+        now: context.now,
+        ownerFacts: context.ownerFacts,
+      }),
+    ).rejects.toBeInstanceOf(InvalidLocalTimeError);
+  });
+
+  it("makes due evaluation and indexing reject the same malformed window", async () => {
+    const task = makeTask({
+      trigger: { kind: "during_window", windowKey: "morning" },
+    });
+    const ownerFacts: OwnerFactsView = {
+      timezone: "UTC",
+      morningWindow: { start: "not-a-time", end: "11:00" },
+    };
+
+    await expect(
+      computeNextFireAt(task, {
+        now: new Date("2026-05-11T12:00:00.000Z"),
+        ownerFacts,
+        anchors: null,
+      }),
+    ).rejects.toMatchObject({
+      code: "invalid_local_time",
+      reason: "malformed_hhmm",
+      localTime: "not-a-time",
+    });
+    await expect(
+      isScheduledTaskDue(task, {
+        now: new Date("2026-05-11T12:00:00.000Z"),
+        ownerFacts,
+      }),
+    ).rejects.toMatchObject({
+      code: "invalid_local_time",
+      reason: "malformed_hhmm",
+      localTime: "not-a-time",
+    });
+  });
+
+  it("still applies the bedtime default only when the owner fact is absent", async () => {
+    const iso = await computeNextFireAt(
+      makeTask({
+        trigger: {
+          kind: "relative_to_anchor",
+          anchorKey: "bedtime.target",
+          offsetMinutes: 0,
+        },
+      }),
+      {
+        now: new Date("2026-05-11T12:00:00.000Z"),
+        ownerFacts: { timezone: "UTC" },
+        anchors: null,
+      },
+    );
+    expect(iso).toBe("2026-05-11T22:30:00.000Z");
+  });
+
+  it("uses the canonical resolver through the production anchor registry", async () => {
+    const anchors = createAnchorRegistry();
+    registerAppLifeOpsAnchors(anchors);
+    const iso = await computeNextFireAt(
+      makeTask({
+        trigger: {
+          kind: "relative_to_anchor",
+          anchorKey: "morning.start",
+          offsetMinutes: 0,
+        },
+      }),
+      {
+        now: new Date("2026-09-06T12:00:00.000Z"),
+        ownerFacts: {
+          timezone: SANTIAGO,
+          morningWindow: { start: "00:00" },
+        },
+        anchors,
+      },
+    );
+    expect(iso).toBe("2026-09-06T04:00:00.000Z");
+    expect(localHourMinute(iso ?? "", SANTIAGO)).toBe("01:00");
+  });
+
+  it("does not let the production anchor registry swallow malformed local time", async () => {
+    const anchors = createAnchorRegistry();
+    registerAppLifeOpsAnchors(anchors);
+    await expect(
+      computeNextFireAt(
+        makeTask({
+          trigger: {
+            kind: "relative_to_anchor",
+            anchorKey: "morning.start",
+            offsetMinutes: 0,
+          },
+        }),
+        {
+          now: new Date("2026-05-11T12:00:00.000Z"),
+          ownerFacts: {
+            timezone: "UTC",
+            morningWindow: { start: "bad-time" },
+          },
+          anchors,
+        },
+      ),
+    ).rejects.toMatchObject({
+      code: "invalid_local_time",
+      reason: "malformed_hhmm",
+      localTime: "bad-time",
+    });
+  });
+
+  it("Santiago 2026-09-06: compatible resolution advances skipped midnight to 01:00", () => {
+    const iso = resolveLocalHHMMToIso(
+      new Date("2026-09-05T16:00:00.000Z"),
+      "00:00",
+      SANTIAGO,
+      1,
+    );
+    expect(iso).toBe("2026-09-06T04:00:00.000Z");
+    expect(localDate(iso ?? "", SANTIAGO)).toBe("2026-09-06");
+    expect(localHourMinute(iso ?? "", SANTIAGO)).toBe("01:00");
+  });
+
+  it("indexes across Santiago's midnight transition without inventing 00:00", async () => {
+    const next = await computeNextFireAt(
+      makeTask({ trigger: { kind: "during_window", windowKey: "night" } }),
+      {
+        // 2026-09-05 23:30 CLT. The next local-day boundary is 01:00 CLST.
+        now: new Date("2026-09-06T03:30:00.000Z"),
+        ownerFacts: { timezone: SANTIAGO },
+        anchors: null,
+      },
+    );
+    expect(next).toBe("2026-09-06T04:00:00.000Z");
+    expect(localHourMinute(next ?? "", SANTIAGO)).toBe("01:00");
+  });
+
+  it("Apia's skipped 2011-12-30 resolves to the same wall time after the date jump", () => {
+    const iso = resolveLocalHHMMToIso(
+      new Date("2011-12-29T22:00:00.000Z"),
+      "06:00",
+      APIA,
+      1,
+    );
+    expect(iso).toBe("2011-12-30T16:00:00.000Z");
+    expect(localDate(iso ?? "", APIA)).toBe("2011-12-31");
+    expect(localHourMinute(iso ?? "", APIA)).toBe("06:00");
   });
 });
 
@@ -454,12 +686,7 @@ describe("during_window on DST transition days", () => {
     ]);
   });
 
-  it("PINNED: the next-fire-at index is one hour late for the window on the NY spring-forward day", async () => {
-    // `nextWindowStartIso` samples the tz offset at the wall-clock-as-UTC
-    // instant (still EST at 06:00Z), yielding 11:00Z = 07:00 EDT, while the
-    // authoritative due evaluation opens the window at 10:00Z = 06:00 EDT.
-    // The index is documented as approximate ("next candidate fire time");
-    // the tick still fires inside the 06:00-11:00 window, one hour late.
+  it("indexes the exact local window start across NY DST transitions", async () => {
     const facts: OwnerFactsView = {
       timezone: NY,
       morningWindow: { start: "06:00", end: "11:00" },
@@ -472,10 +699,9 @@ describe("during_window on DST transition days", () => {
         anchors: null,
       },
     );
-    expect(next).toBe("2026-03-08T11:00:00.000Z");
-    expect(localHourMinute(next ?? "", NY)).toBe("07:00");
+    expect(next).toBe("2026-03-08T10:00:00.000Z");
+    expect(localHourMinute(next ?? "", NY)).toBe("06:00");
 
-    // On the fall-back day the same computation is exact (06:00 EST).
     const fallBack = await computeNextFireAt(
       makeTask({ trigger: { kind: "during_window", windowKey: "morning" } }),
       {
@@ -486,5 +712,22 @@ describe("during_window on DST transition days", () => {
     );
     expect(fallBack).toBe("2026-11-01T11:00:00.000Z");
     expect(localHourMinute(fallBack ?? "", NY)).toBe("06:00");
+  });
+
+  it("projects tomorrow by local date instead of adding 24 hours across DST", async () => {
+    const facts: OwnerFactsView = {
+      timezone: NY,
+      morningWindow: { start: "06:00", end: "11:00" },
+    };
+    const next = await computeNextFireAt(
+      makeTask({ trigger: { kind: "during_window", windowKey: "morning" } }),
+      {
+        now: new Date("2026-03-07T20:00:00.000Z"),
+        ownerFacts: facts,
+        anchors: null,
+      },
+    );
+    expect(next).toBe("2026-03-08T10:00:00.000Z");
+    expect(localHourMinute(next ?? "", NY)).toBe("06:00");
   });
 });
