@@ -147,6 +147,16 @@ export interface ResolvedAgentSnapshotRequest {
   transfer?: AgentSnapshotTransfer;
 }
 
+/**
+ * Optional cancellation and lower producer ceilings for legacy JSON capture.
+ * Overrides cannot raise the canonical v1 limits.
+ */
+export interface AgentSnapshotCaptureOptions {
+  maxFiles?: number;
+  maxWireBytes?: number;
+  signal?: AbortSignal;
+}
+
 const SNAPSHOT_BINDING_DIGEST_PATTERN = /^sha256:[a-f0-9]{64}$/;
 const SNAPSHOT_BINDING_NONCE_PATTERN = /^[a-f0-9]{64}$/;
 const SNAPSHOT_BINDING_SANDBOX_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/;
@@ -327,12 +337,16 @@ const PGLITE_VOLATILE_ROOT_FILES = new Set([
   "postmaster.pid",
 ]);
 const PGLITE_DUMP_PATH = "pglite-data-dir.tar.gz";
+/** Canonical legacy JSON producer ceiling, charged in wire bytes. */
 export const AGENT_BACKUP_V1_MAX_SOURCE_BYTES = 128 * 1024 * 1024;
+/** Mirrors the legacy snapshot hydration ceiling at the retain boundary. */
+export const AGENT_BACKUP_V1_MAX_FILES = 5_000;
 
 const POSTGRES_AGENT_ID_COLUMNS = ["agent_id", "agentId"];
 const POSTGRES_AGENT_TABLE = "agents";
 const POSTGRES_EMBEDDINGS_TABLE = "embeddings";
 const POSTGRES_MEMORIES_TABLE = "memories";
+const POSTGRES_CAPTURE_BATCH_ROWS = 500;
 
 const RESTORE_TABLE_ORDER = [
   "agents",
@@ -448,36 +462,115 @@ export function parseAgentSnapshotRequest(
     : { purpose, schemaVersion };
 }
 
-class SnapshotSourceBudget {
-  private consumedBytes = 0;
+/**
+ * Aggregate producer budget for legacy snapshots, measured in their JSON wire
+ * representation rather than decoded file bytes. Files reserve their base64
+ * length and one file slot before the read that would materialize them.
+ */
+export class SnapshotSourceBudget {
+  private consumedWireBytes = 0;
+  private fileCount = 0;
 
-  constructor(private readonly maxBytes: number) {}
-
-  reserve(bytes: number, source: string): void {
-    if (!Number.isSafeInteger(bytes) || bytes < 0) {
-      throw new Error(`Invalid snapshot source size for ${source}`);
+  constructor(
+    private readonly maxWireBytes: number,
+    private readonly maxFiles: number = AGENT_BACKUP_V1_MAX_FILES,
+    private readonly signal?: AbortSignal,
+  ) {
+    if (!Number.isSafeInteger(maxWireBytes) || maxWireBytes <= 0) {
+      throw invalidSnapshotRequest(
+        "Snapshot source wire budget must be a positive safe integer",
+      );
     }
-    const next = this.consumedBytes + bytes;
-    if (!Number.isSafeInteger(next) || next > this.maxBytes) {
+    if (!Number.isSafeInteger(maxFiles) || maxFiles <= 0) {
+      throw invalidSnapshotRequest(
+        "Snapshot source file budget must be a positive safe integer",
+      );
+    }
+  }
+
+  check(): void {
+    this.signal?.throwIfAborted();
+  }
+
+  reserveFile(rawBytes: number, source: string): void {
+    this.check();
+    const encodedBytes = base64EncodedLength(rawBytes, source);
+    const nextFileCount = this.fileCount + 1;
+    if (!Number.isSafeInteger(nextFileCount) || nextFileCount > this.maxFiles) {
       throw new ElizaError(
-        `Snapshot source exceeds the ${this.maxBytes}-byte aggregate budget`,
+        `Snapshot source exceeds the ${this.maxFiles}-file aggregate budget`,
         {
-          code: "AGENT_SNAPSHOT_SOURCE_TOO_LARGE",
+          code: "AGENT_SNAPSHOT_SOURCE_TOO_MANY_FILES",
           context: {
-            attemptedBytes: next,
-            maxBytes: this.maxBytes,
+            attemptedFiles: nextFileCount,
+            maxFiles: this.maxFiles,
             source,
           },
           severity: "fatal",
         },
       );
     }
-    this.consumedBytes = next;
+    const nextWireBytes = this.nextWireBytes(encodedBytes, source);
+    this.fileCount = nextFileCount;
+    this.consumedWireBytes = nextWireBytes;
+  }
+
+  reserveWireBytes(bytes: number, source: string): void {
+    this.check();
+    this.consumedWireBytes = this.nextWireBytes(bytes, source);
+  }
+
+  private nextWireBytes(bytes: number, source: string): number {
+    if (!Number.isSafeInteger(bytes) || bytes < 0) {
+      throw new Error(`Invalid snapshot source size for ${source}`);
+    }
+    const next = this.consumedWireBytes + bytes;
+    if (!Number.isSafeInteger(next) || next > this.maxWireBytes) {
+      throw new ElizaError(
+        `Snapshot source exceeds the ${this.maxWireBytes}-byte aggregate wire budget`,
+        {
+          code: "AGENT_SNAPSHOT_SOURCE_TOO_LARGE",
+          context: {
+            attemptedBytes: next,
+            maxBytes: this.maxWireBytes,
+            source,
+          },
+          severity: "fatal",
+        },
+      );
+    }
+    return next;
   }
 }
 
+function base64EncodedLength(rawBytes: number, source: string): number {
+  if (!Number.isSafeInteger(rawBytes) || rawBytes < 0) {
+    throw new Error(`Invalid snapshot source size for ${source}`);
+  }
+  const groups = Math.ceil(rawBytes / 3);
+  const encodedBytes = groups * 4;
+  if (!Number.isSafeInteger(encodedBytes)) {
+    throw new Error(`Invalid snapshot source size for ${source}`);
+  }
+  return encodedBytes;
+}
+
+function resolveCaptureCeiling(
+  override: number | undefined,
+  ceiling: number,
+  label: string,
+): number {
+  if (override === undefined) return ceiling;
+  if (!Number.isSafeInteger(override) || override <= 0) {
+    throw invalidSnapshotRequest(
+      `Snapshot source ${label} must be a positive safe integer`,
+    );
+  }
+  return Math.min(override, ceiling);
+}
+
 export function assertV1SnapshotSourceBytesWithinBudget(bytes: number): void {
-  new SnapshotSourceBudget(AGENT_BACKUP_V1_MAX_SOURCE_BYTES).reserve(
+  new SnapshotSourceBudget(AGENT_BACKUP_V1_MAX_SOURCE_BYTES).reserveWireBytes(
     bytes,
     "test-boundary",
   );
@@ -753,6 +846,7 @@ async function readFileEntry(
   absolutePath: string,
   budget?: SnapshotSourceBudget,
 ): Promise<AgentBackupFileEntry> {
+  budget?.check();
   const before = await fs.lstat(absolutePath);
   if (!before.isFile() || before.isSymbolicLink()) {
     throw new Error(`Snapshot source is not a regular file: ${absolutePath}`);
@@ -770,8 +864,9 @@ async function readFileEntry(
     ) {
       throw new Error(`Snapshot source changed while opening: ${absolutePath}`);
     }
-    budget?.reserve(opened.size, absolutePath);
+    budget?.reserveFile(opened.size, absolutePath);
     const bytes = await handle.readFile();
+    budget?.check();
     const after = await handle.stat();
     if (
       bytes.length !== opened.size ||
@@ -828,8 +923,13 @@ async function collectFileSet(params: {
   }
 
   async function visit(dir: string): Promise<void> {
+    params.budget?.check();
     const entries = await fs.readdir(dir, { withFileTypes: true });
+    entries.sort((left, right) =>
+      left.name < right.name ? -1 : left.name > right.name ? 1 : 0,
+    );
     for (const entry of entries) {
+      params.budget?.check();
       const absolute = path.join(dir, entry.name);
       if (!isWithin(root, absolute)) continue;
       const relative = normalizeRelativePath(path.relative(root, absolute));
@@ -1031,6 +1131,330 @@ function getTableColumnsBucket(
   return columns;
 }
 
+/** Minimal query surface shared by node-postgres and embedded Postgres tests. */
+export interface AgentSnapshotPostgresQueryable {
+  query(
+    text: string,
+    values?: unknown[],
+  ): Promise<{ rows: Record<string, unknown>[] }>;
+}
+
+function compareIdentifiers(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function jsonWireByteLength(value: unknown, source: string): number {
+  const json = JSON.stringify(value);
+  if (json === undefined) {
+    throw new Error(`Snapshot source is not JSON-serializable: ${source}`);
+  }
+  return Buffer.byteLength(json, "utf8");
+}
+
+function postgresCaptureUncapturable(
+  message: string,
+  context: Record<string, unknown>,
+): ElizaError {
+  return new ElizaError(message, {
+    code: "AGENT_SNAPSHOT_DATABASE_UNCAPTURABLE",
+    context,
+    severity: "fatal",
+  });
+}
+
+function requirePrimaryKey(
+  tableName: string,
+  primaryKeys: Map<string, string[]>,
+): string[] {
+  const columns = primaryKeys.get(tableName);
+  if (!columns || columns.length === 0) {
+    throw postgresCaptureUncapturable(
+      `Snapshot cannot paginate agent-scoped Postgres table ${tableName} without a primary key`,
+      { tableName },
+    );
+  }
+  return columns;
+}
+
+function rowCursor(
+  row: JsonRecord,
+  primaryKeyColumns: string[],
+  tableName: string,
+): unknown[] {
+  return primaryKeyColumns.map((column) => {
+    if (!Object.hasOwn(row, column) || row[column] === null) {
+      throw postgresCaptureUncapturable(
+        `Snapshot cannot resume Postgres table ${tableName} from an invalid primary key`,
+        { column, tableName },
+      );
+    }
+    const value = row[column];
+    if (value === undefined) {
+      throw postgresCaptureUncapturable(
+        `Snapshot cannot resume Postgres table ${tableName} from an invalid primary key`,
+        { column, tableName },
+      );
+    }
+    return value;
+  });
+}
+
+async function fetchAgentScopedRowsBatched(params: {
+  baseParams: unknown[];
+  budget?: SnapshotSourceBudget;
+  buildSql: (keysetClause: string) => string;
+  keyExpressions: string[];
+  primaryKeyColumns: string[];
+  queryable: AgentSnapshotPostgresQueryable;
+  tableName: string;
+}): Promise<JsonRecord[]> {
+  if (
+    params.primaryKeyColumns.length === 0 ||
+    params.primaryKeyColumns.length !== params.keyExpressions.length
+  ) {
+    throw postgresCaptureUncapturable(
+      `Snapshot cannot paginate Postgres table ${params.tableName} without a complete primary key`,
+      { tableName: params.tableName },
+    );
+  }
+
+  const rows: JsonRecord[] = [];
+  let cursor: unknown[] | null = null;
+  let cursorFingerprint: string | null = null;
+  for (;;) {
+    params.budget?.check();
+    const orderBy = params.keyExpressions
+      .map((expression) => `${expression} ASC`)
+      .join(", ");
+    let keysetClause = `ORDER BY ${orderBy} LIMIT ${POSTGRES_CAPTURE_BATCH_ROWS}`;
+    let values = params.baseParams;
+    if (cursor) {
+      const placeholders = cursor.map(
+        (_, index) => `$${params.baseParams.length + index + 1}`,
+      );
+      const left =
+        params.keyExpressions.length === 1
+          ? params.keyExpressions[0]
+          : `(${params.keyExpressions.join(", ")})`;
+      const right =
+        placeholders.length === 1
+          ? placeholders[0]
+          : `(${placeholders.join(", ")})`;
+      keysetClause = `AND ${left} > ${right} ORDER BY ${orderBy} LIMIT ${POSTGRES_CAPTURE_BATCH_ROWS}`;
+      values = [...params.baseParams, ...cursor];
+    }
+
+    const batch = (
+      await params.queryable.query(params.buildSql(keysetClause), values)
+    ).rows as JsonRecord[];
+    params.budget?.check();
+    if (batch.length > POSTGRES_CAPTURE_BATCH_ROWS) {
+      throw postgresCaptureUncapturable(
+        `Snapshot Postgres page for ${params.tableName} exceeded its row limit`,
+        { batchRows: batch.length, tableName: params.tableName },
+      );
+    }
+    if (batch.length === 0) break;
+
+    params.budget?.reserveWireBytes(
+      jsonWireByteLength(batch, `postgres:${params.tableName}`),
+      `postgres:${params.tableName}`,
+    );
+    rows.push(...batch);
+    if (batch.length < POSTGRES_CAPTURE_BATCH_ROWS) break;
+
+    const last = batch[batch.length - 1];
+    if (!last) {
+      throw postgresCaptureUncapturable(
+        `Snapshot Postgres page for ${params.tableName} is sparse`,
+        { tableName: params.tableName },
+      );
+    }
+    cursor = rowCursor(last, params.primaryKeyColumns, params.tableName);
+    const nextFingerprint = JSON.stringify(cursor);
+    if (
+      nextFingerprint === undefined ||
+      nextFingerprint === cursorFingerprint
+    ) {
+      throw postgresCaptureUncapturable(
+        `Snapshot Postgres cursor for ${params.tableName} did not advance`,
+        { tableName: params.tableName },
+      );
+    }
+    cursorFingerprint = nextFingerprint;
+  }
+  return rows;
+}
+
+async function collectAgentScopedPostgresTables(
+  queryable: AgentSnapshotPostgresQueryable,
+  agentId: string,
+  budget?: SnapshotSourceBudget,
+): Promise<AgentBackupPostgresTable[]> {
+  budget?.check();
+  const columnsResult = await queryable.query(
+    `SELECT table_name, column_name, ordinal_position
+     FROM information_schema.columns
+     WHERE table_schema = 'public'
+     ORDER BY table_name, ordinal_position`,
+  );
+  const primaryKeysResult = await queryable.query(
+    `SELECT tc.table_name, kcu.column_name, kcu.ordinal_position
+     FROM information_schema.table_constraints tc
+     INNER JOIN information_schema.key_column_usage kcu
+       ON kcu.constraint_catalog = tc.constraint_catalog
+      AND kcu.constraint_schema = tc.constraint_schema
+      AND kcu.constraint_name = tc.constraint_name
+      AND kcu.table_catalog = tc.table_catalog
+      AND kcu.table_schema = tc.table_schema
+      AND kcu.table_name = tc.table_name
+     WHERE tc.table_schema = 'public'
+       AND tc.constraint_type = 'PRIMARY KEY'
+     ORDER BY tc.table_name, kcu.ordinal_position`,
+  );
+  budget?.check();
+
+  const tableColumns = new Map<string, string[]>();
+  for (const row of columnsResult.rows) {
+    if (
+      typeof row.table_name !== "string" ||
+      typeof row.column_name !== "string"
+    )
+      continue;
+    getTableColumnsBucket(tableColumns, row.table_name).push(row.column_name);
+  }
+  const primaryKeys = new Map<string, string[]>();
+  for (const row of primaryKeysResult.rows) {
+    if (
+      typeof row.table_name !== "string" ||
+      typeof row.column_name !== "string"
+    )
+      continue;
+    getTableColumnsBucket(primaryKeys, row.table_name).push(row.column_name);
+  }
+
+  const tables: AgentBackupPostgresTable[] = [];
+  const orderedTables = [...tableColumns.entries()].sort(([left], [right]) =>
+    compareIdentifiers(left, right),
+  );
+  for (const [tableName, columns] of orderedTables) {
+    budget?.check();
+    const columnSet = new Set(columns);
+    let rows: JsonRecord[];
+    if (tableName === POSTGRES_AGENT_TABLE && columnSet.has("id")) {
+      const primaryKeyColumns = requirePrimaryKey(tableName, primaryKeys);
+      if (primaryKeyColumns.length !== 1 || primaryKeyColumns[0] !== "id") {
+        throw postgresCaptureUncapturable(
+          "Snapshot requires agents.id to be the agents table primary key",
+          { primaryKeyColumns, tableName },
+        );
+      }
+      const result = await queryable.query(
+        `SELECT * FROM ${quoteIdentifier(tableName)} WHERE ${quoteIdentifier("id")} = $1`,
+        [agentId],
+      );
+      budget?.check();
+      rows = result.rows as JsonRecord[];
+      budget?.reserveWireBytes(
+        jsonWireByteLength(rows, `postgres:${tableName}`),
+        `postgres:${tableName}`,
+      );
+    } else if (
+      tableName === POSTGRES_EMBEDDINGS_TABLE &&
+      columnSet.has("memory_id")
+    ) {
+      const primaryKeyColumns = requirePrimaryKey(tableName, primaryKeys);
+      rows = await fetchAgentScopedRowsBatched({
+        baseParams: [agentId],
+        budget,
+        buildSql: (keysetClause) =>
+          `SELECT e.*
+           FROM ${quoteIdentifier(tableName)} e
+           INNER JOIN ${quoteIdentifier(POSTGRES_MEMORIES_TABLE)} m
+             ON e.${quoteIdentifier("memory_id")} = m.${quoteIdentifier("id")}
+           WHERE m.${quoteIdentifier("agent_id")} = $1 ${keysetClause}`,
+        keyExpressions: primaryKeyColumns.map(
+          (column) => `e.${quoteIdentifier(column)}`,
+        ),
+        primaryKeyColumns,
+        queryable,
+        tableName,
+      });
+    } else {
+      const ownerColumn = agentIdColumn(columnSet);
+      if (!ownerColumn) continue;
+      const primaryKeyColumns = requirePrimaryKey(tableName, primaryKeys);
+      rows = await fetchAgentScopedRowsBatched({
+        baseParams: [agentId],
+        budget,
+        buildSql: (keysetClause) =>
+          `SELECT * FROM ${quoteIdentifier(tableName)} WHERE ${quoteIdentifier(ownerColumn)} = $1 ${keysetClause}`,
+        keyExpressions: primaryKeyColumns.map(quoteIdentifier),
+        primaryKeyColumns,
+        queryable,
+        tableName,
+      });
+    }
+    tables.push({ name: tableName, columns, rows });
+  }
+
+  tables.sort((left, right) => {
+    const rankDelta =
+      tableRestoreRank(left.name) - tableRestoreRank(right.name);
+    return rankDelta || compareIdentifiers(left.name, right.name);
+  });
+  return tables;
+}
+
+/**
+ * Captures all agent-owned rows from one MVCC snapshot. The read-only,
+ * repeatable-read transaction prevents inserts, updates, or deletes committed
+ * during a multi-page walk from changing the captured row set.
+ */
+export async function captureAgentScopedPostgresDump(
+  queryable: AgentSnapshotPostgresQueryable,
+  agentId: string,
+  budget?: SnapshotSourceBudget,
+): Promise<AgentBackupPostgresDump> {
+  budget?.check();
+  await queryable.query(
+    "BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY",
+  );
+  let transactionOpen = true;
+  try {
+    const tables = await collectAgentScopedPostgresTables(
+      queryable,
+      agentId,
+      budget,
+    );
+    budget?.check();
+    await queryable.query("COMMIT");
+    transactionOpen = false;
+    return withPostgresHash({
+      kind: "postgres-rows",
+      tables,
+      sha256: "",
+    });
+  } catch (cause) {
+    // error-policy:J6 A failed capture rolls back its read-only transaction
+    // before the dedicated connection returns to the pool.
+    if (transactionOpen) {
+      try {
+        await queryable.query("ROLLBACK");
+      } catch (rollbackCause) {
+        // error-policy:J2 Preserve both the capture and rollback failures.
+        throw new ElizaError("Snapshot Postgres transaction rollback failed", {
+          cause: new AggregateError([cause, rollbackCause]),
+          code: "AGENT_SNAPSHOT_DATABASE_UNCAPTURABLE",
+          context: { agentId },
+          severity: "fatal",
+        });
+      }
+    }
+    throw cause;
+  }
+}
+
 async function capturePostgresRows(
   postgresUrl: string,
   agentId: string,
@@ -1042,71 +1466,16 @@ async function capturePostgresRows(
     max: 1,
   });
   try {
-    const columnsResult = await pool.query<{
-      table_name: string;
-      column_name: string;
-      ordinal_position: number;
-    }>(
-      `SELECT table_name, column_name, ordinal_position
-       FROM information_schema.columns
-       WHERE table_schema = 'public'
-       ORDER BY table_name, ordinal_position`,
-    );
-    const tableColumns = new Map<string, string[]>();
-    for (const row of columnsResult.rows) {
-      const columns = getTableColumnsBucket(tableColumns, row.table_name);
-      columns.push(row.column_name);
+    const client = await pool.connect();
+    try {
+      return await captureAgentScopedPostgresDump(
+        client as unknown as AgentSnapshotPostgresQueryable,
+        agentId,
+        budget,
+      );
+    } finally {
+      client.release();
     }
-
-    const tables: AgentBackupPostgresTable[] = [];
-    for (const [tableName, columns] of tableColumns) {
-      const columnSet = new Set(columns);
-      let rows: JsonRecord[] = [];
-      if (tableName === POSTGRES_AGENT_TABLE && columnSet.has("id")) {
-        const result = await pool.query(
-          `SELECT * FROM ${quoteIdentifier(tableName)} WHERE ${quoteIdentifier("id")} = $1`,
-          [agentId],
-        );
-        rows = result.rows as JsonRecord[];
-      } else if (
-        tableName === POSTGRES_EMBEDDINGS_TABLE &&
-        columnSet.has("memory_id")
-      ) {
-        const result = await pool.query(
-          `SELECT e.*
-           FROM ${quoteIdentifier(tableName)} e
-           INNER JOIN ${quoteIdentifier(POSTGRES_MEMORIES_TABLE)} m
-             ON e.${quoteIdentifier("memory_id")} = m.${quoteIdentifier("id")}
-           WHERE m.${quoteIdentifier("agent_id")} = $1`,
-          [agentId],
-        );
-        rows = result.rows as JsonRecord[];
-      } else {
-        const ownerColumn = agentIdColumn(columnSet);
-        if (!ownerColumn) continue;
-        const result = await pool.query(
-          `SELECT * FROM ${quoteIdentifier(tableName)} WHERE ${quoteIdentifier(ownerColumn)} = $1`,
-          [agentId],
-        );
-        rows = result.rows as JsonRecord[];
-      }
-      if (
-        tableName === POSTGRES_AGENT_TABLE ||
-        tableName === POSTGRES_EMBEDDINGS_TABLE ||
-        agentIdColumn(columnSet)
-      ) {
-        budget?.reserve(
-          Buffer.byteLength(stableJson(rows)),
-          `postgres:${tableName}`,
-        );
-        tables.push({ name: tableName, columns, rows });
-      }
-    }
-    tables.sort(
-      (left, right) =>
-        tableRestoreRank(left.name) - tableRestoreRank(right.name),
-    );
-    return withPostgresHash({ kind: "postgres-rows", tables, sha256: "" });
   } finally {
     await pool.end();
   }
@@ -1175,14 +1544,16 @@ async function capturePgliteDump(
   const dumpDataDir = connection.dumpDataDir;
   if (typeof dumpDataDir !== "function") return null;
 
+  budget?.check();
   const dump = connection.runExclusive
     ? await connection.runExclusive(() => dumpDataDir.call(connection, "gzip"))
     : await dumpDataDir.call(connection, "gzip");
   if (!isBlobLike(dump)) {
     throw new Error("PGlite dumpDataDir() did not return a Blob/File");
   }
-  budget?.reserve(dump.size, PGLITE_DUMP_PATH);
+  budget?.reserveFile(dump.size, PGLITE_DUMP_PATH);
   const bytes = Buffer.from(await dump.arrayBuffer());
+  budget?.check();
   return withPgliteDumpHash({
     kind: "pglite-dump",
     compression: "gzip",
@@ -1267,8 +1638,13 @@ async function captureCharacterComponent(
   const configFile = (await pathExists(configPath))
     ? await readFileEntry(path.dirname(configPath), configPath, budget)
     : undefined;
+  const runtimeCharacter = runtime.character ?? null;
+  budget?.reserveWireBytes(
+    jsonWireByteLength(runtimeCharacter, "runtime character"),
+    "runtime character",
+  );
   const component = {
-    runtimeCharacter: runtime.character ?? null,
+    runtimeCharacter,
     configFile,
   };
   return { ...component, sha256: sha256Json(component) };
@@ -1287,12 +1663,26 @@ export async function createAgentSnapshot(
   runtime: IAgentRuntime | AgentRuntime,
   config: ElizaConfig,
   requestInput?: AgentSnapshotRequest,
+  captureOptions?: AgentSnapshotCaptureOptions,
 ): Promise<AgentBackupStateData> {
   const request = parseAgentSnapshotRequest(requestInput);
   const sourceBudget =
     request.schemaVersion === 1
-      ? new SnapshotSourceBudget(AGENT_BACKUP_V1_MAX_SOURCE_BYTES)
+      ? new SnapshotSourceBudget(
+          resolveCaptureCeiling(
+            captureOptions?.maxWireBytes,
+            AGENT_BACKUP_V1_MAX_SOURCE_BYTES,
+            "wire budget",
+          ),
+          resolveCaptureCeiling(
+            captureOptions?.maxFiles,
+            AGENT_BACKUP_V1_MAX_FILES,
+            "file budget",
+          ),
+          captureOptions?.signal,
+        )
       : undefined;
+  sourceBudget?.check();
   const stateDir = resolveStateDir();
   const pgliteDirForStateFiles = hasPostgresUrl(runtime)
     ? null
@@ -1327,6 +1717,11 @@ export async function createAgentSnapshot(
     include: stateFileInclude,
     budget: sourceBudget,
   });
+  const projectedConfig = legacyConfigProjection(config);
+  sourceBudget?.reserveWireBytes(
+    jsonWireByteLength(projectedConfig, "snapshot config"),
+    "snapshot config",
+  );
 
   const componentHashes = {
     database: database.sha256,
@@ -1368,7 +1763,7 @@ export async function createAgentSnapshot(
 
   return {
     memories: [],
-    config: legacyConfigProjection(config),
+    config: projectedConfig,
     workspaceFiles: {},
     manifest,
   };
