@@ -354,7 +354,9 @@ describe("LP3 direct Cloud build flag", () => {
   });
 
   it("keeps runtime opt-in private and writable only through same-UID commands", () => {
-    const service = fs.readFileSync(servicePath, "utf8");
+    const service = fs
+      .readFileSync(servicePath, "utf8")
+      .replace(/\r\n?/g, "\n");
     const initializer = fs.readFileSync(initializerPath, "utf8");
     const readme = fs.readFileSync(readmePath, "utf8");
 
