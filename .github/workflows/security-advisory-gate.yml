@@ -33,6 +33,7 @@ jobs:
       PR_NUMBER: ${{ github.event.pull_request.number || '' }}
       POLL_TIMEOUT_SECONDS: "1200"
       POLL_INTERVAL_SECONDS: "30"
+      POLL_COMPLETION_GRACE_SECONDS: "240"
       CANARY_SCENARIO: ${{ github.event_name == 'workflow_dispatch' && inputs.canary || '' }}
     steps:
       - name: Check out trusted gate implementation
