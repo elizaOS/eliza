@@ -30,7 +30,6 @@ import {
 } from "../../scripts/lib/android-device.mjs";
 import {
   assertOnboardingLiveness,
-  STUB_FIXTURE_MARKER,
   sendChatAndReadReply,
 } from "../liveness-contract";
 import { expect, ORIGIN, test } from "./android-harness";
@@ -173,8 +172,8 @@ test.describe
           });
           expect(
             stubReply,
-            "stub-backed host must render its deterministic reply",
-          ).toContain(STUB_FIXTURE_MARKER);
+            "stub-backed host must render its deterministic device-e2e reply",
+          ).toContain("STREAM_E2E_OK");
           await testInfo.attach("liveness reply (stub-backed)", {
             body: stubReply,
             contentType: "text/plain",
