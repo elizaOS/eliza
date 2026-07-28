@@ -143,8 +143,6 @@ describe("deletion_started_at is stamped once and never re-written", () => {
     expect(pgliteReady).toBe(true);
   });
 
-
-
   test(
     "enqueueAgentDeleteOnce preserves the original start time when re-enqueueing a failed deletion",
     async () => {
