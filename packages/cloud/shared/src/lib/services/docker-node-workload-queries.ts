@@ -5,7 +5,7 @@
 
 import { and, eq, sql } from "drizzle-orm";
 import type { dbRead } from "../../db/helpers";
-import { agentSandboxes } from "../../db/schemas/agent-sandboxes";
+import { agentSandboxes, agentSnapshotRestoreValidations } from "../../db/schemas/agent-sandboxes";
 import { containers } from "../../db/schemas/containers";
 
 /** Sandbox states that no longer consume a live Docker slot. */
@@ -23,7 +23,13 @@ export async function countAllocatedWorkloadsOnNodeWithDatabase(
   database: WorkloadCountDatabase,
   nodeId: string,
 ): Promise<number> {
-  const [[containerRow], [agentRow], [replacementRow]] = await Promise.all([
+  const [
+    [containerRow],
+    [agentRow],
+    [replacementRow],
+    [rollbackStandbyRow],
+    [restoreValidationRow],
+  ] = await Promise.all([
     database
       .select({ count: sql<number>`count(*)::int` })
       .from(containers)
@@ -54,7 +60,31 @@ export async function countAllocatedWorkloadsOnNodeWithDatabase(
           eq(agentSandboxes.replacement_cleanup_allocation_counted, true),
         ),
       ),
+    database
+      .select({ count: sql<number>`count(*)::int` })
+      .from(agentSandboxes)
+      .where(
+        and(
+          eq(agentSandboxes.rollback_standby_node_id, nodeId),
+          eq(agentSandboxes.rollback_standby_allocation_counted, true),
+        ),
+      ),
+    database
+      .select({ count: sql<number>`count(*)::int` })
+      .from(agentSnapshotRestoreValidations)
+      .where(
+        and(
+          eq(agentSnapshotRestoreValidations.target_provider_node_id, nodeId),
+          eq(agentSnapshotRestoreValidations.target_provider_allocation_counted, true),
+        ),
+      ),
   ]);
 
-  return containerRow.count + agentRow.count + replacementRow.count;
+  return (
+    containerRow.count +
+    agentRow.count +
+    replacementRow.count +
+    rollbackStandbyRow.count +
+    restoreValidationRow.count
+  );
 }

@@ -191,11 +191,17 @@ function abortReason(signal: AbortSignal): Error {
 }
 
 function raceWithAbort<T>(operation: PromiseLike<T>, signal: AbortSignal): Promise<T> {
-  if (signal.aborted) return Promise.reject(abortReason(signal));
+  const promise = Promise.resolve(operation);
+  if (signal.aborted) {
+    // error-policy:J5 the caller observes the primary abort; this observes only
+    // a late rejection from work that was already dispatched.
+    void promise.catch(() => undefined);
+    return Promise.reject(abortReason(signal));
+  }
   return new Promise<T>((resolve, reject) => {
     const onAbort = (): void => reject(abortReason(signal));
     signal.addEventListener("abort", onAbort, { once: true });
-    Promise.resolve(operation).then(
+    promise.then(
       (value) => {
         signal.removeEventListener("abort", onAbort);
         resolve(value);
@@ -408,11 +414,14 @@ export async function captureAgentSnapshotV2(params: {
   sandboxRecordId: string;
   agentId: string;
   binding: AgentSnapshotV2UpgradeBinding;
+  signal: AbortSignal;
+  writeLeaseExpiresAt: Date;
   snapshotType?: AgentBackupSnapshotType;
   dependencies?: AgentSnapshotV2CloudDependencies;
 }): Promise<{ backup: StoredAgentSandboxBackup; summary: AgentSnapshotV2ValidationSummary }> {
+  if (params.signal.aborted) throw abortReason(params.signal);
   if (!params.response.ok) {
-    const detail = await readBodySnippet(params.response, MAX_ERROR_RESPONSE_BYTES);
+    const detail = await readBodySnippet(params.response, MAX_ERROR_RESPONSE_BYTES, params.signal);
     throw new Error(`Snapshot v2 fetch failed: HTTP ${params.response.status} ${detail}`.trimEnd());
   }
   const dependencies = params.dependencies ?? defaultDependencies;
@@ -432,41 +441,58 @@ export async function captureAgentSnapshotV2(params: {
     validator: sourceValidator,
   });
   try {
-    const backup = await dependencies.storage.create({
-      identity: {
-        organizationId: params.organizationId,
-        sandboxRecordId: params.sandboxRecordId,
-        backupId: binding.backupId,
-        backupSchemaVersion: 2,
-      },
-      snapshotType: params.snapshotType ?? "pre-upgrade",
-      source: observedSource,
-      maxTotalBytes: AGENT_SNAPSHOT_V2_MAX_WIRE_BYTES,
-      verify: async (storedSource) => {
-        const stored = await validateAgentSnapshotV2Stream({
-          source: storedSource,
-          options: {
-            contentType: AGENT_SNAPSHOT_V2_CONTENT_TYPE,
-            expectedAgentId: params.agentId,
-            expectedBinding: binding,
-          },
-        });
-        const source = sourceValidator.finish();
-        if (!sameCommittedStream(source, stored)) {
-          throw new Error("Stored snapshot v2 stream differs from its source");
-        }
-        return { contentHash: stored.trailer.aggregateSha256 };
-      },
-    });
+    const backup = await raceWithAbort(
+      dependencies.storage.create({
+        identity: {
+          organizationId: params.organizationId,
+          sandboxRecordId: params.sandboxRecordId,
+          backupId: binding.backupId,
+          backupSchemaVersion: 2,
+        },
+        snapshotType: params.snapshotType ?? "pre-upgrade",
+        source: observedSource,
+        signal: params.signal,
+        writeLeaseExpiresAt: params.writeLeaseExpiresAt,
+        maxTotalBytes: AGENT_SNAPSHOT_V2_MAX_WIRE_BYTES,
+        verify: async (storedSource) => {
+          const stored = await validateAgentSnapshotV2Stream({
+            source: storedSource,
+            options: {
+              contentType: AGENT_SNAPSHOT_V2_CONTENT_TYPE,
+              expectedAgentId: params.agentId,
+              expectedBinding: binding,
+            },
+          });
+          const source = sourceValidator.finish();
+          if (!sameCommittedStream(source, stored)) {
+            throw new Error("Stored snapshot v2 stream differs from its source");
+          }
+          return { contentHash: stored.trailer.aggregateSha256 };
+        },
+      }),
+      params.signal,
+    );
     return { backup, summary: sourceValidator.finish() };
   } catch (error) {
-    try {
-      await responseStream.cancel(error);
-    } catch (cancelError) {
-      // error-policy:J6 the storage/validation failure remains primary.
-      logger.warn("[AgentSnapshotV2Cloud] Snapshot body cancellation failed", {
-        error: cancelError instanceof Error ? cancelError.message : String(cancelError),
+    const cancellation = responseStream.cancel(error);
+    if (params.signal.aborted) {
+      // error-policy:J6 the watchdog failure is the observable boundary;
+      // transport teardown must not extend its deadline.
+      void cancellation.catch((cancelError: unknown) => {
+        logger.warn("[AgentSnapshotV2Cloud] Snapshot body cancellation failed", {
+          error: cancelError instanceof Error ? cancelError.message : String(cancelError),
+        });
       });
+    } else {
+      try {
+        await raceWithAbort(cancellation, params.signal);
+      } catch (cancelError) {
+        // error-policy:J6 the storage/validation failure remains primary and
+        // the capture watchdog bounds transport teardown.
+        logger.warn("[AgentSnapshotV2Cloud] Snapshot body cancellation failed", {
+          error: cancelError instanceof Error ? cancelError.message : String(cancelError),
+        });
+      }
     }
     throw error;
   }

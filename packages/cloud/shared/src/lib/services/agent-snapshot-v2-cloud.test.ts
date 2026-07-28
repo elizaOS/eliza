@@ -30,6 +30,7 @@ const SANDBOX_RECORD_ID = "00000000-0000-4000-8000-000000000002";
 const BACKUP_ID = "00000000-0000-4000-8000-000000000003";
 const AGENT_ID = "00000000-0000-4000-8000-000000000004";
 const CREATED_AT = new Date("2026-07-26T12:00:00.000Z");
+const CAPTURE_LEASE_EXPIRES_AT = new Date("2099-07-26T12:00:00.000Z");
 const SNAPSHOT_BINDING: AgentSnapshotV2UpgradeBinding = {
   backupId: BACKUP_ID,
   captureNonce: "01".repeat(32),
@@ -179,6 +180,7 @@ function storedBackup(contentHash: string): StoredAgentSandboxBackup {
 describe("agent snapshot v2 Cloud adapter", () => {
   test("commits only after the stored encrypted stream matches the source", async () => {
     const snapshot = canonicalSnapshot();
+    const signal = new AbortController().signal;
     let stagedBytes: Uint8Array | undefined;
     let createCalls = 0;
     const dependencies: AgentSnapshotV2CloudDependencies = {
@@ -188,6 +190,8 @@ describe("agent snapshot v2 Cloud adapter", () => {
         async create(params) {
           createCalls += 1;
           expect(params.maxTotalBytes).toBe(AGENT_SNAPSHOT_V2_MAX_WIRE_BYTES);
+          expect(params.signal).toBe(signal);
+          expect(params.writeLeaseExpiresAt).toBe(CAPTURE_LEASE_EXPIRES_AT);
           stagedBytes = await collect(params.source);
           const verification = await params.verify(replay(stagedBytes));
           return storedBackup(verification.contentHash);
@@ -204,6 +208,8 @@ describe("agent snapshot v2 Cloud adapter", () => {
         headers: { "Content-Type": AGENT_SNAPSHOT_V2_CONTENT_TYPE },
       }),
       sandboxRecordId: SANDBOX_RECORD_ID,
+      signal,
+      writeLeaseExpiresAt: CAPTURE_LEASE_EXPIRES_AT,
     });
 
     expect(createCalls).toBe(1);
@@ -322,6 +328,8 @@ describe("agent snapshot v2 Cloud adapter", () => {
           headers: { "Content-Type": AGENT_SNAPSHOT_V2_CONTENT_TYPE },
         }),
         sandboxRecordId: SANDBOX_RECORD_ID,
+        signal: new AbortController().signal,
+        writeLeaseExpiresAt: CAPTURE_LEASE_EXPIRES_AT,
       }),
     ).rejects.toThrow();
 
@@ -402,6 +410,8 @@ describe("agent snapshot v2 Cloud adapter", () => {
           headers: { "Content-Type": AGENT_SNAPSHOT_V2_CONTENT_TYPE },
         }),
         sandboxRecordId: SANDBOX_RECORD_ID,
+        signal: new AbortController().signal,
+        writeLeaseExpiresAt: CAPTURE_LEASE_EXPIRES_AT,
       }),
     ).rejects.toThrow("Snapshot stream descriptor");
     expect(cancelled).toBe(true);
@@ -434,9 +444,156 @@ describe("agent snapshot v2 Cloud adapter", () => {
           headers: { "Content-Type": AGENT_SNAPSHOT_V2_CONTENT_TYPE },
         }),
         sandboxRecordId: SANDBOX_RECORD_ID,
+        signal: new AbortController().signal,
+        writeLeaseExpiresAt: CAPTURE_LEASE_EXPIRES_AT,
       }),
     ).rejects.toThrow("injected storage refusal");
     expect(cancelled).toBe(true);
+  });
+
+  test("aborts stalled storage initialization with the capture watchdog signal", async () => {
+    let cancelled = false;
+    let markCreateStarted: (() => void) | undefined;
+    const createStarted = new Promise<void>((resolve) => {
+      markCreateStarted = resolve;
+    });
+    const controller = new AbortController();
+    const body = new ReadableStream<Uint8Array>({
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const dependencies: AgentSnapshotV2CloudDependencies = {
+      fetch,
+      readStored: () => replay(new Uint8Array()),
+      storage: {
+        async create(params) {
+          expect(params.signal).toBe(controller.signal);
+          markCreateStarted?.();
+          return await new Promise<StoredAgentSandboxBackup>(() => undefined);
+        },
+      },
+    };
+    const capture = captureAgentSnapshotV2({
+      agentId: AGENT_ID,
+      binding: SNAPSHOT_BINDING,
+      dependencies,
+      organizationId: ORGANIZATION_ID,
+      response: new Response(body, {
+        headers: { "Content-Type": AGENT_SNAPSHOT_V2_CONTENT_TYPE },
+      }),
+      sandboxRecordId: SANDBOX_RECORD_ID,
+      signal: controller.signal,
+      writeLeaseExpiresAt: CAPTURE_LEASE_EXPIRES_AT,
+    });
+    await createStarted;
+    controller.abort(new Error("capture watchdog fired"));
+
+    await expect(capture).rejects.toThrow("capture watchdog fired");
+    expect(cancelled).toBe(true);
+  });
+
+  test("does not let a stalled response cancellation outlive the capture watchdog", async () => {
+    let markCreateStarted: (() => void) | undefined;
+    const createStarted = new Promise<void>((resolve) => {
+      markCreateStarted = resolve;
+    });
+    let markCancelStarted: (() => void) | undefined;
+    const cancelStarted = new Promise<void>((resolve) => {
+      markCancelStarted = resolve;
+    });
+    const controller = new AbortController();
+    const body = new ReadableStream<Uint8Array>({
+      cancel() {
+        markCancelStarted?.();
+        return new Promise<void>(() => undefined);
+      },
+    });
+    const dependencies: AgentSnapshotV2CloudDependencies = {
+      fetch,
+      readStored: () => replay(new Uint8Array()),
+      storage: {
+        async create() {
+          markCreateStarted?.();
+          return await new Promise<StoredAgentSandboxBackup>(() => undefined);
+        },
+      },
+    };
+    const capture = captureAgentSnapshotV2({
+      agentId: AGENT_ID,
+      binding: SNAPSHOT_BINDING,
+      dependencies,
+      organizationId: ORGANIZATION_ID,
+      response: new Response(body, {
+        headers: { "Content-Type": AGENT_SNAPSHOT_V2_CONTENT_TYPE },
+      }),
+      sandboxRecordId: SANDBOX_RECORD_ID,
+      signal: controller.signal,
+      writeLeaseExpiresAt: CAPTURE_LEASE_EXPIRES_AT,
+    });
+    await createStarted;
+    controller.abort(new Error("capture watchdog fired"));
+
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const boundedCapture = Promise.race([
+      capture,
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(() => reject(new Error("capture cancellation exceeded budget")), 250);
+      }),
+    ]);
+    await expect(boundedCapture).rejects.toThrow("capture watchdog fired");
+    if (timeout) clearTimeout(timeout);
+    await cancelStarted;
+  });
+
+  test("bounds cancellation when the watchdog fires after a storage failure", async () => {
+    let markCancelStarted: (() => void) | undefined;
+    const cancelStarted = new Promise<void>((resolve) => {
+      markCancelStarted = resolve;
+    });
+    const controller = new AbortController();
+    const body = new ReadableStream<Uint8Array>({
+      cancel() {
+        markCancelStarted?.();
+        return new Promise<void>(() => undefined);
+      },
+    });
+    const dependencies: AgentSnapshotV2CloudDependencies = {
+      fetch,
+      readStored: () => replay(new Uint8Array()),
+      storage: {
+        async create() {
+          throw new Error("injected storage refusal");
+        },
+      },
+    };
+    const capture = captureAgentSnapshotV2({
+      agentId: AGENT_ID,
+      binding: SNAPSHOT_BINDING,
+      dependencies,
+      organizationId: ORGANIZATION_ID,
+      response: new Response(body, {
+        headers: { "Content-Type": AGENT_SNAPSHOT_V2_CONTENT_TYPE },
+      }),
+      sandboxRecordId: SANDBOX_RECORD_ID,
+      signal: controller.signal,
+      writeLeaseExpiresAt: CAPTURE_LEASE_EXPIRES_AT,
+    });
+    let settled = false;
+    void capture.then(
+      () => {
+        settled = true;
+      },
+      () => {
+        settled = true;
+      },
+    );
+    await cancelStarted;
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    controller.abort(new Error("capture watchdog fired during cancellation"));
+
+    await expect(capture).rejects.toThrow("injected storage refusal");
   });
 
   test("aborts readStored initialization that never settles", async () => {

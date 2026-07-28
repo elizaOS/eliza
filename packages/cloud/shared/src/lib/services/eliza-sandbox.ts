@@ -32,6 +32,7 @@ import {
   type AgentExecutionTier,
   agentSandboxBackups,
   agentSandboxes,
+  agentSnapshotRestoreValidations,
   type NewAgentSandbox,
   type NewAgentSandboxBackup,
   WARM_POOL_ORG_ID,
@@ -56,6 +57,12 @@ import {
   parseAdminCanaryDemoImage,
 } from "./admin-canary-image";
 import {
+  type AdminCanaryRestoreValidationCheckpoint,
+  type AdminCanaryRestoreValidationJobData,
+  type AdminCanaryRestoreValidationJobResult,
+  assertAdminCanaryRestoreValidationJobData,
+} from "./admin-canary-restore-validation";
+import {
   type AdminCanaryStandbyDecisionJobData,
   UnconfiguredVerifiedRestorePointReader,
   type VerifiedRestorePointReader,
@@ -67,6 +74,16 @@ import {
   planIncrementalBackup,
 } from "./agent-backup-diff";
 import { decryptAgentEnvVars, encryptAgentEnvVarsForStorage } from "./agent-env-crypto";
+import {
+  agentSnapshotV2CaptureTimeoutMs,
+  type AgentSnapshotV2CloudDependencies,
+  captureAgentSnapshotV2,
+  restoreAgentSnapshotV2,
+} from "./agent-snapshot-v2-cloud";
+import {
+  AGENT_SNAPSHOT_V2_MAX_WIRE_BYTES,
+  type AgentSnapshotV2UpgradeBinding,
+} from "./agent-snapshot-v2-stream";
 import {
   type AIUsage,
   type BillingContext,
@@ -80,7 +97,11 @@ import { aiBillingRecordsService } from "./ai-billing-records";
 import { apiKeysService } from "./api-keys";
 import { imageRequiresDigestPin, isCodingContainerImageAllowed } from "./coding-containers";
 import type { CreditReconciliationResult, CreditReservation } from "./credits";
-import type { DockerSandboxMetadata } from "./docker-sandbox-provider";
+import { reserveDockerAgentPortsInTx } from "./docker-port-allocation";
+import {
+  type DockerSandboxMetadata,
+  getRestoreValidationPhysicalIdentity,
+} from "./docker-sandbox-provider";
 import { shellQuote } from "./docker-sandbox-utils";
 import { DockerSSHClient } from "./docker-ssh";
 import {
@@ -110,6 +131,11 @@ import {
 } from "./sandbox-provider";
 import {
   SandboxReplacementCleanupUnresolvedError,
+  type SandboxRestoreValidationCandidateLocator,
+  type SandboxRestoreValidationPlacementIntent,
+  type SandboxRestoreValidationPlacementReservation,
+  type SandboxRestoreValidationRetirementProof,
+  type SandboxRestoreValidationRuntimeState,
   type SandboxRollbackStandbyLocator,
 } from "./sandbox-provider-types";
 import { isDedicatedBootstrapWindow } from "./shared-runtime/dedicated-bootstrap";
@@ -582,6 +608,59 @@ interface AdminCanaryImageExecutionPolicy {
   onConvergedInTx: (tx: DbTransaction) => Promise<void>;
 }
 
+type AgentSnapshotRestoreValidation = typeof agentSnapshotRestoreValidations.$inferSelect;
+
+interface StoredRestoreAcceptanceAuthority {
+  verifiedBackupId: string;
+  restoreValidationId: string;
+  restoreValidationAggregateSha256: string;
+  restoreValidatedCandidateProviderSandboxId: string;
+  restoreValidatedCandidateReplacementAttemptId: string;
+}
+
+interface RestoreValidationCandidatePlacement {
+  sandboxId: string;
+  nodeId: string;
+  containerName: string;
+  containerId: string | null;
+  volumePath: string;
+  bridgeUrl: string;
+  healthUrl: string;
+  bridgePort: number;
+  webUiPort: number;
+  vpnNodeId: string | null;
+  vpnNodeName: string;
+  vpnRegistrationStartedAt: Date;
+  replacementAttemptId: string;
+  allocationCounted: boolean;
+}
+
+type RestoreValidationHealthPhase = "accepting" | "applying" | "failed" | "standby";
+type RestoreValidationCandidateObservation =
+  | RestoreValidationHealthPhase
+  | Extract<SandboxRestoreValidationRuntimeState, "exited" | "absent">;
+
+export class RestoreValidationRetryLaterError extends Error {
+  constructor(restoreValidationId: string) {
+    super(`Restore validation ${restoreValidationId} is still applying; retry later`);
+    this.name = "RestoreValidationRetryLaterError";
+  }
+}
+
+interface AdminCanaryRestoreValidationExecutionPolicy {
+  data: AdminCanaryRestoreValidationJobData;
+  validationJobId: string;
+  onRestoreCommittedInTx: (
+    tx: DbTransaction,
+    checkpoint: AdminCanaryRestoreValidationCheckpoint,
+  ) => Promise<void>;
+  onConvergedInTx: (
+    tx: DbTransaction,
+    result: AdminCanaryRestoreValidationJobResult,
+    checkpoint: AdminCanaryRestoreValidationCheckpoint,
+  ) => Promise<void>;
+}
+
 interface ImageSwapResult {
   success: boolean;
   oldNodeId?: string;
@@ -958,15 +1037,20 @@ export class ElizaSandboxService {
   private _provider?: SandboxProvider;
   private _providerPromise?: Promise<SandboxProvider>;
   private readonly verifiedRestorePointReader: VerifiedRestorePointReader;
+  private readonly restoreValidationSnapshotDependencies:
+    | AgentSnapshotV2CloudDependencies
+    | undefined;
 
   constructor(
     provider?: SandboxProvider,
     verifiedRestorePointReader: VerifiedRestorePointReader = new UnconfiguredVerifiedRestorePointReader(),
+    restoreValidationSnapshotDependencies?: AgentSnapshotV2CloudDependencies,
   ) {
     if (provider) {
       this._provider = provider;
     }
     this.verifiedRestorePointReader = verifiedRestorePointReader;
+    this.restoreValidationSnapshotDependencies = restoreValidationSnapshotDependencies;
   }
 
   private async getProvider(): Promise<SandboxProvider> {
@@ -7958,6 +8042,1294 @@ export class ElizaSandboxService {
     );
   }
 
+  /**
+   * Captures and restores one exact paused canary generation on a third,
+   * never-routed placement. Every externally committed phase is paired with a
+   * lifecycle-locked database checkpoint so a worker crash can resume without
+   * creating a second candidate or releasing capacity twice.
+   */
+  async executeAdminCanaryRestoreValidation(
+    policy: AdminCanaryRestoreValidationExecutionPolicy,
+  ): Promise<AdminCanaryRestoreValidationJobResult> {
+    const { data, validationJobId } = policy;
+    assertAdminCanaryRestoreValidationJobData(data);
+    const provider = await this.getProvider();
+    if (!provider.retireRestoreValidationCandidate) {
+      throw new Error("Sandbox provider cannot retire a restore-validation candidate");
+    }
+
+    const loadAuthority = async (): Promise<{
+      agent: AgentSandbox;
+      row: AgentSnapshotRestoreValidation;
+    }> =>
+      dbWrite.transaction(async (tx) => {
+        await this.lockLifecycle(tx, data.agentId, data.organizationId);
+        const agent = await this.getAgentForLifecycleMutation(
+          tx,
+          data.agentId,
+          data.organizationId,
+        );
+        if (!agent) throw new Error("Canary disappeared before restore validation");
+        this.assertRestoreValidationAgent(agent, data);
+        const [row] = await tx
+          .select()
+          .from(agentSnapshotRestoreValidations)
+          .where(
+            and(
+              eq(agentSnapshotRestoreValidations.restore_validation_id, data.restoreValidationId),
+              eq(agentSnapshotRestoreValidations.validation_job_id, validationJobId),
+              eq(agentSnapshotRestoreValidations.organization_id, data.organizationId),
+              eq(agentSnapshotRestoreValidations.agent_id, data.agentId),
+            ),
+          )
+          .limit(1);
+        if (!row) throw new Error("Restore-validation authority is missing");
+        this.assertRestoreValidationRowIdentity(row, data, validationJobId);
+        return { agent, row };
+      });
+
+    let { agent, row } = await loadAuthority();
+    let candidateObservation: RestoreValidationCandidateObservation | undefined;
+    if (row.validation_state === "never_routed_retired") {
+      const checkpoint = this.restoreValidationCheckpointFromRow(row);
+      const result = this.restoreValidationResultFromRow(row);
+      await dbWrite.transaction(async (tx) => {
+        await this.lockLifecycle(tx, data.agentId, data.organizationId);
+        const current = await this.getAgentForLifecycleMutation(
+          tx,
+          data.agentId,
+          data.organizationId,
+        );
+        if (!current) throw new Error("Canary disappeared before validation convergence");
+        this.assertRestoreValidationAgent(current, data);
+        const [currentRow] = await tx
+          .select()
+          .from(agentSnapshotRestoreValidations)
+          .where(
+            eq(agentSnapshotRestoreValidations.restore_validation_id, data.restoreValidationId),
+          )
+          .limit(1);
+        if (!currentRow) throw new Error("Restore-validation authority disappeared");
+        this.assertRestoreValidationRowIdentity(currentRow, data, validationJobId);
+        this.restoreValidationResultFromRow(currentRow);
+        await policy.onConvergedInTx(tx, result, checkpoint);
+      });
+      return result;
+    }
+
+    if (row.validation_state === "candidate_provisioning") {
+      const incomplete = this.restoreValidationPlacementFromRow(row, false);
+      if (incomplete.containerId === null || incomplete.vpnNodeId === null) {
+        await this.retireAndResetRestoreValidationCandidate(policy, row, provider);
+        ({ agent, row } = await loadAuthority());
+      } else {
+        candidateObservation = await this.observeRestoreValidationCandidate(incomplete, provider);
+        if (candidateObservation === "applying") {
+          throw new RestoreValidationRetryLaterError(data.restoreValidationId);
+        }
+        if (
+          candidateObservation === "failed" ||
+          candidateObservation === "exited" ||
+          candidateObservation === "absent"
+        ) {
+          await this.retireAndResetRestoreValidationCandidate(policy, row, provider);
+          ({ agent, row } = await loadAuthority());
+          candidateObservation = undefined;
+        }
+      }
+    }
+
+    const sourceApiToken = this.getAgentApiToken(agent);
+    if (!sourceApiToken) {
+      throw new Error("Restore validation requires the source agent API token");
+    }
+    const sourceAuthEnvironment = { ELIZA_API_TOKEN: sourceApiToken };
+    const candidateEnvironment: Record<string, string> = {};
+
+    let placement: RestoreValidationCandidatePlacement;
+    if (row.validation_state === "planned") {
+      const handle = await provider.create({
+        agentId: data.agentId,
+        agentName: agent.agent_name ?? "",
+        organizationId: data.organizationId,
+        environmentVars: candidateEnvironment,
+        agentConfig: null,
+        routeAgentId: data.agentId,
+        snapshotRestoreBinding: {
+          backupId: data.backupId,
+          captureNonce: data.captureNonce,
+          sourceEnvironmentRevision: data.sourceEnvironmentRevision,
+          sourceImageDigest: data.sourceImageDigest,
+          sourceSandboxId: data.sourceSandboxId,
+          targetImageDigest: data.targetDigest,
+        },
+        restoreValidationCandidate: {
+          primaryNodeId: data.primaryNodeId,
+          replacementAttemptId: data.restoreValidationId,
+          rollbackStandbyNodeId: data.rollbackStandbyNodeId,
+        },
+        dockerImage: digestPinnedImageRef(data.targetImage, data.targetDigest),
+        onRestoreValidationPlacementIntent: async (intent) => {
+          return await this.persistRestoreValidationPlacementIntent(policy, intent);
+        },
+        onReplacementCreateIntent: async (candidate) => {
+          await this.persistRestoreValidationCandidateStage(policy, candidate, "intent");
+        },
+        onReplacementCreated: async (candidate) => {
+          await this.persistRestoreValidationCandidateStage(policy, candidate, "created");
+        },
+        onReplacementVpnRegistered: async (candidate) => {
+          await this.persistRestoreValidationCandidateStage(policy, candidate, "vpn");
+        },
+      });
+      placement = this.restoreValidationPlacementFromHandle(handle, data);
+      if (placement.containerId === null || placement.vpnNodeId === null) {
+        throw new Error("Restore-validation provider returned an incomplete candidate");
+      }
+      ({ agent, row } = await loadAuthority());
+      if (row.validation_state !== "candidate_provisioning") {
+        throw new Error("Restore-validation state changed while provisioning its candidate");
+      }
+      const persistedPlacement = this.restoreValidationPlacementFromRow(row, true);
+      this.assertSameRestoreValidationPlacement(persistedPlacement, placement);
+      placement = persistedPlacement;
+    } else {
+      placement = this.restoreValidationPlacementFromRow(row, true);
+    }
+
+    if (row.validation_state === "candidate_provisioning") {
+      candidateObservation ??= await this.observeRestoreValidationCandidate(placement, provider);
+      if (candidateObservation === "applying") {
+        throw new RestoreValidationRetryLaterError(data.restoreValidationId);
+      }
+      if (
+        candidateObservation === "failed" ||
+        candidateObservation === "exited" ||
+        candidateObservation === "absent"
+      ) {
+        await this.retireAndResetRestoreValidationCandidate(policy, row, provider);
+        throw new Error(
+          `Restore-validation candidate became ${candidateObservation}; its exact resources were retired for retry`,
+        );
+      }
+      const binding: AgentSnapshotV2UpgradeBinding = {
+        backupId: data.backupId,
+        captureNonce: data.captureNonce,
+        sourceEnvironmentRevision: data.sourceEnvironmentRevision,
+        sourceImageDigest: data.sourceImageDigest,
+        sourceSandboxId: data.sourceSandboxId,
+        targetImageDigest: data.targetDigest,
+        targetReplacementAttemptId: placement.replacementAttemptId,
+        targetSandboxId: placement.sandboxId,
+      };
+
+      let backup = await this.readRestoreValidationBackup(data);
+      if (!backup) {
+        const captureTimeoutMs = agentSnapshotV2CaptureTimeoutMs(
+          AGENT_SNAPSHOT_V2_MAX_WIRE_BYTES,
+        );
+        const captureStartedAt = Date.now();
+        const writeLeaseExpiresAt = new Date(captureStartedAt + captureTimeoutMs);
+        const captureController = new AbortController();
+        const captureTimer = setTimeout(
+          () =>
+            captureController.abort(
+              new Error("Restore-validation snapshot capture exceeded its deadline"),
+            ),
+          captureTimeoutMs,
+        );
+        try {
+          const sourceResponse = await this.fetchAgentApi(
+            { ...agent, environment_vars: sourceAuthEnvironment },
+            "/api/snapshot",
+            {
+              method: "POST",
+              body: JSON.stringify({
+                binding,
+                purpose: "pre-upgrade",
+                schemaVersion: 2,
+                transfer: "chunked-v1",
+              }),
+              signal: captureController.signal,
+            },
+          );
+          const captured = await captureAgentSnapshotV2({
+            response: sourceResponse,
+            organizationId: data.organizationId,
+            sandboxRecordId: data.agentId,
+            agentId: data.agentId,
+            binding,
+            signal: captureController.signal,
+            writeLeaseExpiresAt,
+            snapshotType: "pre-upgrade",
+            dependencies: this.restoreValidationSnapshotDependencies,
+          });
+          backup = captured.backup;
+        } finally {
+          clearTimeout(captureTimer);
+        }
+      }
+
+      const restoreEndpoint = await this.getSafeBridgeEndpoint(
+        placement.bridgeUrl,
+        "/api/restore?transfer=chunked-v1",
+        { trusted: true },
+      );
+      const restored = await restoreAgentSnapshotV2({
+        backup,
+        organizationId: data.organizationId,
+        agentId: data.agentId,
+        endpoint: restoreEndpoint,
+        headers: { "Content-Type": "application/json" },
+        binding,
+        dependencies: this.restoreValidationSnapshotDependencies,
+      });
+      if (
+        restored.receipt.aggregateSha256 !== restored.summary.trailer.aggregateSha256 ||
+        backup.content_hash !== restored.receipt.aggregateSha256
+      ) {
+        throw new Error("Restore-validation receipt does not match the verified backup");
+      }
+
+      const committedAt = new Date();
+      const checkpoint: AdminCanaryRestoreValidationCheckpoint = {
+        phase: "restore_committed",
+        restoreValidationId: data.restoreValidationId,
+        backupId: data.backupId,
+        aggregateSha256: restored.receipt.aggregateSha256,
+        candidateProviderSandboxId: placement.sandboxId,
+        candidateReplacementAttemptId: placement.replacementAttemptId,
+        candidateNodeId: placement.nodeId,
+        candidateContainerName: placement.containerName,
+        candidateVolumePath: placement.volumePath,
+        candidateVpnNodeId: placement.vpnNodeId!,
+        receiptState: "committed",
+        receiptSchemaVersion: 2,
+        receiptTransfer: "chunked-v1",
+        receiptFileCount: restored.receipt.fileCount,
+        receiptTotalBytes: restored.receipt.totalBytes,
+        receiptRequiresRestart: true,
+        receiptSuccess: true,
+        receiptCommittedAt: committedAt.toISOString(),
+      };
+      await dbWrite.transaction(async (tx) => {
+        await this.lockLifecycle(tx, data.agentId, data.organizationId);
+        const current = await this.getAgentForLifecycleMutation(
+          tx,
+          data.agentId,
+          data.organizationId,
+        );
+        if (!current) throw new Error("Canary disappeared before restore receipt commit");
+        this.assertRestoreValidationAgent(current, data);
+        const [committed] = await tx
+          .update(agentSnapshotRestoreValidations)
+          .set({
+            validation_state: "restore_committed",
+            aggregate_sha256: checkpoint.aggregateSha256,
+            receipt_state: "committed",
+            receipt_schema_version: 2,
+            receipt_transfer: "chunked-v1",
+            receipt_file_count: checkpoint.receiptFileCount,
+            receipt_total_bytes: checkpoint.receiptTotalBytes,
+            receipt_requires_restart: true,
+            receipt_success: true,
+            receipt_committed_at: committedAt,
+            updated_at: committedAt,
+          })
+          .where(
+            and(
+              eq(agentSnapshotRestoreValidations.restore_validation_id, data.restoreValidationId),
+              eq(agentSnapshotRestoreValidations.validation_job_id, validationJobId),
+              eq(agentSnapshotRestoreValidations.validation_state, "candidate_provisioning"),
+              eq(agentSnapshotRestoreValidations.target_provider_sandbox_id, placement.sandboxId),
+              eq(
+                agentSnapshotRestoreValidations.target_replacement_attempt_id,
+                placement.replacementAttemptId,
+              ),
+              eq(
+                agentSnapshotRestoreValidations.target_provider_container_id,
+                placement.containerId!,
+              ),
+              eq(agentSnapshotRestoreValidations.target_provider_vpn_node_id, placement.vpnNodeId!),
+              eq(agentSnapshotRestoreValidations.target_provider_allocation_counted, true),
+              sql`${agentSnapshotRestoreValidations.receipt_state} IS NULL`,
+            ),
+          )
+          .returning();
+        if (!committed) {
+          throw new Error("Restore-validation receipt commit CAS failed");
+        }
+        this.assertRestoreValidationRowIdentity(committed, data, validationJobId);
+        const persisted = this.restoreValidationCheckpointFromRow(committed);
+        await policy.onRestoreCommittedInTx(tx, persisted);
+      });
+      ({ agent, row } = await loadAuthority());
+    }
+
+    if (row.validation_state !== "restore_committed") {
+      throw new Error("Restore-validation candidate cannot retire before receipt commit");
+    }
+    placement = this.restoreValidationPlacementFromRow(row, true);
+    const checkpoint = this.restoreValidationCheckpointFromRow(row);
+    const proof = await provider.retireRestoreValidationCandidate(
+      this.restoreValidationLocator(placement),
+    );
+    this.assertRestoreValidationRetirementProof(placement, proof);
+    const containerAbsentAt = this.requireRestoreValidationTimestamp(
+      proof.containerAbsentAt,
+      "Restore-validation container absence",
+    );
+    const vpnAbsentAt = this.requireRestoreValidationTimestamp(
+      proof.vpnAbsentAt,
+      "Restore-validation VPN absence",
+    );
+    const volumeAbsentAt = this.requireRestoreValidationTimestamp(
+      proof.volumeAbsentAt,
+      "Restore-validation volume absence",
+    );
+    const receiptCommittedAt = this.requireRestoreValidationTimestamp(
+      checkpoint.receiptCommittedAt,
+      "Restore-validation receipt commit",
+    );
+    if (
+      containerAbsentAt < receiptCommittedAt ||
+      vpnAbsentAt < receiptCommittedAt ||
+      volumeAbsentAt < receiptCommittedAt
+    ) {
+      throw new Error("Restore-validation absence proof predates its committed receipt");
+    }
+    const candidateRetiredAt = new Date();
+    if (
+      candidateRetiredAt < containerAbsentAt ||
+      candidateRetiredAt < vpnAbsentAt ||
+      candidateRetiredAt < volumeAbsentAt
+    ) {
+      throw new Error("Restore-validation retirement clock predates remote absence proof");
+    }
+
+    let result: AdminCanaryRestoreValidationJobResult | undefined;
+    await dbWrite.transaction(async (tx) => {
+      await this.lockLifecycle(tx, data.agentId, data.organizationId);
+      const current = await this.getAgentForLifecycleMutation(
+        tx,
+        data.agentId,
+        data.organizationId,
+      );
+      if (!current) throw new Error("Canary disappeared before candidate retirement");
+      this.assertRestoreValidationAgent(current, data);
+      const [currentRow] = await tx
+        .select()
+        .from(agentSnapshotRestoreValidations)
+        .where(eq(agentSnapshotRestoreValidations.restore_validation_id, data.restoreValidationId))
+        .limit(1);
+      if (!currentRow) throw new Error("Restore-validation authority disappeared");
+      this.assertRestoreValidationRowIdentity(currentRow, data, validationJobId);
+      if (currentRow.validation_state === "never_routed_retired") {
+        result = this.restoreValidationResultFromRow(currentRow);
+        await policy.onConvergedInTx(
+          tx,
+          result,
+          this.restoreValidationCheckpointFromRow(currentRow),
+        );
+        return;
+      }
+      if (currentRow.validation_state !== "restore_committed") {
+        throw new Error("Restore-validation state changed before durable retirement");
+      }
+      const currentPlacement = this.restoreValidationPlacementFromRow(currentRow, true);
+      this.assertSameRestoreValidationPlacement(placement, currentPlacement);
+      const [released] = await tx
+        .update(dockerNodes)
+        .set({
+          allocated_count: sql`${dockerNodes.allocated_count} - 1`,
+          updated_at: candidateRetiredAt,
+        })
+        .where(
+          and(eq(dockerNodes.node_id, placement.nodeId), sql`${dockerNodes.allocated_count} > 0`),
+        )
+        .returning({ nodeId: dockerNodes.node_id });
+      if (!released) {
+        throw new Error("Restore-validation capacity release CAS failed");
+      }
+      const [retired] = await tx
+        .update(agentSnapshotRestoreValidations)
+        .set({
+          validation_state: "never_routed_retired",
+          target_provider_allocation_counted: false,
+          candidate_container_absent_at: containerAbsentAt,
+          candidate_vpn_absent_at: vpnAbsentAt,
+          candidate_volume_absent_at: volumeAbsentAt,
+          candidate_retired_at: candidateRetiredAt,
+          updated_at: candidateRetiredAt,
+        })
+        .where(
+          and(
+            eq(agentSnapshotRestoreValidations.restore_validation_id, data.restoreValidationId),
+            eq(agentSnapshotRestoreValidations.validation_state, "restore_committed"),
+            eq(agentSnapshotRestoreValidations.target_provider_sandbox_id, placement.sandboxId),
+            eq(
+              agentSnapshotRestoreValidations.target_replacement_attempt_id,
+              placement.replacementAttemptId,
+            ),
+            eq(agentSnapshotRestoreValidations.target_provider_allocation_counted, true),
+            eq(agentSnapshotRestoreValidations.aggregate_sha256, checkpoint.aggregateSha256),
+          ),
+        )
+        .returning();
+      if (!retired) {
+        throw new Error("Restore-validation retirement CAS failed");
+      }
+      result = this.restoreValidationResultFromRow(retired);
+      await policy.onConvergedInTx(tx, result, checkpoint);
+    });
+    if (!result) {
+      throw new Error("Restore-validation convergence did not produce a result");
+    }
+    return result;
+  }
+
+  private restoreValidationCheckpointFromRow(
+    row: AgentSnapshotRestoreValidation,
+  ): AdminCanaryRestoreValidationCheckpoint {
+    const placement = this.restoreValidationPlacementFromRow(row, true);
+    if (
+      (row.validation_state !== "restore_committed" &&
+        row.validation_state !== "never_routed_retired") ||
+      !row.aggregate_sha256 ||
+      row.receipt_state !== "committed" ||
+      row.receipt_schema_version !== 2 ||
+      row.receipt_transfer !== "chunked-v1" ||
+      row.receipt_file_count === null ||
+      row.receipt_total_bytes === null ||
+      row.receipt_requires_restart !== true ||
+      row.receipt_success !== true ||
+      !row.receipt_committed_at ||
+      !placement.vpnNodeId
+    ) {
+      throw new Error("Restore-validation committed receipt is incomplete");
+    }
+    return {
+      phase: "restore_committed",
+      restoreValidationId: row.restore_validation_id,
+      backupId: row.backup_id,
+      aggregateSha256: row.aggregate_sha256,
+      candidateProviderSandboxId: placement.sandboxId,
+      candidateReplacementAttemptId: placement.replacementAttemptId,
+      candidateNodeId: placement.nodeId,
+      candidateContainerName: placement.containerName,
+      candidateVolumePath: placement.volumePath,
+      candidateVpnNodeId: placement.vpnNodeId,
+      receiptState: "committed",
+      receiptSchemaVersion: 2,
+      receiptTransfer: "chunked-v1",
+      receiptFileCount: row.receipt_file_count,
+      receiptTotalBytes: row.receipt_total_bytes,
+      receiptRequiresRestart: true,
+      receiptSuccess: true,
+      receiptCommittedAt: this.requireRestoreValidationTimestamp(
+        row.receipt_committed_at,
+        "Restore-validation receipt commit",
+      ).toISOString(),
+    };
+  }
+
+  private restoreValidationResultFromRow(
+    row: AgentSnapshotRestoreValidation,
+  ): AdminCanaryRestoreValidationJobResult {
+    const checkpoint = this.restoreValidationCheckpointFromRow(row);
+    if (
+      row.validation_state !== "never_routed_retired" ||
+      row.target_provider_allocation_counted !== false ||
+      !row.candidate_container_absent_at ||
+      !row.candidate_vpn_absent_at ||
+      !row.candidate_volume_absent_at ||
+      !row.candidate_retired_at
+    ) {
+      throw new Error("Restore-validation retirement proof is incomplete");
+    }
+    return {
+      success: true,
+      restoreValidationId: checkpoint.restoreValidationId,
+      backupId: checkpoint.backupId,
+      aggregateSha256: checkpoint.aggregateSha256,
+      candidateProviderSandboxId: checkpoint.candidateProviderSandboxId,
+      candidateReplacementAttemptId: checkpoint.candidateReplacementAttemptId,
+      receiptCommittedAt: checkpoint.receiptCommittedAt,
+      candidateContainerAbsentAt: this.requireRestoreValidationTimestamp(
+        row.candidate_container_absent_at,
+        "Restore-validation container absence",
+      ).toISOString(),
+      candidateVpnAbsentAt: this.requireRestoreValidationTimestamp(
+        row.candidate_vpn_absent_at,
+        "Restore-validation VPN absence",
+      ).toISOString(),
+      candidateVolumeAbsentAt: this.requireRestoreValidationTimestamp(
+        row.candidate_volume_absent_at,
+        "Restore-validation volume absence",
+      ).toISOString(),
+      candidateRetiredAt: this.requireRestoreValidationTimestamp(
+        row.candidate_retired_at,
+        "Restore-validation retirement",
+      ).toISOString(),
+    };
+  }
+
+  private assertRestoreValidationRowIdentity(
+    row: AgentSnapshotRestoreValidation,
+    data: AdminCanaryRestoreValidationJobData,
+    validationJobId: string,
+  ): void {
+    if (
+      row.restore_validation_id !== data.restoreValidationId ||
+      row.validation_job_id !== validationJobId ||
+      row.source_job_id !== data.sourceJobId ||
+      row.rollout_id !== data.rolloutId ||
+      row.standby_generation !== data.standbyGeneration ||
+      row.organization_id !== data.organizationId ||
+      row.sandbox_record_id !== data.agentId ||
+      row.agent_id !== data.agentId ||
+      row.target_owner_user_id !== data.targetOwnerUserId ||
+      row.backup_id !== data.backupId ||
+      row.capture_nonce !== data.captureNonce ||
+      row.source_environment_revision !== data.sourceEnvironmentRevision ||
+      row.source_image_digest !== data.sourceImageDigest ||
+      row.source_sandbox_id !== data.sourceSandboxId ||
+      row.target_image !== data.targetImage ||
+      row.target_digest !== data.targetDigest ||
+      row.candidate_route_mode !== "restore_validation_private_control" ||
+      row.route_exposed_at !== null
+    ) {
+      throw new Error("Restore-validation authority does not match its immutable job identity");
+    }
+  }
+
+  private assertRestoreValidationAgent(
+    agent: AgentSandbox,
+    data: AdminCanaryRestoreValidationJobData,
+  ): void {
+    if (
+      agent.id !== data.agentId ||
+      agent.organization_id !== data.organizationId ||
+      agent.user_id !== data.targetOwnerUserId ||
+      agent.status !== "running" ||
+      agent.deleted_at !== null ||
+      agent.deletion_attempt_id !== null ||
+      agent.rollback_standby_state !== "paused" ||
+      agent.rollback_standby_generation !== data.standbyGeneration ||
+      agent.rollback_standby_source_job_id !== data.sourceJobId ||
+      agent.rollback_standby_rollout_id !== data.rolloutId ||
+      agent.rollback_standby_decision_job_id !== null ||
+      agent.rollback_standby_verified_backup_id !== null ||
+      agent.rollback_standby_restore_validation_id !== null ||
+      agent.rollback_standby_primary_node_id !== data.primaryNodeId ||
+      agent.rollback_standby_node_id !== data.rollbackStandbyNodeId ||
+      agent.rollback_standby_primary_replacement_attempt_id !== data.sourceSandboxId ||
+      agent.sandbox_id !== agent.rollback_standby_primary_sandbox_id ||
+      agent.node_id !== data.primaryNodeId ||
+      agent.docker_image !== data.targetImage ||
+      agent.image_digest !== data.targetDigest ||
+      agent.environment_revision !== data.sourceEnvironmentRevision ||
+      data.primaryNodeId === data.rollbackStandbyNodeId
+    ) {
+      throw new Error("Restore validation no longer owns the exact paused canary generation");
+    }
+    if (this.getReplacementCleanupLocator(agent)) {
+      throw new Error("Restore validation cannot overlap a replacement-cleanup authority");
+    }
+  }
+
+  private requireRestoreValidationTimestamp(value: Date | string, field: string): Date {
+    const parsed = value instanceof Date ? new Date(value.getTime()) : new Date(value);
+    if (!Number.isFinite(parsed.getTime())) {
+      throw new Error(`${field} is not a valid restore-validation timestamp`);
+    }
+    return parsed;
+  }
+
+  private restoreValidationPlacementFromHandle(
+    handle: SandboxHandle,
+    data: AdminCanaryRestoreValidationJobData,
+  ): RestoreValidationCandidatePlacement {
+    const metadata = isDockerSandboxMetadata(handle.metadata) ? handle.metadata : null;
+    const vpnRegistrationStartedAt = metadata?.vpnRegistrationStartedAt;
+    if (
+      !metadata ||
+      metadata.agentId !== data.agentId ||
+      metadata.previousVpnNodeId ||
+      !metadata.nodeId ||
+      !metadata.containerName ||
+      metadata.containerName !== handle.sandboxId ||
+      !metadata.volumePath ||
+      !metadata.replacementAttemptId ||
+      !metadata.vpnNodeName ||
+      !vpnRegistrationStartedAt ||
+      metadata.allocationCounted !== true ||
+      !Number.isSafeInteger(metadata.bridgePort) ||
+      metadata.bridgePort < 1 ||
+      metadata.bridgePort > 65_535 ||
+      !Number.isSafeInteger(metadata.webUiPort) ||
+      metadata.webUiPort < 1 ||
+      metadata.webUiPort > 65_535 ||
+      !Number.isSafeInteger(metadata.containerPort) ||
+      metadata.containerPort! < 1 ||
+      metadata.containerPort! > 65_535
+    ) {
+      throw new Error(
+        `Restore-validation candidate ${handle.sandboxId} has incomplete provider identity`,
+      );
+    }
+    const hasPrivateRoute = Boolean(metadata.headscaleIp || metadata.vpnNodeId);
+    if (hasPrivateRoute && (!metadata.headscaleIp || !metadata.vpnNodeId)) {
+      throw new Error(
+        `Restore-validation candidate ${handle.sandboxId} has incomplete private-route identity`,
+      );
+    }
+    const expectedHost = hasPrivateRoute ? metadata.headscaleIp! : metadata.hostname;
+    const expectedBridgePort = hasPrivateRoute ? metadata.containerPort! : metadata.bridgePort;
+    const expectedHealthPort = hasPrivateRoute ? metadata.containerPort! : metadata.webUiPort;
+    for (const [field, value, expectedPort, expectedPath] of [
+      ["bridgeUrl", handle.bridgeUrl, expectedBridgePort, "/"],
+      ["healthUrl", handle.healthUrl, expectedHealthPort, "/api"],
+    ] as const) {
+      let parsed: URL;
+      try {
+        parsed = new URL(value);
+      } catch (cause) {
+        throw new Error(`Restore-validation candidate ${field} is malformed`, { cause });
+      }
+      if (
+        parsed.protocol !== "http:" ||
+        parsed.username ||
+        parsed.password ||
+        parsed.hostname !== expectedHost.toLowerCase() ||
+        parsed.port !== String(expectedPort) ||
+        parsed.pathname !== expectedPath ||
+        parsed.search ||
+        parsed.hash
+      ) {
+        throw new Error(
+          `Restore-validation candidate ${field} is not the provider-bound private endpoint`,
+        );
+      }
+    }
+    return {
+      sandboxId: handle.sandboxId,
+      nodeId: metadata.nodeId,
+      containerName: metadata.containerName,
+      containerId: metadata.containerId ?? null,
+      volumePath: metadata.volumePath,
+      bridgeUrl: handle.bridgeUrl,
+      healthUrl: handle.healthUrl,
+      bridgePort: metadata.bridgePort,
+      webUiPort: metadata.webUiPort,
+      vpnNodeId: metadata.vpnNodeId ?? null,
+      vpnNodeName: metadata.vpnNodeName,
+      vpnRegistrationStartedAt: this.requireRestoreValidationTimestamp(
+        vpnRegistrationStartedAt,
+        "Restore-validation VPN registration start",
+      ),
+      replacementAttemptId: metadata.replacementAttemptId,
+      allocationCounted: true,
+    };
+  }
+
+  private restoreValidationPlacementFromRow(
+    row: AgentSnapshotRestoreValidation,
+    requireRemoteIdentities: boolean,
+  ): RestoreValidationCandidatePlacement {
+    const allocationCounted = row.validation_state !== "never_routed_retired";
+    if (
+      !row.target_provider_sandbox_id ||
+      !row.target_replacement_attempt_id ||
+      !row.target_provider_node_id ||
+      !row.target_provider_container_name ||
+      !row.target_provider_volume_path ||
+      !row.target_provider_bridge_url ||
+      !row.target_provider_health_url ||
+      !row.target_provider_bridge_port ||
+      !row.target_provider_web_ui_port ||
+      !row.target_provider_vpn_node_name ||
+      !row.target_provider_vpn_registration_started_at ||
+      row.target_provider_allocation_counted !== allocationCounted ||
+      (requireRemoteIdentities &&
+        (!row.target_provider_container_id || !row.target_provider_vpn_node_id))
+    ) {
+      throw new Error("Restore-validation candidate placement is incomplete");
+    }
+    return {
+      sandboxId: row.target_provider_sandbox_id,
+      nodeId: row.target_provider_node_id,
+      containerName: row.target_provider_container_name,
+      containerId: row.target_provider_container_id,
+      volumePath: row.target_provider_volume_path,
+      bridgeUrl: row.target_provider_bridge_url,
+      healthUrl: row.target_provider_health_url,
+      bridgePort: row.target_provider_bridge_port,
+      webUiPort: row.target_provider_web_ui_port,
+      vpnNodeId: row.target_provider_vpn_node_id,
+      vpnNodeName: row.target_provider_vpn_node_name,
+      vpnRegistrationStartedAt: this.requireRestoreValidationTimestamp(
+        row.target_provider_vpn_registration_started_at,
+        "Persisted restore-validation VPN registration start",
+      ),
+      replacementAttemptId: row.target_replacement_attempt_id,
+      allocationCounted,
+    };
+  }
+
+  private assertSameRestoreValidationPlacement(
+    existing: RestoreValidationCandidatePlacement,
+    incoming: RestoreValidationCandidatePlacement,
+  ): void {
+    if (
+      existing.sandboxId !== incoming.sandboxId ||
+      existing.nodeId !== incoming.nodeId ||
+      existing.containerName !== incoming.containerName ||
+      existing.volumePath !== incoming.volumePath ||
+      existing.bridgePort !== incoming.bridgePort ||
+      existing.webUiPort !== incoming.webUiPort ||
+      existing.vpnNodeName !== incoming.vpnNodeName ||
+      existing.vpnRegistrationStartedAt.getTime() !== incoming.vpnRegistrationStartedAt.getTime() ||
+      existing.replacementAttemptId !== incoming.replacementAttemptId ||
+      existing.allocationCounted !== incoming.allocationCounted ||
+      (existing.containerId !== null &&
+        incoming.containerId !== null &&
+        existing.containerId !== incoming.containerId) ||
+      (existing.vpnNodeId !== null &&
+        incoming.vpnNodeId !== null &&
+        existing.vpnNodeId !== incoming.vpnNodeId)
+    ) {
+      throw new Error("Restore-validation provider identity changed during enrichment");
+    }
+  }
+
+  private async persistRestoreValidationPlacementIntent(
+    policy: AdminCanaryRestoreValidationExecutionPolicy,
+    intent: SandboxRestoreValidationPlacementIntent,
+  ): Promise<SandboxRestoreValidationPlacementReservation> {
+    const { data, validationJobId } = policy;
+    const expectedIdentity = getRestoreValidationPhysicalIdentity(data.restoreValidationId);
+    const registrationStartedAt = this.requireRestoreValidationTimestamp(
+      intent.vpnRegistrationStartedAt,
+      "Restore-validation VPN registration start",
+    );
+    if (
+      intent.agentId !== data.agentId ||
+      intent.replacementAttemptId !== data.restoreValidationId ||
+      intent.sandboxId !== expectedIdentity.containerName ||
+      intent.containerName !== expectedIdentity.containerName ||
+      intent.volumePath !== expectedIdentity.volumePath ||
+      intent.vpnNodeName !== expectedIdentity.vpnAgentName ||
+      !intent.nodeId ||
+      intent.nodeId.trim() !== intent.nodeId ||
+      !intent.hostname ||
+      intent.hostname.trim() !== intent.hostname ||
+      !Number.isSafeInteger(intent.containerPort) ||
+      intent.containerPort < 1 ||
+      intent.containerPort > 65_535 ||
+      intent.healthPath !== "/api/health" ||
+      intent.nodeId === data.primaryNodeId ||
+      intent.nodeId === data.rollbackStandbyNodeId
+    ) {
+      throw new Error("Restore-validation placement intent is malformed");
+    }
+
+    return await dbWrite.transaction(async (tx) => {
+      await this.lockLifecycle(tx, data.agentId, data.organizationId);
+      const agent = await this.getAgentForLifecycleMutation(tx, data.agentId, data.organizationId);
+      if (!agent) throw new Error("Canary disappeared before restore-validation placement");
+      this.assertRestoreValidationAgent(agent, data);
+      const [row] = await tx
+        .select()
+        .from(agentSnapshotRestoreValidations)
+        .where(
+          and(
+            eq(agentSnapshotRestoreValidations.restore_validation_id, data.restoreValidationId),
+            eq(agentSnapshotRestoreValidations.validation_job_id, validationJobId),
+            eq(agentSnapshotRestoreValidations.organization_id, data.organizationId),
+            eq(agentSnapshotRestoreValidations.agent_id, data.agentId),
+          ),
+        )
+        .limit(1);
+      if (!row) throw new Error("Restore-validation authority disappeared");
+      this.assertRestoreValidationRowIdentity(row, data, validationJobId);
+
+      if (row.validation_state === "candidate_provisioning") {
+        const existing = this.restoreValidationPlacementFromRow(row, false);
+        const bridgeUrl = new URL(existing.bridgeUrl);
+        const healthUrl = new URL(existing.healthUrl);
+        if (
+          existing.sandboxId !== intent.sandboxId ||
+          existing.nodeId !== intent.nodeId ||
+          existing.containerName !== intent.containerName ||
+          existing.volumePath !== intent.volumePath ||
+          existing.replacementAttemptId !== intent.replacementAttemptId ||
+          existing.vpnNodeName !== intent.vpnNodeName ||
+          existing.vpnRegistrationStartedAt.getTime() !== registrationStartedAt.getTime() ||
+          bridgeUrl.protocol !== "http:" ||
+          bridgeUrl.hostname !== intent.hostname.toLowerCase() ||
+          bridgeUrl.pathname !== "/" ||
+          bridgeUrl.search ||
+          bridgeUrl.hash ||
+          healthUrl.protocol !== "http:" ||
+          healthUrl.hostname !== intent.hostname.toLowerCase() ||
+          healthUrl.pathname !== "/api" ||
+          healthUrl.search ||
+          healthUrl.hash
+        ) {
+          throw new Error("Restore-validation placement intent conflicts with durable ownership");
+        }
+        return {
+          bridgePort: existing.bridgePort,
+          webUiPort: existing.webUiPort,
+        };
+      }
+      if (row.validation_state !== "planned") {
+        throw new Error("Restore-validation placement intent arrived after provisioning");
+      }
+
+      const ports = await reserveDockerAgentPortsInTx(
+        {
+          nodeId: intent.nodeId,
+          ownerKind: "restore_validation",
+          ownerId: intent.containerName,
+        },
+        tx,
+      );
+      const [reserved] = await tx
+        .update(dockerNodes)
+        .set({
+          allocated_count: sql`${dockerNodes.allocated_count} + 1`,
+          updated_at: new Date(),
+        })
+        .where(
+          and(
+            eq(dockerNodes.node_id, intent.nodeId),
+            eq(dockerNodes.enabled, true),
+            eq(dockerNodes.status, "healthy"),
+            sql`${dockerNodes.allocated_count} < ${dockerNodes.capacity}`,
+          ),
+        )
+        .returning({ nodeId: dockerNodes.node_id });
+      if (!reserved) {
+        throw new Error(`Restore-validation node ${intent.nodeId} has no reservable capacity`);
+      }
+
+      const [persisted] = await tx
+        .update(agentSnapshotRestoreValidations)
+        .set({
+          validation_state: "candidate_provisioning",
+          target_provider_sandbox_id: intent.sandboxId,
+          target_replacement_attempt_id: intent.replacementAttemptId,
+          target_provider_node_id: intent.nodeId,
+          target_provider_container_name: intent.containerName,
+          target_provider_container_id: null,
+          target_provider_volume_path: intent.volumePath,
+          target_provider_bridge_url: `http://${intent.hostname}:${ports.bridgePort}`,
+          target_provider_health_url: `http://${intent.hostname}:${ports.webUiPort}/api`,
+          target_provider_bridge_port: ports.bridgePort,
+          target_provider_web_ui_port: ports.webUiPort,
+          target_provider_vpn_node_id: null,
+          target_provider_vpn_node_name: intent.vpnNodeName,
+          target_provider_vpn_registration_started_at: registrationStartedAt,
+          target_provider_allocation_counted: true,
+          updated_at: new Date(),
+        })
+        .where(
+          and(
+            eq(agentSnapshotRestoreValidations.restore_validation_id, row.restore_validation_id),
+            eq(agentSnapshotRestoreValidations.validation_state, "planned"),
+            sql`${agentSnapshotRestoreValidations.target_provider_sandbox_id} IS NULL`,
+            sql`${agentSnapshotRestoreValidations.target_replacement_attempt_id} IS NULL`,
+          ),
+        )
+        .returning({ id: agentSnapshotRestoreValidations.restore_validation_id });
+      if (!persisted) {
+        throw new Error("Restore-validation placement intent CAS failed");
+      }
+      return ports;
+    });
+  }
+
+  private async persistRestoreValidationCandidateStage(
+    policy: AdminCanaryRestoreValidationExecutionPolicy,
+    handle: SandboxHandle,
+    stage: "intent" | "created" | "vpn",
+  ): Promise<void> {
+    const { data, validationJobId } = policy;
+    const incoming = this.restoreValidationPlacementFromHandle(handle, data);
+    if (incoming.nodeId === data.primaryNodeId || incoming.nodeId === data.rollbackStandbyNodeId) {
+      throw new Error("Restore-validation candidate was placed on a serving authority node");
+    }
+    if (stage === "intent" && (incoming.containerId !== null || incoming.vpnNodeId !== null)) {
+      throw new Error("Restore-validation intent already contains a committed remote identity");
+    }
+    if (stage === "created" && incoming.containerId === null) {
+      throw new Error("Restore-validation Docker enrichment is missing its container id");
+    }
+    if (stage === "vpn" && (incoming.containerId === null || incoming.vpnNodeId === null)) {
+      throw new Error("Restore-validation VPN enrichment is incomplete");
+    }
+
+    await dbWrite.transaction(async (tx) => {
+      await this.lockLifecycle(tx, data.agentId, data.organizationId);
+      const agent = await this.getAgentForLifecycleMutation(tx, data.agentId, data.organizationId);
+      if (!agent) throw new Error("Canary disappeared before restore-validation ownership");
+      this.assertRestoreValidationAgent(agent, data);
+      const [row] = await tx
+        .select()
+        .from(agentSnapshotRestoreValidations)
+        .where(
+          and(
+            eq(agentSnapshotRestoreValidations.restore_validation_id, data.restoreValidationId),
+            eq(agentSnapshotRestoreValidations.validation_job_id, validationJobId),
+            eq(agentSnapshotRestoreValidations.organization_id, data.organizationId),
+            eq(agentSnapshotRestoreValidations.agent_id, data.agentId),
+          ),
+        )
+        .limit(1);
+      if (!row) throw new Error("Restore-validation authority disappeared");
+      this.assertRestoreValidationRowIdentity(row, data, validationJobId);
+
+      if (row.validation_state === "candidate_provisioning") {
+        const existing = this.restoreValidationPlacementFromRow(row, false);
+        this.assertSameRestoreValidationPlacement(existing, incoming);
+        const containerId = existing.containerId ?? incoming.containerId;
+        const vpnNodeId = existing.vpnNodeId ?? incoming.vpnNodeId;
+        if (
+          containerId === existing.containerId &&
+          vpnNodeId === existing.vpnNodeId &&
+          incoming.bridgeUrl === existing.bridgeUrl &&
+          incoming.healthUrl === existing.healthUrl
+        ) {
+          return;
+        }
+        const [enriched] = await tx
+          .update(agentSnapshotRestoreValidations)
+          .set({
+            target_provider_container_id: containerId,
+            target_provider_bridge_url: incoming.bridgeUrl,
+            target_provider_health_url: incoming.healthUrl,
+            target_provider_vpn_node_id: vpnNodeId,
+            updated_at: new Date(),
+          })
+          .where(
+            and(
+              eq(agentSnapshotRestoreValidations.restore_validation_id, row.restore_validation_id),
+              eq(agentSnapshotRestoreValidations.validation_state, "candidate_provisioning"),
+              eq(agentSnapshotRestoreValidations.target_provider_sandbox_id, existing.sandboxId),
+              eq(
+                agentSnapshotRestoreValidations.target_replacement_attempt_id,
+                existing.replacementAttemptId,
+              ),
+              eq(agentSnapshotRestoreValidations.target_provider_node_id, existing.nodeId),
+              eq(
+                agentSnapshotRestoreValidations.target_provider_container_name,
+                existing.containerName,
+              ),
+              sql`${agentSnapshotRestoreValidations.target_provider_container_id}
+                IS NOT DISTINCT FROM ${existing.containerId}`,
+              eq(agentSnapshotRestoreValidations.target_provider_volume_path, existing.volumePath),
+              sql`${agentSnapshotRestoreValidations.target_provider_vpn_node_id}
+                IS NOT DISTINCT FROM ${existing.vpnNodeId}`,
+              eq(
+                agentSnapshotRestoreValidations.target_provider_vpn_node_name,
+                existing.vpnNodeName,
+              ),
+              eq(agentSnapshotRestoreValidations.target_provider_allocation_counted, true),
+            ),
+          )
+          .returning({ id: agentSnapshotRestoreValidations.restore_validation_id });
+        if (!enriched) {
+          throw new Error("Restore-validation candidate enrichment CAS failed");
+        }
+        return;
+      }
+
+      throw new Error("Restore-validation candidate enrichment arrived out of order");
+    });
+  }
+
+  private restoreValidationLocator(
+    placement: RestoreValidationCandidatePlacement,
+  ): SandboxRestoreValidationCandidateLocator {
+    return {
+      sandboxId: placement.sandboxId,
+      nodeId: placement.nodeId,
+      containerName: placement.containerName,
+      replacementAttemptId: placement.replacementAttemptId,
+      containerId: placement.containerId,
+      volumePath: placement.volumePath,
+      vpnNodeId: placement.vpnNodeId,
+      vpnNodeName: placement.vpnNodeName,
+      previousVpnNodeId: null,
+      vpnRegistrationStartedAt: placement.vpnRegistrationStartedAt.toISOString(),
+      allocationCounted: true,
+    };
+  }
+
+  private assertRestoreValidationRetirementProof(
+    placement: RestoreValidationCandidatePlacement,
+    proof: SandboxRestoreValidationRetirementProof,
+  ): void {
+    if (
+      proof.sandboxId !== placement.sandboxId ||
+      proof.nodeId !== placement.nodeId ||
+      proof.containerName !== placement.containerName ||
+      proof.replacementAttemptId !== placement.replacementAttemptId ||
+      proof.volumePath !== placement.volumePath ||
+      (placement.containerId !== null &&
+        proof.containerId !== null &&
+        proof.containerId !== placement.containerId) ||
+      (placement.vpnNodeId !== null && proof.vpnNodeId !== placement.vpnNodeId) ||
+      proof.vpnNodeName !== placement.vpnNodeName
+    ) {
+      throw new Error("Restore-validation retirement proof changed physical identity");
+    }
+    for (const [field, value] of [
+      ["containerAbsentAt", proof.containerAbsentAt],
+      ["vpnAbsentAt", proof.vpnAbsentAt],
+      ["volumeAbsentAt", proof.volumeAbsentAt],
+    ] as const) {
+      this.requireRestoreValidationTimestamp(value, `Restore-validation ${field}`);
+    }
+  }
+
+  private async retireAndResetRestoreValidationCandidate(
+    policy: AdminCanaryRestoreValidationExecutionPolicy,
+    row: AgentSnapshotRestoreValidation,
+    provider: SandboxProvider,
+  ): Promise<void> {
+    if (!provider.retireRestoreValidationCandidate) {
+      throw new Error("Sandbox provider cannot retire a restore-validation candidate");
+    }
+    const placement = this.restoreValidationPlacementFromRow(row, false);
+    const proof = await provider.retireRestoreValidationCandidate(
+      this.restoreValidationLocator(placement),
+    );
+    this.assertRestoreValidationRetirementProof(placement, proof);
+    const { data, validationJobId } = policy;
+    await dbWrite.transaction(async (tx) => {
+      await this.lockLifecycle(tx, data.agentId, data.organizationId);
+      const agent = await this.getAgentForLifecycleMutation(tx, data.agentId, data.organizationId);
+      if (!agent) throw new Error("Canary disappeared before candidate reset");
+      this.assertRestoreValidationAgent(agent, data);
+      const [current] = await tx
+        .select()
+        .from(agentSnapshotRestoreValidations)
+        .where(
+          and(
+            eq(agentSnapshotRestoreValidations.restore_validation_id, data.restoreValidationId),
+            eq(agentSnapshotRestoreValidations.validation_job_id, validationJobId),
+          ),
+        )
+        .limit(1);
+      if (!current) throw new Error("Restore-validation authority disappeared before reset");
+      this.assertRestoreValidationRowIdentity(current, data, validationJobId);
+      const currentPlacement = this.restoreValidationPlacementFromRow(current, false);
+      this.assertSameRestoreValidationPlacement(placement, currentPlacement);
+      if (current.validation_state !== "candidate_provisioning") {
+        throw new Error("Restore-validation state advanced before candidate reset");
+      }
+      const [released] = await tx
+        .update(dockerNodes)
+        .set({
+          allocated_count: sql`${dockerNodes.allocated_count} - 1`,
+          updated_at: new Date(),
+        })
+        .where(
+          and(eq(dockerNodes.node_id, placement.nodeId), sql`${dockerNodes.allocated_count} > 0`),
+        )
+        .returning({ nodeId: dockerNodes.node_id });
+      if (!released) {
+        throw new Error("Restore-validation capacity release CAS failed during reset");
+      }
+      const [reset] = await tx
+        .update(agentSnapshotRestoreValidations)
+        .set({
+          validation_state: "planned",
+          target_provider_sandbox_id: null,
+          target_replacement_attempt_id: null,
+          target_provider_node_id: null,
+          target_provider_container_name: null,
+          target_provider_container_id: null,
+          target_provider_volume_path: null,
+          target_provider_bridge_url: null,
+          target_provider_health_url: null,
+          target_provider_bridge_port: null,
+          target_provider_web_ui_port: null,
+          target_provider_vpn_node_id: null,
+          target_provider_vpn_node_name: null,
+          target_provider_vpn_registration_started_at: null,
+          target_provider_allocation_counted: null,
+          updated_at: new Date(),
+        })
+        .where(
+          and(
+            eq(
+              agentSnapshotRestoreValidations.restore_validation_id,
+              current.restore_validation_id,
+            ),
+            eq(agentSnapshotRestoreValidations.validation_job_id, validationJobId),
+            eq(agentSnapshotRestoreValidations.organization_id, data.organizationId),
+            eq(agentSnapshotRestoreValidations.agent_id, data.agentId),
+            eq(agentSnapshotRestoreValidations.validation_state, "candidate_provisioning"),
+            eq(agentSnapshotRestoreValidations.target_provider_sandbox_id, placement.sandboxId),
+            eq(
+              agentSnapshotRestoreValidations.target_replacement_attempt_id,
+              placement.replacementAttemptId,
+            ),
+            eq(agentSnapshotRestoreValidations.target_provider_node_id, placement.nodeId),
+            eq(
+              agentSnapshotRestoreValidations.target_provider_container_name,
+              placement.containerName,
+            ),
+            sql`${agentSnapshotRestoreValidations.target_provider_container_id}
+              IS NOT DISTINCT FROM ${placement.containerId}`,
+            eq(agentSnapshotRestoreValidations.target_provider_volume_path, placement.volumePath),
+            eq(agentSnapshotRestoreValidations.target_provider_bridge_url, placement.bridgeUrl),
+            eq(agentSnapshotRestoreValidations.target_provider_health_url, placement.healthUrl),
+            eq(agentSnapshotRestoreValidations.target_provider_bridge_port, placement.bridgePort),
+            eq(agentSnapshotRestoreValidations.target_provider_web_ui_port, placement.webUiPort),
+            sql`${agentSnapshotRestoreValidations.target_provider_vpn_node_id}
+              IS NOT DISTINCT FROM ${placement.vpnNodeId}`,
+            eq(
+              agentSnapshotRestoreValidations.target_provider_vpn_node_name,
+              placement.vpnNodeName,
+            ),
+            eq(
+              agentSnapshotRestoreValidations.target_provider_vpn_registration_started_at,
+              placement.vpnRegistrationStartedAt,
+            ),
+            eq(agentSnapshotRestoreValidations.target_provider_allocation_counted, true),
+            sql`${agentSnapshotRestoreValidations.aggregate_sha256} IS NULL`,
+            sql`${agentSnapshotRestoreValidations.receipt_state} IS NULL`,
+          ),
+        )
+        .returning({ id: agentSnapshotRestoreValidations.restore_validation_id });
+      if (!reset) {
+        throw new Error("Restore-validation reset CAS failed after positive absence proof");
+      }
+    });
+  }
+
+  private async observeRestoreValidationCandidate(
+    placement: RestoreValidationCandidatePlacement,
+    provider: SandboxProvider,
+  ): Promise<RestoreValidationCandidateObservation> {
+    const endpoint = await this.getSafeBridgeEndpoint(placement.bridgeUrl, "/api/health", {
+      trusted: true,
+    });
+    let response: Response;
+    try {
+      response = await fetch(endpoint, {
+        headers: { "Content-Type": "application/json" },
+        redirect: "manual",
+        signal: AbortSignal.timeout(30_000),
+      });
+    } catch (cause) {
+      // error-policy:J3 HTTP transport cannot distinguish a dead restore-only
+      // process from an unreachable running node, so only exact provider state
+      // may authorize cleanup and every unresolved observation keeps the fence.
+      const runtimeState = provider.inspectRestoreValidationCandidate
+        ? await provider.inspectRestoreValidationCandidate(this.restoreValidationLocator(placement))
+        : "unresolved";
+      if (runtimeState === "exited" || runtimeState === "absent") {
+        return runtimeState;
+      }
+      throw new Error(
+        `Restore-validation candidate health is unreachable while provider state is ${runtimeState}`,
+        { cause },
+      );
+    }
+    if (response.status !== 200 && response.status !== 503) {
+      throw new Error(
+        `Restore-validation candidate health returned unsupported HTTP ${response.status}`,
+      );
+    }
+    const raw = await readBodyWithinBudget(response, 64 * 1024);
+    let body: unknown;
+    try {
+      body = JSON.parse(raw);
+    } catch (cause) {
+      // error-policy:J3 A reachable candidate's phase is an untrusted protocol
+      // boundary; malformed JSON never authorizes retirement or retry.
+      throw new Error("Restore-validation candidate health is not JSON", { cause });
+    }
+    const health =
+      body && typeof body === "object" && !Array.isArray(body)
+        ? (body as Record<string, unknown>)
+        : null;
+    if (
+      !health ||
+      health.ready !== false ||
+      health.canRespond !== false ||
+      health.mode !== "restore-validation"
+    ) {
+      throw new Error("Restore-validation candidate exposed an invalid restore-only health state");
+    }
+    const phase = health.restorePhase;
+    if (
+      phase === "accepting" &&
+      response.status === 200 &&
+      health.status === "restore-ready" &&
+      health.restoreReady === true
+    ) {
+      return phase;
+    }
+    if (
+      phase === "standby" &&
+      response.status === 503 &&
+      health.status === "restore-standby" &&
+      health.restoreReady === false &&
+      health.requiresRestart === true
+    ) {
+      return phase;
+    }
+    if (
+      phase === "applying" &&
+      response.status === 503 &&
+      health.status === "restore-applying" &&
+      health.restoreReady === false
+    ) {
+      return phase;
+    }
+    if (
+      phase === "failed" &&
+      response.status === 503 &&
+      health.status === "restore-failed" &&
+      health.restoreReady === false
+    ) {
+      return phase;
+    }
+    throw new Error("Restore-validation candidate exposed an unknown restore-only health phase");
+  }
+
+  private async readRestoreValidationBackup(data: AdminCanaryRestoreValidationJobData) {
+    const [backup] = await dbWrite
+      .select()
+      .from(agentSandboxBackups)
+      .where(
+        and(
+          eq(agentSandboxBackups.id, data.backupId),
+          eq(agentSandboxBackups.sandbox_record_id, data.agentId),
+        ),
+      )
+      .limit(1);
+    if (!backup) return null;
+    if (
+      backup.snapshot_type !== "pre-upgrade" ||
+      backup.snapshot_schema_version !== 2 ||
+      backup.state_data_storage !== "chunked-v2" ||
+      backup.storage_commit_state !== "complete" ||
+      backup.verification_status !== "verified" ||
+      !backup.content_hash
+    ) {
+      throw new Error(`Restore-validation backup ${data.backupId} is not a verified v2 stream`);
+    }
+    return backup;
+  }
+
   private assertStandbyDecisionIdentity(
     agent: AgentSandbox,
     data: AdminCanaryStandbyDecisionJobData,
@@ -8004,16 +9376,16 @@ export class ElizaSandboxService {
       !agent.rollback_standby_primary_vpn_node_id ||
       !agent.rollback_standby_primary_replacement_attempt_id ||
       (accepting &&
-        (agent.rollback_standby_verified_backup_id !== data.verifiedBackupId ||
-          agent.rollback_standby_restore_validation_id !== data.restoreValidationId ||
-          agent.rollback_standby_restore_validation_aggregate_sha256 !==
-            data.restoreValidationAggregateSha256 ||
-          agent.rollback_standby_restore_candidate_provider_sandbox_id !==
-            data.restoreValidatedCandidateProviderSandboxId ||
-          agent.rollback_standby_restore_candidate_replacement_attempt_id !==
-            data.restoreValidatedCandidateReplacementAttemptId)) ||
+        (!agent.rollback_standby_verified_backup_id ||
+          !agent.rollback_standby_restore_validation_id ||
+          !agent.rollback_standby_restore_validation_aggregate_sha256 ||
+          !agent.rollback_standby_restore_candidate_provider_sandbox_id ||
+          !agent.rollback_standby_restore_candidate_replacement_attempt_id ||
+          agent.rollback_standby_restore_candidate_replacement_attempt_id ===
+            agent.rollback_standby_primary_replacement_attempt_id)) ||
       (!accepting &&
-        (agent.rollback_standby_restore_validation_id !== null ||
+        (agent.rollback_standby_verified_backup_id !== null ||
+          agent.rollback_standby_restore_validation_id !== null ||
           agent.rollback_standby_restore_validation_aggregate_sha256 !== null ||
           agent.rollback_standby_restore_candidate_provider_sandbox_id !== null ||
           agent.rollback_standby_restore_candidate_replacement_attempt_id !== null))
@@ -8030,19 +9402,10 @@ export class ElizaSandboxService {
   }): Promise<"accepted"> {
     const { agent, data, decisionJobId, onConvergedInTx } = params;
     this.assertStandbyDecisionIdentity(agent, data, ["retiring"]);
-    if (
-      agent.rollback_standby_decision_job_id !== decisionJobId ||
-      agent.rollback_standby_verified_backup_id !== data.verifiedBackupId ||
-      agent.rollback_standby_restore_validation_id !== data.restoreValidationId ||
-      agent.rollback_standby_restore_validation_aggregate_sha256 !==
-        data.restoreValidationAggregateSha256 ||
-      agent.rollback_standby_restore_candidate_provider_sandbox_id !==
-        data.restoreValidatedCandidateProviderSandboxId ||
-      agent.rollback_standby_restore_candidate_replacement_attempt_id !==
-        data.restoreValidatedCandidateReplacementAttemptId
-    ) {
+    if (agent.rollback_standby_decision_job_id !== decisionJobId) {
       throw new Error("Rollback standby acceptance audit changed");
     }
+    const acceptedAuthority = this.restoreAuthorityFromAgent(agent);
     const provider = await this.getProvider();
     if (!provider.stopOnSpecificNodeForReplacement) {
       throw new Error("Sandbox provider cannot prove the accepted standby absent");
@@ -8071,14 +9434,14 @@ export class ElizaSandboxService {
       this.assertStandbyDecisionIdentity(current, data, ["retiring"]);
       if (
         current.rollback_standby_decision_job_id !== decisionJobId ||
-        current.rollback_standby_verified_backup_id !== data.verifiedBackupId ||
-        current.rollback_standby_restore_validation_id !== data.restoreValidationId ||
+        current.rollback_standby_verified_backup_id !== acceptedAuthority.verifiedBackupId ||
+        current.rollback_standby_restore_validation_id !== acceptedAuthority.restoreValidationId ||
         current.rollback_standby_restore_validation_aggregate_sha256 !==
-          data.restoreValidationAggregateSha256 ||
+          acceptedAuthority.restoreValidationAggregateSha256 ||
         current.rollback_standby_restore_candidate_provider_sandbox_id !==
-          data.restoreValidatedCandidateProviderSandboxId ||
+          acceptedAuthority.restoreValidatedCandidateProviderSandboxId ||
         current.rollback_standby_restore_candidate_replacement_attempt_id !==
-          data.restoreValidatedCandidateReplacementAttemptId
+          acceptedAuthority.restoreValidatedCandidateReplacementAttemptId
       ) {
         throw new Error("Rollback standby acceptance fence changed after remote retirement");
       }
@@ -8097,19 +9460,25 @@ export class ElizaSandboxService {
             eq(agentSandboxes.rollback_standby_rollout_id, data.rolloutId),
             eq(agentSandboxes.rollback_standby_source_job_id, data.sourceJobId),
             eq(agentSandboxes.rollback_standby_decision_job_id, decisionJobId),
-            eq(agentSandboxes.rollback_standby_verified_backup_id, data.verifiedBackupId!),
-            eq(agentSandboxes.rollback_standby_restore_validation_id, data.restoreValidationId!),
+            eq(
+              agentSandboxes.rollback_standby_verified_backup_id,
+              acceptedAuthority.verifiedBackupId,
+            ),
+            eq(
+              agentSandboxes.rollback_standby_restore_validation_id,
+              acceptedAuthority.restoreValidationId,
+            ),
             eq(
               agentSandboxes.rollback_standby_restore_validation_aggregate_sha256,
-              data.restoreValidationAggregateSha256!,
+              acceptedAuthority.restoreValidationAggregateSha256,
             ),
             eq(
               agentSandboxes.rollback_standby_restore_candidate_provider_sandbox_id,
-              data.restoreValidatedCandidateProviderSandboxId!,
+              acceptedAuthority.restoreValidatedCandidateProviderSandboxId,
             ),
             eq(
               agentSandboxes.rollback_standby_restore_candidate_replacement_attempt_id,
-              data.restoreValidatedCandidateReplacementAttemptId!,
+              acceptedAuthority.restoreValidatedCandidateReplacementAttemptId,
             ),
             eq(agentSandboxes.user_id, data.targetOwnerUserId),
             eq(agentSandboxes.sandbox_id, current.rollback_standby_primary_sandbox_id!),
@@ -8137,6 +9506,27 @@ export class ElizaSandboxService {
       await onConvergedInTx(tx, "accepted");
     });
     return "accepted";
+  }
+
+  private restoreAuthorityFromAgent(agent: AgentSandbox): StoredRestoreAcceptanceAuthority {
+    if (
+      !agent.rollback_standby_verified_backup_id ||
+      !agent.rollback_standby_restore_validation_id ||
+      !agent.rollback_standby_restore_validation_aggregate_sha256 ||
+      !agent.rollback_standby_restore_candidate_provider_sandbox_id ||
+      !agent.rollback_standby_restore_candidate_replacement_attempt_id
+    ) {
+      throw new Error("Rollback standby acceptance authority is incomplete");
+    }
+    return {
+      verifiedBackupId: agent.rollback_standby_verified_backup_id,
+      restoreValidationId: agent.rollback_standby_restore_validation_id,
+      restoreValidationAggregateSha256: agent.rollback_standby_restore_validation_aggregate_sha256,
+      restoreValidatedCandidateProviderSandboxId:
+        agent.rollback_standby_restore_candidate_provider_sandbox_id,
+      restoreValidatedCandidateReplacementAttemptId:
+        agent.rollback_standby_restore_candidate_replacement_attempt_id,
+    };
   }
 
   private async rollbackToExactStandby(params: {
@@ -8400,41 +9790,40 @@ export class ElizaSandboxService {
           );
           if (!current) throw new Error("Agent disappeared during standby acceptance");
           this.assertStandbyDecisionIdentity(current, params.data, ["paused"]);
+          if (current.rollback_standby_decision_job_id !== null) {
+            throw new Error("Rollback standby already has a decision owner");
+          }
+          const authority =
+            await this.verifiedRestorePointReader.readVerifiedV2CandidateRestoreInTx(tx, {
+              sourceJobId: params.data.sourceJobId,
+              standbyGeneration: params.data.standbyGeneration,
+              rolloutId: params.data.rolloutId,
+              organizationId: params.data.organizationId,
+              sandboxRecordId: params.data.agentId,
+              agentId: params.data.agentId,
+              targetOwnerUserId: params.data.targetOwnerUserId,
+              targetImage: params.data.targetImage,
+              targetDigest: params.data.targetDigest,
+            });
           if (
-            current.rollback_standby_decision_job_id !== null ||
-            params.data.restoreValidatedCandidateReplacementAttemptId ===
-              current.rollback_standby_primary_replacement_attempt_id
+            authority.restoreValidatedCandidateReplacementAttemptId ===
+            current.rollback_standby_primary_replacement_attempt_id
           ) {
             throw new Error("Restore validation candidate is not a distinct replacement attempt");
           }
-          await this.verifiedRestorePointReader.assertVerifiedV2CandidateRestoreInTx(tx, {
-            backupId: params.data.verifiedBackupId!,
-            restoreValidationId: params.data.restoreValidationId!,
-            restoreValidationAggregateSha256: params.data.restoreValidationAggregateSha256!,
-            restoreValidatedCandidateProviderSandboxId:
-              params.data.restoreValidatedCandidateProviderSandboxId!,
-            restoreValidatedCandidateReplacementAttemptId:
-              params.data.restoreValidatedCandidateReplacementAttemptId!,
-            organizationId: params.data.organizationId,
-            sandboxRecordId: params.data.agentId,
-            agentId: params.data.agentId,
-            targetOwnerUserId: params.data.targetOwnerUserId,
-            targetImage: params.data.targetImage,
-            targetDigest: params.data.targetDigest,
-          });
           const [updated] = await tx
             .update(agentSandboxes)
             .set({
               rollback_standby_state: "retiring",
               rollback_standby_decision_job_id: params.decisionJobId,
-              rollback_standby_verified_backup_id: params.data.verifiedBackupId,
-              rollback_standby_restore_validation_id: params.data.restoreValidationId,
+              rollback_standby_verified_backup_id: authority.verifiedBackupId,
+              rollback_standby_restore_validation_id: authority.restoreValidationId,
               rollback_standby_restore_validation_aggregate_sha256:
-                params.data.restoreValidationAggregateSha256,
+                authority.restoreValidationAggregateSha256,
               rollback_standby_restore_candidate_provider_sandbox_id:
-                params.data.restoreValidatedCandidateProviderSandboxId,
+                authority.restoreValidatedCandidateProviderSandboxId,
               rollback_standby_restore_candidate_replacement_attempt_id:
-                params.data.restoreValidatedCandidateReplacementAttemptId,
+                authority.restoreValidatedCandidateReplacementAttemptId,
               updated_at: new Date(),
             })
             .where(
@@ -8704,6 +10093,10 @@ export class ElizaSandboxService {
         ...applyManagedAgentInferenceEnvDefaults(upgradeEnv),
       },
       dockerImage: digestPinnedImageRef(dockerImage, toDigest),
+      snapshotSourceAttestation: {
+        environmentRevision: sourceEnvironmentRevision,
+        imageDigest: toDigest,
+      },
       excludeNodeId: oldNodeId,
       // Preserve the LIVE Headscale node during the overlap (#16565): the
       // provider records its id as metadata.previousVpnNodeId; it is deleted

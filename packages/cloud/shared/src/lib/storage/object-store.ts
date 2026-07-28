@@ -6,7 +6,12 @@
  * it to one process-sized string. Runtime R2 and S3-compatible storage expose
  * the same fail-closed interface to callers.
  */
-import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
+import {
+  DeleteObjectCommand,
+  DeleteObjectsCommand,
+  GetObjectCommand,
+  PutObjectCommand,
+} from "@aws-sdk/client-s3";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import type { ObjectNamespace } from "./object-namespace";
 import { getRuntimeR2Bucket, runtimeR2BucketConfigured } from "./r2-runtime-binding";
@@ -18,6 +23,21 @@ export interface OffloadedField<T> {
   value: T | null;
   storage: ObjectStorageMode;
   key: string | null;
+}
+
+/**
+ * A dispatched object write failed without proving whether the provider
+ * committed it. Callers must retain their durable epoch/key fence and reconcile
+ * repeatedly; a single immediate DELETE is not proof against a late commit.
+ */
+export class ObjectWriteOutcomeUnknownError extends Error {
+  readonly objectKey: string;
+
+  constructor(objectKey: string, cause: unknown) {
+    super(`Object write outcome is unknown for ${objectKey}`, { cause });
+    this.name = "ObjectWriteOutcomeUnknownError";
+    this.objectKey = objectKey;
+  }
 }
 
 function heavyPayloadBucket(): string | null {
@@ -159,13 +179,25 @@ export async function putObjectBytes(params: {
   createdAt: Date;
   body: Uint8Array;
   contentType: string;
+  signal: AbortSignal;
 }): Promise<string> {
   const key = buildObjectKey({ ...params, extension: "bin" });
+  if (params.signal.aborted) throw abortReason(params.signal);
   const runtimeBucket = getRuntimeR2Bucket();
   if (runtimeBucket) {
-    await runtimeBucket.put(key, params.body, {
-      httpMetadata: { contentType: params.contentType },
-    });
+    // Runtime R2 exposes no cancellation primitive. The caller records the
+    // exact epoch/key before dispatch, so a watchdog may stop waiting while
+    // retaining that epoch for repeated cleanup of any late commit.
+    try {
+      await raceWithAbort(
+        runtimeBucket.put(key, params.body, {
+          httpMetadata: { contentType: params.contentType },
+        }),
+        params.signal,
+      );
+    } catch (error) {
+      throw new ObjectWriteOutcomeUnknownError(key, error);
+    }
     return key;
   }
 
@@ -175,14 +207,22 @@ export async function putObjectBytes(params: {
     throw new Error("Object storage requested but client or bucket is not configured");
   }
 
-  await client.send(
-    new PutObjectCommand({
-      Bucket: bucket,
-      Key: key,
-      Body: params.body,
-      ContentType: params.contentType,
-    }),
-  );
+  try {
+    await raceWithAbort(
+      client.send(
+        new PutObjectCommand({
+          Bucket: bucket,
+          Key: key,
+          Body: params.body,
+          ContentType: params.contentType,
+        }),
+        { abortSignal: params.signal },
+      ),
+      params.signal,
+    );
+  } catch (error) {
+    throw new ObjectWriteOutcomeUnknownError(key, error);
+  }
   return key;
 }
 
@@ -212,16 +252,24 @@ function assertStoredByteLength(key: string, value: unknown, maxBytes: number): 
 }
 
 function abortReason(signal: AbortSignal): Error {
-  return signal.reason instanceof Error ? signal.reason : new Error("Object byte read was aborted");
+  return signal.reason instanceof Error
+    ? signal.reason
+    : new Error("Object storage operation aborted");
 }
 
 function raceWithAbort<T>(operation: PromiseLike<T>, signal?: AbortSignal): Promise<T> {
-  if (!signal) return Promise.resolve(operation);
-  if (signal.aborted) return Promise.reject(abortReason(signal));
+  const promise = Promise.resolve(operation);
+  if (!signal) return promise;
+  if (signal.aborted) {
+    // error-policy:J5 the caller observes the primary abort; this observes only
+    // a late rejection from work that was already dispatched.
+    void promise.catch(() => undefined);
+    return Promise.reject(abortReason(signal));
+  }
   return new Promise<T>((resolve, reject) => {
     const onAbort = (): void => reject(abortReason(signal));
     signal.addEventListener("abort", onAbort, { once: true });
-    Promise.resolve(operation).then(
+    promise.then(
       (value) => {
         signal.removeEventListener("abort", onAbort);
         resolve(value);
@@ -289,6 +337,59 @@ export async function deleteObject(key: string): Promise<void> {
     throw new Error("Object storage delete requested but client or bucket is not configured");
   }
   await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
+}
+
+const MAX_EXACT_DELETE_KEYS = 1_000;
+
+/**
+ * Deletes one bounded page of exact object keys without listing a prefix.
+ * Callers own durable retry state; a rejected or partial provider response
+ * leaves that state unchanged so replaying the same page is safe.
+ */
+export async function deleteObjectsExact(
+  keys: readonly string[],
+  signal?: AbortSignal,
+): Promise<void> {
+  if (keys.length < 1 || keys.length > MAX_EXACT_DELETE_KEYS) {
+    throw new Error(`Exact object deletion requires between 1 and ${MAX_EXACT_DELETE_KEYS} keys`);
+  }
+  if (keys.some((key) => key.length === 0)) {
+    throw new Error("Exact object deletion requires non-empty keys");
+  }
+  if (signal?.aborted) throw abortReason(signal);
+
+  const runtimeBucket = getRuntimeR2Bucket();
+  if (runtimeBucket) {
+    // DELETE is idempotent, so an abort may stop waiting even though native R2
+    // has no cancellation parameter. The unchanged durable row safely replays
+    // the exact keys regardless of the late provider outcome.
+    await raceWithAbort(runtimeBucket.delete([...keys]), signal);
+    return;
+  }
+
+  const bucket = heavyPayloadBucket();
+  const client = getObjectStorageClient();
+  if (!bucket || !client) {
+    throw new Error("Object storage delete requested but client or bucket is not configured");
+  }
+  const result = await raceWithAbort(
+    client.send(
+      new DeleteObjectsCommand({
+        Bucket: bucket,
+        Delete: {
+          Objects: keys.map((Key) => ({ Key })),
+          Quiet: true,
+        },
+      }),
+      signal ? { abortSignal: signal } : undefined,
+    ),
+    signal,
+  );
+  if ((result.Errors?.length ?? 0) > 0) {
+    throw new Error(
+      `Exact object deletion returned ${result.Errors?.length ?? 0} per-key failures`,
+    );
+  }
 }
 
 export async function offloadTextField(params: {

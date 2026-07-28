@@ -1,6 +1,7 @@
 // Handles v1 cloud API v1 cron agent backups route traffic with route-local auth expectations.
 import { Hono } from "hono";
 import { verifyCronSecret } from "@/lib/auth/cron";
+import { agentBackupV2StorageService } from "@/lib/services/agent-backup-v2-storage";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
@@ -21,6 +22,12 @@ import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
  * is a cheap, capped DB write (no container control-plane hop), so it shares
  * this cron rather than carrying its own schedule. Without a caller the
  * recovery sweep never runs and `deletion_failed` rows leak forever.
+ *
+ * The same tick reconciles at most one live backup row and one deleted-sandbox
+ * cleanup intent. Each row has at most 5,632 exact keys, deleted in six native
+ * object-store batches; the fixed deadline and batch cap keep this maintenance
+ * below Worker subrequest and wall-time limits without weakening durable
+ * write-epoch fences.
  *
  * Tunables via query string: `?intervalMs=<n>&max=<n>` (snapshots),
  * `?deletionMinAgeMs=<n>&deletionMax=<n>` (deletion recovery).
@@ -65,11 +72,47 @@ async function handle(c: AppContext, env?: AppEnv["Bindings"]) {
     });
   }
 
+  let storageReconciliation: Awaited<
+    ReturnType<typeof agentBackupV2StorageService.reconcileIncomplete>
+  > | null = null;
+  const reconciliationDeadline = new AbortController();
+  const reconciliationTimer = setTimeout(
+    () =>
+      reconciliationDeadline.abort(
+        new Error(
+          "Agent backup object reconciliation exceeded its 25-second deadline",
+        ),
+      ),
+    25_000,
+  );
+  try {
+    storageReconciliation =
+      await agentBackupV2StorageService.reconcileIncomplete({
+        before: new Date(Date.now() - 15 * 60 * 1_000),
+        limit: 1,
+        signal: reconciliationDeadline.signal,
+      });
+  } catch (error) {
+    // error-policy:J7 exact keys and database rows remain durable for the next
+    // cron tick; a failed cleanup must not mask the primary backup enqueue.
+    logger.error("[Agent Backups] object reconciliation failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  } finally {
+    clearTimeout(reconciliationTimer);
+  }
+
   logger.info("[Agent Backups] Scheduled backup sweep complete", {
     ...result,
     deletionRecovery,
+    storageReconciliation,
   });
-  return c.json({ success: true, ...result, deletionRecovery });
+  return c.json({
+    success: true,
+    ...result,
+    deletionRecovery,
+    storageReconciliation,
+  });
 }
 
 const __hono_app = new Hono<AppEnv>();

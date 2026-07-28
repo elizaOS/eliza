@@ -64,6 +64,7 @@ import {
   setEnvIfMissing,
 } from "./provider-model-defaults.ts";
 import { shouldLoadRemoteCodingRunnerForBoot } from "./remote-coding-runner-gate.ts";
+import { assertNormalRuntimeBootMode } from "./restore-validation-mode.ts";
 import {
   buildRuntimeSettingsProjection,
   type RuntimeSettingsProjectionOptions,
@@ -3652,6 +3653,7 @@ export const logToChatListener = (entry: LogEntry) => {
 export async function startEliza(
   opts?: StartElizaOptions,
 ): Promise<AgentRuntime | undefined> {
+  assertNormalRuntimeBootMode();
   const bootTimer = new BootTimer("[eliza-boot]");
   // Record the (re)start at the START of boot so a restart storm — where boots
   // never complete — is still countable via /api/dev/boot-history. void: never

@@ -251,25 +251,6 @@ export class AdminAgentImageRolloutService {
       requestId: input.requestId,
       sourceJobId: sourceJob.id,
       decision: input.decision,
-      ...(input.verifiedBackupId ? { verifiedBackupId: input.verifiedBackupId } : {}),
-      ...(input.restoreValidationId ? { restoreValidationId: input.restoreValidationId } : {}),
-      ...(input.restoreValidationAggregateSha256
-        ? {
-            restoreValidationAggregateSha256: input.restoreValidationAggregateSha256,
-          }
-        : {}),
-      ...(input.restoreValidatedCandidateProviderSandboxId
-        ? {
-            restoreValidatedCandidateProviderSandboxId:
-              input.restoreValidatedCandidateProviderSandboxId,
-          }
-        : {}),
-      ...(input.restoreValidatedCandidateReplacementAttemptId
-        ? {
-            restoreValidatedCandidateReplacementAttemptId:
-              input.restoreValidatedCandidateReplacementAttemptId,
-          }
-        : {}),
       standbyGeneration,
       rolloutId: sourceData.rolloutId,
       actorUserId,

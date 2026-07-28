@@ -11,12 +11,14 @@ import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 // afterAll so these stubs never leak into sibling files.
 import * as realContainersRepo from "../../../../db/repositories/containers";
 import * as realDockerNodesRepo from "../../../../db/repositories/docker-nodes";
+import * as realDockerPortAllocation from "../../docker-port-allocation";
 import * as realDockerSsh from "../../docker-ssh";
 import * as realHetznerVolumes from "../hetzner-volumes";
 import * as realMetadata from "./metadata";
 
 const realContainersRepoSnap = { ...realContainersRepo };
 const realDockerNodesRepoSnap = { ...realDockerNodesRepo };
+const realDockerPortAllocationSnap = { ...realDockerPortAllocation };
 const realHetznerVolumesSnap = { ...realHetznerVolumes };
 const realDockerSshSnap = { ...realDockerSsh };
 const realMetadataSnap = { ...realMetadata };
@@ -34,6 +36,7 @@ const execMock = mock(async (_cmd: string, _timeout?: number): Promise<string> =
 const fakeSsh = { exec: execMock, execStream: mock(async () => {}) };
 const getClient = mock(() => fakeSsh);
 const findByNodeId = mock(async (_id: string): Promise<unknown> => null);
+const releaseDockerHostPortReservations = mock(async (): Promise<number> => 1);
 
 mock.module("../../../../db/repositories/containers", () => ({
   ...realContainersRepo,
@@ -67,6 +70,11 @@ mock.module("../../docker-ssh", () => ({
   DockerSSHClient: { getClient },
 }));
 
+mock.module("../../docker-port-allocation", () => ({
+  ...realDockerPortAllocation,
+  releaseDockerHostPortReservations,
+}));
+
 mock.module("./metadata", () => ({
   ...realMetadata,
   readMetadata,
@@ -89,6 +97,7 @@ const ROW = { id: "ct1", organization_id: "org1", hcloud_volume_id: null };
 afterAll(() => {
   mock.module("../../../../db/repositories/containers", () => realContainersRepoSnap);
   mock.module("../../../../db/repositories/docker-nodes", () => realDockerNodesRepoSnap);
+  mock.module("../../docker-port-allocation", () => realDockerPortAllocationSnap);
   mock.module("../hetzner-volumes", () => realHetznerVolumesSnap);
   mock.module("../../docker-ssh", () => realDockerSshSnap);
   mock.module("./metadata", () => realMetadataSnap);
@@ -106,6 +115,7 @@ beforeEach(() => {
     execMock,
     getClient,
     findByNodeId,
+    releaseDockerHostPortReservations,
   ]) {
     m.mockReset();
   }
@@ -119,6 +129,7 @@ beforeEach(() => {
   execMock.mockResolvedValue("");
   getClient.mockReturnValue(fakeSsh);
   findByNodeId.mockResolvedValue(null);
+  releaseDockerHostPortReservations.mockResolvedValue(1);
 });
 
 describe("deleteContainer — fail-closed host teardown", () => {
@@ -128,6 +139,11 @@ describe("deleteContainer — fail-closed host teardown", () => {
 
     const cmds = execMock.mock.calls.map((c) => c[0]);
     expect(cmds.some((c) => c.includes("docker rm -f"))).toBe(true);
+    expect(releaseDockerHostPortReservations).toHaveBeenCalledWith({
+      nodeId: "node-1",
+      ownerKind: "app",
+      ownerId: "app-ct1",
+    });
     expect(deleteRow).toHaveBeenCalledTimes(1);
     expect(deleteRow.mock.calls[0]).toEqual(["ct1", "org1"]);
   });

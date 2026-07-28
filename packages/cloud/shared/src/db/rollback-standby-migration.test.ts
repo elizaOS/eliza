@@ -19,7 +19,7 @@ const BLUE_ATTEMPT_ID = "00000000-0000-4000-8000-000000317183";
 const DECISION_JOB_ID = "00000000-0000-4000-8000-000000417183";
 const BACKUP_ID = "00000000-0000-4000-8000-000000517183";
 const RESTORE_AGGREGATE_SHA256 = "c".repeat(64);
-const migrationUrl = new URL("./migrations/0184_rollback_standby_state.sql", import.meta.url);
+const migrationUrl = new URL("./migrations/0186_rollback_standby_state.sql", import.meta.url);
 
 let dbWrite: typeof import("./client").dbWrite;
 let closeDb: typeof import("./client").closeDatabaseConnectionsForTests | undefined;
@@ -123,7 +123,7 @@ describe("0184 rollback standby state", () => {
       ),
     ) as { entries: Array<{ tag: string }> };
     expect(
-      journal.entries.filter((entry) => entry.tag === "0184_rollback_standby_state"),
+      journal.entries.filter((entry) => entry.tag === "0186_rollback_standby_state"),
     ).toHaveLength(1);
   });
 
