@@ -13,12 +13,21 @@ set -uo pipefail
 
 log() { printf '[eliza-runner-cleanup] %s\n' "$1"; }
 
+# The runner exports only ACTIONS_RUNNER_HOOK_JOB_COMPLETED, so read the config
+# the installer wrote rather than hoping it is in the inherited environment —
+# without this the hook took its skip branch on every job and pruned nothing.
+CLEANUP_ENV="${ELIZA_CLEANUP_ENV:-/opt/eliza-runner-workspace-cleanup/cleanup.env}"
+if [[ -r "$CLEANUP_ENV" ]]; then
+  # shellcheck disable=SC1090
+  . "$CLEANUP_ENV"
+fi
+
 BUN="${BUN_BIN:-}"
 TOOL="${PRUNE_TOOL:-}"
 MIN_AGE_HOURS="${PRUNE_MIN_AGE_HOURS:-6}"
 
 if [[ -z "$BUN" || -z "$TOOL" ]]; then
-  log "BUN_BIN/PRUNE_TOOL not set — skipping cleanup"
+  log "no cleanup config at $CLEANUP_ENV and BUN_BIN/PRUNE_TOOL unset — skipping"
   exit 0
 fi
 
@@ -37,8 +46,15 @@ if [[ -z "$runner_dir" || ! -d "$runner_dir/_work" ]]; then
   exit 0
 fi
 
+# `--allow-active` is REQUIRED here, and it is not a weakening. The tool's guard
+# greps the HOST for any `Runner.Worker`, and this hook is executed BY the
+# Runner.Worker of the job that just finished — so the guard would always see
+# itself and refuse, leaving the hook a permanent no-op. Safety comes from scope
+# instead: `--root` is this runner's own directory (never a sibling's), this
+# runner is between jobs by construction while its own hook runs, and
+# `--min-age-hours` still spares the workspace the job just used.
 log "pruning stale workspaces in $runner_dir (min age ${MIN_AGE_HOURS}h)"
-if ! "$BUN" "$TOOL" --root "$runner_dir" --min-age-hours "$MIN_AGE_HOURS"; then
+if ! "$BUN" "$TOOL" --root "$runner_dir" --min-age-hours "$MIN_AGE_HOURS" --allow-active; then
   log "prune failed — leaving the workspace as-is; the idle timer will retry"
 fi
 exit 0

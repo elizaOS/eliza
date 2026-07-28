@@ -55,13 +55,22 @@ if grep -RE "__(BUN|TOOL|HELPER|ENV_FILE|RUNNER_ROOT|MIN_AGE_HOURS)__" "$UNIT_DI
   fail "unresolved template tokens remain"
 fi
 
+# The tool path travels by ENV, never as argv[1]: `bun -e '<code>' <path> …`
+# puts <path> in process.argv[1], which makes the tool's own isMainModule()
+# true, so importing it to inspect the parser would RUN main() — a real prune
+# from inside a supposedly read-only assertion. The `--` separator keeps bun
+# from claiming a leading `--root` as its own flag.
+parse_args() {
+  ELIZA_PRUNE_TOOL_SRC="$TOOL_SRC" "$BUN_BIN" -e '
+    const { parseRunnerWorkspacePruneArgs } = await import(process.env.ELIZA_PRUNE_TOOL_SRC);
+    const args = parseRunnerWorkspacePruneArgs(process.argv.slice(1), {});
+    console.log(JSON.stringify({ minAgeHours: args.minAgeHours, allowActive: args.allowActive }));
+  ' -- "$@"
+}
+
 # 2. BEHAVIORAL: the arguments the helper actually passes must parse to the
 #    intended config in the REAL tool. This is what the string-compare missed.
-parsed="$("$BUN_BIN" -e '
-  const { parseRunnerWorkspacePruneArgs } = await import(process.argv[1]);
-  const args = parseRunnerWorkspacePruneArgs(process.argv.slice(2), {});
-  console.log(JSON.stringify({ minAgeHours: args.minAgeHours, allowActive: args.allowActive }));
-' "$TOOL_SRC" --root "$RUNNER_ROOT" --min-age-hours "$MIN_AGE_HOURS" 2>&1)" \
+parsed="$(parse_args --root "$RUNNER_ROOT" --min-age-hours "$MIN_AGE_HOURS" 2>&1)" \
   || fail "the tool rejected the arguments the helper passes: $parsed"
 
 echo "$parsed" | grep -q "\"minAgeHours\":$MIN_AGE_HOURS" \
@@ -71,10 +80,7 @@ echo "$parsed" | grep -q '"allowActive":false' \
 
 # 3. BEHAVIORAL: an unknown/renamed flag must be REJECTED, not ignored — the
 #    property whose absence let `--min-age` look configured while doing nothing.
-if "$BUN_BIN" -e '
-  const { parseRunnerWorkspacePruneArgs } = await import(process.argv[1]);
-  parseRunnerWorkspacePruneArgs(process.argv.slice(2), {});
-' "$TOOL_SRC" --root "$RUNNER_ROOT" --min-age 19 >/dev/null 2>&1; then
+if parse_args --root "$RUNNER_ROOT" --min-age 19 >/dev/null 2>&1; then
   fail "the tool silently accepted an unknown flag (--min-age); it must reject it"
 fi
 
@@ -112,7 +118,12 @@ node -e '
   fs.utimesSync(process.argv[1], when, when);
 ' "$RUNNER_ROOT/runner-1/_work/stale-repo"
 
-"$BUN_BIN" "$TOOL_SRC" --root "$RUNNER_ROOT" --min-age-hours 6 >/dev/null \
+# `--allow-active` only because this assertion runs INSIDE a CI job, which is
+# itself a live `Runner.Worker` the tool's host-global guard would refuse on —
+# and `$RUNNER_ROOT` here is a mktemp tree, not a real runner root. The guard
+# itself stays covered: check 4 above independently asserts the shipped unit
+# never passes this flag.
+"$BUN_BIN" "$TOOL_SRC" --root "$RUNNER_ROOT" --min-age-hours 6 --allow-active >/dev/null \
   || fail "prune run failed against the temporary runner tree"
 
 test ! -e "$RUNNER_ROOT/runner-1/_work/stale-repo" || fail "stale checkout was not reclaimed"
