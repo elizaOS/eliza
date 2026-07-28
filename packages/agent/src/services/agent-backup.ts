@@ -156,10 +156,13 @@ export class AgentSnapshotBudgetExceededError extends Error {
  * first byte past the line instead of after everything is resident. `reserve`
  * exists for the pre-allocation case: a file entry transiently costs ~2.33x its
  * size (Buffer + base64 string), so the refusal has to happen from `stat` before
- * the read, not after.
+ * the read, not after — and the reservation HOLDS that capacity until the entry
+ * is charged or released, so concurrent captures cannot all pass the same check
+ * and then collectively allocate past the limit.
  */
-class SnapshotBudget {
-  private rawBytes = 0;
+export class SnapshotBudget {
+  private chargedBytes = 0;
+  private reservedBytes = 0;
   private fileCount = 0;
 
   constructor(
@@ -173,11 +176,17 @@ class SnapshotBudget {
     this.signal?.throwIfAborted();
   }
 
-  /** Refuse a not-yet-read payload from its declared size, before allocating. */
-  reserve(declaredBytes: number): void {
+  /**
+   * Hold capacity for a not-yet-read payload from its declared size. Refuses
+   * before anything is allocated, counting capacity other in-flight holds have
+   * already claimed. The returned token must be settled exactly once: `commit`
+   * converts the hold into a charged file entry, `release` frees it.
+   */
+  reserve(declaredBytes: number): SnapshotReservation {
     this.check();
-    // base64 is the wire form, so charge what the entry will actually cost.
-    const projected = this.rawBytes + base64Length(declaredBytes);
+    // base64 is the wire form, so hold what the entry will actually cost.
+    const holdBytes = base64Length(declaredBytes);
+    const projected = this.chargedBytes + this.reservedBytes + holdBytes;
     if (projected > this.maxRawBytes) {
       throw new AgentSnapshotBudgetExceededError(
         "file capture",
@@ -185,9 +194,32 @@ class SnapshotBudget {
         this.maxRawBytes,
       );
     }
+    this.reservedBytes += holdBytes;
+
+    let settled = false;
+    const releaseHold = () => {
+      if (settled) return false;
+      settled = true;
+      this.reservedBytes -= holdBytes;
+      return true;
+    };
+    return {
+      commit: (actualBase64Bytes: number) => {
+        if (!releaseHold()) return;
+        this.chargeFileEntry(actualBase64Bytes);
+      },
+      release: () => {
+        releaseHold();
+      },
+    };
   }
 
-  chargeFile(base64Bytes: number): void {
+  chargeRaw(bytes: number, stage: string): void {
+    this.check();
+    this.charge(bytes, stage);
+  }
+
+  private chargeFileEntry(base64Bytes: number): void {
     this.check();
     this.fileCount += 1;
     if (this.fileCount > this.maxFiles) {
@@ -200,21 +232,24 @@ class SnapshotBudget {
     this.charge(base64Bytes, "file capture");
   }
 
-  chargeRaw(bytes: number, stage: string): void {
-    this.check();
-    this.charge(bytes, stage);
-  }
-
   private charge(bytes: number, stage: string): void {
-    this.rawBytes += bytes;
-    if (this.rawBytes > this.maxRawBytes) {
+    this.chargedBytes += bytes;
+    if (this.chargedBytes + this.reservedBytes > this.maxRawBytes) {
       throw new AgentSnapshotBudgetExceededError(
         stage,
-        this.rawBytes,
+        this.chargedBytes + this.reservedBytes,
         this.maxRawBytes,
       );
     }
   }
+}
+
+/** Settle-once token returned by {@link SnapshotBudget.reserve}. */
+export interface SnapshotReservation {
+  /** Convert the hold into a charged file entry at its actual encoded size. */
+  commit(actualBase64Bytes: number): void;
+  /** Free the hold without charging (the payload was never materialized). */
+  release(): void;
 }
 
 /** Encoded length of `n` raw bytes in base64 (4 chars per 3 bytes, padded). */
@@ -402,12 +437,20 @@ async function readFileEntry(
   const stat = await fs.stat(absolutePath);
   // Refuse from the declared size BEFORE reading: the entry transiently costs
   // ~2.33x its bytes (Buffer + base64 string), so charging after the read is
-  // charging after the damage.
-  budget?.reserve(stat.size);
-  const bytes = await fs.readFile(absolutePath);
+  // charging after the damage. The hold stays claimed until the actual encoded
+  // size is committed, so concurrent siblings see it.
+  const hold = budget?.reserve(stat.size);
+  let bytes: Buffer;
+  let bytesBase64: string;
+  try {
+    bytes = await fs.readFile(absolutePath);
+    bytesBase64 = bytes.toString("base64");
+  } catch (error) {
+    hold?.release();
+    throw error;
+  }
   const relative = normalizeRelativePath(path.relative(root, absolutePath));
-  const bytesBase64 = bytes.toString("base64");
-  budget?.chargeFile(bytesBase64.length);
+  hold?.commit(bytesBase64.length);
   return {
     path: relative,
     sha256: sha256Bytes(bytes),
@@ -637,13 +680,17 @@ function getTableColumnsBucket(
  * Read an agent-scoped table in keyset batches, charging the budget per batch.
  *
  * Keyset (`id > $last ORDER BY id LIMIT n`) rather than OFFSET: OFFSET re-scans
- * from the start on every page, and a snapshot taken while the agent is live
- * would also skip or duplicate rows as they shift. Ordering on the primary key
- * makes each batch disjoint and the walk resumable.
+ * from the start on every page and skips or duplicates rows as they shift under
+ * a live agent. Ordering on the primary key makes each batch disjoint and the
+ * walk resumable.
  *
- * The budget is charged after each batch, so an oversized table stops the
- * capture partway instead of being fully materialized first — the peak is one
- * batch, not the table.
+ * What this bounds is MEMORY — the peak is one batch, not the table, and the
+ * budget is charged after each batch so an oversized table stops the capture
+ * partway. What it does NOT provide is transactional consistency: each batch
+ * runs as its own statement against its own MVCC snapshot, so rows committed
+ * mid-walk may or may not appear, and cross-table capture points differ. A
+ * capture of a live agent is a best-effort walk, not a frozen snapshot; the
+ * lifecycle call sites that need a consistent image quiesce the agent first.
  */
 export async function fetchAgentScopedRowsBatched(
   pool: {
@@ -837,16 +884,19 @@ function withPgliteDumpHash(
 
 function isBlobLike(value: unknown): value is {
   arrayBuffer: () => Promise<ArrayBuffer>;
+  size: number;
 } {
   return (
     value !== null &&
     typeof value === "object" &&
-    typeof (value as { arrayBuffer?: unknown }).arrayBuffer === "function"
+    typeof (value as { arrayBuffer?: unknown }).arrayBuffer === "function" &&
+    typeof (value as { size?: unknown }).size === "number"
   );
 }
 
 async function capturePgliteDump(
   runtime: IAgentRuntime | AgentRuntime,
+  budget?: SnapshotBudget,
 ): Promise<AgentBackupPgliteDump | null> {
   const raw = (
     runtime.adapter as
@@ -869,11 +919,23 @@ async function capturePgliteDump(
   if (!isBlobLike(dump)) {
     throw new Error("PGlite dumpDataDir() did not return a Blob/File");
   }
-  const bytes = Buffer.from(await dump.arrayBuffer());
+  // Refuse from Blob.size BEFORE arrayBuffer(): the dump would otherwise be
+  // resident three times over (ArrayBuffer + Buffer + base64) with the budget
+  // none the wiser.
+  const hold = budget?.reserve(dump.size);
+  let file: AgentBackupFileEntry;
+  try {
+    const bytes = Buffer.from(await dump.arrayBuffer());
+    file = fileEntryFromBytes(PGLITE_DUMP_PATH, bytes);
+  } catch (error) {
+    hold?.release();
+    throw error;
+  }
+  hold?.commit(file.bytesBase64.length);
   return withPgliteDumpHash({
     kind: "pglite-dump",
     compression: "gzip",
-    file: fileEntryFromBytes(PGLITE_DUMP_PATH, bytes),
+    file,
     sha256: "",
   });
 }
@@ -902,7 +964,7 @@ async function captureDatabaseComponent(
     return { kind: "none", reason, sha256: sha256Json({ reason }) };
   }
 
-  const pgliteDump = await capturePgliteDump(runtime);
+  const pgliteDump = await capturePgliteDump(runtime, budget);
   if (pgliteDump) {
     return {
       kind: "pglite-dump",
@@ -915,6 +977,7 @@ async function captureDatabaseComponent(
     root: pgliteDir,
     rootLabel: "pglite-dir",
     include: pgliteFileInclude,
+    budget,
   });
   return {
     kind: "pglite-files",
@@ -925,10 +988,11 @@ async function captureDatabaseComponent(
 
 async function captureCharacterComponent(
   runtime: IAgentRuntime | AgentRuntime,
+  budget?: SnapshotBudget,
 ): Promise<AgentBackupManifest["components"]["character"]> {
   const configPath = resolveConfigPath();
   const configFile = (await pathExists(configPath))
-    ? await readFileEntry(path.dirname(configPath), configPath)
+    ? await readFileEntry(path.dirname(configPath), configPath, budget)
     : undefined;
   const component = {
     runtimeCharacter: runtime.character ?? null,
@@ -954,10 +1018,19 @@ export async function createAgentSnapshot(
   // Bound what THIS process materializes. Without it the five captures below
   // run concurrently with no size awareness at all, and the downstream Cloud
   // check only ever sees a payload this heap already paid for (#17172 §1).
+  //
+  // The internal controller exists so a refusal in ONE component stops the
+  // OTHERS: siblings poll `budget.check()` between units of work, and a plain
+  // Promise.all rejection would leave them reading and encoding at full speed
+  // until they finish on their own.
+  const controller = new AbortController();
+  const signal = options?.signal
+    ? AbortSignal.any([options.signal, controller.signal])
+    : controller.signal;
   const budget = new SnapshotBudget(
     options?.maxRawBytes ?? MAX_RESTORABLE_AGENT_BACKUP_BYTES,
     options?.maxFiles ?? DEFAULT_SNAPSHOT_MAX_FILES,
-    options?.signal,
+    signal,
   );
   const stateDir = resolveStateDir();
   const pgliteDirForStateFiles = hasPostgresUrl(runtime)
@@ -967,27 +1040,56 @@ export async function createAgentSnapshot(
     stateDir,
     pgliteDirForStateFiles,
   );
-  const [database, media, vault, character, stateFiles] = await Promise.all([
-    captureDatabaseComponent(runtime, budget),
-    collectFileSet({
-      root: path.join(stateDir, MEDIA_DIR_NAME),
-      rootLabel: "state-dir",
-      budget,
-    }),
-    collectFileSet({
-      root: stateDir,
-      rootLabel: "state-dir",
-      include: vaultFileInclude,
-      budget,
-    }),
-    captureCharacterComponent(runtime),
-    collectFileSet({
-      root: stateDir,
-      rootLabel: "state-dir",
-      include: stateFileInclude,
-      budget,
-    }),
-  ]);
+  // First failure aborts the shared signal, then allSettled drains the
+  // siblings — the failure surfaces once, with no unhandled rejections from
+  // captures that were cancelled mid-flight.
+  let firstFailure: unknown;
+  let failed = false;
+  const guarded = async <T>(work: Promise<T>): Promise<T> => {
+    try {
+      return await work;
+    } catch (error) {
+      if (!failed) {
+        failed = true;
+        firstFailure = error;
+        controller.abort(error);
+      }
+      throw error;
+    }
+  };
+  const captures = [
+    guarded(captureDatabaseComponent(runtime, budget)),
+    guarded(
+      collectFileSet({
+        root: path.join(stateDir, MEDIA_DIR_NAME),
+        rootLabel: "state-dir",
+        budget,
+      }),
+    ),
+    guarded(
+      collectFileSet({
+        root: stateDir,
+        rootLabel: "state-dir",
+        include: vaultFileInclude,
+        budget,
+      }),
+    ),
+    guarded(captureCharacterComponent(runtime, budget)),
+    guarded(
+      collectFileSet({
+        root: stateDir,
+        rootLabel: "state-dir",
+        include: stateFileInclude,
+        budget,
+      }),
+    ),
+  ] as const;
+  await Promise.allSettled(captures);
+  if (failed) throw firstFailure;
+  // Everything settled fulfilled (a rejection would have set `failed`), so
+  // this resolves immediately with full inference.
+  const [database, media, vault, character, stateFiles] =
+    await Promise.all(captures);
 
   const componentHashes = {
     database: database.sha256,
