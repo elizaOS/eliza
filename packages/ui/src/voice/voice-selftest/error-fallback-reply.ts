@@ -50,6 +50,13 @@ const EXACT_FALLBACK_REPLIES: ReadonlyArray<{
     kind: "insufficient_credits",
   },
   {
+    // Direct model-provider (non-cloud) key out of funds — mirrors the server
+    // fallback-reply.ts neutral string so a cerebras/openai 402 is classified
+    // correctly instead of read as an Eliza-Cloud credit issue.
+    text: "my model provider's account is out of credits. add funds to the provider account and try again.",
+    kind: "insufficient_credits",
+  },
+  {
     text: "i'm being rate-limited right now — give it a few seconds and try again.",
     kind: "rate_limited",
   },
