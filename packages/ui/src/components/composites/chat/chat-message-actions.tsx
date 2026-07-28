@@ -11,7 +11,6 @@ import type * as React from "react";
 
 import { cn } from "../../../lib/utils";
 import {
-  LIQUID_GLASS_BLUR,
   LIQUID_GLASS_EDGE_SHADOW,
   LIQUID_GLASS_SHEEN,
 } from "../../shell/liquid-glass";
@@ -62,8 +61,6 @@ export function ChatMessageActionSurface({
           : {
               backgroundImage: LIQUID_GLASS_SHEEN,
               boxShadow: LIQUID_GLASS_EDGE_SHADOW,
-              WebkitBackdropFilter: LIQUID_GLASS_BLUR,
-              backdropFilter: LIQUID_GLASS_BLUR,
               ...style,
             }
       }
@@ -103,9 +100,9 @@ function MessageActionButton({
         onClick();
       }}
       className={cn(
-        "bg-transparent p-0 text-white/60 transition-[color,transform] duration-150 hover:text-white active:scale-95 pointer-coarse:h-11 pointer-coarse:w-11",
+        "keyboard-focus-emphasis bg-transparent p-0 text-white/60 transition-[color,transform] duration-150 hover:text-white active:scale-95 pointer-coarse:h-11 pointer-coarse:w-11",
         bare
-          ? "h-5 w-5 rounded-none hover:bg-transparent active:bg-transparent focus-visible:rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/55"
+          ? "h-5 w-5 rounded-none hover:bg-transparent active:bg-transparent"
           : "h-6 w-6 rounded-lg transition-[background-color,color,transform] hover:bg-white/10 active:bg-white/10",
         active &&
           (bare ? "text-white" : "bg-white/10 text-white hover:bg-white/15"),

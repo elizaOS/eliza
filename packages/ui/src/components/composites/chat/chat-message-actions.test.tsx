@@ -115,6 +115,7 @@ describe("ChatMessageActions copy", () => {
       expect(button.className).toContain("hover:bg-transparent");
       expect(button.className).toContain("pointer-coarse:h-11");
       expect(button.className).not.toContain("bg-white/10");
+      expect(button.className).toContain("keyboard-focus-emphasis");
       expect(button.className).not.toContain("text-[rgb(255");
     }
     expect(screen.queryByRole("button", { name: /delete/i })).toBeNull();
@@ -126,6 +127,6 @@ describe("ChatMessageActions copy", () => {
     expect(surface.className).toContain("bg-black/55");
     expect(surface.className).toContain("border-white/25");
     expect(surface.style.backgroundImage).toContain("radial-gradient");
-    expect(surface.style.backdropFilter).toContain("blur");
+    expect(surface.style.backdropFilter).toBe("");
   });
 });

@@ -475,6 +475,10 @@ kbd {
   outline: none !important;
   box-shadow: none !important;
 }
+
+.keyboard-focus-emphasis:focus-visible {
+  color: white;
+}
 /* biome-ignore-end lint/complexity/noImportantStyles: end focus-ring ban override */
 
 /*
