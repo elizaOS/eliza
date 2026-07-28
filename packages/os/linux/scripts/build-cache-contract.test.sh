@@ -24,8 +24,13 @@ cleanup() {
 }
 trap cleanup EXIT
 
-mkdir -p "${TMP}/bin" "${TMP}/tails/config" "${TMP}/tails/submodules/live-build"
+mkdir -p \
+    "${TMP}/bin" \
+    "${TMP}/tails/config" \
+    "${TMP}/tails/debian" \
+    "${TMP}/tails/submodules/live-build"
 printf 'fake live-build checkout\n' >"${TMP}/tails/submodules/live-build/README"
+printf 'tails (7.8) UNRELEASED; urgency=medium\n' >"${TMP}/tails/debian/changelog"
 
 cat >"${TMP}/bin/docker" <<'SH'
 #!/usr/bin/env bash
@@ -98,6 +103,18 @@ grep -Fqx "buildx version" "${cache_log}"
 grep -Fqx "buildx build --platform linux/${ARCH} --build-arg TARGETARCH=${ARCH} -t elizaos-builder-${ARCH} --load --cache-from type=gha,scope=contract-scope --cache-to type=gha,scope=contract-scope,mode=max ${ROOT}" "${cache_log}"
 
 grep -Fq -- "-e APT_SNAPSHOTS_SERIALS=${SNAPSHOT_JSON}" "${plain_log}"
+grep -Fq -- "-e TAILS_CUSTOM_APT_SUITE=7.8" "${plain_log}"
+
+custom_apt_sources="$(
+    cd "${ROOT}/tails"
+    TAILS_CUSTOM_APT_SUITE=7.8 auto/scripts/tails-custom-apt-sources
+)"
+grep -Fqx "deb http://deb.tails.boum.org/ 7.8 main contrib non-free" \
+    <<<"${custom_apt_sources}"
+if grep -Fq " stable " <<<"${custom_apt_sources}"; then
+    echo "explicit custom package suite unexpectedly retained moving stable" >&2
+    exit 1
+fi
 
 unsupported_log="${TMP}/unsupported-docker.log"
 unsupported_output="${TMP}/unsupported-output.log"

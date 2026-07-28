@@ -185,6 +185,7 @@ node packages/os/scripts/generate-confidential-artifacts.mjs
 | `ELIZAOS_SKIP_WEBSITE` | `1` in cool builds | Skip offline docs bundle |
 | `ELIZAOS_BUILD_APP` | unset | Set to `1` to allow rebuilding the Electrobun app artifact |
 | `ELIZAOS_APP_ARTIFACT` | `packages/app-core/platforms/electrobun/build/dev-linux-x64/elizaOS-dev` | Path to pre-built app |
+| `TAILS_CUSTOM_APT_SUITE` | vendored changelog version | Versioned Tails package suite containing the patched packages enforced by the image build |
 
 ### USB Installer server
 

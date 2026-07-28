@@ -84,6 +84,25 @@ if [ ! -d "${TAILS_SRC}/config" ]; then
     exit 1
 fi
 
+if [ -z "${TAILS_CUSTOM_APT_SUITE:-}" ]; then
+    tails_version="$(
+        sed -n -E '1s/^tails \(([^)]+)\).*/\1/p' "${TAILS_SRC}/debian/changelog"
+    )"
+    TAILS_CUSTOM_APT_SUITE="$(
+        printf '%s\n' "${tails_version}" |
+            sed -E 's/[^.[:alnum:]-]/-/g' |
+            tr '[:upper:]' '[:lower:]'
+    )"
+fi
+case "${TAILS_CUSTOM_APT_SUITE}" in
+    ""|*[!a-zA-Z0-9._~-]*)
+        echo "ERROR: invalid Tails custom APT suite: ${TAILS_CUSTOM_APT_SUITE}" >&2
+        exit 1
+        ;;
+esac
+export TAILS_CUSTOM_APT_SUITE
+echo "=== Tails custom APT suite: ${TAILS_CUSTOM_APT_SUITE} ==="
+
 if [ -z "${APT_SNAPSHOTS_SERIALS:-}" ]; then
     APT_SNAPSHOTS_SERIALS="$(
         node "${HERE}/scripts/resolve-apt-snapshots.mjs"
@@ -160,6 +179,7 @@ docker_run_args=(
     # The host verifies every Release file before starting the expensive
     # container build. Tails records this exact map in its build manifest.
     -e "APT_SNAPSHOTS_SERIALS=${APT_SNAPSHOTS_SERIALS}"
+    -e "TAILS_CUSTOM_APT_SUITE=${TAILS_CUSTOM_APT_SUITE}"
     -v "${TAILS_SRC}:/build"
     -v "${OUT}:/out"
     -v "${ACNG_VOLUME}:/var/cache/apt-cacher-ng"
