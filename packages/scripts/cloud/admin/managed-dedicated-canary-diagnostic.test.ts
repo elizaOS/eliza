@@ -197,7 +197,7 @@ describe("managed dedicated canary diagnostic", () => {
     expect(canonical).not.toContain("managed-dedicated-canary-");
   });
 
-  test("writes the canonical artifact with owner-only permissions", () => {
+  function writeCanonicalArtifactFixture(): string {
     const directory = mkdtempSync(join(tmpdir(), "managed-canary-diagnostic-"));
     const rawPath = join(directory, "raw.json");
     const evidencePath = join(directory, "evidence.json");
@@ -208,11 +208,25 @@ describe("managed dedicated canary diagnostic", () => {
 
     writeManagedDedicatedCanaryDiagnostic(rawPath, evidencePath, SUFFIX);
 
-    expect(statSync(evidencePath).mode & 0o777).toBe(0o600);
+    return evidencePath;
+  }
+
+  test("writes the canonical artifact", () => {
+    const evidencePath = writeCanonicalArtifactFixture();
+
     expect(
       JSON.parse(readFileSync(evidencePath, "utf8")).jobs[0].errorCode,
     ).toBe("sandbox_stop_failed");
   });
+
+  test.skipIf(process.platform === "win32")(
+    "writes the canonical artifact with owner-only permissions",
+    () => {
+      const evidencePath = writeCanonicalArtifactFixture();
+
+      expect(statSync(evidencePath).mode & 0o777).toBe(0o600);
+    },
+  );
 
   test.each([
     ["invalid suffix", failedDeleteInput(), "r1a1", "suffix"],
