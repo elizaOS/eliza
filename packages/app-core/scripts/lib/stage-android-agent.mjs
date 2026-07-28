@@ -390,6 +390,7 @@ class DownloadHttpError extends Error {
     this.name = "DownloadHttpError";
     this.retryable =
       status === 408 ||
+      status === 409 ||
       status === 425 ||
       status === 429 ||
       (status >= 500 && status <= 599);
@@ -1659,4 +1660,5 @@ export const __testables = {
   riscv64BunSha256,
   resolveZigToolchain,
   provenancePath,
+  downloadFile,
 };
