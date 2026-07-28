@@ -52,6 +52,8 @@ export interface ModelTesterProbeRow {
 export interface ModelTesterSnapshot {
   /** Active prompt text. */
   prompt: string;
+  /** Preset matching the active prompt, absent for a custom prompt. */
+  activePreset?: "smoke" | "vision" | "voice";
   /** All 8 probes in display order. */
   probes: ModelTesterProbeRow[];
   /** Number of probes with a registered provider. */
@@ -68,7 +70,11 @@ export interface ModelTesterSnapshot {
   error?: string | null;
 }
 
-const PROMPT_PRESETS = ["Smoke", "Vision", "Voice"] as const;
+const PROMPT_PRESETS = [
+  { id: "smoke", label: "Smoke" },
+  { id: "vision", label: "Vision" },
+  { id: "voice", label: "Voice" },
+] as const;
 
 function probeTone(probe: ModelTesterProbeRow): SpatialTone {
   if (probe.running) return "primary";
@@ -115,7 +121,10 @@ export function ModelTesterSpatialView({
         <Text style="caption" tone="muted" grow={1}>
           {snapshot.completeCount} done
         </Text>
-        <Button agent="refresh-status" onPress={dispatch("refresh-status")}>
+        <Button
+          agent={{ id: "refresh-status", label: "Refresh model status" }}
+          onPress={dispatch("refresh-status")}
+        >
           Refresh
         </Button>
         <Button
@@ -141,14 +150,15 @@ export function ModelTesterSpatialView({
       <HStack gap={1} wrap>
         {PROMPT_PRESETS.map((preset) => (
           <Button
-            key={preset}
+            key={preset.id}
             variant="ghost"
             tone="default"
             grow={1}
-            agent={`preset-${preset.toLowerCase()}`}
-            onPress={dispatch(`preset:${preset.toLowerCase()}`)}
+            agent={`preset-${preset.id}`}
+            pressed={snapshot.activePreset === preset.id}
+            onPress={dispatch(`preset:${preset.id}`)}
           >
-            {preset}
+            {preset.label}
           </Button>
         ))}
       </HStack>

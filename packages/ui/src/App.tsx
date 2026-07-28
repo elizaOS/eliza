@@ -92,6 +92,7 @@ import { useKioskViewSurfaces } from "./components/shell/useKioskViewSurfaces";
 import { VoiceCaptureHud } from "./components/shell/VoiceCaptureHud";
 import { Button } from "./components/ui/button";
 import { KeepAliveViewHost } from "./components/views/KeepAliveViewHost";
+import { ShellViewAgentSurface } from "./components/views/ShellViewAgentSurface";
 import { ViewErrorBoundary } from "./components/views/ViewErrorBoundary";
 import { AppWorkspaceChrome } from "./components/workspace/AppWorkspaceChrome";
 import { useBootConfig } from "./config/boot-config-react.hooks";
@@ -121,6 +122,7 @@ import {
   getWindowNavigationPath,
   isAospShellEnabled,
   isRouteRootPath,
+  NATIVE_OS_VIEW_IDS,
   pathForTab,
   shouldUseHashNavigation,
   TAB_PATHS,
@@ -770,12 +772,12 @@ function RegisteredAppShellPage({
 }: {
   registration: AppShellPageRegistration;
 }) {
+  let content: ReactNode;
   if (registration.Component) {
     const Component = registration.Component;
-    return <Component />;
-  }
-  if (registration.loader) {
-    return (
+    content = <Component />;
+  } else if (registration.loader) {
+    content = (
       <RetainedLazyComponent
         loader={registration.loader}
         cacheKey={registration.id}
@@ -792,11 +794,21 @@ function RegisteredAppShellPage({
         )}
       />
     );
+  } else {
+    content = (
+      <div className="flex flex-1 min-h-0 min-w-0 items-center justify-center text-sm text-muted">
+        {registration.label} is not available in this build.
+      </div>
+    );
   }
+
+  // In-process plugin pages bypass DynamicViewLoader, so the shell owns the
+  // capability bridge for them. This keeps registry pages and remote bundles
+  // equivalent: controls registered with useAgentElement are live immediately.
   return (
-    <div className="flex flex-1 min-h-0 min-w-0 items-center justify-center text-sm text-muted">
-      {registration.label} is not available in this build.
-    </div>
+    <ShellViewAgentSurface viewId={registration.id}>
+      {content}
+    </ShellViewAgentSurface>
   );
 }
 
@@ -1573,6 +1585,23 @@ function renderViewRouterContent({
   const walletNav = isWalletSectionPath(navigationPath) ? (
     <WalletSectionNav activePath={navigationPath} />
   ) : undefined;
+  // The AOSP system surfaces are host-owned because they coordinate privileged
+  // device APIs beyond the narrower plugin views. Keep them stable when remote
+  // metadata or a late in-process registration for the same path arrives.
+  if (
+    nativeOsSurfaceEnabled &&
+    (NATIVE_OS_VIEW_IDS as readonly string[]).includes(resolveBuiltinTabId(tab))
+  ) {
+    return renderStaticViewRouterTab({
+      tab,
+      nativeOsSurfaceEnabled,
+      navigationPath,
+      settingsInitialSection,
+      settingsNavigatePayload,
+      settingsNavigateSequence,
+      walletNav,
+    });
+  }
   const remoteView = findRemoteViewForRoute(
     availableViews,
     navigationPath,

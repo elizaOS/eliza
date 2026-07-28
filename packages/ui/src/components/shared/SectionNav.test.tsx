@@ -8,14 +8,27 @@
  *  - a single-member section renders NO strip (one tab is not a nav),
  *  - `isSectionPath` matches the section's tabs + aliases and rejects others.
  */
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  AgentSurfaceProvider,
+  getViewRegistry,
+  handleAgentSurfaceCapability,
+} from "../../agent-surface";
 import { registerAppShellPage } from "../../app-shell-registry";
 import { resetUiRegistryHostForTests } from "../../registry-host";
 import {
   isSectionPath,
   SectionNav,
   type SectionPathRewrite,
+  SectionTabStrip,
 } from "./SectionNav";
 
 const GROUP = "wallet";
@@ -192,5 +205,66 @@ describe("SectionNav", () => {
       <SectionNav group="nonexistent" activePath="/x" />,
     );
     expect(container.firstChild).toBeNull();
+  });
+});
+
+describe("SectionTabStrip agent surface", () => {
+  it("registers scope tabs and activates them through the live bridge", () => {
+    function ScopeFixture() {
+      const [activeId, setActiveId] = useState("all");
+      return (
+        <AgentSurfaceProvider viewId="documents" viewType="gui">
+          <SectionTabStrip
+            entries={[
+              { id: "all", label: "All", agentLabel: "All knowledge" },
+              {
+                id: "shared",
+                label: "Shared",
+                agentLabel: "Shared knowledge",
+              },
+            ]}
+            activeId={activeId}
+            onSelect={setActiveId}
+            ariaLabel="Knowledge scope"
+            agentIdPrefix="scope"
+          />
+        </AgentSurfaceProvider>
+      );
+    }
+
+    render(<ScopeFixture />);
+    const registry = getViewRegistry("documents", "gui");
+    if (!registry) throw new Error("documents registry missing");
+
+    const elements = handleAgentSurfaceCapability(
+      registry,
+      "list-elements",
+      undefined,
+    ) as Array<{ id: string; role: string; status?: string }>;
+    expect(elements).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "scope-all",
+          role: "tab",
+          status: "active",
+        }),
+        expect.objectContaining({
+          id: "scope-shared",
+          role: "tab",
+          status: "inactive",
+        }),
+      ]),
+    );
+
+    act(() => {
+      handleAgentSurfaceCapability(registry, "agent-click", {
+        id: "scope-shared",
+      });
+    });
+    expect(
+      screen
+        .getByRole("button", { name: "Shared" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
   });
 });

@@ -119,6 +119,7 @@ export interface TextProps extends CommonProps {
 export interface ButtonProps extends CommonProps {
   tone?: SpatialTone;
   disabled?: boolean;
+  pressed?: boolean;
   variant?: "solid" | "outline" | "ghost";
   onPress?: () => void;
   children?: ReactNode;
@@ -231,6 +232,7 @@ export function buildButtonSpec(
     label,
     tone: props.tone,
     disabled: props.disabled,
+    pressed: props.pressed,
     variant: props.variant,
     grow: props.grow,
     shrink: props.shrink,
@@ -538,6 +540,8 @@ export const Button = brand<ButtonProps>("button", function Button(props) {
       variant="ghost"
       data-spatial-kind="button"
       disabled={spec.disabled}
+      aria-label={spec.agent?.label}
+      aria-pressed={spec.pressed}
       style={css}
       onClick={() => {
         if (spec.disabled) return;

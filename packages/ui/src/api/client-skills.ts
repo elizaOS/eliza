@@ -307,8 +307,11 @@ declare module "./client-base" {
     ): Promise<AppSessionActionResult>;
     listRegistryPlugins(): Promise<RegistryPluginItem[]>;
     searchRegistryPlugins(query: string): Promise<RegistryPluginItem[]>;
-    listCommands(surface?: CommandSurface): Promise<SlashCommandCatalogItem[]>;
-    listCustomActions(): Promise<CustomActionDef[]>;
+    listCommands(
+      surface?: CommandSurface,
+      init?: RequestInit,
+    ): Promise<SlashCommandCatalogItem[]>;
+    listCustomActions(init?: RequestInit): Promise<CustomActionDef[]>;
     createCustomAction(
       action: Omit<CustomActionDef, "id" | "createdAt" | "updatedAt">,
     ): Promise<CustomActionDef>;
@@ -1076,17 +1079,23 @@ ElizaClient.prototype.searchRegistryPlugins = async function (
 ElizaClient.prototype.listCommands = async function (
   this: ElizaClient,
   surface,
+  init,
 ) {
   const query = surface ? `?surface=${encodeURIComponent(surface)}` : "";
   const data = await this.fetch<CommandsCatalogResponse>(
     `/api/commands${query}`,
+    init,
   );
   return data.commands;
 };
 
-ElizaClient.prototype.listCustomActions = async function (this: ElizaClient) {
+ElizaClient.prototype.listCustomActions = async function (
+  this: ElizaClient,
+  init,
+) {
   const data = await this.fetch<{ actions: CustomActionDef[] }>(
     "/api/custom-actions",
+    init,
   );
   return data.actions;
 };

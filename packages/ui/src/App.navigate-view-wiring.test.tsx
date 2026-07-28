@@ -16,6 +16,7 @@ import {
 } from "@testing-library/react";
 import type * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { AgentButton, getViewRegistry } from "./agent-surface";
 import { registerAppShellPage } from "./app-shell-registry";
 import { DEFAULT_BOOT_CONFIG, setBootConfig } from "./config/boot-config";
 import type { ViewRegistryEntry } from "./hooks/useAvailableViews";
@@ -706,6 +707,31 @@ describe("App navigate-view event wiring", () => {
       getByTestId("dynamic-view-loader").getAttribute("data-view-id"),
     ).toBe(walletMarketView.id);
     expect(queryByTestId("native-wallet-fallback")).toBeNull();
+  });
+
+  it("gives an in-process wallet page a live agent-surface registry", async () => {
+    registerAppShellPage({
+      id: "wallet.inventory",
+      pluginId: "@elizaos/plugin-wallet-ui",
+      label: "Wallet",
+      path: "/inventory",
+      tabAffinity: "inventory",
+      Component: () => (
+        <AgentButton agentId="wallet-refresh">Refresh wallet</AgentButton>
+      ),
+    });
+    appState.tab = "inventory";
+    window.history.replaceState(null, "", "/inventory");
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(getViewRegistry("wallet.inventory", "gui")?.size()).toBe(1);
+    });
+    expect(
+      getViewRegistry("wallet.inventory", "gui")?.describe("wallet-refresh")
+        ?.label,
+    ).toBe("Refresh wallet");
   });
 
   it.each(["/inventory", "/hyperliquid", "/polymarket"])(

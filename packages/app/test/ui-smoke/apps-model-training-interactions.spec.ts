@@ -885,10 +885,7 @@ test("model tester route runs deterministic visible probes", async ({
     .poll(() => recorder.statusRequestCount())
     .toBeGreaterThan(statusRequestCount);
 
-  const textCard = page
-    .locator("section")
-    .filter({ has: page.getByRole("heading", { name: "Text" }) })
-    .first();
+  const textCard = page.locator('[data-agent-id="probe-text-small"]');
   await expect(textCard.getByText("TEXT_SMALL", { exact: true })).toBeVisible();
   await clickRequired(
     textCard.getByRole("button", { name: "Run" }),
@@ -904,10 +901,7 @@ test("model tester route runs deterministic visible probes", async ({
     .poll(() => recorder.runRequests().at(-1)?.prompt)
     .toBe(smokePrompt);
 
-  const imageCard = page
-    .locator("section")
-    .filter({ has: page.getByRole("heading", { name: "Image" }) })
-    .first();
+  const imageCard = page.locator('[data-agent-id="probe-image"]');
   await expect.poll(() => recorder.runRequestCount()).toBeGreaterThanOrEqual(1);
   await clickRequired(
     imageCard.getByRole("button", { name: "Run" }),

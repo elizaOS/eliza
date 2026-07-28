@@ -319,8 +319,10 @@ describe("useRealtimeVoiceSession", () => {
 
   it("fails a black-holed connect into a retryable transport error instead of hanging (ready timeout)", async () => {
     const { options, ws, mint } = makeOptions();
-    const { result } = renderHook(() =>
-      useRealtimeVoiceSession({ ...options, readyTimeoutMs: 30 }),
+    const { result, rerender } = renderHook(
+      ({ readyTimeoutMs }) =>
+        useRealtimeVoiceSession({ ...options, readyTimeoutMs }),
+      { initialProps: { readyTimeoutMs: 30 } },
     );
 
     const firstStart = beginStart(result);
@@ -345,7 +347,10 @@ describe("useRealtimeVoiceSession", () => {
     await waitFor(() => expect(first.closed).not.toBeNull());
 
     // Retry on the next tap: a fresh start clears the error, re-mints with a
-    // fresh consent nonce, and can reach live.
+    // fresh consent nonce, and can reach live. The timeout behavior is already
+    // proven above; the retry uses the production budget so a loaded CI event
+    // loop cannot turn this independent assertion into another timeout test.
+    rerender({ readyTimeoutMs: 15_000 });
     const retryStart = beginStart(result);
     await flushAsync();
     expect(result.current.error).toBeNull();
