@@ -4,6 +4,7 @@
  */
 
 import { afterAll, beforeAll, expect, test } from "bun:test";
+import { fileURLToPath } from "node:url";
 import { Miniflare } from "miniflare";
 
 let miniflare: Miniflare;
@@ -11,10 +12,12 @@ let miniflare: Miniflare;
 beforeAll(async () => {
   const build = await Bun.build({
     entrypoints: [
-      new URL(
-        "../test/fixtures/inference-admission-gate-worker.ts",
-        import.meta.url,
-      ).pathname,
+      fileURLToPath(
+        new URL(
+          "../test/fixtures/inference-admission-gate-worker.ts",
+          import.meta.url,
+        ),
+      ),
     ],
     format: "esm",
     target: "browser",

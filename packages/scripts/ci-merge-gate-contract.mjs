@@ -178,6 +178,19 @@ function commandRunsScriptWithoutMasking(command, scriptName) {
   return commands.length === 1 && commands[0] === expected;
 }
 
+function commandRunsTypecheckWithoutMasking(command) {
+  const commands = command
+    .split(/\r?\n/)
+    .map((line) => line.replace(/\s+#.*$/, "").trim())
+    .filter((line) => line && !line.startsWith("#"));
+  if (commands.length !== 1) return false;
+  return (
+    commands[0] === "bun run typecheck" ||
+    commands[0] ===
+      "NODE_OPTIONS='--max-old-space-size=8192' node packages/scripts/run-turbo.mjs run typecheck --concurrency=4"
+  );
+}
+
 /** Match an actual, failure-propagating workflow step for one exact root script. */
 function hasBunRunStep(jobText, scriptName) {
   return workflowStepBlocks(jobText).some((block) => {
@@ -188,6 +201,20 @@ function hasBunRunStep(jobText, scriptName) {
       !stepCanBypassRootGate(block) &&
       !stepUsesNonstandardMappingKeys(block) &&
       commandRunsScriptWithoutMasking(command, scriptName)
+    );
+  });
+}
+
+/** Match the canonical typecheck or its resource-bounded CI equivalent. */
+function hasTypecheckStep(jobText) {
+  return workflowStepBlocks(jobText).some((block) => {
+    const command = stepRunCommand(block);
+    return (
+      command !== null &&
+      !stepMasksFailure(block) &&
+      !stepCanBypassRootGate(block) &&
+      !stepUsesNonstandardMappingKeys(block) &&
+      commandRunsTypecheckWithoutMasking(command)
     );
   });
 }
@@ -493,7 +520,7 @@ function checkWorkflowText(fileName, text, problems) {
         },
         {
           label: "typecheck",
-          present: hasBunRunStep(gate, "typecheck"),
+          present: hasTypecheckStep(gate),
         },
         {
           label: "stale-base guard",
@@ -594,7 +621,7 @@ function selfTest() {
       - name: Format check
         run: bun run format:check
       - name: Typecheck
-        run: bun run typecheck
+        run: NODE_OPTIONS='--max-old-space-size=8192' node packages/scripts/run-turbo.mjs run typecheck --concurrency=4
       - run: node packages/scripts/stale-base-guard.mjs --base "$BASE_SHA" --head "$CURRENT_SHA" --merge-base "$BASE_SHA"
       - run: gitleaks detect --source . --log-opts "-m -p -1 \${CURRENT_SHA}"
   ci-ok:
@@ -610,6 +637,20 @@ function selfTest() {
   if (goodProblems.length !== 0) {
     throw new Error(
       `self-test: valid fixture reported problems:\n  ${goodProblems.join("\n  ")}`,
+    );
+  }
+  const canonicalTypecheckProblems = [];
+  checkWorkflowText(
+    "test.yml",
+    good.replace(
+      "NODE_OPTIONS='--max-old-space-size=8192' node packages/scripts/run-turbo.mjs run typecheck --concurrency=4",
+      "bun run typecheck",
+    ),
+    canonicalTypecheckProblems,
+  );
+  if (canonicalTypecheckProblems.length !== 0) {
+    throw new Error(
+      `self-test: canonical typecheck fixture reported problems:\n  ${canonicalTypecheckProblems.join("\n  ")}`,
     );
   }
 
@@ -822,7 +863,26 @@ function selfTest() {
     },
     {
       name: "gate missing typecheck",
-      text: good.replace("        run: bun run typecheck\n", ""),
+      text: good.replace(
+        "        run: NODE_OPTIONS='--max-old-space-size=8192' node packages/scripts/run-turbo.mjs run typecheck --concurrency=4\n",
+        "",
+      ),
+    },
+    {
+      name: "gate direct typecheck is unbounded",
+      text: good.replace(" --concurrency=4", ""),
+    },
+    {
+      name: "gate direct typecheck exceeds the hosted bound",
+      text: good.replace("--concurrency=4", "--concurrency=8"),
+    },
+    {
+      name: "gate direct typecheck bypasses the repository wrapper",
+      text: good.replace("node packages/scripts/run-turbo.mjs", "bunx turbo"),
+    },
+    {
+      name: "gate direct typecheck masks failure",
+      text: good.replace("--concurrency=4", "--concurrency=4 || true"),
     },
     {
       name: "gate missing secret scan",

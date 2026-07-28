@@ -1,4 +1,6 @@
-// Exercises the catalog coverage reporter against the real MVP scenario ledgers.
+/**
+ * Exercises the catalog coverage reporter against the real MVP scenario ledgers.
+ */
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { cpSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
@@ -64,9 +66,9 @@ describe("LifeOps persona catalog coverage", () => {
     expect(output).toContain("E1 29 authored (target 28, +1)");
     expect(output).toContain("F1 35 authored (target 32, +3)");
     expect(output).toContain(
-      "Total: 348 authored (target 344), 162/348 verified, 186 unverified",
+      "Total: 359 authored (target 344), 162/359 verified, 197 unverified",
     );
-    expect(output).not.toContain("348/344 authored");
+    expect(output).not.toContain("359/344 authored");
   });
 
   test("--unverified prints a board-triage list without hiding surface blockers", () => {
@@ -75,11 +77,11 @@ describe("LifeOps persona catalog coverage", () => {
       "G1  9/10 unverified (lifeops-bench:6, scenario-runner:3)",
     );
     expect(output).toContain(
-      "J1 10/10 unverified (lifeops-bench:3, scenario-runner:7)",
+      "J1 21/21 unverified (lifeops-bench:8, scenario-runner:13)",
     );
     expect(output).toContain("M1 48/48 unverified (lifeops-bench:48)");
     expect(output).toContain(
-      "Total: 186/348 authored rows still need verification",
+      "Total: 197/359 authored rows still need verification",
     );
   });
 

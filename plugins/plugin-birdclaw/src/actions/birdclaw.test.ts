@@ -17,6 +17,8 @@ function runtimeWith(service: BirdclawService | null): IAgentRuntime {
     getSetting: () => undefined,
     getService: (type: string) =>
       type === BirdclawService.serviceType ? service : null,
+    hasService: (type: string) =>
+      type === BirdclawService.serviceType && service !== null,
   } as unknown as IAgentRuntime;
 }
 
@@ -51,6 +53,35 @@ describe("BIRDCLAW validate", () => {
     await expect(birdclawAction.validate(runtimeWith(null))).resolves.toBe(
       false,
     );
+  });
+
+  it("waits for a registered service that is still starting", async () => {
+    const installed = serviceWith(() => ({ stdout: "0.8.5" }));
+    let loadCalls = 0;
+    const runtime = {
+      getService: () => null,
+      hasService: (type: string) => type === BirdclawService.serviceType,
+      getServiceLoadPromise: async (type: string) => {
+        expect(type).toBe(BirdclawService.serviceType);
+        loadCalls += 1;
+        return installed;
+      },
+    } as unknown as IAgentRuntime;
+
+    await expect(birdclawAction.validate(runtime)).resolves.toBe(true);
+    expect(loadCalls).toBe(1);
+  });
+
+  it("stays unavailable when registered service startup fails", async () => {
+    const runtime = {
+      getService: () => null,
+      hasService: (type: string) => type === BirdclawService.serviceType,
+      getServiceLoadPromise: async () => {
+        throw new Error("startup failed");
+      },
+    } as unknown as IAgentRuntime;
+
+    await expect(birdclawAction.validate(runtime)).resolves.toBe(false);
   });
 
   it("is false when the binary is missing, true when installed", async () => {
