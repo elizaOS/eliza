@@ -244,6 +244,8 @@ describe("household coordination — real PGlite", () => {
     expect(actionParameter?.schema.enum).toEqual(
       expect.arrayContaining([
         "bind_role",
+        "set_custody_authority",
+        "revoke_custody_authority",
         "issue_grant",
         "create_proposal",
         "revise_proposal",
@@ -281,26 +283,65 @@ describe("household coordination — real PGlite", () => {
         undefined,
       );
 
-    await expect(
-      invoke({
-        action: "bind_role",
-        entityId: childId,
-        role: "child",
-        householdId: actionHouseholdId,
-        subjectEntityIds: [childId],
-        evidence: "Owner identified this child through the action surface.",
-      }),
-    ).resolves.toMatchObject({ success: true });
-    await expect(
-      invoke({
-        action: "bind_role",
-        entityId: coParentId,
-        role: "co_parent",
-        householdId: actionHouseholdId,
-        subjectEntityIds: [childId],
-        evidence: "Owner identified this co-parent through the action surface.",
-      }),
-    ).resolves.toMatchObject({ success: true });
+    const missingHousehold = await invoke({
+      action: "bind_role",
+      entityId: childId,
+      role: "child",
+      subjectEntityIds: [childId],
+      evidence: "This request must not fall into a default household.",
+    });
+    expect(missingHousehold).toMatchObject({
+      success: false,
+      data: {
+        error: "MISSING_HOUSEHOLD_PARAMETERS",
+      },
+      effectReceipts: [
+        {
+          outcome: "failed",
+          operation: "lifeops.household_coordination.resolve_request",
+          failure: { acceptance: "rejected" },
+        },
+      ],
+    });
+
+    const childBindingResult = await invoke({
+      action: "bind_role",
+      entityId: childId,
+      role: "child",
+      householdId: actionHouseholdId,
+      subjectEntityIds: [childId],
+      evidence: "Owner identified this child through the action surface.",
+    });
+    expect(childBindingResult).toMatchObject({
+      success: true,
+      effectReceipts: [
+        {
+          outcome: "applied",
+          operation: "lifeops.household_coordination.bind_role",
+          resource: { kind: "lifeops.household.role_binding" },
+          commit: { kind: "durable" },
+        },
+      ],
+    });
+    const coParentBindingResult = await invoke({
+      action: "bind_role",
+      entityId: coParentId,
+      role: "co_parent",
+      householdId: actionHouseholdId,
+      subjectEntityIds: [childId],
+      evidence: "Owner identified this co-parent through the action surface.",
+    });
+    expect(coParentBindingResult).toMatchObject({
+      success: true,
+      effectReceipts: [
+        {
+          outcome: "applied",
+          operation: "lifeops.household_coordination.bind_role",
+          resource: { kind: "lifeops.household.role_binding" },
+          commit: { kind: "durable" },
+        },
+      ],
+    });
     const graph = resolveKnowledgeGraphService(runtime);
     if (!graph) throw new Error("knowledge graph unavailable");
     const coParentRelationships = await graph
@@ -318,8 +359,109 @@ describe("household coordination — real PGlite", () => {
       }),
     ]);
 
+    const authorityRelationshipId = `action-authority-${randomUUID()}`;
+    const authorityResult = await invoke({
+      action: "set_custody_authority",
+      householdId: actionHouseholdId,
+      relationshipId: authorityRelationshipId,
+      childEntityId: childId,
+      custodianEntityIds: [SELF_ENTITY_ID, coParentId],
+      evidence:
+        "Owner confirmed the current custody-authority baseline through the action surface.",
+    });
+    expect(authorityResult).toMatchObject({
+      success: true,
+      data: {
+        action: "set_custody_authority",
+        authority: {
+          householdId: actionHouseholdId,
+          relationshipId: authorityRelationshipId,
+          status: "active",
+        },
+      },
+      effectReceipts: [
+        {
+          outcome: "applied",
+          operation: "lifeops.household_coordination.set_custody_authority",
+          resource: {
+            kind: "lifeops.household.custody_authority",
+            id: authorityRelationshipId,
+          },
+          commit: { kind: "durable" },
+        },
+      ],
+    });
+
+    const grantResult = await invoke({
+      action: "issue_grant",
+      householdId: actionHouseholdId,
+      principalEntityId: coParentId,
+      role: "co_parent",
+      subjectEntityIds: [childId],
+      scopes: ["household.visibility", "calendar.freebusy"],
+    });
+    expect(grantResult).toMatchObject({
+      success: true,
+      data: {
+        grant: {
+          householdId: actionHouseholdId,
+          principalEntityId: coParentId,
+        },
+      },
+      effectReceipts: [
+        {
+          outcome: "applied",
+          operation: "lifeops.household_coordination.issue_grant",
+          resource: { kind: "lifeops.household.access_grant" },
+          commit: { kind: "durable" },
+        },
+      ],
+    });
+    const [grant] = await householdRepository.listGrants(
+      coParentId,
+      actionHouseholdId,
+    );
+    if (!grant) throw new Error("action-created household grant missing");
+    expect(grantResult.effectReceipts?.[0]).toMatchObject({
+      resource: {
+        id: grant.id,
+        version: grant.updatedAt,
+      },
+      commit: {
+        id: `${grant.id}:${grant.updatedAt}`,
+        committedAt: grant.updatedAt,
+      },
+    });
+    expect(grantResult.userFacingEffectReceiptIds).toEqual([
+      grantResult.effectReceipts?.[0]?.receiptId,
+    ]);
+    expect(grantResult.userFacingText).toBe(grantResult.text);
+    expect(grantResult.verifiedUserFacing).toBe(true);
+    const revokeGrantResult = await invoke({
+      action: "revoke_grant",
+      grantId: grant.id,
+      reason: "Action receipt regression verifies durable revocation.",
+    });
+    expect(revokeGrantResult).toMatchObject({
+      success: true,
+      effectReceipts: [
+        {
+          outcome: "applied",
+          operation: "lifeops.household_coordination.revoke_grant",
+          resource: {
+            kind: "lifeops.household.access_grant",
+            id: grant.id,
+          },
+          commit: { kind: "durable" },
+        },
+      ],
+    });
+
+    const actionProposalId = `action-proposal-${randomUUID()}`;
     const result = await invoke({
       action: "create_proposal",
+      householdId: actionHouseholdId,
+      proposalId: actionProposalId,
       coordinationId: `action-${randomUUID()}`,
       terms: terms({
         summary: "Owner-action household proposal",
@@ -333,12 +475,175 @@ describe("household coordination — real PGlite", () => {
       data: {
         action: "create_proposal",
         proposal: {
+          householdId: actionHouseholdId,
           version: 1,
           requiredApproverEntityIds: [SELF_ENTITY_ID, coParentId].sort(),
         },
       },
+      effectReceipts: [
+        {
+          outcome: "applied",
+          operation: "lifeops.household_coordination.create_proposal",
+          resource: {
+            kind: "lifeops.household.schedule_proposal",
+            id: actionProposalId,
+          },
+          commit: { kind: "durable" },
+        },
+      ],
     });
     expect(result.text).toContain("No calendar event or external message");
+    const persistedProposalV1 = await householdRepository.getProposal(
+      actionProposalId,
+      1,
+    );
+    if (!persistedProposalV1) {
+      throw new Error("action-created household proposal missing");
+    }
+    expect(result.effectReceipts?.[0]).toMatchObject({
+      resource: {
+        id: actionProposalId,
+        version: `1:${persistedProposalV1.contentSha256}`,
+      },
+      commit: {
+        id: `${actionProposalId}:1:${persistedProposalV1.contentSha256}`,
+        committedAt: persistedProposalV1.updatedAt,
+      },
+    });
+    expect(result.effectReceipts?.[0]).not.toMatchObject({
+      commit: { kind: "provider_accepted" },
+    });
+
+    const reviseResult = await invoke({
+      action: "revise_proposal",
+      proposalId: actionProposalId,
+      expectedVersion: 1,
+      terms: terms({
+        summary: "Revised owner-action household proposal",
+        childEntityIds: [childId],
+        startHour: 18,
+      }),
+      affectedPartyEntityIds: [childId, coParentId],
+      requiredApproverEntityIds: [SELF_ENTITY_ID],
+    });
+    expect(reviseResult).toMatchObject({
+      success: true,
+      data: { proposal: { version: 2 } },
+      effectReceipts: [
+        {
+          outcome: "applied",
+          operation: "lifeops.household_coordination.revise_proposal",
+          resource: {
+            kind: "lifeops.household.schedule_proposal",
+            id: actionProposalId,
+          },
+          commit: { kind: "durable" },
+        },
+      ],
+    });
+
+    const ensureResult = await invoke({
+      action: "ensure_approvals",
+      proposalId: actionProposalId,
+      proposalVersion: 2,
+    });
+    expect(ensureResult).toMatchObject({
+      success: true,
+      effectReceipts: [
+        {
+          outcome: "applied",
+          operation: "lifeops.household_coordination.ensure_approvals",
+          resource: {
+            kind: "lifeops.household.proposal_approvals",
+            id: `${actionProposalId}:2`,
+          },
+          commit: { kind: "durable" },
+        },
+      ],
+    });
+
+    const revisedProposal = await householdRepository.getProposal(
+      actionProposalId,
+      2,
+    );
+    if (!revisedProposal) {
+      throw new Error("action-created proposal revision missing");
+    }
+    await approve(revisedProposal, SELF_ENTITY_ID);
+    await approve(revisedProposal, coParentId);
+    const finalizeResult = await invoke({
+      action: "finalize_proposal",
+      proposalId: actionProposalId,
+      proposalVersion: 2,
+    });
+    expect(finalizeResult).toMatchObject({
+      success: true,
+      data: {
+        agreement: {
+          householdId: actionHouseholdId,
+          proposalId: actionProposalId,
+          proposalVersion: 2,
+        },
+      },
+      effectReceipts: [
+        {
+          outcome: "applied",
+          operation: "lifeops.household_coordination.finalize_proposal",
+          resource: { kind: "lifeops.household.schedule_agreement" },
+          commit: { kind: "durable" },
+        },
+      ],
+    });
+
+    const exportResult = await invoke({
+      action: "export",
+      householdId: actionHouseholdId,
+    });
+    expect(exportResult).toMatchObject({
+      success: true,
+      data: {
+        export: {
+          householdId: actionHouseholdId,
+          principalEntityId: SELF_ENTITY_ID,
+        },
+      },
+      effectReceipts: [
+        {
+          outcome: "noop",
+          operation: "lifeops.household_coordination.export",
+          resource: { kind: "lifeops.household.scoped_export" },
+        },
+      ],
+    });
+
+    const revokeAuthorityResult = await invoke({
+      action: "revoke_custody_authority",
+      householdId: actionHouseholdId,
+      relationshipId: authorityRelationshipId,
+      reason: "Owner replaced this custody authority outside the assistant.",
+    });
+    expect(revokeAuthorityResult).toMatchObject({
+      success: true,
+      data: {
+        action: "revoke_custody_authority",
+        authority: {
+          householdId: actionHouseholdId,
+          relationshipId: authorityRelationshipId,
+          status: "revoked",
+        },
+      },
+      effectReceipts: [
+        {
+          outcome: "applied",
+          operation: "lifeops.household_coordination.revoke_custody_authority",
+          resource: {
+            kind: "lifeops.household.custody_authority",
+            id: authorityRelationshipId,
+          },
+          commit: { kind: "durable" },
+        },
+      ],
+    });
   });
 
   it("requires offset-bearing instants and rejects skipped civil times while preserving both repeated-time instants", () => {

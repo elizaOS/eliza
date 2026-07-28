@@ -3827,65 +3827,75 @@ export class AgentRuntime implements IAgentRuntime {
 			let success = true;
 			let errorMsg: string | undefined;
 			try {
-				const protectedCallback =
-					action.disclosureGate?.require === "owner_exclusive" &&
-					options?.callback
-						? async (
-								...callbackArgs: Parameters<
-									NonNullable<typeof options.callback>
-								>
-							) => {
-								const disclosure = await revalidateOwnerExclusiveDisclosure(
-									this,
-									message,
-								);
-								if (disclosure.allowed) {
-									return options.callback?.(...callbackArgs) ?? [];
-								}
-								return (
-									options.callback?.(
-										{
-											text: PRIVACY_DENIED_TEXT,
-											actions: ["PRIVACY_DENIED"],
-											data: {
-												privacyDenied: true,
-												privacyReason: disclosure.reason,
-											},
-										},
-										"PRIVACY_DENIED",
-									) ?? []
-								);
-							}
-						: options?.callback;
-				await settleActionHandler({
-					runtime: this,
-					action,
-					callback: protectedCallback,
-					handlerError: "rethrow",
-					invoke: (actionCallback) =>
-						runWithActionRoutingContext(
-							{ actionName: action.name, modelClass: action.modelClass },
-							() =>
-								runWithSuppressedModelStream(() =>
-									action.handler(
-										this,
-										message,
-										composedState,
-										{ mode },
-										actionCallback,
-										options?.responses,
-									),
-								),
-						),
-				});
 				if (action.disclosureGate?.require === "owner_exclusive") {
-					const disclosure = await revalidateOwnerExclusiveDisclosure(
+					const disclosure = await authorizeOwnerExclusiveDisclosure(
 						this,
 						message,
 					);
 					if (!disclosure.allowed) {
 						success = false;
 						errorMsg = PRIVACY_DENIED_TEXT;
+					}
+				}
+				if (success) {
+					const protectedCallback =
+						action.disclosureGate?.require === "owner_exclusive" &&
+						options?.callback
+							? async (
+									...callbackArgs: Parameters<
+										NonNullable<typeof options.callback>
+									>
+								) => {
+									const disclosure =
+										await revalidateOwnerExclusiveDisclosure(this, message);
+									if (disclosure.allowed) {
+										return options.callback?.(...callbackArgs) ?? [];
+									}
+									return (
+										options.callback?.(
+											{
+												text: PRIVACY_DENIED_TEXT,
+												actions: ["PRIVACY_DENIED"],
+												data: {
+													privacyDenied: true,
+													privacyReason: disclosure.reason,
+												},
+											},
+											"PRIVACY_DENIED",
+										) ?? []
+									);
+								}
+							: options?.callback;
+					await settleActionHandler({
+						runtime: this,
+						action,
+						callback: protectedCallback,
+						handlerError: "rethrow",
+						invoke: (actionCallback) =>
+							runWithActionRoutingContext(
+								{ actionName: action.name, modelClass: action.modelClass },
+								() =>
+									runWithSuppressedModelStream(() =>
+										action.handler(
+											this,
+											message,
+											composedState,
+											{ mode },
+											actionCallback,
+											options?.responses,
+										),
+									),
+							),
+					});
+					if (action.disclosureGate?.require === "owner_exclusive") {
+						const disclosure = await revalidateOwnerExclusiveDisclosure(
+							this,
+							message,
+						);
+						if (!disclosure.allowed) {
+							success = false;
+							errorMsg = PRIVACY_DENIED_TEXT;
+						}
 					}
 				}
 			} catch (err) {

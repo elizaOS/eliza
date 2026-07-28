@@ -29,11 +29,13 @@ import {
   ModelType,
 } from "@elizaos/core";
 import {
+  DEFAULT_CONNECTOR_ACCOUNT_ID,
   type Entity,
   type EntityIdentity,
   foldIdentity,
   LIFEOPS_MESSAGE_CHANNELS,
   type LifeOpsMessageChannel,
+  normalizeEntityConnectorAccountId,
 } from "@elizaos/shared";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import {
@@ -77,6 +79,8 @@ type EntityParameters = {
   platform?: string;
   /** Display name shown for an observed identity. */
   displayName?: string;
+  /** Connector account that verified and should reuse this route. */
+  connectorAccountId?: string;
   /** Edge target id when calling set_relationship. */
   toEntityId?: string;
   /** Edge source id when calling set_relationship. Defaults to "self". */
@@ -334,6 +338,7 @@ function entityParamsFromJson(
     "entityId",
     "platform",
     "displayName",
+    "connectorAccountId",
     "toEntityId",
     "fromEntityId",
     "relationshipType",
@@ -407,12 +412,13 @@ async function resolveEntityPlanWithLlm(args: {
     "entityId: explicit entity id (set_identity / set_relationship / merge), or null",
     "platform: identity platform (set_identity), or null",
     "displayName: identity display name (set_identity), or null",
+    "connectorAccountId: exact configured connector account id for this route (set_identity), or null",
     "toEntityId: target entity id (set_relationship), or null",
     "fromEntityId: source entity id (set_relationship; defaults to 'self' when omitted), or null",
     "relationshipType: edge type label (set_relationship; e.g. 'manages', 'colleague_of', 'works_at'), or null",
     "sourceEntityIds: array of duplicate entity ids to fold into the target (merge), or null",
     "evidence: short evidence string for set_identity / set_relationship, or null",
-    'Example: {"action":"create","shouldAct":true,"response":null,"intent":"add Sam to my Rolodex","name":"Sam","channel":"telegram","handle":"@sam","email":null,"phone":null,"notes":null,"relationshipId":null,"reason":null,"confirmed":null,"entityId":null,"platform":null,"displayName":null,"toEntityId":null,"fromEntityId":null,"relationshipType":null,"sourceEntityIds":null,"evidence":null}',
+    'Example: {"action":"create","shouldAct":true,"response":null,"intent":"add Sam to my Rolodex","name":"Sam","channel":"telegram","handle":"@sam","email":null,"phone":null,"notes":null,"relationshipId":null,"reason":null,"confirmed":null,"entityId":null,"platform":null,"displayName":null,"connectorAccountId":null,"toEntityId":null,"fromEntityId":null,"relationshipType":null,"sourceEntityIds":null,"evidence":null}',
     "",
     "Choose read when the user wants to see, browse, list, or recall who is in the contacts/Rolodex.",
     "Choose create when the user wants to remember a new person, store a handle, or add them to the contact list.",
@@ -425,7 +431,7 @@ async function resolveEntityPlanWithLlm(args: {
     "When shouldAct=false, response must be a short clarifying question in the user's language.",
     "Extract only values stated or clearly implied by the request or recent conversation. Do not invent ids, handles, or notes.",
     "For create, extract name plus channel and handle when present.",
-    "For set_identity, extract entityId or name plus platform and handle.",
+    "For set_identity, extract entityId or name plus platform and handle. Preserve connectorAccountId only when the request or structured parameters supplies the exact configured account id; never infer one from a platform or handle.",
     "For set_relationship, extract fromEntityId/toEntityId or names plus relationshipType.",
     "",
     `Current request:\n${currentMessage}`,
@@ -790,6 +796,9 @@ export const entityAction: Action & {
       const repository = new LifeOpsRepository(runtime);
       const entityStore = await repository.entityStore(runtime.agentId);
       const evidence = normalizedNonEmpty(params.evidence) ?? "user_chat";
+      const connectorAccountId = normalizeEntityConnectorAccountId(
+        params.connectorAccountId,
+      );
       const requestedEntityId = normalizedNonEmpty(params.entityId);
       let observedEntity: Entity;
       let mergedFrom: string[] = [];
@@ -806,7 +815,7 @@ export const entityAction: Action & {
           });
         }
         const identityMatches = await entityStore.resolve({
-          identity: { platform, handle },
+          identity: { platform, handle, connectorAccountId },
         });
         const conflictingEntityIds = identityMatches
           .map((candidate) => candidate.entity.entityId)
@@ -837,6 +846,7 @@ export const entityAction: Action & {
         const observation = await entityStore.observeIdentity({
           platform,
           handle,
+          connectorAccountId,
           ...(normalizedNonEmpty(params.displayName)
             ? { displayName: params.displayName as string }
             : {}),
@@ -868,6 +878,7 @@ export const entityAction: Action & {
       const verifiedIdentity: EntityIdentity = {
         platform,
         handle,
+        connectorAccountId,
         ...(normalizedNonEmpty(params.displayName)
           ? { displayName: params.displayName as string }
           : {}),
@@ -893,6 +904,7 @@ export const entityAction: Action & {
           entityId: merged.entityId,
           platform,
           handle,
+          connectorAccountId,
         },
         data: {
           subaction,
@@ -1099,6 +1111,14 @@ export const entityAction: Action & {
       name: "displayName",
       description: "Observed identity displayName for set_identity.",
       schema: { type: "string" as const },
+    },
+    {
+      name: "connectorAccountId",
+      description: `Exact configured connector account for set_identity routing; omission targets only '${DEFAULT_CONNECTOR_ACCOUNT_ID}'.`,
+      descriptionCompressed:
+        "exact connector account id; omitted means default only",
+      schema: { type: "string" as const },
+      examples: ["default", "family-discord", "work-slack"],
     },
     {
       name: "toEntityId",

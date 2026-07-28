@@ -514,6 +514,128 @@ describe("relationships handler — real PGLite", () => {
     ).toBe(true);
   }, 120_000);
 
+  it("keeps identity creation and conflict checks inside the exact connector account", async () => {
+    const handle = `account_bound_${crypto.randomUUID().replaceAll("-", "")}`;
+    const family = await getEntityActionHandler()(
+      runtime,
+      makeMessage(runtime, "record the family account identity") as never,
+      undefined,
+      {
+        parameters: {
+          subaction: "set_identity",
+          platform: "discord",
+          handle,
+          connectorAccountId: "family",
+          displayName: "Account Bound Family",
+        },
+      } as never,
+      async () => {},
+    );
+    const familyEntityId = (family.data as { entity: { entityId: string } })
+      .entity.entityId;
+
+    const work = await getEntityActionHandler()(
+      runtime,
+      makeMessage(runtime, "record the work account identity") as never,
+      undefined,
+      {
+        parameters: {
+          subaction: "set_identity",
+          platform: "discord",
+          handle,
+          connectorAccountId: "work",
+          displayName: "Account Bound Work",
+        },
+      } as never,
+      async () => {},
+    );
+    const workEntityId = (work.data as { entity: { entityId: string } }).entity
+      .entityId;
+    expect(workEntityId).not.toBe(familyEntityId);
+
+    const entityStore = await new LifeOpsRepository(runtime).entityStore(
+      runtime.agentId,
+    );
+    expect(
+      await entityStore.resolve({
+        identity: {
+          platform: "discord",
+          handle,
+          connectorAccountId: "family",
+        },
+      }),
+    ).toMatchObject([{ entity: { entityId: familyEntityId } }]);
+    expect(
+      await entityStore.resolve({
+        identity: {
+          platform: "discord",
+          handle,
+          connectorAccountId: "work",
+        },
+      }),
+    ).toMatchObject([{ entity: { entityId: workEntityId } }]);
+    expect(
+      await entityStore.resolve({
+        identity: { platform: "discord", handle },
+      }),
+    ).toEqual([]);
+
+    const conflicting = await getEntityActionHandler()(
+      runtime,
+      makeMessage(
+        runtime,
+        "attach the work route to the family entity",
+      ) as never,
+      undefined,
+      {
+        parameters: {
+          subaction: "set_identity",
+          entityId: familyEntityId,
+          platform: "discord",
+          handle,
+          connectorAccountId: "work",
+        },
+      } as never,
+      async () => {},
+    );
+    expect(conflicting.success).toBe(false);
+    expect((conflicting.data as { error?: string } | undefined)?.error).toBe(
+      "IDENTITY_CONFLICT",
+    );
+
+    const school = await getEntityActionHandler()(
+      runtime,
+      makeMessage(
+        runtime,
+        "attach the school route to the family entity",
+      ) as never,
+      undefined,
+      {
+        parameters: {
+          subaction: "set_identity",
+          entityId: familyEntityId,
+          platform: "discord",
+          handle,
+          connectorAccountId: "school",
+        },
+      } as never,
+      async () => {},
+    );
+    expect(receipt(school)).toMatchObject({
+      outcome: "applied",
+      operation: "lifeops.entity.identity.set",
+      resource: { id: familyEntityId },
+    });
+    expect(
+      (await entityStore.get(familyEntityId))?.identities.some(
+        (identity) =>
+          identity.platform === "discord" &&
+          identity.handle === handle &&
+          identity.connectorAccountId === "school",
+      ),
+    ).toBe(true);
+  }, 120_000);
+
   it("entityAction add rejects missing fields", async () => {
     const result = await getEntityActionHandler()(
       runtime,

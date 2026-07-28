@@ -8,15 +8,12 @@
  * host-principal attestor.
  *
  * Agent-internal turns (canonical SELF/AUTONOMOUS rooms whose actor is the
- * agent, the canonical owner, or a runtime-registered participant of the
- * agent's own internal room — the autonomy service and trigger runtime post
- * under dedicated synthetic entities) are ALLOWED for disclosure-gate
- * purposes. This is sound because this gate only controls what enters the
- * in-process turn: nothing composed here becomes visible without passing the
- * egress seams (wrapSingleTurnVisibleCallback.deliver and the simple/early/
- * terminal result enforcers), which re-validate the CURRENT room audience at
- * delivery time. Denying internal turns would strip the autonomous planner of
- * every owner-private action while protecting nothing.
+ * agent, the canonical owner, or an explicitly registered runtime-managed
+ * synthetic actor) are ALLOWED for disclosure-gate purposes. Room membership
+ * alone never proves synthetic identity. This is sound because this gate only
+ * controls what enters the in-process turn: nothing composed here becomes
+ * visible without passing the egress seams, which re-validate the CURRENT room
+ * audience at delivery time.
  *
  * When a gate denial suppresses owner-private surfaces, the suppression is
  * recorded on the turn so state composition can surface an explicit note the
@@ -101,6 +98,7 @@ export type OwnerExclusiveDisclosureDenial =
 	| "actor_mismatch"
 	| "agent_mismatch"
 	| "room_mismatch"
+	| "runtime_mismatch"
 	| "owner_mismatch"
 	| "participant_mismatch"
 	| "destination_not_private"
@@ -140,7 +138,50 @@ type AudienceBinding = Readonly<{ token: "trusted-delivery-audience" }>;
 const DEFAULT_ATTESTATION_TTL_MS = 5 * 60_000;
 const MAX_CLOCK_SKEW_MS = 5_000;
 const audienceByBinding = new WeakMap<AudienceBinding, AudienceRecord>();
+const internalActorRegistrations = new WeakMap<
+	IAgentRuntime,
+	Map<UUID, number>
+>();
 let nextAttestationSequence = 0;
+
+/**
+ * Register a synthetic actor that the runtime itself uses to originate an
+ * internal turn. The returned release function is reference-counted so
+ * overlapping trigger deliveries cannot revoke each other's authority.
+ */
+export function registerRuntimeManagedInternalActor(
+	runtime: IAgentRuntime,
+	actorEntityId: UUID,
+): () => void {
+	let registrations = internalActorRegistrations.get(runtime);
+	if (!registrations) {
+		registrations = new Map();
+		internalActorRegistrations.set(runtime, registrations);
+	}
+	registrations.set(actorEntityId, (registrations.get(actorEntityId) ?? 0) + 1);
+	let released = false;
+	return () => {
+		if (released) return;
+		released = true;
+		const current = registrations?.get(actorEntityId);
+		if (current === undefined) return;
+		if (current <= 1) {
+			registrations?.delete(actorEntityId);
+		} else {
+			registrations?.set(actorEntityId, current - 1);
+		}
+	};
+}
+
+function isRuntimeManagedInternalActor(
+	runtime: IAgentRuntime | undefined,
+	actorEntityId: UUID,
+): boolean {
+	return (
+		runtime !== undefined &&
+		internalActorRegistrations.get(runtime)?.has(actorEntityId) === true
+	);
+}
 
 function normalizeTtlMs(ttlMs: number | undefined): number {
 	if (typeof ttlMs !== "number" || !Number.isFinite(ttlMs) || ttlMs <= 0) {
@@ -250,7 +291,10 @@ function bindAudience(
 		audienceByBinding.set(existingBinding, {
 			audience,
 			runtime,
-			sensitiveUsed: existingRecord?.sensitiveUsed === true,
+			sensitiveUsed:
+				existingRecord !== undefined &&
+				existingRecord.runtime === runtime &&
+				existingRecord.sensitiveUsed === true,
 		});
 		return;
 	}
@@ -343,10 +387,19 @@ export function getTrustedDeliveryAudience(
 	return message ? getAudienceRecord(message)?.audience : undefined;
 }
 
+/** Whether this turn's process-local evidence was minted by this runtime. */
+export function trustedDeliveryAudienceIsBoundToRuntime(
+	message: Memory,
+	runtime: IAgentRuntime,
+): boolean {
+	return getAudienceRecord(message)?.runtime === runtime;
+}
+
 function decisionFromAudience(
 	message: Memory,
 	audience: TrustedDeliveryAudience | undefined,
 	nowMs: number,
+	internalActorTrusted = false,
 ): OwnerExclusiveDisclosureDecision {
 	if (!audience) {
 		return { allowed: false, reason: "missing_attestation" };
@@ -376,19 +429,11 @@ function decisionFromAudience(
 			audience.actorEntityId === audience.agentEntityId ||
 			(audience.canonicalOwnerEntityId !== null &&
 				audience.actorEntityId === audience.canonicalOwnerEntityId);
-		// The autonomy service and the trigger runtime deliberately post planner
-		// turns under dedicated synthetic entities (autonomyEntityId,
-		// `trigger-entity:<id>`) so the pipeline does not skip them as
-		// messages-from-self, and both register that entity as a participant of
-		// the runtime-created internal room before dispatch. A stored
-		// co-participant of the agent's own internal room is therefore
-		// runtime-managed identity, not an external sender.
-		const actorIsRegisteredInternalParticipant =
-			audience.participantEntityIds.includes(audience.actorEntityId) &&
-			audience.participantEntityIds.includes(audience.agentEntityId);
 		if (
 			audience.provenance === "canonical_room" &&
-			(actorIsRuntimeIdentity || actorIsRegisteredInternalParticipant)
+			(actorIsRuntimeIdentity || internalActorTrusted) &&
+			audience.participantEntityIds.includes(audience.actorEntityId) &&
+			audience.participantEntityIds.includes(audience.agentEntityId)
 		) {
 			return { allowed: true, basis: "internal_agent_turn", audience };
 		}
@@ -492,10 +537,12 @@ export function evaluateOwnerExclusiveDisclosure(
 	if (!message) {
 		return { allowed: false, reason: "missing_attestation" };
 	}
+	const record = getAudienceRecord(message);
 	return decisionFromAudience(
 		message,
-		getAudienceRecord(message)?.audience,
+		record?.audience,
 		nowMs,
+		isRuntimeManagedInternalActor(record?.runtime, message.entityId),
 	);
 }
 
@@ -511,18 +558,32 @@ export async function revalidateOwnerExclusiveDisclosure(
 	nowMs = Date.now(),
 ): Promise<OwnerExclusiveDisclosureDecision> {
 	const record = getAudienceRecord(message);
-	const initial = decisionFromAudience(message, record?.audience, nowMs);
+	if (!record) {
+		return decisionFromAudience(message, undefined, nowMs);
+	}
+	if (record.runtime !== runtime) {
+		return {
+			allowed: false,
+			reason: "runtime_mismatch",
+			audience: record.audience,
+		};
+	}
+	const initial = decisionFromAudience(
+		message,
+		record.audience,
+		nowMs,
+		isRuntimeManagedInternalActor(runtime, message.entityId),
+	);
 	if (!initial.allowed) return initial;
 
 	try {
-		const roomRuntime = record?.runtime ?? runtime;
 		const [participants, canonicalOwnerEntityId] = await Promise.all([
-			roomRuntime.getParticipantsForRoom(message.roomId),
-			resolveCanonicalOwnerIdForMessage(roomRuntime, message),
+			runtime.getParticipantsForRoom(message.roomId),
+			resolveCanonicalOwnerIdForMessage(runtime, message),
 		]);
 		const room =
 			initial.audience.provenance === "canonical_room"
-				? await roomRuntime.getRoom(message.roomId)
+				? await runtime.getRoom(message.roomId)
 				: undefined;
 		if (
 			(initial.audience.provenance === "canonical_room" &&

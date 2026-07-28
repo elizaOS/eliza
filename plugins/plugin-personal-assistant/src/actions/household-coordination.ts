@@ -1,12 +1,13 @@
 /**
- * Owner-facing orchestration for household roles, scoped grants, and
- * approval-backed schedule proposals. Affected-party decisions are
- * intentionally absent: only a boundary that authenticates the responding
- * principal may call the typed response service.
+ * Owner-facing orchestration for household roles, custody authority, scoped
+ * grants, and approval-backed schedule proposals. Every result carries a
+ * durable, no-op, or rejected effect receipt; affected-party decisions remain
+ * confined to a boundary that authenticates the responding principal.
  */
 import type {
   Action,
   ActionResult,
+  EffectReceipt,
   HandlerCallback,
   IAgentRuntime,
   Memory,
@@ -14,6 +15,12 @@ import type {
 import { resolveActionArgs, type SubactionsMap } from "@elizaos/core";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
+import {
+  completeLifeOpsEffect,
+  lifeOpsAppliedEffect,
+  lifeOpsFailedEffect,
+  lifeOpsNoopEffect,
+} from "../lifeops/action-effect-result.js";
 import {
   getHouseholdCoordinationService,
   HOUSEHOLD_ACCESS_SCOPES,
@@ -31,6 +38,8 @@ const ACTION_NAME = "HOUSEHOLD_COORDINATION";
 
 const HOUSEHOLD_OWNER_SUBACTIONS = [
   "bind_role",
+  "set_custody_authority",
+  "revoke_custody_authority",
   "issue_grant",
   "revoke_grant",
   "create_proposal",
@@ -47,15 +56,42 @@ const SUBACTIONS: SubactionsMap<HouseholdOwnerSubaction> = {
       "Bind an existing Entity to a typed household role, optionally reusing an existing relationship edge.",
     descriptionCompressed:
       "bind existing Entity household role; reuse relationship optional",
-    required: ["entityId", "role", "evidence"],
-    optional: ["householdId", "subjectEntityIds", "relationshipId"],
+    required: ["householdId", "entityId", "role", "evidence"],
+    optional: ["subjectEntityIds", "relationshipId"],
+  },
+  set_custody_authority: {
+    description:
+      "Create or revise the owner-maintained custody-authority baseline for one child and invalidate proposals pinned to older authority bytes.",
+    descriptionCompressed:
+      "set child custody authority baseline with revision guard",
+    required: [
+      "householdId",
+      "childEntityId",
+      "custodianEntityIds",
+      "evidence",
+    ],
+    optional: ["relationshipId", "expectedRevisionSha256"],
+  },
+  revoke_custody_authority: {
+    description:
+      "Revoke one custody-authority baseline with an optional exact-revision guard and invalidate dependent proposals.",
+    descriptionCompressed:
+      "revoke custody authority baseline with revision guard",
+    required: ["householdId", "relationshipId", "reason"],
+    optional: ["expectedRevisionSha256"],
   },
   issue_grant: {
     description:
       "Issue explicit, optionally expiring household visibility or calendar access for role-related subjects.",
     descriptionCompressed:
       "issue scoped household/calendar grant; expiry optional",
-    required: ["principalEntityId", "role", "subjectEntityIds", "scopes"],
+    required: [
+      "householdId",
+      "principalEntityId",
+      "role",
+      "subjectEntityIds",
+      "scopes",
+    ],
     optional: ["expiresAt"],
   },
   revoke_grant: {
@@ -69,7 +105,7 @@ const SUBACTIONS: SubactionsMap<HouseholdOwnerSubaction> = {
       "Create immutable schedule proposal bytes and enqueue one version-pinned approval request per affected adult.",
     descriptionCompressed:
       "create immutable schedule proposal + affected-party approval requests",
-    required: ["coordinationId", "terms"],
+    required: ["householdId", "coordinationId", "terms"],
     optional: [
       "proposalId",
       "baseAgreementVersion",
@@ -108,7 +144,7 @@ const SUBACTIONS: SubactionsMap<HouseholdOwnerSubaction> = {
     description:
       "Read household state through the selected principal's current grants and redaction policy.",
     descriptionCompressed: "read principal-scoped redacted household export",
-    required: [],
+    required: ["householdId"],
     optional: ["principalEntityId"],
   },
 };
@@ -267,12 +303,71 @@ function scheduleTerms(
   });
 }
 
-async function complete(
-  callback: HandlerCallback | undefined,
-  result: ActionResult,
-): Promise<ActionResult> {
-  if (result.text) await callback?.({ text: result.text });
-  return result;
+function requestId(message: Memory): string {
+  return message.id ?? `room:${message.roomId}`;
+}
+
+function receiptId(
+  message: Memory,
+  operation: string,
+  resourceId: string,
+): string {
+  return `${ACTION_NAME}:${operation}:${requestId(message)}:${resourceId}`;
+}
+
+function durableHouseholdEffect(input: {
+  message: Memory;
+  subaction: HouseholdOwnerSubaction;
+  resourceKind: string;
+  resourceId: string;
+  version?: string;
+  committedAt: string;
+  artifacts?: EffectReceipt["artifacts"];
+  idempotency?: EffectReceipt["idempotency"];
+}): EffectReceipt {
+  const operation = `lifeops.household_coordination.${input.subaction}`;
+  return lifeOpsAppliedEffect({
+    receiptId: receiptId(input.message, operation, input.resourceId),
+    operation,
+    resource: {
+      kind: input.resourceKind,
+      id: input.resourceId,
+      ...(input.version ? { version: input.version } : {}),
+    },
+    artifacts: input.artifacts ?? [],
+    idempotency: input.idempotency ?? { key: null, replayed: false },
+    observedAt: input.committedAt,
+    commit: {
+      kind: "durable",
+      id: input.version
+        ? `${input.resourceId}:${input.version}`
+        : input.resourceId,
+      committedAt: input.committedAt,
+    },
+  });
+}
+
+function rejectedHouseholdEffect(input: {
+  message: Memory;
+  operation: string;
+  code: string;
+  retryable: boolean;
+}): EffectReceipt {
+  const observedAt = new Date().toISOString();
+  const id = requestId(input.message);
+  return lifeOpsFailedEffect({
+    receiptId: receiptId(input.message, input.operation, id),
+    operation: input.operation,
+    resource: { kind: "runtime.message", id },
+    artifacts: [],
+    idempotency: { key: null, replayed: false },
+    observedAt,
+    failure: {
+      code: input.code,
+      retryable: input.retryable,
+      acceptance: "rejected",
+    },
+  });
 }
 
 function coordinator(runtime: IAgentRuntime) {
@@ -288,6 +383,7 @@ function coordinator(runtime: IAgentRuntime) {
 
 async function runHouseholdOwnerSubaction(
   runtime: IAgentRuntime,
+  message: Memory,
   subaction: HouseholdOwnerSubaction,
   params: Record<string, unknown>,
   callback?: HandlerCallback,
@@ -297,21 +393,96 @@ async function runHouseholdOwnerSubaction(
     const binding = await service.bindRole({
       entityId: requiredText(params, "entityId"),
       role: householdRole(params, "role"),
-      householdId: optionalText(params, "householdId") ?? undefined,
+      householdId: requiredText(params, "householdId"),
       subjectEntityIds: stringArray(params, "subjectEntityIds"),
       relationshipId: optionalText(params, "relationshipId"),
       evidence: requiredText(params, "evidence"),
       boundByEntityId: SELF_ENTITY_ID,
     });
-    return await complete(callback, {
-      success: true,
-      text: `Bound ${binding.entityId} as household role ${binding.role}.`,
-      data: { action: subaction, binding },
+    const resourceId =
+      binding.relationshipId ??
+      `${binding.householdId}:${binding.entityId}:${binding.role}`;
+    return await completeLifeOpsEffect(
+      callback,
+      {
+        success: true,
+        text: `Bound ${binding.entityId} as household role ${binding.role}.`,
+        data: { action: subaction, binding },
+      },
+      durableHouseholdEffect({
+        message,
+        subaction,
+        resourceKind: "lifeops.household.role_binding",
+        resourceId,
+        version: binding.updatedAt,
+        committedAt: binding.updatedAt,
+      }),
+    );
+  }
+
+  if (subaction === "set_custody_authority") {
+    const authority = await service.setCustodyAuthority({
+      householdId: requiredText(params, "householdId"),
+      relationshipId: optionalText(params, "relationshipId"),
+      childEntityId: requiredText(params, "childEntityId"),
+      custodianEntityIds: stringArray(params, "custodianEntityIds", {
+        required: true,
+      }),
+      evidence: requiredText(params, "evidence"),
+      updatedByEntityId: SELF_ENTITY_ID,
+      expectedRevisionSha256: optionalText(params, "expectedRevisionSha256"),
     });
+    return await completeLifeOpsEffect(
+      callback,
+      {
+        success: true,
+        text:
+          `Set custody authority ${authority.relationshipId} revision ${authority.revision}. ` +
+          "Pending proposals tied to older authority bytes are invalid.",
+        data: { action: subaction, authority },
+      },
+      durableHouseholdEffect({
+        message,
+        subaction,
+        resourceKind: "lifeops.household.custody_authority",
+        resourceId: authority.relationshipId,
+        version: authority.revisionSha256,
+        committedAt: authority.updatedAt,
+      }),
+    );
+  }
+
+  if (subaction === "revoke_custody_authority") {
+    const authority = await service.revokeCustodyAuthority({
+      householdId: requiredText(params, "householdId"),
+      relationshipId: requiredText(params, "relationshipId"),
+      revokedByEntityId: SELF_ENTITY_ID,
+      reason: requiredText(params, "reason"),
+      expectedRevisionSha256: optionalText(params, "expectedRevisionSha256"),
+    });
+    return await completeLifeOpsEffect(
+      callback,
+      {
+        success: true,
+        text:
+          `Revoked custody authority ${authority.relationshipId} at revision ${authority.revision}. ` +
+          "Pending proposals tied to that authority are invalid.",
+        data: { action: subaction, authority },
+      },
+      durableHouseholdEffect({
+        message,
+        subaction,
+        resourceKind: "lifeops.household.custody_authority",
+        resourceId: authority.relationshipId,
+        version: authority.revisionSha256,
+        committedAt: authority.updatedAt,
+      }),
+    );
   }
 
   if (subaction === "issue_grant") {
     const grant = await service.issueGrant({
+      householdId: requiredText(params, "householdId"),
       principalEntityId: requiredText(params, "principalEntityId"),
       role: householdRole(params, "role"),
       subjectEntityIds: stringArray(params, "subjectEntityIds", {
@@ -321,11 +492,22 @@ async function runHouseholdOwnerSubaction(
       issuedByEntityId: SELF_ENTITY_ID,
       expiresAt: optionalText(params, "expiresAt"),
     });
-    return await complete(callback, {
-      success: true,
-      text: `Issued household grant ${grant.id} with ${grant.scopes.join(", ")}.`,
-      data: { action: subaction, grant },
-    });
+    return await completeLifeOpsEffect(
+      callback,
+      {
+        success: true,
+        text: `Issued household grant ${grant.id} with ${grant.scopes.join(", ")}.`,
+        data: { action: subaction, grant },
+      },
+      durableHouseholdEffect({
+        message,
+        subaction,
+        resourceKind: "lifeops.household.access_grant",
+        resourceId: grant.id,
+        version: grant.updatedAt,
+        committedAt: grant.updatedAt,
+      }),
+    );
   }
 
   if (subaction === "revoke_grant") {
@@ -334,15 +516,27 @@ async function runHouseholdOwnerSubaction(
       revokedByEntityId: SELF_ENTITY_ID,
       reason: requiredText(params, "reason"),
     });
-    return await complete(callback, {
-      success: true,
-      text: `Revoked household grant ${grant.id}.`,
-      data: { action: subaction, grant },
-    });
+    return await completeLifeOpsEffect(
+      callback,
+      {
+        success: true,
+        text: `Revoked household grant ${grant.id}.`,
+        data: { action: subaction, grant },
+      },
+      durableHouseholdEffect({
+        message,
+        subaction,
+        resourceKind: "lifeops.household.access_grant",
+        resourceId: grant.id,
+        version: grant.updatedAt,
+        committedAt: grant.updatedAt,
+      }),
+    );
   }
 
   if (subaction === "create_proposal") {
     const proposal = await service.createProposal({
+      householdId: requiredText(params, "householdId"),
       proposalId: optionalText(params, "proposalId"),
       coordinationId: requiredText(params, "coordinationId"),
       terms: scheduleTerms(params),
@@ -355,14 +549,25 @@ async function runHouseholdOwnerSubaction(
       baseAgreementVersion: optionalInteger(params, "baseAgreementVersion"),
       expiresAt: optionalText(params, "expiresAt"),
     });
-    return await complete(callback, {
-      success: true,
-      text:
-        `Created household proposal ${proposal.proposalId} v${proposal.version} ` +
-        `and queued ${proposal.requiredApproverEntityIds.length} separate approval request(s). ` +
-        "No calendar event or external message was created.",
-      data: { action: subaction, proposal },
-    });
+    return await completeLifeOpsEffect(
+      callback,
+      {
+        success: true,
+        text:
+          `Created household proposal ${proposal.proposalId} v${proposal.version} ` +
+          `and queued ${proposal.requiredApproverEntityIds.length} separate approval request(s). ` +
+          "No calendar event or external message was created.",
+        data: { action: subaction, proposal },
+      },
+      durableHouseholdEffect({
+        message,
+        subaction,
+        resourceKind: "lifeops.household.schedule_proposal",
+        resourceId: proposal.proposalId,
+        version: `${proposal.version}:${proposal.contentSha256}`,
+        committedAt: proposal.updatedAt,
+      }),
+    );
   }
 
   if (subaction === "revise_proposal") {
@@ -378,13 +583,24 @@ async function runHouseholdOwnerSubaction(
       revisedByEntityId: SELF_ENTITY_ID,
       expiresAt: optionalText(params, "expiresAt"),
     });
-    return await complete(callback, {
-      success: true,
-      text:
-        `Created household proposal ${proposal.proposalId} v${proposal.version}; ` +
-        "approvals for every prior version are invalid. No calendar event or external message was created.",
-      data: { action: subaction, proposal },
-    });
+    return await completeLifeOpsEffect(
+      callback,
+      {
+        success: true,
+        text:
+          `Created household proposal ${proposal.proposalId} v${proposal.version}; ` +
+          "approvals for every prior version are invalid. No calendar event or external message was created.",
+        data: { action: subaction, proposal },
+      },
+      durableHouseholdEffect({
+        message,
+        subaction,
+        resourceKind: "lifeops.household.schedule_proposal",
+        resourceId: proposal.proposalId,
+        version: `${proposal.version}:${proposal.contentSha256}`,
+        committedAt: proposal.updatedAt,
+      }),
+    );
   }
 
   if (subaction === "ensure_approvals") {
@@ -394,11 +610,45 @@ async function runHouseholdOwnerSubaction(
       proposalId,
       proposalVersion,
     );
-    return await complete(callback, {
-      success: true,
-      text: `Proposal ${proposalId} v${proposalVersion} has ${approvals.length} approval request(s).`,
-      data: { action: subaction, proposalId, proposalVersion, approvals },
-    });
+    const newestApproval = approvals.reduce<
+      (typeof approvals)[number] | undefined
+    >(
+      (newest, approval) =>
+        !newest || approval.updatedAt > newest.updatedAt ? approval : newest,
+      undefined,
+    );
+    if (!newestApproval) {
+      return invalidContract(
+        "A pending household proposal must have at least one persisted approval request",
+        { proposalId, proposalVersion },
+      );
+    }
+    const approvalIds = approvals
+      .map((approval) => approval.id)
+      .sort()
+      .join(",");
+    return await completeLifeOpsEffect(
+      callback,
+      {
+        success: true,
+        text: `Proposal ${proposalId} v${proposalVersion} has ${approvals.length} approval request(s).`,
+        data: { action: subaction, proposalId, proposalVersion, approvals },
+      },
+      durableHouseholdEffect({
+        message,
+        subaction,
+        resourceKind: "lifeops.household.proposal_approvals",
+        resourceId: `${proposalId}:${proposalVersion}`,
+        version: approvalIds,
+        committedAt: newestApproval.updatedAt,
+        artifacts: approvals.map((approval) => ({
+          kind: "lifeops.approval_request",
+          id: approval.approvalRequestId,
+          version: approval.updatedAt,
+        })),
+        idempotency: { key: null, replayed: false },
+      }),
+    );
   }
 
   if (subaction === "finalize_proposal") {
@@ -406,25 +656,68 @@ async function runHouseholdOwnerSubaction(
       proposalId: requiredText(params, "proposalId"),
       proposalVersion: requiredInteger(params, "proposalVersion"),
     });
-    return await complete(callback, {
-      success: true,
-      text:
-        `Activated household agreement ${agreement.id} v${agreement.version}. ` +
-        "This records the approved commitment; it does not create or update a calendar event.",
-      data: { action: subaction, agreement },
-    });
+    return await completeLifeOpsEffect(
+      callback,
+      {
+        success: true,
+        text:
+          `Activated household agreement ${agreement.id} v${agreement.version}. ` +
+          "This records the approved commitment; it does not create or update a calendar event.",
+        data: { action: subaction, agreement },
+      },
+      durableHouseholdEffect({
+        message,
+        subaction,
+        resourceKind: "lifeops.household.schedule_agreement",
+        resourceId: agreement.id,
+        version: String(agreement.version),
+        committedAt: agreement.createdAt,
+        artifacts: [
+          {
+            kind: "lifeops.household.schedule_proposal",
+            id: agreement.proposalId,
+            version: String(agreement.proposalVersion),
+          },
+        ],
+      }),
+    );
   }
 
   const principalEntityId =
     optionalText(params, "principalEntityId") ?? SELF_ENTITY_ID;
-  const householdExport = await service.exportFor({ principalEntityId });
-  return await complete(callback, {
-    success: true,
-    text:
-      `Exported ${householdExport.schedules.length} visible household schedule item(s) ` +
-      `for ${principalEntityId} under ${householdExport.effectiveScopes.length} effective scope(s).`,
-    data: { action: subaction, export: householdExport },
+  const householdExport = await service.exportFor({
+    householdId: requiredText(params, "householdId"),
+    principalEntityId,
   });
+  const operation = "lifeops.household_coordination.export";
+  return await completeLifeOpsEffect(
+    callback,
+    {
+      success: true,
+      text:
+        `Exported ${householdExport.schedules.length} visible household schedule item(s) ` +
+        `for ${principalEntityId} under ${householdExport.effectiveScopes.length} effective scope(s).`,
+      data: { action: subaction, export: householdExport },
+    },
+    lifeOpsNoopEffect({
+      receiptId: receiptId(
+        message,
+        operation,
+        `${householdExport.householdId}:${principalEntityId}`,
+      ),
+      operation,
+      resource: {
+        kind: "lifeops.household.scoped_export",
+        id: `${householdExport.householdId}:${principalEntityId}`,
+        version: householdExport.generatedAt,
+      },
+      artifacts: [],
+      idempotency: { key: null, replayed: false },
+      observedAt: householdExport.generatedAt,
+      reason:
+        "The operation read a principal-scoped household projection without changing household commitments.",
+    }),
+  );
 }
 
 const TERMS_SCHEMA = {
@@ -496,12 +789,13 @@ export const householdCoordinationAction: Action = {
     "capability:read",
     "capability:write",
     "capability:update",
+    "effect:receipt-required",
     "surface:internal",
   ],
   description:
-    "Owner household coordination: bind roles, issue/revoke scoped grants, create/revise exact-hash schedule proposals, repair approval requests, finalize fully approved agreements, and inspect redacted exports. Affected-party approval responses are not owner operations.",
+    "Owner household coordination: bind roles, set/revoke custody authority, issue/revoke scoped grants, create/revise exact-hash schedule proposals, repair approval requests, finalize fully approved agreements, and inspect redacted exports. Affected-party approval responses are not owner operations.",
   descriptionCompressed:
-    "household roles|grants|proposal versions|approval repair|agreement finalize|scoped export; no party impersonation",
+    "household roles|custody authority|grants|proposal versions|approval repair|agreement finalize|scoped export; no party impersonation",
   routingHint:
     "household role/access/proposal/agreement -> HOUSEHOLD_COORDINATION; calendar event CRUD -> CALENDAR; never use this owner action to answer for another affected party",
   contexts: ["general", "calendar", "contacts", "tasks", "admin"],
@@ -523,8 +817,15 @@ export const householdCoordinationAction: Action = {
     {
       name: "householdId",
       description:
-        "Canonical household namespace to bind to this relationship for household-scoped authorization.",
-      subactions: ["bind_role"],
+        "Canonical household namespace for role, grant, authority, proposal, and export authorization.",
+      subactions: [
+        "bind_role",
+        "set_custody_authority",
+        "revoke_custody_authority",
+        "issue_grant",
+        "create_proposal",
+        "export",
+      ],
       schema: { type: "string", minLength: 1 },
     },
     {
@@ -549,14 +850,40 @@ export const householdCoordinationAction: Action = {
     {
       name: "relationshipId",
       description:
-        "Existing relationship edge to annotate instead of creating another edge.",
-      subactions: ["bind_role"],
+        "Existing relationship edge to annotate, revise as custody authority, or revoke.",
+      subactions: [
+        "bind_role",
+        "set_custody_authority",
+        "revoke_custody_authority",
+      ],
       schema: { type: "string", minLength: 1 },
     },
     {
       name: "evidence",
-      description: "Owner-supplied reason/evidence for the role binding.",
-      subactions: ["bind_role"],
+      description:
+        "Owner-supplied evidence for a role binding or custody-authority baseline.",
+      subactions: ["bind_role", "set_custody_authority"],
+      schema: { type: "string", minLength: 1 },
+    },
+    {
+      name: "childEntityId",
+      description:
+        "Child Entity whose custody-authority baseline is being set.",
+      subactions: ["set_custody_authority"],
+      schema: { type: "string", minLength: 1 },
+    },
+    {
+      name: "custodianEntityIds",
+      description:
+        "Owner and child-scoped co-parent Entity ids authorized by the custody baseline.",
+      subactions: ["set_custody_authority"],
+      schema: STRING_ARRAY_SCHEMA,
+    },
+    {
+      name: "expectedRevisionSha256",
+      description:
+        "Optional exact current custody-authority revision hash for compare-and-swap protection.",
+      subactions: ["set_custody_authority", "revoke_custody_authority"],
       schema: { type: "string", minLength: 1 },
     },
     {
@@ -589,8 +916,8 @@ export const householdCoordinationAction: Action = {
     },
     {
       name: "reason",
-      description: "Auditable revocation reason.",
-      subactions: ["revoke_grant"],
+      description: "Auditable grant or custody-authority revocation reason.",
+      subactions: ["revoke_grant", "revoke_custody_authority"],
       schema: { type: "string", minLength: 1 },
     },
     {
@@ -655,11 +982,20 @@ export const householdCoordinationAction: Action = {
   ],
   handler: async (runtime, message, state, options, callback) => {
     if (!(await hasLifeOpsAccess(runtime, message))) {
-      return await complete(callback, {
-        success: false,
-        text: "Household coordination actions are restricted to the owner.",
-        data: { error: "PERMISSION_DENIED" },
-      });
+      return await completeLifeOpsEffect(
+        callback,
+        {
+          success: false,
+          text: "Household coordination actions are restricted to the owner.",
+          data: { error: "PERMISSION_DENIED" },
+        },
+        rejectedHouseholdEffect({
+          message,
+          operation: "lifeops.household_coordination.authorize",
+          code: "PERMISSION_DENIED",
+          retryable: false,
+        }),
+      );
     }
     const resolved = await resolveActionArgs<
       HouseholdOwnerSubaction,
@@ -673,17 +1009,27 @@ export const householdCoordinationAction: Action = {
       subactions: SUBACTIONS,
     });
     if (!resolved.ok) {
-      return await complete(callback, {
-        success: false,
-        text: resolved.clarification,
-        data: {
-          error: "MISSING_HOUSEHOLD_PARAMETERS",
-          missing: resolved.missing,
+      return await completeLifeOpsEffect(
+        callback,
+        {
+          success: false,
+          text: resolved.clarification,
+          data: {
+            error: "MISSING_HOUSEHOLD_PARAMETERS",
+            missing: resolved.missing,
+          },
         },
-      });
+        rejectedHouseholdEffect({
+          message,
+          operation: "lifeops.household_coordination.resolve_request",
+          code: "MISSING_HOUSEHOLD_PARAMETERS",
+          retryable: true,
+        }),
+      );
     }
     return await runHouseholdOwnerSubaction(
       runtime,
+      message,
       resolved.subaction,
       resolved.params,
       callback,

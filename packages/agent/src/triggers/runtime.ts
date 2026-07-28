@@ -21,6 +21,7 @@ import type {
 import {
   inspectSendHandlerResult,
   MESSAGE_SOURCE_TRIGGER_PROMPT,
+  registerRuntimeManagedInternalActor,
   ServiceType,
   stringToUuid,
 } from "@elizaos/core";
@@ -415,7 +416,15 @@ async function dispatchPrompt(
       userName: "trigger",
       source: room?.source ?? MESSAGE_SOURCE_TRIGGER_PROMPT,
     });
-    await messageService.handleMessage(runtime, message, deliveryCallback);
+    const releaseInternalActor = registerRuntimeManagedInternalActor(
+      runtime,
+      entityId,
+    );
+    try {
+      await messageService.handleMessage(runtime, message, deliveryCallback);
+    } finally {
+      releaseInternalActor();
+    }
   } catch (err) {
     const detail =
       err instanceof Error

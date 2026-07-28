@@ -12,6 +12,7 @@ import {
 	evaluateOwnerExclusiveDisclosure,
 	OWNER_EXCLUSIVE_DISCLOSURE_GATE,
 	ownerExclusiveSuppressionNote,
+	registerRuntimeManagedInternalActor,
 	revalidateOwnerExclusiveDisclosure,
 } from "./trusted-delivery-audience";
 
@@ -214,6 +215,20 @@ describe("trusted delivery audience", () => {
 		});
 	});
 
+	it("rejects process-local evidence presented to a different runtime", async () => {
+		const first = harness(ChannelType.DM);
+		const second = harness(ChannelType.GROUP);
+		const turn = message();
+		await attestDeliveryAudienceFromCanonicalRoom(first.runtime, turn);
+
+		expect(
+			await revalidateOwnerExclusiveDisclosure(second.runtime, turn),
+		).toMatchObject({
+			allowed: false,
+			reason: "runtime_mismatch",
+		});
+	});
+
 	it("ignores private-looking voice labels when the canonical room is shared", async () => {
 		const { runtime } = harness(ChannelType.GROUP);
 		const turn = message({
@@ -269,14 +284,6 @@ describe("trusted delivery audience", () => {
 			actor: OWNER,
 			participants: [OWNER, AGENT],
 		},
-		{
-			// The real autonomy-service shape: turns are posted under a dedicated
-			// synthetic entity that the runtime registered as a room participant.
-			name: "SELF room, registered autonomy-entity actor",
-			type: ChannelType.SELF,
-			actor: GUEST,
-			participants: [AGENT, GUEST],
-		},
 	] as const)(
 		"allows the agent-internal turn: $name",
 		async ({ type, actor, participants }) => {
@@ -294,9 +301,28 @@ describe("trusted delivery audience", () => {
 		},
 	);
 
-	it("keeps denying internal rooms for an actor the runtime never registered", async () => {
+	it("allows an explicitly registered runtime-managed internal actor", async () => {
 		const { runtime, setParticipants } = harness(ChannelType.SELF);
-		setParticipants([AGENT]);
+		setParticipants([AGENT, GUEST]);
+		const release = registerRuntimeManagedInternalActor(runtime, GUEST);
+		try {
+			const turn = message({ entityId: GUEST });
+			await attestDeliveryAudienceFromCanonicalRoom(runtime, turn);
+			expect(evaluateOwnerExclusiveDisclosure(turn)).toMatchObject({
+				allowed: true,
+				basis: "internal_agent_turn",
+			});
+			expect(
+				await revalidateOwnerExclusiveDisclosure(runtime, turn),
+			).toMatchObject({ allowed: true, basis: "internal_agent_turn" });
+		} finally {
+			release();
+		}
+	});
+
+	it("denies an arbitrary internal-room participant without explicit registration", async () => {
+		const { runtime, setParticipants } = harness(ChannelType.SELF);
+		setParticipants([AGENT, GUEST]);
 		const turn = message({ entityId: GUEST });
 		await attestDeliveryAudienceFromCanonicalRoom(runtime, turn);
 		expect(evaluateOwnerExclusiveDisclosure(turn)).toMatchObject({

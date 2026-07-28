@@ -9,6 +9,7 @@ import { isValidTimeZone } from "@elizaos/shared";
 
 export const HOUSEHOLD_SCHEDULE_PROPOSAL_APPROVAL_WORKFLOW_ID =
   "household.schedule.proposal.approval" as const;
+export const DEFAULT_HOUSEHOLD_ID = "household:default" as const;
 
 /**
  * The exact decision line an affected party sends back over a connector.
@@ -25,7 +26,7 @@ export function householdApprovalCommandText(
 /**
  * Connector-delivered approval request for an affected party. The taught
  * commands are embedded after prose on the same line so a quoted echo of this
- * prompt in an email reply can never satisfy the full-line inbound parser.
+ * prompt cannot satisfy the whole-message inbound parser.
  */
 export function householdApprovalRequestPrompt(input: {
   approvalRequestId: string;
@@ -42,9 +43,9 @@ export function householdApprovalRequestPrompt(input: {
   return [
     input.reason,
     "",
-    `To approve, reply with this exact line on its own line: ${approve}`,
-    `To decline, reply with this exact line on its own line: ${reject}`,
-    `You can add a short note after the command, for example: "${approve} — works for us".`,
+    `To approve, reply with only this command: ${approve}`,
+    `To decline, reply with only this command: ${reject}`,
+    `You may add a short note on that same line, for example: "${approve} — works for us". Do not include a greeting, signature, or quoted history.`,
   ].join("\n");
 }
 
@@ -78,6 +79,7 @@ export type HouseholdProposalStatus =
   (typeof HOUSEHOLD_PROPOSAL_STATUSES)[number];
 
 export interface HouseholdRoleBinding {
+  householdId: string;
   entityId: string;
   role: HouseholdRole;
   relationshipId: string | null;
@@ -89,6 +91,7 @@ export interface HouseholdRoleBinding {
 export interface HouseholdAccessGrant {
   id: string;
   agentId: string;
+  householdId: string;
   principalEntityId: string;
   relationshipId: string | null;
   role: HouseholdRole;
@@ -110,7 +113,20 @@ export interface HouseholdCustodyException {
   normalCustodianEntityId: string;
   substituteCustodianEntityId: string;
   authorityBaselineRelationshipId: string;
+  authorityBaselineRevisionSha256?: string | null;
   reason: string;
+}
+
+export interface HouseholdCustodyAuthorityBaseline {
+  householdId: string;
+  relationshipId: string;
+  childEntityId: string;
+  custodianEntityIds: string[];
+  revision: number;
+  revisionSha256: string;
+  status: "active" | "revoked";
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface HouseholdScheduleTerms {
@@ -127,6 +143,7 @@ export interface HouseholdScheduleTerms {
 export interface HouseholdScheduleProposal {
   proposalId: string;
   agentId: string;
+  householdId: string;
   version: number;
   coordinationId: string;
   baseAgreementVersion: number;
@@ -157,6 +174,7 @@ export interface HouseholdProposalApproval {
 export interface HouseholdScheduleAgreement {
   id: string;
   agentId: string;
+  householdId: string;
   coordinationId: string;
   version: number;
   proposalId: string;
@@ -172,6 +190,7 @@ export interface HouseholdScheduleAgreement {
 export interface HouseholdCoordinationHead {
   id: string;
   agentId: string;
+  householdId: string;
   coordinationId: string;
   currentAgreementVersion: number;
   currentAgreementId: string | null;
@@ -181,6 +200,8 @@ export interface HouseholdCoordinationHead {
 
 export const HOUSEHOLD_AUDIT_KINDS = [
   "household_role_bound",
+  "household_custody_authority_set",
+  "household_custody_authority_revoked",
   "household_grant_issued",
   "household_grant_revoked",
   "household_proposal_created",
@@ -204,6 +225,7 @@ export interface HouseholdAuditRecord {
 }
 
 export interface HouseholdExportScheduleEntry {
+  householdId: string;
   coordinationId: string;
   /**
    * Visible schedule subjects are structural authorization metadata, not
@@ -223,6 +245,7 @@ export interface HouseholdExportScheduleEntry {
 
 export interface HouseholdScopedExport {
   generatedAt: string;
+  householdId: string;
   principalEntityId: string;
   effectiveScopes: HouseholdAccessScope[];
   visibleSubjectEntityIds: string[];
@@ -603,6 +626,14 @@ export function normalizeScheduleTerms(
         input.custodyException.authorityBaselineRelationshipId,
         "custody.authorityBaselineRelationshipId",
       ),
+      authorityBaselineRevisionSha256:
+        input.custodyException.authorityBaselineRevisionSha256 === null ||
+        input.custodyException.authorityBaselineRevisionSha256 === undefined
+          ? null
+          : normalizeHouseholdIdentifier(
+              input.custodyException.authorityBaselineRevisionSha256,
+              "custody.authorityBaselineRevisionSha256",
+            ),
       reason: requireText(input.custodyException.reason, "custody.reason"),
     };
   }

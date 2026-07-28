@@ -38,17 +38,14 @@ import { HOUSEHOLD_SCHEDULE_PROPOSAL_APPROVAL_WORKFLOW_ID } from "./types.js";
 type UnknownRecord = Record<string, unknown>;
 
 const DIRECT_CHAT_TYPES = new Set(["direct", "dm", "private"]);
-// One full line per command: real email/SMS replies wrap the decision in
-// greetings, signatures, and quoted history, so the command is matched
-// line-by-line instead of against the whole message. A line must contain
-// nothing but the command (plus an optional note after an explicit
-// separator) — prose sharing the command's line never parses, which is what
-// keeps quoted echoes of the outbound prompt from registering as decisions.
-const APPROVAL_COMMAND_LINE =
+// Connector quote normalization is not trustworthy enough to distinguish a
+// newly typed decision from an old command whose quote marker was stripped.
+// Requiring the entire trimmed body to be the taught command preserves
+// whitespace-only client decoration without treating prose, signatures, or
+// reflowed history as approval intent.
+const APPROVAL_COMMAND_MESSAGE =
   /^\s*(approve|reject)\s+household\s+approval\s+([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})(?:\s*[:—-]\s*(.{1,500}))?\s*$/iu;
-// Quoted-reply context (`>`/`|` prefixes) restates earlier messages, not the
-// sender's decision, so those lines are excluded before command matching.
-const QUOTED_REPLY_LINE = /^\s*[>|]/u;
+const MESSAGE_LINE_BREAK = /[\n\v\f\r\u0085\u2028\u2029]/u;
 
 export type HouseholdInboundApprovalDecision = "approve" | "reject";
 
@@ -174,38 +171,27 @@ function identityPlatforms(provider: string): string[] {
 
 /**
  * Parse the narrow, deterministic command taught by the delivered approval
- * prompt. The command may sit anywhere in the reply as long as it occupies a
- * whole unquoted line; conflicting commands (different decisions or approval
- * ids) make the reply ambiguous and parse to null rather than guessing.
+ * prompt. The full meaningful message must be that one command, because
+ * connector clients may strip or reflow quote markers and thereby expose an
+ * old command as an apparently unquoted line.
  */
 export function parseHouseholdInboundApprovalCommand(
   text: string,
 ): HouseholdInboundApprovalCommand | null {
-  const commands = new Map<string, HouseholdInboundApprovalCommand>();
-  for (const line of text.split(/\r?\n/u)) {
-    if (QUOTED_REPLY_LINE.test(line)) continue;
-    const match = APPROVAL_COMMAND_LINE.exec(line);
-    if (!match) continue;
-    const decision = match[1]?.toLowerCase();
-    const approvalRequestId = match[2]?.toLowerCase();
-    if (
-      (decision !== "approve" && decision !== "reject") ||
-      !approvalRequestId
-    ) {
-      continue;
-    }
-    const key = `${decision}\0${approvalRequestId}`;
-    if (!commands.has(key)) {
-      commands.set(key, {
-        decision,
-        approvalRequestId,
-        reason: match[3]?.trim() || null,
-      });
-    }
+  const meaningfulText = text.trim();
+  if (MESSAGE_LINE_BREAK.test(meaningfulText)) return null;
+  const match = APPROVAL_COMMAND_MESSAGE.exec(meaningfulText);
+  if (!match) return null;
+  const decision = match[1]?.toLowerCase();
+  const approvalRequestId = match[2]?.toLowerCase();
+  if ((decision !== "approve" && decision !== "reject") || !approvalRequestId) {
+    return null;
   }
-  if (commands.size !== 1) return null;
-  const [command] = commands.values();
-  return command ?? null;
+  return {
+    decision,
+    approvalRequestId,
+    reason: match[3]?.trim() || null,
+  };
 }
 
 /**

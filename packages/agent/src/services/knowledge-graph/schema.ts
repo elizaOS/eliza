@@ -19,6 +19,7 @@
  * though it also appears inside `metadata_json`.
  */
 
+import { DEFAULT_CONNECTOR_ACCOUNT_ID } from "@elizaos/shared";
 import {
   boolean,
   index,
@@ -64,6 +65,9 @@ export const lifeEntityIdentities = appLifeopsPgSchema.table(
     entityId: text("entity_id").notNull(),
     platform: text("platform").notNull(),
     handle: text("handle").notNull(),
+    connectorAccountId: text("connector_account_id")
+      .notNull()
+      .default(DEFAULT_CONNECTOR_ACCOUNT_ID),
     displayName: text("display_name"),
     verified: boolean("verified").notNull().default(false),
     confidence: real("confidence").notNull().default(0),
@@ -72,10 +76,17 @@ export const lifeEntityIdentities = appLifeopsPgSchema.table(
     evidenceJson: text("evidence_json").notNull().default("[]"),
   },
   (t) => [
-    unique().on(t.agentId, t.entityId, t.platform, t.handle),
+    unique("life_entity_identities_entity_route_unique").on(
+      t.agentId,
+      t.entityId,
+      t.platform,
+      t.connectorAccountId,
+      t.handle,
+    ),
     index("life_entity_identities_lookup_idx").on(
       t.agentId,
       t.platform,
+      t.connectorAccountId,
       t.handle,
     ),
   ],

@@ -166,10 +166,12 @@ export {
 	ownerExclusiveDisclosureWasUsed,
 	ownerExclusiveSuppressionNote,
 	PRIVACY_DENIED_TEXT,
+	registerRuntimeManagedInternalActor,
 	revalidateOwnerExclusiveDisclosure,
 	type TrustedApiPrincipal,
 	type TrustedDeliveryAudience,
 	type TrustedDeliveryAudienceKind,
 	type TrustedDeliveryAudienceProvenance,
 	trustedDeliveryAudienceCacheKey,
+	trustedDeliveryAudienceIsBoundToRuntime,
 } from "./trusted-delivery-audience.js";

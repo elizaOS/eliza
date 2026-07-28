@@ -229,38 +229,68 @@ describe("household inbound approval — real PGlite", () => {
     ).toBeNull();
   });
 
-  it("parses realistic replies with prose, signatures, and quoted history", () => {
+  it("requires one fresh command-shaped message and rejects reflowed history", () => {
     const requestId = randomUUID();
     const command = householdApprovalCommandText("approve", requestId);
     expect(
       parseHouseholdInboundApprovalCommand(
-        [
-          "Sounds good, Friday works.",
-          "",
-          `${command} — works for us`,
-          "",
-          "Thanks,",
-          "Jordan",
-          "",
-          "> On Mar 1, Eliza wrote:",
-          `> To approve, reply with this exact line on its own line: ${command}`,
-        ].join("\n"),
+        ["", `  ${command} — works for us  `, ""].join("\n"),
       ),
     ).toEqual({
       decision: "approve",
       approvalRequestId: requestId,
       reason: "works for us",
     });
-    // A quoted echo alone is history, not a decision.
+    expect(
+      parseHouseholdInboundApprovalCommand(
+        `\r\n\tREJECT household approval ${requestId}: cannot attend\t\r\n`,
+      ),
+    ).toEqual({
+      decision: "reject",
+      approvalRequestId: requestId,
+      reason: "cannot attend",
+    });
+
     expect(parseHouseholdInboundApprovalCommand(`> ${command}`)).toBeNull();
-    // Conflicting unquoted commands are ambiguous, never guessed.
     expect(
       parseHouseholdInboundApprovalCommand(
         `${command}\n${householdApprovalCommandText("reject", requestId)}`,
       ),
     ).toBeNull();
-    // The delivered prompt itself teaches both commands after prose on the
-    // same line, so an unquoted echo of the whole prompt never parses.
+    expect(
+      parseHouseholdInboundApprovalCommand(
+        `approve\nhousehold approval ${requestId}`,
+      ),
+    ).toBeNull();
+    expect(
+      parseHouseholdInboundApprovalCommand(`${command}\n— reflowed note`),
+    ).toBeNull();
+    expect(
+      parseHouseholdInboundApprovalCommand(
+        [
+          "Sounds good, Friday works.",
+          "",
+          command,
+          "",
+          "Thanks,",
+          "Jordan",
+        ].join("\n"),
+      ),
+    ).toBeNull();
+    expect(
+      parseHouseholdInboundApprovalCommand(
+        [
+          "On Mar 1, Eliza wrote:",
+          "To approve, reply with this exact line on its own line:",
+          command,
+        ].join("\n"),
+      ),
+    ).toBeNull();
+    expect(
+      parseHouseholdInboundApprovalCommand(
+        [command, "", "On Mar 1, Eliza wrote:", command].join("\n"),
+      ),
+    ).toBeNull();
     expect(
       parseHouseholdInboundApprovalCommand(
         householdApprovalRequestPrompt({
@@ -349,13 +379,7 @@ describe("household inbound approval — real PGlite", () => {
       state: "pending",
     });
 
-    const replyText = [
-      "Sounds good — Friday works.",
-      "",
-      `${approveCommand} — confirmed`,
-      "",
-      "Jordan",
-    ].join("\n");
+    const replyText = `${approveCommand} — confirmed`;
     const command = parseHouseholdInboundApprovalCommand(replyText);
     const message = telegramMessage({
       handle,

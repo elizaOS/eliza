@@ -43,6 +43,7 @@ import {
 } from "./grant-expiry-warning.js";
 import { HouseholdCoordinationRepository } from "./repository.js";
 import {
+  DEFAULT_HOUSEHOLD_ID,
   HOUSEHOLD_ACCESS_SCOPES,
   HOUSEHOLD_SCHEDULE_PROPOSAL_APPROVAL_WORKFLOW_ID,
   type HouseholdAccessGrant,
@@ -50,6 +51,7 @@ import {
   type HouseholdAuditRecord,
   HouseholdCoordinationError,
   type HouseholdCoordinationHead,
+  type HouseholdCustodyAuthorityBaseline,
   type HouseholdExportScheduleEntry,
   type HouseholdProposalApproval,
   type HouseholdRole,
@@ -74,6 +76,7 @@ const HOUSEHOLD_ID_METADATA_KEY = "householdId";
 const CUSTODY_AUTHORITY_CHILD_METADATA_KEY = "custodyAuthorityChildEntityId";
 const CUSTODY_AUTHORITY_CUSTODIANS_METADATA_KEY =
   "custodyAuthorityCustodianEntityIds";
+const CUSTODY_AUTHORITY_REVISION_METADATA_KEY = "custodyAuthorityRevision";
 const DEFAULT_PROPOSAL_TTL_MS = 48 * 60 * 60 * 1000;
 export const HOUSEHOLD_COORDINATION_SERVICE = "lifeops_household_coordination";
 
@@ -90,6 +93,7 @@ export interface HouseholdCoordinationDependencies {
 
 export interface CreateHouseholdProposalInput {
   proposalId?: string;
+  householdId?: string;
   coordinationId: string;
   terms: HouseholdScheduleTerms;
   affectedPartyEntityIds: string[];
@@ -100,6 +104,7 @@ export interface CreateHouseholdProposalInput {
 }
 
 export interface ReviseHouseholdProposalInput {
+  householdId?: string;
   proposalId: string;
   expectedVersion: number;
   terms: HouseholdScheduleTerms;
@@ -107,6 +112,13 @@ export interface ReviseHouseholdProposalInput {
   requiredApproverEntityIds: string[];
   revisedByEntityId: string;
   expiresAt?: string | null;
+}
+
+function householdNamespace(value: string | undefined): string {
+  return normalizeHouseholdIdentifier(
+    value ?? DEFAULT_HOUSEHOLD_ID,
+    "householdId",
+  );
 }
 
 function roleRelationshipType(role: HouseholdRole): string {
@@ -137,6 +149,34 @@ function readSubjectMetadata(relationship: Relationship): string[] {
     );
   }
   return uniqueStrings(value);
+}
+
+function readHouseholdIdMetadata(relationship: Relationship): string | null {
+  const value = relationship.metadata?.[HOUSEHOLD_ID_METADATA_KEY];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function custodyAuthorityRevisionSha256(input: {
+  householdId: string;
+  relationshipId: string;
+  childEntityId: string;
+  custodianEntityIds: readonly string[];
+  revision: number;
+  status: "active" | "revoked";
+}): string {
+  return crypto
+    .createHash("sha256")
+    .update(
+      JSON.stringify({
+        householdId: input.householdId,
+        relationshipId: input.relationshipId,
+        childEntityId: input.childEntityId,
+        custodianEntityIds: uniqueStrings(input.custodianEntityIds),
+        revision: input.revision,
+        status: input.status,
+      }),
+    )
+    .digest("hex");
 }
 
 function validateFutureExpiry(
@@ -221,6 +261,7 @@ function approvalPayloadMatches(
   return (
     request.payload.input.proposalId === proposal.proposalId &&
     request.payload.input.proposalVersion === proposal.version &&
+    request.payload.input.householdId === proposal.householdId &&
     request.payload.input.coordinationId === proposal.coordinationId &&
     request.payload.input.partyEntityId === partyEntityId &&
     request.payload.input.contentSha256 === proposal.contentSha256
@@ -240,6 +281,7 @@ function proposalContentSha256(
         agentId: proposal.agentId,
         proposalId: proposal.proposalId,
         version: proposal.version,
+        householdId: proposal.householdId,
         coordinationId: proposal.coordinationId,
         baseAgreementVersion: proposal.baseAgreementVersion,
         terms: proposal.terms,
@@ -277,13 +319,12 @@ function approvalIdempotencyKey(
  * mapping in inbound-approval.ts, so a decision sent back on the same channel
  * authenticates against the identity the prompt was delivered to.
  *
- * Round-trip status: telegram and discord are verified live end-to-end
- * (outbound prompt delivered, inbound authenticated decision applied).
  * Discord requires `targetKind: "user"` — the verified identity handle is a
- * Discord USER id (inbound auth matches `metadata.discord.userId`), which the
- * connector resolves to a DM; sending it as a channel id fails with Unknown
- * Channel. The remaining channels authenticate inbound decisions per the
- * `identityPlatforms` mapping but have no live outbound round-trip proof yet.
+ * Discord USER id, which the connector resolves to a DM. Connector-account
+ * binding rides the verified identity so multi-account installations cannot
+ * silently send from a different bot/account. Provider-qualified outbound →
+ * inbound round-trip evidence is still required before any route is called
+ * live-verified.
  */
 const PARTY_CONTACT_ROUTES: ReadonlyArray<{
   channel: Extract<
@@ -316,6 +357,7 @@ interface PartyApprovalContactRoute {
   target: string;
   targetKind?: "user";
   platform: string;
+  connectorAccountId?: string;
   send: NonNullable<ChannelContribution["send"]>;
 }
 
@@ -555,10 +597,7 @@ export class HouseholdCoordinationService {
       input.relationshipId === null || input.relationshipId === undefined
         ? null
         : normalizeHouseholdIdentifier(input.relationshipId, "relationshipId");
-    const householdId =
-      input.householdId === undefined
-        ? null
-        : normalizeHouseholdIdentifier(input.householdId, "householdId");
+    const householdId = householdNamespace(input.householdId);
     await this.requireEntity(entityId);
     await this.requireEntity(boundByEntityId);
     const subjectEntityIds = normalizeHouseholdIdentifiers(
@@ -584,6 +623,7 @@ export class HouseholdCoordinationService {
         );
       }
       const binding: HouseholdRoleBinding = {
+        householdId,
         entityId: SELF_ENTITY_ID,
         role: "owner",
         relationshipId: null,
@@ -595,8 +635,8 @@ export class HouseholdCoordinationService {
         kind: "household_role_bound",
         ownerId: SELF_ENTITY_ID,
         reason: input.evidence,
-        inputs: { entityId: SELF_ENTITY_ID, role: "owner" },
-        decision: { subjectEntityIds },
+        inputs: { householdId, entityId: SELF_ENTITY_ID, role: "owner" },
+        decision: { householdId, subjectEntityIds },
         actor: "user",
         createdAt: now,
       });
@@ -620,6 +660,21 @@ export class HouseholdCoordinationService {
           { relationshipId },
         );
       }
+      const existingHouseholdId = readHouseholdIdMetadata(existing);
+      if (
+        existingHouseholdId !== null &&
+        existingHouseholdId !== householdId
+      ) {
+        throw new HouseholdCoordinationError(
+          "Household role relationship belongs to a different household namespace",
+          "HOUSEHOLD_ACCESS_DENIED",
+          {
+            relationshipId: existing.relationshipId,
+            expectedHouseholdId: householdId,
+            actualHouseholdId: existingHouseholdId,
+          },
+        );
+      }
       const endpointIds = new Set([existing.fromEntityId, existing.toEntityId]);
       if (!endpointIds.has(SELF_ENTITY_ID) || !endpointIds.has(entityId)) {
         throw new HouseholdCoordinationError(
@@ -640,7 +695,7 @@ export class HouseholdCoordinationService {
           ...existing.metadata,
           [HOUSEHOLD_ROLE_METADATA_KEY]: input.role,
           [HOUSEHOLD_SUBJECTS_METADATA_KEY]: subjectEntityIds,
-          ...(householdId ? { [HOUSEHOLD_ID_METADATA_KEY]: householdId } : {}),
+          [HOUSEHOLD_ID_METADATA_KEY]: householdId,
         },
         state: existing.state,
         evidence: uniqueStrings([...existing.evidence, input.evidence]),
@@ -649,22 +704,36 @@ export class HouseholdCoordinationService {
         status: "active",
       });
     } else {
-      relationship = await this.deps.relationshipStore.observe({
+      const deterministicRelationshipId = `hrole_${crypto
+        .createHash("sha256")
+        .update(`${this.deps.agentId}\0${householdId}\0${entityId}`)
+        .digest("hex")}`;
+      const existing = await this.deps.relationshipStore.get(
+        deterministicRelationshipId,
+      );
+      relationship = await this.deps.relationshipStore.upsert({
+        relationshipId: deterministicRelationshipId,
         fromEntityId: SELF_ENTITY_ID,
         toEntityId: entityId,
         type: roleRelationshipType(input.role),
-        metadataPatch: {
+        metadata: {
+          ...(existing?.metadata ?? {}),
           [HOUSEHOLD_ROLE_METADATA_KEY]: input.role,
           [HOUSEHOLD_SUBJECTS_METADATA_KEY]: subjectEntityIds,
-          ...(householdId ? { [HOUSEHOLD_ID_METADATA_KEY]: householdId } : {}),
+          [HOUSEHOLD_ID_METADATA_KEY]: householdId,
         },
-        evidence: [input.evidence],
+        state: existing?.state ?? {},
+        evidence: uniqueStrings([
+          ...(existing?.evidence ?? []),
+          input.evidence,
+        ]),
         confidence: 1,
-        occurredAt: now,
         source: "user_chat",
+        status: "active",
       });
     }
     const binding: HouseholdRoleBinding = {
+      householdId,
       entityId,
       role: input.role,
       relationshipId: relationship.relationshipId,
@@ -689,11 +758,15 @@ export class HouseholdCoordinationService {
     return binding;
   }
 
-  async listRoleBindings(): Promise<HouseholdRoleBinding[]> {
+  async listRoleBindings(
+    householdIdInput?: string,
+  ): Promise<HouseholdRoleBinding[]> {
+    const householdId = householdNamespace(householdIdInput);
     const self = await this.deps.entityStore.ensureSelf();
     const relationships = await this.deps.relationshipStore.list();
     const bindings: HouseholdRoleBinding[] = [
       {
+        householdId,
         entityId: SELF_ENTITY_ID,
         role: "owner",
         relationshipId: null,
@@ -706,6 +779,12 @@ export class HouseholdCoordinationService {
       if (relationship.status !== "active") continue;
       const role = readRoleMetadata(relationship);
       if (!role) continue;
+      if (
+        (readHouseholdIdMetadata(relationship) ?? DEFAULT_HOUSEHOLD_ID) !==
+        householdId
+      ) {
+        continue;
+      }
       const entityId =
         relationship.fromEntityId === SELF_ENTITY_ID
           ? relationship.toEntityId
@@ -720,6 +799,7 @@ export class HouseholdCoordinationService {
         );
       }
       bindings.push({
+        householdId,
         entityId,
         role,
         relationshipId: relationship.relationshipId,
@@ -735,9 +815,10 @@ export class HouseholdCoordinationService {
 
   private async requireRoleBinding(
     entityId: string,
+    householdId: string,
     role?: HouseholdRole,
   ): Promise<HouseholdRoleBinding> {
-    const bindings = await this.listRoleBindings();
+    const bindings = await this.listRoleBindings(householdId);
     const binding = bindings.find(
       (candidate) =>
         candidate.entityId === entityId &&
@@ -747,15 +828,35 @@ export class HouseholdCoordinationService {
       throw new HouseholdCoordinationError(
         `Entity ${entityId} has no matching household role`,
         "HOUSEHOLD_ACCESS_DENIED",
-        { entityId, role },
+        { entityId, householdId, role },
       );
     }
     return binding;
   }
 
+  private requireHouseholdMatch(
+    requestedHouseholdId: string | undefined,
+    actualHouseholdId: string,
+    resource: Record<string, unknown>,
+  ): void {
+    if (requestedHouseholdId === undefined) return;
+    const expectedHouseholdId = householdNamespace(requestedHouseholdId);
+    if (expectedHouseholdId === actualHouseholdId) return;
+    throw new HouseholdCoordinationError(
+      "Household resource belongs to a different household namespace",
+      "HOUSEHOLD_ACCESS_DENIED",
+      {
+        ...resource,
+        expectedHouseholdId,
+        actualHouseholdId,
+      },
+    );
+  }
+
   private async requireCustodyAuthority(
+    householdId: string,
     custody: NonNullable<HouseholdScheduleTerms["custodyException"]>,
-  ): Promise<void> {
+  ): Promise<HouseholdCustodyAuthorityBaseline> {
     const relationship = await this.deps.relationshipStore.get(
       custody.authorityBaselineRelationshipId,
     );
@@ -777,10 +878,21 @@ export class HouseholdCoordinationService {
       relationship.metadata?.[CUSTODY_AUTHORITY_CHILD_METADATA_KEY];
     const authorityCustodians =
       relationship.metadata?.[CUSTODY_AUTHORITY_CUSTODIANS_METADATA_KEY];
+    const authorityHouseholdId =
+      readHouseholdIdMetadata(relationship) ?? DEFAULT_HOUSEHOLD_ID;
+    const rawRevision =
+      relationship.metadata?.[CUSTODY_AUTHORITY_REVISION_METADATA_KEY];
+    const revision =
+      typeof rawRevision === "number" &&
+      Number.isInteger(rawRevision) &&
+      rawRevision >= 1
+        ? rawRevision
+        : 1;
     if (
       !endpoints.has(SELF_ENTITY_ID) ||
       !endpoints.has(custody.childEntityId) ||
       authorityChild !== custody.childEntityId ||
+      authorityHouseholdId !== householdId ||
       !Array.isArray(authorityCustodians) ||
       authorityCustodians.some((entityId) => typeof entityId !== "string")
     ) {
@@ -791,15 +903,24 @@ export class HouseholdCoordinationService {
           authorityBaselineRelationshipId:
             custody.authorityBaselineRelationshipId,
           childEntityId: custody.childEntityId,
+          householdId,
+          authorityHouseholdId,
         },
       );
     }
-    const authorized = new Set(authorityCustodians);
+    const normalizedCustodians = normalizeHouseholdIdentifiers(
+      authorityCustodians,
+      "authorityCustodianEntityIds",
+    );
+    const authorized = new Set(normalizedCustodians);
     for (const custodianEntityId of [
       custody.normalCustodianEntityId,
       custody.substituteCustodianEntityId,
     ]) {
-      const binding = await this.requireRoleBinding(custodianEntityId);
+      const binding = await this.requireRoleBinding(
+        custodianEntityId,
+        householdId,
+      );
       if (
         (binding.role !== "owner" && binding.role !== "co_parent") ||
         !authorized.has(custodianEntityId) ||
@@ -819,9 +940,413 @@ export class HouseholdCoordinationService {
         );
       }
     }
+    const revisionSha256 = custodyAuthorityRevisionSha256({
+      householdId,
+      relationshipId: relationship.relationshipId,
+      childEntityId: custody.childEntityId,
+      custodianEntityIds: normalizedCustodians,
+      revision,
+      status: "active",
+    });
+    if (
+      custody.authorityBaselineRevisionSha256 &&
+      custody.authorityBaselineRevisionSha256 !== revisionSha256
+    ) {
+      throw new HouseholdCoordinationError(
+        "Custody authority changed after the proposal bytes were authored",
+        "HOUSEHOLD_STALE_APPROVAL",
+        {
+          householdId,
+          authorityBaselineRelationshipId:
+            custody.authorityBaselineRelationshipId,
+          approvedRevisionSha256: custody.authorityBaselineRevisionSha256,
+          currentRevisionSha256: revisionSha256,
+        },
+      );
+    }
+    return {
+      householdId,
+      relationshipId: relationship.relationshipId,
+      childEntityId: custody.childEntityId,
+      custodianEntityIds: normalizedCustodians,
+      revision,
+      revisionSha256,
+      status: "active",
+      createdAt: relationship.createdAt,
+      updatedAt: relationship.updatedAt,
+    };
+  }
+
+  async setCustodyAuthority(input: {
+    householdId?: string;
+    relationshipId?: string;
+    childEntityId: string;
+    custodianEntityIds: string[];
+    evidence: string;
+    updatedByEntityId: string;
+    expectedRevisionSha256?: string;
+  }): Promise<HouseholdCustodyAuthorityBaseline> {
+    const householdId = householdNamespace(input.householdId);
+    const childEntityId = normalizeHouseholdIdentifier(
+      input.childEntityId,
+      "childEntityId",
+    );
+    const custodianEntityIds = normalizeHouseholdIdentifiers(
+      input.custodianEntityIds,
+      "custodianEntityIds",
+    );
+    const updatedByEntityId = normalizeHouseholdIdentifier(
+      input.updatedByEntityId,
+      "updatedByEntityId",
+    );
+    const evidence = input.evidence.trim();
+    if (!evidence) {
+      throw new HouseholdCoordinationError(
+        "Custody authority requires auditable evidence",
+        "HOUSEHOLD_INVALID_CONTRACT",
+        { householdId, childEntityId },
+      );
+    }
+    if (updatedByEntityId !== SELF_ENTITY_ID) {
+      throw new HouseholdCoordinationError(
+        "Only the household owner may create or revise custody authority",
+        "HOUSEHOLD_ACCESS_DENIED",
+        { householdId, updatedByEntityId },
+      );
+    }
+    if (custodianEntityIds.length < 2) {
+      throw new HouseholdCoordinationError(
+        "Custody authority requires at least two authorized custodians",
+        "HOUSEHOLD_INVALID_CONTRACT",
+        { householdId, childEntityId },
+      );
+    }
+    await this.requireEntities([
+      childEntityId,
+      updatedByEntityId,
+      ...custodianEntityIds,
+    ]);
+    await this.requireRoleBinding(childEntityId, householdId, "child");
+    for (const custodianEntityId of custodianEntityIds) {
+      const binding = await this.requireRoleBinding(
+        custodianEntityId,
+        householdId,
+      );
+      if (
+        (binding.role !== "owner" && binding.role !== "co_parent") ||
+        (binding.role !== "owner" &&
+          !binding.subjectEntityIds.includes(childEntityId))
+      ) {
+        throw new HouseholdCoordinationError(
+          "Custody authority can include only an owner or child-scoped co-parent",
+          "HOUSEHOLD_ACCESS_DENIED",
+          {
+            householdId,
+            childEntityId,
+            custodianEntityId,
+            role: binding.role,
+          },
+        );
+      }
+    }
+    const relationshipId =
+      input.relationshipId === undefined
+        ? `hcustody_${crypto
+            .createHash("sha256")
+            .update(`${this.deps.agentId}\0${householdId}\0${childEntityId}`)
+            .digest("hex")}`
+        : normalizeHouseholdIdentifier(
+            input.relationshipId,
+            "relationshipId",
+          );
+    const existing = await this.deps.relationshipStore.get(relationshipId);
+    if (existing) {
+      if (existing.status !== "active") {
+        throw new HouseholdCoordinationError(
+          "A revoked custody authority cannot be reactivated; create a new authority relationship",
+          "HOUSEHOLD_ACCESS_DENIED",
+          { householdId, childEntityId, relationshipId },
+        );
+      }
+      const endpoints = new Set([
+        existing.fromEntityId,
+        existing.toEntityId,
+      ]);
+      if (
+        !endpoints.has(SELF_ENTITY_ID) ||
+        !endpoints.has(childEntityId) ||
+        (readHouseholdIdMetadata(existing) ?? DEFAULT_HOUSEHOLD_ID) !==
+          householdId
+      ) {
+        throw new HouseholdCoordinationError(
+          "Custody authority relationship belongs to different parties or household",
+          "HOUSEHOLD_ACCESS_DENIED",
+          { householdId, childEntityId, relationshipId },
+        );
+      }
+      const existingCustodians =
+        existing.metadata?.[CUSTODY_AUTHORITY_CUSTODIANS_METADATA_KEY];
+      const existingRevision =
+        existing.metadata?.[CUSTODY_AUTHORITY_REVISION_METADATA_KEY];
+      const currentRevision =
+        typeof existingRevision === "number" &&
+        Number.isInteger(existingRevision) &&
+        existingRevision >= 1
+          ? existingRevision
+          : 1;
+      const currentRevisionSha256 = custodyAuthorityRevisionSha256({
+        householdId,
+        relationshipId,
+        childEntityId,
+        custodianEntityIds: Array.isArray(existingCustodians)
+          ? existingCustodians.filter(
+              (value): value is string => typeof value === "string",
+            )
+          : [],
+        revision: currentRevision,
+        status: existing.status === "active" ? "active" : "revoked",
+      });
+      if (
+        input.expectedRevisionSha256 &&
+        input.expectedRevisionSha256 !== currentRevisionSha256
+      ) {
+        throw new HouseholdCoordinationError(
+          "Custody authority changed concurrently",
+          "HOUSEHOLD_STALE_APPROVAL",
+          {
+            relationshipId,
+            expectedRevisionSha256: input.expectedRevisionSha256,
+            currentRevisionSha256,
+          },
+        );
+      }
+    }
+    const previousRevision =
+      existing?.metadata?.[CUSTODY_AUTHORITY_REVISION_METADATA_KEY];
+    const revision =
+      typeof previousRevision === "number" &&
+      Number.isInteger(previousRevision) &&
+      previousRevision >= 1
+        ? previousRevision + 1
+        : 1;
+    const now = this.now().toISOString();
+    const relationship = await this.deps.relationshipStore.upsert({
+      relationshipId,
+      fromEntityId: SELF_ENTITY_ID,
+      toEntityId: childEntityId,
+      type: "custody_authority",
+      metadata: {
+        ...(existing?.metadata ?? {}),
+        [HOUSEHOLD_ID_METADATA_KEY]: householdId,
+        [CUSTODY_AUTHORITY_CHILD_METADATA_KEY]: childEntityId,
+        [CUSTODY_AUTHORITY_CUSTODIANS_METADATA_KEY]: custodianEntityIds,
+        [CUSTODY_AUTHORITY_REVISION_METADATA_KEY]: revision,
+      },
+      state: existing?.state ?? {},
+      evidence: uniqueStrings([...(existing?.evidence ?? []), evidence]),
+      confidence: 1,
+      source: "user_chat",
+      status: "active",
+    });
+    const baseline: HouseholdCustodyAuthorityBaseline = {
+      householdId,
+      relationshipId,
+      childEntityId,
+      custodianEntityIds,
+      revision,
+      revisionSha256: custodyAuthorityRevisionSha256({
+        householdId,
+        relationshipId,
+        childEntityId,
+        custodianEntityIds,
+        revision,
+        status: "active",
+      }),
+      status: "active",
+      createdAt: relationship.createdAt,
+      updatedAt: relationship.updatedAt,
+    };
+    const invalidated =
+      await this.deps.repository.invalidateProposalsForCustodyAuthority({
+        householdId,
+        relationshipId,
+        invalidatedAt: now,
+        reason: "Custody authority was revised after proposal approval bytes were issued.",
+      });
+    await this.terminallyInvalidateApprovalRequests(
+      invalidated.approvalRequestIds,
+      `custody authority ${relationshipId} revised`,
+    );
+    await this.deps.repository.appendAudit({
+      kind: "household_custody_authority_set",
+      ownerId: relationshipId,
+      reason: evidence,
+      inputs: { householdId, childEntityId, custodianEntityIds },
+      decision: {
+        revision,
+        revisionSha256: baseline.revisionSha256,
+        invalidatedProposalIds: invalidated.proposalIds,
+      },
+      actor: "user",
+      createdAt: now,
+    });
+    return baseline;
+  }
+
+  async revokeCustodyAuthority(input: {
+    relationshipId: string;
+    revokedByEntityId: string;
+    reason: string;
+    expectedRevisionSha256?: string;
+    householdId?: string;
+  }): Promise<HouseholdCustodyAuthorityBaseline> {
+    const relationshipId = normalizeHouseholdIdentifier(
+      input.relationshipId,
+      "relationshipId",
+    );
+    const revokedByEntityId = normalizeHouseholdIdentifier(
+      input.revokedByEntityId,
+      "revokedByEntityId",
+    );
+    const reason = input.reason.trim();
+    if (!reason) {
+      throw new HouseholdCoordinationError(
+        "Custody authority revocation requires an auditable reason",
+        "HOUSEHOLD_INVALID_CONTRACT",
+        { relationshipId },
+      );
+    }
+    if (revokedByEntityId !== SELF_ENTITY_ID) {
+      throw new HouseholdCoordinationError(
+        "Only the household owner may revoke custody authority",
+        "HOUSEHOLD_ACCESS_DENIED",
+        { relationshipId, revokedByEntityId },
+      );
+    }
+    const relationship = await this.deps.relationshipStore.get(relationshipId);
+    if (!relationship || relationship.status !== "active") {
+      throw new HouseholdCoordinationError(
+        "Custody authority baseline is missing or already revoked",
+        "HOUSEHOLD_ACCESS_DENIED",
+        { relationshipId },
+      );
+    }
+    const householdId =
+      readHouseholdIdMetadata(relationship) ?? DEFAULT_HOUSEHOLD_ID;
+    const requestedHouseholdId = householdNamespace(input.householdId);
+    if (requestedHouseholdId !== householdId) {
+      throw new HouseholdCoordinationError(
+        "Custody authority belongs to a different household namespace",
+        "HOUSEHOLD_ACCESS_DENIED",
+        {
+          relationshipId,
+          expectedHouseholdId: requestedHouseholdId,
+          actualHouseholdId: householdId,
+        },
+      );
+    }
+    const childEntityId = normalizeHouseholdIdentifier(
+      String(relationship.metadata?.[CUSTODY_AUTHORITY_CHILD_METADATA_KEY] ?? ""),
+      "childEntityId",
+    );
+    const rawCustodians =
+      relationship.metadata?.[CUSTODY_AUTHORITY_CUSTODIANS_METADATA_KEY];
+    const custodianEntityIds = normalizeHouseholdIdentifiers(
+      Array.isArray(rawCustodians)
+        ? rawCustodians.filter(
+            (value): value is string => typeof value === "string",
+          )
+        : [],
+      "custodianEntityIds",
+    );
+    const rawRevision =
+      relationship.metadata?.[CUSTODY_AUTHORITY_REVISION_METADATA_KEY];
+    const currentRevision =
+      typeof rawRevision === "number" &&
+      Number.isInteger(rawRevision) &&
+      rawRevision >= 1
+        ? rawRevision
+        : 1;
+    const currentRevisionSha256 = custodyAuthorityRevisionSha256({
+      householdId,
+      relationshipId,
+      childEntityId,
+      custodianEntityIds,
+      revision: currentRevision,
+      status: "active",
+    });
+    if (
+      input.expectedRevisionSha256 &&
+      input.expectedRevisionSha256 !== currentRevisionSha256
+    ) {
+      throw new HouseholdCoordinationError(
+        "Custody authority changed concurrently",
+        "HOUSEHOLD_STALE_APPROVAL",
+        {
+          relationshipId,
+          expectedRevisionSha256: input.expectedRevisionSha256,
+          currentRevisionSha256,
+        },
+      );
+    }
+    const revision = currentRevision + 1;
+    const now = this.now().toISOString();
+    await this.deps.relationshipStore.upsert({
+      ...relationship,
+      metadata: {
+        ...(relationship.metadata ?? {}),
+        [CUSTODY_AUTHORITY_REVISION_METADATA_KEY]: revision,
+      },
+      status: "active",
+    });
+    await this.deps.relationshipStore.retire(relationshipId, reason);
+    const invalidated =
+      await this.deps.repository.invalidateProposalsForCustodyAuthority({
+        householdId,
+        relationshipId,
+        invalidatedAt: now,
+        reason: "Custody authority was revoked before proposal finalization.",
+      });
+    await this.terminallyInvalidateApprovalRequests(
+      invalidated.approvalRequestIds,
+      `custody authority ${relationshipId} revoked`,
+    );
+    const baseline: HouseholdCustodyAuthorityBaseline = {
+      householdId,
+      relationshipId,
+      childEntityId,
+      custodianEntityIds,
+      revision,
+      revisionSha256: custodyAuthorityRevisionSha256({
+        householdId,
+        relationshipId,
+        childEntityId,
+        custodianEntityIds,
+        revision,
+        status: "revoked",
+      }),
+      status: "revoked",
+      createdAt: relationship.createdAt,
+      updatedAt: now,
+    };
+    await this.deps.repository.appendAudit({
+      kind: "household_custody_authority_revoked",
+      ownerId: relationshipId,
+      reason,
+      inputs: { householdId, childEntityId, custodianEntityIds },
+      decision: {
+        revision,
+        revisionSha256: baseline.revisionSha256,
+        invalidatedProposalIds: invalidated.proposalIds,
+      },
+      actor: "user",
+      createdAt: now,
+    });
+    return baseline;
   }
 
   async issueGrant(input: {
+    householdId?: string;
     principalEntityId: string;
     role: HouseholdRole;
     subjectEntityIds: string[];
@@ -829,6 +1354,7 @@ export class HouseholdCoordinationService {
     issuedByEntityId: string;
     expiresAt?: string | null;
   }): Promise<HouseholdAccessGrant> {
+    const householdId = householdNamespace(input.householdId);
     const principalEntityId = normalizeHouseholdIdentifier(
       input.principalEntityId,
       "principalEntityId",
@@ -855,6 +1381,7 @@ export class HouseholdCoordinationService {
     }
     const binding = await this.requireRoleBinding(
       principalEntityId,
+      householdId,
       input.role,
     );
     const scopes = normalizeGrantScopes(input.role, input.scopes);
@@ -890,6 +1417,7 @@ export class HouseholdCoordinationService {
     const grant: HouseholdAccessGrant = {
       id: `hgrant_${crypto.randomUUID()}`,
       agentId: this.deps.agentId,
+      householdId,
       principalEntityId,
       relationshipId: binding.relationshipId,
       role: input.role,
@@ -909,6 +1437,7 @@ export class HouseholdCoordinationService {
       reason: "Owner granted explicit household access.",
       inputs: {
         principalEntityId: grant.principalEntityId,
+        householdId,
         role: grant.role,
         subjectEntityIds: grant.subjectEntityIds,
       },
@@ -946,6 +1475,7 @@ export class HouseholdCoordinationService {
   }
 
   async revokeGrant(input: {
+    householdId?: string;
     grantId: string;
     revokedByEntityId: string;
     reason: string;
@@ -970,6 +1500,17 @@ export class HouseholdCoordinationService {
         "HOUSEHOLD_INVALID_CONTRACT",
       );
     }
+    const current = await this.deps.repository.getGrant(grantId);
+    if (!current) {
+      throw new HouseholdCoordinationError(
+        `Grant ${grantId} is missing`,
+        "HOUSEHOLD_GRANT_REVOKED",
+        { grantId },
+      );
+    }
+    this.requireHouseholdMatch(input.householdId, current.householdId, {
+      grantId,
+    });
     const grant = await this.deps.repository.revokeGrant({
       id: grantId,
       revokedAt: this.now().toISOString(),
@@ -1016,6 +1557,9 @@ export class HouseholdCoordinationService {
       if (!relationship) return false;
       if (relationship.status !== "active") return false;
       if (readRoleMetadata(relationship) !== grant.role) return false;
+      if (readHouseholdIdMetadata(relationship) !== grant.householdId) {
+        return false;
+      }
       if (grant.role !== "owner") {
         const currentSubjects = readSubjectMetadata(relationship);
         if (
@@ -1032,9 +1576,13 @@ export class HouseholdCoordinationService {
 
   private async activeGrants(
     principalEntityId: string,
+    householdId: string,
     at: Date,
   ): Promise<HouseholdAccessGrant[]> {
-    const grants = await this.deps.repository.listGrants(principalEntityId);
+    const grants = await this.deps.repository.listGrants(
+      principalEntityId,
+      householdId,
+    );
     const active: HouseholdAccessGrant[] = [];
     for (const grant of grants) {
       if (await this.grantIsActive(grant, at)) active.push(grant);
@@ -1043,11 +1591,13 @@ export class HouseholdCoordinationService {
   }
 
   async requireScope(input: {
+    householdId?: string;
     principalEntityId: string;
     scope: HouseholdAccessScope;
     subjectEntityId?: string;
     at?: Date;
   }): Promise<void> {
+    const householdId = householdNamespace(input.householdId);
     const principalEntityId = normalizeHouseholdIdentifier(
       input.principalEntityId,
       "principalEntityId",
@@ -1065,7 +1615,10 @@ export class HouseholdCoordinationService {
     }
     await this.requireEntity(principalEntityId);
     const at = input.at ?? this.now();
-    const grants = await this.deps.repository.listGrants(principalEntityId);
+    const grants = await this.deps.repository.listGrants(
+      principalEntityId,
+      householdId,
+    );
     const matching = grants.filter(
       (grant) =>
         grant.scopes.includes(input.scope) &&
@@ -1081,6 +1634,7 @@ export class HouseholdCoordinationService {
         "HOUSEHOLD_GRANT_REVOKED",
         {
           principalEntityId,
+          householdId,
           scope: input.scope,
           subjectEntityId,
         },
@@ -1098,6 +1652,7 @@ export class HouseholdCoordinationService {
         "HOUSEHOLD_GRANT_EXPIRED",
         {
           principalEntityId,
+          householdId,
           scope: input.scope,
           subjectEntityId,
         },
@@ -1108,13 +1663,33 @@ export class HouseholdCoordinationService {
       "HOUSEHOLD_ACCESS_DENIED",
       {
         principalEntityId,
+        householdId,
         scope: input.scope,
         subjectEntityId,
       },
     );
   }
 
+  private async bindCurrentCustodyAuthorityRevision(
+    householdId: string,
+    terms: HouseholdScheduleTerms,
+  ): Promise<HouseholdScheduleTerms> {
+    if (!terms.custodyException) return terms;
+    const authority = await this.requireCustodyAuthority(
+      householdId,
+      terms.custodyException,
+    );
+    return {
+      ...terms,
+      custodyException: {
+        ...terms.custodyException,
+        authorityBaselineRevisionSha256: authority.revisionSha256,
+      },
+    };
+  }
+
   private async validateProposalParties(input: {
+    householdId: string;
     terms: HouseholdScheduleTerms;
     affectedPartyEntityIds: string[];
     requiredApproverEntityIds: string[];
@@ -1123,6 +1698,7 @@ export class HouseholdCoordinationService {
     affectedPartyEntityIds: string[];
     requiredApproverEntityIds: string[];
   }> {
+    const householdId = householdNamespace(input.householdId);
     const custody = input.terms.custodyException;
     const custodyParties = custody
       ? [custody.normalCustodianEntityId, custody.substituteCustodianEntityId]
@@ -1150,13 +1726,13 @@ export class HouseholdCoordinationService {
       ...requestedApproverEntityIds,
       ...normalizedCustodyParties,
     ]);
-    if (custody) await this.requireCustodyAuthority(custody);
+    if (custody) await this.requireCustodyAuthority(householdId, custody);
     for (const childEntityId of input.terms.childEntityIds) {
-      await this.requireRoleBinding(childEntityId, "child");
+      await this.requireRoleBinding(childEntityId, householdId, "child");
     }
     const affectedAdultEntityIds: string[] = [];
     for (const entityId of explicitlyAffectedEntityIds) {
-      const binding = await this.requireRoleBinding(entityId);
+      const binding = await this.requireRoleBinding(entityId, householdId);
       if (binding.role !== "child") affectedAdultEntityIds.push(entityId);
     }
     const requiredApproverEntityIds = uniqueStrings([
@@ -1175,7 +1751,10 @@ export class HouseholdCoordinationService {
       ...requiredApproverEntityIds,
     ]);
     for (const approverEntityId of requiredApproverEntityIds) {
-      const binding = await this.requireRoleBinding(approverEntityId);
+      const binding = await this.requireRoleBinding(
+        approverEntityId,
+        householdId,
+      );
       if (binding.role === "child") {
         throw new HouseholdCoordinationError(
           "Child household members cannot be required approvers",
@@ -1210,12 +1789,14 @@ export class HouseholdCoordinationService {
     if (createdByEntityId !== SELF_ENTITY_ID && mutationSubjects.length === 0) {
       await this.requireScope({
         principalEntityId: createdByEntityId,
+        householdId,
         scope: "calendar.mutate",
       });
     }
     for (const subjectEntityId of mutationSubjects) {
       await this.requireScope({
         principalEntityId: createdByEntityId,
+        householdId,
         scope: "calendar.mutate",
         subjectEntityId,
       });
@@ -1368,12 +1949,16 @@ export class HouseholdCoordinationService {
 
   private async enqueueApprovals(
     proposal: HouseholdScheduleProposal,
-  ): Promise<HouseholdProposalApproval[]> {
+  ): Promise<{
+    approvals: HouseholdProposalApproval[];
+    insertedApprovalLinkIds: string[];
+  }> {
     const existing = await this.deps.repository.listApprovalLinks(
       proposal.proposalId,
       proposal.version,
     );
     const approvals: HouseholdProposalApproval[] = [];
+    const insertedApprovalLinkIds: string[] = [];
     for (const partyEntityId of proposal.requiredApproverEntityIds) {
       const existingApproval = existing.find(
         (candidate) =>
@@ -1396,6 +1981,7 @@ export class HouseholdCoordinationService {
           input: {
             proposalId: proposal.proposalId,
             proposalVersion: proposal.version,
+            householdId: proposal.householdId,
             coordinationId: proposal.coordinationId,
             partyEntityId,
             contentSha256: proposal.contentSha256,
@@ -1422,7 +2008,10 @@ export class HouseholdCoordinationService {
         createdAt: now,
         updatedAt: now,
       };
-      approvals.push(await this.deps.repository.insertApprovalLink(approval));
+      const persisted =
+        await this.deps.repository.insertApprovalLink(approval);
+      approvals.push(persisted);
+      insertedApprovalLinkIds.push(persisted.id);
       if (route) {
         await this.deliverPartyApprovalPrompt({
           proposal,
@@ -1451,13 +2040,31 @@ export class HouseholdCoordinationService {
         );
       }
     }
-    return approvals;
+    return { approvals, insertedApprovalLinkIds };
   }
 
   async ensureProposalApprovals(
     proposalId: string,
     proposalVersion: number,
+    householdId?: string,
   ): Promise<HouseholdProposalApproval[]> {
+    return (
+      await this.ensureProposalApprovalsWithDisposition(
+        proposalId,
+        proposalVersion,
+        householdId,
+      )
+    ).approvals;
+  }
+
+  async ensureProposalApprovalsWithDisposition(
+    proposalId: string,
+    proposalVersion: number,
+    householdId?: string,
+  ): Promise<{
+    approvals: HouseholdProposalApproval[];
+    insertedApprovalLinkIds: string[];
+  }> {
     const normalizedProposalId = normalizeHouseholdIdentifier(
       proposalId,
       "proposalId",
@@ -1482,6 +2089,10 @@ export class HouseholdCoordinationService {
         },
       );
     }
+    this.requireHouseholdMatch(householdId, proposal.householdId, {
+      proposalId: normalizedProposalId,
+      proposalVersion: normalizedProposalVersion,
+    });
     if (await this.expireProposalIfLapsed(proposal, this.now())) {
       throw new HouseholdCoordinationError(
         "Proposal approval window has expired",
@@ -1510,12 +2121,17 @@ export class HouseholdCoordinationService {
   async createProposal(
     input: CreateHouseholdProposalInput,
   ): Promise<HouseholdScheduleProposal> {
-    const terms = normalizeScheduleTerms(input.terms);
+    const householdId = householdNamespace(input.householdId);
+    const terms = await this.bindCurrentCustodyAuthorityRevision(
+      householdId,
+      normalizeScheduleTerms(input.terms),
+    );
     const createdByEntityId = normalizeHouseholdIdentifier(
       input.createdByEntityId,
       "createdByEntityId",
     );
     const parties = await this.validateProposalParties({
+      householdId,
       terms,
       affectedPartyEntityIds: input.affectedPartyEntityIds,
       requiredApproverEntityIds: input.requiredApproverEntityIds,
@@ -1531,7 +2147,11 @@ export class HouseholdCoordinationService {
         : normalizeHouseholdIdentifier(input.proposalId, "proposalId");
     const nowDate = this.now();
     const now = nowDate.toISOString();
-    const head = await this.deps.repository.ensureHead(coordinationId, now);
+    const head = await this.deps.repository.ensureHead(
+      householdId,
+      coordinationId,
+      now,
+    );
     const baseAgreementVersion =
       input.baseAgreementVersion === undefined
         ? head.currentAgreementVersion
@@ -1556,6 +2176,7 @@ export class HouseholdCoordinationService {
     > = {
       proposalId,
       agentId: this.deps.agentId,
+      householdId,
       version: 1,
       coordinationId,
       baseAgreementVersion,
@@ -1579,6 +2200,7 @@ export class HouseholdCoordinationService {
       reason: "Household schedule proposal created for affected-party review.",
       inputs: {
         proposalVersion: proposal.version,
+        householdId,
         coordinationId: proposal.coordinationId,
         affectedPartyEntityIds: proposal.affectedPartyEntityIds,
         createdByEntityId: proposal.createdByEntityId,
@@ -1634,6 +2256,10 @@ export class HouseholdCoordinationService {
         { proposalId },
       );
     }
+    this.requireHouseholdMatch(input.householdId, previous.householdId, {
+      proposalId,
+      proposalVersion: previous.version,
+    });
     if (previous.version !== expectedVersion || previous.status !== "pending") {
       throw new HouseholdCoordinationError(
         `Proposal ${proposalId} changed concurrently`,
@@ -1659,12 +2285,17 @@ export class HouseholdCoordinationService {
     if (previous.createdByEntityId !== revisedByEntityId) {
       await this.requireScope({
         principalEntityId: revisedByEntityId,
+        householdId: previous.householdId,
         scope: "calendar.mutate",
         subjectEntityId: previous.terms.childEntityIds[0],
       });
     }
-    const terms = normalizeScheduleTerms(input.terms);
+    const terms = await this.bindCurrentCustodyAuthorityRevision(
+      previous.householdId,
+      normalizeScheduleTerms(input.terms),
+    );
     const parties = await this.validateProposalParties({
+      householdId: previous.householdId,
       terms,
       affectedPartyEntityIds: input.affectedPartyEntityIds,
       requiredApproverEntityIds: input.requiredApproverEntityIds,
@@ -1941,6 +2572,7 @@ export class HouseholdCoordinationService {
   }
 
   async finalizeProposal(input: {
+    householdId?: string;
     proposalId: string;
     proposalVersion: number;
   }): Promise<HouseholdScheduleAgreement> {
@@ -1968,6 +2600,10 @@ export class HouseholdCoordinationService {
         },
       );
     }
+    this.requireHouseholdMatch(input.householdId, proposal.householdId, {
+      proposalId,
+      proposalVersion,
+    });
     if (proposal.status !== "pending") {
       throw new HouseholdCoordinationError(
         `Proposal is ${proposal.status}, not pending`,
@@ -1990,8 +2626,34 @@ export class HouseholdCoordinationService {
         },
       );
     }
+    const currentParties = await this.validateProposalParties({
+      householdId: proposal.householdId,
+      terms: proposal.terms,
+      affectedPartyEntityIds: proposal.affectedPartyEntityIds,
+      requiredApproverEntityIds: proposal.requiredApproverEntityIds,
+      createdByEntityId: proposal.createdByEntityId,
+    });
+    if (
+      JSON.stringify(currentParties.affectedPartyEntityIds) !==
+        JSON.stringify(proposal.affectedPartyEntityIds) ||
+      JSON.stringify(currentParties.requiredApproverEntityIds) !==
+        JSON.stringify(proposal.requiredApproverEntityIds)
+    ) {
+      throw new HouseholdCoordinationError(
+        "Household roles or affected-party scope changed after approval bytes were issued",
+        "HOUSEHOLD_STALE_APPROVAL",
+        {
+          proposalId: proposal.proposalId,
+          proposalVersion: proposal.version,
+          householdId: proposal.householdId,
+        },
+      );
+    }
     const approvedByEntityIds = await this.verifyExactApprovals(proposal);
-    const head = await this.deps.repository.getHead(proposal.coordinationId);
+    const head = await this.deps.repository.getHead(
+      proposal.householdId,
+      proposal.coordinationId,
+    );
     if (!head) {
       throw new HouseholdCoordinationError(
         `Coordination ${proposal.coordinationId} was not found`,
@@ -2014,6 +2676,7 @@ export class HouseholdCoordinationService {
     const agreement: HouseholdScheduleAgreement = {
       id: `hagreement_${crypto.randomUUID()}`,
       agentId: this.deps.agentId,
+      householdId: proposal.householdId,
       coordinationId: proposal.coordinationId,
       version: head.currentAgreementVersion + 1,
       proposalId: proposal.proposalId,
@@ -2036,6 +2699,7 @@ export class HouseholdCoordinationService {
       confidence: 1,
       metadata: {
         householdAgreementId: agreement.id,
+        householdId: agreement.householdId,
         householdAgreementVersion: agreement.version,
         householdCoordinationId: agreement.coordinationId,
         affectedPartyEntityIds: agreement.affectedPartyEntityIds,
@@ -2084,9 +2748,11 @@ export class HouseholdCoordinationService {
   }
 
   async exportFor(input: {
+    householdId?: string;
     principalEntityId: string;
     at?: Date;
   }): Promise<HouseholdScopedExport> {
+    const householdId = householdNamespace(input.householdId);
     const principalEntityId = normalizeHouseholdIdentifier(
       input.principalEntityId,
       "principalEntityId",
@@ -2096,10 +2762,13 @@ export class HouseholdCoordinationService {
     const at = input.at ?? serviceNow;
     await this.reconcilePersistedApprovalInvalidations();
     const isOwner = principalEntityId === SELF_ENTITY_ID;
-    const allGrants = await this.deps.repository.listGrants();
+    const allGrants = await this.deps.repository.listGrants(
+      undefined,
+      householdId,
+    );
     const activeGrants = isOwner
       ? allGrants
-      : await this.activeGrants(principalEntityId, at);
+      : await this.activeGrants(principalEntityId, householdId, at);
     const ownActiveGrants = isOwner
       ? activeGrants
       : activeGrants.filter(
@@ -2110,8 +2779,8 @@ export class HouseholdCoordinationService {
       : HOUSEHOLD_ACCESS_SCOPES.filter((scope) =>
           ownActiveGrants.some((grant) => grant.scopes.includes(scope)),
         );
-    const allRoles = await this.listRoleBindings();
-    let proposals = await this.deps.repository.listProposals();
+    const allRoles = await this.listRoleBindings(householdId);
+    let proposals = await this.deps.repository.listProposals(householdId);
     let latestProposals = latestProposalVersions(proposals);
     let expiredAny = false;
     for (const proposal of latestProposals) {
@@ -2120,10 +2789,10 @@ export class HouseholdCoordinationService {
       }
     }
     if (expiredAny) {
-      proposals = await this.deps.repository.listProposals();
+      proposals = await this.deps.repository.listProposals(householdId);
       latestProposals = latestProposalVersions(proposals);
     }
-    const agreements = await this.deps.repository.listAgreements();
+    const agreements = await this.deps.repository.listAgreements(householdId);
     const visibleSubjectEntityIds = isOwner
       ? uniqueStrings(
           [
@@ -2152,6 +2821,7 @@ export class HouseholdCoordinationService {
       reason: "Household state exported under current grants.",
       inputs: {
         principalEntityId,
+        householdId,
         visibleSubjectEntityIds,
       },
       decision: { effectiveScopes },
@@ -2189,6 +2859,7 @@ export class HouseholdCoordinationService {
       );
       if (!scopes.includes("calendar.freebusy")) continue;
       schedules.push({
+        householdId,
         coordinationId: proposal.coordinationId,
         subjectEntityIds: uniqueStrings(
           (proposal.terms.childEntityIds.length > 0
@@ -2231,6 +2902,7 @@ export class HouseholdCoordinationService {
       );
       if (!scopes.includes("calendar.freebusy")) continue;
       schedules.push({
+        householdId,
         coordinationId: agreement.coordinationId,
         subjectEntityIds: uniqueStrings(
           (agreement.terms.childEntityIds.length > 0
@@ -2256,6 +2928,15 @@ export class HouseholdCoordinationService {
 
     const audience = new Set([principalEntityId, ...visibleSubjectEntityIds]);
     const audit = (await this.deps.repository.listAudit())
+      .filter((event) => {
+        const eventHouseholdId =
+          typeof event.inputs.householdId === "string"
+            ? event.inputs.householdId
+            : typeof event.decision.householdId === "string"
+              ? event.decision.householdId
+              : DEFAULT_HOUSEHOLD_ID;
+        return eventHouseholdId === householdId;
+      })
       .filter(
         (event) =>
           isOwner ||
@@ -2275,6 +2956,7 @@ export class HouseholdCoordinationService {
 
     return {
       generatedAt: at.toISOString(),
+      householdId,
       principalEntityId,
       effectiveScopes,
       visibleSubjectEntityIds,
@@ -2359,9 +3041,10 @@ export function getHouseholdCoordinationService(
 export async function readHouseholdCoordinationHead(
   runtime: IAgentRuntime,
   coordinationId: string,
+  householdId: string = DEFAULT_HOUSEHOLD_ID,
 ): Promise<HouseholdCoordinationHead | null> {
   return await new HouseholdCoordinationRepository(
     runtime,
     runtime.agentId,
-  ).getHead(coordinationId);
+  ).getHead(householdNamespace(householdId), coordinationId);
 }

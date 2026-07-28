@@ -16,6 +16,7 @@ import {
 	getTrustedDeliveryAudience,
 	OWNER_EXCLUSIVE_DISCLOSURE_GATE,
 	ownerExclusiveSuppressionNote,
+	registerRuntimeManagedInternalActor,
 } from "../security/trusted-delivery-audience";
 import type { Room, World } from "../types/environment";
 import type { IAgentRuntime, Memory, UUID } from "../types/index";
@@ -163,13 +164,20 @@ describe("DefaultMessageService — central delivery-audience attestation", () =
 			content: { text: "plan the owner's day", source: "autonomous" },
 		});
 
-		await handle(runtime, message);
-
-		expect(evaluateOwnerExclusiveDisclosure(message)).toMatchObject({
-			allowed: true,
-			basis: "internal_agent_turn",
-		});
-		expect(canActionRun(OWNER_GATED_ACTION, { message })).toBe(true);
+		const release = registerRuntimeManagedInternalActor(
+			runtime,
+			AUTONOMY_ENTITY,
+		);
+		try {
+			await handle(runtime, message);
+			expect(evaluateOwnerExclusiveDisclosure(message)).toMatchObject({
+				allowed: true,
+				basis: "internal_agent_turn",
+			});
+			expect(canActionRun(OWNER_GATED_ACTION, { message })).toBe(true);
+		} finally {
+			release();
+		}
 	});
 
 	it("denies observably when canonical attestation fails, without killing the turn", async () => {
@@ -195,7 +203,7 @@ describe("DefaultMessageService — central delivery-audience attestation", () =
 		expect(canActionRun(OWNER_GATED_ACTION, { message })).toBe(false);
 	});
 
-	it("keeps an earlier connector-level attestation authoritative", async () => {
+	it("re-attests connector evidence when a Memory crosses runtimes", async () => {
 		const dmHarness = makeRuntime({
 			room: room(ChannelType.DM),
 			participants: [OWNER_ID, AGENT_ID],
@@ -206,20 +214,19 @@ describe("DefaultMessageService — central delivery-audience attestation", () =
 			getTrustedDeliveryAudience(message)?.attestationId;
 		expect(connectorAttestationId).toBeDefined();
 
-		// If the central seam re-attested, this GROUP room would flip the
-		// audience kind and the gate would deny.
 		const groupHarness = makeRuntime({
 			room: room(ChannelType.GROUP),
 			participants: [OWNER_ID, AGENT_ID, GUEST_ID],
 		});
 		await handle(groupHarness.runtime, message);
 
-		expect(getTrustedDeliveryAudience(message)?.attestationId).toBe(
+		expect(getTrustedDeliveryAudience(message)?.attestationId).not.toBe(
 			connectorAttestationId,
 		);
+		expect(getTrustedDeliveryAudience(message)?.kind).toBe("group");
 		expect(evaluateOwnerExclusiveDisclosure(message)).toMatchObject({
-			allowed: true,
-			basis: "owner_private_destination",
+			allowed: false,
+			reason: "participant_mismatch",
 		});
 	});
 });

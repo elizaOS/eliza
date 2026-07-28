@@ -211,6 +211,9 @@ function termsValue(value: unknown): HouseholdScheduleTerms {
             custodyRecord.authorityBaselineRelationshipId,
             "custody.authorityBaselineRelationshipId",
           ),
+          authorityBaselineRevisionSha256: optionalText(
+            custodyRecord.authorityBaselineRevisionSha256,
+          ),
           reason: requiredText(custodyRecord.reason, "custody.reason"),
         }
       : null,
@@ -221,6 +224,7 @@ function grantFromRow(row: Record<string, unknown>): HouseholdAccessGrant {
   return {
     id: requiredText(row.id, "id"),
     agentId: requiredText(row.agent_id, "agentId"),
+    householdId: requiredText(row.household_id, "householdId"),
     principalEntityId: requiredText(
       row.principal_entity_id,
       "principalEntityId",
@@ -256,6 +260,7 @@ function proposalFromRow(
   return {
     proposalId: requiredText(row.proposal_id, "proposalId"),
     agentId: requiredText(row.agent_id, "agentId"),
+    householdId: requiredText(row.household_id, "householdId"),
     version: requiredInteger(row.version, "version"),
     coordinationId: requiredText(row.coordination_id, "coordinationId"),
     baseAgreementVersion: requiredInteger(
@@ -307,6 +312,7 @@ function headFromRow(row: Record<string, unknown>): HouseholdCoordinationHead {
   return {
     id: requiredText(row.id, "id"),
     agentId: requiredText(row.agent_id, "agentId"),
+    householdId: requiredText(row.household_id, "householdId"),
     coordinationId: requiredText(row.coordination_id, "coordinationId"),
     currentAgreementVersion: requiredInteger(
       row.current_agreement_version,
@@ -326,6 +332,7 @@ function agreementFromRow(
   return {
     id,
     agentId: requiredText(row.agent_id, "agentId"),
+    householdId: requiredText(row.household_id, "householdId"),
     coordinationId: requiredText(row.coordination_id, "coordinationId"),
     version: requiredInteger(row.version, "version"),
     proposalId: requiredText(row.proposal_id, "proposalId"),
@@ -347,6 +354,12 @@ function agreementFromRow(
 
 function ownerTypeFor(kind: HouseholdAuditKind): string {
   if (kind === "household_role_bound") return "household_role";
+  if (
+    kind === "household_custody_authority_set" ||
+    kind === "household_custody_authority_revoked"
+  ) {
+    return "household_custody_authority";
+  }
   if (kind === "household_grant_issued" || kind === "household_grant_revoked") {
     return "household_grant";
   }
@@ -428,13 +441,14 @@ export class HouseholdCoordinationRepository {
       await executeRawSqlTx(
         tx,
         `INSERT INTO app_lifeops.life_household_access_grants (
-          id, agent_id, principal_entity_id, relationship_id, role,
+          id, agent_id, household_id, principal_entity_id, relationship_id, role,
           subject_entity_ids_json, scopes_json, issued_by_entity_id,
           expires_at, revoked_at, revoked_by_entity_id, revocation_reason,
           created_at, updated_at
         ) VALUES (
           ${sqlQuote(grant.id)},
           ${sqlQuote(this.agentId)},
+          ${sqlQuote(grant.householdId)},
           ${sqlQuote(grant.principalEntityId)},
           ${sqlText(grant.relationshipId)},
           ${sqlQuote(grant.role)},
@@ -480,9 +494,13 @@ export class HouseholdCoordinationRepository {
 
   async listGrants(
     principalEntityId?: string,
+    householdId?: string,
   ): Promise<HouseholdAccessGrant[]> {
     const principalClause = principalEntityId
       ? `AND principal_entity_id = ${sqlQuote(principalEntityId)}`
+      : "";
+    const householdClause = householdId
+      ? `AND household_id = ${sqlQuote(householdId)}`
       : "";
     const rows = await executeRawSql(
       this.runtime,
@@ -490,6 +508,7 @@ export class HouseholdCoordinationRepository {
          FROM app_lifeops.life_household_access_grants
         WHERE agent_id = ${sqlQuote(this.agentId)}
           ${principalClause}
+          ${householdClause}
         ORDER BY created_at ASC, id ASC`,
     );
     return rows.map(grantFromRow);
@@ -529,6 +548,7 @@ export class HouseholdCoordinationRepository {
         ownerId: grant.id,
         reason: input.reason,
         inputs: {
+          householdId: grant.householdId,
           principalEntityId: grant.principalEntityId,
           scopes: grant.scopes,
         },
@@ -853,31 +873,33 @@ export class HouseholdCoordinationRepository {
   }
 
   async ensureHead(
+    householdId: string,
     coordinationId: string,
     now: string,
   ): Promise<HouseholdCoordinationHead> {
     const id = `hcoord_${crypto
       .createHash("sha256")
-      .update(`${this.agentId}\0${coordinationId}`)
+      .update(`${this.agentId}\0${householdId}\0${coordinationId}`)
       .digest("hex")
       .slice(0, 24)}`;
     await executeRawSql(
       this.runtime,
       `INSERT INTO app_lifeops.life_household_coordination_heads (
-        id, agent_id, coordination_id, current_agreement_version,
+        id, agent_id, household_id, coordination_id, current_agreement_version,
         current_agreement_id, created_at, updated_at
       ) VALUES (
         ${sqlQuote(id)},
         ${sqlQuote(this.agentId)},
+        ${sqlQuote(householdId)},
         ${sqlQuote(coordinationId)},
         0,
         NULL,
         ${sqlQuote(now)},
         ${sqlQuote(now)}
       )
-      ON CONFLICT(agent_id, coordination_id) DO NOTHING`,
+      ON CONFLICT(agent_id, household_id, coordination_id) DO NOTHING`,
     );
-    const head = await this.getHead(coordinationId);
+    const head = await this.getHead(householdId, coordinationId);
     if (!head) {
       throw new HouseholdCoordinationError(
         `Failed to create coordination head ${coordinationId}`,
@@ -889,6 +911,7 @@ export class HouseholdCoordinationRepository {
   }
 
   async getHead(
+    householdId: string,
     coordinationId: string,
   ): Promise<HouseholdCoordinationHead | null> {
     const rows = await executeRawSql(
@@ -896,6 +919,7 @@ export class HouseholdCoordinationRepository {
       `SELECT *
          FROM app_lifeops.life_household_coordination_heads
         WHERE agent_id = ${sqlQuote(this.agentId)}
+          AND household_id = ${sqlQuote(householdId)}
           AND coordination_id = ${sqlQuote(coordinationId)}
         LIMIT 1`,
     );
@@ -910,8 +934,9 @@ export class HouseholdCoordinationRepository {
       const headRows = await executeRawSqlTx(
         tx,
         `SELECT *
-           FROM app_lifeops.life_household_coordination_heads
+          FROM app_lifeops.life_household_coordination_heads
           WHERE agent_id = ${sqlQuote(this.agentId)}
+            AND household_id = ${sqlQuote(proposal.householdId)}
             AND coordination_id = ${sqlQuote(proposal.coordinationId)}
           FOR UPDATE`,
       );
@@ -941,12 +966,14 @@ export class HouseholdCoordinationRepository {
   ): Promise<void> {
     const rowId = `hproposalrow_${crypto
       .createHash("sha256")
-      .update(`${this.agentId}\0${proposal.proposalId}\0${proposal.version}`)
+      .update(
+        `${this.agentId}\0${proposal.householdId}\0${proposal.proposalId}\0${proposal.version}`,
+      )
       .digest("hex")}`;
     await executeRawSqlTx(
       tx,
       `INSERT INTO app_lifeops.life_household_schedule_proposals (
-        row_id, agent_id, proposal_id, version, coordination_id,
+        row_id, agent_id, household_id, proposal_id, version, coordination_id,
         base_agreement_version, terms_json, affected_party_entity_ids_json,
         required_approver_entity_ids_json, created_by_entity_id,
         content_sha256, status, material_change, expires_at, created_at,
@@ -954,6 +981,7 @@ export class HouseholdCoordinationRepository {
       ) VALUES (
         ${sqlQuote(rowId)},
         ${sqlQuote(this.agentId)},
+        ${sqlQuote(proposal.householdId)},
         ${sqlQuote(proposal.proposalId)},
         ${sqlInteger(proposal.version)},
         ${sqlQuote(proposal.coordinationId)},
@@ -980,8 +1008,9 @@ export class HouseholdCoordinationRepository {
       const headRows = await executeRawSqlTx(
         tx,
         `SELECT *
-           FROM app_lifeops.life_household_coordination_heads
+          FROM app_lifeops.life_household_coordination_heads
           WHERE agent_id = ${sqlQuote(this.agentId)}
+            AND household_id = ${sqlQuote(previous.householdId)}
             AND coordination_id = ${sqlQuote(previous.coordinationId)}
           FOR UPDATE`,
       );
@@ -1005,6 +1034,7 @@ export class HouseholdCoordinationRepository {
             SET status = 'superseded',
                 updated_at = ${sqlQuote(next.updatedAt)}
           WHERE agent_id = ${sqlQuote(this.agentId)}
+            AND household_id = ${sqlQuote(previous.householdId)}
             AND proposal_id = ${sqlQuote(previous.proposalId)}
             AND version = ${sqlInteger(previous.version)}
             AND status = 'pending'
@@ -1037,6 +1067,7 @@ export class HouseholdCoordinationRepository {
         ownerId: previous.proposalId,
         reason: "A newer proposal version replaced the approved bytes.",
         inputs: {
+          householdId: previous.householdId,
           proposalVersion: previous.version,
           materialChange: next.materialChange,
         },
@@ -1052,6 +1083,7 @@ export class HouseholdCoordinationRepository {
         ownerId: next.proposalId,
         reason: "Household schedule proposal revised.",
         inputs: {
+          householdId: next.householdId,
           previousVersion: previous.version,
           materialChange: next.materialChange,
           affectedPartyEntityIds: next.affectedPartyEntityIds,
@@ -1073,9 +1105,13 @@ export class HouseholdCoordinationRepository {
   async getProposal(
     proposalId: string,
     version?: number,
+    householdId?: string,
   ): Promise<HouseholdScheduleProposal | null> {
     const versionClause =
       version === undefined ? "" : `AND version = ${sqlInteger(version)}`;
+    const householdClause = householdId
+      ? `AND household_id = ${sqlQuote(householdId)}`
+      : "";
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
@@ -1083,18 +1119,23 @@ export class HouseholdCoordinationRepository {
         WHERE agent_id = ${sqlQuote(this.agentId)}
           AND proposal_id = ${sqlQuote(proposalId)}
           ${versionClause}
+          ${householdClause}
         ORDER BY version DESC
         LIMIT 1`,
     );
     return rows[0] ? proposalFromRow(rows[0]) : null;
   }
 
-  async listProposals(): Promise<HouseholdScheduleProposal[]> {
+  async listProposals(householdId?: string): Promise<HouseholdScheduleProposal[]> {
+    const householdClause = householdId
+      ? `AND household_id = ${sqlQuote(householdId)}`
+      : "";
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
          FROM app_lifeops.life_household_schedule_proposals
         WHERE agent_id = ${sqlQuote(this.agentId)}
+          ${householdClause}
         ORDER BY created_at ASC, proposal_id ASC, version ASC`,
     );
     return rows.map(proposalFromRow);
@@ -1172,6 +1213,79 @@ export class HouseholdCoordinationRepository {
     return rows.map((row) =>
       requiredText(row.approval_request_id, "approvalRequestId"),
     );
+  }
+
+  async invalidateProposalsForCustodyAuthority(input: {
+    householdId: string;
+    relationshipId: string;
+    invalidatedAt: string;
+    reason: string;
+  }): Promise<{
+    proposalIds: string[];
+    approvalRequestIds: string[];
+  }> {
+    return await withTransaction(this.runtime, async (tx) => {
+      const proposals = await executeRawSqlTx(
+        tx,
+        `UPDATE app_lifeops.life_household_schedule_proposals
+            SET status = 'invalidated',
+                updated_at = ${sqlQuote(input.invalidatedAt)}
+          WHERE agent_id = ${sqlQuote(this.agentId)}
+            AND household_id = ${sqlQuote(input.householdId)}
+            AND status = 'pending'
+            AND terms_json::jsonb #>>
+                '{custodyException,authorityBaselineRelationshipId}' =
+                ${sqlQuote(input.relationshipId)}
+        RETURNING proposal_id, version`,
+      );
+      const approvals = await executeRawSqlTx(
+        tx,
+        `UPDATE app_lifeops.life_household_proposal_approvals AS approval
+            SET invalidated_at = ${sqlQuote(input.invalidatedAt)},
+                updated_at = ${sqlQuote(input.invalidatedAt)}
+          WHERE approval.agent_id = ${sqlQuote(this.agentId)}
+            AND approval.invalidated_at IS NULL
+            AND EXISTS (
+              SELECT 1
+                FROM app_lifeops.life_household_schedule_proposals AS proposal
+               WHERE proposal.agent_id = approval.agent_id
+                 AND proposal.proposal_id = approval.proposal_id
+                 AND proposal.version = approval.proposal_version
+                 AND proposal.household_id = ${sqlQuote(input.householdId)}
+                 AND proposal.status = 'invalidated'
+                 AND proposal.terms_json::jsonb #>>
+                     '{custodyException,authorityBaselineRelationshipId}' =
+                     ${sqlQuote(input.relationshipId)}
+            )
+        RETURNING approval_request_id`,
+      );
+      for (const row of proposals) {
+        await insertAudit(tx, this.agentId, {
+          kind: "household_proposal_invalidated",
+          ownerId: requiredText(row.proposal_id, "proposalId"),
+          reason: input.reason,
+          inputs: {
+            householdId: input.householdId,
+            proposalVersion: requiredInteger(row.version, "proposalVersion"),
+            authorityBaselineRelationshipId: input.relationshipId,
+          },
+          decision: {
+            status: "invalidated",
+            invalidatedAt: input.invalidatedAt,
+          },
+          actor: "user",
+          createdAt: input.invalidatedAt,
+        });
+      }
+      return {
+        proposalIds: proposals.map((row) =>
+          requiredText(row.proposal_id, "proposalId"),
+        ),
+        approvalRequestIds: approvals.map((row) =>
+          requiredText(row.approval_request_id, "approvalRequestId"),
+        ),
+      };
+    });
   }
 
   async rejectProposal(input: {
@@ -1324,6 +1438,7 @@ export class HouseholdCoordinationRepository {
             SET status = 'accepted',
                 updated_at = ${sqlQuote(agreement.activatedAt)}
           WHERE agent_id = ${sqlQuote(this.agentId)}
+            AND household_id = ${sqlQuote(agreement.householdId)}
             AND proposal_id = ${sqlQuote(agreement.proposalId)}
             AND version = ${sqlInteger(agreement.proposalVersion)}
             AND status = 'pending'
@@ -1346,6 +1461,7 @@ export class HouseholdCoordinationRepository {
                 current_agreement_id = ${sqlQuote(agreement.id)},
                 updated_at = ${sqlQuote(agreement.activatedAt)}
           WHERE agent_id = ${sqlQuote(this.agentId)}
+            AND household_id = ${sqlQuote(agreement.householdId)}
             AND coordination_id = ${sqlQuote(agreement.coordinationId)}
             AND current_agreement_version = ${sqlInteger(agreement.version - 1)}
         RETURNING id`,
@@ -1363,12 +1479,13 @@ export class HouseholdCoordinationRepository {
       await executeRawSqlTx(
         tx,
         `INSERT INTO app_lifeops.life_household_schedule_agreements (
-          id, agent_id, coordination_id, version, proposal_id,
+          id, agent_id, household_id, coordination_id, version, proposal_id,
           proposal_version, terms_json, affected_party_entity_ids_json,
           approved_by_entity_ids_json, activated_at, created_at
         ) VALUES (
           ${sqlQuote(agreement.id)},
           ${sqlQuote(this.agentId)},
+          ${sqlQuote(agreement.householdId)},
           ${sqlQuote(agreement.coordinationId)},
           ${sqlInteger(agreement.version)},
           ${sqlQuote(agreement.proposalId)},
@@ -1387,6 +1504,8 @@ export class HouseholdCoordinationRepository {
                 updated_at = ${sqlQuote(agreement.activatedAt)}
           WHERE agent_id = ${sqlQuote(this.agentId)}
             AND status IN ('open', 'tracked')
+            AND metadata_json::jsonb ->> 'householdId' =
+                ${sqlQuote(agreement.householdId)}
             AND metadata_json::jsonb ->> 'householdCoordinationId' =
                 ${sqlQuote(agreement.coordinationId)}`,
       );
@@ -1419,6 +1538,7 @@ export class HouseholdCoordinationRepository {
             SET status = 'invalidated',
                 updated_at = ${sqlQuote(agreement.activatedAt)}
           WHERE agent_id = ${sqlQuote(this.agentId)}
+            AND household_id = ${sqlQuote(agreement.householdId)}
             AND coordination_id = ${sqlQuote(agreement.coordinationId)}
             AND base_agreement_version < ${sqlInteger(agreement.version)}
             AND status = 'pending'
@@ -1437,6 +1557,7 @@ export class HouseholdCoordinationRepository {
                WHERE proposal.agent_id = approval.agent_id
                  AND proposal.proposal_id = approval.proposal_id
                  AND proposal.version = approval.proposal_version
+                 AND proposal.household_id = ${sqlQuote(agreement.householdId)}
                  AND proposal.coordination_id = ${sqlQuote(agreement.coordinationId)}
                  AND proposal.status = 'invalidated'
             )
@@ -1448,6 +1569,7 @@ export class HouseholdCoordinationRepository {
         reason:
           "Every required affected-party approval matched this proposal version.",
         inputs: {
+          householdId: agreement.householdId,
           proposalVersion: agreement.proposalVersion,
           approvedByEntityIds: agreement.approvedByEntityIds,
         },
@@ -1463,6 +1585,7 @@ export class HouseholdCoordinationRepository {
         ownerId: agreement.id,
         reason: "The approved proposal became the current household agreement.",
         inputs: {
+          householdId: agreement.householdId,
           proposalId: agreement.proposalId,
           proposalVersion: agreement.proposalVersion,
           affectedPartyEntityIds: agreement.affectedPartyEntityIds,
@@ -1480,6 +1603,7 @@ export class HouseholdCoordinationRepository {
           ownerId: requiredText(row.proposal_id, "proposalId"),
           reason: "A competing proposal activated a newer agreement version.",
           inputs: {
+            householdId: agreement.householdId,
             coordinationId: agreement.coordinationId,
           },
           decision: {
@@ -1501,15 +1625,22 @@ export class HouseholdCoordinationRepository {
     });
   }
 
-  async listAgreements(): Promise<HouseholdScheduleAgreement[]> {
+  async listAgreements(
+    householdId?: string,
+  ): Promise<HouseholdScheduleAgreement[]> {
+    const householdClause = householdId
+      ? `AND agreement.household_id = ${sqlQuote(householdId)}`
+      : "";
     const rows = await executeRawSql(
       this.runtime,
       `SELECT agreement.*, head.current_agreement_id
          FROM app_lifeops.life_household_schedule_agreements AS agreement
          JOIN app_lifeops.life_household_coordination_heads AS head
-           ON head.agent_id = agreement.agent_id
+          ON head.agent_id = agreement.agent_id
+          AND head.household_id = agreement.household_id
           AND head.coordination_id = agreement.coordination_id
         WHERE agreement.agent_id = ${sqlQuote(this.agentId)}
+          ${householdClause}
         ORDER BY agreement.activated_at ASC, agreement.id ASC`,
     );
     return rows.map((row) =>

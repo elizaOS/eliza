@@ -190,10 +190,10 @@ import {
 } from "../runtime/user-visible-model-output";
 import {
 	attestDeliveryAudienceFromCanonicalRoom,
-	getTrustedDeliveryAudience,
 	ownerExclusiveDisclosureWasUsed,
 	PRIVACY_DENIED_TEXT,
 	revalidateOwnerExclusiveDisclosure,
+	trustedDeliveryAudienceIsBoundToRuntime,
 } from "../security/trusted-delivery-audience";
 import {
 	getModelStreamChunkDeliveryDepth,
@@ -10171,10 +10171,10 @@ export class DefaultMessageService implements IMessageService {
 		// Central delivery-audience attestation: every connector funnels inbound
 		// turns through this seam, so attesting from canonical room state here
 		// gives Telegram/iMessage/WhatsApp-style ingress the same evidence the
-		// Discord connector mints itself. A connector-level attestation already
-		// bound to this exact turn stays authoritative — rebinding would clobber
-		// evidence issued closer to the transport (and any narrower TTL).
-		if (!getTrustedDeliveryAudience(message)) {
+		// Discord connector mints itself. An attestation remains authoritative
+		// only inside the runtime that minted it; a Memory crossing runtime
+		// boundaries is re-attested from the active runtime's canonical state.
+		if (!trustedDeliveryAudienceIsBoundToRuntime(message, runtime)) {
 			try {
 				await attestDeliveryAudienceFromCanonicalRoom(runtime, message);
 			} catch (error) {

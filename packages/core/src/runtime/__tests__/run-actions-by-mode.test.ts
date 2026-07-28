@@ -7,6 +7,7 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { AgentRuntime } from "../../runtime";
+import { attestDeliveryAudienceFromCanonicalRoom } from "../../security";
 import {
 	getStreamingContext,
 	runWithStreamingContext,
@@ -15,8 +16,10 @@ import {
 	type Action,
 	ActionMode,
 	type Character,
+	ChannelType,
 	HOOK_MODES,
 	type Memory,
+	type Room,
 } from "../../types";
 import type { EffectReceipt } from "../../types/effects";
 import { effectDeliveryBindingProvesApplication } from "../effect-delivery";
@@ -125,6 +128,55 @@ describe("runActionsByMode", () => {
 
 		await runtime.runActionsByMode("ALWAYS_AFTER", makeMessage());
 		expect(ledger).toEqual(["ok"]);
+	});
+
+	it("revalidates owner-private audience after validation and before a DURING handler", async () => {
+		const turn = makeMessage();
+		turn.agentId = runtime.agentId;
+		let participants = [turn.entityId, runtime.agentId];
+		const getRoom = vi
+			.spyOn(runtime, "getRoom")
+			.mockResolvedValue({
+				id: turn.roomId,
+				agentId: runtime.agentId,
+				source: "test",
+				type: ChannelType.DM,
+			} as Room);
+		const getParticipants = vi
+			.spyOn(runtime, "getParticipantsForRoom")
+			.mockImplementation(async () => [...participants]);
+		const getSetting = vi
+			.spyOn(runtime, "getSetting")
+			.mockImplementation((key: string) =>
+				key === "ELIZA_ADMIN_ENTITY_ID" ? turn.entityId : undefined,
+			);
+		const handler = vi.fn(async () => ({ success: true }));
+		runtime.actions.length = 0;
+		runtime.actions.push({
+			name: "OWNER_PRIVATE_DURING",
+			description: "owner private during hook",
+			mode: ActionMode.ALWAYS_DURING,
+			disclosureGate: { require: "owner_exclusive" },
+			examples: [],
+			validate: async () => {
+				participants = [
+					...participants,
+					"00000000-0000-0000-0000-00000000000d" as Memory["entityId"],
+				];
+				return true;
+			},
+			handler,
+		});
+
+		try {
+			await attestDeliveryAudienceFromCanonicalRoom(runtime, turn);
+			await runtime.runActionsByMode("ALWAYS_DURING", turn);
+			expect(handler).not.toHaveBeenCalled();
+		} finally {
+			getRoom.mockRestore();
+			getParticipants.mockRestore();
+			getSetting.mockRestore();
+		}
 	});
 
 	it("runs sequential modes in modePriority ascending, alphabetical tiebreak", async () => {

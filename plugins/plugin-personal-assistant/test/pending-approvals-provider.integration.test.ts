@@ -22,7 +22,14 @@ import type {
   ApprovalEnqueueInput,
   ApprovalQueue,
 } from "../src/lifeops/approval-queue.types.js";
-import { pendingApprovalsProvider } from "../src/providers/pending-approvals.js";
+import {
+  CROSS_CHANNEL_CONTEXT_UNAVAILABLE_TEXT,
+  crossChannelContextProvider,
+} from "../src/providers/cross-channel-context.js";
+import {
+  PENDING_APPROVALS_UNAVAILABLE_TEXT,
+  pendingApprovalsProvider,
+} from "../src/providers/pending-approvals.js";
 
 vi.mock("@elizaos/agent", () => ({
   hasOwnerAccess: vi.fn(async (_runtime: IAgentRuntime, message: Memory) => {
@@ -230,6 +237,8 @@ describe("pendingApprovals provider (real PGlite queue)", () => {
       expect(result.values?.pendingApprovalsUnavailable).toBe(true);
       expect(result.values?.pendingApprovalCount).toBeUndefined();
       expect(result.data?.pendingApprovalsError).toBe(true);
+      expect(result.text).toBe(PENDING_APPROVALS_UNAVAILABLE_TEXT);
+      expect(result.text).toContain("Do not say that nothing is pending");
       expect(runtime.reportError).toHaveBeenCalledWith(
         "pending-approvals.provider",
         expect.anything(),
@@ -239,6 +248,34 @@ describe("pendingApprovals provider (real PGlite queue)", () => {
       const db = drizzle(pg);
       await db.execute(sql.raw(CREATE_APPROVAL_REQUESTS_TABLE));
       await db.execute(sql.raw(CREATE_APPROVAL_IDEMPOTENCY_INDEX));
+    }
+  });
+
+  it("puts a signaled cross-channel search failure in planner-visible text", async () => {
+    const originalGetService = runtime.getService.bind(runtime);
+    runtime.getService = (() => {
+      throw new Error("relationship search unavailable");
+    }) as IAgentRuntime["getService"];
+    try {
+      const result = await crossChannelContextProvider.get(
+        runtime,
+        message(OWNER_ID, "what did Alex say?"),
+        {
+          values: {},
+          data: {},
+          text: "",
+          crossChannelContextRequest: {
+            query: "travel pickup",
+            person: "Alex",
+          },
+        } as State,
+      );
+
+      expect(result.values?.crossChannelUnavailable).toBe(true);
+      expect(result.text).toBe(CROSS_CHANNEL_CONTEXT_UNAVAILABLE_TEXT);
+      expect(result.text).toContain("Do not infer that no prior message");
+    } finally {
+      runtime.getService = originalGetService;
     }
   });
 });

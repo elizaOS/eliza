@@ -32,6 +32,10 @@ const EMPTY: ProviderResult = {
 
 const APPROVALS_MAX_DISPLAYED = 5;
 const APPROVALS_QUERY_LIMIT = 20;
+export const PENDING_APPROVALS_UNAVAILABLE_TEXT = [
+  "# Pending Approvals unavailable",
+  "The approval queue could not be read for this turn. Do not say that nothing is pending and do not approve, reject, or dispatch a queued action from memory. Ask the owner to retry after the queue is available.",
+].join("\n");
 
 // Renders id + action + reason but never the queued payload: the reason is
 // authored for owner-facing display, while payloads carry full message/email
@@ -135,7 +139,7 @@ export const pendingApprovalsProvider: Provider = {
         entityId: message.entityId,
       });
       return {
-        text: "",
+        text: PENDING_APPROVALS_UNAVAILABLE_TEXT,
         values: { pendingApprovalsUnavailable: true },
         data: { pendingApprovalsError: true },
       };

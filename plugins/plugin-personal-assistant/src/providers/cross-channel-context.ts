@@ -46,6 +46,10 @@ const EMPTY: ProviderResult = {
 
 const DEFAULT_INJECT_LIMIT = 5;
 const DEFAULT_PER_CHANNEL = 4;
+export const CROSS_CHANNEL_CONTEXT_UNAVAILABLE_TEXT = [
+  "# Cross-channel context unavailable",
+  "The requested prior-channel search failed for this turn. Do not infer that no prior message or commitment exists; say the search is temporarily unavailable and ask the owner to retry.",
+].join("\n");
 
 export type CrossChannelContextRequest = {
   query: string;
@@ -311,7 +315,7 @@ export const crossChannelContextProvider: Provider = {
         entityId: message.entityId,
       });
       return {
-        text: "",
+        text: CROSS_CHANNEL_CONTEXT_UNAVAILABLE_TEXT,
         values: { crossChannelUnavailable: true },
         data: { crossChannelError: true },
       };
