@@ -69,6 +69,9 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --ignore-scripts --no-frozen-lockfile
+          # Fork lint is intentionally bounded; restoring the broad fallback
+          # can cost more than installing the exact lockfile dependency set.
+          cache-bun-install: "false"
 
       - name: Run anti-larp test gate self-test
         run: bun run audit:focused-tests:self-test
