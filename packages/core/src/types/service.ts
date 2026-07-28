@@ -65,6 +65,31 @@ export interface ServiceTypeRegistry {
  */
 export type ServiceTypeName = ServiceTypeRegistry[keyof ServiceTypeRegistry];
 
+export type ServiceRegistrationStatus =
+	| "pending"
+	| "registering"
+	| "registered"
+	| "failed";
+
+export interface ServiceImplementationHealth {
+	serviceType: string;
+	serviceClass: string;
+	plugin?: string;
+	critical: boolean;
+	status: ServiceRegistrationStatus;
+	error?: {
+		code: string;
+		message: string;
+	};
+}
+
+export interface ServiceTypeHealth {
+	status: ServiceRegistrationStatus | "degraded" | "unknown";
+	instances: number;
+	hasPromise: boolean;
+	implementations: ServiceImplementationHealth[];
+}
+
 /**
  * Helper type to extract service type values from the registry
  */
@@ -85,6 +110,7 @@ export type TypedServiceClass<T extends ServiceTypeName> = {
 	new (runtime?: IAgentRuntime): Service;
 	serviceType: T;
 	allowsMultiple?: boolean;
+	bootCritical?: boolean;
 	start(runtime: IAgentRuntime): Promise<Service>;
 };
 
@@ -203,6 +229,9 @@ export abstract class Service implements RuntimeServiceInstance {
 
 	/** True when multiple implementations may intentionally share this service type. */
 	static allowsMultiple?: boolean;
+
+	/** A failed implementation prevents process readiness instead of reporting degraded health. */
+	static bootCritical?: boolean;
 
 	/** Service name */
 	abstract capabilityDescription: string;

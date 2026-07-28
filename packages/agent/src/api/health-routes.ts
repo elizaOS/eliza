@@ -471,6 +471,110 @@ export function computeCanRespond(
   }
 }
 
+export interface ServiceHealthFailure {
+  serviceType: string;
+  serviceClass: string;
+  plugin?: string;
+  critical: boolean;
+  code: string;
+  message: string;
+}
+
+export type ServiceHealthSummary =
+  | {
+      status: "unavailable";
+      registered: null;
+      pending: null;
+      failed: null;
+      failures: null;
+    }
+  | {
+      status: "healthy" | "loading" | "degraded" | "starting" | "failed";
+      registered: number;
+      pending: number;
+      failed: number;
+      failures: ServiceHealthFailure[];
+    };
+
+/**
+ * Readiness only waits for explicitly boot-critical implementations. Optional
+ * services remain visible as loading/degraded so a connector or feature
+ * failure cannot trap the process in a supervisor restart loop.
+ */
+export function summarizeServiceHealth(
+  runtime: AgentRuntime | null,
+): ServiceHealthSummary {
+  if (!runtime) {
+    return {
+      status: "unavailable",
+      registered: null,
+      pending: null,
+      failed: null,
+      failures: null,
+    };
+  }
+  if (typeof runtime.getServiceHealth !== "function") {
+    return {
+      status: "unavailable",
+      registered: null,
+      pending: null,
+      failed: null,
+      failures: null,
+    };
+  }
+
+  let registered = 0;
+  let pending = 0;
+  let failed = 0;
+  let criticalPending = 0;
+  const failures: ServiceHealthFailure[] = [];
+
+  for (const health of Object.values(runtime.getServiceHealth())) {
+    for (const implementation of health.implementations) {
+      if (implementation.status === "registered") {
+        registered += 1;
+      } else if (
+        implementation.status === "pending" ||
+        implementation.status === "registering"
+      ) {
+        pending += 1;
+        if (implementation.critical) criticalPending += 1;
+      } else if (implementation.status === "failed") {
+        if (!implementation.error) {
+          throw new Error(
+            `Failed service ${implementation.serviceType}/${implementation.serviceClass} has no diagnostic`,
+          );
+        }
+        failed += 1;
+        failures.push({
+          serviceType: implementation.serviceType,
+          serviceClass: implementation.serviceClass,
+          ...(implementation.plugin ? { plugin: implementation.plugin } : {}),
+          critical: implementation.critical,
+          code: implementation.error.code,
+          message: implementation.error.message,
+        });
+      }
+    }
+  }
+  failures.sort((a, b) =>
+    `${a.serviceType}\u0000${a.plugin ?? ""}\u0000${a.serviceClass}`.localeCompare(
+      `${b.serviceType}\u0000${b.plugin ?? ""}\u0000${b.serviceClass}`,
+    ),
+  );
+
+  const status = failures.some((failure) => failure.critical)
+    ? "failed"
+    : criticalPending > 0
+      ? "starting"
+      : failures.length > 0
+        ? "degraded"
+        : pending > 0
+          ? "loading"
+          : "healthy";
+  return { status, registered, pending, failed, failures };
+}
+
 /**
  * Handle health / status / runtime introspection routes.
  * Returns `true` if the request was handled.
@@ -562,6 +666,7 @@ export async function handleHealthRoutes(
       ? runtime.plugins.length
       : state.plugins.filter((p) => p.enabled || p.isActive).length;
     const failedPluginCount = state.plugins.filter((p) => p.loadError).length;
+    const services = summarizeServiceHealth(runtime);
 
     let coordinatorStatus: "ok" | "not_wired" = "not_wired";
     try {
@@ -588,10 +693,16 @@ export async function handleHealthRoutes(
     }
 
     const databaseLiveness = await probeRuntimeDatabaseLiveness(runtime);
+    const serviceReadinessFailed =
+      services.status === "failed" || services.status === "starting";
+    const agentProcessReady =
+      state.agentState === "running" || state.agentState === "paused";
     const ready =
-      state.agentState !== "starting" &&
-      state.agentState !== "restarting" &&
-      !databaseLiveness.terminal;
+      runtime !== null &&
+      agentProcessReady &&
+      !databaseLiveness.terminal &&
+      !serviceReadinessFailed;
+    const terminal = databaseLiveness.terminal || services.status === "failed";
 
     json(
       res,
@@ -611,6 +722,7 @@ export async function handleHealthRoutes(
           loaded: loadedPluginCount,
           failed: failedPluginCount,
         },
+        services,
         coordinator: coordinatorStatus,
         connectors,
         uptime,
@@ -621,7 +733,7 @@ export async function handleHealthRoutes(
         // before hitting feature routes right after boot instead of sleeping.
         deferredBoot: getDeferredBootStatus(),
       },
-      databaseLiveness.terminal ? 503 : 200,
+      terminal ? 503 : 200,
     );
     return true;
   }
