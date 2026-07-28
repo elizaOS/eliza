@@ -24,7 +24,12 @@ import type {
   Memory,
   UUID,
 } from "@elizaos/core";
-import { MESSAGE_SOURCE_SUB_AGENT, Service, ServiceType } from "@elizaos/core";
+import {
+  isSendHandlerOutcome,
+  MESSAGE_SOURCE_SUB_AGENT,
+  Service,
+  ServiceType,
+} from "@elizaos/core";
 import type { AcpService } from "./acp-service.js";
 import { registerBuiltAppsForCompletion } from "./built-apps-registry.js";
 import {
@@ -1866,7 +1871,15 @@ export class SubAgentRouter extends Service {
         });
         return undefined;
       });
-      return delivered ? [delivered] : [];
+      if (!delivered) return [];
+      // Structural outcomes carry a persisted Memory only on a delivered
+      // receipt; duplicate/not_delivered outcomes report zero deliveries.
+      if (isSendHandlerOutcome(delivered)) {
+        return delivered.kind === "delivered" && delivered.memory
+          ? [delivered.memory]
+          : [];
+      }
+      return [delivered];
     };
   }
 

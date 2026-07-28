@@ -22,6 +22,7 @@ import {
   createUniqueUuid,
   EventType,
   isLocalCodeExecutionAllowed,
+  isSendHandlerOutcome,
   ModelType,
   promoteSubactionsToActions,
 } from "@elizaos/core";
@@ -1726,8 +1727,13 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
         sendTarget,
         transientContent(initialText, "sub_agent_progress"),
       );
-      const platformId = (sent?.metadata as Record<string, unknown> | undefined)
-        ?.platformMessageId;
+      const platformId = isSendHandlerOutcome(sent)
+        ? sent.kind === "delivered" ||
+          (sent.kind === "duplicate" && sent.priorDelivery === "delivered")
+          ? sent.providerMessageId
+          : undefined
+        : (sent?.metadata as Record<string, unknown> | undefined)
+            ?.platformMessageId;
       if (
         !state &&
         typeof platformId === "string" &&
