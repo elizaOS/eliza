@@ -7,6 +7,11 @@
  */
 import { createRequire } from "node:module";
 import process from "node:process";
+import {
+  assertNormalRuntimeBootMode,
+  RESTORE_VALIDATION_BOOT_MODE,
+  resolveRuntimeBootMode,
+} from "../runtime/restore-validation-mode.ts";
 
 function printHelp(): void {
   console.log(`eliza-autonomous
@@ -52,6 +57,19 @@ export async function runAutonomousCli(
     printHelp();
     return;
   }
+
+  const bootMode = resolveRuntimeBootMode();
+  if (
+    (command === "serve" || command === "start") &&
+    bootMode === RESTORE_VALIDATION_BOOT_MODE
+  ) {
+    const { startRestoreValidationProcess } = await import(
+      "../api/restore-validation-server.ts"
+    );
+    await startRestoreValidationProcess();
+    return;
+  }
+  assertNormalRuntimeBootMode();
 
   if (command === "runtime") {
     const { bootElizaRuntime } = await import("../runtime/index.ts");

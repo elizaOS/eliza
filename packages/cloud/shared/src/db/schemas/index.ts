@@ -52,6 +52,7 @@ export * from "./device-bus";
 export * from "./discord-channels";
 export * from "./discord-connections";
 export * from "./discord-guilds";
+export * from "./docker-host-port-reservations";
 export * from "./docker-nodes";
 export * from "./domain-purchase-idempotency";
 export * from "./eliza";

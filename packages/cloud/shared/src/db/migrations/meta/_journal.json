@@ -1324,6 +1324,20 @@
       "when": 1785297600003,
       "tag": "0187_agent_snapshot_restore_validations",
       "breakpoints": true
+    },
+    {
+      "idx": 187,
+      "version": "7",
+      "when": 1785297600004,
+      "tag": "0188_docker_host_port_reservations",
+      "breakpoints": true
+    },
+    {
+      "idx": 188,
+      "version": "7",
+      "when": 1785297600005,
+      "tag": "0189_agent_backup_write_epochs",
+      "breakpoints": true
     }
   ]
 }

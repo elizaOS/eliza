@@ -201,7 +201,7 @@ function binaryMemoryBucket(objects: Map<string, Uint8Array>): RuntimeR2Bucket {
       }
     },
     async delete(key) {
-      objects.delete(key);
+      for (const candidate of Array.isArray(key) ? key : [key]) objects.delete(candidate);
     },
   };
 }
@@ -291,6 +291,8 @@ async function seedChunkedV2Backup(sandboxRecordId: string, objects: Map<string,
     },
     snapshotType: "pre-upgrade",
     source: source(),
+    signal: new AbortController().signal,
+    writeLeaseExpiresAt: new Date(Date.now() + 10 * 60_000),
     verify: async (storedSource) => {
       const summary = await validateAgentSnapshotV2Stream({
         source: storedSource,
@@ -656,7 +658,10 @@ describe("runBackupVerificationCycle (real PGlite + real memory KMS)", () => {
         organizationId,
         sandboxRecordId: sandboxId,
         backupId: randomUUID(),
+        objectSetId: randomUUID(),
         createdAt: new Date(Date.now() + 60_000).toISOString(),
+        writeLeaseExpiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
+        writeQuiescedAt: null,
         plannedObjectKeys: [],
         failure: null,
       },

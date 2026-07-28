@@ -4,11 +4,16 @@
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { getKmsClient, resetKmsClientForTests, setKmsClient } from "../../db/crypto/kms-client";
+import { deleteObjectsExact } from "../storage/object-store";
 import { type RuntimeR2Bucket, setRuntimeR2Bucket } from "../storage/r2-runtime-binding";
-import { resetObjectStorageClientForTests } from "../storage/s3-compatible-client";
+import {
+  OBJECT_STORAGE_TRANSPORT_TIMEOUTS,
+  resetObjectStorageClientForTests,
+} from "../storage/s3-compatible-client";
 import {
   type AgentBackupChunkDescriptor,
   type AgentBackupChunkIdentity,
+  AgentBackupWriteEpochUnquiescedError,
   readEncryptedAgentBackupChunks,
   stageEncryptedAgentBackupChunks,
 } from "./agent-backup-chunks";
@@ -19,6 +24,15 @@ const identity: AgentBackupChunkIdentity = {
   backupId: "00000000-0000-4000-8000-000000000003",
   backupSchemaVersion: 2,
 };
+const OBJECT_SET_ID = "00000000-0000-4000-8000-000000000010";
+const RETRY_OBJECT_SET_ID = "00000000-0000-4000-8000-000000000011";
+
+function writeFence(objectSetId = OBJECT_SET_ID): {
+  objectSetId: string;
+  signal: AbortSignal;
+} {
+  return { objectSetId, signal: new AbortController().signal };
+}
 
 function bytes(value: string): Uint8Array {
   return new TextEncoder().encode(value);
@@ -64,7 +78,7 @@ function memoryBucket(
     },
     async delete(key) {
       if (options?.failDelete) throw new Error("injected delete failure");
-      objects.delete(key);
+      for (const candidate of Array.isArray(key) ? key : [key]) objects.delete(candidate);
     },
   };
 }
@@ -114,12 +128,50 @@ afterEach(() => {
 });
 
 describe("encrypted agent backup chunks", () => {
+  test("bulk-deletes exact keys through native R2 and bounds a hung delete by the caller signal", async () => {
+    const deleted: string[][] = [];
+    let beginHungDelete: (() => void) | undefined;
+    const hungDeleteStarted = new Promise<void>((resolve) => {
+      beginHungDelete = resolve;
+    });
+    let hang = false;
+    setRuntimeR2Bucket({
+      async get() {
+        return null;
+      },
+      async put() {
+        return {};
+      },
+      async delete(keys) {
+        const page = Array.isArray(keys) ? keys : [keys];
+        deleted.push(page);
+        if (hang) {
+          beginHungDelete?.();
+          return await new Promise<never>(() => undefined);
+        }
+        return {};
+      },
+    });
+
+    await deleteObjectsExact(["one", "two"]);
+    expect(deleted).toEqual([["one", "two"]]);
+
+    hang = true;
+    const controller = new AbortController();
+    const pending = deleteObjectsExact(["three"], controller.signal);
+    await hungDeleteStarted;
+    controller.abort(new Error("reconcile deadline elapsed"));
+    await expect(pending).rejects.toThrow("reconcile deadline elapsed");
+    expect(deleted).toEqual([["one", "two"], ["three"]]);
+  });
+
   test("stages arbitrary producer views as fixed encrypted chunks and restores exact bytes", async () => {
     const objects = new Map<string, Uint8Array>();
     setRuntimeR2Bucket(memoryBucket(objects));
 
     const descriptor = await stageEncryptedAgentBackupChunks({
       identity,
+      ...writeFence(),
       source: source("abc", "defghijk", "lm"),
       chunkBytes: 4,
       maxTotalBytes: 32,
@@ -127,9 +179,7 @@ describe("encrypted agent backup chunks", () => {
     });
 
     expect(descriptor.commitState).toBe("complete");
-    expect(descriptor.objectSetId).toMatch(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
-    );
+    expect(descriptor.objectSetId).toBe(OBJECT_SET_ID);
     expect(descriptor.chunks.map((chunk) => chunk.plaintextBytes)).toEqual([4, 4, 4, 1]);
     expect(objects.size).toBe(4);
     expect(new TextDecoder().decode(await collect(descriptor))).toBe("abcdefghijklm");
@@ -140,6 +190,7 @@ describe("encrypted agent backup chunks", () => {
     setRuntimeR2Bucket(memoryBucket(objects));
     const descriptor = await stageEncryptedAgentBackupChunks({
       identity,
+      ...writeFence(),
       source: source("abcdefgh"),
       chunkBytes: 4,
       maxTotalBytes: 16,
@@ -170,6 +221,7 @@ describe("encrypted agent backup chunks", () => {
     setRuntimeR2Bucket(memoryBucket(objects));
     const descriptor = await stageEncryptedAgentBackupChunks({
       identity,
+      ...writeFence(),
       source: source("tenant-bound"),
       chunkBytes: 16,
       maxTotalBytes: 32,
@@ -207,6 +259,7 @@ describe("encrypted agent backup chunks", () => {
     setRuntimeR2Bucket(bucket);
     const descriptor = await stageEncryptedAgentBackupChunks({
       identity,
+      ...writeFence(),
       source: source("never-settling-object-read"),
       chunkBytes: 32,
       maxTotalBytes: 64,
@@ -232,6 +285,7 @@ describe("encrypted agent backup chunks", () => {
     setRuntimeR2Bucket(memoryBucket(objects));
     const descriptor = await stageEncryptedAgentBackupChunks({
       identity,
+      ...writeFence(),
       source: source("never-settling-kms-read"),
       chunkBytes: 32,
       maxTotalBytes: 64,
@@ -260,36 +314,224 @@ describe("encrypted agent backup chunks", () => {
     await expect(pending).rejects.toThrow("KMS watchdog fired");
   });
 
-  test("removes staged objects when a later upload or byte budget fails", async () => {
-    const failedPutObjects = new Map<string, Uint8Array>();
-    setRuntimeR2Bucket(memoryBucket(failedPutObjects, { failPutAt: 2 }));
+  test("aborts a source iterator that never settles and requests producer teardown", async () => {
+    const objects = new Map<string, Uint8Array>();
+    setRuntimeR2Bucket(memoryBucket(objects));
+    let sourceReturned = false;
+    let markNextStarted: (() => void) | undefined;
+    const nextStarted = new Promise<void>((resolve) => {
+      markNextStarted = resolve;
+    });
+    const stalledSource: AsyncIterable<Uint8Array> = {
+      [Symbol.asyncIterator]() {
+        return {
+          next: () => {
+            markNextStarted?.();
+            return new Promise<IteratorResult<Uint8Array>>(() => undefined);
+          },
+          async return() {
+            sourceReturned = true;
+            return { done: true, value: undefined };
+          },
+        };
+      },
+    };
+    const controller = new AbortController();
+    const staged = stageEncryptedAgentBackupChunks({
+      identity,
+      objectSetId: OBJECT_SET_ID,
+      signal: controller.signal,
+      source: stalledSource,
+      chunkBytes: 4,
+      maxTotalBytes: 16,
+    });
+    await nextStarted;
+    controller.abort(new Error("source watchdog fired"));
+
+    await expect(staged).rejects.toThrow("source watchdog fired");
+    await Promise.resolve();
+    expect(sourceReturned).toBe(true);
+    expect(objects.size).toBe(0);
+  });
+
+  test("aborts KMS encryption that never settles before dispatching an object write", async () => {
+    const objects = new Map<string, Uint8Array>();
+    setRuntimeR2Bucket(memoryBucket(objects));
+    const kms = getKmsClient();
+    let markEncryptStarted: (() => void) | undefined;
+    const encryptStarted = new Promise<void>((resolve) => {
+      markEncryptStarted = resolve;
+    });
+    setKmsClient(
+      new Proxy(kms, {
+        get(target, property) {
+          if (property === "encrypt") {
+            return () => {
+              markEncryptStarted?.();
+              return new Promise(() => undefined);
+            };
+          }
+          const value = Reflect.get(target, property);
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      }),
+    );
+    const controller = new AbortController();
+    const staged = stageEncryptedAgentBackupChunks({
+      identity,
+      objectSetId: OBJECT_SET_ID,
+      signal: controller.signal,
+      source: source("abcd"),
+      chunkBytes: 4,
+      maxTotalBytes: 16,
+    });
+    await encryptStarted;
+    controller.abort(new Error("KMS write watchdog fired"));
+
+    await expect(staged).rejects.toThrow("KMS write watchdog fired");
+    expect(objects.size).toBe(0);
+  });
+
+  test("observes a late rejection when operation creation synchronously aborts the watchdog", async () => {
+    const objects = new Map<string, Uint8Array>();
+    setRuntimeR2Bucket(memoryBucket(objects));
+    const kms = getKmsClient();
+    const controller = new AbortController();
+    let thenObserved = false;
+    setKmsClient(
+      new Proxy(kms, {
+        get(target, property) {
+          if (property === "getOrCreateKey") {
+            return () => {
+              controller.abort(new Error("watchdog aborted during operation creation"));
+              return {
+                // biome-ignore lint/suspicious/noThenProperty: reproduces abort-before-assimilation.
+                then(_resolve: (value: unknown) => void, reject: (error: unknown) => void): void {
+                  thenObserved = true;
+                  queueMicrotask(() => reject(new Error("late operation rejection")));
+                },
+              };
+            };
+          }
+          const value = Reflect.get(target, property);
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      }),
+    );
+
     await expect(
       stageEncryptedAgentBackupChunks({
         identity,
-        source: source("abcdefgh"),
+        objectSetId: OBJECT_SET_ID,
+        signal: controller.signal,
+        source: source("abcd"),
         chunkBytes: 4,
         maxTotalBytes: 16,
       }),
-    ).rejects.toThrow("injected put failure");
+    ).rejects.toThrow("watchdog aborted during operation creation");
+    await Promise.resolve();
+    expect(thenObserved).toBe(true);
+    expect(objects.size).toBe(0);
+  });
+
+  test("retains an unquiesced epoch classification for every ambiguous PUT failure", async () => {
+    const failedPutObjects = new Map<string, Uint8Array>();
+    setRuntimeR2Bucket(memoryBucket(failedPutObjects, { failPutAt: 2 }));
+    const failedPut = await stageEncryptedAgentBackupChunks({
+      identity,
+      ...writeFence(),
+      source: source("abcdefgh"),
+      chunkBytes: 4,
+      maxTotalBytes: 16,
+    }).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(failedPut).toBeInstanceOf(AgentBackupWriteEpochUnquiescedError);
+    expect(failedPut).toMatchObject({
+      objectSetId: OBJECT_SET_ID,
+      cleanupFailures: [],
+    });
     expect(failedPutObjects.size).toBe(0);
 
     const ambiguousPutObjects = new Map<string, Uint8Array>();
     setRuntimeR2Bucket(memoryBucket(ambiguousPutObjects, { throwAfterPutAt: 2 }));
-    await expect(
-      stageEncryptedAgentBackupChunks({
-        identity,
-        source: source("abcdefgh"),
-        chunkBytes: 4,
-        maxTotalBytes: 16,
-      }),
-    ).rejects.toThrow("injected ambiguous put failure");
+    const ambiguousPut = await stageEncryptedAgentBackupChunks({
+      identity,
+      ...writeFence(),
+      source: source("abcdefgh"),
+      chunkBytes: 4,
+      maxTotalBytes: 16,
+    }).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(ambiguousPut).toBeInstanceOf(AgentBackupWriteEpochUnquiescedError);
+    expect(ambiguousPut).toMatchObject({
+      objectSetId: OBJECT_SET_ID,
+      cleanupFailures: [],
+    });
     expect(ambiguousPutObjects.size).toBe(0);
+  });
 
+  test("returns on watchdog abort while retaining a late native R2 PUT for reconciliation", async () => {
+    const objects = new Map<string, Uint8Array>();
+    let releasePut: (() => void) | undefined;
+    let markStarted: (() => void) | undefined;
+    const putStarted = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    let markSettled: (() => void) | undefined;
+    const putSettled = new Promise<void>((resolve) => {
+      markSettled = resolve;
+    });
+    setRuntimeR2Bucket({
+      ...memoryBucket(objects),
+      async put(key, value) {
+        markStarted?.();
+        await new Promise<void>((resolve) => {
+          releasePut = resolve;
+        });
+        if (!(value instanceof Uint8Array)) throw new Error("expected binary object");
+        objects.set(key, value.slice());
+        markSettled?.();
+      },
+    });
+    const controller = new AbortController();
+    const staged = stageEncryptedAgentBackupChunks({
+      identity,
+      objectSetId: OBJECT_SET_ID,
+      signal: controller.signal,
+      source: source("abcd"),
+      chunkBytes: 4,
+      maxTotalBytes: 16,
+    });
+    await putStarted;
+    controller.abort(new Error("capture watchdog fired"));
+
+    const failure = await staged.then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(failure).toBeInstanceOf(AgentBackupWriteEpochUnquiescedError);
+    expect(failure).toMatchObject({
+      objectSetId: OBJECT_SET_ID,
+      cleanupFailures: [],
+    });
+    expect(objects.size).toBe(0);
+
+    releasePut?.();
+    await putSettled;
+    expect(objects.size).toBe(1);
+  });
+
+  test("removes staged objects when a determinate byte budget fails", async () => {
     const overBudgetObjects = new Map<string, Uint8Array>();
     setRuntimeR2Bucket(memoryBucket(overBudgetObjects));
     await expect(
       stageEncryptedAgentBackupChunks({
         identity,
+        ...writeFence(),
         source: source("abcdefgh"),
         chunkBytes: 4,
         maxTotalBytes: 6,
@@ -312,6 +554,7 @@ describe("encrypted agent backup chunks", () => {
     await expect(
       stageEncryptedAgentBackupChunks({
         identity,
+        ...writeFence(),
         source: source("abcdefgh"),
         chunkBytes: 4,
         maxTotalBytes: 16,
@@ -331,14 +574,20 @@ describe("encrypted agent backup chunks", () => {
   test("surfaces partial-object cleanup failure instead of masking residue", async () => {
     const objects = new Map<string, Uint8Array>();
     setRuntimeR2Bucket(memoryBucket(objects, { failPutAt: 2, failDelete: true }));
-    await expect(
-      stageEncryptedAgentBackupChunks({
-        identity,
-        source: source("abcdefgh"),
-        chunkBytes: 4,
-        maxTotalBytes: 16,
-      }),
-    ).rejects.toThrow("partial objects could not be removed");
+    const error = await stageEncryptedAgentBackupChunks({
+      identity,
+      ...writeFence(),
+      source: source("abcdefgh"),
+      chunkBytes: 4,
+      maxTotalBytes: 16,
+    }).then(
+      () => undefined,
+      (failure: unknown) => failure,
+    );
+    expect(error).toBeInstanceOf(AgentBackupWriteEpochUnquiescedError);
+    const cleanupFailures = (error as AgentBackupWriteEpochUnquiescedError).cleanupFailures;
+    expect(Array.isArray(cleanupFailures)).toBe(true);
+    expect(cleanupFailures).toHaveLength(1);
     expect(objects.size).toBe(1);
   });
 
@@ -347,6 +596,7 @@ describe("encrypted agent backup chunks", () => {
     setRuntimeR2Bucket(memoryBucket(objects));
     const descriptor = await stageEncryptedAgentBackupChunks({
       identity,
+      ...writeFence(),
       source: source("abcdef"),
       chunkBytes: 3,
       maxTotalBytes: 16,
@@ -361,6 +611,7 @@ describe("encrypted agent backup chunks", () => {
     const createdAt = new Date("2026-07-26T12:00:00.000Z");
     const first = await stageEncryptedAgentBackupChunks({
       identity,
+      ...writeFence(OBJECT_SET_ID),
       source: source("first"),
       chunkBytes: 8,
       maxTotalBytes: 16,
@@ -368,6 +619,7 @@ describe("encrypted agent backup chunks", () => {
     });
     const second = await stageEncryptedAgentBackupChunks({
       identity,
+      ...writeFence(RETRY_OBJECT_SET_ID),
       source: source("second"),
       chunkBytes: 8,
       maxTotalBytes: 16,
@@ -407,6 +659,7 @@ describe("encrypted agent backup chunks", () => {
     setRuntimeR2Bucket(bucket);
     const empty = await stageEncryptedAgentBackupChunks({
       identity,
+      ...writeFence(),
       source: source(),
       chunkBytes: 4,
       maxTotalBytes: 16,
@@ -420,6 +673,7 @@ describe("encrypted agent backup chunks", () => {
 
     const descriptor = await stageEncryptedAgentBackupChunks({
       identity,
+      ...writeFence(),
       source: source("abcd"),
       chunkBytes: 4,
       maxTotalBytes: 16,
@@ -431,13 +685,21 @@ describe("encrypted agent backup chunks", () => {
 
   test("rejects oversized producer views and a 5633rd fixed chunk without residue", async () => {
     const objects = new Map<string, Uint8Array>();
-    setRuntimeR2Bucket(memoryBucket(objects));
+    const cleanupPages: number[] = [];
+    const bucket = memoryBucket(objects);
+    const originalDelete = bucket.delete.bind(bucket);
+    bucket.delete = async (keys) => {
+      cleanupPages.push(Array.isArray(keys) ? keys.length : 1);
+      return await originalDelete(keys);
+    };
+    setRuntimeR2Bucket(bucket);
     async function* oversizedView() {
       yield new Uint8Array(16 * 1024 * 1024 + 1);
     }
     await expect(
       stageEncryptedAgentBackupChunks({
         identity,
+        ...writeFence(),
         source: oversizedView(),
         chunkBytes: 4,
         maxTotalBytes: 32,
@@ -451,12 +713,69 @@ describe("encrypted agent backup chunks", () => {
     await expect(
       stageEncryptedAgentBackupChunks({
         identity,
+        ...writeFence(),
         source: tooManyChunks(),
         chunkBytes: 1,
         maxTotalBytes: 5_633,
       }),
     ).rejects.toThrow("5632-chunk limit");
     expect(objects.size).toBe(0);
+    expect(cleanupPages).toEqual([1_000, 1_000, 1_000, 1_000, 1_000, 632]);
+  });
+
+  test("fails a real S3 multi-delete when the provider reports a per-key error", async () => {
+    setRuntimeR2Bucket(null);
+    let requestBody = "";
+    const server = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        const url = new URL(request.url);
+        if (request.method === "POST" && url.searchParams.has("delete")) {
+          requestBody = await request.text();
+          return new Response(
+            '<?xml version="1.0" encoding="UTF-8"?>' +
+              '<DeleteResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">' +
+              "<Error><Key>one</Key><Code>AccessDenied</Code><Message>denied</Message></Error>" +
+              "</DeleteResult>",
+            { status: 200, headers: { "content-type": "application/xml" } },
+          );
+        }
+        return new Response("unsupported", { status: 405 });
+      },
+    });
+    const env = {
+      STORAGE_PROVIDER: process.env.STORAGE_PROVIDER,
+      STORAGE_ENDPOINT: process.env.STORAGE_ENDPOINT,
+      STORAGE_REGION: process.env.STORAGE_REGION,
+      STORAGE_ACCESS_KEY_ID: process.env.STORAGE_ACCESS_KEY_ID,
+      STORAGE_SECRET_ACCESS_KEY: process.env.STORAGE_SECRET_ACCESS_KEY,
+      STORAGE_FORCE_PATH_STYLE: process.env.STORAGE_FORCE_PATH_STYLE,
+      STORAGE_HEAVY_PAYLOADS_BUCKET: process.env.STORAGE_HEAVY_PAYLOADS_BUCKET,
+    };
+    try {
+      Object.assign(process.env, {
+        STORAGE_PROVIDER: "s3",
+        STORAGE_ENDPOINT: `http://127.0.0.1:${server.port}`,
+        STORAGE_REGION: "local",
+        STORAGE_ACCESS_KEY_ID: "delete-test",
+        STORAGE_SECRET_ACCESS_KEY: "delete-test",
+        STORAGE_FORCE_PATH_STYLE: "1",
+        STORAGE_HEAVY_PAYLOADS_BUCKET: "delete-test-bucket",
+      });
+      resetObjectStorageClientForTests();
+      await expect(deleteObjectsExact(["one", "two"])).rejects.toThrow(
+        "returned 1 per-key failures",
+      );
+      expect(requestBody).toContain("<Key>one</Key>");
+      expect(requestBody).toContain("<Key>two</Key>");
+    } finally {
+      for (const [key, value] of Object.entries(env)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+      resetObjectStorageClientForTests();
+      server.stop(true);
+    }
   });
 
   test("moves exact ciphertext bytes through the real S3 client", async () => {
@@ -516,12 +835,96 @@ describe("encrypted agent backup chunks", () => {
       resetObjectStorageClientForTests();
       const descriptor = await stageEncryptedAgentBackupChunks({
         identity,
+        ...writeFence(),
         source: source("\u0000\u0001binary\u00ff"),
         chunkBytes: 5,
         maxTotalBytes: 32,
       });
       expect(new TextDecoder().decode(await collect(descriptor))).toBe("\u0000\u0001binary\u00ff");
       expect(objects.size).toBe(descriptor.chunks.length);
+    } finally {
+      for (const [key, value] of Object.entries(env)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+      resetObjectStorageClientForTests();
+      server.stop(true);
+    }
+  });
+
+  test("aborts a hung real S3 PUT and retains its exact write epoch for reconciliation", async () => {
+    setRuntimeR2Bucket(null);
+    let markPutStarted: (() => void) | undefined;
+    const putStarted = new Promise<void>((resolve) => {
+      markPutStarted = resolve;
+    });
+    const deletedKeys: string[] = [];
+    const server = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        const url = new URL(request.url);
+        const key = decodeURIComponent(url.pathname.split("/").slice(2).join("/"));
+        if (request.method === "PUT") {
+          markPutStarted?.();
+          return await new Promise<Response>(() => undefined);
+        }
+        if (request.method === "DELETE") {
+          deletedKeys.push(key);
+          return new Response(null, { status: 204 });
+        }
+        return new Response("unsupported", { status: 405 });
+      },
+    });
+    const env = {
+      STORAGE_PROVIDER: process.env.STORAGE_PROVIDER,
+      STORAGE_ENDPOINT: process.env.STORAGE_ENDPOINT,
+      STORAGE_REGION: process.env.STORAGE_REGION,
+      STORAGE_ACCESS_KEY_ID: process.env.STORAGE_ACCESS_KEY_ID,
+      STORAGE_SECRET_ACCESS_KEY: process.env.STORAGE_SECRET_ACCESS_KEY,
+      STORAGE_FORCE_PATH_STYLE: process.env.STORAGE_FORCE_PATH_STYLE,
+      STORAGE_HEAVY_PAYLOADS_BUCKET: process.env.STORAGE_HEAVY_PAYLOADS_BUCKET,
+    };
+    try {
+      Object.assign(process.env, {
+        STORAGE_PROVIDER: "s3",
+        STORAGE_ENDPOINT: `http://127.0.0.1:${server.port}`,
+        STORAGE_REGION: "local",
+        STORAGE_ACCESS_KEY_ID: "chunk-abort-test",
+        STORAGE_SECRET_ACCESS_KEY: "chunk-abort-test",
+        STORAGE_FORCE_PATH_STYLE: "1",
+        STORAGE_HEAVY_PAYLOADS_BUCKET: "chunk-abort-test-bucket",
+      });
+      resetObjectStorageClientForTests();
+      const controller = new AbortController();
+      const staged = stageEncryptedAgentBackupChunks({
+        identity,
+        objectSetId: OBJECT_SET_ID,
+        signal: controller.signal,
+        source: source("hung-s3-put"),
+        chunkBytes: 32,
+        maxTotalBytes: 64,
+      });
+      await putStarted;
+      const abortedAt = performance.now();
+      controller.abort(new Error("capture watchdog fired"));
+      const error = await staged.then(
+        () => undefined,
+        (failure: unknown) => failure,
+      );
+
+      expect(performance.now() - abortedAt).toBeLessThan(2_000);
+      expect(error).toBeInstanceOf(AgentBackupWriteEpochUnquiescedError);
+      expect(error).toMatchObject({
+        objectSetId: OBJECT_SET_ID,
+        cleanupFailures: [],
+      });
+      expect(deletedKeys).toHaveLength(0);
+      expect(OBJECT_STORAGE_TRANSPORT_TIMEOUTS).toEqual({
+        connectionTimeout: 10_000,
+        requestTimeout: 120_000,
+        socketTimeout: 30_000,
+        throwOnRequestTimeout: true,
+      });
     } finally {
       for (const [key, value] of Object.entries(env)) {
         if (value === undefined) delete process.env[key];

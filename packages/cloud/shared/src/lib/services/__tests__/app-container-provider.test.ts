@@ -1,21 +1,7 @@
 // Exercises app container provider behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, test } from "bun:test";
-import {
-  AppContainerProvider,
-  type AppContainerSsh,
-  parseUsedHostPorts,
-} from "../app-container-provider";
+import { AppContainerProvider, type AppContainerSsh } from "../app-container-provider";
 import type { CreateContainerInput } from "../containers/hetzner-client/types";
-
-describe("parseUsedHostPorts", () => {
-  test("extracts host ports from `docker ps` Ports output (ipv4 + ipv6 dedup)", () => {
-    const out = "0.0.0.0:28123->3000/tcp, :::28123->3000/tcp\n0.0.0.0:30500->80/tcp";
-    expect([...parseUsedHostPorts(out)].sort((a, b) => a - b)).toEqual([28123, 30500]);
-  });
-  test("empty output -> empty set", () => {
-    expect(parseUsedHostPorts("").size).toBe(0);
-  });
-});
 
 const APP_ID = "11111111-2222-3333-4444-555555555555";
 
@@ -50,7 +36,8 @@ describe("AppContainerProvider.provision", () => {
     const provider = new AppContainerProvider({
       ssh,
       nodeId: "node-1",
-      allocateHostPort: async () => 49001,
+      reserveHostPort: async () => 39001,
+      releaseHostPort: async () => {},
       egressProxyUrl: "http://egress-gw:3128",
     });
 
@@ -61,17 +48,16 @@ describe("AppContainerProvider.provision", () => {
     });
 
     expect(result.containerId).toBe("containerid-abc123");
-    expect(result.hostPort).toBe(49001);
+    expect(result.hostPort).toBe(39001);
     expect(result.network).toMatch(/^app-net-/);
 
-    // network ensured first; a docker-ps probe runs for collision-safe ports
+    // Network setup precedes the atomically reserved Docker create.
     expect(calls[0]).toContain("docker network create --driver bridge --internal");
-    expect(calls.some((c) => c.startsWith("docker ps"))).toBe(true);
     const createCmd = calls.find((c) => c.startsWith("docker create")) ?? "";
     expect(createCmd).toContain("--cap-drop=ALL");
     // Host port is bound to loopback only (ingress/proxy reaches it via
     // 127.0.0.1 on the node) — never exposed on the node's public interface.
-    expect(createCmd).toContain("-p 127.0.0.1:49001:3000");
+    expect(createCmd).toContain("-p 127.0.0.1:39001:3000");
     expect(createCmd).toContain("HTTP_PROXY=http://egress-gw:3128");
     expect(createCmd).not.toContain("NET_ADMIN");
     expect(calls).toContain("docker start 'app-nubilio'");
@@ -82,7 +68,8 @@ describe("AppContainerProvider.provision", () => {
     const provider = new AppContainerProvider({
       ssh,
       nodeId: "node-1",
-      allocateHostPort: async () => 49001,
+      reserveHostPort: async () => 39001,
+      releaseHostPort: async () => {},
     });
 
     await provider.provision({
@@ -114,7 +101,8 @@ describe("AppContainerProvider.provision", () => {
     const provider = new AppContainerProvider({
       ssh,
       nodeId: "node-1",
-      allocateHostPort: async () => 49001,
+      reserveHostPort: async () => 39001,
+      releaseHostPort: async () => {},
     });
     const result = await provider.provision({
       appId: APP_ID,
@@ -137,7 +125,8 @@ describe("AppContainerProvider.provision", () => {
     const provider = new AppContainerProvider({
       ssh,
       nodeId: "node-1",
-      allocateHostPort: async () => 49001,
+      reserveHostPort: async () => 39001,
+      releaseHostPort: async () => {},
     });
 
     await expect(
@@ -145,28 +134,22 @@ describe("AppContainerProvider.provision", () => {
     ).rejects.toThrow("Could not prove Docker container app-nubilio is absent");
   });
 
-  test("picks a host port not already in use on the node (collision-safe)", async () => {
-    // node already has 30000 published; allocator hands out 30000 then 31000
-    const ports = [30000, 31000];
-    let i = 0;
-    const ssh = {
-      async exec(command: string) {
-        if (command.startsWith("docker ps")) return "0.0.0.0:30000->3000/tcp, :::30000->3000/tcp";
-        if (command.startsWith("docker create")) return "cid";
-        return "";
-      },
-    };
+  test("uses the exact atomically reserved host port", async () => {
+    const { ssh } = recordingSsh("cid");
     const provider = new AppContainerProvider({
       ssh,
       nodeId: "node-1",
-      allocateHostPort: async () => ports[i++] ?? 39999,
+      reserveHostPort: async (ownerId) => {
+        expect(ownerId).toBe("app-x");
+        return 31000;
+      },
+      releaseHostPort: async () => {},
     });
     const result = await provider.provision({
       appId: APP_ID,
       containerName: "app-x",
       input: INPUT,
     });
-    // skipped the in-use 30000, landed on 31000
     expect(result.hostPort).toBe(31000);
   });
 
@@ -183,7 +166,8 @@ describe("AppContainerProvider.provision", () => {
     const provider = new AppContainerProvider({
       ssh,
       nodeId: "node-1",
-      allocateHostPort: async () => 49001,
+      reserveHostPort: async () => 39001,
+      releaseHostPort: async () => {},
     });
 
     await expect(
@@ -197,7 +181,8 @@ describe("AppContainerProvider.provision", () => {
     const provider = new AppContainerProvider({
       ssh,
       nodeId: "node-1",
-      allocateHostPort: async () => 49002,
+      reserveHostPort: async () => 39002,
+      releaseHostPort: async () => {},
     });
 
     await provider.provision({
@@ -232,10 +217,14 @@ describe("AppContainerProvider.provision", () => {
 
   test("lifecycle verbs issue the expected docker commands", async () => {
     const { calls, ssh } = recordingSsh();
+    const released: string[] = [];
     const provider = new AppContainerProvider({
       ssh,
       nodeId: "node-1",
-      allocateHostPort: async () => 1,
+      reserveHostPort: async () => 39001,
+      releaseHostPort: async (ownerId) => {
+        released.push(ownerId);
+      },
     });
     await provider.delete("app-x");
     await provider.deleteById("docker-immutable-1", "app-x");
@@ -249,5 +238,6 @@ describe("AppContainerProvider.provision", () => {
       "docker restart 'app-x'",
       "docker logs --tail 50 'app-x'",
     ]);
+    expect(released).toEqual(["app-x", "app-x"]);
   });
 });

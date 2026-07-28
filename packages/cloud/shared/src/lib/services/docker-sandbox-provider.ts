@@ -31,11 +31,11 @@ import {
   isNodeUnreachableMessage,
 } from "./docker-error-classifier";
 import { dockerNodeManager } from "./docker-node-manager";
-import { getUsedDockerHostPorts } from "./docker-port-allocation";
 import {
-  allocatePort,
-  BRIDGE_PORT_MAX,
-  BRIDGE_PORT_MIN,
+  releaseDockerHostPortReservations,
+  reserveDockerAgentPorts,
+} from "./docker-port-allocation";
+import {
   buildAgentContainerLabelFlags,
   buildEnsureNetworkCmd,
   dockerPlatformFlag,
@@ -50,14 +50,18 @@ import {
   shellQuote,
   validateAgentId,
   validateAgentName,
+  validateContainerName,
   validateEnvKey,
   validateEnvValue,
-  WEBUI_PORT_MAX,
-  WEBUI_PORT_MIN,
+  validateVolumePath,
 } from "./docker-sandbox-utils";
 import { classifyDockerSshProbeError, DockerSSHClient } from "./docker-ssh";
 import { headscaleClient } from "./headscale-client";
-import { DEFAULT_REGISTRATION_TIMEOUT_MS, headscaleIntegration } from "./headscale-integration";
+import {
+  DEFAULT_REGISTRATION_TIMEOUT_MS,
+  headscaleIntegration,
+  inferTailscaleHostname,
+} from "./headscale-integration";
 import { buildKeylessOpenAIContainerEnv } from "./managed-eliza-env";
 import type {
   SandboxCreateConfig,
@@ -65,6 +69,10 @@ import type {
   SandboxHealthOutcome,
   SandboxProvider,
   SandboxReplacementCleanupLocator,
+  SandboxRestoreValidationCandidateLocator,
+  SandboxRestoreValidationPlacementReservation,
+  SandboxRestoreValidationRetirementProof,
+  SandboxRestoreValidationRuntimeState,
   SandboxRollbackStandbyLocator,
   SandboxSnapshotRestoreBindingSeed,
   SandboxSnapshotSourceAttestationSeed,
@@ -91,6 +99,8 @@ export interface DockerSandboxMetadata {
   containerName: string;
   bridgePort: number;
   webUiPort: number;
+  /** Container-internal API port reached through the private Headscale route. */
+  containerPort?: number;
   agentId: string;
   volumePath: string;
   dockerImage: string;
@@ -180,6 +190,95 @@ const SNAPSHOT_SOURCE_ATTESTATION_ENV_KEYS = [
   "ELIZA_SNAPSHOT_SOURCE_IMAGE_DIGEST",
   "ELIZA_SNAPSHOT_SOURCE_SANDBOX_ID",
 ] as const;
+const RESTORE_VALIDATION_BOOT_MODE = "restore-validation";
+const RESTORE_VALIDATION_ATTEMPT_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+export interface RestoreValidationPhysicalIdentity {
+  containerName: string;
+  volumePath: string;
+  vpnAgentId: string;
+  vpnAgentName: string;
+}
+
+/**
+ * Derives all host-visible restore-candidate names from the provider attempt,
+ * never from the logical agent identity shared by the two serving placements.
+ */
+export function getRestoreValidationPhysicalIdentity(
+  replacementAttemptId: string,
+): RestoreValidationPhysicalIdentity {
+  if (!RESTORE_VALIDATION_ATTEMPT_PATTERN.test(replacementAttemptId)) {
+    throw new Error("[docker-sandbox] Restore-validation replacement attempt is malformed");
+  }
+  const compactAttempt = replacementAttemptId.replaceAll("-", "");
+  const containerName = `restore-validation-${compactAttempt}`;
+  const volumePath = `/data/agents/.restore-validation/${replacementAttemptId}`;
+  validateContainerName(containerName);
+  validateVolumePath(volumePath);
+  return {
+    containerName,
+    volumePath,
+    vpnAgentId: replacementAttemptId,
+    vpnAgentName: containerName,
+  };
+}
+
+function assertRestoreValidationCandidateConfig(
+  config: SandboxCreateConfig,
+  resolvedImage: string,
+): void {
+  const candidate = config.restoreValidationCandidate;
+  if (!candidate) return;
+  const primaryNodeId = candidate.primaryNodeId.trim();
+  const rollbackStandbyNodeId = candidate.rollbackStandbyNodeId.trim();
+  if (
+    !primaryNodeId ||
+    !rollbackStandbyNodeId ||
+    primaryNodeId !== candidate.primaryNodeId ||
+    rollbackStandbyNodeId !== candidate.rollbackStandbyNodeId ||
+    primaryNodeId === rollbackStandbyNodeId
+  ) {
+    throw new Error(
+      "[docker-sandbox] Restore validation requires distinct primary and rollback-standby nodes",
+    );
+  }
+  if (
+    !config.snapshotRestoreBinding ||
+    !candidate.replacementAttemptId ||
+    !config.onReplacementCreateIntent ||
+    !config.onReplacementCreated ||
+    !config.onReplacementVpnRegistered ||
+    !config.onRestoreValidationPlacementIntent
+  ) {
+    throw new Error(
+      "[docker-sandbox] Restore validation requires a restore binding and all durable placement callbacks",
+    );
+  }
+  if (!config.routeAgentId?.trim() || config.routeAgentId !== config.routeAgentId.trim()) {
+    throw new Error(
+      "[docker-sandbox] Restore validation requires the logical route agent id for snapshot identity",
+    );
+  }
+  validateAgentId(config.routeAgentId);
+  if (config.snapshotSourceAttestation) {
+    throw new Error(
+      "[docker-sandbox] Restore validation candidates cannot mint snapshot source attestation",
+    );
+  }
+  const pinnedDigest = resolvedImage.match(/@(?<digest>sha256:[a-f0-9]{64})$/)?.groups?.digest;
+  if (!pinnedDigest || pinnedDigest !== config.snapshotRestoreBinding.targetImageDigest) {
+    throw new Error(
+      "[docker-sandbox] Restore validation requires a digest-pinned image matching the restore binding",
+    );
+  }
+  const candidateEnvironmentKeys = Object.keys(config.environmentVars);
+  if (candidateEnvironmentKeys.length > 0) {
+    throw new Error(
+      `[docker-sandbox] Restore validation cannot receive agent environment variables: ${candidateEnvironmentKeys.join(", ")}`,
+    );
+  }
+}
 
 function assertProviderOwnedSnapshotEnvironment(environmentVars: Record<string, string>): void {
   for (const key of [...SNAPSHOT_BINDING_ENV_KEYS, ...SNAPSHOT_SOURCE_ATTESTATION_ENV_KEYS]) {
@@ -1017,15 +1116,21 @@ export class DockerSandboxProvider implements SandboxProvider {
   private containers = new Map<string, ContainerMeta>();
   private readonly replacementVpnSettleDelay: (milliseconds: number) => Promise<void>;
   private readonly now: () => number;
+  private readonly reserveHostPorts: typeof reserveDockerAgentPorts;
+  private readonly releaseHostPorts: typeof releaseDockerHostPortReservations;
 
   constructor(options?: {
     replacementVpnSettleDelay?: (milliseconds: number) => Promise<void>;
     now?: () => number;
+    reserveHostPorts?: typeof reserveDockerAgentPorts;
+    releaseHostPorts?: typeof releaseDockerHostPortReservations;
   }) {
     this.replacementVpnSettleDelay =
       options?.replacementVpnSettleDelay ??
       ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
     this.now = options?.now ?? Date.now;
+    this.reserveHostPorts = options?.reserveHostPorts ?? reserveDockerAgentPorts;
+    this.releaseHostPorts = options?.releaseHostPorts ?? releaseDockerHostPortReservations;
   }
 
   // ------------------------------------------------------------------
@@ -1033,17 +1138,11 @@ export class DockerSandboxProvider implements SandboxProvider {
   // ------------------------------------------------------------------
 
   /**
-   * Create a sandbox container with automatic retry on port-collision TOCTOU races.
+   * Create a sandbox with bounded recovery from Docker-level collisions.
    *
-   * Wraps {@link _createOnce} in a retry loop (up to 3 attempts with jitter).
-   * On each attempt, fresh ports are allocated. The single-attempt path proves
-   * the failed candidate absent before a collision may retry; unresolved
-   * cleanup carries its exact placement to the durable service fence.
-   *
-   * NOTE: The DB INSERT (in agent-sandbox.ts) happens *after* this method
-   * returns. If that INSERT hits a UNIQUE constraint violation (PG 23505),
-   * the caller should call `stop(sandboxId)` to remove the ghost container
-   * and then retry the full flow.
+   * Managed workload collisions are prevented before remote IO by the shared
+   * transactional port authority. The retry remains for external/stale Docker
+   * bindings; each failed candidate must be proven absent before retry.
    */
   async create(config: SandboxCreateConfig): Promise<SandboxHandle> {
     const MAX_ATTEMPTS = 3;
@@ -1085,14 +1184,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     throw lastError ?? new Error("[docker-sandbox] create exhausted all retry attempts");
   }
 
-  /**
-   * Create a single sandbox container (no retry).
-   *
-   * TOCTOU note: Port allocation is racy under concurrent provisioning.
-   * The DB has a partial UNIQUE index on (node_id, bridge_port) for active
-   * sandboxes, so a duplicate will fail at INSERT time. The public `create()`
-   * method wraps this in a retry loop to handle port collisions automatically.
-   */
+  /** Create a single sandbox container under one durable port reservation. */
   private async _createOnce(config: SandboxCreateConfig): Promise<SandboxHandle> {
     const { agentId, agentName, environmentVars, organizationId, agentConfig, routeAgentId } =
       config;
@@ -1101,6 +1193,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     // Keep the fallback out of DOCKER_IMAGE_OVERRIDE so per-agent flavor/image
     // overrides are not accidentally shadowed by the generic Eliza default.
     const resolvedImage = resolveDockerSandboxImage(config.dockerImage);
+    assertRestoreValidationCandidateConfig(config, resolvedImage);
     const imagePlatform = containersEnv.defaultAgentImagePlatform();
     const platformFlags = dockerPlatformFlag(imagePlatform);
     const containerPort = resolveContainerPort(config);
@@ -1117,6 +1210,13 @@ export class DockerSandboxProvider implements SandboxProvider {
         "[docker-sandbox] replacement enrichment callbacks require onReplacementCreateIntent",
       );
     }
+    const replacementAttemptId =
+      config.restoreValidationCandidate?.replacementAttemptId ?? crypto.randomUUID();
+    const restoreValidationIdentity = config.restoreValidationCandidate
+      ? getRestoreValidationPhysicalIdentity(replacementAttemptId)
+      : null;
+    const containerName = restoreValidationIdentity?.containerName ?? getContainerName(agentId);
+    const volumePath = restoreValidationIdentity?.volumePath ?? getVolumePath(agentId);
     const providerManagesCapacity = !config.onReplacementCreateIntent;
 
     const env = currentHeadscaleRouteEnv();
@@ -1124,7 +1224,14 @@ export class DockerSandboxProvider implements SandboxProvider {
     // HEADSCALE_API_KEY presence check and the route-required decision read
     // from one consistent view of the environment.
     const headscaleRouteRequired = requiresHeadscaleRoute(env);
-    const headscaleEnabled = headscaleVpnEnabled(env);
+    const headscaleEnabled = config.restoreValidationCandidate
+      ? hasConfiguredValue(env.HEADSCALE_API_KEY)
+      : headscaleVpnEnabled(env);
+    if (config.restoreValidationCandidate && !headscaleEnabled) {
+      throw new Error(
+        "[docker-sandbox] Restore validation requires private Headscale control ingress",
+      );
+    }
     if (headscaleRouteRequired && !headscaleEnabled) {
       const errorMessage =
         "Headscale routing is required for this cloud environment, but HEADSCALE_API_KEY is not configured. " +
@@ -1137,18 +1244,31 @@ export class DockerSandboxProvider implements SandboxProvider {
     }
 
     // 2. Select target node via DockerNodeManager (least-loaded, DB-backed).
-    // getAvailableNode + incrementAllocated + getUsedDockerHostPorts are three sequential
-    // DB round-trips without a transaction boundary; the UNIQUE port index and
-    // retry logic provide safety against concurrent capacity changes.
+    // Capacity selection is independent from port ownership: the latter is
+    // committed atomically after the node is selected and before remote IO.
+    const excludedNodeIds = config.restoreValidationCandidate
+      ? [
+          config.restoreValidationCandidate.primaryNodeId,
+          config.restoreValidationCandidate.rollbackStandbyNodeId,
+        ]
+      : config.excludeNodeId
+        ? [config.excludeNodeId]
+        : [];
     let dbNode = await dockerNodeManager.getAvailableNode({
       requiredPlatform: imagePlatform,
       excludeNodeId: config.excludeNodeId,
+      excludeNodeIds: excludedNodeIds,
     });
     if (!dbNode) {
       dbNode = await this.provisionAutoscaledNodeForAgent({
         image: resolvedImage,
         platform: imagePlatform,
       });
+    }
+    if (dbNode && excludedNodeIds.includes(dbNode.node_id)) {
+      throw new Error(
+        `[docker-sandbox] Selected excluded restore-validation node ${dbNode.node_id}`,
+      );
     }
 
     let nodeId: string;
@@ -1179,12 +1299,11 @@ export class DockerSandboxProvider implements SandboxProvider {
         "[docker-sandbox] No nodes in DB, falling back to CONTAINERS_DOCKER_NODES env var (seed-only, no load balancing)",
       );
       const allEnvNodes = parseDockerNodes();
-      const envNodes = config.excludeNodeId
-        ? allEnvNodes.filter((n) => n.nodeId !== config.excludeNodeId)
-        : allEnvNodes;
+      const excluded = new Set(excludedNodeIds);
+      const envNodes = allEnvNodes.filter((node) => !excluded.has(node.nodeId));
       if (envNodes.length === 0) {
         throw new Error(
-          `[docker-sandbox] No nodes available (excludeNodeId=${config.excludeNodeId ?? "none"} filtered out all seed nodes)`,
+          `[docker-sandbox] No nodes available (excludedNodeIds=${excludedNodeIds.join(",") || "none"} filtered out all seed nodes)`,
         );
       }
       const envNode = envNodes[Math.floor(Math.random() * envNodes.length)]!;
@@ -1201,27 +1320,23 @@ export class DockerSandboxProvider implements SandboxProvider {
       `[docker-sandbox] Creating container for agent ${agentId} on node ${nodeId} (${hostname})`,
     );
 
-    // 3. Allocate ports (check DB for existing assignments to avoid collisions)
-    const usedPorts = await getUsedDockerHostPorts(nodeId);
-    const bridgePort = allocatePort(BRIDGE_PORT_MIN, BRIDGE_PORT_MAX, usedPorts);
-    // No need to add bridgePort to exclusion set — web UI port range [20000,25000)
-    // never overlaps bridge range [18790,19790)
-    const webUiPort = allocatePort(WEBUI_PORT_MIN, WEBUI_PORT_MAX, usedPorts);
-    const containerName = getContainerName(agentId);
-    const volumePath = getVolumePath(agentId);
-    const replacementAttemptId = crypto.randomUUID();
+    // Port ownership is reserved immediately before the host-visible create.
+    // Keeping secret/config/VPN preflight ahead of the transaction means those
+    // failures cannot strand a reservation.
     const snapshotBindingEnv = buildSnapshotRestoreBindingEnvironment({
       environmentVars,
       replacementAttemptId,
       seed: config.snapshotRestoreBinding,
       targetSandboxId: containerName,
     });
-    const snapshotSourceAttestationEnv = buildSnapshotSourceAttestationEnvironment({
-      environmentVars,
-      placementId: replacementAttemptId,
-      resolvedImage,
-      seed: config.snapshotSourceAttestation,
-    });
+    const snapshotSourceAttestationEnv = config.restoreValidationCandidate
+      ? {}
+      : buildSnapshotSourceAttestationEnvironment({
+          environmentVars,
+          placementId: replacementAttemptId,
+          resolvedImage,
+          seed: config.snapshotSourceAttestation,
+        });
     // Auto-provision the Steward tenant for this org if it doesn't have one
     // yet. Without this step, fresh organizations fall through to
     // `DEFAULT_STEWARD_TENANT_ID` ("elizacloud") — and if that default tenant
@@ -1231,27 +1346,52 @@ export class DockerSandboxProvider implements SandboxProvider {
     // every newly-signed-in user. When `STEWARD_PLATFORM_KEYS` is not
     // configured (non-prod environments) this is a no-op that leaves the
     // compatibility fallback behavior intact.
-    const stewardTenant = organizationId
-      ? await ensureStewardTenant(organizationId)
-      : await resolveStewardTenantCredentials({ organizationId });
+    const stewardTenant = config.restoreValidationCandidate
+      ? null
+      : organizationId
+        ? await ensureStewardTenant(organizationId)
+        : await resolveStewardTenantCredentials({ organizationId });
+
+    let replacementIntentPersisted = false;
+    let reservedPorts: SandboxRestoreValidationPlacementReservation | undefined;
 
     // 4. Optionally prepare Headscale VPN
     let headscaleIp: string | null = null;
     let previousVpnNodeId: string | undefined;
     let vpnNodeId: string | undefined;
-    let vpnRegistrationStartedAt: string | undefined;
+    let vpnRegistrationStartedAt = config.restoreValidationCandidate
+      ? new Date(this.now()).toISOString()
+      : undefined;
+    if (config.restoreValidationCandidate) {
+      reservedPorts = await config.onRestoreValidationPlacementIntent!({
+        agentId,
+        containerName,
+        containerPort: Number.parseInt(containerPort, 10),
+        healthPath: healthCheckPath,
+        hostname,
+        nodeId,
+        replacementAttemptId,
+        sandboxId: containerName,
+        volumePath,
+        vpnNodeName: restoreValidationIdentity!.vpnAgentName,
+        vpnRegistrationStartedAt: vpnRegistrationStartedAt!,
+      });
+      replacementIntentPersisted = true;
+    }
 
     // Collect VPN env vars separately to avoid mutating the caller's environmentVars
     let vpnEnvVars: Record<string, string> = {};
     if (headscaleEnabled) {
       try {
         const vpnSetup = await headscaleIntegration.prepareContainerVPN({
-          agentId,
-          agentName,
+          agentId: restoreValidationIdentity?.vpnAgentId ?? agentId,
+          agentName: restoreValidationIdentity?.vpnAgentName ?? agentName,
           organizationId,
           // Blue/green passes false: the same-name node is LIVE and serving;
           // it is recorded here and deleted by id only after cutover (#16565).
-          reclaimStaleNode: config.reclaimStaleVpnNode !== false,
+          reclaimStaleNode: config.restoreValidationCandidate
+            ? true
+            : config.reclaimStaleVpnNode !== false,
         });
         vpnEnvVars = vpnSetup.envVars;
         previousVpnNodeId = vpnSetup.previousNodeId;
@@ -1275,8 +1415,10 @@ export class DockerSandboxProvider implements SandboxProvider {
     }
 
     // 5. Build the base environment (spread to avoid mutating caller's environmentVars)
-    const stewardContainerUrl = resolveStewardContainerEnvUrl();
-    const proxyEnv = buildStewardProxyEnv();
+    const stewardContainerUrl = config.restoreValidationCandidate
+      ? null
+      : resolveStewardContainerEnvUrl();
+    const proxyEnv = config.restoreValidationCandidate ? {} : buildStewardProxyEnv();
 
     // Propagate the orchestrator's KMS configuration into the container so
     // field-level encryption (per-agent DB) uses the same backend + root
@@ -1289,7 +1431,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     // key keeps the fleet consistent. Spread before `...environmentVars` so an
     // explicit per-agent override still wins. See elizaOS/eliza#8062.
     const kmsEnv: Record<string, string> = {};
-    {
+    if (!config.restoreValidationCandidate) {
       const isKmsBackend = (v: string | undefined): v is string =>
         v === "memory" || v === "local" || v === "steward";
       const declared = environmentVars.ELIZA_KMS_BACKEND?.trim();
@@ -1307,54 +1449,67 @@ export class DockerSandboxProvider implements SandboxProvider {
       }
     }
 
-    const baseEnv: Record<string, string> = {
-      ...kmsEnv,
-      ...environmentVars,
-      ...snapshotSourceAttestationEnv,
-      ...snapshotBindingEnv,
-      ...vpnEnvVars,
-      ...proxyEnv,
-      AGENT_NAME: agentName,
-      ELIZA_CLOUD_PROVISIONED: "1",
-      // Path A: inject the character so the container boots AS this agent
-      // (e.g. "Nyx") instead of the bundled default "Eliza" preset. Consumed
-      // by packages/agent/src/runtime/sandbox-character.ts. Secret-bearing
-      // fields (connector tokens, secrets, settings.secrets) are redacted
-      // first — the runtime receives connector tokens via dedicated env vars
-      // (DISCORD_API_TOKEN, TELEGRAM_BOT_TOKEN) and never needs them embedded
-      // in the character JSON, which would otherwise be visible via
-      // /proc/<pid>/environ and crash diagnostics. Omitted when the caller has
-      // no agent_config (the runtime keeps its default-character behaviour).
-      ...(agentConfig && typeof agentConfig === "object"
-        ? {
-            ELIZA_AGENT_CHARACTER_JSON: JSON.stringify(redactCharacterSecrets(agentConfig)),
-          }
-        : {}),
-      STEWARD_API_URL: stewardContainerUrl,
-      STEWARD_AGENT_ID: agentId,
-      // V2 image binds the eliza-api server to ELIZA_PORT, not PORT. Keep both
-      // aligned to the requested app port so the daemon's HTTP probe (which hits
-      // the host port mapped to container PORT) reaches the actual listener.
-      ELIZA_PORT: containerPort,
-      PORT: containerPort,
-      BRIDGE_PORT: DEFAULT_BRIDGE_PORT,
-      // Eliza server requires JWT_SECRET in production mode.
-      // Generate a unique per-container secret if the caller didn't provide one.
-      JWT_SECRET: environmentVars.JWT_SECRET || crypto.randomUUID(),
-      // Allow the agent subdomain origin so the browser can call the API.
-      ELIZA_ALLOWED_ORIGINS: `https://${agentId}.${getAgentBaseDomain()}`,
-      // Shared service-to-service secret the cloud gateways attach as the
-      // X-Server-Token header when they forward inbound platform messages to
-      // this container's /agents/:id/message endpoint. The container's auth
-      // path (packages/agent server-helpers-auth isAuthorized) accepts this
-      // header when it matches, so a gateway can route a message without
-      // knowing the per-agent inbound API token. Sourced from the daemon's own
-      // AGENT_SERVER_SHARED_SECRET (the same value the gateways read); both
-      // ends must share it. An explicit per-deployment value in
-      // environmentVars wins. Omitted entirely when neither is set, which
-      // simply leaves the X-Server-Token path disabled in the container.
-      ...resolveServerSharedSecretEnv(environmentVars),
-    };
+    const baseEnv: Record<string, string> = config.restoreValidationCandidate
+      ? {
+          ...snapshotBindingEnv,
+          ...vpnEnvVars,
+          ELIZA_RUNTIME_BOOT_MODE: RESTORE_VALIDATION_BOOT_MODE,
+          ELIZA_PORT: containerPort,
+          PORT: containerPort,
+          ELIZA_STATE_DIR: "/root/.eliza",
+          PGLITE_DATA_DIR: "/root/.eliza/.pgdata",
+        }
+      : {
+          ...kmsEnv,
+          ...environmentVars,
+          ...snapshotSourceAttestationEnv,
+          ...vpnEnvVars,
+          ...proxyEnv,
+          AGENT_NAME: agentName,
+          ELIZA_CLOUD_PROVISIONED: "1",
+          // Path A: inject the character so the container boots AS this agent
+          // (e.g. "Nyx") instead of the bundled default "Eliza" preset. Consumed
+          // by packages/agent/src/runtime/sandbox-character.ts. Secret-bearing
+          // fields (connector tokens, secrets, settings.secrets) are redacted
+          // first — the runtime receives connector tokens via dedicated env vars
+          // (DISCORD_API_TOKEN, TELEGRAM_BOT_TOKEN) and never needs them embedded
+          // in the character JSON, which would otherwise be visible via
+          // /proc/<pid>/environ and crash diagnostics. Omitted when the caller has
+          // no agent_config (the runtime keeps its default-character behaviour).
+          ...(agentConfig && typeof agentConfig === "object"
+            ? {
+                ELIZA_AGENT_CHARACTER_JSON: JSON.stringify(redactCharacterSecrets(agentConfig)),
+              }
+            : {}),
+          ...(stewardContainerUrl
+            ? {
+                STEWARD_API_URL: stewardContainerUrl,
+                STEWARD_AGENT_ID: agentId,
+              }
+            : {}),
+          // V2 image binds the eliza-api server to ELIZA_PORT, not PORT. Keep both
+          // aligned to the requested app port so the daemon's HTTP probe (which hits
+          // the host port mapped to container PORT) reaches the actual listener.
+          ELIZA_PORT: containerPort,
+          PORT: containerPort,
+          BRIDGE_PORT: DEFAULT_BRIDGE_PORT,
+          // Eliza server requires JWT_SECRET in production mode.
+          // Generate a unique per-container secret if the caller didn't provide one.
+          JWT_SECRET: environmentVars.JWT_SECRET || crypto.randomUUID(),
+          // Allow the agent subdomain origin so the browser can call the API.
+          ELIZA_ALLOWED_ORIGINS: `https://${agentId}.${getAgentBaseDomain()}`,
+          // Shared service-to-service secret the cloud gateways attach as the
+          // X-Server-Token header when they forward inbound platform messages to
+          // this container's /agents/:id/message endpoint. The container's auth
+          // path (packages/agent server-helpers-auth isAuthorized) accepts this
+          // header when it matches, so a gateway can route a message without
+          // knowing the per-agent inbound API token. Sourced from the daemon's own
+          // AGENT_SERVER_SHARED_SECRET (the same value the gateways read); both
+          // ends must share it. An explicit per-deployment value in
+          // environmentVars wins. Omitted entirely when neither is set, which
+          // simply leaves the X-Server-Token path disabled in the container.
+          ...resolveServerSharedSecretEnv(environmentVars),
+        };
 
     // 6. SSH to node, ensure volume dir, pull image, register in Steward,
     // then create/start the container. Pass hostKeyFingerprint so pooled
@@ -1367,16 +1522,24 @@ export class DockerSandboxProvider implements SandboxProvider {
       ssh_user: sshUser,
       host_key_fingerprint: hostKeyFingerprint ?? null,
     };
-    let replacementIntentPersisted = false;
     let createdContainerId: string | undefined;
+    if (!reservedPorts) {
+      try {
+        reservedPorts = await this.reserveHostPorts({
+          nodeId,
+          ownerKind: "agent",
+          ownerId: containerName,
+        });
+      } catch (error) {
+        if (dbNode && providerManagesCapacity) {
+          await dockerNodesRepository.decrementAllocated(nodeId);
+        }
+        throw error;
+      }
+    }
+    const { bridgePort, webUiPort } = reservedPorts;
 
     try {
-      // Ensure volume directory exists
-      await ssh.exec(
-        `mkdir -p ${shellQuote(volumePath)} ${shellQuote(`${volumePath}/eliza`)}`,
-        DOCKER_CMD_TIMEOUT_MS,
-      );
-
       // Pull image (may take a while on first run). Log in when registry
       // credentials are configured; otherwise rely on anonymous public pulls.
       logger.info(`[docker-sandbox] Pulling image ${resolvedImage} on ${nodeId}`);
@@ -1393,71 +1556,73 @@ export class DockerSandboxProvider implements SandboxProvider {
         );
       }
 
-      logger.info(
-        `[docker-sandbox] Registering ${agentId} with Steward tenant ${stewardTenant.tenantId} on ${nodeId}`,
-      );
-      const stewardAgentToken = await registerAgentWithSteward(
-        ssh,
-        agentId,
-        agentName,
-        stewardTenant.tenantId,
-        stewardTenant.apiKey,
-      );
-
-      // Pass a registry backend through to the sandbox so it can self-register
-      // `agent:<id>:server` + `server:<name>:url` keys that gateway-discord /
-      // gateway-webhook resolve for inbound platform messages. The sandbox runs
-      // on a Hetzner core node, so the URL must be reachable FROM THERE — a
-      // public-proxy `redis://` URL (e.g. Railway) or an Upstash REST endpoint,
-      // never a `*.railway.internal` host. Resolution order:
-      //   1. SANDBOX_REGISTRY_REDIS_URL (+ optional _TOKEN): explicit operator
-      //      override. A `redis://` / `rediss://` URL carries its own auth, so
-      //      no token is needed; an `https://` Upstash URL needs the token.
-      //   2. KV_REST_API_URL + KV_REST_API_TOKEN: Upstash REST compatibility.
-      // Omit when neither is configured — the sandbox skips registration.
-      const {
-        url: registryRedisUrl,
-        token: registryRedisToken,
-        canSelfRegister,
-        schemeWarning,
-      } = resolveSandboxRegistryEnv(process.env);
-      if (!canSelfRegister) {
-        logger.warn(
-          "[docker-sandbox] No sandbox registry backend configured — set SANDBOX_REGISTRY_REDIS_URL to a sandbox-reachable redis:// proxy, or KV_REST_API_URL/KV_REST_API_TOKEN to an Upstash REST endpoint. Sandbox will not register in Redis and gateways will not route inbound platform (Discord/Telegram) messages to it",
+      let stewardAgentToken = "";
+      let stewardJwt = "";
+      let stewardRefreshServiceToken = "";
+      let registryRedisUrl = "";
+      let registryRedisToken = "";
+      let canSelfRegister = false;
+      let keylessOpenAIEnv: Record<string, string> = {};
+      if (!config.restoreValidationCandidate) {
+        if (!stewardTenant || !stewardContainerUrl) {
+          throw new Error("[docker-sandbox] Steward configuration is unavailable");
+        }
+        logger.info(
+          `[docker-sandbox] Registering ${agentId} with Steward tenant ${stewardTenant.tenantId} on ${nodeId}`,
         );
-      } else if (schemeWarning) {
-        logger.warn(`[docker-sandbox] ${schemeWarning}`);
-      }
-
-      const stewardJwt = isAgentTokenSigningConfigured()
-        ? (await mintAgentToken(agentId, 900)).token
-        : "";
-      const stewardRefreshServiceToken = resolveStewardRefreshServiceToken();
-      if (!stewardJwt) {
-        logger.warn(
-          "[docker-sandbox] AGENT_TOKEN_PRIVATE_KEY_PEM not configured — skipping STEWARD_JWT injection for Steward agent JWT auth",
+        stewardAgentToken = await registerAgentWithSteward(
+          ssh,
+          agentId,
+          agentName,
+          stewardTenant.tenantId,
+          stewardTenant.apiKey,
         );
-      }
 
-      const keylessOpenAIEnv = buildKeylessOpenAIContainerEnv({
-        stewardApiUrl: stewardContainerUrl,
-        stewardAuthToken: stewardJwt || stewardAgentToken,
-      });
+        const registry = resolveSandboxRegistryEnv(process.env);
+        registryRedisUrl = registry.url;
+        registryRedisToken = registry.token;
+        canSelfRegister = registry.canSelfRegister;
+        if (!canSelfRegister) {
+          logger.warn(
+            "[docker-sandbox] No sandbox registry backend configured — set SANDBOX_REGISTRY_REDIS_URL to a sandbox-reachable redis:// proxy, or KV_REST_API_URL/KV_REST_API_TOKEN to an Upstash REST endpoint. Sandbox will not register in Redis and gateways will not route inbound platform (Discord/Telegram) messages to it",
+          );
+        } else if (registry.schemeWarning) {
+          logger.warn(`[docker-sandbox] ${registry.schemeWarning}`);
+        }
+
+        stewardJwt = isAgentTokenSigningConfigured()
+          ? (await mintAgentToken(agentId, 900)).token
+          : "";
+        stewardRefreshServiceToken = resolveStewardRefreshServiceToken();
+        if (!stewardJwt) {
+          logger.warn(
+            "[docker-sandbox] AGENT_TOKEN_PRIVATE_KEY_PEM not configured — skipping STEWARD_JWT injection for Steward agent JWT auth",
+          );
+        }
+        keylessOpenAIEnv = buildKeylessOpenAIContainerEnv({
+          stewardApiUrl: stewardContainerUrl,
+          stewardAuthToken: stewardJwt || stewardAgentToken,
+        });
+      }
 
       const allEnv: Record<string, string> = {
         ...baseEnv,
-        STEWARD_AGENT_TOKEN: stewardAgentToken,
-        ...(stewardJwt
-          ? {
-              STEWARD_JWT: stewardJwt,
-              STEWARD_JWT_FILE,
-              STEWARD_REFRESH_URL: resolveStewardRefreshUrl(),
-              ...(stewardRefreshServiceToken
-                ? { STEWARD_REFRESH_SERVICE_TOKEN: stewardRefreshServiceToken }
+        ...(config.restoreValidationCandidate
+          ? {}
+          : {
+              ...(stewardAgentToken ? { STEWARD_AGENT_TOKEN: stewardAgentToken } : {}),
+              ...(stewardJwt
+                ? {
+                    STEWARD_JWT: stewardJwt,
+                    STEWARD_JWT_FILE,
+                    STEWARD_REFRESH_URL: resolveStewardRefreshUrl(),
+                    ...(stewardRefreshServiceToken
+                      ? { STEWARD_REFRESH_SERVICE_TOKEN: stewardRefreshServiceToken }
+                      : {}),
+                  }
                 : {}),
-            }
-          : {}),
-        ...keylessOpenAIEnv,
+              ...keylessOpenAIEnv,
+            }),
         // Bind to 0.0.0.0 so Docker port mapping works (container otherwise
         // listens on 127.0.0.1 which is unreachable via -p host:container).
         // Set BOTH AGENT_API_BIND and ELIZA_API_BIND — the image default for
@@ -1471,31 +1636,39 @@ export class DockerSandboxProvider implements SandboxProvider {
         // flow hands it to the browser so the web UI can authenticate.  Clearing
         // it here caused isAuthorized() to reject every request on cloud-
         // provisioned containers (no token + cloud flag = 401).
-        AGENT_DISABLE_AUTO_API_TOKEN: "1",
-        ELIZA_DISABLE_AUTO_API_TOKEN: "1",
-        // V2 image refuses to boot on headless Linux without a passphrase
-        // (no D-Bus keychain). Generate one per container — the vault state
-        // lives only in the per-container PGlite, so a unique per-launch key
-        // is fine.
-        ELIZA_VAULT_PASSPHRASE: environmentVars.ELIZA_VAULT_PASSPHRASE || crypto.randomUUID(),
+        ...(config.restoreValidationCandidate
+          ? {}
+          : {
+              AGENT_DISABLE_AUTO_API_TOKEN: "1",
+              ELIZA_DISABLE_AUTO_API_TOKEN: "1",
+              // V2 image refuses to boot on headless Linux without a passphrase
+              // (no D-Bus keychain). Generate one per container — the vault state
+              // lives only in the per-container PGlite, so a unique per-launch key
+              // is fine.
+              ELIZA_VAULT_PASSPHRASE: environmentVars.ELIZA_VAULT_PASSPHRASE || crypto.randomUUID(),
+            }),
         // Gateway service discovery — see SandboxRegistry in app-core.
         // SANDBOX_PUBLIC_URL targets the public Docker host (not the headscale
         // VPN IP set later at line ~653) because the gateways on Railway can't
         // route through Hetzner's private VPN.
-        ...(canSelfRegister
+        ...(config.restoreValidationCandidate
           ? {
-              SANDBOX_REGISTRY_REDIS_URL: registryRedisUrl,
-              // Only the REST transport needs a token; a redis:// URL omits it.
-              ...(registryRedisToken ? { SANDBOX_REGISTRY_REDIS_TOKEN: registryRedisToken } : {}),
-              SANDBOX_AGENT_ID: agentId,
-              // The gateways route by the platform character_id, so the
-              // container must register under (and answer as) that id, not
-              // the sandbox id. Injected only when the caller provides it.
-              ...(routeAgentId?.trim() ? { SANDBOX_ROUTE_AGENT_ID: routeAgentId.trim() } : {}),
-              SANDBOX_SERVER_NAME: `sandbox-${agentId}-${crypto.randomUUID()}`,
-              SANDBOX_PUBLIC_URL: `http://${hostname}:${bridgePort}/api`,
+              SANDBOX_ROUTE_AGENT_ID: routeAgentId!.trim(),
             }
-          : {}),
+          : canSelfRegister
+            ? {
+                SANDBOX_REGISTRY_REDIS_URL: registryRedisUrl,
+                // Only the REST transport needs a token; a redis:// URL omits it.
+                ...(registryRedisToken ? { SANDBOX_REGISTRY_REDIS_TOKEN: registryRedisToken } : {}),
+                SANDBOX_AGENT_ID: agentId,
+                // The gateways route by the platform character_id, so the
+                // container must register under (and answer as) that id, not
+                // the sandbox id. Injected only when the caller provides it.
+                ...(routeAgentId?.trim() ? { SANDBOX_ROUTE_AGENT_ID: routeAgentId.trim() } : {}),
+                SANDBOX_SERVER_NAME: `sandbox-${agentId}-${crypto.randomUUID()}`,
+                SANDBOX_PUBLIC_URL: `http://${hostname}:${bridgePort}/api`,
+              }
+            : {}),
       };
 
       // Validate env keys/values before they are interpolated into remote shell commands.
@@ -1525,9 +1698,10 @@ export class DockerSandboxProvider implements SandboxProvider {
           }),
         }),
         `--label ${shellQuote(`${REPLACEMENT_ATTEMPT_LABEL}=${replacementAttemptId}`)}`,
-        "--restart unless-stopped",
+        config.restoreValidationCandidate ? "--restart=no" : "--restart unless-stopped",
         `--network ${shellQuote(DOCKER_NETWORK)}`,
-        ...(requiresDockerHostGateway(stewardContainerUrl) || Object.keys(proxyEnv).length > 0
+        ...((stewardContainerUrl && requiresDockerHostGateway(stewardContainerUrl)) ||
+        Object.keys(proxyEnv).length > 0
           ? ["--add-host host.docker.internal:host-gateway"]
           : []),
         `--health-cmd ${shellQuote(getDockerHealthCmd(allEnv.PORT || containerPort, healthCheckPath))}`,
@@ -1548,8 +1722,8 @@ export class DockerSandboxProvider implements SandboxProvider {
         // The cloud image serves both API and web UI from PORT (default 3000).
         // Publish both externally allocated host ports to that live listener so
         // nginx can reach /api/* via bridge_url and the UI via web_ui_port.
-        `-p ${bridgePort}:${allEnv.PORT || DEFAULT_AGENT_PORT}`,
-        `-p ${webUiPort}:${allEnv.PORT || DEFAULT_AGENT_PORT}`,
+        `-p ${config.restoreValidationCandidate ? "127.0.0.1:" : ""}${bridgePort}:${allEnv.PORT || DEFAULT_AGENT_PORT}`,
+        `-p ${config.restoreValidationCandidate ? "127.0.0.1:" : ""}${webUiPort}:${allEnv.PORT || DEFAULT_AGENT_PORT}`,
         envFlags,
         shellQuote(resolvedImage),
       ].join(" ");
@@ -1565,7 +1739,9 @@ export class DockerSandboxProvider implements SandboxProvider {
       // This clock starts the durable uncertainty window. Keep it adjacent to
       // intent/create rather than tenant setup or image pull so recovery does
       // not widen correlation with unrelated old Headscale registrations.
-      vpnRegistrationStartedAt = headscaleEnabled ? new Date(this.now()).toISOString() : undefined;
+      vpnRegistrationStartedAt ??= headscaleEnabled
+        ? new Date(this.now()).toISOString()
+        : undefined;
       const containerId = extractDockerCreateContainerId(
         await createDockerContainerAfterReplacementIntent({
           persistIntent: persistReplacementIntent
@@ -1582,6 +1758,7 @@ export class DockerSandboxProvider implements SandboxProvider {
                       containerName,
                       bridgePort,
                       webUiPort,
+                      containerPort: Number.parseInt(containerPort, 10),
                       agentId,
                       volumePath,
                       dockerImage: resolvedImage,
@@ -1601,7 +1778,15 @@ export class DockerSandboxProvider implements SandboxProvider {
                 }
               }
             : undefined,
-          createContainer: () => ssh.exec(dockerCreateCmd, DOCKER_CMD_TIMEOUT_MS),
+          createContainer: async () => {
+            // The attempt must be durable before its unique volume can exist.
+            // A crash after mkdir is then recoverable by the persisted locator.
+            await ssh.exec(
+              `mkdir -p ${shellQuote(volumePath)} ${shellQuote(`${volumePath}/eliza`)}`,
+              DOCKER_CMD_TIMEOUT_MS,
+            );
+            return ssh.exec(dockerCreateCmd, DOCKER_CMD_TIMEOUT_MS);
+          },
         }),
       );
       createdContainerId = containerId;
@@ -1618,6 +1803,7 @@ export class DockerSandboxProvider implements SandboxProvider {
             containerName,
             bridgePort,
             webUiPort,
+            containerPort: Number.parseInt(containerPort, 10),
             agentId,
             volumePath,
             dockerImage: resolvedImage,
@@ -1641,7 +1827,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       // local_inference (#8434/#9887). Best-effort; the post-start write below
       // stays as a fallback (and overwrites with identical content).
       try {
-        if (allEnv.ELIZAOS_CLOUD_BASE_URL) {
+        if (!config.restoreValidationCandidate && allEnv.ELIZAOS_CLOUD_BASE_URL) {
           const preSeed = Buffer.from(
             JSON.stringify(buildManagedElizaRuntimeConfig(allEnv)),
             "utf-8",
@@ -1667,7 +1853,10 @@ export class DockerSandboxProvider implements SandboxProvider {
         `[docker-sandbox] Container created on ${nodeId}: ${containerId} (${containerName})`,
       );
 
-      if (shouldInstallStewardPlugin(agentId, environmentVars)) {
+      if (
+        !config.restoreValidationCandidate &&
+        shouldInstallStewardPlugin(agentId, environmentVars)
+      ) {
         try {
           await ssh.exec(buildStewardPluginInstallCommand(containerName), PULL_TIMEOUT_MS);
           logger.info(`[docker-sandbox] Steward Eliza plugin installed in ${containerName}`);
@@ -1678,7 +1867,7 @@ export class DockerSandboxProvider implements SandboxProvider {
         }
       }
 
-      if (stewardJwt && stewardRefreshServiceToken) {
+      if (!config.restoreValidationCandidate && stewardJwt && stewardRefreshServiceToken) {
         try {
           await ssh.exec(
             buildStewardRefreshCommand(containerName, agentId, stewardRefreshServiceToken),
@@ -1696,44 +1885,50 @@ export class DockerSandboxProvider implements SandboxProvider {
       // it bypasses env vars. Best-effort: a failure here is logged but
       // does not abort provisioning — the env vars on the container still
       // carry the same values.
-      try {
-        if (!allEnv.ELIZAOS_CLOUD_BASE_URL) {
-          throw new Error(
-            "[docker-sandbox] ELIZAOS_CLOUD_BASE_URL is not set in container env. " +
-              "Refusing to fall back to the hardcoded prod URL (https://elizacloud.ai/api/v1) — " +
-              "this caused staging containers to silently call prod. " +
-              "Configure ELIZAOS_CLOUD_BASE_URL in the daemon/Worker env (e.g. " +
-              "https://api-staging.elizacloud.ai/api/v1 for staging, https://api.elizacloud.ai/api/v1 for prod).",
+      if (!config.restoreValidationCandidate) {
+        try {
+          if (!allEnv.ELIZAOS_CLOUD_BASE_URL) {
+            throw new Error(
+              "[docker-sandbox] ELIZAOS_CLOUD_BASE_URL is not set in container env. " +
+                "Refusing to fall back to the hardcoded prod URL (https://elizacloud.ai/api/v1) — " +
+                "this caused staging containers to silently call prod. " +
+                "Configure ELIZAOS_CLOUD_BASE_URL in the daemon/Worker env (e.g. " +
+                "https://api-staging.elizacloud.ai/api/v1 for staging, https://api.elizacloud.ai/api/v1 for prod).",
+            );
+          }
+          const elizaConfig = JSON.stringify(buildManagedElizaRuntimeConfig(allEnv));
+          // Base64-encode the JSON before passing it through the shell so an
+          // apiKey/baseUrl containing single quotes can't break out of the
+          // outer sh -c quoting or inject commands on the remote host.
+          const encodedConfig = Buffer.from(elizaConfig, "utf-8").toString("base64");
+          const writeCmd = `docker exec ${shellQuote(containerName)} sh -c ${shellQuote(
+            `mkdir -p /root/.eliza && printf %s ${shellQuote(encodedConfig)} | base64 -d > /root/.eliza/eliza.json`,
+          )}`;
+          await ssh.exec(writeCmd, DOCKER_CMD_TIMEOUT_MS);
+          logger.info(`[docker-sandbox] Cloud config written to eliza.json in ${containerName}`);
+        } catch (configErr) {
+          logger.warn(
+            `[docker-sandbox] Failed to write eliza.json: ${configErr instanceof Error ? configErr.message : String(configErr)}`,
           );
         }
-        const elizaConfig = JSON.stringify(buildManagedElizaRuntimeConfig(allEnv));
-        // Base64-encode the JSON before passing it through the shell so an
-        // apiKey/baseUrl containing single quotes can't break out of the
-        // outer sh -c quoting or inject commands on the remote host.
-        const encodedConfig = Buffer.from(elizaConfig, "utf-8").toString("base64");
-        const writeCmd = `docker exec ${shellQuote(containerName)} sh -c ${shellQuote(
-          `mkdir -p /root/.eliza && printf %s ${shellQuote(encodedConfig)} | base64 -d > /root/.eliza/eliza.json`,
-        )}`;
-        await ssh.exec(writeCmd, DOCKER_CMD_TIMEOUT_MS);
-        logger.info(`[docker-sandbox] Cloud config written to eliza.json in ${containerName}`);
-      } catch (configErr) {
-        logger.warn(
-          `[docker-sandbox] Failed to write eliza.json: ${configErr instanceof Error ? configErr.message : String(configErr)}`,
-        );
       }
     } catch (err) {
       // Best-effort Steward deregistration — the agent was registered but the
       // container failed to start, so the Steward record is deleted here.
-      try {
-        await ssh.exec(
-          await buildSignedDeleteAgentCurl(agentId, stewardTenant),
-          DOCKER_CMD_TIMEOUT_MS,
-        );
-        logger.info(`[docker-sandbox] Cleaned up Steward agent ${agentId} after container failure`);
-      } catch (cleanupErr) {
-        logger.warn(
-          `[docker-sandbox] Failed to cleanup Steward agent ${agentId}: ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}`,
-        );
+      if (stewardTenant) {
+        try {
+          await ssh.exec(
+            await buildSignedDeleteAgentCurl(agentId, stewardTenant),
+            DOCKER_CMD_TIMEOUT_MS,
+          );
+          logger.info(
+            `[docker-sandbox] Cleaned up Steward agent ${agentId} after container failure`,
+          );
+        } catch (cleanupErr) {
+          logger.warn(
+            `[docker-sandbox] Failed to cleanup Steward agent ${agentId}: ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}`,
+          );
+        }
       }
 
       const cleanupLocator = {
@@ -1742,6 +1937,7 @@ export class DockerSandboxProvider implements SandboxProvider {
         containerName,
         replacementAttemptId,
         containerId: createdContainerId,
+        volumePath,
         vpnNodeId,
         // Before the adjacent timestamp is captured, the container has not
         // been created and therefore cannot have committed a VPN registration.
@@ -1751,6 +1947,27 @@ export class DockerSandboxProvider implements SandboxProvider {
         allocationCounted: Boolean(dbNode),
       };
       if (err instanceof ReplacementPlacementPersistenceError) {
+        if (config.restoreValidationCandidate) {
+          try {
+            await this.retireRestoreValidationCandidateOnNode(
+              cleanupLocator as SandboxRestoreValidationCandidateLocator,
+              cleanupNode,
+            );
+          } catch (cleanupError) {
+            // error-policy:J2 context-adding rethrow — the exact candidate
+            // identity must survive an ambiguous pre-intent retirement.
+            if (cleanupError instanceof SandboxReplacementCleanupUnresolvedError) {
+              throw cleanupError;
+            }
+            throw new SandboxReplacementCleanupUnresolvedError(cleanupLocator, cleanupError);
+          }
+        } else {
+          await this.releaseHostPorts({
+            nodeId,
+            ownerKind: "agent",
+            ownerId: containerName,
+          });
+        }
         throw err;
       }
       if (replacementIntentPersisted) {
@@ -1758,7 +1975,14 @@ export class DockerSandboxProvider implements SandboxProvider {
       }
 
       try {
-        await this.retireReplacementCandidateOnNode(cleanupLocator, cleanupNode);
+        if (config.restoreValidationCandidate) {
+          await this.retireRestoreValidationCandidateOnNode(
+            cleanupLocator as SandboxRestoreValidationCandidateLocator,
+            cleanupNode,
+          );
+        } else {
+          await this.retireReplacementCandidateOnNode(cleanupLocator, cleanupNode);
+        }
       } catch (cleanupError) {
         // error-policy:J2 context-adding rethrow — replacement identity is retained
         // so the durable reconciler can retry the exact unresolved cleanup.
@@ -1856,6 +2080,7 @@ export class DockerSandboxProvider implements SandboxProvider {
                 containerName,
                 bridgePort,
                 webUiPort,
+                containerPort: registeredPort,
                 agentId,
                 volumePath,
                 dockerImage: resolvedImage,
@@ -1880,6 +2105,7 @@ export class DockerSandboxProvider implements SandboxProvider {
                 containerName,
                 replacementAttemptId,
                 containerId: createdContainerId,
+                volumePath,
                 vpnNodeId,
                 vpnNodeName: vpnEnvVars.TS_HOSTNAME,
                 previousVpnNodeId,
@@ -1893,7 +2119,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       }
     }
 
-    if (headscaleRouteRequired && !headscaleIp) {
+    if ((headscaleRouteRequired || config.restoreValidationCandidate) && !headscaleIp) {
       const errorMessage =
         "Headscale routing is required, but the sandbox did not register a headscale_ip. " +
         "Refusing to mark the agent running without a routable internal ingress; " +
@@ -1903,18 +2129,20 @@ export class DockerSandboxProvider implements SandboxProvider {
         containerName,
         nodeId,
       });
-      await ssh
-        .exec(await buildSignedDeleteAgentCurl(agentId, stewardTenant), DOCKER_CMD_TIMEOUT_MS)
-        .then(() => {
-          logger.info(
-            `[docker-sandbox] Cleaned up Steward agent ${agentId} after missing Headscale registration`,
-          );
-        })
-        .catch((cleanupErr) => {
-          logger.warn(
-            `[docker-sandbox] Failed to cleanup Steward agent ${agentId} after missing Headscale registration: ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}`,
-          );
-        });
+      if (stewardTenant) {
+        await ssh
+          .exec(await buildSignedDeleteAgentCurl(agentId, stewardTenant), DOCKER_CMD_TIMEOUT_MS)
+          .then(() => {
+            logger.info(
+              `[docker-sandbox] Cleaned up Steward agent ${agentId} after missing Headscale registration`,
+            );
+          })
+          .catch((cleanupErr) => {
+            logger.warn(
+              `[docker-sandbox] Failed to cleanup Steward agent ${agentId} after missing Headscale registration: ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}`,
+            );
+          });
+      }
       if (replacementIntentPersisted) {
         throw new SandboxReplacementCleanupUnresolvedError(
           {
@@ -1923,6 +2151,7 @@ export class DockerSandboxProvider implements SandboxProvider {
             containerName,
             replacementAttemptId,
             containerId: createdContainerId,
+            volumePath,
             vpnNodeId,
             vpnNodeName: vpnEnvVars.TS_HOSTNAME,
             previousVpnNodeId,
@@ -1938,6 +2167,7 @@ export class DockerSandboxProvider implements SandboxProvider {
         containerName,
         replacementAttemptId,
         containerId: createdContainerId,
+        volumePath,
         vpnNodeId,
         vpnNodeName: vpnEnvVars.TS_HOSTNAME,
         previousVpnNodeId,
@@ -1951,7 +2181,14 @@ export class DockerSandboxProvider implements SandboxProvider {
         ssh_user: sshUser,
         host_key_fingerprint: hostKeyFingerprint ?? null,
       };
-      await this.retireReplacementCandidateOnNode(cleanupLocator, cleanupNode);
+      if (config.restoreValidationCandidate) {
+        await this.retireRestoreValidationCandidateOnNode(
+          cleanupLocator as SandboxRestoreValidationCandidateLocator,
+          cleanupNode,
+        );
+      } else {
+        await this.retireReplacementCandidateOnNode(cleanupLocator, cleanupNode);
+      }
       this.containers.delete(containerName);
       if (dbNode && providerManagesCapacity) {
         await dockerNodesRepository.decrementAllocated(nodeId).catch((rollbackError) => {
@@ -1972,7 +2209,9 @@ export class DockerSandboxProvider implements SandboxProvider {
     // reconciler can detect when the tag has been republished. Returns null
     // on bare image names or registry errors — both are treated as
     // "unknown, leave alone" by the reconciler.
-    const imageDigest = await resolveImageDigest(resolvedImage);
+    const imageDigest = config.restoreValidationCandidate
+      ? config.snapshotRestoreBinding!.targetImageDigest
+      : await resolveImageDigest(resolvedImage);
 
     const metadata: DockerSandboxMetadata = {
       provider: "docker",
@@ -1981,6 +2220,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       containerName,
       bridgePort,
       webUiPort,
+      containerPort: Number.parseInt(containerPort, 10),
       agentId,
       volumePath,
       dockerImage: resolvedImage,
@@ -2105,7 +2345,20 @@ export class DockerSandboxProvider implements SandboxProvider {
     containerName: string,
     gracefulSeconds = 30,
   ): Promise<void> {
-    await this.stopOnSpecificNodeWithPolicy(node, containerName, gracefulSeconds, true, true);
+    const absent = await this.stopOnSpecificNodeWithPolicy(
+      node,
+      containerName,
+      gracefulSeconds,
+      true,
+      true,
+    );
+    if (absent) {
+      await this.releaseHostPorts({
+        nodeId: node.node_id,
+        ownerKind: "agent",
+        ownerId: containerName,
+      });
+    }
   }
 
   async stopOnSpecificNodeForReplacement(
@@ -2134,13 +2387,78 @@ export class DockerSandboxProvider implements SandboxProvider {
     await this.retireReplacementCandidateOnNode(locator, node);
   }
 
+  async retireRestoreValidationCandidate(
+    locator: SandboxRestoreValidationCandidateLocator,
+  ): Promise<SandboxRestoreValidationRetirementProof> {
+    this.assertRestoreValidationRetirementLocator(locator);
+    const node = await dockerNodesRepository.findByNodeId(locator.nodeId);
+    if (!node) {
+      throw new SandboxReplacementCleanupUnresolvedError(
+        locator,
+        new Error(`[docker-sandbox] Node ${locator.nodeId} is not registered`),
+      );
+    }
+    return this.retireRestoreValidationCandidateOnNode(locator, node);
+  }
+
+  async inspectRestoreValidationCandidate(
+    locator: SandboxRestoreValidationCandidateLocator,
+  ): Promise<SandboxRestoreValidationRuntimeState> {
+    try {
+      this.assertRestoreValidationRetirementLocator(locator);
+    } catch {
+      // error-policy:J3 The locator is untrusted durable input. A malformed or
+      // mismatched identity is explicitly unresolved and can never authorize cleanup.
+      return "unresolved";
+    }
+    const node = await dockerNodesRepository.findByNodeId(locator.nodeId);
+    if (!node) return "unresolved";
+    const ssh = DockerSSHClient.getClient(
+      node.hostname,
+      node.ssh_port ?? DEFAULT_SSH_PORT,
+      node.host_key_fingerprint ?? undefined,
+      node.ssh_user ?? DEFAULT_SSH_USERNAME,
+    );
+    const format = `{{.Id}}|{{index .Config.Labels "${REPLACEMENT_ATTEMPT_LABEL}"}}|{{.State.Status}}`;
+    let output: string;
+    try {
+      output = await ssh.exec(
+        `docker inspect --format ${shellQuote(format)} ${shellQuote(locator.containerName)}`,
+        DOCKER_CMD_TIMEOUT_MS,
+      );
+    } catch (error) {
+      // error-policy:J3 Only Docker's canonical absence response is positive
+      // evidence. Transport and permission failures remain explicitly unresolved.
+      const message = error instanceof Error ? error.message : String(error);
+      return isContainerAbsentMessage(message) ? "absent" : "unresolved";
+    }
+
+    const lines = output
+      .trim()
+      .split(/\r?\n/)
+      .filter((line) => line.length > 0);
+    if (lines.length !== 1) return "unresolved";
+    const [containerId, attemptId, state, ...extra] = lines[0]!.split("|");
+    if (
+      extra.length > 0 ||
+      !containerId ||
+      !/^[a-f0-9]{12,64}$/i.test(containerId) ||
+      attemptId !== locator.replacementAttemptId ||
+      (locator.containerId && !dockerContainerIdsMatch(locator.containerId, containerId))
+    ) {
+      return "unresolved";
+    }
+    if (state === "running" || state === "exited") return state;
+    return "unresolved";
+  }
+
   private async stopOnSpecificNodeWithPolicy(
     node: DockerNodeConnection,
     containerName: string,
     gracefulSeconds: number,
     allowUnreachableAbandon: boolean,
     releaseCapacity: boolean,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const ssh = DockerSSHClient.getClient(
       node.hostname,
       node.ssh_port ?? DEFAULT_SSH_PORT,
@@ -2197,7 +2515,7 @@ export class DockerSandboxProvider implements SandboxProvider {
         logger.warn(
           `[docker-sandbox] stopOnSpecificNode: both stop and rm failed for ${containerName} on ${node.node_id}; leaving allocated_count intact (possible zombie) — stop -> ${stopMsg}; rm -> ${rmMsg}`,
         );
-        return;
+        return false;
       }
     }
 
@@ -2210,6 +2528,7 @@ export class DockerSandboxProvider implements SandboxProvider {
         );
       });
     }
+    return true;
   }
 
   private async retireReplacementCandidateOnNode(
@@ -2232,9 +2551,156 @@ export class DockerSandboxProvider implements SandboxProvider {
       } else if (locator.vpnNodeName) {
         await this.retireReplacementVpnByRegistration(locator);
       }
+      await this.releaseHostPorts({
+        nodeId: locator.nodeId,
+        ownerKind: "agent",
+        ownerId: locator.containerName,
+      });
     } catch (error) {
       // error-policy:J2 context-adding rethrow — the exact persisted locator is
       // required to retry cleanup without guessing at remote identities.
+      throw new SandboxReplacementCleanupUnresolvedError(locator, error);
+    }
+  }
+
+  private assertRestoreValidationRetirementLocator(
+    locator: SandboxRestoreValidationCandidateLocator,
+  ): RestoreValidationPhysicalIdentity {
+    const physicalIdentity = getRestoreValidationPhysicalIdentity(locator.replacementAttemptId);
+    if (
+      locator.sandboxId !== physicalIdentity.containerName ||
+      locator.containerName !== physicalIdentity.containerName
+    ) {
+      throw new Error(
+        "[docker-sandbox] Restore-validation container identity does not match its replacement attempt",
+      );
+    }
+    if (locator.volumePath !== physicalIdentity.volumePath) {
+      throw new Error(
+        "[docker-sandbox] Restore-validation volume path does not match its replacement attempt",
+      );
+    }
+    if (!locator.nodeId.trim()) {
+      throw new Error("[docker-sandbox] Restore-validation retirement requires an exact node id");
+    }
+    if (locator.previousVpnNodeId) {
+      throw new Error(
+        "[docker-sandbox] Restore-validation candidates cannot inherit a previous VPN node",
+      );
+    }
+    const expectedVpnName = inferTailscaleHostname({
+      agentId: physicalIdentity.vpnAgentId,
+      agentName: physicalIdentity.vpnAgentName,
+    });
+    if (locator.vpnNodeName && locator.vpnNodeName !== expectedVpnName) {
+      throw new Error(
+        "[docker-sandbox] Restore-validation VPN name does not match its replacement attempt",
+      );
+    }
+    if (
+      (locator.vpnNodeId || locator.vpnNodeName || locator.vpnRegistrationStartedAt) &&
+      (!locator.vpnNodeName || !locator.vpnRegistrationStartedAt)
+    ) {
+      throw new Error(
+        "[docker-sandbox] Restore-validation VPN retirement requires a complete registration identity",
+      );
+    }
+    if (
+      locator.vpnRegistrationStartedAt &&
+      !Number.isFinite(Date.parse(locator.vpnRegistrationStartedAt))
+    ) {
+      throw new Error("[docker-sandbox] Restore-validation VPN registration time is malformed");
+    }
+    return physicalIdentity;
+  }
+
+  private async retireRestoreValidationCandidateOnNode(
+    locator: SandboxRestoreValidationCandidateLocator,
+    node: DockerNodeConnection,
+  ): Promise<SandboxRestoreValidationRetirementProof> {
+    try {
+      this.assertRestoreValidationRetirementLocator(locator);
+      const ssh = DockerSSHClient.getClient(
+        node.hostname,
+        node.ssh_port ?? DEFAULT_SSH_PORT,
+        node.host_key_fingerprint ?? undefined,
+        node.ssh_user ?? DEFAULT_SSH_USERNAME,
+      );
+      const cleanupTarget = await this.resolveReplacementContainerForCleanup(locator, node);
+      const observedContainerId = cleanupTarget ?? locator.containerId ?? null;
+      if (cleanupTarget) {
+        await this.stopOnSpecificNodeWithPolicy(node, cleanupTarget, 10, false, false);
+      }
+      const remainingContainer = await this.resolveReplacementContainerForCleanup(locator, node);
+      if (remainingContainer) {
+        throw new Error(
+          `[docker-sandbox] Restore-validation container ${locator.containerName} remains present`,
+        );
+      }
+
+      const registrationStartedAt = locator.vpnRegistrationStartedAt;
+      if (!registrationStartedAt) {
+        throw new Error(
+          `[docker-sandbox] Restore-validation VPN registration start is missing for ${locator.containerName}`,
+        );
+      }
+      const startedAt = Date.parse(registrationStartedAt);
+      if (!Number.isFinite(startedAt)) {
+        throw new Error(
+          `[docker-sandbox] Restore-validation VPN registration start is invalid for ${locator.containerName}`,
+        );
+      }
+      const registrationDeadline =
+        startedAt + DEFAULT_REGISTRATION_TIMEOUT_MS + REPLACEMENT_VPN_CLOCK_SKEW_ALLOWANCE_MS;
+      const settleDelayMs = registrationDeadline - this.now();
+      if (settleDelayMs > 0) {
+        await this.replacementVpnSettleDelay(settleDelayMs);
+      }
+      await this.retireRestoreValidationVpnByRegistration(locator);
+      const retiredVpnNodeId = locator.vpnNodeId ?? null;
+      const vpnAbsentAt = new Date(this.now()).toISOString();
+
+      // VPN retirement waits out registration races, so a create accepted just
+      // before an SSH timeout can become visible after the earlier inspection.
+      // Irreversible volume and port release require this post-settle proof.
+      const postVpnContainer = await this.resolveReplacementContainerForCleanup(locator, node);
+      if (postVpnContainer) {
+        throw new Error(
+          `[docker-sandbox] Restore-validation container ${locator.containerName} appeared after VPN settlement`,
+        );
+      }
+      const containerAbsentAt = new Date(this.now()).toISOString();
+
+      await ssh.exec(
+        `rm -rf -- ${shellQuote(locator.volumePath)} && test ! -e ${shellQuote(locator.volumePath)}`,
+        DOCKER_CMD_TIMEOUT_MS,
+      );
+      const volumeAbsentAt = new Date(this.now()).toISOString();
+      await this.releaseHostPorts({
+        nodeId: locator.nodeId,
+        ownerKind: "restore_validation",
+        ownerId: locator.containerName,
+      });
+
+      return {
+        sandboxId: locator.sandboxId,
+        nodeId: locator.nodeId,
+        containerName: locator.containerName,
+        replacementAttemptId: locator.replacementAttemptId,
+        containerId: observedContainerId,
+        containerAbsentAt,
+        volumePath: locator.volumePath,
+        volumeAbsentAt,
+        vpnNodeId: retiredVpnNodeId,
+        vpnNodeName: locator.vpnNodeName ?? null,
+        vpnAbsentAt,
+      };
+    } catch (error) {
+      // error-policy:J2 context-adding rethrow — retirement is retryable only
+      // with the same provider-derived physical identity.
+      if (error instanceof SandboxReplacementCleanupUnresolvedError) {
+        throw error;
+      }
       throw new SandboxReplacementCleanupUnresolvedError(locator, error);
     }
   }
@@ -2385,6 +2851,91 @@ export class DockerSandboxProvider implements SandboxProvider {
     if (consecutiveEmptyObservations < 2) {
       throw new Error(
         `[docker-sandbox] Cannot prove VPN registration settled for ${locator.containerName}`,
+      );
+    }
+  }
+
+  private async retireRestoreValidationVpnByRegistration(
+    locator: SandboxRestoreValidationCandidateLocator,
+  ): Promise<void> {
+    if (!locator.vpnNodeId) {
+      await this.retireReplacementVpnByRegistration(locator);
+      return;
+    }
+    const baseName = locator.vpnNodeName;
+    if (!baseName || !locator.vpnRegistrationStartedAt) {
+      throw new Error(
+        `[docker-sandbox] Restore-validation VPN identity is incomplete for ${locator.containerName}`,
+      );
+    }
+    const startedAt = Date.parse(locator.vpnRegistrationStartedAt);
+    if (!Number.isFinite(startedAt)) {
+      throw new Error(
+        `[docker-sandbox] Restore-validation VPN registration time is invalid for ${locator.containerName}`,
+      );
+    }
+    const registrationDeadline =
+      startedAt + DEFAULT_REGISTRATION_TIMEOUT_MS + REPLACEMENT_VPN_CLOCK_SKEW_ALLOWANCE_MS;
+    if (this.now() < registrationDeadline) {
+      throw new Error(
+        `[docker-sandbox] VPN registration window remains open for ${locator.containerName} until ${new Date(registrationDeadline).toISOString()}`,
+      );
+    }
+
+    let consecutiveEmptyObservations = 0;
+    for (let observation = 0; observation < REPLACEMENT_VPN_SETTLE_OBSERVATIONS; observation += 1) {
+      const nodes = await withTimeout(
+        headscaleClient.listNodesStrict(),
+        HEADSCALE_CLEANUP_TIMEOUT_MS,
+        "restore-validation headscale lookup",
+      );
+      const exactNode = nodes.find((node) => node.id === locator.vpnNodeId);
+      const matchingRegistrations = nodes.filter((node) => {
+        const suffix = node.name.startsWith(`${baseName}-`)
+          ? node.name.slice(baseName.length + 1)
+          : null;
+        const nameMatches =
+          node.name === baseName || (suffix !== null && /^[a-z0-9]{8}$/.test(suffix));
+        if (!nameMatches) return false;
+        const createdAt = Date.parse(node.createdAt);
+        if (!Number.isFinite(createdAt)) {
+          throw new Error(
+            `[docker-sandbox] Cannot classify Headscale node ${node.id}: invalid createdAt`,
+          );
+        }
+        return createdAt >= startedAt - REPLACEMENT_VPN_CLOCK_SKEW_ALLOWANCE_MS;
+      });
+      if (
+        matchingRegistrations.length > 1 ||
+        (matchingRegistrations.length === 1 && matchingRegistrations[0]!.id !== locator.vpnNodeId)
+      ) {
+        throw new Error(
+          `[docker-sandbox] Restore-validation VPN identity is ambiguous for ${locator.containerName}`,
+        );
+      }
+      if (exactNode) {
+        if (matchingRegistrations[0]?.id !== locator.vpnNodeId) {
+          throw new Error(
+            `[docker-sandbox] Persisted restore-validation VPN id does not match its registration identity for ${locator.containerName}`,
+          );
+        }
+        consecutiveEmptyObservations = 0;
+        await withTimeout(
+          headscaleClient.deleteNode(locator.vpnNodeId),
+          HEADSCALE_CLEANUP_TIMEOUT_MS,
+          "restore-validation headscale cleanup",
+        );
+      } else {
+        consecutiveEmptyObservations += 1;
+      }
+
+      if (observation < REPLACEMENT_VPN_SETTLE_OBSERVATIONS - 1) {
+        await this.replacementVpnSettleDelay(REPLACEMENT_VPN_SETTLE_INTERVAL_MS);
+      }
+    }
+    if (consecutiveEmptyObservations < 2) {
+      throw new Error(
+        `[docker-sandbox] Cannot prove exact restore-validation VPN identity absent for ${locator.containerName}`,
       );
     }
   }
@@ -2581,6 +3132,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       );
     }
 
+    let remoteAbsenceProven = true;
     if (stopErr && rmErr) {
       const stopMsg = stopErr instanceof Error ? stopErr.message : String(stopErr);
       const rmMsg = rmErr instanceof Error ? rmErr.message : String(rmErr);
@@ -2618,6 +3170,7 @@ export class DockerSandboxProvider implements SandboxProvider {
         );
       }
       if (unreachable) {
+        remoteAbsenceProven = false;
         logger.warn(
           `[docker-sandbox] Node ${meta.hostname} unreachable during stop of ${meta.containerName}; ` +
             `completing delete and ABANDONING the container — it will LEAK until reclaimed ` +
@@ -2630,6 +3183,14 @@ export class DockerSandboxProvider implements SandboxProvider {
           `[docker-sandbox] Container ${meta.containerName} already absent on ${meta.hostname}`,
         );
       }
+    }
+
+    if (remoteAbsenceProven) {
+      await this.releaseHostPorts({
+        nodeId: meta.nodeId,
+        ownerKind: "agent",
+        ownerId: meta.containerName,
+      });
     }
 
     // Decrement allocated_count on the node

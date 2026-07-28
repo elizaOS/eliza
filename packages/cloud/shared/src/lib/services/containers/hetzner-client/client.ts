@@ -17,14 +17,11 @@ import { containersEnv } from "../../../config/containers-env";
 import { logger } from "../../../utils/logger";
 import { buildAppContainerSecurityFlags } from "../../app-network-utils";
 import { dockerNodeManager } from "../../docker-node-manager";
-import { getUsedDockerHostPorts } from "../../docker-port-allocation";
 import {
-  allocatePort,
-  buildEnsureNetworkCmd,
-  shellQuote,
-  WEBUI_PORT_MAX,
-  WEBUI_PORT_MIN,
-} from "../../docker-sandbox-utils";
+  releaseDockerHostPortReservations,
+  reserveAppContainerHostPort,
+} from "../../docker-port-allocation";
+import { buildEnsureNetworkCmd, shellQuote } from "../../docker-sandbox-utils";
 import { DockerSSHClient } from "../../docker-ssh";
 import { getHetznerVolumeService, isHetznerVolumesAvailable } from "../hetzner-volumes";
 import {
@@ -205,7 +202,6 @@ export class HetznerContainersClient {
     );
 
     const containerName = deriveContainerName(row.id);
-    const usedPorts = await getUsedDockerHostPorts(node.node_id);
 
     // Local volume path - used for non-hcloud persistent volumes. For hcloud
     // volumes this is set after the attach step below.
@@ -257,51 +253,29 @@ export class HetznerContainersClient {
         .map(([k, v]) => `-e ${shellQuote(`${k}=${v}`)}`)
         .join(" ");
 
-      let hostPort: number | undefined;
-      const maxPortAttempts = 5;
-      for (let attempt = 1; attempt <= maxPortAttempts; attempt++) {
-        hostPort = allocatePort(WEBUI_PORT_MIN, WEBUI_PORT_MAX, usedPorts);
-        const dockerCreateCmd = [
-          "docker create",
-          `--name ${shellQuote(containerName)}`,
-          "--restart unless-stopped",
-          `--network ${shellQuote(DEFAULT_NODE_NETWORK)}`,
-          `--cpus ${cpuUnitsToDockerCpus(input.cpu)}`,
-          `--memory ${input.memoryMb}m`,
-          ...buildAppContainerSecurityFlags(),
-          ...(volumePath ? [`-v ${shellQuote(volumePath)}:${shellQuote(volumeMountPath)}`] : []),
-          buildContainerPortPublishFlag(hostPort, input.port),
-          envFlags,
-          shellQuote(input.image),
-        ]
-          .filter((part) => part.length > 0)
-          .join(" ");
+      const hostPort = await reserveAppContainerHostPort({
+        nodeId: node.node_id,
+        ownerKind: "app",
+        ownerId: containerName,
+      });
+      const dockerCreateCmd = [
+        "docker create",
+        `--name ${shellQuote(containerName)}`,
+        "--restart unless-stopped",
+        `--network ${shellQuote(DEFAULT_NODE_NETWORK)}`,
+        `--cpus ${cpuUnitsToDockerCpus(input.cpu)}`,
+        `--memory ${input.memoryMb}m`,
+        ...buildAppContainerSecurityFlags(),
+        ...(volumePath ? [`-v ${shellQuote(volumePath)}:${shellQuote(volumeMountPath)}`] : []),
+        buildContainerPortPublishFlag(hostPort, input.port),
+        envFlags,
+        shellQuote(input.image),
+      ]
+        .filter((part) => part.length > 0)
+        .join(" ");
 
-        try {
-          await ssh.exec(buildEnsureNetworkCmd(DEFAULT_NODE_NETWORK), 30_000);
-          await ssh.exec(dockerCreateCmd, 60_000);
-          break;
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          const isPortCollision =
-            message.includes("already in use") ||
-            message.includes("port is already allocated") ||
-            message.includes("Bind for 0.0.0.0");
-          if (!isPortCollision || attempt === maxPortAttempts) {
-            throw error;
-          }
-          usedPorts.add(hostPort);
-          logger.warn("[hetzner-client] host port collision, retrying container create", {
-            containerId: row.id,
-            nodeId: node.node_id,
-            hostPort,
-            attempt,
-          });
-        }
-      }
-      if (hostPort === undefined) {
-        throw new HetznerClientError("container_create_failed", "Failed to allocate host port");
-      }
+      await ssh.exec(buildEnsureNetworkCmd(DEFAULT_NODE_NETWORK), 30_000);
+      await ssh.exec(dockerCreateCmd, 60_000);
       await ssh.exec(`docker start ${shellQuote(containerName)}`, 60_000);
       await dockerNodesRepository.incrementAllocated(node.node_id);
 
@@ -359,11 +333,26 @@ export class HetznerContainersClient {
       // retry because the volume is found by label on the next attempt.
       // error-policy:J6 teardown-only; a cleanup failure is logged, never masks
       // the create error rethrown below.
-      await ssh.exec(`docker rm -f ${shellQuote(containerName)}`, 30_000).catch((rmErr) =>
-        logger.warn(`[hetzner-client] cleanup rm failed for ${containerName}`, {
-          error: rmErr instanceof Error ? rmErr.message : String(rmErr),
-        }),
-      );
+      let containerAbsent = false;
+      try {
+        await ssh.exec(`docker rm -f ${shellQuote(containerName)}`, 30_000);
+        containerAbsent = true;
+      } catch (rmErr) {
+        const message = rmErr instanceof Error ? rmErr.message : String(rmErr);
+        containerAbsent = /no such (object|container)/i.test(message);
+        if (!containerAbsent) {
+          logger.warn(`[hetzner-client] cleanup rm failed for ${containerName}`, {
+            error: message,
+          });
+        }
+      }
+      if (containerAbsent) {
+        await releaseDockerHostPortReservations({
+          nodeId: node.node_id,
+          ownerKind: "app",
+          ownerId: containerName,
+        });
+      }
       await containersRepository.updateStatus(row.id, "failed", message);
       throw new HetznerClientError("container_create_failed", message, err);
     }
@@ -432,6 +421,11 @@ export class HetznerContainersClient {
             );
           }
         }
+      });
+      await releaseDockerHostPortReservations({
+        nodeId: meta.nodeId,
+        ownerKind: "app",
+        ownerId: meta.containerName,
       });
 
       // Idempotent slot release (#8342): only the first stop/delete of this
@@ -546,6 +540,11 @@ export class HetznerContainersClient {
             );
           }
         }
+      });
+      await releaseDockerHostPortReservations({
+        nodeId: meta.nodeId,
+        ownerKind: "app",
+        ownerId: meta.containerName,
       });
 
       // Idempotent slot release (#8342): only the first stop/delete of this

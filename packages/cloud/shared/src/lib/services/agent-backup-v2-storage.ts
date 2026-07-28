@@ -7,7 +7,11 @@
  * attempts remain hidden and are reclaimed by the reconciler.
  */
 import { randomUUID } from "node:crypto";
-import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
+import {
+  type AgentSandboxBackupCleanupReconcileCandidate,
+  type AgentSandboxBackupReconcileCandidate,
+  agentSandboxesRepository,
+} from "../../db/repositories/agent-sandboxes";
 import type {
   AgentBackupChunkCompleteDescriptor,
   AgentBackupChunkStagingDescriptor,
@@ -15,11 +19,12 @@ import type {
   StoredAgentSandboxBackup,
   StoredAgentSandboxBackupCleanupIntent,
 } from "../../db/schemas/agent-sandboxes";
-import { deleteObject } from "../storage/object-store";
+import { deleteObject, deleteObjectsExact } from "../storage/object-store";
 import { logger } from "../utils/logger";
 import {
   type AgentBackupChunkDescriptor,
   type AgentBackupChunkIdentity,
+  AgentBackupWriteEpochUnquiescedError,
   readEncryptedAgentBackupChunks,
   stageEncryptedAgentBackupChunks,
 } from "./agent-backup-chunks";
@@ -28,6 +33,9 @@ const DIGEST_PATTERN = /^[a-f0-9]{64}$/;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const DEFAULT_RECONCILE_BATCH_SIZE = 25;
 const MAX_RECONCILE_BATCH_SIZE = 100;
+const MAX_RECONCILE_OBJECT_KEYS = 5_632;
+const EXACT_DELETE_PAGE_SIZE = 1_000;
+export const AGENT_BACKUP_WRITE_LEASE_MAX_MS = 24 * 60 * 60 * 1_000;
 
 export interface AgentBackupStreamVerification {
   contentHash: string;
@@ -40,10 +48,12 @@ interface AgentBackupV2StorageRepository {
   }): Promise<StoredAgentSandboxBackup>;
   updateChunkedBackupStaging(
     backupId: string,
+    writeEpoch: string,
     descriptor: AgentBackupChunkStagingDescriptor,
   ): Promise<void>;
   commitChunkedBackup(params: {
     backupId: string;
+    writeEpoch: string;
     contentHash: string;
     descriptor: AgentBackupChunkCompleteDescriptor;
     verifiedAt: Date;
@@ -56,17 +66,25 @@ interface AgentBackupV2StorageRepository {
   }): Promise<void>;
   failChunkedBackup(
     backupId: string,
+    writeEpoch: string,
     descriptor: AgentBackupChunkStagingDescriptor,
+    error: string,
+  ): Promise<StoredAgentSandboxBackup | undefined>;
+  quiesceExpiredEmptyChunkedBackup(
+    backupId: string,
+    writeEpoch: string,
     error: string,
   ): Promise<StoredAgentSandboxBackup | undefined>;
   listIncompleteChunkedBackupsBefore(
     before: Date,
     limit: number,
-  ): Promise<StoredAgentSandboxBackup[]>;
+  ): Promise<AgentSandboxBackupReconcileCandidate[]>;
   listBackupObjectCleanupIntentsBefore(
     before: Date,
     limit: number,
-  ): Promise<StoredAgentSandboxBackupCleanupIntent[]>;
+  ): Promise<AgentSandboxBackupCleanupReconcileCandidate[]>;
+  rescheduleIncompleteChunkedBackup(backupId: string, expectedVersion: string): Promise<boolean>;
+  rescheduleBackupObjectCleanupIntent(backupId: string, expectedVersion: string): Promise<boolean>;
   deleteBackupObjectCleanupIntent(backupId: string): Promise<boolean>;
   claimPrunableChunkedBackups(
     sandboxRecordId: string,
@@ -82,6 +100,7 @@ export interface AgentBackupV2StorageDependencies {
   stageChunks: typeof stageEncryptedAgentBackupChunks;
   readChunks: typeof readEncryptedAgentBackupChunks;
   deleteObject: typeof deleteObject;
+  deleteObjectsExact?: typeof deleteObjectsExact;
 }
 
 const defaultDependencies: AgentBackupV2StorageDependencies = {
@@ -89,10 +108,39 @@ const defaultDependencies: AgentBackupV2StorageDependencies = {
   stageChunks: stageEncryptedAgentBackupChunks,
   readChunks: readEncryptedAgentBackupChunks,
   deleteObject,
+  deleteObjectsExact,
 };
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function abortReason(signal: AbortSignal): Error {
+  return signal.reason instanceof Error ? signal.reason : new Error("Chunked backup write aborted");
+}
+
+function raceWithAbort<T>(operation: PromiseLike<T>, signal: AbortSignal): Promise<T> {
+  const promise = Promise.resolve(operation);
+  if (signal.aborted) {
+    // error-policy:J5 the caller observes the primary abort; this observes only
+    // a late rejection from work that was already dispatched.
+    void promise.catch(() => undefined);
+    return Promise.reject(abortReason(signal));
+  }
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = (): void => reject(abortReason(signal));
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (error: unknown) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      },
+    );
+  });
 }
 
 function assertIdentity(identity: AgentBackupChunkIdentity): void {
@@ -109,11 +157,13 @@ function assertIdentity(identity: AgentBackupChunkIdentity): void {
 function failedDescriptor(
   descriptor: AgentBackupChunkStagingDescriptor,
   failure: string,
+  quiescedAt: Date,
 ): AgentBackupChunkStagingDescriptor {
   return {
     ...descriptor,
     commitState: "failed",
     failure: failure.slice(0, 2_000),
+    writeQuiescedAt: quiescedAt.toISOString(),
   };
 }
 
@@ -132,6 +182,9 @@ function requireStagingDescriptor(
     descriptor.commitState === "complete" ||
     descriptor.backupId !== row.id ||
     descriptor.sandboxRecordId !== row.sandbox_record_id ||
+    !UUID_PATTERN.test(descriptor.objectSetId) ||
+    !isCanonicalDate(descriptor.writeLeaseExpiresAt) ||
+    (descriptor.writeQuiescedAt !== null && !isCanonicalDate(descriptor.writeQuiescedAt)) ||
     !Array.isArray(descriptor.plannedObjectKeys)
   ) {
     throw new Error(`Incomplete backup ${row.id} has an invalid staging descriptor`);
@@ -139,9 +192,15 @@ function requireStagingDescriptor(
   return descriptor;
 }
 
+function isCanonicalDate(value: string): boolean {
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) && date.toISOString() === value;
+}
+
 function isMatchingCompleteBackup(
   row: StoredAgentSandboxBackup | undefined,
   identity: AgentBackupChunkIdentity,
+  writeEpoch: string,
 ): row is StoredAgentSandboxBackup {
   const descriptor = row?.state_data_descriptor;
   return (
@@ -153,7 +212,8 @@ function isMatchingCompleteBackup(
     descriptor?.commitState === "complete" &&
     descriptor.organizationId === identity.organizationId &&
     descriptor.sandboxRecordId === identity.sandboxRecordId &&
-    descriptor.backupId === identity.backupId
+    descriptor.backupId === identity.backupId &&
+    descriptor.objectSetId === writeEpoch
   );
 }
 
@@ -161,7 +221,6 @@ function assertPlannedObjectKeys(descriptor: AgentBackupChunkStagingDescriptor):
   const namespace = "agent-sandbox-backups";
   const organizationSegment = descriptor.organizationId;
   const backupPrefix = `${descriptor.backupId}.`;
-  let objectSetId: string | null = null;
   for (const [index, key] of descriptor.plannedObjectKeys.entries()) {
     const segments = key.split("/");
     if (segments.length !== 5 || segments[0] !== namespace || segments[1] !== organizationSegment) {
@@ -175,10 +234,9 @@ function assertPlannedObjectKeys(descriptor: AgentBackupChunkStagingDescriptor):
       throw new Error(`Incomplete backup ${descriptor.backupId} has an invalid object identity`);
     }
     const candidateSetId = objectId.slice(backupPrefix.length);
-    if (!UUID_PATTERN.test(candidateSetId) || (objectSetId && candidateSetId !== objectSetId)) {
+    if (candidateSetId !== descriptor.objectSetId) {
       throw new Error(`Incomplete backup ${descriptor.backupId} mixes object sets`);
     }
-    objectSetId = candidateSetId;
     const expectedField = `chunk-${String(index).padStart(6, "0")}.bin`;
     if (segments[4] !== expectedField) {
       throw new Error(`Incomplete backup ${descriptor.backupId} has reordered object keys`);
@@ -215,19 +273,37 @@ async function removePlannedObjects(
   row: StoredAgentSandboxBackup,
   descriptor: AgentBackupChunkStagingDescriptor,
   dependencies: AgentBackupV2StorageDependencies,
+  signal?: AbortSignal,
 ): Promise<void> {
   await assertTenantBoundDescriptor(row, descriptor, dependencies);
-  await deletePlannedObjectKeys(descriptor, dependencies);
+  await deletePlannedObjectKeys(descriptor, dependencies, signal);
 }
 
 async function deletePlannedObjectKeys(
   descriptor: AgentBackupChunkStagingDescriptor,
   dependencies: AgentBackupV2StorageDependencies,
+  signal?: AbortSignal,
 ): Promise<void> {
   assertPlannedObjectKeys(descriptor);
+  if (descriptor.plannedObjectKeys.length > MAX_RECONCILE_OBJECT_KEYS) {
+    throw new Error(
+      `Incomplete backup ${descriptor.backupId} exceeds the ${MAX_RECONCILE_OBJECT_KEYS}-key cleanup budget`,
+    );
+  }
+  if (dependencies.deleteObjectsExact && descriptor.plannedObjectKeys.length > 0) {
+    const keys = [...descriptor.plannedObjectKeys].reverse();
+    for (let offset = 0; offset < keys.length; offset += EXACT_DELETE_PAGE_SIZE) {
+      await dependencies.deleteObjectsExact(
+        keys.slice(offset, offset + EXACT_DELETE_PAGE_SIZE),
+        signal,
+      );
+    }
+    return;
+  }
   const failures: string[] = [];
   for (const key of [...descriptor.plannedObjectKeys].reverse()) {
     try {
+      if (signal?.aborted) throw abortReason(signal);
       await dependencies.deleteObject(key);
     } catch (error) {
       failures.push(`${key}: ${errorMessage(error)}`);
@@ -242,19 +318,37 @@ async function removeCompleteObjects(
   row: StoredAgentSandboxBackup,
   descriptor: AgentBackupChunkCompleteDescriptor,
   dependencies: AgentBackupV2StorageDependencies,
+  signal?: AbortSignal,
 ): Promise<void> {
   await assertTenantBoundDescriptor(row, descriptor, dependencies);
-  await deleteCompleteObjectKeys(descriptor, dependencies);
+  await deleteCompleteObjectKeys(descriptor, dependencies, signal);
 }
 
 async function deleteCompleteObjectKeys(
   descriptor: AgentBackupChunkCompleteDescriptor,
   dependencies: AgentBackupV2StorageDependencies,
+  signal?: AbortSignal,
 ): Promise<void> {
   assertCompleteObjectKeys(descriptor);
+  if (descriptor.chunks.length > MAX_RECONCILE_OBJECT_KEYS) {
+    throw new Error(
+      `Complete backup ${descriptor.backupId} exceeds the ${MAX_RECONCILE_OBJECT_KEYS}-key cleanup budget`,
+    );
+  }
+  if (dependencies.deleteObjectsExact && descriptor.chunks.length > 0) {
+    const keys = descriptor.chunks.map((chunk) => chunk.objectKey).reverse();
+    for (let offset = 0; offset < keys.length; offset += EXACT_DELETE_PAGE_SIZE) {
+      await dependencies.deleteObjectsExact(
+        keys.slice(offset, offset + EXACT_DELETE_PAGE_SIZE),
+        signal,
+      );
+    }
+    return;
+  }
   const failures: string[] = [];
   for (const chunk of [...descriptor.chunks].reverse()) {
     try {
+      if (signal?.aborted) throw abortReason(signal);
       await dependencies.deleteObject(chunk.objectKey);
     } catch (error) {
       failures.push(`${chunk.objectKey}: ${errorMessage(error)}`);
@@ -268,6 +362,7 @@ async function deleteCompleteObjectKeys(
 async function removeCleanupIntentObjects(
   intent: StoredAgentSandboxBackupCleanupIntent,
   dependencies: AgentBackupV2StorageDependencies,
+  signal?: AbortSignal,
 ): Promise<void> {
   const descriptor = intent.descriptor;
   if (
@@ -278,10 +373,13 @@ async function removeCleanupIntentObjects(
     throw new Error(`Backup cleanup intent ${intent.backup_id} is not self-consistent`);
   }
   if (descriptor.commitState === "complete") {
-    await deleteCompleteObjectKeys(descriptor, dependencies);
+    await deleteCompleteObjectKeys(descriptor, dependencies, signal);
     return;
   }
-  await deletePlannedObjectKeys(descriptor, dependencies);
+  await deletePlannedObjectKeys(descriptor, dependencies, signal);
+  if (descriptor.writeQuiescedAt === null) {
+    throw new Error(`Backup cleanup intent ${intent.backup_id} retains an unquiesced write epoch`);
+  }
 }
 
 async function assertTenantBoundDescriptor(
@@ -307,6 +405,8 @@ export class AgentBackupV2StorageService {
     snapshotType: AgentBackupSnapshotType;
     source: AsyncIterable<Uint8Array>;
     verify: (source: AsyncIterable<Uint8Array>) => Promise<AgentBackupStreamVerification>;
+    signal: AbortSignal;
+    writeLeaseExpiresAt: Date;
     createdAt?: Date;
     maxTotalBytes?: number;
   }): Promise<StoredAgentSandboxBackup> {
@@ -318,10 +418,22 @@ export class AgentBackupV2StorageService {
       backupId: params.identity.backupId ?? randomUUID(),
     };
     assertIdentity(identity);
+    if (params.signal.aborted) throw abortReason(params.signal);
     const createdAt = params.createdAt ?? new Date();
     if (!Number.isFinite(createdAt.getTime())) {
       throw new Error("Chunked backup creation time is invalid");
     }
+    const leaseDurationMs = params.writeLeaseExpiresAt.getTime() - Date.now();
+    if (
+      !Number.isFinite(leaseDurationMs) ||
+      leaseDurationMs <= 0 ||
+      leaseDurationMs > AGENT_BACKUP_WRITE_LEASE_MAX_MS
+    ) {
+      throw new Error(
+        `Chunked backup write lease must expire within ${AGENT_BACKUP_WRITE_LEASE_MAX_MS}ms`,
+      );
+    }
+    const objectSetId = randomUUID();
 
     let stagingDescriptor: AgentBackupChunkStagingDescriptor = {
       format: "elizaos.agent-backup-chunks",
@@ -331,7 +443,10 @@ export class AgentBackupV2StorageService {
       organizationId: identity.organizationId,
       sandboxRecordId: identity.sandboxRecordId,
       backupId: identity.backupId,
+      objectSetId,
       createdAt: createdAt.toISOString(),
+      writeLeaseExpiresAt: params.writeLeaseExpiresAt.toISOString(),
+      writeQuiescedAt: null,
       plannedObjectKeys: [],
       failure: null,
     };
@@ -343,7 +458,9 @@ export class AgentBackupV2StorageService {
     try {
       const descriptor = await this.dependencies.stageChunks({
         identity,
+        objectSetId,
         source: params.source,
+        signal: params.signal,
         createdAt,
         maxTotalBytes: params.maxTotalBytes,
         onObjectPlanned: async ({ index, objectKey }) => {
@@ -356,33 +473,49 @@ export class AgentBackupV2StorageService {
           };
           await this.dependencies.repository.updateChunkedBackupStaging(
             identity.backupId,
+            objectSetId,
             stagingDescriptor,
           );
         },
       });
-      const verification = await params.verify(
-        this.dependencies.readChunks({ identity, descriptor }),
+      const verification = await raceWithAbort(
+        params.verify(
+          this.dependencies.readChunks({
+            identity,
+            descriptor,
+            signal: params.signal,
+          }),
+        ),
+        params.signal,
       );
       if (!DIGEST_PATTERN.test(verification.contentHash)) {
         throw new Error("Snapshot stream verifier did not return a SHA-256 content hash");
       }
       return await this.dependencies.repository.commitChunkedBackup({
         backupId: identity.backupId,
+        writeEpoch: objectSetId,
         contentHash: verification.contentHash,
         descriptor: descriptor as AgentBackupChunkCompleteDescriptor,
         verifiedAt: new Date(),
       });
     } catch (error) {
       const message = errorMessage(error);
-      const failed = failedDescriptor(stagingDescriptor, message);
+      if (error instanceof AgentBackupWriteEpochUnquiescedError) {
+        throw new Error(
+          `Chunked backup write outcome is unknown; durable epoch ${objectSetId} remains fenced for repeated reconciliation`,
+          { cause: error },
+        );
+      }
+      const failed = failedDescriptor(stagingDescriptor, message, new Date());
       const failedRow = await this.dependencies.repository.failChunkedBackup(
         identity.backupId,
+        objectSetId,
         failed,
         message,
       );
       if (!failedRow) {
         const resolved = await this.dependencies.repository.getChunkedBackupById(identity.backupId);
-        if (isMatchingCompleteBackup(resolved, identity)) {
+        if (isMatchingCompleteBackup(resolved, identity, objectSetId)) {
           return resolved;
         }
         throw new Error(
@@ -391,7 +524,7 @@ export class AgentBackupV2StorageService {
         );
       }
       try {
-        await removePlannedObjects(failedRow, failed, this.dependencies);
+        await removePlannedObjects(failedRow, failed, this.dependencies, params.signal);
         await this.dependencies.repository.deleteIncompleteChunkedBackup(identity.backupId);
       } catch (cleanupError) {
         throw new Error(
@@ -406,6 +539,7 @@ export class AgentBackupV2StorageService {
   async reconcileIncomplete(params: {
     before: Date;
     limit?: number;
+    signal?: AbortSignal;
   }): Promise<{ deleted: number; retained: number }> {
     const limit = params.limit ?? DEFAULT_RECONCILE_BATCH_SIZE;
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_RECONCILE_BATCH_SIZE) {
@@ -420,19 +554,54 @@ export class AgentBackupV2StorageService {
     let deleted = 0;
     let retained = 0;
     for (const row of rows) {
+      if (params.signal?.aborted) throw abortReason(params.signal);
       try {
         const descriptor = row.state_data_descriptor;
         if (
           row.storage_commit_state === "cleanup-pending" &&
           descriptor?.commitState === "complete"
         ) {
-          await removeCompleteObjects(row, descriptor, this.dependencies);
+          await removeCompleteObjects(row, descriptor, this.dependencies, params.signal);
         } else {
-          await removePlannedObjects(row, requireStagingDescriptor(row), this.dependencies);
+          const staging = requireStagingDescriptor(row);
+          if (staging.writeQuiescedAt === null) {
+            if (
+              (row.storage_commit_state === "staging" || row.storage_commit_state === "failed") &&
+              staging.plannedObjectKeys.length === 0
+            ) {
+              const failure = "Backup write lease expired before any object was planned";
+              const quiescedRow =
+                await this.dependencies.repository.quiesceExpiredEmptyChunkedBackup(
+                  row.id,
+                  staging.objectSetId,
+                  failure,
+                );
+              if (
+                quiescedRow &&
+                (await this.dependencies.repository.deleteIncompleteChunkedBackup(row.id))
+              ) {
+                deleted += 1;
+                continue;
+              }
+            } else {
+              await removePlannedObjects(row, staging, this.dependencies, params.signal);
+            }
+            await this.dependencies.repository.rescheduleIncompleteChunkedBackup(
+              row.id,
+              row.reconcileVersion,
+            );
+            retained += 1;
+            continue;
+          }
+          await removePlannedObjects(row, staging, this.dependencies, params.signal);
         }
         if (await this.dependencies.repository.deleteIncompleteChunkedBackup(row.id)) {
           deleted += 1;
         } else {
+          await this.dependencies.repository.rescheduleIncompleteChunkedBackup(
+            row.id,
+            row.reconcileVersion,
+          );
           retained += 1;
         }
       } catch (error) {
@@ -442,19 +611,30 @@ export class AgentBackupV2StorageService {
           backupId: row.id,
           error: errorMessage(error),
         });
+        await this.dependencies.repository.rescheduleIncompleteChunkedBackup(
+          row.id,
+          row.reconcileVersion,
+        );
         retained += 1;
+        if (params.signal?.aborted) throw abortReason(params.signal);
       }
     }
+    if (params.signal?.aborted) throw abortReason(params.signal);
     const intents = await this.dependencies.repository.listBackupObjectCleanupIntentsBefore(
       params.before,
       limit,
     );
     for (const intent of intents) {
+      if (params.signal?.aborted) throw abortReason(params.signal);
       try {
-        await removeCleanupIntentObjects(intent, this.dependencies);
+        await removeCleanupIntentObjects(intent, this.dependencies, params.signal);
         if (await this.dependencies.repository.deleteBackupObjectCleanupIntent(intent.backup_id)) {
           deleted += 1;
         } else {
+          await this.dependencies.repository.rescheduleBackupObjectCleanupIntent(
+            intent.backup_id,
+            intent.reconcileVersion,
+          );
           retained += 1;
         }
       } catch (error) {
@@ -464,7 +644,12 @@ export class AgentBackupV2StorageService {
           backupId: intent.backup_id,
           error: errorMessage(error),
         });
+        await this.dependencies.repository.rescheduleBackupObjectCleanupIntent(
+          intent.backup_id,
+          intent.reconcileVersion,
+        );
         retained += 1;
+        if (params.signal?.aborted) throw abortReason(params.signal);
       }
     }
     return { deleted, retained };

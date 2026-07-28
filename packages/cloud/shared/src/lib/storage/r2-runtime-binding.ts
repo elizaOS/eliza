@@ -28,7 +28,7 @@ export interface RuntimeR2Bucket {
       customMetadata?: Record<string, string>;
     },
   ): Promise<unknown>;
-  delete(key: string): Promise<unknown>;
+  delete(keys: string | string[]): Promise<unknown>;
 }
 
 let runtimeBucket: RuntimeR2Bucket | null = null;
