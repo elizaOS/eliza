@@ -19,8 +19,8 @@
  *      snaps the sheet open; a slow sub-threshold drag leaves it closed.
  *   4. Drag-through prevention — dragging the sheet grabber must not deliver
  *      pointer events into (or scroll) the home screen beneath.
- *   5. (touch) Rail flick home→launcher with a genuine CDP touch swipe must
- *      not ghost-launch the tile under the finger.
+ *   5. (touch) A genuine CDP touch rail flick that starts on a launcher tile
+ *      must return home without ghost-launching that tile.
  *   6. (touch) A vertical pan over `home-notification-list` is contained to the
  *      inbox (the list is `overscroll-y-contain`) — it must not flip the
  *      home↔launcher rail, chain into the home column beneath, or ghost-tap the
@@ -432,7 +432,7 @@ test("chat sheet: fast flick snaps open, slow sub-threshold drag stays closed, a
 });
 
 test.describe("real touch (hasTouch project)", () => {
-  test("rail flick via CDP touch does not ghost-launch the tile under the finger", async ({
+  test("rail flick starting on a launcher tile via CDP touch returns home without ghost-launching it", async ({
     page,
     browserName,
   }, testInfo) => {
@@ -447,21 +447,28 @@ test.describe("real touch (hasTouch project)", () => {
     const surface = page.getByTestId("home-launcher-surface");
 
     // The shared helper uses genuine CDP touch and refuses a mouse fallback.
-    await navigateHomeLauncher(page, "launcher", { input: "touch" });
+    const grid = await navigateHomeLauncher(page, "launcher", {
+      input: "touch",
+    });
     await evidenceShot(page, "touch-rail-flick-to-launcher");
 
-    // GHOST-CLICK: release must not launch the tile under the finger.
+    // Start the return flick on the actual Settings control. A swipe from empty
+    // rail space proves navigation, but cannot catch the compat-click regression
+    // this case owns.
+    const settingsButton = grid
+      .getByTestId("launcher-tile-settings")
+      .getByRole("button", { name: "Settings" });
+    await expect(settingsButton).toBeVisible({ timeout: 15_000 });
+    await cdpTouchDrag(page, settingsButton, 220, 4, 10);
+
+    // GHOST-CLICK: release must not launch the tile where the finger started.
     await page.waitForTimeout(500);
     await expect(page.getByTestId("settings-shell")).toHaveCount(0);
-    await expect(surface).toHaveAttribute("data-page", "launcher");
+    await expect(surface).toHaveAttribute("data-page", "home");
     await expect(page.getByTestId("chat-overlay")).not.toHaveAttribute(
       "data-open",
       "true",
     );
-
-    await navigateHomeLauncher(page, "home", { input: "touch" });
-    await expect(page.getByTestId("settings-shell")).toHaveCount(0);
-    await expect(surface).toHaveAttribute("data-page", "home");
     await evidenceShot(page, "touch-rail-flick-back-home");
   });
 
