@@ -1,4 +1,5 @@
 import { SolanaParsedTransaction } from "../helius";
+import { collectProgramIdsFromTransaction } from "./instructions";
 
 export type ParsedNativeTransfer = {
   from: string | null;
@@ -18,6 +19,7 @@ export type ParsedWalletTransaction = {
   timestamp: number | null;
   nativeTransfers: ParsedNativeTransfer[];
   tokenTransfers: ParsedTokenTransfer[];
+  programOrContractIds: string[];
 };
 
 export function parseSolanaTransaction(
@@ -46,6 +48,10 @@ export function parseSolanaTransaction(
       }))
     : [];
 
+  const programOrContractIds = transaction
+    ? Array.from(collectProgramIdsFromTransaction(transaction))
+    : [];
+
   return {
     signature: transaction?.signature ?? null,
     timestamp:
@@ -54,5 +60,6 @@ export function parseSolanaTransaction(
         : null,
     nativeTransfers,
     tokenTransfers,
+    programOrContractIds,
   };
 }

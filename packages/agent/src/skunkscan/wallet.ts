@@ -8,6 +8,7 @@ import {
 } from "./providers/priceProvider";
 import { createWalletInvestigation } from "./investigations/walletIntegration";
 import { runWalletPipeline } from "./pipeline/walletPipeline";
+import { parseSolanaTransaction } from "./parsers/transaction";
 import {
   SupportedChain,
   WalletBalance,
@@ -97,6 +98,11 @@ const recentParsedTransactions =
     ),
   );
 
+// Normalized 1:1 from the exact same array analyzers previously
+// received raw — same elements, same order, same count.
+const normalizedRecentParsedTransactions =
+  recentParsedTransactions.map(parseSolanaTransaction);
+
 if (!connector.getOldestTransaction) {
   throw new Error(
     "The blockchain connector does not support oldest transaction retrieval.",
@@ -129,10 +135,11 @@ const oldestParsedTransactions =
       ])
     : [];
 
-const firstParsedTransaction =
+const firstParsedTransaction = parseSolanaTransaction(
   oldestParsedTransactions.length > 0
     ? oldestParsedTransactions[0]
-    : null;
+    : null,
+);
 
 const tokenBalancesResult =
   await connector.getTokenBalances(walletAddress);
@@ -228,6 +235,7 @@ const tokenHoldings: WalletTokenHolding[] =
     oldestKnownTransaction.timestamp,
   firstParsedTransaction,
   recentParsedTransactions,
+  normalizedRecentParsedTransactions,
   tokenPrices,
 });
 

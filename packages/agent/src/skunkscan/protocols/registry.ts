@@ -1,9 +1,10 @@
+import { SupportedChain } from "../types";
 import { SOLANA_DEX_PROTOCOLS } from "./solana/dex";
 import { SOLANA_LAUNCHPAD_PROTOCOLS } from "./solana/launchpad";
 import { SOLANA_LENDING_PROTOCOLS } from "./solana/lending";
 import { SOLANA_STAKING_PROTOCOLS } from "./solana/staking";
 
-export type SolanaProtocol = {
+export type ChainProtocol = {
   programId: string;
 
   name: string;
@@ -41,19 +42,32 @@ export type SolanaProtocol = {
   tags: string[];
 };
 
-const SOLANA_PROTOCOLS: Readonly<Record<string, SolanaProtocol>> = {
+const SOLANA_PROTOCOLS: Readonly<Record<string, ChainProtocol>> = {
   ...SOLANA_DEX_PROTOCOLS,
   ...SOLANA_LAUNCHPAD_PROTOCOLS,
   ...SOLANA_LENDING_PROTOCOLS,
   ...SOLANA_STAKING_PROTOCOLS,
 };
 
-export function lookupSolanaProtocol(
-  programId: string | null | undefined,
-): SolanaProtocol | null {
-  if (!programId) {
+const CHAIN_PROTOCOL_REGISTRIES: Partial<
+  Record<SupportedChain, Readonly<Record<string, ChainProtocol>>>
+> = {
+  solana: SOLANA_PROTOCOLS,
+};
+
+export function lookupProtocol(
+  chain: SupportedChain,
+  programOrContractId: string | null | undefined,
+): ChainProtocol | null {
+  if (!programOrContractId) {
     return null;
   }
 
-  return SOLANA_PROTOCOLS[programId] ?? null;
+  const registry = CHAIN_PROTOCOL_REGISTRIES[chain];
+
+  if (!registry) {
+    return null;
+  }
+
+  return registry[programOrContractId] ?? null;
 }

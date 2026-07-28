@@ -27,6 +27,7 @@ import { analyzeWalletTransactionRisk } from "../analyzers/transactionRisk";
 import { analyzeWalletTrust } from "../analyzers/trust";
 import { analyzeWalletWhaleStatus } from "../analyzers/whale";
 import { SolanaParsedTransaction } from "../helius";
+import { ParsedWalletTransaction } from "../parsers/transaction";
 import { TokenPrice } from "../providers/priceProvider";
 import { getWalletIntelligenceSources } from "../sources/registry";
 import {
@@ -44,8 +45,13 @@ export interface WalletPipelineInput {
   recentTransactions: WalletRecentTransaction[];
   oldestTransactionId?: string;
   oldestTransactionTimestamp?: number;
-  firstParsedTransaction: SolanaParsedTransaction | null;
+  firstParsedTransaction: ParsedWalletTransaction | null;
+  // Raw, unnormalized — consumed only by relationships.ts today.
+  // Slated to move to normalizedRecentParsedTransactions in a
+  // fast-follow once relationships.ts is migrated (see PR description).
   recentParsedTransactions: SolanaParsedTransaction[];
+  // Normalized, chain-neutral — consumed by defi.ts/protocols.ts.
+  normalizedRecentParsedTransactions: ParsedWalletTransaction[];
   tokenPrices: Record<string, TokenPrice>;
 }
 

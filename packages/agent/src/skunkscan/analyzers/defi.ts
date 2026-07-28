@@ -1,23 +1,21 @@
-import { lookupSolanaProtocol } from "../protocols/registry";
+import { lookupProtocol } from "../protocols/registry";
 import {
+  SupportedChain,
   WalletDeFiProtocol,
   WalletDeFiSummary,
 } from "../types";
 
-import { SolanaParsedTransaction } from "../helius";
-import { collectProgramIdsFromTransaction } from "../parsers/instructions";
+import { ParsedWalletTransaction } from "../parsers/transaction";
 
 export function analyzeWalletDeFi(
-  parsedTransactions: SolanaParsedTransaction[],
+  parsedTransactions: ParsedWalletTransaction[],
+  chain: SupportedChain,
 ): WalletDeFiSummary {
   const protocolMap = new Map<string, WalletDeFiProtocol>();
 
   for (const transaction of parsedTransactions) {
-    const programIds =
-      collectProgramIdsFromTransaction(transaction);
-
-    for (const programId of programIds) {
-      const protocol = lookupSolanaProtocol(programId);
+    for (const programOrContractId of transaction.programOrContractIds) {
+      const protocol = lookupProtocol(chain, programOrContractId);
 
       if (!protocol) {
         continue;
@@ -58,7 +56,7 @@ export function analyzeWalletDeFi(
           "No known DeFi protocol interactions were identified in the analyzed transactions.",
         ]
       : [
-          "Protocol detection is based on recognized Solana program IDs.",
+          "Protocol detection is based on recognized program or contract IDs.",
         ];
 
   return {
