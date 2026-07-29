@@ -1004,7 +1004,7 @@ describe("RESOLVE_REQUEST subject authorization", () => {
       data: { error: "CROSS_SUBJECT_APPROVAL_FORBIDDEN" },
     });
     expect(docMocks.approve).not.toHaveBeenCalled();
-    expect(docMocks.markExecuting).not.toHaveBeenCalled();
+    expect(docMocks.claimExecution).not.toHaveBeenCalled();
     expect(docMocks.markDone).not.toHaveBeenCalled();
   });
 });
@@ -1069,9 +1069,12 @@ describe("RESOLVE_REQUEST household approval contract", () => {
         executed: false,
       },
     });
-    expect(docMocks.markExpired).toHaveBeenCalledWith(malformed.id);
+    expect(docMocks.markExpired).toHaveBeenCalledWith(
+      malformed.id,
+      SELF_ENTITY_ID,
+    );
     expect(docMocks.approve).not.toHaveBeenCalled();
-    expect(docMocks.markExecuting).not.toHaveBeenCalled();
+    expect(docMocks.claimExecution).not.toHaveBeenCalled();
     expect(docMocks.markDone).not.toHaveBeenCalled();
     expect(runSpy).not.toHaveBeenCalled();
     expect(texts.join(" ")).toContain("terminally invalidated");
@@ -1161,7 +1164,7 @@ describe("RESOLVE_REQUEST resource-capacity review contract", () => {
       },
     });
     expect(docMocks.approve).not.toHaveBeenCalled();
-    expect(docMocks.markExecuting).not.toHaveBeenCalled();
+    expect(docMocks.claimExecution).not.toHaveBeenCalled();
     expect(docMocks.markDone).not.toHaveBeenCalled();
     expect(runSpy).not.toHaveBeenCalled();
   });
@@ -1236,7 +1239,7 @@ describe("RESOLVE_REQUEST scheduling approval path", () => {
       callback,
     );
 
-    expect(docMocks.approve).toHaveBeenCalledWith(pending.id, {
+    expect(docMocks.approve).toHaveBeenCalledWith(pending.id, "owner-1", {
       resolvedBy: "owner-1",
       resolutionReason: "reviewed exact draft",
     });
@@ -1249,7 +1252,7 @@ describe("RESOLVE_REQUEST scheduling approval path", () => {
       },
     });
     expect(sendSpy).not.toHaveBeenCalled();
-    expect(docMocks.markExecuting).not.toHaveBeenCalled();
+    expect(docMocks.claimExecution).not.toHaveBeenCalled();
     expect(docMocks.markDone).not.toHaveBeenCalled();
     expect(texts.join(" ")).toContain("Nothing was sent");
   });

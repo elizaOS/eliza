@@ -94,7 +94,6 @@ import {
   ApprovalConnectorPreflightError,
   ApprovalKnownNonDeliveryError,
   type CrossChannelSendChannel,
-  dispatchCrossChannelSend,
   prepareCrossChannelSend,
 } from "./lib/messaging-helpers.js";
 import { formatPromptValue } from "./lib/prompt-format.js";
@@ -2050,6 +2049,25 @@ async function returnSettledDecision(
   return settled.result;
 }
 
+/**
+ * Reads the approval row this caller may act on. The caller's own subject is
+ * the primary scope so another subject's id resolves to nothing rather than
+ * confirming that the request exists. Household proposals and
+ * resource-capacity reviews addressed to the owner are persisted under
+ * SELF_ENTITY_ID, so a miss falls back to that subject; whether the resulting
+ * row is a legitimate owner-self target is decided by the caller, which denies
+ * everything else as a cross-subject attempt.
+ */
+async function readResolvableApproval(
+  queue: ApprovalQueue,
+  requestId: string,
+  subjectUserId: string,
+): Promise<ApprovalRequest | null> {
+  const own = await queue.byId(requestId, subjectUserId);
+  if (own || subjectUserId === SELF_ENTITY_ID) return own;
+  return queue.byId(requestId, SELF_ENTITY_ID);
+}
+
 async function resolveApprovalRequest(
   runtime: IAgentRuntime,
   message: Memory,
@@ -2160,66 +2178,76 @@ async function resolveApprovalRequest(
     resolutionReason: extracted.reason ?? `user ${intent}d`,
   };
   for (let attempt = 0; attempt < 4; attempt += 1) {
-    let current = await queue.byId(extracted.requestId, subjectUserId);
+    let current = await readResolvableApproval(
+      queue,
+      extracted.requestId,
+      subjectUserId,
+    );
     if (!current) return denied("REQUEST_NOT_FOUND");
 
-  const householdTarget = readHouseholdProposalApprovalTarget(current);
-  const capacityTarget = readResourceCapacityReviewTarget(current);
-  if (isHouseholdProposalApprovalWorkflow(current) && !householdTarget) {
-    if (current.subjectUserId !== SELF_ENTITY_ID) {
-      return denied("HOUSEHOLD_APPROVAL_INVALID_CONTRACT");
-    }
-    const invalidated = await queue.markExpired(current.id);
-    const text = `Household approval ${current.id} has an invalid proposal contract. Nothing was executed; the request was terminally invalidated.`;
-    await callback?.({ text });
-    return withApprovalProof(
-      {
-        text,
-        success: false,
-        data: {
-          error: "HOUSEHOLD_APPROVAL_INVALID_CONTRACT",
-          requestId: invalidated.id,
-          state: invalidated.state,
-          executed: false,
+    const householdTarget = readHouseholdProposalApprovalTarget(current);
+    const capacityTarget = readResourceCapacityReviewTarget(current);
+    if (isHouseholdProposalApprovalWorkflow(current) && !householdTarget) {
+      if (current.subjectUserId !== SELF_ENTITY_ID) {
+        return denied("HOUSEHOLD_APPROVAL_INVALID_CONTRACT");
+      }
+      const invalidated = await queue.markExpired(
+        current.id,
+        current.subjectUserId,
+      );
+      const text = `Household approval ${current.id} has an invalid proposal contract. Nothing was executed; the request was terminally invalidated.`;
+      await callback?.({ text });
+      return withApprovalProof(
+        {
+          text,
+          success: false,
+          data: {
+            error: "HOUSEHOLD_APPROVAL_INVALID_CONTRACT",
+            requestId: invalidated.id,
+            state: invalidated.state,
+            executed: false,
+          },
         },
-      },
-      invalidated,
-    );
-  }
-  if (isResourceCapacityReviewWorkflow(current) && !capacityTarget) {
-    if (current.subjectUserId !== SELF_ENTITY_ID) {
-      return denied("RESOURCE_CAPACITY_REVIEW_INVALID_CONTRACT");
+        invalidated,
+      );
     }
-    const invalidated = await queue.markExpired(current.id);
-    const text = `Resource-capacity review ${current.id} has an invalid proposal contract. Nothing was reserved, changed, or sent; the request was terminally invalidated.`;
-    await callback?.({ text });
-    return withApprovalProof(
-      {
-        text,
-        success: false,
-        data: {
-          error: "RESOURCE_CAPACITY_REVIEW_INVALID_CONTRACT",
-          requestId: invalidated.id,
-          state: invalidated.state,
-          executed: false,
+    if (isResourceCapacityReviewWorkflow(current) && !capacityTarget) {
+      if (current.subjectUserId !== SELF_ENTITY_ID) {
+        return denied("RESOURCE_CAPACITY_REVIEW_INVALID_CONTRACT");
+      }
+      const invalidated = await queue.markExpired(
+        current.id,
+        current.subjectUserId,
+      );
+      const text = `Resource-capacity review ${current.id} has an invalid proposal contract. Nothing was reserved, changed, or sent; the request was terminally invalidated.`;
+      await callback?.({ text });
+      return withApprovalProof(
+        {
+          text,
+          success: false,
+          data: {
+            error: "RESOURCE_CAPACITY_REVIEW_INVALID_CONTRACT",
+            requestId: invalidated.id,
+            state: invalidated.state,
+            executed: false,
+          },
         },
-      },
-      invalidated,
-    );
-  }
-  const authenticatedOwnerSelfApproval =
-    (householdTarget?.partyEntityId === SELF_ENTITY_ID ||
-      capacityTarget?.partyEntityId === SELF_ENTITY_ID) &&
-    current.subjectUserId === SELF_ENTITY_ID;
-  if (
-    current.subjectUserId !== subjectUserId &&
-    !authenticatedOwnerSelfApproval
-  ) {
-    logger.warn(
-      `[OwnerResolveRequest] ${subjectUserId} attempted to resolve approval ${current.id} owned by ${current.subjectUserId}`,
-    );
-    return denied("CROSS_SUBJECT_APPROVAL_FORBIDDEN");
-  }
+        invalidated,
+      );
+    }
+    const authenticatedOwnerSelfApproval =
+      (householdTarget?.partyEntityId === SELF_ENTITY_ID ||
+        capacityTarget?.partyEntityId === SELF_ENTITY_ID) &&
+      current.subjectUserId === SELF_ENTITY_ID;
+    if (
+      current.subjectUserId !== subjectUserId &&
+      !authenticatedOwnerSelfApproval
+    ) {
+      logger.warn(
+        `[OwnerResolveRequest] ${subjectUserId} attempted to resolve approval ${current.id} owned by ${current.subjectUserId}`,
+      );
+      return denied("CROSS_SUBJECT_APPROVAL_FORBIDDEN");
+    }
     try {
       if (
         intent === "reconcile_delivered" ||
@@ -2233,7 +2261,7 @@ async function resolveApprovalRequest(
         }
         const reconciled = await queue.reconcileExecution({
           requestId: current.id,
-          subjectUserId,
+          subjectUserId: current.subjectUserId,
           attemptId: current.execution.attemptId,
           outcome:
             intent === "reconcile_delivered" ? "delivered" : "not_delivered",
@@ -2254,121 +2282,124 @@ async function resolveApprovalRequest(
             ? `Reconciled request ${reconciled.id} as delivered.`
             : `Reconciled request ${reconciled.id} as not delivered; it is now safe to retry.`;
         await callback?.({ text });
-        return {
-          text,
-          success: true,
-          data: {
-            requestId: reconciled.id,
-            state: reconciled.state,
-            action: reconciled.action,
-            executed: reconciled.state === "done",
-            deliveryReconciled: true,
+        return withApprovalProof(
+          {
+            text,
+            success: true,
+            data: {
+              requestId: reconciled.id,
+              state: reconciled.state,
+              action: reconciled.action,
+              executed: reconciled.state === "done",
+              deliveryReconciled: true,
+            },
           },
-        };
+          reconciled,
+        );
       }
 
       if (current.state === "executing") {
         current = await recoverInterruptedApproval(
           queue,
           current,
-          subjectUserId,
+          current.subjectUserId,
         );
       }
       const settled = classifySettledDecision(intent, current);
       if (settled) return returnSettledDecision(settled, callback);
 
-    if (capacityTarget) {
-      if (!authenticatedOwnerSelfApproval) {
-        return denied("CROSS_SUBJECT_APPROVAL_FORBIDDEN");
-      }
-      const capacity = getResourceCapacityService(runtime);
-      if (!capacity) {
-        return denied("RESOURCE_CAPACITY_SERVICE_UNAVAILABLE");
-      }
-      const updated = await capacity.respondToProposal({
-        principalEntityId: SELF_ENTITY_ID,
-        proposalId: capacityTarget.proposalId,
-        proposalVersion: capacityTarget.proposalVersion,
-        partyEntityId: SELF_ENTITY_ID,
-        approvalRequestId: current.id,
-        contentSha256: capacityTarget.contentSha256,
-        decision: intent,
-        reason: extracted.reason ?? `owner ${intent}d capacity proposal`,
-      });
-      const text =
-        intent === "approve"
-          ? `Reviewed resource-capacity proposal ${capacityTarget.proposalId} v1. No caregiver, vehicle, or restraint was reserved; no calendar changed and no message was sent.`
-          : `Declined resource-capacity proposal ${capacityTarget.proposalId} v1. Nothing was reserved, changed, or sent.`;
-      await callback?.({ text });
-      return withApprovalProof(
-        {
-          text,
-          success: true,
-          data: {
-            actionName: ACTION_NAME,
-            operation: "review_resource_capacity_proposal",
-            requestId: updated.id,
-            state: updated.state,
-            action: updated.action,
-            proposalId: capacityTarget.proposalId,
-            proposalVersion: capacityTarget.proposalVersion,
-            decision: intent,
-            resolvedBy: updated.resolvedBy,
-            executed: false,
-            reserved: false,
-            calendarMutated: false,
-            messageSent: false,
+      if (capacityTarget) {
+        if (!authenticatedOwnerSelfApproval) {
+          return denied("CROSS_SUBJECT_APPROVAL_FORBIDDEN");
+        }
+        const capacity = getResourceCapacityService(runtime);
+        if (!capacity) {
+          return denied("RESOURCE_CAPACITY_SERVICE_UNAVAILABLE");
+        }
+        const updated = await capacity.respondToProposal({
+          principalEntityId: SELF_ENTITY_ID,
+          proposalId: capacityTarget.proposalId,
+          proposalVersion: capacityTarget.proposalVersion,
+          partyEntityId: SELF_ENTITY_ID,
+          approvalRequestId: current.id,
+          contentSha256: capacityTarget.contentSha256,
+          decision: intent,
+          reason: extracted.reason ?? `owner ${intent}d capacity proposal`,
+        });
+        const text =
+          intent === "approve"
+            ? `Reviewed resource-capacity proposal ${capacityTarget.proposalId} v1. No caregiver, vehicle, or restraint was reserved; no calendar changed and no message was sent.`
+            : `Declined resource-capacity proposal ${capacityTarget.proposalId} v1. Nothing was reserved, changed, or sent.`;
+        await callback?.({ text });
+        return withApprovalProof(
+          {
+            text,
+            success: true,
+            data: {
+              actionName: ACTION_NAME,
+              operation: "review_resource_capacity_proposal",
+              requestId: updated.id,
+              state: updated.state,
+              action: updated.action,
+              proposalId: capacityTarget.proposalId,
+              proposalVersion: capacityTarget.proposalVersion,
+              decision: intent,
+              resolvedBy: updated.resolvedBy,
+              executed: false,
+              reserved: false,
+              calendarMutated: false,
+              messageSent: false,
+            },
           },
-        },
-        updated,
-      );
-    }
-    if (householdTarget) {
-      if (!authenticatedOwnerSelfApproval) {
-        return denied("CROSS_SUBJECT_APPROVAL_FORBIDDEN");
+          updated,
+        );
       }
-      const { createHouseholdCoordinationService } = await import(
-        "../lifeops/household/service.js"
-      );
-      const updated = await createHouseholdCoordinationService(
-        runtime,
-      ).respondToProposal({
-        proposalId: householdTarget.proposalId,
-        proposalVersion: householdTarget.proposalVersion,
-        partyEntityId: SELF_ENTITY_ID,
-        approvalRequestId: current.id,
-        decision: intent,
-        reason: extracted.reason ?? `owner ${intent}d household proposal`,
-      });
-      const text =
-        intent === "approve"
-          ? `Approved household schedule proposal ${householdTarget.proposalId} v${householdTarget.proposalVersion}.`
-          : `Rejected household schedule proposal ${householdTarget.proposalId} v${householdTarget.proposalVersion}.`;
-      await callback?.({ text });
-      return withApprovalProof(
-        {
-          text,
-          success: true,
-          data: {
-            actionName: ACTION_NAME,
-            operation: "resolve_household_schedule_proposal",
-            requestId: updated.id,
-            state: updated.state,
-            action: updated.action,
-            proposalId: householdTarget.proposalId,
-            proposalVersion: householdTarget.proposalVersion,
-            coordinationId: householdTarget.coordinationId,
-            decision: intent,
-            resolvedBy: updated.resolvedBy,
+      if (householdTarget) {
+        if (!authenticatedOwnerSelfApproval) {
+          return denied("CROSS_SUBJECT_APPROVAL_FORBIDDEN");
+        }
+        const { createHouseholdCoordinationService } = await import(
+          "../lifeops/household/service.js"
+        );
+        const updated = await createHouseholdCoordinationService(
+          runtime,
+        ).respondToProposal({
+          proposalId: householdTarget.proposalId,
+          proposalVersion: householdTarget.proposalVersion,
+          partyEntityId: SELF_ENTITY_ID,
+          approvalRequestId: current.id,
+          decision: intent,
+          reason: extracted.reason ?? `owner ${intent}d household proposal`,
+        });
+        const text =
+          intent === "approve"
+            ? `Approved household schedule proposal ${householdTarget.proposalId} v${householdTarget.proposalVersion}.`
+            : `Rejected household schedule proposal ${householdTarget.proposalId} v${householdTarget.proposalVersion}.`;
+        await callback?.({ text });
+        return withApprovalProof(
+          {
+            text,
+            success: true,
+            data: {
+              actionName: ACTION_NAME,
+              operation: "resolve_household_schedule_proposal",
+              requestId: updated.id,
+              state: updated.state,
+              action: updated.action,
+              proposalId: householdTarget.proposalId,
+              proposalVersion: householdTarget.proposalVersion,
+              coordinationId: householdTarget.coordinationId,
+              decision: intent,
+              resolvedBy: updated.resolvedBy,
+            },
           },
-        },
-        updated,
-      );
-    }
+          updated,
+        );
+      }
       if (intent === "reject") {
         const rejected = await queue.reject(
           current.id,
-          subjectUserId,
+          current.subjectUserId,
           resolution,
         );
         logger.info(
@@ -2376,21 +2407,24 @@ async function resolveApprovalRequest(
         );
         const text = `Rejected request ${rejected.id}.`;
         await callback?.({ text });
-        return {
-          text,
-          success: true,
-          data: {
-            requestId: rejected.id,
-            state: rejected.state,
-            action: rejected.action,
+        return withApprovalProof(
+          {
+            text,
+            success: true,
+            data: {
+              requestId: rejected.id,
+              state: rejected.state,
+              action: rejected.action,
+            },
           },
-        };
+          rejected,
+        );
       }
 
       const approved =
         current.state === "approved" || current.state === "retryable"
           ? current
-          : await queue.approve(current.id, subjectUserId, resolution);
+          : await queue.approve(current.id, current.subjectUserId, resolution);
       // The tracking wrapper captures the last row the executor persisted so the
       // receipt reflects the real terminal state, not the pre-dispatch snapshot.
       let latestPersisted = approved;
@@ -2417,7 +2451,11 @@ async function resolveApprovalRequest(
     }
   }
 
-  const latest = await queue.byId(extracted.requestId, subjectUserId);
+  const latest = await readResolvableApproval(
+    queue,
+    extracted.requestId,
+    subjectUserId,
+  );
   if (!latest) return denied("REQUEST_NOT_FOUND");
   const settled = classifySettledDecision(intent, latest);
   if (settled) return returnSettledDecision(settled, callback);
