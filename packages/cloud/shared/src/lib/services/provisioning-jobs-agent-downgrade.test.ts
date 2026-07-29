@@ -68,6 +68,7 @@ function withClaimedDowngradeJob() {
       filters.type === JOB_TYPES.AGENT_DOWNGRADE ? [job] : [],
   );
   const recoverSpy = spyOn(jobsRepository, "recoverStaleJobs").mockResolvedValue(0);
+  const assertLeaseSpy = spyOn(jobsRepository, "assertExecutionLease").mockResolvedValue(undefined);
   const updateStatusSpy = spyOn(jobsRepository, "settleExecution").mockResolvedValue(undefined);
   const incrementSpy = spyOn(jobsRepository, "incrementAttempt").mockResolvedValue(undefined);
   return {
@@ -78,6 +79,7 @@ function withClaimedDowngradeJob() {
       conflictSpy.mockRestore();
       claimSpy.mockRestore();
       recoverSpy.mockRestore();
+      assertLeaseSpy.mockRestore();
       updateStatusSpy.mockRestore();
       incrementSpy.mockRestore();
     },
@@ -140,6 +142,7 @@ describe("ProvisioningJobService agent_downgrade", () => {
         ctx.job.max_attempts,
         undefined,
         ctx.job.execution_generation,
+        expect.any(String),
       );
     } finally {
       svcSpy.mockRestore();

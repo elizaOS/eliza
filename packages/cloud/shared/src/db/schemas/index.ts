@@ -62,6 +62,7 @@ export * from "./idempotency-keys";
 export * from "./inference-pending-charges";
 export * from "./influencer-marketplace";
 export * from "./invoices";
+export * from "./job-execution-leases";
 export * from "./jobs";
 export * from "./llm-trajectories";
 export * from "./managed-domains";

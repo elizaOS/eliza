@@ -129,6 +129,7 @@ function withClaimedJob(type: ProvisioningJobType, extraData: Record<string, unk
     async (f: { type: string }) => (f.type === type ? [job] : []),
   );
   const recoverSpy = spyOn(jobsRepository, "recoverStaleJobs").mockResolvedValue(0);
+  const assertLeaseSpy = spyOn(jobsRepository, "assertExecutionLease").mockResolvedValue(undefined);
   const updateStatusSpy = spyOn(jobsRepository, "settleExecution").mockResolvedValue(undefined);
   const updateSpy = spyOn(jobsRepository, "updateForExecution").mockImplementation(
     async (claimedJob, updates) => ({ ...claimedJob, ...updates }),
@@ -142,6 +143,7 @@ function withClaimedJob(type: ProvisioningJobType, extraData: Record<string, unk
     job,
     claimSpy,
     recoverSpy,
+    assertLeaseSpy,
     updateStatusSpy,
     updateSpy,
     incrementSpy,
@@ -149,6 +151,7 @@ function withClaimedJob(type: ProvisioningJobType, extraData: Record<string, unk
     restore() {
       claimSpy.mockRestore();
       recoverSpy.mockRestore();
+      assertLeaseSpy.mockRestore();
       updateStatusSpy.mockRestore();
       updateSpy.mockRestore();
       incrementSpy.mockRestore();
@@ -250,6 +253,7 @@ describe("ProvisioningJobService — retryable readiness transport does not burn
             error: "readiness probe transport_unresolved",
           }),
         }),
+        expect.any(String),
       );
       expect(ctx.retryLaterSpy).toHaveBeenCalledTimes(1);
       expect(ctx.retryLaterSpy.mock.calls[0]?.[0]).toBe(ctx.job);

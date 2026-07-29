@@ -268,6 +268,15 @@ export const PROVISIONING_JOB_TEST_TABLES: readonly string[] = [
   "updated_at" timestamp NOT NULL DEFAULT now(),
   PRIMARY KEY ("id")
 )`,
+  `CREATE TABLE IF NOT EXISTS "job_execution_leases" (
+  "job_id" uuid NOT NULL,
+  "execution_generation" uuid NOT NULL,
+  "owner_id" uuid NOT NULL,
+  "expires_at" timestamp NOT NULL,
+  "heartbeat_at" timestamp NOT NULL DEFAULT now(),
+  "created_at" timestamp NOT NULL DEFAULT now(),
+  PRIMARY KEY ("job_id")
+)`,
 ];
 
 export const TIER_UPGRADE_TEST_TABLES = PROVISIONING_JOB_TEST_TABLES;
