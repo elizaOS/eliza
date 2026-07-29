@@ -160,7 +160,10 @@ describe("InMemoryDatabaseAdapter — textContains", () => {
 		const all = await adapter.getMemories({ roomId, tableName: "messages" });
 		expect(
 			Object.fromEntries(
-				all.map((memory) => [(memory.content as { text: string }).text, memory.unique]),
+				all.map((memory) => [
+					(memory.content as { text: string }).text,
+					memory.unique,
+				]),
 			),
 		).toEqual({
 			"entry wins true": true,
@@ -174,9 +177,8 @@ describe("InMemoryDatabaseAdapter — textContains", () => {
 			tableName: "messages",
 			unique: true,
 		});
-		expect(unique.map((memory) => (memory.content as { text: string }).text)).toEqual([
-			"default is unique",
-			"entry wins true",
-		]);
+		expect(
+			unique.map((memory) => (memory.content as { text: string }).text),
+		).toEqual(["default is unique", "entry wins true"]);
 	});
 });
