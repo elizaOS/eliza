@@ -61,6 +61,7 @@ from .action_lineage import (
 from .clients.base import BaseClient
 from .evaluator import LifeOpsEvaluator
 from .evidence import (
+    EvidenceVerificationError,
     TrustedEvidenceVerifier,
     TrustedExecutionContext,
     TrustedToolExecutor,
@@ -102,6 +103,7 @@ from .types import (
     ScenarioMode,
     ScenarioResult,
     StaticGradingMode,
+    TrustedEvidenceRequirement,
     TurnResult,
     VerifiedEvidenceReceipt,
     compute_cache_hit_pct,
@@ -1053,18 +1055,35 @@ def _set_schema_discriminator(
     schema["required"] = required_values
 
 
-def build_tool_manifest(_world: LifeWorld) -> list[dict[str, Any]]:
+def build_tool_manifest(
+    _world: LifeWorld,
+    requirement: TrustedEvidenceRequirement | None = None,
+) -> list[dict[str, Any]]:
     """Build the OpenAI-compatible tool manifest for the current LifeOps world.
 
     Only OpenAI-compatible function names are exposed. The runner still
     executes legacy dotted actions such as ``CALENDAR.create`` when adapters
     produce them, but those names are not valid function identifiers for
     Cerebras/OpenAI-style tool schemas.
+
+    For an evidence-gated scenario the manifest is narrowed to the contract's
+    allowed surfaces. Offering every action while the contract admits a
+    handful makes an out-of-contract call near-certain, and such a call is
+    denied pre-dispatch — so an unfiltered manifest measures the mismatch
+    rather than the model's capability on the scenario.
     """
+    allowed: set[str] | None = None
+    if requirement is not None and requirement.allowed_actions:
+        allowed = {policy.name for policy in requirement.allowed_actions}
     tools: list[dict[str, Any]] = []
     for action_name in sorted(supported_actions()):
         if _OPENAI_FUNCTION_NAME_RE.fullmatch(action_name) is None:
             continue
+        if allowed is not None:
+            promoted = _PROMOTED_ACTION_DEFAULTS.get(action_name)
+            canonical = promoted[0] if promoted else action_name
+            if canonical not in allowed:
+                continue
         registry_tool = _registry_tool_for_action(action_name)
         if registry_tool is not None:
             tools.append(
@@ -6386,8 +6405,9 @@ class LifeOpsBenchRunner:
             self.agent_factory(scenario) if self.agent_factory is not None else self.agent_fn  # type: ignore[assignment]
         )
 
+        requirement = scenario.trusted_evidence_requirement
         for turn_number in range(1, scenario.max_turns + 1):
-            tool_manifest = build_tool_manifest(world)
+            tool_manifest = build_tool_manifest(world, requirement)
             agent_turn = await active_agent_fn(list(history), tool_manifest)
             if agent_turn.role != "assistant":
                 raise ValueError(
@@ -6406,7 +6426,6 @@ class LifeOpsBenchRunner:
                 or f"runner-{run_id}-{turn_number}-{action_index}"
                 for action_index, action in enumerate(agent_actions)
             ]
-            requirement = scenario.trusted_evidence_requirement
             if requirement is not None:
                 for tool_call_id in tool_call_ids:
                     validate_tool_call_id(tool_call_id)
@@ -6422,20 +6441,30 @@ class LifeOpsBenchRunner:
                 and self.trusted_evidence_verifier is not None
             )
             canonical_actions = [_normalize_action(action) for action in agent_actions]
+            # A batch that violates the evidence contract is denied whole:
+            # the shadow pass exists so a later unauthorized call cannot leave
+            # an earlier one partially committed. The denial is reported back
+            # as a tool result the model can react to — an out-of-contract call
+            # is scenario signal about the model, not a harness crash.
+            policy_denial: str | None = None
             if external_execution_enabled:
-                # Validate the complete batch against a shadow before the first
-                # real dispatch. A later malformed or unauthorized call cannot
-                # leave an earlier call partially committed.
                 shadow = deepcopy(world)
                 next_policy_counts = dict(policy_call_counts)
                 for canonical_action in canonical_actions:
-                    validate_action_policy(
-                        canonical_action,
-                        requirement,
-                        next_policy_counts,
-                    )
+                    try:
+                        validate_action_policy(
+                            canonical_action,
+                            requirement,
+                            next_policy_counts,
+                        )
+                    except EvidenceVerificationError as exc:
+                        # error-policy:J3 the contract rejected untrusted model
+                        # output; surface the refusal instead of dispatching.
+                        policy_denial = str(exc)
+                        break
                     _execute_action(canonical_action, shadow)
-                policy_call_counts = next_policy_counts
+                if policy_denial is None:
+                    policy_call_counts = next_policy_counts
 
             tool_results: list[dict[str, Any]] = []
             turn_verified_receipts: list[VerifiedEvidenceReceipt] = []
@@ -6443,6 +6472,27 @@ class LifeOpsBenchRunner:
                 # Execution failures don't crash the run — we surface them as
                 # tool-error messages and let scoring penalize via state mismatch.
                 tool_call_id = tool_call_ids[action_index]
+                if policy_denial is not None:
+                    denial_payload = mark_deterministic_lifeworld_result(
+                        {"error": "policy_denied", "message": policy_denial}
+                    )
+                    tool_results.append(
+                        {
+                            "name": action.name,
+                            "tool_call_id": tool_call_id,
+                            "content": json.dumps(denial_payload),
+                            "payload": denial_payload,
+                        }
+                    )
+                    history.append(
+                        MessageTurn(
+                            role="tool",
+                            content=json.dumps(denial_payload),
+                            name=action.name,
+                            tool_call_id=tool_call_id,
+                        )
+                    )
+                    continue
                 try:
                     if external_execution_enabled:
                         request_ordinal += 1

@@ -684,9 +684,15 @@ async def test_unrelated_or_unauthorized_action_never_reaches_executor(
 
     result = await runner.run_filtered()
 
+    # The contract refusal never reaches the executor and earns no credit. It
+    # is reported back as a denied tool result rather than aborting the run:
+    # an out-of-contract call is a measurable fact about the model, and an
+    # abort records zero turns and hides it.
     assert executor.contexts == []
     assert result.scenarios[0].total_score == 0.0
-    assert result.scenarios[0].terminated_reason == "error"
+    assert result.scenarios[0].terminated_reason != "error"
+    denied = result.scenarios[0].turns[0].tool_results[0]["payload"]
+    assert denied["error"] == "policy_denied"
 
 
 @pytest.mark.asyncio
