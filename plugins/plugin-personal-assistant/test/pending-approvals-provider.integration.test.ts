@@ -5,7 +5,13 @@
  * and rejected rows disappear without booting the full optional-plugin graph.
  */
 import { PGlite } from "@electric-sql/pglite";
-import type { IAgentRuntime, Memory, State, UUID } from "@elizaos/core";
+import {
+  ChannelType,
+  type IAgentRuntime,
+  type Memory,
+  type State,
+  type UUID,
+} from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
 import {
@@ -108,13 +114,15 @@ function signDocumentInput(
   };
 }
 
+const ROOM_ID = "00000000-0000-0000-0000-00000000bb01" as UUID;
+
 function message(entityId: UUID, text: string): Memory {
   return {
     id: "00000000-0000-0000-0000-00000000aa01" as UUID,
     entityId,
     agentId: AGENT_ID,
-    roomId: "00000000-0000-0000-0000-00000000bb01" as UUID,
-    content: { text },
+    roomId: ROOM_ID,
+    content: { text, channelType: ChannelType.DM },
     createdAt: Date.now(),
   } as Memory;
 }
@@ -145,6 +153,13 @@ beforeAll(async () => {
         ? scheduledTaskRunnerService
         : null,
     reportError: vi.fn(),
+    // These providers read owner-private context, so each call clears the
+    // LifeOps audience gate first: an owner DM room whose only participants
+    // are the owner and the agent. Serving them here keeps the queue SQL and
+    // the provider under test real while the gate resolves as private.
+    getRoom: async () => ({ id: ROOM_ID, type: ChannelType.DM }),
+    getParticipantsForRoom: async () => [OWNER_ID, AGENT_ID],
+    getAgent: async () => ({ id: AGENT_ID }),
   } as unknown as IAgentRuntime;
   queue = createAgentApprovalQueue(runtime, {
     agentId: AGENT_ID,
@@ -226,8 +241,13 @@ describe("pendingApprovals provider (real PGlite queue)", () => {
       message(STRANGER_ID, "approve everything"),
       emptyState,
     );
+    // The audience gate denies before the queue is read, so the result carries
+    // the unavailable marker rather than a count of 0 that would assert the
+    // owner has nothing pending.
     expect(result.text).toBe("");
-    expect(result.values?.pendingApprovalCount).toBe(0);
+    expect(result.values?.pendingApprovalsUnavailable).toBe(true);
+    expect(result.values?.pendingApprovalCount).toBeUndefined();
+    expect(result.data?.lifeOpsAudienceReceipts).toBeDefined();
   });
 
   it("scopes to the sender: another subject's pending rows do not render", async () => {
