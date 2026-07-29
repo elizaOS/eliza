@@ -446,8 +446,10 @@ async function fetchWithRetry(
       const retryable =
         !(error instanceof DownloadHttpError) || error.retryable === true;
       if (!retryable || attempt === maxAttempts) {
+        const details =
+          error instanceof Error ? error.message : String(error);
         throw new Error(
-          `Failed to download ${url} after ${attempt} attempt${attempt === 1 ? "" : "s"}`,
+          `${details}; Failed to download ${url} after ${attempt} attempt${attempt === 1 ? "" : "s"}`,
           { cause: error },
         );
       }

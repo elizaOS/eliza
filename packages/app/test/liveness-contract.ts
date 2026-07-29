@@ -26,6 +26,7 @@ const ASSISTANT_MESSAGE_SELECTOR =
 
 const DEFAULT_PROMPT = "In one short sentence, say hello.";
 const DEFAULT_REPLY_TIMEOUT_MS = 120_000;
+const TRANSIENT_ASSISTANT_REPLIES = new Set(["Thinking"]);
 
 export interface LivenessChatOptions {
   /** Prompt to send; defaults to a short, tool-free hello. */
@@ -54,6 +55,7 @@ export async function sendChatAndReadReply(
   page: Page,
   options: LivenessChatOptions = {},
 ): Promise<string> {
+  const replyTimeoutMs = options.replyTimeoutMs ?? DEFAULT_REPLY_TIMEOUT_MS;
   const composer = chatComposer(page);
   await expect(composer).toBeVisible({ timeout: 60_000 });
   await composer.fill(options.prompt ?? DEFAULT_PROMPT);
@@ -61,9 +63,19 @@ export async function sendChatAndReadReply(
   await chatSendButton(page).click();
 
   const assistant = page.locator(ASSISTANT_MESSAGE_SELECTOR).last();
-  await expect(assistant).toBeVisible({
-    timeout: options.replyTimeoutMs ?? DEFAULT_REPLY_TIMEOUT_MS,
-  });
+  await expect(assistant).toBeVisible({ timeout: replyTimeoutMs });
+  await expect
+    .poll(
+      async () => {
+        const text = (await assistant.textContent())?.trim() ?? "";
+        return TRANSIENT_ASSISTANT_REPLIES.has(text) ? "" : text;
+      },
+      {
+        timeout: replyTimeoutMs,
+        message: "assistant reply finished streaming",
+      },
+    )
+    .toMatch(/\S/);
   return (await assistant.textContent())?.trim() ?? "";
 }
 
