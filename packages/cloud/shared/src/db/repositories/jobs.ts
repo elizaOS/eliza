@@ -995,7 +995,8 @@ export class JobsRepository {
           try {
             await filters.onPermanentFailure(recovered);
           } catch (hookError) {
-            // The recovery itself committed; only the post-commit hook failed.
+            // error-policy:J7 observed-and-bounded — the recovery itself
+            // committed; only the post-commit hook failed.
             logger.warn("[jobs] Post-failure hook failed after a committed recovery", {
               jobId: job.id,
               type: job.type,
@@ -1004,6 +1005,8 @@ export class JobsRepository {
           }
         }
       } catch (error) {
+        // error-policy:J1/J7 per-job isolation with the outage signal kept:
+        // counted, logged, and rethrown below when EVERY job failed.
         sweepFailures++;
         logger.error("[jobs] Stale-job recovery failed for one job; continuing sweep", {
           jobId: job.id,
@@ -1054,11 +1057,15 @@ export class JobsRepository {
     try {
       return build(job, error);
     } catch {
-      // fall through to the hydrated attempt
+      // error-policy:J5 deferred observation — a raw-row probe throw is
+      // expected for offloaded payloads; the SAME error is observed and
+      // logged by the hydrated attempt below if it persists.
     }
     try {
       return build(await hydrateJob(job), error);
     } catch (buildError) {
+      // error-policy:J4/J7 degrade-with-signal — the flip must not be held
+      // hostage by an unbuildable writeback; backstop sweeps own the row.
       logger.error(
         "[jobs] Failure-writeback build threw; flipping the job WITHOUT settling its dependent row",
         {
@@ -1157,6 +1164,8 @@ export class JobsRepository {
           try {
             await filters.onPermanentFailure(recovered);
           } catch (hookError) {
+            // error-policy:J7 observed-and-bounded — the recovery committed;
+            // only the post-commit hook failed.
             logger.warn("[jobs] Post-failure hook failed after a committed recovery", {
               jobId: job.id,
               type: job.type,
@@ -1165,6 +1174,8 @@ export class JobsRepository {
           }
         }
       } catch (loopError) {
+        // error-policy:J1/J7 per-job isolation with the outage signal kept:
+        // counted, logged, and rethrown below when EVERY job failed.
         sweepFailures++;
         logger.error("[jobs] Startup recovery failed for one job; continuing sweep", {
           jobId: job.id,

@@ -3047,6 +3047,8 @@ export class ProvisioningJobService {
         }
       }
     } catch (error) {
+      // error-policy:J7 observed-and-bounded — the DB flip already committed;
+      // the read cache is TTL-bounded, so a failed evict degrades to staleness.
       logger.warn("[provisioning-jobs] Post-failure cache eviction skipped", {
         jobId: job.id,
         type: job.type,
