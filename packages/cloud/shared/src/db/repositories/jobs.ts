@@ -60,30 +60,18 @@ function lacksRecoveryProtectedExecutionLease(): SQL {
 }
 
 function hasPayloadUpdates(updates: Partial<Job> | Partial<NewJob>): boolean {
-  return (
-    updates.data !== undefined ||
-    updates.result !== undefined ||
-    updates.error !== undefined
-  );
+  return updates.data !== undefined || updates.result !== undefined || updates.error !== undefined;
 }
 
 function stringField(
   data: Record<string, unknown>,
-  field:
-    | "agentId"
-    | "agentName"
-    | "appId"
-    | "characterId"
-    | "organizationId"
-    | "userId",
+  field: "agentId" | "agentName" | "appId" | "characterId" | "organizationId" | "userId",
 ): string | null {
   const value = data[field];
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
-function indexedJobFields(
-  data: Record<string, unknown>,
-): Pick<Job, "agent_id" | "character_id"> {
+function indexedJobFields(data: Record<string, unknown>): Pick<Job, "agent_id" | "character_id"> {
   return {
     agent_id: stringField(data, "agentId"),
     character_id: stringField(data, "characterId"),
@@ -114,19 +102,12 @@ function timestampMillis(value: Date | string | null): number | null {
       : Date.parse(String(value));
 }
 
-function sameTimestamp(
-  left: Date | string | null,
-  right: Date | string | null,
-): boolean {
+function sameTimestamp(left: Date | string | null, right: Date | string | null): boolean {
   return timestampMillis(left) === timestampMillis(right);
 }
 
 function normalizedTimestamp(value: Date | string | null): Date | null {
-  return value === null
-    ? null
-    : value instanceof Date
-      ? value
-      : new Date(value);
+  return value === null ? null : value instanceof Date ? value : new Date(value);
 }
 
 function hasValidTimestamp(value: string): boolean {
@@ -154,25 +135,13 @@ const INTERRUPTION_COUNT_KEY = "__worker_interruptions";
  * interruption budget again, which errs on the side of retrying.
  */
 function readInterruptionCount(job: Job): number {
-  if (
-    job.data_storage !== "inline" ||
-    job.data === null ||
-    typeof job.data !== "object"
-  )
-    return 0;
+  if (job.data_storage !== "inline" || job.data === null || typeof job.data !== "object") return 0;
   const raw = (job.data as Record<string, unknown>)[INTERRUPTION_COUNT_KEY];
   return typeof raw === "number" && Number.isInteger(raw) && raw > 0 ? raw : 0;
 }
 
-function withInterruptionCount(
-  job: Job,
-  count: number,
-): Record<string, unknown> | null {
-  if (
-    job.data_storage !== "inline" ||
-    job.data === null ||
-    typeof job.data !== "object"
-  ) {
+function withInterruptionCount(job: Job, count: number): Record<string, unknown> | null {
+  if (job.data_storage !== "inline" || job.data === null || typeof job.data !== "object") {
     return null;
   }
   return {
@@ -304,8 +273,7 @@ function sameRetrySnapshot(left: Job, right: Job): boolean {
       : left.data_key === right.data_key;
   const sameResult =
     left.result_storage === "inline"
-      ? JSON.stringify(left.result ?? null) ===
-        JSON.stringify(right.result ?? null)
+      ? JSON.stringify(left.result ?? null) === JSON.stringify(right.result ?? null)
       : left.result_key === right.result_key;
   const sameError =
     left.error_storage === "inline"
@@ -395,11 +363,7 @@ async function prepareJobPayload<T extends Partial<Job> | Partial<NewJob>>(
   data: T,
   context: Pick<Job, "id" | "organization_id" | "created_at">,
 ): Promise<T> {
-  if (
-    data.data_storage === "r2" ||
-    data.result_storage === "r2" ||
-    data.error_storage === "r2"
-  ) {
+  if (data.data_storage === "r2" || data.result_storage === "r2" || data.error_storage === "r2") {
     return {
       ...data,
       ...(data.data !== undefined ? indexedJobFields(data.data) : {}),
@@ -526,11 +490,7 @@ export class JobsRepository {
    * @returns Job record or undefined.
    */
   async findById(id: string): Promise<Job | undefined> {
-    const [job] = await dbRead
-      .select()
-      .from(jobs)
-      .where(eq(jobs.id, id))
-      .limit(1);
+    const [job] = await dbRead.select().from(jobs).where(eq(jobs.id, id)).limit(1);
     return job ? await hydrateJob(job) : undefined;
   }
 
@@ -541,10 +501,7 @@ export class JobsRepository {
    * @param organizationId - Owning organization ID.
    * @returns Job record or undefined.
    */
-  async findByIdAndOrg(
-    id: string,
-    organizationId: string,
-  ): Promise<Job | undefined> {
+  async findByIdAndOrg(id: string, organizationId: string): Promise<Job | undefined> {
     const [job] = await dbRead
       .select()
       .from(jobs)
@@ -558,11 +515,7 @@ export class JobsRepository {
    * derive a compensating operation from a terminal job.
    */
   async findByIdForWrite(id: string): Promise<Job | undefined> {
-    const [job] = await dbWrite
-      .select()
-      .from(jobs)
-      .where(eq(jobs.id, id))
-      .limit(1);
+    const [job] = await dbWrite.select().from(jobs).where(eq(jobs.id, id)).limit(1);
     return job ? await hydrateJob(job) : undefined;
   }
 
@@ -570,19 +523,11 @@ export class JobsRepository {
    * Reads every durable job in one admin canary rollout from the primary.
    * Canary payloads are forced inline, so the JSON predicate is authoritative.
    */
-  async findAdminCanaryRolloutForWrite(
-    type: string,
-    rolloutId: string,
-  ): Promise<Job[]> {
+  async findAdminCanaryRolloutForWrite(type: string, rolloutId: string): Promise<Job[]> {
     const rows = await dbWrite
       .select()
       .from(jobs)
-      .where(
-        and(
-          eq(jobs.type, type),
-          sql`${jobs.data}->>'rolloutId' = ${rolloutId}`,
-        ),
-      )
+      .where(and(eq(jobs.type, type), sql`${jobs.data}->>'rolloutId' = ${rolloutId}`))
       .orderBy(jobs.created_at);
     return await Promise.all(rows.map(hydrateJob));
   }
@@ -639,13 +584,9 @@ export class JobsRepository {
     // Build query in one chain to avoid TypeScript inference issues
     const query = dbRead.select().from(jobs).$dynamic();
 
-    const rows = await (
-      conditions.length > 0 ? query.where(and(...conditions)) : query
-    )
+    const rows = await (conditions.length > 0 ? query.where(and(...conditions)) : query)
       .limit(filters.limit || 1000)
-      .orderBy(
-        filters.orderBy === "desc" ? desc(jobs.created_at) : jobs.created_at,
-      );
+      .orderBy(filters.orderBy === "desc" ? desc(jobs.created_at) : jobs.created_at);
     return await Promise.all(rows.map(hydrateJob));
   }
 
@@ -704,9 +645,7 @@ export class JobsRepository {
           dataFieldFilter,
         ),
       )
-      .orderBy(
-        filters.orderBy === "desc" ? desc(jobs.created_at) : jobs.created_at,
-      );
+      .orderBy(filters.orderBy === "desc" ? desc(jobs.created_at) : jobs.created_at);
     return await Promise.all(rows.map(hydrateJob));
   }
 
@@ -800,11 +739,7 @@ export class JobsRepository {
     executionOwnerId?: string;
     executionLeaseMs?: number;
   }): Promise<Job[]> {
-    if (
-      filters.sharedTypes.length === 0 ||
-      filters.maxRunning < 1 ||
-      filters.limit < 1
-    ) {
+    if (filters.sharedTypes.length === 0 || filters.maxRunning < 1 || filters.limit < 1) {
       return [];
     }
 
@@ -818,21 +753,11 @@ export class JobsRepository {
       const [running] = await tx
         .select({ count: sql<number>`count(*)::int` })
         .from(jobs)
-        .where(
-          and(
-            inArray(jobs.type, filters.sharedTypes),
-            eq(jobs.status, "in_progress"),
-          ),
-        );
+        .where(and(inArray(jobs.type, filters.sharedTypes), eq(jobs.status, "in_progress")));
       if (!running) {
-        throw new Error(
-          "Shared image-change capacity query returned no aggregate row",
-        );
+        throw new Error("Shared image-change capacity query returned no aggregate row");
       }
-      const claimLimit = Math.min(
-        filters.limit,
-        Math.max(0, filters.maxRunning - running.count),
-      );
+      const claimLimit = Math.min(filters.limit, Math.max(0, filters.maxRunning - running.count));
       if (claimLimit === 0) return [];
 
       const orgFilter = filters.organizationId
@@ -1020,9 +945,7 @@ export class JobsRepository {
     // Process each stale job, incrementing attempts and failing if max reached
     for (const job of staleJobs) {
       const resumeCommittedCanary = hasRecoverableAdminCanaryCutover(job);
-      const newAttempts = resumeCommittedCanary
-        ? job.attempts
-        : (job.attempts || 0) + 1;
+      const newAttempts = resumeCommittedCanary ? job.attempts : (job.attempts || 0) + 1;
       const maxAttempts = job.max_attempts ?? filters.maxAttempts ?? 3;
       const isFailed = !resumeCommittedCanary && newAttempts >= maxAttempts;
       const timeoutError = resumeCommittedCanary
@@ -1030,9 +953,7 @@ export class JobsRepository {
         : isFailed
           ? `Job timed out ${newAttempts} times - max attempts reached`
           : `Job timed out - recovered for retry (attempt ${newAttempts}/${maxAttempts})`;
-      const recoveryFence = resumeCommittedCanary
-        ? adminCanaryRecoveryFence(job)
-        : sql`TRUE`;
+      const recoveryFence = resumeCommittedCanary ? adminCanaryRecoveryFence(job) : sql`TRUE`;
       const updated = await this.recoverJobFromSnapshot({
         job,
         startedBefore: staleThreshold,
@@ -1098,9 +1019,7 @@ export class JobsRepository {
         : isFailed
           ? `Job interrupted by worker restart ${interruptions} times - interruption budget exhausted`
           : `Job interrupted by worker restart - recovered for retry (interruption ${interruptions}/${MAX_JOB_INTERRUPTIONS}; attempts untouched)`;
-      const recoveryFence = resumeCommittedCanary
-        ? adminCanaryRecoveryFence(job)
-        : sql`TRUE`;
+      const recoveryFence = resumeCommittedCanary ? adminCanaryRecoveryFence(job) : sql`TRUE`;
       const dataWithCount = resumeCommittedCanary
         ? null
         : withInterruptionCount(job, interruptions);
@@ -1256,11 +1175,7 @@ export class JobsRepository {
   async update(id: string, updates: Partial<Job>): Promise<Job> {
     let updateData = updates;
     if (hasPayloadUpdates(updates)) {
-      const [existing] = await dbWrite
-        .select()
-        .from(jobs)
-        .where(eq(jobs.id, id))
-        .limit(1);
+      const [existing] = await dbWrite.select().from(jobs).where(eq(jobs.id, id)).limit(1);
       if (!existing) {
         throw new Error(`Job not found: ${id}`);
       }
@@ -1320,11 +1235,7 @@ export class JobsRepository {
    * @param status - New status.
    * @param additionalFields - Optional additional fields to update.
    */
-  async updateStatus(
-    id: string,
-    status: string,
-    additionalFields?: Partial<Job>,
-  ): Promise<void> {
+  async updateStatus(id: string, status: string, additionalFields?: Partial<Job>): Promise<void> {
     let updates: Partial<Job> = {
       status,
       updated_at: new Date(),
@@ -1339,11 +1250,7 @@ export class JobsRepository {
     }
 
     if (hasPayloadUpdates(updates)) {
-      const [existing] = await dbWrite
-        .select()
-        .from(jobs)
-        .where(eq(jobs.id, id))
-        .limit(1);
+      const [existing] = await dbWrite.select().from(jobs).where(eq(jobs.id, id)).limit(1);
       if (!existing) {
         throw new Error(`Job not found: ${id}`);
       }
@@ -1764,12 +1671,7 @@ export class JobsRepository {
     const rows = await dbRead
       .select({ count: sql<number>`count(*)::int` })
       .from(jobs)
-      .where(
-        and(
-          eq(jobs.type, type),
-          sql`${jobs.status} IN ('pending', 'in_progress')`,
-        ),
-      );
+      .where(and(eq(jobs.type, type), sql`${jobs.status} IN ('pending', 'in_progress')`));
     return rows[0]?.count ?? 0;
   }
 
@@ -1782,12 +1684,7 @@ export class JobsRepository {
     const rows = await dbWrite
       .select({ count: sql<number>`count(*)::int` })
       .from(jobs)
-      .where(
-        and(
-          inArray(jobs.type, types),
-          sql`${jobs.status} IN ('pending', 'in_progress')`,
-        ),
-      );
+      .where(and(inArray(jobs.type, types), sql`${jobs.status} IN ('pending', 'in_progress')`));
     const [aggregate] = rows;
     if (!aggregate) {
       throw new Error("Image-change in-flight query returned no aggregate row");
