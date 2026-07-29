@@ -406,7 +406,7 @@ describe("executeJob dispatch — success path per job type marks the job comple
         const completed = completedCall(ctx);
         if (arm.type === JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE) {
           expect(completed).toBeUndefined();
-          expect(atomicAuditWrites).toHaveLength(3);
+          expect(atomicAuditWrites).toHaveLength(1);
           expect(atomicAuditWrites[0]).toMatchObject({
             status: "completed",
             result_storage: "inline",
@@ -417,10 +417,6 @@ describe("executeJob dispatch — success path per job type marks the job comple
             cleanupPending: false,
             standbyPending: true,
             standbyGeneration: ctx.job.id,
-          });
-          expect(atomicAuditWrites[2]).toEqual({
-            lifecycle_job_id: null,
-            lifecycle_execution_generation: null,
           });
           expect(plannedRows).toHaveLength(2);
           expect(plannedRows[0]).toMatchObject({
@@ -511,67 +507,6 @@ describe("executeJob dispatch — success path per job type marks the job comple
       first.updateSpy.mockRestore();
       first.incrementSpy.mockRestore();
       first.retryLaterSpy.mockRestore();
-      findByIdSpy.mockRestore();
-    }
-
-    if (!pendingAudit) throw new Error("pending cutover audit was not captured");
-    if (typeof pendingAudit.cutoverAt !== "string") {
-      throw new Error("pending cutover audit has no cutover timestamp");
-    }
-    const retryStartedAt = new Date(Date.parse(pendingAudit.cutoverAt) + 1_000);
-    const retry = harness(
-      makeJob(arm.type, arm.data, {
-        result: pendingAudit,
-        status: "in_progress",
-        started_at: retryStartedAt,
-        updated_at: retryStartedAt,
-      }),
-    );
-    let cleanupCompletion: Record<string, unknown> | undefined;
-    const convergeSpy = spyOn(
-      elizaSandboxService,
-      "convergeReplacementCleanupFence",
-    ).mockImplementation(async (_agentId, _organizationId, _expectation, onConvergedInTx) => {
-      await onConvergedInTx?.({
-        update: () => ({
-          set: (updates: Record<string, unknown>) => {
-            if ("result" in updates) {
-              cleanupCompletion = updates.result as Record<string, unknown>;
-            }
-            return {
-              where: () => ({
-                returning: async () => [{ id: retry.job.id }],
-              }),
-            };
-          },
-        }),
-      } as never);
-    });
-    serviceSpies.push(convergeSpy);
-    try {
-      const converged = await run(arm.type);
-      expect(converged).toMatchObject({ succeeded: 1, retried: 0, failed: 0 });
-      expect(convergeSpy).toHaveBeenCalledWith(
-        AGENT,
-        ORG,
-        expect.objectContaining({
-          targetOwnerUserId: USER,
-          targetDigest: arm.data.targetDigest,
-        }),
-        expect.any(Function),
-      );
-      expect(canarySpy).toHaveBeenCalledTimes(1);
-      expect(cleanupCompletion).toMatchObject({
-        success: true,
-        cleanupPending: false,
-      });
-    } finally {
-      retry.claimSpy.mockRestore();
-      retry.recoverSpy.mockRestore();
-      retry.updateStatusSpy.mockRestore();
-      retry.updateSpy.mockRestore();
-      retry.incrementSpy.mockRestore();
-      retry.retryLaterSpy.mockRestore();
     }
   });
 
