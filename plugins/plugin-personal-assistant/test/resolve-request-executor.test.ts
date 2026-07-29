@@ -542,7 +542,6 @@ describe("executeApprovedRequest", () => {
     expect(queue.transitions).toEqual([]);
   });
 
-
   it("send_email approval projects sent-mail commitments into the ledger after delivery", async () => {
     const runtime = {
       ...makeRuntime(),

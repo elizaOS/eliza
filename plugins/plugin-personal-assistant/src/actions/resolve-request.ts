@@ -9,9 +9,9 @@
  * (../providers/pending-approvals.ts), which routes decisions here (#14630).
  */
 import {
+  hasOwnerAccess,
   ApprovalNotFoundError as RuntimeApprovalNotFoundError,
   ApprovalStateTransitionError as RuntimeApprovalStateTransitionError,
-  hasOwnerAccess,
 } from "@elizaos/agent";
 import type {
   Action,
@@ -52,7 +52,6 @@ import {
   ApprovalQueueCompatibilityError,
   type ApprovalRequest,
   ApprovalStateTransitionError,
-  ApprovalTransitionConflictError,
 } from "../lifeops/approval-queue.types.js";
 import {
   createLifeOpsCalendarMutationPort,
@@ -82,14 +81,14 @@ import {
 import { LifeOpsService } from "../lifeops/service.js";
 import { executeApprovedBookTravel } from "./book-travel.js";
 import {
+  dispatchApprovedSignatureRequest,
+  getDocumentRequest,
+} from "./document.js";
+import {
   type ApprovalDispatchOutcome,
   recoverInterruptedApproval,
   runApprovalDispatch,
 } from "./lib/approval-execution.js";
-import {
-  dispatchApprovedSignatureRequest,
-  getDocumentRequest,
-} from "./document.js";
 import {
   ApprovalConnectorPreflightError,
   ApprovalKnownNonDeliveryError,
