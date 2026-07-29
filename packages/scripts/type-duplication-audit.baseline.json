@@ -1,6 +1,6 @@
 {
   "schema": "eliza_type_duplication_baseline_v1",
-  "updatedAt": "2026-06-30T02:14:18.914Z",
+  "updatedAt": "2026-07-29T01:03:35.549Z",
   "thresholds": {
     "minProps": 3,
     "nearDuplicateJaccard": 0.6,
@@ -8,15 +8,15 @@
     "minSchemaProps": 3,
     "schemaTypeKeyOverlap": 0.8
   },
-  "filesScanned": 9930,
+  "filesScanned": 10604,
   "counts": {
-    "sameName": 2231,
-    "subsets": 8174,
-    "nearDuplicates": 2624,
-    "literalSetClusters": 209,
-    "runtimeSchemaMatches": 510,
-    "weakAsUnknownAs": 81,
+    "sameName": 2278,
+    "subsets": 8729,
+    "nearDuplicates": 2768,
+    "literalSetClusters": 219,
+    "runtimeSchemaMatches": 340,
+    "weakAsUnknownAs": 84,
     "weakAsAny": 0,
-    "weakExplicitAny": 126
+    "weakExplicitAny": 124
   }
 }

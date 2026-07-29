@@ -41,7 +41,7 @@
     "@elizaos/plugin-agent-orchestrator": "workspace:*",
     "@elizaos/plugin-anthropic": "workspace:*",
     "@elizaos/plugin-coding-tools": "workspace:*",
-    "@elizaos/plugin-goals": "latest",
+    "@elizaos/plugin-goals": "workspace:*",
     "@elizaos/plugin-mcp": "workspace:*",
     "@elizaos/plugin-openai": "workspace:*",
     "@elizaos/plugin-shell": "workspace:*",

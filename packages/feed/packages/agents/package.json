@@ -41,7 +41,7 @@
     "format:check": "cd ../.. && bunx @biomejs/biome format --config-path ../../biome.json --files-ignore-unknown=true packages/agents/package.json packages/agents/tsconfig.json"
   },
   "dependencies": {
-    "@elizaos/core": "2.0.0-alpha.109",
+    "@elizaos/core": "workspace:*",
     "@ai-sdk/groq": "^3.0.39",
     "@ai-sdk/openai-compatible": "^2.0.51",
     "@vercel/blob": "2.3.2",
@@ -61,9 +61,9 @@
     "@feed/db": "workspace:*",
     "@feed/engine": "workspace:*",
     "@feed/shared": "workspace:*",
-    "@elizaos/core": "2.0.0-alpha.109",
-    "@elizaos/plugin-anthropic": "2.0.0-alpha.11",
-    "@elizaos/plugin-openai": "2.0.0-alpha.15",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-anthropic": "workspace:*",
+    "@elizaos/plugin-openai": "workspace:*",
     "@huggingface/hub": "^2.6.12",
     "@privy-io/server-auth": "^1.32.5",
     "ai": "6.0.207",
