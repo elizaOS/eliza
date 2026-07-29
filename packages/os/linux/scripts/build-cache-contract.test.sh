@@ -27,10 +27,17 @@ trap cleanup EXIT
 mkdir -p \
     "${TMP}/bin" \
     "${TMP}/tails/config" \
-    "${TMP}/tails/debian" \
-    "${TMP}/tails/submodules/live-build"
-printf 'fake live-build checkout\n' >"${TMP}/tails/submodules/live-build/README"
+    "${TMP}/tails/debian"
 printf 'tails (7.8) UNRELEASED; urgency=medium\n' >"${TMP}/tails/debian/changelog"
+git init -q "${TMP}/tails/submodules/live-build"
+git -C "${TMP}/tails/submodules/live-build" config user.email iso-build@example.invalid
+git -C "${TMP}/tails/submodules/live-build" config user.name "ISO build contract"
+printf 'fake live-build checkout\n' >"${TMP}/tails/submodules/live-build/README"
+git -C "${TMP}/tails/submodules/live-build" add README
+git -C "${TMP}/tails/submodules/live-build" commit -q -m pinned
+LIVE_BUILD_TEST_REF="$(
+    git -C "${TMP}/tails/submodules/live-build" rev-parse HEAD
+)"
 
 cat >"${TMP}/bin/docker" <<'SH'
 #!/usr/bin/env bash
@@ -75,6 +82,7 @@ run_build_with_log() {
         env \
             PATH="${TMP}/bin:${PATH}" \
             TAILS_SRC="${TMP}/tails" \
+            TAILS_LIVE_BUILD_REF="${LIVE_BUILD_TEST_REF}" \
             DOCKER_LOG="${log}" \
             APT_SNAPSHOTS_SERIALS="${SNAPSHOT_JSON}" \
             "$@" \
@@ -124,6 +132,7 @@ if (
     env \
         PATH="${TMP}/bin:${PATH}" \
         TAILS_SRC="${TMP}/tails" \
+        TAILS_LIVE_BUILD_REF="${LIVE_BUILD_TEST_REF}" \
         DOCKER_LOG="${unsupported_log}" \
         ELIZAOS_ARCH=arm64 \
         ./build.sh config

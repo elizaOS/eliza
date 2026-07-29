@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Shared pinned-checkout helpers for elizaOS Live build scripts.
+# shellcheck disable=SC2034
 
 elizaos_submodule_checkout_fetched=0
 
@@ -113,6 +114,35 @@ elizaos_fetch_pinned_git_ref() {
     git -C "${checkout_path}" checkout -q FETCH_HEAD
 }
 
+elizaos_verify_exact_clean_git_checkout() {
+    local checkout_path="$1"
+    local ref="$2"
+    local head status
+
+    if [[ ! "${ref}" =~ ^[0-9a-fA-F]{40}$ ]]; then
+        echo "ERROR: pinned Git ref must be an exact 40-character commit: ${ref}" >&2
+        return 64
+    fi
+
+    if ! git -C "${checkout_path}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        echo "ERROR: pinned checkout is not a Git worktree: ${checkout_path}" >&2
+        return 1
+    fi
+
+    head="$(git -C "${checkout_path}" rev-parse HEAD)"
+    if [ "${head}" != "${ref}" ]; then
+        echo "ERROR: ${checkout_path} is at ${head}, expected pinned commit ${ref}." >&2
+        return 1
+    fi
+
+    status="$(git -C "${checkout_path}" status --porcelain --untracked-files=all)"
+    if [ -n "${status}" ]; then
+        echo "ERROR: pinned checkout is dirty: ${checkout_path}" >&2
+        printf '%s\n' "${status}" >&2
+        return 1
+    fi
+}
+
 ensure_submodule_checkout() {
     local checkout_path="$1"
     local url="$2"
@@ -120,11 +150,16 @@ ensure_submodule_checkout() {
 
     elizaos_submodule_checkout_fetched=0
     if elizaos_dir_has_entries "${checkout_path}"; then
+        elizaos_verify_exact_clean_git_checkout "${checkout_path}" "${ref}" ||
+            return
         return
     fi
 
     echo "missing ${checkout_path} - fetching ${ref} from ${url}"
-    elizaos_fetch_pinned_git_ref "${checkout_path}" "${url}" "${ref}"
+    elizaos_fetch_pinned_git_ref "${checkout_path}" "${url}" "${ref}" ||
+        return
+    elizaos_verify_exact_clean_git_checkout "${checkout_path}" "${ref}" ||
+        return
     elizaos_submodule_checkout_fetched=1
 }
 
@@ -137,11 +172,16 @@ materialize_submodule_checkout() {
     elizaos_submodule_checkout_fetched=0
     elizaos_remove_path_recursive "${target_path}"
     if elizaos_dir_has_entries "${source_path}"; then
+        elizaos_verify_exact_clean_git_checkout "${source_path}" "${ref}" ||
+            return
         cp -r "${source_path}" "${target_path}"
         return
     fi
 
     echo "no ${source_path} - fetching ${ref}"
-    elizaos_fetch_pinned_git_ref "${target_path}" "${url}" "${ref}"
+    elizaos_fetch_pinned_git_ref "${target_path}" "${url}" "${ref}" ||
+        return
+    elizaos_verify_exact_clean_git_checkout "${target_path}" "${ref}" ||
+        return
     elizaos_submodule_checkout_fetched=1
 }
