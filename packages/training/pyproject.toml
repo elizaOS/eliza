@@ -23,7 +23,7 @@ dependencies = [
   "argostranslate>=1.11.0",
   # Argos Translate 1.11.0 requires this exact Stanza release. Declaring the
   # transitive pin keeps uv/Dependabot from proposing an unsatisfiable upgrade.
-  "stanza==1.12.2",
+  "stanza==1.10.1",
   "httpx>=0.27.0",
   # PolarQuant's Lloyd-Max centroid generation imports scipy.stats.norm
   # directly; keep it in the base training environment so smoke tests and

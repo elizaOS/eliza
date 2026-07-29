@@ -68,7 +68,6 @@ setup(
         "rapidfuzz",
         "pyacoustid",
         "pygame",
-        "opencv-python-headless",
         "ImageHash",
         "scikit-image",
         "librosa",

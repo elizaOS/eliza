@@ -289,7 +289,7 @@ describe("DocumentService list semantics", () => {
 		expect(getMemories).not.toHaveBeenCalled();
 	});
 
-	it("keeps privileged roles global while USER remains room-limited", async () => {
+	it("keeps global documents agent-wide for every requester role", async () => {
 		const { adapter, runtime, service } = await makeHarness();
 		await adapter.deleteParticipants([{ entityId: USER_ID, roomId: ROOM_B }]);
 		const roomADocument = documentMemory(2);
@@ -328,10 +328,12 @@ describe("DocumentService list semantics", () => {
 			entityId: AGENT_ID,
 		});
 
-		expect(userResult.documents.map((memory) => memory.id)).toEqual([
-			roomADocument.id,
-		]);
-		for (const result of [ownerResult, runtimeResult, agentResult]) {
+		for (const result of [
+			userResult,
+			ownerResult,
+			runtimeResult,
+			agentResult,
+		]) {
 			expect(new Set(result.documents.map((memory) => memory.id))).toEqual(
 				new Set([roomADocument.id, roomBDocument.id]),
 			);
@@ -340,7 +342,7 @@ describe("DocumentService list semantics", () => {
 		expect(getRoomsForParticipants).toHaveBeenCalledTimes(1);
 	});
 
-	it("matches room-scoped RLS semantics and ignores non-document rows", async () => {
+	it("matches agent-wide global read semantics and ignores non-document rows", async () => {
 		const { adapter, runtime, service } = await makeHarness();
 		await adapter.deleteParticipants([{ entityId: USER_ID, roomId: ROOM_B }]);
 		const roomADocument = documentMemory(2);
@@ -367,8 +369,9 @@ describe("DocumentService list semantics", () => {
 		const userResult = await service.listDocumentsDetailed(userMessage());
 		const runtimeResult = await service.listDocumentsDetailed();
 
-		expect(userResult.totalVisible).toBe(1);
+		expect(userResult.totalVisible).toBe(2);
 		expect(userResult.documents.map((document) => document.id)).toEqual([
+			roomBDocument.id,
 			roomADocument.id,
 		]);
 		expect(runtimeResult.totalVisible).toBe(2);

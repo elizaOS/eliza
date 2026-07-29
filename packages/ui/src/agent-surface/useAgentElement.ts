@@ -18,7 +18,7 @@
  */
 
 import type { RefObject } from "react";
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { useAgentSurface } from "./AgentSurfaceContext.hooks";
 import type { AgentElementDescriptor } from "./types";
 
@@ -93,8 +93,8 @@ export function useAgentElement<T extends HTMLElement = HTMLElement>(
     stableRef.current = stable;
   }
 
-  // Register/unregister with the registry across the element's lifetime.
-  useEffect(() => {
+  // Parent interaction handlers query the registry from layout effects.
+  useLayoutEffect(() => {
     const stable = stableRef.current;
     if (!registry || !stable) return;
     return registry.register(stable, () => elRef.current);
