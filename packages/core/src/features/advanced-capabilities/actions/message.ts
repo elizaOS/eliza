@@ -11,9 +11,9 @@
  * in features/messaging/triage.
  */
 
-import { getConnectorAccountManager } from "../../../connectors/account-manager.ts";
 import { buildAccessContext } from "../../../access-context.ts";
 import { searchCanonicalConversationMemories } from "../../../access-control/canonical-recall.ts";
+import { getConnectorAccountManager } from "../../../connectors/account-manager.ts";
 import { findEntityByName } from "../../../entities.ts";
 import { getActionSpec } from "../../../generated/spec-helpers.ts";
 import { logger } from "../../../logger.ts";
@@ -2761,7 +2761,7 @@ async function handleSearch(
 			);
 		}
 
-		let requester;
+		let requester: Awaited<ReturnType<typeof buildAccessContext>>;
 		try {
 			requester = await buildAccessContext(runtime, message);
 		} catch (error) {
@@ -2772,9 +2772,10 @@ async function handleSearch(
 			);
 			requester = {
 				requesterEntityId: message.entityId,
-				source: typeof message.content.source === "string"
-					? message.content.source
-					: undefined,
+				source:
+					typeof message.content.source === "string"
+						? message.content.source
+						: undefined,
 			};
 		}
 		const recall = await searchCanonicalConversationMemories({

@@ -213,7 +213,8 @@ const VALID_MEMORY_SCOPES: ReadonlySet<MemoryScope> = new Set<MemoryScope>([
 ]);
 
 function readScope(value: unknown): MemoryScope | undefined {
-	return typeof value === "string" && VALID_MEMORY_SCOPES.has(value as MemoryScope)
+	return typeof value === "string" &&
+		VALID_MEMORY_SCOPES.has(value as MemoryScope)
 		? (value as MemoryScope)
 		: undefined;
 }
@@ -465,7 +466,9 @@ function buildCanonicalRecall(
 		const provenance = provenanceResult.provenance;
 		const dedupeKey = canonicalDedupeKey(provenance);
 
-		if (!canReadScope(provenance.scope, scopedEntityIdForMemory(memory), actor)) {
+		if (
+			!canReadScope(provenance.scope, scopedEntityIdForMemory(memory), actor)
+		) {
 			if (!withheld.some((entry) => entry.dedupeKey === dedupeKey)) {
 				withheld.push({
 					dedupeKey,
