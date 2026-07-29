@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "eliza-adapter",
     "numpy",
     "backoff",
     "pandas~=3.0.5",
@@ -88,8 +89,16 @@ dependencies = [
     "tldextract>=5.3.0",
 ]
 
+[dependency-groups]
+dev = [
+    "pytest>=9,<10",
+]
+
 [tool.uv]
 override-dependencies = [
     "gitpython>=3.1.57",
     "pyjwt>=2.10.1",
 ]
+
+[tool.uv.sources]
+eliza-adapter = { path = "../eliza-adapter", editable = true }
