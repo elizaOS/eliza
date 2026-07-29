@@ -157,6 +157,48 @@ async function expireExecutionLease(jobId: string): Promise<void> {
     .where(eq(jobExecutionLeases.job_id, jobId));
 }
 
+async function replaceLifecycleExecutionOwner(params: {
+  jobId: string;
+  organizationId: string;
+  agentId: string;
+}): Promise<{ generation: string; ownerId: string }> {
+  const generation = "66666666-6666-4666-8666-666666666666";
+  const ownerId = "77777777-7777-4777-8777-777777777777";
+  await dbWrite.transaction(async (tx) => {
+    const [updatedJob] = await tx
+      .update(jobs)
+      .set({ execution_generation: generation })
+      .where(eq(jobs.id, params.jobId))
+      .returning({ id: jobs.id });
+    const [updatedLease] = await tx
+      .update(jobExecutionLeases)
+      .set({
+        execution_generation: generation,
+        owner_id: ownerId,
+        expires_at: new Date(Date.now() + 60_000),
+      })
+      .where(eq(jobExecutionLeases.job_id, params.jobId))
+      .returning({ jobId: jobExecutionLeases.job_id });
+    const [updatedFence] = await tx
+      .update(agentSandboxes)
+      .set({
+        lifecycle_job_id: params.jobId,
+        lifecycle_execution_generation: generation,
+      })
+      .where(
+        and(
+          eq(agentSandboxes.id, params.agentId),
+          eq(agentSandboxes.organization_id, params.organizationId),
+        ),
+      )
+      .returning({ id: agentSandboxes.id });
+    if (!updatedJob || !updatedLease || !updatedFence) {
+      throw new Error("Failed to install successor lifecycle execution");
+    }
+  });
+  return { generation, ownerId };
+}
+
 async function executeUpgradeCanary(params: {
   actorUserId: string;
   targets: AdminCanaryTargetExpectation[];
@@ -3967,6 +4009,26 @@ describe("admin agent image rollout on primary PGlite", () => {
       expect(
         persisted.find((job) => job.type === JOB_TYPES.AGENT_ADMIN_CANARY_RESTORE_VALIDATION),
       ).toMatchObject({ status: "pending" });
+      const canaryJob = persisted.find((job) => job.type === JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE);
+      if (!canaryJob) {
+        throw new Error("Expected completed admin canary job");
+      }
+      expect(canaryJob.execution_quiesced_at).toBeInstanceOf(Date);
+      expect(
+        await dbWrite
+          .select()
+          .from(jobExecutionLeases)
+          .where(eq(jobExecutionLeases.job_id, canaryJob.id)),
+      ).toHaveLength(0);
+      expect(
+        await agentSandboxesRepository.findByIdAndOrg(
+          seeded.targets[1]!.agentId,
+          seeded.targets[1]!.organizationId,
+        ),
+      ).toMatchObject({
+        lifecycle_job_id: null,
+        lifecycle_execution_generation: null,
+      });
       expect(persisted.find((job) => job.type === JOB_TYPES.AGENT_UPGRADE)?.result).toMatchObject({
         oldNodeId: "ordinary-old-node",
         newNodeId: "ordinary-new-node",
@@ -3983,6 +4045,87 @@ describe("admin agent image rollout on primary PGlite", () => {
     } finally {
       ordinaryExecution.mockRestore();
       canaryExecution.mockRestore();
+    }
+  });
+
+  test("a stale canary owner cannot publish a standby or restore-validation plan", async () => {
+    const seeded = await seedAgents(1);
+    await executeUpgradeCanary({
+      actorUserId: seeded.actorUserId,
+      targets: seeded.targets,
+    });
+    let successor: { generation: string; ownerId: string } | null = null;
+    const execution = spyOn(elizaSandboxService, "executeAdminCanaryUpgrade").mockImplementation(
+      async (params) => {
+        successor = await replaceLifecycleExecutionOwner({
+          jobId: params.sourceJobId,
+          organizationId: seeded.targets[0]!.organizationId,
+          agentId: seeded.targets[0]!.agentId,
+        });
+        await dbWrite.transaction(async (tx) => {
+          await persistMockPausedStandby(tx, params, {
+            oldNodeId: "stale-old-node",
+            oldContainerName: "stale-old",
+            newNodeId: "stale-new-node",
+            newContainerName: "stale-new",
+          });
+        });
+        throw new Error("stale callback unexpectedly committed");
+      },
+    );
+    try {
+      const processing = await provisioningJobService.processPendingJobs(1, {
+        jobTypes: [JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE],
+      });
+      expect(processing).toMatchObject({ claimed: 1, succeeded: 0, failed: 1 });
+
+      const [canaryJob] = await dbWrite
+        .select()
+        .from(jobs)
+        .where(eq(jobs.type, JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE));
+      if (!canaryJob || !successor) {
+        throw new Error(
+          `Expected canary job and successor lifecycle execution: ${JSON.stringify(processing)}`,
+        );
+      }
+      expect(canaryJob).toMatchObject({
+        status: "in_progress",
+        result: null,
+        execution_quiesced_at: null,
+        execution_generation: successor.generation,
+      });
+      expect(
+        await dbWrite
+          .select()
+          .from(agentSnapshotRestoreValidations)
+          .where(eq(agentSnapshotRestoreValidations.source_job_id, canaryJob.id)),
+      ).toHaveLength(0);
+      expect(
+        await dbWrite
+          .select()
+          .from(jobExecutionLeases)
+          .where(eq(jobExecutionLeases.job_id, canaryJob.id)),
+      ).toEqual([
+        expect.objectContaining({
+          execution_generation: successor.generation,
+          owner_id: successor.ownerId,
+        }),
+      ]);
+      expect(
+        await agentSandboxesRepository.findByIdAndOrg(
+          seeded.targets[0]!.agentId,
+          seeded.targets[0]!.organizationId,
+        ),
+      ).toMatchObject({
+        sandbox_id: "sandbox-1",
+        node_id: "node-1",
+        container_name: "agent-1",
+        rollback_standby_state: null,
+        lifecycle_job_id: canaryJob.id,
+        lifecycle_execution_generation: successor.generation,
+      });
+    } finally {
+      execution.mockRestore();
     }
   });
 
@@ -4361,6 +4504,7 @@ describe("admin agent image rollout on primary PGlite", () => {
         status: "completed",
         result_storage: "inline",
         error: null,
+        execution_quiesced_at: expect.any(Date),
       });
       expect(completed?.result).toMatchObject({
         success: true,
@@ -4725,6 +4869,93 @@ describe("admin agent image rollout on primary PGlite", () => {
       });
       expect(completed?.result).not.toHaveProperty("verifiedBackupId");
       expect(completed?.result).not.toHaveProperty("restoreValidationId");
+      expect(
+        await dbWrite
+          .select()
+          .from(jobExecutionLeases)
+          .where(eq(jobExecutionLeases.job_id, decision.id)),
+      ).toHaveLength(0);
+      expect(
+        await agentSandboxesRepository.findByIdAndOrg(
+          seeded.data.agentId,
+          seeded.data.organizationId,
+        ),
+      ).toMatchObject({
+        lifecycle_job_id: null,
+        lifecycle_execution_generation: null,
+      });
+    } finally {
+      execution.mockRestore();
+    }
+  });
+
+  test("a stale standby-decision owner cannot publish completion or mutate the sandbox", async () => {
+    const seeded = await seedPausedRollbackStandby();
+    await insertCompletedStandbySourceJob(seeded);
+    const decision = await adminAgentImageRolloutService.decideStandby(
+      {
+        requestId: "10000000-0000-4000-8000-000000000011",
+        sourceJobId: seeded.data.sourceJobId,
+        decision: "reject",
+      },
+      seeded.data.actorUserId,
+    );
+    let successor: { generation: string; ownerId: string } | null = null;
+    const execution = spyOn(
+      elizaSandboxService,
+      "executeAdminCanaryStandbyDecision",
+    ).mockImplementation(async (params) => {
+      successor = await replaceLifecycleExecutionOwner({
+        jobId: decision.id,
+        organizationId: seeded.data.organizationId,
+        agentId: seeded.data.agentId,
+      });
+      await dbWrite.transaction(async (tx) => {
+        await tx
+          .update(agentSandboxes)
+          .set({ agent_name: "stale-owner-mutation" })
+          .where(eq(agentSandboxes.id, seeded.data.agentId));
+        await params.onConvergedInTx(tx, "rolled_back");
+      });
+      throw new Error("stale callback unexpectedly committed");
+    });
+    try {
+      const processing = await provisioningJobService.processPendingJobs(1, {
+        jobTypes: [JOB_TYPES.AGENT_ADMIN_CANARY_STANDBY_DECISION],
+      });
+      expect(processing).toMatchObject({ claimed: 1, succeeded: 0, failed: 1 });
+      if (!successor) {
+        throw new Error(`Expected successor lifecycle execution: ${JSON.stringify(processing)}`);
+      }
+      expect(await jobsRepository.findByIdForWrite(decision.id)).toMatchObject({
+        status: "in_progress",
+        result: null,
+        execution_quiesced_at: null,
+        execution_generation: successor.generation,
+      });
+      expect(
+        await dbWrite
+          .select()
+          .from(jobExecutionLeases)
+          .where(eq(jobExecutionLeases.job_id, decision.id)),
+      ).toEqual([
+        expect.objectContaining({
+          execution_generation: successor.generation,
+          owner_id: successor.ownerId,
+        }),
+      ]);
+      expect(
+        await agentSandboxesRepository.findByIdAndOrg(
+          seeded.data.agentId,
+          seeded.data.organizationId,
+        ),
+      ).toMatchObject({
+        agent_name: "Canary 1",
+        rollback_standby_state: "paused",
+        rollback_standby_decision_job_id: null,
+        lifecycle_job_id: decision.id,
+        lifecycle_execution_generation: successor.generation,
+      });
     } finally {
       execution.mockRestore();
     }
