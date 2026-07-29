@@ -42,6 +42,207 @@ interface BalanceResponse {
   balance?: number;
 }
 
+const CACHE_WARMING_MESSAGES = new Set([
+  "Inference authorization is warming. Retry shortly.",
+  "Authorization cache is warming. Retry shortly.",
+  "Rate-limit authorization cache is warming. Retry shortly.",
+  "Application authorization cache is warming. Retry shortly.",
+  "Moderation authorization cache is warming. Retry shortly.",
+  "Billing authorization is warming. Retry shortly.",
+]);
+const CACHE_WARMING_MAX_ATTEMPTS = 8;
+const CACHE_WARMING_DEFAULT_DELAY_MS = 250;
+const CACHE_WARMING_MAX_TOTAL_DELAY_MS = 10_000;
+
+interface CacheWarmingRetryOptions {
+  request: () => Promise<Response>;
+  sleep?: (delayMs: number) => Promise<void>;
+  now?: () => number;
+  maxAttempts?: number;
+  defaultDelayMs?: number;
+  maxTotalDelayMs?: number;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isRecognizedCacheWarmingResponse(
+  status: number,
+  body: unknown,
+): boolean {
+  if (status !== 503 || !isRecord(body) || body.type !== "error") return false;
+  if (!isRecord(body.error) || body.error.type !== "api_error") return false;
+
+  return (
+    typeof body.error.message === "string" &&
+    CACHE_WARMING_MESSAGES.has(body.error.message)
+  );
+}
+
+function retryAfterDelayMs(
+  retryAfter: string | null,
+  nowMs: number,
+  defaultDelayMs: number,
+): number {
+  if (!retryAfter) return defaultDelayMs;
+
+  const seconds = Number(retryAfter);
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return Math.ceil(seconds * 1_000);
+  }
+
+  const retryAt = Date.parse(retryAfter);
+  return Number.isFinite(retryAt)
+    ? Math.max(0, retryAt - nowMs)
+    : defaultDelayMs;
+}
+
+function responseFailure(
+  status: number,
+  bodyText: string,
+  attempt: number,
+  maxAttempts: number,
+): Error {
+  const body = bodyText || "<empty>";
+  return new Error(
+    `Monetized inference failed with HTTP ${status} on attempt ${attempt}/${maxAttempts}; response body: ${body}`,
+  );
+}
+
+async function requestWithCacheWarmingRetry<T>({
+  request,
+  sleep = (delayMs) => new Promise((resolve) => setTimeout(resolve, delayMs)),
+  now = Date.now,
+  maxAttempts = CACHE_WARMING_MAX_ATTEMPTS,
+  defaultDelayMs = CACHE_WARMING_DEFAULT_DELAY_MS,
+  maxTotalDelayMs = CACHE_WARMING_MAX_TOTAL_DELAY_MS,
+}: CacheWarmingRetryOptions): Promise<{ status: number; json: T }> {
+  let totalDelayMs = 0;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const response = await request();
+    const bodyText = await response.text();
+    let body: unknown;
+    try {
+      body = JSON.parse(bodyText);
+    } catch {
+      body = undefined;
+    }
+
+    if (response.status === 200) {
+      if (body === undefined) {
+        throw responseFailure(response.status, bodyText, attempt, maxAttempts);
+      }
+      return { status: response.status, json: body as T };
+    }
+
+    if (!isRecognizedCacheWarmingResponse(response.status, body)) {
+      throw responseFailure(response.status, bodyText, attempt, maxAttempts);
+    }
+
+    if (attempt === maxAttempts) {
+      throw responseFailure(response.status, bodyText, attempt, maxAttempts);
+    }
+
+    const delayMs = retryAfterDelayMs(
+      response.headers.get("Retry-After"),
+      now(),
+      defaultDelayMs,
+    );
+    if (totalDelayMs + delayMs > maxTotalDelayMs) {
+      throw responseFailure(response.status, bodyText, attempt, maxAttempts);
+    }
+
+    totalDelayMs += delayMs;
+    await sleep(delayMs);
+  }
+
+  throw new Error("Monetized inference retry loop exhausted unexpectedly");
+}
+
+test.describe("monetized inference cache-warming retry", () => {
+  test("retries only the recognized response and honors Retry-After", async () => {
+    const sleeps: number[] = [];
+    let requests = 0;
+    const result = await requestWithCacheWarmingRetry<MessagesResponse>({
+      request: async () => {
+        requests += 1;
+        if (requests === 1) {
+          return Response.json(
+            {
+              type: "error",
+              error: {
+                type: "api_error",
+                message:
+                  "Application authorization cache is warming. Retry shortly.",
+              },
+            },
+            { status: 503, headers: { "Retry-After": "2" } },
+          );
+        }
+        return Response.json({
+          content: [{ type: "text", text: "PONG" }],
+        });
+      },
+      sleep: async (delayMs) => {
+        sleeps.push(delayMs);
+      },
+    });
+
+    expect(requests).toBe(2);
+    expect(sleeps).toEqual([2_000]);
+    expect(result.json.content?.[0]?.text).toBe("PONG");
+  });
+
+  test("fails fast for an arbitrary 503 and includes its body", async () => {
+    let requests = 0;
+    const operation = requestWithCacheWarmingRetry({
+      request: async () => {
+        requests += 1;
+        return Response.json(
+          { error: "upstream unavailable" },
+          { status: 503 },
+        );
+      },
+      sleep: async () => {
+        throw new Error("arbitrary 503 must not be retried");
+      },
+    });
+
+    await expect(operation).rejects.toThrow(
+      'response body: {"error":"upstream unavailable"}',
+    );
+    expect(requests).toBe(1);
+  });
+
+  test("bounds recognized retries and includes the terminal body", async () => {
+    let requests = 0;
+    const operation = requestWithCacheWarmingRetry({
+      request: async () => {
+        requests += 1;
+        return Response.json(
+          {
+            type: "error",
+            error: {
+              type: "api_error",
+              message: "Billing authorization is warming. Retry shortly.",
+            },
+          },
+          { status: 503, headers: { "Retry-After": "0" } },
+        );
+      },
+      sleep: async () => {},
+      maxAttempts: 3,
+    });
+
+    await expect(operation).rejects.toThrow(
+      'attempt 3/3; response body: {"type":"error","error":{"type":"api_error","message":"Billing authorization is warming. Retry shortly."}}',
+    );
+    expect(requests).toBe(3);
+  });
+});
+
 test.describe("creator-monetization journey (mock LLM, keyless)", () => {
   test("creator monetizes an app → end-user pays via mock inference → creator earns", async ({
     stack,
@@ -127,18 +328,28 @@ test.describe("creator-monetization journey (mock LLM, keyless)", () => {
         ?.totalLifetimeEarnings ?? 0;
 
     // ---- Paid inference: end-user calls the monetized app (mock LLM) ----
-    const inference = await buyer<MessagesResponse>(
-      "POST",
-      "/api/v1/messages",
-      {
-        model: MODEL,
-        max_tokens: 256,
-        messages: [
-          { role: "user", content: "Reply with exactly the word: PONG" },
-        ],
-      },
-      { "X-App-Id": appId },
-    );
+    const inferenceBody = JSON.stringify({
+      model: MODEL,
+      max_tokens: 256,
+      messages: [
+        { role: "user", content: "Reply with exactly the word: PONG" },
+      ],
+    });
+    const inferenceHeaders = {
+      Authorization: `Bearer ${endUser.apiKey}`,
+      "X-API-Key": endUser.apiKey,
+      "Content-Type": "application/json",
+      "X-App-Id": appId,
+      "Idempotency-Key": crypto.randomUUID(),
+    };
+    const inference = await requestWithCacheWarmingRetry<MessagesResponse>({
+      request: () =>
+        fetch(`${api}/api/v1/messages`, {
+          method: "POST",
+          headers: inferenceHeaders,
+          body: inferenceBody,
+        }),
+    });
     expect(inference.status, "monetized inference returns 200").toBe(200);
     const text =
       inference.json.content?.find((b) => b.type === "text")?.text ?? "";
