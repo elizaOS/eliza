@@ -1029,13 +1029,6 @@ export const ADMIN_CANARY_RESTORE_VALIDATION_STALE_LEASE_MS = checkedTimerBudget
   ADMIN_CANARY_RESTORE_VALIDATION_OPERATION_TIMEOUT_MS,
   ADMIN_CANARY_RESTORE_VALIDATION_STALE_LEASE_MARGIN_MS,
 );
-/**
- * Conditional deletion waits this long after a claimed lifecycle job leaves
- * an active state. The outer job timeout is a promise race and cannot abort
- * its underlying bounded SSH/HTTP work, so a recent `failed`, `cancelled`, or
- * retry-pending row is not proof that execution is quiescent.
- */
-const DELETE_DETACHED_EXECUTION_QUIESCENCE_MS = COLD_BOOT_STALE_JOB_THRESHOLD_MS;
 /** Re-schedule delay for snapshot jobs claimed while the lane gate is off
  *  (#16639) — long enough not to spin, short enough to drain promptly once
  *  operators enable the lane. */
