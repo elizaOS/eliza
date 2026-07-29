@@ -82,7 +82,7 @@
     "@elizaos/auth": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.5",
+    "@biomejs/biome": "2.5.6",
     "@electric-sql/pglite": "^0.4.0",
     "@elizaos/core": "workspace:*",
     "@elizaos/logger": "workspace:*",
