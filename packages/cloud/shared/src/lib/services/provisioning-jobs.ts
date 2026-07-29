@@ -1498,10 +1498,10 @@ export class ProvisioningJobService {
           Boolean(sandbox.deletion_attempt_id) ||
           sandbox.status === "deletion_pending" ||
           sandbox.status === "deletion_failed";
-        const deletionStartedAt =
-          isRecoveryReEnqueue && sandbox.deletion_started_at
-            ? sandbox.deletion_started_at
-            : new Date();
+        // Continuing an earlier deletion keeps the original start time by
+        // leaving the column alone. (`deletion_started_at IS NOT NULL` implies
+        // isRecoveryReEnqueue via agent_sandboxes_deletion_intent_pair_check.)
+        const continuesEarlierDeletion = sandbox.deletion_started_at !== null;
         const deletionAttemptId =
           isRecoveryReEnqueue && sandbox.deletion_attempt_id
             ? sandbox.deletion_attempt_id
@@ -1524,7 +1524,7 @@ export class ProvisioningJobService {
           .set({
             status: "deletion_pending" as const,
             deletion_attempt_id: deletionAttemptId,
-            deletion_started_at: deletionStartedAt,
+            ...(continuesEarlierDeletion ? {} : { deletion_started_at: new Date() }),
             billing_status: "suspended" as const,
             scheduled_shutdown_at: null,
             shutdown_warning_sent_at: null,
