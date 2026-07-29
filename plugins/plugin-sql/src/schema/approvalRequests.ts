@@ -5,8 +5,9 @@
  * but lives in plugin-sql so the runtime migrator picks it up automatically
  * for both PostgreSQL and PGlite deployments.
  *
- * Migration safety: this table is additive. It is created on first boot via
- * the runtime migrator when absent, and existing databases are unaffected.
+ * Migration safety: this table evolves additively. Fresh databases receive
+ * the full shape, while existing databases gain execution metadata through
+ * forward-only migrations.
  *
  * State, action, channel, resolved_by, resolution_reason, and resolved_at are
  * intentionally text/timestamp without a CHECK constraint — the application
@@ -42,6 +43,23 @@ export const approvalRequestTable = pgTable(
     resolvedBy: text("resolved_by"),
     /** Null until resolved; human-readable resolution note. */
     resolutionReason: text("resolution_reason"),
+    /** Durable execution attempt for at-most-once external dispatch. */
+    executionAttemptId: uuid("execution_attempt_id"),
+    executionProvider: text("execution_provider"),
+    providerIdempotencyKey: text("provider_idempotency_key"),
+    executionClaimedAt: timestamp("execution_claimed_at", {
+      withTimezone: true,
+    }),
+    dispatchStartedAt: timestamp("dispatch_started_at", {
+      withTimezone: true,
+    }),
+    providerReceipt: jsonb("provider_receipt"),
+    executionError: text("execution_error"),
+    reconciliationResolvedAt: timestamp("reconciliation_resolved_at", {
+      withTimezone: true,
+    }),
+    reconciliationResolvedBy: text("reconciliation_resolved_by"),
+    reconciliationReason: text("reconciliation_reason"),
     /** Owning agent (cascade-deletes when the agent is removed). */
     agentId: uuid("agent_id")
       .notNull()
@@ -52,6 +70,7 @@ export const approvalRequestTable = pgTable(
   (table) => [
     index("approval_requests_subject_state_idx").on(table.subjectUserId, table.state),
     index("approval_requests_agent_state_idx").on(table.agentId, table.state),
+    index("approval_requests_subject_id_idx").on(table.agentId, table.subjectUserId, table.id),
     index("approval_requests_state_expires_idx").on(table.state, table.expiresAt),
   ]
 );

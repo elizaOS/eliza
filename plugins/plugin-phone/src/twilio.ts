@@ -160,8 +160,9 @@ async function sendTwilioRequest(args: {
   credentials: TwilioCredentials;
   path: string;
   payload: URLSearchParams;
+  idempotencyKey?: string;
 }): Promise<TwilioDeliveryResult> {
-  const { credentials, path, payload } = args;
+  const { credentials, path, payload, idempotencyKey } = args;
   const url = `${getTwilioBaseUrl()}/2010-04-01/Accounts/${encodeURIComponent(
     credentials.accountSid,
   )}${path}`;
@@ -195,15 +196,35 @@ async function sendTwilioRequest(args: {
             credentials.authToken,
           )}`,
           "Content-Type": "application/x-www-form-urlencoded",
+          ...(idempotencyKey
+            ? { "I-Twilio-Idempotency-Token": idempotencyKey }
+            : {}),
         },
         body: payload.toString(),
         signal: AbortSignal.timeout(12_000),
       });
-      const data = (await response.json().catch(() => ({}))) as {
+      let data: {
         sid?: string;
         message?: string;
         code?: number;
       };
+      try {
+        const parsed: unknown = await response.json();
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+          throw new Error("Twilio returned a non-object JSON response");
+        }
+        data = parsed as typeof data;
+      } catch (error) {
+        // error-policy:J3 A successful response without a valid receipt is
+        // ambiguous; an error response remains an explicit HTTP failure.
+        if (response.ok) {
+          throw new Error(
+            "Twilio accepted the request without a valid receipt",
+            { cause: error },
+          );
+        }
+        data = {};
+      }
       if (!response.ok) {
         const errorMsg = data.message ?? `HTTP ${response.status}`;
         logger.warn(
@@ -268,6 +289,7 @@ export async function sendTwilioSms(args: {
   credentials: TwilioCredentials;
   to: string;
   body: string;
+  idempotencyKey?: string;
 }): Promise<TwilioDeliveryResult> {
   const { credentials, to, body } = args;
   const validationError = validateTwilioRequestInputs({
@@ -286,6 +308,7 @@ export async function sendTwilioSms(args: {
       From: credentials.fromPhoneNumber,
       Body: body,
     }),
+    ...(args.idempotencyKey ? { idempotencyKey: args.idempotencyKey } : {}),
   });
 
   if (!result.ok) {
@@ -311,6 +334,7 @@ export async function sendTwilioVoiceCall(args: {
   credentials: TwilioCredentials;
   to: string;
   message: string;
+  idempotencyKey?: string;
 }): Promise<TwilioDeliveryResult> {
   const { credentials, to, message } = args;
   const validationError = validateTwilioRequestInputs({
@@ -329,5 +353,6 @@ export async function sendTwilioVoiceCall(args: {
       From: credentials.fromPhoneNumber,
       Twiml: `<Response><Say>${escapeXml(message)}</Say></Response>`,
     }),
+    ...(args.idempotencyKey ? { idempotencyKey: args.idempotencyKey } : {}),
   });
 }

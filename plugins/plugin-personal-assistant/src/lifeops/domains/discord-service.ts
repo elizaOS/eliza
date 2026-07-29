@@ -1585,6 +1585,7 @@ export class DiscordDomain {
     side?: LifeOpsConnectorSide;
     channelId?: string;
     text: string;
+    allowTransportFallback?: boolean;
   }): Promise<DiscordSendMessageResult> {
     const normalizedSide =
       normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
@@ -1648,6 +1649,9 @@ export class DiscordDomain {
                   : String(delegated.error),
             },
           );
+        }
+        if (request.allowTransportFallback === false) {
+          fail(503, "The selected Discord send transport is unavailable.");
         }
         if (typeof this.ctx.runtime.sendMessageToTarget !== "function") {
           fail(503, "Discord send handler is not available.");

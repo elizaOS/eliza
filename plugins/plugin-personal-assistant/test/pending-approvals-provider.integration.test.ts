@@ -17,19 +17,23 @@ import {
   it,
   vi,
 } from "vitest";
-import { createApprovalQueue } from "../src/lifeops/approval-queue.js";
+import { createApprovalQueue as createAgentApprovalQueue } from "../../../packages/agent/src/services/approval/store.ts";
 import type {
   ApprovalEnqueueInput,
   ApprovalQueue,
 } from "../src/lifeops/approval-queue.types.js";
 import { pendingApprovalsProvider } from "../src/providers/pending-approvals.js";
 
-vi.mock("@elizaos/agent", () => ({
-  hasOwnerAccess: vi.fn(async (_runtime: IAgentRuntime, message: Memory) => {
-    return message.entityId === "00000000-0000-0000-0000-0000000000b1";
-  }),
-  resolveApprovalService: vi.fn(() => null),
-}));
+vi.mock("@elizaos/agent", async () => {
+  const stub = await import("./stubs/agent.ts");
+  return {
+    ...stub,
+    hasOwnerAccess: vi.fn(async (_runtime: IAgentRuntime, message: Memory) => {
+      return message.entityId === "00000000-0000-0000-0000-0000000000b1";
+    }),
+    resolveApprovalService: vi.fn(() => null),
+  };
+});
 
 const AGENT_ID = "00000000-0000-0000-0000-0000000000a1" as UUID;
 const OWNER_ID = "00000000-0000-0000-0000-0000000000b1" as UUID;
@@ -48,6 +52,16 @@ const CREATE_APPROVAL_REQUESTS_TABLE = `CREATE TABLE approval_requests (
   resolved_at timestamp with time zone,
   resolved_by text,
   resolution_reason text,
+  execution_attempt_id uuid,
+  execution_provider text,
+  provider_idempotency_key text,
+  execution_claimed_at timestamp with time zone,
+  dispatch_started_at timestamp with time zone,
+  provider_receipt jsonb,
+  execution_error text,
+  reconciliation_resolved_at timestamp with time zone,
+  reconciliation_resolved_by text,
+  reconciliation_reason text,
   agent_id uuid NOT NULL,
   created_at timestamp with time zone NOT NULL,
   updated_at timestamp with time zone NOT NULL
@@ -101,7 +115,9 @@ beforeAll(async () => {
     getService: () => null,
     reportError: vi.fn(),
   } as unknown as IAgentRuntime;
-  queue = createApprovalQueue(runtime, { agentId: AGENT_ID });
+  queue = createAgentApprovalQueue(runtime, {
+    agentId: AGENT_ID,
+  }) as unknown as ApprovalQueue;
 });
 
 beforeEach(async () => {
@@ -158,7 +174,7 @@ describe("pendingApprovals provider (real PGlite queue)", () => {
     const enqueued = await queue.enqueue(
       signDocumentInput(OWNER_ID, "Vendor Contract"),
     );
-    await queue.reject(enqueued.id, {
+    await queue.reject(enqueued.id, OWNER_ID, {
       resolvedBy: OWNER_ID,
       resolutionReason: "owner said hold off",
     });

@@ -15,9 +15,27 @@ export type ApprovalRequestState =
   | "pending"
   | "approved"
   | "executing"
+  | "retryable"
+  | "reconciliation_required"
   | "done"
   | "rejected"
   | "expired";
+
+export const APPROVAL_EXECUTION_CAPABILITY = "eliza.approval-execution";
+export const APPROVAL_EXECUTION_PROTOCOL_VERSION = 2 as const;
+
+export interface ApprovalExecution {
+  readonly attemptId: string;
+  readonly provider: string;
+  readonly providerIdempotencyKey: string;
+  readonly claimedAt: Date;
+  readonly dispatchStartedAt: Date | null;
+  readonly providerReceipt: Readonly<Record<string, unknown>> | null;
+  readonly error: string | null;
+  readonly reconciledAt: Date | null;
+  readonly reconciledBy: string | null;
+  readonly reconciliationReason: string | null;
+}
 
 export type ApprovalAction =
   | "send_message"
@@ -192,6 +210,7 @@ export interface ApprovalRequest {
   readonly resolvedAt: Date | null;
   readonly resolvedBy: string | null;
   readonly resolutionReason: string | null;
+  readonly execution: ApprovalExecution | null;
 }
 
 /** Input to `enqueue` — server fills in id, timestamps, and initial state. */
@@ -217,6 +236,36 @@ export interface ApprovalListFilter {
 export interface ApprovalResolution {
   readonly resolvedBy: string;
   readonly resolutionReason: string;
+}
+
+export interface ApprovalExecutionClaim {
+  readonly requestId: string;
+  readonly subjectUserId: string;
+  readonly provider: string;
+  readonly providerIdempotencyKey: string;
+}
+
+export interface ApprovalExecutionMutation {
+  readonly requestId: string;
+  readonly subjectUserId: string;
+  readonly attemptId: string;
+}
+
+export interface ApprovalExecutionFailure extends ApprovalExecutionMutation {
+  readonly error: string;
+  readonly providerReceipt?: Readonly<Record<string, unknown>>;
+}
+
+export interface ApprovalExecutionCompletion extends ApprovalExecutionMutation {
+  readonly providerReceipt: Readonly<Record<string, unknown>>;
+}
+
+export interface ApprovalExecutionReconciliation
+  extends ApprovalExecutionMutation {
+  readonly outcome: "delivered" | "not_delivered";
+  readonly reconciledBy: string;
+  readonly reconciliationReason: string;
+  readonly providerReceipt?: Readonly<Record<string, unknown>>;
 }
 
 /** Thrown when a state transition is invalid. */
@@ -259,14 +308,40 @@ export class ApprovalNotFoundError extends Error {
  *  - Treat `purgeExpired` as idempotent.
  */
 export interface ApprovalQueue {
+  readonly capability: typeof APPROVAL_EXECUTION_CAPABILITY;
+  readonly protocolVersion: typeof APPROVAL_EXECUTION_PROTOCOL_VERSION;
   enqueue(input: ApprovalEnqueueInput): Promise<ApprovalRequest>;
   list(filter: ApprovalListFilter): Promise<ReadonlyArray<ApprovalRequest>>;
-  byId(id: string): Promise<ApprovalRequest | null>;
-  approve(id: string, resolution: ApprovalResolution): Promise<ApprovalRequest>;
-  reject(id: string, resolution: ApprovalResolution): Promise<ApprovalRequest>;
-  markExecuting(id: string): Promise<ApprovalRequest>;
-  markDone(id: string): Promise<ApprovalRequest>;
-  markExpired(id: string): Promise<ApprovalRequest>;
+  byId(id: string, subjectUserId: string): Promise<ApprovalRequest | null>;
+  approve(
+    id: string,
+    subjectUserId: string,
+    resolution: ApprovalResolution,
+  ): Promise<ApprovalRequest>;
+  reject(
+    id: string,
+    subjectUserId: string,
+    resolution: ApprovalResolution,
+  ): Promise<ApprovalRequest>;
+  claimExecution(claim: ApprovalExecutionClaim): Promise<ApprovalRequest>;
+  markDispatchStarted(
+    mutation: ApprovalExecutionMutation,
+  ): Promise<ApprovalRequest>;
+  markDone(completion: ApprovalExecutionCompletion): Promise<ApprovalRequest>;
+  markRetryableFailure(
+    failure: ApprovalExecutionFailure,
+  ): Promise<ApprovalRequest>;
+  markReconciliationRequired(
+    failure: ApprovalExecutionFailure,
+  ): Promise<ApprovalRequest>;
+  recoverUnstartedExecution(
+    mutation: ApprovalExecutionMutation,
+  ): Promise<ApprovalRequest>;
+  reconcileExecution(
+    reconciliation: ApprovalExecutionReconciliation,
+  ): Promise<ApprovalRequest>;
+  markExpired(id: string, subjectUserId: string): Promise<ApprovalRequest>;
+  removePending(id: string, subjectUserId: string): Promise<void>;
   purgeExpired(now: Date): Promise<ReadonlyArray<string>>;
 }
 

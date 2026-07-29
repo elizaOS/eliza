@@ -102,7 +102,7 @@ describe("ApprovalQueue notify failure (real PGlite)", () => {
     // The enqueue itself must succeed: a broken notification rail cannot lose
     // the approval row the owner still has to act on.
     expect(enqueued.state).toBe("pending");
-    const fetched = await queue.byId(enqueued.id);
+    const fetched = await queue.byId(enqueued.id, "owner-notify");
     expect(fetched?.id).toBe(enqueued.id);
 
     // notify is fire-and-forget; poll the reported-error ring until the

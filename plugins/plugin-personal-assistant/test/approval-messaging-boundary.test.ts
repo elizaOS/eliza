@@ -1,0 +1,113 @@
+/**
+ * Approval message preparation selects one connector before execution and
+ * never attempts a fallback transport after a provider call has begun.
+ */
+
+import type { IAgentRuntime } from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
+import {
+  type ApprovalConnectorPreflightError,
+  prepareCrossChannelSend,
+} from "../src/actions/lib/messaging-helpers.js";
+import type { LifeOpsService } from "../src/lifeops/service.js";
+
+describe("approval messaging boundary", () => {
+  it("does not fall back after Telegram accepted-then-timeout", async () => {
+    const fallback = vi.fn();
+    const telegram = vi.fn(async () => {
+      throw new Error("acknowledgement timeout after provider acceptance");
+    });
+    const runtime = {
+      sendMessageToTarget: fallback,
+    } as unknown as IAgentRuntime;
+    const service = {
+      getTelegramConnectorStatus: vi.fn(async () => ({
+        connected: true,
+        grantedCapabilities: ["telegram.send"],
+      })),
+      sendTelegramMessage: telegram,
+    } as unknown as LifeOpsService;
+
+    const prepared = await prepareCrossChannelSend({
+      runtime,
+      service,
+      channel: "telegram",
+      target: "chat-1",
+      body: "hello",
+    });
+
+    await expect(prepared.dispatch("approval:req:telegram")).rejects.toThrow(
+      "acknowledgement timeout",
+    );
+    expect(telegram).toHaveBeenCalledTimes(1);
+    expect(fallback).not.toHaveBeenCalled();
+  });
+
+  it("fails closed before claim when iMessage is unavailable", async () => {
+    const sendIMessage = vi.fn();
+    const service = {
+      getIMessageConnectorStatus: vi.fn(async () => ({
+        connected: false,
+      })),
+      sendIMessage,
+    } as unknown as LifeOpsService;
+
+    await expect(
+      prepareCrossChannelSend({
+        runtime: {} as IAgentRuntime,
+        service,
+        channel: "imessage",
+        target: "+15551234567",
+        body: "hello",
+      }),
+    ).rejects.toMatchObject<Partial<ApprovalConnectorPreflightError>>({
+      code: "CONNECTOR_NOT_CONNECTED",
+    });
+    expect(sendIMessage).not.toHaveBeenCalled();
+  });
+
+  it("pins approval sends to the preselected Discord and iMessage transports", async () => {
+    const sendDiscordMessage = vi.fn(async () => ({
+      provider: "discord",
+      channelId: "channel-1",
+      deliveryStatus: "sent" as const,
+    }));
+    const sendIMessage = vi.fn(async () => ({
+      ok: true as const,
+      messageId: "message-1",
+    }));
+    const service = {
+      getDiscordConnectorStatus: vi.fn(async () => ({
+        connected: true,
+        grantedCapabilities: ["discord.send"],
+      })),
+      sendDiscordMessage,
+      getIMessageConnectorStatus: vi.fn(async () => ({ connected: true })),
+      sendIMessage,
+    } as unknown as LifeOpsService;
+
+    const discord = await prepareCrossChannelSend({
+      runtime: {} as IAgentRuntime,
+      service,
+      channel: "discord",
+      target: "channel-1",
+      body: "hello",
+    });
+    const imessage = await prepareCrossChannelSend({
+      runtime: {} as IAgentRuntime,
+      service,
+      channel: "imessage",
+      target: "+15551234567",
+      body: "hello",
+    });
+
+    await discord.dispatch("approval:discord");
+    await imessage.dispatch("approval:imessage");
+    expect(sendDiscordMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ allowTransportFallback: false }),
+    );
+    expect(sendIMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ transport: "native" }),
+    );
+  });
+});

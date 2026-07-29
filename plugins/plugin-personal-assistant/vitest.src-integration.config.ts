@@ -48,6 +48,8 @@ export default defineConfig({
       `${packageRootFromRepo}/test/approval-queue.integration.test.ts`,
       `${packageRootFromRepo}/test/approval-queue.toctou.integration.test.ts`,
       `${packageRootFromRepo}/test/approval-queue-notify-error.integration.test.ts`,
+      `${packageRootFromRepo}/test/book-travel.approval.integration.test.ts`,
+      `${packageRootFromRepo}/test/pending-approvals-provider.integration.test.ts`,
       `${packageRootFromRepo}/test/resolve-request-idempotency.integration.test.ts`,
       `${packageRootFromRepo}/test/meeting-ghost.integration.test.ts`,
       `${packageRootFromRepo}/test/resolve-referent-action.integration.test.ts`,

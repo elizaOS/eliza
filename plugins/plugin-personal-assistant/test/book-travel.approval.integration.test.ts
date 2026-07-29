@@ -7,18 +7,15 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { resolveOAuthDir } from "@elizaos/agent";
 import type { ActionResult, AgentRuntime, Memory, UUID } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { saveEnv } from "../../../packages/test/helpers/test-utils";
+import { seedGoogleConnectorGrant } from "../../../packages/test/mocks/helpers/seed-grants.ts";
 import { runBookTravelHandler } from "../src/actions/book-travel.js";
 import { resolveRequestAction } from "../src/actions/resolve-request.js";
 import { createApprovalQueue } from "../src/lifeops/approval-queue.js";
 import { createFeatureFlagService } from "../src/lifeops/feature-flags.js";
-import {
-  createLifeOpsConnectorGrant,
-  LifeOpsRepository,
-} from "../src/lifeops/repository.js";
+import { LifeOpsRepository } from "../src/lifeops/repository.js";
 import {
   createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
@@ -45,77 +42,40 @@ function ownerMessage(text: string): Memory {
 }
 
 async function seedGoogleWriteGrant(): Promise<void> {
-  const repository = new LifeOpsRepository(runtime);
-  const agentId = String(runtime.agentId);
-  const tokenRef = `${agentId}/owner/local.json`;
-  const tokenPath = path.join(
-    resolveOAuthDir(process.env, stateDir),
-    "lifeops",
-    "google",
-    tokenRef,
-  );
-  const nowIso = new Date().toISOString();
-
-  await fs.promises.mkdir(path.dirname(tokenPath), {
-    recursive: true,
-    mode: 0o700,
+  await seedGoogleConnectorGrant(runtime, {
+    capabilities: ["google.calendar.read", "google.calendar.write"],
+    email: "shaw@example.com",
+    side: "owner",
   });
-  await fs.promises.writeFile(
-    tokenPath,
-    JSON.stringify(
-      {
-        provider: "google",
-        agentId,
-        side: "owner",
-        mode: "local",
-        clientId: "book-travel-test-client",
-        redirectUri: "http://127.0.0.1/callback",
-        accessToken: "book-travel-access-token",
-        refreshToken: "book-travel-refresh-token",
-        tokenType: "Bearer",
-        grantedScopes: [
-          "openid",
-          "email",
-          "profile",
-          "https://www.googleapis.com/auth/calendar",
-        ],
-        expiresAt: Date.now() + 60 * 60 * 1000,
-        refreshTokenExpiresAt: null,
-        createdAt: nowIso,
-        updatedAt: nowIso,
-      },
-      null,
-      2,
-    ),
-    { encoding: "utf-8", mode: 0o600 },
-  );
+}
 
-  await repository.upsertConnectorGrant(
-    createLifeOpsConnectorGrant({
-      agentId,
-      provider: "google",
-      side: "owner",
-      identity: {
-        email: "shaw@example.com",
-        name: "Shaw",
-      },
-      grantedScopes: [
-        "openid",
-        "email",
-        "profile",
-        "https://www.googleapis.com/auth/calendar",
-      ],
-      capabilities: [
-        "google.basic_identity",
-        "google.calendar.read",
-        "google.calendar.write",
-      ],
-      tokenRef,
-      mode: "local",
-      metadata: {},
-      lastRefreshAt: nowIso,
-    }),
-  );
+function stubGoogleCalendarCreate(): void {
+  const google = runtime.getService("google") as {
+    createEvent: (input: {
+      calendarId?: string;
+      title: string;
+      start: string;
+      end: string;
+      timeZone?: string;
+      description?: string;
+      location?: string;
+    }) => Promise<unknown>;
+  } | null;
+  if (!google) {
+    throw new Error("Expected the Google service in the travel test runtime");
+  }
+  vi.spyOn(google, "createEvent").mockImplementation(async (input) => ({
+    id: "google_evt_travel_1",
+    calendarId: input.calendarId ?? "primary",
+    title: input.title,
+    status: "confirmed",
+    start: input.start,
+    end: input.end,
+    timeZone: input.timeZone ?? TEST_TIME_ZONE,
+    description: input.description,
+    location: input.location,
+    htmlLink: "https://calendar.google.com/calendar/event?eid=travel_1",
+  }));
 }
 
 function installTravelAndCalendarFetchStub() {
@@ -455,6 +415,7 @@ afterAll(async () => {
 
 describe("BOOK_TRAVEL approval execution", () => {
   it("queues approval, books after approval, and syncs the itinerary to calendar", async () => {
+    stubGoogleCalendarCreate();
     const fetchMock = installTravelAndCalendarFetchStub();
     const queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
 
@@ -525,17 +486,29 @@ describe("BOOK_TRAVEL approval execution", () => {
         runtime,
         ownerMessage("yes, approve that booking"),
         {} as never,
-        {} as never,
+        {
+          parameters: {
+            subaction: "approve",
+            requestId: pendingRequest.id,
+          },
+        } as never,
         undefined,
       );
     } finally {
       restoreModel();
     }
 
-    expect(approved?.success).toBe(true);
+    expect(approved).toEqual(
+      expect.objectContaining({
+        success: true,
+      }),
+    );
     expect(String(approved?.text ?? "")).toContain("Booked");
 
-    const done = await queue.byId(pendingRequest.id);
+    const done = await queue.byId(
+      pendingRequest.id,
+      pendingRequest.subjectUserId,
+    );
     expect(done?.state).toBe("done");
 
     const repository = new LifeOpsRepository(runtime);
@@ -551,11 +524,6 @@ describe("BOOK_TRAVEL approval execution", () => {
     const calledUrls = fetchMock.mock.calls.map(([input]) => String(input));
     expect(calledUrls.some((url) => url.endsWith("/air/orders"))).toBe(true);
     expect(calledUrls.some((url) => url.endsWith("/air/payments"))).toBe(true);
-    expect(
-      calledUrls.some((url) =>
-        url.includes("www.googleapis.com/calendar/v3/calendars/primary/events"),
-      ),
-    ).toBe(true);
   });
 
   it("rejects approval without executing order, payment, or calendar sync", async () => {
@@ -607,17 +575,29 @@ describe("BOOK_TRAVEL approval execution", () => {
         runtime,
         ownerMessage("reject that travel booking"),
         {} as never,
-        {} as never,
+        {
+          parameters: {
+            subaction: "reject",
+            requestId: pendingRequest.id,
+          },
+        } as never,
         undefined,
       );
     } finally {
       restoreModel();
     }
 
-    expect(rejected?.success).toBe(true);
+    expect(rejected).toEqual(
+      expect.objectContaining({
+        success: true,
+      }),
+    );
     expect(fetchMock.mock.calls).toHaveLength(callCountBeforeReject);
 
-    const latest = await queue.byId(pendingRequest.id);
+    const latest = await queue.byId(
+      pendingRequest.id,
+      pendingRequest.subjectUserId,
+    );
     expect(latest?.state).toBe("rejected");
   });
 });

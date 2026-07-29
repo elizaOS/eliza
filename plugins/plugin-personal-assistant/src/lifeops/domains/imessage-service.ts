@@ -82,6 +82,7 @@ export interface IMessageSendRequest {
   to: string;
   text: string;
   attachmentPaths?: string[];
+  transport?: "auto" | "native";
 }
 
 export interface IMessageRecord {
@@ -383,28 +384,30 @@ export class IMessageDomain {
   async sendIMessage(
     req: IMessageSendRequest,
   ): Promise<{ ok: true; messageId?: string }> {
-    const delegated = await sendIMessageWithRuntimeService({
-      runtime: this.ctx.runtime,
-      to: req.to,
-      text: req.text,
-      mediaUrl: req.attachmentPaths?.[0],
-    });
-    if (delegated.status === "handled") {
-      return { ok: true, messageId: delegated.value.messageId };
-    }
-    if (delegated.error) {
-      this.ctx.logLifeOpsWarn(
-        "runtime_service_delegation_failed",
-        delegated.reason,
-        {
-          provider: "imessage",
-          operation: "message.send",
-          error:
-            delegated.error instanceof Error
-              ? delegated.error.message
-              : String(delegated.error),
-        },
-      );
+    if (req.transport !== "native") {
+      const delegated = await sendIMessageWithRuntimeService({
+        runtime: this.ctx.runtime,
+        to: req.to,
+        text: req.text,
+        mediaUrl: req.attachmentPaths?.[0],
+      });
+      if (delegated.status === "handled") {
+        return { ok: true, messageId: delegated.value.messageId };
+      }
+      if (delegated.error) {
+        this.ctx.logLifeOpsWarn(
+          "runtime_service_delegation_failed",
+          delegated.reason,
+          {
+            provider: "imessage",
+            operation: "message.send",
+            error:
+              delegated.error instanceof Error
+                ? delegated.error.message
+                : String(delegated.error),
+          },
+        );
+      }
     }
 
     const nativeService = await getNativeIMessageService(this.ctx.runtime);

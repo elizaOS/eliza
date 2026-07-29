@@ -1,10 +1,18 @@
 /** Types for the owner-approval queue: request states, action kinds, and payload shapes. */
+import {
+  APPROVAL_EXECUTION_CAPABILITY,
+  APPROVAL_EXECUTION_PROTOCOL_VERSION,
+  ApprovalNotFoundError as RuntimeApprovalNotFoundError,
+  ApprovalStateTransitionError as RuntimeApprovalStateTransitionError,
+} from "@elizaos/agent";
 import type { TravelBookingPayloadFields } from "./travel-booking.types.js";
 
 export type ApprovalRequestState =
   | "pending"
   | "approved"
   | "executing"
+  | "retryable"
+  | "reconciliation_required"
   | "done"
   | "rejected"
   | "expired";
@@ -33,6 +41,19 @@ export type ApprovalChannel =
   | "browser"
   | "phone"
   | "internal";
+
+export interface ApprovalExecution {
+  readonly attemptId: string;
+  readonly provider: string;
+  readonly providerIdempotencyKey: string;
+  readonly claimedAt: Date;
+  readonly dispatchStartedAt: Date | null;
+  readonly providerReceipt: Readonly<Record<string, unknown>> | null;
+  readonly error: string | null;
+  readonly reconciledAt: Date | null;
+  readonly reconciledBy: string | null;
+  readonly reconciliationReason: string | null;
+}
 
 export type ApprovalPayload =
   | {
@@ -159,6 +180,7 @@ export interface ApprovalRequest {
   readonly resolvedAt: Date | null;
   readonly resolvedBy: string | null;
   readonly resolutionReason: string | null;
+  readonly execution: ApprovalExecution | null;
 }
 
 /** Input to `enqueue` — server fills in id, timestamps, and initial state. */
@@ -186,26 +208,41 @@ export interface ApprovalResolution {
   readonly resolutionReason: string;
 }
 
-/** Thrown when a state transition is invalid. */
-export class ApprovalStateTransitionError extends Error {
-  public readonly requestId: string;
-  public readonly from: ApprovalRequestState;
-  public readonly to: ApprovalRequestState;
-
-  constructor(
-    requestId: string,
-    from: ApprovalRequestState,
-    to: ApprovalRequestState,
-  ) {
-    super(
-      `[ApprovalQueue] invalid transition for request ${requestId}: ${from} -> ${to}`,
-    );
-    this.name = "ApprovalStateTransitionError";
-    this.requestId = requestId;
-    this.from = from;
-    this.to = to;
-  }
+export interface ApprovalExecutionClaim {
+  readonly requestId: string;
+  readonly subjectUserId: string;
+  readonly provider: string;
+  readonly providerIdempotencyKey: string;
 }
+
+export interface ApprovalExecutionMutation {
+  readonly requestId: string;
+  readonly subjectUserId: string;
+  readonly attemptId: string;
+}
+
+export interface ApprovalExecutionFailure extends ApprovalExecutionMutation {
+  readonly error: string;
+  readonly providerReceipt?: Readonly<Record<string, unknown>>;
+}
+
+export interface ApprovalExecutionCompletion extends ApprovalExecutionMutation {
+  readonly providerReceipt: Readonly<Record<string, unknown>>;
+}
+
+export interface ApprovalExecutionReconciliation
+  extends ApprovalExecutionMutation {
+  readonly outcome: "delivered" | "not_delivered";
+  readonly reconciledBy: string;
+  readonly reconciliationReason: string;
+  readonly providerReceipt?: Readonly<Record<string, unknown>>;
+}
+
+/** Thrown when a state transition is invalid. */
+export {
+  RuntimeApprovalNotFoundError as ApprovalNotFoundError,
+  RuntimeApprovalStateTransitionError as ApprovalStateTransitionError,
+};
 
 /**
  * Thrown when a compare-and-swap state transition loses a concurrent race:
@@ -216,7 +253,7 @@ export class ApprovalStateTransitionError extends Error {
  * still applies; callers may match this class first to surface the conflict
  * distinctly.
  */
-export class ApprovalTransitionConflictError extends ApprovalStateTransitionError {
+export class ApprovalTransitionConflictError extends RuntimeApprovalStateTransitionError {
   constructor(
     requestId: string,
     actualState: ApprovalRequestState,
@@ -229,26 +266,18 @@ export class ApprovalTransitionConflictError extends ApprovalStateTransitionErro
 }
 
 /** Thrown when an operation references an unknown request id. */
-export class ApprovalNotFoundError extends Error {
-  public readonly requestId: string;
-
-  constructor(requestId: string) {
-    super(`[ApprovalQueue] request not found: ${requestId}`);
-    this.name = "ApprovalNotFoundError";
-    this.requestId = requestId;
-  }
-}
-
 /** Thrown before resolution when a registered queue predates required methods. */
 export class ApprovalQueueCompatibilityError extends Error {
-  public readonly missingMethods: ReadonlyArray<keyof ApprovalQueue>;
+  public readonly actualCapability: unknown;
+  public readonly actualVersion: unknown;
 
-  constructor(missingMethods: ReadonlyArray<keyof ApprovalQueue>) {
+  constructor(actualCapability: unknown, actualVersion: unknown) {
     super(
-      `[ApprovalQueue] registered queue is incompatible; missing methods: ${missingMethods.join(", ")}`,
+      `[ApprovalQueue] registered capability is incompatible; expected ${APPROVAL_EXECUTION_CAPABILITY}@${APPROVAL_EXECUTION_PROTOCOL_VERSION}`,
     );
     this.name = "ApprovalQueueCompatibilityError";
-    this.missingMethods = missingMethods;
+    this.actualCapability = actualCapability;
+    this.actualVersion = actualVersion;
   }
 }
 
@@ -260,13 +289,39 @@ export class ApprovalQueueCompatibilityError extends Error {
  *  - Treat `purgeExpired` as idempotent.
  */
 export interface ApprovalQueue {
+  readonly capability: typeof APPROVAL_EXECUTION_CAPABILITY;
+  readonly protocolVersion: typeof APPROVAL_EXECUTION_PROTOCOL_VERSION;
   enqueue(input: ApprovalEnqueueInput): Promise<ApprovalRequest>;
   list(filter: ApprovalListFilter): Promise<ReadonlyArray<ApprovalRequest>>;
-  byId(id: string): Promise<ApprovalRequest | null>;
-  approve(id: string, resolution: ApprovalResolution): Promise<ApprovalRequest>;
-  reject(id: string, resolution: ApprovalResolution): Promise<ApprovalRequest>;
-  markExecuting(id: string): Promise<ApprovalRequest>;
-  markDone(id: string): Promise<ApprovalRequest>;
-  markExpired(id: string): Promise<ApprovalRequest>;
+  byId(id: string, subjectUserId: string): Promise<ApprovalRequest | null>;
+  approve(
+    id: string,
+    subjectUserId: string,
+    resolution: ApprovalResolution,
+  ): Promise<ApprovalRequest>;
+  reject(
+    id: string,
+    subjectUserId: string,
+    resolution: ApprovalResolution,
+  ): Promise<ApprovalRequest>;
+  claimExecution(claim: ApprovalExecutionClaim): Promise<ApprovalRequest>;
+  markDispatchStarted(
+    mutation: ApprovalExecutionMutation,
+  ): Promise<ApprovalRequest>;
+  markDone(completion: ApprovalExecutionCompletion): Promise<ApprovalRequest>;
+  markRetryableFailure(
+    failure: ApprovalExecutionFailure,
+  ): Promise<ApprovalRequest>;
+  markReconciliationRequired(
+    failure: ApprovalExecutionFailure,
+  ): Promise<ApprovalRequest>;
+  recoverUnstartedExecution(
+    mutation: ApprovalExecutionMutation,
+  ): Promise<ApprovalRequest>;
+  reconcileExecution(
+    reconciliation: ApprovalExecutionReconciliation,
+  ): Promise<ApprovalRequest>;
+  markExpired(id: string, subjectUserId: string): Promise<ApprovalRequest>;
+  removePending(id: string, subjectUserId: string): Promise<void>;
   purgeExpired(now: Date): Promise<ReadonlyArray<string>>;
 }

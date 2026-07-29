@@ -26,7 +26,6 @@ import {
   type ApprovalEnqueueInput,
   type ApprovalRequest,
   ApprovalStateTransitionError,
-  ApprovalTransitionConflictError,
 } from "../src/lifeops/approval-queue.types.js";
 import { personalAssistantPlugin } from "../src/plugin.js";
 
@@ -40,8 +39,9 @@ class InterleavedApprovalQueue extends PgApprovalQueue {
 
   protected override async fetchById(
     id: string,
+    subjectUserId: string,
   ): Promise<ApprovalRequest | null> {
-    const row = await super.fetchById(id);
+    const row = await super.fetchById(id, subjectUserId);
     const hook = this.betweenReadAndWrite;
     this.betweenReadAndWrite = null;
     if (hook && row) await hook();
@@ -145,19 +145,19 @@ describe("ApprovalQueue TOCTOU (real PGlite, controlled interleavings)", () => {
     // approve() reads `pending`, then the row expires before the approve
     // write lands — the classic race that used to resurrect the row.
     queue.betweenReadAndWrite = async () => {
-      const expired = await queue.markExpired(enqueued.id);
+      const expired = await queue.markExpired(enqueued.id, "owner-toctou");
       expect(expired.state).toBe("expired");
     };
 
     await expect(
-      queue.approve(enqueued.id, {
+      queue.approve(enqueued.id, "owner-toctou", {
         resolvedBy: "owner-toctou",
         resolutionReason: "approving too late",
       }),
-    ).rejects.toBeInstanceOf(ApprovalTransitionConflictError);
+    ).rejects.toBeInstanceOf(ApprovalStateTransitionError);
 
     // The forbidden expired -> approved transition never happened.
-    const after = await queue.byId(enqueued.id);
+    const after = await queue.byId(enqueued.id, "owner-toctou");
     expect(after?.state).toBe("expired");
     expect(after?.resolvedBy).toBeNull();
   }, 60_000);
@@ -174,14 +174,14 @@ describe("ApprovalQueue TOCTOU (real PGlite, controlled interleavings)", () => {
     expect(enqueued.state).toBe("pending");
 
     await expect(
-      queue.approve(enqueued.id, {
+      queue.approve(enqueued.id, "owner-lapsed", {
         resolvedBy: "owner-lapsed",
         resolutionReason: "approving after expiry",
       }),
     ).rejects.toBeInstanceOf(ApprovalStateTransitionError);
 
     // The lazy guard flipped the row to expired; it never executed.
-    const after = await queue.byId(enqueued.id);
+    const after = await queue.byId(enqueued.id, "owner-lapsed");
     expect(after?.state).toBe("expired");
     expect(after?.resolvedBy).toBeNull();
   }, 60_000);
@@ -192,7 +192,7 @@ describe("ApprovalQueue TOCTOU (real PGlite, controlled interleavings)", () => {
     );
 
     queue.betweenReadAndWrite = async () => {
-      const inner = await queue.approve(enqueued.id, {
+      const inner = await queue.approve(enqueued.id, "owner-double-approve", {
         resolvedBy: "owner-a",
         resolutionReason: "first approval wins",
       });
@@ -200,39 +200,44 @@ describe("ApprovalQueue TOCTOU (real PGlite, controlled interleavings)", () => {
     };
 
     await expect(
-      queue.approve(enqueued.id, {
+      queue.approve(enqueued.id, "owner-double-approve", {
         resolvedBy: "owner-b",
         resolutionReason: "second approval must lose",
       }),
-    ).rejects.toBeInstanceOf(ApprovalTransitionConflictError);
+    ).rejects.toBeInstanceOf(ApprovalStateTransitionError);
 
-    const after = await queue.byId(enqueued.id);
+    const after = await queue.byId(enqueued.id, "owner-double-approve");
     expect(after?.state).toBe("approved");
     expect(after?.resolvedBy).toBe("owner-a");
   }, 60_000);
 
-  it("reject landing inside markExecuting()'s window blocks execution", async () => {
+  it("reject landing inside claimExecution()'s window blocks execution", async () => {
     const enqueued = await queue.enqueue(
       spendMoneyInput({ subjectUserId: "owner-reject-race" }),
     );
-    await queue.approve(enqueued.id, {
+    await queue.approve(enqueued.id, "owner-reject-race", {
       resolvedBy: "owner-reject-race",
       resolutionReason: "approved, then thought better of it",
     });
 
     queue.betweenReadAndWrite = async () => {
-      const rejected = await queue.reject(enqueued.id, {
+      const rejected = await queue.reject(enqueued.id, "owner-reject-race", {
         resolvedBy: "owner-reject-race",
         resolutionReason: "changed my mind",
       });
       expect(rejected.state).toBe("rejected");
     };
 
-    await expect(queue.markExecuting(enqueued.id)).rejects.toBeInstanceOf(
-      ApprovalTransitionConflictError,
-    );
+    await expect(
+      queue.claimExecution({
+        requestId: enqueued.id,
+        subjectUserId: "owner-reject-race",
+        provider: "test",
+        providerIdempotencyKey: `approval:${enqueued.id}:test`,
+      }),
+    ).rejects.toBeInstanceOf(ApprovalStateTransitionError);
 
-    const after = await queue.byId(enqueued.id);
+    const after = await queue.byId(enqueued.id, "owner-reject-race");
     expect(after?.state).toBe("rejected");
   }, 60_000);
 
@@ -241,13 +246,13 @@ describe("ApprovalQueue TOCTOU (real PGlite, controlled interleavings)", () => {
       spendMoneyInput({ subjectUserId: "owner-error-shape" }),
     );
     queue.betweenReadAndWrite = async () => {
-      await queue.reject(enqueued.id, {
+      await queue.reject(enqueued.id, "owner-error-shape", {
         resolvedBy: "owner-error-shape",
         resolutionReason: "rejected mid-flight",
       });
     };
     const failure = await queue
-      .approve(enqueued.id, {
+      .approve(enqueued.id, "owner-error-shape", {
         resolvedBy: "owner-error-shape",
         resolutionReason: "late approval",
       })
@@ -255,10 +260,9 @@ describe("ApprovalQueue TOCTOU (real PGlite, controlled interleavings)", () => {
         () => null,
         (error: unknown) => error,
       );
-    expect(failure).toBeInstanceOf(ApprovalTransitionConflictError);
     expect(failure).toBeInstanceOf(ApprovalStateTransitionError);
-    if (!(failure instanceof ApprovalTransitionConflictError)) {
-      throw new Error("expected ApprovalTransitionConflictError");
+    if (!(failure instanceof ApprovalStateTransitionError)) {
+      throw new Error("expected ApprovalStateTransitionError");
     }
     expect(failure.requestId).toBe(enqueued.id);
     expect(failure.from).toBe("rejected");
