@@ -19,7 +19,8 @@ import {
   dbWrite,
   getPgliteClientForTests,
 } from "../../db/client";
-import { jobsRepository } from "../../db/repositories/jobs";
+import { JOB_EXECUTION_RECOVERY_GRACE_MS, jobsRepository } from "../../db/repositories/jobs";
+import { jobExecutionLeases } from "../../db/schemas/job-execution-leases";
 import { type Job, jobs } from "../../db/schemas/jobs";
 import type {
   AdminCanaryRestoreValidationCheckpoint,
@@ -28,7 +29,7 @@ import type {
 } from "./admin-canary-restore-validation";
 import { elizaSandboxService } from "./eliza-sandbox";
 import { JOB_TYPES } from "./provisioning-job-types";
-import { provisioningJobService } from "./provisioning-jobs";
+import { ProvisioningJobService } from "./provisioning-jobs";
 
 const TYPE = JOB_TYPES.AGENT_ADMIN_CANARY_RESTORE_VALIDATION;
 const ORGANIZATION_ID = "00000000-0000-4000-8000-000000000001";
@@ -40,6 +41,7 @@ const SOURCE_JOB_ID = "00000000-0000-4000-8000-000000000006";
 const ROLLOUT_ID = "00000000-0000-4000-8000-000000000007";
 const STANDBY_GENERATION = "00000000-0000-4000-8000-000000000008";
 const SOURCE_SANDBOX_ID = "00000000-0000-4000-8000-000000000009";
+const EXECUTION_OWNER_ID = "00000000-0000-4000-8000-00000000000a";
 const TARGET_DIGEST = `sha256:${"a".repeat(64)}`;
 const PGLITE_TIMEOUT_MS = 30_000;
 let pgliteReady = true;
@@ -71,9 +73,27 @@ const JOBS_DDL = `
     estimated_completion_at timestamp,
     scheduled_for timestamp NOT NULL DEFAULT NOW(),
     started_at timestamp,
+    execution_generation uuid,
+    execution_quiesced_at timestamp,
     completed_at timestamp,
     created_at timestamp NOT NULL DEFAULT NOW(),
     updated_at timestamp NOT NULL DEFAULT NOW()
+  );
+  CREATE TABLE job_execution_leases (
+    job_id uuid PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE,
+    execution_generation uuid NOT NULL,
+    owner_id uuid NOT NULL,
+    expires_at timestamp NOT NULL,
+    heartbeat_at timestamp NOT NULL DEFAULT NOW(),
+    created_at timestamp NOT NULL DEFAULT NOW()
+  );
+  CREATE INDEX job_execution_leases_expires_idx
+    ON job_execution_leases (expires_at);
+  CREATE TABLE agent_sandboxes (
+    id uuid PRIMARY KEY,
+    organization_id uuid NOT NULL,
+    lifecycle_job_id uuid,
+    lifecycle_execution_generation uuid
   );
   CREATE INDEX jobs_restore_admission_pending_idx
     ON jobs (type, scheduled_for, created_at)
@@ -170,12 +190,18 @@ async function claimOne() {
     sharedTypes: [TYPE],
     maxRunning: 1,
     limit: 1,
+    executionOwnerId: EXECUTION_OWNER_ID,
   });
 }
 
 async function requeueAndReclaim(snapshot: Job): Promise<Job> {
   expect(
-    await jobsRepository.retryLaterWithoutIncrementingAttempts(snapshot, "retry same attempt", 0),
+    await jobsRepository.retryLaterWithoutIncrementingAttempts(
+      snapshot,
+      "retry same attempt",
+      0,
+      EXECUTION_OWNER_ID,
+    ),
   ).toBeDefined();
   await Bun.sleep(5);
   const [replacementClaim] = await claimOne();
@@ -185,7 +211,8 @@ async function requeueAndReclaim(snapshot: Job): Promise<Job> {
   return replacementClaim!;
 }
 
-const serviceInternals = provisioningJobService as unknown as {
+const testService = new ProvisioningJobService({ executionOwnerId: EXECUTION_OWNER_ID });
+const serviceInternals = testService as unknown as {
   executeAdminCanaryRestoreValidation: (job: Job) => Promise<void>;
 };
 
@@ -242,6 +269,10 @@ describe("restore-validation DB admission and recovery", () => {
         staleThresholdMs: 60_000,
       }),
     ).toBe(0);
+    await dbWrite
+      .update(jobExecutionLeases)
+      .set({ expires_at: new Date(Date.now() - JOB_EXECUTION_RECOVERY_GRACE_MS - 1_000) })
+      .where(eq(jobExecutionLeases.job_id, claimed!.id));
 
     await dbWrite.execute(sql`
       UPDATE ${jobs}
@@ -327,7 +358,7 @@ describe("restore-validation DB admission and recovery", () => {
     try {
       await expect(
         serviceInternals.executeAdminCanaryRestoreValidation(originalClaim!),
-      ).rejects.toThrow("changed before atomic completion");
+      ).rejects.toThrow("Job execution generation is no longer current");
     } finally {
       executeSpy.mockRestore();
     }
@@ -360,7 +391,7 @@ describe("restore-validation DB admission and recovery", () => {
       throw new Error("late owner failure");
     });
     try {
-      const result = await provisioningJobService.processPendingJobs(1, {
+      const result = await testService.processPendingJobs(1, {
         jobTypes: [TYPE],
       });
       expect(result.errors).toEqual([{ jobId: jobId(50), error: "late owner failure" }]);
