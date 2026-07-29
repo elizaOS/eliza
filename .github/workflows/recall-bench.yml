@@ -50,7 +50,7 @@ jobs:
           # Match local dev's moving canary channel (historical canary tags can
           # disappear from GitHub releases and break scheduled runs).
           bun-version: canary
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "24"
       - name: Install workspace

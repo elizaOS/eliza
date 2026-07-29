@@ -52,7 +52,7 @@ jobs:
           # setup-bun for the moving canary channel so scheduled runs do not fail
           # before the gate gets to execute.
           bun-version: canary
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "24"
       - name: Install workspace
