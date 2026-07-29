@@ -24,8 +24,11 @@ const TIMEOUT_ERROR_PATTERN = /(?:timed out|timeout)/i;
 const PERMANENT_DELETE_PREFIX = "Deletion permanently failed";
 const PERMANENT_DELETE_PATTERN =
   /^Deletion permanently failed after ([1-9][0-9]{0,2}) attempts: ([\s\S]+)$/;
+// Two suffixes: "max attempts reached" is the historical form still present on
+// stored rows; "interruption budget exhausted" is emitted since interruptions
+// stopped consuming attempts. Both classify identically.
 const WORKER_RESTART_TERMINAL_PATTERN =
-  /^Job interrupted by worker restart ([1-9][0-9]{0,2}) times - max attempts reached$/;
+  /^Job interrupted by worker restart ([1-9][0-9]{0,2}) times - (?:max attempts reached|interruption budget exhausted)$/;
 const TIMEOUT_TERMINAL_PATTERN =
   /^Job timed out ([1-9][0-9]{0,2}) times - max attempts reached$/;
 
@@ -73,6 +76,12 @@ interface RecoveryClassification {
 interface TerminalFailureClassification {
   code: Extract<ErrorCode, "timeout" | "worker_restart_interrupted">;
   attempts: number;
+  /**
+   * Whether the counted number IS the job's attempts counter. False for the
+   * "interruption budget exhausted" form, whose count is independent of
+   * attempts — the counters-agree cross-check must not compare those.
+   */
+  countsAttempts?: boolean;
 }
 
 type ErrorLengthBucket = "1_64" | "65_128" | "129_256" | "257_512" | "513_2000";
@@ -233,6 +242,10 @@ function classifyTerminalFailure(
     return {
       code: "worker_restart_interrupted",
       attempts: Number(workerRestart[1]),
+      // The historical suffix counted ATTEMPTS (restarts consumed them); the
+      // "interruption budget exhausted" form counts interruptions, which are
+      // independent of the job's attempts counter by design.
+      countsAttempts: value.endsWith("max attempts reached"),
     };
   }
   return null;
@@ -719,8 +732,9 @@ export function sanitizeManagedDedicatedCanaryDiagnostic(
     if (
       terminalFailure &&
       (job.status !== "failed" ||
-        terminalFailure.attempts !== attempts ||
-        terminalFailure.attempts !== maxAttempts)
+        (terminalFailure.countsAttempts !== false &&
+          (terminalFailure.attempts !== attempts ||
+            terminalFailure.attempts !== maxAttempts)))
     ) {
       throw new Error(`jobs[${index}] terminal counters disagree`);
     }

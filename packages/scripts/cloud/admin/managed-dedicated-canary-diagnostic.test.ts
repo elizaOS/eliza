@@ -882,6 +882,7 @@ describe("managed dedicated canary diagnostic", () => {
   test.each([
     "Job timed out 3 times - max attempts reached",
     "Job interrupted by worker restart 3 times - max attempts reached",
+    "Job interrupted by worker restart 6 times - interruption budget exhausted",
   ])("rejects a recovery-generated terminal job as wrapper source", (cause) => {
     expect(() =>
       sanitizeManagedDedicatedCanaryDiagnostic(
@@ -1369,6 +1370,8 @@ describe("managed dedicated canary diagnostic", () => {
     "Job interrupted by worker restart 0 times - max attempts reached",
     "Job interrupted by worker restart 1000 times - max attempts reached",
     "Job interrupted by worker restart 3 times - max attempts reached trailing",
+    "Job interrupted by worker restart 0 times - interruption budget exhausted",
+    "Job interrupted by worker restart 6 times - interruption budget exhausted trailing",
   ])("rejects a noncanonical worker-restart message", (error) => {
     const input = failedDeleteInput();
     const agent = input.agent as Record<string, unknown>;
