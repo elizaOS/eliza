@@ -2846,6 +2846,9 @@ export class ProvisioningJobService {
 
     for (const jobType of this.filterSnapshotLane(jobTypes, "startup-recovery")) {
       const recovered = await jobsRepository.recoverInProgressJobsStartedBefore({
+        // Same dependent-row settlement as the runner's failure path (#17253 §3).
+        buildFailureWriteback: (job, error) => this.buildPermanentFailureWriteback(job, error),
+        onPermanentFailure: async (job) => this.evictFailureCaches(job),
         type: jobType,
         startedBefore,
       });
@@ -3008,29 +3011,45 @@ export class ProvisioningJobService {
       ),
     );
 
-    // app_deploy keeps a post-commit cache invalidation (the apps read
-    // cache is invalidated outside the DB transaction); the row flip
-    // itself already committed atomically inside onFailedInTx above.
-    if (updated?.status === "failed" && job.type === JOB_TYPES.APP_DEPLOY) {
-      const { appId } = readAppDeployJobData(job);
-      await appsService.invalidateCache(appId);
+    // Post-commit cache eviction (outside the DB transaction); the row
+    // flip itself already committed atomically inside onFailedInTx above.
+    if (updated?.status === "failed") {
+      await this.evictFailureCaches(job);
     }
-    // container_provision flips apps.deployment_status with a raw in-tx
-    // update (bypassing the appsService cache), so evict the app read cache
-    // here too — otherwise the cache-backed deploy-status route keeps
-    // reporting `building` until the 5-min TTL. The in-tx writeback already
-    // org-scoped the flip; an appId that matched no app is a harmless evict.
-    if (updated?.status === "failed" && job.type === JOB_TYPES.CONTAINER_PROVISION) {
-      const { containerId } = readContainerProvisionJobData(job);
-      const [row] = await dbWrite
-        .select({ projectName: containers.project_name })
-        .from(containers)
-        .where(eq(containers.id, containerId))
-        .limit(1);
-      const appId = row?.projectName;
-      if (appId && isValidUUID(appId)) {
+  }
+
+  /**
+   * Post-commit app-cache eviction for a job that permanently failed. The
+   * dependent-row flip happens in-transaction (onFailedInTx); the apps READ
+   * cache lives outside the DB, so without this the cache-backed
+   * deploy-status route keeps reporting `building` until the 5-min TTL.
+   * Shared by the runner's failure path and the recovery sweeps. An appId
+   * that matches no app is a harmless evict; a malformed payload logs and
+   * skips rather than failing the caller.
+   */
+  private async evictFailureCaches(job: Job): Promise<void> {
+    try {
+      if (job.type === JOB_TYPES.APP_DEPLOY) {
+        const { appId } = readAppDeployJobData(job);
         await appsService.invalidateCache(appId);
+      } else if (job.type === JOB_TYPES.CONTAINER_PROVISION) {
+        const { containerId } = readContainerProvisionJobData(job);
+        const [row] = await dbWrite
+          .select({ projectName: containers.project_name })
+          .from(containers)
+          .where(eq(containers.id, containerId))
+          .limit(1);
+        const appId = row?.projectName;
+        if (appId && isValidUUID(appId)) {
+          await appsService.invalidateCache(appId);
+        }
       }
+    } catch (error) {
+      logger.warn("[provisioning-jobs] Post-failure cache eviction skipped", {
+        jobId: job.id,
+        type: job.type,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
@@ -5054,6 +5073,13 @@ export class ProvisioningJobService {
     // handles org-agnostic recovery, so we can do this in one pass.
     for (const jobType of jobTypes) {
       const recovered = await jobsRepository.recoverStaleJobs({
+        // A recovery flip to `failed` settles its dependent row atomically —
+        // the same writeback the runner's own failure path uses (#17253 §3).
+        // No UpgradeFailedError exists on a recovery, which lands on the
+        // rollback-safe default: re-armable marker, never status='error' on a
+        // possibly-live agent.
+        buildFailureWriteback: (job, error) => this.buildPermanentFailureWriteback(job, error),
+        onPermanentFailure: async (job) => this.evictFailureCaches(job),
         type: jobType,
         staleThresholdMs: COLD_BOOT_JOB_TYPES.has(jobType)
           ? COLD_BOOT_STALE_JOB_THRESHOLD_MS

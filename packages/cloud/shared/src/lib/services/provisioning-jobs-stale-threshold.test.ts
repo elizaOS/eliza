@@ -95,3 +95,55 @@ describe("recoverStaleJobs threshold by job type", () => {
     }
   });
 });
+
+describe("recovery failure-writeback wiring (#17253 §3)", () => {
+  test("both recovery paths hand the repository the REAL permanent-failure builder", async () => {
+    const { ProvisioningJobService } = await import("./provisioning-jobs");
+    const { jobsRepository } = await import("../../db/repositories/jobs");
+    const svc = new ProvisioningJobService();
+
+    const captured: Array<Record<string, unknown>> = [];
+    const stale = spyOn(jobsRepository, "recoverStaleJobs").mockImplementation(
+      async (filters: Record<string, unknown>) => {
+        captured.push(filters);
+        return 0;
+      },
+    );
+    const startup = spyOn(jobsRepository, "recoverInProgressJobsStartedBefore").mockImplementation(
+      async (filters: Record<string, unknown>) => {
+        captured.push(filters);
+        return 0;
+      },
+    );
+    try {
+      await (svc as unknown as { recoverStaleJobs: () => Promise<void> }).recoverStaleJobs();
+      await svc.recoverInterruptedJobsOnStartup();
+
+      expect(captured.length).toBeGreaterThanOrEqual(2);
+      for (const filters of captured) {
+        expect(typeof filters.buildFailureWriteback).toBe("function");
+        expect(typeof filters.onPermanentFailure).toBe("function");
+        // The builder is the real one: for an APP_DEPLOY job it produces a
+        // writeback closure; for a type with no dependent row it produces
+        // undefined — the exact contract of buildPermanentFailureWriteback.
+        const build = filters.buildFailureWriteback as (
+          job: Record<string, unknown>,
+          error: string,
+        ) => unknown;
+        const appDeployJob = {
+          id: "00000000-0000-4000-8000-000000000001",
+          type: "app_deploy",
+          data: { appId: "00000000-0000-4000-8000-000000000002" },
+          data_storage: "inline",
+          max_attempts: 3,
+        };
+        expect(typeof build(appDeployJob, "boom")).toBe("function");
+        const inertJob = { ...appDeployJob, type: "agent_message", data: {} };
+        expect(build(inertJob, "boom")).toBeUndefined();
+      }
+    } finally {
+      stale.mockRestore();
+      startup.mockRestore();
+    }
+  });
+});

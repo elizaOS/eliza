@@ -19,6 +19,7 @@ import {
   offloadJsonField,
   offloadTextField,
 } from "../../lib/storage/object-store";
+import { logger } from "../../lib/utils/logger";
 import type { DbTransaction } from "../client";
 import { sqlRows } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";
@@ -58,6 +59,20 @@ function hasRecoveryProtectedExecutionLease(): SQL {
 function lacksRecoveryProtectedExecutionLease(): SQL {
   return sql`NOT (${hasRecoveryProtectedExecutionLease()})`;
 }
+
+/**
+ * Builds the dependent-row settlement for a job a RECOVERY path flips to
+ * `failed` — the same shape incrementAttempt's onFailedInTx consumes. Called
+ * with the HYDRATED job (offloaded payloads resolved) BEFORE the recovery
+ * transaction opens: builders read job data eagerly and may throw on a
+ * malformed payload, and a build-time throw inside the transaction would roll
+ * back the status flip and wedge the job in_progress forever. A build failure
+ * degrades to flipping the job without a writeback, loudly logged.
+ */
+export type RecoveryFailureWritebackBuilder = (
+  hydratedJob: Job,
+  error: string,
+) => ((tx: DbTransaction, failedJob: Job) => Promise<void>) | undefined;
 
 function hasPayloadUpdates(updates: Partial<Job> | Partial<NewJob>): boolean {
   return updates.data !== undefined || updates.result !== undefined || updates.error !== undefined;
@@ -912,6 +927,8 @@ export class JobsRepository {
     organizationId?: string;
     staleThresholdMs: number;
     maxAttempts?: number;
+    buildFailureWriteback?: RecoveryFailureWritebackBuilder;
+    onPermanentFailure?: (failedJob: Job) => Promise<void>;
   }): Promise<number> {
     const staleThreshold = new Date(Date.now() - filters.staleThresholdMs);
     const conditions = [
@@ -954,16 +971,33 @@ export class JobsRepository {
           ? `Job timed out ${newAttempts} times - max attempts reached`
           : `Job timed out - recovered for retry (attempt ${newAttempts}/${maxAttempts})`;
       const recoveryFence = resumeCommittedCanary ? adminCanaryRecoveryFence(job) : sql`TRUE`;
-      const updated = await this.recoverJobFromSnapshot({
-        job,
-        startedBefore: staleThreshold,
-        isFailed,
-        newAttempts,
-        error: timeoutError,
-        recoveryFence,
-      });
-      if (updated && !isFailed) {
-        recoveredCount++;
+      // Per-job isolation: one poisoned payload or failing dependent write
+      // must not starve the rest of the sweep.
+      try {
+        const onFailedInTx = isFailed
+          ? await this.buildRecoveryWriteback(job, timeoutError, filters.buildFailureWriteback)
+          : undefined;
+        const recovered = await this.recoverJobFromSnapshot({
+          job,
+          startedBefore: staleThreshold,
+          isFailed,
+          newAttempts,
+          error: timeoutError,
+          recoveryFence,
+          onFailedInTx,
+        });
+        if (recovered && !isFailed) {
+          recoveredCount++;
+        }
+        if (recovered && isFailed && filters.onPermanentFailure) {
+          await filters.onPermanentFailure(recovered);
+        }
+      } catch (error) {
+        logger.error("[jobs] Stale-job recovery failed for one job; continuing sweep", {
+          jobId: job.id,
+          type: job.type,
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
     }
 
@@ -971,6 +1005,42 @@ export class JobsRepository {
   }
 
   /**
+   * Build the dependent-row writeback OUTSIDE the recovery transaction, from
+   * the HYDRATED job: builders read payloads eagerly and may throw on a
+   * malformed or unhydratable one, and a build-time throw inside the
+   * transaction would roll back the status flip and wedge the job
+   * in_progress forever. A build failure degrades to flipping the job with
+   * no writeback — the dependent row then falls to the backstop sweeps.
+   */
+  private async buildRecoveryWriteback(
+    job: Job,
+    error: string,
+    build: RecoveryFailureWritebackBuilder | undefined,
+  ): Promise<((tx: DbTransaction, failedJob: Job) => Promise<void>) | undefined> {
+    if (!build) return undefined;
+    try {
+      return build(await hydrateJob(job), error);
+    } catch (buildError) {
+      logger.error(
+        "[jobs] Failure-writeback build threw; flipping the job WITHOUT settling its dependent row",
+        {
+          jobId: job.id,
+          type: job.type,
+          error: buildError instanceof Error ? buildError.message : String(buildError),
+        },
+      );
+      return undefined;
+    }
+  }
+
+  /**
+   * Recovers in-progress jobs that were already claimed before a replacement
+   * worker process started. This is intentionally separate from
+   * `recoverStaleJobs`: the stale threshold protects slow cold boots during
+   * normal operation, while daemon startup is the one point where the previous
+   * process is known to have been replaced by systemd and its claims need to
+   * be made visible again immediately.
+   *
    * Recovers pre-start claims only after their renewable owner lease and
    * takeover grace have expired. Process start time scopes the scan but is not
    * ownership evidence: overlapping workers may both be live during rollout.
@@ -980,6 +1050,8 @@ export class JobsRepository {
     organizationId?: string;
     startedBefore: Date;
     maxAttempts?: number;
+    buildFailureWriteback?: RecoveryFailureWritebackBuilder;
+    onPermanentFailure?: (failedJob: Job) => Promise<void>;
   }): Promise<number> {
     const conditions = [
       eq(jobs.type, filters.type),
@@ -1023,17 +1095,34 @@ export class JobsRepository {
       const dataWithCount = resumeCommittedCanary
         ? null
         : withInterruptionCount(job, interruptions);
-      const updated = await this.recoverJobFromSnapshot({
-        job,
-        startedBefore: filters.startedBefore,
-        isFailed,
-        newAttempts,
-        error,
-        ...(dataWithCount !== null ? { data: dataWithCount } : {}),
-        recoveryFence,
-      });
-      if (updated && !isFailed) {
-        recoveredCount++;
+      // Per-job isolation: one poisoned payload or failing dependent write
+      // must not starve the rest of the startup sweep.
+      try {
+        const onFailedInTx = isFailed
+          ? await this.buildRecoveryWriteback(job, error, filters.buildFailureWriteback)
+          : undefined;
+        const recovered = await this.recoverJobFromSnapshot({
+          job,
+          startedBefore: filters.startedBefore,
+          isFailed,
+          newAttempts,
+          error,
+          ...(dataWithCount !== null ? { data: dataWithCount } : {}),
+          recoveryFence,
+          onFailedInTx,
+        });
+        if (recovered && !isFailed) {
+          recoveredCount++;
+        }
+        if (recovered && isFailed && filters.onPermanentFailure) {
+          await filters.onPermanentFailure(recovered);
+        }
+      } catch (loopError) {
+        logger.error("[jobs] Startup recovery failed for one job; continuing sweep", {
+          jobId: job.id,
+          type: job.type,
+          error: loopError instanceof Error ? loopError.message : String(loopError),
+        });
       }
     }
 
@@ -1049,7 +1138,16 @@ export class JobsRepository {
     /** Replacement inline payload (e.g. carrying the interruption count). */
     data?: Record<string, unknown>;
     recoveryFence: SQL;
-  }): Promise<boolean> {
+    /**
+     * Dependent-row settlement for a job this recovery flips to `failed` —
+     * the SAME contract as incrementAttempt's onFailedInTx: runs inside the
+     * recovery transaction, only after the CAS matched, and a throw rolls
+     * back BOTH the status flip and the dependent write. Without it a
+     * recovered-to-failed APP_DEPLOY left its app 'building' forever
+     * (#17253 §3) — the exact stranding the normal failure path prevents.
+     */
+    onFailedInTx?: (tx: DbTransaction, failedJob: Job) => Promise<void>;
+  }): Promise<Job | undefined> {
     const payload = await prepareJobPayload(
       {
         error: params.error,
@@ -1084,7 +1182,7 @@ export class JobsRepository {
         )
         .for("update")
         .limit(1);
-      if (!lockedJob) return false;
+      if (!lockedJob) return undefined;
       if (requiresExecutionLease && params.job.execution_generation) {
         const [liveLease] = await tx
           .select({ jobId: jobExecutionLeases.job_id })
@@ -1098,7 +1196,7 @@ export class JobsRepository {
             ),
           )
           .limit(1);
-        if (liveLease) return false;
+        if (liveLease) return undefined;
       }
       const [updated] = await tx
         .update(jobs)
@@ -1130,8 +1228,8 @@ export class JobsRepository {
               : sql`TRUE`,
           ),
         )
-        .returning({ id: jobs.id });
-      if (!updated) return false;
+        .returning();
+      if (!updated) return undefined;
       if (requiresExecutionLease) {
         await tx
           .delete(jobExecutionLeases)
@@ -1160,7 +1258,11 @@ export class JobsRepository {
             ),
           );
       }
-      return true;
+      const hydrated = await hydrateJob(updated);
+      if (params.isFailed && params.onFailedInTx) {
+        await params.onFailedInTx(tx, hydrated);
+      }
+      return hydrated;
     });
   }
 

@@ -7,8 +7,24 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { eq, type SQL } from "drizzle-orm";
 import { jobExecutionLeases } from "../../schemas/job-execution-leases";
+import { agentSandboxes } from "../../schemas/agent-sandboxes";
+import { apiKeys } from "../../schemas/api-keys";
+import {
+  appDeploymentStatusEnum,
+  appReviewStatusEnum,
+  apps,
+  userDatabaseStatusEnum,
+} from "../../schemas/apps";
+import { generations } from "../../schemas/generations";
 import { type Job, jobs } from "../../schemas/jobs";
+import { organizations } from "../../schemas/organizations";
+import { usageRecords } from "../../schemas/usage-records";
+import { userCharacters } from "../../schemas/user-characters";
+import { users } from "../../schemas/users";
 
+const AMBIENT_DATABASE_URL = process.env.DATABASE_URL ?? "";
+const CAN_USE_ISOLATED_PGLITE =
+  AMBIENT_DATABASE_URL === "" || AMBIENT_DATABASE_URL.startsWith("pglite");
 process.env.DATABASE_URL ||= "pglite://memory";
 process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS ||= "1";
@@ -123,58 +139,54 @@ function pendingCutoverAudit(jobId: string): Record<string, unknown> {
 }
 
 beforeAll(async () => {
+  if (!CAN_USE_ISOLATED_PGLITE) {
+    pgliteReady = false;
+    console.warn("[jobs-recovery] non-PGlite DATABASE_URL; failing.");
+    return;
+  }
   try {
     ({ closeDatabaseConnectionsForTests: closeDb, dbWrite } = await import("../../client"));
     ({ jobsRepository: repo } = await import("../jobs"));
-    await dbWrite.execute(
-      `CREATE TABLE IF NOT EXISTS jobs (
-				id uuid PRIMARY KEY,
-				type text NOT NULL,
-				status text NOT NULL DEFAULT 'pending',
-				data jsonb NOT NULL,
-				data_storage text NOT NULL DEFAULT 'inline',
-				data_key text,
-				agent_id text,
-				character_id text,
-				result jsonb,
-				result_storage text NOT NULL DEFAULT 'inline',
-				result_key text,
-				error text,
-				error_storage text NOT NULL DEFAULT 'inline',
-				error_key text,
-				attempts integer NOT NULL DEFAULT 0,
-				max_attempts integer NOT NULL DEFAULT 3,
-				organization_id uuid NOT NULL,
-				user_id uuid,
-				api_key_id uuid,
-				generation_id uuid,
-				webhook_url text,
-				webhook_status text,
-				estimated_completion_at timestamp,
-				scheduled_for timestamp NOT NULL DEFAULT now(),
-				started_at timestamp,
-				execution_generation uuid,
-				execution_quiesced_at timestamp,
-				completed_at timestamp,
-				created_at timestamp NOT NULL DEFAULT now(),
-				updated_at timestamp NOT NULL DEFAULT now()
-			);`,
-    );
-    await dbWrite.execute(
-      `ALTER TABLE jobs
-        ADD COLUMN IF NOT EXISTS execution_generation uuid,
-        ADD COLUMN IF NOT EXISTS execution_quiesced_at timestamp;`,
-    );
-    await dbWrite.execute(
-      `CREATE TABLE IF NOT EXISTS job_execution_leases (
-        job_id uuid PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE,
-        execution_generation uuid NOT NULL,
-        owner_id uuid NOT NULL,
-        expires_at timestamp NOT NULL,
-        heartbeat_at timestamp NOT NULL DEFAULT now(),
-        created_at timestamp NOT NULL DEFAULT now()
-      );`,
-    );
+    // Real drizzle schema via pushSchema (hand-rolled DDL diverges from the
+    // FK/enum reality the writeback tests need). Enums must be IN the map or
+    // the apps table references a missing type.
+    const { pushSchema } = await import("drizzle-kit/api");
+    const schema = {
+      organizations,
+      users,
+      userCharacters,
+      apiKeys,
+      usageRecords,
+      generations,
+      agentSandboxes,
+      jobs,
+      jobExecutionLeases,
+      apps,
+      appDeploymentStatusEnum,
+      appReviewStatusEnum,
+      userDatabaseStatusEnum,
+    };
+    const { apply } = await pushSchema(schema as never, dbWrite as never);
+    await apply();
+    // The jobs FKs need these parents; seeded once with the fixture ids the
+    // whole suite already uses.
+    await dbWrite
+      .insert(organizations)
+      .values({ id: ORG_ID, name: "Org", slug: "jobs-recovery-org", credit_balance: "5.000000" })
+      .onConflictDoNothing();
+    await dbWrite
+      .insert(users)
+      .values({ id: ACTOR_ID, steward_user_id: "steward-jobs-recovery", organization_id: ORG_ID })
+      .onConflictDoNothing();
+    // The canary identity-mismatch cases seed jobs owned by a second actor.
+    await dbWrite
+      .insert(users)
+      .values({
+        id: "00000000-0000-4000-8000-000000001899",
+        steward_user_id: "steward-jobs-recovery-other",
+        organization_id: ORG_ID,
+      })
+      .onConflictDoNothing();
   } catch (error) {
     pgliteReady = false;
     console.warn("[jobs-recovery] PGlite unavailable, skipping:", error);
@@ -190,6 +202,8 @@ describe("jobsRepository.recoverStaleJobs", () => {
     expect(pgliteReady).toBe(true);
     await dbWrite.delete(jobExecutionLeases);
     await dbWrite.execute("DELETE FROM jobs;");
+    await dbWrite.execute("DELETE FROM apps;");
+    await dbWrite.execute("DELETE FROM agent_sandboxes;");
   });
 
   test("two live processors cannot reclaim one another before the winning lease expires", async () => {
@@ -851,5 +865,172 @@ describe("jobsRepository.recoverStaleJobs", () => {
       replicaSpy.mockRestore();
       primarySpy.mockRestore();
     }
+  });
+});
+
+describe("recovery failure writeback (#17253 §3)", () => {
+  const APP_ID = "00000000-0000-4000-8000-000000200854";
+
+  beforeEach(async () => {
+    expect(pgliteReady).toBe(true);
+    await dbWrite.execute("DELETE FROM jobs;");
+    await dbWrite.execute("DELETE FROM apps;");
+  });
+
+  async function seedBuildingApp(): Promise<void> {
+    await dbWrite.insert(apps).values({
+      id: APP_ID,
+      name: "App",
+      slug: `app-${APP_ID.slice(-6)}`,
+      organization_id: ORG_ID,
+      created_by_user_id: ACTOR_ID,
+      app_url: "https://app.example",
+      deployment_status: "building",
+    });
+  }
+
+  async function appStatus(): Promise<string | undefined> {
+    const [row] = await dbWrite
+      .select({ status: apps.deployment_status })
+      .from(apps)
+      .where(eq(apps.id, APP_ID));
+    return row?.status ?? undefined;
+  }
+
+  test("a recovery flip to failed settles the dependent row in the SAME transaction", async () => {
+    const jobId = "00000000-0000-4000-8000-000000210854";
+    await seedBuildingApp();
+    await seedJob({
+      id: jobId,
+      type: "app_deploy",
+      maxAttempts: 3,
+      data: { appId: APP_ID, __worker_interruptions: 5 },
+    });
+
+    const recovered = await repo.recoverInProgressJobsStartedBefore({
+      type: "app_deploy",
+      startedBefore: new Date(),
+      buildFailureWriteback: (hydrated, _error) => async (tx) => {
+        const data = hydrated.data as { appId?: string };
+        if (!data.appId) throw new Error("no appId");
+        await tx
+          .update(apps)
+          .set({ deployment_status: "failed", updated_at: new Date() })
+          .where(eq(apps.id, data.appId));
+      },
+    });
+
+    expect(recovered).toBe(0); // the 6th interruption is terminal
+    const [job] = await dbWrite
+      .select({ status: jobs.status })
+      .from(jobs)
+      .where(eq(jobs.id, jobId));
+    expect(job?.status).toBe("failed");
+    // The whole point: the app is settled, not stranded BUILDING forever.
+    expect(await appStatus()).toBe("failed");
+  });
+
+  test("a writeback that throws at EXECUTION rolls back BOTH writes", async () => {
+    const jobId = "00000000-0000-4000-8000-000000220854";
+    await seedBuildingApp();
+    await seedJob({
+      id: jobId,
+      type: "app_deploy",
+      maxAttempts: 3,
+      data: { appId: APP_ID, __worker_interruptions: 5 },
+    });
+
+    const recovered = await repo.recoverInProgressJobsStartedBefore({
+      type: "app_deploy",
+      startedBefore: new Date(),
+      buildFailureWriteback: () => async () => {
+        throw new Error("dependent write refused");
+      },
+    });
+
+    // The per-job catch swallowed the failure and the sweep continued…
+    expect(recovered).toBe(0);
+    // …but the transaction rolled back BOTH writes: the job stays claimable
+    // by the next sweep, and the app was not half-settled.
+    const [job] = await dbWrite
+      .select({ status: jobs.status })
+      .from(jobs)
+      .where(eq(jobs.id, jobId));
+    expect(job?.status).toBe("in_progress");
+    expect(await appStatus()).toBe("building");
+  });
+
+  test("a BUILD-time throw degrades to flipping the job WITHOUT a writeback", async () => {
+    const jobId = "00000000-0000-4000-8000-000000230854";
+    await seedBuildingApp();
+    await seedJob({
+      id: jobId,
+      type: "app_deploy",
+      maxAttempts: 3,
+      data: { appId: APP_ID, __worker_interruptions: 5 },
+    });
+
+    const recovered = await repo.recoverInProgressJobsStartedBefore({
+      type: "app_deploy",
+      startedBefore: new Date(),
+      buildFailureWriteback: () => {
+        throw new Error("malformed payload");
+      },
+    });
+
+    expect(recovered).toBe(0);
+    // The flip must NOT be held hostage by an unbuildable writeback — the
+    // job fails (backstop sweeps own the row), it does not wedge in_progress.
+    const [job] = await dbWrite
+      .select({ status: jobs.status })
+      .from(jobs)
+      .where(eq(jobs.id, jobId));
+    expect(job?.status).toBe("failed");
+    expect(await appStatus()).toBe("building");
+  });
+
+  test("onPermanentFailure fires post-commit with the hydrated failed job", async () => {
+    const jobId = "00000000-0000-4000-8000-000000240854";
+    await seedBuildingApp();
+    await seedJob({
+      id: jobId,
+      type: "app_deploy",
+      maxAttempts: 3,
+      data: { appId: APP_ID, __worker_interruptions: 5 },
+    });
+
+    const seen: Array<{ id: string; status: string }> = [];
+    await repo.recoverInProgressJobsStartedBefore({
+      type: "app_deploy",
+      startedBefore: new Date(),
+      onPermanentFailure: async (job) => {
+        seen.push({ id: job.id, status: job.status });
+      },
+    });
+
+    expect(seen).toEqual([{ id: jobId, status: "failed" }]);
+  });
+
+  test("stale recovery drives the same writeback contract", async () => {
+    const jobId = "00000000-0000-4000-8000-000000250854";
+    await seedBuildingApp();
+    await seedJob({ id: jobId, type: "app_deploy", maxAttempts: 1, data: { appId: APP_ID } });
+
+    const recovered = await repo.recoverStaleJobs({
+      type: "app_deploy",
+      staleThresholdMs: 5 * 60 * 1000,
+      buildFailureWriteback: (hydrated) => async (tx) => {
+        const data = hydrated.data as { appId?: string };
+        if (data.appId) {
+          await tx
+            .update(apps)
+            .set({ deployment_status: "failed", updated_at: new Date() })
+            .where(eq(apps.id, data.appId));
+        }
+      },
+    });
+
+    expect(recovered).toBe(0); // maxAttempts 1 → timeout is terminal
+    expect(await appStatus()).toBe("failed");
   });
 });
