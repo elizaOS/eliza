@@ -94,8 +94,8 @@ export function ViewManagerView() {
 	};
 
 	return (
-		<div className="flex flex-col gap-2">
-			<div className="flex justify-end">
+		<div className="eliza-chat-scroll h-0 min-h-0 flex-1 overflow-y-auto">
+			<div className="mb-2 flex justify-end">
 				<Button
 					unstyled
 					type="button"

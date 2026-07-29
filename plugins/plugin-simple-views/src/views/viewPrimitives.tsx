@@ -21,22 +21,16 @@ export function handleRenderedMutationFailure(cause: unknown): void {
 
 export const VIEW_ROOT_STYLE: CSSProperties = {
   boxSizing: "border-box",
-  width: "100%",
-  height: "100%",
+  width: "calc(100% - var(--eliza-chat-side-clearance, 0px))",
+  height: "calc(100% - var(--eliza-chat-clearance, 5.25rem))",
   minHeight: 0,
   overflowX: "hidden",
   overflowY: "auto",
   overscrollBehavior: "contain",
   padding: "clamp(8px, 2.4vw, 24px)",
   paddingTop: "calc(clamp(8px, 2.4vw, 24px) + var(--safe-area-top, 0px))",
-  paddingBottom:
-    "calc(clamp(8px, 2.4vw, 24px) + var(--eliza-chat-clearance, 5.25rem))",
-  paddingInlineEnd:
-    "calc(clamp(8px, 2.4vw, 24px) + var(--eliza-chat-side-clearance, 0px))",
-  scrollPaddingBottom:
-    "calc(clamp(8px, 2.4vw, 24px) + var(--eliza-chat-clearance, 5.25rem))",
-  scrollPaddingInlineEnd:
-    "calc(clamp(8px, 2.4vw, 24px) + var(--eliza-chat-side-clearance, 0px))",
+  scrollPaddingBottom: "clamp(8px, 2.4vw, 24px)",
+  scrollPaddingInlineEnd: "clamp(8px, 2.4vw, 24px)",
   color: "var(--txt, #f5f5f5)",
   fontFamily: "inherit",
 };
@@ -136,7 +130,9 @@ export function AgentAction({
   const variantStyle: CSSProperties =
     variant === "primary"
       ? {
-          background: "var(--accent, #ff6a1f)",
+          background: disabled
+            ? "color-mix(in srgb, var(--surface, rgba(255,255,255,.08)) 86%, transparent)"
+            : "var(--accent, #ff6a1f)",
           color: "var(--accent-foreground, #fff)",
         }
       : variant === "quiet"
