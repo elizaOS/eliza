@@ -1236,6 +1236,12 @@ export class AgentSandboxesRepository {
           // replenisher (see countUnclaimedPool).
           isNotNull(agentSandboxes.node_id),
           sql`${agentSandboxes.node_id} <> ''`,
+          // #17253 §5: a crash between provision() committing `running` and
+          // markPoolEntryReady strands the row running with pool_ready_at
+          // NULL — unclaimable (claimWarmContainer requires the stamp), so
+          // counting it as ready capacity permanently suppresses one slot of
+          // replenishment while the container bills forever.
+          isNotNull(agentSandboxes.pool_ready_at),
         ),
       );
     const [provisioning] = await dbRead
@@ -1395,7 +1401,13 @@ export class AgentSandboxesRepository {
       .where(
         and(
           eq(agentSandboxes.pool_status, "unclaimed"),
-          sql`${agentSandboxes.status} in ('pending','provisioning','error')`,
+          // running + pool_ready_at NULL is the crash window between
+          // provision() and markPoolEntryReady (#17253 §5): unclaimable,
+          // undrainable, and previously invisible to every sweep.
+          sql`(
+            ${agentSandboxes.status} in ('pending','provisioning','error')
+            OR (${agentSandboxes.status} = 'running' AND ${agentSandboxes.pool_ready_at} IS NULL)
+          )`,
           lt(agentSandboxes.updated_at, cutoff),
         ),
       );
