@@ -3117,6 +3117,49 @@ export class ProvisioningJobService {
     }
   }
 
+  private async releaseCompletedLifecycleExecutionInTx(
+    tx: DbTransaction,
+    params: {
+      jobId: string;
+      organizationId: string;
+      agentId: string;
+      executionGeneration: string;
+    },
+  ): Promise<void> {
+    const [deletedLease] = await tx
+      .delete(jobExecutionLeases)
+      .where(
+        and(
+          eq(jobExecutionLeases.job_id, params.jobId),
+          eq(jobExecutionLeases.execution_generation, params.executionGeneration),
+          eq(jobExecutionLeases.owner_id, this.executionOwnerId),
+        ),
+      )
+      .returning({ jobId: jobExecutionLeases.job_id });
+    if (!deletedLease) {
+      throw new StaleJobExecutionError(params.jobId);
+    }
+
+    const [clearedFence] = await tx
+      .update(agentSandboxes)
+      .set({
+        lifecycle_job_id: null,
+        lifecycle_execution_generation: null,
+      })
+      .where(
+        and(
+          eq(agentSandboxes.id, params.agentId),
+          eq(agentSandboxes.organization_id, params.organizationId),
+          eq(agentSandboxes.lifecycle_job_id, params.jobId),
+          eq(agentSandboxes.lifecycle_execution_generation, params.executionGeneration),
+        ),
+      )
+      .returning({ id: agentSandboxes.id });
+    if (!clearedFence) {
+      throw new StaleJobExecutionError(params.jobId);
+    }
+  }
+
   private async assertExecutionMutationLease(job: Job): Promise<void> {
     try {
       await jobsRepository.assertExecutionLease(job, this.executionOwnerId);
@@ -4428,6 +4471,10 @@ export class ProvisioningJobService {
     job: Job,
     data: AdminCanaryImageJobData,
   ): Promise<void> {
+    const executionGeneration = job.execution_generation;
+    if (!executionGeneration) {
+      throw new Error(`Admin canary job ${job.id} has no execution generation`);
+    }
     const startedAt = jobAuditTimestamp(job.started_at ?? job.updated_at);
     const restoreValidationId = crypto.randomUUID();
     const validationJobId = crypto.randomUUID();
@@ -4484,6 +4531,7 @@ export class ProvisioningJobService {
           error_storage: "inline",
           error_key: null,
           completed_at: finishedAt,
+          execution_quiesced_at: finishedAt,
           updated_at: finishedAt,
         })
         .where(
@@ -4496,6 +4544,16 @@ export class ProvisioningJobService {
             eq(jobs.user_id, data.actorUserId),
             eq(jobs.attempts, job.attempts),
             eq(jobs.max_attempts, job.max_attempts),
+            eq(jobs.execution_generation, executionGeneration),
+            isNull(jobs.execution_quiesced_at),
+            sql`EXISTS (
+              SELECT 1
+              FROM ${jobExecutionLeases}
+              WHERE ${jobExecutionLeases.job_id} = ${job.id}
+                AND ${jobExecutionLeases.execution_generation} = ${executionGeneration}
+                AND ${jobExecutionLeases.owner_id} = ${this.executionOwnerId}
+                AND ${jobExecutionLeases.expires_at} > NOW()
+            )`,
             sql`${jobs.started_at} IS NOT DISTINCT FROM ${
               job.started_at ? new Date(jobAuditTimestamp(job.started_at)) : null
             }`,
@@ -4515,7 +4573,7 @@ export class ProvisioningJobService {
         )
         .returning({ id: jobs.id });
       if (!updated) {
-        throw new Error(`Admin canary job ${job.id} changed before standby cutover audit`);
+        throw new StaleJobExecutionError(job.id);
       }
       const [sandbox] = await tx
         .select()
@@ -4541,7 +4599,9 @@ export class ProvisioningJobService {
         sandbox.rollback_standby_primary_node_id === sandbox.rollback_standby_node_id ||
         sandbox.rollback_standby_environment_revision === null ||
         sandbox.image_digest !== data.targetDigest ||
-        sandbox.docker_image !== data.targetImage
+        sandbox.docker_image !== data.targetImage ||
+        sandbox.lifecycle_job_id !== job.id ||
+        sandbox.lifecycle_execution_generation !== executionGeneration
       ) {
         throw new Error(
           `Admin canary job ${job.id} cannot plan restore validation from an incomplete standby`,
@@ -4611,6 +4671,12 @@ export class ProvisioningJobService {
           updated_at: finishedAt,
         }),
       );
+      await this.releaseCompletedLifecycleExecutionInTx(tx, {
+        jobId: job.id,
+        organizationId: data.organizationId,
+        agentId: data.agentId,
+        executionGeneration,
+      });
       completedAudit = result;
     };
     const result = await elizaSandboxService.executeAdminCanaryUpgrade({
@@ -5230,11 +5296,13 @@ export class ProvisioningJobService {
 
   private async executeAdminCanaryStandbyDecision(job: Job): Promise<void> {
     const data = readAdminCanaryStandbyDecisionJobData(job);
+    const executionGeneration = job.execution_generation;
     if (
       data.organizationId !== job.organization_id ||
       data.agentId !== job.agent_id ||
       data.actorUserId !== job.user_id ||
-      data.userId !== job.user_id
+      data.userId !== job.user_id ||
+      !executionGeneration
     ) {
       throw new Error(`Admin canary standby decision identity mismatch for job ${job.id}`);
     }
@@ -5245,6 +5313,26 @@ export class ProvisioningJobService {
       decisionJobId: job.id,
       onConvergedInTx: async (tx, convergedOutcome) => {
         const finishedAt = new Date();
+        const [sandboxFence] = await tx
+          .select({
+            jobId: agentSandboxes.lifecycle_job_id,
+            generation: agentSandboxes.lifecycle_execution_generation,
+          })
+          .from(agentSandboxes)
+          .where(
+            and(
+              eq(agentSandboxes.id, data.agentId),
+              eq(agentSandboxes.organization_id, data.organizationId),
+            ),
+          )
+          .limit(1);
+        if (
+          !sandboxFence ||
+          sandboxFence.jobId !== job.id ||
+          sandboxFence.generation !== executionGeneration
+        ) {
+          throw new StaleJobExecutionError(job.id);
+        }
         const result: AdminCanaryStandbyDecisionJobResult = {
           success: true,
           decision: data.decision,
@@ -5273,6 +5361,7 @@ export class ProvisioningJobService {
             error_storage: "inline",
             error_key: null,
             completed_at: finishedAt,
+            execution_quiesced_at: finishedAt,
             updated_at: finishedAt,
           })
           .where(
@@ -5285,6 +5374,16 @@ export class ProvisioningJobService {
               eq(jobs.user_id, data.actorUserId),
               eq(jobs.attempts, job.attempts),
               eq(jobs.max_attempts, job.max_attempts),
+              eq(jobs.execution_generation, executionGeneration),
+              isNull(jobs.execution_quiesced_at),
+              sql`EXISTS (
+                SELECT 1
+                FROM ${jobExecutionLeases}
+                WHERE ${jobExecutionLeases.job_id} = ${job.id}
+                  AND ${jobExecutionLeases.execution_generation} = ${executionGeneration}
+                  AND ${jobExecutionLeases.owner_id} = ${this.executionOwnerId}
+                  AND ${jobExecutionLeases.expires_at} > NOW()
+              )`,
               sql`${jobs.started_at} IS NOT DISTINCT FROM ${
                 job.started_at ? new Date(jobAuditTimestamp(job.started_at)) : null
               }`,
@@ -5296,8 +5395,14 @@ export class ProvisioningJobService {
           )
           .returning({ id: jobs.id });
         if (!updated) {
-          throw new Error(`Standby decision job ${job.id} changed before atomic completion`);
+          throw new StaleJobExecutionError(job.id);
         }
+        await this.releaseCompletedLifecycleExecutionInTx(tx, {
+          jobId: job.id,
+          organizationId: data.organizationId,
+          agentId: data.agentId,
+          executionGeneration,
+        });
         completed = result;
       },
     });
