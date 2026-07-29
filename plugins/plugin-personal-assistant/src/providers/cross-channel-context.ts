@@ -15,7 +15,6 @@
  * than running a speculative search on every turn.
  */
 
-import { hasOwnerAccess } from "@elizaos/agent";
 import type {
   IAgentRuntime,
   Memory,
@@ -25,6 +24,7 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
+import { authorizeLifeOpsPrivateContext } from "../lifeops/audience-policy.js";
 import {
   CROSS_CHANNEL_SEARCH_CHANNELS,
   type CrossChannelSearchChannel,
@@ -204,19 +204,29 @@ export const crossChannelContextProvider: Provider = {
     message: Memory,
     state: State | undefined,
   ): Promise<ProviderResult> {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return EMPTY;
+    const request = pickRequestFromState(state);
+    if (!request) return EMPTY;
+
+    const audienceGate = await authorizeLifeOpsPrivateContext({
+      runtime,
+      message,
+      sources: [
+        { kind: "gmail", id: "cross-channel.gmail" },
+        { kind: "private_memory", id: "cross-channel.memory" },
+      ],
+    });
+    if (!audienceGate.canLoadPrivateContext) {
+      return {
+        text: "",
+        values: { crossChannelUnavailable: true },
+        data: { lifeOpsAudienceReceipts: audienceGate.receipts },
+      };
     }
     const egressContext = createLifeOpsEgressContext({
       isOwner: true,
       agentId: runtime.agentId,
       entityId: message.entityId,
     });
-
-    const request = pickRequestFromState(state);
-    if (!request) {
-      return EMPTY;
-    }
 
     const personRef = (() => {
       if (request.primaryEntityId) {
@@ -301,12 +311,20 @@ export const crossChannelContextProvider: Provider = {
         },
       };
     } catch (err) {
+      runtime.reportError("cross-channel-context.provider", err, {
+        roomId: message.roomId,
+        entityId: message.entityId,
+      });
       logger.warn(
         `[crossChannelContext] Skipped injection after error: ${
           err instanceof Error ? err.message : String(err)
         }`,
       );
-      return EMPTY;
+      return {
+        text: "",
+        values: { crossChannelUnavailable: true },
+        data: { crossChannelError: true },
+      };
     }
   },
 };
