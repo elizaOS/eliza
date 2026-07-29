@@ -11,8 +11,8 @@
  *    connectors already stamp (`metadata.provider`, `metadata.accountId`, the
  *    nested `metadata[source]` identity object). It normalizes the source
  *    through the connector-source registry so `discord-local` and `discord`
- *    are one surface. It does not invent fields: anything a connector did not
- *    record comes back `undefined`, and the trust ladder degrades accordingly.
+ *    are one surface. It does not invent required fields: missing provenance
+ *    returns a typed invalid result and is withheld from recall.
  *
  * 2. {@link canonicalDedupeKey} — `source:account:platformRecordId`. Two deliveries
  *    of the same webhook collapse; the same text from two connector accounts
@@ -22,9 +22,9 @@
  * 3. {@link CanonicalRecallPolicy} — the seam that binds **who is asking** to
  *    **where the answer lands**. This module does not implement audience
  *    policy; it defines the contract and ships
- *    {@link failClosedRecallPolicy}, which denies cross-room recall into an
- *    unresolved or group destination with `policy_contract_pending`. That is
- *    the fail-closed placeholder until the audience-policy work supplies a real
+ *    {@link failClosedRecallPolicy}, which allows same-room recall only and
+ *    denies cross-room recall with `policy_contract_pending`. That is the
+ *    fail-closed placeholder until the audience-policy work supplies a real
  *    implementation, at which point callers swap the policy object and the
  *    denial code disappears on its own.
  *
@@ -36,11 +36,15 @@
 import { normalizeConnectorSource } from "../connectors";
 import type {
 	AccessContext,
+	IAgentRuntime,
 	Memory,
 	MemoryScope,
 	MessageChatType,
+	Room,
 	UUID,
 } from "../types";
+import { ChannelType } from "../types";
+import { actorFromAccessContext, canReadScope } from "./filter";
 
 /**
  * How strongly the stored memory's sender identity is attested.
@@ -65,7 +69,7 @@ export interface CanonicalProvenance {
 	/** Raw `source` string as stored, before normalization. */
 	rawSource?: string;
 	/** Connector account this arrived under. Distinguishes two accounts on one surface. */
-	accountId?: string;
+	accountId: string;
 	/** Room the memory belongs to. */
 	roomId: UUID;
 	/** World/tenant scope, when the memory recorded one. */
@@ -83,27 +87,25 @@ export interface CanonicalProvenance {
 	/** Chat type recorded by the connector (`dm`, `group`, …), when present. */
 	chatType?: MessageChatType;
 	/** Platform-native message id, when the connector stamped one. */
-	platformMessageId?: string;
-	/** Memory scope, defaulting to `global` exactly as the scope filter does. */
+	platformMessageId: string;
+	/** Explicit memory scope stamped by the ingesting connector. */
 	scope: MemoryScope;
 }
 
-/** Destination a recalled item is about to be rendered into. */
-export interface RecallDestination {
+/** Destination a recalled item is about to be rendered into, resolved by the runtime. */
+export interface ResolvedRecallDestination {
 	/** Room the answer will land in. */
-	roomId?: UUID;
+	roomId: UUID;
+	/** Trusted room record from `runtime.getRoom`. */
+	room: Room;
 	/** World the destination room belongs to. */
 	worldId?: UUID;
 	/** Chat type of the destination, when resolvable. */
-	chatType?: MessageChatType;
-	/**
-	 * Whether the destination is a multi-party room. Left `undefined` when the
-	 * caller could not resolve it — which every policy here treats as unsafe,
-	 * not as "probably a DM".
-	 */
-	isGroup?: boolean;
+	chatType: MessageChatType;
+	/** Whether the trusted room metadata marks the destination as multi-party. */
+	isGroup: boolean;
 	/** Participants of the destination room, when enumerable. */
-	participantEntityIds?: UUID[];
+	participantEntityIds: UUID[];
 }
 
 /** Machine-readable reason a candidate was withheld. */
@@ -116,7 +118,9 @@ export type RecallDenyCode =
 	/** The destination room / chat type could not be resolved at all. */
 	| "destination_unresolved"
 	/** The item's own scope forbids this requester (delegated to the scope ladder). */
-	| "scope_denied";
+	| "scope_denied"
+	/** The stored memory is missing provenance required for fail-closed recall. */
+	| "invalid_provenance";
 
 export type RecallDecision =
 	| { allow: true }
@@ -130,7 +134,7 @@ export interface RecallPolicyInput {
 	/** Who is asking. */
 	requester: AccessContext;
 	/** Where the answer will land. */
-	destination: RecallDestination;
+	destination: ResolvedRecallDestination;
 }
 
 /**
@@ -148,61 +152,31 @@ export interface CanonicalRecallPolicy {
 	decide(input: RecallPolicyInput): RecallDecision;
 }
 
-/** Scopes that are inherently disclosable anywhere the requester can already read. */
-const OPEN_SCOPES: ReadonlySet<MemoryScope> = new Set<MemoryScope>([
-	"global",
-	"shared",
-	"room",
-]);
-
 /**
  * The conservative default policy: same-room recall of any readable item is
- * allowed, and **cross-room** recall is allowed only into a destination that is
- * positively resolved as non-group. Anything else is denied.
+ * allowed and every cross-room recall is denied.
  *
- * This is intentionally not an audience implementation. It encodes only the
- * invariant that a private-surface fact must not cross into a group room while
- * the real policy is absent, and reports `policy_contract_pending` so a caller
- * can tell "withheld pending policy" apart from "genuinely nothing to say".
+ * This is intentionally not an audience implementation. It reports
+ * `policy_contract_pending` so a caller can tell "withheld pending policy"
+ * apart from "genuinely nothing to say" while PR #17212 supplies the real
+ * destination policy.
  */
 export const failClosedRecallPolicy: CanonicalRecallPolicy = {
 	id: "fail-closed-pending-audience-policy",
 	decide({ provenance, destination }): RecallDecision {
-		if (!destination.roomId) {
-			return {
-				allow: false,
-				code: "destination_unresolved",
-				reason:
-					"destination room is unresolved; cannot authorize a disclosure without knowing where it lands",
-			};
-		}
-
 		// Same-room recall discloses nothing the room does not already hold.
 		if (destination.roomId === provenance.roomId) {
 			return { allow: true };
 		}
 
-		if (destination.isGroup === undefined) {
-			return {
-				allow: false,
-				code: "destination_unresolved",
-				reason:
-					"destination audience is unknown; cross-room recall requires a resolved audience",
-			};
-		}
-
-		if (destination.isGroup) {
-			// Openly-scoped items are not private context and may cross.
-			if (OPEN_SCOPES.has(provenance.scope)) return { allow: true };
-			return {
-				allow: false,
-				code: "policy_contract_pending",
-				reason:
-					"cross-surface recall into a group destination requires a destination-aware audience policy, which is not installed",
-			};
-		}
-
-		return { allow: true };
+		// #17212 owns the richer audience policy. Until it lands, default recall
+		// denies every cross-room disclosure after mandatory scope authorization.
+		return {
+			allow: false,
+			code: "policy_contract_pending",
+			reason:
+				"cross-room recall requires a destination-aware audience policy, which is not installed",
+		};
 	},
 };
 
@@ -228,18 +202,58 @@ function readString(
 	return undefined;
 }
 
+const VALID_MEMORY_SCOPES: ReadonlySet<MemoryScope> = new Set<MemoryScope>([
+	"shared",
+	"private",
+	"room",
+	"global",
+	"owner-private",
+	"user-private",
+	"agent-private",
+]);
+
+function readScope(value: unknown): MemoryScope | undefined {
+	return typeof value === "string" && VALID_MEMORY_SCOPES.has(value as MemoryScope)
+		? (value as MemoryScope)
+		: undefined;
+}
+
+function isValidSourceKey(source: string): boolean {
+	return /^[a-z0-9][a-z0-9_-]*$/.test(source);
+}
+
+function scopedEntityIdForMemory(memory: Memory): UUID {
+	const meta = asRecord(memory.metadata);
+	const scopedTo = meta?.scopedToEntityId;
+	const addedBy = meta?.addedBy;
+	return typeof scopedTo === "string"
+		? (scopedTo as UUID)
+		: typeof addedBy === "string"
+			? (addedBy as UUID)
+			: memory.entityId;
+}
+
+export type CanonicalProvenanceResult =
+	| { valid: true; provenance: CanonicalProvenance }
+	| {
+			valid: false;
+			code: "invalid_provenance";
+			source?: string;
+			reason: string;
+	  };
+
 /**
  * Read source / account / room / sender / timestamp / trust off a stored
  * memory, normalizing the surface through the connector-source registry.
  *
  * `agentId` identifies the agent so its own messages resolve to `self` trust.
- * Fields the connector never recorded stay `undefined` — this derives, it does
- * not fabricate.
+ * Optional display fields may remain absent; missing required provenance returns
+ * a typed invalid result. This derives stored facts and never fabricates them.
  */
 export function deriveCanonicalProvenance(
 	memory: Memory,
 	agentId: UUID,
-): CanonicalProvenance {
+): CanonicalProvenanceResult {
 	const metadata = asRecord(memory.metadata);
 	const content = asRecord(memory.content);
 
@@ -247,7 +261,14 @@ export function deriveCanonicalProvenance(
 		readString(metadata, "provider") ??
 		readString(content, "source") ??
 		readString(asRecord(metadata?.base), "source");
-	const source = rawSource ? normalizeConnectorSource(rawSource) : "";
+	const source = rawSource ? normalizeConnectorSource(rawSource) : undefined;
+	if (!source || !isValidSourceKey(source)) {
+		return {
+			valid: false,
+			code: "invalid_provenance",
+			reason: "stored memory is missing a valid source",
+		};
+	}
 
 	// The connector's nested identity object — the same evidence role
 	// resolution is willing to trust. Look it up under both the raw and the
@@ -274,29 +295,73 @@ export function deriveCanonicalProvenance(
 				? "connector-verified"
 				: "unverified";
 
+	const accountId =
+		readString(metadata, "accountId") ?? readString(nested, "accountId");
+	if (!accountId) {
+		return {
+			valid: false,
+			code: "invalid_provenance",
+			source,
+			reason: "stored memory is missing a connector account id",
+		};
+	}
+
+	const platformMessageId =
+		readString(metadata, "platformMessageId") ??
+		readString(metadata, "messageIdFull") ??
+		readString(nested, "messageId") ??
+		readString(metadata, "sourceId");
+	if (!platformMessageId) {
+		return {
+			valid: false,
+			code: "invalid_provenance",
+			source,
+			reason: "stored memory is missing a platform record id",
+		};
+	}
+
+	const timestampMs = memory.createdAt;
+	if (
+		typeof timestampMs !== "number" ||
+		!Number.isFinite(timestampMs) ||
+		timestampMs <= 0
+	) {
+		return {
+			valid: false,
+			code: "invalid_provenance",
+			source,
+			reason: "stored memory is missing a valid timestamp",
+		};
+	}
+
 	const scope =
-		(asRecord(metadata?.base)?.scope as MemoryScope | undefined) ??
-		(metadata?.scope as MemoryScope | undefined) ??
-		"global";
+		readScope(asRecord(metadata?.base)?.scope) ?? readScope(metadata?.scope);
+	if (!scope) {
+		return {
+			valid: false,
+			code: "invalid_provenance",
+			source,
+			reason: "stored memory is missing a valid scope",
+		};
+	}
 
 	return {
-		source: source || rawSource || "unknown",
-		rawSource,
-		accountId:
-			readString(metadata, "accountId") ?? readString(nested, "accountId"),
-		roomId: memory.roomId,
-		worldId: memory.worldId,
-		senderId: memory.entityId,
-		senderDisplayName,
-		senderPlatformId,
-		timestampMs: memory.createdAt ?? 0,
-		trust,
-		chatType: readString(metadata, "chatType") as MessageChatType | undefined,
-		platformMessageId:
-			readString(metadata, "messageIdFull") ??
-			readString(nested, "messageId") ??
-			readString(metadata, "sourceId"),
-		scope,
+		valid: true,
+		provenance: {
+			source,
+			rawSource,
+			accountId,
+			roomId: memory.roomId,
+			worldId: memory.worldId,
+			senderId: memory.entityId,
+			senderDisplayName,
+			senderPlatformId,
+			timestampMs,
+			trust,
+			chatType: readString(metadata, "chatType") as MessageChatType | undefined,
+			platformMessageId,
+			scope,
+		},
 	};
 }
 
@@ -305,16 +370,10 @@ export function deriveCanonicalProvenance(
  *
  * Redelivery of one webhook collapses to one key. The same text arriving under
  * two connector accounts yields two keys, so account identity survives
- * de-duplication instead of being merged away. Falls back to the room+sender+
- * timestamp triple when the connector recorded no platform message id, which
- * still separates accounts but cannot claim cross-delivery idempotency.
+ * de-duplication instead of being merged away.
  */
 export function canonicalDedupeKey(provenance: CanonicalProvenance): string {
-	const account = provenance.accountId ?? "_";
-	if (provenance.platformMessageId) {
-		return `${provenance.source}:${account}:${provenance.platformMessageId}`;
-	}
-	return `${provenance.source}:${account}:${provenance.roomId}:${provenance.senderId}:${provenance.timestampMs}`;
+	return `${provenance.source}:${provenance.accountId}:${provenance.platformMessageId}`;
 }
 
 /** Liveness of one contributing source in a recall. */
@@ -336,8 +395,8 @@ export interface RecalledItem {
 
 /** An item that was found but withheld, with the reason it was withheld. */
 export interface WithheldItem {
-	dedupeKey: string;
-	source: string;
+	dedupeKey?: string;
+	source?: string;
 	code: RecallDenyCode;
 	reason: string;
 }
@@ -367,13 +426,9 @@ export interface CanonicalRecallInput {
 	/** Who is asking. */
 	requester: AccessContext;
 	/** Where the answer will land. */
-	destination: RecallDestination;
-	/** Health of each source that was consulted, including ones that failed. */
-	sources: RecallSourceHealth[];
+	destination: ResolvedRecallDestination | null;
 	/** Destination policy. Defaults to {@link failClosedRecallPolicy}. */
 	policy?: CanonicalRecallPolicy;
-	/** Clock injection point for freshness, defaults to `Date.now`. */
-	now?: () => number;
 }
 
 /**
@@ -384,22 +439,56 @@ export interface CanonicalRecallInput {
  * {@link canonicalDedupeKey} group, so a redelivered webhook does not
  * double-count and does not reorder the transcript.
  *
- * Availability is derived, never asserted by the caller: any non-`ok` source
- * forces at least `partial`, and a recall with no items but a failed source is
- * `unavailable` rather than an empty success.
+ * This pure evaluator intentionally has no source-health input: only the
+ * production adapter-owning retrieval function may attach health. That prevents
+ * callers from presenting declared connector state as observed availability.
  */
-export function buildCanonicalRecall(
+function buildCanonicalRecall(
 	input: CanonicalRecallInput,
-): CanonicalRecallResult {
+): Omit<CanonicalRecallResult, "sources" | "availability"> {
 	const policy = input.policy ?? failClosedRecallPolicy;
-	const now = input.now ?? Date.now;
+	const actor = actorFromAccessContext(input.requester, input.agentId);
 
 	const byKey = new Map<string, RecalledItem>();
 	const withheld: WithheldItem[] = [];
 
 	for (const memory of input.candidates) {
-		const provenance = deriveCanonicalProvenance(memory, input.agentId);
+		const provenanceResult = deriveCanonicalProvenance(memory, input.agentId);
+		if (!provenanceResult.valid) {
+			withheld.push({
+				source: provenanceResult.source,
+				code: provenanceResult.code,
+				reason: provenanceResult.reason,
+			});
+			continue;
+		}
+		const provenance = provenanceResult.provenance;
 		const dedupeKey = canonicalDedupeKey(provenance);
+
+		if (!canReadScope(provenance.scope, scopedEntityIdForMemory(memory), actor)) {
+			if (!withheld.some((entry) => entry.dedupeKey === dedupeKey)) {
+				withheld.push({
+					dedupeKey,
+					source: provenance.source,
+					code: "scope_denied",
+					reason: "requester is not authorized to read the memory scope",
+				});
+			}
+			continue;
+		}
+
+		if (!input.destination) {
+			if (!withheld.some((entry) => entry.dedupeKey === dedupeKey)) {
+				withheld.push({
+					dedupeKey,
+					source: provenance.source,
+					code: "destination_unresolved",
+					reason:
+						"destination room is unresolved; cannot authorize a disclosure without knowing where it lands",
+				});
+			}
+			continue;
+		}
 
 		const decision = policy.decide({
 			candidate: memory,
@@ -430,26 +519,156 @@ export function buildCanonicalRecall(
 		(a, b) => a.provenance.timestampMs - b.provenance.timestampMs,
 	);
 
-	const currentMs = now();
-	const sources: RecallSourceHealth[] = input.sources.map((health) => {
-		if (health.freshnessMs !== undefined) return health;
-		const freshest = items
-			.filter((item) => item.provenance.source === health.source)
-			.reduce<number | undefined>((newest, item) => {
-				const ts = item.provenance.timestampMs;
-				return newest === undefined || ts > newest ? ts : newest;
-			}, undefined);
-		return freshest === undefined
-			? health
-			: { ...health, freshnessMs: Math.max(0, currentMs - freshest) };
+	return { items, withheld, policyId: policy.id };
+}
+
+function isGroupRoomType(type: Room["type"]): boolean {
+	return (
+		type === ChannelType.GROUP ||
+		type === ChannelType.VOICE_GROUP ||
+		type === ChannelType.FEED ||
+		type === ChannelType.THREAD ||
+		type === ChannelType.FORUM ||
+		type === ChannelType.WORLD
+	);
+}
+
+export async function resolveRecallDestination(
+	runtime: IAgentRuntime,
+	roomId: UUID,
+): Promise<ResolvedRecallDestination | null> {
+	const room = await runtime.getRoom(roomId);
+	if (!room) return null;
+	const participants = await runtime.getParticipantsForRoom(room.id);
+	return {
+		roomId: room.id,
+		room,
+		worldId: room.worldId,
+		chatType: room.type,
+		isGroup: isGroupRoomType(room.type),
+		participantEntityIds: participants,
+	};
+}
+
+export interface CanonicalMemorySearchInput {
+	runtime: IAgentRuntime;
+	embedding: number[];
+	query?: string;
+	agentId: UUID;
+	requester: AccessContext;
+	destinationRoomId: UUID;
+	count: number;
+	matchThreshold?: number;
+	entityId?: UUID;
+	source?: string;
+	policy?: CanonicalRecallPolicy;
+	now?: () => number;
+}
+
+/**
+ * Production retrieval for canonical conversation recall. It owns the adapter
+ * call and destination resolution so source health reflects real storage
+ * availability, while #17212 can later replace only the destination policy seam.
+ */
+export async function searchCanonicalConversationMemories(
+	input: CanonicalMemorySearchInput,
+): Promise<CanonicalRecallResult> {
+	// Health is attributed to the adapter actually queried, never to a
+	// caller-supplied connector filter. A `source=discord` filter does not prove
+	// that a Discord connector is healthy; it only filters rows returned by the
+	// messages adapter.
+	const adapterSource = "messages";
+	let candidates: Memory[];
+	try {
+		candidates = await input.runtime.searchMemories({
+			embedding: input.embedding,
+			tableName: "messages",
+			match_threshold: input.matchThreshold,
+			count: input.count,
+			...(input.query ? { query: input.query } : {}),
+			...(input.entityId ? { entityId: input.entityId } : {}),
+			accessContext: input.requester,
+		});
+	} catch (error) {
+		return {
+			items: [],
+			withheld: [],
+			sources: [
+				{
+					source: adapterSource,
+					state: "unavailable",
+					reason: error instanceof Error ? error.message : String(error),
+				},
+			],
+			availability: "unavailable",
+			policyId: (input.policy ?? failClosedRecallPolicy).id,
+		};
+	}
+
+	let destination: ResolvedRecallDestination | null;
+	try {
+		destination = await resolveRecallDestination(
+			input.runtime,
+			input.destinationRoomId,
+		);
+	} catch {
+		destination = null;
+	}
+
+	const evaluated = buildCanonicalRecall({
+		candidates,
+		agentId: input.agentId,
+		requester: input.requester,
+		destination,
+		policy: input.policy,
 	});
 
-	const anyUnhealthy = sources.some((health) => health.state !== "ok");
-	const availability: RecallAvailability = !anyUnhealthy
-		? "complete"
-		: items.length > 0
-			? "partial"
-			: "unavailable";
+	const normalizedSource = input.source
+		? normalizeConnectorSource(input.source)
+		: undefined;
+	const items = normalizedSource
+		? evaluated.items.filter(
+				(item) => item.provenance.source === normalizedSource,
+			)
+		: evaluated.items;
+	const withheld = normalizedSource
+		? evaluated.withheld.filter(
+				(item) => item.source === undefined || item.source === normalizedSource,
+			)
+		: evaluated.withheld;
+	const freshestTimestamp = items.reduce<number | undefined>(
+		(newest, item) =>
+			newest === undefined || item.provenance.timestampMs > newest
+				? item.provenance.timestampMs
+				: newest,
+		undefined,
+	);
+	const sources: RecallSourceHealth[] = [
+		{
+			source: adapterSource,
+			state: "ok",
+			...(freshestTimestamp === undefined
+				? {}
+				: {
+						freshnessMs: Math.max(
+							0,
+							(input.now ?? Date.now)() - freshestTimestamp,
+						),
+					}),
+		},
+	];
+	const availability: RecallAvailability =
+		withheld.length > 0
+			? items.length > 0
+				? "partial"
+				: "unavailable"
+			: "complete";
 
-	return { items, withheld, sources, availability, policyId: policy.id };
+	return {
+		...evaluated,
+		items,
+		withheld,
+		sources,
+		availability,
+	};
 }

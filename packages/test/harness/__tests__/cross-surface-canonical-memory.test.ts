@@ -1,835 +1,415 @@
 /**
- * Wave-1 cross-surface canonical-memory journey (P2).
- *
- * One executable proof that events from four existing connectors — Discord,
- * Telegram, email, calendar — normalize into ONE canonical agent memory
- * carrying source / account / room / sender / timestamp / trust provenance, and
- * are retrievable from a different surface **only when the destination policy
- * permits it**.
- *
- * What is real here:
- *   - a real PGLite-backed `AgentRuntime` (`withMockLlmRuntime`), real
- *     `runtime.createMemory` / `getMemories`, real migrations — not a mock store;
- *   - the REAL Discord `MessageManager.handleMessage` and the REAL
- *     `DiscordService.prototype.buildMemoryFromMessage` for the Discord leg, so
- *     the inbound→Memory mapping under test is the product's own;
- *   - the REAL Telegram `MessageManager.handleMessage` for the Telegram leg;
- *   - the real `deriveCanonicalProvenance` / `buildCanonicalRecall` glue.
- *
- * What is synthetic: the platform SDK objects at the network boundary
- * (discord.js `Message`, Telegraf `Context`) and all fixture content. Email and
- * calendar go through `ingestDomainRecord`, the narrow adapter documented in
- * `../cross-surface-fixtures.ts` — Gmail/Calendar have no production path into
- * canonical memory today, and this harness proves the envelope is
- * connector-agnostic without pre-empting that product decision.
- *
- * No live personal data: every address is `*.example.test`, every id synthetic.
+ * Fail-closed canonical recall tests for the production stored-message search.
+ * This suite deliberately makes no Gmail/calendar ingestion claim: those
+ * sources do not have a production canonical-memory caller yet.
  */
 import {
-  buildCanonicalRecall,
-  type CanonicalRecallPolicy,
-  canonicalDedupeKey,
-  deriveCanonicalProvenance,
-  failClosedRecallPolicy,
-  type IAgentRuntime,
-  type Memory,
-  type RecallSourceHealth,
-  stringToUuid,
-  type UUID,
+	canonicalDedupeKey,
+	ChannelType,
+	type CanonicalRecallPolicy,
+	deriveCanonicalProvenance,
+	type IAgentRuntime,
+	type Memory,
+	resolveRecallDestination,
+	searchCanonicalConversationMemories,
+	stringToUuid,
+	type UUID,
 } from "@elizaos/core";
-import {
-  DiscordService,
-  type DiscordSettings,
-  type IDiscordService,
-} from "@elizaos/plugin-discord";
-import { MessageManager as TelegramMessageManager } from "@elizaos/plugin-telegram";
-import { ChannelType as DiscordChannelType } from "discord.js";
-import type { Context } from "telegraf";
-import { Telegraf } from "telegraf";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { MessageManager as DiscordMessageManager } from "../../../../plugins/plugin-discord/messages.ts";
-import {
-  CALENDAR_ACCOUNT,
-  calendarFixture,
-  DISCORD_ACCOUNT_PRIMARY,
-  DISCORD_ACCOUNT_SECONDARY,
-  EMAIL_ACCOUNT,
-  emailFixture,
-  ingestDomainRecord,
-  UNSUPPORTED_BACKFILL,
-} from "../cross-surface-fixtures.ts";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { messageAction } from "../../../core/src/features/advanced-capabilities/actions/message.ts";
 import { type MockLlmRuntime, withMockLlmRuntime } from "../index.ts";
 
 const cleanups: Array<() => Promise<void>> = [];
 
 afterEach(async () => {
-  while (cleanups.length > 0) {
-    const cleanup = cleanups.pop();
-    if (cleanup) await cleanup();
-  }
+	while (cleanups.length > 0) {
+		const cleanup = cleanups.pop();
+		if (cleanup) await cleanup();
+	}
+	vi.restoreAllMocks();
 });
 
 function track(harness: MockLlmRuntime): MockLlmRuntime {
-  cleanups.push(harness.cleanup);
-  return harness;
+	cleanups.push(harness.cleanup);
+	return harness;
 }
 
-let savedPassiveConnectors: string | undefined;
-
-beforeEach(() => {
-  // Passive ingest (no auto-reply) is exactly what this suite wants: it is a
-  // MEMORY test, not a reply test. Leave the default on for the ingestion
-  // legs; the connector still commits the inbound memory.
-  savedPassiveConnectors = process.env.ELIZA_LIFEOPS_PASSIVE_CONNECTORS;
-});
-
-afterEach(() => {
-  if (savedPassiveConnectors === undefined) {
-    delete process.env.ELIZA_LIFEOPS_PASSIVE_CONNECTORS;
-  } else {
-    process.env.ELIZA_LIFEOPS_PASSIVE_CONNECTORS = savedPassiveConnectors;
-  }
-});
-
-// ---------------------------------------------------------------------------
-// Real-connector drivers
-// ---------------------------------------------------------------------------
-
-interface DiscordLegOptions {
-  runtime: IAgentRuntime;
-  text: string;
-  channelId: string;
-  guildId?: string;
-  messageId: string;
-  authorId?: string;
-  accountId?: string;
+function id(seed: string): UUID {
+	return stringToUuid(seed) as UUID;
 }
 
-/**
- * Drive one inbound Discord message through the REAL `MessageManager` and the
- * REAL `DiscordService.prototype.buildMemoryFromMessage`. Only the discord.js
- * SDK objects are synthetic — that is the network boundary.
- */
-async function driveDiscordIngest(options: DiscordLegOptions): Promise<void> {
-  const { runtime, channelId, messageId } = options;
-  const guildId = options.guildId ?? "1253563208833400000";
-  const authorId = options.authorId ?? "555000111222333444";
-  const accountId = options.accountId ?? DISCORD_ACCOUNT_PRIMARY.accountId;
-
-  const botMemberId = "9999999999999999999";
-  const botMember = { id: botMemberId };
-  const guild = {
-    id: guildId,
-    name: "Eliza Test Guild",
-    ownerId: "1111111111111111111",
-    members: { cache: new Map([[botMemberId, botMember]]) },
-    fetch: async () => guild,
-  };
-
-  const channel = {
-    id: channelId,
-    type: DiscordChannelType.GuildText,
-    name: "general",
-    guild,
-    client: { user: { id: botMemberId } },
-    isThread: () => false,
-    permissionsFor: () => ({ has: () => true }),
-    send: async () => ({
-      id: `${Date.now()}`,
-      content: "",
-      url: `https://discord.com/channels/${guildId}/${channelId}/x`,
-      createdTimestamp: Date.now(),
-      attachments: { size: 0 },
-    }),
-  };
-
-  const author = {
-    id: authorId,
-    bot: false,
-    username: "tester",
-    globalName: "Tester",
-    displayName: "Tester",
-    discriminator: "0",
-    displayAvatarURL: () => "https://cdn.discordapp.com/avatar.png",
-    send: async () => ({ id: "dm" }),
-  };
-
-  const message = {
-    id: messageId,
-    content: options.text,
-    createdTimestamp: Date.now(),
-    author,
-    member: { displayName: "Tester", nickname: undefined },
-    channel,
-    guild,
-    url: `https://discord.com/channels/${guildId}/${channelId}/${messageId}`,
-    interaction: null,
-    reference: undefined,
-    embeds: [],
-    stickers: { size: 0 },
-    attachments: { size: 0 },
-    mentions: { users: new Map(), repliedUser: undefined },
-    react: async () => undefined,
-    reactions: { resolve: () => null },
-  } as never;
-
-  const discordSettings: DiscordSettings = {
-    autoReply: false,
-    shouldRespondOnlyToMentions: false,
-    shouldIgnoreBotMessages: true,
-    shouldIgnoreDirectMessages: true,
-    dmPolicy: "open",
-    replyToMode: "first",
-  };
-
-  const discordService = Object.assign(
-    Object.create(DiscordService.prototype),
-    {
-      runtime,
-      client: {
-        user: { id: botMemberId },
-        users: { fetch: async () => author },
-      },
-      accountId,
-      defaultAccountId: accountId,
-      discordSettings,
-      ownerDiscordUserIds: new Set<string>(),
-      accountPool: { get: () => null, getDefault: () => null },
-    },
-  );
-  discordService.getChannelType =
-    DiscordService.prototype.getChannelType.bind(discordService);
-
-  const manager = new DiscordMessageManager(
-    discordService as unknown as IDiscordService,
-    runtime as never,
-  );
-
-  await manager.handleMessage(message);
+async function createRoom(
+	runtime: IAgentRuntime,
+	roomId: UUID,
+	type: ChannelType,
+	participants: UUID[] = [],
+): Promise<void> {
+	// Rooms are world-scoped in production; the adapter rejects an unparented
+	// room. Give each room its own world so destination resolution reads the
+	// same shape it sees on a real Discord/Telegram surface.
+	const worldId = id(`world-${roomId}`);
+	await runtime.createWorld({ id: worldId, agentId: runtime.agentId });
+	await runtime.createRoom({ id: roomId, source: "test", type, worldId });
+	for (const participant of participants) {
+		// Participants are FK-constrained to real entities, so register the
+		// sender before joining it to the room.
+		await runtime.createEntity({
+			id: participant,
+			names: [`entity-${participant}`],
+			agentId: runtime.agentId,
+		});
+		await runtime.addParticipant(participant, roomId);
+	}
 }
 
-/** Drive one inbound Telegram message through the REAL Telegram MessageManager. */
-async function driveTelegramIngest(options: {
-  runtime: IAgentRuntime;
-  text: string;
-  chatId: number;
-  messageId: number;
-  fromId?: number;
-}): Promise<void> {
-  const apiRoot = process.env.ELIZA_MOCK_TELEGRAM_BASE ?? "http://127.0.0.1:0/";
-  const bot = new Telegraf("123456:TEST_TOKEN", { telegram: { apiRoot } });
-  const manager = new TelegramMessageManager(
-    bot,
-    options.runtime as never,
-    "default",
-  );
+type MemoryOverrides = Omit<Partial<Memory>, "content" | "metadata"> & {
+	content?: Partial<Memory["content"]>;
+	metadata?: Record<string, unknown>;
+};
 
-  const chat = { id: options.chatId, type: "private", title: "Tester DM" };
-  const from = {
-    id: options.fromId ?? 555_001,
-    is_bot: false,
-    first_name: "Tester",
-    username: "tester",
-  };
-  const ctx = {
-    from,
-    chat,
-    message: {
-      message_id: options.messageId,
-      date: Math.floor(Date.now() / 1000),
-      text: options.text,
-      chat,
-      from,
-    },
-    telegram: {
-      sendChatAction: async () => true,
-      sendMessage: async () => ({
-        message_id: 1,
-        chat,
-        date: 0,
-        text: "",
-      }),
-    },
-  } as unknown as Context;
-
-  await manager.handleMessage(ctx);
+function messageMemory(overrides: MemoryOverrides = {}): Memory {
+	const roomId = overrides.roomId ?? id("source-room");
+	const entityId = overrides.entityId ?? id("sender");
+	const content = overrides.content ?? {};
+	const metadata = overrides.metadata ?? {};
+	return {
+		id: id(`memory-${roomId}-${entityId}`),
+		entityId,
+		agentId: id("agent"),
+		roomId,
+		createdAt: 1_700_000_000_000,
+		...overrides,
+		content: {
+			text: "The deploy key rotates on Friday.",
+			source: "discord",
+			...content,
+		},
+		metadata: {
+			type: "message",
+			provider: "discord",
+			accountId: "discord-account-1",
+			scope: "global",
+			messageIdFull: "discord-message-1",
+			discord: { userId: "discord-user-1" },
+			...metadata,
+		} as Memory["metadata"],
+	};
 }
 
-/** Read every stored message memory for a room straight out of PGLite. */
-async function readRoom(
-  runtime: IAgentRuntime,
-  roomId: UUID,
-): Promise<Memory[]> {
-  return runtime.getMemories({ roomId, tableName: "messages", count: 100 });
-}
+describe("canonical stored-message recall", () => {
+	it.each([
+		["source", (memory: Memory) => {
+			delete (memory.metadata as Record<string, unknown>).provider;
+			delete (memory.content as Record<string, unknown>).source;
+		}],
+		["account", (memory: Memory) => {
+			delete (memory.metadata as Record<string, unknown>).accountId;
+		}],
+		["platform record", (memory: Memory) => {
+			delete (memory.metadata as Record<string, unknown>).messageIdFull;
+		}],
+		["timestamp", (memory: Memory) => {
+			delete memory.createdAt;
+		}],
+		["scope", (memory: Memory) => {
+			delete (memory.metadata as Record<string, unknown>).scope;
+		}],
+	])("returns typed invalid provenance for missing %s", (_field, mutate) => {
+		const memory = messageMemory();
+		mutate(memory);
+		const provenance = deriveCanonicalProvenance(memory, id("agent"));
+		expect(provenance).toEqual(
+			expect.objectContaining({
+				valid: false,
+				code: "invalid_provenance",
+			}),
+		);
+		if (!provenance.valid) {
+			expect(provenance.reason).toContain(_field.split(" ")[0]);
+		}
+	});
 
-/**
- * Find the memory a connector just committed, by its text, without
- * re-deriving the connector's room-key scheme in the test.
- *
- * Room ids are the connector's own business (`createUniqueUuid` over a
- * connector-scoped key). Recomputing that here would make the harness assert
- * against a copy of the product's logic instead of the product's logic, and
- * would silently rot if a connector rescoped its keys. Reading the store back
- * and locating the row by content proves the REAL mapping ran and hands us the
- * room id the connector actually chose.
- */
-async function findCommitted(
-  runtime: IAgentRuntime,
-  match: string,
-): Promise<Memory | undefined> {
-  const all = await runtime.getAllMemories();
-  return all.find((memory) => memory.content?.text?.includes(match));
-}
+	it("withholds missing scope instead of fabricating global access", async () => {
+		const harness = track(await withMockLlmRuntime({ strict: false }));
+		const { runtime } = harness;
+		const roomId = id("missing-scope-room");
+		await createRoom(runtime, roomId, ChannelType.DM, [id("sender")]);
+		const candidate = messageMemory({ agentId: runtime.agentId, roomId });
+		delete (candidate.metadata as Record<string, unknown>).scope;
+		vi.spyOn(runtime, "searchMemories").mockResolvedValue([candidate]);
 
-function ok(source: string): RecallSourceHealth {
-  return { source, state: "ok" };
-}
+		const recall = await searchCanonicalConversationMemories({
+			runtime,
+			embedding: [0.1, 0.2],
+			agentId: runtime.agentId,
+			requester: { requesterEntityId: id("sender") },
+			destinationRoomId: roomId,
+			count: 10,
+		});
 
-// ---------------------------------------------------------------------------
-// Scenarios
-// ---------------------------------------------------------------------------
+		expect(recall.items).toHaveLength(0);
+		expect(recall.availability).toBe("unavailable");
+		expect(recall.sources).toEqual([
+			expect.objectContaining({ source: "messages", state: "ok" }),
+		]);
+		expect(recall.withheld[0]).toEqual(
+			expect.objectContaining({
+				code: "invalid_provenance",
+				reason: expect.stringContaining("scope"),
+			}),
+		);
+	});
 
-describe("wave-1 cross-surface canonical memory", () => {
-  it("normalizes a real Discord ingest into provenance with source/account/room/sender/timestamp/trust", async () => {
-    const harness = track(await withMockLlmRuntime({ strict: false }));
-    const { runtime } = harness;
+	it("runs mandatory scope authorization before a permissive destination policy", async () => {
+		const harness = track(await withMockLlmRuntime({ strict: false }));
+		const { runtime } = harness;
+		const roomId = id("scope-before-policy-room");
+		await createRoom(runtime, roomId, ChannelType.DM, [id("ordinary-user")]);
+		const policy: CanonicalRecallPolicy = {
+			id: "permissive-test-policy",
+			decide: vi.fn(() => ({ allow: true })),
+		};
+		const ownerScoped = messageMemory({
+			agentId: runtime.agentId,
+			roomId,
+			entityId: id("owner"),
+			metadata: { scope: "owner-private" },
+		});
+		vi.spyOn(runtime, "searchMemories").mockResolvedValue([ownerScoped]);
 
-    const channelId = "1253563208833433701";
-    await driveDiscordIngest({
-      runtime,
-      text: "The staging deploy key rotates on the 14th.",
-      channelId,
-      messageId: "1253563208833433999",
-    });
+		const recall = await searchCanonicalConversationMemories({
+			runtime,
+			embedding: [0.1, 0.2],
+			agentId: runtime.agentId,
+			requester: { requesterEntityId: id("ordinary-user"), role: "USER" },
+			destinationRoomId: roomId,
+			count: 10,
+			policy,
+		});
 
-    const inbound = await findCommitted(runtime, "staging deploy key");
+		expect(recall.items).toHaveLength(0);
+		expect(recall.withheld[0]?.code).toBe("scope_denied");
+		expect(policy.decide).not.toHaveBeenCalled();
+	});
 
-    expect(
-      inbound,
-      "the REAL Discord connector committed the inbound message to canonical memory",
-    ).toBeDefined();
-    if (!inbound) return;
-    const roomId = inbound.roomId;
+	it("resolves destination audience from trusted runtime room metadata", async () => {
+		const harness = track(await withMockLlmRuntime({ strict: false }));
+		const { runtime } = harness;
+		const roomId = id("trusted-group-room");
+		const participants = [id("requester"), id("other-participant")];
+		await createRoom(runtime, roomId, ChannelType.GROUP, participants);
 
-    const provenance = deriveCanonicalProvenance(inbound, runtime.agentId);
+		const destination = await resolveRecallDestination(runtime, roomId);
 
-    // Every provenance field the pillar requires, derived from what the REAL
-    // connector stamped — not from anything this test wrote.
-    expect(
-      provenance.source,
-      "source normalizes to the canonical surface",
-    ).toBe("discord");
-    expect(
-      provenance.roomId,
-      "room provenance is the room the connector itself chose",
-    ).toBe(roomId);
-    expect(provenance.senderId, "sender provenance is the inbound entity").toBe(
-      inbound.entityId,
-    );
-    expect(
-      provenance.timestampMs,
-      "timestamp provenance is populated",
-    ).toBeGreaterThan(0);
-    expect(
-      provenance.trust,
-      "a connector-stamped platform identity yields connector-verified trust",
-    ).toBe("connector-verified");
-    expect(
-      provenance.senderPlatformId,
-      "the stable Discord user id survives into provenance",
-    ).toBe("555000111222333444");
-  });
+		expect(destination).toEqual(
+			expect.objectContaining({
+				roomId,
+				chatType: ChannelType.GROUP,
+				isGroup: true,
+				participantEntityIds: expect.arrayContaining(participants),
+			}),
+		);
+	});
 
-  it("recalls a Discord fact on a Telegram DM surface when the destination is private", async () => {
-    const harness = track(await withMockLlmRuntime({ strict: false }));
-    const { runtime } = harness;
+	it("derives unavailable health from adapter failure", async () => {
+		const harness = track(await withMockLlmRuntime({ strict: false }));
+		const { runtime } = harness;
+		vi.spyOn(runtime, "searchMemories").mockRejectedValue(
+			new Error("adapter offline"),
+		);
 
-    // Surface A: a fact arrives on Discord, through the real connector.
-    const channelId = "1253563208833433702";
-    await driveDiscordIngest({
-      runtime,
-      text: "Warehouse inventory audit is scheduled for Thursday.",
-      channelId,
-      messageId: "1253563208833434001",
-    });
-    const discordFact = await findCommitted(runtime, "inventory audit is");
-    expect(
-      discordFact,
-      "the REAL Discord connector committed the fact to recall",
-    ).toBeDefined();
-    if (!discordFact) return;
-    const discordRoom = discordFact.roomId;
+		const recall = await searchCanonicalConversationMemories({
+			runtime,
+			embedding: [0.1, 0.2],
+			agentId: runtime.agentId,
+			requester: { requesterEntityId: id("requester") },
+			destinationRoomId: id("missing-destination"),
+			count: 10,
+			source: "discord",
+		});
 
-    // Surface B: a private Telegram DM, also through the real connector, is
-    // where the recall will be rendered.
-    const chatId = -1002;
-    await driveTelegramIngest({
-      runtime,
-      text: "When is the inventory audit?",
-      chatId,
-      messageId: 400,
-    });
-    const telegramTurn = await findCommitted(
-      runtime,
-      "When is the inventory audit?",
-    );
-    expect(
-      telegramTurn,
-      "the REAL Telegram connector committed its inbound turn, giving us a genuine destination room",
-    ).toBeDefined();
-    if (!telegramTurn) return;
-    const telegramRoom = telegramTurn.roomId;
+		expect(recall.items).toHaveLength(0);
+		expect(recall.availability).toBe("unavailable");
+		expect(recall.sources).toEqual([
+			expect.objectContaining({
+				source: "messages",
+				state: "unavailable",
+				reason: "adapter offline",
+			}),
+		]);
+	});
 
-    expect(
-      telegramRoom,
-      "the two surfaces really are different rooms, so this is a cross-surface recall",
-    ).not.toBe(discordRoom);
+	it("fails closed when trusted destination lookup fails after a healthy search", async () => {
+		const harness = track(await withMockLlmRuntime({ strict: false }));
+		const { runtime } = harness;
+		vi.spyOn(runtime, "searchMemories").mockResolvedValue([
+			messageMemory({ agentId: runtime.agentId }),
+		]);
 
-    const candidates = await readRoom(runtime, discordRoom);
-    expect(
-      candidates.length,
-      "the Discord room holds the fact to recall",
-    ).toBeGreaterThan(0);
+		const recall = await searchCanonicalConversationMemories({
+			runtime,
+			embedding: [0.1, 0.2],
+			agentId: runtime.agentId,
+			requester: { requesterEntityId: id("sender") },
+			destinationRoomId: id("unresolvable-destination"),
+			count: 10,
+		});
 
-    const recall = buildCanonicalRecall({
-      candidates,
-      agentId: runtime.agentId,
-      requester: { requesterEntityId: runtime.agentId, isOwner: true },
-      // A 1:1 DM: positively resolved as non-group.
-      destination: {
-        roomId: telegramRoom,
-        chatType: "dm",
-        isGroup: false,
-      },
-      sources: [ok("discord"), ok("telegram")],
-    });
+		expect(recall.items).toHaveLength(0);
+		expect(recall.availability).toBe("unavailable");
+		expect(recall.sources[0]).toEqual(
+			expect.objectContaining({ source: "messages", state: "ok" }),
+		);
+		expect(recall.withheld[0]?.code).toBe("destination_unresolved");
+	});
 
-    expect(
-      recall.availability,
-      "both surfaces healthy means a complete answer",
-    ).toBe("complete");
-    expect(
-      recall.items.some((item) =>
-        item.memory.content?.text?.includes("inventory audit"),
-      ),
-      "the Discord-origin fact is recallable on the Telegram surface",
-    ).toBe(true);
+	it("dedupes by source/account/platform id across distinct database primary keys", async () => {
+		const harness = track(await withMockLlmRuntime({ strict: false }));
+		const { runtime } = harness;
+		const roomId = id("dedupe-room");
+		await createRoom(runtime, roomId, ChannelType.DM, [id("sender")]);
+		const first = messageMemory({
+			id: id("duplicate-memory-a"),
+			agentId: runtime.agentId,
+			roomId,
+			createdAt: 1_700_000_000_000,
+		});
+		const second = messageMemory({
+			id: id("duplicate-memory-b"),
+			agentId: runtime.agentId,
+			roomId,
+			createdAt: 1_700_000_010_000,
+		});
+		expect(first.id).not.toBe(second.id);
+		const firstProvenance = deriveCanonicalProvenance(first, runtime.agentId);
+		const secondProvenance = deriveCanonicalProvenance(second, runtime.agentId);
+		expect(firstProvenance.valid).toBe(true);
+		expect(secondProvenance.valid).toBe(true);
+		if (!firstProvenance.valid || !secondProvenance.valid) return;
+		expect(canonicalDedupeKey(firstProvenance.provenance)).toBe(
+			canonicalDedupeKey(secondProvenance.provenance),
+		);
+		// Same platform record under a DIFFERENT account: account identity is
+		// part of the canonical key and must never be squashed. Two accounts
+		// relaying the same platform message are two facts, not one.
+		const otherAccount = messageMemory({
+			id: id("duplicate-memory-c"),
+			agentId: runtime.agentId,
+			roomId,
+			createdAt: 1_700_000_020_000,
+			metadata: { accountId: "discord-account-2" },
+		});
+		const otherProvenance = deriveCanonicalProvenance(
+			otherAccount,
+			runtime.agentId,
+		);
+		expect(otherProvenance.valid).toBe(true);
+		if (!otherProvenance.valid) return;
+		expect(canonicalDedupeKey(otherProvenance.provenance)).not.toBe(
+			canonicalDedupeKey(firstProvenance.provenance),
+		);
+		vi.spyOn(runtime, "searchMemories").mockResolvedValue([
+			second,
+			first,
+			otherAccount,
+		]);
 
-    // Provenance travels with the recalled item, so the answer can cite it.
-    const hit = recall.items.find((item) =>
-      item.memory.content?.text?.includes("inventory audit"),
-    );
-    expect(hit?.provenance.source, "the recalled item cites its surface").toBe(
-      "discord",
-    );
-    expect(
-      hit?.provenance.roomId,
-      "the recalled item cites its origin room, not the destination",
-    ).toBe(discordRoom);
-  });
+		const recall = await searchCanonicalConversationMemories({
+			runtime,
+			embedding: [0.1, 0.2],
+			agentId: runtime.agentId,
+			requester: { requesterEntityId: id("sender") },
+			destinationRoomId: roomId,
+			count: 10,
+		});
 
-  it("recalls an email fact into a private Discord DM and keeps email provenance", async () => {
-    const harness = track(await withMockLlmRuntime({ strict: false }));
-    const { runtime } = harness;
+		expect(recall.items).toHaveLength(2);
+		expect(recall.items[0]?.memory.id).toBe(first.id);
+		expect(
+			recall.items.map((item) => item.provenance.accountId).sort(),
+		).toEqual(["discord-account-1", "discord-account-2"]);
+	});
 
-    const mailboxRoom = stringToUuid("gmail-mailbox-room") as UUID;
-    const sentAt = Date.now() - 60_000;
-    await ingestDomainRecord(
-      runtime,
-      emailFixture({
-        roomId: mailboxRoom,
-        timestampMs: sentAt,
-        subject: "Invoice 8842 approved",
-        body: "Finance approved invoice 8842; payment lands next Tuesday.",
-      }),
-    );
+	it("uses the real PGLite adapter on the production MESSAGE search path", async () => {
+		const harness = track(await withMockLlmRuntime({ strict: false }));
+		const { runtime } = harness;
+		const roomId = id("production-search-room");
+		const requester = id("requester");
+		await createRoom(runtime, roomId, ChannelType.DM, [requester]);
+		const embedding = new Array<number>(384).fill(0.1);
+		const first = messageMemory({
+			id: id("production-duplicate-a"),
+			agentId: runtime.agentId,
+			roomId,
+			entityId: requester,
+			createdAt: 1_700_000_000_000,
+			embedding,
+		});
+		const second = messageMemory({
+			id: id("production-duplicate-b"),
+			agentId: runtime.agentId,
+			roomId,
+			entityId: requester,
+			createdAt: 1_700_000_010_000,
+			embedding,
+		});
+		await runtime.createMemory(first, "messages", false);
+		await runtime.createMemory(second, "messages", false);
+		vi.spyOn(runtime, "useModel").mockResolvedValue(embedding as never);
+		const searchSpy = vi.spyOn(runtime, "searchMemories");
 
-    const dmRoom = stringToUuid("discord-owner-dm-room") as UUID;
-    const candidates = await readRoom(runtime, mailboxRoom);
+		const result = await messageAction.handler(
+			runtime,
+			messageMemory({
+				id: id("production-request"),
+				agentId: runtime.agentId,
+				roomId,
+				entityId: requester,
+				content: { text: "Find deploy key", source: "client_chat" },
+			}),
+			undefined,
+			{ parameters: { action: "search", query: "deploy key" } },
+			undefined,
+			undefined,
+		);
+		if (!result) throw new Error("MESSAGE handler returned no result");
 
-    const recall = buildCanonicalRecall({
-      candidates,
-      agentId: runtime.agentId,
-      requester: { requesterEntityId: runtime.agentId, isOwner: true },
-      destination: { roomId: dmRoom, chatType: "dm", isGroup: false },
-      sources: [ok("gmail"), ok("discord")],
-    });
+		expect(searchSpy).toHaveBeenCalledTimes(1);
+		expect(result.success).toBe(true);
+		const data = result.data as {
+			results?: Array<{ id: UUID }>;
+			availability?: string;
+			withheld?: unknown[];
+			sources?: Array<{ source: string; state: string }>;
+		};
+		expect(data.results).toHaveLength(1);
+		expect(data.results?.[0]?.id).toBe(first.id);
+		expect(data.availability).toBe("complete");
+		expect(data.withheld).toEqual([]);
+		expect(data.sources).toEqual([
+			expect.objectContaining({ source: "messages", state: "ok" }),
+		]);
+	});
 
-    const hit = recall.items.find((item) =>
-      item.memory.content?.text?.includes("invoice 8842"),
-    );
-    expect(
-      hit,
-      "the email fact is recallable in a private Discord DM",
-    ).toBeDefined();
-    expect(hit?.provenance.source, "email provenance is preserved").toBe(
-      "gmail",
-    );
-    expect(
-      hit?.provenance.accountId,
-      "the originating mail account is preserved",
-    ).toBe(EMAIL_ACCOUNT.accountId);
-    expect(
-      hit?.provenance.trust,
-      "a stamped sender identity yields connector-verified trust",
-    ).toBe("connector-verified");
-    expect(
-      hit?.provenance.timestampMs,
-      "the email's own timestamp is the provenance timestamp",
-    ).toBe(sentAt);
-  });
+	it("default policy denies every cross-room disclosure pending PR #17212", async () => {
+		const harness = track(await withMockLlmRuntime({ strict: false }));
+		const { runtime } = harness;
+		const destinationRoomId = id("destination-room");
+		await createRoom(runtime, destinationRoomId, ChannelType.DM, [id("sender")]);
+		vi.spyOn(runtime, "searchMemories").mockResolvedValue([
+			messageMemory({ agentId: runtime.agentId, roomId: id("source-room") }),
+		]);
 
-  it("recalls a calendar event with source freshness", async () => {
-    const harness = track(await withMockLlmRuntime({ strict: false }));
-    const { runtime } = harness;
+		const recall = await searchCanonicalConversationMemories({
+			runtime,
+			embedding: [0.1, 0.2],
+			agentId: runtime.agentId,
+			requester: { requesterEntityId: id("sender") },
+			destinationRoomId,
+			count: 10,
+		});
 
-    const calendarRoom = stringToUuid("gcal-primary-room") as UUID;
-    const eventStart = Date.now() + 3_600_000;
-    await ingestDomainRecord(
-      runtime,
-      calendarFixture({
-        roomId: calendarRoom,
-        startMs: eventStart,
-        title: "Quarterly planning sync",
-        location: "Room 4B",
-      }),
-    );
-
-    const voiceRoom = stringToUuid("voice-session-room") as UUID;
-    const candidates = await readRoom(runtime, calendarRoom);
-
-    // Pin the clock so the freshness assertion is exact, not timing-dependent.
-    const fixedNow = eventStart + 120_000;
-    const recall = buildCanonicalRecall({
-      candidates,
-      agentId: runtime.agentId,
-      requester: { requesterEntityId: runtime.agentId, isOwner: true },
-      destination: { roomId: voiceRoom, chatType: "dm", isGroup: false },
-      sources: [ok("google-calendar")],
-      now: () => fixedNow,
-    });
-
-    const hit = recall.items.find((item) =>
-      item.memory.content?.text?.includes("Quarterly planning sync"),
-    );
-    expect(
-      hit,
-      "the calendar event is recallable on the voice/text surface",
-    ).toBeDefined();
-    expect(hit?.provenance.source).toBe("google-calendar");
-    expect(hit?.provenance.accountId).toBe(CALENDAR_ACCOUNT.accountId);
-
-    const calendarHealth = recall.sources.find(
-      (source) => source.source === "google-calendar",
-    );
-    expect(
-      calendarHealth?.freshnessMs,
-      "the calendar source reports how stale its freshest item is",
-    ).toBe(120_000);
-  });
-
-  it("surfaces a connector partial failure as partial/unavailable, never a healthy empty state", async () => {
-    const harness = track(await withMockLlmRuntime({ strict: false }));
-    const { runtime } = harness;
-
-    const mailboxRoom = stringToUuid("gmail-partial-room") as UUID;
-    await ingestDomainRecord(
-      runtime,
-      emailFixture({
-        roomId: mailboxRoom,
-        timestampMs: Date.now() - 5_000,
-        subject: "Shipment delayed",
-        body: "The Rotterdam shipment slips by two days.",
-      }),
-    );
-
-    const dmRoom = stringToUuid("partial-dm-room") as UUID;
-    const candidates = await readRoom(runtime, mailboxRoom);
-
-    // Email answered; calendar is down.
-    const partial = buildCanonicalRecall({
-      candidates,
-      agentId: runtime.agentId,
-      requester: { requesterEntityId: runtime.agentId, isOwner: true },
-      destination: { roomId: dmRoom, chatType: "dm", isGroup: false },
-      sources: [
-        ok("gmail"),
-        {
-          source: "google-calendar",
-          state: "unavailable",
-          reason: "OAuth token revoked",
-        },
-      ],
-    });
-
-    expect(
-      partial.availability,
-      "one dead source with surviving results is PARTIAL, not complete",
-    ).toBe("partial");
-    expect(
-      partial.items.length,
-      "the healthy source still answers",
-    ).toBeGreaterThan(0);
-    expect(
-      partial.sources.find((s) => s.source === "google-calendar")?.reason,
-      "the failure reason is carried for the operator",
-    ).toBe("OAuth token revoked");
-
-    // Every source down and nothing to show: UNAVAILABLE, never a confident
-    // empty answer. This is the distinction the pillar calls out.
-    const dead = buildCanonicalRecall({
-      candidates: [],
-      agentId: runtime.agentId,
-      requester: { requesterEntityId: runtime.agentId, isOwner: true },
-      destination: { roomId: dmRoom, chatType: "dm", isGroup: false },
-      sources: [
-        { source: "gmail", state: "unavailable", reason: "network error" },
-      ],
-    });
-    expect(
-      dead.availability,
-      "no results plus a failed source must never read as a healthy empty state",
-    ).toBe("unavailable");
-    expect(dead.items).toHaveLength(0);
-  });
-
-  it("collapses a duplicate webhook delivery to one canonical item", async () => {
-    const harness = track(await withMockLlmRuntime({ strict: false }));
-    const { runtime } = harness;
-
-    const mailboxRoom = stringToUuid("gmail-idempotency-room") as UUID;
-    const record = emailFixture({
-      roomId: mailboxRoom,
-      platformRecordId: "gmail-msg-duplicate-1",
-      timestampMs: Date.now() - 30_000,
-      subject: "Duplicate delivery",
-      body: "This webhook fires twice.",
-    });
-
-    // Same record delivered twice — the classic at-least-once webhook.
-    await ingestDomainRecord(runtime, record);
-    await ingestDomainRecord(runtime, record);
-
-    const candidates = await readRoom(runtime, mailboxRoom);
-    const recall = buildCanonicalRecall({
-      candidates,
-      agentId: runtime.agentId,
-      requester: { requesterEntityId: runtime.agentId, isOwner: true },
-      destination: { roomId: mailboxRoom, chatType: "dm", isGroup: false },
-      sources: [ok("gmail")],
-    });
-
-    const hits = recall.items.filter((item) =>
-      item.memory.content?.text?.includes("This webhook fires twice"),
-    );
-    expect(
-      hits,
-      "a redelivered webhook collapses to exactly one canonical item",
-    ).toHaveLength(1);
-  });
-
-  it("keeps account identity distinct when the same content arrives on two accounts", async () => {
-    const harness = track(await withMockLlmRuntime({ strict: false }));
-    const { runtime } = harness;
-
-    const roomA = stringToUuid("dual-account-room-a") as UUID;
-    const roomB = stringToUuid("dual-account-room-b") as UUID;
-    const sameText = "Quarterly numbers are final.";
-    const timestampMs = Date.now() - 10_000;
-
-    await ingestDomainRecord(
-      runtime,
-      emailFixture({
-        roomId: roomA,
-        platformRecordId: "shared-platform-id",
-        timestampMs,
-        body: sameText,
-        account: {
-          accountId: DISCORD_ACCOUNT_PRIMARY.accountId,
-          label: "acct A",
-        },
-      }),
-    );
-    await ingestDomainRecord(
-      runtime,
-      emailFixture({
-        roomId: roomB,
-        platformRecordId: "shared-platform-id",
-        timestampMs,
-        body: sameText,
-        account: {
-          accountId: DISCORD_ACCOUNT_SECONDARY.accountId,
-          label: "acct B",
-        },
-      }),
-    );
-
-    const candidates = [
-      ...(await readRoom(runtime, roomA)),
-      ...(await readRoom(runtime, roomB)),
-    ];
-
-    const keys = new Set(
-      candidates.map((memory) =>
-        canonicalDedupeKey(deriveCanonicalProvenance(memory, runtime.agentId)),
-      ),
-    );
-    expect(
-      keys.size,
-      "identical content under two accounts must NOT collapse: account identity is part of the key",
-    ).toBe(2);
-
-    const recall = buildCanonicalRecall({
-      candidates,
-      agentId: runtime.agentId,
-      requester: { requesterEntityId: runtime.agentId, isOwner: true },
-      destination: { roomId: roomA, chatType: "dm", isGroup: false },
-      sources: [ok("gmail")],
-    });
-    const accounts = new Set(
-      recall.items.map((item) => item.provenance.accountId),
-    );
-    expect(
-      accounts,
-      "both originating accounts survive into the recalled provenance",
-    ).toEqual(
-      new Set([
-        DISCORD_ACCOUNT_PRIMARY.accountId,
-        DISCORD_ACCOUNT_SECONDARY.accountId,
-      ]),
-    );
-  });
-
-  it("fails closed on group-room retrieval until the destination-policy contract lands", async () => {
-    const harness = track(await withMockLlmRuntime({ strict: false }));
-    const { runtime } = harness;
-
-    const mailboxRoom = stringToUuid("gmail-groupleak-room") as UUID;
-    await ingestDomainRecord(
-      runtime,
-      emailFixture({
-        roomId: mailboxRoom,
-        timestampMs: Date.now() - 20_000,
-        subject: "Salary review",
-        body: "Confidential compensation details for the review cycle.",
-      }),
-    );
-
-    const groupRoom = stringToUuid("discord-group-room") as UUID;
-    const candidates = await readRoom(runtime, mailboxRoom);
-
-    // The OWNER is the one asking — the exact case that leaks today, where
-    // sender authorization is mistaken for destination authorization.
-    const recall = buildCanonicalRecall({
-      candidates,
-      agentId: runtime.agentId,
-      requester: {
-        requesterEntityId: stringToUuid("owner-entity") as UUID,
-        isOwner: true,
-        role: "OWNER",
-      },
-      destination: {
-        roomId: groupRoom,
-        chatType: "group",
-        isGroup: true,
-        participantEntityIds: [
-          stringToUuid("owner-entity") as UUID,
-          stringToUuid("other-human") as UUID,
-        ],
-      },
-      sources: [ok("gmail")],
-    });
-
-    expect(
-      recall.items,
-      "owner-private email context must NOT enter a group room, even when the owner asks",
-    ).toHaveLength(0);
-    expect(
-      recall.withheld.some((w) => w.code === "policy_contract_pending"),
-      "the withholding is explicit and attributed to the missing audience policy",
-    ).toBe(true);
-    expect(
-      recall.policyId,
-      "the receipt records which policy made the decision",
-    ).toBe(failClosedRecallPolicy.id);
-
-    // An unresolved destination is also refused — never guessed to be a DM.
-    const unresolved = buildCanonicalRecall({
-      candidates,
-      agentId: runtime.agentId,
-      requester: { requesterEntityId: runtime.agentId, isOwner: true },
-      destination: { roomId: stringToUuid("mystery-room") as UUID },
-      sources: [ok("gmail")],
-    });
-    expect(
-      unresolved.items,
-      "an unresolved audience is treated as unsafe, not as a DM",
-    ).toHaveLength(0);
-    expect(
-      unresolved.withheld[0]?.code,
-      "the refusal names the unresolved destination",
-    ).toBe("destination_unresolved");
-  });
-
-  it("lets a real destination policy be swapped in without changing call sites", async () => {
-    const harness = track(await withMockLlmRuntime({ strict: false }));
-    const { runtime } = harness;
-
-    const mailboxRoom = stringToUuid("gmail-policy-seam-room") as UUID;
-    await ingestDomainRecord(
-      runtime,
-      emailFixture({
-        roomId: mailboxRoom,
-        timestampMs: Date.now() - 20_000,
-        subject: "Team offsite",
-        body: "The offsite is confirmed for the 3rd.",
-      }),
-    );
-
-    const groupRoom = stringToUuid("policy-seam-group") as UUID;
-    const candidates = await readRoom(runtime, mailboxRoom);
-
-    // A stand-in for the real audience policy: it authorizes this specific
-    // group disclosure. The call site is byte-identical to the fail-closed
-    // case above — only the injected policy differs. That is the seam.
-    const permissivePolicy: CanonicalRecallPolicy = {
-      id: "test-audience-policy",
-      decide: () => ({ allow: true }),
-    };
-
-    const recall = buildCanonicalRecall({
-      candidates,
-      agentId: runtime.agentId,
-      requester: { requesterEntityId: runtime.agentId, isOwner: true },
-      destination: { roomId: groupRoom, chatType: "group", isGroup: true },
-      sources: [ok("gmail")],
-      policy: permissivePolicy,
-    });
-
-    expect(
-      recall.items.length,
-      "an installed policy that authorizes the destination unblocks the recall",
-    ).toBeGreaterThan(0);
-    expect(
-      recall.policyId,
-      "the receipt attributes the decision to the installed policy",
-    ).toBe("test-audience-policy");
-  });
-
-  it("keeps unsupported personal-history backfill explicit rather than simulated", () => {
-    // The harness proves live/bot + domain-source INGESTION. It must never be
-    // read as proof that a human's prior Telegram DMs or WhatsApp chats can be
-    // imported — no connector in this repo can do that.
-    const surfaces = UNSUPPORTED_BACKFILL.map((entry) => entry.surface);
-    expect(surfaces).toContain("telegram");
-    expect(surfaces).toContain("whatsapp");
-    for (const entry of UNSUPPORTED_BACKFILL) {
-      expect(
-        entry.capability,
-        "the unsupported capability is named precisely",
-      ).toBe("personal-account-history-backfill");
-      expect(entry.reason.length).toBeGreaterThan(40);
-    }
-  });
+		expect(recall.items).toHaveLength(0);
+		expect(recall.withheld[0]?.code).toBe("policy_contract_pending");
+	});
 });

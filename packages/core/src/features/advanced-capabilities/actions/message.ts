@@ -12,6 +12,8 @@
  */
 
 import { getConnectorAccountManager } from "../../../connectors/account-manager.ts";
+import { buildAccessContext } from "../../../access-context.ts";
+import { searchCanonicalConversationMemories } from "../../../access-control/canonical-recall.ts";
 import { findEntityByName } from "../../../entities.ts";
 import { getActionSpec } from "../../../generated/spec-helpers.ts";
 import { logger } from "../../../logger.ts";
@@ -2637,6 +2639,23 @@ function ensureConversationSearchCategory(runtime: IAgentRuntime): void {
 	}
 }
 
+function conversationSearchText(
+	query: string,
+	count: number,
+	availability: "complete" | "partial" | "unavailable",
+): string {
+	if (availability === "unavailable") {
+		return `Conversation search unavailable for "${query}".`;
+	}
+	if (count === 0) {
+		return `No conversations matching "${query}".`;
+	}
+	if (availability === "partial") {
+		return `Partial search results for "${query}": ${count} messages found.`;
+	}
+	return `Search results for "${query}": ${count} messages found.`;
+}
+
 async function handleSearch(
 	runtime: IAgentRuntime,
 	message: Memory,
@@ -2742,44 +2761,51 @@ async function handleSearch(
 			);
 		}
 
-		const searchParams: Parameters<IAgentRuntime["searchMemories"]>[0] = {
-			embedding,
-			tableName: "messages",
-			match_threshold: SEARCH_MATCH_THRESHOLD,
-			count: limit + 10,
-			...(entityId ? { entityId: entityId as UUID } : {}),
-		} as Parameters<IAgentRuntime["searchMemories"]>[0];
-		let results = (await runtime.searchMemories(searchParams)) as Memory[];
-
-		// Post-filter by source platform when supplied.
-		if (source && results.length > 0) {
-			const filtered: Memory[] = [];
-			for (const mem of results) {
-				try {
-					const room = await runtime.getRoom(mem.roomId);
-					const roomSource = (
-						(room as (Room & { source?: string }) | null)?.source ??
-						room?.type ??
-						""
-					).toLowerCase();
-					if (roomSource === source.toLowerCase()) filtered.push(mem);
-				} catch {
-					// drop rooms we cannot resolve
-				}
-			}
-			results = filtered;
+		let requester;
+		try {
+			requester = await buildAccessContext(runtime, message);
+		} catch (error) {
+			// error-policy:J4 role/world lookup failure degrades to requester-only
+			// access, which denies elevated scopes instead of widening recall.
+			logger.warn(
+				`[MESSAGE/search] access context resolution failed: ${error instanceof Error ? error.message : String(error)}`,
+			);
+			requester = {
+				requesterEntityId: message.entityId,
+				source: typeof message.content.source === "string"
+					? message.content.source
+					: undefined,
+			};
 		}
+		const recall = await searchCanonicalConversationMemories({
+			runtime,
+			embedding,
+			query,
+			agentId: runtime.agentId,
+			requester,
+			destinationRoomId: message.roomId,
+			count: limit + 10,
+			matchThreshold: SEARCH_MATCH_THRESHOLD,
+			...(entityId ? { entityId: entityId as UUID } : {}),
+			source,
+		});
 
-		results = results.filter((m) => m.content.text).slice(0, limit);
+		const results = recall.items
+			.map((item) => item.memory)
+			.filter((m) => m.content.text)
+			.slice(0, limit);
 		return opSuccess(
 			"search",
-			results.length === 0
-				? `No conversations matching "${query}".`
-				: `Search results for "${query}": ${results.length} messages found.`,
+			conversationSearchText(query, results.length, recall.availability),
 			{
 				query,
 				source,
 				mode: "conversation",
+				availability: recall.availability,
+				withheld: recall.withheld,
+				sources: recall.sources,
+				sourceHealth: recall.sources,
+				policyId: recall.policyId,
 				results: results.map((m, i) => ({
 					line: i + 1,
 					id: m.id,
