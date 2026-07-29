@@ -8,7 +8,11 @@
  * planner learns about pending rows from the `pendingApprovals` provider
  * (../providers/pending-approvals.ts), which routes decisions here (#14630).
  */
-import { hasOwnerAccess } from "@elizaos/agent";
+import {
+  ApprovalNotFoundError as RuntimeApprovalNotFoundError,
+  ApprovalStateTransitionError as RuntimeApprovalStateTransitionError,
+  hasOwnerAccess,
+} from "@elizaos/agent";
 import type {
   Action,
   ActionExample,
@@ -45,6 +49,7 @@ import { createApprovalQueue } from "../lifeops/approval-queue.js";
 import {
   ApprovalNotFoundError,
   type ApprovalQueue,
+  ApprovalQueueCompatibilityError,
   type ApprovalRequest,
   ApprovalStateTransitionError,
   ApprovalTransitionConflictError,
@@ -76,10 +81,21 @@ import {
 } from "../lifeops/scheduling-delivery.js";
 import { LifeOpsService } from "../lifeops/service.js";
 import { executeApprovedBookTravel } from "./book-travel.js";
-import { dispatchApprovedSignatureRequest } from "./document.js";
 import {
+  type ApprovalDispatchOutcome,
+  recoverInterruptedApproval,
+  runApprovalDispatch,
+} from "./lib/approval-execution.js";
+import {
+  dispatchApprovedSignatureRequest,
+  getDocumentRequest,
+} from "./document.js";
+import {
+  ApprovalConnectorPreflightError,
+  ApprovalKnownNonDeliveryError,
   type CrossChannelSendChannel,
   dispatchCrossChannelSend,
+  prepareCrossChannelSend,
 } from "./lib/messaging-helpers.js";
 import { formatPromptValue } from "./lib/prompt-format.js";
 
@@ -2103,6 +2119,7 @@ async function resolveApprovalRequest(
   const pending = [...directPending, ...selfPending].filter(
     (request, index, all) =>
       all.findIndex((candidate) => candidate.id === request.id) === index,
+  );
   const userText =
     typeof message.content.text === "string" ? message.content.text : "";
   const explicitRequestId =
