@@ -36,6 +36,7 @@ export type LifeOpsAudienceDecision = "include" | "exclude";
 export type LifeOpsAudienceReason =
   | "included_private_audience"
   | "excluded_non_owner_requester"
+  | "excluded_owner_lookup_failed"
   | "excluded_missing_room"
   | "excluded_missing_participants"
   | "excluded_metadata_lookup_failed"
@@ -81,7 +82,11 @@ export interface LifeOpsAudienceReceipt {
 
 export interface LifeOpsAudienceGateResult {
   receipts: LifeOpsAudienceReceipt[];
-  includedSources: LifeOpsAudienceSource[];
+  /**
+   * The gate is all-or-nothing per audience: every source kind is owner-private,
+   * so authorization never varies between the sources of one request. Callers
+   * read this instead of a per-source include list.
+   */
   canLoadPrivateContext: boolean;
   envelope: LifeOpsAudienceEnvelope | null;
 }
@@ -237,6 +242,7 @@ export async function evaluateLifeOpsAudiencePolicy(args: {
   let participants: string[] = [];
   let trustedAgentId: string | null = null;
   let metadataFailure = false;
+  let ownerLookupFailure = false;
 
   try {
     room = await args.runtime.getRoom(args.message.roomId as UUID);
@@ -246,6 +252,8 @@ export async function evaluateLifeOpsAudiencePolicy(args: {
       );
       participants = Array.isArray(values) ? sortedParticipants(values) : [];
     }
+    // error-policy:J7 room/participant lookup is a diagnostic read; a failure
+    // must be reported and fail the gate closed, never abort the whole turn.
   } catch (error) {
     metadataFailure = true;
     args.runtime.reportError("LifeOpsAudience.metadata", error, {
@@ -256,6 +264,8 @@ export async function evaluateLifeOpsAudiencePolicy(args: {
   try {
     const persistedAgent = await args.runtime.getAgent(args.runtime.agentId);
     trustedAgentId = persistedAgent?.id ?? null;
+    // error-policy:J7 persisted-agent read is a diagnostic read; report and
+    // fail closed rather than killing the turn.
   } catch (error) {
     metadataFailure = true;
     args.runtime.reportError("LifeOpsAudience.loaderIdentity", error, {
@@ -266,7 +276,10 @@ export async function evaluateLifeOpsAudiencePolicy(args: {
   let isOwner = false;
   try {
     isOwner = await args.hasOwnerAccess(args.runtime, args.message);
+    // error-policy:J7 a broken role lookup is reported and denied under its own
+    // reason so it is never read back as "this requester is not the owner".
   } catch (error) {
+    ownerLookupFailure = true;
     args.runtime.reportError("LifeOpsAudience.ownerAccess", error, {
       entityId: args.message.entityId,
       roomId: args.message.roomId,
@@ -289,7 +302,8 @@ export async function evaluateLifeOpsAudiencePolicy(args: {
     : null;
 
   let reason: LifeOpsAudienceReason | null = null;
-  if (!isOwner) reason = "excluded_non_owner_requester";
+  if (ownerLookupFailure) reason = "excluded_owner_lookup_failed";
+  else if (!isOwner) reason = "excluded_non_owner_requester";
   else if (metadataFailure) reason = "excluded_metadata_lookup_failed";
   else if (!trustedAgentId || trustedAgentId !== args.runtime.agentId)
     reason = "excluded_untrusted_loader_identity";
@@ -334,7 +348,6 @@ export async function evaluateLifeOpsAudiencePolicy(args: {
           reason,
         }),
       ),
-      includedSources: [],
       canLoadPrivateContext: false,
       envelope: null,
     };
@@ -365,7 +378,6 @@ export async function evaluateLifeOpsAudiencePolicy(args: {
         reason: "included_private_audience",
       }),
     ),
-    includedSources: [...args.sources],
     canLoadPrivateContext: true,
     envelope,
   };

@@ -179,6 +179,29 @@ describe("shared LifeOps audience boundary (production provider/action paths)", 
     },
   );
 
+  it.each([ChannelType.DM, ChannelType.API, ChannelType.VOICE_DM])(
+    "keeps a group room denied when its message carries the private stamp %s",
+    async (messageType) => {
+      const roomId = await room(ChannelType.GROUP, [
+        runtime.agentId,
+        ownerId,
+        otherId,
+      ]);
+      const gate = await authorizeLifeOpsPrivateContext({
+        runtime,
+        message: message(roomId, messageType),
+        sources: PRIVATE_SOURCES,
+      });
+      expect(gate.canLoadPrivateContext).toBe(false);
+      expect(gate.envelope).toBeNull();
+      expect(gate.receipts[0]).toMatchObject({
+        roomAudienceClass: "group",
+        decision: "exclude",
+        reason: "excluded_group_destination",
+      });
+    },
+  );
+
   it("binds provenance to the persisted agent id, ignoring mutable display/message persona", async () => {
     const roomId = await room(ChannelType.DM, [runtime.agentId, ownerId]);
     const request = message(roomId, ChannelType.API);
@@ -357,7 +380,9 @@ describe("shared LifeOps audience boundary (production provider/action paths)", 
       },
     });
     expect(gate.canLoadPrivateContext).toBe(false);
-    expect(gate.receipts[0].reason).toBe("excluded_non_owner_requester");
+    // A broken role lookup is distinguishable from a genuine non-owner so the
+    // receipt trail cannot read a failed pipeline as an authorization verdict.
+    expect(gate.receipts[0].reason).toBe("excluded_owner_lookup_failed");
     expect(reportError).toHaveBeenCalledWith(
       "LifeOpsAudience.metadata",
       expect.any(Error),
