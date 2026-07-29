@@ -1541,9 +1541,7 @@ export const lifeHouseholdAccessGrants = appLifeopsPgSchema.table(
   {
     id: text("id").primaryKey(),
     agentId: text("agent_id").notNull(),
-    householdId: text("household_id")
-      .notNull()
-      .default("household:default"),
+    householdId: text("household_id").notNull().default("household:default"),
     principalEntityId: text("principal_entity_id").notNull(),
     relationshipId: text("relationship_id"),
     role: text("role").notNull(),
@@ -1574,9 +1572,7 @@ export const lifeHouseholdCoordinationHeads = appLifeopsPgSchema.table(
   {
     id: text("id").primaryKey(),
     agentId: text("agent_id").notNull(),
-    householdId: text("household_id")
-      .notNull()
-      .default("household:default"),
+    householdId: text("household_id").notNull().default("household:default"),
     coordinationId: text("coordination_id").notNull(),
     currentAgreementVersion: integer("current_agreement_version")
       .notNull()
@@ -1593,9 +1589,7 @@ export const lifeHouseholdScheduleProposals = appLifeopsPgSchema.table(
   {
     rowId: text("row_id").primaryKey(),
     agentId: text("agent_id").notNull(),
-    householdId: text("household_id")
-      .notNull()
-      .default("household:default"),
+    householdId: text("household_id").notNull().default("household:default"),
     proposalId: text("proposal_id").notNull(),
     version: integer("version").notNull(),
     coordinationId: text("coordination_id").notNull(),
@@ -1696,9 +1690,7 @@ export const lifeHouseholdScheduleAgreements = appLifeopsPgSchema.table(
   {
     id: text("id").primaryKey(),
     agentId: text("agent_id").notNull(),
-    householdId: text("household_id")
-      .notNull()
-      .default("household:default"),
+    householdId: text("household_id").notNull().default("household:default"),
     coordinationId: text("coordination_id").notNull(),
     version: integer("version").notNull(),
     proposalId: text("proposal_id").notNull(),

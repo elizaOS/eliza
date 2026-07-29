@@ -661,10 +661,7 @@ export class HouseholdCoordinationService {
         );
       }
       const existingHouseholdId = readHouseholdIdMetadata(existing);
-      if (
-        existingHouseholdId !== null &&
-        existingHouseholdId !== householdId
-      ) {
+      if (existingHouseholdId !== null && existingHouseholdId !== householdId) {
         throw new HouseholdCoordinationError(
           "Household role relationship belongs to a different household namespace",
           "HOUSEHOLD_ACCESS_DENIED",
@@ -1055,10 +1052,7 @@ export class HouseholdCoordinationService {
             .createHash("sha256")
             .update(`${this.deps.agentId}\0${householdId}\0${childEntityId}`)
             .digest("hex")}`
-        : normalizeHouseholdIdentifier(
-            input.relationshipId,
-            "relationshipId",
-          );
+        : normalizeHouseholdIdentifier(input.relationshipId, "relationshipId");
     const existing = await this.deps.relationshipStore.get(relationshipId);
     if (existing) {
       if (existing.status !== "active") {
@@ -1068,10 +1062,7 @@ export class HouseholdCoordinationService {
           { householdId, childEntityId, relationshipId },
         );
       }
-      const endpoints = new Set([
-        existing.fromEntityId,
-        existing.toEntityId,
-      ]);
+      const endpoints = new Set([existing.fromEntityId, existing.toEntityId]);
       if (
         !endpoints.has(SELF_ENTITY_ID) ||
         !endpoints.has(childEntityId) ||
@@ -1171,7 +1162,8 @@ export class HouseholdCoordinationService {
         householdId,
         relationshipId,
         invalidatedAt: now,
-        reason: "Custody authority was revised after proposal approval bytes were issued.",
+        reason:
+          "Custody authority was revised after proposal approval bytes were issued.",
       });
     await this.terminallyInvalidateApprovalRequests(
       invalidated.approvalRequestIds,
@@ -1246,7 +1238,9 @@ export class HouseholdCoordinationService {
       );
     }
     const childEntityId = normalizeHouseholdIdentifier(
-      String(relationship.metadata?.[CUSTODY_AUTHORITY_CHILD_METADATA_KEY] ?? ""),
+      String(
+        relationship.metadata?.[CUSTODY_AUTHORITY_CHILD_METADATA_KEY] ?? "",
+      ),
       "childEntityId",
     );
     const rawCustodians =
@@ -1947,9 +1941,7 @@ export class HouseholdCoordinationService {
     }
   }
 
-  private async enqueueApprovals(
-    proposal: HouseholdScheduleProposal,
-  ): Promise<{
+  private async enqueueApprovals(proposal: HouseholdScheduleProposal): Promise<{
     approvals: HouseholdProposalApproval[];
     insertedApprovalLinkIds: string[];
   }> {
@@ -2008,8 +2000,7 @@ export class HouseholdCoordinationService {
         createdAt: now,
         updatedAt: now,
       };
-      const persisted =
-        await this.deps.repository.insertApprovalLink(approval);
+      const persisted = await this.deps.repository.insertApprovalLink(approval);
       approvals.push(persisted);
       insertedApprovalLinkIds.push(persisted.id);
       if (route) {

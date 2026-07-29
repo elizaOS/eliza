@@ -118,10 +118,7 @@ describe("household authorization boundaries — real PGlite", () => {
     partyEntityId: string,
   ): Promise<void> {
     const link = (
-      await repository.listApprovalLinks(
-        proposal.proposalId,
-        proposal.version,
-      )
+      await repository.listApprovalLinks(proposal.proposalId, proposal.version)
     ).find((candidate) => candidate.partyEntityId === partyEntityId);
     if (!link) throw new Error(`approval link missing for ${partyEntityId}`);
     await service.respondToProposal({
@@ -325,8 +322,7 @@ describe("household authorization boundaries — real PGlite", () => {
       createdByEntityId: SELF_ENTITY_ID,
     });
     expect(
-      firstProposal.terms.custodyException
-        ?.authorityBaselineRevisionSha256,
+      firstProposal.terms.custodyException?.authorityBaselineRevisionSha256,
     ).toBe(firstAuthority.revisionSha256);
     await approve(service, firstProposal, SELF_ENTITY_ID);
     await approve(service, firstProposal, coParentId);
@@ -345,19 +341,16 @@ describe("household authorization boundaries — real PGlite", () => {
       firstAuthority.revisionSha256,
     );
     await expect(
-      repository.getProposal(
-        firstProposal.proposalId,
-        firstProposal.version,
-      ),
+      repository.getProposal(firstProposal.proposalId, firstProposal.version),
     ).resolves.toMatchObject({ status: "invalidated" });
     const firstLinks = await repository.listApprovalLinks(
       firstProposal.proposalId,
       firstProposal.version,
     );
     for (const link of firstLinks) {
-      await expect(approvals.byId(link.approvalRequestId)).resolves.toMatchObject(
-        { state: "expired" },
-      );
+      await expect(
+        approvals.byId(link.approvalRequestId),
+      ).resolves.toMatchObject({ state: "expired" });
     }
     await expect(
       service.finalizeProposal({
@@ -384,8 +377,7 @@ describe("household authorization boundaries — real PGlite", () => {
       createdByEntityId: SELF_ENTITY_ID,
     });
     expect(
-      secondProposal.terms.custodyException
-        ?.authorityBaselineRevisionSha256,
+      secondProposal.terms.custodyException?.authorityBaselineRevisionSha256,
     ).toBe(secondAuthority.revisionSha256);
     await approve(service, secondProposal, SELF_ENTITY_ID);
     await approve(service, secondProposal, coParentId);
@@ -404,10 +396,7 @@ describe("household authorization boundaries — real PGlite", () => {
       revision: secondAuthority.revision + 1,
     });
     await expect(
-      repository.getProposal(
-        secondProposal.proposalId,
-        secondProposal.version,
-      ),
+      repository.getProposal(secondProposal.proposalId, secondProposal.version),
     ).resolves.toMatchObject({ status: "invalidated" });
     await expect(
       service.finalizeProposal({

@@ -1126,7 +1126,9 @@ export class HouseholdCoordinationRepository {
     return rows[0] ? proposalFromRow(rows[0]) : null;
   }
 
-  async listProposals(householdId?: string): Promise<HouseholdScheduleProposal[]> {
+  async listProposals(
+    householdId?: string,
+  ): Promise<HouseholdScheduleProposal[]> {
     const householdClause = householdId
       ? `AND household_id = ${sqlQuote(householdId)}`
       : "";
