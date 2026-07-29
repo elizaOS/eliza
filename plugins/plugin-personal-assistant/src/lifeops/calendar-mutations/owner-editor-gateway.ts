@@ -278,7 +278,10 @@ async function resolveConfirmedApproval(args: {
     resolutionReason:
       "Authenticated owner explicitly confirmed the calendar editor action.",
   };
-  const existing = await args.queue.byIdempotencyKey(idempotencyKey);
+  const existing = await args.queue.byIdempotencyKey(
+    idempotencyKey,
+    SELF_ENTITY_ID,
+  );
   if (existing) {
     return confirmExistingEditorApproval({
       queue: args.queue,
@@ -294,7 +297,10 @@ async function resolveConfirmedApproval(args: {
     return request;
   } catch (error) {
     if (!isApprovalIdempotencyConflict(error, idempotencyKey)) throw error;
-    const raced = await args.queue.byIdempotencyKey(idempotencyKey);
+    const raced = await args.queue.byIdempotencyKey(
+      idempotencyKey,
+      SELF_ENTITY_ID,
+    );
     if (!raced) throw error;
     return confirmExistingEditorApproval({
       queue: args.queue,
@@ -512,6 +518,7 @@ export class OwnerCalendarMutationGatewayService
     const queue = this.approvalQueue();
     const existing = await queue.byIdempotencyKey(
       approvalKey("modify_event", operationKey),
+      SELF_ENTITY_ID,
     );
     let approval: ApprovalRequest;
     if (existing) {
@@ -597,6 +604,7 @@ export class OwnerCalendarMutationGatewayService
     const queue = this.approvalQueue();
     const existing = await queue.byIdempotencyKey(
       approvalKey("cancel_event", operationKey),
+      SELF_ENTITY_ID,
     );
     let approval: ApprovalRequest;
     if (existing) {

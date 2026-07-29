@@ -124,6 +124,8 @@ export interface SpatialButtonNode extends SpatialCommon {
   label: string;
   tone?: SpatialTone;
   disabled?: boolean;
+  /** Selection state for toggle-like button groups. */
+  pressed?: boolean;
   /** Visual emphasis: solid fill vs. outline vs. text-only. */
   variant?: "solid" | "outline" | "ghost";
 }

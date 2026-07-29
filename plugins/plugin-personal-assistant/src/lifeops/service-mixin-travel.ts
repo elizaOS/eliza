@@ -54,6 +54,7 @@ export interface LifeOpsTravelServicePublic {
       search?: SearchFlightsRequest | null;
       passengers: ReadonlyArray<TravelBookingPassenger>;
       calendarSync?: TravelCalendarSyncPlan | null;
+      calendarGrantId?: string;
     },
   ): Promise<FlightBookingExecutionResult>;
 }

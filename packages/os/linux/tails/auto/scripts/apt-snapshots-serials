@@ -113,10 +113,19 @@ case "$action" in
 		fi
 		for origin_dir in tmp/APT_snapshots.d/*; do
 			origin=$(basename "$origin_dir")
-			if grep -qs '^latest$' "$origin_dir"/serial; then
+			configured_serial=$(cat "$origin_dir"/serial)
+			resolved_serial=$(
 				awk -F': ' "/^$origin: / {print \$2}" \
-					tmp/cached_APT_snapshots_serials \
-					> "$origin_dir"/serial
+					tmp/cached_APT_snapshots_serials
+			)
+			if [ "${APT_SNAPSHOTS_SERIALS}" ] && [ -n "$resolved_serial" ]; then
+				printf '%s\n' "$resolved_serial" > "$origin_dir"/serial
+			elif [ "$configured_serial" = latest ]; then
+				if [ -z "$resolved_serial" ]; then
+					echo "No resolved APT snapshot serial for $origin" >&2
+					exit 1
+				fi
+				printf '%s\n' "$resolved_serial" > "$origin_dir"/serial
 			fi
 		done
 	;;

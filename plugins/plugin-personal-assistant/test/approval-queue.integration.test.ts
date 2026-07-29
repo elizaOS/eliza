@@ -3,7 +3,7 @@
  *
  * Drives the real `PgApprovalQueue` against a PGlite-backed runtime.
  * Exercises:
- *   - enqueue → approve → markExecuting → markDone (happy path)
+ *   - enqueue → approve → claim → dispatch-start → receipt completion
  *   - enqueue → reject
  *   - enqueue (expired in past) → purgeExpired → markExpired noop rejected
  *   - invalid transitions throw ApprovalStateTransitionError
@@ -254,17 +254,17 @@ afterAll(async () => {
 });
 
 describe("ApprovalQueue integration (real PGlite)", () => {
-  it("enqueue → approve → markExecuting → markDone happy path", async () => {
+  it("enqueue → approve → durable execution → receipt happy path", async () => {
     const enqueued = await queue.enqueue(messageInput());
     expect(enqueued.state).toBe("pending");
     expect(enqueued.resolvedAt).toBeNull();
     expect(enqueued.resolvedBy).toBeNull();
 
-    const fetched = await queue.byId(enqueued.id);
+    const fetched = await queue.byId(enqueued.id, "owner-123");
     expect(fetched).not.toBeNull();
     expect(fetched?.action).toBe("send_message");
 
-    const approved = await queue.approve(enqueued.id, {
+    const approved = await queue.approve(enqueued.id, "owner-123", {
       resolvedBy: "owner-123",
       resolutionReason: "looks good",
     });
@@ -272,11 +272,31 @@ describe("ApprovalQueue integration (real PGlite)", () => {
     expect(approved.resolvedBy).toBe("owner-123");
     expect(approved.resolvedAt).toBeInstanceOf(Date);
 
-    const executing = await queue.markExecuting(enqueued.id);
+    const executing = await queue.claimExecution({
+      requestId: enqueued.id,
+      subjectUserId: "owner-123",
+      provider: "test",
+      providerIdempotencyKey: `approval:${enqueued.id}:test`,
+    });
     expect(executing.state).toBe("executing");
 
-    const done = await queue.markDone(enqueued.id);
+    const attemptId = executing.execution?.attemptId ?? "";
+    await queue.markDispatchStarted({
+      requestId: enqueued.id,
+      subjectUserId: "owner-123",
+      attemptId,
+    });
+    const done = await queue.markDone({
+      requestId: enqueued.id,
+      subjectUserId: "owner-123",
+      attemptId,
+      providerReceipt: { provider: "test", id: "receipt-1" },
+    });
     expect(done.state).toBe("done");
+    expect(done.execution?.providerReceipt).toEqual({
+      provider: "test",
+      id: "receipt-1",
+    });
 
     const pendingList = await queue.list({
       subjectUserId: "owner-123",
@@ -1398,7 +1418,7 @@ describe("ApprovalQueue integration (real PGlite)", () => {
       // Round-trip: drive the queue with the tapped approve value's id.
       const tapped = block.options[0]?.value ?? "";
       const requestId = tapped.replace(/^approve /, "");
-      const approved = await queue.approve(requestId, {
+      const approved = await queue.approve(requestId, "owner-chips", {
         resolvedBy: "owner-chips",
         resolutionReason: "tapped Approve",
       });
@@ -1507,7 +1527,7 @@ describe("ApprovalQueue integration (real PGlite)", () => {
     const enqueued = await queue.enqueue(
       messageInput({ subjectUserId: "owner-reject" }),
     );
-    const rejected = await queue.reject(enqueued.id, {
+    const rejected = await queue.reject(enqueued.id, "owner-reject", {
       resolvedBy: "owner-reject",
       resolutionReason: "not now",
     });
@@ -1547,7 +1567,7 @@ describe("ApprovalQueue integration (real PGlite)", () => {
     );
     const purgedIds = await queue.purgeExpired(new Date());
     expect(purgedIds).toContain(enqueued.id);
-    const after = await queue.byId(enqueued.id);
+    const after = await queue.byId(enqueued.id, "owner-expire");
     expect(after?.state).toBe("expired");
   }, 60_000);
 
@@ -1555,19 +1575,19 @@ describe("ApprovalQueue integration (real PGlite)", () => {
     const enqueued = await queue.enqueue(
       messageInput({ subjectUserId: "owner-invalid" }),
     );
-    // pending -> executing is not allowed; must go through approved first
-    await expect(queue.markExecuting(enqueued.id)).rejects.toBeInstanceOf(
-      ApprovalStateTransitionError,
-    );
-    // pending -> done is not allowed
-    await expect(queue.markDone(enqueued.id)).rejects.toBeInstanceOf(
-      ApprovalStateTransitionError,
-    );
+    await expect(
+      queue.claimExecution({
+        requestId: enqueued.id,
+        subjectUserId: "owner-invalid",
+        provider: "test",
+        providerIdempotencyKey: "approval:invalid:test",
+      }),
+    ).rejects.toBeInstanceOf(ApprovalStateTransitionError);
   }, 60_000);
 
   it("throws ApprovalNotFoundError on unknown id", async () => {
     await expect(
-      queue.approve("00000000-0000-0000-0000-000000000000", {
+      queue.approve("00000000-0000-0000-0000-000000000000", "owner-123", {
         resolvedBy: "owner-123",
         resolutionReason: "x",
       }),

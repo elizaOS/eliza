@@ -8,7 +8,7 @@
  *
  * These tests mock the host data hook and the app-state selector (so the feed
  * and `setActionNotice` stay offline), render the REAL spatial DOM, and drive
- * the agent-id controls: the prev/today/next nav and the view-mode selector
+ * the agent-id controls: the prev/today/next nav and the segmented view modes
  * route through to the hook; selecting an event routes a chat-about-event
  * notice through `setActionNotice`.
  */
@@ -225,7 +225,13 @@ describe("CalendarView (unified spatial wrapper)", () => {
     expect(agent("today")).toBeTruthy();
     expect(agent("next")).toBeTruthy();
     expect(agent("new")).toBeTruthy();
-    expect(agent("mode")).toBeTruthy();
+    expect(agent("mode:day")).toBeTruthy();
+    expect(agent("mode:week")).toBeTruthy();
+    expect(agent("mode:month")).toBeTruthy();
+    expect(document.querySelector('[data-agent-id="mode"]')).toBeNull();
+    expect(agent("period-label").parentElement).not.toBe(
+      agent("prev").parentElement,
+    );
   });
 
   it("keeps the spatial root at content height so short viewports scroll instead of overprinting rows (#15911)", () => {
@@ -274,16 +280,12 @@ describe("CalendarView (unified spatial wrapper)", () => {
     expect(goToToday).toHaveBeenCalledTimes(1);
   });
 
-  it("switching to the month view routes through to setViewMode", () => {
-    render(<CalendarView />);
-    fireEvent.click(agent("mode:month"));
-    expect(setViewMode).toHaveBeenCalledWith("month");
-  });
-
-  it("the per-mode buttons also route through to setViewMode", () => {
+  it("the segmented mode buttons route through to setViewMode", () => {
     render(<CalendarView />);
     fireEvent.click(agent("mode:day"));
+    fireEvent.click(agent("mode:month"));
     expect(setViewMode).toHaveBeenCalledWith("day");
+    expect(setViewMode).toHaveBeenCalledWith("month");
   });
 
   it("selecting an event routes chat-about-event through setActionNotice", () => {

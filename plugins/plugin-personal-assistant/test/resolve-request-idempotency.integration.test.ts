@@ -1,0 +1,519 @@
+/**
+ * RESOLVE_REQUEST durability against the production agent-side PGlite queue.
+ * The suite crosses the real SQL boundary for authorization, CAS races,
+ * process restart recovery, provider ambiguity, reconciliation, and receipts.
+ */
+
+import { PGlite } from "@electric-sql/pglite";
+import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
+import { sql } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/pglite";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
+import { createApprovalQueue as createAgentApprovalQueue } from "../../../packages/agent/src/services/approval/store.ts";
+import {
+  ApprovalAmbiguousDeliveryError,
+  runApprovalDispatch,
+} from "../src/actions/lib/approval-execution.js";
+import { resolveRequestAction } from "../src/actions/resolve-request.js";
+import type {
+  ApprovalEnqueueInput,
+  ApprovalQueue,
+} from "../src/lifeops/approval-queue.types.js";
+
+const dispatchState = vi.hoisted(() => ({
+  sends: 0,
+  mode: "delivered" as "delivered" | "ambiguous" | "known_failure",
+}));
+
+vi.mock("../src/actions/lib/messaging-helpers.js", () => {
+  class ApprovalConnectorPreflightError extends Error {
+    constructor(
+      public readonly code: string,
+      message: string,
+    ) {
+      super(message);
+      this.name = "ApprovalConnectorPreflightError";
+    }
+  }
+  class ApprovalKnownNonDeliveryError extends Error {
+    constructor(
+      public readonly code: string,
+      message: string,
+      public readonly providerStatus: number | null = null,
+    ) {
+      super(message);
+      this.name = "ApprovalKnownNonDeliveryError";
+    }
+  }
+  return {
+    ApprovalConnectorPreflightError,
+    ApprovalKnownNonDeliveryError,
+    prepareCrossChannelSend: vi.fn(async () => ({
+      provider: "telegram" as const,
+      supportsProviderIdempotency: false,
+      dispatch: async () => {
+        dispatchState.sends += 1;
+        if (dispatchState.mode === "ambiguous") {
+          throw new Error(
+            "provider accepted request, acknowledgement timed out",
+          );
+        }
+        if (dispatchState.mode === "known_failure") {
+          throw new ApprovalKnownNonDeliveryError(
+            "TELEGRAM_REJECTED",
+            "Telegram rejected the target before delivery",
+            400,
+          );
+        }
+        return { provider: "telegram", messageId: "tg-message-42" };
+      },
+    })),
+  };
+});
+
+vi.mock("@elizaos/agent", async () => {
+  const stub = await import("./stubs/agent.ts");
+  return {
+    ...stub,
+    hasOwnerAccess: vi.fn(async () => true),
+    resolveApprovalService: (runtime: IAgentRuntime) =>
+      runtime.getService("eliza_approval"),
+  };
+});
+
+const AGENT_ID = "00000000-0000-0000-0000-0000000000a1" as UUID;
+const OWNER_A = "00000000-0000-0000-0000-0000000000b1" as UUID;
+const OWNER_B = "00000000-0000-0000-0000-0000000000b2" as UUID;
+const ROOM_ID = "00000000-0000-0000-0000-0000000000c1" as UUID;
+
+const CREATE_APPROVAL_REQUESTS_TABLE = `CREATE TABLE approval_requests (
+  id uuid PRIMARY KEY NOT NULL,
+  state text NOT NULL,
+  requested_by text NOT NULL,
+  subject_user_id text NOT NULL,
+  action text NOT NULL,
+  payload jsonb NOT NULL,
+  channel text NOT NULL,
+  reason text NOT NULL,
+  expires_at timestamp with time zone NOT NULL,
+  resolved_at timestamp with time zone,
+  resolved_by text,
+  resolution_reason text,
+  execution_attempt_id uuid,
+  execution_provider text,
+  provider_idempotency_key text,
+  execution_claimed_at timestamp with time zone,
+  dispatch_started_at timestamp with time zone,
+  provider_receipt jsonb,
+  execution_error text,
+  reconciliation_resolved_at timestamp with time zone,
+  reconciliation_resolved_by text,
+  reconciliation_reason text,
+  agent_id uuid NOT NULL,
+  created_at timestamp with time zone NOT NULL,
+  updated_at timestamp with time zone NOT NULL
+)`;
+
+let pg: PGlite;
+let runtime: IAgentRuntime;
+let realQueue: ApprovalQueue;
+let activeQueue: ApprovalQueue;
+
+function sendMessageInput(
+  subjectUserId: string = OWNER_A,
+): ApprovalEnqueueInput {
+  return {
+    requestedBy: "PERSONAL_ASSISTANT",
+    subjectUserId,
+    action: "send_message",
+    payload: {
+      action: "send_message",
+      recipient: "telegram-channel-1",
+      body: "On my way.",
+      replyToMessageId: null,
+    },
+    channel: "telegram",
+    reason: "Confirm before sending",
+    expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+  };
+}
+
+function message(
+  action:
+    | "approve"
+    | "reject"
+    | "reconcile_delivered"
+    | "reconcile_not_delivered",
+  requestId: string,
+  ownerId: UUID = OWNER_A,
+): Memory {
+  return {
+    id: "00000000-0000-0000-0000-00000000aa01" as UUID,
+    entityId: ownerId,
+    agentId: AGENT_ID,
+    roomId: ROOM_ID,
+    content: { text: `${action} ${requestId}` },
+    createdAt: Date.now(),
+  } as Memory;
+}
+
+async function resolve(
+  action:
+    | "approve"
+    | "reject"
+    | "reconcile_delivered"
+    | "reconcile_not_delivered",
+  requestId: string,
+  ownerId: UUID = OWNER_A,
+  providerReceiptId?: string,
+): Promise<{
+  success?: boolean;
+  text?: string;
+  data?: Record<string, unknown>;
+}> {
+  const result = await resolveRequestAction.handler(
+    runtime,
+    message(action, requestId, ownerId),
+    undefined,
+    {
+      parameters: { action, requestId, providerReceiptId },
+    } as unknown as Parameters<typeof resolveRequestAction.handler>[3],
+    undefined,
+  );
+  return (result ?? {}) as {
+    success?: boolean;
+    text?: string;
+    data?: Record<string, unknown>;
+  };
+}
+
+async function stored(id: string): Promise<{
+  state: string;
+  subject_user_id: string;
+  execution_attempt_id: string | null;
+  dispatch_started_at: Date | null;
+  provider_receipt: Record<string, unknown> | null;
+}> {
+  const result = await pg.query<{
+    state: string;
+    subject_user_id: string;
+    execution_attempt_id: string | null;
+    dispatch_started_at: Date | null;
+    provider_receipt: Record<string, unknown> | null;
+  }>(
+    `SELECT state, subject_user_id, execution_attempt_id,
+            dispatch_started_at, provider_receipt
+       FROM approval_requests WHERE id = $1`,
+    [id],
+  );
+  const row = result.rows[0];
+  if (!row) throw new Error(`missing approval ${id}`);
+  return row;
+}
+
+function delegateQueue(
+  base: ApprovalQueue,
+  overrides: Partial<ApprovalQueue> = {},
+): ApprovalQueue {
+  return {
+    capability: base.capability,
+    protocolVersion: base.protocolVersion,
+    enqueue: (input) => base.enqueue(input),
+    list: (filter) => base.list(filter),
+    byId: (id, subjectUserId) => base.byId(id, subjectUserId),
+    approve: (id, subjectUserId, resolution) =>
+      base.approve(id, subjectUserId, resolution),
+    reject: (id, subjectUserId, resolution) =>
+      base.reject(id, subjectUserId, resolution),
+    claimExecution: (claim) => base.claimExecution(claim),
+    markDispatchStarted: (mutation) => base.markDispatchStarted(mutation),
+    markDone: (completion) => base.markDone(completion),
+    markRetryableFailure: (failure) => base.markRetryableFailure(failure),
+    markReconciliationRequired: (failure) =>
+      base.markReconciliationRequired(failure),
+    recoverUnstartedExecution: (mutation) =>
+      base.recoverUnstartedExecution(mutation),
+    reconcileExecution: (reconciliation) =>
+      base.reconcileExecution(reconciliation),
+    markExpired: (id, subjectUserId) => base.markExpired(id, subjectUserId),
+    removePending: (id, subjectUserId) => base.removePending(id, subjectUserId),
+    purgeExpired: (now) => base.purgeExpired(now),
+    ...overrides,
+  };
+}
+
+function withDecisionBarrier(base: ApprovalQueue): ApprovalQueue {
+  let arrivals = 0;
+  let release: (() => void) | undefined;
+  const bothArrived = new Promise<void>((resolveBarrier) => {
+    release = resolveBarrier;
+  });
+  return delegateQueue(base, {
+    approve: async (id, subjectUserId, resolution) => {
+      arrivals += 1;
+      if (arrivals === 2) release?.();
+      await bothArrived;
+      return base.approve(id, subjectUserId, resolution);
+    },
+  });
+}
+
+beforeAll(async () => {
+  pg = new PGlite();
+  const db = drizzle(pg);
+  await db.execute(sql.raw(CREATE_APPROVAL_REQUESTS_TABLE));
+
+  const approvalService = {
+    getExecutionCapability: () => activeQueue,
+  };
+  runtime = {
+    agentId: AGENT_ID,
+    adapter: { db },
+    getService: (type: string) =>
+      type === "eliza_approval" ? approvalService : null,
+    getSetting: () => undefined,
+    reportError: vi.fn(),
+    useModel: vi.fn(async () => "{}"),
+  } as unknown as IAgentRuntime;
+  realQueue = createAgentApprovalQueue(runtime, {
+    agentId: AGENT_ID,
+  }) as unknown as ApprovalQueue;
+  activeQueue = realQueue;
+});
+
+beforeEach(async () => {
+  await pg.query("DELETE FROM approval_requests");
+  activeQueue = realQueue;
+  dispatchState.sends = 0;
+  dispatchState.mode = "delivered";
+  vi.clearAllMocks();
+});
+
+afterAll(async () => {
+  await pg.close();
+});
+
+describe("RESOLVE_REQUEST durable approval execution", () => {
+  it("returns indistinguishable not-found for a cross-subject explicit id", async () => {
+    const request = await realQueue.enqueue(sendMessageInput(OWNER_A));
+
+    const result = await resolve("approve", request.id, OWNER_B);
+
+    expect(result.success).toBe(false);
+    expect(result.data?.error).toBe("REQUEST_NOT_FOUND");
+    expect(await realQueue.byId(request.id, OWNER_B)).toBeNull();
+    await expect(
+      realQueue.approve(request.id, OWNER_B, {
+        resolvedBy: OWNER_B,
+        resolutionReason: "cross-owner attempt",
+      }),
+    ).rejects.toMatchObject({ name: "ApprovalNotFoundError" });
+    expect((await stored(request.id)).state).toBe("pending");
+    expect(dispatchState.sends).toBe(0);
+  });
+
+  it("recovers a crash immediately after claim without duplicating delivery", async () => {
+    const request = await realQueue.enqueue(sendMessageInput());
+    await realQueue.approve(request.id, OWNER_A, {
+      resolvedBy: OWNER_A,
+      resolutionReason: "approved",
+    });
+    const claimed = await realQueue.claimExecution({
+      requestId: request.id,
+      subjectUserId: OWNER_A,
+      provider: "telegram",
+      providerIdempotencyKey: `approval:${request.id}:telegram`,
+    });
+    expect(claimed.execution?.dispatchStartedAt).toBeNull();
+
+    activeQueue = createAgentApprovalQueue(runtime, {
+      agentId: AGENT_ID,
+    }) as unknown as ApprovalQueue;
+    const recovered = await resolve("approve", request.id);
+
+    expect(recovered.success).toBe(true);
+    expect(recovered.data?.state).toBe("done");
+    expect(dispatchState.sends).toBe(1);
+  });
+
+  it("turns a post-dispatch-start restart into explicit reconciliation", async () => {
+    const request = await realQueue.enqueue(sendMessageInput());
+    await realQueue.approve(request.id, OWNER_A, {
+      resolvedBy: OWNER_A,
+      resolutionReason: "approved",
+    });
+    const claimed = await realQueue.claimExecution({
+      requestId: request.id,
+      subjectUserId: OWNER_A,
+      provider: "telegram",
+      providerIdempotencyKey: `approval:${request.id}:telegram`,
+    });
+    await realQueue.markDispatchStarted({
+      requestId: request.id,
+      subjectUserId: OWNER_A,
+      attemptId: claimed.execution?.attemptId ?? "",
+    });
+
+    activeQueue = createAgentApprovalQueue(runtime, {
+      agentId: AGENT_ID,
+    }) as unknown as ApprovalQueue;
+    const recovered = await resolve("approve", request.id);
+
+    expect(recovered.success).toBe(false);
+    expect(recovered.data?.error).toBe("APPROVAL_EXECUTION_OUTCOME_UNKNOWN");
+    expect((await stored(request.id)).state).toBe("reconciliation_required");
+    expect(dispatchState.sends).toBe(0);
+  });
+
+  it("never falls back or retries Telegram after accepted-then-timeout", async () => {
+    const request = await realQueue.enqueue(sendMessageInput());
+    dispatchState.mode = "ambiguous";
+
+    const first = await resolve("approve", request.id);
+    const replay = await resolve("approve", request.id);
+
+    expect(first.data?.error).toBe("APPROVAL_RECONCILIATION_REQUIRED");
+    expect(replay.data?.error).toBe("APPROVAL_EXECUTION_OUTCOME_UNKNOWN");
+    expect(dispatchState.sends).toBe(1);
+    expect((await stored(request.id)).state).toBe("reconciliation_required");
+  });
+
+  it("supports explicit owner reconciliation for delivered and non-delivered outcomes", async () => {
+    const delivered = await realQueue.enqueue(sendMessageInput());
+    dispatchState.mode = "ambiguous";
+    await resolve("approve", delivered.id);
+    const reconciledDelivered = await resolve(
+      "reconcile_delivered",
+      delivered.id,
+      OWNER_A,
+      "telegram-provider-receipt-7",
+    );
+    expect(reconciledDelivered.success).toBe(true);
+    expect(await stored(delivered.id)).toMatchObject({
+      state: "done",
+      provider_receipt: {
+        provider: "telegram",
+        receiptId: "telegram-provider-receipt-7",
+      },
+    });
+
+    const notDelivered = await realQueue.enqueue(sendMessageInput());
+    await resolve("approve", notDelivered.id);
+    const reconciledNotDelivered = await resolve(
+      "reconcile_not_delivered",
+      notDelivered.id,
+    );
+    expect(reconciledNotDelivered.success).toBe(true);
+    expect((await stored(notDelivered.id)).state).toBe("retryable");
+  });
+
+  it("moves known non-delivery to retryable and permits one deliberate retry", async () => {
+    const request = await realQueue.enqueue(sendMessageInput());
+    dispatchState.mode = "known_failure";
+
+    const failed = await resolve("approve", request.id);
+    expect(failed.data?.error).toBe("APPROVAL_DELIVERY_FAILED_RETRYABLE");
+    expect((await stored(request.id)).state).toBe("retryable");
+
+    dispatchState.mode = "delivered";
+    const retried = await resolve("approve", request.id);
+    expect(retried.success).toBe(true);
+    expect(dispatchState.sends).toBe(2);
+    expect((await stored(request.id)).state).toBe("done");
+  });
+
+  it("persists provider receipts across a new queue instance", async () => {
+    const request = await realQueue.enqueue(sendMessageInput());
+    await resolve("approve", request.id);
+
+    const restartedQueue = createAgentApprovalQueue(runtime, {
+      agentId: AGENT_ID,
+    }) as unknown as ApprovalQueue;
+    const reloaded = await restartedQueue.byId(request.id, OWNER_A);
+
+    expect(reloaded?.state).toBe("done");
+    expect(reloaded?.execution?.providerReceipt).toEqual({
+      provider: "telegram",
+      messageId: "tg-message-42",
+    });
+  });
+
+  it("persists a partial provider receipt for an ambiguous composite dispatch", async () => {
+    const request = await realQueue.enqueue(sendMessageInput());
+    const approved = await realQueue.approve(request.id, OWNER_A, {
+      resolvedBy: OWNER_A,
+      resolutionReason: "approved",
+    });
+
+    const outcome = await runApprovalDispatch({
+      queue: realQueue,
+      request: approved,
+      subjectUserId: OWNER_A,
+      prepared: {
+        provider: "duffel",
+        dispatch: async () => {
+          throw new ApprovalAmbiguousDeliveryError(
+            "booking succeeded before calendar projection failed",
+            {
+              provider: "duffel",
+              orderId: "ord-42",
+              paymentId: "pay-42",
+              projectionComplete: false,
+            },
+          );
+        },
+      },
+    });
+
+    expect(outcome.kind).toBe("reconciliation_required");
+    expect(await stored(request.id)).toMatchObject({
+      state: "reconciliation_required",
+      provider_receipt: {
+        provider: "duffel",
+        orderId: "ord-42",
+        paymentId: "pay-42",
+        projectionComplete: false,
+      },
+    });
+  });
+
+  it("serializes a forced double-approve race to one dispatch", async () => {
+    const request = await realQueue.enqueue(sendMessageInput());
+    activeQueue = withDecisionBarrier(realQueue);
+
+    const [first, second] = await Promise.all([
+      resolve("approve", request.id),
+      resolve("approve", request.id),
+    ]);
+
+    expect(dispatchState.sends).toBe(1);
+    expect((await stored(request.id)).state).toBe("done");
+    expect(
+      [first, second].filter((result) => result.data?.alreadyResolved !== true),
+    ).toHaveLength(1);
+  });
+
+  it("rejects a queue with the wrong execution protocol before lookup", async () => {
+    activeQueue = {
+      ...delegateQueue(realQueue),
+      protocolVersion: 1,
+    } as unknown as ApprovalQueue;
+
+    const result = await resolve(
+      "approve",
+      "00000000-0000-0000-0000-0000000000ff",
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.data?.error).toBe("APPROVAL_QUEUE_INCOMPATIBLE");
+    expect(result.data?.expectedVersion).toBe(2);
+  });
+});

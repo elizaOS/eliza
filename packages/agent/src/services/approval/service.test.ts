@@ -46,6 +46,16 @@ const SELECT_COLUMNS = [
   "resolved_at",
   "resolved_by",
   "resolution_reason",
+  "execution_attempt_id",
+  "execution_provider",
+  "provider_idempotency_key",
+  "execution_claimed_at",
+  "dispatch_started_at",
+  "provider_receipt",
+  "execution_error",
+  "reconciliation_resolved_at",
+  "reconciliation_resolved_by",
+  "reconciliation_reason",
   "created_at",
   "updated_at",
 ];
@@ -100,6 +110,7 @@ interface WhereClause {
   subject_user_id?: string;
   state?: string;
   action?: string;
+  execution_attempt_id?: string;
   expiresAtMax?: string;
 }
 
@@ -135,6 +146,12 @@ function matches(row: Record<string, unknown>, clause: WhereClause): boolean {
   }
   if (clause.state !== undefined && row.state !== clause.state) return false;
   if (clause.action !== undefined && row.action !== clause.action) return false;
+  if (
+    clause.execution_attempt_id !== undefined &&
+    row.execution_attempt_id !== clause.execution_attempt_id
+  ) {
+    return false;
+  }
   if (
     clause.expiresAtMax !== undefined &&
     String(row.expires_at) > clause.expiresAtMax
@@ -293,7 +310,7 @@ describe("ApprovalService", () => {
     expect(resolveApprovalService(runtime)).toBeNull();
   });
 
-  it("enqueue → approve → markExecuting → markDone happy path", async () => {
+  it("persists a subject-scoped execution attempt and receipt", async () => {
     const runtime = createApprovalTableRuntime("agent-1");
     const queue = (await ApprovalService.start(runtime)).getQueue();
 
@@ -302,10 +319,10 @@ describe("ApprovalService", () => {
     expect(enqueued.resolvedAt).toBeNull();
     expect(enqueued.action).toBe("send_message");
 
-    const fetched = await queue.byId(enqueued.id);
+    const fetched = await queue.byId(enqueued.id, "owner-123");
     expect(fetched?.id).toBe(enqueued.id);
 
-    const approved = await queue.approve(enqueued.id, {
+    const approved = await queue.approve(enqueued.id, "owner-123", {
       resolvedBy: "owner-123",
       resolutionReason: "looks good",
     });
@@ -313,11 +330,32 @@ describe("ApprovalService", () => {
     expect(approved.resolvedBy).toBe("owner-123");
     expect(approved.resolvedAt).toBeInstanceOf(Date);
 
-    const executing = await queue.markExecuting(enqueued.id);
+    const executing = await queue.claimExecution({
+      requestId: enqueued.id,
+      subjectUserId: "owner-123",
+      provider: "twilio",
+      providerIdempotencyKey: `approval:${enqueued.id}:twilio`,
+    });
     expect(executing.state).toBe("executing");
 
-    const done = await queue.markDone(enqueued.id);
+    const attemptId = executing.execution?.attemptId;
+    expect(attemptId).toBeTruthy();
+    await queue.markDispatchStarted({
+      requestId: enqueued.id,
+      subjectUserId: "owner-123",
+      attemptId: attemptId ?? "",
+    });
+    const done = await queue.markDone({
+      requestId: enqueued.id,
+      subjectUserId: "owner-123",
+      attemptId: attemptId ?? "",
+      providerReceipt: { provider: "twilio", sid: "SM123" },
+    });
     expect(done.state).toBe("done");
+    expect(done.execution?.providerReceipt).toEqual({
+      provider: "twilio",
+      sid: "SM123",
+    });
 
     const pendingList = await queue.list({
       subjectUserId: "owner-123",
@@ -532,7 +570,7 @@ describe("ApprovalService", () => {
     const enqueued = await queue.enqueue(messageInput());
     expect(notifier.markReadByGroupKey).not.toHaveBeenCalled();
 
-    await queue.approve(enqueued.id, {
+    await queue.approve(enqueued.id, "owner-123", {
       resolvedBy: "owner-123",
       resolutionReason: "ok",
     });
@@ -548,7 +586,7 @@ describe("ApprovalService", () => {
     const queue = (await ApprovalService.start(runtime)).getQueue();
 
     const enqueued = await queue.enqueue(messageInput());
-    await queue.reject(enqueued.id, {
+    await queue.reject(enqueued.id, "owner-123", {
       resolvedBy: "owner-123",
       resolutionReason: "no",
     });
@@ -567,7 +605,7 @@ describe("ApprovalService", () => {
     const queue = (await ApprovalService.start(runtime)).getQueue();
     const enqueued = await queue.enqueue(messageInput());
     // Must resolve cleanly even though markReadByGroupKey is absent.
-    const approved = await queue.approve(enqueued.id, {
+    const approved = await queue.approve(enqueued.id, "owner-123", {
       resolvedBy: "owner-123",
       resolutionReason: "ok",
     });
@@ -580,7 +618,7 @@ describe("ApprovalService", () => {
     const enqueued = await queue.enqueue(
       messageInput({ subjectUserId: "owner-reject" }),
     );
-    const rejected = await queue.reject(enqueued.id, {
+    const rejected = await queue.reject(enqueued.id, "owner-reject", {
       resolvedBy: "owner-reject",
       resolutionReason: "not now",
     });
@@ -600,7 +638,7 @@ describe("ApprovalService", () => {
     );
     const purgedIds = await queue.purgeExpired(new Date());
     expect(purgedIds).toContain(enqueued.id);
-    const after = await queue.byId(enqueued.id);
+    const after = await queue.byId(enqueued.id, "owner-expire");
     expect(after?.state).toBe("expired");
     expect(notifier.markReadByGroupKey).toHaveBeenCalledWith(
       `approval:${enqueued.id}`,
@@ -622,13 +660,13 @@ describe("ApprovalService", () => {
     expect(enqueued.state).toBe("pending");
 
     await expect(
-      queue.approve(enqueued.id, {
+      queue.approve(enqueued.id, "owner-lapsed", {
         resolvedBy: "owner-lapsed",
         resolutionReason: "approving after expiry",
       }),
     ).rejects.toBeInstanceOf(ApprovalStateTransitionError);
 
-    const after = await queue.byId(enqueued.id);
+    const after = await queue.byId(enqueued.id, "owner-lapsed");
     expect(after?.state).toBe("expired");
     expect(after?.resolvedBy).toBeNull();
     expect(notifier.markReadByGroupKey).toHaveBeenCalledWith(
@@ -645,7 +683,7 @@ describe("ApprovalService", () => {
         expiresAt: new Date(Date.now() + 60 * 60 * 1000),
       }),
     );
-    const approved = await queue.approve(enqueued.id, {
+    const approved = await queue.approve(enqueued.id, "owner-fresh", {
       resolvedBy: "owner-fresh",
       resolutionReason: "in time",
     });
@@ -658,20 +696,21 @@ describe("ApprovalService", () => {
     const enqueued = await queue.enqueue(
       messageInput({ subjectUserId: "owner-invalid" }),
     );
-    // pending -> executing is illegal; must go through approved first.
-    await expect(queue.markExecuting(enqueued.id)).rejects.toBeInstanceOf(
-      ApprovalStateTransitionError,
-    );
-    await expect(queue.markDone(enqueued.id)).rejects.toBeInstanceOf(
-      ApprovalStateTransitionError,
-    );
+    await expect(
+      queue.claimExecution({
+        requestId: enqueued.id,
+        subjectUserId: "owner-invalid",
+        provider: "test",
+        providerIdempotencyKey: "approval:test",
+      }),
+    ).rejects.toBeInstanceOf(ApprovalStateTransitionError);
   });
 
   it("throws ApprovalNotFoundError on unknown id", async () => {
     const runtime = createApprovalTableRuntime("agent-1");
     const queue = (await ApprovalService.start(runtime)).getQueue();
     await expect(
-      queue.approve("00000000-0000-0000-0000-000000000000", {
+      queue.approve("00000000-0000-0000-0000-000000000000", "owner-123", {
         resolvedBy: "owner-123",
         resolutionReason: "x",
       }),
@@ -684,7 +723,7 @@ describe("ApprovalService", () => {
     const enqueued = await service.getQueue("agent-1").enqueue(messageInput());
     // A queue for a different agentId must not see agent-1's row.
     const otherQueue = service.getQueue("agent-2");
-    expect(await otherQueue.byId(enqueued.id)).toBeNull();
+    expect(await otherQueue.byId(enqueued.id, "owner-123")).toBeNull();
   });
 });
 
@@ -741,24 +780,24 @@ describe("PgApprovalQueue transition CAS (TOCTOU)", () => {
     };
 
     await expect(
-      queue.approve(enqueued.id, {
+      queue.approve(enqueued.id, "owner-race", {
         resolvedBy: "owner-race",
         resolutionReason: "too late",
       }),
     ).rejects.toBeInstanceOf(ApprovalStateTransitionError);
 
-    const after = await queue.byId(enqueued.id);
+    const after = await queue.byId(enqueued.id, "owner-race");
     expect(after?.state).toBe("expired");
     expect(after?.resolvedBy).toBeNull();
   });
 
-  it("markExecuting lost to a concurrent reject stays rejected", async () => {
+  it("claimExecution lost to a concurrent reject stays rejected", async () => {
     const runtime = createApprovalTableRuntime("agent-race2");
     const queue = (await ApprovalService.start(runtime)).getQueue();
     const enqueued = await queue.enqueue(
       messageInput({ subjectUserId: "owner-race2" }),
     );
-    await queue.approve(enqueued.id, {
+    await queue.approve(enqueued.id, "owner-race2", {
       resolvedBy: "owner-race2",
       resolutionReason: "ok",
     });
@@ -791,10 +830,15 @@ describe("PgApprovalQueue transition CAS (TOCTOU)", () => {
       return rawExecute(chunks);
     };
 
-    await expect(queue.markExecuting(enqueued.id)).rejects.toBeInstanceOf(
-      ApprovalStateTransitionError,
-    );
-    const after = await queue.byId(enqueued.id);
+    await expect(
+      queue.claimExecution({
+        requestId: enqueued.id,
+        subjectUserId: "owner-race2",
+        provider: "test",
+        providerIdempotencyKey: `approval:${enqueued.id}:test`,
+      }),
+    ).rejects.toBeInstanceOf(ApprovalStateTransitionError);
+    const after = await queue.byId(enqueued.id, "owner-race2");
     expect(after?.state).toBe("rejected");
   });
 });

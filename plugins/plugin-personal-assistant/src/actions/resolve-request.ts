@@ -85,7 +85,11 @@ import { formatPromptValue } from "./lib/prompt-format.js";
 
 const ACTION_NAME = "RESOLVE_REQUEST";
 
-type ResolveSubaction = "approve" | "reject";
+type ResolveSubaction =
+  | "approve"
+  | "reject"
+  | "reconcile_delivered"
+  | "reconcile_not_delivered";
 
 const SUBACTIONS: SubactionsMap<ResolveSubaction> = {
   approve: {
@@ -104,6 +108,22 @@ const SUBACTIONS: SubactionsMap<ResolveSubaction> = {
     required: [],
     optional: ["requestId", "reason"],
   },
+  reconcile_delivered: {
+    description:
+      "Record provider-confirmed delivery for an ambiguous approval attempt.",
+    descriptionCompressed:
+      "reconcile ambiguous approval as provider-confirmed delivered",
+    required: ["requestId"],
+    optional: ["reason", "providerReceiptId"],
+  },
+  reconcile_not_delivered: {
+    description:
+      "Record provider-confirmed non-delivery so an approval can be retried.",
+    descriptionCompressed:
+      "reconcile ambiguous approval as provider-confirmed not delivered",
+    required: ["requestId"],
+    optional: ["reason", "providerReceiptId"],
+  },
 };
 
 interface ExtractedResolution {
@@ -115,6 +135,7 @@ interface ResolveRequestParameters {
   readonly subaction?: ResolveSubaction | string;
   readonly requestId?: string;
   readonly reason?: string;
+  readonly providerReceiptId?: string;
 }
 
 interface HouseholdProposalApprovalTarget {
@@ -1001,6 +1022,54 @@ async function executeApprovedCalendarMutation(args: {
   };
 }
 
+async function dispatchFailureResult(args: {
+  request: ApprovalRequest;
+  outcome: Exclude<ApprovalDispatchOutcome<unknown>, { kind: "delivered" }>;
+  callback?: HandlerCallback;
+}): Promise<ActionResult> {
+  const reconciliationRequired =
+    args.outcome.kind === "reconciliation_required";
+  const text = reconciliationRequired
+    ? `The provider outcome for request ${args.request.id} is ambiguous. I will not retry it until the owner or provider reconciles delivery.`
+    : `Request ${args.request.id} was not delivered and is safe to retry.`;
+  await args.callback?.({ text });
+  return {
+    text,
+    success: false,
+    data: {
+      error: reconciliationRequired
+        ? "APPROVAL_RECONCILIATION_REQUIRED"
+        : "APPROVAL_DELIVERY_FAILED_RETRYABLE",
+      detail: args.outcome.error.message,
+      requestId: args.request.id,
+      state: args.outcome.request.state,
+      action: args.request.action,
+      attemptId: args.outcome.request.execution?.attemptId ?? null,
+      executed: reconciliationRequired ? null : false,
+      deliveryUnknown: reconciliationRequired,
+    },
+  };
+}
+
+function preflightFailureResult(
+  request: ApprovalRequest,
+  error: unknown,
+): ActionResult {
+  const known = error instanceof ApprovalConnectorPreflightError;
+  return {
+    text: "",
+    success: false,
+    data: {
+      error: known ? error.code : "APPROVAL_PREFLIGHT_FAILED",
+      detail: error instanceof Error ? error.message : String(error),
+      requestId: request.id,
+      state: request.state,
+      action: request.action,
+      executed: false,
+    },
+  };
+}
+
 export async function executeApprovedRequest(args: {
   runtime: IAgentRuntime;
   queue: ApprovalQueue;
@@ -1338,29 +1407,78 @@ export async function executeApprovedRequest(args: {
         `[approval] action/payload mismatch: action=send_email, payload.action=${payload.action}`,
       );
     }
-    await args.queue.markExecuting(args.request.id);
-    let providerMessageId: string | null = null;
-    if (payload.replyToMessageId) {
-      await service.sendGmailReply(INTERNAL_URL, {
-        messageId: payload.replyToMessageId,
-        bodyText: payload.body,
-        subject: payload.subject || undefined,
-        to: payload.to.length > 0 ? [...payload.to] : undefined,
-        cc: payload.cc.length > 0 ? [...payload.cc] : undefined,
-        confirmSend: true,
-      });
-    } else {
-      const sent = await service.sendGmailMessage(INTERNAL_URL, {
-        to: [...payload.to],
-        cc: [...payload.cc],
-        bcc: [...payload.bcc],
-        subject: payload.subject,
-        bodyText: payload.body,
-        confirmSend: true,
-      });
-      providerMessageId = sent.messageId;
+    try {
+      if (payload.body.trim().length === 0) {
+        throw new ApprovalConnectorPreflightError(
+          "INVALID_EMAIL_PAYLOAD",
+          "Email body must not be empty",
+        );
+      }
+      if (
+        !payload.replyToMessageId &&
+        payload.to.every((recipient) => recipient.trim().length === 0)
+      ) {
+        throw new ApprovalConnectorPreflightError(
+          "INVALID_EMAIL_PAYLOAD",
+          "A new email requires at least one recipient",
+        );
+      }
+      await service.requireGoogleGmailSendGrant(INTERNAL_URL, "local", "owner");
+      if (payload.replyToMessageId) {
+        await service.readGmailMessage(INTERNAL_URL, {
+          mode: "local",
+          side: "owner",
+          messageId: payload.replyToMessageId,
+        });
+      }
+    } catch (error) {
+      return preflightFailureResult(args.request, error);
     }
-    const done = await args.queue.markDone(args.request.id);
+    const outcome = await runApprovalDispatch({
+      queue: args.queue,
+      request: args.request,
+      subjectUserId: args.request.subjectUserId,
+      prepared: {
+        provider: "gmail",
+        dispatch: async () => {
+          if (payload.replyToMessageId) {
+            await service.sendGmailReply(INTERNAL_URL, {
+              messageId: payload.replyToMessageId,
+              bodyText: payload.body,
+              subject: payload.subject || undefined,
+              to: payload.to.length > 0 ? [...payload.to] : undefined,
+              cc: payload.cc.length > 0 ? [...payload.cc] : undefined,
+              confirmSend: true,
+            });
+          } else {
+            await service.sendGmailMessage(INTERNAL_URL, {
+              to: [...payload.to],
+              cc: [...payload.cc],
+              bcc: [...payload.bcc],
+              subject: payload.subject,
+              bodyText: payload.body,
+              confirmSend: true,
+            });
+          }
+          return {
+            value: undefined,
+            receipt: {
+              provider: "gmail",
+              accepted: true,
+              replyToMessageId: payload.replyToMessageId ?? null,
+            },
+          };
+        },
+      },
+    });
+    if (outcome.kind !== "delivered") {
+      return dispatchFailureResult({
+        request: args.request,
+        outcome,
+        callback: args.callback,
+      });
+    }
+    const done = outcome.request;
     await persistSentMailCommitments({
       runtime: args.runtime,
       request: args.request,
@@ -1378,7 +1496,6 @@ export async function executeApprovedRequest(args: {
         requestId: done.id,
         state: done.state,
         action: done.action,
-        providerMessageId,
       },
     };
   }
@@ -1394,18 +1511,38 @@ export async function executeApprovedRequest(args: {
         `[approval] action/payload mismatch: action=send_message, payload.action=${payload.action}`,
       );
     }
-    await args.queue.markExecuting(args.request.id);
-    const dispatch = await dispatchCrossChannelSend({
-      runtime: args.runtime,
-      service,
-      channel,
-      target: payload.recipient,
-      body: payload.body,
-    });
-    if (!dispatch.success) {
-      return dispatch;
+    let prepared: Awaited<ReturnType<typeof prepareCrossChannelSend>>;
+    try {
+      prepared = await prepareCrossChannelSend({
+        runtime: args.runtime,
+        service,
+        channel,
+        target: payload.recipient,
+        body: payload.body,
+      });
+    } catch (error) {
+      return preflightFailureResult(args.request, error);
     }
-    const done = await args.queue.markDone(args.request.id);
+    const outcome = await runApprovalDispatch({
+      queue: args.queue,
+      request: args.request,
+      subjectUserId: args.request.subjectUserId,
+      prepared: {
+        provider: prepared.provider,
+        dispatch: async (providerIdempotencyKey) => ({
+          value: undefined,
+          receipt: await prepared.dispatch(providerIdempotencyKey),
+        }),
+      },
+    });
+    if (outcome.kind !== "delivered") {
+      return dispatchFailureResult({
+        request: args.request,
+        outcome,
+        callback: args.callback,
+      });
+    }
+    const done = outcome.request;
     const text = `Approved and sent ${channel} message.`;
     await args.callback?.({ text });
     return {
@@ -1416,6 +1553,7 @@ export async function executeApprovedRequest(args: {
         state: done.state,
         action: done.action,
         channel,
+        providerReceipt: done.execution?.providerReceipt ?? null,
       },
     };
   }
@@ -1499,13 +1637,42 @@ export async function executeApprovedRequest(args: {
         },
       };
     }
-    await args.queue.markExecuting(args.request.id);
-    // The owner's approval IS the browser-action confirmation: these
-    // approvals exist precisely to gate browser dispatch behind consent.
-    const run = await service.runWorkflow(payload.workflowId, {
-      confirmBrowserActions: true,
+    try {
+      await service.getWorkflow(payload.workflowId);
+    } catch (error) {
+      return preflightFailureResult(args.request, error);
+    }
+    const outcome = await runApprovalDispatch({
+      queue: args.queue,
+      request: args.request,
+      subjectUserId: args.request.subjectUserId,
+      prepared: {
+        provider: "lifeops-workflow",
+        dispatch: async () => {
+          // The owner's approval is the browser-action confirmation.
+          const run = await service.runWorkflow(payload.workflowId, {
+            confirmBrowserActions: true,
+          });
+          return {
+            value: run,
+            receipt: {
+              provider: "lifeops-workflow",
+              workflowRunId: run.id,
+              workflowRunStatus: run.status,
+            },
+          };
+        },
+      },
     });
-    const done = await args.queue.markDone(args.request.id);
+    if (outcome.kind !== "delivered") {
+      return dispatchFailureResult({
+        request: args.request,
+        outcome,
+        callback: args.callback,
+      });
+    }
+    const run = outcome.value;
+    const done = outcome.request;
     const text = `Approved and ran workflow ${payload.workflowId} (run ${run.id}: ${run.status}).`;
     await args.callback?.({ text });
     return {
@@ -1529,9 +1696,15 @@ export async function executeApprovedRequest(args: {
         `[approval] action/payload mismatch: action=make_call, payload.action=${payload.action}`,
       );
     }
-    // Missing credentials is a real, typed execution outcome: the approved
-    // call cannot be placed until Twilio is configured. The request stays
-    // `approved` so the owner can retry after setting the env vars.
+    if (payload.to.trim().length === 0 || payload.script.trim().length === 0) {
+      return preflightFailureResult(
+        args.request,
+        new ApprovalConnectorPreflightError(
+          "INVALID_CALL_PAYLOAD",
+          "A call requires both a recipient and a non-empty script",
+        ),
+      );
+    }
     const credentials = readTwilioCredentialsFromEnv();
     if (!credentials) {
       const text = `Approved the call to ${payload.to}, but Twilio is not configured (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER) — the call was not placed.`;
@@ -1547,29 +1720,51 @@ export async function executeApprovedRequest(args: {
         },
       };
     }
-    await args.queue.markExecuting(args.request.id);
-    const delivery = await sendTwilioVoiceCall({
-      credentials,
-      to: payload.to,
-      message: payload.script,
-    });
-    if (!delivery.ok) {
-      const detail = delivery.error ?? `status ${delivery.status}`;
-      const text = `Approved the call to ${payload.to}, but the Twilio dispatch failed (${detail}) — the call was not placed.`;
-      await args.callback?.({ text });
-      return {
-        text,
-        success: false,
-        data: {
-          error: "TWILIO_DELIVERY_FAILED",
-          detail,
-          status: delivery.status,
-          action: args.request.action,
-          requestId: args.request.id,
+    const outcome = await runApprovalDispatch({
+      queue: args.queue,
+      request: args.request,
+      subjectUserId: args.request.subjectUserId,
+      prepared: {
+        provider: "twilio-voice",
+        dispatch: async (providerIdempotencyKey) => {
+          const delivery = await sendTwilioVoiceCall({
+            credentials,
+            to: payload.to,
+            message: payload.script,
+            idempotencyKey: providerIdempotencyKey,
+          });
+          if (!delivery.ok) {
+            const detail = delivery.error ?? `status ${delivery.status}`;
+            if (delivery.status === null || delivery.status >= 500) {
+              throw new Error(detail);
+            }
+            throw new ApprovalKnownNonDeliveryError(
+              "TWILIO_DELIVERY_REJECTED",
+              detail,
+              delivery.status,
+            );
+          }
+          return {
+            value: delivery,
+            receipt: {
+              provider: "twilio",
+              sid: delivery.sid ?? null,
+              status: delivery.status,
+              retryCount: delivery.retryCount ?? 0,
+            },
+          };
         },
-      };
+      },
+    });
+    if (outcome.kind !== "delivered") {
+      return dispatchFailureResult({
+        request: args.request,
+        outcome,
+        callback: args.callback,
+      });
     }
-    const done = await args.queue.markDone(args.request.id);
+    const delivery = outcome.value;
+    const done = outcome.request;
     const text = `Approved and placed the call to ${payload.to}${
       delivery.sid ? ` (sid ${delivery.sid})` : ""
     }.`;
@@ -1593,12 +1788,7 @@ export async function executeApprovedRequest(args: {
         `[approval] action/payload mismatch: action=sign_document, payload.action=${payload.action}`,
       );
     }
-    await args.queue.markExecuting(args.request.id);
-    const doc = dispatchApprovedSignatureRequest(
-      args.runtime,
-      payload.documentId,
-    );
-    if (!doc) {
+    if (!getDocumentRequest(args.runtime, payload.documentId)) {
       const text = `Approved the signature request for "${payload.documentName}", but DocumentRequest ${payload.documentId} no longer exists (the document store does not survive restarts) — nothing was dispatched. Please re-issue the signature request.`;
       await args.callback?.({ text });
       return {
@@ -1612,7 +1802,43 @@ export async function executeApprovedRequest(args: {
         },
       };
     }
-    const done = await args.queue.markDone(args.request.id);
+    const outcome = await runApprovalDispatch({
+      queue: args.queue,
+      request: args.request,
+      subjectUserId: args.request.subjectUserId,
+      prepared: {
+        provider: "lifeops-document",
+        dispatch: async () => {
+          const doc = dispatchApprovedSignatureRequest(
+            args.runtime,
+            payload.documentId,
+          );
+          if (!doc) {
+            throw new ApprovalKnownNonDeliveryError(
+              "DOCUMENT_REQUEST_NOT_FOUND",
+              `DocumentRequest ${payload.documentId} disappeared before dispatch`,
+            );
+          }
+          return {
+            value: doc,
+            receipt: {
+              provider: "lifeops-document",
+              documentId: doc.id,
+              documentStatus: doc.status,
+            },
+          };
+        },
+      },
+    });
+    if (outcome.kind !== "delivered") {
+      return dispatchFailureResult({
+        request: args.request,
+        outcome,
+        callback: args.callback,
+      });
+    }
+    const doc = outcome.value;
+    const done = outcome.request;
     const text = `Approved and dispatched the signature request for "${doc.title}" (now ${doc.status}).`;
     await args.callback?.({ text });
     return {
@@ -1628,24 +1854,169 @@ export async function executeApprovedRequest(args: {
     };
   }
 
-  // An action reaching this boundary indicates a missing dispatch contract,
-  // not a successful approval. Every declared side-effect action above must
-  // either execute its typed rail or return a domain-specific denial.
+  // No executor exists for this action (spend_money, modify_event,
+  // cancel_event). spend_money has no spend rail to wire:
+  // @elizaos/plugin-finances is read-only — payment-source tracking, CSV
+  // import, and spending summaries — and initiates no purchases or
+  // transfers. Approving must never report success while executing
+  // nothing — surface the gap instead (issue #10723).
   logger.error(
-    `[OwnerResolveRequest] request ${args.request.id} reached an unsupported approval action ${args.request.action}; nothing was executed`,
+    `[OwnerResolveRequest] request ${args.request.id} approved but no executor exists for action ${args.request.action}; nothing was executed`,
   );
-  const text = `Request ${args.request.id} cannot execute unsupported approval action "${args.request.action}" — nothing was executed.`;
+  const text = `Approved request ${args.request.id}, but no executor exists for action "${args.request.action}" — nothing was executed.`;
   await args.callback?.({ text });
   return {
     text,
     success: false,
     data: {
-      error: "UNSUPPORTED_APPROVAL_ACTION",
+      error: "NO_EXECUTOR",
       action: args.request.action,
       requestId: args.request.id,
       state: args.request.state,
     },
   };
+}
+
+interface SettledDecision {
+  readonly text: string;
+  readonly result: ActionResult;
+}
+
+function completedApprovalReplay(request: ApprovalRequest): SettledDecision {
+  const text = `Request ${request.id} already completed successfully — nothing was executed again.`;
+  return {
+    text,
+    result: {
+      text,
+      success: true,
+      data: {
+        requestId: request.id,
+        state: request.state,
+        action: request.action,
+        alreadyResolved: true,
+        duplicateSuppressed: true,
+        executed: false,
+      },
+    },
+  };
+}
+
+function rejectedDecisionReplay(request: ApprovalRequest): SettledDecision {
+  const text = `Request ${request.id} was already rejected — nothing was dispatched.`;
+  return {
+    text,
+    result: {
+      text,
+      success: true,
+      data: {
+        requestId: request.id,
+        state: request.state,
+        action: request.action,
+        alreadyResolved: true,
+        duplicateSuppressed: true,
+        executed: false,
+      },
+    },
+  };
+}
+
+function executionOutcomeUnknown(request: ApprovalRequest): SettledDecision {
+  const text = `Request ${request.id} has an ambiguous provider outcome. I did not retry the operation because its delivery must be reconciled first.`;
+  return {
+    text,
+    result: {
+      text,
+      success: false,
+      data: {
+        error: "APPROVAL_EXECUTION_OUTCOME_UNKNOWN",
+        requestId: request.id,
+        state: request.state,
+        action: request.action,
+        attemptId: request.execution?.attemptId ?? null,
+        provider: request.execution?.provider ?? null,
+        providerReceipt: request.execution?.providerReceipt ?? null,
+        duplicateSuppressed: true,
+        executed: null,
+        deliveryUnknown: true,
+      },
+    },
+  };
+}
+
+function conflictingDecision(
+  intent: ResolveSubaction,
+  request: ApprovalRequest,
+): SettledDecision {
+  const text = `Request ${request.id} is already "${request.state}" — I did not ${intent} it, and nothing was executed.`;
+  return {
+    text,
+    result: {
+      text,
+      success: false,
+      data: {
+        error: "APPROVAL_DECISION_CONFLICT",
+        requestId: request.id,
+        state: request.state,
+        action: request.action,
+        attempted: intent,
+        executed: false,
+      },
+    },
+  };
+}
+
+/**
+ * Classify terminal or claimed rows before attempting another transition.
+ * `approved` deliberately falls through: it is the durable outbox state, not
+ * proof of execution, so a replay after a pre-dispatch crash may claim it.
+ */
+function classifySettledDecision(
+  intent: ResolveSubaction,
+  request: ApprovalRequest,
+): SettledDecision | null {
+  if (request.state === "reconciliation_required") {
+    return executionOutcomeUnknown(request);
+  }
+  if (intent === "approve") {
+    if (request.state === "done") return completedApprovalReplay(request);
+    if (request.state === "rejected" || request.state === "expired") {
+      return conflictingDecision(intent, request);
+    }
+    return null;
+  }
+  if (intent === "reject" && request.state === "rejected") {
+    return rejectedDecisionReplay(request);
+  }
+  if (request.state === "done" || request.state === "expired") {
+    return conflictingDecision(intent, request);
+  }
+  return null;
+}
+
+function isKnownApprovalNotFound(
+  error: unknown,
+): error is ApprovalNotFoundError | RuntimeApprovalNotFoundError {
+  return (
+    error instanceof ApprovalNotFoundError ||
+    error instanceof RuntimeApprovalNotFoundError
+  );
+}
+
+function isKnownApprovalTransition(
+  error: unknown,
+): error is ApprovalStateTransitionError | RuntimeApprovalStateTransitionError {
+  return (
+    error instanceof ApprovalStateTransitionError ||
+    error instanceof RuntimeApprovalStateTransitionError
+  );
+}
+
+async function returnSettledDecision(
+  settled: SettledDecision,
+  callback: HandlerCallback | undefined,
+): Promise<ActionResult> {
+  await callback?.({ text: settled.text });
+  return settled.result;
 }
 
 async function resolveApprovalRequest(
@@ -1663,7 +2034,33 @@ async function resolveApprovalRequest(
   if (!subjectUserId) {
     return denied("MISSING_SUBJECT_USER");
   }
-  const queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
+  let queue: ApprovalQueue;
+  try {
+    queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
+  } catch (error) {
+    // error-policy:J1 the action boundary converts an incompatible registered
+    // queue into a typed denial before any owner decision can be mutated.
+    if (error instanceof ApprovalQueueCompatibilityError) {
+      return {
+        text: "",
+        success: false,
+        data: {
+          error: "APPROVAL_QUEUE_INCOMPATIBLE",
+          expectedCapability: "eliza.approval-execution",
+          expectedVersion: 2,
+          actualCapability:
+            error.actualCapability === undefined
+              ? null
+              : String(error.actualCapability),
+          actualVersion:
+            error.actualVersion === undefined
+              ? null
+              : String(error.actualVersion),
+        },
+      };
+    }
+    throw error;
+  }
   const directPending = await queue.list({
     subjectUserId,
     state: "pending",
@@ -1691,7 +2088,6 @@ async function resolveApprovalRequest(
   const pending = [...directPending, ...selfPending].filter(
     (request, index, all) =>
       all.findIndex((candidate) => candidate.id === request.id) === index,
-  );
   const userText =
     typeof message.content.text === "string" ? message.content.text : "";
   const explicitRequestId =
@@ -1727,18 +2123,22 @@ async function resolveApprovalRequest(
       },
     };
   }
-  const targeted = await queue.byId(extracted.requestId);
-  if (!targeted) {
-    return denied("REQUEST_NOT_FOUND");
-  }
-  const householdTarget = readHouseholdProposalApprovalTarget(targeted);
-  const capacityTarget = readResourceCapacityReviewTarget(targeted);
-  if (isHouseholdProposalApprovalWorkflow(targeted) && !householdTarget) {
-    if (targeted.subjectUserId !== SELF_ENTITY_ID) {
+  const resolution = {
+    resolvedBy: subjectUserId,
+    resolutionReason: extracted.reason ?? `user ${intent}d`,
+  };
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    let current = await queue.byId(extracted.requestId, subjectUserId);
+    if (!current) return denied("REQUEST_NOT_FOUND");
+
+  const householdTarget = readHouseholdProposalApprovalTarget(current);
+  const capacityTarget = readResourceCapacityReviewTarget(current);
+  if (isHouseholdProposalApprovalWorkflow(current) && !householdTarget) {
+    if (current.subjectUserId !== SELF_ENTITY_ID) {
       return denied("HOUSEHOLD_APPROVAL_INVALID_CONTRACT");
     }
-    const invalidated = await queue.markExpired(targeted.id);
-    const text = `Household approval ${targeted.id} has an invalid proposal contract. Nothing was executed; the request was terminally invalidated.`;
+    const invalidated = await queue.markExpired(current.id);
+    const text = `Household approval ${current.id} has an invalid proposal contract. Nothing was executed; the request was terminally invalidated.`;
     await callback?.({ text });
     return withApprovalProof(
       {
@@ -1754,12 +2154,12 @@ async function resolveApprovalRequest(
       invalidated,
     );
   }
-  if (isResourceCapacityReviewWorkflow(targeted) && !capacityTarget) {
-    if (targeted.subjectUserId !== SELF_ENTITY_ID) {
+  if (isResourceCapacityReviewWorkflow(current) && !capacityTarget) {
+    if (current.subjectUserId !== SELF_ENTITY_ID) {
       return denied("RESOURCE_CAPACITY_REVIEW_INVALID_CONTRACT");
     }
-    const invalidated = await queue.markExpired(targeted.id);
-    const text = `Resource-capacity review ${targeted.id} has an invalid proposal contract. Nothing was reserved, changed, or sent; the request was terminally invalidated.`;
+    const invalidated = await queue.markExpired(current.id);
+    const text = `Resource-capacity review ${current.id} has an invalid proposal contract. Nothing was reserved, changed, or sent; the request was terminally invalidated.`;
     await callback?.({ text });
     return withApprovalProof(
       {
@@ -1778,64 +2178,73 @@ async function resolveApprovalRequest(
   const authenticatedOwnerSelfApproval =
     (householdTarget?.partyEntityId === SELF_ENTITY_ID ||
       capacityTarget?.partyEntityId === SELF_ENTITY_ID) &&
-    targeted.subjectUserId === SELF_ENTITY_ID;
+    current.subjectUserId === SELF_ENTITY_ID;
   if (
-    targeted.subjectUserId !== subjectUserId &&
+    current.subjectUserId !== subjectUserId &&
     !authenticatedOwnerSelfApproval
   ) {
     logger.warn(
-      `[OwnerResolveRequest] ${subjectUserId} attempted to resolve approval ${targeted.id} owned by ${targeted.subjectUserId}`,
+      `[OwnerResolveRequest] ${subjectUserId} attempted to resolve approval ${current.id} owned by ${current.subjectUserId}`,
     );
     return denied("CROSS_SUBJECT_APPROVAL_FORBIDDEN");
   }
-  if (intent === "reject" && targeted.state === "rejected") {
-    const text = `Request ${targeted.id} was already rejected; nothing else was dispatched.`;
-    return withApprovalProof(
-      {
-        text,
-        success: true,
-        data: {
-          requestId: targeted.id,
-          state: targeted.state,
-          action: targeted.action,
-          alreadyResolved: true,
-        },
-      },
-      targeted,
-    );
-  }
-  if (intent === "approve" && targeted.state === "done") {
-    const text = `Request ${targeted.id} was already completed; nothing was executed again.`;
-    return withApprovalProof(
-      {
-        text,
-        success: true,
-        data: {
-          requestId: targeted.id,
-          state: targeted.state,
-          action: targeted.action,
-          alreadyResolved: true,
-        },
-      },
-      targeted,
-    );
-  }
-  if (intent === "approve" && targeted.state === "executing") {
-    return {
-      text: `Request ${targeted.id} is already executing. I did not start a second operation.`,
-      success: false,
-      data: {
-        error: "APPROVAL_EXECUTION_IN_FLIGHT",
-        requestId: targeted.id,
-        state: targeted.state,
-      },
-    };
-  }
-  const resolution = {
-    resolvedBy: subjectUserId,
-    resolutionReason: extracted.reason ?? `user ${intent}d`,
-  };
-  try {
+    try {
+      if (
+        intent === "reconcile_delivered" ||
+        intent === "reconcile_not_delivered"
+      ) {
+        if (current.state !== "reconciliation_required" || !current.execution) {
+          return returnSettledDecision(
+            conflictingDecision(intent, current),
+            callback,
+          );
+        }
+        const reconciled = await queue.reconcileExecution({
+          requestId: current.id,
+          subjectUserId,
+          attemptId: current.execution.attemptId,
+          outcome:
+            intent === "reconcile_delivered" ? "delivered" : "not_delivered",
+          reconciledBy: subjectUserId,
+          reconciliationReason:
+            extracted.reason ?? `owner ${intent.replace("_", " ")}`,
+          providerReceipt:
+            typeof params.providerReceiptId === "string" &&
+            params.providerReceiptId.trim().length > 0
+              ? {
+                  provider: current.execution.provider,
+                  receiptId: params.providerReceiptId.trim(),
+                }
+              : undefined,
+        });
+        const text =
+          reconciled.state === "done"
+            ? `Reconciled request ${reconciled.id} as delivered.`
+            : `Reconciled request ${reconciled.id} as not delivered; it is now safe to retry.`;
+        await callback?.({ text });
+        return {
+          text,
+          success: true,
+          data: {
+            requestId: reconciled.id,
+            state: reconciled.state,
+            action: reconciled.action,
+            executed: reconciled.state === "done",
+            deliveryReconciled: true,
+          },
+        };
+      }
+
+      if (current.state === "executing") {
+        current = await recoverInterruptedApproval(
+          queue,
+          current,
+          subjectUserId,
+        );
+      }
+      const settled = classifySettledDecision(intent, current);
+      if (settled) return returnSettledDecision(settled, callback);
+
     if (capacityTarget) {
       if (!authenticatedOwnerSelfApproval) {
         return denied("CROSS_SUBJECT_APPROVAL_FORBIDDEN");
@@ -1849,7 +2258,7 @@ async function resolveApprovalRequest(
         proposalId: capacityTarget.proposalId,
         proposalVersion: capacityTarget.proposalVersion,
         partyEntityId: SELF_ENTITY_ID,
-        approvalRequestId: targeted.id,
+        approvalRequestId: current.id,
         contentSha256: capacityTarget.contentSha256,
         decision: intent,
         reason: extracted.reason ?? `owner ${intent}d capacity proposal`,
@@ -1895,7 +2304,7 @@ async function resolveApprovalRequest(
         proposalId: householdTarget.proposalId,
         proposalVersion: householdTarget.proposalVersion,
         partyEntityId: SELF_ENTITY_ID,
-        approvalRequestId: targeted.id,
+        approvalRequestId: current.id,
         decision: intent,
         reason: extracted.reason ?? `owner ${intent}d household proposal`,
       });
@@ -1924,73 +2333,74 @@ async function resolveApprovalRequest(
         updated,
       );
     }
-    // A failed pre-dispatch capability check deliberately leaves the request
-    // approved (for example, Twilio credentials may be added later). Reusing
-    // that persisted approval is the only legal retry: approving it again is
-    // an invalid approved -> approved transition, while minting a fresh row
-    // would ask the owner to repeat consent they already granted.
-    const approvedExecutionRetry =
-      intent === "approve" && targeted.state === "approved";
-    const updated = approvedExecutionRetry
-      ? targeted
-      : intent === "approve"
-        ? await queue.approve(extracted.requestId, resolution)
-        : await queue.reject(extracted.requestId, resolution);
-    if (intent === "approve") {
-      let latestPersisted = updated;
+      if (intent === "reject") {
+        const rejected = await queue.reject(
+          current.id,
+          subjectUserId,
+          resolution,
+        );
+        logger.info(
+          `[OwnerResolveRequest] ${intent} ${rejected.id} by ${subjectUserId}`,
+        );
+        const text = `Rejected request ${rejected.id}.`;
+        await callback?.({ text });
+        return {
+          text,
+          success: true,
+          data: {
+            requestId: rejected.id,
+            state: rejected.state,
+            action: rejected.action,
+          },
+        };
+      }
+
+      const approved =
+        current.state === "approved" || current.state === "retryable"
+          ? current
+          : await queue.approve(current.id, subjectUserId, resolution);
+      // The tracking wrapper captures the last row the executor persisted so the
+      // receipt reflects the real terminal state, not the pre-dispatch snapshot.
+      let latestPersisted = approved;
       const trackedQueue = trackingApprovalQueue(queue, (request) => {
         latestPersisted = request;
       });
       const executed = await executeApprovedRequest({
         runtime,
         queue: trackedQueue,
-        request: updated,
-        callback: undefined,
+        request: approved,
+        callback,
       });
       return withApprovalProof(executed, latestPersisted);
+    } catch (error) {
+      // error-policy:J1 queue CAS failures are translated at the action
+      // boundary after an authoritative re-read; unrelated errors propagate.
+      if (isKnownApprovalNotFound(error)) {
+        return denied("REQUEST_NOT_FOUND");
+      }
+      if (isKnownApprovalTransition(error)) {
+        continue;
+      }
+      throw error;
     }
-    logger.info(
-      `[OwnerResolveRequest] ${intent} ${updated.id} by ${subjectUserId}`,
-    );
-    const text = `Rejected request ${updated.id}.`;
-    if (callback) await callback({ text });
-    return withApprovalProof(
-      {
-        text,
-        success: true,
-        data: {
-          requestId: updated.id,
-          state: updated.state,
-          action: updated.action,
-        },
-      },
-      updated,
-    );
-  } catch (error) {
-    if (error instanceof ApprovalNotFoundError) {
-      return denied("REQUEST_NOT_FOUND");
-    }
-    // Lost compare-and-swap race (e.g. the request expired while the owner's
-    // approval was in flight). Must be matched before the parent
-    // ApprovalStateTransitionError and surfaced: nothing was executed.
-    if (error instanceof ApprovalTransitionConflictError) {
-      const text = `Request ${error.requestId} changed state to "${error.from}" while I was resolving it — nothing was executed.`;
-      if (callback) await callback({ text });
-      return {
-        text,
-        success: false,
-        data: {
-          error: "TRANSITION_CONFLICT",
-          requestId: error.requestId,
-          state: error.from,
-        },
-      };
-    }
-    if (error instanceof ApprovalStateTransitionError) {
-      return denied("INVALID_STATE_TRANSITION");
-    }
-    throw error;
   }
+
+  const latest = await queue.byId(extracted.requestId, subjectUserId);
+  if (!latest) return denied("REQUEST_NOT_FOUND");
+  const settled = classifySettledDecision(intent, latest);
+  if (settled) return returnSettledDecision(settled, callback);
+  const text = `Request ${latest.id} kept changing state while I was resolving it — nothing was executed.`;
+  await callback?.({ text });
+  return {
+    text,
+    success: false,
+    data: {
+      error: "TRANSITION_CONFLICT",
+      requestId: latest.id,
+      state: latest.state,
+      executed: false,
+    },
+  };
 }
 
 export const resolveRequestAction: Action & {
@@ -2044,9 +2454,18 @@ export const resolveRequestAction: Action & {
   parameters: [
     {
       name: "action",
-      description: "approve | reject.",
+      description:
+        "approve | reject | reconcile_delivered | reconcile_not_delivered.",
       required: false,
-      schema: { type: "string" as const, enum: ["approve", "reject"] },
+      schema: {
+        type: "string" as const,
+        enum: [
+          "approve",
+          "reject",
+          "reconcile_delivered",
+          "reconcile_not_delivered",
+        ],
+      },
     },
     {
       name: "requestId",

@@ -57,6 +57,9 @@ const CLEANUP_HELPER_SCRIPT = path.join(
 );
 
 const BUN_VERSION = "1.3.14";
+const DOWNLOAD_MAX_ATTEMPTS = 3;
+const DOWNLOAD_RETRY_BASE_DELAY_MS = 1_000;
+const DOWNLOAD_TIMEOUT_MS = 60_000;
 // Bun 1.3.13 had a segfault during inference on Cuttlefish at peak
 // ~2.3 GB RSS ("panic(main thread): Segmentation fault at address 0x5420").
 // 1.3.14 (released 2026-05-13) is the stable release that supersedes the
@@ -381,14 +384,108 @@ function removePathRecursiveSync(targetPath) {
   });
 }
 
-async function downloadFile(url, targetPath) {
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status} fetching ${url}`);
+class DownloadHttpError extends Error {
+  constructor(url, status) {
+    super(`HTTP ${status} fetching ${url}`);
+    this.name = "DownloadHttpError";
+    this.retryable =
+      status === 408 ||
+      status === 425 ||
+      status === 429 ||
+      (status >= 500 && status <= 599);
   }
-  const buf = Buffer.from(await response.arrayBuffer());
+}
+
+function downloadRetryDelayMs(attempt) {
+  return DOWNLOAD_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1);
+}
+
+async function readFetchAttempt(url, { fetchImpl, readResponse, timeoutMs }) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => {
+    controller.abort(new Error(`Timed out fetching ${url}`));
+  }, timeoutMs);
+  timeout.unref?.();
+  try {
+    const response = await fetchImpl(url, { signal: controller.signal });
+    if (!response.ok) {
+      throw new DownloadHttpError(url, response.status);
+    }
+    return await readResponse(response);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function fetchWithRetry(
+  url,
+  {
+    fetchImpl = globalThis.fetch,
+    sleep = (delayMs) => new Promise((resolve) => setTimeout(resolve, delayMs)),
+    log = () => {},
+    maxAttempts = DOWNLOAD_MAX_ATTEMPTS,
+    readResponse,
+    timeoutMs = DOWNLOAD_TIMEOUT_MS,
+  },
+) {
+  if (!Number.isInteger(maxAttempts) || maxAttempts < 1) {
+    throw new RangeError("maxAttempts must be a positive integer");
+  }
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return await readFetchAttempt(url, {
+        fetchImpl,
+        readResponse,
+        timeoutMs,
+      });
+    } catch (error) {
+      // error-policy:J1 The artifact network boundary retries transient
+      // transport/server failures, then surfaces final failure with context.
+      const retryable =
+        !(error instanceof DownloadHttpError) || error.retryable === true;
+      if (!retryable || attempt === maxAttempts) {
+        throw new Error(
+          `Failed to download ${url} after ${attempt} attempt${attempt === 1 ? "" : "s"}`,
+          { cause: error },
+        );
+      }
+      const delayMs = downloadRetryDelayMs(attempt);
+      log(
+        `Download attempt ${attempt}/${maxAttempts} failed for ${url}; retrying in ${delayMs}ms: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      await sleep(delayMs);
+    }
+  }
+  throw new Error(`Download retry loop exhausted unexpectedly for ${url}`);
+}
+
+async function downloadFile(url, targetPath, options = {}) {
+  const bytes = await fetchWithRetry(url, {
+    ...options,
+    readResponse: async (response) => {
+      const downloaded = Buffer.from(await response.arrayBuffer());
+      if (downloaded.length === 0) {
+        throw new Error(`Empty response fetching ${url}`);
+      }
+      return downloaded;
+    },
+  });
   fs.mkdirSync(path.dirname(targetPath), { recursive: true });
-  fs.writeFileSync(targetPath, buf);
+  const tempPath = `${targetPath}.download-${process.pid}-${crypto.randomUUID()}`;
+  try {
+    fs.writeFileSync(tempPath, bytes, { flag: "wx" });
+    fs.renameSync(tempPath, targetPath);
+  } catch (error) {
+    // error-policy:J2 Preserve the filesystem cause while identifying the
+    // artifact whose atomic cache write failed.
+    fs.rmSync(tempPath, { force: true });
+    throw new Error(`Failed to store downloaded artifact at ${targetPath}`, {
+      cause: error,
+    });
+  }
 }
 
 function normalizeSha256(value, envName) {
@@ -650,7 +747,7 @@ async function ensureBunBinary({ cacheDir, bunArch, bunChannel, log }) {
     fs.copyFileSync(sourceFile, zipPath);
   } else {
     log(`Downloading ${channelLabel} (${bunArch}-musl) from ${url}`);
-    await downloadFile(url, zipPath);
+    await downloadFile(url, zipPath, { log });
   }
   if (expectedRiscv64Sha256) {
     const actualSha256 = sha256File(zipPath);
@@ -696,13 +793,12 @@ async function ensureBunBinary({ cacheDir, bunArch, bunChannel, log }) {
  * apk index. The package name is regex-escaped because libstdc++ contains a
  * `+`, which would otherwise eat the trailing characters and over-match.
  */
-async function resolveAlpineApkUrl({ pkg, alpineArch }) {
+async function resolveAlpineApkUrl({ pkg, alpineArch, log }) {
   const indexUrl = `https://dl-cdn.alpinelinux.org/alpine/${ALPINE_BRANCH}/main/${alpineArch}/`;
-  const response = await fetch(indexUrl);
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status} listing ${indexUrl}`);
-  }
-  const html = await response.text();
+  const html = await fetchWithRetry(indexUrl, {
+    log,
+    readResponse: (response) => response.text(),
+  });
   const escaped = pkg.replace(/[.[\\*^$()+?{|]/g, "\\$&");
   const re = new RegExp(`(${escaped}-[0-9][^"<\\s]*\\.apk)`);
   const match = html.match(re);
@@ -731,9 +827,9 @@ async function ensureAlpineApkExtracted({ cacheDir, alpineArch, log }) {
   for (const { pkg, file } of APK_PACKAGES) {
     const apkPath = path.join(archCache, file);
     if (!fs.existsSync(apkPath)) {
-      const url = await resolveAlpineApkUrl({ pkg, alpineArch });
+      const url = await resolveAlpineApkUrl({ pkg, alpineArch, log });
       log(`Downloading ${pkg} (${alpineArch}) from ${url}`);
-      await downloadFile(url, apkPath);
+      await downloadFile(url, apkPath, { log });
     }
     // Alpine apks are gzipped tarballs with a small leading signature
     // section; GNU tar happily skips it and extracts the data section.
@@ -1555,6 +1651,8 @@ export const __testables = {
   LLAMA_KERNEL_DIAGNOSTIC_SCRIPT,
   RISCV64_BUN_ARTIFACT_FILENAME,
   RUNTIME_PROVENANCE_FILENAME,
+  downloadFile,
+  downloadRetryDelayMs,
   defaultRiscv64BunArtifactPath,
   riscv64BunFilePath,
   riscv64BunArtifactSource,

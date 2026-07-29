@@ -11,10 +11,11 @@ import {
   seedAppStorage,
 } from "./helpers";
 import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
+import { assertSharedViewHeaderContract } from "./helpers/view-header";
 
 /**
- * Visual + smoke coverage for the BUILTIN "Knowledge" / Documents view
- * (/character/documents, #8876).
+ * Visual + smoke coverage for the builtin standalone Knowledge surface at
+ * `/character/documents` (#8876).
  *
  * This is the surface where files become knowledge: documents list from
  * `GET /api/documents` and carry provenance (uploaded file vs learned vs a
@@ -167,11 +168,16 @@ test.describe("Knowledge/Documents view visual + smoke (desktop + mobile)", () =
 
       await openAppPath(page, "/character/documents");
 
-      // The knowledge surface mounts as <DocumentsView> inside the Character
-      // editor (the /apps/documents path collides with a decomposed PA view);
-      // assert its stable testid, mirroring transcript-realaudio.spec.ts.
+      // Knowledge owns a standalone route and header outside the Character
+      // editor. Anchor both so an unrelated character shell cannot satisfy the
+      // visual probe.
       const viewRoot = page.getByTestId("documents-view");
       await expect(viewRoot).toBeVisible({ timeout: 60_000 });
+      await assertSharedViewHeaderContract(page, {
+        requireTapTarget: vp.name === "mobile",
+        within: '[data-testid="documents-view"]',
+        title: "Knowledge",
+      });
       await expect
         .poll(
           async () =>

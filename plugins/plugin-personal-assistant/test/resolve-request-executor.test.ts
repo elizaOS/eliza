@@ -1,8 +1,17 @@
 /**
  * Exercises approved-request dispatch across workflow, communication, document,
- * and unavailable-rail boundaries. Calendar mutation success and recovery use
- * a real database and HTTP provider in the calendar-mutation integration suite;
- * this unit surface verifies that dispatch cannot bypass its durable ledger.
+ * and unavailable-rail boundaries.
+ *
+ * Approved `execute_workflow` / `schedule_event` / `make_call` / `sign_document`
+ * requests must drive their real rails (`LifeOpsService.runWorkflow`,
+ * `LifeOpsService.createCalendarEvent`, Twilio voice dispatch, the
+ * DocumentRequest lifecycle); a rail failure must surface as a typed failure
+ * rather than fake success, and an action with no rail at all (`spend_money`)
+ * must return an explicit NO_EXECUTOR failure. Dispatch can never bypass its
+ * durable ledger. Calendar mutation success and recovery are covered against a
+ * real database and HTTP provider in the calendar-mutation integration suite.
+ *
+ * Run: bunx vitest run test/resolve-request-executor.test.ts
  */
 
 import { randomUUID } from "node:crypto";
@@ -60,12 +69,14 @@ const docMocks = vi.hoisted(() => ({
     resolvedAt: null,
     resolvedBy: null,
     resolutionReason: null,
+    execution: null,
   })),
   list: vi.fn(async (): Promise<unknown[]> => []),
   byId: vi.fn(async (_id: string): Promise<unknown | null> => null),
   approve: vi.fn(),
   reject: vi.fn(),
-  markExecuting: vi.fn(),
+  claimExecution: vi.fn(),
+  markDispatchStarted: vi.fn(),
   markDone: vi.fn(),
   markExpired: vi.fn(),
   schedule: vi.fn(async (task: { kind: string; trigger: unknown }) => ({
@@ -76,18 +87,28 @@ const docMocks = vi.hoisted(() => ({
   })),
 }));
 
-vi.mock("@elizaos/agent", () => ({
-  hasOwnerAccess: docMocks.hasOwnerAccess,
-}));
+vi.mock("@elizaos/agent", async () => {
+  const approvalTypes = await import(
+    "../../../packages/agent/src/services/approval/types.ts"
+  );
+  return {
+    hasOwnerAccess: docMocks.hasOwnerAccess,
+    ApprovalNotFoundError: approvalTypes.ApprovalNotFoundError,
+    ApprovalStateTransitionError: approvalTypes.ApprovalStateTransitionError,
+  };
+});
 
 vi.mock("../src/lifeops/approval-queue.js", () => ({
   createApprovalQueue: () => ({
+    capability: "eliza.approval-execution",
+    protocolVersion: 2,
     enqueue: docMocks.enqueue,
     list: docMocks.list,
     byId: docMocks.byId,
     approve: docMocks.approve,
     reject: docMocks.reject,
-    markExecuting: docMocks.markExecuting,
+    claimExecution: docMocks.claimExecution,
+    markDispatchStarted: docMocks.markDispatchStarted,
     markDone: docMocks.markDone,
     markExpired: docMocks.markExpired,
   }),
@@ -132,6 +153,8 @@ function makeRuntime(): IAgentRuntime {
 
 /** In-memory ApprovalQueue that records the transitions executors drive. */
 class RecordingQueue implements ApprovalQueue {
+  readonly capability = "eliza.approval-execution";
+  readonly protocolVersion = 2;
   public readonly transitions: ApprovalRequestState[] = [];
   constructor(private request: ApprovalRequest) {}
 
@@ -152,30 +175,95 @@ class RecordingQueue implements ApprovalQueue {
   ): Promise<ReadonlyArray<ApprovalRequest>> {
     return [this.request];
   }
-  async byId(id: string): Promise<ApprovalRequest | null> {
-    return this.request.id === id ? this.request : null;
+  async byId(
+    id: string,
+    subjectUserId: string,
+  ): Promise<ApprovalRequest | null> {
+    return this.request.id === id &&
+      this.request.subjectUserId === subjectUserId
+      ? this.request
+      : null;
   }
   async approve(
     _id: string,
+    _subjectUserId: string,
     _resolution: ApprovalResolution,
   ): Promise<ApprovalRequest> {
     return this.setState("approved");
   }
   async reject(
     _id: string,
+    _subjectUserId: string,
     _resolution: ApprovalResolution,
   ): Promise<ApprovalRequest> {
     return this.setState("rejected");
   }
-  async markExecuting(_id: string): Promise<ApprovalRequest> {
-    return this.setState("executing");
+  async claimExecution(): Promise<ApprovalRequest> {
+    const executing = this.setState("executing");
+    this.request = {
+      ...executing,
+      execution: {
+        attemptId: randomUUID(),
+        provider: "test",
+        providerIdempotencyKey: `approval:${this.request.id}:test`,
+        claimedAt: new Date(),
+        dispatchStartedAt: null,
+        providerReceipt: null,
+        error: null,
+        reconciledAt: null,
+        reconciledBy: null,
+        reconciliationReason: null,
+      },
+    };
+    return this.request;
   }
-  async markDone(_id: string): Promise<ApprovalRequest> {
+  async markDispatchStarted(): Promise<ApprovalRequest> {
+    if (!this.request.execution) throw new Error("execution missing");
+    this.request = {
+      ...this.request,
+      execution: {
+        ...this.request.execution,
+        dispatchStartedAt: new Date(),
+      },
+    };
+    return this.request;
+  }
+  async markDone(
+    completion: Parameters<ApprovalQueue["markDone"]>[0],
+  ): Promise<ApprovalRequest> {
+    if (!this.request.execution) throw new Error("execution missing");
+    this.request = {
+      ...this.request,
+      execution: {
+        ...this.request.execution,
+        providerReceipt: completion.providerReceipt,
+      },
+    };
     return this.setState("done");
   }
-  async markExpired(_id: string): Promise<ApprovalRequest> {
+  async markRetryableFailure(): Promise<ApprovalRequest> {
+    return this.setState("retryable");
+  }
+  async markReconciliationRequired(): Promise<ApprovalRequest> {
+    return this.setState("reconciliation_required");
+  }
+  async recoverUnstartedExecution(): Promise<ApprovalRequest> {
+    return this.setState("retryable");
+  }
+  async reconcileExecution(
+    reconciliation: Parameters<ApprovalQueue["reconcileExecution"]>[0],
+  ): Promise<ApprovalRequest> {
+    return this.setState(
+      reconciliation.outcome === "delivered" ? "done" : "retryable",
+    );
+  }
+  async markExpired(
+    _id: string,
+    _subjectUserId: string,
+  ): Promise<ApprovalRequest> {
     return this.setState("expired");
   }
+  async removePending(): Promise<void> {}
   async purgeExpired(_now: Date): Promise<ReadonlyArray<string>> {
     return [];
   }
@@ -200,6 +288,7 @@ function approvedRequest(
     resolvedAt: now,
     resolvedBy: "owner-1",
     resolutionReason: "user approved",
+    execution: null,
     ...overrides,
   };
 }
@@ -233,7 +322,8 @@ afterEach(() => {
   });
   docMocks.approve.mockReset();
   docMocks.reject.mockReset();
-  docMocks.markExecuting.mockReset();
+  docMocks.claimExecution.mockReset();
+  docMocks.markDispatchStarted.mockReset();
   docMocks.markDone.mockReset();
   docMocks.markExpired.mockReset();
 });
@@ -259,6 +349,9 @@ describe("executeApprovedRequest", () => {
       },
     });
     const queue = new RecordingQueue(request);
+    vi.spyOn(LifeOpsService.prototype, "getWorkflow").mockResolvedValue(
+      {} as never,
+    );
     const runSpy = vi
       .spyOn(LifeOpsService.prototype, "runWorkflow")
       .mockResolvedValue({
@@ -403,14 +496,22 @@ describe("executeApprovedRequest", () => {
       },
     });
     const queue = new RecordingQueue(request);
+    vi.spyOn(LifeOpsService.prototype, "getWorkflow").mockResolvedValue(
+      {} as never,
+    );
     vi.spyOn(LifeOpsService.prototype, "runWorkflow").mockRejectedValue(
       new Error("workflow step exploded"),
     );
 
-    await expect(
-      executeApprovedRequest({ runtime, queue, request }),
-    ).rejects.toThrow("workflow step exploded");
-    expect(queue.transitions).toEqual(["executing"]);
+    const result = await executeApprovedRequest({ runtime, queue, request });
+    expect(result).toMatchObject({
+      success: false,
+      data: {
+        error: "APPROVAL_RECONCILIATION_REQUIRED",
+        detail: "workflow step exploded",
+      },
+    });
+    expect(queue.transitions).toEqual(["executing", "reconciliation_required"]);
   });
 
   it("calendar mutation dispatch cannot bypass the durable ledger", async () => {
@@ -441,6 +542,7 @@ describe("executeApprovedRequest", () => {
     expect(queue.transitions).toEqual([]);
   });
 
+
   it("send_email approval projects sent-mail commitments into the ledger after delivery", async () => {
     const runtime = {
       ...makeRuntime(),
@@ -456,10 +558,15 @@ describe("executeApprovedRequest", () => {
         bcc: [],
         subject: "Launch deck",
         body: "I'll send the deck by 2026-07-10 and include the pricing appendix.",
+        threadId: null,
         replyToMessageId: null,
       },
     });
     const queue = new RecordingQueue(request);
+    vi.spyOn(
+      LifeOpsService.prototype,
+      "requireGoogleGmailSendGrant",
+    ).mockResolvedValue({} as never);
     const sendSpy = vi
       .spyOn(LifeOpsService.prototype, "sendGmailMessage")
       .mockResolvedValue({ ok: true });
@@ -614,12 +721,11 @@ describe("executeApprovedRequest", () => {
 
     expect(result.success).toBe(false);
     expect(result.data).toMatchObject({
-      error: "TWILIO_DELIVERY_FAILED",
+      error: "APPROVAL_DELIVERY_FAILED_RETRYABLE",
       detail: "Authenticate",
-      status: 401,
     });
-    expect(queue.transitions).toEqual(["executing"]);
-    expect(texts.join(" ")).toContain("not placed");
+    expect(queue.transitions).toEqual(["executing", "retryable"]);
+    expect(texts.join(" ")).toContain("safe to retry");
   });
 
   it("make_call approval places the call through the Twilio rail", async () => {
@@ -654,6 +760,7 @@ describe("executeApprovedRequest", () => {
       credentials,
       to: "+15550100",
       message: "Confirming tomorrow's appointment.",
+      idempotencyKey: `approval:${request.id}:twilio-voice`,
     });
     expect(queue.transitions).toEqual(["executing", "done"]);
     expect(result.success).toBe(true);
@@ -745,7 +852,7 @@ describe("executeApprovedRequest", () => {
       action: "sign_document",
       documentId: "doc-gone",
     });
-    expect(queue.transitions).toEqual(["executing"]);
+    expect(queue.transitions).toEqual([]);
     expect(texts.join(" ")).toContain("re-issue");
   });
 
@@ -813,6 +920,7 @@ describe("RESOLVE_REQUEST reject path", () => {
       fromPhoneNumber: "+15550999",
     });
     docMocks.list.mockResolvedValue([pending]);
+    docMocks.byId.mockResolvedValue(pending);
     docMocks.reject.mockResolvedValue({ ...pending, state: "rejected" });
     const { texts, callback } = collectTexts();
 
@@ -836,13 +944,13 @@ describe("RESOLVE_REQUEST reject path", () => {
     );
 
     expect(docMocks.reject).toHaveBeenCalledTimes(1);
-    expect(docMocks.reject).toHaveBeenCalledWith(pending.id, {
+    expect(docMocks.reject).toHaveBeenCalledWith(pending.id, "owner-1", {
       resolvedBy: "owner-1",
       resolutionReason: "not now",
     });
     // Rejection touches no rail and no executing/done transition.
     expect(twilioMocks.sendTwilioVoiceCall).not.toHaveBeenCalled();
-    expect(docMocks.markExecuting).not.toHaveBeenCalled();
+    expect(docMocks.claimExecution).not.toHaveBeenCalled();
     expect(docMocks.markDone).not.toHaveBeenCalled();
     expect(result).toMatchObject({ success: true });
     expect(texts.join(" ")).toContain("Rejected");
@@ -1167,6 +1275,7 @@ describe("RESOLVE_REQUEST ambiguous-target chips (#14733)", () => {
           bcc: [],
           subject: "Q2 report",
           body: "Attached.",
+          threadId: null,
           replyToMessageId: null,
         },
       }),
@@ -1229,6 +1338,7 @@ describe("RESOLVE_REQUEST ambiguous-target chips (#14733)", () => {
     const runtime = makeRuntime();
     const [first, second] = pendingPair();
     docMocks.list.mockResolvedValue([first, second]);
+    docMocks.byId.mockResolvedValue(second);
     docMocks.reject.mockResolvedValue({ ...second, state: "rejected" });
 
     // Build the chips for a reject intent and simulate the tap: the value is

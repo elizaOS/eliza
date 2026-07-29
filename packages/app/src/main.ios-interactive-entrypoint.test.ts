@@ -5,6 +5,7 @@
  */
 import { Capacitor } from "@capacitor/core";
 import { runIosFullBunSmokeIfRequested } from "@elizaos/app-core";
+import { listenForConnectRequests } from "@elizaos/ui/events";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const iosBoot = vi.hoisted(() => ({
@@ -20,6 +21,7 @@ const iosBoot = vi.hoisted(() => ({
   lifecycleDependencies: undefined as
     | { handleDeepLink: (url: string) => void }
     | undefined,
+  initializeDeepLinks: vi.fn(),
   initializeAppLifecycle: vi.fn(),
   initializeNetworkListener: vi.fn(async () => undefined),
   preferenceSet: vi.fn(async () => undefined),
@@ -81,6 +83,7 @@ vi.mock("./mobile-lifecycle", () => ({
     (dependencies: { handleDeepLink: (url: string) => void }) => {
       iosBoot.lifecycleDependencies = dependencies;
       return {
+        initializeDeepLinks: iosBoot.initializeDeepLinks,
         initializeAppLifecycle: iosBoot.initializeAppLifecycle,
         initializeNetworkListener: iosBoot.initializeNetworkListener,
       };
@@ -132,6 +135,7 @@ beforeEach(() => {
 describe("renderer interactive iOS composition", () => {
   it("mounts and routes native callbacks through the shipped handlers", async () => {
     const main = await import("./main");
+    expect(iosBoot.initializeDeepLinks).toHaveBeenCalledOnce();
     if (document.readyState === "loading") {
       document.dispatchEvent(new Event("DOMContentLoaded"));
     }
@@ -159,6 +163,8 @@ describe("renderer interactive iOS composition", () => {
 
     const handleDeepLink = iosBoot.lifecycleDependencies?.handleDeepLink;
     expect(handleDeepLink).toBeTypeOf("function");
+    const connectRequest = vi.fn();
+    const removeConnectListener = listenForConnectRequests(connectRequest);
     window.localStorage.setItem(
       "eliza:auth-callback-smoke:request",
       JSON.stringify({ state: "smoke", code: "synthetic" }),
@@ -172,6 +178,7 @@ describe("renderer interactive iOS composition", () => {
       "elizaos://aec-loop?duration=1",
       "elizaos://keyboard-dictation",
       "elizaos://connect?url=http%3A%2F%2Flocalhost%3A2138",
+      "elizaos://first-run/runtime/remote?api=http%3A%2F%2F127.0.0.1%3A31337",
       "elizaos://share?title=Hello&text=Body&file=%2Ftmp%2Fnote.txt",
       "elizaos://auth/callback?state=smoke&code=synthetic",
       "elizaos://unknown-path",
@@ -189,6 +196,13 @@ describe("renderer interactive iOS composition", () => {
     );
 
     expect(window.location.hash).toContain("aec-loop");
+    expect(connectRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        gatewayUrl: "http://127.0.0.1:31337",
+        completeFirstRun: true,
+      }),
+    );
+    removeConnectListener();
     expect(window.__ELIZA_APP_SHARE_QUEUE__).toEqual([
       expect.objectContaining({
         source: "deep-link",

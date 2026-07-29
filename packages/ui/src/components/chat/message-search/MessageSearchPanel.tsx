@@ -135,7 +135,7 @@ export function MessageSearchPanel({
       // away when the results list above it is long.
       className={
         keyboardAnchored
-          ? "shrink-0 rounded-xl border-white/20 bg-[rgba(12,16,18,0.86)] text-white shadow-[0_12px_32px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-xl placeholder:text-white/45"
+          ? "shrink-0 rounded-xl border-white/20 bg-[rgba(12,16,18,0.86)] text-white shadow-[0_12px_32px_rgba(0,0,0,0.24),inset_0_1px_0_rgba(255,255,255,0.08)] placeholder:text-white/45"
           : undefined
       }
     />
@@ -196,7 +196,7 @@ export function MessageSearchPanel({
               variant="ghost"
               className={
                 keyboardAnchored
-                  ? "flex h-auto w-full flex-col items-start gap-0.5 whitespace-normal rounded-xl border border-white/10 bg-[rgba(12,16,18,0.86)] px-3 py-2 text-left font-normal shadow-[0_10px_28px_rgba(0,0,0,0.2),inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-xl hover:border-white/20 hover:bg-[rgba(18,22,24,0.92)]"
+                  ? "flex h-auto w-full flex-col items-start gap-0.5 whitespace-normal rounded-xl border border-white/10 bg-[rgba(12,16,18,0.86)] px-3 py-2 text-left font-normal shadow-[0_10px_28px_rgba(0,0,0,0.2),inset_0_1px_0_rgba(255,255,255,0.06)] hover:border-white/20 hover:bg-[rgba(18,22,24,0.92)]"
                   : "flex h-auto w-full flex-col items-start gap-0.5 whitespace-normal rounded-md px-2 py-1.5 text-left font-normal hover:bg-muted/60"
               }
             >

@@ -18,7 +18,6 @@ import {
   Button,
   Card,
   Divider,
-  Field,
   HStack,
   List,
   Text,
@@ -98,12 +97,13 @@ export function CalendarSpatialView({
     // height — the 44px-min buttons and two-line rows then overprint each
     // other instead of the surface scrolling (#15911).
     <Card gap={1} padding={1} shrink={0}>
+      <Text style="subheading" bold wrap={true} agent="period-label">
+        {snapshot.periodLabel}
+      </Text>
+
       <HStack gap={1} align="center">
-        <Text style="subheading" bold grow={1} wrap={false}>
-          {snapshot.periodLabel}
-        </Text>
         <Button
-          variant="outline"
+          variant="ghost"
           tone="default"
           agent="prev"
           onPress={dispatch("prev")}
@@ -111,7 +111,7 @@ export function CalendarSpatialView({
           ‹
         </Button>
         <Button
-          variant="outline"
+          variant="ghost"
           tone="default"
           agent="today"
           onPress={dispatch("today")}
@@ -119,26 +119,14 @@ export function CalendarSpatialView({
           Today
         </Button>
         <Button
-          variant="outline"
+          variant="ghost"
           tone="default"
           agent="next"
           onPress={dispatch("next")}
         >
           ›
         </Button>
-      </HStack>
-
-      <HStack gap={1} align="center">
-        <Field
-          kind="select"
-          label="View"
-          value={snapshot.mode}
-          options={MODES}
-          agent="mode"
-          onChange={(value) => onAction?.(`mode:${value}`)}
-          grow={1}
-        />
-        <Button agent="new" onPress={dispatch("new")}>
+        <Button agent="new" onPress={dispatch("new")} grow={1}>
           New
         </Button>
       </HStack>

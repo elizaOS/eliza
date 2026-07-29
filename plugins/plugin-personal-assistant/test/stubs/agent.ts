@@ -18,6 +18,17 @@ export {
   resolveApprovalService,
 } from "../../../../packages/agent/src/services/approval/index.ts";
 export {
+  createApprovalQueue,
+  PgApprovalQueue,
+} from "../../../../packages/agent/src/services/approval/store.ts";
+export {
+  APPROVAL_EXECUTION_CAPABILITY,
+  APPROVAL_EXECUTION_PROTOCOL_VERSION,
+  ApprovalIdempotencyConflictError,
+  ApprovalNotFoundError,
+  ApprovalStateTransitionError,
+} from "../../../../packages/agent/src/services/approval/types.ts";
+export {
   createGlobalPauseStore,
   GLOBAL_PAUSE_SERVICE,
   GlobalPauseService,

@@ -262,7 +262,7 @@ function InspectorSection({
   );
 }
 
-function WorkbenchHeader({
+export function WorkbenchHeader({
   status,
   busy,
   isMobile,
@@ -367,8 +367,19 @@ function WorkbenchHeader({
   const accountsLabel = t("orchestrator.toggleAccounts", {
     defaultValue: "Coding accounts & pool health",
   });
+  const { ref: accountsRef, agentProps: accountsAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "header-accounts-toggle",
+      role: "toggle",
+      label: accountsLabel,
+      group: "orchestrator-header",
+      description: "Show or hide coding account and pool health",
+      status: accountsOpen ? "active" : "inactive",
+      onActivate: onToggleAccounts,
+    });
   const accountsToggle = (
     <Button
+      ref={accountsRef}
       variant="ghost"
       size="sm"
       onClick={onToggleAccounts}
@@ -377,6 +388,7 @@ function WorkbenchHeader({
       aria-pressed={accountsOpen}
       title={accountsLabel}
       data-testid="orchestrator-accounts-toggle"
+      {...accountsAgentProps}
     >
       <Gauge className="h-3.5 w-3.5" />
     </Button>

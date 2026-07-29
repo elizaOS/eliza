@@ -6531,14 +6531,27 @@ class LifeOpsBenchRunner:
                             tool_call_id=tool_call_id,
                         )
                     )
-                except (KeyError, ValueError, TypeError) as exc:
+                except (KeyError, ValueError, TypeError, PermissionError) as exc:
                     logger.warning(
                         "Action %s failed in scenario %s: %s",
                         action.name,
                         scenario.id,
                         exc,
                     )
-                    error_payload = {"error": "execution_failed", "message": str(exc)}
+                    # A PermissionError is the world enforcing a confirmation or
+                    # authorization gate (e.g. BLOCK/unblock without
+                    # confirmed=True). Production surfaces that to the model as a
+                    # denied result it can react to, so the deterministic shadow
+                    # must too — a refused tool call is scenario signal, never a
+                    # harness crash.
+                    error_payload = {
+                        "error": (
+                            "permission_denied"
+                            if isinstance(exc, PermissionError)
+                            else "execution_failed"
+                        ),
+                        "message": str(exc),
+                    }
                     error_payload = mark_deterministic_lifeworld_result(error_payload)
                     tool_results.append(
                         {

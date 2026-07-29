@@ -481,3 +481,103 @@ async def test_hermes_agent_live_smoke() -> None:
     assert turn.role == "assistant"
     assert turn.content
     assert agent.total_cost_usd >= 0.0
+
+
+class TestToolCallBlockSalvage:
+    """One <tool_call> span may carry more than one well-formed call object.
+
+    Small Hermes-template models concatenate call objects and emit raw control
+    characters inside string arguments; both are recoverable and must not abort
+    a scenario. Genuinely meaningless blocks still raise.
+    """
+
+    def test_concatenated_payloads_parse_as_distinct_calls(self) -> None:
+        from eliza_lifeops_bench.clients.hermes import _parse_hermes_response_text
+
+        first = json.dumps(
+            {"name": "CALENDAR_SOURCES", "arguments": {"action": "list_sources"}}
+        )
+        second = json.dumps(
+            {"name": "CALENDAR", "arguments": {"subaction": "search_events"}}
+        )
+        prose, calls = _parse_hermes_response_text(f"<tool_call>{first}{second}</tool_call>")
+
+        assert prose is None
+        assert [c.name for c in calls] == ["CALENDAR_SOURCES", "CALENDAR"]
+        assert [c.id for c in calls] == ["call_0", "call_1"]
+
+    def test_newline_separated_payloads_parse(self) -> None:
+        from eliza_lifeops_bench.clients.hermes import _parse_hermes_response_text
+
+        first = json.dumps({"name": "A_TOOL", "arguments": {}})
+        second = json.dumps({"name": "B_TOOL", "arguments": {}})
+        _prose, calls = _parse_hermes_response_text(
+            f"<tool_call>{first}\n{second}</tool_call>"
+        )
+
+        assert [c.name for c in calls] == ["A_TOOL", "B_TOOL"]
+
+    def test_ids_stay_unique_across_multiple_blocks(self) -> None:
+        from eliza_lifeops_bench.clients.hermes import _parse_hermes_response_text
+
+        one = json.dumps({"name": "A_TOOL", "arguments": {}})
+        two = json.dumps({"name": "B_TOOL", "arguments": {}})
+        three = json.dumps({"name": "C_TOOL", "arguments": {}})
+        _prose, calls = _parse_hermes_response_text(
+            f"<tool_call>{one}{two}</tool_call> and <tool_call>{three}</tool_call>"
+        )
+
+        assert [c.id for c in calls] == ["call_0", "call_1", "call_2"]
+        assert [c.name for c in calls] == ["A_TOOL", "B_TOOL", "C_TOOL"]
+
+    def test_control_character_inside_string_value_parses(self) -> None:
+        from eliza_lifeops_bench.clients.hermes import _parse_hermes_response_text
+
+        text = (
+            '<tool_call>{"name": "A_TOOL", "arguments": '
+            '{"note": "line one\nline two"}}</tool_call>'
+        )
+        _prose, calls = _parse_hermes_response_text(text)
+
+        assert [c.name for c in calls] == ["A_TOOL"]
+        assert calls[0].arguments == {"note": "line one\nline two"}
+
+    def test_control_character_inside_arguments_string_parses(self) -> None:
+        from eliza_lifeops_bench.clients.hermes import _parse_hermes_response_text
+
+        text = (
+            '<tool_call>{"name": "A_TOOL", "arguments": '
+            '"{\\"note\\": \\"line one\nline two\\"}"}</tool_call>'
+        )
+        _prose, calls = _parse_hermes_response_text(text)
+
+        assert calls[0].arguments == {"note": "line one\nline two"}
+
+    def test_trailing_residue_after_valid_payload_is_dropped(self) -> None:
+        from eliza_lifeops_bench.clients.hermes import _parse_hermes_response_text
+
+        payload = json.dumps({"name": "A_TOOL", "arguments": {}})
+        # Residue must end with `}` for the block regex to span it.
+        _prose, calls = _parse_hermes_response_text(
+            f"<tool_call>{payload} residue}}</tool_call>"
+        )
+
+        assert [c.name for c in calls] == ["A_TOOL"]
+
+    def test_non_object_residue_between_payloads_stops_salvage(self) -> None:
+        from eliza_lifeops_bench.clients.hermes import _parse_hermes_response_text
+
+        first = json.dumps({"name": "A_TOOL", "arguments": {}})
+        second = json.dumps({"name": "B_TOOL", "arguments": {}})
+        _prose, calls = _parse_hermes_response_text(
+            f"<tool_call>{first}[1, 2]{second}</tool_call>"
+        )
+
+        assert [c.name for c in calls] == ["A_TOOL"]
+
+    def test_garbage_block_still_raises(self) -> None:
+        from eliza_lifeops_bench.clients.base import ProviderError
+        from eliza_lifeops_bench.clients.hermes import _parse_hermes_response_text
+
+        with pytest.raises(ProviderError):
+            _parse_hermes_response_text("<tool_call>{not json}</tool_call>")

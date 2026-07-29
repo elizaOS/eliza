@@ -796,7 +796,7 @@ declare module "./client-base" {
       models: ProviderModelRecord[];
       catalog: ModelCatalog;
     }>;
-    getModelsCatalog(): Promise<{
+    getModelsCatalog(init?: RequestInit): Promise<{
       providers: Record<string, ProviderModelRecord[]>;
       catalog: ModelCatalog;
     }>;
@@ -2908,12 +2908,15 @@ ElizaClient.prototype.fetchModels = async function (
   return this.fetch(`/api/models?${params.toString()}`);
 };
 
-ElizaClient.prototype.getModelsCatalog = async function (this: ElizaClient) {
+ElizaClient.prototype.getModelsCatalog = async function (
+  this: ElizaClient,
+  init,
+) {
   // catalogOnly skips the server's all-providers model-list fan-out, which
   // takes tens of seconds on a cold cache — far past the client's 10s fetch
   // budget. Catalog consumers (settings panel, slash completions) only need
   // the validated catalog, which is local static tables + one file read.
-  return this.fetch("/api/models?catalogOnly=1");
+  return this.fetch("/api/models?catalogOnly=1", init);
 };
 
 ElizaClient.prototype.getModelsConfig = async function (this: ElizaClient) {

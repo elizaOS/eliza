@@ -16,7 +16,7 @@ import {
 	type SubactionsMap,
 } from "../../actions/resolve-action-args";
 import { logger } from "../../logger";
-import { checkSenderRole, hasRoleAccess, isAgentSelf } from "../../roles";
+import { hasRoleAccess, isAgentSelf } from "../../roles";
 import type {
 	Action,
 	ActionExample,
@@ -31,7 +31,12 @@ import type {
 	UUID,
 } from "../../types";
 import { addDocumentFromFilePath } from "./docs-loader.ts";
-import { DocumentService, type SearchMode } from "./service.ts";
+import {
+	type DocumentListResult,
+	DocumentService,
+	resolveDocumentRequesterRole,
+	type SearchMode,
+} from "./service.ts";
 import type {
 	DocumentAddedByRole,
 	DocumentAddedFrom,
@@ -284,12 +289,7 @@ async function getAddedByRole(
 	runtime: IAgentRuntime,
 	message: Memory,
 ): Promise<DocumentAddedByRole> {
-	if (!message.entityId) return "RUNTIME";
-	if (message.entityId === runtime.agentId) return "AGENT";
-	const role = await checkSenderRole(runtime, message).catch(() => null);
-	// The comparison narrows role.role to the returned union subset (OWNER|ADMIN).
-	if (role?.role === "OWNER" || role?.role === "ADMIN") return role.role;
-	return "USER";
+	return (await resolveDocumentRequesterRole(runtime, message)).role;
 }
 
 async function ensureWriteAccess(
@@ -319,42 +319,6 @@ async function ensureWriteAccess(
 		return "Users can only write documents to their own private scope.";
 	}
 	return null;
-}
-
-async function ensureDocumentMutationAccess(
-	runtime: IAgentRuntime,
-	message: Memory,
-	document: Memory,
-): Promise<string | null> {
-	const metadata = (document.metadata ?? {}) as Record<string, unknown>;
-	const scope =
-		typeof metadata.scope === "string" &&
-		DOCUMENT_SCOPES.has(metadata.scope as DocumentVisibilityScope)
-			? (metadata.scope as DocumentVisibilityScope)
-			: "global";
-	if (scope === "global" || scope === "owner-private") {
-		return (await hasRoleAccess(runtime, message, "OWNER"))
-			? null
-			: "Only the owner can edit or delete global and owner-private documents.";
-	}
-	if (scope === "agent-private") {
-		return isAgentSelf(runtime, message) ||
-			(await hasRoleAccess(runtime, message, "OWNER"))
-			? null
-			: "Only the owner or agent runtime can edit or delete agent-private documents.";
-	}
-	const scopedToEntityId =
-		typeof metadata.scopedToEntityId === "string"
-			? metadata.scopedToEntityId
-			: typeof document.entityId === "string"
-				? document.entityId
-				: undefined;
-	if (scopedToEntityId && message.entityId === scopedToEntityId) {
-		return null;
-	}
-	return (await hasRoleAccess(runtime, message, "ADMIN"))
-		? null
-		: "Users can only edit or delete their own private documents.";
 }
 
 function getCleanWriteText(params: DocumentActionParameters): string {
@@ -672,7 +636,6 @@ async function handleWrite(
 }
 
 async function handleEdit(
-	runtime: IAgentRuntime,
 	service: DocumentService,
 	message: Memory,
 	params: DocumentActionParameters,
@@ -693,24 +656,6 @@ async function handleEdit(
 		});
 	}
 
-	const document = await service.getDocumentById(documentId, message);
-	if (!document) {
-		const response = `Document ${documentId} not found.`;
-		await emit(callback, { text: response });
-		return result(false, response, "edit", { values: { error: "not_found" } });
-	}
-	const accessError = await ensureDocumentMutationAccess(
-		runtime,
-		message,
-		document,
-	);
-	if (accessError) {
-		await emit(callback, { text: accessError });
-		return result(false, accessError, "edit", {
-			values: { error: "forbidden" },
-		});
-	}
-
 	const updated = await service.updateDocument({
 		documentId,
 		content: text.trim(),
@@ -727,7 +672,6 @@ async function handleEdit(
 }
 
 async function handleDelete(
-	runtime: IAgentRuntime,
 	service: DocumentService,
 	message: Memory,
 	params: DocumentActionParameters,
@@ -738,24 +682,6 @@ async function handleDelete(
 		const text = "I need a valid document id to delete.";
 		await emit(callback, { text });
 		return result(false, text, "delete", { values: { error: "invalid_id" } });
-	}
-
-	const document = await service.getDocumentById(documentId, message);
-	if (!document) {
-		const text = `Document ${documentId} not found.`;
-		await emit(callback, { text });
-		return result(false, text, "delete", { values: { error: "not_found" } });
-	}
-	const accessError = await ensureDocumentMutationAccess(
-		runtime,
-		message,
-		document,
-	);
-	if (accessError) {
-		await emit(callback, { text: accessError });
-		return result(false, accessError, "delete", {
-			values: { error: "forbidden" },
-		});
 	}
 
 	await service.deleteDocument(documentId, message);
@@ -773,6 +699,43 @@ function parseTimestampParam(value: unknown): number | undefined {
 		if (Number.isFinite(numeric)) return numeric;
 	}
 	return undefined;
+}
+
+function formatDocumentList(documents: Memory[]): string {
+	return `Available documents:\n${documents
+		.map((document, index) => {
+			const metadata = document.metadata as Record<string, unknown> | undefined;
+			const title =
+				typeof metadata?.title === "string"
+					? metadata.title
+					: typeof metadata?.filename === "string"
+						? metadata.filename
+						: `Document ${index + 1}`;
+			return `${index + 1}. ${title} (${document.id})`;
+		})
+		.join("\n")}`;
+}
+
+function formatDocumentListResult(result: DocumentListResult): string {
+	switch (result.status) {
+		case "empty_store":
+			return "No documents are available.";
+		case "filter_miss":
+			return "No documents matched the requested filters.";
+		case "query_miss":
+			if (result.availableDocuments.length === 0) {
+				return `No documents matched ${JSON.stringify(result.query)}. Available-document offset ${result.availableOffset} is past the ${result.totalAvailable} documents allowed by the requested filters.`;
+			}
+			return `No documents matched ${JSON.stringify(result.query)}. Showing available documents${result.availableOffset > 0 ? ` from offset ${result.availableOffset}` : ""} instead:\n${formatDocumentList(result.availableDocuments)}`;
+		case "page_exhausted": {
+			const matchDescription = result.query
+				? `documents matching ${JSON.stringify(result.query)}`
+				: "available documents";
+			return `Offset ${result.offset} is past the ${result.totalMatched} ${matchDescription}.`;
+		}
+		case "ok":
+			return formatDocumentList(result.documents);
+	}
 }
 
 async function handleList(
@@ -802,7 +765,7 @@ async function handleList(
 			? Math.floor(params.offset)
 			: undefined;
 
-	const documents = await service.listDocuments(message, {
+	const listResult = await service.listDocumentsDetailed(message, {
 		limit: getLimit(params.limit, 25),
 		offset,
 		query: params.query,
@@ -813,27 +776,29 @@ async function handleList(
 		timeRangeEnd,
 		tags: Array.isArray(params.tags) ? params.tags : undefined,
 	});
-	const text =
-		documents.length === 0
-			? "No documents are available."
-			: `Available documents:\n${documents
-					.map((document, index) => {
-						const metadata = document.metadata as
-							| Record<string, unknown>
-							| undefined;
-						const title =
-							typeof metadata?.title === "string"
-								? metadata.title
-								: typeof metadata?.filename === "string"
-									? metadata.filename
-									: `Document ${index + 1}`;
-						return `${index + 1}. ${title} (${document.id})`;
-					})
-					.join("\n")}`;
+	const text = formatDocumentListResult(listResult);
+	const listData = {
+		documents: listResult.documents,
+		availableDocuments: listResult.availableDocuments,
+		status: listResult.status,
+		...(listResult.query ? { query: listResult.query } : {}),
+		limit: listResult.limit,
+		offset: listResult.offset,
+		totalVisible: listResult.totalVisible,
+		totalAvailable: listResult.totalAvailable,
+		totalMatched: listResult.totalMatched,
+		hasMore: listResult.hasMore,
+		availableOffset: listResult.availableOffset,
+		availableHasMore: listResult.availableHasMore,
+		...(listResult.nextCursor ? { nextCursor: listResult.nextCursor } : {}),
+		...(listResult.availableNextCursor
+			? { availableNextCursor: listResult.availableNextCursor }
+			: {}),
+	};
 	await emit(callback, { text, actions: ["DOCUMENT"] });
 	return result(true, text, "list", {
-		values: { documents },
-		data: { documents },
+		values: listData,
+		data: listData,
 	});
 }
 
@@ -1258,9 +1223,9 @@ export const documentAction: Action = {
 				case "write":
 					return handleWrite(runtime, service, message, params, callback);
 				case "edit":
-					return handleEdit(runtime, service, message, params, callback);
+					return handleEdit(service, message, params, callback);
 				case "delete":
-					return handleDelete(runtime, service, message, params, callback);
+					return handleDelete(service, message, params, callback);
 				case "list":
 					return handleList(service, message, params, callback);
 				case "import_file":

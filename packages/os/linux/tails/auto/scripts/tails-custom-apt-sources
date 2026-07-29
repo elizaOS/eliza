@@ -34,6 +34,17 @@ output_overlay_apt_binary_sources() {
 [ "$(wc -l < config/base_branch)" -eq 1 ] \
     || fatal 'config/base_branch must contain exactly one line'
 
+if [ -n "${TAILS_CUSTOM_APT_SUITE:-}" ]; then
+	case "$TAILS_CUSTOM_APT_SUITE" in
+		*[!a-zA-Z0-9._~-]*)
+			fatal "Invalid Tails custom APT suite: $TAILS_CUSTOM_APT_SUITE"
+			;;
+	esac
+	output_apt_binary_source "$TAILS_CUSTOM_APT_SUITE"
+	output_overlay_apt_binary_sources
+	exit 0
+fi
+
 if on_base_branch && ! [ "$(base_branch)" = "$(git_current_branch)" ] ; then
 	echo "base_branch: $(base_branch)" >&2
 	echo "current_branch: $(git_current_branch)" >&2
@@ -51,4 +62,3 @@ else
 	output_apt_binary_source "$(branch_name_to_suite "$(base_branch)")"
 	output_overlay_apt_binary_sources
 fi
-

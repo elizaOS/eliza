@@ -287,6 +287,11 @@ export function ModelTesterView({
 
   const snapshot: ModelTesterSnapshot = {
     prompt,
+    activePreset: (
+      Object.entries(PROMPT_BY_PRESET) as Array<
+        [NonNullable<ModelTesterSnapshot["activePreset"]>, string]
+      >
+    ).find(([, presetPrompt]) => presetPrompt === prompt)?.[0],
     probes,
     readyCount: probes.filter((probe) => probe.available).length,
     runningCount: probes.filter((probe) => probe.running).length,

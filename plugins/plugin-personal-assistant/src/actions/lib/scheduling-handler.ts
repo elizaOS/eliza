@@ -40,7 +40,7 @@ import type {
   LifeOpsCalendarFeed,
 } from "@elizaos/shared";
 import { hasLifeOpsAccess, INTERNAL_URL } from "../../lifeops/access.js";
-import { PgApprovalQueue } from "../../lifeops/approval-queue.js";
+import { createApprovalQueue } from "../../lifeops/approval-queue.js";
 import type {
   ApprovalChannel,
   ApprovalPayload,
@@ -958,7 +958,7 @@ async function enqueueSchedulingDraft(args: {
     idempotencyKey: schedulingDeliveryIdempotencyKey(scheduling.contentSha256),
     expiresAt: schedulingApprovalExpiresAt(scheduling.sourceUpdatedAt),
   } as const;
-  const queue = new PgApprovalQueue(args.runtime, {
+  const queue = createApprovalQueue(args.runtime, {
     agentId: args.runtime.agentId,
   });
   const enqueued = await queue.enqueueTransactional(input, args.tx);
@@ -979,7 +979,7 @@ async function surfaceSchedulingApproval(
   approval: SchedulingApprovalEnqueueResult | null,
 ): Promise<void> {
   if (!approval?.needsSurface) return;
-  const queue = new PgApprovalQueue(runtime, { agentId: runtime.agentId });
+  const queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
   try {
     await queue.surfaceEnqueuedApproval(approval.request);
   } catch (error) {

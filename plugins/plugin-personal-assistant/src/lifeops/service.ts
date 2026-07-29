@@ -2227,6 +2227,7 @@ export class LifeOpsService extends LifeOpsServiceBase {
     /** Discord user id target (DM via createDM); exclusive with channelId. */
     userId?: string;
     text: string;
+    allowTransportFallback?: boolean;
   }): Promise<DiscordSendMessageResult> {
     return this.discordDomain.sendDiscordMessage(request);
   }
@@ -2372,6 +2373,7 @@ export class LifeOpsService extends LifeOpsServiceBase {
       search?: SearchFlightsRequest | null;
       passengers: ReadonlyArray<TravelBookingPassenger>;
       calendarSync?: TravelCalendarSyncPlan | null;
+      calendarGrantId?: string;
     },
   ): Promise<FlightBookingExecutionResult> {
     const result = await this.travelDomain.bookFlightItinerary(

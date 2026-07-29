@@ -37,6 +37,7 @@ export interface LifeOpsDiscordService {
     /** Discord user id target (DM via createDM); exclusive with channelId. */
     userId?: string;
     text: string;
+    allowTransportFallback?: boolean;
   }): Promise<DiscordSendMessageResult>;
   verifyDiscordConnector(request: {
     side?: LifeOpsConnectorSide;

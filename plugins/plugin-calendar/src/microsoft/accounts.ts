@@ -458,11 +458,52 @@ function parseTokenSet(
   };
 }
 
+/**
+ * Narrow the runtime's database adapter to the credential-ref surface.
+ *
+ * Every method is optional because adapters vary by deployment, so the shape is
+ * verified method-by-method rather than asserted: an adapter that exposes only
+ * some of them yields an object carrying exactly those, and callers keep their
+ * existing per-method guards.
+ */
 function adapterForRuntime(
   runtime: IAgentRuntime,
 ): CredentialRefAdapter | null {
-  const adapter = (runtime as { adapter?: unknown }).adapter;
-  return record(adapter) ? (adapter as CredentialRefAdapter) : null;
+  const candidate = record(
+    (runtime as { adapter?: unknown }).adapter,
+  );
+  if (!candidate) return null;
+  const listRefs = candidate.listConnectorAccountCredentialRefs;
+  const getRef = candidate.getConnectorAccountCredentialRef;
+  const setRef = candidate.setConnectorAccountCredentialRef;
+  return {
+    ...(typeof listRefs === "function"
+      ? {
+          listConnectorAccountCredentialRefs:
+            listRefs.bind(candidate) as NonNullable<
+              CredentialRefAdapter["listConnectorAccountCredentialRefs"]
+            >,
+        }
+      : {}),
+    ...(typeof getRef === "function"
+      ? {
+          getConnectorAccountCredentialRef: getRef.bind(
+            candidate,
+          ) as NonNullable<
+            CredentialRefAdapter["getConnectorAccountCredentialRef"]
+          >,
+        }
+      : {}),
+    ...(typeof setRef === "function"
+      ? {
+          setConnectorAccountCredentialRef: setRef.bind(
+            candidate,
+          ) as NonNullable<
+            CredentialRefAdapter["setConnectorAccountCredentialRef"]
+          >,
+        }
+      : {}),
+  };
 }
 
 async function loadCredentialRefs(

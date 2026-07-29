@@ -19,8 +19,8 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  *
  * Criteria for "stuck":
  *   - status = 'provisioning'
- *   - updated_at < NOW() - 10 minutes  (well beyond any normal provision time)
- *   - no jobs row in ('pending', 'in_progress') whose agent_id matches
+ *   - updated_at < NOW() - 20 minutes
+ *   - no active provisioning-owner job whose agent_id matches
  *
  * Action: set status = 'error', write a descriptive error_message so the user
  * can see what happened and re-provision.
@@ -31,10 +31,15 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import { verifyCronSecret } from "@/lib/auth/cron";
+import {
+  ORPHAN_PENDING_THRESHOLD_MS,
+  STUCK_PROVISIONING_THRESHOLD_MS,
+} from "@/lib/services/provisioning-job-types";
 import { logger } from "@/lib/utils/logger";
 
-/** How long an agent must be stuck before we reset it (ms). */
-const STUCK_THRESHOLD_MINUTES = 10;
+const STUCK_PROVISIONING_THRESHOLD_MINUTES =
+  STUCK_PROVISIONING_THRESHOLD_MS / 60_000;
+const ORPHAN_PENDING_THRESHOLD_MINUTES = ORPHAN_PENDING_THRESHOLD_MS / 60_000;
 
 interface CleanupResult {
   agentId: string;
@@ -57,7 +62,9 @@ async function handleCleanupStuckProvisioning(
 
     logger.info("[Cleanup Stuck Provisioning] Starting scan");
 
-    const cutoff = new Date(Date.now() - STUCK_THRESHOLD_MINUTES * 60 * 1000);
+    const stuckProvisioningCutoff = new Date(
+      Date.now() - STUCK_PROVISIONING_THRESHOLD_MINUTES * 60 * 1000,
+    );
 
     /**
      * Single UPDATE … RETURNING query:
@@ -78,10 +85,11 @@ async function handleCleanupStuckProvisioning(
      * The repository runs this on the write path so it lands on the primary
      * replica and is subject to the write path's connection pool.
      */
-    const stuckAgents =
+    const stuckBatch =
       await agentSandboxesRepository.markStuckProvisioningWithoutActiveJobAsError(
-        cutoff,
+        stuckProvisioningCutoff,
       );
+    const stuckAgents = stuckBatch.updated;
 
     const results: CleanupResult[] = stuckAgents.map((row) => ({
       agentId: row.agentId,
@@ -89,7 +97,7 @@ async function handleCleanupStuckProvisioning(
       organizationId: row.organizationId,
       // updatedAt is now the new timestamp; we can't recover the old one here,
       // but the log message below captures the count.
-      stuckSinceMinutes: STUCK_THRESHOLD_MINUTES, // minimum — actual may be longer
+      stuckSinceMinutes: STUCK_PROVISIONING_THRESHOLD_MINUTES, // minimum — actual may be longer
     }));
 
     if (results.length > 0) {
@@ -112,12 +120,17 @@ async function handleCleanupStuckProvisioning(
      * write). The daemon only claims rows that HAVE a job, so these are
      * structurally unclaimable and would sit `pending` forever with a null
      * error_message. Mark them `error` (never re-enqueue — env-prep may have
-     * failed) so the user sees the failure and can retry. Same cutoff/threshold.
+     * failed) so the user sees the failure and can retry. This uses its own
+     * cutoff because no container boot is in flight.
      */
-    const orphanedPending =
+    const orphanPendingCutoff = new Date(
+      Date.now() - ORPHAN_PENDING_THRESHOLD_MINUTES * 60 * 1000,
+    );
+    const orphanedPendingBatch =
       await agentSandboxesRepository.markOrphanedPendingWithoutJobAsError(
-        cutoff,
+        orphanPendingCutoff,
       );
+    const orphanedPending = orphanedPendingBatch.updated;
 
     // Orphans have no stuckSinceMinutes (the created_at staleness drives them,
     // not updated_at), so project them once into the shared shape and reuse it
@@ -145,13 +158,21 @@ async function handleCleanupStuckProvisioning(
       data: {
         cleaned: results.length,
         cleanedOrphanedPending: orphanedPendingAgents.length,
-        thresholdMinutes: STUCK_THRESHOLD_MINUTES,
+        deferredLockContended:
+          stuckBatch.deferred + orphanedPendingBatch.deferred,
+        deferredStuckProvisioning: stuckBatch.deferred,
+        deferredOrphanedPending: orphanedPendingBatch.deferred,
+        thresholdMinutes: STUCK_PROVISIONING_THRESHOLD_MINUTES,
+        stuckProvisioningThresholdMinutes: STUCK_PROVISIONING_THRESHOLD_MINUTES,
+        orphanPendingThresholdMinutes: ORPHAN_PENDING_THRESHOLD_MINUTES,
         timestamp: new Date().toISOString(),
         agents: results,
         orphanedPendingAgents,
       },
     });
   } catch (error) {
+    // error-policy:J1 cron transport boundary returns an explicit failed
+    // response after recording the underlying repository failure.
     logger.error(
       "[Cleanup Stuck Provisioning] Failed:",
       error instanceof Error ? error.message : String(error),

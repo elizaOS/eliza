@@ -50,6 +50,8 @@ class TestDelegationRepository implements DelegationContractRepository {
 }
 
 class TestApprovalQueue implements ApprovalQueue {
+  readonly capability = "eliza.approval-execution";
+  readonly protocolVersion = 2;
   private readonly requests: ApprovalRequest[] = [];
 
   async enqueue(input: ApprovalEnqueueInput): Promise<ApprovalRequest> {
@@ -70,6 +72,7 @@ class TestApprovalQueue implements ApprovalQueue {
       resolvedAt: null,
       resolvedBy: null,
       resolutionReason: null,
+      execution: null,
     };
     this.requests.push(request);
     return request;
@@ -91,12 +94,21 @@ class TestApprovalQueue implements ApprovalQueue {
     );
   }
 
-  async byId(id: string): Promise<ApprovalRequest | null> {
-    return this.requests.find((request) => request.id === id) ?? null;
+  async byId(
+    id: string,
+    subjectUserId: string,
+  ): Promise<ApprovalRequest | null> {
+    return (
+      this.requests.find(
+        (request) =>
+          request.id === id && request.subjectUserId === subjectUserId,
+      ) ?? null
+    );
   }
 
   async approve(
     _id: string,
+    _subjectUserId: string,
     _resolution: ApprovalResolution,
   ): Promise<ApprovalRequest> {
     throw new Error("TestApprovalQueue.approve is not used by this test.");
@@ -104,24 +116,39 @@ class TestApprovalQueue implements ApprovalQueue {
 
   async reject(
     _id: string,
+    _subjectUserId: string,
     _resolution: ApprovalResolution,
   ): Promise<ApprovalRequest> {
     throw new Error("TestApprovalQueue.reject is not used by this test.");
   }
 
-  async markExecuting(_id: string): Promise<ApprovalRequest> {
+  async claimExecution(): Promise<ApprovalRequest> {
+    throw new Error("TestApprovalQueue.claimExecution is not used.");
+  }
+  async markDispatchStarted(): Promise<ApprovalRequest> {
+    throw new Error("TestApprovalQueue.markDispatchStarted is not used.");
+  }
+  async markDone(): Promise<ApprovalRequest> {
+    throw new Error("TestApprovalQueue.markDone is not used.");
+  }
+  async markRetryableFailure(): Promise<ApprovalRequest> {
+    throw new Error("TestApprovalQueue.markRetryableFailure is not used.");
+  }
+  async markReconciliationRequired(): Promise<ApprovalRequest> {
     throw new Error(
-      "TestApprovalQueue.markExecuting is not used by this test.",
+      "TestApprovalQueue.markReconciliationRequired is not used.",
     );
   }
-
-  async markDone(_id: string): Promise<ApprovalRequest> {
-    throw new Error("TestApprovalQueue.markDone is not used by this test.");
+  async recoverUnstartedExecution(): Promise<ApprovalRequest> {
+    throw new Error("TestApprovalQueue.recoverUnstartedExecution is not used.");
   }
-
-  async markExpired(_id: string): Promise<ApprovalRequest> {
-    throw new Error("TestApprovalQueue.markExpired is not used by this test.");
+  async reconcileExecution(): Promise<ApprovalRequest> {
+    throw new Error("TestApprovalQueue.reconcileExecution is not used.");
   }
+  async markExpired(): Promise<ApprovalRequest> {
+    throw new Error("TestApprovalQueue.markExpired is not used.");
+  }
+  async removePending(): Promise<void> {}
 
   async purgeExpired(_now: Date): Promise<ReadonlyArray<string>> {
     return [];

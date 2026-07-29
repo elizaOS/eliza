@@ -108,6 +108,9 @@ describe("LauncherSurface", () => {
     expect(screen.getByTestId("launcher-page-window").className).toContain(
       "--eliza-chat-clearance",
     );
+    expect(screen.getByTestId("launcher-page-window").className).toContain(
+      "--eliza-chat-side-clearance",
+    );
 
     rerender(<LauncherSurface layout="embedded" />);
     expect(surface.getAttribute("data-layout")).toBe("embedded");

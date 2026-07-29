@@ -135,7 +135,10 @@ def _coerce_arguments_object(raw: Any, *, raw_block: str) -> dict[str, Any]:
         if not raw:
             return {}
         try:
-            raw = json.loads(raw)
+            # strict=False for the same reason as the block decoder: literal
+            # control characters inside multiline string arguments are common
+            # from small models and do not make the payload meaningless.
+            raw = json.loads(raw, strict=False)
         except json.JSONDecodeError as exc:
             raise ProviderError(
                 "Hermes <tool_call> arguments string was not valid JSON",
@@ -271,6 +274,58 @@ def _convert_messages_to_hermes(
     return user_system, rest
 
 
+def _decode_tool_call_payloads(raw: str, *, raw_block: str) -> list[dict[str, Any]]:
+    """Decode every consecutive JSON object inside one ``<tool_call>`` span.
+
+    Hermes-template models — especially small local ones — routinely concatenate
+    two complete call objects, ``{...}{...}`` or newline-separated, inside a
+    single block. Each is a call the model genuinely emitted, so a strict single
+    ``json.loads`` (which raises ``Extra data``) would abort an entire scenario
+    over well-formed output. Objects are therefore decoded front-to-back.
+
+    ``strict=False`` accepts literal control characters inside string values;
+    the same models emit raw newlines in multiline arguments. Strictness is kept
+    where it protects meaning: an undecodable *first* value still raises, and
+    trailing residue is dropped only once at least one object has parsed. The
+    verbatim response text is preserved upstream in the turn artifact, so
+    nothing salvaged here is hidden from review.
+    """
+    decoder = json.JSONDecoder(strict=False)
+    payloads: list[dict[str, Any]] = []
+    pos = 0
+    length = len(raw)
+    while pos < length:
+        while pos < length and raw[pos].isspace():
+            pos += 1
+        if pos >= length:
+            break
+        try:
+            value, end = decoder.raw_decode(raw, pos)
+        except json.JSONDecodeError as exc:
+            if payloads:
+                break
+            raise ProviderError(
+                "Hermes <tool_call> block was not valid JSON",
+                status=None,
+                body=raw_block,
+                provider="hermes",
+            ) from exc
+        if not isinstance(value, dict):
+            # The block regex anchors the span on `{`, so the first decoded
+            # value is always an object; a later non-object value is residue.
+            break
+        payloads.append(value)
+        pos = end
+    if not payloads:
+        raise ProviderError(
+            "Hermes <tool_call> payload was not a JSON object",
+            status=None,
+            body=raw_block,
+            provider="hermes",
+        )
+    return payloads
+
+
 def _parse_hermes_response_text(
     text: str,
     *,
@@ -279,31 +334,20 @@ def _parse_hermes_response_text(
     """Extract ``<tool_call>`` blocks; return (prose_without_calls, parsed_calls)."""
     parsed: list[ToolCall] = []
     matches = list(_TOOL_CALL_RE.finditer(text))
-    for index, match in enumerate(matches):
-        try:
-            payload = json.loads(match.group(1))
-        except json.JSONDecodeError as exc:
-            raise ProviderError(
-                "Hermes <tool_call> block was not valid JSON",
-                status=None,
-                body=match.group(0),
-                provider="hermes",
-            ) from exc
-        if not isinstance(payload, dict):
-            raise ProviderError(
-                "Hermes <tool_call> payload was not a JSON object",
-                status=None,
-                body=match.group(0),
-                provider="hermes",
+    for match in matches:
+        for payload in _decode_tool_call_payloads(
+            match.group(1), raw_block=match.group(0)
+        ):
+            name, arguments = _payload_name_and_arguments(
+                payload, raw_block=match.group(0)
             )
-        name, arguments = _payload_name_and_arguments(payload, raw_block=match.group(0))
-        parsed.append(
-            ToolCall(
-                id=f"{call_id_prefix}_{index}",
-                name=name,
-                arguments=arguments,
+            parsed.append(
+                ToolCall(
+                    id=f"{call_id_prefix}_{len(parsed)}",
+                    name=name,
+                    arguments=arguments,
+                )
             )
-        )
     if parsed:
         prose = _TOOL_CALL_RE.sub("", text).strip()
         return (prose if prose else None), parsed

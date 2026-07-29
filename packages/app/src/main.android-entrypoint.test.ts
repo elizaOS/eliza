@@ -21,6 +21,7 @@ const androidBoot = vi.hoisted(() => ({
   installDiarization: vi.fn(),
   installJniVoice: vi.fn(),
   installAec: vi.fn(),
+  initializeDeepLinks: vi.fn(),
   initializeAppLifecycle: vi.fn(),
   initializeNetworkListener: vi.fn(async () => undefined),
   startCameraBridgeResponder: vi.fn(() => vi.fn()),
@@ -97,6 +98,7 @@ vi.mock("@elizaos/capacitor-appblocker", () => ({
 }));
 vi.mock("./mobile-lifecycle", () => ({
   createMobileLifecycle: vi.fn(() => ({
+    initializeDeepLinks: androidBoot.initializeDeepLinks,
     initializeAppLifecycle: androidBoot.initializeAppLifecycle,
     initializeNetworkListener: androidBoot.initializeNetworkListener,
   })),
@@ -142,6 +144,7 @@ beforeEach(() => {
 describe("renderer Android local composition", () => {
   it("connects the native agent and device bridges after mounting", async () => {
     const main = await import("./main");
+    expect(androidBoot.initializeDeepLinks).toHaveBeenCalledOnce();
     if (document.readyState === "loading") {
       document.dispatchEvent(new Event("DOMContentLoaded"));
     }

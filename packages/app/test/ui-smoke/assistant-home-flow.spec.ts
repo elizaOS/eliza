@@ -12,6 +12,7 @@ import {
   openAppPath,
   seedAppStorage,
 } from "./helpers";
+import { navigateHomeLauncher } from "./helpers/launcher-navigation";
 import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
 
 const SCREENSHOT_DIR = path.join(
@@ -428,19 +429,6 @@ function assistantMicButton(page: Page) {
 
 function launcherTile(page: Page, viewId: string) {
   return page.getByTestId(`launcher-tile-${viewId}`).first();
-}
-
-async function openHomeLauncher(page: Page): Promise<void> {
-  const surface = page.getByTestId("home-launcher-surface");
-  await expect(surface).toBeVisible({ timeout: 15_000 });
-  // Home and apps share one combined surface: the launcher grid is embedded
-  // under the "Apps" region of the home column — scroll it into view the way
-  // a user would; there is no separate launcher page to navigate to.
-  const appsRegion = page.getByTestId("home-apps-scroll");
-  await expect(appsRegion).toBeVisible({ timeout: 15_000 });
-  const settingsTile = appsRegion.getByTestId("launcher-tile-settings");
-  await settingsTile.scrollIntoViewIfNeeded();
-  await expect(settingsTile).toBeVisible({ timeout: 15_000 });
 }
 
 function conversationLog(page: Page) {
@@ -940,18 +928,16 @@ test.describe("assistant home app flow", () => {
 
     await openReadyChat(page, "/chat");
 
-    // The home dashboard renders behind the floating chat. App launchers live
-    // on the embedded launcher grid of the combined home surface.
+    // The home dashboard renders behind the floating chat. The launcher is the
+    // second page of the shared Home/Launcher rail.
     await expect(page.getByTestId("home-launcher-surface")).toHaveAttribute(
       "data-page",
       "home",
     );
     await expect(page.getByTestId("home-screen")).toBeVisible();
 
-    await openHomeLauncher(page);
-    const settingsTile = page
-      .getByTestId("home-apps-scroll")
-      .getByTestId("launcher-tile-settings");
+    const launcher = await navigateHomeLauncher(page, "launcher");
+    const settingsTile = launcher.getByTestId("launcher-tile-settings");
     await expect(settingsTile).toBeVisible({ timeout: 15_000 });
 
     // Tapping the Settings tile navigates to the Settings view (setTab path).

@@ -1,4 +1,12 @@
 /** Types for the owner-approval queue: request states, action kinds, and payload shapes. */
+import {
+  APPROVAL_EXECUTION_CAPABILITY,
+  APPROVAL_EXECUTION_PROTOCOL_VERSION,
+  ApprovalIdempotencyConflictError as RuntimeApprovalIdempotencyConflictError,
+  ApprovalNotFoundError as RuntimeApprovalNotFoundError,
+  ApprovalStateTransitionError as RuntimeApprovalStateTransitionError,
+} from "@elizaos/agent";
+import type { TransactionalDb } from "./sql.js";
 import type { TravelBookingPayloadFields } from "./travel-booking.types.js";
 
 export const SCHEDULING_APPROVAL_MESSAGE_KINDS = [
@@ -44,6 +52,8 @@ export type ApprovalRequestState =
   | "pending"
   | "approved"
   | "executing"
+  | "retryable"
+  | "reconciliation_required"
   | "done"
   | "rejected"
   | "expired";
@@ -77,6 +87,19 @@ export type ApprovalChannel =
   | "browser"
   | "phone"
   | "internal";
+
+export interface ApprovalExecution {
+  readonly attemptId: string;
+  readonly provider: string;
+  readonly providerIdempotencyKey: string;
+  readonly claimedAt: Date;
+  readonly dispatchStartedAt: Date | null;
+  readonly providerReceipt: Readonly<Record<string, unknown>> | null;
+  readonly error: string | null;
+  readonly reconciledAt: Date | null;
+  readonly reconciledBy: string | null;
+  readonly reconciliationReason: string | null;
+}
 
 export type CalendarMutationRecurrenceScope =
   | "instance"
@@ -287,6 +310,7 @@ export interface ApprovalRequest {
   readonly resolvedAt: Date | null;
   readonly resolvedBy: string | null;
   readonly resolutionReason: string | null;
+  readonly execution: ApprovalExecution | null;
 }
 
 /**
@@ -315,18 +339,12 @@ export interface ApprovalEnqueueInput {
   readonly expiresAt: Date;
 }
 
-/** A reused idempotency key must describe the same immutable approval. */
-export class ApprovalIdempotencyConflictError extends Error {
-  public readonly idempotencyKey: string;
-
-  constructor(idempotencyKey: string) {
-    super(
-      `[ApprovalQueue] idempotency key ${idempotencyKey} already identifies a different approval request`,
-    );
-    this.name = "ApprovalIdempotencyConflictError";
-    this.idempotencyKey = idempotencyKey;
-  }
-}
+/**
+ * A reused idempotency key must describe the same immutable approval. Thrown
+ * by the runtime store, so LifeOps re-exports that class rather than declaring
+ * a look-alike `instanceof` would not match.
+ */
+export { RuntimeApprovalIdempotencyConflictError as ApprovalIdempotencyConflictError };
 
 /** Filter for `list`. All fields combine with AND. */
 export interface ApprovalListFilter {
@@ -342,26 +360,41 @@ export interface ApprovalResolution {
   readonly resolutionReason: string;
 }
 
-/** Thrown when a state transition is invalid. */
-export class ApprovalStateTransitionError extends Error {
-  public readonly requestId: string;
-  public readonly from: ApprovalRequestState;
-  public readonly to: ApprovalRequestState;
-
-  constructor(
-    requestId: string,
-    from: ApprovalRequestState,
-    to: ApprovalRequestState,
-  ) {
-    super(
-      `[ApprovalQueue] invalid transition for request ${requestId}: ${from} -> ${to}`,
-    );
-    this.name = "ApprovalStateTransitionError";
-    this.requestId = requestId;
-    this.from = from;
-    this.to = to;
-  }
+export interface ApprovalExecutionClaim {
+  readonly requestId: string;
+  readonly subjectUserId: string;
+  readonly provider: string;
+  readonly providerIdempotencyKey: string;
 }
+
+export interface ApprovalExecutionMutation {
+  readonly requestId: string;
+  readonly subjectUserId: string;
+  readonly attemptId: string;
+}
+
+export interface ApprovalExecutionFailure extends ApprovalExecutionMutation {
+  readonly error: string;
+  readonly providerReceipt?: Readonly<Record<string, unknown>>;
+}
+
+export interface ApprovalExecutionCompletion extends ApprovalExecutionMutation {
+  readonly providerReceipt: Readonly<Record<string, unknown>>;
+}
+
+export interface ApprovalExecutionReconciliation
+  extends ApprovalExecutionMutation {
+  readonly outcome: "delivered" | "not_delivered";
+  readonly reconciledBy: string;
+  readonly reconciliationReason: string;
+  readonly providerReceipt?: Readonly<Record<string, unknown>>;
+}
+
+/** Thrown when a state transition is invalid. */
+export {
+  RuntimeApprovalNotFoundError as ApprovalNotFoundError,
+  RuntimeApprovalStateTransitionError as ApprovalStateTransitionError,
+};
 
 /**
  * Thrown when a compare-and-swap state transition loses a concurrent race:
@@ -372,7 +405,7 @@ export class ApprovalStateTransitionError extends Error {
  * still applies; callers may match this class first to surface the conflict
  * distinctly.
  */
-export class ApprovalTransitionConflictError extends ApprovalStateTransitionError {
+export class ApprovalTransitionConflictError extends RuntimeApprovalStateTransitionError {
   constructor(
     requestId: string,
     actualState: ApprovalRequestState,
@@ -384,25 +417,35 @@ export class ApprovalTransitionConflictError extends ApprovalStateTransitionErro
   }
 }
 
-/** Thrown when an operation references an unknown request id. */
-export class ApprovalNotFoundError extends Error {
-  public readonly requestId: string;
+/** Thrown before resolution when a registered queue predates required methods. */
+export class ApprovalQueueCompatibilityError extends Error {
+  public readonly actualCapability: unknown;
+  public readonly actualVersion: unknown;
 
-  constructor(requestId: string) {
-    super(`[ApprovalQueue] request not found: ${requestId}`);
-    this.name = "ApprovalNotFoundError";
-    this.requestId = requestId;
+  constructor(actualCapability: unknown, actualVersion: unknown) {
+    super(
+      `[ApprovalQueue] registered capability is incompatible; expected ${APPROVAL_EXECUTION_CAPABILITY}@${APPROVAL_EXECUTION_PROTOCOL_VERSION}`,
+    );
+    this.name = "ApprovalQueueCompatibilityError";
+    this.actualCapability = actualCapability;
+    this.actualVersion = actualVersion;
   }
 }
 
 /**
- * Queue interface. Implementations must:
+ * The subject-scoped approval state machine. `@elizaos/agent` owns the only
+ * SQL implementation; LifeOps re-declares the contract here because its
+ * payload/channel unions are richer than the runtime's structural ones.
+ *
+ * Implementations must:
  *  - Reject invalid state transitions by throwing `ApprovalStateTransitionError`.
  *  - Reject unknown ids by throwing `ApprovalNotFoundError`.
  *  - Use the structured logger only (no `console.*`).
  *  - Treat `purgeExpired` as idempotent.
  */
-export interface ApprovalQueue {
+export interface ApprovalExecutionCapability {
+  readonly capability: typeof APPROVAL_EXECUTION_CAPABILITY;
+  readonly protocolVersion: typeof APPROVAL_EXECUTION_PROTOCOL_VERSION;
   enqueue(input: ApprovalEnqueueInput): Promise<ApprovalRequest>;
   enqueueWithResult(
     input: ApprovalEnqueueInput,
@@ -415,14 +458,63 @@ export interface ApprovalQueue {
     input: ApprovalEnqueueInput,
     resolution: ApprovalResolution,
   ): Promise<ApprovalRequest>;
+  /**
+   * Insert or reuse an approval inside the caller's transaction so a domain
+   * mutation and its owner gate commit together. Owner-facing side channels
+   * run after the commit via {@link ApprovalQueue.surfaceEnqueuedApproval}.
+   */
+  enqueueTransactional(
+    input: ApprovalEnqueueInput,
+    tx: TransactionalDb,
+  ): Promise<ApprovalEnqueueResult>;
   list(filter: ApprovalListFilter): Promise<ReadonlyArray<ApprovalRequest>>;
-  byId(id: string): Promise<ApprovalRequest | null>;
-  byIdempotencyKey(idempotencyKey: string): Promise<ApprovalRequest | null>;
-  approve(id: string, resolution: ApprovalResolution): Promise<ApprovalRequest>;
-  reject(id: string, resolution: ApprovalResolution): Promise<ApprovalRequest>;
-  markExecuting(id: string): Promise<ApprovalRequest>;
-  markDone(id: string): Promise<ApprovalRequest>;
+  byId(id: string, subjectUserId: string): Promise<ApprovalRequest | null>;
+  byIdempotencyKey(
+    idempotencyKey: string,
+    subjectUserId: string,
+  ): Promise<ApprovalRequest | null>;
+  approve(
+    id: string,
+    subjectUserId: string,
+    resolution: ApprovalResolution,
+  ): Promise<ApprovalRequest>;
+  reject(
+    id: string,
+    subjectUserId: string,
+    resolution: ApprovalResolution,
+  ): Promise<ApprovalRequest>;
+  claimExecution(claim: ApprovalExecutionClaim): Promise<ApprovalRequest>;
+  markDispatchStarted(
+    mutation: ApprovalExecutionMutation,
+  ): Promise<ApprovalRequest>;
+  markDone(completion: ApprovalExecutionCompletion): Promise<ApprovalRequest>;
+  markRetryableFailure(
+    failure: ApprovalExecutionFailure,
+  ): Promise<ApprovalRequest>;
+  markReconciliationRequired(
+    failure: ApprovalExecutionFailure,
+  ): Promise<ApprovalRequest>;
+  recoverUnstartedExecution(
+    mutation: ApprovalExecutionMutation,
+  ): Promise<ApprovalRequest>;
+  reconcileExecution(
+    reconciliation: ApprovalExecutionReconciliation,
+  ): Promise<ApprovalRequest>;
   /** Terminally invalidate a pending or approved request without dispatch. */
-  markExpired(id: string): Promise<ApprovalRequest>;
+  markExpired(id: string, subjectUserId: string): Promise<ApprovalRequest>;
+  removePending(id: string, subjectUserId: string): Promise<void>;
   purgeExpired(now: Date): Promise<ReadonlyArray<string>>;
+}
+
+/**
+ * What LifeOps consumers hold: the runtime capability plus the owner-facing
+ * surfacing the runtime cannot do (a scheduled approval task, the chat choice
+ * event, and the notification rail).
+ */
+export interface ApprovalQueue extends ApprovalExecutionCapability {
+  /**
+   * Raise the owner prompt for a row that is already committed. Separate from
+   * enqueue so a transactional caller surfaces only after its commit.
+   */
+  surfaceEnqueuedApproval(request: ApprovalRequest): Promise<void>;
 }

@@ -1,7 +1,8 @@
-// Runtime bridge inventory for plugin-backed app pages. These views are not all
-// shell-owned: some are registered in-process through registerAppShellPage,
-// while Feed is served as a dynamic/spatial view. The common requirement is the
-// same: chat/voice can address their controls through view-interact.
+/**
+ * Runtime bridge inventory for plugin-backed app pages. These views are not all
+ * shell-owned, but chat and voice must address their visible controls through
+ * view-interact.
+ */
 
 import { expect, type Page, test } from "@playwright/test";
 import {
@@ -42,7 +43,7 @@ const PLUGIN_VIEW_TARGETS: readonly {
 }[] = [
   {
     label: "Wallet",
-    path: "/wallet",
+    path: "/inventory",
     viewId: "wallet.inventory",
     ready: { testId: "wallet-shell" },
     requiredIds: ["tab-tokens", "tab-defi", "account-rpc-settings"],
@@ -51,8 +52,8 @@ const PLUGIN_VIEW_TARGETS: readonly {
     label: "Orchestrator",
     path: "/orchestrator",
     viewId: "orchestrator",
-    ready: { text: /Pause all/i },
-    requiredIds: ["pause-all", "resume-all", "refresh"],
+    ready: { testId: "orchestrator-accounts-toggle" },
+    requiredIds: ["header-accounts-toggle"],
   },
   {
     label: "Feed",
@@ -160,16 +161,19 @@ test("registered app-shell plugin pages can be clicked through the bridge", asyn
   page,
 }) => {
   await openAppPath(page, "/orchestrator");
-  await expect(page.getByRole("button", { name: /Pause all/i })).toBeVisible({
+  await expect(page.getByTestId("orchestrator-accounts-toggle")).toBeVisible({
     timeout: 60_000,
   });
   await waitForAgentBridge(page);
-  const refreshClick = (await interact(page, "orchestrator", "agent-click", {
-    id: "refresh",
+  const accountsClick = (await interact(page, "orchestrator", "agent-click", {
+    id: "header-accounts-toggle",
   })) as { ok?: boolean };
-  expect(refreshClick?.ok).toBe(true);
+  expect(accountsClick?.ok).toBe(true);
+  await expect(
+    page.getByTestId("orchestrator-accounts-toggle"),
+  ).toHaveAttribute("aria-pressed", "true");
 
-  await openAppPath(page, "/wallet");
+  await openAppPath(page, "/inventory");
   await expect(page.getByTestId("wallet-shell")).toBeVisible({
     timeout: 60_000,
   });

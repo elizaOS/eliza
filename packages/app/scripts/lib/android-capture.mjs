@@ -21,6 +21,47 @@ function isNonEmptyFile(filePath) {
   }
 }
 
+export function isFinalizedMp4(filePath) {
+  if (!isNonEmptyFile(filePath)) return false;
+
+  const fd = fs.openSync(filePath, "r");
+  try {
+    const fileSize = fs.fstatSync(fd).size;
+    const header = Buffer.alloc(16);
+    let offset = 0;
+    let sawFileType = false;
+    let sawMovie = false;
+
+    while (offset + 8 <= fileSize) {
+      const bytesRead = fs.readSync(fd, header, 0, 16, offset);
+      if (bytesRead < 8) return false;
+
+      const size32 = header.readUInt32BE(0);
+      const type = header.toString("ascii", 4, 8);
+      let boxSize = size32;
+      let headerSize = 8;
+      if (size32 === 1) {
+        if (bytesRead < 16) return false;
+        const size64 = header.readBigUInt64BE(8);
+        if (size64 > BigInt(Number.MAX_SAFE_INTEGER)) return false;
+        boxSize = Number(size64);
+        headerSize = 16;
+      } else if (size32 === 0) {
+        boxSize = fileSize - offset;
+      }
+
+      if (boxSize < headerSize || offset + boxSize > fileSize) return false;
+      if (type === "ftyp") sawFileType = true;
+      if (type === "moov") sawMovie = true;
+      offset += boxSize;
+    }
+
+    return sawFileType && sawMovie && offset === fileSize;
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
 export async function startAndroidScreenRecord({
   adb = resolveAdb(),
   serial,
@@ -70,16 +111,9 @@ export async function startAndroidScreenRecord({
       spawnSync(adb, ["-s", serial, "shell", "pkill", "-INT", "screenrecord"], {
         stdio: "ignore",
       });
-      if (recorder.exitCode === null) recorder.kill("SIGINT");
-      await Promise.race([
-        new Promise((resolve) => recorder.once("close", resolve)),
-        delay(3_000),
-      ]);
-      // The local adb process closing does not mean the on-device screenrecord
-      // has finished: it still has to append the trailing moov atom, and
-      // pulling at that instant yields an unplayable MP4. Wait (bounded) for
-      // the device-side process to exit, re-sending SIGINT while it lives —
-      // a single pkill has been observed not landing.
+      // Keep the adb shell transport alive while the device encoder handles
+      // SIGINT and appends the trailing moov atom. Signaling the local adb
+      // process here can hang up screenrecord before finalization.
       const exitDeadline = Date.now() + 15_000;
       while (Date.now() < exitDeadline) {
         const pid = spawnSync(
@@ -95,6 +129,13 @@ export async function startAndroidScreenRecord({
         );
         await delay(500);
       }
+      if (recorder.exitCode === null) {
+        await Promise.race([
+          new Promise((resolve) => recorder.once("close", resolve)),
+          delay(3_000),
+        ]);
+      }
+      if (recorder.exitCode === null) recorder.kill("SIGTERM");
       // Belt over the pid check: require the remote file size to hold steady
       // across consecutive samples so a mid-flush pull can never grab a
       // truncated file (covers a transient pidof miss or the exit-wait
@@ -118,6 +159,11 @@ export async function startAndroidScreenRecord({
         stdio: "ignore",
       });
       if (!isNonEmptyFile(localPath)) return null;
+      if (!isFinalizedMp4(localPath)) {
+        fs.rmSync(localPath, { force: true });
+        log(`Android screenrecord did not finalize: ${remotePath}`);
+        return null;
+      }
       log(`wrote Android screenrecord: ${localPath}`);
       return localPath;
     },

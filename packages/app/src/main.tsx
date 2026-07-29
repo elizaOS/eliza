@@ -94,9 +94,9 @@ import {
 import {
   AGENT_READY_EVENT,
   COMMAND_PALETTE_EVENT,
-  CONNECT_EVENT,
   createNavigateViewEvent,
   dispatchAppEvent,
+  dispatchConnectRequest,
   MOBILE_RUNTIME_MODE_CHANGED_EVENT,
   SHARE_TARGET_EVENT,
   TRAY_ACTION_EVENT,
@@ -201,6 +201,7 @@ import {
 } from "./ios-runtime";
 import { startKeyboardDictationSession } from "./keyboard-dictation";
 import {
+  type AndroidDeepLinkBuffer,
   createMobileLifecycle,
   type MobileLifecycle,
 } from "./mobile-lifecycle";
@@ -1774,12 +1775,16 @@ async function initializeKeyboard(): Promise<void> {
 let mobileLifecycleInstance: MobileLifecycle | null = null;
 function getMobileLifecycle(): MobileLifecycle {
   if (!mobileLifecycleInstance) {
+    const androidDeepLinkBuffer = isAndroid
+      ? Capacitor.registerPlugin<AndroidDeepLinkBuffer>("DeepLinkBuffer")
+      : undefined;
     mobileLifecycleInstance = createMobileLifecycle({
       isNative,
       isIOS,
       isAndroid,
       logPrefix: APP_LOG_PREFIX,
       handleDeepLink,
+      androidDeepLinkBuffer,
     });
   }
   return mobileLifecycleInstance;
@@ -1828,7 +1833,7 @@ function connectFirstRunRemoteDeepLink(rawApiBase: string): void {
     token: null,
   });
   const dispatchConnect = () => {
-    dispatchAppEvent(CONNECT_EVENT, {
+    dispatchConnectRequest({
       gatewayUrl: connection.apiBase,
       completeFirstRun: true,
     });
@@ -2107,7 +2112,7 @@ function handleDeepLink(url: string): void {
             apiBase: validatedUrl.href,
             token: null,
           });
-          dispatchAppEvent(CONNECT_EVENT, {
+          dispatchConnectRequest({
             gatewayUrl: connection.apiBase,
             token: connection.token ?? undefined,
           });
@@ -3271,6 +3276,13 @@ async function main(): Promise<void> {
 function boot(): void {
   // error-policy:J1 boot boundary — every rejection renders the reload card
   void main().catch(renderBootFailure);
+}
+
+// Android can deliver a warm ACTION_VIEW while a WebView navigation is replacing
+// the old document. Arm URL capture before DOMContentLoaded so the intent cannot
+// be sent only to the previous document's dead Capacitor callback registry.
+if (isNative) {
+  getMobileLifecycle().initializeDeepLinks();
 }
 
 if (document.readyState === "loading") {

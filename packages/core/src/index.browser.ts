@@ -32,6 +32,7 @@ export * from "./connectors/connector-config";
 export * from "./connectors/oauth-role";
 export * from "./connectors/privacy";
 export * from "./database";
+export * from "./database/document-list-query";
 export * from "./database/inMemoryAdapter";
 export * from "./entities";
 // `isTruthyEnvValue` is pure string logic (no Node deps), so it is browser-safe

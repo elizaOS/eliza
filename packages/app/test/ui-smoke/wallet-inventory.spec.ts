@@ -91,9 +91,9 @@ test("wallet inventory exposes chain badges, rows, copy controls, and hide state
       .context()
       .grantPermissions(["clipboard-read", "clipboard-write"]);
   }
-  await openAppPath(page, "/wallet");
+  await openAppPath(page, "/inventory");
 
-  await expect(page).toHaveURL(/\/wallet$/, { timeout: 20_000 });
+  await expect(page).toHaveURL(/\/inventory$/, { timeout: 20_000 });
   const sidebar = await openWalletSidebar(page);
 
   await expect(sidebar.getByText("$1,550.50")).toBeVisible();

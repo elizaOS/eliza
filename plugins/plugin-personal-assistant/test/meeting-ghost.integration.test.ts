@@ -250,10 +250,14 @@ describe("meeting-ghost consumer (real approval queue)", () => {
 
     const firstEmail = result.enqueued.find((r) => r.action === "send_email");
     if (!firstEmail) throw new Error("expected a send_email approval");
-    const approved = await queue.approve(firstEmail.id, {
-      resolvedBy: "owner-mtg-1",
-      resolutionReason: "send it",
-    });
+    const approved = await queue.approve(
+      firstEmail.id,
+      firstEmail.subjectUserId,
+      {
+        resolvedBy: "owner-mtg-1",
+        resolutionReason: "send it",
+      },
+    );
     expect(approved.state).toBe("approved");
     if (approved.payload.action !== "send_email") {
       throw new Error("expected send_email payload");

@@ -368,10 +368,14 @@ describeIf(LIVE_SUITE_ENABLED)(
       }
       const targetRequest = pendingRequest;
 
-      const approved = await approvalQueue.approve(targetRequest.id, {
-        resolvedBy: String(ownerId),
-        resolutionReason: "Owner approved the Frontier Tower repair note.",
-      });
+      const approved = await approvalQueue.approve(
+        targetRequest.id,
+        targetRequest.subjectUserId,
+        {
+          resolvedBy: String(ownerId),
+          resolutionReason: "Owner approved the Frontier Tower repair note.",
+        },
+      );
       const execution = await executeApprovedRequest({
         runtime,
         queue: approvalQueue,

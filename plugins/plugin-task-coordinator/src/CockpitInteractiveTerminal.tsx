@@ -61,7 +61,9 @@ export function CockpitInteractiveTerminal({
   const [error, setError] = useState<string | null>(null);
   const [exitCode, setExitCode] = useState<number | null>(null);
   const spawnStartedRef = useRef(false);
+  const spawnInFlightRef = useRef(false);
   const activeSessionRef = useRef<string | null>(null);
+  const preResponseExitsRef = useRef(new Map<string, number | null>());
 
   // The cerebras tier only means something to eliza-code; the vendor CLIs
   // pick their own models.
@@ -74,16 +76,27 @@ export function CockpitInteractiveTerminal({
     setPhase("spawning");
     setError(null);
     setExitCode(null);
+    spawnInFlightRef.current = true;
     try {
       const { sessionId: id } = await ptyClient.spawnPtySession({
         kind,
         ...(kind === "eliza-code" ? { tier } : {}),
         ...(cwd ? { cwd } : {}),
       });
+      spawnInFlightRef.current = false;
       activeSessionRef.current = id;
       setSessionId(id);
-      setPhase("ready");
+      if (preResponseExitsRef.current.has(id)) {
+        activeSessionRef.current = null;
+        setExitCode(preResponseExitsRef.current.get(id) ?? null);
+        setPhase("ended");
+      } else {
+        setPhase("ready");
+      }
+      preResponseExitsRef.current.clear();
     } catch (e) {
+      spawnInFlightRef.current = false;
+      preResponseExitsRef.current.clear();
       setError(
         e instanceof Error
           ? e.message
@@ -104,18 +117,25 @@ export function CockpitInteractiveTerminal({
   // as a `pty-exit` WS event; without this the pane stays "ready" forever over
   // a dead session (nothing echoes, input goes nowhere).
   useEffect(() => {
-    if (!sessionId) return;
     return ptyClient.onWsEvent("pty-exit", (data: Record<string, unknown>) => {
-      if (data.sessionId !== sessionId) return;
+      const exitedSessionId =
+        typeof data.sessionId === "string" ? data.sessionId : null;
+      if (!exitedSessionId || activeSessionRef.current !== exitedSessionId) {
+        if (exitedSessionId && spawnInFlightRef.current) {
+          preResponseExitsRef.current.set(
+            exitedSessionId,
+            typeof data.exitCode === "number" ? data.exitCode : null,
+          );
+        }
+        return;
+      }
       // The process is already dead — clear the ref so unmount/close doesn't
       // issue a redundant stop against a reaped session.
-      if (activeSessionRef.current === sessionId) {
-        activeSessionRef.current = null;
-      }
+      activeSessionRef.current = null;
       setExitCode(typeof data.exitCode === "number" ? data.exitCode : null);
       setPhase("ended");
     });
-  }, [sessionId]);
+  }, []);
 
   // Kill the session when the terminal goes away — eliza-code is a REPL and
   // won't exit on its own, so an unclosed session would leave an orphan process.

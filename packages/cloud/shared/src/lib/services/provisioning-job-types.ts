@@ -97,23 +97,98 @@ export const JOB_TYPES = {
 export type ProvisioningJobType = (typeof JOB_TYPES)[keyof typeof JOB_TYPES];
 
 /**
- * Agent lifecycle operations that exclusively own placement and replacement
- * resources while pending or running. Cleanup and enqueue paths share this
- * list so a background reconciler cannot retire a blue candidate still owned
- * by an active operation.
+ * Lifecycle classification consumed by enqueue conflict detection, stale-job
+ * recovery, and sandbox reconciliation. Keeping these properties on one row
+ * per executor prevents a new lifecycle job from entering one safety set while
+ * silently missing another.
  */
-export const EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES: readonly ProvisioningJobType[] = [
-  JOB_TYPES.AGENT_PROVISION,
-  JOB_TYPES.AGENT_DELETE,
-  JOB_TYPES.AGENT_SUSPEND,
-  JOB_TYPES.AGENT_RESUME,
-  JOB_TYPES.AGENT_RESTART,
-  JOB_TYPES.AGENT_DOWNGRADE,
-  JOB_TYPES.AGENT_SLEEP,
-  JOB_TYPES.AGENT_WAKE,
-  JOB_TYPES.AGENT_UPGRADE,
-  JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
-];
+interface AgentLifecycleJobMetadata {
+  type: ProvisioningJobType;
+  exclusive: boolean;
+  coldBoot: boolean;
+  ownsProvisioningStatus: boolean;
+}
+
+export const AGENT_LIFECYCLE_JOB_METADATA = [
+  {
+    type: JOB_TYPES.AGENT_PROVISION,
+    exclusive: true,
+    coldBoot: true,
+    ownsProvisioningStatus: true,
+  },
+  {
+    type: JOB_TYPES.AGENT_DELETE,
+    exclusive: true,
+    coldBoot: false,
+    ownsProvisioningStatus: false,
+  },
+  {
+    type: JOB_TYPES.AGENT_SUSPEND,
+    exclusive: true,
+    coldBoot: false,
+    ownsProvisioningStatus: false,
+  },
+  {
+    type: JOB_TYPES.AGENT_RESUME,
+    exclusive: true,
+    coldBoot: true,
+    ownsProvisioningStatus: true,
+  },
+  {
+    type: JOB_TYPES.AGENT_RESTART,
+    exclusive: true,
+    coldBoot: true,
+    ownsProvisioningStatus: true,
+  },
+  {
+    type: JOB_TYPES.AGENT_LOGS,
+    exclusive: false,
+    coldBoot: false,
+    ownsProvisioningStatus: false,
+  },
+  {
+    type: JOB_TYPES.AGENT_MESSAGE,
+    exclusive: false,
+    coldBoot: false,
+    ownsProvisioningStatus: false,
+  },
+  {
+    type: JOB_TYPES.AGENT_SNAPSHOT,
+    exclusive: false,
+    coldBoot: false,
+    ownsProvisioningStatus: false,
+  },
+  {
+    type: JOB_TYPES.AGENT_UPGRADE,
+    exclusive: true,
+    coldBoot: true,
+    ownsProvisioningStatus: false,
+  },
+  {
+    type: JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
+    exclusive: true,
+    coldBoot: true,
+    ownsProvisioningStatus: false,
+  },
+  {
+    type: JOB_TYPES.AGENT_DOWNGRADE,
+    exclusive: true,
+    coldBoot: true,
+    ownsProvisioningStatus: false,
+  },
+  {
+    type: JOB_TYPES.AGENT_SLEEP,
+    exclusive: true,
+    coldBoot: false,
+    ownsProvisioningStatus: false,
+  },
+  {
+    type: JOB_TYPES.AGENT_WAKE,
+    exclusive: true,
+    coldBoot: true,
+    ownsProvisioningStatus: true,
+  },
+] as const satisfies readonly AgentLifecycleJobMetadata[];
 
 // ── Lanes (which daemon claims which jobs) ──────────────────────────────────
 // The one `jobs` table + ProvisioningJobService codepath is shared, but the
@@ -132,21 +207,35 @@ export const EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES: readonly ProvisioningJobType[]
 // A daemon scopes itself with `PROVISIONING_JOB_LANES` (comma list). Unset → ALL
 // types (the historical single-daemon behavior), so this split is INERT until a
 // second daemon is actually deployed and each side is pinned to its lane.
-export const AGENT_JOB_TYPES = [
-  JOB_TYPES.AGENT_PROVISION,
-  JOB_TYPES.AGENT_DELETE,
-  JOB_TYPES.AGENT_SUSPEND,
-  JOB_TYPES.AGENT_RESUME,
-  JOB_TYPES.AGENT_RESTART,
-  JOB_TYPES.AGENT_LOGS,
-  JOB_TYPES.AGENT_MESSAGE,
-  JOB_TYPES.AGENT_SNAPSHOT,
-  JOB_TYPES.AGENT_UPGRADE,
-  JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
-  JOB_TYPES.AGENT_DOWNGRADE,
-  JOB_TYPES.AGENT_SLEEP,
-  JOB_TYPES.AGENT_WAKE,
-] as const satisfies readonly ProvisioningJobType[];
+export const AGENT_JOB_TYPES: readonly ProvisioningJobType[] = AGENT_LIFECYCLE_JOB_METADATA.map(
+  ({ type }) => type,
+);
+
+export const EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES: readonly ProvisioningJobType[] =
+  AGENT_LIFECYCLE_JOB_METADATA.filter(({ exclusive }) => exclusive).map(({ type }) => type);
+
+export const COLD_BOOT_JOB_TYPES: ReadonlySet<ProvisioningJobType> = new Set(
+  AGENT_LIFECYCLE_JOB_METADATA.filter(({ coldBoot }) => coldBoot).map(({ type }) => type),
+);
+
+/**
+ * These executors call `provision()` against the primary sandbox row. Image
+ * swaps are cold boots too, but they keep that primary row `running` and
+ * therefore do not own its `provisioning` status.
+ */
+export const PROVISIONING_STATUS_OWNER_JOB_TYPES: ReadonlySet<ProvisioningJobType> = new Set(
+  AGENT_LIFECYCLE_JOB_METADATA.filter(({ ownsProvisioningStatus }) => ownsProvisioningStatus).map(
+    ({ type }) => type,
+  ),
+);
+
+export const DEFAULT_STALE_JOB_THRESHOLD_MS = 5 * 60 * 1000;
+export const COLD_BOOT_STALE_JOB_THRESHOLD_MS = 15 * 60 * 1000;
+export const STUCK_PROVISIONING_RECONCILIATION_GRACE_MS = 5 * 60 * 1000;
+export const STUCK_PROVISIONING_THRESHOLD_MS =
+  COLD_BOOT_STALE_JOB_THRESHOLD_MS + STUCK_PROVISIONING_RECONCILIATION_GRACE_MS;
+export const ORPHAN_PENDING_THRESHOLD_MS = 10 * 60 * 1000;
+export const PROVISIONING_RECONCILIATION_BATCH_SIZE = 100;
 
 export const APPS_JOB_TYPES = [
   JOB_TYPES.CONTAINER_PROVISION,

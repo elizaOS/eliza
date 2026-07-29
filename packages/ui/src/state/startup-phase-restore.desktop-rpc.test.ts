@@ -8,6 +8,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  applyForceFreshFirstRunReset,
   enableForceFreshFirstRun,
   isForceFreshFirstRunEnabled,
 } from "../platform";
@@ -132,6 +133,42 @@ describe("runRestoringSession desktop bridge startup calls", () => {
     // ...but the flag is gone, so the next launch is back to normal behavior
     // even if onboarding completes via a path that never POSTs first-run.
     expect(isForceFreshFirstRunEnabled()).toBe(false);
+  });
+
+  it("preserves a remote connection established after the query reset cleared the prior target", async () => {
+    window.history.replaceState(null, "", "/?reset");
+    savePersistedActiveServer({
+      id: "local",
+      kind: "local",
+      label: "Old Local Agent",
+    });
+    expect(applyForceFreshFirstRunReset()).toBe(true);
+
+    // Android can replay this connect intent after module evaluation but before
+    // the restoring-session effect consumes the force-fresh directive.
+    savePersistedActiveServer({
+      id: "remote:android-smoke",
+      kind: "remote",
+      label: "Android Smoke Host",
+      apiBase: "http://127.0.0.1:31338",
+    });
+    const deps = makeDeps();
+    const dispatch = vi.fn();
+    const ctxRef = { current: null };
+
+    await runRestoringSession(deps, dispatch, ctxRef, { current: false });
+
+    expect(isForceFreshFirstRunEnabled()).toBe(false);
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "SESSION_RESTORED",
+      target: "remote-backend",
+    });
+    expect(ctxRef.current).toMatchObject({
+      restoredActiveServer: {
+        id: "remote:android-smoke",
+        apiBase: "http://127.0.0.1:31338",
+      },
+    });
   });
 
   it("does not preserve completed first-run during non-destructive onboarding replay", async () => {

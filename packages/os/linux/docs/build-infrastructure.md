@@ -85,6 +85,21 @@ URLs. Left dirty, the next build's chroot is missing whole package sets
 and gets a stale APT snapshot serial. Restoring `config/` to the
 committed state before each build fixes both.
 
+### Snapshot availability in unattended builds
+
+Tails' time-based mirror prunes snapshots, so a serial that once produced a
+reproducible image can later return 404. The canonical build resolves Debian
+main and archives configured as `latest` from the mirror's authoritative
+trace, verifies every required `Release` file, and only then starts Docker.
+Frozen compatibility archives retain their checked-in serial and are verified
+too. The exact JSON map is passed as `APT_SNAPSHOTS_SERIALS`, which Tails
+records in the build environment for audit and reproduction.
+
+CI performs the same resolution before the app build so a missing snapshot
+fails in seconds rather than after the expensive workspace and builder stages.
+Supplying `APT_SNAPSHOTS_SERIALS` explicitly reproduces a previously recorded
+map, provided the mirror still retains it.
+
 ### The `.git` requirement
 
 Tails' build assumes it runs inside a git checkout (`auto/config` calls

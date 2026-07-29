@@ -45,6 +45,7 @@ import {
   isIOS,
   isNative,
   isOnboardingReplayRequested,
+  wasForceFreshResetApplied,
 } from "../platform";
 import {
   buildCloudSharedAgentApiBase,
@@ -665,6 +666,7 @@ export async function runRestoringSession(
   let hadPrior = loadPersistedFirstRunComplete();
   const forceFreshFirstRun = isForceFreshFirstRunEnabled();
   if (forceFreshFirstRun) {
+    const resetAlreadyClearedPriorServer = wasForceFreshResetApplied();
     // force-fresh is a ONE-SHOT directive: it forces exactly one fresh
     // onboarding after an escape hatch (unreachable backend, pairing dead-end,
     // ?reset). Clear it the moment restore consumes it so the *next* launch is
@@ -673,13 +675,22 @@ export async function runRestoringSession(
     // doesn't POST first-run (cloud shared-agent's swallowed 404, pairing
     // early-return) left the flag set — re-onboarding the user on every launch.
     clearForceFreshFirstRun();
-    clearPersistedActiveServer();
-    savePersistedFirstRunComplete(false);
-    persistedActiveServer = null;
-    hadPrior = false;
-    deps.firstRunCompletionCommittedRef.current = false;
-    client.setBaseUrl(null);
-    client.setToken(null);
+    // `?reset` clears the old target synchronously before the app mounts. If a
+    // connect deep link establishes a server after that point, it is newer user
+    // intent and must survive this later restore pass. A reset initiated by
+    // startFreshFirstRunReload has no applied marker, so it retains the original
+    // behavior and clears the pre-existing server here.
+    const preservePostResetConnection =
+      resetAlreadyClearedPriorServer && persistedActiveServer !== null;
+    if (!preservePostResetConnection) {
+      clearPersistedActiveServer();
+      savePersistedFirstRunComplete(false);
+      persistedActiveServer = null;
+      hadPrior = false;
+      deps.firstRunCompletionCommittedRef.current = false;
+      client.setBaseUrl(null);
+      client.setToken(null);
+    }
   }
   if (cancelled.current) return;
 
