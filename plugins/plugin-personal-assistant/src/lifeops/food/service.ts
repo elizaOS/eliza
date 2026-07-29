@@ -13,6 +13,8 @@ import { type IAgentRuntime, Service } from "@elizaos/core";
 import { SELF_ENTITY_ID } from "@elizaos/shared";
 import { createApprovalQueue } from "../approval-queue.js";
 import type {
+  ApprovalExecutionClaim,
+  ApprovalExecutionMutation,
   ApprovalQueue,
   ApprovalRequest,
 } from "../approval-queue.types.js";
@@ -368,6 +370,7 @@ export class FoodDomainService {
     if (handoff.approvalRequestId !== null) {
       const existing = await this.deps.approvalQueue.byId(
         handoff.approvalRequestId,
+        handoff.requestedByEntityId,
       );
       if (!existing || !exactApprovalPayloadMatches(existing, handoff)) {
         throw new FoodDomainError(
@@ -419,6 +422,7 @@ export class FoodDomainService {
     }
     const request = await this.deps.approvalQueue.byId(
       handoff.approvalRequestId,
+      handoff.requestedByEntityId,
     );
     if (
       request?.state !== "approved" ||
@@ -445,7 +449,10 @@ export class FoodDomainService {
         { handoffId: handoff.handoffId },
       );
     }
-    let request = await this.deps.approvalQueue.byId(handoff.approvalRequestId);
+    let request = await this.deps.approvalQueue.byId(
+      handoff.approvalRequestId,
+      handoff.requestedByEntityId,
+    );
     if (!request || !exactApprovalPayloadMatches(request, handoff)) {
       throw new FoodDomainError(
         "Completed shopping handoff approval does not match its content",
@@ -455,10 +462,21 @@ export class FoodDomainService {
     }
     if (request.state === "done") return;
     if (request.state === "approved") {
-      request = await this.deps.approvalQueue.markExecuting(request.id);
+      request = await this.deps.approvalQueue.claimExecution(
+        this.executionClaimFor(request, handoff),
+      );
     }
     if (request.state === "executing") {
-      await this.deps.approvalQueue.markDone(request.id);
+      const mutation = this.executionMutationFor(request, handoff);
+      // The persisted link proves the provider call already succeeded, so the
+      // attempt is recorded as dispatched before it can be closed out.
+      if (!request.execution?.dispatchStartedAt) {
+        await this.deps.approvalQueue.markDispatchStarted(mutation);
+      }
+      await this.deps.approvalQueue.markDone({
+        ...mutation,
+        providerReceipt: this.persistedProviderReceipt(handoff),
+      });
       return;
     }
     throw new FoodDomainError(
@@ -466,6 +484,53 @@ export class FoodDomainService {
       "FOOD_APPROVAL_MISMATCH",
       { handoffId: handoff.handoffId, approvalState: request.state },
     );
+  }
+
+  private executionClaimFor(
+    request: ApprovalRequest,
+    handoff: FoodShoppingHandoff,
+  ): ApprovalExecutionClaim {
+    return {
+      requestId: request.id,
+      subjectUserId: handoff.requestedByEntityId,
+      provider: handoff.provider,
+      providerIdempotencyKey: `approval:${request.id}:${handoff.provider}`,
+    };
+  }
+
+  private executionMutationFor(
+    request: ApprovalRequest,
+    handoff: FoodShoppingHandoff,
+  ): ApprovalExecutionMutation {
+    if (!request.execution) {
+      throw new FoodDomainError(
+        "Executing shopping handoff approval has no execution attempt",
+        "FOOD_APPROVAL_MISMATCH",
+        { handoffId: handoff.handoffId, approvalRequestId: request.id },
+      );
+    }
+    return {
+      requestId: request.id,
+      subjectUserId: handoff.requestedByEntityId,
+      attemptId: request.execution.attemptId,
+    };
+  }
+
+  /** The receipt a completed handoff row already carries, replayed verbatim. */
+  private persistedProviderReceipt(
+    handoff: FoodShoppingHandoff,
+  ): Readonly<Record<string, unknown>> {
+    if (!handoff.providerLinkUrl || !handoff.providerResultKind) {
+      throw new FoodDomainError(
+        "Completed shopping handoff is missing its provider link receipt",
+        "FOOD_APPROVAL_MISMATCH",
+        { handoffId: handoff.handoffId },
+      );
+    }
+    return {
+      kind: handoff.providerResultKind,
+      productsLinkUrl: handoff.providerLinkUrl,
+    };
   }
 
   async materializeApprovedShoppingHandoff(input: {
@@ -494,7 +559,10 @@ export class FoodDomainService {
       policyHash !== current.content.safetyPolicySha256 ||
       inventoryHash !== current.content.inventorySnapshotSha256
     ) {
-      await this.deps.approvalQueue.markExpired(approval.id);
+      await this.deps.approvalQueue.markExpired(
+        approval.id,
+        approval.subjectUserId,
+      );
       await this.deps.repository.blockHandoff(
         current.handoffId,
         "source_changed_after_approval",
@@ -559,8 +627,13 @@ export class FoodDomainService {
         error,
       );
     }
+    let dispatched: ApprovalExecutionMutation;
     try {
-      await this.deps.approvalQueue.markExecuting(approval.id);
+      const claimed = await this.deps.approvalQueue.claimExecution(
+        this.executionClaimFor(approval, claim.handoff),
+      );
+      dispatched = this.executionMutationFor(claimed, claim.handoff);
+      await this.deps.approvalQueue.markDispatchStarted(dispatched);
     } catch (error) {
       // error-policy:J2 a post-provider approval race makes the external
       // outcome unsafe to replay; persist ambiguity and preserve the cause.
@@ -584,7 +657,15 @@ export class FoodDomainService {
       providerLinkUrl: receipt.productsLinkUrl,
       now: this.now().toISOString(),
     });
-    await this.deps.approvalQueue.markDone(approval.id);
+    await this.deps.approvalQueue.markDone({
+      ...dispatched,
+      providerReceipt: {
+        kind: receipt.kind,
+        productsLinkUrl: receipt.productsLinkUrl,
+        httpStatus: receipt.httpStatus,
+        requestId: receipt.requestId,
+      },
+    });
     return completed;
   }
 

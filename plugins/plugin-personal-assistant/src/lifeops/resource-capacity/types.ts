@@ -8,6 +8,7 @@
  */
 import { createHash } from "node:crypto";
 import { ElizaError, stableStringify } from "@elizaos/core";
+import type { ApprovalRequestState } from "../approval-queue.types.js";
 
 export const RESOURCE_CAPACITY_POLICY_VERSION =
   "household-resource-capacity.v1" as const;
@@ -331,13 +332,7 @@ export interface ResourceCapacityReviewProjection {
   readonly approvals: readonly {
     readonly partyEntityId: string;
     readonly approvalRequestId: string;
-    readonly state:
-      | "pending"
-      | "approved"
-      | "executing"
-      | "done"
-      | "rejected"
-      | "expired";
+    readonly state: ApprovalRequestState;
   }[];
   readonly reviewTaskId: string | null;
   readonly invalidatedResourceIds: readonly string[];

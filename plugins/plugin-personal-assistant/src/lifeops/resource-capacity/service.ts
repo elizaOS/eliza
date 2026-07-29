@@ -236,6 +236,7 @@ export class ResourceCapacityService {
     for (const link of links) {
       const request = await this.deps.approvalQueue.byId(
         link.approvalRequestId,
+        link.partyEntityId,
       );
       if (!request || !approvalMatches(request, proposal, link.partyEntityId)) {
         throw new ResourceCapacityError(
@@ -248,7 +249,10 @@ export class ResourceCapacityService {
         );
       }
       if (request.state === "pending" || request.state === "approved") {
-        await this.deps.approvalQueue.markExpired(request.id);
+        await this.deps.approvalQueue.markExpired(
+          request.id,
+          link.partyEntityId,
+        );
       }
     }
     const taskId = await this.deps.repository.getReviewTaskId(
@@ -317,6 +321,7 @@ export class ResourceCapacityService {
     for (const link of links) {
       const request = await this.deps.approvalQueue.byId(
         link.approvalRequestId,
+        link.partyEntityId,
       );
       if (!request || !approvalMatches(request, proposal, link.partyEntityId)) {
         throw new ResourceCapacityError(
@@ -516,6 +521,7 @@ export class ResourceCapacityService {
       if (current) {
         const request = await this.deps.approvalQueue.byId(
           current.approvalRequestId,
+          partyEntityId,
         );
         if (!request || !approvalMatches(request, proposal, partyEntityId)) {
           throw new ResourceCapacityError(
@@ -824,6 +830,7 @@ export class ResourceCapacityService {
     for (const link of links) {
       const request = await this.deps.approvalQueue.byId(
         link.approvalRequestId,
+        link.partyEntityId,
       );
       if (!request || !approvalMatches(request, proposal, link.partyEntityId)) {
         throw new ResourceCapacityError(
@@ -993,7 +1000,10 @@ export class ResourceCapacityService {
       input.approvalRequestId,
       "approvalRequestId",
     );
-    const request = await this.deps.approvalQueue.byId(approvalRequestId);
+    const request = await this.deps.approvalQueue.byId(
+      approvalRequestId,
+      partyEntityId,
+    );
     if (
       !link ||
       link.approvalRequestId !== approvalRequestId ||
@@ -1016,10 +1026,15 @@ export class ResourceCapacityService {
       resolutionReason: reason,
     };
     if (input.decision === "approve") {
-      return this.deps.approvalQueue.approve(approvalRequestId, resolution);
+      return this.deps.approvalQueue.approve(
+        approvalRequestId,
+        partyEntityId,
+        resolution,
+      );
     }
     const rejected = await this.deps.approvalQueue.reject(
       approvalRequestId,
+      partyEntityId,
       resolution,
     );
     await this.terminalizeReview(proposal, "declined", reason);

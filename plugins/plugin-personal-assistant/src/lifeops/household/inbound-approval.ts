@@ -617,7 +617,10 @@ export async function processHouseholdInboundApproval(input: {
   const approvals = createApprovalQueue(input.runtime, {
     agentId: input.runtime.agentId,
   });
-  let request = await approvals.byId(input.command.approvalRequestId);
+  let request = await approvals.byId(
+    input.command.approvalRequestId,
+    partyEntityId,
+  );
   if (!request) {
     throw new HouseholdInboundApprovalError(
       "The referenced household approval was not found.",
@@ -715,7 +718,7 @@ export async function processHouseholdInboundApproval(input: {
       // error-policy:J2 A competing identical connector delivery may win the
       // queue CAS. Re-read once and reconcile only the exact same party and
       // decision; every other terminal state remains observable.
-      const current = await approvals.byId(pendingRequestId);
+      const current = await approvals.byId(pendingRequestId, partyEntityId);
       if (
         !current ||
         !matchesResolvedDecision(current, partyEntityId, input.command.decision)
