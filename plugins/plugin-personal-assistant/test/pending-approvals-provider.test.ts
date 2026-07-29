@@ -2,8 +2,19 @@
  * Unit tests for the pendingApprovals provider that grounds approval decisions
  * before Stage-1 action routing. Deterministic mocks assert owner scoping,
  * payload redaction, and the reject/hold routing text.
+ *
+ * The provider reads private context, so every case must clear the LifeOps
+ * audience gate: the mock runtime therefore serves a real owner DM room with
+ * the owner and the agent as its only participants. The gate's own semantics
+ * are covered against a real database in
+ * `src/lifeops/audience-policy.integration.test.ts`.
  */
-import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
+import {
+  ChannelType,
+  type IAgentRuntime,
+  type Memory,
+  type UUID,
+} from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ApprovalRequest } from "../src/lifeops/approval-queue.types.js";
 
@@ -30,6 +41,7 @@ import {
 
 const AGENT_ID = "00000000-0000-0000-0000-0000000000a1" as UUID;
 const OWNER_ID = "00000000-0000-0000-0000-0000000000b1" as UUID;
+const ROOM_ID = "00000000-0000-0000-0000-0000000000c1" as UUID;
 
 function approval(overrides: Partial<ApprovalRequest> = {}): ApprovalRequest {
   return {
@@ -60,13 +72,20 @@ function runtime(): IAgentRuntime {
   return {
     agentId: AGENT_ID,
     reportError: vi.fn(),
+    getRoom: vi.fn(async () => ({ id: ROOM_ID, type: ChannelType.DM })),
+    getParticipantsForRoom: vi.fn(async () => [OWNER_ID, AGENT_ID]),
+    getAgent: vi.fn(async () => ({ id: AGENT_ID })),
   } as unknown as IAgentRuntime;
 }
 
 function message(): Memory {
   return {
     entityId: OWNER_ID,
-    content: { text: "don't send it, reject that for now" },
+    roomId: ROOM_ID,
+    content: {
+      text: "don't send it, reject that for now",
+      channelType: ChannelType.DM,
+    },
   } as Memory;
 }
 
@@ -114,8 +133,29 @@ describe("pendingApprovalsProvider", () => {
 
     const result = await pendingApprovalsProvider.get(runtime(), message(), {});
 
+    // A denied audience gets the silent unavailable shape, never a
+    // pendingApprovalCount of 0 that would read as "nothing is pending".
     expect(result.text).toBe("");
-    expect(result.values?.pendingApprovalCount).toBe(0);
+    expect(result.values?.pendingApprovalsUnavailable).toBe(true);
+    expect(result.values?.pendingApprovalCount).toBeUndefined();
+    expect(result.data?.lifeOpsAudienceReceipts).toBeDefined();
+    expect(mocks.queue.list).not.toHaveBeenCalled();
+  });
+
+  it("denies a group destination even for the owner", async () => {
+    const groupRuntime = {
+      ...runtime(),
+      getRoom: vi.fn(async () => ({ id: ROOM_ID, type: ChannelType.GROUP })),
+      getParticipantsForRoom: vi.fn(async () => [OWNER_ID, AGENT_ID]),
+    } as unknown as IAgentRuntime;
+
+    const result = await pendingApprovalsProvider.get(
+      groupRuntime,
+      message(),
+      {},
+    );
+
+    expect(result.values?.pendingApprovalsUnavailable).toBe(true);
     expect(mocks.queue.list).not.toHaveBeenCalled();
   });
 });
