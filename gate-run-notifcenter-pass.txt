@@ -1,0 +1,6 @@
+story-gate: 5 stories | concurrency=2
+  ...5/5
+
+story-gate: 5 stories | good=5 | broken=0 | needs-runtime=0 | console-err=0 | a11y=0 | play=0/0
+
+OK story-gate PASSED - report: C:\Users\Administrator\Documents\eliza\.claude\worktrees\infallible-wiles-9d1dbd\packages\ui\test\story-gate\output\report.json

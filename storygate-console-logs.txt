@@ -1,0 +1,9 @@
+story-gate tour (localhost:63591)
+--- story shell-notificationshomecenter--mixed-priorities
+--- story shell-notificationshomecenter--onboarding-defaults
+--- story shell-notificationshomecenter--scrolling-inbox
+--- story shell-notificationshomecenter--single-read
+--- story shell-notificationshomecenter--stacked-group
+--- story pages-approutenotfound--known-view-elsewhere
+--- fixture BEFORE tokens: white-on-orange 2.75:1 FAIL
+--- fixture AFTER tokens: black-on-orange 7.33:1 PASS
