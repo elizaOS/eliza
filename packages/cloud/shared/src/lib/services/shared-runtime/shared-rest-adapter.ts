@@ -47,6 +47,7 @@ export interface SharedRestMessage {
   role: "user" | "assistant";
   text: string;
   timestamp: number;
+  interrupted?: boolean;
 }
 
 /** The canonical (single) conversation id for a shared agent === its agent id. */
@@ -321,8 +322,8 @@ function sharedRestMessageTimestamp(
 
 /**
  * GET .../api/conversations/:id/messages — read the bridge's persisted turn
- * history for this room and present it in the REST message shape. Ids are
- * positional+stable (the history is an ordered append-only list).
+ * history for this room and present it in the REST message shape. New rows use
+ * persisted stable ids; legacy rows fall back to their old positional id.
  */
 export async function sharedRestMessagesGet(
   agentId: string,
@@ -331,10 +332,11 @@ export async function sharedRestMessagesGet(
 ): Promise<{ messages: SharedRestMessage[] }> {
   const history = await coordinateSharedHistory(agentId, conversationId, { namespace });
   const messages = history.map((turn, index) => ({
-    id: `${conversationId}:${index}`,
+    id: turn.id ?? `${conversationId}:${index}`,
     role: turn.role,
     text: turn.content,
     timestamp: sharedRestMessageTimestamp(turn, index, history.length),
+    ...(turn.role === "assistant" && turn.interrupted ? { interrupted: true } : {}),
   }));
   return { messages };
 }
