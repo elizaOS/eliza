@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  assertRequiredChecksSchedulable,
   canary,
   classify,
   evaluate,
@@ -55,6 +56,24 @@ describe("security advisory classification", () => {
       { protected: false, reason: "no security label or path" },
     );
     assert.equal(classify({}).protected, false);
+  });
+});
+
+describe("pull request check scheduling", () => {
+  it("fails immediately when merge conflicts suppress pull_request workflows", () => {
+    assert.throws(
+      () => assertRequiredChecksSchedulable({ mergeable: false }),
+      /GitHub does not schedule pull_request checks such as gitleaks until conflicts are resolved/,
+    );
+  });
+
+  it("keeps waiting when mergeability is unknown or confirmed", () => {
+    assert.doesNotThrow(() =>
+      assertRequiredChecksSchedulable({ mergeable: null }),
+    );
+    assert.doesNotThrow(() =>
+      assertRequiredChecksSchedulable({ mergeable: true }),
+    );
   });
 });
 

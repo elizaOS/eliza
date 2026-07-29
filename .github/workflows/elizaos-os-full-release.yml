@@ -252,7 +252,7 @@ jobs:
 
       - name: Attach SHA256SUMS to release
         if: github.event_name == 'release' && steps.manifest_check.outputs.can_validate_manifest == 'true'
-        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228
         with:
           files: ./_artifacts/SHA256SUMS
           tag_name: ${{ github.event.release.tag_name || github.ref_name }}

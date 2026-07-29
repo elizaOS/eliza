@@ -81,6 +81,14 @@ export function evaluate(checks) {
   };
 }
 
+export function assertRequiredChecksSchedulable(pull) {
+  if (pull.mergeable === false) {
+    throw new Error(
+      "pull request has merge conflicts; GitHub does not schedule pull_request checks such as gitleaks until conflicts are resolved",
+    );
+  }
+}
+
 function newestChecksByName(checks) {
   const byName = new Map();
   for (const check of checks) {
@@ -215,6 +223,7 @@ async function live() {
   });
   console.log(decision.reason);
   if (!decision.protected) return;
+  assertRequiredChecksSchedulable(pull);
 
   await waitForRequiredChecks({
     timeoutMs: timeout * 1000,
@@ -222,6 +231,12 @@ async function live() {
     intervalMs: interval * 1000,
     onWait: (message) => console.log(message),
     loadChecks: async () => {
+      const currentPull = await api(
+        `/repos/${owner}/${repo}/pulls/${pr}`,
+        token,
+      );
+      assertRequiredChecksSchedulable(currentPull);
+
       const checkRuns = [];
       for (let page = 1; ; page += 1) {
         const data = await api(

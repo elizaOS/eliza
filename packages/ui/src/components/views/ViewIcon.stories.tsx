@@ -6,6 +6,11 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { ViewIcon } from "./ViewIcon";
 
+const localImageIcon = new URL(
+  "../../../../shared/assets/favicons/favicon-32x32.png",
+  import.meta.url,
+).href;
+
 const meta = {
   title: "Views/ViewIcon",
   component: ViewIcon,
@@ -27,7 +32,7 @@ export const NamedIcon: Story = {};
 /** An image source (URL or data URI) renders an <img> instead of a glyph. */
 export const ImageSource: Story = {
   args: {
-    icon: "https://avatars.githubusercontent.com/u/130973801?s=200&v=4",
+    icon: localImageIcon,
     label: "elizaOS",
   },
 };
