@@ -15,6 +15,7 @@ import {
   type BenchmarkSession,
   createSession,
   formatUnknownError,
+  selectPluginExport,
   toPlugin,
 } from "./server-utils.js";
 import {
@@ -55,8 +56,7 @@ async function loadPlugin(pluginName: string): Promise<Plugin> {
   const pluginModule = (await import(
     resolveElizaPluginImportSpecifier(pluginName)
   )) as Record<string, unknown>;
-  const candidate =
-    pluginModule.default ?? pluginModule[Object.keys(pluginModule)[0]];
+  const candidate = selectPluginExport(pluginModule, pluginName);
   if (!candidate) {
     throw new Error(`plugin ${pluginName} has no exported plugin object`);
   }
