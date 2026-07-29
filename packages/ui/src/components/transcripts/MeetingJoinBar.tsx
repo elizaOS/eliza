@@ -135,6 +135,7 @@ export function MeetingJoinBar({
           {...joinMeetingAgent.agentProps}
           type="submit"
           size="sm"
+          variant={parsed && !joining ? "default" : "secondary"}
           data-testid="meeting-join-submit"
           disabled={!parsed || joining}
         >
