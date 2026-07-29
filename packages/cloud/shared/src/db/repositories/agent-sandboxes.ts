@@ -19,8 +19,8 @@ import {
   lt,
   ne,
   notInArray,
-  type SQL,
   or,
+  type SQL,
   sql,
 } from "drizzle-orm";
 import {
