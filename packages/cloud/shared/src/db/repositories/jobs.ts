@@ -60,19 +60,18 @@ function lacksRecoveryProtectedExecutionLease(): SQL {
   return sql`NOT (${hasRecoveryProtectedExecutionLease()})`;
 }
 
-/**
- * Builds the dependent-row settlement for a job a RECOVERY path flips to
- * `failed` — the same shape incrementAttempt's onFailedInTx consumes. Called
- * with the HYDRATED job (offloaded payloads resolved) BEFORE the recovery
- * transaction opens: builders read job data eagerly and may throw on a
- * malformed payload, and a build-time throw inside the transaction would roll
- * back the status flip and wedge the job in_progress forever. A build failure
- * degrades to flipping the job without a writeback, loudly logged.
- */
+
+/** In-transaction dependent-row settlement — the contract incrementAttempt's
+ * onFailedInTx already speaks; recovery is its second caller. */
+export type JobFailureWriteback = (tx: DbTransaction, failedJob: Job) => Promise<void>;
+
+/** Builds the {@link JobFailureWriteback} for a job a RECOVERY path flips to
+ * `failed`, or undefined for types with no dependent row. See
+ * buildRecoveryWriteback for the build-outside-the-transaction rationale. */
 export type RecoveryFailureWritebackBuilder = (
-  hydratedJob: Job,
+  job: Job,
   error: string,
-) => ((tx: DbTransaction, failedJob: Job) => Promise<void>) | undefined;
+) => JobFailureWriteback | undefined;
 
 function hasPayloadUpdates(updates: Partial<Job> | Partial<NewJob>): boolean {
   return updates.data !== undefined || updates.result !== undefined || updates.error !== undefined;
@@ -958,6 +957,7 @@ export class JobsRepository {
       .where(and(...conditions));
 
     let recoveredCount = 0;
+    let sweepFailures = 0;
 
     // Process each stale job, incrementing attempts and failing if max reached
     for (const job of staleJobs) {
@@ -972,7 +972,9 @@ export class JobsRepository {
           : `Job timed out - recovered for retry (attempt ${newAttempts}/${maxAttempts})`;
       const recoveryFence = resumeCommittedCanary ? adminCanaryRecoveryFence(job) : sql`TRUE`;
       // Per-job isolation: one poisoned payload or failing dependent write
-      // must not starve the rest of the sweep.
+      // must not starve the rest of the sweep — but a batch where EVERY job
+      // failed is an infrastructure outage, and that signal must keep
+      // propagating to the caller (cron status codes alert on it).
       try {
         const onFailedInTx = isFailed
           ? await this.buildRecoveryWriteback(job, timeoutError, filters.buildFailureWriteback)
@@ -990,14 +992,36 @@ export class JobsRepository {
           recoveredCount++;
         }
         if (recovered && isFailed && filters.onPermanentFailure) {
-          await filters.onPermanentFailure(recovered);
+          try {
+            await filters.onPermanentFailure(recovered);
+          } catch (hookError) {
+            // The recovery itself committed; only the post-commit hook failed.
+            logger.warn("[jobs] Post-failure hook failed after a committed recovery", {
+              jobId: job.id,
+              type: job.type,
+              error: hookError instanceof Error ? hookError.message : String(hookError),
+            });
+          }
         }
       } catch (error) {
+        sweepFailures++;
         logger.error("[jobs] Stale-job recovery failed for one job; continuing sweep", {
           jobId: job.id,
           type: job.type,
           error: error instanceof Error ? error.message : String(error),
         });
+      }
+    }
+
+    if (sweepFailures > 0) {
+      logger.error("[jobs] Stale-job sweep finished degraded", {
+        swept: staleJobs.length,
+        failed: sweepFailures,
+      });
+      if (sweepFailures === staleJobs.length) {
+        throw new Error(
+          `Stale-job recovery failed for every job in the batch (${sweepFailures}/${staleJobs.length})`,
+        );
       }
     }
 
@@ -1016,8 +1040,22 @@ export class JobsRepository {
     job: Job,
     error: string,
     build: RecoveryFailureWritebackBuilder | undefined,
-  ): Promise<((tx: DbTransaction, failedJob: Job) => Promise<void>) | undefined> {
+  ): Promise<JobFailureWriteback | undefined> {
     if (!build) return undefined;
+    // Probe with the RAW row first: types with no dependent row return
+    // undefined without touching the payload, so the sweep stays a DB-only
+    // operation for them — including agent_snapshot, whose lane is
+    // fail-closed out of claiming precisely because hydration can exhaust
+    // the worker heap (#16639). Only a builder that THROWS on the raw row
+    // (an offloaded payload whose reader needs R2-only fields) pays for a
+    // hydration, outside the transaction; a second throw degrades to
+    // flipping the job without a writeback, loudly logged, instead of
+    // wedging it in_progress forever.
+    try {
+      return build(job, error);
+    } catch {
+      // fall through to the hydrated attempt
+    }
     try {
       return build(await hydrateJob(job), error);
     } catch (buildError) {
@@ -1075,6 +1113,7 @@ export class JobsRepository {
       .where(and(...conditions));
 
     let recoveredCount = 0;
+    let sweepFailures = 0;
 
     for (const job of interruptedJobs) {
       const resumeCommittedCanary = hasRecoverableAdminCanaryCutover(job);
@@ -1095,8 +1134,8 @@ export class JobsRepository {
       const dataWithCount = resumeCommittedCanary
         ? null
         : withInterruptionCount(job, interruptions);
-      // Per-job isolation: one poisoned payload or failing dependent write
-      // must not starve the rest of the startup sweep.
+      // Per-job isolation with the outage signal preserved — see the stale
+      // sweep for the rationale; identical policy.
       try {
         const onFailedInTx = isFailed
           ? await this.buildRecoveryWriteback(job, error, filters.buildFailureWriteback)
@@ -1115,14 +1154,35 @@ export class JobsRepository {
           recoveredCount++;
         }
         if (recovered && isFailed && filters.onPermanentFailure) {
-          await filters.onPermanentFailure(recovered);
+          try {
+            await filters.onPermanentFailure(recovered);
+          } catch (hookError) {
+            logger.warn("[jobs] Post-failure hook failed after a committed recovery", {
+              jobId: job.id,
+              type: job.type,
+              error: hookError instanceof Error ? hookError.message : String(hookError),
+            });
+          }
         }
       } catch (loopError) {
+        sweepFailures++;
         logger.error("[jobs] Startup recovery failed for one job; continuing sweep", {
           jobId: job.id,
           type: job.type,
           error: loopError instanceof Error ? loopError.message : String(loopError),
         });
+      }
+    }
+
+    if (sweepFailures > 0) {
+      logger.error("[jobs] Startup recovery sweep finished degraded", {
+        swept: interruptedJobs.length,
+        failed: sweepFailures,
+      });
+      if (sweepFailures === interruptedJobs.length) {
+        throw new Error(
+          `Startup recovery failed for every job in the batch (${sweepFailures}/${interruptedJobs.length})`,
+        );
       }
     }
 
@@ -1146,7 +1206,7 @@ export class JobsRepository {
      * recovered-to-failed APP_DEPLOY left its app 'building' forever
      * (#17253 §3) — the exact stranding the normal failure path prevents.
      */
-    onFailedInTx?: (tx: DbTransaction, failedJob: Job) => Promise<void>;
+    onFailedInTx?: JobFailureWriteback;
   }): Promise<Job | undefined> {
     const payload = await prepareJobPayload(
       {
@@ -1258,10 +1318,13 @@ export class JobsRepository {
             ),
           );
       }
+      // Hydrate ONLY when a writeback will consume the row: the common
+      // retry-to-pending path stays a DB-only operation (no R2 I/O inside
+      // this transaction), and an R2 outage cannot roll back recoveries
+      // that never needed the payload.
+      if (!(params.isFailed && params.onFailedInTx)) return updated;
       const hydrated = await hydrateJob(updated);
-      if (params.isFailed && params.onFailedInTx) {
-        await params.onFailedInTx(tx, hydrated);
-      }
+      await params.onFailedInTx(tx, hydrated);
       return hydrated;
     });
   }

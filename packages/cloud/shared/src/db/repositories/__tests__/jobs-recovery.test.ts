@@ -940,18 +940,21 @@ describe("recovery failure writeback (#17253 §3)", () => {
       data: { appId: APP_ID, __worker_interruptions: 5 },
     });
 
-    const recovered = await repo.recoverInProgressJobsStartedBefore({
-      type: "app_deploy",
-      startedBefore: new Date(),
-      buildFailureWriteback: () => async () => {
-        throw new Error("dependent write refused");
-      },
-    });
+    // A single-job batch where that job fails IS the every-job-failed case,
+    // so the sweep rethrows after logging — the outage signal callers alert
+    // on (a partial batch would swallow, count, and continue instead).
+    await expect(
+      repo.recoverInProgressJobsStartedBefore({
+        type: "app_deploy",
+        startedBefore: new Date(),
+        buildFailureWriteback: () => async () => {
+          throw new Error("dependent write refused");
+        },
+      }),
+    ).rejects.toThrow("failed for every job in the batch");
 
-    // The per-job catch swallowed the failure and the sweep continued…
-    expect(recovered).toBe(0);
-    // …but the transaction rolled back BOTH writes: the job stays claimable
-    // by the next sweep, and the app was not half-settled.
+    // The transaction rolled back BOTH writes: the job stays claimable by
+    // the next sweep, and the app was not half-settled.
     const [job] = await dbWrite
       .select({ status: jobs.status })
       .from(jobs)
@@ -999,16 +1002,76 @@ describe("recovery failure writeback (#17253 §3)", () => {
       data: { appId: APP_ID, __worker_interruptions: 5 },
     });
 
-    const seen: Array<{ id: string; status: string }> = [];
+    const seen: Array<{ id: string; status: string; committedStatus: string | undefined }> = [];
     await repo.recoverInProgressJobsStartedBefore({
       type: "app_deploy",
       startedBefore: new Date(),
       onPermanentFailure: async (job) => {
-        seen.push({ id: job.id, status: job.status });
+        // Post-commit-ness, actually asserted: a fresh read on the main
+        // connection must already see the flip while the hook runs.
+        const [row] = await dbWrite
+          .select({ status: jobs.status })
+          .from(jobs)
+          .where(eq(jobs.id, job.id));
+        seen.push({ id: job.id, status: job.status, committedStatus: row?.status });
       },
     });
 
-    expect(seen).toEqual([{ id: jobId, status: "failed" }]);
+    expect(seen).toEqual([{ id: jobId, status: "failed", committedStatus: "failed" }]);
+  });
+
+  test("stale AGENT_DELETE recovery drives the REAL builder: deletion_failed + error_count", async () => {
+    // The real buildPermanentFailureWriteback, via the established private
+    // cast — its AGENT_DELETE case flips the sandbox to deletion_failed and
+    // bumps error_count, which feeds reEnqueueFailedDeletions' circuit
+    // breaker; recovery-driven failures must keep feeding it.
+    const { ProvisioningJobService } = await import("../../../lib/services/provisioning-jobs");
+    const svc = new ProvisioningJobService() as unknown as {
+      buildPermanentFailureWriteback: (
+        job: Job,
+        error: string,
+      ) => ((tx: unknown, failedJob: Job) => Promise<void>) | undefined;
+    };
+
+    const sandboxId = "00000000-0000-4000-8000-000000260854";
+    const jobId = "00000000-0000-4000-8000-000000270854";
+    await dbWrite.insert(agentSandboxes).values({
+      id: sandboxId,
+      organization_id: ORG_ID,
+      user_id: ACTOR_ID,
+      agent_name: "recovery-delete-target",
+      status: "deletion_pending",
+      execution_tier: "dedicated-always",
+      deletion_started_at: new Date("2026-07-13T04:11:00.000Z"),
+      deletion_attempt_id: "00000000-0000-4000-8000-000000280854",
+      error_count: 1,
+    });
+    await seedJob({
+      id: jobId,
+      type: "agent_delete",
+      maxAttempts: 1,
+      data: { agentId: sandboxId, organizationId: ORG_ID, userId: ACTOR_ID },
+    });
+
+    const recovered = await repo.recoverStaleJobs({
+      type: "agent_delete",
+      staleThresholdMs: 5 * 60 * 1000,
+      buildFailureWriteback: (job, error) =>
+        svc.buildPermanentFailureWriteback(job, error) as never,
+    });
+
+    expect(recovered).toBe(0); // maxAttempts 1 → terminal
+    const [job] = await dbWrite
+      .select({ status: jobs.status })
+      .from(jobs)
+      .where(eq(jobs.id, jobId));
+    expect(job?.status).toBe("failed");
+    const [sandbox] = await dbWrite
+      .select({ status: agentSandboxes.status, error_count: agentSandboxes.error_count })
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.id, sandboxId));
+    expect(sandbox?.status).toBe("deletion_failed");
+    expect(sandbox?.error_count).toBe(2);
   });
 
   test("stale recovery drives the same writeback contract", async () => {

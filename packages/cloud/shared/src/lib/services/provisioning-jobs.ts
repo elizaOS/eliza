@@ -2784,9 +2784,11 @@ export class ProvisioningJobService {
     // snapshot lane is gated out of CLAIMING (fail-closed, #16639) and, when
     // enabled, forced sequential (batch 1) so phases settle before another
     // payload is allocated. The stale sweep below deliberately keeps the
-    // full lane list: flipping a stuck in_progress row back to pending is a
-    // DB-only operation with no hydration, and gated rows simply wait as
-    // pending until operators enable the lane.
+    // full lane list: flipping a stuck in_progress row back to pending stays
+    // a DB-only operation — recovery hydrates a payload ONLY for a job it
+    // flips to failed whose type has a dependent-row writeback, and
+    // agent_snapshot has none — so gated rows simply wait as pending until
+    // operators enable the lane.
     for (const jobType of this.filterSnapshotLane(jobTypes, "claim")) {
       const laneBatch = jobType === JOB_TYPES.AGENT_SNAPSHOT ? 1 : batchSize;
       await this.processJobType(jobType, laneBatch, result);
