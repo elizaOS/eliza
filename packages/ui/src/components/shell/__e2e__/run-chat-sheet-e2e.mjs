@@ -2304,11 +2304,12 @@ try {
     await p.close();
   }
 
-  // responding: an in-progress status row inside the opened sheet
+  // responding: the in-progress status belongs inside the empty assistant
+  // response slot, never as a standalone row before that slot exists.
   {
     const p = await ctrl();
     attachConsole(p, sink);
-    await gotoFixture(p, `${url}?phase=responding`);
+    await gotoFixture(p, `${url}?streaming`);
     await p.waitForSelector('[data-testid="chat-sheet-grabber"]');
     await p.waitForTimeout(500);
     await p.getByTestId("chat-sheet-grabber").focus();

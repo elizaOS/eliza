@@ -80,6 +80,10 @@ const ANDROID_LOCAL_AGENT_IPC_BASE = IOS_LOCAL_AGENT_IPC_BASE;
 const IOS_FULL_BUN_SMOKE_MODEL_ID = "eliza-1-2b";
 const IOS_FULL_BUN_SMOKE_MODEL_RELATIVE_PATH =
   "models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf";
+const HOST_AGENT_SMOKE_MODEL_PATH =
+  process.env.ELIZA_HOST_AGENT_SMOKE_MODEL_PATH?.trim() || "";
+const HOST_AGENT_SMOKE_MODEL_SHA256 =
+  process.env.ELIZA_HOST_AGENT_SMOKE_MODEL_SHA256?.trim() || "";
 // Cap the on-device context window. The bundled eliza-1 GGUF advertises a 128k
 // max context; loading it at full width allocates a multi-GB KV cache that is
 // impractically slow (and OOMs) on a phone/simulator, so the first reply never
@@ -759,15 +763,18 @@ async function sha256File(filePath) {
   return hash.digest("hex");
 }
 
-async function verifySmokeModelFile(filePath) {
+async function verifySmokeModelFile(
+  filePath,
+  expectedSha256 = ANDROID_SMOKE_MODEL_SHA256,
+) {
   if (!fs.existsSync(filePath)) return false;
   const stat = fs.statSync(filePath);
   if (Number.isFinite(ANDROID_SMOKE_MODEL_SIZE_BYTES)) {
     if (stat.size !== ANDROID_SMOKE_MODEL_SIZE_BYTES) return false;
   }
-  if (ANDROID_SMOKE_MODEL_SHA256) {
+  if (expectedSha256) {
     const actual = await sha256File(filePath);
-    if (actual !== ANDROID_SMOKE_MODEL_SHA256) return false;
+    if (actual !== expectedSha256) return false;
   }
   return true;
 }
@@ -826,6 +833,81 @@ async function ensureAndroidSmokeModelLocalFile() {
   }
   fs.renameSync(stagingPath, finalPath);
   return finalPath;
+}
+
+async function resolveHostAgentSmokeModelPath() {
+  if (!HOST_AGENT_SMOKE_MODEL_PATH) {
+    return ensureAndroidSmokeModelLocalFile();
+  }
+  return HOST_AGENT_SMOKE_MODEL_PATH;
+}
+
+async function stageHostAgentSmokeModel(source, stateDir) {
+  if (!stateDir?.trim()) {
+    throw new Error("Host-agent smoke staging requires a state directory.");
+  }
+  if (
+    !(await verifySmokeModelFile(
+      source,
+      HOST_AGENT_SMOKE_MODEL_SHA256 || ANDROID_SMOKE_MODEL_SHA256,
+    ))
+  ) {
+    throw new Error(
+      `Host-agent smoke model did not match the expected size/hash: ${source}`,
+    );
+  }
+
+  const localInferenceRoot = path.join(stateDir, "local-inference");
+  const modelPath = path.join(
+    localInferenceRoot,
+    IOS_FULL_BUN_SMOKE_MODEL_RELATIVE_PATH,
+  );
+  fs.mkdirSync(path.dirname(modelPath), { recursive: true });
+  fs.rmSync(modelPath, { force: true });
+  fs.linkSync(source, modelPath);
+
+  const stats = fs.statSync(modelPath);
+  const now = new Date().toISOString();
+  fs.writeFileSync(
+    path.join(localInferenceRoot, "registry.json"),
+    `${JSON.stringify(
+      {
+        version: 1,
+        models: [
+          {
+            id: IOS_FULL_BUN_SMOKE_MODEL_ID,
+            displayName: "eliza-1-2B",
+            path: IOS_FULL_BUN_SMOKE_MODEL_RELATIVE_PATH,
+            sizeBytes: stats.size,
+            installedAt: now,
+            lastUsedAt: null,
+            source: "eliza-download",
+            runtimeClass: "fused-eliza1",
+          },
+        ],
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  fs.writeFileSync(
+    path.join(localInferenceRoot, "assignments.json"),
+    `${JSON.stringify(
+      {
+        version: 1,
+        assignments: {
+          TEXT_SMALL: IOS_FULL_BUN_SMOKE_MODEL_ID,
+          TEXT_LARGE: IOS_FULL_BUN_SMOKE_MODEL_ID,
+        },
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  console.log(
+    `[local-chat-smoke] Provisioned host-agent model ${IOS_FULL_BUN_SMOKE_MODEL_ID}: ${modelPath}`,
+  );
+  return { modelPath, stateDir };
 }
 
 function androidRunAs(context, script, label, options = {}) {
@@ -2072,6 +2154,17 @@ function localInferenceSummary({ hub, device, providers }) {
   };
 }
 
+function requireProvisionedLocalInference(hub) {
+  if (!hub) return;
+  const installed = Array.isArray(hub.installed) ? hub.installed : [];
+  const downloads = Array.isArray(hub.downloads) ? hub.downloads : [];
+  if (installed.length === 0 && downloads.length === 0) {
+    throw new Error(
+      "Local inference has no installed model and no download in progress; provision a model before running the full-turn smoke.",
+    );
+  }
+}
+
 async function requireLocalInferenceReady(baseUrl, authToken) {
   let lastSnapshot = null;
   for (
@@ -2118,6 +2211,7 @@ async function requireLocalInferenceReady(baseUrl, authToken) {
     if (readiness.error) {
       throw new Error(readiness.error);
     }
+    requireProvisionedLocalInference(hub);
     if (readiness.ready) {
       console.log(
         `[local-chat-smoke] Local inference ready via ${readiness.via}.`,
@@ -2138,6 +2232,31 @@ async function requireLocalInferenceReady(baseUrl, authToken) {
       lastSnapshot,
     )}`,
   );
+}
+
+async function activateHostAgentSmokeModel(baseUrl, authToken) {
+  const active = await requestJson(
+    "POST",
+    "/api/local-inference/active",
+    {
+      modelId: IOS_FULL_BUN_SMOKE_MODEL_ID,
+      overrides: { contextSize: IOS_FULL_BUN_SMOKE_CONTEXT_SIZE },
+    },
+    baseUrl,
+    authToken,
+  );
+  if (
+    active?.status !== "ready" ||
+    active?.modelId !== IOS_FULL_BUN_SMOKE_MODEL_ID
+  ) {
+    throw new Error(
+      `Host-agent smoke model activation did not become ready: ${JSON.stringify(active)}`,
+    );
+  }
+  console.log(
+    `[local-chat-smoke] Activated host-agent model ${IOS_FULL_BUN_SMOKE_MODEL_ID}.`,
+  );
+  return active;
 }
 
 function extractDoneEventFromSse(text) {
@@ -2509,6 +2628,7 @@ async function main() {
   let androidContext = null;
   let iosContext = null;
   let hostAgent = null;
+  let hostAgentStateDir = null;
   try {
     if (startHostAgent) {
       if (apiBase) {
@@ -2516,13 +2636,23 @@ async function main() {
           "--start-host-agent cannot be combined with --api-base.",
         );
       }
+      const hostModelPath = await resolveHostAgentSmokeModelPath();
+      hostAgentStateDir = fs.mkdtempSync(
+        path.join(os.tmpdir(), "eliza-ios-host-agent-state-"),
+      );
+      await stageHostAgentSmokeModel(hostModelPath, hostAgentStateDir);
       hostAgent = await startDeviceE2eHostAgent({
         repoRoot,
         artifactDir: iosLocalChatResultDir,
         requestedPort: hostAgentPort,
+        env: {
+          ...process.env,
+          ELIZA_STATE_DIR: hostAgentStateDir,
+        },
         log: (message) => console.log(`[local-chat-smoke] ${message}`),
       });
       apiBase = hostAgent.apiBase;
+      await activateHostAgentSmokeModel(apiBase, authTokenArg);
     }
 
     if (platform === "ios" || platform === "both") {
@@ -2627,6 +2757,9 @@ async function main() {
     }
   } finally {
     await hostAgent?.stop();
+    if (hostAgentStateDir) {
+      fs.rmSync(hostAgentStateDir, { recursive: true, force: true });
+    }
     if (iosContext?.udid) {
       clearIosSmokeDefaults({
         udid: iosContext.udid,
@@ -2640,6 +2773,7 @@ async function main() {
 }
 
 export {
+  activateHostAgentSmokeModel,
   androidBackgroundServicesReady,
   androidDeviceSerial,
   androidRunAs,
@@ -2671,10 +2805,12 @@ export {
   requestOptionalJson,
   requestTextResponse,
   requireLocalInferenceReady,
+  requireProvisionedLocalInference,
   requireUsableFullTurnReply,
   runLocalInferenceApiSmoke,
   shellQuote,
   stageAndroidSmokeModel,
+  stageHostAgentSmokeModel,
   stageIosFullBunSmokeModel,
   takeIosScreenshot,
   verifyIosFullBunSmoke,

@@ -91,6 +91,7 @@ function smokeViewObject({
   viewPath,
   componentExport,
   viewType,
+  surface,
 }) {
   const encodedId = encodeURIComponent(id);
   const query = "?v=ui-smoke";
@@ -120,12 +121,13 @@ function smokeViewObject({
         description: "Read the mounted view state.",
       },
     ],
+    ...(surface ? { surface } : {}),
     _smokePluginDirName: pluginDirName,
   };
 }
 
-// The 6th tuple slot remains a viewType override for future compatibility, but
-// shipped fixture declarations default to GUI.
+// The 6th tuple slot remains a viewType override for future compatibility, and
+// the 7th carries production surface metadata. Shipped fixtures default to GUI.
 const smokeViews = smokeViewDeclarations.flatMap(
   ([
     id,
@@ -134,6 +136,7 @@ const smokeViews = smokeViewDeclarations.flatMap(
     viewPath,
     componentExport,
     modalitiesOrViewType = "gui",
+    surface,
   ]) => {
     const viewTypes = Array.isArray(modalitiesOrViewType)
       ? modalitiesOrViewType
@@ -146,6 +149,7 @@ const smokeViews = smokeViewDeclarations.flatMap(
         viewPath,
         componentExport,
         viewType,
+        surface,
       }),
     );
   },

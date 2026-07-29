@@ -34,6 +34,20 @@ export interface FrameKpiSummary {
   budgetMs: number;
 }
 
+export interface PairedFrameKpiWindow {
+  idle: FrameKpiSummary;
+  interaction: FrameKpiSummary;
+}
+
+export interface PairedFrameKpiSummary {
+  windowCount: number;
+  medianIdleP95FrameMs: number;
+  medianInteractionP95FrameMs: number;
+  medianEffectiveP95FrameMs: number;
+  worstEffectiveP95FrameMs: number;
+  effectiveP95FrameMsByWindow: number[];
+}
+
 /** Nearest-rank percentile; mirrors frame-budget.ts `percentile`. */
 function percentile(values: number[], p: number): number {
   if (values.length === 0) return 0;
@@ -72,6 +86,60 @@ export function summarizeFrameDeltas(
     worstFrameMs: samples.reduce((max, delta) => Math.max(max, delta), 0),
     droppedFrames: samples.filter((delta) => delta > budgetMs).length,
     budgetMs,
+  };
+}
+
+function median(values: readonly number[]): number {
+  if (values.length === 0) {
+    throw new RangeError("A frame-window median requires at least one value");
+  }
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  const upper = sorted[middle];
+  if (upper === undefined) {
+    throw new RangeError("The frame-window median index is out of bounds");
+  }
+  if (sorted.length % 2 === 1) return upper;
+  const lower = sorted[middle - 1];
+  if (lower === undefined) {
+    throw new RangeError("The frame-window median index is out of bounds");
+  }
+  return (lower + upper) / 2;
+}
+
+/**
+ * Normalize paired interaction windows against contemporaneous idle windows.
+ *
+ * The first frame budget is retained so a healthy runner keeps the absolute
+ * interaction p95 unchanged. Only delay already present while the page is idle
+ * is removed, preventing a globally throttled runner from masquerading as
+ * interaction jank while preserving sensitivity to work added by the UI.
+ */
+export function summarizePairedFrameKpis(
+  windows: readonly PairedFrameKpiWindow[],
+  targetFrameMs: number = FRAME_BUDGET_60_MS,
+): PairedFrameKpiSummary {
+  if (windows.length === 0) {
+    throw new RangeError("Paired frame KPIs require at least one window");
+  }
+  if (!Number.isFinite(targetFrameMs) || targetFrameMs <= 0) {
+    throw new RangeError("The target frame duration must be positive");
+  }
+
+  const effectiveP95FrameMsByWindow = windows.map(({ idle, interaction }) => {
+    const idleExcessMs = Math.max(0, idle.p95FrameMs - targetFrameMs);
+    return Math.max(0, interaction.p95FrameMs - idleExcessMs);
+  });
+
+  return {
+    windowCount: windows.length,
+    medianIdleP95FrameMs: median(windows.map(({ idle }) => idle.p95FrameMs)),
+    medianInteractionP95FrameMs: median(
+      windows.map(({ interaction }) => interaction.p95FrameMs),
+    ),
+    medianEffectiveP95FrameMs: median(effectiveP95FrameMsByWindow),
+    worstEffectiveP95FrameMs: Math.max(...effectiveP95FrameMsByWindow),
+    effectiveP95FrameMsByWindow,
   };
 }
 

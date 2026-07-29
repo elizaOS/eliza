@@ -11,6 +11,7 @@ import { ElizaError } from "@elizaos/core";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { type ReactElement, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useAgentElement } from "../../agent-surface";
 import {
   MODULE_CACHE_TELEMETRY_EVENT,
   type ModuleCacheTelemetryEvent,
@@ -698,6 +699,116 @@ describe("DynamicViewLoader", () => {
         selector: "[data-agent-id='owner-password']",
       }),
     });
+  });
+
+  it("merges registry and DOM controls and falls back to DOM interactions by id", async () => {
+    const bundleUrl =
+      "https://capability.example.test/assets/mixed-agent-controls.js";
+    const activateRegistered = vi.fn();
+    const clickRegisteredDom = vi.fn();
+    const spawnAgent = vi.fn();
+
+    window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = vi.fn(async () => ({
+      default: function MixedAgentControls() {
+        const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+          id: "registered-action",
+          role: "button",
+          label: "Registered action",
+          onActivate: activateRegistered,
+        });
+        return (
+          <section>
+            <button
+              ref={ref}
+              {...agentProps}
+              data-agent-label="DOM duplicate"
+              type="button"
+              onClick={clickRegisteredDom}
+            >
+              Registered
+            </button>
+            <button
+              data-agent-id="feed.spawn-agent"
+              data-agent-role="button"
+              data-agent-label="Spawn agent"
+              type="button"
+              onClick={spawnAgent}
+            >
+              Spawn agent
+            </button>
+            <span
+              data-agent-id="feed.invalid-role"
+              data-agent-role="not-a-real-role"
+              data-agent-label="Invalid role fallback"
+            >
+              Invalid role fallback
+            </span>
+          </section>
+        );
+      },
+    }));
+
+    render(
+      <DynamicViewLoader
+        bundleUrl={bundleUrl}
+        viewId="mixed.agent.controls"
+        surface={AGENT_SURFACE_MANIFEST}
+      />,
+    );
+    await screen.findByRole("button", { name: "Spawn agent" });
+
+    const { dispatchViewInteract } = await import("./view-interact-registry");
+    await dispatchViewInteract(
+      "mixed.agent.controls",
+      "gui",
+      "list-elements",
+      undefined,
+      "req-list-mixed",
+    );
+    await dispatchViewInteract(
+      "mixed.agent.controls",
+      "gui",
+      "agent-click",
+      { id: "feed.spawn-agent" },
+      "req-click-dom",
+    );
+    await dispatchViewInteract(
+      "mixed.agent.controls",
+      "gui",
+      "agent-click",
+      { id: "registered-action" },
+      "req-click-registered",
+    );
+    await dispatchViewInteract(
+      "mixed.agent.controls",
+      "gui",
+      "click-element",
+      { id: "feed.spawn-agent" },
+      "req-standard-click-dom",
+    );
+
+    expect(sendWsMessage).toHaveBeenCalledWith({
+      type: "view:interact:result",
+      requestId: "req-list-mixed",
+      success: true,
+      result: [
+        expect.objectContaining({
+          id: "registered-action",
+          label: "Registered action",
+        }),
+        expect.objectContaining({
+          id: "feed.spawn-agent",
+          label: "Spawn agent",
+        }),
+        expect.objectContaining({
+          id: "feed.invalid-role",
+          role: "region",
+        }),
+      ],
+    });
+    expect(spawnAgent).toHaveBeenCalledTimes(2);
+    expect(activateRegistered).toHaveBeenCalledTimes(1);
+    expect(clickRegisteredDom).not.toHaveBeenCalled();
   });
 
   it("reports missing focus targets without throwing", async () => {

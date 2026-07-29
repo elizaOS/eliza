@@ -27,8 +27,25 @@ describe("ElizaClient.getModelsCatalog", () => {
     const result = await client.getModelsCatalog();
     // catalogOnly skips the server's all-providers model-list fan-out, which
     // exceeds the client's 10s fetch budget on a cold cache.
-    expect(fetchMock).toHaveBeenCalledWith("/api/models?catalogOnly=1");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/models?catalogOnly=1",
+      undefined,
+    );
     expect(result.catalog).toEqual({ providers: {} });
+  });
+
+  it("forwards request cancellation to the catalog fetch", async () => {
+    const { client, fetchMock } = clientWithBody({
+      providers: {},
+      catalog: { providers: {} },
+    });
+    const controller = new AbortController();
+
+    await client.getModelsCatalog({ signal: controller.signal });
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/models?catalogOnly=1", {
+      signal: controller.signal,
+    });
   });
 });
 

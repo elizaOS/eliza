@@ -585,43 +585,6 @@ async function readVisiblePluginIds(
   return result.ids;
 }
 
-async function seedResettableState(
-  harness: PackagedDesktopHarness,
-): Promise<void> {
-  const result = await harness.eval<
-    EvalResult<{
-      firstRunComplete: string | null;
-      activeServer: string | null;
-    }>
-  >(
-    `(() => {
-      try {
-        localStorage.setItem("eliza:first-run-complete", "1");
-        localStorage.setItem(
-          "elizaos:active-server",
-          JSON.stringify({
-            id: "local:embedded",
-            kind: "local",
-            label: "This device",
-          }),
-        );
-        return {
-          ok: true,
-          firstRunComplete: localStorage.getItem("eliza:first-run-complete"),
-          activeServer: localStorage.getItem("elizaos:active-server"),
-        };
-      } catch (error) {
-        return {
-          ok: false,
-          error: error instanceof Error ? error.message : String(error),
-        };
-      }
-    })()`,
-  );
-
-  expect(result.ok, result.ok ? undefined : result.error).toBe(true);
-}
-
 async function triggerSettingsReset(
   harness: PackagedDesktopHarness,
 ): Promise<void> {
@@ -1204,7 +1167,7 @@ test("packaged desktop reset from Settings returns the shell to first-run setup"
 
   await withPackagedHarness(async ({ api, harness }) => {
     await openRouteAndWait(harness, SETTINGS_ROUTE, SETTINGS_SELECTOR);
-    await seedResettableState(harness);
+    await seedReturningInstallState(harness, api.baseUrl);
     await triggerSettingsReset(harness);
     await waitForResetRequest(api);
     await waitForResetUiState(harness);
@@ -1223,7 +1186,7 @@ test("packaged desktop reset from the application menu returns the shell to firs
 
   await withPackagedHarness(async ({ api, harness }) => {
     await openRouteAndWait(harness, SETTINGS_ROUTE, SETTINGS_SELECTOR);
-    await seedResettableState(harness);
+    await seedReturningInstallState(harness, api.baseUrl);
     await harness.menuAction("reset-app");
     await waitForResetRequest(api);
     await waitForResetUiState(harness);

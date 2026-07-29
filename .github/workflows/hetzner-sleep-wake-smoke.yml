@@ -225,7 +225,7 @@ jobs:
       - name: Write + back up agent state from A
         if: steps.provision_a.outputs.provisioned == 'true'
         run: |
-          IP_A=$(jq -r .ip "$HETZNER_E2E_STATE_FILE"); ID_A=$(jq -r .id "$HETZNER_E2E_STATE_FILE")
+          IP_A=$(jq -er .ip "$HETZNER_E2E_STATE_FILE"); ID_A=$(jq -er .server_id "$HETZNER_E2E_STATE_FILE")
           echo "box A: id=$ID_A ip=$IP_A"
           echo "$ID_A" > /tmp/box-a-id
           # Simulate agent state (mirrors AgentBackupStateData shape).
@@ -257,7 +257,7 @@ jobs:
       - name: Restore backup onto B + verify state survived
         if: steps.provision_a.outputs.provisioned == 'true'
         run: |
-          IP_B=$(jq -r .ip "$HETZNER_E2E_STATE_FILE"); ID_B=$(jq -r .id "$HETZNER_E2E_STATE_FILE")
+          IP_B=$(jq -er .ip "$HETZNER_E2E_STATE_FILE"); ID_B=$(jq -er .server_id "$HETZNER_E2E_STATE_FILE")
           ID_A=$(cat /tmp/box-a-id)
           echo "box B: id=$ID_B ip=$IP_B (was A id=$ID_A)"
           [ "$ID_B" != "$ID_A" ] || { echo "::error::wake did not create a NEW box"; exit 1; }

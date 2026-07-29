@@ -6,7 +6,7 @@
 
 import type { AgentNotification } from "@elizaos/core";
 import type { Meta, StoryObj } from "@storybook/react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   __ingestNotificationForTests,
   __resetNotificationStoreForTests,
@@ -36,16 +36,17 @@ function Seeded({
   notifications: Array<Partial<AgentNotification>>;
 }): React.JSX.Element | null {
   const [ready, setReady] = useState(false);
+  const notificationsRef = useRef(notifications);
   useEffect(() => {
     __resetNotificationStoreForTests();
     seq = 0;
-    for (const n of notifications) seed(n);
+    for (const n of notificationsRef.current) seed(n);
     setReady(true);
     return () => __resetNotificationStoreForTests();
-  }, [notifications]);
+  }, []);
   if (!ready) return null;
   return (
-    <div className="max-w-md">
+    <div className="w-[28rem] max-w-full">
       <NotificationsHomeCenter />
     </div>
   );

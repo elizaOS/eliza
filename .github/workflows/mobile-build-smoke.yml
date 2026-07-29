@@ -81,7 +81,11 @@ jobs:
     needs: changes
     if: github.event_name != 'pull_request' || needs.changes.outputs.ios == 'true'
     runs-on: macos-15
-    timeout-minutes: 30
+    timeout-minutes: 45
+    env:
+      IOS_HOST_AGENT_SMOKE_MODEL_URL: "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/e2b/text/eliza-1-e2b-32k.gguf?download=true"
+      IOS_HOST_AGENT_SMOKE_MODEL_FILE: "eliza-1-e2b-32k.gguf"
+      ELIZA_HOST_AGENT_SMOKE_MODEL_SHA256: "a511452ec932613d6b26b4fa24488fd431eb61eac69321460447d475edc221e2"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -230,6 +234,39 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+      - name: Cache iOS host-agent smoke GGUF
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: ~/.cache/eliza-ios-full-bun-smoke
+          key: ios-host-agent-smoke-model-${{ env.ELIZA_HOST_AGENT_SMOKE_MODEL_SHA256 }}
+
+      - name: Provision iOS host-agent smoke GGUF
+        run: |
+          set -euo pipefail
+          MODEL_DIR="$HOME/.cache/eliza-ios-full-bun-smoke"
+          MODEL_PATH="$MODEL_DIR/$IOS_HOST_AGENT_SMOKE_MODEL_FILE"
+          EXPECTED_BYTES=1270808512
+          mkdir -p "$MODEL_DIR"
+          actual_bytes=$(stat -f %z "$MODEL_PATH" 2>/dev/null || echo 0)
+          actual_sha=""
+          if [ -f "$MODEL_PATH" ]; then
+            actual_sha=$(shasum -a 256 "$MODEL_PATH" | awk '{print $1}')
+          fi
+          if [ "$actual_bytes" != "$EXPECTED_BYTES" ] || [ "$actual_sha" != "$ELIZA_HOST_AGENT_SMOKE_MODEL_SHA256" ]; then
+            rm -f "$MODEL_PATH" "$MODEL_PATH.part"
+            curl -fL --retry 3 --retry-all-errors \
+              -o "$MODEL_PATH.part" \
+              "$IOS_HOST_AGENT_SMOKE_MODEL_URL"
+            downloaded_bytes=$(stat -f %z "$MODEL_PATH.part")
+            downloaded_sha=$(shasum -a 256 "$MODEL_PATH.part" | awk '{print $1}')
+            if [ "$downloaded_bytes" != "$EXPECTED_BYTES" ] || [ "$downloaded_sha" != "$ELIZA_HOST_AGENT_SMOKE_MODEL_SHA256" ]; then
+              echo "ERROR: downloaded host-agent smoke model failed size/hash verification"
+              exit 1
+            fi
+            mv "$MODEL_PATH.part" "$MODEL_PATH"
+          fi
+          echo "Provisioned host-agent smoke model: $MODEL_PATH ($EXPECTED_BYTES bytes)"
+
       - name: Run iOS local-chat simulator smoke (#9943)
         # Wire the existing iOS chat device smoke into CI. mobile-local-chat-smoke
         # drives a real chat turn through the installed simulator app (the iOS
@@ -241,6 +278,7 @@ jobs:
         # self-skipping to green.
         run: |
           set -euo pipefail
+          export ELIZA_HOST_AGENT_SMOKE_MODEL_PATH="$HOME/.cache/eliza-ios-full-bun-smoke/$IOS_HOST_AGENT_SMOKE_MODEL_FILE"
           node packages/app/scripts/mobile-local-chat-smoke.mjs \
             --platform ios --require-installed --start-host-agent
 

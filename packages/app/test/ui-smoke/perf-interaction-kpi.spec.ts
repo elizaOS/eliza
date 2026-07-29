@@ -9,6 +9,9 @@
 // the same math as the live HUD (`summarizeFrameSamples`), so the numbers are the
 // 60/120fps signal the issue asked to stop flying blind on.
 //
+// Streaming uses paired idle/interaction windows because shared CI runners can
+// throttle rAF globally; the median gate isolates delay added by streaming.
+//
 // Budgets are SOFT and generous (headless Chromium caps rAF at ~60fps and CI is
 // noisy) so the spec is a measurement + coarse jank regression guard, not a
 // brittle gate — the same philosophy as perf-load-kpi. The reported fps / p95 /
@@ -27,6 +30,8 @@ import {
   formatFrameSummary,
   installFrameSampler,
   measureFrames,
+  type PairedFrameKpiWindow,
+  summarizePairedFrameKpis,
 } from "./lib/frame-kpi";
 
 // A long thread so scroll hits the transcript windowing (MAX_RENDERED_SHELL_MESSAGES
@@ -81,6 +86,11 @@ const STREAMING_REPLY_TOKENS = [
   "complete.",
 ] as const;
 const STREAMING_REPLY_TEXT = STREAMING_REPLY_TOKENS.join("");
+const STREAM_TOKEN_INTERVAL_MS = 24;
+const STREAM_SAMPLE_WINDOW_COUNT = 3;
+const IDLE_STREAM_WINDOW_MS =
+  (STREAMING_REPLY_TOKENS.length + 1) * STREAM_TOKEN_INTERVAL_MS + 250;
+const MIN_STREAM_FRAME_SAMPLES = 12;
 
 // A frame KPI is "ok" when it captured frames and p95 stayed under a coarse jank
 // ceiling (3 × the 60fps budget ≈ 50ms). Tolerant of headless/CI noise while
@@ -106,6 +116,56 @@ function assertFrameKpi(
   ).toBeLessThan(P95_JANK_CEILING_MS);
 }
 
+function assertPairedStreamFrameKpi(
+  testInfo: ReturnType<typeof test.info>,
+  windows: readonly PairedFrameKpiWindow[],
+): void {
+  for (const [index, window] of windows.entries()) {
+    const idleLine = formatFrameSummary(
+      `live-token-stream idle ${index + 1}`,
+      window.idle,
+    );
+    const interactionLine = formatFrameSummary(
+      `live-token-stream run ${index + 1}`,
+      window.interaction,
+    );
+    testInfo.annotations.push({
+      type: "frame-kpi",
+      description: idleLine,
+    });
+    testInfo.annotations.push({
+      type: "frame-kpi",
+      description: interactionLine,
+    });
+    console.log(`[perf-interaction-kpi] ${idleLine}`);
+    console.log(`[perf-interaction-kpi] ${interactionLine}`);
+    expect(
+      window.idle.sampleCount,
+      `idle window ${index + 1}: too few frame samples for a usable baseline`,
+    ).toBeGreaterThanOrEqual(MIN_STREAM_FRAME_SAMPLES);
+    expect(
+      window.interaction.sampleCount,
+      `stream window ${index + 1}: too few frame samples for a usable KPI`,
+    ).toBeGreaterThanOrEqual(MIN_STREAM_FRAME_SAMPLES);
+  }
+
+  const summary = summarizePairedFrameKpis(windows);
+  const normalizedLine =
+    `live-token-stream paired median: idle p95 ${summary.medianIdleP95FrameMs.toFixed(1)}ms, ` +
+    `stream p95 ${summary.medianInteractionP95FrameMs.toFixed(1)}ms, ` +
+    `effective p95 ${summary.medianEffectiveP95FrameMs.toFixed(1)}ms ` +
+    `(worst window ${summary.worstEffectiveP95FrameMs.toFixed(1)}ms)`;
+  testInfo.annotations.push({
+    type: "frame-kpi",
+    description: normalizedLine,
+  });
+  console.log(`[perf-interaction-kpi] ${normalizedLine}`);
+  expect(
+    summary.medianEffectiveP95FrameMs,
+    `live-token-stream: baseline-adjusted median p95 ${summary.medianEffectiveP95FrameMs.toFixed(1)}ms exceeds jank ceiling ${P95_JANK_CEILING_MS.toFixed(1)}ms (raw idle ${summary.medianIdleP95FrameMs.toFixed(1)}ms, raw stream ${summary.medianInteractionP95FrameMs.toFixed(1)}ms)`,
+  ).toBeLessThan(P95_JANK_CEILING_MS);
+}
+
 /**
  * Playwright route.fulfill buffers bodies, which would turn an SSE stream into
  * one synchronous blob and defeat the #9141 "live token streaming" KPI. Patch
@@ -114,7 +174,7 @@ function assertFrameKpi(
  */
 async function installStreamingFetch(page: Page): Promise<void> {
   await page.addInitScript(
-    ({ tokens, finalText }) => {
+    ({ tokens, finalText, tokenIntervalMs }) => {
       const originalFetch = window.fetch.bind(window);
       let sequence = 0;
       (
@@ -163,7 +223,10 @@ async function installStreamingFetch(page: Page): Promise<void> {
                       })}\n\n`,
                     ),
                   );
-                  window.setTimeout(() => emitToken(index + 1), 24);
+                  window.setTimeout(
+                    () => emitToken(index + 1),
+                    tokenIntervalMs,
+                  );
                   return;
                 }
                 controller.enqueue(
@@ -190,7 +253,7 @@ async function installStreamingFetch(page: Page): Promise<void> {
                   durationMs: performance.now() - startedAt,
                 });
               };
-              window.setTimeout(() => emitToken(0), 24);
+              window.setTimeout(() => emitToken(0), tokenIntervalMs);
             },
           });
 
@@ -209,6 +272,7 @@ async function installStreamingFetch(page: Page): Promise<void> {
     {
       tokens: [...STREAMING_REPLY_TOKENS],
       finalText: STREAMING_REPLY_TEXT,
+      tokenIntervalMs: STREAM_TOKEN_INTERVAL_MS,
     },
   );
 }
@@ -259,34 +323,58 @@ test.describe("dashboard shell interaction framerate", () => {
     // Sending opens the sheet and streams a real incremental ReadableStream
     // through the production SSE parser + React streaming path.
     const composer = page.getByTestId("chat-composer-textarea");
-    const streamSummary = await measureFrames(page, async () => {
-      await composer.fill("perf streaming probe");
-      await page.getByTestId("chat-composer-action").click();
-      await expect(
-        page.getByText(/Streaming frame budget probe complete/).last(),
-      ).toBeVisible({ timeout: 20_000 });
+    const streamWindows: PairedFrameKpiWindow[] = [];
+    for (let index = 0; index < STREAM_SAMPLE_WINDOW_COUNT; index++) {
+      const idle = await measureFrames(page, async () => {
+        await page.waitForTimeout(IDLE_STREAM_WINDOW_MS);
+      });
+      const interaction = await measureFrames(page, async () => {
+        await composer.fill(`perf streaming probe ${index + 1}`);
+        await page.getByTestId("chat-composer-action").click();
+        await page.waitForFunction(
+          (expectedCount) =>
+            (
+              window as unknown as {
+                __ELIZA_PERF_STREAMS__?: Array<unknown>;
+              }
+            ).__ELIZA_PERF_STREAMS__?.length === expectedCount,
+          index + 1,
+          { timeout: 20_000 },
+        );
+      });
+      streamWindows.push({ idle, interaction });
+    }
+    assertPairedStreamFrameKpi(testInfo, streamWindows);
+    await expect(
+      page.getByText(/Streaming frame budget probe complete/).last(),
+    ).toBeVisible({ timeout: 20_000 });
+    const streamInfo = await page.evaluate(() => {
+      const streams = (
+        window as unknown as {
+          __ELIZA_PERF_STREAMS__?: Array<{
+            tokenCount: number;
+            durationMs: number;
+          }>;
+        }
+      ).__ELIZA_PERF_STREAMS__;
+      if (!streams) {
+        throw new Error("The streaming KPI fixture was not installed");
+      }
+      return streams;
     });
-    assertFrameKpi(testInfo, "live-token-stream", streamSummary);
-    const streamInfo = await page.evaluate(
-      () =>
-        (
-          window as unknown as {
-            __ELIZA_PERF_STREAMS__?: Array<{
-              tokenCount: number;
-              durationMs: number;
-            }>;
-          }
-        ).__ELIZA_PERF_STREAMS__?.at(-1) ?? null,
-    );
     expect(
       streamInfo,
-      "streaming fixture must run through the fetch stream",
-    ).toMatchObject({
-      tokenCount: STREAMING_REPLY_TOKENS.length,
-    });
+      "each KPI window must run through the fetch stream",
+    ).toHaveLength(STREAM_SAMPLE_WINDOW_COUNT);
+    for (const info of streamInfo) {
+      expect(info).toMatchObject({
+        tokenCount: STREAMING_REPLY_TOKENS.length,
+      });
+    }
+    const fixtureDurations = streamInfo.map(({ durationMs }) => durationMs);
     testInfo.annotations.push({
       type: "frame-kpi",
-      description: `live-token-stream fixture: ${streamInfo?.tokenCount ?? 0} tokens over ${Math.round(streamInfo?.durationMs ?? 0)}ms`,
+      description: `live-token-stream fixture: ${STREAM_SAMPLE_WINDOW_COUNT} runs of ${STREAMING_REPLY_TOKENS.length} tokens over ${fixtureDurations.map(Math.round).join("/")}ms`,
     });
     await expect(overlay).toHaveAttribute("data-open", "true", {
       timeout: 15_000,

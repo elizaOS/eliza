@@ -106,7 +106,32 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-describe("smoke view bundle provenance over HTTP (#15791)", () => {
+describe("smoke view bundle provenance over HTTP (#15791)", {
+  timeout: 30_000,
+}, () => {
+  it("preserves the orchestrator agent-surface grant in the view response", async () => {
+    const bundleRoot = await emptyBundleRoot();
+    const { child, port } = await bootStub({
+      ELIZA_UI_SMOKE_VIEW_BUNDLE_ROOT: bundleRoot,
+    });
+    running = child;
+
+    const response = await fetch(`http://127.0.0.1:${port}/api/views`);
+    expect(response.status).toBe(200);
+    const payload: unknown = await response.json();
+    if (!isRecord(payload) || !Array.isArray(payload.views)) {
+      throw new Error("smoke view registry must return a views array");
+    }
+    const orchestrator = payload.views.find(
+      (view) => isRecord(view) && view.id === "orchestrator",
+    );
+
+    expect(orchestrator).toMatchObject({
+      id: "orchestrator",
+      surface: { capabilities: ["agent-surface"] },
+    });
+  });
+
   it("advertises canonical view capability objects", async () => {
     const bundleRoot = await emptyBundleRoot();
     const { child, port } = await bootStub({
