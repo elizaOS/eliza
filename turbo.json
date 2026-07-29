@@ -330,6 +330,13 @@
       ],
       "outputs": []
     },
+    "@elizaos/lifeops-bench#typecheck": {
+      "dependsOn": [
+        "@elizaos/plugin-calendar#build",
+        "@elizaos/plugin-personal-assistant#build"
+      ],
+      "outputs": []
+    },
     "@elizaos/plugin-contacts#typecheck": {
       "dependsOn": [
         "@elizaos/capacitor-contacts#build",
