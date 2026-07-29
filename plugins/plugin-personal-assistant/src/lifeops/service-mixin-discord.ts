@@ -35,6 +35,7 @@ export interface LifeOpsDiscordService {
     side?: LifeOpsConnectorSide;
     channelId?: string;
     text: string;
+    allowTransportFallback?: boolean;
   }): Promise<DiscordSendMessageResult>;
   verifyDiscordConnector(request: {
     side?: LifeOpsConnectorSide;

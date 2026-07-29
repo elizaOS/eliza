@@ -11,6 +11,7 @@ import {
   seedAppStorage,
 } from "./helpers";
 import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
+import { assertSharedViewHeaderContract } from "./helpers/view-header";
 
 /**
  * Visual coverage for the BUILTIN views — the pages rendered directly by the
@@ -28,7 +29,12 @@ import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality"
 // (packages/ui/src/navigation/index.ts), deduped by path. This is the live-run
 // + screenshot gate for ALL built-in views (not just a subset) so no built-in
 // surface ships without crash coverage at desktop + mobile.
-const BUILTIN_VIEW_CASES: Array<{ id: string; path: string }> = [
+const BUILTIN_VIEW_CASES: Array<{
+  id: string;
+  path: string;
+  readySelector?: string;
+  viewHeaderTitle?: string;
+}> = [
   { id: "chat", path: "/chat" },
   { id: "phone", path: "/phone" },
   { id: "messages", path: "/messages" },
@@ -37,13 +43,18 @@ const BUILTIN_VIEW_CASES: Array<{ id: string; path: string }> = [
   { id: "tasks", path: "/apps/tasks" },
   { id: "browser", path: "/browser" },
   { id: "stream", path: "/stream" },
-  { id: "apps", path: "/apps" },
+  { id: "my-apps", path: "/apps", viewHeaderTitle: "My Apps" },
   { id: "views", path: "/views" },
   { id: "character", path: "/character" },
   { id: "character-select", path: "/character/select" },
   { id: "automations", path: "/automations" },
   { id: "inventory", path: "/wallet" },
-  { id: "documents", path: "/character/documents" },
+  {
+    id: "documents",
+    path: "/character/documents",
+    readySelector: '[data-testid="documents-view"]',
+    viewHeaderTitle: "Knowledge",
+  },
   { id: "files", path: "/apps/files" },
   { id: "plugins", path: "/apps/plugins" },
   { id: "skills", path: "/apps/skills" },
@@ -101,6 +112,17 @@ test.describe("builtin views visual coverage (desktop + mobile)", () => {
           ? page.locator("main").first()
           : page.locator("body");
         await expect(viewRoot).toBeVisible({ timeout: 60_000 });
+        if (view.readySelector) {
+          await expect(page.locator(view.readySelector)).toBeVisible({
+            timeout: 60_000,
+          });
+        }
+        if (view.viewHeaderTitle) {
+          await assertSharedViewHeaderContract(page, {
+            requireTapTarget: vp.name === "mobile",
+            title: view.viewHeaderTitle,
+          });
+        }
         // A view is "rendered" if it shows readable text OR interactive/visual
         // content — input/canvas-heavy views (chat composer, the background
         // color picker) are legitimately light on static prose. A truly blank

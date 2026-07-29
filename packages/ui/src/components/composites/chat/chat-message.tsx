@@ -1219,6 +1219,7 @@ export const ChatMessage = memo(function ChatMessage({
               <MessageRowFooter className="flex items-center p-0 text-white/70">
                 <motion.div
                   key={accessoryMode}
+                  className="flex"
                   initial={reduceMotion ? false : { opacity: 0, y: 2 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{

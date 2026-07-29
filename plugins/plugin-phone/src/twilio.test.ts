@@ -51,6 +51,7 @@ describe("Twilio transport", () => {
       credentials,
       to: "+15551112222",
       body: "hello",
+      idempotencyKey: "approval:req-123:twilio",
     });
 
     expect(result).toMatchObject({
@@ -70,6 +71,9 @@ describe("Twilio transport", () => {
       expect.objectContaining({
         method: "POST",
         body: "To=%2B15551112222&From=%2B15550000000&Body=hello",
+        headers: expect.objectContaining({
+          "I-Twilio-Idempotency-Token": "approval:req-123:twilio",
+        }),
       }),
     );
   });

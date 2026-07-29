@@ -1,19 +1,13 @@
 /**
- * Table DDL for the tier-upgrade single-flight PGlite suites, mirroring the
- * Drizzle schemas the flows read and write (organizations, users,
- * user_characters, agent_sandboxes, api_keys, jobs). Executed as plain
- * statements instead of drizzle-kit `pushSchema` because drizzle-kit reacts to
- * internal errors with a silent `process.exit(1)`, which kills the whole
- * multi-file `bun test` process the coverage lane runs changed suites in
- * (#15943). Column lists were introspected from a real `pushSchema` apply;
- * every column of each Drizzle schema must exist here or `select()` fails
- * loudly with "column does not exist" — extend this file alongside any schema
- * change. Foreign keys are intentionally omitted (same as the harness in
- * `db/repositories/__tests__/jobs-recovery.test.ts`): the suites exercise
- * service invariants, not referential constraints.
+ * Table DDL for provisioning-job PGlite suites, mirroring the Drizzle schemas
+ * their service flows read and write. Plain statements avoid drizzle-kit's
+ * silent `process.exit(1)` on internal errors, which otherwise kills a
+ * multi-file Bun test process (#15943). Every selected Drizzle column must
+ * exist here so schema drift fails loudly; foreign keys are omitted because
+ * these suites exercise service invariants rather than referential constraints.
  */
 
-export const TIER_UPGRADE_TEST_TABLES: readonly string[] = [
+export const PROVISIONING_JOB_TEST_TABLES: readonly string[] = [
   `CREATE TABLE IF NOT EXISTS "organizations" (
   "id" uuid NOT NULL DEFAULT gen_random_uuid(),
   "name" text NOT NULL,
@@ -159,6 +153,8 @@ export const TIER_UPGRADE_TEST_TABLES: readonly string[] = [
   "character_id" uuid,
   "sandbox_id" text,
   "status" text NOT NULL DEFAULT 'pending'::text,
+  "lifecycle_job_id" uuid,
+  "lifecycle_execution_generation" uuid,
   "deletion_attempt_id" uuid,
   "deletion_started_at" timestamptz,
   "execution_tier" text NOT NULL DEFAULT 'shared'::text,
@@ -265,9 +261,22 @@ export const TIER_UPGRADE_TEST_TABLES: readonly string[] = [
   "estimated_completion_at" timestamp,
   "scheduled_for" timestamp NOT NULL DEFAULT now(),
   "started_at" timestamp,
+  "execution_generation" uuid,
+  "execution_quiesced_at" timestamp,
   "completed_at" timestamp,
   "created_at" timestamp NOT NULL DEFAULT now(),
   "updated_at" timestamp NOT NULL DEFAULT now(),
   PRIMARY KEY ("id")
 )`,
+  `CREATE TABLE IF NOT EXISTS "job_execution_leases" (
+  "job_id" uuid NOT NULL,
+  "execution_generation" uuid NOT NULL,
+  "owner_id" uuid NOT NULL,
+  "expires_at" timestamp NOT NULL,
+  "heartbeat_at" timestamp NOT NULL DEFAULT now(),
+  "created_at" timestamp NOT NULL DEFAULT now(),
+  PRIMARY KEY ("job_id")
+)`,
 ];
+
+export const TIER_UPGRADE_TEST_TABLES = PROVISIONING_JOB_TEST_TABLES;

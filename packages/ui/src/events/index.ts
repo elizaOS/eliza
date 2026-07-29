@@ -10,9 +10,10 @@
  * `dispatchAppEvent` / `dispatchWindowEvent` accept them.
  */
 
-import type {
-  ElizaDocumentEventName as SharedDocumentEventName,
-  ElizaWindowEventName as SharedWindowEventName,
+import {
+  CONNECT_EVENT,
+  type ElizaDocumentEventName as SharedDocumentEventName,
+  type ElizaWindowEventName as SharedWindowEventName,
 } from "@elizaos/shared/events";
 
 export {
@@ -247,6 +248,81 @@ export function dispatchAppEvent(
   detail?: unknown,
 ): void {
   document.dispatchEvent(new CustomEvent(name, { detail }));
+}
+
+export interface ConnectRequestDetail {
+  gatewayUrl: string;
+  token?: string;
+  completeFirstRun?: boolean;
+  skipConfirm?: boolean;
+}
+
+type ConnectRequestListener = (
+  detail: ConnectRequestDetail,
+) => void | Promise<void>;
+
+const connectRequestClaims = new WeakMap<object, () => boolean>();
+let pendingConnectRequest: ConnectRequestDetail | null = null;
+
+function emitConnectRequest(detail: ConnectRequestDetail): void {
+  document.dispatchEvent(new CustomEvent(CONNECT_EVENT, { detail }));
+}
+
+/**
+ * Dispatches a connection request without losing native deep links that arrive
+ * while React is replacing the startup screen with the live shell. The latest
+ * unclaimed request is replayed when a consumer mounts; a synchronous claim
+ * guarantees that the startup and shell listeners cannot both adopt it.
+ */
+export function dispatchConnectRequest(detail: ConnectRequestDetail): void {
+  let claimed = false;
+  const request: ConnectRequestDetail = {
+    ...detail,
+  };
+  connectRequestClaims.set(request, () => {
+    if (claimed) return false;
+    claimed = true;
+    if (pendingConnectRequest === request) {
+      pendingConnectRequest = null;
+    }
+    return true;
+  });
+  pendingConnectRequest = request;
+  emitConnectRequest(request);
+}
+
+/**
+ * Subscribes to connection requests and immediately replays one that arrived
+ * before this listener mounted. Legacy CustomEvents outside this helper remain
+ * supported for browser tests and third-party in-app producers.
+ */
+export function listenForConnectRequests(
+  listener: ConnectRequestListener,
+): () => void {
+  const handle = (event: Event): void => {
+    const detail = (event as CustomEvent<unknown>).detail;
+    if (
+      !detail ||
+      typeof detail !== "object" ||
+      Array.isArray(detail) ||
+      typeof (detail as { gatewayUrl?: unknown }).gatewayUrl !== "string"
+    ) {
+      return;
+    }
+
+    const request = detail as ConnectRequestDetail;
+    const claim = connectRequestClaims.get(request);
+    if (claim && !claim()) return;
+    void listener(request);
+  };
+
+  document.addEventListener(CONNECT_EVENT, handle);
+  queueMicrotask(() => {
+    if (pendingConnectRequest) {
+      emitConnectRequest(pendingConnectRequest);
+    }
+  });
+  return () => document.removeEventListener(CONNECT_EVENT, handle);
 }
 
 /** Dispatch a typed custom event on `window`. */

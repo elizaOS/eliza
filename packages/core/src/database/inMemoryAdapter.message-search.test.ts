@@ -11,6 +11,7 @@ import { InMemoryDatabaseAdapter } from "./inMemoryAdapter";
 const agentId = "00000000-0000-0000-0000-000000000001" as UUID;
 const roomId = "20000000-0000-0000-0000-000000000001" as UUID;
 const entityId = "10000000-0000-0000-0000-000000000001" as UUID;
+const otherEntityId = "10000000-0000-0000-0000-000000000002" as UUID;
 
 function msg(text: string, createdAt: number, id?: string): Memory {
 	return {
@@ -33,6 +34,24 @@ async function seed(messages: Memory[]): Promise<InMemoryDatabaseAdapter> {
 }
 
 describe("InMemoryDatabaseAdapter — textContains", () => {
+	it("treats entityId as requester context rather than a memory row predicate", async () => {
+		const adapter = await seed([
+			msg("requester-authored", 1),
+			{ ...msg("other-authored", 2), entityId: otherEntityId },
+		]);
+
+		const rows = await adapter.getMemories({
+			entityId,
+			agentId,
+			tableName: "messages",
+		});
+
+		expect(rows.map((memory) => memory.content.text)).toEqual([
+			"other-authored",
+			"requester-authored",
+		]);
+	});
+
 	it("filters to messages whose text contains the keyword (case-insensitive)", async () => {
 		const adapter = await seed([
 			msg("Let's ship the WebXR runtime today", 1),

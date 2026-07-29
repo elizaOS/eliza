@@ -34,6 +34,20 @@ export function elizaProvisionAdvisoryLockSql(organizationId: string, agentId: s
 }
 
 /**
+ * Reconciliation never waits behind live lifecycle work. A false result is an
+ * explicit defer signal; the next bounded scan retries the same deterministic
+ * candidate after unrelated agents have had a chance to progress.
+ */
+export function elizaTryProvisionAdvisoryLockSql(organizationId: string, agentId: string) {
+  return sql<{ acquired: boolean }>`
+    SELECT pg_try_advisory_xact_lock(
+      hashtext(${organizationId}),
+      hashtext(${agentId})
+    ) AS acquired
+  `;
+}
+
+/**
  * Per-organization coding-container image lock. This serializes the idempotent
  * "one active sandbox per image" creation path without constraining warm-pool
  * rows or unrelated custom-image agents at the schema level.

@@ -6,6 +6,7 @@
 
 import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { eq, type SQL } from "drizzle-orm";
+import { jobExecutionLeases } from "../../schemas/job-execution-leases";
 import { type Job, jobs } from "../../schemas/jobs";
 
 process.env.DATABASE_URL ||= "pglite://memory";
@@ -39,6 +40,7 @@ async function seedJob(params: {
   organizationId?: string;
   userId?: string;
   agentId?: string;
+  executionGeneration?: string;
 }): Promise<void> {
   const old = JOB_STARTED_AT;
   await dbWrite.insert(jobs).values({
@@ -56,8 +58,23 @@ async function seedJob(params: {
     agent_id: params.agentId ?? AGENT_ID,
     scheduled_for: old,
     started_at: old,
+    execution_generation: params.executionGeneration,
     created_at: old,
     updated_at: JOB_UPDATED_AT,
+  });
+}
+
+async function seedExecutionLease(params: {
+  jobId: string;
+  generation: string;
+  ownerId: string;
+  expiresAt?: Date;
+}): Promise<void> {
+  await dbWrite.insert(jobExecutionLeases).values({
+    job_id: params.jobId,
+    execution_generation: params.generation,
+    owner_id: params.ownerId,
+    expires_at: params.expiresAt ?? new Date(Date.now() + 60_000),
   });
 }
 
@@ -136,10 +153,27 @@ beforeAll(async () => {
 				estimated_completion_at timestamp,
 				scheduled_for timestamp NOT NULL DEFAULT now(),
 				started_at timestamp,
+				execution_generation uuid,
+				execution_quiesced_at timestamp,
 				completed_at timestamp,
 				created_at timestamp NOT NULL DEFAULT now(),
 				updated_at timestamp NOT NULL DEFAULT now()
 			);`,
+    );
+    await dbWrite.execute(
+      `ALTER TABLE jobs
+        ADD COLUMN IF NOT EXISTS execution_generation uuid,
+        ADD COLUMN IF NOT EXISTS execution_quiesced_at timestamp;`,
+    );
+    await dbWrite.execute(
+      `CREATE TABLE IF NOT EXISTS job_execution_leases (
+        job_id uuid PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE,
+        execution_generation uuid NOT NULL,
+        owner_id uuid NOT NULL,
+        expires_at timestamp NOT NULL,
+        heartbeat_at timestamp NOT NULL DEFAULT now(),
+        created_at timestamp NOT NULL DEFAULT now()
+      );`,
     );
   } catch (error) {
     pgliteReady = false;
@@ -154,7 +188,91 @@ afterAll(async () => {
 describe("jobsRepository.recoverStaleJobs", () => {
   beforeEach(async () => {
     expect(pgliteReady).toBe(true);
+    await dbWrite.delete(jobExecutionLeases);
     await dbWrite.execute("DELETE FROM jobs;");
+  });
+
+  test("two live processors cannot reclaim one another before the winning lease expires", async () => {
+    expect(pgliteReady).toBe(true);
+    const jobId = "00000000-0000-4000-8000-000000180854";
+    const firstOwner = "00000000-0000-4000-8000-000000180855";
+    const secondOwner = "00000000-0000-4000-8000-000000180856";
+    await dbWrite.insert(jobs).values({
+      id: jobId,
+      type: "agent_message",
+      status: "pending",
+      data: { agentId: AGENT_ID, organizationId: ORG_ID },
+      organization_id: ORG_ID,
+      agent_id: AGENT_ID,
+      scheduled_for: JOB_STARTED_AT,
+      created_at: JOB_STARTED_AT,
+      updated_at: JOB_STARTED_AT,
+    });
+
+    const [firstClaim, secondClaim] = await Promise.all([
+      repo.claimPendingJobs({
+        type: "agent_message",
+        limit: 1,
+        executionOwnerId: firstOwner,
+        executionLeaseMs: 60_000,
+      }),
+      repo.claimPendingJobs({
+        type: "agent_message",
+        limit: 1,
+        executionOwnerId: secondOwner,
+        executionLeaseMs: 60_000,
+      }),
+    ]);
+
+    expect(firstClaim.length + secondClaim.length).toBe(1);
+    const claimed = firstClaim[0] ?? secondClaim[0];
+    if (!claimed?.execution_generation) throw new Error("expected one generated execution");
+    const winner = firstClaim.length === 1 ? firstOwner : secondOwner;
+    const loser = winner === firstOwner ? secondOwner : firstOwner;
+    await expect(repo.assertExecutionLease(claimed, winner)).resolves.toBeUndefined();
+    await expect(repo.assertExecutionLease(claimed, loser)).rejects.toThrow(
+      "execution generation is no longer current",
+    );
+
+    expect(
+      await repo.recoverInProgressJobsStartedBefore({
+        type: "agent_message",
+        startedBefore: new Date(Date.now() + 60_000),
+      }),
+    ).toBe(0);
+    expect(await repo.findByIdForWrite(jobId)).toMatchObject({ status: "in_progress" });
+
+    await dbWrite
+      .update(jobExecutionLeases)
+      .set({ expires_at: new Date(Date.now() - 1_000) })
+      .where(eq(jobExecutionLeases.job_id, jobId));
+    await expect(repo.assertExecutionLease(claimed, winner)).rejects.toThrow(
+      "execution generation is no longer current",
+    );
+    expect(await repo.renewExecutionLease(claimed, winner, 60_000)).toBe(true);
+    await expect(repo.assertExecutionLease(claimed, winner)).resolves.toBeUndefined();
+    expect(
+      await repo.recoverInProgressJobsStartedBefore({
+        type: "agent_message",
+        startedBefore: new Date(Date.now() + 60_000),
+      }),
+    ).toBe(0);
+
+    await dbWrite
+      .update(jobExecutionLeases)
+      .set({ expires_at: new Date(Date.now() - 31_000) })
+      .where(eq(jobExecutionLeases.job_id, jobId));
+    expect(
+      await repo.recoverStaleJobs({
+        type: "agent_message",
+        staleThresholdMs: 1,
+      }),
+    ).toBe(1);
+    expect(await repo.findByIdForWrite(jobId)).toMatchObject({
+      status: "pending",
+      attempts: 1,
+      execution_quiesced_at: expect.any(Date),
+    });
   });
 
   test("uses each stale row's max_attempts instead of a caller-wide fallback", async () => {
@@ -192,6 +310,30 @@ describe("jobsRepository.recoverStaleJobs", () => {
       status: "pending",
       attempts: 1,
       error: "Job timed out - recovered for retry (attempt 1/3)",
+    });
+  });
+
+  test("non-provisioning job families keep elapsed-time crash recovery", async () => {
+    expect(pgliteReady).toBe(true);
+    const jobId = "00000000-0000-4000-8000-000000170854";
+    await seedJob({
+      id: jobId,
+      type: "pii_scrub",
+      maxAttempts: 3,
+      executionGeneration: "00000000-0000-4000-8000-000000170855",
+    });
+
+    expect(
+      await repo.recoverStaleJobs({
+        type: "pii_scrub",
+        staleThresholdMs: 5 * 60 * 1000,
+      }),
+    ).toBe(1);
+    expect(await repo.findByIdForWrite(jobId)).toMatchObject({
+      status: "pending",
+      attempts: 1,
+      execution_generation: "00000000-0000-4000-8000-000000170855",
+      execution_quiesced_at: expect.any(Date),
     });
   });
 
@@ -505,7 +647,17 @@ describe("jobsRepository.recoverStaleJobs", () => {
   test("retry without attempt increment cannot overwrite a concurrent completion", async () => {
     expect(pgliteReady).toBe(true);
     const jobId = "00000000-0000-4000-8000-000000160854";
-    await seedJob({ id: jobId, maxAttempts: 3 });
+    await seedJob({
+      id: jobId,
+      maxAttempts: 3,
+      executionGeneration: "00000000-0000-4000-8000-000000160855",
+    });
+    const ownerId = "00000000-0000-4000-8000-000000160856";
+    await seedExecutionLease({
+      jobId,
+      generation: "00000000-0000-4000-8000-000000160855",
+      ownerId,
+    });
     const claimed = await repo.findByIdForWrite(jobId);
     if (!claimed) throw new Error("expected claimed job");
 
@@ -526,7 +678,12 @@ describe("jobsRepository.recoverStaleJobs", () => {
 
     try {
       expect(
-        await repo.retryLaterWithoutIncrementingAttempts(claimed, "late retryable failure", 30_000),
+        await repo.retryLaterWithoutIncrementingAttempts(
+          claimed,
+          "late retryable failure",
+          30_000,
+          ownerId,
+        ),
       ).toBeUndefined();
     } finally {
       primarySpy.mockRestore();

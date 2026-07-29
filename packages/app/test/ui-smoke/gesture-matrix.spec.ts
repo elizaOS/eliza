@@ -12,16 +12,15 @@
  *      compat click after a long press passed the `!editing` guard and
  *      ghost-launched the tile).
  *   2. Inline notification inbox (`home-notification-center`, rendered directly
- *      on the home column) — a seeded inbox renders its rows; a row tap marks it
- *      read IN PLACE (order ignores read state, so the row never moves under the
- *      pointer); the per-row hover-X and the right-click menu each dismiss; there
- *      is no bulk clear-all.
+ *      on the home column) — the rested shade shows interrupt-tier rows, expands
+ *      to every priority, and supports platform-style tap acknowledgement and
+ *      horizontal dismiss.
  *   3. Chat sheet flick/drag detents — a fast upward flick on the grabber
  *      snaps the sheet open; a slow sub-threshold drag leaves it closed.
  *   4. Drag-through prevention — dragging the sheet grabber must not deliver
  *      pointer events into (or scroll) the home screen beneath.
- *   5. (touch) Rail flick home→launcher with a genuine CDP touch swipe must
- *      not ghost-launch the tile under the finger.
+ *   5. (touch) A genuine CDP touch rail flick that starts on a launcher tile
+ *      must return home without ghost-launching that tile.
  *   6. (touch) A vertical pan over `home-notification-list` is contained to the
  *      inbox (the list is `overscroll-y-contain`) — it must not flip the
  *      home↔launcher rail, chain into the home column beneath, or ghost-tap the
@@ -45,6 +44,7 @@ import {
   mousePointerDrag,
   readLeakedEvents,
 } from "./helpers/gesture-inputs";
+import { navigateHomeLauncher } from "./helpers/launcher-navigation";
 import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
 
 const REPO_ROOT = process.cwd().endsWith(path.join("packages", "app"))
@@ -85,27 +85,13 @@ async function openHome(page: Page): Promise<void> {
   });
 }
 
-/** Bring the embedded launcher grid into view (setup, not the gesture under
- *  test). Home and apps share one combined surface — the grid lives under the
- *  "Apps" region on the home column; scrolling it into view is what a user
- *  does, there is no separate launcher page to navigate to. */
-async function revealLauncherGrid(page: Page): Promise<void> {
-  const appsRegion = page.getByTestId("home-apps-scroll");
-  await expect(appsRegion).toBeVisible({ timeout: 15_000 });
-  const settingsTile = appsRegion.getByTestId("launcher-tile-settings");
-  await settingsTile.scrollIntoViewIfNeeded();
-  await expect(settingsTile).toBeVisible({ timeout: 15_000 });
-}
-
 test("launcher tile: tap launches, long press does NOT ghost-launch on release", async ({
   page,
 }) => {
   await openHome(page);
-  await revealLauncherGrid(page);
+  const grid = await navigateHomeLauncher(page, "launcher");
 
-  const settingsTile = page
-    .getByTestId("home-apps-scroll")
-    .getByTestId("launcher-tile-settings");
+  const settingsTile = grid.getByTestId("launcher-tile-settings");
   await expect(settingsTile).toBeVisible({ timeout: 15_000 });
   const tileButton = settingsTile.getByRole("button").first();
   await evidenceShot(page, "tile-press-before");
@@ -124,7 +110,7 @@ test("launcher tile: tap launches, long press does NOT ghost-launch on release",
   await expect(page.getByTestId("settings-shell")).toHaveCount(0);
   await expect(page.getByTestId("home-launcher-surface")).toHaveAttribute(
     "data-page",
-    "home",
+    "launcher",
   );
   await evidenceShot(page, "tile-longpress-no-launch");
 
@@ -318,9 +304,9 @@ async function rowTitleOrder(center: Locator): Promise<string[]> {
 /**
  * Fan the rested shade open so every seeded row renders flat. The inbox is
  * priority-triaged: at rest only interrupt-tier rows (high/urgent) show,
- * Z-stacked by view group, so a mixed-priority seed collapses to a single
- * visible row. The notification-count button is the keyboard-accessible form
- * of the same pull-to-expand transition, fanning all rows out.
+ * Z-stacked by producer. The notification-count button is the
+ * keyboard-accessible form of the same pull-to-expand transition, fanning all
+ * priorities out.
  */
 async function expandNotificationShade(page: Page): Promise<void> {
   await page.getByTestId("notifications-count-button").click();
@@ -330,97 +316,67 @@ async function expandNotificationShade(page: Page): Promise<void> {
   );
 }
 
-test("dashboard notification center: row tap marks read in place, hover-X dismiss removes, context menu dismisses, no clear-all", async ({
+test("dashboard notification center: rested priority, expansion, tap acknowledgement, and horizontal dismiss", async ({
   page,
 }, testInfo) => {
-  // The hover-X and right-click paths are MOUSE affordances (the X is
-  // `pointer-coarse:hidden`; touch has no right-click). The touch equivalents —
-  // sideways swipe + long-press menu — are covered by the real-touch describe
-  // below, so this pointer test only runs on the non-touch projects.
+  // This test drives the mouse implementation of horizontal dismiss. The same
+  // interaction runs through genuine CDP touch in the real-touch describe.
   test.skip(
     Boolean(testInfo.project.use?.hasTouch),
-    "mouse-pointer paths (hover-X, right-click); touch paths live in the real-touch describe",
+    "mouse-pointer path; touch dismissal lives in the real-touch describe",
   );
   await installSeededInboxRoutes(page, seedInboxNotifications());
   await openHome(page);
 
-  // (a) The inbox renders INLINE on the home column (no shade, no hint pill):
-  // it carries every seeded row in priority-bucket-then-recency order, and the
-  // unread badge counts the six unread rows.
+  // At rest the inline center shows only interrupt-tier rows while preserving
+  // the full inbox count as the explicit expand affordance.
   const center = page.getByTestId("home-notification-center");
   await expect(center).toBeVisible({ timeout: 15_000 });
-  // Inline on the same layer — inside the home scroller, not a portal shade.
   await expect(page.getByTestId("notifications-shade")).toHaveCount(0);
   await expect(
     page.getByTestId("home-screen").getByTestId("home-notification-center"),
   ).toBeVisible();
-  await expect(center.getByTestId("notification-row")).toHaveCount(8, {
+  await expect(center.getByTestId("notification-row")).toHaveCount(2, {
     timeout: 15_000,
   });
-  await expect(center.getByTestId("notifications-unread-badge")).toHaveText(
-    "6",
+  expect(await rowTitleOrder(center)).toEqual(SEEDED_ORDER.slice(0, 2));
+  await expect(center.getByTestId("notifications-count-button")).toHaveText(
+    "8 Notifications",
   );
-  expect(await rowTitleOrder(center)).toEqual(SEEDED_ORDER);
-  await evidenceShot(page, "notification-center-seeded");
 
-  // (b) Tapping a row marks it read WITHOUT moving it. The tapped row is the
-  // top (urgent, unread) one — under an unread-first inbox sort it would sink
-  // below the six remaining unread rows, so an identical order is a real
-  // no-reshuffle proof, not a tautology.
+  await expandNotificationShade(page);
+  await expect(center.getByTestId("notification-row")).toHaveCount(8);
+  expect(await rowTitleOrder(center)).toEqual(SEEDED_ORDER);
+  await evidenceShot(page, "notification-center-expanded");
+
+  // Platform-shade acknowledgement clears a row after acting on its safe
+  // destination. This fixture has no destination, so the tap only clears.
   const urgentRow = center
     .getByTestId("notification-row")
     .filter({ hasText: "Payment failed" });
-  await expect(urgentRow).toHaveAttribute("data-unread", "true");
   await urgentRow.click();
-  await expect(urgentRow).not.toHaveAttribute("data-unread", "true", {
-    timeout: 10_000,
-  });
-  await expect(center.getByTestId("notifications-unread-badge")).toHaveText(
-    "5",
-  );
-  expect(await rowTitleOrder(center)).toEqual(SEEDED_ORDER);
-  // The tap had no deepLink: the home surface must not have navigated.
+  await expect(urgentRow).toHaveCount(0, { timeout: 10_000 });
+  await expect(center.getByTestId("notification-row")).toHaveCount(7);
   await expect(page.getByTestId("home-screen")).toBeVisible();
   await expect(page.getByTestId("chat-overlay")).not.toHaveAttribute(
     "data-open",
     "true",
   );
-  await evidenceShot(page, "notification-center-row-read-in-place");
+  await evidenceShot(page, "notification-center-row-acknowledged");
 
-  // (c) The per-row X removes exactly that row.
-  await center
+  // A genuine pointer drag uses the row's shipped horizontal-dismiss path.
+  const approvalRow = center
     .locator("li[data-notif-row]")
     .filter({ hasText: "Approval needed" })
-    .getByTestId("notification-row-dismiss")
-    .click();
+    .getByTestId("notification-row-swipe");
+  await mousePointerDrag(page, approvalRow, -140, 0, { steps: 8 });
   await expect(
     center
       .getByTestId("notification-row")
       .filter({ hasText: "Approval needed" }),
   ).toHaveCount(0, { timeout: 10_000 });
-  await expect(center.getByTestId("notification-row")).toHaveCount(7);
-
-  // (d) There is no bulk clear-all trash button any more — rows are dismissed
-  // one at a time. The right-click contextual menu is a second per-row path:
-  // open it on a remaining row and dismiss from it.
-  await expect(center.getByTestId("notifications-clear-all")).toHaveCount(0);
-  // Right-click the row button; the contextmenu bubbles to the row li, which
-  // opens the menu.
-  const menuTarget = center
-    .getByTestId("notification-row")
-    .filter({ hasText: "Payment failed" });
-  await menuTarget.click({ button: "right" });
-  await expect(page.getByTestId("notification-row-menu")).toBeVisible({
-    timeout: 10_000,
-  });
-  await page.getByTestId("notification-menu-dismiss").click();
-  await expect(
-    center
-      .getByTestId("notification-row")
-      .filter({ hasText: "Payment failed" }),
-  ).toHaveCount(0, { timeout: 10_000 });
   await expect(center.getByTestId("notification-row")).toHaveCount(6);
-  await evidenceShot(page, "notification-center-row-menu-dismiss");
+  await evidenceShot(page, "notification-center-row-drag-dismiss");
 });
 
 test("chat sheet: fast flick snaps open, slow sub-threshold drag stays closed, and the drag never leaks under the sheet", async ({
@@ -476,7 +432,7 @@ test("chat sheet: fast flick snaps open, slow sub-threshold drag stays closed, a
 });
 
 test.describe("real touch (hasTouch project)", () => {
-  test("horizontal flick over the launcher grid via CDP touch does not ghost-launch the tile under the finger", async ({
+  test("rail flick starting on a launcher tile via CDP touch returns home without ghost-launching it", async ({
     page,
     browserName,
   }, testInfo) => {
@@ -489,17 +445,23 @@ test.describe("real touch (hasTouch project)", () => {
 
     await openHome(page);
     const surface = page.getByTestId("home-launcher-surface");
-    await revealLauncherGrid(page);
-    const appsRegion = page.getByTestId("home-apps-scroll");
 
-    // Genuine touch flick LEFT across the embedded grid. Home and apps share
-    // one combined surface: there is no rail to pan, so the flick must be a
-    // no-op navigation-wise…
-    await cdpTouchDrag(page, appsRegion, -220, 4, 10);
-    await evidenceShot(page, "touch-grid-flick");
+    // The shared helper uses genuine CDP touch and refuses a mouse fallback.
+    const grid = await navigateHomeLauncher(page, "launcher", {
+      input: "touch",
+    });
+    await evidenceShot(page, "touch-rail-flick-to-launcher");
 
-    // …and, GHOST-CLICK: the release must not tap-launch whatever tile ended
-    // up under the finger — no view opened, the combined home still showing.
+    // Start the return flick on the actual Settings control. A swipe from empty
+    // rail space proves navigation, but cannot catch the compat-click regression
+    // this case owns.
+    const settingsButton = grid
+      .getByTestId("launcher-tile-settings")
+      .getByRole("button", { name: "Settings" });
+    await expect(settingsButton).toBeVisible({ timeout: 15_000 });
+    await cdpTouchDrag(page, settingsButton, 220, 4, 10);
+
+    // GHOST-CLICK: release must not launch the tile where the finger started.
     await page.waitForTimeout(500);
     await expect(page.getByTestId("settings-shell")).toHaveCount(0);
     await expect(surface).toHaveAttribute("data-page", "home");
@@ -507,13 +469,7 @@ test.describe("real touch (hasTouch project)", () => {
       "data-open",
       "true",
     );
-
-    // The paired opposite flick is equally inert.
-    await cdpTouchDrag(page, appsRegion, 220, 4, 10);
-    await page.waitForTimeout(500);
-    await expect(page.getByTestId("settings-shell")).toHaveCount(0);
-    await expect(surface).toHaveAttribute("data-page", "home");
-    await evidenceShot(page, "touch-grid-flick-back");
+    await evidenceShot(page, "touch-rail-flick-back-home");
   });
 
   test("vertical pan over the notification list is contained — no rail flip, no home scroll, no ghost row-tap", async ({

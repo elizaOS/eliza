@@ -53,9 +53,10 @@ const FRAME_BUDGET_OPTIONS = {
   droppedFrameRatio: 0.25, // >25% frames over budget = visible jank
   reportOnLongTask: false, // long tasks are noisy on shared CI runners
 };
-// Streaming intentionally updates once per animation frame, making its dropped
-// ratio sensitive to runner contention. Pair each streaming window with an
-// immediately preceding zero-token window so the gate measures incremental work.
+// Streaming transport events intentionally arrive once per animation frame.
+// The fixture applies the production cumulative-snapshot paint cadence, then
+// each streaming window is paired with an immediately preceding zero-token
+// window so the gate measures incremental render work.
 const FRAME_GATE_STREAMING = {
   p95BudgetFactor: 2.5,
   reportOnLongTask: false,
@@ -362,9 +363,9 @@ await runBrowserFixtureE2E(
     // landing into the OPEN chat. The fixture's tail turn carries a CHOICE
     // widget, so streaming into it is the exact condition where an unmemoized
     // widget would re-render on every token. We drive the fixture's token
-    // driver ~one token per animation frame, harvest the SAME real frame
-    // samples, and hold them to a frame budget — plus prove the widget stayed
-    // mounted (never remounted/torn) across the whole stream.
+    // driver ~one token per animation frame. The fixture coalesces cumulative
+    // snapshots at the production paint cadence; the gate harvests the SAME
+    // real frame samples and proves the widget stays mounted across the stream.
     const hasStreamDriver = await page.evaluate(
       () => typeof window.__ELIZA_PERF_STREAM__ === "function",
     );
@@ -397,10 +398,10 @@ await runBrowserFixtureE2E(
     // window (a GC pause, a co-tenant CI process stealing the core) must not
     // redden the lane, but a real regression — an unmemoized widget re-rendering
     // on every token — janks EVERY window, so the median still trips. Each window
-    // resets the sampled buffers, drives ~120 tokens (a few chars each, one batch
-    // per animation frame — a sustained stream, not a burst) entirely in the page
-    // so the rAF cadence is real, then harvests the SAME real frame + shift +
-    // reflow entries and feeds them to the SAME shared detector.
+    // resets the sampled buffers, drives ~120 transport events (a few chars each,
+    // one per animation frame — a sustained stream, not a synchronous burst)
+    // entirely in the page, then harvests the SAME real frame + shift + reflow
+    // entries and feeds them to the SAME shared detector.
     const streamWindows = [];
     const reflowAll = [];
     for (let w = 0; w < STREAM_WINDOWS; w += 1) {

@@ -60,6 +60,8 @@ beforeAll(async () => {
         estimated_completion_at timestamp,
         scheduled_for timestamp NOT NULL DEFAULT now(),
         started_at timestamp,
+        execution_generation uuid,
+        execution_quiesced_at timestamp,
         completed_at timestamp,
         created_at timestamp NOT NULL DEFAULT now(),
         updated_at timestamp NOT NULL DEFAULT now(),

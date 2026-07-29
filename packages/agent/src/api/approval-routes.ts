@@ -17,13 +17,20 @@ import {
   type Task,
   type UUID,
 } from "@elizaos/core";
-import { APPROVAL_SERVICE } from "../services/approval/service.ts";
+import {
+  APPROVAL_SERVICE,
+  type ApprovalService,
+} from "../services/approval/service.ts";
 import type {
   ApprovalAction,
   ApprovalListFilter,
   ApprovalQueue,
   ApprovalRequest,
   ApprovalRequestState,
+} from "../services/approval/types.ts";
+import {
+  APPROVAL_EXECUTION_CAPABILITY,
+  APPROVAL_EXECUTION_PROTOCOL_VERSION,
 } from "../services/approval/types.ts";
 import { PENDING_PROMPTS_SERVICE } from "../services/pending-prompts/service.ts";
 
@@ -34,10 +41,6 @@ interface ApprovalRouteRuntime {
 
 export interface ApprovalRouteState {
   runtime: ApprovalRouteRuntime | null;
-}
-
-interface AgentApprovalServiceLike {
-  getQueue: (agentId?: string) => ApprovalQueue;
 }
 
 interface PendingUserActionServiceLike {
@@ -63,6 +66,18 @@ export interface ApprovalRequestDto {
   resolvedAt: string | null;
   resolvedBy: string | null;
   resolutionReason: string | null;
+  execution: {
+    attemptId: string;
+    provider: string;
+    providerIdempotencyKey: string;
+    claimedAt: string;
+    dispatchStartedAt: string | null;
+    providerReceipt: Readonly<Record<string, unknown>> | null;
+    error: string | null;
+    reconciledAt: string | null;
+    reconciledBy: string | null;
+    reconciliationReason: string | null;
+  } | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -71,20 +86,12 @@ const APPROVAL_STATES: ApprovalRequestState[] = [
   "pending",
   "approved",
   "executing",
+  "retryable",
+  "reconciliation_required",
   "done",
   "rejected",
   "expired",
 ];
-
-function isAgentApprovalService(
-  value: unknown,
-): value is AgentApprovalServiceLike {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof (value as AgentApprovalServiceLike).getQueue === "function"
-  );
-}
 
 function isPendingUserActionService(
   value: unknown,
@@ -126,9 +133,23 @@ function parseState(raw: string | null): ApprovalRequestState | null {
 function getAgentApprovalQueue(
   state: ApprovalRouteState,
 ): ApprovalQueue | null {
-  const service = state.runtime?.getService(APPROVAL_SERVICE);
-  if (!isAgentApprovalService(service)) return null;
-  return service.getQueue(state.runtime?.agentId);
+  const service = state.runtime?.getService(
+    APPROVAL_SERVICE,
+  ) as ApprovalService | null;
+  if (!service) return null;
+  const queue = service.getExecutionCapability(
+    APPROVAL_EXECUTION_PROTOCOL_VERSION,
+    state.runtime?.agentId,
+  );
+  if (
+    queue.capability !== APPROVAL_EXECUTION_CAPABILITY ||
+    queue.protocolVersion !== APPROVAL_EXECUTION_PROTOCOL_VERSION
+  ) {
+    throw new Error(
+      `[ApprovalRoutes] incompatible approval execution capability: ${String(queue.capability)}@${String(queue.protocolVersion)}`,
+    );
+  }
+  return queue;
 }
 
 async function listServicePendingUserActions(
@@ -169,6 +190,14 @@ function approvalToDto(approval: ApprovalRequest): ApprovalRequestDto {
     resolvedAt: toIso(approval.resolvedAt),
     resolvedBy: approval.resolvedBy,
     resolutionReason: approval.resolutionReason,
+    execution: approval.execution
+      ? {
+          ...approval.execution,
+          claimedAt: approval.execution.claimedAt.toISOString(),
+          dispatchStartedAt: toIso(approval.execution.dispatchStartedAt),
+          reconciledAt: toIso(approval.execution.reconciledAt),
+        }
+      : null,
     createdAt: approval.createdAt.toISOString(),
     updatedAt: approval.updatedAt.toISOString(),
   };

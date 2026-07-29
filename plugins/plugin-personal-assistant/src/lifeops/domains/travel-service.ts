@@ -57,6 +57,21 @@ export const TRAVEL_CAPABILITIES = {
 
 export type TravelCapabilities = typeof TRAVEL_CAPABILITIES;
 
+export class TravelPostBookingProjectionError extends Error {
+  constructor(
+    public readonly booking: FlightBookingExecutionResult,
+    cause: unknown,
+  ) {
+    super(
+      `Duffel booking ${booking.order.id} succeeded, but itinerary projection failed: ${
+        cause instanceof Error ? cause.message : String(cause)
+      }`,
+      { cause },
+    );
+    this.name = "TravelPostBookingProjectionError";
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Connector status type
 // ---------------------------------------------------------------------------
@@ -369,6 +384,7 @@ export class TravelDomain {
       search?: SearchFlightsRequest | null;
       passengers: ReadonlyArray<TravelBookingPassenger>;
       calendarSync?: TravelCalendarSyncPlan | null;
+      calendarGrantId?: string;
     },
   ): Promise<FlightBookingExecutionResult> {
     const prepared = await this.prepareFlightBooking(args);
@@ -398,20 +414,41 @@ export class TravelDomain {
     > | null = null;
     const calendarSync = args.calendarSync ?? null;
     if (calendarSync?.enabled !== false) {
-      calendarEvent = await this.deps.createCalendarEvent(requestUrl, {
-        calendarId: calendarSync?.calendarId ?? "primary",
-        title: buildCalendarTitle(prepared.offer, refreshedOrder, calendarSync),
-        description: buildCalendarDescription(
-          prepared.offer,
-          refreshedOrder,
-          payment,
-          calendarSync,
-        ),
-        location: buildCalendarLocation(prepared.offer, calendarSync),
-        startAt: firstDepartureAt(refreshedOrder),
-        endAt: finalArrivalAt(refreshedOrder),
-        timeZone: calendarSync?.timeZone ?? undefined,
-      });
+      try {
+        calendarEvent = await this.deps.createCalendarEvent(requestUrl, {
+          mode: "local",
+          side: "owner",
+          grantId: args.calendarGrantId,
+          calendarId: calendarSync?.calendarId ?? "primary",
+          title: buildCalendarTitle(
+            prepared.offer,
+            refreshedOrder,
+            calendarSync,
+          ),
+          description: buildCalendarDescription(
+            prepared.offer,
+            refreshedOrder,
+            payment,
+            calendarSync,
+          ),
+          location: buildCalendarLocation(prepared.offer, calendarSync),
+          startAt: firstDepartureAt(refreshedOrder),
+          endAt: finalArrivalAt(refreshedOrder),
+          timeZone: calendarSync?.timeZone ?? undefined,
+        });
+      } catch (cause) {
+        // error-policy:J2 The order cannot be retried after a projection
+        // failure; carry its receipt to the approval reconciliation boundary.
+        throw new TravelPostBookingProjectionError(
+          {
+            offer: prepared.offer,
+            order: refreshedOrder,
+            payment,
+            calendarEvent: null,
+          },
+          cause,
+        );
+      }
     }
 
     return {

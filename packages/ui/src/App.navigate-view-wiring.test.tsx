@@ -16,8 +16,11 @@ import {
 } from "@testing-library/react";
 import type * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { AgentButton, getViewRegistry } from "./agent-surface";
+import { registerAppShellPage } from "./app-shell-registry";
 import { DEFAULT_BOOT_CONFIG, setBootConfig } from "./config/boot-config";
 import type { ViewRegistryEntry } from "./hooks/useAvailableViews";
+import { resetUiRegistryHostForTests } from "./registry-host";
 
 const appState = vi.hoisted(() => ({
   firstRunComplete: true,
@@ -187,6 +190,16 @@ const documentsView = {
   pluginName: "@elizaos/plugin-documents",
   path: "/documents",
   bundleUrl: "/api/views/documents/bundle.js",
+  viewType: "gui" as const,
+};
+
+const walletMarketView = {
+  id: "wallet-market-test",
+  label: "Wallet Market Test",
+  available: true,
+  pluginName: "@local/plugin-wallet-market",
+  path: "/wallet-market-test",
+  bundleUrl: "/api/views/wallet-market-test/bundle.js",
   viewType: "gui" as const,
 };
 
@@ -525,6 +538,7 @@ describe("App navigate-view event wiring", () => {
 
   afterEach(() => {
     cleanup();
+    resetUiRegistryHostForTests();
     vi.unstubAllGlobals();
   });
 
@@ -672,6 +686,98 @@ describe("App navigate-view event wiring", () => {
     expect(getByTestId("app-opaque-background")).toBeTruthy();
     expect(queryByTestId("app-background-shader")).toBeNull();
   });
+
+  it("prefers an exact remote plugin route over its native wallet fallback", async () => {
+    mockAvailableViews.push(walletMarketView);
+    registerAppShellPage({
+      id: walletMarketView.id,
+      pluginId: walletMarketView.pluginName,
+      label: walletMarketView.label,
+      path: walletMarketView.path,
+      tabAffinity: "inventory",
+      Component: () => <div data-testid="native-wallet-fallback" />,
+    });
+    appState.tab = "inventory";
+    window.history.replaceState(null, "", walletMarketView.path);
+
+    const { getByTestId, queryByTestId } = render(<App />);
+
+    await waitFor(() => getByTestId("dynamic-view-loader"));
+    expect(
+      getByTestId("dynamic-view-loader").getAttribute("data-view-id"),
+    ).toBe(walletMarketView.id);
+    expect(queryByTestId("native-wallet-fallback")).toBeNull();
+  });
+
+  it("gives an in-process wallet page a live agent-surface registry", async () => {
+    registerAppShellPage({
+      id: "wallet.inventory",
+      pluginId: "@elizaos/plugin-wallet-ui",
+      label: "Wallet",
+      path: "/inventory",
+      tabAffinity: "inventory",
+      Component: () => (
+        <AgentButton agentId="wallet-refresh">Refresh wallet</AgentButton>
+      ),
+    });
+    appState.tab = "inventory";
+    window.history.replaceState(null, "", "/inventory");
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(getViewRegistry("wallet.inventory", "gui")?.size()).toBe(1);
+    });
+    expect(
+      getViewRegistry("wallet.inventory", "gui")?.describe("wallet-refresh")
+        ?.label,
+    ).toBe("Refresh wallet");
+  });
+
+  it.each(["/inventory", "/hyperliquid", "/polymarket"])(
+    "does not canonicalize a cold exact wallet-family route through tab affinity: %s",
+    async (path) => {
+      appState.tab = "views";
+      window.history.replaceState(null, "", path);
+      const registrations = [
+        {
+          id: "wallet.inventory",
+          pluginId: "@elizaos/plugin-wallet-ui",
+          label: "Wallet",
+          path: "/inventory",
+        },
+        {
+          id: "hyperliquid",
+          pluginId: "@elizaos/plugin-hyperliquid",
+          label: "Perps",
+          path: "/hyperliquid",
+        },
+        {
+          id: "polymarket",
+          pluginId: "@elizaos/plugin-polymarket",
+          label: "Predictions",
+          path: "/polymarket",
+        },
+      ];
+      const owningRegistration = registrations.find(
+        (registration) => registration.path === path,
+      );
+      if (!owningRegistration) {
+        throw new Error(`Missing test registration for ${path}`);
+      }
+
+      registerAppShellPage({
+        ...owningRegistration,
+        tabAffinity: "inventory",
+        Component: () => null,
+      });
+
+      render(<App />);
+
+      expect(window.location.pathname).toBe(path);
+      expect(appState.setTab).not.toHaveBeenCalled();
+    },
+  );
 
   it("lets a fullscreen plugin view fill behind the floating composer", async () => {
     mockAvailableViews.push(simpleCalendarView);

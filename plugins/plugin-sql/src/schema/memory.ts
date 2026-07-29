@@ -6,7 +6,7 @@
  * `fragment` and `document` metadata kinds without a dedicated column per
  * kind. Relations are defined in `embedding.ts` to avoid a circular import.
  */
-import { sql } from "drizzle-orm";
+import { type SQL, type SQLWrapper, sql } from "drizzle-orm";
 import {
   boolean,
   check,
@@ -21,6 +21,23 @@ import {
 import { agentTable } from "./agent";
 import { entityTable } from "./entity";
 import { roomTable } from "./room";
+
+export function documentSearchTokensExpression(content: SQLWrapper, metadata: SQLWrapper): SQL {
+  return sql`regexp_split_to_array(
+    translate(
+      trim(
+        COALESCE(${content}->>'text', '') || E'\n' ||
+        COALESCE(${metadata}->>'title', '') || E'\n' ||
+        COALESCE(${metadata}->>'filename', '') || E'\n' ||
+        COALESCE(${metadata}->>'originalFilename', '') || E'\n' ||
+        COALESCE(${metadata}->>'source', '')
+      ),
+      'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
+      'abcdefghijklmnopqrstuvwxyz'
+    ),
+    E'[ \\t\\r\\n\\f]+'
+  )`;
+}
 
 export const memoryTable = pgTable(
   "memories",
@@ -64,6 +81,9 @@ export const memoryTable = pgTable(
     }).onDelete("cascade"),
     index("idx_memories_metadata_type").on(sql`((metadata->>'type'))`),
     index("idx_memories_document_id").on(sql`((metadata->>'documentId'))`),
+    index("idx_memories_document_search")
+      .using("gin", documentSearchTokensExpression(table.content, table.metadata))
+      .where(sql`${table.type} = 'documents' AND ${table.metadata}->>'type' = 'document'`),
     index("idx_fragments_order").on(
       sql`((metadata->>'documentId'))`,
       sql`((metadata->>'position'))`

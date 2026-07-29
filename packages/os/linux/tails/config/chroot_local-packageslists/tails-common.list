@@ -215,10 +215,12 @@ simple-scan
 # Required by Tails Persistent Storage activation/deactivation hooks and
 # inherited sudoers policy.
 sudo
+#if ARCHITECTURE amd64
 # provides /usr/bin/syslinux used by create-usb-image-from-iso
-syslinux [amd64]
+syslinux
 # ships the *.c32 modules in syslinux 6.x packaging
-syslinux-common [amd64]
+syslinux-common
+#endif
 system-config-printer-common
 synaptic
 torsocks

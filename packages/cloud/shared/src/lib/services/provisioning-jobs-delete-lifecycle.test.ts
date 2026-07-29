@@ -42,6 +42,14 @@ const conflictQueryTx = {
         orderBy: () => ({
           limit: async () => [],
         }),
+        limit: async () => [{ id: "44444444-4444-4444-8444-444444444444" }],
+      }),
+    }),
+  }),
+  update: () => ({
+    set: () => ({
+      where: () => ({
+        returning: async () => [{ id: AGENT }],
       }),
     }),
   }),
@@ -94,6 +102,8 @@ function makeJob(type: ProvisioningJobType, extraData: Record<string, unknown> =
     error_key: null,
     attempts: 1,
     max_attempts: 3,
+    execution_generation: "55555555-5555-4555-8555-555555555555",
+    execution_quiesced_at: null,
     organization_id: ORG,
     user_id: USER,
     api_key_id: null,
@@ -119,8 +129,11 @@ function withClaimedJob(type: ProvisioningJobType, extraData: Record<string, unk
     async (f: { type: string }) => (f.type === type ? [job] : []),
   );
   const recoverSpy = spyOn(jobsRepository, "recoverStaleJobs").mockResolvedValue(0);
-  const updateStatusSpy = spyOn(jobsRepository, "updateStatus").mockResolvedValue(undefined);
-  const updateSpy = spyOn(jobsRepository, "update").mockResolvedValue(undefined as never);
+  const assertLeaseSpy = spyOn(jobsRepository, "assertExecutionLease").mockResolvedValue(undefined);
+  const updateStatusSpy = spyOn(jobsRepository, "settleExecution").mockResolvedValue(undefined);
+  const updateSpy = spyOn(jobsRepository, "updateForExecution").mockImplementation(
+    async (claimedJob, updates) => ({ ...claimedJob, ...updates }),
+  );
   const incrementSpy = spyOn(jobsRepository, "incrementAttempt").mockResolvedValue(undefined);
   const retryLaterSpy = spyOn(
     jobsRepository,
@@ -130,6 +143,7 @@ function withClaimedJob(type: ProvisioningJobType, extraData: Record<string, unk
     job,
     claimSpy,
     recoverSpy,
+    assertLeaseSpy,
     updateStatusSpy,
     updateSpy,
     incrementSpy,
@@ -137,6 +151,7 @@ function withClaimedJob(type: ProvisioningJobType, extraData: Record<string, unk
     restore() {
       claimSpy.mockRestore();
       recoverSpy.mockRestore();
+      assertLeaseSpy.mockRestore();
       updateStatusSpy.mockRestore();
       updateSpy.mockRestore();
       incrementSpy.mockRestore();
@@ -230,7 +245,7 @@ describe("ProvisioningJobService — retryable readiness transport does not burn
       expect(res.retried).toBe(1);
       expect(res.failed).toBe(0);
       expect(ctx.updateSpy).toHaveBeenCalledWith(
-        ctx.job.id,
+        ctx.job,
         expect.objectContaining({
           result: expect.objectContaining({
             cloudAgentId: AGENT,
@@ -238,16 +253,13 @@ describe("ProvisioningJobService — retryable readiness transport does not burn
             error: "readiness probe transport_unresolved",
           }),
         }),
+        expect.any(String),
       );
       expect(ctx.retryLaterSpy).toHaveBeenCalledTimes(1);
       expect(ctx.retryLaterSpy.mock.calls[0]?.[0]).toBe(ctx.job);
       expect(ctx.retryLaterSpy.mock.calls[0]?.[1]).toBe("readiness probe transport_unresolved");
       expect(ctx.incrementSpy).not.toHaveBeenCalled();
-      expect(ctx.updateStatusSpy).not.toHaveBeenCalledWith(
-        ctx.job.id,
-        "completed",
-        expect.anything(),
-      );
+      expect(ctx.updateStatusSpy).not.toHaveBeenCalledWith(ctx.job, "completed", expect.anything());
     } finally {
       svcSpy.mockRestore();
       ctx.restore();

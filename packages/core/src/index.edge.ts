@@ -36,6 +36,7 @@ export {
 	LOCAL_MODEL_PROVIDERS,
 } from "./constants";
 export * from "./database";
+export * from "./database/document-list-query";
 export * from "./database/inMemoryAdapter";
 export * from "./entities";
 export * from "./errors";

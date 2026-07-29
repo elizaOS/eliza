@@ -23,6 +23,7 @@ import { type AgentSandboxBackup, agentSandboxes } from "../../db/schemas/agent-
 import { apiKeys } from "../../db/schemas/api-keys";
 import { dockerNodes } from "../../db/schemas/docker-nodes";
 import { generations } from "../../db/schemas/generations";
+import { jobExecutionLeases } from "../../db/schemas/job-execution-leases";
 import { jobs } from "../../db/schemas/jobs";
 import { organizations } from "../../db/schemas/organizations";
 import { usageRecords } from "../../db/schemas/usage-records";
@@ -130,6 +131,13 @@ function uniq(prefix: string): string {
 function nextRequestId(): string {
   requestSeq += 1;
   return `9abc0000-0000-4000-8000-${String(requestSeq).padStart(12, "0")}`;
+}
+
+async function expireExecutionLease(jobId: string): Promise<void> {
+  await dbWrite
+    .update(jobExecutionLeases)
+    .set({ expires_at: new Date(0) })
+    .where(eq(jobExecutionLeases.job_id, jobId));
 }
 
 async function executeUpgradeCanary(params: {
@@ -322,6 +330,7 @@ beforeAll(async () => {
       dockerNodes,
       agentSandboxes,
       jobs,
+      jobExecutionLeases,
     };
     const { apply } = await pushSchema(schema as never, dbWrite as never);
     await apply();
@@ -2946,6 +2955,7 @@ describe("admin agent image rollout on primary PGlite", () => {
       .update(jobs)
       .set({ started_at: new Date("2026-07-22T00:00:00.000Z") })
       .where(eq(jobs.id, persisted.id));
+    await expireExecutionLease(persisted.id);
     expect(
       await jobsRepository.recoverInProgressJobsStartedBefore({
         type: JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
@@ -3048,6 +3058,7 @@ describe("admin agent image rollout on primary PGlite", () => {
         })
         .where(eq(jobs.id, claimed.id));
     });
+    await expireExecutionLease(claimed.id);
 
     expect(
       await jobsRepository.recoverInProgressJobsStartedBefore({
@@ -3383,6 +3394,7 @@ describe("admin agent image rollout on primary PGlite", () => {
         })
         .where(eq(jobs.id, claimed.id));
     });
+    await expireExecutionLease(claimed.id);
     expect(
       await jobsRepository.recoverInProgressJobsStartedBefore({
         type: JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
@@ -3484,6 +3496,7 @@ describe("admin agent image rollout on primary PGlite", () => {
         })
         .where(eq(jobs.id, claimed.id));
     });
+    await expireExecutionLease(claimed.id);
     expect(
       await jobsRepository.recoverInProgressJobsStartedBefore({
         type: JOB_TYPES.AGENT_ADMIN_CANARY_IMAGE,
@@ -3591,7 +3604,7 @@ describe("admin agent image rollout on primary PGlite", () => {
     expect(await dbWrite.select().from(jobs)).toHaveLength(0);
   });
 
-  test("an interrupted ordinary image swap is CAS-rearmed without admitting a second claim", async () => {
+  test("only replacement-worker recovery re-arms an interrupted ordinary image swap", async () => {
     const seeded = await seedAgents(1);
     const enqueued = await provisioningJobService.enqueueAgentUpgradeOnce({
       agentId: seeded.targets[0]!.agentId,
@@ -3619,6 +3632,12 @@ describe("admin agent image rollout on primary PGlite", () => {
         staleThresholdMs: 1_000,
         maxAttempts: 3,
       }),
+    ).toBe(0);
+    await expireExecutionLease(enqueued.job.id);
+    expect(
+      await provisioningJobService.recoverInterruptedJobsOnStartup(new Date(), [
+        JOB_TYPES.AGENT_UPGRADE,
+      ]),
     ).toBe(1);
     expect(await jobsRepository.findByIdForWrite(enqueued.job.id)).toMatchObject({
       status: "pending",

@@ -30,17 +30,15 @@ fi
 GIT_BRANCH="$(git_current_branch)"
 GIT_BASE_BRANCH_SHORT_ID="$(echo "$BASE_BRANCH_GIT_COMMIT" | head --bytes=10)"
 # Target architecture for this ISO build, driven from build.sh's
-# ELIZAOS_ARCH env (defaulted to amd64 there as well). Drives the ISO
-# filename's arch tag, the lb config --architecture / --linux-flavours,
-# the dpkg --print-architecture sanity check, and the syslinux-only
-# bootloader options. Validate it strictly so a typo in the env can't
-# silently produce an ISO with the wrong kernel/bootloader.
+# ELIZAOS_ARCH env. The inherited live-build fork only assembles a bootable
+# ISO on amd64; validate that boundary here too because this script can be
+# invoked directly.
 ELIZAOS_ARCH="${ELIZAOS_ARCH:-amd64}"
 case "${ELIZAOS_ARCH}" in
-    amd64|arm64|riscv64) ;;
+    amd64) ;;
     *)
         fatal "ELIZAOS_ARCH=${ELIZAOS_ARCH} is not supported."\
-              "Supported values: amd64 (default), arm64, riscv64."
+              "The canonical Tails-derived ISO supports amd64 only."
         ;;
 esac
 
@@ -133,25 +131,10 @@ else
     kernel_package=linux-image
 fi
 
-# Syslinux/isolinux are x86-only. On arm64 and riscv64 there is no
-# binary syslinux package in Debian, and passing --syslinux-* to lb
-# config makes it try to install isolinux/syslinux-common during build
-# which fails with "Unable to locate package". UEFI-only boot via
-# grub-efi-<arch>-bin is the only path on those archs, so drop the
-# syslinux args entirely there.
-case "${ELIZAOS_ARCH}" in
-    amd64)
-        SYSLINUX_ARGS="\
-            --syslinux-menu vesamenu \
-            --syslinux-splash data/splash.png \
-            --syslinux-timeout 4"
-        BOOTLOADER_ARGS=""
-        ;;
-    *)
-        SYSLINUX_ARGS=""
-        BOOTLOADER_ARGS="--bootloader grub-efi"
-        ;;
-esac
+SYSLINUX_ARGS="\
+    --syslinux-menu vesamenu \
+    --syslinux-splash data/splash.png \
+    --syslinux-timeout 4"
 
 # set general options
 $RUN_LB_CONFIG \
@@ -187,7 +170,6 @@ $RUN_LB_CONFIG \
     --packages-lists none \
     --tasks none \
     --linux-packages="$kernel_package" \
-    ${BOOTLOADER_ARGS} \
     ${SYSLINUX_ARGS} \
     --initramfs=live-boot \
     "${@}"

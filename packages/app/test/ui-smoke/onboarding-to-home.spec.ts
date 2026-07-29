@@ -17,13 +17,13 @@ import {
   completeOtherProviderSettingsHandoff,
   connectRemoteFirstRunToHome,
   expectChatFirstOnboarding,
-  expectInlineLauncher,
   injectCloudAuthToken,
   injectFullCapabilityHost,
   installCloudRoutes,
   installHomeRoutes,
   makeScreenshotter,
   type OnboardingRouteState,
+  openPostOnboardingLauncher,
   settleHomeEntrance,
 } from "./onboarding-to-home.shared";
 
@@ -67,7 +67,7 @@ test.describe("in-chat onboarding → home → launcher", () => {
     ]);
   });
 
-  test("Local onboarding lands on the home with the launcher tiles inline", async ({
+  test("Local onboarding lands on home and opens the Launcher pager", async ({
     page,
   }) => {
     await rm(SCREENSHOT_DIR, { force: true, recursive: true });
@@ -96,7 +96,7 @@ test.describe("in-chat onboarding → home → launcher", () => {
     );
     await screenshot(page, "onboarding-chat-first");
 
-    const { surface } = await completeOnboardingToHome(page, desktopClick, {
+    await completeOnboardingToHome(page, desktopClick, {
       state,
       tutorial: "skip",
     });
@@ -104,7 +104,7 @@ test.describe("in-chat onboarding → home → launcher", () => {
     // Completion settled the sheet from the pinned FULL detent down to the HALF
     // detent (#15339 / ChatOverlay.firstrun.test): the sheet stays
     // OPEN with the home revealed behind its top half, and the composer unlocks.
-    // expectInlineLauncher collapses the open sheet before asserting the grid.
+    // openPostOnboardingLauncher collapses the open sheet before the rail drag.
     await expect(page.getByTestId("chat-sheet")).toHaveAttribute(
       "data-detent",
       "half",
@@ -117,7 +117,7 @@ test.describe("in-chat onboarding → home → launcher", () => {
 
     // Post-login permission priming (#12331) can open over the home on the
     // completion edge; completeOnboardingToHome already drove its "Skip for now"
-    // dismissal (dismissPermissionPrimingIfShown), and expectInlineLauncher
+    // dismissal (dismissPermissionPrimingIfShown), and the launcher helper
     // clears any residual first — so no separate dismissal step is needed here
     // (a second one races the helper's and flakes).
 
@@ -125,7 +125,7 @@ test.describe("in-chat onboarding → home → launcher", () => {
     await settleHomeEntrance(page);
     await screenshot(page, "home");
 
-    await expectInlineLauncher(page, surface);
+    await openPostOnboardingLauncher(page, { input: "mouse" });
     await screenshot(page, "launcher");
   });
 

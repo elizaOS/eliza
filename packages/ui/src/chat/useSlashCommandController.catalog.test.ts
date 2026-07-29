@@ -24,14 +24,21 @@ import { ApiError } from "../api/client-types-core";
 
 const { listCommands, listCustomActions } = vi.hoisted(() => ({
   listCommands:
-    vi.fn<(surface?: string) => Promise<SlashCommandCatalogItem[]>>(),
-  listCustomActions: vi.fn<() => Promise<CustomActionDef[]>>(),
+    vi.fn<
+      (
+        surface?: string,
+        init?: RequestInit,
+      ) => Promise<SlashCommandCatalogItem[]>
+    >(),
+  listCustomActions:
+    vi.fn<(init?: RequestInit) => Promise<CustomActionDef[]>>(),
 }));
 
 vi.mock("../api", () => ({
   client: {
-    listCommands: (surface?: string) => listCommands(surface),
-    listCustomActions: () => listCustomActions(),
+    listCommands: (surface?: string, init?: RequestInit) =>
+      listCommands(surface, init),
+    listCustomActions: (init?: RequestInit) => listCustomActions(init),
   },
 }));
 vi.mock("../config/boot-config-react.hooks", () => ({
@@ -118,7 +125,10 @@ describe("useSlashCommandController — catalog load (#11112)", () => {
     const { result } = renderHook(() => useSlashCommandController());
 
     await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(listCommands).toHaveBeenCalledWith(GUI);
+    expect(listCommands).toHaveBeenCalledWith(
+      GUI,
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
     expect(result.current.commands.map((c) => c.key)).toEqual(["settings"]);
     expect(result.current.isAuthorized).toBe(false);
     expect(result.current.isElevated).toBe(false);
@@ -281,6 +291,32 @@ describe("useSlashCommandController — catalog load (#11112)", () => {
     expect(result.current.error).toBe(true);
     consoleError.mockRestore();
   });
+
+  it("aborts catalog requests quietly when the composer unmounts during navigation", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    listCommands.mockResolvedValue([]);
+    listCustomActions.mockImplementation(
+      (init) =>
+        new Promise<CustomActionDef[]>((_resolve, reject) => {
+          init?.signal?.addEventListener(
+            "abort",
+            () => reject(new DOMException("Navigation aborted", "AbortError")),
+            { once: true },
+          );
+        }),
+    );
+
+    const { unmount } = renderHook(() => useSlashCommandController());
+    await waitFor(() => expect(listCustomActions).toHaveBeenCalledOnce());
+    unmount();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(consoleError).not.toHaveBeenCalled();
+    consoleError.mockRestore();
+  });
 });
 
 describe("useSlashCommandController — protected-probe gate (#16242)", () => {
@@ -342,7 +378,10 @@ describe("useSlashCommandController — protected-probe gate (#16242)", () => {
       },
     });
     await waitFor(() => {
-      expect(listCommands).toHaveBeenCalledWith(GUI);
+      expect(listCommands).toHaveBeenCalledWith(
+        GUI,
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
       expect(listCustomActions).toHaveBeenCalled();
     });
   });

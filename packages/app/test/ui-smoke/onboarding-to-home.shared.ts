@@ -6,6 +6,7 @@ import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { expect, type Locator, type Page, type Route } from "@playwright/test";
 import { installDefaultAppRoutes } from "./helpers";
+import { navigateHomeLauncher } from "./helpers/launcher-navigation";
 import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
 import {
   seedStewardSession,
@@ -1312,30 +1313,20 @@ export async function collapseChatOverlay(page: Page): Promise<void> {
 }
 
 /**
- * Assert the launcher is reachable from the post-onboarding home. The home and
- * launcher are ONE combined surface now (App.tsx renders HomeScreen with the
- * embedded LauncherSurface grid under the "Apps" region — there is no
- * horizontal rail and no swipe-to-launcher gesture anymore), so this asserts a
- * real launcher tile on the combined page instead of flicking a pager.
+ * Collapse onboarding chrome, then drive the shared Home/Launcher rail through
+ * the same real input path used by the other app interaction specs.
  */
-export async function expectInlineLauncher(
+export async function openPostOnboardingLauncher(
   page: Page,
-  surface: Locator,
+  options: { input?: "mouse" | "touch" | "auto" } = {},
 ): Promise<void> {
   // Post-onboarding the overlay already auto-collapsed; this guard only closes
-  // a sheet a previous step deliberately opened, so the launcher grid is not
-  // hidden behind the chat scrim. The permission-priming modal (#12331) also
-  // arms on the completion edge — skip it the way a user would.
+  // a sheet a previous step deliberately opened, so the rail receives the
+  // gesture. Permission priming can arm on the same edge and intercept it.
   await dismissPermissionPrimingIfShown(page);
   await collapseChatOverlay(page);
-  await expect(surface).toBeVisible();
-  await expect(surface).toHaveAttribute("data-page", "home");
-  // The embedded launcher grid ("Apps" region) carries the real tiles.
-  const appsRegion = page.getByTestId("home-apps-scroll");
-  await expect(appsRegion).toBeVisible({ timeout: 15_000 });
-  const settingsTile = appsRegion.getByTestId("launcher-tile-settings");
-  // On short viewports the grid can sit below the fold; bring it into view
-  // the way a user scrolling the home column would.
-  await settingsTile.scrollIntoViewIfNeeded();
-  await expect(settingsTile).toBeVisible({ timeout: 15_000 });
+  const grid = await navigateHomeLauncher(page, "launcher", options);
+  await expect(grid.getByTestId("launcher-tile-settings")).toBeVisible({
+    timeout: 15_000,
+  });
 }

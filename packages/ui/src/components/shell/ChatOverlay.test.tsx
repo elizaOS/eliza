@@ -526,7 +526,7 @@ describe("ChatOverlay", () => {
     );
   });
 
-  it("publishes side clearance for the compact short-landscape composer", () => {
+  it("publishes the full resting footprint and compact-landscape side clearance", () => {
     const originalInnerWidth = Object.getOwnPropertyDescriptor(
       window,
       "innerWidth",
@@ -566,6 +566,7 @@ describe("ChatOverlay", () => {
       document.documentElement.style.removeProperty(
         "--eliza-chat-side-clearance",
       );
+      document.documentElement.style.removeProperty("--eliza-chat-clearance");
 
       render(
         <ChatOverlay
@@ -583,6 +584,11 @@ describe("ChatOverlay", () => {
           "--eliza-chat-side-clearance",
         ),
       ).toBe("384px");
+      expect(
+        document.documentElement.style.getPropertyValue(
+          "--eliza-chat-clearance",
+        ),
+      ).toBe("80px");
 
       fireEvent.focus(screen.getByLabelText("message"));
 
@@ -607,6 +613,7 @@ describe("ChatOverlay", () => {
       document.documentElement.style.removeProperty(
         "--eliza-chat-side-clearance",
       );
+      document.documentElement.style.removeProperty("--eliza-chat-clearance");
     }
   });
 

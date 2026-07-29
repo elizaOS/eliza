@@ -240,15 +240,19 @@ class MockWebPlugin {
   }
 }
 
-vi.mock("@capacitor/core", () => ({
-  WebPlugin: MockWebPlugin,
-  registerPlugin: vi.fn(() => ({})),
-  Capacitor: {
-    getPlatform: vi.fn(() => "web"),
-    isNativePlatform: vi.fn(() => false),
-    isPluginAvailable: vi.fn(() => true),
-  },
-}));
+vi.mock("@capacitor/core", () => {
+  const registerPlugin = vi.fn(() => ({}));
+  return {
+    WebPlugin: MockWebPlugin,
+    registerPlugin,
+    Capacitor: {
+      getPlatform: vi.fn(() => "web"),
+      isNativePlatform: vi.fn(() => false),
+      isPluginAvailable: vi.fn(() => true),
+      registerPlugin,
+    },
+  };
+});
 
 // ---------------------------------------------------------------------------
 // Navigator mocks — always applied, writable, and spyable

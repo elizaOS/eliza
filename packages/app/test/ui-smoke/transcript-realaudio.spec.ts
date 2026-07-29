@@ -8,7 +8,7 @@
  *   tap mic (hands-free) -> run /transcribe (transcription mode) -> the REAL
  *   local-ASR recorder opens the (fake) device, WAV-encodes the injected audio,
  *   and POSTs it to /api/asr/local-inference -> a transcript session accumulates
- *   -> run /transcribe again to finalize -> the shell POSTs the captured audio
+ *   -> use the transcription stop control to finalize -> the shell POSTs the captured audio
  *   (audioBase64) to /api/transcripts and drops a transcript chip into the
  *   composer -> send -> the message bubble shows a transcript ATTACHMENT tile ->
  *   tap it to open the editable viewer.
@@ -539,7 +539,7 @@ function trackAsrPosts(page: Page): { count: () => number } {
   return { count: () => posted };
 }
 
-async function toggleTranscriptionViaSlash(page: Page): Promise<void> {
+async function startTranscriptionViaSlash(page: Page): Promise<void> {
   const composer = page.getByTestId("chat-composer-textarea");
   await composer.fill("/transcribe");
   await expect(page.getByTestId("slash-command-menu")).toBeVisible({
@@ -549,23 +549,16 @@ async function toggleTranscriptionViaSlash(page: Page): Promise<void> {
   await expect(page.getByTestId("slash-command-menu")).toBeHidden({
     timeout: 15_000,
   });
-  await expect(composer).toHaveValue("", { timeout: 15_000 });
-}
-
-async function startTranscriptionViaSlash(page: Page): Promise<void> {
-  await toggleTranscriptionViaSlash(page);
   await expect(page.getByTestId("chat-transcribing-badge")).toBeVisible({
     timeout: 15_000,
   });
-  await expect(page.getByTestId("chat-composer-mic")).toHaveAttribute(
-    "aria-label",
-    "stop transcription and mic",
-    { timeout: 15_000 },
-  );
+  await expect(
+    page.getByTestId("chat-composer-transcription-stop"),
+  ).toHaveAttribute("aria-label", "stop transcription", { timeout: 15_000 });
 }
 
 async function finalizeTranscriptionViaSlash(page: Page): Promise<void> {
-  await toggleTranscriptionViaSlash(page);
+  await page.getByTestId("chat-composer-transcription-stop").click();
   await expect(page.getByTestId("chat-transcribing-badge")).toHaveCount(0, {
     timeout: 15_000,
   });
@@ -591,14 +584,9 @@ async function dispatchTranscriptionAgentAction(
 
 async function startTranscriptionViaAgentAction(page: Page): Promise<void> {
   await dispatchTranscriptionAgentAction(page, "start");
-  // The agent-action bridge flips the shell controller directly; unlike the
-  // slash-command path it may not expand the sheet far enough to render the
-  // visible badge, so the mic control state is the durable proof.
-  await expect(page.getByTestId("chat-composer-mic")).toHaveAttribute(
-    "aria-label",
-    "stop transcription and mic",
-    { timeout: 15_000 },
-  );
+  await expect(
+    page.getByTestId("chat-composer-transcription-stop"),
+  ).toHaveAttribute("aria-label", "stop transcription", { timeout: 15_000 });
 }
 
 async function finalizeTranscriptionViaAgentAction(page: Page): Promise<void> {
@@ -729,10 +717,9 @@ async function openTranscriptViewer(page: Page): Promise<Locator> {
 
 /**
  * Drive the REAL transcript-capture chain from the chat overlay: tap mic ->
- * /transcribe -> (real audio captured + POSTed) -> /transcribe again to
- * finalize -> the transcript chip lands in the composer -> send -> the
- * transcript ATTACHMENT tile renders in the thread. Returns once the tile is
- * visible.
+ * /transcribe -> real audio capture -> stop transcription to POST + finalize ->
+ * the transcript chip lands in the composer -> send -> the transcript
+ * ATTACHMENT tile renders in the thread. Returns once the tile is visible.
  */
 async function captureTranscriptToAttachment(
   page: Page,
@@ -753,10 +740,10 @@ async function captureTranscriptToAttachment(
   });
 
   await startTranscriptionViaSlash(page);
-
-  await expect.poll(() => asr.count(), { timeout: 30_000 }).toBeGreaterThan(0);
+  await page.waitForTimeout(1200);
 
   await finalizeTranscriptionViaSlash(page);
+  await expect.poll(() => asr.count(), { timeout: 30_000 }).toBeGreaterThan(0);
   await expect
     .poll(
       () => probes.createBodies.find((b) => b.audioBase64Length > 1000) ?? null,
@@ -854,13 +841,15 @@ async function captureTranscriptRecordViaControlPath(
     await startTranscriptionViaSlash(page);
   }
 
-  await expect.poll(() => asr.count(), { timeout: 30_000 }).toBeGreaterThan(0);
+  await page.waitForTimeout(1200);
 
   if (controlPath === "agent-action") {
     await finalizeTranscriptionViaAgentAction(page);
   } else {
     await finalizeTranscriptionViaSlash(page);
   }
+
+  await expect.poll(() => asr.count(), { timeout: 30_000 }).toBeGreaterThan(0);
 
   await expect
     .poll(
@@ -903,36 +892,33 @@ test("REAL audio: /transcribe records the injected WAV, POSTs it to ASR + /api/t
     timeout: 15_000,
   });
 
-  // (LINKAGE b) /transcribe -> transcription mode. The mic STAYS active
-  // (transcript is an additive layer; the mic is the parent).
+  // (LINKAGE b) /transcribe -> transcription mode. Transcription temporarily
+  // replaces the composer controls while the hands-free mic remains the parent.
   await startTranscriptionViaSlash(page);
-  // The mic button is still the active mic control while transcribing.
-  await expect(mic).toHaveAttribute(
-    "aria-label",
-    "stop transcription and mic",
-    {
-      timeout: 15_000,
-    },
-  );
+  await expect(
+    page.getByTestId("chat-composer-transcription-stop"),
+  ).toHaveAttribute("aria-label", "stop transcription", {
+    timeout: 15_000,
+  });
 
-  // (REAL AUDIO) The transcription re-listen loop opens the REAL local-ASR
-  // recorder against the fake device, WAV-encodes the injected audio, and POSTs
-  // it to /api/asr/local-inference (VAD auto-stop drains + fires the POST).
+  // Give the continuous recorder enough fake-device audio to produce a
+  // non-trivial WAV before the explicit stop drains it to ASR.
+  await page.waitForTimeout(1200);
+
+  // (REAL AUDIO + ATTACHMENT) Stop to FINALIZE. The shell POSTs the segments +
+  // the REAL captured audio (audioBase64) to /api/transcripts and drops a
+  // `Transcript ….md` chip into the composer.
+  await finalizeTranscriptionViaSlash(page);
   await expect
     .poll(() => asr.count(), {
       timeout: 30_000,
-      message: "the transcription recorder must POST a captured WAV to ASR",
+      message: "stopping transcription must POST a captured WAV to ASR",
     })
     .toBeGreaterThan(0);
   expect(
     probes.asrMaxCapturedBytes,
     "the captured WAV POSTed to ASR must be a non-trivial recording",
   ).toBeGreaterThan(1000);
-
-  // (REAL AUDIO + ATTACHMENT) Run /transcribe again to FINALIZE. The shell POSTs
-  // the segments + the REAL captured audio (audioBase64) to /api/transcripts and
-  // drops a `Transcript ….md` chip into the composer.
-  await finalizeTranscriptionViaSlash(page);
   await expect
     .poll(
       () => probes.createBodies.find((b) => b.audioBase64Length > 1000) ?? null,
@@ -1063,27 +1049,32 @@ test("VIEWER + LIVE MEETING + KNOWLEDGE: every transcript surface action works",
     timeout: 60_000,
   });
 
-  // KNOWLEDGE: the mirrored document links back to the transcript. The
-  // knowledge surface (DocumentsView) lives under the Character tab at
+  // KNOWLEDGE: the mirrored document renders the recorded transcript inline.
+  // The knowledge surface (DocumentsView) lives under the Character tab at
   // /character/documents (the /apps/documents path collides with a decomposed
   // PA view), rendered inside the CharacterEditor as <DocumentsView inModal />.
   await openAppPath(page, "/character/documents");
   await expect(page.getByTestId("documents-view")).toBeVisible({
     timeout: 60_000,
   });
-  // Open the seeded knowledge document to show its detail, which renders the
-  // back-link when the DTO has a transcriptId. The row is a button labelled
-  // "Open {filename}" (full list) — fall back to any clickable element bearing
-  // the filename text if the surface renders the compact chip variant.
+  // Open the seeded knowledge document to show its rich transcript detail. The
+  // row is a button labelled "Open {filename}" in the full list.
   const docRow = page
     .getByTestId("documents-view")
     .getByRole("button", { name: /Voice transcript\.md/i })
     .first();
   await expect(docRow).toBeVisible({ timeout: 30_000 });
   await docRow.click();
-  const knowledgeLink = page.getByTestId("document-open-transcript");
-  await expect(knowledgeLink).toBeVisible({ timeout: 15_000 });
-  await expect(knowledgeLink).toContainText(/View original transcript/i);
+  await expect(page.getByTestId("reader-media")).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(page.getByTestId("transcript-play")).toBeVisible();
+  await expect(page.getByTestId("transcript-scrub")).toBeVisible();
+  await expect(
+    page
+      .getByTestId("transcript-segment-0")
+      .getByText(TRANSCRIPT_TEXT, { exact: true }),
+  ).toBeVisible();
 
   // ── 4-VIEWER: drive the REAL chat tile -> viewer and exercise EVERY action ──
   await captureTranscriptToAttachment(page, probes);

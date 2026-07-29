@@ -298,10 +298,18 @@ export * from "./services/agent-export.ts";
 // re-export — same rationale as the knowledge graph / pending-prompts below:
 // keep it out of the broad services barrel to avoid TS2308.
 export {
+  APPROVAL_EXECUTION_CAPABILITY,
+  APPROVAL_EXECUTION_PROTOCOL_VERSION,
   APPROVAL_SERVICE,
   type ApprovalAction,
   type ApprovalChannel,
   type ApprovalEnqueueInput,
+  type ApprovalExecution,
+  type ApprovalExecutionClaim,
+  type ApprovalExecutionCompletion,
+  type ApprovalExecutionFailure,
+  type ApprovalExecutionMutation,
+  type ApprovalExecutionReconciliation,
   type ApprovalListFilter,
   ApprovalNotFoundError,
   type ApprovalPayload,

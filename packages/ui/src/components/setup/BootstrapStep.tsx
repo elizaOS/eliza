@@ -5,8 +5,9 @@
  * once on mount, scrubbed from the URL, and exchanged automatically — no
  * paste required. Otherwise the manual paste form is shown as a fallback.
  *
- * On success the returned session id is written to
- * sessionStorage["eliza_session"] and the `onAdvance` callback fires.
+ * On success the returned session id is persisted through the active-server
+ * credential path, mirrored to sessionStorage["eliza_session"], and installed
+ * on the live client before the `onAdvance` callback fires.
  *
  * P1 will migrate the session to an HttpOnly cookie and retire sessionStorage.
  * The key name is kept in sync with the cookie name planned for P1
@@ -24,6 +25,7 @@ import { client } from "../../api";
 import type { BootstrapExchangeResult } from "../../api/client-agent";
 import { cn } from "../../lib/utils";
 import { startFreshFirstRunReload } from "../../platform";
+import { persistActiveServerCredential } from "../../state/active-server-credential";
 import {
   type TranslationContextValue,
   useTranslation,
@@ -186,6 +188,7 @@ export function BootstrapStep({ onAdvance, exchangeFn }: BootstrapStepProps) {
         // sessionStorage unavailable (e.g. private browsing on some browsers).
         // Session is still in memory for this page load; startup can advance.
       }
+      persistActiveServerCredential(result.sessionId);
       client.setToken(result.sessionId);
 
       setSubmitState({ phase: "success" });

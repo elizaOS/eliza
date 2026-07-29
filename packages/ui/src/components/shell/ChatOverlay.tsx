@@ -303,6 +303,10 @@ const SHORT_LANDSCAPE_CHAT_MAX_WIDTH_PX = 360;
 // padding). A tall composer — 3-line draft + a couple of attachment chips — is
 // well under this, so the cap only ever clips the bogus open-height reading.
 const CHAT_CLEARANCE_MAX_PX = 220;
+// The resting overlay seats the panel half a rem above the shell's safe-area
+// floor. That gap is part of the occluded footprint even though it is outside
+// the measured fieldset.
+const CHAT_CLEARANCE_REST_GAP_PX = 8;
 // Restore-from-maximized grab zone (#13531): while full-bleed, a downward pull
 // that STARTS within this fraction of the panel height from the top drops
 // full-bleed and tracks the finger. 0.9 = "top 90%" — nearly the whole panel is
@@ -1894,7 +1898,8 @@ export function ChatOverlay({
     if (sheetOpen) return; // Keep the last resting value while the sheet is open.
     if (!panel) return;
     const publish = () => {
-      const h = panel.getBoundingClientRect().height;
+      const h =
+        panel.getBoundingClientRect().height + CHAT_CLEARANCE_REST_GAP_PX;
       // Cap it: a mid-collapse frame can report the open panel height, and
       // reserving that in the home/launcher layout clips the top apps off-screen.
       if (h > 0)

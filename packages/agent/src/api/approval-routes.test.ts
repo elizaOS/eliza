@@ -16,6 +16,10 @@ import type {
   ApprovalQueue,
   ApprovalRequest,
 } from "../services/approval/types.ts";
+import {
+  APPROVAL_EXECUTION_CAPABILITY,
+  APPROVAL_EXECUTION_PROTOCOL_VERSION,
+} from "../services/approval/types.ts";
 import { PENDING_PROMPTS_SERVICE } from "../services/pending-prompts/service.ts";
 import {
   approvalTaskToPendingAction,
@@ -52,6 +56,7 @@ function approval(overrides: Partial<ApprovalRequest> = {}): ApprovalRequest {
     resolvedAt: null,
     resolvedBy: null,
     resolutionReason: null,
+    execution: null,
     createdAt: new Date("2026-06-24T18:00:00.000Z"),
     updatedAt: new Date("2026-06-24T18:01:00.000Z"),
     ...overrides,
@@ -104,12 +109,18 @@ function runtimeWithApprovals(args: {
   promptActions?: PendingUserAction[];
 }) {
   const queueList = vi.fn(async () => args.queueApprovals ?? []);
-  const queue = { list: queueList } as unknown as ApprovalQueue;
+  const queue = {
+    capability: APPROVAL_EXECUTION_CAPABILITY,
+    protocolVersion: APPROVAL_EXECUTION_PROTOCOL_VERSION,
+    list: queueList,
+  } as unknown as ApprovalQueue;
   return {
     runtime: {
       agentId: "agent-1",
       getService: (type: string) => {
-        if (type === APPROVAL_SERVICE) return { getQueue: () => queue };
+        if (type === APPROVAL_SERVICE) {
+          return { getExecutionCapability: () => queue };
+        }
         if (type === ServiceType.APPROVAL) {
           return {
             getAllPendingApprovals: () => args.taskRows ?? [],

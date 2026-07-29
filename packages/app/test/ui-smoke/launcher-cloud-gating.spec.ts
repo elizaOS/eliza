@@ -183,7 +183,6 @@ async function bootLauncher(
 }
 
 const cloudTile = (page: Page) => page.getByTestId("launcher-tile-cloud-apps");
-const chatTile = (page: Page) => page.getByTestId("launcher-tile-chat");
 const myAppsTile = (page: Page) => page.getByTestId("launcher-tile-my-apps");
 
 test.describe("launcher: one apps tile — cloud-apps never tiles", () => {
@@ -194,7 +193,6 @@ test.describe("launcher: one apps tile — cloud-apps never tiles", () => {
       await bootLauncher(page, viewport, { connected: false });
       // The catalog HAS the cloud-apps view (injected above); the launcher must
       // still not surface it — My Apps is the one apps destination.
-      await expect(chatTile(page)).toBeVisible();
       await expect(myAppsTile(page)).toBeVisible();
       await expect(cloudTile(page)).toHaveCount(0);
       await screenshot(
@@ -210,7 +208,6 @@ test.describe("launcher: one apps tile — cloud-apps never tiles", () => {
       await bootLauncher(page, viewport, { connected: true });
       // Signed in changes nothing for the studio tile: it is consolidated into
       // My Apps (the MyAppsView Eliza Cloud row + the /cloud-apps deep link).
-      await expect(chatTile(page)).toBeVisible();
       await expect(myAppsTile(page)).toBeVisible();
       await expect(cloudTile(page)).toHaveCount(0);
       await screenshot(

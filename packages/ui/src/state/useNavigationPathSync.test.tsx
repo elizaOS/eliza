@@ -1,14 +1,9 @@
 // @vitest-environment jsdom
 
-// Regression for the app-shell deep-link boot race. App-shell pages are loaded
-// from idle-scheduled side-effect modules (main.tsx
-// `scheduleSideEffectAppModuleLoads`). A deep link or page refresh can therefore
-// boot before the matching registration exists; `tabFromPath` then falls through
-// to the `apps` catalog. Without registry reactivity that misresolution is
-// sticky (the sync effect only re-runs on tab/navigation change), so the page
-// renders the apps grid instead of the deep-linked view forever.
-// `useNavigationPathSync` now re-resolves the active tab when the app-shell
-// registry version bumps.
+/**
+ * App-shell cold deep links reconcile against idle-loaded registrations while
+ * preserving the browser path that names the exact owning page.
+ */
 
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -68,4 +63,99 @@ describe("useNavigationPathSync — app-shell registry reactivity", () => {
     // routeTab === tab, so no redundant reconciliation is dispatched.
     expect(setTabRaw).not.toHaveBeenCalled();
   });
+
+  it.each([
+    {
+      path: "/inventory",
+      registrations: [
+        {
+          id: "hyperliquid",
+          pluginId: "@elizaos/plugin-hyperliquid",
+          label: "Perps",
+          path: "/hyperliquid",
+        },
+        {
+          id: "polymarket",
+          pluginId: "@elizaos/plugin-polymarket",
+          label: "Predictions",
+          path: "/polymarket",
+        },
+        {
+          id: "wallet.inventory",
+          pluginId: "@elizaos/plugin-wallet-ui",
+          label: "Wallet",
+          path: "/inventory",
+        },
+      ],
+    },
+    {
+      path: "/hyperliquid",
+      registrations: [
+        {
+          id: "wallet.inventory",
+          pluginId: "@elizaos/plugin-wallet-ui",
+          label: "Wallet",
+          path: "/inventory",
+        },
+        {
+          id: "polymarket",
+          pluginId: "@elizaos/plugin-polymarket",
+          label: "Predictions",
+          path: "/polymarket",
+        },
+        {
+          id: "hyperliquid",
+          pluginId: "@elizaos/plugin-hyperliquid",
+          label: "Perps",
+          path: "/hyperliquid",
+        },
+      ],
+    },
+    {
+      path: "/polymarket",
+      registrations: [
+        {
+          id: "hyperliquid",
+          pluginId: "@elizaos/plugin-hyperliquid",
+          label: "Perps",
+          path: "/hyperliquid",
+        },
+        {
+          id: "wallet.inventory",
+          pluginId: "@elizaos/plugin-wallet-ui",
+          label: "Wallet",
+          path: "/inventory",
+        },
+        {
+          id: "polymarket",
+          pluginId: "@elizaos/plugin-polymarket",
+          label: "Predictions",
+          path: "/polymarket",
+        },
+      ],
+    },
+  ])(
+    "keeps $path until its exact wallet-family owner registers",
+    ({ path, registrations }) => {
+      window.history.replaceState(null, "", path);
+      const setTabRaw = vi.fn();
+      renderHook(() =>
+        useNavigationPathSync({ tab: "views" as Tab, setTabRaw }),
+      );
+
+      for (const registration of registrations) {
+        act(() => {
+          registerAppShellPage({
+            ...registration,
+            tabAffinity: "inventory",
+            loader: async () => ({ default: () => null }),
+          });
+        });
+        expect(window.location.pathname).toBe(path);
+      }
+
+      expect(setTabRaw).toHaveBeenCalledTimes(1);
+      expect(setTabRaw).toHaveBeenLastCalledWith("inventory");
+    },
+  );
 });

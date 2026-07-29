@@ -1,6 +1,6 @@
 // Browser-level evidence for #10712: the shipped chat overlay consumes a
-// deterministic token stream, paints partial text before completion, and only
-// shows the Thinking disclosure after the terminal frame carries `thought`.
+// deterministic token stream, paints partial text before completion, and keeps
+// terminal-frame model reasoning out of the ambient overlay.
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, type Page, test } from "@playwright/test";
@@ -309,7 +309,7 @@ for (const viewport of [
   { name: "desktop", size: { width: 1280, height: 900 } },
   { name: "mobile", size: { width: 390, height: 844 } },
 ] as const) {
-  test(`chat overlay streams tokens and reveals Thinking on ${viewport.name}`, async ({
+  test(`chat overlay streams tokens without exposing reasoning on ${viewport.name}`, async ({
     page,
   }) => {
     const consoleLines: string[] = [];
@@ -346,19 +346,12 @@ for (const viewport of [
     await expect(
       page.getByTestId("thread-line").filter({ hasText: FINAL_TEXT }).first(),
     ).toBeVisible({ timeout: 20_000 });
-    const thinking = page
-      .getByTestId("chat-thread")
-      .getByRole("button", { name: "Thinking" });
-    await expect(thinking).toBeVisible({ timeout: 10_000 });
-    await expect(thinking).toHaveAttribute("aria-expanded", "false");
+    await expect(
+      page.getByTestId("chat-thread").getByRole("button", { name: "Thinking" }),
+    ).toHaveCount(0);
+    await expect(page.getByText(THOUGHT)).toHaveCount(0);
     await page.waitForTimeout(700);
-    await screenshot(page, `${viewport.name}-thinking-collapsed`);
-
-    await thinking.click();
-    await expect(thinking).toHaveAttribute("aria-expanded", "true");
-    await expect(page.getByText(THOUGHT)).toBeVisible();
-    await page.waitForTimeout(200);
-    await screenshot(page, `${viewport.name}-thinking-expanded`);
+    await screenshot(page, `${viewport.name}-reasoning-private`);
 
     expect(
       events

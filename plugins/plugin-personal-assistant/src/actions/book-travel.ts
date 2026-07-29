@@ -28,6 +28,7 @@ import type {
   ApprovalQueue,
   ApprovalRequest,
 } from "../lifeops/approval-queue.types.js";
+import { TravelPostBookingProjectionError } from "../lifeops/domains/travel-service.js";
 import { requireFeatureEnabled } from "../lifeops/feature-flags.js";
 import { FeatureNotEnabledError } from "../lifeops/feature-flags.types.js";
 import { LifeOpsService } from "../lifeops/service.js";
@@ -35,6 +36,10 @@ import type {
   TravelBookingPassenger,
   TravelCalendarSyncPlan,
 } from "../lifeops/travel-booking.types.js";
+import {
+  ApprovalAmbiguousDeliveryError,
+  runApprovalDispatch,
+} from "./lib/approval-execution.js";
 
 type BookTravelPassengerInput = {
   offerPassengerId?: string | null;
@@ -605,15 +610,107 @@ export async function executeApprovedBookTravel(args: {
     throw new Error("Approved travel booking is missing passenger details");
   }
 
-  await args.queue.markExecuting(args.request.id);
   const service = new LifeOpsService(args.runtime);
-  const booked = await service.bookFlightItinerary(INTERNAL_URL, {
-    offerId: payload.offerId ?? null,
-    search: payload.search ?? null,
-    passengers,
-    calendarSync: payload.calendarSync ?? null,
+  const status = service.getTravelConnectorStatus();
+  if (!status.connected) {
+    return {
+      text: "",
+      success: false,
+      data: {
+        error: "TRAVEL_CONNECTOR_NOT_CONNECTED",
+        requestId: args.request.id,
+        state: args.request.state,
+        executed: false,
+      },
+    };
+  }
+  let calendarGrantId: string | undefined;
+  if (payload.calendarSync?.enabled !== false) {
+    try {
+      const grant = await service.requireGoogleCalendarWriteGrant(
+        INTERNAL_URL,
+        "local",
+        "owner",
+      );
+      calendarGrantId = grant.id;
+    } catch (error) {
+      return {
+        text: "",
+        success: false,
+        data: {
+          error: "TRAVEL_CALENDAR_PREFLIGHT_FAILED",
+          detail: error instanceof Error ? error.message : String(error),
+          requestId: args.request.id,
+          state: args.request.state,
+          executed: false,
+        },
+      };
+    }
+  }
+  const outcome = await runApprovalDispatch({
+    queue: args.queue,
+    request: args.request,
+    subjectUserId: args.request.subjectUserId,
+    prepared: {
+      provider: "duffel",
+      dispatch: async () => {
+        let booked: Awaited<ReturnType<LifeOpsService["bookFlightItinerary"]>>;
+        try {
+          booked = await service.bookFlightItinerary(INTERNAL_URL, {
+            offerId: payload.offerId ?? null,
+            search: payload.search ?? null,
+            passengers,
+            calendarSync: payload.calendarSync ?? null,
+            calendarGrantId,
+          });
+        } catch (error) {
+          if (error instanceof TravelPostBookingProjectionError) {
+            throw new ApprovalAmbiguousDeliveryError(
+              error.message,
+              {
+                provider: "duffel",
+                orderId: error.booking.order.id,
+                bookingReference: error.booking.order.bookingReference ?? null,
+                paymentId: error.booking.payment?.id ?? null,
+                projectionComplete: false,
+              },
+              { cause: error },
+            );
+          }
+          throw error;
+        }
+        return {
+          value: booked,
+          receipt: {
+            provider: "duffel",
+            orderId: booked.order.id,
+            bookingReference: booked.order.bookingReference ?? null,
+            paymentId: booked.payment?.id ?? null,
+          },
+        };
+      },
+    },
   });
-  const done = await args.queue.markDone(args.request.id);
+  if (outcome.kind !== "delivered") {
+    const reconciliationRequired = outcome.kind === "reconciliation_required";
+    return {
+      text: "",
+      success: false,
+      data: {
+        error: reconciliationRequired
+          ? "APPROVAL_RECONCILIATION_REQUIRED"
+          : "APPROVAL_DELIVERY_FAILED_RETRYABLE",
+        detail: outcome.error.message,
+        requestId: args.request.id,
+        state: outcome.request.state,
+        attemptId: outcome.request.execution?.attemptId ?? null,
+        executed: reconciliationRequired ? null : false,
+        deliveryUnknown: reconciliationRequired,
+      },
+    };
+  }
+  const booked = outcome.value;
+  const done = outcome.request;
 
   const route = payload.summary?.trim() || `${booked.offer.id}`;
   const bookingReference = booked.order.bookingReference

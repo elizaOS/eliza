@@ -99,7 +99,11 @@ jobs:
           - lane: core-runtime
             timeout: 75
             commands:
-              - node packages/scripts/run-turbo.mjs run typecheck --filter=@elizaos/core --filter=@elizaos/shared --filter=@elizaos/cloud-shared --concurrency=4
+              # Keep each package attributable and avoid expanding typecheck
+              # through Turbo's `^build` graph on resource-constrained Windows.
+              - bun run --cwd packages/core typecheck
+              - bun run --cwd packages/shared typecheck
+              - bun run --cwd packages/cloud/shared typecheck
               - bun run --cwd packages/core test
               - bun run --cwd packages/shared test
           - lane: app-and-cli
@@ -127,7 +131,10 @@ jobs:
           - lane: build-and-helper-smokes
             timeout: 90
             commands:
-              - node packages/scripts/run-turbo.mjs run build --filter=@elizaos/core --filter=@elizaos/shared --filter=@elizaos/agent --concurrency=4
+              # Prove the process that hit STATUS_DLL_INIT_FAILED in isolation,
+              # then retain agent's dependency build graph at serial pressure.
+              - bun run --cwd plugins/plugin-coding-tools build
+              - node packages/scripts/run-turbo.mjs run build --filter=@elizaos/core --filter=@elizaos/shared --filter=@elizaos/agent --concurrency=1
               - node packages/scripts/run-bash-linux-only.mjs scripts/verify-riscv64-buildpaths.sh
               - node packages/scripts/run-python.mjs --version
               - node packages/scripts/test-cloud-run.mjs

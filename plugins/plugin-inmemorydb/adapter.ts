@@ -18,17 +18,28 @@ import {
   type Agent,
   type Component,
   type Content,
+  canRequesterMutateDocument,
   DatabaseAdapter,
+  DOCUMENT_LIST_QUERY_CAPABILITY_VERSION,
+  type DocumentCompareAndSwapParams,
+  type DocumentDeleteParams,
+  type DocumentFragmentQueryParams,
+  type DocumentGetQueryParams,
+  type DocumentListQueryParams,
+  type DocumentListQueryResult,
+  type DocumentMutationResult,
+  documentMutationSnapshotMatches,
   type EntitiesForRoomsResult,
   type Entity,
   type IDatabaseAdapter,
+  isDocumentVisibleToRequester,
   type JsonValue,
   type Log,
   type LogBody,
   logger,
   type Memory,
   type MemoryMetadata,
-  type MemoryTypeAlias,
+  MemoryType,
   type MessageSearchHit,
   type Metadata,
   type PairingAllowlistEntry,
@@ -41,6 +52,8 @@ import {
   type ParticipantUpdateFields,
   type ParticipantUserState,
   type PatchOp,
+  queryDocumentFragmentsInMemory,
+  queryDocumentsInMemory,
   type Relationship,
   type Room,
   rankMessageSearch,
@@ -66,6 +79,7 @@ interface StoredParticipant {
 
 interface StoredMemory {
   id?: string;
+  tableName?: string;
   entityId: string;
   agentId?: string;
   createdAt?: number;
@@ -111,6 +125,10 @@ function toMemory(stored: StoredMemory): Memory {
     similarity: stored.similarity,
     metadata: stored.metadata,
   };
+}
+
+function storedMemoryTableName(memory: StoredMemory): string | undefined {
+  return memory.tableName ?? memory.metadata?.type;
 }
 
 function relationshipFromStored(r: StoredRelationship, fallbackAgentId: UUID): Relationship {
@@ -199,11 +217,13 @@ function levenshtein(a: string, b: string): number {
 // ────────────────────────────────────────────────────────────────────────────
 
 export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
+  readonly documentListQueryCapability = DOCUMENT_LIST_QUERY_CAPABILITY_VERSION;
   private storage: IStorage;
   private vectorIndex: EphemeralHNSW;
   private embeddingDimension = 384;
   private ready = false;
   private readonly agentId: UUID;
+  private documentMutationTail: Promise<void> = Promise.resolve();
 
   constructor(storage: IStorage, agentId: UUID) {
     super();
@@ -572,6 +592,115 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
 
   // ── Memory CRUD ───────────────────────────────────────────────────────
 
+  async queryDocuments(params: DocumentListQueryParams): Promise<DocumentListQueryResult> {
+    const memories = await this.storage.getWhere<StoredMemory>(
+      COLLECTIONS.MEMORIES,
+      (memory) =>
+        storedMemoryTableName(memory) === "documents" ||
+        storedMemoryTableName(memory) === "document_fragments"
+    );
+    return queryDocumentsInMemory(memories.map(toMemory), params);
+  }
+
+  async getDocument(params: DocumentGetQueryParams): Promise<Memory | null> {
+    const stored = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, params.documentId);
+    if (
+      !stored ||
+      storedMemoryTableName(stored) !== "documents" ||
+      stored.agentId !== params.agentId
+    ) {
+      return null;
+    }
+    const memory = toMemory(stored);
+    return isDocumentVisibleToRequester(memory, params) ? memory : null;
+  }
+
+  async queryDocumentFragments(params: DocumentFragmentQueryParams): Promise<Memory[]> {
+    const memories = await this.storage.getWhere<StoredMemory>(
+      COLLECTIONS.MEMORIES,
+      (memory) =>
+        storedMemoryTableName(memory) === "documents" ||
+        storedMemoryTableName(memory) === "document_fragments"
+    );
+    return queryDocumentFragmentsInMemory(memories.map(toMemory), params, this.embeddingDimension);
+  }
+
+  private withDocumentMutationLock<T>(operation: () => Promise<T>): Promise<T> {
+    const run = this.documentMutationTail.then(operation, operation);
+    this.documentMutationTail = run.then(
+      () => undefined,
+      () => undefined
+    );
+    return run;
+  }
+
+  async compareAndSwapDocument(
+    params: DocumentCompareAndSwapParams
+  ): Promise<DocumentMutationResult> {
+    return this.withDocumentMutationLock(async () => {
+      const stored = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, params.documentId);
+      if (
+        !stored ||
+        storedMemoryTableName(stored) !== "documents" ||
+        stored.agentId !== params.agentId
+      ) {
+        return { status: "not_found" };
+      }
+      const existing = toMemory(stored);
+      if (!documentMutationSnapshotMatches(existing, params.expected)) {
+        return { status: "conflict" };
+      }
+      if (!isDocumentVisibleToRequester(existing, params)) return { status: "not_found" };
+      if (!canRequesterMutateDocument(existing, params)) return { status: "forbidden" };
+      const replacement: StoredMemory = {
+        ...stored,
+        ...params.replacement,
+        id: params.documentId,
+        tableName: "documents",
+        agentId: params.agentId,
+        metadata: params.replacement.metadata,
+      };
+      await this.storage.set(COLLECTIONS.MEMORIES, params.documentId, replacement);
+      return { status: "updated", document: toMemory(replacement) };
+    });
+  }
+
+  async deleteDocumentWithSnapshot(params: DocumentDeleteParams): Promise<DocumentMutationResult> {
+    return this.withDocumentMutationLock(async () => {
+      const stored = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, params.documentId);
+      if (
+        !stored ||
+        storedMemoryTableName(stored) !== "documents" ||
+        stored.agentId !== params.agentId
+      ) {
+        return { status: "not_found" };
+      }
+      const existing = toMemory(stored);
+      if (!documentMutationSnapshotMatches(existing, params.expected)) {
+        return { status: "conflict" };
+      }
+      if (!isDocumentVisibleToRequester(existing, params)) return { status: "not_found" };
+      if (!canRequesterMutateDocument(existing, params)) return { status: "forbidden" };
+      const fragments = await this.storage.getWhere<StoredMemory>(
+        COLLECTIONS.MEMORIES,
+        (memory) => {
+          const metadata = memory.metadata as Record<string, unknown> | undefined;
+          return (
+            memory.agentId === params.agentId &&
+            metadata?.type === MemoryType.FRAGMENT &&
+            metadata.documentId === params.documentId
+          );
+        }
+      );
+      const fragmentIds = fragments
+        .map((memory) => memory.id)
+        .filter((id): id is string => typeof id === "string");
+      await this.storage.deleteMany(COLLECTIONS.MEMORIES, [...fragmentIds, params.documentId]);
+      await Promise.all(fragmentIds.map((id) => this.vectorIndex.remove(id)));
+      return { status: "deleted", document: existing };
+    });
+  }
+
   async getMemories(params: {
     entityId?: UUID;
     agentId?: UUID;
@@ -597,7 +726,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       if (params.agentId && m.agentId !== params.agentId) return false;
       if (params.roomId && m.roomId !== params.roomId) return false;
       if (params.worldId && m.worldId !== params.worldId) return false;
-      if (params.tableName && m.metadata?.type !== params.tableName) return false;
+      if (params.tableName && storedMemoryTableName(m) !== params.tableName) return false;
       if (params.start && m.createdAt && m.createdAt < params.start) return false;
       if (params.end && m.createdAt && m.createdAt > params.end) return false;
       if (params.unique && !m.unique) return false;
@@ -648,7 +777,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     const textContains = params.textContains?.trim().toLowerCase();
     const memories = await this.storage.getWhere<StoredMemory>(COLLECTIONS.MEMORIES, (m) => {
       if (!roomSet.has(m.roomId as UUID)) return false;
-      if (params.tableName && m.metadata?.type !== params.tableName) return false;
+      if (params.tableName && storedMemoryTableName(m) !== params.tableName) return false;
       // Same case-insensitive `includes` semantics the SQL adapter pushes
       // down as ILIKE.
       if (
@@ -683,7 +812,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     const tableName = params.tableName ?? "messages";
     const stored = await this.storage.getWhere<StoredMemory>(
       COLLECTIONS.MEMORIES,
-      (m) => roomSet.has(m.roomId as UUID) && m.metadata?.type === tableName
+      (m) => roomSet.has(m.roomId as UUID) && storedMemoryTableName(m) === tableName
     );
     // The window is applied before ranking + LIMIT/OFFSET, mirroring the SQL
     // adapters' created_at range conditions.
@@ -711,7 +840,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     for (const id of memoryIds) {
       const m = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, id);
       if (!m) continue;
-      if (tableName && m.metadata?.type !== tableName) continue;
+      if (tableName && storedMemoryTableName(m) !== tableName) continue;
       memories.push(toMemory(m));
     }
     return memories;
@@ -727,7 +856,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   }): Promise<{ embedding: number[]; levenshtein_score: number }[]> {
     const memories = await this.storage.getWhere<StoredMemory>(
       COLLECTIONS.MEMORIES,
-      (m) => m.metadata?.type === params.query_table_name && !!m.embedding
+      (m) => storedMemoryTableName(m) === params.query_table_name && !!m.embedding
     );
 
     const results: { embedding: number[]; levenshtein_score: number }[] = [];
@@ -767,7 +896,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     for (const result of results) {
       const memory = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, result.id);
       if (!memory) continue;
-      if (params.tableName && memory.metadata?.type !== params.tableName) continue;
+      if (params.tableName && storedMemoryTableName(memory) !== params.tableName) continue;
       if (params.roomId && memory.roomId !== params.roomId) continue;
       if (params.worldId && memory.worldId !== params.worldId) continue;
       if (params.entityId && memory.entityId !== params.entityId) continue;
@@ -787,13 +916,11 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       const stored: StoredMemory = {
         ...memory,
         id,
+        tableName,
         agentId: memory.agentId ?? this.agentId,
         unique: unique || memory.unique,
         createdAt: memory.createdAt ?? Date.now(),
-        metadata: {
-          ...(memory.metadata ?? {}),
-          type: tableName as MemoryTypeAlias,
-        } as MemoryMetadata,
+        metadata: { ...(memory.metadata ?? {}) } as MemoryMetadata,
       };
       await this.storage.set(COLLECTIONS.MEMORIES, id, stored);
       if (memory.embedding && memory.embedding.length > 0) {
@@ -838,12 +965,12 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       const stored: StoredMemory = {
         ...(existing ?? {}),
         ...memory,
+        tableName,
         agentId: memory.agentId ?? existing?.agentId ?? this.agentId,
         createdAt: memory.createdAt ?? existing?.createdAt ?? Date.now(),
         metadata: {
           ...(existing?.metadata ?? {}),
           ...(memory.metadata ?? {}),
-          type: tableName as MemoryTypeAlias,
         } as MemoryMetadata,
       };
       await this.storage.set(COLLECTIONS.MEMORIES, memory.id, stored);
@@ -865,7 +992,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     const roomSet = new Set(roomIds);
     const memories = await this.storage.getWhere<StoredMemory>(
       COLLECTIONS.MEMORIES,
-      (m) => roomSet.has(m.roomId as UUID) && (tableName ? m.metadata?.type === tableName : true)
+      (m) =>
+        roomSet.has(m.roomId as UUID) && (tableName ? storedMemoryTableName(m) === tableName : true)
     );
     const ids = memories.map((m) => m.id).filter((id): id is string => id !== undefined) as UUID[];
     await this.deleteMemories(ids);
@@ -883,7 +1011,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     return this.storage.count<StoredMemory>(COLLECTIONS.MEMORIES, (m) => {
       if (roomSet && !roomSet.has(m.roomId as UUID)) return false;
       if (params.unique && !m.unique) return false;
-      if (params.tableName && m.metadata?.type !== params.tableName) return false;
+      if (params.tableName && storedMemoryTableName(m) !== params.tableName) return false;
       if (params.entityId && m.entityId !== params.entityId) return false;
       if (params.agentId && m.agentId !== params.agentId) return false;
       if (params.metadata) {
@@ -906,7 +1034,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       COLLECTIONS.MEMORIES,
       (m) =>
         (!worldSet || (m.worldId ? worldSet.has(m.worldId as UUID) : false)) &&
-        (params.tableName ? m.metadata?.type === params.tableName : true)
+        (params.tableName ? storedMemoryTableName(m) === params.tableName : true)
     );
     memories.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
     const sliced = params.limit ? memories.slice(0, params.limit) : memories;
