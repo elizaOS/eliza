@@ -1,0 +1,79 @@
+﻿=== after-buttons-contrast.jpg ===
+Buttons on the flipped tokens (default = primary, destructive)
+Primary action
+Destructive action
+Ghost action
+AppRouteNotFound — known-view-elsewhere (the al ly-regressed story)
+NOTHING MOUNTED HERE
+/apps/wallet
+No app or view is mounted at this address on this device.
+Open Wallet
+Browse apps
+open-view button color=rgb(0, 0, 0) bg=rgb(255, 106, 31) contrast=7.33:1 WCAG-AA(4.5): PASS
+
+=== after-buttons-mobile.jpg ===
+Buttons on the flipped tokens (default = primary,
+destructive)
+Primary action
+regressed story)
+Destructive action
+Ghost action
+AppRouteNotFound — known-view-elsewhere (the al ly-
+NOTHING MOUNTED HERE
+/apps/wallet
+No app or view is mounted at this address on
+this device.
+Open Wallet
+Browse apps
+open-view button color=rgb(0, 0, 0) bg=rgb(255, 106, 31) contrast=7.33:1 WCAG-AA(4.5): PASS
+
+=== after-notifcenter-story-rendered.jpg ===
+o
+Disk almost full
+s
+The agent workspace volume is at capacity.
+
+=== before-buttons-contrast.jpg ===
+Buttons on the flipped tokens (default = primary, destructive)
+Primary action
+Destructive action
+Ghost action
+AppRouteNotFound — known-view-elsewhere (the al ly-regressed story)
+NOTHING MOUNTED HERE
+/apps/wallet
+No app or view is mounted at this address on this device.
+Open Wallet
+Browse apps
+open-view button color=rgb(253, 250, 247) bg=rgb(255, 106, 31) contrast=2.75:1 WCAG-AA(4.5): FAIL
+
+=== before-buttons-mobile.jpg ===
+Buttons on the flipped tokens (default = primary,
+destructive)
+Primary action
+regressed story)
+Destructive action
+Ghost action
+AppRouteNotFound — known-view-elsewhere (the al ly-
+NOTHING MOUNTED HERE
+/apps/wallet
+No app or view is mounted at this address on
+this device.
+Open Wallet
+Browse apps
+open-view button color=rgb(253, 250, 247) bg=rgb(255, 106, 31) contrast=2.75:1 WCAG-AA(4.5): FAIL
+
+=== before-notifcenter-story-blank.jpg ===
+
+=== wrapper-old-vs-fixed-sidebyside.jpg ===
+OLD story wrapper (unsized max-w-md) — the blank render
+S Deploy failed on prod-2
+3 Notifications v
+FIXED story wrapper (flex h-[480px] w-full max-w-md flex-col)
+O
+S Deploy failed on prod-2
+3 Notifications v
+old-wrapper: height= 156px textLength=65
+new-wrapper: height=480px textLength=65
+1m
+1m
+
