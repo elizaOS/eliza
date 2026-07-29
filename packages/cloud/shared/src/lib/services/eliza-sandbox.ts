@@ -1614,7 +1614,14 @@ export class ElizaSandboxService {
               eq(agentSandboxes.id, rec.id),
               eq(agentSandboxes.organization_id, rec.organization_id),
               eq(agentSandboxes.environment_revision, rec.environment_revision),
-              eq(agentSandboxes.updated_at, rec.updated_at),
+              // date_trunc on the COLUMN only: the stored value may carry
+              // microseconds (raw `updated_at = NOW()` writers) while
+              // `rec.updated_at` came through the typed read, which truncates
+              // to milliseconds — JS Date parsing TRUNCATES sub-ms lexically
+              // (never rounds), so ms==ms is exact. A plain eq() here either
+              // crashed on the old raw-string row or, typed, silently lost the
+              // CAS for µs rows and revoked the freshly minted credential.
+              sql`date_trunc('milliseconds', ${agentSandboxes.updated_at}) = ${rec.updated_at}`,
               sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
               sql`${agentSandboxes.claimed_at} IS NULL`,
             ),
@@ -7203,9 +7210,13 @@ export class ElizaSandboxService {
           AND node_id IS NOT DISTINCT FROM ${current.node_id}
           AND container_name IS NOT DISTINCT FROM ${current.container_name}
           AND environment_revision = ${current.environment_revision}
-          AND updated_at IS NOT DISTINCT FROM ${current.updated_at}
+          AND date_trunc('milliseconds', updated_at) IS NOT DISTINCT FROM ${current.updated_at}
         RETURNING id
       `);
+      // date_trunc on the COLUMN only: the stored value may carry microseconds
+      // (raw `updated_at = NOW()` writers), while `current.updated_at` came
+      // through the typed read, which truncates to milliseconds — JS Date
+      // parsing TRUNCATES sub-ms lexically (never rounds), so ms==ms is exact.
       if (cleared.rows.length !== 1) {
         throw new Error("Sleep lost its lifecycle generation CAS");
       }
@@ -9329,14 +9340,22 @@ export class ElizaSandboxService {
     agentId: string,
     orgId: string,
   ): Promise<AgentSandbox | undefined> {
-    const result = await tx.execute<AgentSandbox>(sql`
-      SELECT *
-      FROM ${agentSandboxes}
-      WHERE id = ${agentId}
-        AND organization_id = ${orgId}
-      FOR UPDATE
-    `);
-    return result.rows[0];
+    // TYPED select, not a raw execute: raw drizzle rows carry timestamptz as
+    // STRINGS despite the AgentSandbox type, which broke every consumer that
+    // wrote a date field back (#17249: deletes), called a Date method on one
+    // (sleep's generation CAS), or ran `instanceof Date` on one (the warm-claim
+    // credential gate — upgrades of warm-claimed agents could never commit).
+    // The builder maps through mapFromDriverValue, so callers get real Dates.
+    // NOTE: the mapping truncates to millisecond precision; exact-equality
+    // fences against µs-written columns must compare through
+    // date_trunc('milliseconds', …) — see the sleep and managed-launch CASes.
+    const [row] = await tx
+      .select()
+      .from(agentSandboxes)
+      .where(and(eq(agentSandboxes.id, agentId), eq(agentSandboxes.organization_id, orgId)))
+      .for("update")
+      .limit(1);
+    return row;
   }
 
   private async hasActiveProvisionJobTx(
