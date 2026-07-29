@@ -19,6 +19,12 @@ export type { AppDeploymentStatus };
  * `BUILDING` because the CLI does not care which sub-phase the worker is in.
  */
 export type DeploymentStatus = "BUILDING" | "READY" | "ERROR" | "DRAFT";
+export type DeploymentErrorCode = "DEPLOYMENT_FAILED";
+
+export interface PublicDeploymentError {
+  code: DeploymentErrorCode;
+  message: string;
+}
 
 const PERSISTED_TO_PUBLIC: Record<AppDeploymentStatus, DeploymentStatus> = {
   draft: "DRAFT",
@@ -30,6 +36,22 @@ const PERSISTED_TO_PUBLIC: Record<AppDeploymentStatus, DeploymentStatus> = {
 
 export function publicStatusFor(persisted: AppDeploymentStatus): DeploymentStatus {
   return PERSISTED_TO_PUBLIC[persisted];
+}
+
+/**
+ * Converts an internal deployment failure into the stable tenant-facing
+ * contract. Raw provisioner errors remain in operator-visible persistence and
+ * logs because they can contain private hostnames, command output, and other
+ * infrastructure details that must not cross the API boundary.
+ */
+export function publicDeploymentErrorFor(
+  persisted: AppDeploymentStatus,
+): PublicDeploymentError | null {
+  if (persisted !== "failed") return null;
+  return {
+    code: "DEPLOYMENT_FAILED",
+    message: "Deployment failed. Retry the deployment or contact support with the deployment ID.",
+  };
 }
 
 export function deploymentIdFor(app: {

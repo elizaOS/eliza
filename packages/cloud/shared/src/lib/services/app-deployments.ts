@@ -17,8 +17,10 @@ import { logger } from "../utils/logger";
 import type { AppDeployRunner, AppDeployRunOptions } from "./app-deploy-orchestrator";
 import {
   assertDeployable,
+  type DeploymentErrorCode,
   type DeploymentStatus,
   deploymentIdFor,
+  publicDeploymentErrorFor,
   publicStatusFor,
 } from "./app-deployments-helpers";
 import { appsService } from "./apps";
@@ -51,6 +53,7 @@ export interface DeploymentRecord {
   deploymentId: string;
   status: DeploymentStatus;
   vercelUrl: string | null;
+  errorCode: DeploymentErrorCode | null;
   error: string | null;
   startedAt: string;
 }
@@ -187,11 +190,13 @@ export class AppDeploymentsService {
       envKeys: input.env ? Object.keys(input.env).length : 0,
     });
 
+    const publicError = publicDeploymentErrorFor(updated.deployment_status);
     return {
       deploymentId: deploymentIdFor(updated),
       status: publicStatusFor(updated.deployment_status),
       vercelUrl: updated.production_url ?? null,
-      error: updated.deployment_error ?? null,
+      errorCode: publicError?.code ?? null,
+      error: publicError?.message ?? null,
       startedAt: startedAt.toISOString(),
     };
   }
@@ -208,11 +213,13 @@ export class AppDeploymentsService {
     if (app.deployment_status === "draft" && !app.last_deployed_at) {
       return null;
     }
+    const publicError = publicDeploymentErrorFor(app.deployment_status);
     return {
       deploymentId: deploymentIdFor(app),
       status: publicStatusFor(app.deployment_status),
       vercelUrl: app.production_url ?? null,
-      error: app.deployment_error ?? null,
+      errorCode: publicError?.code ?? null,
+      error: publicError?.message ?? null,
       // `app` may come from the Redis/KV cache (`getById`), where the timestamp
       // round-tripped through JSON to an ISO STRING — `new Date(...)` coerces both
       // a Date and a string; calling `.toISOString()` on the raw string 500s.

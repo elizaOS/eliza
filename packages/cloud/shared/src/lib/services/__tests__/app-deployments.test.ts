@@ -95,7 +95,7 @@ describe("AppDeploymentsService", () => {
       github_repo: null,
       metadata: {},
       deployment_status: "failed",
-      deployment_error: "server limit reached",
+      deployment_error: "ssh deploy@core-17.internal: docker failed: private command output",
       production_url: "https://example.vercel.app",
       last_deployed_at: "2026-05-19T15:00:00.000Z",
     };
@@ -104,7 +104,8 @@ describe("AppDeploymentsService", () => {
       deploymentId: `${APP_ID}:2026-05-19T15:00:00.000Z`,
       status: "ERROR",
       vercelUrl: "https://example.vercel.app",
-      error: "server limit reached",
+      errorCode: "DEPLOYMENT_FAILED",
+      error: "Deployment failed. Retry the deployment or contact support with the deployment ID.",
       startedAt: "2026-05-19T15:00:00.000Z",
     });
   });
@@ -126,6 +127,12 @@ describe("AppDeploymentsService", () => {
     expect(appStore.current).toMatchObject({
       deployment_status: "failed",
       deployment_error: "provisioning queue unavailable",
+    });
+
+    await expect(service.getLatestDeployment(APP_ID)).resolves.toMatchObject({
+      status: "ERROR",
+      errorCode: "DEPLOYMENT_FAILED",
+      error: "Deployment failed. Retry the deployment or contact support with the deployment ID.",
     });
   });
 });
