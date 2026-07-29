@@ -37,13 +37,14 @@ import {
 import {
   type HouseholdScheduleProposal,
   type HouseholdScheduleTerms,
+  type InvalidatedProposalApproval,
   normalizeScheduleTerms,
 } from "./types.js";
 
 class RejectCommitFaultRepository extends HouseholdCoordinationRepository {
   override async rejectProposal(
     _input: Parameters<HouseholdCoordinationRepository["rejectProposal"]>[0],
-  ): Promise<string[]> {
+  ): Promise<InvalidatedProposalApproval[]> {
     throw new Error("simulated failure after queue rejection");
   }
 }

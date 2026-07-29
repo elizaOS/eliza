@@ -61,6 +61,7 @@ import {
   type HouseholdScheduleTerms,
   type HouseholdScopedExport,
   householdApprovalRequestPrompt,
+  type InvalidatedProposalApproval,
   isHouseholdRole,
   materialScheduleFingerprint,
   normalizeGrantScopes,
@@ -149,6 +150,32 @@ function readSubjectMetadata(relationship: Relationship): string[] {
     );
   }
   return uniqueStrings(value);
+}
+
+/**
+ * Collapses repeated invalidation rows for one approval request. A request has
+ * exactly one subject, so the same id arriving under two parties means the
+ * link table disagrees with the queue and no scoped call can be made safely.
+ */
+function dedupeInvalidatedApprovals(
+  invalidated: readonly InvalidatedProposalApproval[],
+): InvalidatedProposalApproval[] {
+  const byRequestId = new Map<string, InvalidatedProposalApproval>();
+  for (const entry of invalidated) {
+    const existing = byRequestId.get(entry.requestId);
+    if (existing && existing.partyEntityId !== entry.partyEntityId) {
+      throw new HouseholdCoordinationError(
+        `Approval request ${entry.requestId} is linked to two household parties`,
+        "HOUSEHOLD_STALE_APPROVAL",
+        {
+          requestId: entry.requestId,
+          partyEntityIds: [existing.partyEntityId, entry.partyEntityId],
+        },
+      );
+    }
+    byRequestId.set(entry.requestId, entry);
+  }
+  return [...byRequestId.values()];
 }
 
 function readHouseholdIdMetadata(relationship: Relationship): string | null {
@@ -430,20 +457,25 @@ export class HouseholdCoordinationService {
   }
 
   private async terminallyInvalidateApprovalRequests(
-    requestIds: readonly string[],
+    invalidated: readonly InvalidatedProposalApproval[],
     invalidationContext: string,
   ): Promise<void> {
-    for (const requestId of uniqueStrings(requestIds)) {
-      const request = await this.deps.approvalQueue.byId(requestId);
+    for (const { requestId, partyEntityId } of dedupeInvalidatedApprovals(
+      invalidated,
+    )) {
+      const request = await this.deps.approvalQueue.byId(
+        requestId,
+        partyEntityId,
+      );
       if (!request) {
         throw new HouseholdCoordinationError(
           `Approval request ${requestId} referenced by household state is missing`,
           "HOUSEHOLD_STALE_APPROVAL",
-          { requestId, invalidationContext },
+          { requestId, partyEntityId, invalidationContext },
         );
       }
       if (request.state === "pending" || request.state === "approved") {
-        await this.deps.approvalQueue.markExpired(requestId);
+        await this.deps.approvalQueue.markExpired(requestId, partyEntityId);
         continue;
       }
       if (request.state === "rejected" || request.state === "expired") {
@@ -454,6 +486,7 @@ export class HouseholdCoordinationService {
         "HOUSEHOLD_STALE_APPROVAL",
         {
           requestId,
+          partyEntityId,
           approvalState: request.state,
           invalidationContext,
         },
@@ -474,6 +507,7 @@ export class HouseholdCoordinationService {
         if (link.invalidatedAt) continue;
         const request = await this.deps.approvalQueue.byId(
           link.approvalRequestId,
+          link.partyEntityId,
         );
         if (!request) {
           throw new HouseholdCoordinationError(
@@ -506,24 +540,22 @@ export class HouseholdCoordinationService {
             },
           );
         }
-        const invalidatedRequestIds = await this.deps.repository.rejectProposal(
-          {
-            proposalId: proposal.proposalId,
-            proposalVersion: proposal.version,
-            partyEntityId: link.partyEntityId,
-            reason: request.resolutionReason,
-            rejectedAt: request.resolvedAt.toISOString(),
-          },
-        );
+        const invalidated = await this.deps.repository.rejectProposal({
+          proposalId: proposal.proposalId,
+          proposalVersion: proposal.version,
+          partyEntityId: link.partyEntityId,
+          reason: request.resolutionReason,
+          rejectedAt: request.resolvedAt.toISOString(),
+        });
         await this.terminallyInvalidateApprovalRequests(
-          invalidatedRequestIds,
+          invalidated,
           `recovered rejected household proposal ${proposal.proposalId} v${proposal.version}`,
         );
         break;
       }
     }
     await this.terminallyInvalidateApprovalRequests(
-      await this.deps.repository.listInvalidatedApprovalRequestIds(),
+      await this.deps.repository.listInvalidatedProposalApprovals(),
       "persisted household proposal invalidation",
     );
   }
@@ -539,13 +571,13 @@ export class HouseholdCoordinationService {
     ) {
       return false;
     }
-    const invalidatedRequestIds = await this.deps.repository.expireProposal({
+    const invalidated = await this.deps.repository.expireProposal({
       proposalId: proposal.proposalId,
       proposalVersion: proposal.version,
       expiredAt: at.toISOString(),
     });
     await this.terminallyInvalidateApprovalRequests(
-      invalidatedRequestIds,
+      invalidated,
       `expired household proposal ${proposal.proposalId} v${proposal.version}`,
     );
     return true;
@@ -1166,7 +1198,7 @@ export class HouseholdCoordinationService {
           "Custody authority was revised after proposal approval bytes were issued.",
       });
     await this.terminallyInvalidateApprovalRequests(
-      invalidated.approvalRequestIds,
+      invalidated.invalidatedApprovals,
       `custody authority ${relationshipId} revised`,
     );
     await this.deps.repository.appendAudit({
@@ -1302,7 +1334,7 @@ export class HouseholdCoordinationService {
         reason: "Custody authority was revoked before proposal finalization.",
       });
     await this.terminallyInvalidateApprovalRequests(
-      invalidated.approvalRequestIds,
+      invalidated.invalidatedApprovals,
       `custody authority ${relationshipId} revoked`,
     );
     const baseline: HouseholdCustodyAuthorityBaseline = {
@@ -2321,12 +2353,12 @@ export class HouseholdCoordinationService {
       createdAt: now,
       updatedAt: now,
     };
-    const invalidatedRequestIds = await this.deps.repository.reviseProposal(
+    const invalidated = await this.deps.repository.reviseProposal(
       previous,
       next,
     );
     await this.terminallyInvalidateApprovalRequests(
-      invalidatedRequestIds,
+      invalidated,
       `superseded household proposal ${previous.proposalId} v${previous.version}`,
     );
     try {
@@ -2444,7 +2476,10 @@ export class HouseholdCoordinationService {
         },
       );
     }
-    const request = await this.deps.approvalQueue.byId(approvalRequestId);
+    const request = await this.deps.approvalQueue.byId(
+      approvalRequestId,
+      partyEntityId,
+    );
     if (
       !request ||
       request.subjectUserId !== partyEntityId ||
@@ -2468,14 +2503,16 @@ export class HouseholdCoordinationService {
     if (input.decision === "approve") {
       return await this.deps.approvalQueue.approve(
         approvalRequestId,
+        partyEntityId,
         resolution,
       );
     }
     const rejectedRequest = await this.deps.approvalQueue.reject(
       approvalRequestId,
+      partyEntityId,
       resolution,
     );
-    const invalidatedRequestIds = await this.deps.repository.rejectProposal({
+    const invalidated = await this.deps.repository.rejectProposal({
       proposalId,
       proposalVersion,
       partyEntityId,
@@ -2483,7 +2520,7 @@ export class HouseholdCoordinationService {
       rejectedAt: this.now().toISOString(),
     });
     await this.terminallyInvalidateApprovalRequests(
-      invalidatedRequestIds,
+      invalidated,
       `rejected household proposal ${proposalId} v${proposalVersion}`,
     );
     return rejectedRequest;
@@ -2527,6 +2564,7 @@ export class HouseholdCoordinationService {
       }
       const request = await this.deps.approvalQueue.byId(
         link.approvalRequestId,
+        link.partyEntityId,
       );
       if (!request) {
         throw new HouseholdCoordinationError(
@@ -2703,7 +2741,7 @@ export class HouseholdCoordinationService {
       commitment,
     );
     await this.terminallyInvalidateApprovalRequests(
-      activation.invalidatedApprovalRequestIds,
+      activation.invalidatedApprovals,
       `competing proposals invalidated by agreement ${agreement.id}`,
     );
     return agreement;

@@ -171,6 +171,18 @@ export interface HouseholdProposalApproval {
   updatedAt: string;
 }
 
+/**
+ * One approval row a proposal transition invalidated, carried with the party
+ * it was raised against. The repository knows that party at the moment it
+ * rejects, expires, or revises the proposal; binding it to the row here keeps
+ * callers from having to reconstruct the subject the queue scopes reads and
+ * writes by.
+ */
+export interface InvalidatedProposalApproval {
+  readonly requestId: string;
+  readonly partyEntityId: string;
+}
+
 export interface HouseholdScheduleAgreement {
   id: string;
   agentId: string;

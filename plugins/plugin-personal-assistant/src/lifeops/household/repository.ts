@@ -37,6 +37,7 @@ import {
   type HouseholdScheduleAgreement,
   type HouseholdScheduleProposal,
   type HouseholdScheduleTerms,
+  type InvalidatedProposalApproval,
   isHouseholdAccessScope,
   isHouseholdAuditKind,
   isHouseholdProposalStatus,
@@ -286,6 +287,20 @@ function proposalFromRow(
     expiresAt: optionalText(row.expires_at),
     createdAt: requiredText(row.created_at, "createdAt"),
     updatedAt: requiredText(row.updated_at, "updatedAt"),
+  };
+}
+
+/**
+ * Reads an invalidation result row. Every statement that invalidates approval
+ * links returns the party alongside the request id so the caller can address
+ * the subject-scoped approval queue without re-deriving the subject.
+ */
+function invalidatedApprovalFromRow(
+  row: Record<string, unknown>,
+): InvalidatedProposalApproval {
+  return {
+    requestId: requiredText(row.approval_request_id, "approvalRequestId"),
+    partyEntityId: requiredText(row.party_entity_id, "partyEntityId"),
   };
 }
 
@@ -1003,7 +1018,7 @@ export class HouseholdCoordinationRepository {
   async reviseProposal(
     previous: HouseholdScheduleProposal,
     next: HouseholdScheduleProposal,
-  ): Promise<string[]> {
+  ): Promise<InvalidatedProposalApproval[]> {
     return await withTransaction(this.runtime, async (tx) => {
       const headRows = await executeRawSqlTx(
         tx,
@@ -1059,7 +1074,7 @@ export class HouseholdCoordinationRepository {
             AND proposal_id = ${sqlQuote(previous.proposalId)}
             AND proposal_version = ${sqlInteger(previous.version)}
             AND invalidated_at IS NULL
-        RETURNING approval_request_id`,
+        RETURNING approval_request_id, party_entity_id`,
       );
       await this.insertProposalTx(tx, next);
       await insertAudit(tx, this.agentId, {
@@ -1096,9 +1111,7 @@ export class HouseholdCoordinationRepository {
         actor: "user",
         createdAt: next.updatedAt,
       });
-      return invalidatedApprovals.map((row) =>
-        requiredText(row.approval_request_id, "approvalRequestId"),
-      );
+      return invalidatedApprovals.map(invalidatedApprovalFromRow);
     });
   }
 
@@ -1203,18 +1216,18 @@ export class HouseholdCoordinationRepository {
     return rows.map(approvalFromRow);
   }
 
-  async listInvalidatedApprovalRequestIds(): Promise<string[]> {
+  async listInvalidatedProposalApprovals(): Promise<
+    InvalidatedProposalApproval[]
+  > {
     const rows = await executeRawSql(
       this.runtime,
-      `SELECT DISTINCT approval_request_id
+      `SELECT DISTINCT approval_request_id, party_entity_id
          FROM app_lifeops.life_household_proposal_approvals
         WHERE agent_id = ${sqlQuote(this.agentId)}
           AND invalidated_at IS NOT NULL
         ORDER BY approval_request_id ASC`,
     );
-    return rows.map((row) =>
-      requiredText(row.approval_request_id, "approvalRequestId"),
-    );
+    return rows.map(invalidatedApprovalFromRow);
   }
 
   async invalidateProposalsForCustodyAuthority(input: {
@@ -1224,7 +1237,7 @@ export class HouseholdCoordinationRepository {
     reason: string;
   }): Promise<{
     proposalIds: string[];
-    approvalRequestIds: string[];
+    invalidatedApprovals: InvalidatedProposalApproval[];
   }> {
     return await withTransaction(this.runtime, async (tx) => {
       const proposals = await executeRawSqlTx(
@@ -1259,7 +1272,7 @@ export class HouseholdCoordinationRepository {
                      '{custodyException,authorityBaselineRelationshipId}' =
                      ${sqlQuote(input.relationshipId)}
             )
-        RETURNING approval_request_id`,
+        RETURNING approval_request_id, party_entity_id`,
       );
       for (const row of proposals) {
         await insertAudit(tx, this.agentId, {
@@ -1283,9 +1296,7 @@ export class HouseholdCoordinationRepository {
         proposalIds: proposals.map((row) =>
           requiredText(row.proposal_id, "proposalId"),
         ),
-        approvalRequestIds: approvals.map((row) =>
-          requiredText(row.approval_request_id, "approvalRequestId"),
-        ),
+        invalidatedApprovals: approvals.map(invalidatedApprovalFromRow),
       };
     });
   }
@@ -1296,7 +1307,7 @@ export class HouseholdCoordinationRepository {
     partyEntityId: string;
     reason: string;
     rejectedAt: string;
-  }): Promise<string[]> {
+  }): Promise<InvalidatedProposalApproval[]> {
     return await withTransaction(this.runtime, async (tx) => {
       const changed = await executeRawSqlTx(
         tx,
@@ -1328,7 +1339,7 @@ export class HouseholdCoordinationRepository {
             AND proposal_id = ${sqlQuote(input.proposalId)}
             AND proposal_version = ${sqlInteger(input.proposalVersion)}
             AND invalidated_at IS NULL
-        RETURNING approval_request_id`,
+        RETURNING approval_request_id, party_entity_id`,
       );
       await insertAudit(tx, this.agentId, {
         kind: "household_proposal_invalidated",
@@ -1345,9 +1356,7 @@ export class HouseholdCoordinationRepository {
         actor: "user",
         createdAt: input.rejectedAt,
       });
-      return invalidatedApprovals.map((row) =>
-        requiredText(row.approval_request_id, "approvalRequestId"),
-      );
+      return invalidatedApprovals.map(invalidatedApprovalFromRow);
     });
   }
 
@@ -1355,7 +1364,7 @@ export class HouseholdCoordinationRepository {
     proposalId: string;
     proposalVersion: number;
     expiredAt: string;
-  }): Promise<string[]> {
+  }): Promise<InvalidatedProposalApproval[]> {
     return await withTransaction(this.runtime, async (tx) => {
       const changed = await executeRawSqlTx(
         tx,
@@ -1379,7 +1388,7 @@ export class HouseholdCoordinationRepository {
           WHERE agent_id = ${sqlQuote(this.agentId)}
             AND proposal_id = ${sqlQuote(input.proposalId)}
             AND proposal_version = ${sqlInteger(input.proposalVersion)}
-        RETURNING approval_request_id`,
+        RETURNING approval_request_id, party_entity_id`,
       );
       if (changed.length === 1) {
         await insertAudit(tx, this.agentId, {
@@ -1420,9 +1429,7 @@ export class HouseholdCoordinationRepository {
           );
         }
       }
-      return invalidatedApprovals.map((row) =>
-        requiredText(row.approval_request_id, "approvalRequestId"),
-      );
+      return invalidatedApprovals.map(invalidatedApprovalFromRow);
     });
   }
 
@@ -1431,7 +1438,7 @@ export class HouseholdCoordinationRepository {
     commitment: LifeOpsCommitmentLedgerRecord,
   ): Promise<{
     invalidatedProposalIds: string[];
-    invalidatedApprovalRequestIds: string[];
+    invalidatedApprovals: InvalidatedProposalApproval[];
   }> {
     return await withTransaction(this.runtime, async (tx) => {
       const proposalRows = await executeRawSqlTx(
@@ -1563,7 +1570,7 @@ export class HouseholdCoordinationRepository {
                  AND proposal.coordination_id = ${sqlQuote(agreement.coordinationId)}
                  AND proposal.status = 'invalidated'
             )
-        RETURNING approval_request_id`,
+        RETURNING approval_request_id, party_entity_id`,
       );
       await insertAudit(tx, this.agentId, {
         kind: "household_proposal_approved",
@@ -1620,8 +1627,8 @@ export class HouseholdCoordinationRepository {
         invalidatedProposalIds: invalidated.map((row) =>
           requiredText(row.proposal_id, "proposalId"),
         ),
-        invalidatedApprovalRequestIds: invalidatedApprovals.map((row) =>
-          requiredText(row.approval_request_id, "approvalRequestId"),
+        invalidatedApprovals: invalidatedApprovals.map(
+          invalidatedApprovalFromRow,
         ),
       };
     });
