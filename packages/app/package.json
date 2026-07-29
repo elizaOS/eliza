@@ -157,7 +157,7 @@
     "@capacitor/local-notifications": "^8.0.0",
     "@capacitor/network": "^8.0.0",
     "@capacitor/preferences": "8.0.1",
-    "@capacitor/push-notifications": "8.0.3",
+    "@capacitor/push-notifications": "8.1.2",
     "@capacitor/share": "^8.0.0",
     "@capacitor/status-bar": "8.0.2",
     "@elizaos/app-core": "workspace:*",
