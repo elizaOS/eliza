@@ -786,8 +786,11 @@ describe("balance-delta watcher — real runner + real notification inbox", () =
     });
 
     // A price feed later lists the spam token at a fake-liquidity $800: that
-    // is a coverage flip on a known position — silent re-baseline, not a
-    // "wallet up 800%" notification.
+    // is a coverage flip on a known position — silent re-baseline of the
+    // flipped contribution only, not a "wallet up 800%" notification. The
+    // residual anchor is preserved: SOL's immaterial $5 drift is NOT
+    // re-anchored away, so the new baseline is anchor $100 + spam $800 =
+    // $900, not the raw $895 sample.
     sample = () => wallet("95", "800");
     h.setNow("2026-07-23T11:02:00.000Z");
     const third = await h.fire(watcher.taskId, { allowTerminalRefire: true });
@@ -805,7 +808,159 @@ describe("balance-delta watcher — real runner + real notification inbox", () =
           WALLET_BALANCE_DELTA_BASELINE_CACHE_KEY,
         ) as WalletBalanceBaseline
       ).totalUsd,
-    ).toBe(895);
+    ).toBe(900);
+  });
+
+  it("an attacker-timed price listing on a spam token cannot rebaseline away a concurrent material crash in priced holdings", async () => {
+    const wallet = (args: {
+      solValueUsd: string;
+      spamValueUsd: string;
+    }): WalletBalancesResponse => ({
+      evm: null,
+      solana: {
+        address: "So11111111111111111111111111111111111111112",
+        solBalance: "10",
+        solValueUsd: args.solValueUsd,
+        tokens: [
+          {
+            symbol: "SPAM",
+            name: "Spam Coin",
+            balance: "99999",
+            decimals: 6,
+            valueUsd: args.spamValueUsd,
+            logoUrl: "",
+            mint: "spamcoin",
+          },
+        ],
+      },
+    });
+    const h = await makeHarness("2026-07-23T10:00:00.000Z");
+    // Baseline: 10 SOL priced at $100 plus an already-held unpriced spam
+    // airdrop (contributes $0).
+    let sample: () => WalletBalancesResponse = () =>
+      wallet({ solValueUsd: "100", spamValueUsd: "0" });
+    await registerWalletBalanceDeltaProducer(h.runtime, {
+      source: async () => sample(),
+    });
+    const runner = h.runnerService.getRunner({ agentId: AGENT_ID });
+    const watcher = (await runner.list()).find(
+      (t) => t.idempotencyKey === WALLET_BALANCE_DELTA_TASK_IDEMPOTENCY_KEY,
+    );
+    if (!watcher) throw new Error("watcher not scheduled");
+    const first = await h.fire(watcher.taskId);
+    expect(first.kind).toBe("fired");
+    expect(h.notifications.list()).toHaveLength(0);
+
+    // Attacker-timed coverage flip: the spam token gets a dexscreener listing
+    // (fake liquidity, $500) on the SAME tick SOL crashes $100 → $20. The
+    // flip makes only the spam position incomparable — the residual priced
+    // holdings moved materially and MUST notify; a whole-total re-baseline
+    // here would let anyone with a spam token mute real crashes at will.
+    sample = () => wallet({ solValueUsd: "20", spamValueUsd: "500" });
+    h.setNow("2026-07-23T10:31:00.000Z");
+    const second = await h.fire(watcher.taskId, { allowTerminalRefire: true });
+    expect(second.kind).toBe("fired");
+    const inbox = h.notifications.list();
+    expect(inbox).toHaveLength(1);
+    expect(inbox[0]?.title).toBe("Wallet balance down");
+    // The comparison excludes the flipped spam position from BOTH sides:
+    // $100 residual baseline vs $20 residual current.
+    expect(inbox[0]?.data).toMatchObject({
+      previousTotalUsd: 100,
+      currentTotalUsd: 20,
+      deltaUsd: -80,
+      deltaPct: -80,
+    });
+  });
+
+  it("a flapping coverage bit on one dust position cannot permanently mute the watcher, and the flap surfaces via reportError", async () => {
+    const wallet = (args: {
+      solValueUsd: string;
+      dustValueUsd: string;
+    }): WalletBalancesResponse => ({
+      evm: null,
+      solana: {
+        address: "So11111111111111111111111111111111111111112",
+        solBalance: "10",
+        solValueUsd: args.solValueUsd,
+        tokens: [
+          {
+            symbol: "DUST",
+            name: "Dust Coin",
+            balance: "5",
+            decimals: 6,
+            valueUsd: args.dustValueUsd,
+            logoUrl: "",
+            mint: "dusty",
+          },
+        ],
+      },
+    });
+    const h = await makeHarness("2026-07-23T10:00:00.000Z");
+    const coverageFlapReports = () =>
+      h.reported.filter(
+        (r) =>
+          (r as { scope?: string }).scope === "WalletBalanceDelta.coverageFlap",
+      );
+    // Baseline: SOL $100 plus a dust token priced at $1.
+    let sample: () => WalletBalancesResponse = () =>
+      wallet({ solValueUsd: "100", dustValueUsd: "1" });
+    await registerWalletBalanceDeltaProducer(h.runtime, {
+      source: async () => sample(),
+    });
+    const runner = h.runnerService.getRunner({ agentId: AGENT_ID });
+    const watcher = (await runner.list()).find(
+      (t) => t.idempotencyKey === WALLET_BALANCE_DELTA_TASK_IDEMPOTENCY_KEY,
+    );
+    if (!watcher) throw new Error("watcher not scheduled");
+    const first = await h.fire(watcher.taskId);
+    expect(first.kind).toBe("fired");
+    expect(h.notifications.list()).toHaveLength(0);
+
+    // The dust token's price feed flaps priced↔unpriced on EVERY tick while
+    // SOL drifts down $3/tick. Each flap tick may re-baseline only the dust
+    // position's own contribution — the SOL drift must keep accumulating
+    // toward the thresholds instead of being re-anchored away every 30 min.
+    sample = () => wallet({ solValueUsd: "97", dustValueUsd: "0" });
+    h.setNow("2026-07-23T10:31:00.000Z");
+    const flap1 = await h.fire(watcher.taskId, { allowTerminalRefire: true });
+    expect(flap1.kind).toBe("fired");
+    expect(h.notifications.list()).toHaveLength(0);
+    expect(coverageFlapReports()).toHaveLength(0);
+
+    sample = () => wallet({ solValueUsd: "94", dustValueUsd: "1" });
+    h.setNow("2026-07-23T11:02:00.000Z");
+    const flap2 = await h.fire(watcher.taskId, { allowTerminalRefire: true });
+    expect(flap2.kind).toBe("fired");
+    expect(h.notifications.list()).toHaveLength(0);
+    expect(coverageFlapReports()).toHaveLength(0);
+
+    // Third silent coverage re-baseline inside the flap window: the repeated
+    // flap is a systemic price-feed problem and must surface observably
+    // (runtime.reportError → RECENT_ERRORS), not sit at debug forever.
+    sample = () => wallet({ solValueUsd: "91", dustValueUsd: "0" });
+    h.setNow("2026-07-23T11:33:00.000Z");
+    const flap3 = await h.fire(watcher.taskId, { allowTerminalRefire: true });
+    expect(flap3.kind).toBe("fired");
+    expect(h.notifications.list()).toHaveLength(0);
+    expect(coverageFlapReports().length).toBeGreaterThan(0);
+
+    // The accumulated SOL drift ($100 → $85) is now material against the
+    // preserved anchor even though THIS tick also flips the dust bit — the
+    // watcher is not muted by the flap.
+    sample = () => wallet({ solValueUsd: "85", dustValueUsd: "1" });
+    h.setNow("2026-07-23T12:04:00.000Z");
+    const fifth = await h.fire(watcher.taskId, { allowTerminalRefire: true });
+    expect(fifth.kind).toBe("fired");
+    const inbox = h.notifications.list();
+    expect(inbox).toHaveLength(1);
+    expect(inbox[0]?.title).toBe("Wallet balance down");
+    expect(inbox[0]?.data).toMatchObject({
+      previousTotalUsd: 100,
+      currentTotalUsd: 85,
+      deltaUsd: -15,
+      deltaPct: -15,
+    });
   });
 
   it("a legacy pre-wallet-scoped baseline row is discarded, never compared against", async () => {
@@ -840,6 +995,44 @@ describe("balance-delta watcher — real runner + real notification inbox", () =
     expect(migrated.walletKey).toBe(
       "sol:So11111111111111111111111111111111111111112",
     );
+  });
+
+  it("a coverage-bits-only baseline row (#17039 shape) is discarded, never compared against", async () => {
+    const h = await makeHarness("2026-07-23T10:00:00.000Z");
+    // Shape written before per-position values existed: coverage booleans
+    // only. Without positionValuesUsd the residual math cannot excise a
+    // flipped position, so the row must be treated as no-baseline (one
+    // designed silent re-baseline on upgrade), never compared against.
+    h.cache.set(WALLET_BALANCE_DELTA_BASELINE_CACHE_KEY, {
+      walletKey: "sol:So11111111111111111111111111111111111111112",
+      totalUsd: 100,
+      sampleLegs: ["sol"],
+      positionPricing: { "sol:native": true },
+      observedAtIso: "2026-07-22T10:00:00.000Z",
+    });
+    await registerWalletBalanceDeltaProducer(h.runtime, {
+      source: async () => solanaBalances(5000),
+    });
+    const runner = h.runnerService.getRunner({ agentId: AGENT_ID });
+    const watcher = (await runner.list()).find(
+      (t) => t.idempotencyKey === WALLET_BALANCE_DELTA_TASK_IDEMPOTENCY_KEY,
+    );
+    if (!watcher) throw new Error("watcher not scheduled");
+    const outcome = await h.fire(watcher.taskId);
+    expect(outcome.kind).toBe("fired");
+    if (outcome.kind === "fired") {
+      expect(outcome.task.metadata?.lastDispatchResult).toMatchObject({
+        ok: true,
+        target: "baseline_recorded",
+      });
+    }
+    expect(h.notifications.list()).toHaveLength(0);
+    const migrated = h.cache.get(
+      WALLET_BALANCE_DELTA_BASELINE_CACHE_KEY,
+    ) as WalletBalanceBaseline;
+    expect(migrated.totalUsd).toBe(5000);
+    expect(migrated.positionValuesUsd).toEqual({ "sol:native": 5000 });
+    expect(migrated.coverageFlapCount).toBe(0);
   });
 
   it("switching to a different wallet resets the baseline — never a fabricated cross-wallet delta", async () => {

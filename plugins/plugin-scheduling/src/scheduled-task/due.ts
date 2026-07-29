@@ -12,6 +12,7 @@
 import { computeNextCronRunAtMs, stringToUuid } from "@elizaos/core";
 
 import type { AnchorRegistry } from "../anchors/anchor-registry.js";
+import { parseLocalHHMM, resolveLocalHHMMToIso } from "./local-time.js";
 import { resolveTriggerTz } from "./trigger-tz.js";
 import type {
   OwnerFactsView,
@@ -104,54 +105,6 @@ function localDateKey(date: Date, timeZone: string): string {
   return `${parts.year.toString().padStart(4, "0")}-${parts.month
     .toString()
     .padStart(2, "0")}-${parts.day.toString().padStart(2, "0")}`;
-}
-
-function minutesFromHHMM(value: string | undefined): number | null {
-  if (!value) return null;
-  const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(value);
-  if (!match) return null;
-  return Number(match[1]) * 60 + Number(match[2]);
-}
-
-function localHHMMToIso(
-  now: Date,
-  hhmm: string | undefined,
-  timeZone: string,
-): string | null {
-  const minutes = minutesFromHHMM(hhmm);
-  if (minutes === null) return null;
-  const parts = localParts(now, timeZone);
-  const hour = Math.floor(minutes / 60);
-  const minute = minutes % 60;
-  const localAsUtc = Date.UTC(
-    parts.year,
-    parts.month - 1,
-    parts.day,
-    hour,
-    minute,
-  );
-  const offsetFormatter = new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    timeZoneName: "longOffset",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
-  const offsetParts = offsetFormatter.formatToParts(new Date(localAsUtc));
-  const offsetValue =
-    offsetParts.find((part) => part.type === "timeZoneName")?.value ?? "GMT";
-  const offsetMatch = /GMT([+-]\d{1,2})(?::?(\d{2}))?/.exec(offsetValue);
-  let offsetMinutes = 0;
-  if (offsetMatch) {
-    const sign = offsetMatch[1]?.startsWith("-") ? -1 : 1;
-    const hours = Math.abs(Number.parseInt(offsetMatch[1] ?? "0", 10));
-    const minutesPart = Number.parseInt(offsetMatch[2] ?? "0", 10);
-    offsetMinutes = sign * (hours * 60 + minutesPart);
-  }
-  return new Date(localAsUtc - offsetMinutes * MINUTE_MS).toISOString();
 }
 
 function metadataCreatedAtMs(task: ScheduledTask): number | null {
@@ -300,7 +253,7 @@ async function resolveAnchorIso(
     trigger.anchorKey === "wake.observed" ||
     trigger.anchorKey === "morning.start"
   ) {
-    return localHHMMToIso(
+    return resolveLocalHHMMToIso(
       context.now,
       ownerFacts.morningWindow?.start,
       timeZone,
@@ -308,19 +261,22 @@ async function resolveAnchorIso(
   }
   if (trigger.anchorKey === "bedtime.target") {
     return (
-      localHHMMToIso(context.now, ownerFacts.eveningWindow?.end, timeZone) ??
-      localHHMMToIso(context.now, "22:30", timeZone)
+      resolveLocalHHMMToIso(
+        context.now,
+        ownerFacts.eveningWindow?.end,
+        timeZone,
+      ) ?? resolveLocalHHMMToIso(context.now, "22:30", timeZone)
     );
   }
   if (trigger.anchorKey === "night.start") {
-    return localHHMMToIso(
+    return resolveLocalHHMMToIso(
       context.now,
       ownerFacts.eveningWindow?.start,
       timeZone,
     );
   }
   if (trigger.anchorKey === "lunch.start") {
-    return localHHMMToIso(context.now, "12:00", timeZone);
+    return resolveLocalHHMMToIso(context.now, "12:00", timeZone);
   }
   return null;
 }
@@ -361,11 +317,11 @@ function windowBoundsMinutes(
   ownerFacts: OwnerFactsView,
 ): Array<{ name: string; start: number; end: number }> {
   const morningStart =
-    minutesFromHHMM(ownerFacts.morningWindow?.start) ?? 6 * 60;
-  const morningEnd = minutesFromHHMM(ownerFacts.morningWindow?.end) ?? 11 * 60;
+    parseLocalHHMM(ownerFacts.morningWindow?.start) ?? 6 * 60;
+  const morningEnd = parseLocalHHMM(ownerFacts.morningWindow?.end) ?? 11 * 60;
   const eveningStart =
-    minutesFromHHMM(ownerFacts.eveningWindow?.start) ?? 18 * 60;
-  const eveningEnd = minutesFromHHMM(ownerFacts.eveningWindow?.end) ?? 22 * 60;
+    parseLocalHHMM(ownerFacts.eveningWindow?.start) ?? 18 * 60;
+  const eveningEnd = parseLocalHHMM(ownerFacts.eveningWindow?.end) ?? 22 * 60;
   const afternoonStart = morningEnd;
   const afternoonEnd = eveningStart;
   const windows: Record<

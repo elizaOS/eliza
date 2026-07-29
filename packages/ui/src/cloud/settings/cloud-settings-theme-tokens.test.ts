@@ -82,7 +82,10 @@ function collectFiles(path: string): string[] {
   if (statSync(fullPath).isFile()) return [path];
 
   return readdirSync(fullPath).flatMap((entry) => {
-    const child = join(path, entry);
+    // POSIX-style child paths so the ALLOWED_EXPLICIT_BLACK_CONTROLS lookup
+    // (forward-slash keys) also matches on a Windows checkout, where join()
+    // would produce backslash separators and silently void the allowlist.
+    const child = `${path}/${entry}`;
     const childFullPath = join(ROOT, child);
     if (statSync(childFullPath).isDirectory()) return collectFiles(child);
     return child.endsWith(".tsx") ? [child] : [];
