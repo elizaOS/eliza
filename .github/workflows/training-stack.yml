@@ -86,7 +86,9 @@ jobs:
       - name: Install ruff (host)
         # ruff lint is fast on the host and gives a clean GitHub
         # Annotations surface — no need to shell into the container.
-        run: pipx install ruff || pip install --user ruff
+        # Ruff 0.16 expands its implicit default from 59 to 413 rules, so keep
+        # this existing gate stable until that rule migration is reviewed.
+        run: pipx install --force ruff==0.15.22 || pip install --user ruff==0.15.22
 
       - name: Lint packages/training/scripts/
         run: ruff check packages/training/scripts/
