@@ -175,9 +175,12 @@ async function createOpeningApproval(args: {
     lastContactedAt: null,
     metadata: {},
   });
+  // The handler scopes the approval it enqueues to the triggering message's
+  // entity, so every read of that row has to name the same subject.
+  const subjectUserId = String(runtime.agentId);
   const message = {
     id: runtime.agentId,
-    entityId: runtime.agentId,
+    entityId: subjectUserId,
     roomId: runtime.agentId,
     content: { text: `Coordinate school logistics ${args.suffix}` },
   } as never;
@@ -200,7 +203,7 @@ async function createOpeningApproval(args: {
     negotiation: { id: string };
     approvalRequestId: string;
   };
-  const request = await queue.byId(data.approvalRequestId);
+  const request = await queue.byId(data.approvalRequestId, subjectUserId);
   if (!request) {
     throw new Error("scheduling handler did not persist its approval request");
   }
@@ -454,7 +457,9 @@ describe("ApprovalQueue integration (real PGlite)", () => {
     ).rejects.toThrow("force rollback");
 
     expect(await service.getNegotiation(negotiationId)).toBeNull();
-    expect(await queue.byId(approvalRequestId)).toBeNull();
+    expect(
+      await queue.byId(approvalRequestId, String(runtime.agentId)),
+    ).toBeNull();
     expect(
       await new SchedulingDeliveryStore(runtime).byApprovalRequestId(
         approvalRequestId,
@@ -496,7 +501,7 @@ describe("ApprovalQueue integration (real PGlite)", () => {
       expiresAt: new Date(Date.now() + 60 * 60 * 1000),
     });
 
-    const fetched = await queue.byId(enqueued.id);
+    const fetched = await queue.byId(enqueued.id, "owner-scheduling-integrity");
     if (!fetched) throw new Error("approval row disappeared after enqueue");
     expect(fetched.payload).toEqual(payload);
     expect(readSchedulingApprovalCorrelation(fetched.payload)).toMatchObject({
@@ -576,9 +581,10 @@ describe("ApprovalQueue integration (real PGlite)", () => {
       metadata: {},
     });
     const sendEmail = vi.spyOn(LifeOpsService.prototype, "sendGmailMessage");
+    const subjectUserId = String(runtime.agentId);
     const message = {
       id: runtime.agentId,
-      entityId: runtime.agentId,
+      entityId: subjectUserId,
       roomId: runtime.agentId,
       content: { text: "Coordinate the school conference with Taylor" },
     } as never;
@@ -612,7 +618,7 @@ describe("ApprovalQueue integration (real PGlite)", () => {
       negotiation: { id: string };
       approvalRequestId: string;
     };
-    const approval = await queue.byId(data.approvalRequestId);
+    const approval = await queue.byId(data.approvalRequestId, subjectUserId);
     if (!approval) throw new Error("scheduling handler queued no approval");
     expect(approval.state).toBe("pending");
     expect(approval.action).toBe("send_email");
@@ -673,7 +679,10 @@ describe("ApprovalQueue integration (real PGlite)", () => {
       proposal: { id: string };
       approvalRequestId: string;
     };
-    const proposalApproval = await queue.byId(proposedData.approvalRequestId);
+    const proposalApproval = await queue.byId(
+      proposedData.approvalRequestId,
+      subjectUserId,
+    );
     if (!proposalApproval) {
       throw new Error("proposal handler queued no approval");
     }
@@ -735,6 +744,7 @@ describe("ApprovalQueue integration (real PGlite)", () => {
     const finalizedData = finalized.data as { approvalRequestId: string };
     const confirmationApproval = await queue.byId(
       finalizedData.approvalRequestId,
+      subjectUserId,
     );
     if (!confirmationApproval) {
       throw new Error("finalize handler queued no approval");
@@ -776,6 +786,7 @@ describe("ApprovalQueue integration (real PGlite)", () => {
     const cancelledData = cancelled.data as { approvalRequestId: string };
     const cancellationApproval = await queue.byId(
       cancelledData.approvalRequestId,
+      subjectUserId,
     );
     if (!cancellationApproval) {
       throw new Error("cancel handler queued no approval");
@@ -797,7 +808,7 @@ describe("ApprovalQueue integration (real PGlite)", () => {
     const { request } = await createOpeningApproval({
       suffix: "concurrent-1001",
     });
-    const approved = await queue.approve(request.id, {
+    const approved = await queue.approve(request.id, request.subjectUserId, {
       resolvedBy: String(runtime.agentId),
       resolutionReason: "reviewed exact concurrent draft",
     });
@@ -828,7 +839,10 @@ describe("ApprovalQueue integration (real PGlite)", () => {
       const restartedQueue = new PgApprovalQueue(runtime, {
         agentId: runtime.agentId,
       });
-      const completedAfterRestart = await restartedQueue.byId(request.id);
+      const completedAfterRestart = await restartedQueue.byId(
+        request.id,
+        request.subjectUserId,
+      );
       if (!completedAfterRestart) {
         throw new Error("completed approval disappeared across restart seam");
       }
@@ -853,7 +867,9 @@ describe("ApprovalQueue integration (real PGlite)", () => {
         providerMessageId: "gmail-concurrent-1",
       });
       expect(persisted?.receipt?.idempotencyKey).toBe(request.idempotencyKey);
-      expect((await queue.byId(request.id))?.state).toBe("done");
+      expect((await queue.byId(request.id, request.subjectUserId))?.state).toBe(
+        "done",
+      );
     } finally {
       email.send = originalSend;
     }
@@ -863,7 +879,7 @@ describe("ApprovalQueue integration (real PGlite)", () => {
     const { request } = await createOpeningApproval({
       suffix: "retry-1002",
     });
-    const approved = await queue.approve(request.id, {
+    const approved = await queue.approve(request.id, request.subjectUserId, {
       resolvedBy: String(runtime.agentId),
       resolutionReason: "reviewed exact retry draft",
     });
@@ -906,12 +922,17 @@ describe("ApprovalQueue integration (real PGlite)", () => {
           safeToRetry: true,
         },
       });
-      expect((await queue.byId(request.id))?.state).toBe("approved");
+      expect((await queue.byId(request.id, request.subjectUserId))?.state).toBe(
+        "approved",
+      );
 
       const restartedQueue = new PgApprovalQueue(runtime, {
         agentId: runtime.agentId,
       });
-      const retryableAfterRestart = await restartedQueue.byId(request.id);
+      const retryableAfterRestart = await restartedQueue.byId(
+        request.id,
+        request.subjectUserId,
+      );
       if (!retryableAfterRestart) {
         throw new Error("retryable approval disappeared across restart seam");
       }
@@ -947,7 +968,7 @@ describe("ApprovalQueue integration (real PGlite)", () => {
     const { request } = await createOpeningApproval({
       suffix: "ambiguous-1003",
     });
-    const approved = await queue.approve(request.id, {
+    const approved = await queue.approve(request.id, request.subjectUserId, {
       resolvedBy: String(runtime.agentId),
       resolutionReason: "reviewed exact ambiguous draft",
     });
@@ -979,7 +1000,10 @@ describe("ApprovalQueue integration (real PGlite)", () => {
       const restartedQueue = new PgApprovalQueue(runtime, {
         agentId: runtime.agentId,
       });
-      const ambiguousAfterRestart = await restartedQueue.byId(request.id);
+      const ambiguousAfterRestart = await restartedQueue.byId(
+        request.id,
+        request.subjectUserId,
+      );
       if (!ambiguousAfterRestart) {
         throw new Error("ambiguous approval disappeared across restart seam");
       }
@@ -996,7 +1020,9 @@ describe("ApprovalQueue integration (real PGlite)", () => {
         },
       });
       expect(send).toHaveBeenCalledTimes(1);
-      expect((await queue.byId(request.id))?.state).toBe("executing");
+      expect((await queue.byId(request.id, request.subjectUserId))?.state).toBe(
+        "executing",
+      );
       expect(
         await new SchedulingDeliveryStore(runtime).byApprovalRequestId(
           request.id,
@@ -1016,7 +1042,7 @@ describe("ApprovalQueue integration (real PGlite)", () => {
     const { request } = await createOpeningApproval({
       suffix: "hostile-throw-1003",
     });
-    const approved = await queue.approve(request.id, {
+    const approved = await queue.approve(request.id, request.subjectUserId, {
       resolvedBy: String(runtime.agentId),
       resolutionReason: "reviewed exact hostile throw draft",
     });
@@ -1068,7 +1094,7 @@ describe("ApprovalQueue integration (real PGlite)", () => {
     const { request } = await createOpeningApproval({
       suffix: "boolean-1004",
     });
-    const approved = await queue.approve(request.id, {
+    const approved = await queue.approve(request.id, request.subjectUserId, {
       resolvedBy: String(runtime.agentId),
       resolutionReason: "reviewed exact boolean draft",
     });
@@ -1095,7 +1121,9 @@ describe("ApprovalQueue integration (real PGlite)", () => {
           request.id,
         ),
       ).toMatchObject({ state: "ambiguous", receipt: null });
-      expect((await queue.byId(request.id))?.state).not.toBe("done");
+      expect(
+        (await queue.byId(request.id, request.subjectUserId))?.state,
+      ).not.toBe("done");
     } finally {
       email.send = originalSend;
     }
@@ -1115,7 +1143,7 @@ describe("ApprovalQueue integration (real PGlite)", () => {
         suffix: `transport-${channel}-1005`,
         channel,
       });
-      const approved = await queue.approve(request.id, {
+      const approved = await queue.approve(request.id, request.subjectUserId, {
         resolvedBy: String(runtime.agentId),
         resolutionReason: `reviewed exact ${channel} draft`,
       });
@@ -1219,10 +1247,14 @@ describe("ApprovalQueue integration (real PGlite)", () => {
     const tamperedSetup = await createOpeningApproval({
       suffix: "tampered-1007",
     });
-    const tamperedApproved = await queue.approve(tamperedSetup.request.id, {
-      resolvedBy: String(runtime.agentId),
-      resolutionReason: "reviewed exact pre-tamper draft",
-    });
+    const tamperedApproved = await queue.approve(
+      tamperedSetup.request.id,
+      tamperedSetup.request.subjectUserId,
+      {
+        resolvedBy: String(runtime.agentId),
+        resolutionReason: "reviewed exact pre-tamper draft",
+      },
+    );
     if (tamperedApproved.payload.action !== "send_email") {
       throw new Error("expected an email scheduling payload");
     }
@@ -1257,10 +1289,14 @@ describe("ApprovalQueue integration (real PGlite)", () => {
       const staleSetup = await createOpeningApproval({
         suffix: "stale-1008",
       });
-      const staleApproved = await queue.approve(staleSetup.request.id, {
-        resolvedBy: String(runtime.agentId),
-        resolutionReason: "reviewed exact pre-stale draft",
-      });
+      const staleApproved = await queue.approve(
+        staleSetup.request.id,
+        staleSetup.request.subjectUserId,
+        {
+          resolvedBy: String(runtime.agentId),
+          resolutionReason: "reviewed exact pre-stale draft",
+        },
+      );
       await new Promise((resolve) => setTimeout(resolve, 2));
       await new LifeOpsService(runtime).cancelNegotiation(
         staleSetup.negotiationId,
@@ -1281,10 +1317,22 @@ describe("ApprovalQueue integration (real PGlite)", () => {
         },
       });
       expect(send).not.toHaveBeenCalled();
-      expect((await queue.byId(tamperedSetup.request.id))?.state).toBe(
-        "approved",
-      );
-      expect((await queue.byId(staleSetup.request.id))?.state).toBe("expired");
+      expect(
+        (
+          await queue.byId(
+            tamperedSetup.request.id,
+            tamperedSetup.request.subjectUserId,
+          )
+        )?.state,
+      ).toBe("approved");
+      expect(
+        (
+          await queue.byId(
+            staleSetup.request.id,
+            staleSetup.request.subjectUserId,
+          )
+        )?.state,
+      ).toBe("expired");
       expect(
         await new SchedulingDeliveryStore(runtime).byApprovalRequestId(
           staleSetup.request.id,
@@ -1306,7 +1354,7 @@ describe("ApprovalQueue integration (real PGlite)", () => {
     const { request } = await createOpeningApproval({
       suffix: "contact-race-1009",
     });
-    const approved = await queue.approve(request.id, {
+    const approved = await queue.approve(request.id, request.subjectUserId, {
       resolvedBy: String(runtime.agentId),
       resolutionReason: "reviewed exact pre-contact-change draft",
     });
@@ -1363,7 +1411,9 @@ describe("ApprovalQueue integration (real PGlite)", () => {
         },
       });
       expect(send).not.toHaveBeenCalled();
-      expect((await queue.byId(request.id))?.state).toBe("expired");
+      expect((await queue.byId(request.id, request.subjectUserId))?.state).toBe(
+        "expired",
+      );
       expect(
         await new SchedulingDeliveryStore(runtime).byApprovalRequestId(
           request.id,
@@ -1541,7 +1591,7 @@ describe("ApprovalQueue integration (real PGlite)", () => {
       idempotencyKey: "approval-rejected-revision:v1",
     });
     const first = await queue.enqueue(base);
-    await queue.reject(first.id, {
+    await queue.reject(first.id, "owner-rejected-revision", {
       resolvedBy: "owner-rejected-revision",
       resolutionReason: "not this version",
     });
