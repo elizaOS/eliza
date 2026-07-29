@@ -9630,13 +9630,25 @@ export async function enforceTrustedDeliveryAudienceOnResult(
 		})),
 	};
 }
+/**
+ * Content objects that already passed the `outgoing_before_deliver` pipeline
+ * phase at a dedicated seam (simple reply, early voice reply, terminal
+ * payload). `wrapSingleTurnVisibleCallback.deliver` re-dispatches the phase for
+ * anything NOT in this set so actions-mode callbacks — the one visible seam
+ * without its own dispatch — still pass delivery-time policy hooks (e.g.
+ * private-audience revalidation) exactly once.
+ */
+const outgoingHooksApplied = new WeakSet<Content>();
 
 export function wrapSingleTurnVisibleCallback(
 	runtime: Pick<IAgentRuntime, "agentId" | "logger"> &
-		Partial<Pick<IAgentRuntime, "character" | "useModel">> & {
+		Partial<
+			Pick<IAgentRuntime, "character" | "useModel" | "applyPipelineHooks">
+		> & {
 			getService?: IAgentRuntime["getService"];
 		},
-	message: Pick<Memory, "id" | "roomId" | "entityId">,
+	message: Pick<Memory, "id" | "roomId" | "entityId"> &
+		Partial<Pick<Memory, "content" | "metadata" | "agentId" | "createdAt">>,
 	callback?: HandlerCallback,
 	recordDeliveredVisibleText?: (text: string) => void,
 ): HandlerCallback | undefined {
@@ -9654,6 +9666,27 @@ export function wrapSingleTurnVisibleCallback(
 		}
 		if (response.transcriptVisibility === "internal") {
 			return [];
+		}
+		// Action callbacks reach the wire only through this wrap; every other
+		// visible seam dispatches outgoing_before_deliver itself and marks the
+		// content, so this fires exactly once per delivered payload. Hooks
+		// mutate `response` in place (mutatesPrimary), so the sanitization and
+		// callback below observe the post-hook content.
+		if (
+			!outgoingHooksApplied.has(response) &&
+			typeof runtime.applyPipelineHooks === "function"
+		) {
+			outgoingHooksApplied.add(response);
+			await runtime.applyPipelineHooks(
+				"outgoing_before_deliver",
+				outgoingPipelineHookContext(response, {
+					source: "action",
+					roomId: message.roomId,
+					...("content" in message ? { message: message as Memory } : {}),
+					...(actionName ? { actionName } : {}),
+					...(response.responseId ? { responseId: response.responseId } : {}),
+				}),
+			);
 		}
 		let rawUnsanitizedText: string | undefined;
 		// Shared post-model, pre-channel sanitization (#15888): every visible
@@ -10354,32 +10387,49 @@ export class DefaultMessageService implements IMessageService {
 								if (ownerExclusiveDisclosureWasUsed(message)) {
 									return;
 								}
-								let streamText: string;
-								// If we have accumulated text, also sync streamTextFallback so the
-								// fallback path has accurate state if the stream source later changes.
-								if (accumulated !== undefined) {
-									streamTextFallback = accumulated;
-									streamText = accumulated;
-								} else {
-									streamTextFallback += chunk;
-									streamText = streamTextFallback;
-								}
-
+								// Mutating hooks may blank or rewrite the chunk; read the same
+								// context back so the fallback buffer, first-sentence TTS, and
+								// the user callback below all observe the post-hook stream —
+								// never the raw tokens a hook denied.
+								let deliverableChunk = chunk;
+								let deliverableAccumulated = accumulated;
 								// Skip when this callback is invoked from `useModel`'s stream loop:
 								// `source: "use_model"` already ran for the same raw chunk (Node ALS).
 								if (getModelStreamChunkDeliveryDepth() === 0) {
+									const hookContext = modelStreamChunkPipelineHookContext({
+										source: "message_service",
+										chunk,
+										messageId,
+										roomId: message.roomId,
+										runId: runtime.getCurrentRunId(),
+										responseId,
+										accumulated,
+									});
 									await runtime.applyPipelineHooks(
 										"model_stream_chunk",
-										modelStreamChunkPipelineHookContext({
-											source: "message_service",
-											chunk,
-											messageId,
-											roomId: message.roomId,
-											runId: runtime.getCurrentRunId(),
-											responseId,
-											accumulated,
-										}),
+										hookContext,
 									);
+									deliverableChunk = hookContext.chunk;
+									if (accumulated !== undefined) {
+										deliverableAccumulated =
+											hookContext.accumulated ?? accumulated;
+									}
+								}
+								// A hook that blanked a non-empty chunk denied delivery:
+								// nothing downstream may observe this token.
+								if (chunk.length > 0 && deliverableChunk.length === 0) {
+									return;
+								}
+
+								let streamText: string;
+								// If we have accumulated text, also sync streamTextFallback so the
+								// fallback path has accurate state if the stream source later changes.
+								if (deliverableAccumulated !== undefined) {
+									streamTextFallback = deliverableAccumulated;
+									streamText = deliverableAccumulated;
+								} else {
+									streamTextFallback += deliverableChunk;
+									streamText = streamTextFallback;
 								}
 
 								// First-sentence cloud-TTS path. The local-inference voice loop
@@ -10394,7 +10444,7 @@ export class DefaultMessageService implements IMessageService {
 								// structured output that would garble hasFirstSentence() and TTS.
 								if (
 									!firstSentenceSent &&
-									accumulated !== undefined &&
+									deliverableAccumulated !== undefined &&
 									hasFirstSentence(streamText)
 								) {
 									const { first } = extractFirstSentence(streamText);
@@ -10481,7 +10531,11 @@ export class DefaultMessageService implements IMessageService {
 									}
 								}
 
-								await userOnStreamChunk(chunk, messageId, accumulated);
+								await userOnStreamChunk(
+									deliverableChunk,
+									messageId,
+									deliverableAccumulated,
+								);
 							}
 						: undefined;
 
@@ -11269,6 +11323,7 @@ export class DefaultMessageService implements IMessageService {
 							? { agentVoiced: true }
 							: {}),
 					};
+					outgoingHooksApplied.add(earlyContent);
 					await runtime.applyPipelineHooks(
 						"outgoing_before_deliver",
 						outgoingPipelineHookContext(earlyContent, {
@@ -11755,6 +11810,7 @@ export class DefaultMessageService implements IMessageService {
 					// RECENT_MESSAGES read observes it too. Do not put MESSAGE_SENT
 					// handlers or post-turn evaluators before the callback; they are
 					// side effects and must not stall user-visible streaming.
+					outgoingHooksApplied.add(deliverableResponseContent);
 					await timeInferenceSpan("message:delivery:hooks", () =>
 						runtime.applyPipelineHooks(
 							"outgoing_before_deliver",
@@ -11930,6 +11986,7 @@ export class DefaultMessageService implements IMessageService {
 				inReplyTo: createUniqueUuid(runtime, message.id),
 			};
 
+			outgoingHooksApplied.add(terminalContent);
 			await timeInferenceSpan("message:delivery:hooks", () =>
 				runtime.applyPipelineHooks(
 					"outgoing_before_deliver",

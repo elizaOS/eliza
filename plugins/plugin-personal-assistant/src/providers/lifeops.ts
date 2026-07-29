@@ -13,7 +13,6 @@
 
 import {
   ElizaError,
-  evaluateOwnerExclusiveDisclosure,
   getAccountPrivacy,
   getConnectorAccountManager,
   type IAgentRuntime,
@@ -28,7 +27,11 @@ import type {
   LifeOpsGoalDefinition,
   LifeOpsNextCalendarEventContext,
 } from "../contracts/index.js";
-import { hasLifeOpsAccess } from "../lifeops/access.js";
+import {
+  authorizeLifeOpsPrivateContext,
+  type LifeOpsAudienceGateResult,
+  type LifeOpsAudienceSource,
+} from "../lifeops/audience-policy.js";
 import type { ConnectorStatus } from "../lifeops/connectors/contract.js";
 import { getConnectorRegistry } from "../lifeops/connectors/registry.js";
 import {
@@ -58,6 +61,22 @@ const GOAL_TITLE_MAX_LENGTH = 80;
 const GOAL_TITLES_MAX_DISPLAYED = 5;
 const MAX_ACCOUNT_LINES = 5;
 
+function lifeOpsPrivateContextSources(): LifeOpsAudienceSource[] {
+  return [
+    { kind: "private_memory", id: "lifeops.owner_profile" },
+    { kind: "calendar", id: "lifeops.calendar" },
+    { kind: "gmail", id: "lifeops.gmail" },
+  ];
+}
+
+export async function resolveLifeOpsProviderAudienceGate(
+  runtime: IAgentRuntime,
+  message: Memory,
+  sources: readonly LifeOpsAudienceSource[] = lifeOpsPrivateContextSources(),
+): Promise<LifeOpsAudienceGateResult> {
+  return authorizeLifeOpsPrivateContext({ runtime, message, sources });
+}
+
 function formatCount(label: string, count: number): string {
   return `${label}: ${count}`;
 }
@@ -86,7 +105,7 @@ async function summarizeConnectorDegradation(
         // the failure in RECENT_ERRORS so a broken probe cannot hide behind
         // the degrade.
         runtime.reportError("LifeOpsProvider.connectorStatus", error, {
-          connector: contribution.kind,
+          connectorId: contribution.kind,
         });
         const message = error instanceof Error ? error.message : String(error);
         return {
@@ -361,15 +380,29 @@ export const lifeOpsProvider: Provider = {
     message: Memory,
     _state: State,
   ): Promise<ProviderResult> {
-    const disclosure = evaluateOwnerExclusiveDisclosure(message);
-    const audience: LifeOpsAudience = disclosure.allowed ? "owner" : "public";
-    if (audience !== "owner") {
-      return { text: "", values: {}, data: {} };
+    // Single audience authority for this provider. The runtime already refused
+    // to invoke it unless the OWNER_EXCLUSIVE_DISCLOSURE_GATE stamp cleared
+    // (plugin.ts wraps it in `ownerPrivateProvider`); this gate is the LifeOps
+    // boundary on top of that, and it is the one that compares audience
+    // classes, so an API- or VOICE_DM-stamped turn in the owner's DM room still
+    // resolves as private. Re-deriving the audience here from anything else
+    // would give the same question two answers.
+    const audienceGate = await resolveLifeOpsProviderAudienceGate(
+      runtime,
+      message,
+    );
+    if (!audienceGate.canLoadPrivateContext) {
+      return {
+        text: "",
+        values: {},
+        data: {
+          lifeOpsAudienceReceipts: audienceGate.receipts,
+        },
+      };
     }
-    const isOwner = await hasLifeOpsAccess(runtime, message);
-    if (!isOwner) {
-      return { text: "", values: {}, data: {} };
-    }
+    // Past the gate the destination is proven owner-private, so the per-account
+    // privacy filters below all evaluate against the owner audience.
+    const audience: LifeOpsAudience = "owner";
 
     try {
       const service = new LifeOpsService(runtime);
@@ -392,6 +425,9 @@ export const lifeOpsProvider: Provider = {
         // read must not silently shrink the privacy metadata to an empty set;
         // the provider boundary below reports it and renders the explicit
         // unavailable state instead of a healthy-looking overview.
+        runtime.reportError("LifeOpsProvider.connectorAccounts", cause, {
+          provider: "google",
+        });
         throw new ElizaError("Google connector account read failed.", {
           code: "LIFEOPS_CONNECTOR_ACCOUNTS_READ_FAILED",
           cause,
@@ -637,8 +673,9 @@ export const lifeOpsProvider: Provider = {
             // error-policy:J4 designed absence — with no calendar source
             // connected this probe throws CALENDAR_SOURCES_UNAVAILABLE on
             // every turn of a connector-less install, so it stays a
-            // debug-level omit; genuine failures on the capability-granted
-            // path are reported above.
+            // debug-level omit rather than a reportError that would escalate
+            // an unconfigured install as a systemic failure; genuine failures
+            // on the capability-granted path are reported above.
             logger.debug(
               { err: cause },
               "[LifeOpsProvider] native calendar context unavailable — omitting calendar context",
@@ -752,6 +789,7 @@ export const lifeOpsProvider: Provider = {
           agentActiveGoals: overview.agentOps.summary.activeGoalCount,
         },
         data: {
+          lifeOpsAudienceReceipts: audienceGate.receipts,
           ownerProfile,
           overview: {
             ...overview,

@@ -30,10 +30,10 @@
   --scrim: rgba(0, 0, 0, 0.7);
   --accent: var(--brand-orange);
   --accent-rgb: 255, 106, 31;
-  --accent-foreground: var(--brand-white);
+  --accent-foreground: var(--brand-black);
   --accent-subtle: rgba(255, 106, 31, 0.14);
   --destructive: var(--brand-orange);
-  --destructive-foreground: var(--brand-white);
+  --destructive-foreground: var(--brand-black);
   --destructive-subtle: rgba(255, 106, 31, 0.12);
   --status-success: #22c55e;
   --status-success-bg: rgba(34, 197, 94, 0.12);
@@ -82,10 +82,10 @@
   --scrim: rgba(0, 0, 0, 0.72);
   --accent: var(--brand-orange);
   --accent-rgb: 255, 106, 31;
-  --accent-foreground: var(--brand-white);
+  --accent-foreground: var(--brand-black);
   --accent-subtle: rgba(255, 106, 31, 0.14);
   --destructive: var(--brand-orange);
-  --destructive-foreground: var(--brand-white);
+  --destructive-foreground: var(--brand-black);
   --destructive-subtle: rgba(255, 106, 31, 0.12);
   --status-success: #4ade80;
   --status-success-bg: rgba(74, 222, 128, 0.16);

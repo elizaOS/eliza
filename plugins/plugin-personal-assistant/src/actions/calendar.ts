@@ -51,7 +51,7 @@ import type {
   LifeOpsCalendarFeed,
   LifeOpsCalendarProvider,
 } from "@elizaos/shared";
-import { hasLifeOpsAccess, INTERNAL_URL } from "../lifeops/access.js";
+import { INTERNAL_URL } from "../lifeops/access.js";
 import {
   completeLifeOpsEffect,
   lifeOpsAppliedEffect,
@@ -68,6 +68,10 @@ import type {
   CalendarCancellationMode,
   CalendarSeriesMasterBinding,
 } from "../lifeops/approval-queue.types.js";
+import {
+  assertLifeOpsAudienceAtDelivery,
+  authorizeLifeOpsPrivateContext,
+} from "../lifeops/audience-policy.js";
 import { buildApprovalChoiceText } from "../lifeops/choice-markers.js";
 import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
 import {
@@ -1499,7 +1503,12 @@ export const calendarAction: Action & {
     runtime: IAgentRuntime,
     message: Memory,
   ): Promise<boolean> => {
-    return hasLifeOpsAccess(runtime, message);
+    const gate = await authorizeLifeOpsPrivateContext({
+      runtime,
+      message,
+      sources: [{ kind: "calendar", id: "calendar.action" }],
+    });
+    return gate.canLoadPrivateContext;
   },
   handler: async (
     runtime: IAgentRuntime,
@@ -1508,19 +1517,35 @@ export const calendarAction: Action & {
     options,
     callback,
   ): Promise<ActionResult> => {
-    if (!(await hasLifeOpsAccess(runtime, message))) {
-      const text = "Calendar actions are restricted to the owner.";
-      return completeCalendarActionEffect({
-        callback,
-        message,
-        subaction: "resolve",
-        result: {
-          text,
-          success: false,
-          data: { error: "PERMISSION_DENIED" },
+    const audienceGate = await authorizeLifeOpsPrivateContext({
+      runtime,
+      message,
+      sources: [{ kind: "calendar", id: "calendar.action" }],
+    });
+    // A denied audience gets no delivery at all — not even the refusal text —
+    // so the callback is bypassed here rather than routed through the
+    // effect-receipt wrapper that every other return path uses.
+    if (!audienceGate.canLoadPrivateContext) {
+      const text = "Calendar actions require an owner-only private chat.";
+      return {
+        text,
+        success: false,
+        data: {
+          error: "AUDIENCE_DENIED",
+          lifeOpsAudienceReceipts: audienceGate.receipts,
         },
-      });
+      };
     }
+    const deliveryCheckedCallback: HandlerCallback | undefined = callback
+      ? async (content, actionName) => {
+          await assertLifeOpsAudienceAtDelivery(
+            runtime,
+            message,
+            audienceGate.envelope,
+          );
+          return callback(content, actionName);
+        }
+      : undefined;
     const resolved = await resolveActionArgs<
       OwnerCalendarSubaction,
       OwnerCalendarParameters
@@ -1537,7 +1562,7 @@ export const calendarAction: Action & {
         resolved.clarification ||
         "Tell me whether you want to view your calendar, create an event, check availability, propose times, or adjust scheduling preferences.";
       return completeCalendarActionEffect({
-        callback,
+        callback: deliveryCheckedCallback,
         message,
         subaction: "resolve",
         result: {
@@ -1556,7 +1581,7 @@ export const calendarAction: Action & {
       const text =
         "Tell me whether you want to view your calendar, create an event, check availability, propose times, or adjust scheduling preferences.";
       return completeCalendarActionEffect({
-        callback,
+        callback: deliveryCheckedCallback,
         message,
         subaction: "resolve",
         result: {
@@ -1570,6 +1595,9 @@ export const calendarAction: Action & {
       ...(options ?? {}),
       parameters: resolved.params as HandlerOptions["parameters"],
     };
+    // The inner route gets no callback: the wrapper below owns the single
+    // visible delivery so exactly one effect receipt is bound to it, and that
+    // delivery still passes the audience assertion via deliveryCheckedCallback.
     const result = await route(
       subaction,
       runtime,
@@ -1579,7 +1607,7 @@ export const calendarAction: Action & {
       undefined,
     );
     return completeCalendarActionEffect({
-      callback,
+      callback: deliveryCheckedCallback,
       message,
       subaction,
       result,

@@ -15,7 +15,6 @@
  * than running a speculative search on every turn.
  */
 
-import { hasOwnerAccess } from "@elizaos/agent";
 import type {
   IAgentRuntime,
   Memory,
@@ -24,6 +23,7 @@ import type {
   State,
   UUID,
 } from "@elizaos/core";
+import { authorizeLifeOpsPrivateContext } from "../lifeops/audience-policy.js";
 import {
   CROSS_CHANNEL_SEARCH_CHANNELS,
   type CrossChannelSearchChannel,
@@ -208,13 +208,25 @@ export const crossChannelContextProvider: Provider = {
     state: State | undefined,
   ): Promise<ProviderResult> {
     // Signal check first: it is a pure state read, so no-signal turns (the
-    // overwhelming majority) skip the owner-role database lookup entirely.
+    // overwhelming majority) skip the audience gate's room + participant
+    // lookups entirely.
     const request = pickRequestFromState(state);
-    if (!request) {
-      return EMPTY;
-    }
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return EMPTY;
+    if (!request) return EMPTY;
+
+    const audienceGate = await authorizeLifeOpsPrivateContext({
+      runtime,
+      message,
+      sources: [
+        { kind: "gmail", id: "cross-channel.gmail" },
+        { kind: "private_memory", id: "cross-channel.memory" },
+      ],
+    });
+    if (!audienceGate.canLoadPrivateContext) {
+      return {
+        text: "",
+        values: { crossChannelUnavailable: true },
+        data: { lifeOpsAudienceReceipts: audienceGate.receipts },
+      };
     }
     const egressContext = createLifeOpsEgressContext({
       isOwner: true,

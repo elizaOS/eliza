@@ -40,7 +40,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { dirname, extname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { chromium } from "playwright";
 import { determinismShim, FROZEN_EPOCH_MS } from "./determinism-shim.mjs";
 import { attachLogCapture } from "./log-capture.mjs";
@@ -1014,8 +1014,14 @@ async function writeManualReview(dir, results, failures) {
 }
 
 // Only auto-run as a CLI; importing this module (e.g. from the classifier unit
-// test) must NOT launch a browser run.
-if (import.meta.url === `file://${process.argv[1]}`) {
+// test) must NOT launch a browser run. pathToFileURL, not string concat: a
+// Windows argv[1] is backslash-separated and drive-lettered, so the naive
+// `file://${argv[1]}` comparison never matches and the CLI silently exits 0
+// — a vacuous green, the worst failure mode a gate can have.
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
   main().catch((err) => {
     console.error("story-gate: fatal", err);
     process.exit(1);
