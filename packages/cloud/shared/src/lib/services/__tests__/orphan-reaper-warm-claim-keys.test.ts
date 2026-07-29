@@ -3,12 +3,13 @@
  * containers (#17253 §1).
  *
  * A container claimed from the warm pool keeps the name it was born with —
- * `agent-<pool id>` — while the pool row it points at is deleted at claim time.
- * The claimed USER row records the provenance in `warm_claim_source_pool_id`.
- * Resolving node-side keys against `id` alone maps every claimed customer
- * container to a deleted row, and the sweep reaps it as `no_db_row` while the
- * customer is talking to it. The loader must therefore surface a placement for
- * the POOL key whenever a row claims it as its source.
+ * `agent-<pool id>` — for its WHOLE life, while the pool row it points at is
+ * deleted at claim time and `warm_claim_source_pool_id` is NULLed once the
+ * credential handoff finalizes. The durable link is `container_name`, persisted
+ * on the claimed row at claim time. Resolving node-side keys against `id`
+ * alone maps every claimed customer container to a deleted row, and the sweep
+ * reaps it as `no_db_row` while the customer is talking to it — including the
+ * steady state every SUCCESSFULLY claimed agent settles into.
  *
  * Drives the REAL loadSandboxStatusesByIds against in-process PGlite (real
  * Drizzle schema via pushSchema) with NOTHING mocked. Fails LOUDLY if
@@ -99,6 +100,7 @@ describe("orphan reaper key resolution for warm-claimed containers", () => {
           execution_tier: "dedicated-always",
           node_id: "node-7",
           warm_claim_source_pool_id: poolId,
+          container_name: `agent-${poolId}`,
         })
         .returning();
 
@@ -110,6 +112,40 @@ describe("orphan reaper key resolution for warm-claimed containers", () => {
       expect(forPoolKey[0]?.status).toBe("running");
       expect(forPoolKey[0]?.nodeId).toBe("node-7");
       // The row's own key is still protected too.
+      expect(placements.some((p) => p.key === row.id)).toBe(true);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "the FINALIZED steady state stays protected: pool id NULLed, name alone links the container",
+    async () => {
+      expect(pgliteReady).toBe(true);
+      const { orgId, userId } = await seedOwner();
+      const poolId = crypto.randomUUID();
+      // What finalizeWarmClaimCredentialHandoff leaves behind for every
+      // successfully claimed agent, for the rest of its life: container still
+      // named agent-<poolId>, warm_claim_source_pool_id NULL.
+      const [row] = await dbWrite
+        .insert(agentSandboxes)
+        .values({
+          organization_id: orgId,
+          user_id: userId,
+          agent_name: uniq("finalized"),
+          status: "running",
+          execution_tier: "dedicated-always",
+          node_id: "node-7",
+          warm_claim_source_pool_id: null,
+          container_name: `agent-${poolId}`,
+        })
+        .returning();
+
+      const placements = await loadSandboxStatusesByIds([poolId]);
+
+      const forPoolKey = placements.filter((p) => p.key === poolId);
+      expect(forPoolKey.length).toBeGreaterThanOrEqual(1);
+      expect(forPoolKey[0]?.status).toBe("running");
+      expect(forPoolKey[0]?.nodeId).toBe("node-7");
       expect(placements.some((p) => p.key === row.id)).toBe(true);
     },
     PGLITE_TIMEOUT,
@@ -141,6 +177,7 @@ describe("orphan reaper key resolution for warm-claimed containers", () => {
           execution_tier: "dedicated-always",
           node_id: "node-7",
           warm_claim_source_pool_id: poolId,
+          container_name: `agent-${poolId}`,
           // Full locator: the pair CHECK requires the whole tuple or none.
           replacement_cleanup_sandbox_id: crypto.randomUUID(),
           replacement_cleanup_node_id: "node-8",

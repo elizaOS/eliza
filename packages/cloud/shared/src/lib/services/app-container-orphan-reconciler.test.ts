@@ -49,9 +49,17 @@ describe("appContainerKeyOf", () => {
 
 describe("computeOrphanContainersToReap (app diff)", () => {
   const live = (key: string, status: string): LiveContainerRef => ({ key, status });
-  const container = (name: string, id: string): NodeContainerRef => ({ name, id });
+  // Containers age 10 minutes by default — past the no_db_row grace window
+  // (deliberately shared with the agent reconciler: it also covers dbRead
+  // replica lag for apps), so the historical reaping decisions hold.
+  const NOW_MS = 10 * 60_000;
+  const container = (name: string, id: string): NodeContainerRef => ({
+    name,
+    id,
+    createdAtMs: 0,
+  });
   const compute = (containers: readonly NodeContainerRef[], rows: readonly LiveContainerRef[]) =>
-    computeOrphanContainersToReap(containers, rows, APP_DIFF);
+    computeOrphanContainersToReap(containers, rows, APP_DIFF, undefined, NOW_MS);
 
   test("reaps a container whose name has NO db row", () => {
     const orphans = compute([container("app-gone", "c1")], []);
@@ -219,8 +227,8 @@ describe("reconcileOrphanContainers (app orchestration)", () => {
     const removeContainer = mock(async () => {});
     const node = makeNode({
       listContainers: mock(async () => [
-        { name: "app-orphan", id: "c-orph" },
-        { name: "app-live", id: "c-live" },
+        { name: "app-orphan", id: "c-orph", createdAtMs: 0 },
+        { name: "app-live", id: "c-live", createdAtMs: 0 },
       ]),
       removeContainer,
     });
@@ -264,8 +272,8 @@ describe("reconcileOrphanContainers (app orchestration)", () => {
   test("counts a failed removal as reapFailed without aborting the rest", async () => {
     const node = makeNode({
       listContainers: mock(async () => [
-        { name: "app-a", id: "ca" },
-        { name: "app-b", id: "cb" },
+        { name: "app-a", id: "ca", createdAtMs: 0 },
+        { name: "app-b", id: "cb", createdAtMs: 0 },
       ]),
       removeContainer: mock(async (id: string) => {
         if (id === "ca") throw new Error("ssh broke");

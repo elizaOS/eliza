@@ -98,10 +98,17 @@ export function agentIdFromContainerName(name: string): string | null {
  *
  * A key seen on a node is matched against `warm_claim_source_pool_id` as well
  * as the primary key: a container claimed from the warm pool keeps the name it
- * was born with — `agent-<pool id>` — while the pool row it points at is
- * deleted at claim time. Matching only `id` maps every claimed customer
- * container to a deleted row, and the sweep reaps it as `no_db_row` while the
- * customer is talking to it.
+ * was born with — `agent-<pool id>` — for its WHOLE life, while the pool row
+ * that id points at is deleted at claim time. Matching only `id` maps every
+ * claimed customer container to a deleted row, and the sweep reaps it as
+ * `no_db_row` while the customer is talking to it.
+ *
+ * The durable match is `container_name`: `claimWarmContainer` persists it on
+ * the claimed row in the same write as `warm_claim_source_pool_id`, and unlike
+ * the pool id — which `finalizeWarmClaimCredentialHandoff` NULLs once the
+ * credential handoff completes — the name stays for the row's lifetime, so it
+ * covers the steady state every successfully claimed agent settles into, not
+ * just the transient handoff window. It strictly subsumes a pool-id match.
  */
 export async function loadSandboxStatusesByIds(
   agentIds: readonly string[],
@@ -111,7 +118,7 @@ export async function loadSandboxStatusesByIds(
   const rows = await dbRead
     .select({
       key: agentSandboxes.id,
-      warmClaimSourcePoolId: agentSandboxes.warm_claim_source_pool_id,
+      containerName: agentSandboxes.container_name,
       status: agentSandboxes.status,
       nodeId: agentSandboxes.node_id,
       updatedAt: agentSandboxes.updated_at,
@@ -122,7 +129,10 @@ export async function loadSandboxStatusesByIds(
     .where(
       or(
         inArray(agentSandboxes.id, agentIds as string[]),
-        inArray(agentSandboxes.warm_claim_source_pool_id, agentIds as string[]),
+        inArray(
+          agentSandboxes.container_name,
+          agentIds.map((id) => `${AGENT_CONTAINER_NAME_PREFIX}${id}`),
+        ),
       ),
     );
   return rows.flatMap((row) => {
@@ -144,11 +154,15 @@ export async function loadSandboxStatusesByIds(
           : undefined,
       });
     }
-    if (row.warmClaimSourcePoolId && queriedIds.has(row.warmClaimSourcePoolId)) {
-      // The physical container carries the POOL id in its name: every
-      // placement protecting this row must protect that key too.
+    const nameKey = row.containerName?.startsWith(AGENT_CONTAINER_NAME_PREFIX)
+      ? row.containerName.slice(AGENT_CONTAINER_NAME_PREFIX.length)
+      : null;
+    if (nameKey && nameKey !== row.key && queriedIds.has(nameKey)) {
+      // The physical container carries the id embedded in its NAME — for a
+      // warm-claimed row that is the birth pool's id, forever. Every placement
+      // protecting this row must protect that key too.
       for (const placement of [...placements]) {
-        placements.push({ ...placement, key: row.warmClaimSourcePoolId });
+        placements.push({ ...placement, key: nameKey });
       }
     }
     return placements;
