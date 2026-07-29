@@ -17,8 +17,8 @@
  * could not reproduce the mismatch.
  *
  * Drives the REAL ElizaSandboxService.executeSleep against in-process PGlite
- * (real Drizzle schema via pushSchema). Only the sandbox provider is a stub
- * (system boundary; no container exists to stop). Fails LOUDLY if
+ * (real Drizzle schema via pushSchema), NOTHING mocked — the seeded rows carry
+ * no container locators, so no provider call is ever reached. Fails LOUDLY if
  * PGlite/pushSchema is unavailable (never silently passes).
  */
 
@@ -220,7 +220,9 @@ describe("typed lifecycle read (#17249 root-fix class)", () => {
       // consults this gate, whose contract requires a REAL Date. On the raw
       // read it returned false for every warm-claimed agent, so their
       // upgrades could never commit.
-      expect(hasReadyWarmClaimCredential(row as never)).toBe(true);
+      expect(
+        hasReadyWarmClaimCredential(row as Parameters<typeof hasReadyWarmClaimCredential>[0]),
+      ).toBe(true);
     },
     PGLITE_TIMEOUT,
   );

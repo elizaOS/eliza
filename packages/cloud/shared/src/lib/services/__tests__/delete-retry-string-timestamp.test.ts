@@ -3,8 +3,9 @@
  * `value.toISOString is not a function` on EVERY attempt, trapping the agent
  * in `deletion_failed` forever (37 agents, 160/160 delete jobs in prod).
  *
- * Root cause: `getAgentForLifecycleMutation` is a RAW `SELECT * FOR UPDATE`,
- * and raw drizzle rows carry timestamptz as STRINGS despite the Date type.
+ * Root cause: `getAgentForLifecycleMutation` WAS a raw `SELECT * FOR UPDATE`
+ * (typed since #17262), and raw drizzle rows carry timestamptz as STRINGS
+ * despite the Date type.
  * A first deletion (column NULL) wrote `new Date()` and worked; every retry
  * read the string back and pushed it through the typed update builder, which
  * throws in `mapToDriverValue`. The ownership fence's `?.getTime()` was the

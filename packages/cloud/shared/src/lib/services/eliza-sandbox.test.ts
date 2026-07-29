@@ -8140,6 +8140,10 @@ describe("ElizaSandboxService updateAgentProfile / updateAgentEnvironment", () =
       const sql = new PgDialect().sqlToQuery(whereClause).sql.toLowerCase();
       expect(sql).toContain("deletion_attempt_id");
       expect(sql).toContain("environment_revision");
+      // The updated_at leg must be the ms-window form: a plain eq() either
+      // crashed on the pre-#17262 raw-string row or silently loses the CAS
+      // for µs-stored rows once the read is typed (ms-truncated Dates).
+      expect(sql).toContain("date_trunc('milliseconds'");
       expect(sql).toContain("updated_at");
       expect(sql).toContain("claimed_at");
     } finally {

@@ -1614,14 +1614,9 @@ export class ElizaSandboxService {
               eq(agentSandboxes.id, rec.id),
               eq(agentSandboxes.organization_id, rec.organization_id),
               eq(agentSandboxes.environment_revision, rec.environment_revision),
-              // date_trunc on the COLUMN only: the stored value may carry
-              // microseconds (raw `updated_at = NOW()` writers) while
-              // `rec.updated_at` came through the typed read, which truncates
-              // to milliseconds — JS Date parsing TRUNCATES sub-ms lexically
-              // (never rounds), so ms==ms is exact. A plain eq() here either
-              // crashed on the old raw-string row or, typed, silently lost the
-              // CAS for µs rows and revoked the freshly minted credential.
-              sql`date_trunc('milliseconds', ${agentSandboxes.updated_at}) = ${rec.updated_at}`,
+              // ms-window fence — see getAgentForLifecycleMutation's NOTE for
+              // why exact equality against a typed (ms) Date needs date_trunc.
+              sql`date_trunc('milliseconds', ${agentSandboxes.updated_at}) IS NOT DISTINCT FROM ${rec.updated_at}`,
               sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
               sql`${agentSandboxes.claimed_at} IS NULL`,
             ),
@@ -1939,12 +1934,7 @@ export class ElizaSandboxService {
       }
 
       const hasActiveProvisionJob = await this.hasActiveProvisionJobTx(tx, agentId, orgId);
-      // `rec` is a RAW row: its timestamptz fields are strings at runtime
-      // despite the Date type, so `.getTime()` on them throws. Normalize both
-      // sides to epoch through the Date constructor (which accepts either)
-      // before comparing — a mismatch must fail the fence, not crash it.
-      const recDeletionStartedAtMs =
-        rec.deletion_started_at === null ? null : new Date(rec.deletion_started_at).getTime();
+      const recDeletionStartedAtMs = rec.deletion_started_at?.getTime() ?? null;
       if (
         rec.status !== "deletion_pending" ||
         rec.deletion_attempt_id !== ownership.deletionAttemptId ||
@@ -4050,6 +4040,10 @@ export class ElizaSandboxService {
           current.warm_claim_key_fingerprint !== persistedFingerprint ||
           current.warm_claim_attested_environment_revision !== current.environment_revision
         ) {
+          // PROVENANCE NOTE (#17262): these warm-claim RETURNING * reads stay
+          // RAW — their rows carry timestamptz as STRINGS at runtime. The
+          // audit traced every consumer of `prepared.current`: none reads a
+          // date field. Do not add one without typing these reads first.
           const rows = await tx.execute<AgentSandbox>(sql`
             UPDATE ${agentSandboxes}
             SET
@@ -7162,7 +7156,9 @@ export class ElizaSandboxService {
         current.bridge_url === rec.bridge_url &&
         current.health_url === rec.health_url &&
         current.environment_revision === rec.environment_revision &&
-        current.updated_at?.getTime() === rec.updated_at?.getTime();
+        // No optional chain: updated_at is NOT NULL and both reads are typed;
+        // `undefined === undefined` would silently PASS the generation fence.
+        current.updated_at.getTime() === rec.updated_at.getTime();
       if (!unchangedLifecycleGeneration) {
         return {
           success: false as const,
@@ -7189,6 +7185,8 @@ export class ElizaSandboxService {
         }
       }
 
+      // ms-window fence — see getAgentForLifecycleMutation's NOTE for why
+      // exact equality against a typed (ms) Date needs date_trunc on the column.
       const cleared = await tx.execute<{ id: string }>(sql`
         UPDATE ${agentSandboxes}
         SET
@@ -7213,10 +7211,6 @@ export class ElizaSandboxService {
           AND date_trunc('milliseconds', updated_at) IS NOT DISTINCT FROM ${current.updated_at}
         RETURNING id
       `);
-      // date_trunc on the COLUMN only: the stored value may carry microseconds
-      // (raw `updated_at = NOW()` writers), while `current.updated_at` came
-      // through the typed read, which truncates to milliseconds — JS Date
-      // parsing TRUNCATES sub-ms lexically (never rounds), so ms==ms is exact.
       if (cleared.rows.length !== 1) {
         throw new Error("Sleep lost its lifecycle generation CAS");
       }

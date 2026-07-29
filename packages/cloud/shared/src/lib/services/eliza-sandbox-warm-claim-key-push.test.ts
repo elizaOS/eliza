@@ -101,12 +101,6 @@ const transaction = mock(
         if (normalized.includes("set_config") || normalized.includes("pg_advisory_xact_lock")) {
           return { rows: [] };
         }
-        if (
-          normalized.includes("select * from agent_sandboxes") &&
-          normalized.includes("for update")
-        ) {
-          return { rows: [databaseRow] };
-        }
         if (!normalized.startsWith("update agent_sandboxes set")) {
           throw new Error(`Unexpected warm-claim lifecycle SQL in test transaction: ${text}`);
         }
