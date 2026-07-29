@@ -164,7 +164,10 @@ def _build_parser() -> argparse.ArgumentParser:
         help=(
             "LLM model used as live-mode satisfaction judge. Defaults to "
             "claude-opus-4-7 for Anthropic/subscription or gpt-oss-120b for "
-            "Cerebras. It must differ from --evaluator-model."
+            "Cerebras. It must differ from --evaluator-model. The judge must "
+            "emit bare JSON: fenced ```json output is rejected by design, so a "
+            "model that fences (for example gemma3) yields an invalid verdict "
+            "on every turn."
         ),
     )
     parser.add_argument(
