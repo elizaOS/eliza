@@ -552,10 +552,14 @@ describe("food domain — real PGlite and approval queue", () => {
     ).rejects.toMatchObject({ code: "FOOD_APPROVAL_REQUIRED" });
     expect(providerRequestCount).toBe(0);
 
-    await approvals.approve(first.approvalRequest.id, {
-      resolvedBy: SELF_ENTITY_ID,
-      resolutionReason: "Create this exact shopping-list link.",
-    });
+    await approvals.approve(
+      first.approvalRequest.id,
+      first.approvalRequest.subjectUserId,
+      {
+        resolvedBy: SELF_ENTITY_ID,
+        resolutionReason: "Create this exact shopping-list link.",
+      },
+    );
     resetProviderGate();
     const materializing = service.materializeApprovedShoppingHandoff({
       principalEntityId: SELF_ENTITY_ID,
@@ -584,7 +588,12 @@ describe("food domain — real PGlite and approval queue", () => {
     expect(completed).not.toHaveProperty("order");
     expect(completed).not.toHaveProperty("checkout");
     expect(providerRequestCount).toBe(1);
-    expect(await approvals.byId(first.approvalRequest.id)).toMatchObject({
+    expect(
+      await approvals.byId(
+        first.approvalRequest.id,
+        first.approvalRequest.subjectUserId,
+      ),
+    ).toMatchObject({
       state: "done",
     });
 
@@ -612,10 +621,14 @@ describe("food domain — real PGlite and approval queue", () => {
       evaluation,
       idempotencyKey: "stale-source-handoff",
     });
-    await approvals.approve(prepared.approvalRequest.id, {
-      resolvedBy: SELF_ENTITY_ID,
-      resolutionReason: "Approved exact pre-change list.",
-    });
+    await approvals.approve(
+      prepared.approvalRequest.id,
+      prepared.approvalRequest.subjectUserId,
+      {
+        resolvedBy: SELF_ENTITY_ID,
+        resolutionReason: "Approved exact pre-change list.",
+      },
+    );
     nowMs += 1_000;
     await service.recordInventoryObservation({
       principalEntityId: SELF_ENTITY_ID,
@@ -633,7 +646,12 @@ describe("food domain — real PGlite and approval queue", () => {
         handoffId: prepared.handoff.handoffId,
       }),
     ).rejects.toMatchObject({ code: "FOOD_STALE_SOURCE" });
-    expect(await approvals.byId(prepared.approvalRequest.id)).toMatchObject({
+    expect(
+      await approvals.byId(
+        prepared.approvalRequest.id,
+        prepared.approvalRequest.subjectUserId,
+      ),
+    ).toMatchObject({
       state: "expired",
     });
     expect(
@@ -658,10 +676,14 @@ describe("food domain — real PGlite and approval queue", () => {
       evaluation,
       idempotencyKey: "expired-provider-lease",
     });
-    await approvals.approve(prepared.approvalRequest.id, {
-      resolvedBy: SELF_ENTITY_ID,
-      resolutionReason: "Exercise crash recovery for this exact list.",
-    });
+    await approvals.approve(
+      prepared.approvalRequest.id,
+      prepared.approvalRequest.subjectUserId,
+      {
+        resolvedBy: SELF_ENTITY_ID,
+        resolutionReason: "Exercise crash recovery for this exact list.",
+      },
+    );
     await repository.claimHandoff({
       handoffId: prepared.handoff.handoffId,
       now: currentDate().toISOString(),
@@ -699,10 +721,14 @@ describe("food domain — real PGlite and approval queue", () => {
       evaluation,
       idempotencyKey: "ambiguous-provider-outcome",
     });
-    await approvals.approve(prepared.approvalRequest.id, {
-      resolvedBy: SELF_ENTITY_ID,
-      resolutionReason: "Approved exact list for ambiguous-path test.",
-    });
+    await approvals.approve(
+      prepared.approvalRequest.id,
+      prepared.approvalRequest.subjectUserId,
+      {
+        resolvedBy: SELF_ENTITY_ID,
+        resolutionReason: "Approved exact list for ambiguous-path test.",
+      },
+    );
     providerMode = "malformed";
     await expect(
       service.materializeApprovedShoppingHandoff({
@@ -740,11 +766,15 @@ describe("food domain — real PGlite and approval queue", () => {
       evaluation,
       idempotencyKey: "rate-limited-provider-outcome",
     });
-    await approvals.approve(prepared.approvalRequest.id, {
-      resolvedBy: SELF_ENTITY_ID,
-      resolutionReason:
-        "Approve this exact list despite a possible rate limit.",
-    });
+    await approvals.approve(
+      prepared.approvalRequest.id,
+      prepared.approvalRequest.subjectUserId,
+      {
+        resolvedBy: SELF_ENTITY_ID,
+        resolutionReason:
+          "Approve this exact list despite a possible rate limit.",
+      },
+    );
     providerMode = "rate_limited";
     const requestsBeforeRateLimit = providerRequestCount;
     await expect(

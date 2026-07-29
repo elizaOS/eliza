@@ -789,6 +789,7 @@ describe("household coordination — real PGlite", () => {
     }
     const ownerApproval = await approvals.byId(
       ownerApprovalLink.approvalRequestId,
+      ownerApprovalLink.partyEntityId,
     );
     expect(ownerApproval?.payload).toMatchObject({
       action: "execute_workflow",
@@ -850,12 +851,18 @@ describe("household coordination — real PGlite", () => {
       },
       undefined,
     );
+    // A subject-scoped read never confirms that another party's row exists, so
+    // the owner sees the same answer as for an unknown id. The property under
+    // test is the untouched co-parent row asserted next, not the error name.
     expect(crossPartyRejection).toMatchObject({
       success: false,
-      data: { error: "CROSS_SUBJECT_APPROVAL_FORBIDDEN" },
+      data: { error: "REQUEST_NOT_FOUND" },
     });
     await expect(
-      approvals.byId(coParentApprovalLink.approvalRequestId),
+      approvals.byId(
+        coParentApprovalLink.approvalRequestId,
+        coParentApprovalLink.partyEntityId,
+      ),
     ).resolves.toMatchObject({ state: "pending", resolvedBy: null });
     await expect(
       coordinator.finalizeProposal({
@@ -1929,7 +1936,9 @@ describe("household coordination — real PGlite", () => {
     );
     expect(losingLinks.every((link) => link.invalidatedAt !== null)).toBe(true);
     const losingRequests = await Promise.all(
-      losingLinks.map((link) => approvals.byId(link.approvalRequestId)),
+      losingLinks.map((link) =>
+        approvals.byId(link.approvalRequestId, link.partyEntityId),
+      ),
     );
     expect(
       losingRequests.every((request) => request?.state === "expired"),
@@ -1982,7 +1991,10 @@ describe("household coordination — real PGlite", () => {
       (link) => link.partyEntityId === coParentId,
     );
     if (!missingLink) throw new Error("co-parent approval link missing");
-    const originalRequest = await approvals.byId(missingLink.approvalRequestId);
+    const originalRequest = await approvals.byId(
+      missingLink.approvalRequestId,
+      missingLink.partyEntityId,
+    );
     if (!originalRequest?.idempotencyKey) {
       throw new Error("household approval idempotency key missing");
     }
@@ -2026,7 +2038,9 @@ describe("household coordination — real PGlite", () => {
     );
     expect(oldLinks.every((link) => link.invalidatedAt !== null)).toBe(true);
     const oldRequests = await Promise.all(
-      oldLinks.map((link) => approvals.byId(link.approvalRequestId)),
+      oldLinks.map((link) =>
+        approvals.byId(link.approvalRequestId, link.partyEntityId),
+      ),
     );
     expect(oldRequests.every((request) => request?.state === "expired")).toBe(
       true,
@@ -2093,13 +2107,16 @@ describe("household coordination — real PGlite", () => {
       householdRepository.getProposal(proposal.proposalId, proposal.version),
     ).resolves.toMatchObject({ status: "pending" });
     await expect(
-      approvals.byId(coParentLink.approvalRequestId),
+      approvals.byId(
+        coParentLink.approvalRequestId,
+        coParentLink.partyEntityId,
+      ),
     ).resolves.toMatchObject({
       state: "rejected",
       resolvedBy: coParentId,
     });
     await expect(
-      approvals.byId(ownerLink.approvalRequestId),
+      approvals.byId(ownerLink.approvalRequestId, ownerLink.partyEntityId),
     ).resolves.toMatchObject({ state: "pending" });
 
     const restartedService = service();
@@ -2122,10 +2139,13 @@ describe("household coordination — real PGlite", () => {
       true,
     );
     await expect(
-      approvals.byId(coParentLink.approvalRequestId),
+      approvals.byId(
+        coParentLink.approvalRequestId,
+        coParentLink.partyEntityId,
+      ),
     ).resolves.toMatchObject({ state: "rejected" });
     await expect(
-      approvals.byId(ownerLink.approvalRequestId),
+      approvals.byId(ownerLink.approvalRequestId, ownerLink.partyEntityId),
     ).resolves.toMatchObject({ state: "expired" });
   });
 
@@ -2186,7 +2206,10 @@ describe("household coordination — real PGlite", () => {
       true,
     );
     await expect(
-      approvals.byId(approvalLink.approvalRequestId),
+      approvals.byId(
+        approvalLink.approvalRequestId,
+        approvalLink.partyEntityId,
+      ),
     ).resolves.toMatchObject({ state: "expired" });
   });
 
