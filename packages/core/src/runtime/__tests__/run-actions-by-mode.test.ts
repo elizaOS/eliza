@@ -15,8 +15,8 @@ import {
 import {
 	type Action,
 	ActionMode,
-	type Character,
 	ChannelType,
+	type Character,
 	HOOK_MODES,
 	type Memory,
 	type Room,
@@ -134,14 +134,12 @@ describe("runActionsByMode", () => {
 		const turn = makeMessage();
 		turn.agentId = runtime.agentId;
 		let participants = [turn.entityId, runtime.agentId];
-		const getRoom = vi
-			.spyOn(runtime, "getRoom")
-			.mockResolvedValue({
-				id: turn.roomId,
-				agentId: runtime.agentId,
-				source: "test",
-				type: ChannelType.DM,
-			} as Room);
+		const getRoom = vi.spyOn(runtime, "getRoom").mockResolvedValue({
+			id: turn.roomId,
+			agentId: runtime.agentId,
+			source: "test",
+			type: ChannelType.DM,
+		} as Room);
 		const getParticipants = vi
 			.spyOn(runtime, "getParticipantsForRoom")
 			.mockImplementation(async () => [...participants]);

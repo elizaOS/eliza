@@ -3846,8 +3846,10 @@ export class AgentRuntime implements IAgentRuntime {
 										NonNullable<typeof options.callback>
 									>
 								) => {
-									const disclosure =
-										await revalidateOwnerExclusiveDisclosure(this, message);
+									const disclosure = await revalidateOwnerExclusiveDisclosure(
+										this,
+										message,
+									);
 									if (disclosure.allowed) {
 										return options.callback?.(...callbackArgs) ?? [];
 									}
