@@ -106,6 +106,9 @@ jobs:
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --ignore-scripts --no-frozen-lockfile
 
+      - name: Install Playwright Chromium
+        run: .github/scripts/install-playwright-browsers.sh chromium
+
       - name: Compute nightly version
         id: version
         run: |
