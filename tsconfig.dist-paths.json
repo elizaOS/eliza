@@ -171,6 +171,9 @@
       "@elizaos/plugin-anthropic-proxy": [
         "./plugins/plugin-anthropic-proxy/dist/index.d.ts"
       ],
+      "@elizaos/plugin-aomi": [
+        "./plugins/plugin-aomi/dist/index.d.ts"
+      ],
       "@elizaos/plugin-aosp-local-inference": [
         "./plugins/plugin-aosp-local-inference/src/index.ts"
       ],

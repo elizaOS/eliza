@@ -186,6 +186,87 @@
       "subtype": "ai-provider"
     },
     {
+      "id": "aomi",
+      "name": "Aomi",
+      "description": "Delegate open-ended on-chain workflows to Aomi while keeping signing and confirmation inside the Eliza wallet.",
+      "npmName": "@elizaos/plugin-aomi",
+      "version": "2.0.3-beta.7",
+      "source": "bundled",
+      "tags": ["aomi", "crypto", "onchain", "evm", "solana"],
+      "config": {
+        "AOMI_API_URL": {
+          "type": "url",
+          "required": false,
+          "sensitive": false,
+          "default": "https://api.aomi.dev",
+          "label": "Aomi API URL",
+          "help": "Backend base URL for Aomi agent requests.",
+          "advanced": false
+        },
+        "AOMI_API_KEY": {
+          "type": "secret",
+          "required": false,
+          "sensitive": true,
+          "label": "Aomi API Key",
+          "help": "Optional key for a private Aomi app namespace.",
+          "advanced": false
+        },
+        "AOMI_APP": {
+          "type": "string",
+          "required": false,
+          "sensitive": false,
+          "default": "default",
+          "label": "Aomi App",
+          "help": "Aomi app key used for delegated requests.",
+          "advanced": false
+        },
+        "AOMI_APPLICATION_ID": {
+          "type": "string",
+          "required": false,
+          "sensitive": false,
+          "label": "Application ID",
+          "help": "Optional concrete Aomi application id.",
+          "advanced": true
+        },
+        "AOMI_CHAIN_ID": {
+          "type": "number",
+          "required": false,
+          "sensitive": false,
+          "default": 1,
+          "label": "Default Chain ID",
+          "help": "Default EVM chain id supplied with the Eliza wallet.",
+          "advanced": true
+        },
+        "AOMI_EVM_RPC_URL": {
+          "type": "url",
+          "required": false,
+          "sensitive": true,
+          "label": "EVM RPC URL",
+          "help": "Optional RPC override for submitting Aomi-built EVM transactions.",
+          "advanced": true
+        }
+      },
+      "render": {
+        "visible": true,
+        "pinTo": [],
+        "style": "card",
+        "icon": "Orbit",
+        "group": "blockchain",
+        "groupOrder": 4,
+        "actions": ["enable", "configure"]
+      },
+      "resources": {
+        "homepage": "https://aomi.dev",
+        "repository": "https://github.com/elizaOS/eliza/tree/develop/plugins/plugin-aomi",
+        "setupGuideUrl": "https://github.com/elizaOS/eliza/tree/develop/plugins/plugin-aomi#readme"
+      },
+      "dependsOn": ["wallet"],
+      "channels": [],
+      "shortIds": [],
+      "kind": "plugin",
+      "subtype": "blockchain"
+    },
+    {
       "id": "app-control",
       "name": "App Control",
       "description": "Launch, close, and list running Eliza apps from agent chat. Backed by the /api/apps/* HTTP surface.",
@@ -2280,6 +2361,32 @@
           "help": "Embedding model identifier sent as the request `model` field.",
           "placeholder": "e.g., text-embedding-3-small",
           "advanced": false
+        },
+        "EMBEDDING_FALLBACK_BASE_URL": {
+          "type": "url",
+          "required": false,
+          "sensitive": false,
+          "label": "Embedding Fallback Base Url",
+          "help": "Optional fallback OpenAI-compatible /embeddings base URL. Used once when the primary endpoint fails with a network, HTTP, or response-shape error. Does not activate the plugin by itself.",
+          "placeholder": "e.g., https://api.openai.com/v1",
+          "advanced": true
+        },
+        "EMBEDDING_FALLBACK_API_KEY": {
+          "type": "secret",
+          "required": false,
+          "sensitive": true,
+          "label": "Embedding Fallback Api Key",
+          "help": "Bearer token for the fallback embedding endpoint. Omit for fallback servers that need no auth.",
+          "advanced": true
+        },
+        "EMBEDDING_FALLBACK_MODEL": {
+          "type": "string",
+          "required": false,
+          "sensitive": false,
+          "label": "Embedding Fallback Model",
+          "help": "Fallback embedding model identifier. Defaults to EMBEDDING_MODEL when unset. The fallback result must still match EMBEDDING_DIMENSIONS.",
+          "placeholder": "e.g., text-embedding-3-small",
+          "advanced": true
         },
         "EMBEDDING_DIMENSIONS": {
           "type": "number",
@@ -5744,7 +5851,7 @@
           "type": "string",
           "required": false,
           "sensitive": false,
-          "default": "x-ai/grok-2-vision-1212",
+          "default": "openai/gpt-4o-mini",
           "label": "Model",
           "help": "General fallback environment variable for the image model name when OPENROUTER_IMAGE_MODEL is not set.",
           "placeholder": "e.g., gpt-4o, claude-sonnet-4-20250514",

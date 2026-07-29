@@ -1,0 +1,139 @@
+{
+  "name": "@elizaos/plugin-aomi",
+  "version": "2.0.3-beta.7",
+  "description": "Aomi on-chain agent integration for elizaOS with wallet-backed confirmation and execution",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaOS/eliza.git",
+    "directory": "plugins/plugin-aomi"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "eliza-source": {
+        "types": "./src/index.ts",
+        "import": "./src/index.ts",
+        "default": "./src/index.ts"
+      },
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "eliza-source": {
+        "types": "./src/*.ts",
+        "import": "./src/*.ts",
+        "default": "./src/*.ts"
+      },
+      "import": "./dist/*.js",
+      "default": "./dist/*.js"
+    }
+  },
+  "files": [
+    "registry-entry.json",
+    "images",
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --clean && tsc6 --declaration --emitDeclarationOnly --noEmit false --noCheck",
+    "test": "vitest run --config vitest.config.ts",
+    "test:live": "ELIZA_E2E_AOMI=1 vitest run --config vitest.config.ts src/aomi-client.real.test.ts",
+    "test:wallet-live": "ELIZA_E2E_AOMI_WALLET=1 vitest run --config vitest.config.ts src/wallet.real.test.ts",
+    "test:scenario": "bun --conditions eliza-source --tsconfig-override ../../tsconfig.json ../../packages/scenario-runner/src/cli.ts run test/scenarios --scenario aomi-live-read",
+    "typecheck": "tsc --noEmit",
+    "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
+  },
+  "dependencies": {
+    "@aomi-labs/client": "^0.3.9",
+    "@solana/web3.js": "1.98.4",
+    "viem": "^2.48.8"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-wallet": "workspace:*"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.5",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-wallet": "workspace:*",
+    "@types/node": "^25.0.3",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.10"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "AOMI_API_URL": {
+        "type": "string",
+        "description": "Aomi backend base URL.",
+        "required": false,
+        "default": "https://api.aomi.dev",
+        "sensitive": false
+      },
+      "AOMI_API_KEY": {
+        "type": "string",
+        "description": "Optional Aomi API key for a private app namespace.",
+        "required": false,
+        "sensitive": true
+      },
+      "AOMI_APP": {
+        "type": "string",
+        "description": "Aomi app key used for delegated requests.",
+        "required": false,
+        "default": "default",
+        "sensitive": false
+      },
+      "AOMI_APPLICATION_ID": {
+        "type": "string",
+        "description": "Optional concrete Aomi application id.",
+        "required": false,
+        "sensitive": false
+      },
+      "AOMI_CHAIN_ID": {
+        "type": "number",
+        "description": "Default EVM chain id sent to Aomi when a wallet is connected.",
+        "required": false,
+        "default": 1,
+        "sensitive": false
+      },
+      "AOMI_EVM_RPC_URL": {
+        "type": "string",
+        "description": "Optional RPC URL override for Aomi-built EVM transactions.",
+        "required": false,
+        "sensitive": true
+      }
+    }
+  },
+  "eliza": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node",
+    "platformDetails": {
+      "node": "Node.js build with Aomi HTTP sessions and wallet execution"
+    }
+  },
+  "keywords": [
+    "elizaos",
+    "aomi",
+    "onchain",
+    "wallet",
+    "evm",
+    "solana"
+  ],
+  "license": "MIT"
+}
