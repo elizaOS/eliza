@@ -13,7 +13,6 @@
  * that turn classifies into. The happy-path render is empty and the read is
  * one bounded SQL, per the always-on provider contract.
  */
-import { hasOwnerAccess } from "@elizaos/agent";
 import type {
   IAgentRuntime,
   Memory,
@@ -23,6 +22,7 @@ import type {
 } from "@elizaos/core";
 import { createApprovalQueue } from "../lifeops/approval-queue.js";
 import type { ApprovalRequest } from "../lifeops/approval-queue.types.js";
+import { authorizeLifeOpsPrivateContext } from "../lifeops/audience-policy.js";
 
 const EMPTY: ProviderResult = {
   text: "",
@@ -103,8 +103,17 @@ export const pendingApprovalsProvider: Provider = {
     message: Memory,
     _state: State,
   ): Promise<ProviderResult> {
-    if (!(await hasOwnerAccess(runtime, message))) {
-      return EMPTY;
+    const audienceGate = await authorizeLifeOpsPrivateContext({
+      runtime,
+      message,
+      sources: [{ kind: "approvals", id: "approval-queue.pending" }],
+    });
+    if (!audienceGate.canLoadPrivateContext) {
+      return {
+        text: "",
+        values: { pendingApprovalsUnavailable: true },
+        data: { lifeOpsAudienceReceipts: audienceGate.receipts },
+      };
     }
     // Approvals are enqueued with subjectUserId = the requesting owner's
     // entityId (see actions/owner-surfaces.ts), and RESOLVE_REQUEST lists by
@@ -129,8 +138,15 @@ export const pendingApprovalsProvider: Provider = {
       // pending"); reportError surfaces it in RECENT_ERRORS so a broken queue
       // cannot silently reintroduce the stuck-pending failure this provider
       // exists to prevent.
-      runtime.reportError?.("pending-approvals.provider", error);
-      return EMPTY;
+      runtime.reportError("pending-approvals.provider", error, {
+        roomId: message.roomId,
+        entityId: message.entityId,
+      });
+      return {
+        text: "",
+        values: { pendingApprovalsUnavailable: true },
+        data: { pendingApprovalsError: true },
+      };
     }
     if (pending.length === 0) return EMPTY;
 
