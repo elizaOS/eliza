@@ -17,7 +17,11 @@ The copied fixture is kept byte-identical to upstream:
 
 The opt-in real-AAB test runs bundletool itself against this fixture, exercises
 a known dynamic-feature component as forbidden policy input, and checks copied
-bundles with a feature-DEX marker or truncated bytes. The default unit lane
-stays network- and JDK-independent; set
+bundles with adversarial feature manifests, relocated feature-DEX classes,
+feature-DEX markers, or truncated bytes. `RelocateAndroidManifestFixture.java`
+uses bundletool's own generated AAPT protobuf classes to turn the fixture's
+feature activity into a relocated privileged service while preserving a
+bundletool-valid multi-module AAB. The default unit lane stays network- and
+JDK-independent; set
 `ELIZA_ANDROID_RUN_REAL_AAB_TEST=1`, `ELIZA_ANDROID_BUNDLETOOL_JAR`, and
 `JAVA_HOME` to run the real tool boundary.
