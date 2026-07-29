@@ -6,8 +6,9 @@
  * CONTAINER_PROVISION and self-completes, so the container provision is what
  * actually fails. Before this writeback, a permanently-failed provision left
  * the owning app stuck in `building` forever (the deploy-status route echoes
- * apps.deployment_status). This locks in: app container -> flip to `failed`;
- * plain /v1/containers row (non-UUID project_name) -> no-op; missing row -> no-op.
+ * apps deployment state). This locks in: app container -> flip to `failed`
+ * with the terminal job error; plain /v1/containers row (non-UUID project_name)
+ * -> no-op; missing row -> no-op.
  */
 import { describe, expect, test } from "bun:test";
 import { apps } from "../../../db/schemas/apps";
@@ -19,6 +20,7 @@ import { ProvisioningJobService } from "../provisioning-jobs";
 const APP_ID = "11111111-2222-4333-8444-555555555555";
 const ORG_ID = "99999999-aaaa-4bbb-8ccc-dddddddddddd";
 const CONTAINER_ID = "cccccccc-dddd-4eee-8fff-000000000000";
+const TERMINAL_ERROR = "container provision exhausted retries";
 
 // Minimal DbTransaction stand-in: serves one container row for the select chain
 // (project_name + organization_id, since the writeback org-scopes the flip) and
@@ -61,9 +63,42 @@ function containerProvisionWriteback() {
         e: string,
       ) => ((tx: unknown, j: typeof job) => Promise<void>) | undefined;
     }
-  ).buildPermanentFailureWriteback(job, "container provision exhausted retries");
+  ).buildPermanentFailureWriteback(job, TERMINAL_ERROR);
   return { job, cb };
 }
+
+function appDeployWriteback() {
+  const job = {
+    id: "job-2",
+    type: JOB_TYPES.APP_DEPLOY,
+    max_attempts: 3,
+    data: { appId: APP_ID },
+  };
+  const cb = (
+    service as unknown as {
+      buildPermanentFailureWriteback: (
+        j: typeof job,
+        e: string,
+      ) => ((tx: unknown, j: typeof job) => Promise<void>) | undefined;
+    }
+  ).buildPermanentFailureWriteback(job, TERMINAL_ERROR);
+  return { job, cb };
+}
+
+describe("buildPermanentFailureWriteback: APP_DEPLOY", () => {
+  test("persists the terminal job error with failed deployment status", async () => {
+    const { job, cb } = appDeployWriteback();
+    expect(cb).toBeDefined();
+    const { tx, updates } = mockTx(null);
+    await cb!(tx, job);
+    expect(updates).toHaveLength(1);
+    expect(updates[0].table).toBe(apps);
+    expect(updates[0].values).toMatchObject({
+      deployment_status: "failed",
+      deployment_error: TERMINAL_ERROR,
+    });
+  });
+});
 
 describe("buildPermanentFailureWriteback: CONTAINER_PROVISION", () => {
   test("app container (UUID project_name) -> apps.deployment_status flipped to failed", async () => {
@@ -74,6 +109,7 @@ describe("buildPermanentFailureWriteback: CONTAINER_PROVISION", () => {
     expect(updates).toHaveLength(1);
     expect(updates[0].table).toBe(apps);
     expect(updates[0].values.deployment_status).toBe("failed");
+    expect(updates[0].values.deployment_error).toBe(TERMINAL_ERROR);
     expect(updates[0].values.updated_at).toBeInstanceOf(Date);
   });
 

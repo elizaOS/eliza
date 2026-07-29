@@ -13,6 +13,7 @@ type AppRow = {
   github_repo: string | null;
   metadata: Record<string, unknown>;
   deployment_status: "draft" | "building" | "deployed" | "failed";
+  deployment_error: string | null;
   production_url: string | null;
   last_deployed_at: Date | null;
 };
@@ -25,6 +26,7 @@ const baseApp = (): AppRow => ({
   github_repo: null,
   metadata: {},
   deployment_status: "draft",
+  deployment_error: null,
   production_url: null,
   last_deployed_at: null,
 });

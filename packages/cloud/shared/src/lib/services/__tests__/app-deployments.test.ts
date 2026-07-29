@@ -11,6 +11,7 @@ interface AppRow {
   github_repo: string | null;
   metadata: Record<string, unknown>;
   deployment_status: AppDeploymentStatus;
+  deployment_error: string | null;
   production_url: string | null;
   last_deployed_at: Date | string | null;
 }
@@ -40,6 +41,7 @@ describe("AppDeploymentsService", () => {
       github_repo: null,
       metadata: { databaseMode: "none" },
       deployment_status: "draft",
+      deployment_error: null,
       production_url: null,
       last_deployed_at: null,
     };
@@ -76,6 +78,7 @@ describe("AppDeploymentsService", () => {
     });
     expect(updates[0]).toMatchObject({
       deployment_status: "building",
+      deployment_error: null,
       metadata: {
         databaseMode: "none",
         repoUrl: "https://github.com/elizaOS/eliza.git",
@@ -91,17 +94,38 @@ describe("AppDeploymentsService", () => {
       id: APP_ID,
       github_repo: null,
       metadata: {},
-      deployment_status: "building",
+      deployment_status: "failed",
+      deployment_error: "server limit reached",
       production_url: "https://example.vercel.app",
       last_deployed_at: "2026-05-19T15:00:00.000Z",
     };
 
     await expect(new AppDeploymentsService().getLatestDeployment(APP_ID)).resolves.toEqual({
       deploymentId: `${APP_ID}:2026-05-19T15:00:00.000Z`,
-      status: "BUILDING",
+      status: "ERROR",
       vercelUrl: "https://example.vercel.app",
-      error: null,
+      error: "server limit reached",
       startedAt: "2026-05-19T15:00:00.000Z",
+    });
+  });
+
+  test("persists a synchronous deploy trigger failure for status polling", async () => {
+    const service = new AppDeploymentsService();
+    service.setDeployEnqueuer(async () => {
+      throw new Error("provisioning queue unavailable");
+    });
+
+    await expect(
+      service.createDeployment({
+        appId: APP_ID,
+        organizationId: ORG_ID,
+        userId: USER_ID,
+      }),
+    ).rejects.toThrow("provisioning queue unavailable");
+
+    expect(appStore.current).toMatchObject({
+      deployment_status: "failed",
+      deployment_error: "provisioning queue unavailable",
     });
   });
 });
