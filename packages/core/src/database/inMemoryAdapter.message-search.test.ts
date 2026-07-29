@@ -132,4 +132,51 @@ describe("InMemoryDatabaseAdapter — textContains", () => {
 		).toBe(true);
 		expect(elapsed).toBeLessThan(1000); // bounded — no pathological blowup
 	});
+
+	it("preserves batch uniqueness overrides and defaults unspecified memories to unique", async () => {
+		const adapter = new InMemoryDatabaseAdapter();
+		await adapter.initialize();
+		await adapter.createMemories([
+			{
+				memory: { ...msg("entry wins true", 1), unique: false },
+				tableName: "messages",
+				unique: true,
+			},
+			{
+				memory: { ...msg("entry wins false", 2), unique: true },
+				tableName: "messages",
+				unique: false,
+			},
+			{
+				memory: { ...msg("memory stays false", 3), unique: false },
+				tableName: "messages",
+			},
+			{
+				memory: msg("default is unique", 4),
+				tableName: "messages",
+			},
+		]);
+
+		const all = await adapter.getMemories({ roomId, tableName: "messages" });
+		expect(
+			Object.fromEntries(
+				all.map((memory) => [(memory.content as { text: string }).text, memory.unique]),
+			),
+		).toEqual({
+			"entry wins true": true,
+			"entry wins false": false,
+			"memory stays false": false,
+			"default is unique": true,
+		});
+
+		const unique = await adapter.getMemories({
+			roomId,
+			tableName: "messages",
+			unique: true,
+		});
+		expect(unique.map((memory) => (memory.content as { text: string }).text)).toEqual([
+			"default is unique",
+			"entry wins true",
+		]);
+	});
 });
