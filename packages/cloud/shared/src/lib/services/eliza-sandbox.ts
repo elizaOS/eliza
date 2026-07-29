@@ -8933,8 +8933,15 @@ export class ElizaSandboxService {
       }
 
       const locator = this.getReplacementCleanupLocator(current);
-      const incoming = this.replacementLocatorFromHandle(handle);
       if (locator) {
+        // Built ONLY when a durable fence exists to prove identity against:
+        // replacementLocatorFromHandle THROWS on a handle without replacement
+        // metadata, and an ADOPTED handle (a preserved container from a
+        // provision retry, #15310 §6) never carries any — building it
+        // unconditionally made the whole preserve-and-adopt mechanism
+        // unreachable: every adoption died on "no durable Docker placement
+        // metadata" and the healthy container was torn down (#17253 §4).
+        const incoming = this.replacementLocatorFromHandle(handle);
         this.assertSameReplacementIdentity(locator, incoming);
         if (
           locator.containerId !== incoming.containerId ||
