@@ -29,10 +29,17 @@ import {
 import { resolveSharedNavIntent, type SharedNavIntent } from "./shared-nav-intent";
 
 export interface SharedTurnMessage {
+  /** Stable message id used by SSE, REST history, and storage merge paths. */
+  id?: string;
   role: "user" | "assistant";
   content: string;
   /** Epoch-ms timestamp used by REST chat clients to reconcile persisted turns. */
   createdAt?: number;
+  /**
+   * True when an assistant message is a partial prefix from a canceled or failed
+   * stream. Model history keeps the text but annotates it as incomplete.
+   */
+  interrupted?: boolean;
 }
 
 export interface SharedAgentCharacter {
@@ -52,6 +59,11 @@ export interface RunSharedAgentTurnInput {
   history: SharedTurnMessage[];
   /** The incoming user message or event text. */
   message: string;
+  /** Stable ids assigned by the transport for the persisted user/assistant pair. */
+  messageIds?: {
+    user: string;
+    assistant: string;
+  };
   /** Durable accounting transition invoked at the final provider handoff. */
   onProviderDispatch?: () => Promise<void>;
 }
@@ -183,13 +195,21 @@ function appendTurn(
   history: SharedTurnMessage[],
   userMessage: string,
   reply: string,
+  messageIds?: RunSharedAgentTurnInput["messageIds"],
 ): SharedTurnMessage[] {
   const sentAt = Date.now();
   return [
     ...history,
-    { role: "user", content: userMessage, createdAt: sentAt },
-    { role: "assistant", content: reply, createdAt: sentAt + 1 },
+    { id: messageIds?.user, role: "user", content: userMessage, createdAt: sentAt },
+    { id: messageIds?.assistant, role: "assistant", content: reply, createdAt: sentAt + 1 },
   ];
+}
+
+function modelHistoryContent(message: SharedTurnMessage): string {
+  if (message.role === "assistant" && message.interrupted) {
+    return `[interrupted assistant partial]\n${message.content}`;
+  }
+  return message.content;
 }
 
 /**
@@ -212,7 +232,7 @@ export async function runSharedAgentTurn(
   if (navIntent) {
     return {
       reply: navIntent.reply,
-      history: appendTurn(input.history, message, navIntent.reply),
+      history: appendTurn(input.history, message, navIntent.reply, input.messageIds),
       model: "nav-intent",
       degraded: false,
       navIntent,
@@ -225,7 +245,7 @@ export async function runSharedAgentTurn(
     const reply = `${input.character.name} is temporarily unavailable (no shared model configured).`;
     return {
       reply,
-      history: appendTurn(input.history, message, reply),
+      history: appendTurn(input.history, message, reply, input.messageIds),
       model: "none",
       degraded: true,
     };
@@ -235,7 +255,7 @@ export async function runSharedAgentTurn(
     const model = getInteractiveCerebrasLanguageModel(modelId);
     const system = buildSystemPrompt(input.character);
     const messages = [
-      ...input.history.map((m) => ({ role: m.role, content: m.content })),
+      ...input.history.map((m) => ({ role: m.role, content: modelHistoryContent(m) })),
       { role: "user" as const, content: message },
     ];
     await input.onProviderDispatch?.();
@@ -251,7 +271,7 @@ export async function runSharedAgentTurn(
     const reply = text.trim() || "…";
     return {
       reply,
-      history: appendTurn(input.history, message, reply),
+      history: appendTurn(input.history, message, reply, input.messageIds),
       model: modelId,
       degraded: false,
       usage,
@@ -297,7 +317,7 @@ export async function runSharedAgentTurnStream(
       model: "nav-intent",
       degraded: false,
       reply,
-      history: appendTurn(input.history, message, reply),
+      history: appendTurn(input.history, message, reply, input.messageIds),
       parts,
       navIntent,
     };
@@ -309,7 +329,7 @@ export async function runSharedAgentTurnStream(
     const reply = `${input.character.name} is temporarily unavailable (no shared model configured).`;
     return {
       reply,
-      history: appendTurn(input.history, message, reply),
+      history: appendTurn(input.history, message, reply, input.messageIds),
       model: "none",
       degraded: true,
     };
@@ -319,7 +339,7 @@ export async function runSharedAgentTurnStream(
     const model = getInteractiveCerebrasLanguageModel(modelId);
     const system = buildSystemPrompt(input.character);
     const messages = [
-      ...input.history.map((m) => ({ role: m.role, content: m.content })),
+      ...input.history.map((m) => ({ role: m.role, content: modelHistoryContent(m) })),
       { role: "user" as const, content: message },
     ];
     await input.onProviderDispatch?.();

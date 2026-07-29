@@ -12,10 +12,14 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
 // Per-test controls for the collaborators used by both turn entry points.
 let providerConfigured = true;
-let generateTextImpl: () => Promise<{ text: string; usage?: unknown }> = async () => ({
+let generateTextImpl: (options?: {
+  messages?: Array<{ role: string; content: string }>;
+}) => Promise<{ text: string; usage?: unknown }> = async () => ({
   text: "ok reply",
 });
-let streamTextImpl: () => { fullStream: AsyncIterable<unknown> } = () => ({
+let streamTextImpl: (options?: { messages?: Array<{ role: string; content: string }> }) => {
+  fullStream: AsyncIterable<unknown>;
+} = () => ({
   fullStream: (async function* () {
     yield { type: "text-delta", text: "ok " };
     yield { type: "text-delta", text: "reply" };
@@ -34,8 +38,10 @@ mock.module("../../providers/language-model", () => ({
 }));
 
 mock.module("ai", () => ({
-  generateText: async () => generateTextImpl(),
-  streamText: () => streamTextImpl(),
+  generateText: async (options?: { messages?: Array<{ role: string; content: string }> }) =>
+    generateTextImpl(options),
+  streamText: (options?: { messages?: Array<{ role: string; content: string }> }) =>
+    streamTextImpl(options),
 }));
 
 const { runSharedAgentTurn, runSharedAgentTurnStream } = await import("./run-shared-agent-turn");
@@ -186,6 +192,28 @@ describe("runSharedAgentTurn — internal failure propagates vs designed-empty d
       content: "hi from Nova",
     });
     expect(typeof result.history[3]?.createdAt).toBe("number");
+  });
+
+  test("annotates interrupted assistant history before provider input", async () => {
+    let providerMessages: Array<{ role: string; content: string }> = [];
+    generateTextImpl = async (options) => {
+      providerMessages = options?.messages ?? [];
+      return { text: "continued" };
+    };
+
+    await runSharedAgentTurn({
+      character: { name: "Nova", system: "You are Nova.", model: "gpt-oss-120b" },
+      history: [
+        { role: "user", content: "first" },
+        { role: "assistant", content: "partial answer", interrupted: true },
+      ],
+      message: "continue",
+    });
+
+    expect(providerMessages[1]).toEqual({
+      role: "assistant",
+      content: "[interrupted assistant partial]\npartial answer",
+    });
   });
 });
 
