@@ -6,20 +6,26 @@
  * dispatch table, the per-handler result-record shaping, and the terminal-vs-retry
  * disposition are all covered by real code, not asserted against a stand-in.
  *
- * The only stubs are the two genuine boundaries the daemon dispatch sits on:
- * `jobsRepository` (the Postgres job store) and `elizaSandboxService` (the
- * transport that SSHes the Hetzner cores / calls the container bridge). Mirrors
- * the harness in `provisioning-jobs-delete-lifecycle.test.ts`; no DB is touched,
- * so this file is process-isolated and safe to run alongside the DB-backed
- * suites in the same `bun test` invocation.
+ * The only stubs are the genuine boundaries the daemon dispatch sits on:
+ * `jobsRepository` and `agentSandboxBackupHealthRepository` (the Postgres job
+ * and backup-health stores), plus `elizaSandboxService` (the transport that
+ * SSHes the Hetzner cores / calls the container bridge). Mirrors the harness in
+ * `provisioning-jobs-delete-lifecycle.test.ts`; no DB is touched, so this file
+ * is process-isolated and safe to run alongside the DB-backed suites in the
+ * same `bun test` invocation.
  */
 
 import { afterAll, afterEach, beforeAll, describe, expect, mock, spyOn, test } from "bun:test";
 
 import * as realHelpersNs from "../../db/helpers";
+import { agentSandboxBackupHealthRepository } from "../../db/repositories/agent-sandbox-backup-health";
 import { jobsRepository } from "../../db/repositories/jobs";
 import type { Job } from "../../db/schemas/jobs";
-import { elizaSandboxService } from "./eliza-sandbox";
+import {
+  elizaSandboxService,
+  SNAPSHOT_ENDPOINT_UNSUPPORTED,
+  SNAPSHOT_GENERATION_CHANGED,
+} from "./eliza-sandbox";
 import { JOB_TYPES, type ProvisioningJobType } from "./provisioning-job-types";
 
 const realHelpers = { ...realHelpersNs };
@@ -136,6 +142,7 @@ function harness(job: Job) {
 }
 
 const serviceSpies: Array<{ mockRestore: () => void }> = [];
+const recordedSnapshotOutcomes: Array<{ outcome: string; error?: string }> = [];
 function stub<M extends keyof typeof elizaSandboxService>(method: M, value: unknown) {
   const spy = spyOn(elizaSandboxService, method).mockResolvedValue(value as never);
   serviceSpies.push(spy);
@@ -144,6 +151,7 @@ function stub<M extends keyof typeof elizaSandboxService>(method: M, value: unkn
 
 afterEach(() => {
   for (const s of serviceSpies.splice(0)) s.mockRestore();
+  recordedSnapshotOutcomes.length = 0;
 });
 
 async function run(type: string) {
@@ -316,6 +324,27 @@ const AGENT_ARMS: Array<{
  *  provisioning-jobs-snapshot-gate.test.ts. */
 function armSnapshotGateFor(type: string): () => void {
   if (type !== JOB_TYPES.AGENT_SNAPSHOT) return () => {};
+  serviceSpies.push(
+    spyOn(agentSandboxBackupHealthRepository, "startAttempt").mockResolvedValue({
+      sandboxRecordId: AGENT,
+      attemptToken: "55555555-5555-4555-8555-555555555555",
+      jobId: "44444444-4444-4444-8444-444444444444",
+      jobStartedAt: new Date("2026-06-20T00:00:00.000Z"),
+      imageIdentity: "sha256:test-image",
+    }),
+    spyOn(agentSandboxBackupHealthRepository, "recordAttemptOutcome").mockImplementation(
+      async (params) => {
+        recordedSnapshotOutcomes.push({
+          outcome: params.outcome,
+          ...(params.error === undefined ? {} : { error: params.error }),
+        });
+        return {
+          recorded: true,
+          imageChanged: false,
+        };
+      },
+    ),
+  );
   const prev = process.env.ELIZA_SNAPSHOT_JOBS_ENABLED;
   process.env.ELIZA_SNAPSHOT_JOBS_ENABLED = "true";
   return () => {
@@ -703,6 +732,95 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
         reason: "Sandbox is not running",
       });
       expect(ctx.incrementSpy).not.toHaveBeenCalled();
+    } finally {
+      disarmGate();
+      ctx.claimSpy.mockRestore();
+      ctx.recoverSpy.mockRestore();
+      ctx.updateStatusSpy.mockRestore();
+      ctx.updateSpy.mockRestore();
+      ctx.incrementSpy.mockRestore();
+      ctx.retryLaterSpy.mockRestore();
+    }
+  });
+
+  test("manual snapshot on an unsupported image records capability before failing", async () => {
+    const ctx = harness(makeJob(JOB_TYPES.AGENT_SNAPSHOT, { snapshotType: "manual" }));
+    const disarmGate = armSnapshotGateFor(JOB_TYPES.AGENT_SNAPSHOT);
+    stub("executeSnapshot", { success: false, error: SNAPSHOT_ENDPOINT_UNSUPPORTED });
+    try {
+      const res = await run(JOB_TYPES.AGENT_SNAPSHOT);
+      expect(res.succeeded).toBe(0);
+      expect(res.failed).toBe(1);
+      expect(recordedSnapshotOutcomes).toEqual([
+        {
+          outcome: "unsupported",
+          error: SNAPSHOT_ENDPOINT_UNSUPPORTED,
+        },
+      ]);
+      expect(ctx.incrementSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      disarmGate();
+      ctx.claimSpy.mockRestore();
+      ctx.recoverSpy.mockRestore();
+      ctx.updateStatusSpy.mockRestore();
+      ctx.updateSpy.mockRestore();
+      ctx.incrementSpy.mockRestore();
+      ctx.retryLaterSpy.mockRestore();
+    }
+  });
+
+  test("a generation-changed snapshot leaves immediate health debt and retries the job", async () => {
+    const ctx = harness(makeJob(JOB_TYPES.AGENT_SNAPSHOT, { snapshotType: "auto" }));
+    const disarmGate = armSnapshotGateFor(JOB_TYPES.AGENT_SNAPSHOT);
+    stub("executeSnapshot", {
+      success: false,
+      outcome: "generation_changed",
+      error: SNAPSHOT_GENERATION_CHANGED,
+      backup: { id: "backup-old-generation" },
+    });
+    try {
+      const res = await run(JOB_TYPES.AGENT_SNAPSHOT);
+      expect(res.succeeded).toBe(0);
+      expect(res.failed).toBe(1);
+      expect(recordedSnapshotOutcomes).toEqual([
+        {
+          outcome: "generation_changed",
+          error: SNAPSHOT_GENERATION_CHANGED,
+        },
+      ]);
+      expect(ctx.updateSpy).toHaveBeenCalledWith(
+        ctx.job.id,
+        expect.objectContaining({
+          result: expect.objectContaining({ error: SNAPSHOT_GENERATION_CHANGED }),
+        }),
+      );
+      expect(ctx.incrementSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      disarmGate();
+      ctx.claimSpy.mockRestore();
+      ctx.recoverSpy.mockRestore();
+      ctx.updateStatusSpy.mockRestore();
+      ctx.updateSpy.mockRestore();
+      ctx.incrementSpy.mockRestore();
+      ctx.retryLaterSpy.mockRestore();
+    }
+  });
+
+  test("a failed snapshot without an error is rejected instead of fabricating a fallback", async () => {
+    const ctx = harness(makeJob(JOB_TYPES.AGENT_SNAPSHOT, { snapshotType: "manual" }));
+    const disarmGate = armSnapshotGateFor(JOB_TYPES.AGENT_SNAPSHOT);
+    stub("executeSnapshot", { success: false });
+    try {
+      const res = await run(JOB_TYPES.AGENT_SNAPSHOT);
+      expect(res.succeeded).toBe(0);
+      expect(res.failed).toBe(1);
+      expect(recordedSnapshotOutcomes).toEqual([
+        {
+          outcome: "failed",
+          error: "agent_snapshot returned a failed result without an error",
+        },
+      ]);
+      expect(ctx.incrementSpy).toHaveBeenCalledTimes(1);
     } finally {
       disarmGate();
       ctx.claimSpy.mockRestore();

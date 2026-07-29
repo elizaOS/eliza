@@ -456,6 +456,7 @@ export interface SnapshotResult {
   success: boolean;
   backup?: AgentSandboxBackup;
   error?: string;
+  outcome?: "persisted" | "generation_changed";
 }
 
 /**
@@ -467,6 +468,8 @@ export interface SnapshotResult {
  * this exactly like "Sandbox is not running": skip without burning retries.
  */
 export const SNAPSHOT_ENDPOINT_UNSUPPORTED = "Snapshot endpoint not supported by agent image";
+export const SNAPSHOT_GENERATION_CHANGED =
+  "Snapshot source image or runtime generation changed before persistence";
 
 const MAX_BACKUPS = 10;
 const SHARED_RUNTIME_HISTORY_MAX_MESSAGES = 40;
@@ -5915,21 +5918,40 @@ export class ElizaSandboxService {
       };
     }
 
-    const backup = await agentSandboxesRepository.createBackup(
+    const persisted = await agentSandboxesRepository.createBackupForObservedGeneration(
       await this.buildBackupInput(rec.id, type, stateData, sizeBytes),
+      {
+        organizationId: rec.organization_id,
+        environmentRevision: rec.environment_revision,
+        sandboxId: rec.sandbox_id,
+        nodeId: rec.node_id,
+        containerName: rec.container_name,
+        imageDigest: rec.image_digest,
+      },
     );
-
-    await agentSandboxesRepository.update(rec.id, {
-      last_backup_at: new Date(),
-    });
+    if (!persisted.generationMatched) {
+      logger.warn("[agent-sandbox] Backup captured after source generation changed", {
+        agentId,
+        type,
+        backupId: persisted.backup.id,
+        sourceImageDigest: rec.image_digest,
+        sourceEnvironmentRevision: rec.environment_revision,
+      });
+      return {
+        success: false,
+        backup: persisted.backup,
+        error: SNAPSHOT_GENERATION_CHANGED,
+        outcome: "generation_changed",
+      };
+    }
     await agentSandboxesRepository.pruneBackups(rec.id, MAX_BACKUPS);
     logger.info("[agent-sandbox] Backup created", {
       agentId,
       type,
-      kind: backup.backup_kind,
-      bytes: backup.size_bytes,
+      kind: persisted.backup.backup_kind,
+      bytes: persisted.backup.size_bytes,
     });
-    return { success: true, backup };
+    return { success: true, backup: persisted.backup, outcome: "persisted" };
   }
 
   /**

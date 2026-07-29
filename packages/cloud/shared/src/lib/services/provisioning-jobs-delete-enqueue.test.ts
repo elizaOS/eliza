@@ -16,6 +16,7 @@ import { afterAll, afterEach, describe, expect, mock, spyOn, test } from "bun:te
 import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 import * as realDbHelpers from "../../db/helpers";
+import * as realBackupHealthRepository from "../../db/repositories/agent-sandbox-backup-health";
 import * as realJobsRepository from "../../db/repositories/jobs";
 import * as realOutboundUrl from "../security/outbound-url";
 
@@ -29,6 +30,7 @@ import * as realOutboundUrl from "../security/outbound-url";
 // the real exports now and reinstall them in afterAll so this file's stubs are
 // strictly local.
 const realDbHelpersExports = { ...realDbHelpers };
+const realBackupHealthRepositoryExports = { ...realBackupHealthRepository };
 const realJobsRepositoryExports = { ...realJobsRepository };
 const realOutboundUrlExports = { ...realOutboundUrl };
 
@@ -95,6 +97,17 @@ const transaction = mock(async (fn: (t: typeof tx) => Promise<unknown>) => {
 });
 
 const dbWriteMock = { select, transaction };
+const reserveDueBackups = mock(async () => ({
+  asOf: new Date(),
+  dueTotal: 0,
+  oldestDueAt: null,
+  activeTotal: 0,
+  unsupportedTotal: 0,
+  activeUnsupportedTotal: 0,
+  candidates: [],
+}));
+const releaseReservation = mock(async () => true);
+const recordEnqueueFailure = mock(async () => true);
 
 // Provide the FULL helpers surface so transitive importers (repositories) keep
 // working; only dbWrite is swapped for our capturing mock.
@@ -131,6 +144,18 @@ mock.module("../../db/repositories/jobs", () => ({
   prepareJobInsertData: async (j: unknown) => j,
   jobsRepository: {},
 }));
+mock.module("../../db/repositories/agent-sandbox-backup-health", () => ({
+  ...realBackupHealthRepository,
+  agentSandboxBackupHealthRepository: {
+    reserveDueBackups,
+    releaseReservation,
+    recordEnqueueFailure,
+  },
+}));
+
+// Compile the large service graph outside any individual five-second test
+// budget. The registered module doubles are already active at this point.
+const { provisioningJobService } = await import("./provisioning-jobs");
 
 afterEach(() => {
   capturedSelectWhere = undefined;
@@ -138,10 +163,26 @@ afterEach(() => {
   selectRows = [];
   cancelledReturning = [];
   txSelectCall = 0;
+  reserveDueBackups.mockClear();
+  reserveDueBackups.mockImplementation(async () => ({
+    asOf: new Date(),
+    dueTotal: 0,
+    oldestDueAt: null,
+    activeTotal: 0,
+    unsupportedTotal: 0,
+    activeUnsupportedTotal: 0,
+    candidates: [],
+  }));
+  releaseReservation.mockClear();
+  recordEnqueueFailure.mockClear();
 });
 
 afterAll(() => {
   mock.module("../../db/helpers", () => realDbHelpersExports);
+  mock.module(
+    "../../db/repositories/agent-sandbox-backup-health",
+    () => realBackupHealthRepositoryExports,
+  );
   mock.module("../../db/repositories/jobs", () => realJobsRepositoryExports);
   mock.module("../security/outbound-url", () => realOutboundUrlExports);
 });
@@ -151,7 +192,6 @@ describe("enqueueAgentDeleteOnce.beforeInsert — cancels other pending jobs", (
     cancelledReturning = [{ id: "j-restart" }, { id: "j-snapshot" }];
     const orgId = "22222222-2222-4222-8222-222222222222";
     const agentId = "agent";
-    const { provisioningJobService } = await import("./provisioning-jobs");
 
     await provisioningJobService.enqueueAgentDeleteOnce({
       agentId,
@@ -191,30 +231,56 @@ describe("enqueueAgentDeleteOnce.beforeInsert — cancels other pending jobs", (
 });
 
 describe("enqueueScheduledBackups — only reachable agents", () => {
-  test("query requires bridge_url IS NOT NULL (idle agents are never enqueued)", async () => {
-    selectRows = []; // nothing due → no enqueue, but we assert the WHERE shape.
-    const { provisioningJobService } = await import("./provisioning-jobs");
-
+  test("delegates selection to the transactional backup-health repository", async () => {
     const res = await provisioningJobService.enqueueScheduledBackups();
-    expect(res).toEqual({ scanned: 0, enqueued: 0 });
-
-    expect(capturedSelectWhere).toBeDefined();
-    const sql = new PgDialect().sqlToQuery(capturedSelectWhere as SQL);
-    expect(sql.sql).toContain("bridge_url");
-    expect(sql.sql.toLowerCase()).toContain("is not null");
+    expect(res).toMatchObject({
+      dueTotal: 0,
+      selected: 0,
+      created: 0,
+      reused: 0,
+      unsupported: 0,
+      backlogAfter: 0,
+      scanned: 0,
+      enqueued: 0,
+    });
+    expect(reserveDueBackups).toHaveBeenCalledTimes(1);
   });
 
   test("a due, reachable agent is enqueued for an auto snapshot", async () => {
-    selectRows = [{ id: "agent", organizationId: "org", userId: "user" }];
-    const { provisioningJobService } = await import("./provisioning-jobs");
+    reserveDueBackups.mockImplementationOnce(async () => ({
+      asOf: new Date(),
+      dueTotal: 1,
+      oldestDueAt: new Date(),
+      activeTotal: 0,
+      unsupportedTotal: 0,
+      activeUnsupportedTotal: 0,
+      candidates: [
+        {
+          id: "agent",
+          organizationId: "org",
+          userId: "user",
+          imageIdentity: "sha256:image",
+          leaseToken: "11111111-1111-4111-8111-111111111111",
+        },
+      ],
+    }));
     const enqueueSpy = spyOn(provisioningJobService, "enqueueAgentSnapshotOnce").mockResolvedValue({
       created: true,
       job: { id: "snap-1" },
     } as never);
     try {
       const res = await provisioningJobService.enqueueScheduledBackups();
-      expect(res).toEqual({ scanned: 1, enqueued: 1 });
+      expect(res).toMatchObject({
+        dueTotal: 1,
+        selected: 1,
+        created: 1,
+        reused: 0,
+        backlogAfter: 0,
+        scanned: 1,
+        enqueued: 1,
+      });
       expect(enqueueSpy).toHaveBeenCalledTimes(1);
+      expect(releaseReservation).toHaveBeenCalledTimes(1);
       expect(enqueueSpy.mock.calls[0]?.[0]).toMatchObject({
         agentId: "agent",
         snapshotType: "auto",
@@ -231,7 +297,6 @@ describe("reEnqueueFailedDeletions — recover stuck deletion_failed rows", () =
       { id: "a1", organizationId: "o1", userId: "u1", errorCount: 1 },
       { id: "a2", organizationId: "o2", userId: "u2", errorCount: 2 },
     ];
-    const { provisioningJobService } = await import("./provisioning-jobs");
     const enqueueSpy = spyOn(provisioningJobService, "enqueueAgentDeleteOnce").mockResolvedValue({
       created: true,
       job: { id: "del-1" },
@@ -258,7 +323,6 @@ describe("reEnqueueFailedDeletions — recover stuck deletion_failed rows", () =
       { id: "a1", organizationId: "o1", userId: "u1", errorCount: 0 },
       { id: "a2", organizationId: "o2", userId: "u2", errorCount: 0 },
     ];
-    const { provisioningJobService } = await import("./provisioning-jobs");
     const enqueueSpy = spyOn(provisioningJobService, "enqueueAgentDeleteOnce").mockImplementation(
       async (p) => {
         if (p.agentId === "a1") throw new Error("node still down");
@@ -280,7 +344,6 @@ describe("reEnqueueFailedDeletions — recover stuck deletion_failed rows", () =
       { id: "a1", organizationId: "o1", userId: "u1", errorCount: 4 },
       { id: "a2", organizationId: "o2", userId: "u2", errorCount: 5 },
     ];
-    const { provisioningJobService } = await import("./provisioning-jobs");
     const enqueueSpy = spyOn(provisioningJobService, "enqueueAgentDeleteOnce").mockResolvedValue({
       created: true,
       job: { id: "del-1" },
@@ -298,7 +361,6 @@ describe("reEnqueueFailedDeletions — recover stuck deletion_failed rows", () =
 
   test("circuit-breaker threshold is configurable via maxReEnqueues", async () => {
     selectRows = [{ id: "a1", organizationId: "o1", userId: "u1", errorCount: 2 }];
-    const { provisioningJobService } = await import("./provisioning-jobs");
     const enqueueSpy = spyOn(provisioningJobService, "enqueueAgentDeleteOnce").mockResolvedValue({
       created: true,
       job: { id: "del-1" },

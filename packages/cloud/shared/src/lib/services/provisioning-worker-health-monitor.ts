@@ -15,6 +15,7 @@
  * about its own death) — wiring that schedule is infra, not this module.
  */
 
+import { ElizaError } from "@elizaos/core";
 import { logger } from "../utils/logger";
 import { writeCloudApiDbHeartbeat } from "./cloud-api-db-heartbeat";
 import {
@@ -31,6 +32,8 @@ import {
  */
 const ALERT_SLACK_WEBHOOK_ENV = "PROVISIONING_ALERT_SLACK_WEBHOOK";
 const ALERT_PAGERDUTY_KEY_ENV = "PROVISIONING_ALERT_PAGERDUTY_KEY";
+const ALERT_REQUEST_TIMEOUT_MS = 10_000;
+const SLACK_DETAILS_MAX_CHARS = 3_000;
 
 /**
  * A heartbeat older than this is treated as stale even if the Redis key still
@@ -53,6 +56,31 @@ export interface DaemonHealthAlert {
   details: Record<string, unknown>;
   /** PagerDuty dedup key. Defaults to the daemon-heartbeat incident key. */
   dedupKey?: string;
+}
+
+function boundedAlertDetails(details: Record<string, unknown>): string {
+  const serialized = JSON.stringify(details, null, 2);
+  if (serialized.length <= SLACK_DETAILS_MAX_CHARS) return serialized;
+  return `${serialized.slice(0, SLACK_DETAILS_MAX_CHARS)}\n…truncated`;
+}
+
+async function postAlertChannel(
+  channel: "slack" | "pagerduty",
+  url: string,
+  body: Record<string, unknown>,
+): Promise<void> {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(ALERT_REQUEST_TIMEOUT_MS),
+  });
+  if (!response.ok) {
+    throw new ElizaError(`Provisioning ${channel} alert returned HTTP ${response.status}`, {
+      code: "PROVISIONING_ALERT_HTTP_ERROR",
+      context: { channel, status: response.status },
+    });
+  }
 }
 
 /**
@@ -85,44 +113,57 @@ export async function sendProvisioningWorkerAlert(alert: DaemonHealthAlert): Pro
   const slackWebhook = process.env[ALERT_SLACK_WEBHOOK_ENV];
   const pagerDutyKey = process.env[ALERT_PAGERDUTY_KEY_ENV];
 
-  const sends: Promise<unknown>[] = [];
+  const sends: Array<{ channel: "slack" | "pagerduty"; promise: Promise<void> }> = [];
 
   if (slackWebhook) {
-    sends.push(
-      fetch(slackWebhook, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          text: `🚨 *[elizaOS Provisioning]* ${alert.title}\n${alert.message}`,
-        }),
+    sends.push({
+      channel: "slack",
+      promise: postAlertChannel("slack", slackWebhook, {
+        text:
+          `🚨 *[elizaOS Provisioning]* ${alert.title}\n${alert.message}\n` +
+          `\`\`\`${boundedAlertDetails(alert.details)}\`\`\``,
       }),
-    );
+    });
   }
 
   if (pagerDutyKey) {
-    sends.push(
-      fetch("https://events.pagerduty.com/v2/enqueue", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          routing_key: pagerDutyKey,
-          event_action: "trigger",
-          dedup_key: alert.dedupKey ?? "provisioning-worker-unhealthy",
-          payload: {
-            summary: `[elizaOS Provisioning] ${alert.title}`,
-            severity: "critical",
-            source: "eliza-cloud-provisioning-worker",
-            custom_details: { message: alert.message, ...alert.details },
-          },
-        }),
+    sends.push({
+      channel: "pagerduty",
+      promise: postAlertChannel("pagerduty", "https://events.pagerduty.com/v2/enqueue", {
+        routing_key: pagerDutyKey,
+        event_action: "trigger",
+        dedup_key: alert.dedupKey ?? "provisioning-worker-unhealthy",
+        payload: {
+          summary: `[elizaOS Provisioning] ${alert.title}`,
+          severity: "critical",
+          source: "eliza-cloud-provisioning-worker",
+          custom_details: { message: alert.message, ...alert.details },
+        },
       }),
-    );
+    });
   }
 
-  const results = await Promise.allSettled(sends);
-  const failures = results.filter((r) => r.status === "rejected").length;
-  if (failures > 0) {
-    logger.error(`[ProvisioningWorkerHealth] ${failures}/${results.length} alert channels failed`);
+  const results = await Promise.allSettled(sends.map((send) => send.promise));
+  const failures = results.flatMap((result, index) =>
+    result.status === "rejected"
+      ? [{ channel: sends[index]?.channel ?? "unknown", reason: result.reason }]
+      : [],
+  );
+  if (failures.length > 0) {
+    // error-policy:J2 context-adding rethrow — callers with durable delivery
+    // claims must release them when any configured channel rejects or returns
+    // non-2xx, so preserve every channel failure as the aggregate cause.
+    throw new ElizaError(
+      `${failures.length}/${results.length} provisioning alert channels failed`,
+      {
+        code: "PROVISIONING_ALERT_DELIVERY_FAILED",
+        context: { channels: failures.map((failure) => failure.channel) },
+        cause: new AggregateError(
+          failures.map((failure) => failure.reason),
+          "Provisioning alert channel failures",
+        ),
+      },
+    );
   }
 }
 

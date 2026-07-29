@@ -29,6 +29,11 @@ import {
 } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
 import { dbWrite } from "../../db/helpers";
+import {
+  agentSandboxBackupHealthRepository,
+  type BackupAttemptContext,
+  type CompletedBackupAttemptOutcome,
+} from "../../db/repositories/agent-sandbox-backup-health";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import {
   hydrateJob,
@@ -62,6 +67,7 @@ import {
   isAdminCanaryImageJobData,
   isPendingAdminCanaryCutoverAudit,
 } from "./admin-canary-image";
+import { isManagedSnapshotLaneEnabled } from "./agent-backup-fleet-health";
 import { dispatchAppDbDeprovisionJob } from "./app-db-deprovision-job-service";
 import { dispatchAppDeployJob, readAppDeployJobData } from "./app-deploy-job-service";
 import { appsService } from "./apps";
@@ -77,6 +83,7 @@ import {
   AdminCanaryCleanupExpectationError,
   elizaSandboxService,
   SNAPSHOT_ENDPOINT_UNSUPPORTED,
+  SNAPSHOT_GENERATION_CHANGED,
 } from "./eliza-sandbox";
 import {
   EXCLUSIVE_AGENT_LIFECYCLE_JOB_TYPES,
@@ -720,6 +727,21 @@ export interface EnqueueAgentSnapshotResult {
   created: boolean;
 }
 
+export interface ScheduledBackupSweepSummary {
+  dueTotal: number;
+  oldestDueAgeMs: number | null;
+  selected: number;
+  created: number;
+  reused: number;
+  unsupported: number;
+  failed: number;
+  backlogAfter: number;
+  /** Compatibility alias: the bounded set reserved by this sweep. */
+  scanned: number;
+  /** Compatibility alias: only newly inserted jobs, never reused jobs. */
+  enqueued: number;
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -897,17 +919,6 @@ const COLD_BOOT_JOB_TYPES: ReadonlySet<ProvisioningJobType> = new Set([
 const SNAPSHOT_GATE_RETRY_DELAY_MS = 10 * 60 * 1000;
 const PROVISION_TRANSPORT_RETRY_DELAY_MS = 2 * 60 * 1000;
 const WARM_CLAIM_RECOVERY_ORPHAN_GRACE_MS = 2 * 60 * 1000;
-
-/**
- * Unreachable loopback bridge that E2E preload historically stamped onto
- * fixture sandboxes (see issue #15737). The preload now seeds fixtures inert
- * (#15755), but the backup scanner still excludes this sentinel as
- * defense-in-depth: any row that reaches `running` with this address has no
- * live state endpoint, so snapshotting it can only `fetch failed` in a loop and
- * flood the failed-jobs log — the exact noise the reachability carve-out exists
- * to prevent.
- */
-const UNREACHABLE_BRIDGE_SENTINEL = "http://127.0.0.1:65535";
 
 /**
  * Per-job execution timeout for the `withTimeout(executeJob(job), …)` wrap,
@@ -2442,70 +2453,105 @@ export class ProvisioningJobService {
   }
 
   /**
-   * Scan running agents and enqueue an `auto` snapshot for any whose last
-   * backup is older than `minIntervalMs` (or who have never been backed up).
-   * Drives the scheduled-backups cron. Per-agent dedup is handled by the
-   * snapshot job's in-flight idempotency, so overlapping ticks are safe.
-   * Warm-pool rows (`pool_status IS NOT NULL`) are excluded — they have no
-   * user state worth backing up.
+   * Reserve and enqueue a fair slice of due managed local-state agents.
+   *
+   * Selection is oldest-success first under `FOR UPDATE SKIP LOCKED`; durable
+   * image capability, retry backoff, and expiring leases prevent unsupported
+   * or crashed attempts from monopolizing the cap. Metrics describe the whole
+   * due population, not just the selected slice.
    */
   async enqueueScheduledBackups(params?: {
     minIntervalMs?: number;
     maxAgents?: number;
-  }): Promise<{ scanned: number; enqueued: number }> {
-    const minIntervalMs = params?.minIntervalMs ?? 6 * 60 * 60 * 1000; // 6h
+    /**
+     * Compatibility-only observer clock. PostgreSQL is authoritative for every
+     * cutoff and lease; skewed callers cannot move scheduling time.
+     */
+    now?: Date;
+    leaseDurationMs?: number;
+  }): Promise<ScheduledBackupSweepSummary> {
+    const minIntervalMs = params?.minIntervalMs ?? 6 * 60 * 60_000;
     const maxAgents = params?.maxAgents ?? 200;
-    const cutoff = new Date(Date.now() - minIntervalMs);
+    const reservation = await agentSandboxBackupHealthRepository.reserveDueBackups({
+      minIntervalMs,
+      maxAgents,
+      leaseDurationMs: params?.leaseDurationMs,
+    });
 
-    const due = await dbWrite
-      .select({
-        id: agentSandboxes.id,
-        organizationId: agentSandboxes.organization_id,
-        userId: agentSandboxes.user_id,
-      })
-      .from(agentSandboxes)
-      .where(
-        and(
-          eq(agentSandboxes.status, "running"),
-          sql`${agentSandboxes.pool_status} IS NULL`,
-          // Only enqueue agents that are actually reachable. A `running` row with
-          // no bridge_url (shared-runtime / web-only agents, or a row whose
-          // bridge was cleared) has no live state endpoint to snapshot — the
-          // snapshot would just fail with "Sandbox is not running" and burn
-          // retries. Requiring bridge_url keeps those out of the queue entirely.
-          sql`${agentSandboxes.bridge_url} IS NOT NULL`,
-          // Belt-and-suspenders for the E2E fixture sentinel (#15737): even a
-          // `running` row with a non-null bridge_url is unreachable when that
-          // URL is the loopback sentinel, so it must never be re-enqueued.
-          ne(agentSandboxes.bridge_url, UNREACHABLE_BRIDGE_SENTINEL),
-          sql`(${agentSandboxes.last_backup_at} IS NULL OR ${agentSandboxes.last_backup_at} < ${cutoff})`,
-        ),
-      )
-      .limit(maxAgents);
-
-    let enqueued = 0;
-    for (const agent of due) {
+    let created = 0;
+    let reused = reservation.activeTotal;
+    let failed = 0;
+    for (const agent of reservation.candidates) {
       try {
-        await this.enqueueAgentSnapshotOnce({
+        const enqueue = await this.enqueueAgentSnapshotOnce({
           agentId: agent.id,
           organizationId: agent.organizationId,
           userId: agent.userId,
           snapshotType: "auto",
         });
-        enqueued++;
+        if (enqueue.created) {
+          created += 1;
+        } else {
+          reused += 1;
+        }
+        const released = await agentSandboxBackupHealthRepository.releaseReservation(
+          agent.id,
+          agent.leaseToken,
+        );
+        if (!released) {
+          logger.warn("[provisioning-jobs] Backup reservation changed before enqueue release", {
+            agentId: agent.id,
+            jobId: enqueue.job.id,
+          });
+        }
       } catch (error) {
-        logger.warn("[provisioning-jobs] Scheduled backup enqueue failed", {
+        // error-policy:J7 diagnostics-must-not-kill-the-loop — the per-agent
+        // failure is persisted with backoff and returned in the sweep summary;
+        // other reserved agents still need their chance under the fleet cap.
+        failed += 1;
+        const message = error instanceof Error ? error.message : String(error);
+        const recorded = await agentSandboxBackupHealthRepository.recordEnqueueFailure({
+          sandboxRecordId: agent.id,
+          leaseToken: agent.leaseToken,
+          error: message,
+        });
+        if (!recorded) {
+          logger.warn("[provisioning-jobs] Scheduled backup failure lost its reservation", {
+            agentId: agent.id,
+          });
+        }
+        logger.error("[provisioning-jobs] Scheduled backup enqueue failed", {
           agentId: agent.id,
-          error: error instanceof Error ? error.message : String(error),
+          error: message,
         });
       }
     }
 
-    logger.info("[provisioning-jobs] Scheduled backups enqueued", {
-      scanned: due.length,
-      enqueued,
-    });
-    return { scanned: due.length, enqueued };
+    const selected = reservation.candidates.length;
+    const backlogAfter = Math.max(
+      0,
+      reservation.dueTotal -
+        created -
+        reused -
+        reservation.unsupportedTotal +
+        reservation.activeUnsupportedTotal,
+    );
+    const summary: ScheduledBackupSweepSummary = {
+      dueTotal: reservation.dueTotal,
+      oldestDueAgeMs: reservation.oldestDueAt
+        ? Math.max(0, reservation.asOf.getTime() - reservation.oldestDueAt.getTime())
+        : null,
+      selected,
+      created,
+      reused,
+      unsupported: reservation.unsupportedTotal,
+      failed,
+      backlogAfter,
+      scanned: selected,
+      enqueued: created,
+    };
+    logger.info("[provisioning-jobs] Scheduled backup sweep complete", summary);
+    return summary;
   }
 
   /**
@@ -2676,7 +2722,7 @@ export class ProvisioningJobService {
    * lifecycle lane stays independently operable.
    */
   static snapshotJobsEnabled(): boolean {
-    return process.env.ELIZA_SNAPSHOT_JOBS_ENABLED === "true";
+    return isManagedSnapshotLaneEnabled();
   }
 
   private snapshotGateLogged = false;
@@ -4245,6 +4291,31 @@ export class ProvisioningJobService {
     });
   }
 
+  private async recordAgentSnapshotHealth(
+    attempt: BackupAttemptContext,
+    outcome: CompletedBackupAttemptOutcome,
+    error?: string,
+  ): Promise<void> {
+    const write = await agentSandboxBackupHealthRepository.recordAttemptOutcome({
+      attempt,
+      outcome,
+      error,
+    });
+    if (!write.recorded) {
+      logger.warn("[provisioning-jobs] Ignored stale agent_snapshot health outcome", {
+        agentId: attempt.sandboxRecordId,
+        attemptToken: attempt.attemptToken,
+        outcome,
+      });
+    } else if (write.imageChanged) {
+      logger.warn("[provisioning-jobs] agent_snapshot image changed during attempt", {
+        agentId: attempt.sandboxRecordId,
+        attemptImageIdentity: attempt.imageIdentity,
+        outcome,
+      });
+    }
+  }
+
   private async executeAgentSnapshot(job: Job): Promise<void> {
     const data = readAgentSnapshotJobData(job);
 
@@ -4276,13 +4347,66 @@ export class ProvisioningJobService {
       snapshotType: data.snapshotType,
     });
 
-    const result = await elizaSandboxService.executeSnapshot(
-      data.agentId,
-      data.organizationId,
-      data.snapshotType,
-    );
+    if (job.started_at === null) {
+      throw new ElizaError("agent_snapshot execution is missing its durable claim timestamp", {
+        code: "AGENT_SNAPSHOT_MISSING_CLAIM_TIMESTAMP",
+        context: { jobId: job.id, agentId: data.agentId },
+      });
+    }
+    const attempt = await agentSandboxBackupHealthRepository.startAttempt(data.agentId, {
+      jobId: job.id,
+      jobStartedAt: job.started_at,
+    });
+    let result: Awaited<ReturnType<typeof elizaSandboxService.executeSnapshot>>;
+    try {
+      result = await elizaSandboxService.executeSnapshot(
+        data.agentId,
+        data.organizationId,
+        data.snapshotType,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await this.recordAgentSnapshotHealth(attempt, "failed", message);
+      // error-policy:J2 context-adding rethrow — preserve the transport/storage
+      // cause after the durable health stamp so the generic job retry boundary
+      // still receives a typed, observable failure.
+      throw new ElizaError("Agent snapshot execution failed", {
+        code: "AGENT_SNAPSHOT_EXECUTION_FAILED",
+        context: {
+          jobId: job.id,
+          agentId: data.agentId,
+          snapshotType: data.snapshotType,
+        },
+        cause: error,
+      });
+    }
 
-    if (await this.completeIfAgentGone(job, result, data.agentId)) return;
+    if (await this.completeIfAgentGone(job, result, data.agentId)) {
+      await this.recordAgentSnapshotHealth(attempt, "unavailable", "Agent not found");
+      return;
+    }
+
+    if (!result.success && result.outcome === "generation_changed") {
+      await this.recordAgentSnapshotHealth(
+        attempt,
+        "generation_changed",
+        result.error ?? SNAPSHOT_GENERATION_CHANGED,
+      );
+      await jobsRepository.update(job.id, {
+        result: agentSnapshotJobResultToRecord({
+          cloudAgentId: data.agentId,
+          error: result.error ?? SNAPSHOT_GENERATION_CHANGED,
+        }),
+      });
+      throw new ElizaError("Agent changed generation while its snapshot was being persisted", {
+        code: "AGENT_SNAPSHOT_GENERATION_CHANGED",
+        context: {
+          jobId: job.id,
+          agentId: data.agentId,
+          backupId: result.backup?.id,
+        },
+      });
+    }
 
     // Scheduled (auto) backups run across every non-pool sandbox, but an idle
     // agent (stopped/sleeping/disconnected — no bridge_url) legitimately has no
@@ -4292,11 +4416,18 @@ export class ProvisioningJobService {
     // auto snapshot this is a benign no-op, so mark it completed-as-skipped
     // WITHOUT throwing (no retry). MANUAL snapshots still surface the error —
     // the user explicitly asked for a backup and deserves to know it can't run.
+    const snapshotUnsupported = !result.success && result.error === SNAPSHOT_ENDPOINT_UNSUPPORTED;
+    if (snapshotUnsupported) {
+      await this.recordAgentSnapshotHealth(attempt, "unsupported", result.error);
+    }
     if (
       !result.success &&
       data.snapshotType === "auto" &&
       (result.error === "Sandbox is not running" || result.error === SNAPSHOT_ENDPOINT_UNSUPPORTED)
     ) {
+      if (!snapshotUnsupported) {
+        await this.recordAgentSnapshotHealth(attempt, "unavailable", result.error);
+      }
       await jobsRepository.updateStatus(job.id, "completed", {
         result: agentSnapshotJobResultToRecord({
           cloudAgentId: data.agentId,
@@ -4316,15 +4447,34 @@ export class ProvisioningJobService {
     }
 
     if (!result.success) {
+      if (result.error === undefined) {
+        const invalidResult = new ElizaError(
+          "agent_snapshot returned a failed result without an error",
+          {
+            code: "AGENT_SNAPSHOT_INVALID_RESULT",
+            context: {
+              jobId: job.id,
+              agentId: data.agentId,
+              snapshotType: data.snapshotType,
+            },
+          },
+        );
+        await this.recordAgentSnapshotHealth(attempt, "failed", invalidResult.message);
+        throw invalidResult;
+      }
+      if (!snapshotUnsupported) {
+        await this.recordAgentSnapshotHealth(attempt, "failed", result.error);
+      }
       await jobsRepository.update(job.id, {
         result: agentSnapshotJobResultToRecord({
           cloudAgentId: data.agentId,
           error: result.error,
         }),
       });
-      throw new Error(result.error ?? "Unknown agent_snapshot failure");
+      throw new Error(result.error);
     }
 
+    await this.recordAgentSnapshotHealth(attempt, "success");
     const jobResult: AgentSnapshotJobResult = {
       cloudAgentId: data.agentId,
       backupId: result.backup?.id,

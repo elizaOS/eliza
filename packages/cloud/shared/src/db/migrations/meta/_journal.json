@@ -1275,6 +1275,13 @@
       "when": 1784811600000,
       "tag": "0182_warm_claim_credential_fence",
       "breakpoints": true
+    },
+    {
+      "idx": 192,
+      "version": "7",
+      "when": 1785283200000,
+      "tag": "0193_agent_sandbox_backup_health",
+      "breakpoints": true
     }
   ]
 }

@@ -134,15 +134,19 @@ describe("monitorProvisioningWorkerHealth", () => {
     expect(writes).toBe(1);
   });
 
-  it("sendProvisioningWorkerAlert posts to every configured channel and resolves without any", async () => {
+  it("sendProvisioningWorkerAlert verifies delivery and includes actionable details", async () => {
     const { sendProvisioningWorkerAlert } = await import("./provisioning-worker-health-monitor");
     const prevSlack = process.env.PROVISIONING_ALERT_SLACK_WEBHOOK;
     const prevPd = process.env.PROVISIONING_ALERT_PAGERDUTY_KEY;
     const realFetch = globalThis.fetch;
-    const posted: string[] = [];
-    globalThis.fetch = (async (url: string | URL | Request) => {
-      posted.push(String(url));
-      return new Response("ok");
+    const posted: Array<{ url: string; body: string }> = [];
+    let responseStatus = 200;
+    globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+      posted.push({
+        url: String(url),
+        body: typeof init?.body === "string" ? init.body : "",
+      });
+      return new Response("channel response", { status: responseStatus });
     }) as typeof fetch;
     try {
       // No channels configured: structured log only, no fetch, no throw.
@@ -165,8 +169,25 @@ describe("monitorProvisioningWorkerHealth", () => {
         dedupKey: "test-dedup",
       });
       expect(posted).toHaveLength(2);
-      expect(posted[0]).toBe("https://hooks.slack.example/T/B/x");
-      expect(posted[1]).toBe("https://events.pagerduty.com/v2/enqueue");
+      expect(posted[0]?.url).toBe("https://hooks.slack.example/T/B/x");
+      expect(posted[1]?.url).toBe("https://events.pagerduty.com/v2/enqueue");
+      expect(posted[0]?.body).toContain("TEST");
+
+      posted.length = 0;
+      delete process.env.PROVISIONING_ALERT_PAGERDUTY_KEY;
+      responseStatus = 500;
+      await expect(
+        sendProvisioningWorkerAlert({
+          title: "backup fleet unhealthy",
+          message: "backup delivery failed",
+          details: {
+            newlyAlerted: [{ agentId: "agent-actionable-123", fingerprint: "stale" }],
+          },
+        }),
+      ).rejects.toMatchObject({
+        code: "PROVISIONING_ALERT_DELIVERY_FAILED",
+      });
+      expect(posted[0]?.body).toContain("agent-actionable-123");
     } finally {
       globalThis.fetch = realFetch;
       if (prevSlack === undefined) delete process.env.PROVISIONING_ALERT_SLACK_WEBHOOK;

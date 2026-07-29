@@ -32,6 +32,8 @@ process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
 
 import { pushSchema } from "drizzle-kit/api";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../db/client";
+import { sqlRows } from "../../db/execute-helpers";
+import { agentSandboxBackupHealth } from "../../db/schemas/agent-sandbox-backup-health";
 import { agentSandboxes } from "../../db/schemas/agent-sandboxes";
 import { apiKeys } from "../../db/schemas/api-keys";
 import { generations } from "../../db/schemas/generations";
@@ -73,6 +75,7 @@ interface SeedOpts {
   bridgeUrl?: string | null;
   poolStatus?: string | null;
   lastBackupAt?: Date | null;
+  imageDigest?: string | null;
 }
 
 async function seedSandbox(opts: SeedOpts = {}): Promise<string> {
@@ -86,9 +89,12 @@ async function seedSandbox(opts: SeedOpts = {}): Promise<string> {
       // Default to a due, reachable, user-owned running row so each test only
       // has to flip the one field it is exercising out of eligibility.
       status: (opts.status ?? "running") as never,
+      execution_tier: "dedicated-always",
       bridge_url: opts.bridgeUrl === undefined ? REACHABLE_BRIDGE : opts.bridgeUrl,
       pool_status: (opts.poolStatus ?? null) as never,
       last_backup_at: opts.lastBackupAt ?? null,
+      image_digest: opts.imageDigest === undefined ? `sha256:${uniq("image")}` : opts.imageDigest,
+      environment_vars: { ELIZA_AGENT_LOCAL_STATE: "1" },
     })
     .returning();
   return sandbox.id;
@@ -101,6 +107,15 @@ async function snapshotJobsFor(agentId: string): Promise<Array<Record<string, un
     .where(and(eq(jobs.agent_id, agentId), eq(jobs.type, "agent_snapshot")))) as Array<
     Record<string, unknown>
   >;
+}
+
+async function readDatabaseNow(): Promise<Date> {
+  const [clock] = await sqlRows<{ now: Date | string }>(
+    dbWrite,
+    sql`SELECT clock_timestamp() AS now`,
+  );
+  if (!clock) throw new Error("PGlite clock query returned no row");
+  return clock.now instanceof Date ? clock.now : new Date(clock.now);
 }
 
 beforeAll(async () => {
@@ -122,6 +137,7 @@ beforeAll(async () => {
       usageRecords,
       generations,
       agentSandboxes,
+      agentSandboxBackupHealth,
       jobs,
     };
     const { apply } = await pushSchema(schema as never, dbWrite as never);
@@ -154,7 +170,17 @@ describe("enqueueScheduledBackups — sentinel-bridge exclusion (#15737)", () =>
 
     // Both rows are `running` with a non-null bridge_url; only the reachable one
     // survives the scan predicate and gets a real `agent_snapshot` job row.
-    expect(res).toEqual({ scanned: 1, enqueued: 1 });
+    expect(res).toMatchObject({
+      dueTotal: 2,
+      selected: 1,
+      created: 1,
+      reused: 0,
+      unsupported: 0,
+      failed: 0,
+      backlogAfter: 1,
+      scanned: 1,
+      enqueued: 1,
+    });
 
     const reachableJobs = await snapshotJobsFor(reachableId);
     expect(reachableJobs).toHaveLength(1);
@@ -171,7 +197,14 @@ describe("enqueueScheduledBackups — sentinel-bridge exclusion (#15737)", () =>
 
     const res = await provisioningJobService.enqueueScheduledBackups();
 
-    expect(res).toEqual({ scanned: 0, enqueued: 0 });
+    expect(res).toMatchObject({
+      dueTotal: 3,
+      selected: 0,
+      created: 0,
+      backlogAfter: 3,
+      scanned: 0,
+      enqueued: 0,
+    });
     for (const id of [a, b, c]) {
       expect(await snapshotJobsFor(id)).toHaveLength(0);
     }
@@ -186,7 +219,7 @@ describe("enqueueScheduledBackups — eligibility predicate", () => {
 
     const res = await provisioningJobService.enqueueScheduledBackups();
 
-    expect(res).toEqual({ scanned: 1, enqueued: 1 });
+    expect(res).toMatchObject({ dueTotal: 1, selected: 1, created: 1, backlogAfter: 0 });
     expect(await snapshotJobsFor(running)).toHaveLength(1);
     expect(await snapshotJobsFor(sleeping)).toHaveLength(0);
     expect(await snapshotJobsFor(pending)).toHaveLength(0);
@@ -198,7 +231,7 @@ describe("enqueueScheduledBackups — eligibility predicate", () => {
 
     const res = await provisioningJobService.enqueueScheduledBackups();
 
-    expect(res).toEqual({ scanned: 1, enqueued: 1 });
+    expect(res).toMatchObject({ dueTotal: 1, selected: 1, created: 1, backlogAfter: 0 });
     expect(await snapshotJobsFor(owned)).toHaveLength(1);
     expect(await snapshotJobsFor(warm)).toHaveLength(0);
   });
@@ -209,7 +242,7 @@ describe("enqueueScheduledBackups — eligibility predicate", () => {
 
     const res = await provisioningJobService.enqueueScheduledBackups();
 
-    expect(res).toEqual({ scanned: 1, enqueued: 1 });
+    expect(res).toMatchObject({ dueTotal: 2, selected: 1, created: 1, backlogAfter: 1 });
     expect(await snapshotJobsFor(bridged)).toHaveLength(1);
     expect(await snapshotJobsFor(bridgeless)).toHaveLength(0);
   });
@@ -225,7 +258,7 @@ describe("enqueueScheduledBackups — eligibility predicate", () => {
 
     const res = await provisioningJobService.enqueueScheduledBackups({ minIntervalMs });
 
-    expect(res).toEqual({ scanned: 2, enqueued: 2 });
+    expect(res).toMatchObject({ dueTotal: 2, selected: 2, created: 2, backlogAfter: 0 });
     expect(await snapshotJobsFor(neverBackedUp)).toHaveLength(1);
     expect(await snapshotJobsFor(staleBackup)).toHaveLength(1);
     expect(await snapshotJobsFor(freshBackup)).toHaveLength(0);
@@ -241,8 +274,35 @@ describe("enqueueScheduledBackups — eligibility predicate", () => {
     // The LIMIT is applied in SQL, so `scanned` reflects the cap, not the fleet.
     expect(res.scanned).toBe(2);
     expect(res.enqueued).toBe(2);
+    expect(res.dueTotal).toBe(3);
+    expect(res.backlogAfter).toBe(1);
     const total = await dbWrite.select().from(jobs).where(eq(jobs.type, "agent_snapshot"));
     expect(total).toHaveLength(2);
+  });
+
+  test("fast and slow worker clocks cannot distort database-owned cutoffs", async () => {
+    const dbNow = await readDatabaseNow();
+    const sandbox = await seedSandbox({ lastBackupAt: dbNow });
+    const fastWorker = await provisioningJobService.enqueueScheduledBackups({
+      now: new Date(dbNow.getTime() + 365 * 24 * 60 * 60_000),
+      minIntervalMs: 6 * 60 * 60_000,
+    });
+    expect(fastWorker).toMatchObject({ dueTotal: 0, selected: 0 });
+
+    await dbWrite
+      .update(agentSandboxes)
+      .set({ last_backup_at: new Date(dbNow.getTime() - 7 * 60 * 60_000) })
+      .where(eq(agentSandboxes.id, sandbox));
+    const slowWorker = await provisioningJobService.enqueueScheduledBackups({
+      now: new Date(dbNow.getTime() - 365 * 24 * 60 * 60_000),
+      minIntervalMs: 6 * 60 * 60_000,
+    });
+    expect(slowWorker).toMatchObject({
+      dueTotal: 1,
+      selected: 1,
+      created: 1,
+      backlogAfter: 0,
+    });
   });
 });
 
@@ -251,14 +311,169 @@ describe("enqueueScheduledBackups — enqueue behavior", () => {
     const agentId = await seedSandbox({ bridgeUrl: REACHABLE_BRIDGE });
 
     const first = await provisioningJobService.enqueueScheduledBackups();
-    expect(first).toEqual({ scanned: 1, enqueued: 1 });
+    expect(first).toMatchObject({
+      dueTotal: 1,
+      selected: 1,
+      created: 1,
+      reused: 0,
+      enqueued: 1,
+    });
 
     // The row is still due (last_backup_at unchanged) and the snapshot job is
     // still pending, so in-flight idempotency must reuse it — one job row total.
     const second = await provisioningJobService.enqueueScheduledBackups();
-    expect(second).toEqual({ scanned: 1, enqueued: 1 });
+    expect(second).toMatchObject({
+      dueTotal: 1,
+      selected: 0,
+      created: 0,
+      reused: 1,
+      backlogAfter: 0,
+      scanned: 0,
+      enqueued: 0,
+    });
 
     expect(await snapshotJobsFor(agentId)).toHaveLength(1);
+  });
+
+  test("an unsupported population larger than the cap cannot starve a reachable image", async () => {
+    const unsupported = [
+      {
+        id: await seedSandbox({ imageDigest: "sha256:unsupported-1" }),
+        digest: "sha256:unsupported-1",
+      },
+      {
+        id: await seedSandbox({ imageDigest: "sha256:unsupported-2" }),
+        digest: "sha256:unsupported-2",
+      },
+      {
+        id: await seedSandbox({ imageDigest: "sha256:unsupported-3" }),
+        digest: "sha256:unsupported-3",
+      },
+    ];
+    for (const row of unsupported) {
+      await dbWrite.insert(agentSandboxBackupHealth).values({
+        sandbox_record_id: row.id,
+        image_identity: row.digest,
+        capability: "unsupported",
+      });
+    }
+    const reachable = await seedSandbox({ imageDigest: "sha256:supported" });
+
+    const result = await provisioningJobService.enqueueScheduledBackups({
+      maxAgents: 1,
+    });
+
+    expect(result).toMatchObject({
+      dueTotal: 4,
+      selected: 1,
+      created: 1,
+      unsupported: 3,
+      backlogAfter: 0,
+    });
+    expect(await snapshotJobsFor(reachable)).toHaveLength(1);
+    for (const row of unsupported) {
+      expect(await snapshotJobsFor(row.id)).toHaveLength(0);
+    }
+  });
+
+  test("backlog accounting does not double-subtract an active unsupported agent", async () => {
+    const digest = "sha256:unsupported-active";
+    const unsupportedActive = await seedSandbox({ imageDigest: digest });
+    await dbWrite.insert(agentSandboxBackupHealth).values({
+      sandbox_record_id: unsupportedActive,
+      image_identity: digest,
+      capability: "unsupported",
+    });
+    const [owner] = await dbWrite
+      .select({
+        organizationId: agentSandboxes.organization_id,
+        userId: agentSandboxes.user_id,
+      })
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.id, unsupportedActive));
+    expect(owner).toBeDefined();
+    if (!owner) throw new Error("seeded sandbox owner was not found");
+    await dbWrite.insert(jobs).values({
+      type: "agent_snapshot",
+      status: "pending",
+      data: {
+        agentId: unsupportedActive,
+        organizationId: owner.organizationId,
+        userId: owner.userId,
+        snapshotType: "auto",
+      },
+      data_storage: "inline",
+      agent_id: unsupportedActive,
+      organization_id: owner.organizationId,
+      user_id: owner.userId,
+    });
+    await seedSandbox({ bridgeUrl: null });
+    const reachable = await seedSandbox();
+
+    const result = await provisioningJobService.enqueueScheduledBackups({
+      maxAgents: 1,
+    });
+
+    expect(result).toMatchObject({
+      dueTotal: 3,
+      selected: 1,
+      created: 1,
+      reused: 1,
+      unsupported: 1,
+      backlogAfter: 1,
+    });
+    expect(await snapshotJobsFor(reachable)).toHaveLength(1);
+  });
+
+  test("oldest-first fairness advances predictably across capped cycles", async () => {
+    const now = await readDatabaseNow();
+    const oldest = await seedSandbox({
+      lastBackupAt: new Date(now.getTime() - 12 * 60 * 60_000),
+    });
+    const middle = await seedSandbox({
+      lastBackupAt: new Date(now.getTime() - 10 * 60 * 60_000),
+    });
+    const newest = await seedSandbox({
+      lastBackupAt: new Date(now.getTime() - 8 * 60 * 60_000),
+    });
+
+    const first = await provisioningJobService.enqueueScheduledBackups({
+      minIntervalMs: 6 * 60 * 60_000,
+      maxAgents: 1,
+    });
+    expect(first).toMatchObject({
+      dueTotal: 3,
+      selected: 1,
+      created: 1,
+      backlogAfter: 2,
+    });
+    expect(first.oldestDueAgeMs).toBeGreaterThanOrEqual(12 * 60 * 60_000);
+    expect(first.oldestDueAgeMs).toBeLessThan(12 * 60 * 60_000 + 5_000);
+    expect(await snapshotJobsFor(oldest)).toHaveLength(1);
+    expect(await snapshotJobsFor(middle)).toHaveLength(0);
+    expect(await snapshotJobsFor(newest)).toHaveLength(0);
+
+    await dbWrite
+      .update(jobs)
+      .set({ status: "completed", completed_at: now })
+      .where(eq(jobs.agent_id, oldest));
+    await dbWrite
+      .update(agentSandboxes)
+      .set({ last_backup_at: now })
+      .where(eq(agentSandboxes.id, oldest));
+
+    const second = await provisioningJobService.enqueueScheduledBackups({
+      minIntervalMs: 6 * 60 * 60_000,
+      maxAgents: 1,
+    });
+    expect(second).toMatchObject({
+      dueTotal: 2,
+      selected: 1,
+      created: 1,
+      backlogAfter: 1,
+    });
+    expect(await snapshotJobsFor(middle)).toHaveLength(1);
+    expect(await snapshotJobsFor(newest)).toHaveLength(0);
   });
 
   test("a per-row enqueue failure is caught: scanned counts the row, enqueued does not, the scan finishes", async () => {
@@ -280,6 +495,8 @@ describe("enqueueScheduledBackups — enqueue behavior", () => {
       const res = await provisioningJobService.enqueueScheduledBackups();
       expect(res.scanned).toBe(2);
       expect(res.enqueued).toBe(1);
+      expect(res.failed).toBe(1);
+      expect(res.backlogAfter).toBe(1);
       expect(spy).toHaveBeenCalledTimes(2);
       const succeedingCall = spy.mock.calls.find(
         (c) => (c[0] as { agentId?: string })?.agentId === succeeding,

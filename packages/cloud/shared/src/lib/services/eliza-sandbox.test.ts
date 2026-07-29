@@ -1446,7 +1446,7 @@ describe("ElizaSandboxService sleep", () => {
     const latestBackupSpy = spyOn(agentSandboxesRepository, "getLatestBackup").mockResolvedValue(
       undefined,
     );
-    const createBackupSpy = spyOn(agentSandboxesRepository, "createBackup");
+    const createBackupSpy = spyOn(agentSandboxesRepository, "createBackupForObservedGeneration");
     const updateSpy = spyOn(agentSandboxesRepository, "update");
 
     try {
@@ -1705,6 +1705,72 @@ describe("ElizaSandboxService snapshot — endpoint capability", () => {
     } finally {
       findRunningSpy.mockRestore();
       createBackupSpy.mockRestore();
+    }
+  });
+
+  test("a generation change retains the historical row without pruning or reporting success", async () => {
+    const { ElizaSandboxService, SNAPSHOT_GENERATION_CHANGED } = await import(
+      "./eliza-sandbox.ts?actual"
+    );
+    const rec = customSandbox();
+    const backup = {
+      id: "00000000-0000-4000-8000-0000000000ff",
+      sandbox_record_id: rec.id,
+      snapshot_type: "auto",
+      size_bytes: 48,
+      created_at: new Date(),
+    } as AgentSandboxBackup;
+    const findRunningSpy = spyOn(agentSandboxesRepository, "findRunningSandbox").mockResolvedValue(
+      rec,
+    );
+    const latestSpy = spyOn(agentSandboxesRepository, "getLatestBackup").mockResolvedValue(
+      undefined,
+    );
+    const createBackupSpy = spyOn(
+      agentSandboxesRepository,
+      "createBackupForObservedGeneration",
+    ).mockResolvedValue({
+      backup,
+      generationMatched: false,
+      canonicalBackupAt: null,
+    });
+    const pruneSpy = spyOn(agentSandboxesRepository, "pruneBackups").mockResolvedValue(0);
+    globalThis.fetch = mock(
+      async () =>
+        new Response(JSON.stringify({ memories: [], config: {}, workspaceFiles: {} }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+    );
+
+    try {
+      const res = await new ElizaSandboxService().snapshot(rec.id, rec.organization_id, "auto");
+      expect(res).toEqual({
+        success: false,
+        backup,
+        error: SNAPSHOT_GENERATION_CHANGED,
+        outcome: "generation_changed",
+      });
+      expect(createBackupSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sandbox_record_id: rec.id,
+          snapshot_type: "auto",
+        }),
+        {
+          organizationId: rec.organization_id,
+          environmentRevision: rec.environment_revision,
+          sandboxId: rec.sandbox_id,
+          nodeId: rec.node_id,
+          containerName: rec.container_name,
+          imageDigest: rec.image_digest,
+        },
+      );
+      expect(pruneSpy).not.toHaveBeenCalled();
+    } finally {
+      findRunningSpy.mockRestore();
+      latestSpy.mockRestore();
+      createBackupSpy.mockRestore();
+      pruneSpy.mockRestore();
     }
   });
 });

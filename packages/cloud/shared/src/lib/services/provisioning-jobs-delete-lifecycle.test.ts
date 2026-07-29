@@ -28,6 +28,7 @@ import {
 } from "bun:test";
 
 import * as realHelpersNs from "../../db/helpers";
+import { agentSandboxBackupHealthRepository } from "../../db/repositories/agent-sandbox-backup-health";
 import { jobsRepository } from "../../db/repositories/jobs";
 import type { Job } from "../../db/schemas/jobs";
 import { elizaSandboxService, SNAPSHOT_ENDPOINT_UNSUPPORTED } from "./eliza-sandbox";
@@ -68,6 +69,27 @@ afterAll(() => {
 const ORG = "22222222-2222-4222-8222-222222222222";
 const AGENT = "e06bb509-6c52-4c33-a9f7-66addc43e8c8";
 const USER = "33333333-3333-4333-8333-333333333333";
+const healthSpies: Array<{ mockRestore: () => void }> = [];
+
+beforeEach(() => {
+  healthSpies.push(
+    spyOn(agentSandboxBackupHealthRepository, "startAttempt").mockResolvedValue({
+      sandboxRecordId: AGENT,
+      attemptToken: "55555555-5555-4555-8555-555555555555",
+      jobId: "44444444-4444-4444-8444-444444444444",
+      jobStartedAt: new Date("2026-06-20T00:00:00.000Z"),
+      imageIdentity: "sha256:test-image",
+    }),
+    spyOn(agentSandboxBackupHealthRepository, "recordAttemptOutcome").mockResolvedValue({
+      recorded: true,
+      imageChanged: false,
+    }),
+  );
+});
+
+afterEach(() => {
+  for (const healthSpy of healthSpies.splice(0)) healthSpy.mockRestore();
+});
 
 function makeJob(type: ProvisioningJobType, extraData: Record<string, unknown> = {}): Job {
   const now = new Date("2026-06-20T00:00:00.000Z");

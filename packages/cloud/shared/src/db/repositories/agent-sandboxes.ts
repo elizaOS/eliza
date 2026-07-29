@@ -1,5 +1,6 @@
 // Persists agent sandboxes records for cloud services through the shared DB boundary.
 import { randomUUID } from "node:crypto";
+import { ElizaError } from "@elizaos/core";
 import { and, asc, desc, eq, gte, inArray, isNotNull, lt, ne, notInArray, sql } from "drizzle-orm";
 import {
   applyBackupDelta,
@@ -22,6 +23,7 @@ import { ensureAgentSandboxSchema } from "../ensure-agent-sandbox-schema";
 import { sqlRows } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";
 import {
+  type AgentBackupPlainStateData,
   type AgentBackupSnapshotType,
   type AgentBackupStateData,
   type AgentBackupStoredStateData,
@@ -51,6 +53,21 @@ export type {
 
 export type AgentSandboxBackupMetadata = Omit<StoredAgentSandboxBackup, "state_data">;
 
+export interface AgentSnapshotGenerationFence {
+  organizationId: string;
+  environmentRevision: number;
+  sandboxId: string | null;
+  nodeId: string | null;
+  containerName: string | null;
+  imageDigest: string | null;
+}
+
+export interface FencedBackupCreationResult {
+  backup: AgentSandboxBackup;
+  generationMatched: boolean;
+  canonicalBackupAt: Date | null;
+}
+
 /**
  * A user sandbox row freshly claimed from the warm pool. `warm_pool_row_id`
  * is the id of the pool row the claim transaction deleted — the container's
@@ -67,6 +84,21 @@ const EMPTY_BACKUP_STATE: AgentSandboxBackup["state_data"] = {
 };
 const MAX_RECONSTRUCTED_BACKUP_CHAIN_DEPTH = 100;
 const MAX_RECONSTRUCTED_BACKUP_CHAIN_BYTES = 128 * 1024 * 1024;
+
+async function authoritativeDatabaseNow(): Promise<Date> {
+  const [clock] = await sqlRows<{ now: Date | string }>(
+    dbWrite,
+    sql`SELECT clock_timestamp() AS now`,
+  );
+  const now = clock?.now instanceof Date ? clock.now : new Date(clock?.now ?? Number.NaN);
+  if (Number.isNaN(now.getTime())) {
+    throw new ElizaError("Agent backup database clock query returned an invalid value", {
+      code: "AGENT_BACKUP_INVALID_DB_CLOCK",
+      context: { value: String(clock?.now) },
+    });
+  }
+  return now;
+}
 
 async function getStoredBackupById(
   backupId: string,
@@ -89,24 +121,38 @@ async function backupOrganizationId(sandboxRecordId: string): Promise<string> {
   return sandbox.organizationId;
 }
 
-export async function hydrateAgentSandboxBackup(
-  backup: StoredAgentSandboxBackup,
-): Promise<AgentSandboxBackup> {
-  let stateData = backup.state_data;
-  if (backup.state_data_storage === "r2") {
-    if (!backup.state_data_key) {
-      throw new Error(`Agent sandbox backup ${backup.id} is missing state_data_key`);
+async function decryptStoredAgentBackupState(params: {
+  backupId: string;
+  stateData: AgentBackupStoredStateData;
+  storage: string;
+  storageKey: string | null;
+}): Promise<AgentBackupPlainStateData> {
+  let stateData = params.stateData;
+  if (params.storage === "r2") {
+    if (!params.storageKey) {
+      throw new Error(`Agent sandbox backup ${params.backupId} is missing state_data_key`);
     }
 
-    const raw = await getObjectText(backup.state_data_key);
+    const raw = await getObjectText(params.storageKey);
     if (!raw) {
-      throw new Error(`Agent sandbox backup payload not found: ${backup.state_data_key}`);
+      throw new Error(`Agent sandbox backup payload not found: ${params.storageKey}`);
     }
 
     stateData = JSON.parse(raw) as AgentBackupStoredStateData;
   }
 
-  const decrypted = await decryptAgentBackupStateData(backup.id, stateData);
+  return decryptAgentBackupStateData(params.backupId, stateData);
+}
+
+export async function hydrateAgentSandboxBackup(
+  backup: StoredAgentSandboxBackup,
+): Promise<AgentSandboxBackup> {
+  const decrypted = await decryptStoredAgentBackupState({
+    backupId: backup.id,
+    stateData: backup.state_data,
+    storage: backup.state_data_storage,
+    storageKey: backup.state_data_key,
+  });
 
   return {
     ...backup,
@@ -1532,6 +1578,83 @@ export class AgentSandboxesRepository {
     const [r] = await dbWrite.insert(agentSandboxBackups).values(insertData).returning();
     if (!r) throw new Error("Failed to create backup");
     return await hydrateAgentSandboxBackup(r);
+  }
+
+  /**
+   * Persist a captured backup while advancing the canonical success clock only
+   * if the observed compute/image generation still owns the sandbox row. The
+   * backup remains a historical restore point when the CAS loses, but it cannot
+   * make a replacement generation appear protected.
+   */
+  async createBackupForObservedGeneration(
+    data: NewAgentSandboxBackup,
+    expected: AgentSnapshotGenerationFence,
+  ): Promise<FencedBackupCreationResult> {
+    const createdAt = await authoritativeDatabaseNow();
+    const insertData = await prepareAgentBackupInsertData(
+      {
+        ...data,
+        created_at: createdAt,
+      },
+      expected.organizationId,
+    );
+    if (!insertData.id) {
+      throw new ElizaError("Prepared agent backup is missing its durable ID", {
+        code: "AGENT_BACKUP_PREPARE_MISSING_ID",
+        context: { sandboxRecordId: data.sandbox_record_id },
+      });
+    }
+    // Verify encryption and any offloaded object before opening a transaction.
+    // The transaction then contains only the insert and generation CAS, while a
+    // missing object or failed decrypt cannot advance the success clock.
+    const verifiedStateData = await decryptStoredAgentBackupState({
+      backupId: insertData.id,
+      stateData: insertData.state_data,
+      storage: insertData.state_data_storage ?? "inline",
+      storageKey: insertData.state_data_key ?? null,
+    });
+    const persisted = await dbWrite.transaction(async (tx) => {
+      const [storedBackup] = await tx.insert(agentSandboxBackups).values(insertData).returning();
+      if (!storedBackup) {
+        throw new ElizaError("Failed to persist an agent backup", {
+          code: "AGENT_BACKUP_INSERT_FAILED",
+          context: { sandboxRecordId: data.sandbox_record_id },
+        });
+      }
+      const [winner] = await tx
+        .update(agentSandboxes)
+        .set({
+          last_backup_at: sql`clock_timestamp()`,
+          updated_at: sql`clock_timestamp()`,
+        })
+        .where(
+          and(
+            eq(agentSandboxes.id, data.sandbox_record_id),
+            eq(agentSandboxes.organization_id, expected.organizationId),
+            eq(agentSandboxes.status, "running"),
+            sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
+            eq(agentSandboxes.environment_revision, expected.environmentRevision),
+            sql`${agentSandboxes.sandbox_id} IS NOT DISTINCT FROM ${expected.sandboxId}`,
+            sql`${agentSandboxes.node_id} IS NOT DISTINCT FROM ${expected.nodeId}`,
+            sql`${agentSandboxes.container_name} IS NOT DISTINCT FROM ${expected.containerName}`,
+            sql`${agentSandboxes.image_digest} IS NOT DISTINCT FROM ${expected.imageDigest}`,
+          ),
+        )
+        .returning({ canonicalBackupAt: agentSandboxes.last_backup_at });
+      return {
+        storedBackup,
+        canonicalBackupAt: winner?.canonicalBackupAt ?? null,
+      };
+    });
+
+    return {
+      backup: {
+        ...persisted.storedBackup,
+        state_data: verifiedStateData,
+      },
+      generationMatched: persisted.canonicalBackupAt !== null,
+      canonicalBackupAt: persisted.canonicalBackupAt,
+    };
   }
 
   async listBackups(sandboxRecordId: string, limit = 10): Promise<AgentSandboxBackup[]> {

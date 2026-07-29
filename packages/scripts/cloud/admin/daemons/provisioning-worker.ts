@@ -59,6 +59,8 @@ type WorkerProcessNodeDiskCleanup =
   typeof import("@elizaos/cloud-shared/lib/services/node-disk-manager").processNodeDiskCleanup;
 type WorkerRunBackupVerificationCycle =
   typeof import("@elizaos/cloud-shared/lib/services/agent-backup-verifier").runBackupVerificationCycle;
+type WorkerRunBackupFleetHealthCycle =
+  typeof import("@elizaos/cloud-shared/lib/services/agent-backup-fleet-health").runAgentBackupFleetHealthCycle;
 
 interface PreflightKmsClient {
   getOrCreateKey(keyId: string): Promise<unknown>;
@@ -89,6 +91,7 @@ interface WorkerDeps {
   withTimeout: WorkerWithTimeout;
   processNodeDiskCleanup: WorkerProcessNodeDiskCleanup;
   runBackupVerificationCycle: WorkerRunBackupVerificationCycle;
+  runBackupFleetHealthCycle: WorkerRunBackupFleetHealthCycle;
 }
 
 export interface ProvisioningWorkerConfig {
@@ -233,6 +236,8 @@ export function readWorkerConfig(
 }
 
 let depsPromise: Promise<WorkerDeps> | null = null;
+let backupFleetHealthRunnerForTests: WorkerRunBackupFleetHealthCycle | null =
+  null;
 
 /**
  * Test-only seam: inject a pre-resolved deps bag so cycle functions can be
@@ -242,6 +247,13 @@ let depsPromise: Promise<WorkerDeps> | null = null;
 export function __setDepsForTests(deps: WorkerDeps | null): void {
   depsPromise = deps ? Promise.resolve(deps) : null;
   if (!deps) cachedWarmPoolManagerInstance = null;
+}
+
+/** Test-only narrow override for the backup fleet-health daemon phase. */
+export function __setBackupFleetHealthRunnerForTests(
+  runner: WorkerRunBackupFleetHealthCycle | null,
+): void {
+  backupFleetHealthRunnerForTests = runner;
 }
 
 async function loadDeps(): Promise<WorkerDeps> {
@@ -266,6 +278,7 @@ async function loadDeps(): Promise<WorkerDeps> {
       import("@elizaos/cloud-shared/lib/utils/with-timeout"),
       import("@elizaos/cloud-shared/lib/services/node-disk-manager"),
       import("@elizaos/cloud-shared/lib/services/agent-backup-verifier"),
+      import("@elizaos/cloud-shared/lib/services/agent-backup-fleet-health"),
     ]).then(
       ([
         jobsModule,
@@ -283,6 +296,7 @@ async function loadDeps(): Promise<WorkerDeps> {
         withTimeoutModule,
         nodeDiskManagerModule,
         backupVerifierModule,
+        backupFleetHealthModule,
       ]) => ({
         provisioningJobService: jobsModule.provisioningJobService,
         logger: loggerModule.logger,
@@ -304,6 +318,8 @@ async function loadDeps(): Promise<WorkerDeps> {
         processNodeDiskCleanup: nodeDiskManagerModule.processNodeDiskCleanup,
         runBackupVerificationCycle:
           backupVerifierModule.runBackupVerificationCycle,
+        runBackupFleetHealthCycle:
+          backupFleetHealthModule.runAgentBackupFleetHealthCycle,
       }),
     );
   }
@@ -843,6 +859,22 @@ export async function processBackupVerificationCycle(): Promise<
 > {
   const { runBackupVerificationCycle } = await loadDeps();
   return runBackupVerificationCycle();
+}
+
+/**
+ * Measure the managed local-state fleet's real backup RPO and page on absent,
+ * stale, unsupported, unreachable, backlogged, or repeatedly failing agents.
+ * The shared service persists alert fingerprints so this five-minute daemon
+ * phase can run continuously without duplicating an unchanged incident.
+ */
+export async function processBackupFleetHealthCycle(): Promise<
+  Awaited<ReturnType<WorkerRunBackupFleetHealthCycle>>
+> {
+  if (backupFleetHealthRunnerForTests) {
+    return backupFleetHealthRunnerForTests();
+  }
+  const { runBackupFleetHealthCycle } = await loadDeps();
+  return runBackupFleetHealthCycle();
 }
 
 /**
@@ -1708,6 +1740,30 @@ async function runInfraMaintenanceCycle(
           },
         );
       }
+    },
+  );
+
+  await runBoundedPhase(
+    logger,
+    "backup fleet health cycle",
+    () => processBackupFleetHealthCycle(),
+    (summary) => {
+      logger.info("[provisioning-worker] backup fleet health cycle complete", {
+        event: "backup_fleet_health.cycle",
+        laneEnabled: summary.laneEnabled,
+        healthy: summary.healthy,
+        total: summary.total,
+        absent: summary.absent,
+        stale: summary.stale,
+        unsupported: summary.unsupported,
+        unreachable: summary.unreachable,
+        repeatedFailures: summary.repeatedFailures,
+        imageRefreshRequired: summary.imageRefreshRequired,
+        backlog: summary.backlog,
+        backlogPressure: summary.backlogPressure,
+        oldestBackupAgeMs: summary.oldestBackupAgeMs,
+        newAlerts: summary.newAlerts,
+      });
     },
   );
 
