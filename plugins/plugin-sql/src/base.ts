@@ -23,12 +23,19 @@ import {
   type ConnectorOwnerBindingRecord,
   type ConsumeOAuthFlowStateParams,
   type CreateOAuthFlowStateParams,
+  canRequesterMutateDocument,
   DatabaseAdapter,
   type DeleteConnectorAccountParams,
   DOCUMENT_LIST_QUERY_CAPABILITY_VERSION,
+  type DocumentCompareAndSwapParams,
+  type DocumentDeleteParams,
+  type DocumentFragmentQueryParams,
+  type DocumentGetQueryParams,
   type DocumentListCursor,
   type DocumentListQueryParams,
   type DocumentListQueryResult,
+  type DocumentMutationResult,
+  documentMutationSnapshotMatches,
   documentRoleHasGlobalVisibility,
   ElizaError,
   type EntitiesForRoomsResult,
@@ -65,7 +72,9 @@ import {
   type TaskMetadata,
   type UpsertConnectorAccountParams,
   type UUID,
+  validateDocumentFragmentQueryParams,
   validateDocumentListQueryParams,
+  validateDocumentRequesterContext,
   type World,
 } from "@elizaos/core";
 
@@ -178,19 +187,72 @@ function escapeIlikeLiteral(value: string): string {
   return value.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_");
 }
 
-function documentVisibilityCondition(params: DocumentListQueryParams): SQL | undefined {
-  if (documentRoleHasGlobalVisibility(params.requesterRole)) {
-    return undefined;
-  }
+const DOCUMENT_UUID_PATTERN = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$";
 
+function validDocumentRevision(metadata: SQLWrapper): SQL {
   return sql`(
-    COALESCE(${memoryTable.metadata}->>'scope', 'global') = 'global'
-    OR (
-      ${memoryTable.metadata}->>'scope' = 'user-private'
-      AND (
-        ${memoryTable.metadata}->>'scopedToEntityId' = ${params.requesterEntityId}
-        OR ${memoryTable.metadata}->>'addedBy' = ${params.requesterEntityId}
-        OR ${memoryTable.entityId} = ${params.requesterEntityId}
+    NOT (${metadata} ? 'documentRevision')
+    OR CASE
+      WHEN jsonb_typeof(${metadata}->'documentRevision') = 'number' THEN
+        (${metadata}->>'documentRevision')::numeric >= 0
+        AND trunc((${metadata}->>'documentRevision')::numeric)
+          = (${metadata}->>'documentRevision')::numeric
+        AND (${metadata}->>'documentRevision')::numeric <= 9007199254740991
+      ELSE false
+    END
+  )`;
+}
+
+function documentRevisionExpression(metadata: SQLWrapper): SQL {
+  return sql`CASE
+    WHEN jsonb_typeof(${metadata}->'documentRevision') = 'number'
+    THEN (${metadata}->>'documentRevision')::numeric
+    ELSE 0::numeric
+  END`;
+}
+
+function validDocumentAuthorizationMetadata(metadata: SQLWrapper): SQL {
+  return sql`(
+    ${metadata}->>'scope' IN (
+      'global', 'owner-private', 'user-private', 'agent-private'
+    )
+    AND (
+      NOT (${metadata} ? 'scopedToEntityId')
+      OR ${metadata}->>'scopedToEntityId' ~* ${DOCUMENT_UUID_PATTERN}
+    )
+    AND (
+      NOT (${metadata} ? 'addedBy')
+      OR ${metadata}->>'addedBy' ~* ${DOCUMENT_UUID_PATTERN}
+    )
+    AND (
+      ${metadata}->>'scope' <> 'user-private'
+      OR ${metadata}->>'scopedToEntityId' ~* ${DOCUMENT_UUID_PATTERN}
+    )
+    AND ${validDocumentRevision(metadata)}
+  )`;
+}
+
+function documentVisibilityCondition(
+  params: DocumentListQueryParams | DocumentGetQueryParams | DocumentFragmentQueryParams,
+  metadata: SQLWrapper = memoryTable.metadata
+): SQL {
+  const validAuthorizationMetadata = validDocumentAuthorizationMetadata(metadata);
+  if (documentRoleHasGlobalVisibility(params.requesterRole)) {
+    return validAuthorizationMetadata;
+  }
+  if (params.requesterRole === "ADMIN") {
+    return sql`(
+      ${validAuthorizationMetadata}
+      AND ${metadata}->>'scope' IN ('global', 'user-private')
+    )`;
+  }
+  return sql`(
+    ${validAuthorizationMetadata}
+    AND (
+      ${metadata}->>'scope' = 'global'
+      OR (
+        ${metadata}->>'scope' = 'user-private'
+        AND ${metadata}->>'scopedToEntityId' = ${params.requesterEntityId}
       )
     )
   )`;
@@ -252,8 +314,10 @@ import {
   lte,
   or,
   type SQL,
+  type SQLWrapper,
   sql,
 } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 
 const v4 = () => crypto.randomUUID();
 
@@ -307,11 +371,34 @@ import {
   taskTable,
   worldTable,
 } from "./schema/index";
-import { documentSearchVectorExpression } from "./schema/memory";
+import { documentSearchTokensExpression } from "./schema/memory";
 
 type AgentRow = typeof agentTable.$inferSelect;
 type AgentMessageExamples = NonNullable<Agent["messageExamples"]>;
 type AgentKnowledge = NonNullable<Agent["knowledge"]>;
+type MemoryRow = typeof memoryTable.$inferSelect;
+
+function memoryFromRow(row: MemoryRow, embedding?: number[], similarity?: number): Memory {
+  return {
+    id: row.id as UUID,
+    createdAt: row.createdAt.getTime(),
+    content:
+      typeof row.content === "string"
+        ? JSON.parse(row.content)
+        : (row.content as Memory["content"]),
+    entityId: row.entityId as UUID,
+    agentId: row.agentId as UUID,
+    roomId: row.roomId as UUID,
+    worldId: (row.worldId ?? undefined) as UUID | undefined,
+    unique: row.unique,
+    metadata:
+      typeof row.metadata === "string"
+        ? JSON.parse(row.metadata)
+        : (row.metadata as MemoryMetadata),
+    ...(embedding ? { embedding } : {}),
+    ...(similarity !== undefined ? { similarity } : {}),
+  };
+}
 
 function normalizeAgentMessageExamples(messageExamples: unknown): AgentMessageExamples {
   if (!Array.isArray(messageExamples) || messageExamples.length === 0) {
@@ -379,6 +466,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   private migrationRunPromise: Promise<void> | null = null;
   private _connectorAccountStore?: ConnectorAccountStore;
   private messageSearchTrigramAvailable: boolean | null = null;
+  private lastDocumentListStatement?: {
+    query: SQL;
+    entityContext: UUID;
+  };
 
   protected getConnectorAccountStore(): ConnectorAccountStore {
     if (!this._connectorAccountStore) {
@@ -1601,6 +1692,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       const visibleConditions: SQL[] = [
         eq(memoryTable.type, "documents"),
         eq(memoryTable.agentId, params.agentId),
+        isNotNull(memoryTable.roomId),
+        isNotNull(memoryTable.entityId),
         sql`${memoryTable.metadata}->>'type' = 'document'`,
       ];
       if (!hasGlobalVisibility) {
@@ -1610,14 +1703,11 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
             : sql`false`
         );
       }
-      const visibility = documentVisibilityCondition(params);
-      if (visibility) visibleConditions.push(visibility);
+      visibleConditions.push(documentVisibilityCondition(params));
 
       const availableConditions: SQL[] = [];
       if (params.scope) {
-        availableConditions.push(
-          sql`COALESCE(${memoryTable.metadata}->>'scope', 'global') = ${params.scope}`
-        );
+        availableConditions.push(sql`${memoryTable.metadata}->>'scope' = ${params.scope}`);
       }
       if (params.scopedToEntityId) {
         availableConditions.push(
@@ -1646,10 +1736,17 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       const normalizedQuery = params.query?.trim();
       let queryCondition: SQL = sql`true`;
       if (normalizedQuery) {
-        queryCondition = sql`${documentSearchVectorExpression(
+        queryCondition = sql`${documentSearchTokensExpression(
           memoryTable.content,
           memoryTable.metadata
-        )} @@ plainto_tsquery('simple', ${normalizedQuery})`;
+        )} @> regexp_split_to_array(
+          translate(
+            trim(${normalizedQuery}),
+            'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
+            'abcdefghijklmnopqrstuvwxyz'
+          ),
+          E'[ \\t\\r\\n\\f]+'
+        )`;
       }
 
       type DocumentRow = {
@@ -1709,14 +1806,22 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         const pageRows = rows.slice(0, params.limit);
         const documents = pageRows.map(mapDocument);
         const last = pageRows.at(-1);
+        const first = pageRows.at(0);
+        const snapshotCreatedAt =
+          params.cursor?.snapshotCreatedAt ??
+          params.cursor?.createdAt ??
+          (first ? databaseTimestampToMs(first.cursorCreatedAt) : undefined);
+        const snapshotId = params.cursor?.snapshotId ?? params.cursor?.id ?? first?.id;
         return {
           documents,
           hasMore,
-          ...(hasMore && last
+          ...(hasMore && last && snapshotCreatedAt !== undefined && snapshotId
             ? {
                 nextCursor: {
                   createdAt: databaseTimestampToMs(last.cursorCreatedAt),
                   id: last.id as UUID,
+                  snapshotCreatedAt,
+                  snapshotId: snapshotId as UUID,
                 },
               }
             : {}),
@@ -1724,6 +1829,21 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       };
 
       const cursorCreatedAt = sql`date_trunc('milliseconds', ${memoryTable.createdAt})`;
+      if (params.cursor) {
+        const snapshotCreatedAt = params.cursor.snapshotCreatedAt ?? params.cursor.createdAt;
+        const snapshotId = params.cursor.snapshotId ?? params.cursor.id;
+        visibleConditions.push(sql`(
+          ${cursorCreatedAt} < (
+            timestamp 'epoch' + ${snapshotCreatedAt} * interval '1 millisecond'
+          )
+          OR (
+            ${cursorCreatedAt} = (
+              timestamp 'epoch' + ${snapshotCreatedAt} * interval '1 millisecond'
+            )
+            AND ${memoryTable.id} <= ${snapshotId}::uuid
+          )
+        )`);
+      }
       const cursorCondition = params.cursor
         ? sql`(
             ${cursorCreatedAt} < (
@@ -1739,7 +1859,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         : sql`true`;
       const offsetClause = params.cursor ? sql`` : sql`OFFSET ${params.offset}`;
       const pageSize = params.limit + 1;
-      const result = await tx.execute(sql`
+      const productionQuery = sql`
         WITH counts AS MATERIALIZED (
           SELECT
             (
@@ -1838,7 +1958,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           CASE page_rows.page_kind WHEN 'matched' THEN 0 ELSE 1 END,
           page_rows.cursor_created_at DESC,
           page_rows.id DESC
-      `);
+      `;
+      this.lastDocumentListStatement = { query: productionQuery, entityContext };
+      const result = await tx.execute(productionQuery);
       type QueryRow = Partial<DocumentRow> & {
         totalVisible: unknown;
         totalAvailable: unknown;
@@ -1888,6 +2010,227 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         ...(matchedPage.nextCursor ? { nextCursor: matchedPage.nextCursor } : {}),
         ...(availablePage.nextCursor ? { availableNextCursor: availablePage.nextCursor } : {}),
       };
+    });
+  }
+
+  /**
+   * Explains the exact most recently executed document-list CTE. This is a
+   * diagnostics boundary for real database regression tests; callers must run
+   * it immediately after the query they are measuring.
+   */
+  async explainLastDocumentListQuery(): Promise<unknown[]> {
+    const statement = this.lastDocumentListStatement;
+    if (!statement) {
+      throw new ElizaError("No document-list query is available to explain", {
+        code: "DOCUMENT_LIST_EXPLAIN_UNAVAILABLE",
+      });
+    }
+    return this.withEntityContext(statement.entityContext, async (tx) => {
+      const result = await tx.execute(
+        sql`EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${statement.query}`
+      );
+      return result.rows;
+    });
+  }
+
+  private documentReadConditions(
+    params: DocumentGetQueryParams | DocumentCompareAndSwapParams | DocumentDeleteParams
+  ): SQL[] {
+    const hasGlobalVisibility = documentRoleHasGlobalVisibility(params.requesterRole);
+    return [
+      eq(memoryTable.id, params.documentId),
+      eq(memoryTable.type, "documents"),
+      eq(memoryTable.agentId, params.agentId),
+      isNotNull(memoryTable.roomId),
+      isNotNull(memoryTable.entityId),
+      sql`${memoryTable.metadata}->>'type' = 'document'`,
+      ...(hasGlobalVisibility
+        ? []
+        : [
+            params.requesterRoomIds.length > 0
+              ? inArray(memoryTable.roomId, params.requesterRoomIds)
+              : sql`false`,
+          ]),
+      documentVisibilityCondition(params),
+    ];
+  }
+
+  private documentStorageConditions(
+    params: DocumentCompareAndSwapParams | DocumentDeleteParams
+  ): SQL[] {
+    return [
+      eq(memoryTable.id, params.documentId),
+      eq(memoryTable.type, "documents"),
+      eq(memoryTable.agentId, params.agentId),
+      sql`${memoryTable.metadata}->>'type' = 'document'`,
+    ];
+  }
+
+  async getDocument(params: DocumentGetQueryParams): Promise<Memory | null> {
+    validateDocumentRequesterContext(params);
+    const entityContext = documentRoleHasGlobalVisibility(params.requesterRole)
+      ? params.agentId
+      : params.requesterEntityId;
+    return this.withEntityContext(entityContext, async (tx) => {
+      const rows = await tx
+        .select()
+        .from(memoryTable)
+        .where(and(...this.documentReadConditions(params)))
+        .limit(1);
+      return rows[0] ? memoryFromRow(rows[0]) : null;
+    });
+  }
+
+  async queryDocumentFragments(params: DocumentFragmentQueryParams): Promise<Memory[]> {
+    const expectedEmbeddingDimension = Number(this.embeddingDimension.replace(/^dim/, ""));
+    validateDocumentFragmentQueryParams(params, expectedEmbeddingDimension);
+    const entityContext = documentRoleHasGlobalVisibility(params.requesterRole)
+      ? params.agentId
+      : params.requesterEntityId;
+    return this.withEntityContext(entityContext, async (tx) => {
+      const parent = alias(memoryTable, "document_parent");
+      const fragment = alias(memoryTable, "document_fragment");
+      const hasGlobalVisibility = documentRoleHasGlobalVisibility(params.requesterRole);
+      const conditions: SQL[] = [
+        eq(parent.type, "documents"),
+        eq(parent.agentId, params.agentId),
+        isNotNull(parent.roomId),
+        isNotNull(parent.entityId),
+        sql`${parent.metadata}->>'type' = 'document'`,
+        eq(fragment.type, "document_fragments"),
+        eq(fragment.agentId, params.agentId),
+        sql`${fragment.metadata}->>'type' = 'fragment'`,
+        validDocumentRevision(fragment.metadata),
+        sql`${documentRevisionExpression(fragment.metadata)}
+          = ${documentRevisionExpression(parent.metadata)}`,
+        documentVisibilityCondition(params, parent.metadata),
+      ];
+      if (!hasGlobalVisibility) {
+        conditions.push(
+          params.requesterRoomIds.length > 0
+            ? inArray(parent.roomId, params.requesterRoomIds)
+            : sql`false`
+        );
+      }
+      if (params.roomId) conditions.push(eq(parent.roomId, params.roomId));
+      if (params.worldId) conditions.push(eq(parent.worldId, params.worldId));
+      if (params.entityId) conditions.push(eq(parent.entityId, params.entityId));
+
+      const parentJoin = sql`${parent.id}::text = ${fragment.metadata}->>'documentId'`;
+      if (!params.embedding) {
+        const rows = await tx
+          .select({ memory: fragment })
+          .from(fragment)
+          .innerJoin(parent, parentJoin)
+          .where(and(...conditions))
+          .orderBy(desc(fragment.createdAt), desc(fragment.id))
+          .limit(params.limit);
+        return rows.map((row) => memoryFromRow(row.memory));
+      }
+
+      const activeColumn = embeddingTable[this.embeddingDimension];
+      const distance = cosineDistance(activeColumn, params.embedding);
+      const similarity = sql<number>`1 - (${distance})`;
+      conditions.push(isNotNull(activeColumn));
+      if (params.matchThreshold !== undefined) {
+        conditions.push(gte(similarity, params.matchThreshold));
+      }
+      const rows = await tx
+        .select({
+          memory: fragment,
+          embedding: activeColumn,
+          similarity,
+        })
+        .from(embeddingTable)
+        .innerJoin(fragment, eq(fragment.id, embeddingTable.memoryId))
+        .innerJoin(parent, parentJoin)
+        .where(and(...conditions))
+        .orderBy(asc(distance), desc(fragment.createdAt), desc(fragment.id))
+        .limit(params.limit);
+      return rows.map((row) =>
+        memoryFromRow(
+          row.memory,
+          row.embedding ? Array.from(row.embedding) : undefined,
+          row.similarity
+        )
+      );
+    });
+  }
+
+  async compareAndSwapDocument(
+    params: DocumentCompareAndSwapParams
+  ): Promise<DocumentMutationResult> {
+    validateDocumentRequesterContext(params);
+    const entityContext = documentRoleHasGlobalVisibility(params.requesterRole)
+      ? params.agentId
+      : params.requesterEntityId;
+    return this.withEntityContext(entityContext, async (tx) => {
+      const rows = await tx
+        .select()
+        .from(memoryTable)
+        .where(and(...this.documentStorageConditions(params)))
+        .for("update")
+        .limit(1);
+      const row = rows[0];
+      if (!row) return { status: "not_found" };
+      const existing = memoryFromRow(row);
+      if (!documentMutationSnapshotMatches(existing, params.expected)) {
+        return { status: "conflict" };
+      }
+      if (!canRequesterMutateDocument(existing, params)) return { status: "forbidden" };
+      const replacement = params.replacement;
+      const updated = await tx
+        .update(memoryTable)
+        .set({
+          content: replacement.content,
+          entityId: replacement.entityId,
+          roomId: replacement.roomId,
+          worldId: replacement.worldId,
+          unique: replacement.unique ?? row.unique,
+          metadata: replacement.metadata ?? {},
+        })
+        .where(eq(memoryTable.id, params.documentId))
+        .returning();
+      return updated[0]
+        ? { status: "updated", document: memoryFromRow(updated[0]) }
+        : { status: "conflict" };
+    });
+  }
+
+  async deleteDocumentWithSnapshot(params: DocumentDeleteParams): Promise<DocumentMutationResult> {
+    validateDocumentRequesterContext(params);
+    const entityContext = documentRoleHasGlobalVisibility(params.requesterRole)
+      ? params.agentId
+      : params.requesterEntityId;
+    return this.withEntityContext(entityContext, async (tx) => {
+      const rows = await tx
+        .select()
+        .from(memoryTable)
+        .where(and(...this.documentStorageConditions(params)))
+        .for("update")
+        .limit(1);
+      const row = rows[0];
+      if (!row) return { status: "not_found" };
+      const existing = memoryFromRow(row);
+      if (!documentMutationSnapshotMatches(existing, params.expected)) {
+        return { status: "conflict" };
+      }
+      if (!canRequesterMutateDocument(existing, params)) return { status: "forbidden" };
+      await tx
+        .delete(memoryTable)
+        .where(
+          and(
+            inArray(memoryTable.type, ["documents", "document_fragments"]),
+            eq(memoryTable.agentId, params.agentId),
+            sql`${memoryTable.metadata}->>'type' = 'fragment'`,
+            sql`${memoryTable.metadata}->>'documentId' = ${params.documentId}`
+          )
+        );
+      const deleted = await tx
+        .delete(memoryTable)
+        .where(eq(memoryTable.id, params.documentId))
+        .returning();
+      return deleted[0] ? { status: "deleted", document: existing } : { status: "conflict" };
     });
   }
 

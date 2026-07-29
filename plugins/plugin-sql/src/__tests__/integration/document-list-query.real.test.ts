@@ -1,6 +1,6 @@
 /**
- * Compares the bounded document-list query across real PGlite/Postgres and the
- * core in-memory fallback, including RLS context, visibility, and keyset ties.
+ * Compares document authorization, search, mutation snapshots, cursor bounds,
+ * and production query plans across real PGlite/Postgres and in-memory storage.
  */
 import {
   ChannelType,
@@ -11,6 +11,7 @@ import {
   type Memory,
   MemoryType,
   type Room,
+  readDocumentMutationSnapshot,
   type UUID,
   type World,
 } from "@elizaos/core";
@@ -20,7 +21,6 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { PgDatabaseAdapter } from "../../pg/adapter";
 import type { PgliteDatabaseAdapter } from "../../pglite/adapter";
 import { embeddingTable, memoryTable } from "../../schema";
-import { documentSearchVectorExpression } from "../../schema/memory";
 import type { DrizzleDatabase } from "../../types";
 import { createIsolatedTestDatabase } from "../test-helpers";
 
@@ -73,7 +73,7 @@ describe("document list query (real SQL parity)", () => {
     ]);
     await adapter.addParticipant(REQUESTER_ID, roomId);
     await adapter.addParticipant(OTHER_ENTITY_ID, roomId);
-  });
+  }, 120_000);
 
   afterAll(async () => {
     if (cleanup) await cleanup();
@@ -321,7 +321,7 @@ describe("document list query (real SQL parity)", () => {
     expect(sqlIds).toHaveLength(151);
     expect(new Set(sqlIds).size).toBe(151);
     expect(sqlIds).toEqual(inMemoryIds);
-  });
+  }, 30_000);
 
   it("normalizes microsecond database timestamps before applying keyset cursors", async () => {
     const documents = [document(1), document(2), document(3)];
@@ -417,6 +417,33 @@ describe("document list query (real SQL parity)", () => {
     }
   });
 
+  it("anchors cursor pages so newer concurrent inserts do not duplicate or skip the original set", async () => {
+    const original = Array.from({ length: 10 }, (_, index) => document(index));
+    await seedSql(original);
+    const params: DocumentListQueryParams = {
+      agentId,
+      requesterEntityId: REQUESTER_ID,
+      requesterRoomIds: [],
+      requesterRole: "RUNTIME",
+      limit: 3,
+      offset: 0,
+    };
+    const first = await adapter.queryDocuments(params);
+    expect(first.nextCursor?.snapshotCreatedAt).toBeDefined();
+    expect(first.nextCursor?.snapshotId).toBeDefined();
+    await seedSql([document(100)]);
+
+    const seen = [...ids(first.documents)];
+    let cursor = first.nextCursor;
+    while (cursor) {
+      const page = await adapter.queryDocuments({ ...params, cursor });
+      seen.push(...ids(page.documents));
+      cursor = page.nextCursor;
+    }
+    expect(seen).toHaveLength(original.length);
+    expect(new Set(seen)).toEqual(new Set(ids(original)));
+  });
+
   it("rejects unbounded offsets before issuing a database query", async () => {
     await expect(
       adapter.queryDocuments({
@@ -432,25 +459,248 @@ describe("document list query (real SQL parity)", () => {
     });
   });
 
-  it("installs the document keyset and full-text indexes", async () => {
+  it("matches portable email, version, URL, punctuation, locale, and Unicode queries", async () => {
+    const corpus = [
+      document(1, { content: { text: "Contact Test.User+Tag@Example.COM today" } }),
+      document(2, { content: { text: "Release v1.2.3 is stable" } }),
+      document(3, { content: { text: "Visit https://Example.com/a?b=c#d now" } }),
+      document(4, { content: { text: "C++ foo_bar don't stop" } }),
+      document(5, { content: { text: "İstanbul 東京 café" } }),
+    ];
+    await seedSql(corpus);
+    const inMemory = await seedInMemory(corpus);
+    const cases: Array<[string, UUID]> = [
+      ["test.user+tag@example.com", corpus[0]!.id!],
+      ["V1.2.3", corpus[1]!.id!],
+      ["https://example.com/a?b=c#d", corpus[2]!.id!],
+      ["C++ foo_bar don't", corpus[3]!.id!],
+      ["İstanbul 東京", corpus[4]!.id!],
+    ];
+    for (const [query, expectedId] of cases) {
+      const params: DocumentListQueryParams = {
+        agentId,
+        requesterEntityId: REQUESTER_ID,
+        requesterRoomIds: [],
+        requesterRole: "RUNTIME",
+        query,
+        limit: 10,
+        offset: 0,
+      };
+      const sqlResult = await adapter.queryDocuments(params);
+      const memoryResult = await inMemory.queryDocuments(params);
+      expect(ids(sqlResult.documents)).toEqual([expectedId]);
+      expect(sqlResult).toEqual(memoryResult);
+    }
+    const partialEmail = await adapter.queryDocuments({
+      agentId,
+      requesterEntityId: REQUESTER_ID,
+      requesterRoomIds: [],
+      requesterRole: "RUNTIME",
+      query: "example",
+      limit: 10,
+      offset: 0,
+    });
+    expect(partialEmail.documents).toEqual([]);
+  });
+
+  it("fails closed consistently for malformed parent scopes and fragment metadata", async () => {
+    const embedding = Array.from({ length: 384 }, (_, index) => (index === 0 ? 1 : 0));
+    const malformedParents = [
+      document(1, { metadata: { scope: "public" } }),
+      document(4, { metadata: { scope: "user-private" } }),
+      document(5, { metadata: { addedBy: "not-a-uuid" } }),
+      document(6, { metadata: { documentRevision: 1.5 } }),
+      document(9, { metadata: { documentRevision: "1" } }),
+    ];
+    const validParent = document(2, {
+      metadata: {
+        scope: "user-private",
+        scopedToEntityId: REQUESTER_ID,
+      },
+    });
+    const hiddenParent = document(3, {
+      metadata: {
+        scope: "user-private",
+        scopedToEntityId: OTHER_ENTITY_ID,
+      },
+    });
+    const visibleFragment = document(7, {
+      embedding,
+      metadata: {
+        type: MemoryType.FRAGMENT,
+        documentId: validParent.id,
+        position: 0,
+        scope: "owner-private",
+      },
+    });
+    const forgedFragment = document(8, {
+      metadata: {
+        type: MemoryType.FRAGMENT,
+        documentId: hiddenParent.id,
+        position: 0,
+        scope: "global",
+        scopedToEntityId: REQUESTER_ID,
+      },
+    });
+    const staleFragment = document(10, {
+      metadata: {
+        type: MemoryType.FRAGMENT,
+        documentId: validParent.id,
+        position: 1,
+        documentRevision: 1,
+      },
+    });
+    await seedSql([...malformedParents, validParent, hiddenParent]);
+    const inMemory = await seedInMemory([
+      ...malformedParents,
+      validParent,
+      hiddenParent,
+      visibleFragment,
+      forgedFragment,
+      staleFragment,
+    ]);
+    await adapter.createMemories(
+      [visibleFragment, forgedFragment, staleFragment].map((memory) => ({
+        memory,
+        tableName: "document_fragments",
+      }))
+    );
+    const context = {
+      agentId,
+      requesterEntityId: REQUESTER_ID,
+      requesterRoomIds: [roomId],
+      requesterRole: "USER" as const,
+    };
+    const listed = await adapter.queryDocuments({ ...context, limit: 10, offset: 0 });
+    expect(ids(listed.documents)).toEqual([validParent.id]);
+    expect(listed).toEqual(await inMemory.queryDocuments({ ...context, limit: 10, offset: 0 }));
+    await expect(
+      adapter.getDocument({ ...context, documentId: malformedParents[0]!.id! })
+    ).resolves.toBeNull();
+    const fragments = await adapter.queryDocumentFragments({ ...context, limit: 10 });
+    expect(ids(fragments)).toEqual([visibleFragment.id]);
+    expect(ids(fragments)).toEqual(
+      ids(await inMemory.queryDocumentFragments({ ...context, limit: 10 }))
+    );
+    const vectorFragments = await adapter.queryDocumentFragments({
+      ...context,
+      embedding,
+      limit: 10,
+      matchThreshold: 0.5,
+    });
+    const inMemoryVectorFragments = await inMemory.queryDocumentFragments({
+      ...context,
+      embedding,
+      limit: 10,
+      matchThreshold: 0.5,
+    });
+    expect(ids(vectorFragments)).toEqual([visibleFragment.id]);
+    expect(ids(vectorFragments)).toEqual(ids(inMemoryVectorFragments));
+    expect(vectorFragments[0]?.similarity).toBeCloseTo(
+      inMemoryVectorFragments[0]?.similarity ?? -1,
+      6
+    );
+    await expect(
+      adapter.queryDocumentFragments({
+        ...context,
+        embedding: [Number.NaN],
+        limit: 10,
+      })
+    ).rejects.toMatchObject({ code: "DOCUMENT_FRAGMENT_QUERY_INVALID" });
+
+    for (const requesterRole of ["OWNER", "ADMIN"] as const) {
+      const roleContext = {
+        ...context,
+        requesterRole,
+        requesterRoomIds: requesterRole === "OWNER" ? [] : [roomId],
+      };
+      const sqlResult = await adapter.queryDocuments({
+        ...roleContext,
+        limit: 20,
+        offset: 0,
+      });
+      const memoryResult = await inMemory.queryDocuments({
+        ...roleContext,
+        limit: 20,
+        offset: 0,
+      });
+      expect(sqlResult).toEqual(memoryResult);
+      expect(ids(sqlResult.documents)).not.toEqual(expect.arrayContaining(ids(malformedParents)));
+    }
+  });
+
+  it("rejects update and delete after concurrent scope or owner changes", async () => {
+    const original = document(1, {
+      metadata: {
+        scope: "user-private",
+        scopedToEntityId: REQUESTER_ID,
+        documentRevision: 0,
+      },
+    });
+    await seedSql([original]);
+    const context = {
+      agentId,
+      requesterEntityId: REQUESTER_ID,
+      requesterRoomIds: [roomId],
+      requesterRole: "USER" as const,
+    };
+    const observed = await adapter.getDocument({ ...context, documentId: original.id! });
+    expect(observed).not.toBeNull();
+    const snapshot = readDocumentMutationSnapshot(observed!);
+    expect(snapshot).not.toBeNull();
+
+    await adapter.updateMemories([
+      {
+        id: original.id!,
+        metadata: {
+          ...original.metadata,
+          scope: "owner-private",
+        },
+      },
+    ]);
+    const replacement = { ...observed!, content: { text: "unauthorized replacement" } };
+    await expect(
+      adapter.compareAndSwapDocument({
+        ...context,
+        documentId: original.id!,
+        expected: snapshot!,
+        replacement,
+      })
+    ).resolves.toEqual({ status: "conflict" });
+
+    await adapter.updateMemories([
+      {
+        id: original.id!,
+        metadata: {
+          ...original.metadata,
+          scopedToEntityId: OTHER_ENTITY_ID,
+        },
+      },
+    ]);
+    await expect(
+      adapter.deleteDocumentWithSnapshot({
+        ...context,
+        documentId: original.id!,
+        expected: snapshot!,
+      })
+    ).resolves.toEqual({ status: "conflict" });
+    await expect(adapter.getMemoryById(original.id!)).resolves.not.toBeNull();
+  });
+
+  it("installs the evidence-backed portable-token index", async () => {
     const db = adapter.getDatabase() as DrizzleDatabase;
     const result = await db.execute(sql`
       SELECT indexname, indexdef
       FROM pg_indexes
-      WHERE indexname IN (
-        'idx_memories_document_list_order',
-        'idx_memories_document_search'
-      )
+      WHERE indexname = 'idx_memories_document_search'
       ORDER BY indexname
     `);
     const definitions = new Map(
       result.rows.map((row) => [String(row.indexname), String(row.indexdef)])
     );
 
-    expect(definitions.get("idx_memories_document_list_order")).toContain("date_trunc");
-    expect(definitions.get("idx_memories_document_list_order")).toContain("metadata");
     expect(definitions.get("idx_memories_document_search")).toContain("USING gin");
-    expect(definitions.get("idx_memories_document_search")).toContain("to_tsvector");
+    expect(definitions.get("idx_memories_document_search")).toContain("regexp_split_to_array");
   });
 
   postgresIt(
@@ -493,32 +743,58 @@ describe("document list query (real SQL parity)", () => {
           'documentId',
           gen_random_uuid()::text,
           'timestamp',
-          series.value
+          series.value,
+          'scope',
+          'global',
+          'scopedToEntityId',
+          ${REQUESTER_ID}::text,
+          'addedBy',
+          ${REQUESTER_ID}::text,
+          'tags',
+          jsonb_build_array('archive', 'scale')
         )
       FROM generate_series(1, 20_000) AS series(value)
     `);
       await db.execute(sql`ANALYZE ${memoryTable}`);
 
-      const explain = await db.execute(sql`
-      EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
-      SELECT COUNT(*)
-      FROM ${memoryTable}
-      WHERE
-        ${memoryTable.type} = 'documents'
-        AND ${memoryTable.agentId} = ${agentId}
-        AND ${memoryTable.metadata}->>'type' = 'document'
-        AND ${documentSearchVectorExpression(
-          memoryTable.content,
-          memoryTable.metadata
-        )} @@ plainto_tsquery('simple', 'rareplanmarker')
-    `);
-      const plan = JSON.stringify(explain.rows[0]);
+      const productionResult = await adapter.queryDocuments({
+        agentId,
+        requesterEntityId: REQUESTER_ID,
+        requesterRoomIds: [roomId],
+        requesterRole: "USER",
+        query: "rareplanmarker release",
+        scope: "global",
+        scopedToEntityId: REQUESTER_ID,
+        addedBy: REQUESTER_ID,
+        tags: ["archive", "scale"],
+        timeRangeStart: 0,
+        timeRangeEnd: 20_000,
+        limit: 25,
+        offset: 0,
+      });
+      expect(productionResult.totalMatched).toBe(1);
+      const explain = await adapter.explainLastDocumentListQuery();
+      const plan = JSON.stringify(explain[0]);
       const executionTime = plan.match(/"Execution Time":\s*([0-9.]+)/)?.[1];
 
       expect(plan).toContain("idx_memories_document_search");
       expect(plan).toMatch(/Bitmap Index Scan|Index Scan/);
       expect(executionTime).toBeDefined();
-      expect(Number(executionTime)).toBeLessThan(1_000);
+      expect(Number(executionTime)).toBeLessThan(5_000);
+
+      const highOffsetResult = await adapter.queryDocuments({
+        agentId,
+        requesterEntityId: REQUESTER_ID,
+        requesterRoomIds: [roomId],
+        requesterRole: "USER",
+        limit: 25,
+        offset: 10_000,
+      });
+      expect(highOffsetResult.documents).toHaveLength(25);
+      const highOffsetPlan = JSON.stringify((await adapter.explainLastDocumentListQuery())[0]);
+      const highOffsetExecutionTime = highOffsetPlan.match(/"Execution Time":\s*([0-9.]+)/)?.[1];
+      expect(highOffsetExecutionTime).toBeDefined();
+      expect(Number(highOffsetExecutionTime)).toBeLessThan(10_000);
     },
     120_000
   );

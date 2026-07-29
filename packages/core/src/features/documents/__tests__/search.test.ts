@@ -132,9 +132,22 @@ function makeFragment(
 function buildRuntime(opts: { hasEmbedding: boolean; fragments?: Memory[] }) {
 	const fragments = opts.fragments ?? [];
 	const agentId = "agent-1" as UUID;
+	const queryDocumentFragments = vi.fn(
+		async (params: { requesterEntityId: UUID }) =>
+			fragments.filter((fragment) => {
+				const metadata = fragment.metadata as
+					| Record<string, unknown>
+					| undefined;
+				return (
+					metadata?.scope !== "user-private" ||
+					metadata.scopedToEntityId === params.requesterEntityId
+				);
+			}),
+	);
 
 	return {
 		agentId,
+		adapter: { queryDocumentFragments },
 		getModel: vi.fn((modelType: string) => {
 			if (modelType === ModelType.TEXT_EMBEDDING) {
 				return opts.hasEmbedding ? vi.fn() : undefined;
@@ -147,6 +160,7 @@ function buildRuntime(opts: { hasEmbedding: boolean; fragments?: Memory[] }) {
 		}),
 		searchMemories: vi.fn(async (_params: unknown) => fragments),
 		getMemories: vi.fn(async (_params: unknown) => fragments),
+		getRoomsForParticipants: vi.fn(async () => ["room-1" as UUID]),
 		getRoom: vi.fn(async () => ({
 			id: "room-1" as UUID,
 			agentId,
@@ -205,7 +219,7 @@ describe("DocumentService.searchDocuments", () => {
 	});
 
 	describe("vector-only mode", () => {
-		it("delegates to searchMemories and maps results", async () => {
+		it("delegates to the authorized fragment query and maps results", async () => {
 			const frag = makeFragment(
 				"frag-1",
 				"The capital of France is Paris",
@@ -220,8 +234,7 @@ describe("DocumentService.searchDocuments", () => {
 				"vector",
 			);
 
-			expect(rt.searchMemories).toHaveBeenCalledOnce();
-			expect(rt.getMemories).not.toHaveBeenCalled();
+			expect(rt.adapter.queryDocumentFragments).toHaveBeenCalledOnce();
 			expect(results).toHaveLength(1);
 			expect(results[0].id).toBe("frag-1");
 		});
@@ -242,7 +255,7 @@ describe("DocumentService.searchDocuments", () => {
 	});
 
 	describe("keyword-only mode", () => {
-		it("uses getMemories (not searchMemories) and scores via BM25", async () => {
+		it("uses the authorized fragment query and scores via BM25", async () => {
 			const fragments = [
 				makeFragment("frag-a", "quantum computing and qubits"),
 				makeFragment("frag-b", "classical computing transistors"),
@@ -257,8 +270,7 @@ describe("DocumentService.searchDocuments", () => {
 				"keyword",
 			);
 
-			expect(rt.searchMemories).not.toHaveBeenCalled();
-			expect(rt.getMemories).toHaveBeenCalledOnce();
+			expect(rt.adapter.queryDocumentFragments).toHaveBeenCalledOnce();
 
 			// frag-a should score highest (both "quantum" and "computing" match)
 			expect(results[0].id).toBe("frag-a");
@@ -332,8 +344,7 @@ describe("DocumentService.searchDocuments", () => {
 				"hybrid",
 			);
 
-			expect(rt.searchMemories).toHaveBeenCalledOnce();
-			expect(rt.getMemories).not.toHaveBeenCalled();
+			expect(rt.adapter.queryDocumentFragments).toHaveBeenCalledOnce();
 			expect(results).toHaveLength(2);
 
 			// frag-b should be ranked higher because BM25 breaks the vector tie
@@ -378,9 +389,8 @@ describe("DocumentService.searchDocuments", () => {
 				"hybrid",
 			);
 
-			// Should have used getMemories (keyword path), not searchMemories
-			expect(rt.searchMemories).not.toHaveBeenCalled();
-			expect(rt.getMemories).toHaveBeenCalled();
+			// The authorized fragment query runs without a vector in keyword mode.
+			expect(rt.adapter.queryDocumentFragments).toHaveBeenCalled();
 			expect(results[0].id).toBe("frag-keyword");
 		});
 
@@ -397,7 +407,7 @@ describe("DocumentService.searchDocuments", () => {
 				"vector",
 			);
 
-			expect(rt.searchMemories).not.toHaveBeenCalled();
+			expect(rt.adapter.queryDocumentFragments).toHaveBeenCalled();
 			expect(results).toHaveLength(1);
 		});
 	});
@@ -421,7 +431,7 @@ describe("DocumentService.searchDocuments", () => {
 			return rt;
 		}
 
-		it("hybrid falls open to keyword (getMemories) when the embed fails", async () => {
+		it("hybrid falls open to keyword when the embed fails", async () => {
 			const fragments = [
 				makeFragment("frag-k", "typescript strongly typed language"),
 				makeFragment("frag-o", "cooking pasta recipe"),
@@ -443,9 +453,9 @@ describe("DocumentService.searchDocuments", () => {
 				"hybrid",
 			);
 
-			// Failed open: keyword path (getMemories), NOT the vector path.
-			expect(rt.searchMemories).not.toHaveBeenCalled();
-			expect(rt.getMemories).toHaveBeenCalled();
+			expect(rt.adapter.queryDocumentFragments).toHaveBeenCalledWith(
+				expect.not.objectContaining({ embedding: expect.anything() }),
+			);
 			expect(results[0].id).toBe("frag-k");
 		});
 
@@ -465,8 +475,9 @@ describe("DocumentService.searchDocuments", () => {
 				"vector",
 			);
 
-			expect(rt.searchMemories).not.toHaveBeenCalled();
-			expect(rt.getMemories).toHaveBeenCalled();
+			expect(rt.adapter.queryDocumentFragments).toHaveBeenCalledWith(
+				expect.not.objectContaining({ embedding: expect.anything() }),
+			);
 			expect(results).toHaveLength(1);
 		});
 
@@ -486,8 +497,9 @@ describe("DocumentService.searchDocuments", () => {
 				"vector",
 			);
 
-			// Fast embed → vector search ran (searchMemories), no keyword fallback.
-			expect(rt.searchMemories).toHaveBeenCalledOnce();
+			expect(rt.adapter.queryDocumentFragments).toHaveBeenCalledWith(
+				expect.objectContaining({ embedding: expect.any(Array) }),
+			);
 			expect(results[0].id).toBe("frag-fast");
 		});
 	});
@@ -539,7 +551,9 @@ describe("DocumentService.searchDocuments", () => {
 					undefined,
 					{ turnMessageId: TURN_MESSAGE_ID },
 				);
-				expect(rt.searchMemories).toHaveBeenCalled();
+				expect(rt.adapter.queryDocumentFragments).toHaveBeenCalledWith(
+					expect.objectContaining({ embedding: expect.any(Array) }),
+				);
 				expect(embedCallCount(rt)).toBe(1);
 
 				// In-run recall caller (prefetch) presents the same messageId → adopts

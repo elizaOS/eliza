@@ -6,16 +6,19 @@
  */
 import { ElizaError } from "../errors";
 import {
+	type DocumentFragmentQueryParams,
 	type DocumentListCursor,
 	type DocumentListQueryParams,
 	type DocumentListQueryResult,
+	type DocumentMutationSnapshot,
+	type DocumentRequesterContext,
 	type IDatabaseAdapter,
 	type Memory,
 	MemoryType,
 	type UUID,
 } from "../types";
 
-export const DOCUMENT_LIST_QUERY_CAPABILITY_VERSION = 1 as const;
+export const DOCUMENT_LIST_QUERY_CAPABILITY_VERSION = 2 as const;
 export const DOCUMENT_LIST_MAX_LIMIT = 100;
 export const DOCUMENT_LIST_MAX_OFFSET = 10_000;
 export const DOCUMENT_LIST_MAX_QUERY_LENGTH = 512;
@@ -45,6 +48,7 @@ const DOCUMENT_LIST_SCOPES = new Set([
 ]);
 const UUID_PATTERN =
 	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const DOCUMENT_SEARCH_SEPARATOR = /[ \t\r\n\f]+/;
 
 function invalidPagination(
 	message: string,
@@ -60,7 +64,7 @@ function isUuid(value: unknown): value is UUID {
 	return typeof value === "string" && UUID_PATTERN.test(value);
 }
 
-function documentCreatedAt(memory: Memory): number {
+export function documentCreatedAt(memory: Memory): number {
 	if (
 		typeof memory.createdAt !== "number" ||
 		!Number.isSafeInteger(memory.createdAt)
@@ -78,7 +82,7 @@ function documentCreatedAt(memory: Memory): number {
 	return memory.createdAt;
 }
 
-function compareDocumentOrder(left: Memory, right: Memory): number {
+export function compareDocumentOrder(left: Memory, right: Memory): number {
 	const timeDifference = documentCreatedAt(right) - documentCreatedAt(left);
 	if (timeDifference !== 0) return timeDifference;
 	const leftId = left.id?.toLowerCase() ?? "";
@@ -87,7 +91,10 @@ function compareDocumentOrder(left: Memory, right: Memory): number {
 	return rightId < leftId ? -1 : 1;
 }
 
-function documentCursor(memory: Memory): DocumentListCursor {
+function documentCursor(
+	memory: Memory,
+	snapshot: Pick<DocumentListCursor, "snapshotCreatedAt" | "snapshotId">,
+): DocumentListCursor {
 	if (!isUuid(memory.id)) {
 		throw new ElizaError("Stored document is missing a valid UUID", {
 			code: "DOCUMENT_LIST_INVALID_MEMORY",
@@ -95,7 +102,11 @@ function documentCursor(memory: Memory): DocumentListCursor {
 			severity: "fatal",
 		});
 	}
-	return { createdAt: documentCreatedAt(memory), id: memory.id };
+	return {
+		createdAt: documentCreatedAt(memory),
+		id: memory.id,
+		...snapshot,
+	};
 }
 
 function isAfterDocumentCursor(
@@ -110,6 +121,20 @@ function isAfterDocumentCursor(
 	);
 }
 
+function isWithinDocumentSnapshot(
+	memory: Memory,
+	cursor: DocumentListCursor,
+): boolean {
+	const snapshotCreatedAt = cursor.snapshotCreatedAt ?? cursor.createdAt;
+	const snapshotId = cursor.snapshotId ?? cursor.id;
+	const createdAt = documentCreatedAt(memory);
+	if (createdAt !== snapshotCreatedAt) return createdAt < snapshotCreatedAt;
+	return (
+		typeof memory.id === "string" &&
+		memory.id.toLowerCase() <= snapshotId.toLowerCase()
+	);
+}
+
 function isDocumentMemory(memory: Memory): boolean {
 	return memory.metadata?.type === MemoryType.DOCUMENT;
 }
@@ -120,24 +145,108 @@ export function documentRoleHasGlobalVisibility(
 	return role === "OWNER" || role === "AGENT" || role === "RUNTIME";
 }
 
-function isDocumentVisible(
+function readUuidMetadata(
+	metadata: Record<string, unknown>,
+	key: string,
+): UUID | undefined {
+	const value = metadata[key];
+	return isUuid(value) ? value : undefined;
+}
+
+function readDocumentRevision(metadata: unknown): number | null {
+	if (metadata === null || typeof metadata !== "object") return null;
+	const value = Reflect.get(metadata, "documentRevision");
+	if (value === undefined) return 0;
+	return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+		? value
+		: null;
+}
+
+/**
+ * Parses the authorization-bearing document fields. Missing/unknown scopes,
+ * invalid ownership identifiers, and non-document rows fail closed.
+ */
+export function readDocumentMutationSnapshot(
 	memory: Memory,
-	params: DocumentListQueryParams,
+): DocumentMutationSnapshot | null {
+	if (
+		!isDocumentMemory(memory) ||
+		!isUuid(memory.roomId) ||
+		!isUuid(memory.entityId)
+	) {
+		return null;
+	}
+	const metadata = (memory.metadata ?? {}) as Record<string, unknown>;
+	const scope = metadata.scope;
+	if (typeof scope !== "string" || !DOCUMENT_LIST_SCOPES.has(scope)) {
+		return null;
+	}
+	const scopedToEntityId = readUuidMetadata(metadata, "scopedToEntityId");
+	if (scope === "user-private" && !scopedToEntityId) return null;
+	if (metadata.scopedToEntityId !== undefined && !scopedToEntityId) return null;
+	const addedBy = readUuidMetadata(metadata, "addedBy");
+	if (metadata.addedBy !== undefined && !addedBy) return null;
+	const revision = readDocumentRevision(metadata);
+	if (revision === null) return null;
+	return {
+		scope: scope as DocumentMutationSnapshot["scope"],
+		roomId: memory.roomId,
+		entityId: memory.entityId,
+		revision,
+		...(scopedToEntityId ? { scopedToEntityId } : {}),
+		...(addedBy ? { addedBy } : {}),
+	};
+}
+
+/** Canonical read decision shared by list, lookup, and fragment search. */
+export function isDocumentVisibleToRequester(
+	memory: Memory,
+	params: DocumentRequesterContext,
 ): boolean {
+	const snapshot = readDocumentMutationSnapshot(memory);
+	if (!snapshot) return false;
 	if (documentRoleHasGlobalVisibility(params.requesterRole)) {
 		return true;
 	}
-	if (!params.requesterRoomIds.includes(memory.roomId)) return false;
+	if (!params.requesterRoomIds.includes(snapshot.roomId)) return false;
+	if (snapshot.scope === "global") return true;
+	if (snapshot.scope !== "user-private") return false;
+	if (params.requesterRole === "ADMIN") return true;
+	return snapshot.scopedToEntityId === params.requesterEntityId;
+}
 
-	const metadata = (memory.metadata ?? {}) as Record<string, unknown>;
-	const scope = typeof metadata.scope === "string" ? metadata.scope : "global";
-	if (scope === "global") return true;
-	if (scope !== "user-private") return false;
-
+/** Canonical mutation decision evaluated again inside adapter CAS operations. */
+export function canRequesterMutateDocument(
+	memory: Memory,
+	params: DocumentRequesterContext,
+): boolean {
+	const snapshot = readDocumentMutationSnapshot(memory);
+	if (!snapshot) return false;
+	if (params.requesterRole === "OWNER") return true;
+	if (params.requesterRole === "AGENT" || params.requesterRole === "RUNTIME") {
+		return snapshot.scope === "agent-private";
+	}
+	if (!params.requesterRoomIds.includes(snapshot.roomId)) return false;
+	if (snapshot.scope !== "user-private") return false;
 	return (
-		metadata.scopedToEntityId === params.requesterEntityId ||
-		metadata.addedBy === params.requesterEntityId ||
-		memory.entityId === params.requesterEntityId
+		params.requesterRole === "ADMIN" ||
+		snapshot.scopedToEntityId === params.requesterEntityId
+	);
+}
+
+export function documentMutationSnapshotMatches(
+	memory: Memory,
+	expected: DocumentMutationSnapshot,
+): boolean {
+	const actual = readDocumentMutationSnapshot(memory);
+	return (
+		actual !== null &&
+		actual.scope === expected.scope &&
+		actual.roomId === expected.roomId &&
+		actual.entityId === expected.entityId &&
+		actual.scopedToEntityId === expected.scopedToEntityId &&
+		actual.addedBy === expected.addedBy &&
+		actual.revision === expected.revision
 	);
 }
 
@@ -146,7 +255,7 @@ function matchesDocumentFilters(
 	params: DocumentListQueryParams,
 ): boolean {
 	const metadata = (memory.metadata ?? {}) as Record<string, unknown>;
-	if (params.scope && (metadata.scope ?? "global") !== params.scope) {
+	if (params.scope && metadata.scope !== params.scope) {
 		return false;
 	}
 	if (
@@ -180,26 +289,40 @@ function matchesDocumentFilters(
 	return true;
 }
 
-function documentSearchLexemes(value: string): string[] {
-	return value.toLocaleLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+function asciiLower(value: string): string {
+	return value.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+}
+
+/**
+ * Locale-independent portable tokens used by every adapter. Only ASCII
+ * whitespace splits terms and only ASCII case folds; punctuation and Unicode
+ * code points remain exact, so email addresses, URLs, and versions cannot be
+ * tokenized differently by JavaScript and PostgreSQL.
+ */
+export function portableDocumentSearchTokens(value: string): string[] {
+	return asciiLower(value)
+		.split(DOCUMENT_SEARCH_SEPARATOR)
+		.filter((token) => token.length > 0);
+}
+
+export function documentSearchText(memory: Memory): string {
+	const metadata = (memory.metadata ?? {}) as Record<string, unknown>;
+	return [
+		memory.content.text,
+		metadata.title,
+		metadata.filename,
+		metadata.originalFilename,
+		metadata.source,
+	]
+		.filter((value): value is string => typeof value === "string")
+		.join("\n");
 }
 
 function matchesDocumentQuery(memory: Memory, query: string): boolean {
-	const metadata = (memory.metadata ?? {}) as Record<string, unknown>;
 	const haystack = new Set(
-		documentSearchLexemes(
-			[
-				memory.content.text,
-				metadata.title,
-				metadata.filename,
-				metadata.originalFilename,
-				metadata.source,
-			]
-				.filter((value): value is string => typeof value === "string")
-				.join("\n"),
-		),
+		portableDocumentSearchTokens(documentSearchText(memory)),
 	);
-	const queryLexemes = documentSearchLexemes(query);
+	const queryLexemes = portableDocumentSearchTokens(query);
 	return (
 		queryLexemes.length > 0 &&
 		queryLexemes.every((lexeme) => haystack.has(lexeme))
@@ -236,8 +359,13 @@ function paginateDocuments(
 	nextCursor?: DocumentListCursor;
 } {
 	const cursorFiltered = params.cursor
-		? memories.filter((memory) =>
-				isAfterDocumentCursor(memory, params.cursor as DocumentListCursor),
+		? memories.filter(
+				(memory) =>
+					isWithinDocumentSnapshot(
+						memory,
+						params.cursor as DocumentListCursor,
+					) &&
+					isAfterDocumentCursor(memory, params.cursor as DocumentListCursor),
 			)
 		: memories;
 	const offset = params.cursor ? 0 : params.offset;
@@ -245,15 +373,28 @@ function paginateDocuments(
 	const hasMore = page.length > params.limit;
 	const documents = page.slice(0, params.limit);
 	const last = documents.at(-1);
+	const first = memories.at(0);
+	const snapshotCreatedAt =
+		params.cursor?.snapshotCreatedAt ??
+		params.cursor?.createdAt ??
+		(first ? documentCreatedAt(first) : undefined);
+	const snapshotId =
+		params.cursor?.snapshotId ??
+		params.cursor?.id ??
+		(first && isUuid(first.id) ? first.id : undefined);
+	const snapshot =
+		snapshotCreatedAt !== undefined && snapshotId
+			? { snapshotCreatedAt, snapshotId }
+			: {};
 	return {
 		documents,
 		hasMore,
-		...(hasMore && last ? { nextCursor: documentCursor(last) } : {}),
+		...(hasMore && last ? { nextCursor: documentCursor(last, snapshot) } : {}),
 	};
 }
 
-export function validateDocumentListQueryParams(
-	params: DocumentListQueryParams,
+export function validateDocumentRequesterContext(
+	params: DocumentRequesterContext,
 ): void {
 	if (!isUuid(params.agentId) || !isUuid(params.requesterEntityId)) {
 		invalidPagination("Document list requester identity is invalid", {
@@ -275,6 +416,70 @@ export function validateDocumentListQueryParams(
 			roomCount: params.requesterRoomIds?.length,
 		});
 	}
+}
+
+export function validateDocumentFragmentQueryParams(
+	params: DocumentFragmentQueryParams,
+	expectedEmbeddingDimension?: number,
+): void {
+	validateDocumentRequesterContext(params);
+	if (
+		!Number.isSafeInteger(params.limit) ||
+		params.limit < 1 ||
+		params.limit > 1_000
+	) {
+		throw new ElizaError(
+			"Document fragment limit must be an integer between 1 and 1000",
+			{
+				code: "DOCUMENT_FRAGMENT_QUERY_INVALID",
+				context: { limit: params.limit },
+			},
+		);
+	}
+	if (params.embedding === undefined) {
+		if (params.matchThreshold !== undefined) {
+			throw new ElizaError(
+				"Document fragment threshold requires an embedding",
+				{
+					code: "DOCUMENT_FRAGMENT_QUERY_INVALID",
+					context: { matchThreshold: params.matchThreshold },
+				},
+			);
+		}
+		return;
+	}
+	if (
+		!Array.isArray(params.embedding) ||
+		params.embedding.length === 0 ||
+		params.embedding.some((value) => !Number.isFinite(value)) ||
+		(expectedEmbeddingDimension !== undefined &&
+			params.embedding.length !== expectedEmbeddingDimension)
+	) {
+		throw new ElizaError("Document fragment embedding is invalid", {
+			code: "DOCUMENT_FRAGMENT_QUERY_INVALID",
+			context: {
+				actualDimension: params.embedding?.length,
+				expectedDimension: expectedEmbeddingDimension,
+			},
+		});
+	}
+	if (
+		params.matchThreshold !== undefined &&
+		(!Number.isFinite(params.matchThreshold) ||
+			params.matchThreshold < -1 ||
+			params.matchThreshold > 1)
+	) {
+		throw new ElizaError("Document fragment match threshold is invalid", {
+			code: "DOCUMENT_FRAGMENT_QUERY_INVALID",
+			context: { matchThreshold: params.matchThreshold },
+		});
+	}
+}
+
+export function validateDocumentListQueryParams(
+	params: DocumentListQueryParams,
+): void {
+	validateDocumentRequesterContext(params);
 	if (
 		!Number.isSafeInteger(params.limit) ||
 		params.limit < 1 ||
@@ -301,6 +506,23 @@ export function validateDocumentListQueryParams(
 			!isUuid(params.cursor.id))
 	) {
 		invalidPagination("Document list cursor is invalid", {
+			cursor: params.cursor,
+		});
+	}
+	if (
+		params.cursor &&
+		((params.cursor.snapshotCreatedAt === undefined) !==
+			(params.cursor.snapshotId === undefined) ||
+			(params.cursor.snapshotCreatedAt !== undefined &&
+				(!Number.isSafeInteger(params.cursor.snapshotCreatedAt) ||
+					!isUuid(params.cursor.snapshotId))) ||
+			(params.cursor.snapshotCreatedAt !== undefined &&
+				(params.cursor.createdAt > params.cursor.snapshotCreatedAt ||
+					(params.cursor.createdAt === params.cursor.snapshotCreatedAt &&
+						params.cursor.id.toLowerCase() >
+							(params.cursor.snapshotId as UUID).toLowerCase()))))
+	) {
+		invalidPagination("Document list snapshot cursor is invalid", {
 			cursor: params.cursor,
 		});
 	}
@@ -375,18 +597,23 @@ export function queryDocumentsInMemory(
 ): DocumentListQueryResult {
 	validateDocumentListQueryParams(params);
 	assertUniqueDocumentIds(memories);
-	const visibleDocuments = memories
+	const allVisibleDocuments = memories
 		.filter(
 			(memory) =>
 				memory.agentId === params.agentId &&
 				isDocumentMemory(memory) &&
-				isDocumentVisible(memory, params),
+				isDocumentVisibleToRequester(memory, params),
 		)
 		.sort(compareDocumentOrder);
+	const visibleDocuments = params.cursor
+		? allVisibleDocuments.filter((memory) =>
+				isWithinDocumentSnapshot(memory, params.cursor as DocumentListCursor),
+			)
+		: allVisibleDocuments;
 	const availableDocuments = visibleDocuments.filter((memory) =>
 		matchesDocumentFilters(memory, params),
 	);
-	const normalizedQuery = params.query?.trim().toLowerCase();
+	const normalizedQuery = params.query?.trim();
 	const matchedDocuments = normalizedQuery
 		? availableDocuments.filter((memory) =>
 				matchesDocumentQuery(memory, normalizedQuery),
@@ -415,29 +642,141 @@ export function queryDocumentsInMemory(
 	};
 }
 
+function cosineSimilarity(left: number[], right: number[]): number {
+	if (left.length !== right.length || left.length === 0) return -1;
+	let dot = 0;
+	let leftMagnitude = 0;
+	let rightMagnitude = 0;
+	for (let index = 0; index < left.length; index++) {
+		const leftValue = left[index];
+		const rightValue = right[index];
+		if (
+			typeof leftValue !== "number" ||
+			typeof rightValue !== "number" ||
+			!Number.isFinite(leftValue) ||
+			!Number.isFinite(rightValue)
+		) {
+			return -1;
+		}
+		dot += leftValue * rightValue;
+		leftMagnitude += leftValue * leftValue;
+		rightMagnitude += rightValue * rightValue;
+	}
+	if (leftMagnitude === 0 || rightMagnitude === 0) return -1;
+	return dot / (Math.sqrt(leftMagnitude) * Math.sqrt(rightMagnitude));
+}
+
+/**
+ * Exact in-memory twin of the authorized SQL fragment query. Parent documents
+ * own authorization; stale or malformed fragment metadata cannot widen access.
+ */
+export function queryDocumentFragmentsInMemory(
+	memories: Memory[],
+	params: DocumentFragmentQueryParams,
+	expectedEmbeddingDimension?: number,
+): Memory[] {
+	validateDocumentFragmentQueryParams(params, expectedEmbeddingDimension);
+	const parents = new Map<UUID, Memory>();
+	for (const memory of memories) {
+		if (
+			memory.agentId === params.agentId &&
+			isDocumentMemory(memory) &&
+			isUuid(memory.id)
+		) {
+			parents.set(memory.id, memory);
+		}
+	}
+	const fragments = memories
+		.filter((memory) => {
+			if (
+				memory.agentId !== params.agentId ||
+				memory.metadata?.type !== MemoryType.FRAGMENT
+			) {
+				return false;
+			}
+			const documentId = memory.metadata?.documentId;
+			if (!isUuid(documentId)) return false;
+			const parent = parents.get(documentId);
+			if (!parent || !isDocumentVisibleToRequester(parent, params))
+				return false;
+			const parentSnapshot = readDocumentMutationSnapshot(parent);
+			const fragmentRevision = readDocumentRevision(memory.metadata ?? {});
+			if (
+				!parentSnapshot ||
+				fragmentRevision === null ||
+				fragmentRevision !== parentSnapshot.revision
+			) {
+				return false;
+			}
+			if (params.roomId && parent.roomId !== params.roomId) return false;
+			if (params.worldId && parent.worldId !== params.worldId) return false;
+			if (params.entityId && parent.entityId !== params.entityId) return false;
+			return true;
+		})
+		.map((memory) => {
+			if (!params.embedding) return memory;
+			const similarity = memory.embedding
+				? cosineSimilarity(memory.embedding, params.embedding)
+				: -1;
+			return { ...memory, similarity };
+		})
+		.filter(
+			(memory) =>
+				!params.embedding ||
+				(typeof memory.similarity === "number" &&
+					memory.similarity >= (params.matchThreshold ?? 0)),
+		);
+	if (params.embedding) {
+		fragments.sort(
+			(left, right) =>
+				(right.similarity ?? -1) - (left.similarity ?? -1) ||
+				compareDocumentOrder(left, right),
+		);
+	} else {
+		fragments.sort(compareDocumentOrder);
+	}
+	return fragments.slice(0, params.limit);
+}
+
 export function hasDocumentListQueryCapability(
 	adapter: IDatabaseAdapter,
-): adapter is IDatabaseAdapter & DocumentListQueryCapableAdapter {
+): boolean {
+	const candidate = adapter as IDatabaseAdapter & {
+		documentListQueryCapability?: unknown;
+		queryDocuments?: unknown;
+		getDocument?: unknown;
+		queryDocumentFragments?: unknown;
+		compareAndSwapDocument?: unknown;
+		deleteDocumentWithSnapshot?: unknown;
+	};
 	return (
-		adapter.documentListQueryCapability ===
+		candidate.documentListQueryCapability ===
 			DOCUMENT_LIST_QUERY_CAPABILITY_VERSION &&
-		typeof adapter.queryDocuments === "function"
+		typeof candidate.queryDocuments === "function" &&
+		typeof candidate.getDocument === "function" &&
+		typeof candidate.queryDocumentFragments === "function" &&
+		typeof candidate.compareAndSwapDocument === "function" &&
+		typeof candidate.deleteDocumentWithSnapshot === "function"
 	);
 }
 
-function requireDocumentListQueryCapability(
-	adapter: IDatabaseAdapter,
-): asserts adapter is IDatabaseAdapter & DocumentListQueryCapableAdapter {
+function requireDocumentListQueryCapability(adapter: IDatabaseAdapter): void {
 	if (hasDocumentListQueryCapability(adapter)) return;
+	const candidate = adapter as IDatabaseAdapter & {
+		documentListQueryCapability?: unknown;
+		queryDocuments?: unknown;
+	};
 	throw new ElizaError(
-		"Database adapter must implement the exact document-list query capability",
+		"Database adapter must implement document-store capability v2; migrate by adding authorized list, lookup, fragment search, CAS update, and CAS delete methods",
 		{
-			code: "DOCUMENT_LIST_QUERY_CAPABILITY_REQUIRED",
+			code: "DOCUMENT_STORE_CAPABILITY_REQUIRED",
 			context: {
-				adapter: adapter.constructor.name,
+				adapter: candidate.constructor.name,
 				expectedVersion: DOCUMENT_LIST_QUERY_CAPABILITY_VERSION,
-				advertisedVersion: adapter.documentListQueryCapability,
-				hasQueryMethod: typeof adapter.queryDocuments === "function",
+				advertisedVersion: candidate.documentListQueryCapability,
+				hasQueryMethod: typeof candidate.queryDocuments === "function",
+				migrationGuide:
+					"Implement IDatabaseAdapter documentListQueryCapability=2 and all document-store methods; no compatibility scan is supported.",
 			},
 			severity: "fatal",
 		},

@@ -29,8 +29,13 @@ import type {
 	CreateOAuthFlowStateParams,
 	DeleteConnectorAccountParams,
 	DeleteOAuthFlowStateParams,
+	DocumentCompareAndSwapParams,
+	DocumentDeleteParams,
+	DocumentFragmentQueryParams,
+	DocumentGetQueryParams,
 	DocumentListQueryParams,
 	DocumentListQueryResult,
+	DocumentMutationResult,
 	EntitiesForRoomsResult,
 	Entity,
 	GetConnectorAccountCredentialRefParams,
@@ -66,10 +71,15 @@ import type {
 	UUID,
 	World,
 } from "../types";
+import { MemoryType } from "../types";
 import { DEFAULT_UUID } from "../types/primitives";
 import { isPlainObject } from "../utils/type-guards";
 import {
+	canRequesterMutateDocument,
 	DOCUMENT_LIST_QUERY_CAPABILITY_VERSION,
+	documentMutationSnapshotMatches,
+	isDocumentVisibleToRequester,
+	queryDocumentFragmentsInMemory,
 	queryDocumentsInMemory,
 } from "./document-list-query";
 
@@ -820,6 +830,81 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			.filter(([key]) => key.startsWith("documents:"))
 			.flatMap(([, memories]) => memories);
 		return queryDocumentsInMemory(documents, params);
+	}
+
+	async getDocument(params: DocumentGetQueryParams): Promise<Memory | null> {
+		const memory = this.memoriesById.get(String(params.documentId));
+		if (
+			!memory ||
+			memory.agentId !== params.agentId ||
+			!isDocumentVisibleToRequester(memory, params)
+		) {
+			return null;
+		}
+		return memory;
+	}
+
+	async queryDocumentFragments(
+		params: DocumentFragmentQueryParams,
+	): Promise<Memory[]> {
+		return queryDocumentFragmentsInMemory(
+			Array.from(this.memoriesById.values()),
+			params,
+		);
+	}
+
+	async compareAndSwapDocument(
+		params: DocumentCompareAndSwapParams,
+	): Promise<DocumentMutationResult> {
+		const existing = this.memoriesById.get(String(params.documentId));
+		if (!existing || existing.agentId !== params.agentId) {
+			return { status: "not_found" };
+		}
+		if (!documentMutationSnapshotMatches(existing, params.expected)) {
+			return { status: "conflict" };
+		}
+		if (!isDocumentVisibleToRequester(existing, params)) {
+			return { status: "not_found" };
+		}
+		if (!canRequesterMutateDocument(existing, params)) {
+			return { status: "forbidden" };
+		}
+		await this.updateMemories([
+			{ ...params.replacement, id: params.documentId },
+		]);
+		const updated = this.memoriesById.get(String(params.documentId));
+		return updated
+			? { status: "updated", document: updated }
+			: { status: "conflict" };
+	}
+
+	async deleteDocumentWithSnapshot(
+		params: DocumentDeleteParams,
+	): Promise<DocumentMutationResult> {
+		const existing = this.memoriesById.get(String(params.documentId));
+		if (!existing || existing.agentId !== params.agentId) {
+			return { status: "not_found" };
+		}
+		if (!documentMutationSnapshotMatches(existing, params.expected)) {
+			return { status: "conflict" };
+		}
+		if (!isDocumentVisibleToRequester(existing, params)) {
+			return { status: "not_found" };
+		}
+		if (!canRequesterMutateDocument(existing, params)) {
+			return { status: "forbidden" };
+		}
+		const fragmentIds = Array.from(this.memoriesById.values())
+			.filter(
+				(memory) =>
+					memory.agentId === params.agentId &&
+					memory.metadata?.type === MemoryType.FRAGMENT &&
+					memory.metadata.documentId === params.documentId &&
+					memory.id,
+			)
+			.map((memory) => memory.id as UUID);
+		await this.deleteMemories([...fragmentIds, params.documentId]);
+		return { status: "deleted", document: existing };
 	}
 
 	async getMemories(params: {

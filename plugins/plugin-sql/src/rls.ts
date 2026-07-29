@@ -399,26 +399,61 @@ export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void>
 
       IF room_column_name IS NOT NULL THEN
         IF require_entity THEN
-          EXECUTE format('
-            CREATE POLICY entity_isolation_policy ON %I.%I
-            AS RESTRICTIVE
-            USING (
-              current_entity_id() IS NOT NULL
-              AND %I IN (
-                SELECT room_id
-                FROM participants
-                WHERE entity_id = current_entity_id()
+          IF table_name = 'memories' THEN
+            EXECUTE format('
+              CREATE POLICY entity_isolation_policy ON %I.%I
+              AS RESTRICTIVE
+              USING (
+                current_entity_id() IS NOT NULL
+                AND (
+                  %I IN (
+                    SELECT room_id
+                    FROM participants
+                    WHERE entity_id = current_entity_id()
+                  )
+                  OR (
+                    type IN (''documents'', ''document_fragments'')
+                    AND agent_id = current_entity_id()
+                  )
+                )
               )
-            )
-            WITH CHECK (
-              current_entity_id() IS NOT NULL
-              AND %I IN (
-                SELECT room_id
-                FROM participants
-                WHERE entity_id = current_entity_id()
+              WITH CHECK (
+                current_entity_id() IS NOT NULL
+                AND (
+                  %I IN (
+                    SELECT room_id
+                    FROM participants
+                    WHERE entity_id = current_entity_id()
+                  )
+                  OR (
+                    type IN (''documents'', ''document_fragments'')
+                    AND agent_id = current_entity_id()
+                  )
+                )
               )
-            )
-          ', schema_name, table_name, room_column_name, room_column_name);
+            ', schema_name, table_name, room_column_name, room_column_name);
+          ELSE
+            EXECUTE format('
+              CREATE POLICY entity_isolation_policy ON %I.%I
+              AS RESTRICTIVE
+              USING (
+                current_entity_id() IS NOT NULL
+                AND %I IN (
+                  SELECT room_id
+                  FROM participants
+                  WHERE entity_id = current_entity_id()
+                )
+              )
+              WITH CHECK (
+                current_entity_id() IS NOT NULL
+                AND %I IN (
+                  SELECT room_id
+                  FROM participants
+                  WHERE entity_id = current_entity_id()
+                )
+              )
+            ', schema_name, table_name, room_column_name, room_column_name);
+          END IF;
           RAISE NOTICE '[Entity RLS] Applied STRICT RESTRICTIVE to %.% (via % → participants.room_id, entity REQUIRED)', schema_name, table_name, room_column_name;
         ELSE
           EXECUTE format('

@@ -321,42 +321,6 @@ async function ensureWriteAccess(
 	return null;
 }
 
-async function ensureDocumentMutationAccess(
-	runtime: IAgentRuntime,
-	message: Memory,
-	document: Memory,
-): Promise<string | null> {
-	const metadata = (document.metadata ?? {}) as Record<string, unknown>;
-	const scope =
-		typeof metadata.scope === "string" &&
-		DOCUMENT_SCOPES.has(metadata.scope as DocumentVisibilityScope)
-			? (metadata.scope as DocumentVisibilityScope)
-			: "global";
-	if (scope === "global" || scope === "owner-private") {
-		return (await hasRoleAccess(runtime, message, "OWNER"))
-			? null
-			: "Only the owner can edit or delete global and owner-private documents.";
-	}
-	if (scope === "agent-private") {
-		return isAgentSelf(runtime, message) ||
-			(await hasRoleAccess(runtime, message, "OWNER"))
-			? null
-			: "Only the owner or agent runtime can edit or delete agent-private documents.";
-	}
-	const scopedToEntityId =
-		typeof metadata.scopedToEntityId === "string"
-			? metadata.scopedToEntityId
-			: typeof document.entityId === "string"
-				? document.entityId
-				: undefined;
-	if (scopedToEntityId && message.entityId === scopedToEntityId) {
-		return null;
-	}
-	return (await hasRoleAccess(runtime, message, "ADMIN"))
-		? null
-		: "Users can only edit or delete their own private documents.";
-}
-
 function getCleanWriteText(params: DocumentActionParameters): string {
 	const explicit = params.text ?? params.content;
 	if (typeof explicit === "string" && explicit.trim()) {
@@ -672,7 +636,6 @@ async function handleWrite(
 }
 
 async function handleEdit(
-	runtime: IAgentRuntime,
 	service: DocumentService,
 	message: Memory,
 	params: DocumentActionParameters,
@@ -693,24 +656,6 @@ async function handleEdit(
 		});
 	}
 
-	const document = await service.getDocumentById(documentId, message);
-	if (!document) {
-		const response = `Document ${documentId} not found.`;
-		await emit(callback, { text: response });
-		return result(false, response, "edit", { values: { error: "not_found" } });
-	}
-	const accessError = await ensureDocumentMutationAccess(
-		runtime,
-		message,
-		document,
-	);
-	if (accessError) {
-		await emit(callback, { text: accessError });
-		return result(false, accessError, "edit", {
-			values: { error: "forbidden" },
-		});
-	}
-
 	const updated = await service.updateDocument({
 		documentId,
 		content: text.trim(),
@@ -727,7 +672,6 @@ async function handleEdit(
 }
 
 async function handleDelete(
-	runtime: IAgentRuntime,
 	service: DocumentService,
 	message: Memory,
 	params: DocumentActionParameters,
@@ -738,24 +682,6 @@ async function handleDelete(
 		const text = "I need a valid document id to delete.";
 		await emit(callback, { text });
 		return result(false, text, "delete", { values: { error: "invalid_id" } });
-	}
-
-	const document = await service.getDocumentById(documentId, message);
-	if (!document) {
-		const text = `Document ${documentId} not found.`;
-		await emit(callback, { text });
-		return result(false, text, "delete", { values: { error: "not_found" } });
-	}
-	const accessError = await ensureDocumentMutationAccess(
-		runtime,
-		message,
-		document,
-	);
-	if (accessError) {
-		await emit(callback, { text: accessError });
-		return result(false, accessError, "delete", {
-			values: { error: "forbidden" },
-		});
 	}
 
 	await service.deleteDocument(documentId, message);
@@ -1297,9 +1223,9 @@ export const documentAction: Action = {
 				case "write":
 					return handleWrite(runtime, service, message, params, callback);
 				case "edit":
-					return handleEdit(runtime, service, message, params, callback);
+					return handleEdit(service, message, params, callback);
 				case "delete":
-					return handleDelete(runtime, service, message, params, callback);
+					return handleDelete(service, message, params, callback);
 				case "list":
 					return handleList(service, message, params, callback);
 				case "import_file":

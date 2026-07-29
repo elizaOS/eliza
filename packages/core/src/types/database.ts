@@ -37,10 +37,20 @@ export interface MessageSearchHit {
 	trigramSimilarity: number;
 }
 
-/** Stable newest-first cursor for document-list pagination. */
+/**
+ * Stable newest-first cursor for document-list pagination. New cursors carry
+ * the first page's upper ordering bound so later pages exclude ordinary
+ * concurrent inserts that sort ahead of the original result set. Older
+ * two-field cursors remain readable and use their own position as the bound.
+ * Inserts backdated at or below the bound can join later pages, and deleting
+ * an unread row removes it; callers needing a database-wide MVCC snapshot must
+ * use a transaction rather than a portable cursor.
+ */
 export interface DocumentListCursor {
 	createdAt: number;
 	id: UUID;
+	snapshotCreatedAt?: number;
+	snapshotId?: UUID;
 }
 
 /** Visibility scopes understood by the document-list storage query. */
@@ -57,15 +67,19 @@ export type DocumentListRequesterRole =
 	| "AGENT"
 	| "RUNTIME";
 
-/**
- * Fully pushed-down document-list query. `requesterEntityId` is isolation
- * context, never a row predicate; document ownership filters are explicit.
- */
-export interface DocumentListQueryParams {
+/** Identity and room membership used by every document authorization query. */
+export interface DocumentRequesterContext {
 	agentId: UUID;
 	requesterEntityId: UUID;
 	requesterRoomIds: UUID[];
 	requesterRole: DocumentListRequesterRole;
+}
+
+/**
+ * Fully pushed-down document-list query. `requesterEntityId` is isolation
+ * context, never a row predicate; document ownership filters are explicit.
+ */
+export interface DocumentListQueryParams extends DocumentRequesterContext {
 	limit: number;
 	offset: number;
 	cursor?: DocumentListCursor;
@@ -77,6 +91,55 @@ export interface DocumentListQueryParams {
 	timeRangeEnd?: number;
 	tags?: string[];
 }
+
+/** Authorized single-document lookup. */
+export interface DocumentGetQueryParams extends DocumentRequesterContext {
+	documentId: UUID;
+}
+
+/**
+ * Authorized fragment query. Fragment visibility is derived from the parent
+ * document, never from denormalized fragment metadata.
+ */
+export interface DocumentFragmentQueryParams extends DocumentRequesterContext {
+	limit: number;
+	roomId?: UUID;
+	worldId?: UUID;
+	entityId?: UUID;
+	embedding?: number[];
+	matchThreshold?: number;
+}
+
+/**
+ * Authorization-sensitive fields observed before a document mutation. SQL
+ * adapters compare them in the same statement that writes or deletes.
+ */
+export interface DocumentMutationSnapshot {
+	scope: DocumentListScope;
+	roomId: UUID;
+	entityId: UUID;
+	scopedToEntityId?: UUID;
+	addedBy?: UUID;
+	revision: number;
+}
+
+/** Compare-and-swap document replacement under canonical mutation policy. */
+export interface DocumentCompareAndSwapParams extends DocumentRequesterContext {
+	documentId: UUID;
+	expected: DocumentMutationSnapshot;
+	replacement: Memory;
+}
+
+/** Compare-and-swap document deletion under canonical mutation policy. */
+export interface DocumentDeleteParams extends DocumentRequesterContext {
+	documentId: UUID;
+	expected: DocumentMutationSnapshot;
+}
+
+export type DocumentMutationResult =
+	| { status: "updated"; document: Memory }
+	| { status: "deleted"; document: Memory }
+	| { status: "not_found" | "forbidden" | "conflict" };
 
 /** Exact counts and bounded pages returned by a document-list adapter query. */
 export interface DocumentListQueryResult {
@@ -1025,15 +1088,26 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	}): Promise<Memory[]>;
 
 	/**
-	 * Query visible documents with filtering, exact counts, and bounded pages.
-	 * Adapters advertise `documentListQueryCapability: 1` only when this method
-	 * implements the complete native contract. Callers fail before reading when
-	 * an adapter omits the capability or advertises a different version.
+	 * Required native document-store contract. Version 2 covers canonical
+	 * visibility for list/lookup/search plus compare-and-swap mutation. Adapter
+	 * authors migrating from version 1 must implement all five methods; there is
+	 * deliberately no bounded compatibility scan because it cannot preserve
+	 * authorization, counts, or pagination guarantees.
 	 */
-	readonly documentListQueryCapability?: 1;
-	queryDocuments?(
+	readonly documentListQueryCapability: 2;
+	queryDocuments(
 		params: DocumentListQueryParams,
 	): Promise<DocumentListQueryResult>;
+	getDocument(params: DocumentGetQueryParams): Promise<Memory | null>;
+	queryDocumentFragments(
+		params: DocumentFragmentQueryParams,
+	): Promise<Memory[]>;
+	compareAndSwapDocument(
+		params: DocumentCompareAndSwapParams,
+	): Promise<DocumentMutationResult>;
+	deleteDocumentWithSnapshot(
+		params: DocumentDeleteParams,
+	): Promise<DocumentMutationResult>;
 
 	getMemoriesByIds(ids: UUID[], tableName?: string): Promise<Memory[]>;
 

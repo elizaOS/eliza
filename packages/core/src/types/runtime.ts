@@ -541,7 +541,17 @@ export type PostConnectorRegistration = PostConnectorMetadata & {
  * state composition, model usage, and task management.
  */
 
-export interface IAgentRuntime extends IDatabaseAdapter<object> {
+type RuntimeDatabaseAdapterSurface = Omit<
+	IDatabaseAdapter<object>,
+	| "documentListQueryCapability"
+	| "queryDocuments"
+	| "getDocument"
+	| "queryDocumentFragments"
+	| "compareAndSwapDocument"
+	| "deleteDocumentWithSnapshot"
+>;
+
+export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	// Properties
 	/** Database adapter. Set in constructor; required. */
 	adapter: IDatabaseAdapter;

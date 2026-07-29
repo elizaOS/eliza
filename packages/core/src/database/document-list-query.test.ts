@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { DocumentListQueryParams, Memory, UUID } from "../types";
 import { MemoryType } from "../types";
 import {
+	portableDocumentSearchTokens,
 	queryDocumentsInMemory,
 	queryDocumentsWithCapability,
 } from "./document-list-query";
@@ -34,7 +35,11 @@ function document(index: number): Memory {
 		roomId: ROOM_ID,
 		createdAt: 1_000 + index,
 		content: { text: `Document ${index}` },
-		metadata: { type: MemoryType.DOCUMENT, timestamp: 1_000 + index },
+		metadata: {
+			type: MemoryType.DOCUMENT,
+			scope: "global",
+			timestamp: 1_000 + index,
+		},
 	};
 }
 
@@ -53,7 +58,7 @@ describe("document-list capability contract", () => {
 		await expect(
 			queryDocumentsWithCapability(adapter, params),
 		).rejects.toMatchObject({
-			code: "DOCUMENT_LIST_QUERY_CAPABILITY_REQUIRED",
+			code: "DOCUMENT_STORE_CAPABILITY_REQUIRED",
 		});
 		expect(getMemories).not.toHaveBeenCalled();
 	});
@@ -75,7 +80,7 @@ describe("document-list capability contract", () => {
 		await expect(
 			queryDocumentsWithCapability(adapter, params),
 		).rejects.toMatchObject({
-			code: "DOCUMENT_LIST_QUERY_CAPABILITY_REQUIRED",
+			code: "DOCUMENT_STORE_CAPABILITY_REQUIRED",
 		});
 		expect(getMemories).not.toHaveBeenCalled();
 		expect(reads).toBe(0);
@@ -111,19 +116,126 @@ describe("document-list capability contract", () => {
 		const adapter = new InMemoryDatabaseAdapter();
 		Object.defineProperty(adapter, "documentListQueryCapability", {
 			configurable: true,
-			value: 2,
+			value: 3,
 		});
 		const queryDocuments = vi.spyOn(adapter, "queryDocuments");
 
 		await expect(
 			queryDocumentsWithCapability(adapter, params),
 		).rejects.toMatchObject({
-			code: "DOCUMENT_LIST_QUERY_CAPABILITY_REQUIRED",
+			code: "DOCUMENT_STORE_CAPABILITY_REQUIRED",
 			context: expect.objectContaining({
-				expectedVersion: 1,
-				advertisedVersion: 2,
+				expectedVersion: 2,
+				advertisedVersion: 3,
 			}),
 		});
 		expect(queryDocuments).not.toHaveBeenCalled();
+	});
+
+	it("fails closed on missing, unknown, and structurally invalid scopes", () => {
+		const malformed = [
+			{ ...document(1), metadata: { type: MemoryType.DOCUMENT } },
+			{
+				...document(2),
+				metadata: { type: MemoryType.DOCUMENT, scope: "public" },
+			},
+			{
+				...document(3),
+				metadata: {
+					type: MemoryType.DOCUMENT,
+					scope: "user-private",
+					scopedToEntityId: "not-a-uuid",
+				},
+			},
+		];
+		for (const requesterRole of [
+			"OWNER",
+			"RUNTIME",
+			"AGENT",
+			"ADMIN",
+			"USER",
+		] as const) {
+			expect(
+				queryDocumentsInMemory(malformed, {
+					...params,
+					requesterRole,
+					requesterRoomIds: [ROOM_ID],
+				}).documents,
+			).toEqual([]);
+		}
+	});
+
+	it("keeps ADMIN room-wide user-private access distinct from USER ownership", () => {
+		const owned = {
+			...document(1),
+			metadata: {
+				type: MemoryType.DOCUMENT,
+				scope: "user-private",
+				scopedToEntityId: REQUESTER_ID,
+			},
+		};
+		const otherId = "00000000-0000-0000-0000-00000000beef" as UUID;
+		const other = {
+			...document(2),
+			metadata: {
+				type: MemoryType.DOCUMENT,
+				scope: "user-private",
+				scopedToEntityId: otherId,
+			},
+		};
+		const user = queryDocumentsInMemory([owned, other], {
+			...params,
+			requesterRole: "USER",
+			requesterRoomIds: [ROOM_ID],
+		});
+		const admin = queryDocumentsInMemory([owned, other], {
+			...params,
+			requesterRole: "ADMIN",
+			requesterRoomIds: [ROOM_ID],
+		});
+		expect(user.documents.map((memory) => memory.id)).toEqual([owned.id]);
+		expect(new Set(admin.documents.map((memory) => memory.id))).toEqual(
+			new Set([owned.id, other.id]),
+		);
+	});
+
+	it("uses locale-independent tokens that preserve punctuation and Unicode", () => {
+		expect(
+			portableDocumentSearchTokens(
+				"Test.User+Tag@Example.COM v1.2.3 https://Example.com/a?b=c#d C++ 東京 İ",
+			),
+		).toEqual([
+			"test.user+tag@example.com",
+			"v1.2.3",
+			"https://example.com/a?b=c#d",
+			"c++",
+			"東京",
+			"İ",
+		]);
+	});
+
+	it("anchors keyset traversal against newer concurrent inserts", () => {
+		const original = Array.from({ length: 5 }, (_, index) => document(index));
+		const first = queryDocumentsInMemory(original, { ...params, limit: 2 });
+		expect(first.nextCursor).toMatchObject({
+			snapshotCreatedAt: 1_004,
+			snapshotId: original[4]?.id,
+		});
+		const inserted = document(99);
+		const seen = [...first.documents];
+		let cursor = first.nextCursor;
+		while (cursor) {
+			const page = queryDocumentsInMemory([...original, inserted], {
+				...params,
+				limit: 2,
+				cursor,
+			});
+			seen.push(...page.documents);
+			cursor = page.nextCursor;
+		}
+		expect(new Set(seen.map((memory) => memory.id))).toEqual(
+			new Set(original.map((memory) => memory.id)),
+		);
+		expect(seen.map((memory) => memory.id)).not.toContain(inserted.id);
 	});
 });

@@ -22,6 +22,13 @@ import type {
 	CreateOAuthFlowStateParams,
 	DeleteConnectorAccountParams,
 	DeleteOAuthFlowStateParams,
+	DocumentCompareAndSwapParams,
+	DocumentDeleteParams,
+	DocumentFragmentQueryParams,
+	DocumentGetQueryParams,
+	DocumentListQueryParams,
+	DocumentListQueryResult,
+	DocumentMutationResult,
 	Entity,
 	GetConnectorAccountCredentialRefParams,
 	GetConnectorAccountParams,
@@ -75,6 +82,30 @@ import type {
 export abstract class DatabaseAdapter<DB extends object = object>
 	implements IDatabaseAdapter<DB>
 {
+	/**
+	 * Exact document-store contract implemented by every first-class adapter.
+	 * Version 2 adds canonical lookup/search authorization and CAS mutations.
+	 */
+	abstract readonly documentListQueryCapability: 2;
+
+	abstract queryDocuments(
+		params: DocumentListQueryParams,
+	): Promise<DocumentListQueryResult>;
+
+	abstract getDocument(params: DocumentGetQueryParams): Promise<Memory | null>;
+
+	abstract queryDocumentFragments(
+		params: DocumentFragmentQueryParams,
+	): Promise<Memory[]>;
+
+	abstract compareAndSwapDocument(
+		params: DocumentCompareAndSwapParams,
+	): Promise<DocumentMutationResult>;
+
+	abstract deleteDocumentWithSnapshot(
+		params: DocumentDeleteParams,
+	): Promise<DocumentMutationResult>;
+
 	/**
 	 * The database instance.
 	 */

@@ -9,20 +9,20 @@
  *
  * Registered under service type `documents` and consumed by `documentsProvider`
  * and the document actions; recall queries are embedded through `embedRecallQuery`
- * (per-turn cached, fail-open). It enforces per-document visibility scopes
- * (global / owner-private / user-private / agent-private) via `canAccessDocument`,
- * plus an optional `AccessContext` gate that is strictly subtractive — a requester
- * can never widen their view by routing through it. On start it also migrates the
- * legacy `knowledge` partition into the document partitions and backfills missing
- * scopes.
+ * (per-turn cached, fail-open). All reads, searches, and mutations cross the
+ * adapter's required document capability so authorization is evaluated against
+ * the stored parent document under the database isolation context. On start it
+ * also migrates the legacy `knowledge` partition into the document partitions.
  */
 import { existsSync, statSync } from "node:fs";
-import { filterByAccessContext } from "../../access-control/filter";
 import {
+	canRequesterMutateDocument,
 	DOCUMENT_LIST_MAX_LIMIT,
 	DOCUMENT_LIST_MAX_OFFSET,
 	documentRoleHasGlobalVisibility,
+	isDocumentVisibleToRequester,
 	queryDocumentsWithCapability,
+	readDocumentMutationSnapshot,
 } from "../../database/document-list-query";
 import { createUniqueUuid } from "../../entities";
 import { ElizaError } from "../../errors";
@@ -240,7 +240,12 @@ export async function resolveDocumentRequester(
 function normalizeDocumentScope(
 	scope: AddDocumentOptions["scope"] | undefined,
 ): DocumentVisibilityScope {
-	return scope && DOCUMENT_SCOPES.has(scope) ? scope : "global";
+	if (scope === undefined) return "global";
+	if (DOCUMENT_SCOPES.has(scope)) return scope;
+	throw new ElizaError("Document scope is invalid", {
+		code: "DOCUMENT_SCOPE_INVALID",
+		context: { scope },
+	});
 }
 
 function resolveWriteDocumentScope({
@@ -252,7 +257,7 @@ function resolveWriteDocumentScope({
 	entityId: UUID | undefined;
 	agentId: UUID;
 }): DocumentVisibilityScope {
-	if (scope && DOCUMENT_SCOPES.has(scope)) return scope;
+	if (scope !== undefined) return normalizeDocumentScope(scope);
 	return entityId && entityId !== agentId ? "user-private" : "global";
 }
 
@@ -432,70 +437,27 @@ export class DocumentService extends Service {
 	}
 
 	async canAccessDocument(memory: Memory, message?: Memory): Promise<boolean> {
-		if (!message?.entityId || message.entityId === this.runtime.agentId) {
-			return true;
-		}
-
-		const { role: senderRole } = await resolveDocumentRequesterRole(
-			this.runtime,
-			message,
-		);
-		if (senderRole === "OWNER") return true;
-
-		const metadata = (memory.metadata ?? {}) as Record<string, unknown>;
-		const scope = normalizeDocumentScope(
-			metadata.scope as AddDocumentOptions["scope"] | undefined,
-		);
-
-		if (scope === "global") return true;
-		if (scope === "owner-private" || scope === "agent-private") return false;
-
-		const senderId = message.entityId;
-		const scopedToEntityId =
-			typeof metadata.scopedToEntityId === "string"
-				? metadata.scopedToEntityId
-				: undefined;
-		const addedBy =
-			typeof metadata.addedBy === "string" ? metadata.addedBy : undefined;
-
-		return (
-			scope === "user-private" &&
-			(scopedToEntityId === senderId ||
-				addedBy === senderId ||
-				memory.entityId === senderId)
-		);
-	}
-
-	private async filterVisibleMemories(
-		memories: Memory[],
-		message?: Memory,
-		accessContext?: AccessContext,
-	): Promise<Memory[]> {
-		const visible: Memory[] = [];
-		for (const memory of memories) {
-			if (await this.canAccessDocument(memory, message)) {
-				visible.push(memory);
-			}
-		}
-		// When the caller threads in an AccessContext (who is asking, in which
-		// world, with what role), apply the scope-read primitive as a second,
-		// strictly-subtractive gate. A memory must clear BOTH this and
-		// `canAccessDocument` above to be returned, so a requester can never widen
-		// their view by routing through this path. With no AccessContext the
-		// behaviour is unchanged (single-tenant byte-for-byte).
-		if (!accessContext) return visible;
-		return filterByAccessContext(visible, accessContext, this.runtime.agentId);
+		const requester = await resolveDocumentRequester(this.runtime, message);
+		return isDocumentVisibleToRequester(memory, {
+			agentId: this.runtime.agentId,
+			requesterEntityId: requester.entityId,
+			requesterRoomIds: requester.roomIds,
+			requesterRole: requester.role,
+		});
 	}
 
 	async getDocumentById(
 		documentId: UUID,
 		message?: Memory,
 	): Promise<Memory | null> {
-		const memory = await this.runtime.getMemoryById(documentId);
-		if (!memory || !this.isDocumentMemory(memory)) {
-			return null;
-		}
-		return (await this.canAccessDocument(memory, message)) ? memory : null;
+		const requester = await resolveDocumentRequester(this.runtime, message);
+		return this.runtime.adapter.getDocument({
+			agentId: this.runtime.agentId,
+			documentId,
+			requesterEntityId: requester.entityId,
+			requesterRoomIds: requester.roomIds,
+			requesterRole: requester.role,
+		});
 	}
 
 	async listDocuments(
@@ -604,30 +566,53 @@ export class DocumentService extends Service {
 	}
 
 	async deleteDocument(documentId: UUID, message?: Memory): Promise<void> {
-		const document = await this.getDocumentById(documentId, message);
-		if (!document) {
-			throw new Error(`Document ${documentId} not found`);
-		}
-
-		const memories = await this.runtime.getMemories({
-			tableName: DOCUMENT_FRAGMENTS_TABLE,
+		const requester = await resolveDocumentRequester(this.runtime, message);
+		const document = await this.runtime.adapter.getDocument({
 			agentId: this.runtime.agentId,
-			count: 10_000,
+			documentId,
+			requesterEntityId: requester.entityId,
+			requesterRoomIds: requester.roomIds,
+			requesterRole: requester.role,
 		});
-		const relatedFragments = memories.filter((memory) => {
-			const metadata = memory.metadata as Record<string, unknown> | undefined;
-			return (
-				this.isDocumentFragmentMemory(memory) &&
-				metadata?.documentId === documentId
-			);
-		});
-
-		for (const fragment of relatedFragments) {
-			if (fragment.id) {
-				await this.runtime.deleteMemory(fragment.id as UUID);
-			}
+		if (!document) {
+			throw new ElizaError(`Document ${documentId} not found`, {
+				code: "DOCUMENT_NOT_FOUND",
+				context: { documentId },
+			});
 		}
-		await this.runtime.deleteMemory(documentId);
+		const snapshot = readDocumentMutationSnapshot(document);
+		if (!snapshot) {
+			throw new ElizaError(
+				"Stored document authorization metadata is invalid",
+				{
+					code: "DOCUMENT_AUTHORIZATION_INVALID",
+					context: { documentId },
+					severity: "fatal",
+				},
+			);
+		}
+		const result = await this.runtime.adapter.deleteDocumentWithSnapshot({
+			agentId: this.runtime.agentId,
+			documentId,
+			expected: snapshot,
+			requesterEntityId: requester.entityId,
+			requesterRoomIds: requester.roomIds,
+			requesterRole: requester.role,
+		});
+		if (result.status !== "deleted") {
+			throw new ElizaError(
+				"Document delete authorization changed before mutation",
+				{
+					code:
+						result.status === "forbidden"
+							? "DOCUMENT_MUTATION_FORBIDDEN"
+							: result.status === "not_found"
+								? "DOCUMENT_NOT_FOUND"
+								: "DOCUMENT_MUTATION_CONFLICT",
+					context: { documentId, status: result.status },
+				},
+			);
+		}
 	}
 
 	private async backfillDocumentScopes(): Promise<void> {
@@ -1072,7 +1057,7 @@ export class DocumentService extends Service {
 		message: Memory,
 		scope?: { roomId?: UUID; worldId?: UUID; entityId?: UUID },
 		searchMode?: SearchMode,
-		accessContext?: AccessContext,
+		_accessContext?: AccessContext,
 		options?: { turnMessageId?: UUID; signal?: AbortSignal },
 	): Promise<StoredDocument[]> {
 		if (!message.content.text || message.content.text.trim().length === 0) {
@@ -1081,6 +1066,7 @@ export class DocumentService extends Service {
 		}
 
 		const queryText = message.content.text;
+		const requester = await resolveDocumentRequester(this.runtime, message);
 		const filterScope: { roomId?: UUID; worldId?: UUID; entityId?: UUID } = {};
 		if (scope?.roomId) filterScope.roomId = scope.roomId;
 		if (scope?.worldId) filterScope.worldId = scope.worldId;
@@ -1099,20 +1085,14 @@ export class DocumentService extends Service {
 		}
 
 		if (effectiveMode === "keyword") {
-			return this._keywordSearch(
-				queryText,
-				filterScope,
-				message,
-				accessContext,
-			);
+			return this._keywordSearch(queryText, filterScope, requester);
 		}
 
 		if (effectiveMode === "vector") {
 			return this._vectorSearch(
 				queryText,
 				filterScope,
-				message,
-				accessContext,
+				requester,
 				options?.turnMessageId,
 				options?.signal,
 			);
@@ -1122,8 +1102,7 @@ export class DocumentService extends Service {
 		return this._hybridSearch(
 			queryText,
 			filterScope,
-			message,
-			accessContext,
+			requester,
 			options?.turnMessageId,
 			options?.signal,
 		);
@@ -1133,8 +1112,7 @@ export class DocumentService extends Service {
 	private async _vectorSearch(
 		queryText: string,
 		filterScope: { roomId?: UUID; worldId?: UUID; entityId?: UUID },
-		message?: Memory,
-		accessContext?: AccessContext,
+		requester: DocumentRequester,
 		turnMessageId?: UUID,
 		signal?: AbortSignal,
 	): Promise<StoredDocument[]> {
@@ -1148,35 +1126,21 @@ export class DocumentService extends Service {
 			signal,
 		});
 		if (!embedding) {
-			return this._keywordSearch(
-				queryText,
-				filterScope,
-				message,
-				accessContext,
-			);
+			return this._keywordSearch(queryText, filterScope, requester);
 		}
 
-		const fragments = await this.runtime.searchMemories({
-			tableName: DOCUMENT_FRAGMENTS_TABLE,
+		const fragments = await this.runtime.adapter.queryDocumentFragments({
+			agentId: this.runtime.agentId,
+			requesterEntityId: requester.entityId,
+			requesterRoomIds: requester.roomIds,
+			requesterRole: requester.role,
 			embedding,
-			// Vector mode ranks purely by cosine: do NOT pass `query` (that triggers
-			// a runtime BM25 rerank that drops zero-keyword-overlap candidates — i.e.
-			// silently keyword-filters the semantic results this mode exists to
-			// return). `count` is the param the adapter honours (`limit` is ignored,
-			// so the pool was silently capped at the default 10).
 			...filterScope,
-			count: 20,
-			match_threshold: 0.1,
-			accessContext,
+			limit: 20,
+			matchThreshold: 0.1,
 		});
 
-		const visibleFragments = await this.filterVisibleMemories(
-			fragments.filter((fragment) => this.isDocumentFragmentMemory(fragment)),
-			message,
-			accessContext,
-		);
-
-		return visibleFragments
+		return fragments
 			.filter((fragment) => fragment.id !== undefined)
 			.map((fragment) => ({
 				id: fragment.id as UUID,
@@ -1194,25 +1158,17 @@ export class DocumentService extends Service {
 	private async _keywordSearch(
 		queryText: string,
 		filterScope: { roomId?: UUID; worldId?: UUID; entityId?: UUID },
-		message?: Memory,
-		accessContext?: AccessContext,
+		requester: DocumentRequester,
 	): Promise<StoredDocument[]> {
-		const allFragments = await this.runtime.getMemories({
-			tableName: DOCUMENT_FRAGMENTS_TABLE,
+		const allFragments = await this.runtime.adapter.queryDocumentFragments({
 			agentId: this.runtime.agentId,
+			requesterEntityId: requester.entityId,
+			requesterRoomIds: requester.roomIds,
+			requesterRole: requester.role,
 			...filterScope,
-			count: 1000,
-			accessContext,
+			limit: 1_000,
 		});
-
-		const visibleFragments = await this.filterVisibleMemories(
-			allFragments.filter((fragment) =>
-				this.isDocumentFragmentMemory(fragment),
-			),
-			message,
-			accessContext,
-		);
-		const valid = visibleFragments.filter(
+		const valid = allFragments.filter(
 			(f) => f.id !== undefined && f.content.text,
 		);
 		if (valid.length === 0) return [];
@@ -1246,8 +1202,7 @@ export class DocumentService extends Service {
 	private async _hybridSearch(
 		queryText: string,
 		filterScope: { roomId?: UUID; worldId?: UUID; entityId?: UUID },
-		message?: Memory,
-		accessContext?: AccessContext,
+		requester: DocumentRequester,
 		turnMessageId?: UUID,
 		signal?: AbortSignal,
 	): Promise<StoredDocument[]> {
@@ -1262,12 +1217,7 @@ export class DocumentService extends Service {
 			signal,
 		});
 		if (!embedding) {
-			return this._keywordSearch(
-				queryText,
-				filterScope,
-				message,
-				accessContext,
-			);
+			return this._keywordSearch(queryText, filterScope, requester);
 		}
 
 		// Fetch a larger PURE-VECTOR candidate set so the explicit BM25 blend below
@@ -1276,21 +1226,17 @@ export class DocumentService extends Service {
 		// 0.6·vector + 0.4·bm25 combine never sees the semantic-only matches. And
 		// use `count` (the adapter honours it; `limit` was ignored → pool capped at
 		// the default 10, defeating "fetch a larger candidate set").
-		const candidates = await this.runtime.searchMemories({
-			tableName: DOCUMENT_FRAGMENTS_TABLE,
+		const candidates = await this.runtime.adapter.queryDocumentFragments({
+			agentId: this.runtime.agentId,
+			requesterEntityId: requester.entityId,
+			requesterRoomIds: requester.roomIds,
+			requesterRole: requester.role,
 			embedding,
 			...filterScope,
-			count: 40,
-			match_threshold: 0.05,
-			accessContext,
+			limit: 40,
+			matchThreshold: 0.05,
 		});
-
-		const visibleCandidates = await this.filterVisibleMemories(
-			candidates.filter((fragment) => this.isDocumentFragmentMemory(fragment)),
-			message,
-			accessContext,
-		);
-		const valid = visibleCandidates.filter(
+		const valid = candidates.filter(
 			(f) => f.id !== undefined && f.content.text,
 		);
 		if (valid.length === 0) return [];
@@ -1655,12 +1601,46 @@ export class DocumentService extends Service {
 		documentId: UUID;
 		fragmentCount: number;
 	}> {
-		const existingDocument = await this.getDocumentById(
-			options.documentId,
+		const requester = await resolveDocumentRequester(
+			this.runtime,
 			options.message,
 		);
+		const requestContext = {
+			agentId: this.runtime.agentId,
+			requesterEntityId: requester.entityId,
+			requesterRoomIds: requester.roomIds,
+			requesterRole: requester.role,
+		};
+		const existingDocument = await this.runtime.adapter.getDocument({
+			...requestContext,
+			documentId: options.documentId,
+		});
 		if (!existingDocument) {
-			throw new Error(`Document ${options.documentId} not found`);
+			throw new ElizaError(`Document ${options.documentId} not found`, {
+				code: "DOCUMENT_NOT_FOUND",
+				context: { documentId: options.documentId },
+			});
+		}
+		const snapshot = readDocumentMutationSnapshot(existingDocument);
+		if (!snapshot) {
+			throw new ElizaError(
+				"Stored document authorization metadata is invalid",
+				{
+					code: "DOCUMENT_AUTHORIZATION_INVALID",
+					context: { documentId: options.documentId },
+					severity: "fatal",
+				},
+			);
+		}
+		if (!canRequesterMutateDocument(existingDocument, requestContext)) {
+			throw new ElizaError("Requester cannot mutate this document", {
+				code: "DOCUMENT_MUTATION_FORBIDDEN",
+				context: {
+					documentId: options.documentId,
+					requesterEntityId: requester.entityId,
+					requesterRole: requester.role,
+				},
+			});
 		}
 
 		const existingMetadata = (existingDocument.metadata ??
@@ -1721,9 +1701,10 @@ export class DocumentService extends Service {
 			textBacked: isTextBackedDocumentContent(contentType, filename),
 			timestamp: Date.now(),
 			editedAt: Date.now(),
+			documentRevision: snapshot.revision + 1,
 		};
 
-		await this.runtime.updateMemory({
+		const replacement: Memory = {
 			id: options.documentId,
 			agentId: this.runtime.agentId,
 			roomId: existingDocument.roomId,
@@ -1732,7 +1713,24 @@ export class DocumentService extends Service {
 			content: { text: options.content },
 			metadata: updatedMetadata,
 			createdAt: existingDocument.createdAt,
+		};
+		const mutation = await this.runtime.adapter.compareAndSwapDocument({
+			...requestContext,
+			documentId: options.documentId,
+			expected: snapshot,
+			replacement,
 		});
+		if (mutation.status !== "updated") {
+			throw new ElizaError("Document authorization changed before update", {
+				code:
+					mutation.status === "forbidden"
+						? "DOCUMENT_MUTATION_FORBIDDEN"
+						: mutation.status === "not_found"
+							? "DOCUMENT_NOT_FOUND"
+							: "DOCUMENT_MUTATION_CONFLICT",
+				context: { documentId: options.documentId, status: mutation.status },
+			});
+		}
 
 		const existingFragments = await this.runtime.getMemories({
 			tableName: DOCUMENT_FRAGMENTS_TABLE,

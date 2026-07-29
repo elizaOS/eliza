@@ -18,19 +18,28 @@ import {
   type Agent,
   type Component,
   type Content,
+  canRequesterMutateDocument,
   DatabaseAdapter,
   DOCUMENT_LIST_QUERY_CAPABILITY_VERSION,
+  type DocumentCompareAndSwapParams,
+  type DocumentDeleteParams,
+  type DocumentFragmentQueryParams,
+  type DocumentGetQueryParams,
   type DocumentListQueryParams,
   type DocumentListQueryResult,
+  type DocumentMutationResult,
+  documentMutationSnapshotMatches,
   type EntitiesForRoomsResult,
   type Entity,
   type IDatabaseAdapter,
+  isDocumentVisibleToRequester,
   type JsonValue,
   type Log,
   type LogBody,
   logger,
   type Memory,
   type MemoryMetadata,
+  MemoryType,
   type MessageSearchHit,
   type Metadata,
   type PairingAllowlistEntry,
@@ -43,6 +52,7 @@ import {
   type ParticipantUpdateFields,
   type ParticipantUserState,
   type PatchOp,
+  queryDocumentFragmentsInMemory,
   queryDocumentsInMemory,
   type Relationship,
   type Room,
@@ -213,6 +223,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   private embeddingDimension = 384;
   private ready = false;
   private readonly agentId: UUID;
+  private documentMutationTail: Promise<void> = Promise.resolve();
 
   constructor(storage: IStorage, agentId: UUID) {
     super();
@@ -584,9 +595,110 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   async queryDocuments(params: DocumentListQueryParams): Promise<DocumentListQueryResult> {
     const memories = await this.storage.getWhere<StoredMemory>(
       COLLECTIONS.MEMORIES,
-      (memory) => storedMemoryTableName(memory) === "documents"
+      (memory) =>
+        storedMemoryTableName(memory) === "documents" ||
+        storedMemoryTableName(memory) === "document_fragments"
     );
     return queryDocumentsInMemory(memories.map(toMemory), params);
+  }
+
+  async getDocument(params: DocumentGetQueryParams): Promise<Memory | null> {
+    const stored = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, params.documentId);
+    if (
+      !stored ||
+      storedMemoryTableName(stored) !== "documents" ||
+      stored.agentId !== params.agentId
+    ) {
+      return null;
+    }
+    const memory = toMemory(stored);
+    return isDocumentVisibleToRequester(memory, params) ? memory : null;
+  }
+
+  async queryDocumentFragments(params: DocumentFragmentQueryParams): Promise<Memory[]> {
+    const memories = await this.storage.getWhere<StoredMemory>(
+      COLLECTIONS.MEMORIES,
+      (memory) =>
+        storedMemoryTableName(memory) === "documents" ||
+        storedMemoryTableName(memory) === "document_fragments"
+    );
+    return queryDocumentFragmentsInMemory(memories.map(toMemory), params, this.embeddingDimension);
+  }
+
+  private withDocumentMutationLock<T>(operation: () => Promise<T>): Promise<T> {
+    const run = this.documentMutationTail.then(operation, operation);
+    this.documentMutationTail = run.then(
+      () => undefined,
+      () => undefined
+    );
+    return run;
+  }
+
+  async compareAndSwapDocument(
+    params: DocumentCompareAndSwapParams
+  ): Promise<DocumentMutationResult> {
+    return this.withDocumentMutationLock(async () => {
+      const stored = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, params.documentId);
+      if (
+        !stored ||
+        storedMemoryTableName(stored) !== "documents" ||
+        stored.agentId !== params.agentId
+      ) {
+        return { status: "not_found" };
+      }
+      const existing = toMemory(stored);
+      if (!documentMutationSnapshotMatches(existing, params.expected)) {
+        return { status: "conflict" };
+      }
+      if (!isDocumentVisibleToRequester(existing, params)) return { status: "not_found" };
+      if (!canRequesterMutateDocument(existing, params)) return { status: "forbidden" };
+      const replacement: StoredMemory = {
+        ...stored,
+        ...params.replacement,
+        id: params.documentId,
+        tableName: "documents",
+        agentId: params.agentId,
+        metadata: params.replacement.metadata,
+      };
+      await this.storage.set(COLLECTIONS.MEMORIES, params.documentId, replacement);
+      return { status: "updated", document: toMemory(replacement) };
+    });
+  }
+
+  async deleteDocumentWithSnapshot(params: DocumentDeleteParams): Promise<DocumentMutationResult> {
+    return this.withDocumentMutationLock(async () => {
+      const stored = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, params.documentId);
+      if (
+        !stored ||
+        storedMemoryTableName(stored) !== "documents" ||
+        stored.agentId !== params.agentId
+      ) {
+        return { status: "not_found" };
+      }
+      const existing = toMemory(stored);
+      if (!documentMutationSnapshotMatches(existing, params.expected)) {
+        return { status: "conflict" };
+      }
+      if (!isDocumentVisibleToRequester(existing, params)) return { status: "not_found" };
+      if (!canRequesterMutateDocument(existing, params)) return { status: "forbidden" };
+      const fragments = await this.storage.getWhere<StoredMemory>(
+        COLLECTIONS.MEMORIES,
+        (memory) => {
+          const metadata = memory.metadata as Record<string, unknown> | undefined;
+          return (
+            memory.agentId === params.agentId &&
+            metadata?.type === MemoryType.FRAGMENT &&
+            metadata.documentId === params.documentId
+          );
+        }
+      );
+      const fragmentIds = fragments
+        .map((memory) => memory.id)
+        .filter((id): id is string => typeof id === "string");
+      await this.storage.deleteMany(COLLECTIONS.MEMORIES, [...fragmentIds, params.documentId]);
+      await Promise.all(fragmentIds.map((id) => this.vectorIndex.remove(id)));
+      return { status: "deleted", document: existing };
+    });
   }
 
   async getMemories(params: {

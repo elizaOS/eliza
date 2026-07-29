@@ -283,7 +283,7 @@ describe("DocumentService list semantics", () => {
 				offset: 100,
 			}),
 		).rejects.toMatchObject({
-			code: "DOCUMENT_LIST_QUERY_CAPABILITY_REQUIRED",
+			code: "DOCUMENT_STORE_CAPABILITY_REQUIRED",
 		});
 		expect(nativeQuery).not.toHaveBeenCalled();
 		expect(getMemories).not.toHaveBeenCalled();
