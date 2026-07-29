@@ -409,8 +409,11 @@ describe("jobsRepository.recoverStaleJobs", () => {
     const current = rows.find((row) => row.id === currentJobId);
     expect(interrupted).toMatchObject({
       status: "pending",
-      attempts: 1,
-      error: "Job interrupted by worker restart - recovered for retry (attempt 1/3)",
+      // A restart is an infrastructure event: it spends the interruption
+      // budget, never an attempt.
+      attempts: 0,
+      error:
+        "Job interrupted by worker restart - recovered for retry (interruption 1/5; attempts untouched)",
     });
     expect(current).toMatchObject({
       status: "in_progress",
@@ -442,7 +445,9 @@ describe("jobsRepository.recoverStaleJobs", () => {
       startedBefore: new Date(),
     });
 
-    expect(recovered).toBe(1);
+    // Both come back: the committed cutover via its exemption, the pre-cutover
+    // job via the interruption budget (a restart no longer spends attempts).
+    expect(recovered).toBe(2);
     const rows = await dbWrite.select().from(jobs).orderBy(jobs.id);
     expect(rows.find((row) => row.id === committedJobId)).toMatchObject({
       status: "pending",
@@ -451,11 +456,84 @@ describe("jobsRepository.recoverStaleJobs", () => {
       error: expect.stringContaining("without consuming a terminal attempt"),
     });
     expect(rows.find((row) => row.id === preCutoverJobId)).toMatchObject({
-      status: "failed",
-      attempts: 1,
+      // Not exempt as a committed cutover — but a restart interruption still
+      // never spends an attempt; it draws on the interruption budget instead.
+      status: "pending",
+      attempts: 0,
       result: null,
-      error: expect.stringContaining("max attempts reached"),
+      error: expect.stringContaining("interruption 1/5"),
     });
+  });
+
+  test("interruptions accumulate in the payload and exhaust their own budget, not attempts", async () => {
+    expect(pgliteReady).toBe(true);
+    const nearBudgetId = "00000000-0000-4000-8000-000000160854";
+    const overBudgetId = "00000000-0000-4000-8000-000000170854";
+    await seedJob({
+      id: nearBudgetId,
+      maxAttempts: 3,
+      data: { agentId: "a", __worker_interruptions: 1 },
+    });
+    await seedJob({
+      id: overBudgetId,
+      maxAttempts: 3,
+      data: { agentId: "a", __worker_interruptions: 5 },
+    });
+
+    const recovered = await repo.recoverInProgressJobsStartedBefore({
+      type: "agent_message",
+      startedBefore: new Date(),
+    });
+
+    // Only the near-budget job comes back as recoverable.
+    expect(recovered).toBe(1);
+    const rows = await dbWrite
+      .select({
+        id: jobs.id,
+        status: jobs.status,
+        attempts: jobs.attempts,
+        error: jobs.error,
+        data: jobs.data,
+      })
+      .from(jobs)
+      .orderBy(jobs.id);
+
+    expect(rows.find((row) => row.id === nearBudgetId)).toMatchObject({
+      status: "pending",
+      attempts: 0,
+      error:
+        "Job interrupted by worker restart - recovered for retry (interruption 2/5; attempts untouched)",
+      data: { agentId: "a", __worker_interruptions: 2 },
+    });
+    // The 6th interruption is terminal — and the failure message blames the
+    // interruptions, not the job's attempts.
+    expect(rows.find((row) => row.id === overBudgetId)).toMatchObject({
+      status: "failed",
+      attempts: 0,
+      error: "Job interrupted by worker restart 6 times - interruption budget exhausted",
+    });
+  });
+
+  test("an offloaded payload cannot carry the counter and errs toward retrying", async () => {
+    expect(pgliteReady).toBe(true);
+    const offloadedId = "00000000-0000-4000-8000-000000180854";
+    await seedJob({
+      id: offloadedId,
+      maxAttempts: 3,
+      dataStorage: "r2",
+    });
+
+    const recovered = await repo.recoverInProgressJobsStartedBefore({
+      type: "agent_message",
+      startedBefore: new Date(),
+    });
+
+    expect(recovered).toBe(1);
+    const [row] = await dbWrite
+      .select({ status: jobs.status, attempts: jobs.attempts })
+      .from(jobs)
+      .where(eq(jobs.id, offloadedId));
+    expect(row).toMatchObject({ status: "pending", attempts: 0 });
   });
 
   test("mismatched canary audit, data, storage, and row identities consume the ordinary terminal attempt", async () => {
