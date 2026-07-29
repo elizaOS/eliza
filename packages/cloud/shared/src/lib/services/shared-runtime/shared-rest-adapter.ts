@@ -153,6 +153,14 @@ export function sharedRestFirstRunSubmit(): { ok: true } {
   return { ok: true };
 }
 
+/**
+ * Route of the one view this tier serves. Hoisted out of the registry entry
+ * because `SharedRestViewRegistration.path` is optional, while the navigate ack
+ * below must return a definite path — sharing the constant keeps the registry
+ * entry and the ack from drifting apart.
+ */
+const SHARED_CHAT_VIEW_PATH = "/chat";
+
 /** The single builtin chat view a shared agent exposes (a `gui` view). */
 const SHARED_CHAT_VIEW: SharedRestViewRegistration = {
   id: "chat",
@@ -160,7 +168,7 @@ const SHARED_CHAT_VIEW: SharedRestViewRegistration = {
   viewType: "gui",
   description: "Conversations with your agent, inbound messages from every connector",
   icon: "MessageSquare",
-  path: "/chat",
+  path: SHARED_CHAT_VIEW_PATH,
   available: true,
   pluginName: "@elizaos/builtin",
   tags: ["messaging", "conversation", "agent"],
@@ -189,6 +197,122 @@ export function sharedRestViews(viewType?: string): {
     return { views: [] };
   }
   return { views: [SHARED_CHAT_VIEW] };
+}
+
+/**
+ * POST .../api/views/:viewId/navigate — the shell's navigation ack. Navigation
+ * is client-side routing; the agent-server route only echoes the resolved view
+ * so the client can confirm the target exists. A shared agent owns exactly one
+ * view (`chat`), so navigating to it acks and anything else is honestly absent
+ * — the caller gets `null` and the route 404s, matching `sharedRestViews()`
+ * rather than acking a view this tier does not serve.
+ */
+export function sharedRestViewNavigate(viewId: string): {
+  ok: true;
+  viewId: string;
+  viewPath: string;
+  viewType: string;
+} | null {
+  if (viewId.trim() !== SHARED_CHAT_VIEW.id) return null;
+  return {
+    ok: true,
+    viewId: SHARED_CHAT_VIEW.id,
+    viewPath: SHARED_CHAT_VIEW_PATH,
+    viewType: SHARED_CHAT_VIEW.viewType,
+  };
+}
+
+/**
+ * GET .../api/runtime/mode — the client's runtime-mode snapshot
+ * (ui/src/api/runtime-mode-client.ts → useRuntimeMode()). A Tier-0 agent runs
+ * in-Worker in Eliza Cloud, so the honest answer is `cloud`, and it is not a
+ * controller for some other remote runtime.
+ *
+ * This is a correctness fix, not just 404 suppression: the client treats the
+ * snapshot as advisory and resolves `null` (any non-2xx) by falling back to
+ * LOCAL heuristics — so while this path 404s, a cloud-hosted shared agent's UI
+ * reasons about itself as if it were a local runtime. Both values are validated
+ * client-side against its `RuntimeMode` / `RuntimeDeploymentRuntime` unions.
+ */
+export function sharedRestRuntimeMode(): {
+  mode: "cloud";
+  deploymentRuntime: "cloud";
+  isRemoteController: false;
+  remoteApiBaseConfigured: false;
+} {
+  return {
+    mode: "cloud",
+    deploymentRuntime: "cloud",
+    isRemoteController: false,
+    remoteApiBaseConfigured: false,
+  };
+}
+
+/**
+ * GET .../api/commands — the universal slash-command catalog
+ * (`CommandsCatalogResponse` in @elizaos/shared; read by
+ * ui/src/api/client-skills.ts `listCommands`). A Tier-0 agent has no agent
+ * server and therefore no command registry to enumerate: the builtin catalog is
+ * assembled by the runtime from registered plugin commands, and none of those
+ * targets exist here. An empty catalog is the truthful answer for this tier, not
+ * a masked load failure — offering commands the shared runtime cannot dispatch
+ * would be strictly worse than offering none.
+ *
+ * Without this the client's `listCommands` rejects on the 404 and logs
+ * "Failed to load the slash-command catalog; slash menu will be empty" — the
+ * same empty menu, reached through an error path.
+ */
+export function sharedRestCommands(): { commands: [] } {
+  return { commands: [] };
+}
+
+/**
+ * GET .../api/custom-actions — user-defined custom actions
+ * (ui/src/api/client-skills.ts `listCustomActions`, shape
+ * `{ actions: CustomActionDef[] }`). Custom actions are persisted per agent
+ * runtime; a shared agent has no such store, so the honest answer is none. The
+ * full-runtime route returns exactly `{ actions: [] }` when nothing is defined,
+ * so this matches the contract the client already handles.
+ */
+export function sharedRestCustomActions(): { actions: [] } {
+  return { actions: [] };
+}
+
+/**
+ * GET .../api/agent/events — the agent event log the shell's activity surfaces
+ * poll (ui/src/api/client-agent.ts). A Tier-0 agent runs stateless per-request
+ * in a Worker and keeps no event ring buffer, so there is nothing to report.
+ * Mirrors the iOS local-agent kernel's synthesis of this same probe
+ * (`ui/src/api/ios-local-agent-kernel.ts` → `{ events: [] }`).
+ */
+export function sharedRestAgentEvents(): { events: [] } {
+  return { events: [] };
+}
+
+/**
+ * GET .../api/stream/settings — streaming/avatar settings for the stream view.
+ * A shared agent exposes no stream configuration; `{}` is the empty-settings
+ * shape the full runtime returns, and the iOS kernel synthesizes the same.
+ * `ok: true` matches the agent-server envelope so the client's avatar probe
+ * reads "no avatar configured" instead of warning on a failed load.
+ */
+export function sharedRestStreamSettings(): {
+  ok: true;
+  settings: Record<string, never>;
+} {
+  return { ok: true, settings: {} };
+}
+
+/**
+ * POST .../api/apps/overlay-presence — the app shell reporting which overlay is
+ * on screen. Pure presence telemetry consumed by the app-manager runtime to
+ * track the foreground app; a shared agent runs no app manager, so there is no
+ * presence to record and no app to name. Acks with the agent-server shape
+ * (`{ ok: true, appName: null }`) — `appName: null` states plainly that no
+ * overlay app was resolved rather than inventing one.
+ */
+export function sharedRestOverlayPresence(): { ok: true; appName: null } {
+  return { ok: true, appName: null };
 }
 
 /**

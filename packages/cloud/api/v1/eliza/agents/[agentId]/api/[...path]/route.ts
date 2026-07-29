@@ -3,12 +3,16 @@
  * workflow capability gates.
  *
  * Tier-0 agents have no full agent server, so this route synthesizes the
- * already-provisioned startup responses needed to reach chat. It also
- * translates the app's `/api/automations` and `/api/workflow/*` requests into
- * the canonical typed dedicated-runtime response. Generated routing mounts
- * the specific conversation, health, identity, and wallet siblings first;
- * unknown catch-all paths remain 404. Dedicated agents use their own subdomain
- * and never enter this adapter.
+ * already-provisioned startup responses needed to reach chat, plus the shell's
+ * routine probes (runtime mode, slash-command catalog, custom actions, agent
+ * events, stream settings, overlay presence, view navigation) — each answered
+ * with this tier's honest state rather than left to 404 into a client error
+ * path. It also translates the app's `/api/automations`, `/api/workflow/*`, and
+ * LifeOps activity-signal requests into the canonical typed
+ * capability-unavailable response. Generated routing mounts the specific
+ * conversation, health, identity, and wallet siblings first; unknown catch-all
+ * paths remain 404. Dedicated agents use their own subdomain and never enter
+ * this adapter.
  */
 import { type Context, Hono } from "hono";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
@@ -17,13 +21,20 @@ import {
   resolveSharedRuntimeWorkerRequestContext,
 } from "@/lib/services/shared-runtime/resolve-shared-agent";
 import {
+  sharedRestAgentEvents,
   sharedRestAuthMe,
   sharedRestCharacter,
+  sharedRestCommands,
   sharedRestConfig,
+  sharedRestCustomActions,
   sharedRestFirstRun,
   sharedRestFirstRunStatus,
   sharedRestFirstRunSubmit,
+  sharedRestOverlayPresence,
+  sharedRestRuntimeMode,
   sharedRestStatus,
+  sharedRestStreamSettings,
+  sharedRestViewNavigate,
   sharedRestViews,
 } from "@/lib/services/shared-runtime/shared-rest-adapter";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -51,6 +62,39 @@ function shellPath(c: Context<AppEnv>): string {
 
 function isWorkflowApiPath(path: string): boolean {
   return path === "workflow" || path.startsWith("workflow/");
+}
+
+/** `views/<viewId>/navigate` → `<viewId>`; null for any other shape. */
+function viewNavigateTarget(path: string): string | null {
+  const m = /^views\/([^/]+)\/navigate$/.exec(path);
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
+/**
+ * LifeOps activity-signal ingestion requires the personal-assistant plugin's
+ * scheduled-task runtime, which only a dedicated agent runs. Returning a typed
+ * capability gate — rather than the bare 404 this path used to fall through to —
+ * is what lets the client's capture loop latch off after one attempt instead of
+ * re-reporting "unexpected capture failure" for every page-visibility and
+ * interaction signal (`plugins/plugin-personal-assistant/src/lifeops/
+ * activity-signals-capture.ts`). 503 is deliberate: it is the status that
+ * client's `isRuntimeUnavailableError()` already recognizes for this exact path
+ * as "the LifeOps runtime is not answering — stop sending".
+ */
+function lifeopsUnavailable(c: Context<AppEnv>): Response {
+  return json(
+    c,
+    {
+      success: false,
+      code: "lifeops_runtime_unavailable",
+      error:
+        "LifeOps activity signals require a dedicated agent runtime; this shared agent does not ingest them.",
+      capability: "lifeops-activity-signals",
+      requiredExecutionTier: "dedicated-always",
+      upgradeRequired: true,
+    },
+    503,
+  );
 }
 
 function workflowUnavailable(
@@ -157,6 +201,16 @@ app.get("/", async (c) => {
       // key (resolveSharedAgent validated it), so report the authed machine
       // identity instead of 404'ing into "server_unavailable".
       return json(c, sharedRestAuthMe(r.agentId, r.agentName));
+    case "runtime/mode":
+      return json(c, sharedRestRuntimeMode());
+    case "commands":
+      return json(c, sharedRestCommands());
+    case "custom-actions":
+      return json(c, sharedRestCustomActions());
+    case "agent/events":
+      return json(c, sharedRestAgentEvents());
+    case "stream/settings":
+      return json(c, sharedRestStreamSettings());
     default:
       // Genuinely-unknown shell endpoint — don't mask it with a default.
       return json(
@@ -180,6 +234,21 @@ app.post("/", async (c) => {
   // as a harmless no-op instead of 404'ing onboarding.
   if (path === "first-run") {
     return json(c, sharedRestFirstRunSubmit());
+  }
+  if (path === "lifeops/activity-signals") {
+    return lifeopsUnavailable(c);
+  }
+  // Overlay presence is foreground-app telemetry with no store behind it on
+  // this tier — ack rather than 404 a signal the shell emits on every view
+  // change.
+  if (path === "apps/overlay-presence") {
+    return json(c, sharedRestOverlayPresence());
+  }
+  const navigateTarget = viewNavigateTarget(path);
+  if (navigateTarget !== null) {
+    const navigated = sharedRestViewNavigate(navigateTarget);
+    // A view this tier does not serve stays a 404 — see sharedRestViewNavigate.
+    if (navigated) return json(c, navigated);
   }
   return json(
     c,
