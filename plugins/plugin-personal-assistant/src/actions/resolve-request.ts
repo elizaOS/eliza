@@ -421,22 +421,37 @@ function trackingApprovalQueue(
     observed(request);
     return request;
   };
-  return {
-    enqueue: (input) => queue.enqueue(input),
-    enqueueWithResult: (input) => queue.enqueueWithResult(input),
-    enqueueConfirmed: (input, resolution) =>
-      queue.enqueueConfirmed(input, resolution),
-    list: (filter) => queue.list(filter),
-    byId: (id) => queue.byId(id),
-    byIdempotencyKey: (key) => queue.byIdempotencyKey(key),
-    approve: (id, resolution) => track(queue.approve(id, resolution)),
-    reject: (id, resolution) => track(queue.reject(id, resolution)),
-    markExecuting: (id) => track(queue.markExecuting(id)),
-    markDone: (id) => track(queue.markDone(id)),
-    markExpired: (id) => track(queue.markExpired(id)),
-    purgeExpired: (now) => queue.purgeExpired(now),
-  };
+  // A forwarding proxy rather than an explicit member map: the execution
+  // capability grows (claim, dispatch-start, retryable/reconciliation
+  // failures, recovery, reconcile), and an explicit map silently drops any
+  // method added later, which would hide the very transition the receipt is
+  // supposed to prove.
+  return new Proxy(queue, {
+    get(target, property, receiver) {
+      const value = Reflect.get(target, property, receiver);
+      if (typeof value !== "function") return value;
+      const bound = value.bind(target);
+      return PERSISTING_QUEUE_METHODS.has(property as string)
+        ? (...args: unknown[]) =>
+            track(bound(...args) as Promise<ApprovalRequest>)
+        : bound;
+    },
+  });
 }
+
+/** Queue methods whose resolved row is the newest persisted approval state. */
+const PERSISTING_QUEUE_METHODS: ReadonlySet<string> = new Set([
+  "approve",
+  "reject",
+  "claimExecution",
+  "markDispatchStarted",
+  "markDone",
+  "markRetryableFailure",
+  "markReconciliationRequired",
+  "recoverUnstartedExecution",
+  "reconcileExecution",
+  "markExpired",
+]);
 
 function resolutionRequestId(message: Memory): string {
   return typeof message.id === "string"

@@ -756,12 +756,12 @@ describe("OwnerCalendarMutationGatewayService — real PGlite", () => {
     const racingQueue = new Proxy(queue, {
       get(target, property, receiver) {
         if (property === "byIdempotencyKey") {
-          return async (idempotencyKey: string) => {
+          return async (idempotencyKey: string, subjectUserId: string) => {
             if (hideFirstLookup) {
               hideFirstLookup = false;
               return null;
             }
-            return target.byIdempotencyKey(idempotencyKey);
+            return target.byIdempotencyKey(idempotencyKey, subjectUserId);
           };
         }
         const value = Reflect.get(target, property, receiver);

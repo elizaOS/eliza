@@ -398,9 +398,9 @@ describe("ApprovalService", () => {
 
     expect(confirmed.state).toBe("approved");
     expect(replay.id).toBe(confirmed.id);
-    expect(await queue.byIdempotencyKey("confirmed-owner-gesture-1")).toEqual(
-      replay,
-    );
+    expect(
+      await queue.byIdempotencyKey("confirmed-owner-gesture-1", "owner-123"),
+    ).toEqual(replay);
     expect(notifier.notify).not.toHaveBeenCalled();
   });
 
