@@ -14,6 +14,7 @@ import {
   outgoingPipelineHookContext,
   type State,
   type UUID,
+  wrapSingleTurnVisibleCallback,
 } from "@elizaos/core";
 import {
   afterAll,
@@ -301,6 +302,42 @@ describe("shared LifeOps audience boundary (production provider/action paths)", 
     };
     await runtime.applyPipelineHooks("model_stream_chunk", streamContext);
     expect(streamContext.chunk).toBe("");
+  });
+
+  it("revalidates actions-mode callbacks at the shared visible-callback wrap", async () => {
+    // Actions-mode deliveries never hit the simple/terminal outgoing seams;
+    // they funnel through wrapSingleTurnVisibleCallback, which must dispatch
+    // outgoing_before_deliver so unwrapped action callbacks (not just the
+    // hand-wrapped calendar action) are revalidated at delivery time.
+    const roomId = await room(ChannelType.DM, [runtime.agentId, ownerId]);
+    const request = message(roomId, ChannelType.API);
+    const gate = await authorizeLifeOpsPrivateContext({
+      runtime,
+      message: request,
+      sources: PRIVATE_SOURCES,
+    });
+    expect(gate.canLoadPrivateContext).toBe(true);
+
+    // Concurrent membership mutation after authorization, before delivery.
+    await runtime.ensureParticipantInRoom(otherId, roomId);
+
+    runtime.setSetting("ACTION_CALLBACK_VOICE_REWRITE", "false", false);
+    const delivered: Content[] = [];
+    const wrapped = wrapSingleTurnVisibleCallback(
+      runtime,
+      request,
+      async (content: Content) => {
+        delivered.push(content);
+        return [];
+      },
+    );
+    await wrapped?.(
+      { text: "PRIVATE_ACTION_CANARY", actions: ["CHECK_CALENDAR"] },
+      "CHECK_CALENDAR",
+    );
+    expect(delivered).toHaveLength(1);
+    expect(delivered[0]?.text).toContain("delivery was cancelled");
+    expect(delivered[0]?.text).not.toContain("PRIVATE_ACTION_CANARY");
   });
 
   it("reports authorization and metadata failures and fails closed", async () => {

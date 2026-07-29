@@ -101,6 +101,19 @@ const GROUP_TYPES = new Set<string>([
   ChannelType.FORUM,
 ]);
 const ENVELOPE_METADATA_KEY = "lifeOpsAudienceEnvelope";
+/**
+ * Streaming revalidation staleness bound. The stream hook fires per token; a
+ * full DB re-read (room + participants) per token is a serial two-query tax on
+ * every streamed chunk. A successful revalidation is trusted for this window,
+ * so a mid-stream audience change is caught within at most this many
+ * milliseconds instead of on the very next token. The final
+ * `outgoing_before_deliver` revalidation always re-reads the DB uncached.
+ */
+const STREAM_REVALIDATION_TTL_MS = 500;
+const streamRevalidationCacheByRuntime = new WeakMap<
+  IAgentRuntime,
+  Map<string, { audienceVersion: string; validatedAt: number }>
+>();
 const activeEnvelopeByRuntime = new WeakMap<
   IAgentRuntime,
   Map<string, LifeOpsAudienceEnvelope>
@@ -400,6 +413,47 @@ export async function revalidateLifeOpsAudienceEnvelope(
   }
 }
 
+function streamRevalidationCache(
+  runtime: IAgentRuntime,
+): Map<string, { audienceVersion: string; validatedAt: number }> {
+  let cache = streamRevalidationCacheByRuntime.get(runtime);
+  if (!cache) {
+    cache = new Map();
+    streamRevalidationCacheByRuntime.set(runtime, cache);
+  }
+  return cache;
+}
+
+/**
+ * Streaming-path revalidation: trusts a successful full revalidation for
+ * `STREAM_REVALIDATION_TTL_MS` so per-token cost is bounded. A failure is
+ * never cached — the envelope is dropped immediately by the caller.
+ */
+async function revalidateLifeOpsAudienceForStream(
+  runtime: IAgentRuntime,
+  envelope: LifeOpsAudienceEnvelope,
+): Promise<boolean> {
+  const cache = streamRevalidationCache(runtime);
+  const cached = cache.get(envelope.roomId);
+  if (
+    cached &&
+    cached.audienceVersion === envelope.audienceVersion &&
+    Date.now() - cached.validatedAt < STREAM_REVALIDATION_TTL_MS
+  ) {
+    return true;
+  }
+  const authorized = await revalidateLifeOpsAudienceEnvelope(runtime, envelope);
+  if (authorized) {
+    cache.set(envelope.roomId, {
+      audienceVersion: envelope.audienceVersion,
+      validatedAt: Date.now(),
+    });
+  } else {
+    cache.delete(envelope.roomId);
+  }
+  return authorized;
+}
+
 export async function assertLifeOpsAudienceAtDelivery(
   runtime: IAgentRuntime,
   message: Memory,
@@ -409,6 +463,7 @@ export async function assertLifeOpsAudienceAtDelivery(
   if (!bound) return;
   if (!(await revalidateLifeOpsAudienceEnvelope(runtime, bound))) {
     activeEnvelopes(runtime).delete(bound.roomId);
+    streamRevalidationCache(runtime).delete(bound.roomId);
     throw new LifeOpsAudienceDeliveryDeniedError();
   }
 }
@@ -435,8 +490,9 @@ export function registerLifeOpsAudienceDeliveryHook(
       if (context.phase !== "model_stream_chunk" || !context.roomId) return;
       const envelope = activeEnvelopes(hookRuntime).get(context.roomId);
       if (!envelope) return;
-      if (!(await revalidateLifeOpsAudienceEnvelope(hookRuntime, envelope))) {
+      if (!(await revalidateLifeOpsAudienceForStream(hookRuntime, envelope))) {
         activeEnvelopes(hookRuntime).delete(envelope.roomId);
+        streamRevalidationCache(hookRuntime).delete(envelope.roomId);
         // Pipeline hooks are diagnostics-safe and intentionally swallow throws.
         // Mutating the primary chunk is therefore the enforceable send boundary.
         context.chunk = "";
@@ -458,6 +514,7 @@ export function registerLifeOpsAudienceDeliveryHook(
         envelope,
       );
       activeEnvelopes(hookRuntime).delete(envelope.roomId);
+      streamRevalidationCache(hookRuntime).delete(envelope.roomId);
       if (!stillAuthorized) {
         const responseId = context.content.responseId;
         const inReplyTo = context.content.inReplyTo;
