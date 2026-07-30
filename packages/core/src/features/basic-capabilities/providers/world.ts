@@ -97,7 +97,11 @@ export const worldProvider: Provider = {
 			} as ProviderResult;
 		}
 
-		const world = await runtime.getWorld(worldId);
+		const [world, worldRooms, participants] = await Promise.all([
+			runtime.getWorld(worldId),
+			runtime.getRooms(worldId),
+			runtime.getParticipantsForRoom(message.roomId),
+		]);
 
 		if (!world) {
 			logger.warn(
@@ -129,8 +133,6 @@ export const worldProvider: Provider = {
 			"Found world",
 		);
 
-		// Get all rooms in the current world
-		const worldRooms = await runtime.getRooms(worldId);
 		logger.debug(
 			{
 				src: "plugin:basic-capabilities:provider:world",
@@ -141,8 +143,6 @@ export const worldProvider: Provider = {
 			"Found rooms in world",
 		);
 
-		// Get participants for the current room
-		const participants = await runtime.getParticipantsForRoom(message.roomId);
 		logger.debug(
 			{
 				src: "plugin:basic-capabilities:provider:world",
