@@ -68,6 +68,9 @@ export function resolveAgentSnapshotSourceAttestation(
       ),
     });
   } catch (cause) {
+    // error-policy:J3 provider environment is untrusted; known typed
+    // attestation failures pass through and all other validation errors become
+    // an explicit invalid-attestation result with their cause.
     if (
       cause instanceof ElizaError &&
       cause.code === "AGENT_SNAPSHOT_SOURCE_ATTESTATION_INVALID"

@@ -236,6 +236,8 @@ async function* observeRestoreActivity(
       const cleanup = Promise.resolve(iterator.return());
       if (signal.aborted) {
         void cleanup.catch((error: unknown) => {
+          // error-policy:J6 an aborted stored-stream iterator is teardown; the
+          // abort remains the observed failure and cancellation failure is logged.
           logger.warn("[AgentSnapshotV2Cloud] Stored stream cancellation failed", {
             error: error instanceof Error ? error.message : String(error),
           });
@@ -515,6 +517,8 @@ function parseRestoreResult(value: string): AgentSnapshotV2RestoreReceipt {
   try {
     parsed = JSON.parse(value);
   } catch (error) {
+    // error-policy:J3 the agent response is untrusted; malformed JSON becomes
+    // an explicit invalid-response failure retaining the parse cause.
     throw new Error("Agent restore response is not valid JSON", { cause: error });
   }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
@@ -661,6 +665,8 @@ export async function restoreAgentSnapshotV2(params: {
     }
     return { receipt: result, summary };
   } catch (error) {
+    // error-policy:J2 timeout translation preserves the watchdog reason or
+    // underlying restore failure as cause; non-timeout failures propagate.
     if (watchdog.signal.aborted) {
       throw new Error("Snapshot v2 restore timed out", {
         cause: watchdog.signal.reason ?? error,

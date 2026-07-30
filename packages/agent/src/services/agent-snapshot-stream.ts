@@ -252,6 +252,8 @@ async function ensureDirectoryDurable(directory: string): Promise<void> {
     try {
       await fs.mkdir(next, { mode: 0o700 });
     } catch (error) {
+      // error-policy:J3 concurrent filesystem state is untrusted; only exact
+      // EEXIST plus a real directory is accepted, and every other error rethrows.
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
       const stat = await fs.lstat(next);
       if (!stat.isDirectory() || stat.isSymbolicLink()) {

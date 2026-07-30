@@ -196,6 +196,8 @@ export async function putObjectBytes(params: {
         params.signal,
       );
     } catch (error) {
+      // error-policy:J2 object-write translation preserves the provider failure
+      // as cause while exposing an outcome-unknown error to epoch-fenced callers.
       throw new ObjectWriteOutcomeUnknownError(key, error);
     }
     return key;
@@ -221,6 +223,8 @@ export async function putObjectBytes(params: {
       params.signal,
     );
   } catch (error) {
+    // error-policy:J2 object-write translation preserves the provider failure
+    // as cause while exposing an outcome-unknown error to epoch-fenced callers.
     throw new ObjectWriteOutcomeUnknownError(key, error);
   }
   return key;
