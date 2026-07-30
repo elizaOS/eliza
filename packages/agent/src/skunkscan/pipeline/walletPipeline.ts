@@ -108,6 +108,7 @@ export async function runWalletPipeline(
   const exposure = analyzeWalletExposure(
     input.address,
     funding,
+    input.chain,
   );
 
   const relationships = analyzeWalletRelationships(
