@@ -1113,7 +1113,10 @@ describe("household resource capacity — real PGlite", () => {
       },
     });
     for (const approval of first.approvals) {
-      const request = await approvals.byId(approval.approvalRequestId);
+      const request = await approvals.byId(
+        approval.approvalRequestId,
+        approval.partyEntityId,
+      );
       expect(request).toMatchObject({
         action: "execute_workflow",
         subjectUserId: approval.partyEntityId,
@@ -1403,11 +1406,15 @@ describe("household resource capacity — real PGlite", () => {
     });
     const recoveryApproval = recoveryProposal.approvals[0];
     if (!recoveryApproval) throw new Error("recovery approval missing");
-    await approvals.reject(recoveryApproval.approvalRequestId, {
-      resolvedBy: SELF_ENTITY_ID,
-      resolutionReason:
-        "Simulated process death after the approval rejection commit.",
-    });
+    await approvals.reject(
+      recoveryApproval.approvalRequestId,
+      recoveryApproval.partyEntityId,
+      {
+        resolvedBy: SELF_ENTITY_ID,
+        resolutionReason:
+          "Simulated process death after the approval rejection commit.",
+      },
+    );
     expect(
       await repository.getProposalTerminal(
         recoveryProposal.proposal.proposalId,
@@ -1650,7 +1657,10 @@ describe("household resource capacity — real PGlite", () => {
     expect(replayed.status).toBe("duplicate");
     expect(replayed.receipt.id).toBe(reviewed.receipt.id);
     expect(
-      await approvals.byId(partnerApproval.approvalRequestId),
+      await approvals.byId(
+        partnerApproval.approvalRequestId,
+        partnerApproval.partyEntityId,
+      ),
     ).toMatchObject({
       state: "approved",
       resolvedBy: partnerId,

@@ -328,7 +328,9 @@ describe("household inbound approval — real PGlite", () => {
     expect(first.receipt.approvalRequestId).toBe(pending.approvalRequestId);
 
     const queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
-    expect(await queue.byId(pending.approvalRequestId)).toMatchObject({
+    expect(
+      await queue.byId(pending.approvalRequestId, coParentId),
+    ).toMatchObject({
       state: "approved",
       resolvedBy: coParentId,
     });
@@ -374,7 +376,9 @@ describe("household inbound approval — real PGlite", () => {
     });
 
     const queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
-    expect(await queue.byId(pending.approvalRequestId)).toMatchObject({
+    expect(
+      await queue.byId(pending.approvalRequestId, coParentId),
+    ).toMatchObject({
       channel: "telegram",
       state: "pending",
     });
@@ -396,7 +400,9 @@ describe("household inbound approval — real PGlite", () => {
       identity,
     });
     expect(result.status).toBe("processed");
-    expect(await queue.byId(pending.approvalRequestId)).toMatchObject({
+    expect(
+      await queue.byId(pending.approvalRequestId, coParentId),
+    ).toMatchObject({
       state: "approved",
       resolvedBy: coParentId,
     });
@@ -496,7 +502,9 @@ describe("household inbound approval — real PGlite", () => {
     });
 
     const queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
-    expect(await queue.byId(pending.approvalRequestId)).toMatchObject({
+    expect(
+      await queue.byId(pending.approvalRequestId, intendedPartyId),
+    ).toMatchObject({
       state: "pending",
       resolvedBy: null,
     });

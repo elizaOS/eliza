@@ -348,7 +348,10 @@ describe("HOUSEHOLD_FOOD action — real PGlite production wiring", () => {
     });
     const approvalRequestId = firstHandoff.handoff.approvalRequestId;
     if (!approvalRequestId) throw new Error("approval binding missing");
-    const request = await approvals.byId(approvalRequestId);
+    const request = await approvals.byId(
+      approvalRequestId,
+      firstHandoff.handoff.requestedByEntityId,
+    );
     expect(request?.state).toBe("pending");
     expect(request?.payload).toMatchObject({
       action: "execute_workflow",

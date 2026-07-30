@@ -142,7 +142,9 @@ describe("RESOLVE_REQUEST effect receipts — real PGlite", () => {
       text: applied.result.text,
       effectReceiptIds: [appliedReceipt.receiptId],
     });
-    expect(await queue.byId(request.id)).toMatchObject({ state: "done" });
+    expect(await queue.byId(request.id, request.subjectUserId)).toMatchObject({
+      state: "done",
+    });
     expect(
       (await service.getWorkflow(workflow.definition.id)).runs,
     ).toHaveLength(1);
@@ -182,7 +184,9 @@ describe("RESOLVE_REQUEST effect receipts — real PGlite", () => {
       resource: { id: request.id },
       commit: { kind: "durable", id: expect.any(String) },
     });
-    expect(await queue.byId(request.id)).toMatchObject({ state: "rejected" });
+    expect(await queue.byId(request.id, request.subjectUserId)).toMatchObject({
+      state: "rejected",
+    });
 
     const replay = await invoke("reject", request.id);
     expect(replay.result.success).toBe(true);
@@ -191,7 +195,9 @@ describe("RESOLVE_REQUEST effect receipts — real PGlite", () => {
       operation: "lifeops.approval.reject",
       idempotency: { replayed: true },
     });
-    expect(await queue.byId(request.id)).toMatchObject({ state: "rejected" });
+    expect(await queue.byId(request.id, request.subjectUserId)).toMatchObject({
+      state: "rejected",
+    });
   }, 120_000);
 
   it("keeps a pre-dispatch failure retryable from its persisted approval", async () => {
@@ -226,7 +232,9 @@ describe("RESOLVE_REQUEST effect receipts — real PGlite", () => {
           acceptance: "rejected",
         },
       });
-      expect(await queue.byId(request.id)).toMatchObject({ state: "approved" });
+      expect(await queue.byId(request.id, request.subjectUserId)).toMatchObject(
+        { state: "approved" },
+      );
     }
   }, 120_000);
 
@@ -256,6 +264,12 @@ describe("RESOLVE_REQUEST effect receipts — real PGlite", () => {
       resource: { id: request.id },
       failure: { code: "CROSS_SUBJECT_APPROVAL_FORBIDDEN" },
     });
-    expect(await queue.byId(request.id)).toMatchObject({ state: "pending" });
+    // Read back under the foreign subject the row was enqueued with
+    // ("another-owner"), not the agent's. Reading under the agent's subject
+    // would return null for a row that had in fact been mutated, so only the
+    // owning-subject read proves the refused reject left the row untouched.
+    expect(await queue.byId(request.id, request.subjectUserId)).toMatchObject({
+      state: "pending",
+    });
   }, 120_000);
 });

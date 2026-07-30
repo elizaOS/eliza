@@ -213,7 +213,9 @@ describe("household discord party route — real PGlite", () => {
     });
 
     const queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
-    expect(await queue.byId(pending.approvalRequestId)).toMatchObject({
+    expect(
+      await queue.byId(pending.approvalRequestId, coParentId),
+    ).toMatchObject({
       channel: "discord",
       state: "pending",
     });
@@ -230,7 +232,9 @@ describe("household discord party route — real PGlite", () => {
     expect(telegramSendAttempts).toBe(0);
     expect(discordSends).toHaveLength(sendsBefore);
     const queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
-    expect(await queue.byId(pending.approvalRequestId)).toMatchObject({
+    expect(
+      await queue.byId(pending.approvalRequestId, coParentId),
+    ).toMatchObject({
       channel: "internal",
       state: "pending",
     });

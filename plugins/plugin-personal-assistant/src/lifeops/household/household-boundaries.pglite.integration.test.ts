@@ -349,7 +349,7 @@ describe("household authorization boundaries — real PGlite", () => {
     );
     for (const link of firstLinks) {
       await expect(
-        approvals.byId(link.approvalRequestId),
+        approvals.byId(link.approvalRequestId, link.partyEntityId),
       ).resolves.toMatchObject({ state: "expired" });
     }
     await expect(

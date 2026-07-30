@@ -505,7 +505,7 @@ describe("calendar mutation ledger — real PGlite and HTTP provider", () => {
       expiresAt: new Date("2027-03-31T00:00:00.000Z"),
     };
     const pending = await approvals.enqueue(input);
-    return approvals.approve(pending.id, {
+    return approvals.approve(pending.id, input.subjectUserId, {
       resolvedBy: String(runtime.agentId),
       resolutionReason: "Owner reviewed exact provider-bound payload.",
     });
@@ -657,7 +657,10 @@ describe("calendar mutation ledger — real PGlite and HTTP provider", () => {
     });
     expect(mutationRequests.at(-1)?.body.recurrenceScope).toBe("series");
     expect(events.has("provider-event-1")).toBe(false);
-    expect((await approvals.byId(cancelRequest.id))?.state).toBe("done");
+    expect(
+      (await approvals.byId(cancelRequest.id, cancelRequest.subjectUserId))
+        ?.state,
+    ).toBe("done");
   }, 60_000);
 
   it("binds both recurrence versions and suppresses replay of a following-series split", async () => {
@@ -731,7 +734,8 @@ describe("calendar mutation ledger — real PGlite and HTTP provider", () => {
 
     const replay = await executeCalendarMutationApproval({
       runtime,
-      request: (await approvals.byId(request.id)) ?? request,
+      request:
+        (await approvals.byId(request.id, request.subjectUserId)) ?? request,
       port: port(),
     });
     expect(replay).toMatchObject({
@@ -765,7 +769,8 @@ describe("calendar mutation ledger — real PGlite and HTTP provider", () => {
     expect(completed.kind).toBe("succeeded");
     const replay = await executeCalendarMutationApproval({
       runtime,
-      request: (await approvals.byId(request.id)) ?? request,
+      request:
+        (await approvals.byId(request.id, request.subjectUserId)) ?? request,
       port: port(),
     });
     expect(replay).toMatchObject({
@@ -834,12 +839,15 @@ describe("calendar mutation ledger — real PGlite and HTTP provider", () => {
       },
       attempt: { state: "failed_retryable", attemptCount: 1 },
     });
-    expect((await approvals.byId(request.id))?.state).toBe("executing");
+    expect(
+      (await approvals.byId(request.id, request.subjectUserId))?.state,
+    ).toBe("executing");
 
     providerMode = "success";
     const retried = await executeCalendarMutationApproval({
       runtime,
-      request: (await approvals.byId(request.id)) ?? request,
+      request:
+        (await approvals.byId(request.id, request.subjectUserId)) ?? request,
       port: port(),
     });
     expect(retried).toMatchObject({
@@ -869,7 +877,9 @@ describe("calendar mutation ledger — real PGlite and HTTP provider", () => {
         },
       },
     });
-    expect((await approvals.byId(request.id))?.state).toBe("executing");
+    expect(
+      (await approvals.byId(request.id, request.subjectUserId))?.state,
+    ).toBe("executing");
     expect(
       [...events.values()].some(
         (event) => event.title === "Create pickup hold",
@@ -879,7 +889,8 @@ describe("calendar mutation ledger — real PGlite and HTTP provider", () => {
     providerMode = "success";
     const replay = await executeCalendarMutationApproval({
       runtime,
-      request: (await approvals.byId(request.id)) ?? request,
+      request:
+        (await approvals.byId(request.id, request.subjectUserId)) ?? request,
       port: port(),
     });
     expect(replay).toMatchObject({
@@ -946,7 +957,9 @@ describe("calendar mutation ledger — real PGlite and HTTP provider", () => {
         retryable: false,
       },
     });
-    expect((await approvals.byId(request.id))?.state).toBe("expired");
+    expect(
+      (await approvals.byId(request.id, request.subjectUserId))?.state,
+    ).toBe("expired");
     expect(mutationRequests).toHaveLength(0);
   }, 60_000);
 
@@ -1328,7 +1341,9 @@ describe("calendar mutation ledger — real PGlite and HTTP provider", () => {
         retryable: false,
       },
     });
-    expect((await approvals.byId(request.id))?.state).toBe("expired");
+    expect(
+      (await approvals.byId(request.id, request.subjectUserId))?.state,
+    ).toBe("expired");
     expect(events.get(original.externalId)?.title).toBe(
       "Changed between preflight and write",
     );
