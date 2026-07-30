@@ -756,6 +756,9 @@ async function verifySnapshotV2Restorability(
       },
     });
   } catch (error) {
+    // error-policy:J3 stored snapshot bytes are untrusted; recognized protocol
+    // and storage failures become explicit verification failures, while unknown
+    // faults still propagate.
     const classified = classifySnapshotV2Error(error);
     if (classified) return fail(classified);
     throw error;

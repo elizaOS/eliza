@@ -7984,6 +7984,8 @@ export class ElizaSandboxService {
         throw new Error("Rollback standby changed before exact Docker identity was persisted");
       }
     } catch (error) {
+      // error-policy:J1 the standby-pause boundary restores the prior runtime
+      // and returns an explicit rolled-back failure instead of partial success.
       const current = await agentSandboxesRepository.findByIdAndOrgForWrite(
         agent.id,
         agent.organization_id,
@@ -8088,6 +8090,8 @@ export class ElizaSandboxService {
         throw new Error("Agent changed during rollback-standby cutover");
       }
     } catch (error) {
+      // error-policy:J1 the cutover boundary restores the exact paused standby
+      // and returns an explicit rolled-back failure instead of partial success.
       const current = await agentSandboxesRepository.findByIdAndOrgForWrite(
         agent.id,
         agent.organization_id,
@@ -8810,6 +8814,8 @@ export class ElizaSandboxService {
       try {
         parsed = new URL(value);
       } catch (cause) {
+        // error-policy:J3 provider route identity is untrusted; malformed URLs
+        // become an explicit restore-validation failure retaining the parse cause.
         throw new Error(`Restore-validation candidate ${field} is malformed`, { cause });
       }
       if (
@@ -9975,6 +9981,8 @@ export class ElizaSandboxService {
         }
         agent = transitioned;
       } catch (error) {
+        // error-policy:J1 acceptance owns rollback translation; any fenced
+        // transition failure invokes exact-standby recovery and returns its result.
         logger.warn("[agent-sandbox] Canary acceptance failed; restoring exact standby", {
           agentId: params.data.agentId,
           sourceJobId: params.data.sourceJobId,
@@ -10058,6 +10066,8 @@ export class ElizaSandboxService {
       try {
         await this.recoverAdminCanaryPreCutoverStandby(agent, adminCanary);
       } catch (error) {
+        // error-policy:J1 recovery owns the user-visible boundary; unresolved
+        // cleanup remains explicit and retains standby ownership for retry.
         return {
           success: false,
           rolledBack: true,

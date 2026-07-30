@@ -801,6 +801,169 @@ describe("DockerSandboxProvider replacement cleanup", () => {
     expect(decrement).not.toHaveBeenCalled();
   });
 
+  test("preserves the port-reservation error when capacity rollback also fails", async () => {
+    const savedEnvironment = process.env.ENVIRONMENT;
+    const savedHeadscaleApiKey = process.env.HEADSCALE_API_KEY;
+    const savedFallback = process.env.AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK;
+    const savedStewardApiUrl = process.env.STEWARD_API_URL;
+    process.env.ENVIRONMENT = "development";
+    delete process.env.HEADSCALE_API_KEY;
+    process.env.AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK = "1";
+    process.env.STEWARD_API_URL = "https://steward.example.test";
+
+    spyOn(dockerNodeManager, "getAvailableNode").mockResolvedValue(NODE);
+    spyOn(stewardTenantConfig, "ensureStewardTenant").mockResolvedValue({
+      tenantId: "tenant-test",
+      isNew: false,
+    });
+    const increment = spyOn(dockerNodesRepository, "incrementAllocated").mockResolvedValue();
+    const decrement = spyOn(dockerNodesRepository, "decrementAllocated").mockRejectedValue(
+      new Error("capacity rollback failed"),
+    );
+    stubSsh();
+    const reservationError = new Error("port reservation failed");
+    const reserve = mock(async () => {
+      throw reservationError;
+    });
+    const provider = new DockerSandboxProvider({
+      reserveHostPorts: reserve,
+      releaseHostPorts: async () => 0,
+    });
+
+    try {
+      const error = await provider
+        .create({
+          agentId: "11111111-1111-4111-8111-111111111111",
+          agentName: "Reservation failure",
+          organizationId: "22222222-2222-4222-8222-222222222222",
+          environmentVars: {},
+        })
+        .catch((caught: unknown) => caught);
+      expect(error).toBe(reservationError);
+    } finally {
+      if (savedEnvironment === undefined) {
+        delete process.env.ENVIRONMENT;
+      } else {
+        process.env.ENVIRONMENT = savedEnvironment;
+      }
+      if (savedHeadscaleApiKey === undefined) {
+        delete process.env.HEADSCALE_API_KEY;
+      } else {
+        process.env.HEADSCALE_API_KEY = savedHeadscaleApiKey;
+      }
+      if (savedFallback === undefined) {
+        delete process.env.AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK;
+      } else {
+        process.env.AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK = savedFallback;
+      }
+      if (savedStewardApiUrl === undefined) {
+        delete process.env.STEWARD_API_URL;
+      } else {
+        process.env.STEWARD_API_URL = savedStewardApiUrl;
+      }
+    }
+
+    expect(reserve).toHaveBeenCalledTimes(1);
+    expect(increment).toHaveBeenCalledWith(NODE.node_id);
+    expect(decrement).toHaveBeenCalledWith(NODE.node_id);
+  });
+
+  test("fails provisioning and cleans up when the required eliza.json write fails", async () => {
+    const savedEnvironment = process.env.ENVIRONMENT;
+    const savedHeadscaleApiKey = process.env.HEADSCALE_API_KEY;
+    const savedFallback = process.env.AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK;
+    const savedStewardApiUrl = process.env.STEWARD_API_URL;
+    process.env.ENVIRONMENT = "development";
+    delete process.env.HEADSCALE_API_KEY;
+    process.env.AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK = "1";
+    process.env.STEWARD_API_URL = "https://steward.example.test";
+
+    spyOn(dockerNodeManager, "getAvailableNode").mockResolvedValue(NODE);
+    spyOn(stewardTenantConfig, "ensureStewardTenant").mockResolvedValue({
+      tenantId: "tenant-test",
+      isNew: false,
+    });
+    const increment = spyOn(dockerNodesRepository, "incrementAllocated").mockResolvedValue();
+    const decrement = spyOn(dockerNodesRepository, "decrementAllocated").mockResolvedValue();
+    const reserve = mock(async () => ({
+      bridgePort: 18_790,
+      webUiPort: 20_000,
+    }));
+    const release = mock(async () => 2);
+    const requiredWriteError = new Error("required eliza.json write failed");
+    let replacementAttemptId = "";
+    const { commands } = stubSsh(async (command) => {
+      if (command.startsWith("python3 ")) {
+        return '{"token":"steward-agent-token"}';
+      }
+      if (command.startsWith("docker create")) {
+        const match = command.match(/ai\.elizaos\.replacement-attempt=([0-9a-f-]{36})/);
+        replacementAttemptId = match?.[1] ?? "";
+        return `${CONTAINER_ID}\n`;
+      }
+      if (command.startsWith("docker exec") && command.includes("/root/.eliza/eliza.json")) {
+        throw requiredWriteError;
+      }
+      if (command.startsWith("docker inspect")) {
+        return `${CONTAINER_ID}|${replacementAttemptId}\n`;
+      }
+      return "";
+    });
+    const provider = new DockerSandboxProvider({
+      reserveHostPorts: reserve,
+      releaseHostPorts: release,
+    });
+
+    try {
+      const error = await provider
+        .create({
+          agentId: "11111111-1111-4111-8111-111111111111",
+          agentName: "Required config write",
+          organizationId: "22222222-2222-4222-8222-222222222222",
+          environmentVars: {
+            ELIZAOS_CLOUD_BASE_URL: "https://api.example.test/api/v1",
+          },
+        })
+        .catch((caught: unknown) => caught);
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toContain(requiredWriteError.message);
+      expect((error as Error).cause).toBe(requiredWriteError);
+    } finally {
+      if (savedEnvironment === undefined) {
+        delete process.env.ENVIRONMENT;
+      } else {
+        process.env.ENVIRONMENT = savedEnvironment;
+      }
+      if (savedHeadscaleApiKey === undefined) {
+        delete process.env.HEADSCALE_API_KEY;
+      } else {
+        process.env.HEADSCALE_API_KEY = savedHeadscaleApiKey;
+      }
+      if (savedFallback === undefined) {
+        delete process.env.AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK;
+      } else {
+        process.env.AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK = savedFallback;
+      }
+      if (savedStewardApiUrl === undefined) {
+        delete process.env.STEWARD_API_URL;
+      } else {
+        process.env.STEWARD_API_URL = savedStewardApiUrl;
+      }
+    }
+
+    expect(replacementAttemptId).not.toBe("");
+    expect(commands).toContain(`docker start '${CONTAINER_NAME}'`);
+    expect(commands).toContain(`docker stop -t 10 '${CONTAINER_ID}'`);
+    expect(commands).toContain(`docker rm -f '${CONTAINER_ID}'`);
+    expect(release).toHaveBeenCalledWith({
+      nodeId: NODE.node_id,
+      ownerKind: "agent",
+      ownerId: CONTAINER_NAME,
+    });
+    expect(increment).toHaveBeenCalledWith(NODE.node_id);
+    expect(decrement).toHaveBeenCalledWith(NODE.node_id);
+  });
+
   test("verifies attempt label and id before exact-node cleanup without releasing capacity", async () => {
     const findNode = stubNodeLookup();
     const { commands } = stubSsh(async (command) => {

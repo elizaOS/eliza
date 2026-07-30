@@ -306,6 +306,8 @@ async function deletePlannedObjectKeys(
       if (signal?.aborted) throw abortReason(signal);
       await dependencies.deleteObject(key);
     } catch (error) {
+      // error-policy:J1 the bounded cleanup boundary attempts every planned key
+      // and reports one aggregate failure instead of fabricating successful deletion.
       failures.push(`${key}: ${errorMessage(error)}`);
     }
   }
@@ -351,6 +353,8 @@ async function deleteCompleteObjectKeys(
       if (signal?.aborted) throw abortReason(signal);
       await dependencies.deleteObject(chunk.objectKey);
     } catch (error) {
+      // error-policy:J1 the bounded prune boundary attempts every committed key
+      // and reports one aggregate failure instead of fabricating successful deletion.
       failures.push(`${chunk.objectKey}: ${errorMessage(error)}`);
     }
   }
@@ -499,6 +503,8 @@ export class AgentBackupV2StorageService {
         verifiedAt: new Date(),
       });
     } catch (error) {
+      // error-policy:J1 the backup write boundary resolves durable commit,
+      // failure, and cleanup ownership before returning or propagating failure.
       const message = errorMessage(error);
       if (error instanceof AgentBackupWriteEpochUnquiescedError) {
         throw new Error(
@@ -527,6 +533,8 @@ export class AgentBackupV2StorageService {
         await removePlannedObjects(failedRow, failed, this.dependencies, params.signal);
         await this.dependencies.repository.deleteIncompleteChunkedBackup(identity.backupId);
       } catch (cleanupError) {
+        // error-policy:J1 the cleanup boundary reports an explicit pending
+        // failure while retaining the primary backup error as its cause.
         throw new Error(
           `Chunked backup failed (${message}) and durable cleanup remains pending: ${errorMessage(cleanupError)}`,
           { cause: error },

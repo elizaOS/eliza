@@ -7,7 +7,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { ElizaError } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 import { resolveStateDir } from "../config/paths.ts";
 import {
   type AgentSnapshotUpgradeBinding,
@@ -234,6 +234,8 @@ async function ensureReceiptDirectoryDurable(): Promise<string> {
       await fsyncDirectory(next);
       await fsyncDirectory(current);
     } catch (error) {
+      // error-policy:J3 concurrent filesystem state is untrusted; only exact
+      // EEXIST plus a real directory is accepted, and every other error rethrows.
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
       const stat = await fs.lstat(next);
       if (!stat.isDirectory() || stat.isSymbolicLink()) {
@@ -266,6 +268,8 @@ async function readReceipt(target: string): Promise<RestoreReceipt> {
       new TextDecoder("utf-8", { fatal: true }).decode(bytes),
     );
   } catch (cause) {
+    // error-policy:J3 receipt bytes are untrusted; malformed JSON becomes an
+    // explicit invalid-receipt failure with the parse cause.
     throw new ElizaError("Snapshot restore receipt is malformed", {
       cause,
       code: "AGENT_SNAPSHOT_RECEIPT_INVALID",
@@ -383,6 +387,8 @@ export async function beginCandidateSnapshotRestore(
     await fs.link(temporary, target);
     linked = true;
   } catch (error) {
+    // error-policy:J3 a competing receipt link is untrusted; only exact EEXIST
+    // enters the subsequent binding and result equality checks.
     if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
   } finally {
     await fs.rm(temporary, { force: true });
@@ -454,8 +460,25 @@ export async function commitCandidateSnapshotRestore(
   try {
     await fs.rename(temporary, target);
   } catch (error) {
-    await fs.rm(temporary, { force: true });
-    await fsyncDirectory(directory);
+    // error-policy:J6 failed publication removes its private temporary receipt;
+    // teardown failure is observed while the rename error remains primary.
+    try {
+      await fs.rm(temporary, { force: true });
+      await fsyncDirectory(directory);
+    } catch (cleanupError) {
+      // error-policy:J6 receipt cleanup is best-effort after publication has
+      // already failed; the original rename error remains externally visible.
+      logger.warn(
+        {
+          error:
+            cleanupError instanceof Error
+              ? cleanupError.message
+              : String(cleanupError),
+          src: "agent:snapshot",
+        },
+        "Failed to remove unpublished snapshot restore receipt",
+      );
+    }
     throw error;
   }
   await fsyncDirectory(directory);

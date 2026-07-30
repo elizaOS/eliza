@@ -699,7 +699,8 @@ function assertCanonicalLine(value: unknown, line: Buffer): void {
   try {
     text = FATAL_UTF8_DECODER.decode(line);
   } catch (cause) {
-    // parseJsonLine rejects this first; retain the guard for direct callers.
+    // error-policy:J3 direct callers still receive an explicit invalid wire
+    // frame when malformed UTF-8 bypasses parseJsonLine's earlier guard.
     throw invalidSnapshot("Snapshot stream line is not valid UTF-8", undefined, cause);
   }
   if (agentSnapshotV2StableJson(value) !== text) {

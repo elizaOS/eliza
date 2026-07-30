@@ -232,4 +232,35 @@ describe.sequential("candidate snapshot restore binding", () => {
       code: "AGENT_SNAPSHOT_RECEIPT_CONFLICT",
     });
   });
+
+  test("preserves the rename error when temporary-receipt cleanup also fails", async () => {
+    await temporaryStateDir();
+    await beginCandidateSnapshotRestore(BINDING);
+    const renameError = new Error("receipt rename failed");
+    const originalRm = fs.rm.bind(fs);
+    const renameSpy = vi.spyOn(fs, "rename").mockRejectedValueOnce(renameError);
+    const rmSpy = vi.spyOn(fs, "rm").mockImplementation(async (...args) => {
+      if (String(args[0]).endsWith(".tmp")) {
+        throw new Error("temporary receipt cleanup failed");
+      }
+      return originalRm(...args);
+    });
+
+    try {
+      await expect(
+        commitCandidateSnapshotRestore(BINDING, {
+          aggregateSha256: "04".repeat(32),
+          fileCount: 2,
+          requiresRestart: true,
+          schemaVersion: 2,
+          success: true,
+          totalBytes: 64,
+          transfer: "chunked-v1",
+        }),
+      ).rejects.toBe(renameError);
+    } finally {
+      renameSpy.mockRestore();
+      rmSpy.mockRestore();
+    }
+  });
 });

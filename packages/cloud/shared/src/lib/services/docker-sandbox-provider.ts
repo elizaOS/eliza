@@ -1531,8 +1531,20 @@ export class DockerSandboxProvider implements SandboxProvider {
           ownerId: containerName,
         });
       } catch (error) {
+        // error-policy:J6 failed port reservation rolls back capacity accounting;
+        // rollback failure is observed while the reservation error remains primary.
         if (dbNode && providerManagesCapacity) {
-          await dockerNodesRepository.decrementAllocated(nodeId);
+          try {
+            await dockerNodesRepository.decrementAllocated(nodeId);
+          } catch (rollbackError) {
+            // error-policy:J6 capacity rollback is teardown for a failed
+            // reservation; log it without masking the reservation failure.
+            logger.warn(
+              `[docker-sandbox] Failed to decrement allocated_count after port reservation failure for node ${nodeId}: ${
+                rollbackError instanceof Error ? rollbackError.message : String(rollbackError)
+              }`,
+            );
+          }
         }
         throw error;
       }
@@ -1881,36 +1893,28 @@ export class DockerSandboxProvider implements SandboxProvider {
         }
       }
 
-      // Write ~/.eliza/eliza.json so the runtime sees cloud config even if
-      // it bypasses env vars. Best-effort: a failure here is logged but
-      // does not abort provisioning — the env vars on the container still
-      // carry the same values.
+      // Persist managed config inside the container so process restarts retain
+      // exact Cloud routing; an env-only startup cannot prove restart behavior.
       if (!config.restoreValidationCandidate) {
-        try {
-          if (!allEnv.ELIZAOS_CLOUD_BASE_URL) {
-            throw new Error(
-              "[docker-sandbox] ELIZAOS_CLOUD_BASE_URL is not set in container env. " +
-                "Refusing to fall back to the hardcoded prod URL (https://elizacloud.ai/api/v1) — " +
-                "this caused staging containers to silently call prod. " +
-                "Configure ELIZAOS_CLOUD_BASE_URL in the daemon/Worker env (e.g. " +
-                "https://api-staging.elizacloud.ai/api/v1 for staging, https://api.elizacloud.ai/api/v1 for prod).",
-            );
-          }
-          const elizaConfig = JSON.stringify(buildManagedElizaRuntimeConfig(allEnv));
-          // Base64-encode the JSON before passing it through the shell so an
-          // apiKey/baseUrl containing single quotes can't break out of the
-          // outer sh -c quoting or inject commands on the remote host.
-          const encodedConfig = Buffer.from(elizaConfig, "utf-8").toString("base64");
-          const writeCmd = `docker exec ${shellQuote(containerName)} sh -c ${shellQuote(
-            `mkdir -p /root/.eliza && printf %s ${shellQuote(encodedConfig)} | base64 -d > /root/.eliza/eliza.json`,
-          )}`;
-          await ssh.exec(writeCmd, DOCKER_CMD_TIMEOUT_MS);
-          logger.info(`[docker-sandbox] Cloud config written to eliza.json in ${containerName}`);
-        } catch (configErr) {
-          logger.warn(
-            `[docker-sandbox] Failed to write eliza.json: ${configErr instanceof Error ? configErr.message : String(configErr)}`,
+        if (!allEnv.ELIZAOS_CLOUD_BASE_URL) {
+          throw new Error(
+            "[docker-sandbox] ELIZAOS_CLOUD_BASE_URL is not set in container env. " +
+              "Refusing to fall back to the hardcoded prod URL (https://elizacloud.ai/api/v1) — " +
+              "this caused staging containers to silently call prod. " +
+              "Configure ELIZAOS_CLOUD_BASE_URL in the daemon/Worker env (e.g. " +
+              "https://api-staging.elizacloud.ai/api/v1 for staging, https://api.elizacloud.ai/api/v1 for prod).",
           );
         }
+        const elizaConfig = JSON.stringify(buildManagedElizaRuntimeConfig(allEnv));
+        // Base64-encode the JSON before passing it through the shell so an
+        // apiKey/baseUrl containing single quotes can't break out of the
+        // outer sh -c quoting or inject commands on the remote host.
+        const encodedConfig = Buffer.from(elizaConfig, "utf-8").toString("base64");
+        const writeCmd = `docker exec ${shellQuote(containerName)} sh -c ${shellQuote(
+          `mkdir -p /root/.eliza && printf %s ${shellQuote(encodedConfig)} | base64 -d > /root/.eliza/eliza.json`,
+        )}`;
+        await ssh.exec(writeCmd, DOCKER_CMD_TIMEOUT_MS);
+        logger.info(`[docker-sandbox] Cloud config written to eliza.json in ${containerName}`);
       }
     } catch (err) {
       // Best-effort Steward deregistration — the agent was registered but the
@@ -1925,6 +1929,8 @@ export class DockerSandboxProvider implements SandboxProvider {
             `[docker-sandbox] Cleaned up Steward agent ${agentId} after container failure`,
           );
         } catch (cleanupErr) {
+          // error-policy:J6 Steward deregistration is teardown after container
+          // startup failure; cleanup failure is logged while startup remains primary.
           logger.warn(
             `[docker-sandbox] Failed to cleanup Steward agent ${agentId}: ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}`,
           );
@@ -2138,6 +2144,8 @@ export class DockerSandboxProvider implements SandboxProvider {
             );
           })
           .catch((cleanupErr) => {
+            // error-policy:J6 Steward deregistration is teardown after routing
+            // validation fails; cleanup failure is logged before the primary error.
             logger.warn(
               `[docker-sandbox] Failed to cleanup Steward agent ${agentId} after missing Headscale registration: ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}`,
             );
