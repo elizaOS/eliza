@@ -4,6 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
+import { fusedCmakeBuildTargets } from "../build-helpers/omnivoice-merged.mjs";
 import { resolveElizaWorkspaceRootFromImportMeta } from "../lib/repo-root.mjs";
 import {
   describeAndroidTargetDryRun,
@@ -203,8 +204,18 @@ describe("compile-libllama Zig driver generation", () => {
     expect(output).toContain(
       `-DCMAKE_RANLIB=${path.join(driverDir, "zig-ranlib")}`,
     );
+    expect(output).toContain("-DLLAMA_BUILD_WEBUI=OFF");
+    expect(output).toContain("-DLLAMA_OPENSSL=OFF");
+    expect(output).toContain("-DKOKORO_ENABLE_ESPEAK=OFF");
     expect(output).toContain("ggml-vulkan");
     expect(output).toContain("static marker in libelizainference.so");
+  });
+
+  test("builds only Android runtime artifacts, not developer CLIs", () => {
+    expect(fusedCmakeBuildTargets()).toEqual([
+      "llama-server",
+      "elizainference",
+    ]);
   });
 });
 

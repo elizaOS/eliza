@@ -9,7 +9,8 @@ import android.util.Log;
  * {@code elizainference} target — VAD, wake-word, speaker, diarizer fused at
  * ABI v7) IN the {@code ai.elizaos.app} APK process via
  * {@link System#loadLibrary}, then through {@code libelizavoicejni.so} exposes
- * the full fused voice ABI directly (no separate musl bun agent transport).
+ * the fused voice and inference ABI v15 directly (no separate musl bun agent
+ * transport).
  *
  * <p>The text musl stack (libeliza_bun / musl ld) is untouched; this class is
  * the bionic, in-process path for the FOUR voice classifiers. Handles are raw
@@ -60,7 +61,7 @@ final class ElizaVoiceNative {
 
     // ── ABI / capability probes ──────────────────────────────────────────
 
-    /** {@code eliza_inference_abi_version()} — expect "7". */
+    /** {@code eliza_inference_abi_version()} — expect "15". */
     static native String nativeVoiceAbiVersion();
 
     /** {@code eliza_inference_vad_supported()}. */
@@ -238,6 +239,15 @@ final class ElizaVoiceNative {
      */
     static native float[] nativeKokoroSynthesize(
             long ctxHandle, String ggufPath, String voiceBinPath, String text, float speed);
+
+    /**
+     * Synthesize precomputed espeak-compatible IPA with the fused Kokoro head.
+     * Android does not link espeak-ng into the bionic inference library, so the
+     * agent supplies IPA through this ABI-v14 entry instead of using the lossy
+     * native ASCII grapheme fallback.
+     */
+    static native float[] nativeKokoroSynthesizeIpa(
+            long ctxHandle, String ggufPath, String voiceBinPath, String ipa, float speed);
 
     // ── Batch ASR + mmproj vision (the agent's STT / screen-recognition path) ──
 

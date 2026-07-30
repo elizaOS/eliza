@@ -12,6 +12,7 @@
 //     vector.tar.gz                pgvector contrib (referenced via ../)
 //     fuzzystrmatch.tar.gz         fuzzystrmatch contrib (referenced via ../)
 //     plugins-manifest.json        list of plugins statically baked into the bundle
+//     cmudict.tsv                  Android Kokoro pronunciation data
 //
 // What this build does NOT do:
 //   - Stage `node_modules`. All `MOBILE_CORE_PLUGINS` resolve through
@@ -43,9 +44,10 @@ import {
   stat,
   writeFile,
 } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 // Pure data module (no imports) — safe to load in the build script. The
 // manifest's plugin lists are derived from it so they cannot drift from what
@@ -112,6 +114,16 @@ const outDir = path.join(agentRoot, OUT_DIRS[TARGET]);
 const stubsDir = path.join(here, "mobile-stubs");
 const entry = path.join(agentRoot, "src", "bin.ts");
 let mobileWorkspacePackageDirCache = null;
+const mobileBundledWorkspacePackages = new Set([
+  "@elizaos/agent",
+  "@elizaos/app-core",
+  "@elizaos/cloud-sdk",
+  ...MOBILE_CORE_PLUGINS,
+  ...MOBILE_MODEL_PROVIDER_PLUGINS,
+  ...MOBILE_VIEW_PLUGINS,
+  ...ELIZAOS_ANDROID_CORE_PLUGINS,
+  ...ELIZAOS_ANDROID_TERMINAL_PLUGINS,
+]);
 
 function collectMobileWorkspacePackageDirs() {
   if (mobileWorkspacePackageDirCache) return mobileWorkspacePackageDirCache;
@@ -168,7 +180,7 @@ console.log("[build-mobile] agent root:", agentRoot);
 console.log("[build-mobile] output dir:", outDir);
 
 if (process.argv.includes("--verify-workspace-resolution")) {
-  const requiredPackages = [
+  const requiredPackages = new Set([
     "@elizaos/plugin-birdclaw",
     "@elizaos/plugin-commands",
     "@elizaos/plugin-vision",
@@ -176,8 +188,11 @@ if (process.argv.includes("--verify-workspace-resolution")) {
     "@elizaos/plugin-wallet",
     "@elizaos/cloud-routing",
     "@elizaos/cloud-sdk",
-  ];
-  const missing = requiredPackages.filter(
+    ...[...mobileBundledWorkspacePackages].filter((name) =>
+      name.startsWith("@elizaos/"),
+    ),
+  ]);
+  const missing = [...requiredPackages].filter(
     (pkgName) => !resolveMobileWorkspacePackageDir(pkgName),
   );
   const walletDir = resolveMobileWorkspacePackageDir("@elizaos/plugin-wallet");
@@ -191,7 +206,7 @@ if (process.argv.includes("--verify-workspace-resolution")) {
     process.exit(1);
   }
   console.log(
-    `[build-mobile] workspace resolution verified for ${requiredPackages.length} packages`,
+    `[build-mobile] workspace resolution verified for ${requiredPackages.size} packages`,
   );
   process.exit(0);
 }
@@ -1298,50 +1313,15 @@ const workspaceSrcFallbackPlugin = {
         // No src match — fall through to the generic handling below.
       }
 
-      // Skip if dist exists and contains the requested entry — let the
-      // default resolver handle it normally. Some workspace packages build a
-      // root dist/index.js while package.json exports additional subpaths
-      // (for example @elizaos/plugin-x402/startup-validator); fall back to
-      // source when that subpath has not been emitted yet.
-      const distDir = path.join(pkgDir, "dist");
-      // The bundle's own runtime/API packages (@elizaos/agent, @elizaos/app-core)
-      // have compiled `dist` re-exports (e.g. dist/api/cloud-pair-route,
-      // dist/runtime) whose circular barrel exports come out `undefined` once
-      // Bun re-bundles them, OR re-emit bare `@elizaos/*` requires Bun can't
-      // inline — both fatal on-device (no node_modules; handler "is not a
-      // function"). Always resolve these from src so the whole graph inlines
-      // into the single bundle and circular exports settle via Bun's bundler.
-      const forceSourceResolution =
-        pkgName === "@elizaos/agent" ||
-        pkgName === "@elizaos/app-core" ||
-        // @elizaos/cloud-sdk's dist is a barrel that re-exports the
-        // CloudApiClient class (`export { CloudApiClient } from "./http.js"`).
-        // Re-bundling that dist makes the re-export resolve to `undefined`, so
-        // on-device cloud routing dies with "CloudApiClient is not defined"
-        // (CLOUD_AUTH service start fails, every cloud turn → provider_issue).
-        // Resolve from src so the class inlines into the single bundle.
-        pkgName === "@elizaos/cloud-sdk";
-      if (existsSync(distDir) && !forceSourceResolution) {
-        if (!subpath) return undefined;
-        const cleanedDist = subpath.replace(/\.js$/, "");
-        const distCandidates = [
-          `${cleanedDist}.js`,
-          `${cleanedDist}/index.js`,
-          cleanedDist,
-        ];
-        if (
-          distCandidates.some((candidate) =>
-            existsSync(path.join(distDir, candidate)),
-          )
-        ) {
-          return undefined;
-        }
-      }
-
       // Two layouts to handle: packages with a `src/` directory (the
       // monorepo convention for typescript packages) and packages whose
       // .ts files sit at the package root (the elizaos-plugins convention,
       // e.g. plugin-discord, plugin-telegram, plugin-google).
+      // Prefer current-checkout source for every workspace dependency, not
+      // only the direct mobile manifest. Transitive workspace imports are just
+      // as capable of resolving stale dist from an earlier build. If a package
+      // has no matching source entry, returning undefined below preserves its
+      // declared export resolution for generated or compiled-only modules.
       const srcDir = existsSync(path.join(pkgDir, "src"))
         ? path.join(pkgDir, "src")
         : pkgDir;
@@ -1551,6 +1531,31 @@ const localInferenceDedupePlugin = {
   },
 };
 
+// Mobile delegates Kokoro inference to its native host and always selects the
+// compact CMU phonemizer before this optional desktop-only import can run.
+// Leaving the literal dynamic import visible to Bun nevertheless embeds the
+// entire espeak WASM filesystem in the APK, adding tens of megabytes and
+// preserving the exact slow initializer mobile is designed to avoid.
+const mobileDesktopPhonemizerExternalPlugin = {
+  name: "eliza-mobile-desktop-phonemizer-external",
+  setup(build) {
+    build.onResolve({ filter: /^phonemizer$/ }, () => ({
+      path: "phonemizer",
+      external: true,
+    }));
+  },
+};
+
+const androidCmuDictionaryExternalPlugin = {
+  name: "eliza-android-cmudict-external",
+  setup(build) {
+    build.onResolve({ filter: /^cmu-pronouncing-dictionary$/ }, () => ({
+      path: "cmu-pronouncing-dictionary",
+      external: true,
+    }));
+  },
+};
+
 console.log("[build-mobile] starting Bun.build...");
 const buildResult = await Bun.build({
   entrypoints: [entry],
@@ -1560,18 +1565,15 @@ const buildResult = await Bun.build({
   format: "esm",
   ...(iosJscExternals ? { external: iosJscExternals } : {}),
   tsconfig: bundlerTsconfig,
-  // Keep Android debuggable, but compact the real iOS Bun payload. Static
-  // JavaScriptCore no-JIT spends a lot of time parsing this file; syntax +
-  // whitespace minification reduces launch cost without identifier mangling,
-  // preserving the post-build undeclared-identifier scan below.
-  minify:
-    TARGET === "ios"
-      ? {
-          syntax: true,
-          whitespace: true,
-          identifiers: false,
-        }
-      : false,
+  // Mobile startup parses this entire bundle before the runtime can become
+  // ready. Syntax and whitespace compaction removes dead source bulk while
+  // preserving identifier names for readable device stacks and for the
+  // undeclared-identifier scan below.
+  minify: {
+    syntax: true,
+    whitespace: true,
+    identifiers: false,
+  },
   define: {
     "process.env.ELIZA_PLATFORM": JSON.stringify(platformDefineValue),
     // Disable the `isDirectRun` self-invocation guard in the agent's
@@ -1609,6 +1611,8 @@ const buildResult = await Bun.build({
     capabilityRouterStubPlugin,
     stubResolverPlugin,
     localInferenceDedupePlugin,
+    mobileDesktopPhonemizerExternalPlugin,
+    ...(TARGET === "android" ? [androidCmuDictionaryExternalPlugin] : []),
     workspaceSrcFallbackPlugin,
     stripStaleJsArtifactsPlugin,
     // ios-jsc: actively mark Node built-ins as external via onResolve so
@@ -1724,7 +1728,9 @@ function initSourceComment(src, initName, searchOffset) {
 function reportInitElizaShape(src) {
   const source = String(src);
   const match =
-    /var init_eliza = __esm\((async )?\(\) => \{([\s\S]*?)\n\}\);/.exec(source);
+    /var\s+init_eliza\s*=\s*__esm\((async\s+)?\(\)\s*=>\s*\{([\s\S]*?)\}\);/.exec(
+      source,
+    );
   if (!match) {
     console.warn("[build-mobile] init_eliza initializer not found");
     return;
@@ -1943,6 +1949,25 @@ const bundleSize = (await stat(bundlePath)).size;
 console.log(
   `[build-mobile] bundle size: ${(bundleSize / 1024 / 1024).toFixed(2)} MB (with polyfill prefix)`,
 );
+
+if (TARGET === "android") {
+  const localInferenceRequire = createRequire(
+    path.join(repoRoot, "plugins", "plugin-local-inference", "package.json"),
+  );
+  const cmuModulePath = localInferenceRequire.resolve(
+    "cmu-pronouncing-dictionary",
+  );
+  const { dictionary } = await import(pathToFileURL(cmuModulePath).href);
+  const rows = Object.entries(dictionary).map(
+    ([word, pronunciation]) => `${word}\t${pronunciation}\n`,
+  );
+  const cmuTarget = path.join(outDir, "cmudict.tsv");
+  await writeFile(cmuTarget, rows.join(""));
+  const cmuSize = (await stat(cmuTarget)).size;
+  console.log(
+    `[build-mobile] wrote cmudict.tsv (${(cmuSize / 1024 / 1024).toFixed(2)} MB)`,
+  );
+}
 
 // Copy PGlite assets next to the bundle. The bundle's `import.meta.url` will
 // resolve to its location at runtime, and `new URL("./pglite.wasm", ...)`

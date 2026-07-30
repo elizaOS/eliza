@@ -27,6 +27,8 @@ export type KvOffloadMode = "cpu" | "gpu" | "split" | { gpuLayers: number };
  */
 export interface LocalInferenceLoadArgs {
 	modelPath: string;
+	/** Caller-owned cancellation for transports that load models remotely. */
+	signal?: AbortSignal;
 	/**
 	 * Catalog id for direct bundle loads where `modelPath` points at a GGUF
 	 * inside an Eliza-1 bundle that is not present in the installed-model

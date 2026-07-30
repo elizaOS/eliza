@@ -333,12 +333,13 @@ export const REQUIRED_ELIZA_INFERENCE_SYMBOLS = Object.freeze([
   "eliza_inference_kokoro_load",
   "eliza_inference_kokoro_synthesize",
   "eliza_inference_kokoro_sample_rate",
-  // ABI v14 — Kokoro IPA input + G2P-kind query (#11776) intentionally remains
-  // optional until the pinned llama.cpp submodule declares and exports it. The
-  // current develop gitlink is ABI v12: runtime bindings probe these symbols and
-  // fall back to `"unknown"` G2P when absent. Requiring the future v14 exports
-  // here made every Android fused build fail after producing a valid v12
-  // libelizainference.so, leaving mobile builds with stale prebuilt artifacts.
+  "eliza_inference_kokoro_g2p_kind",
+  "eliza_inference_kokoro_synthesize_ipa",
+  // ABI v15 — exact-size owned PCM. Mobile JNI has no duration ceiling and
+  // must free the library allocation after copying into its Java float array.
+  "eliza_inference_kokoro_synthesize_alloc",
+  "eliza_inference_kokoro_synthesize_ipa_alloc",
+  "eliza_inference_free_pcm",
   // ABI v11 — end-of-turn scoring folded in-process. A single causal forward
   // pass over the tokenized partial transcript reads P(end-of-turn token),
   // replacing the retired node-llama-cpp controlledEvaluate() the EOT

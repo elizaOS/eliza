@@ -1,39 +1,11 @@
 #!/usr/bin/env node
-// stage-elizavoice-lib.mjs
-//
-// Phase 3a: cross-build the fused fork voice library
-// (`libelizainference.so` — the omnivoice `elizainference` target with VAD,
-// wake-word, speaker, and diarizer fused at ABI v7) for Android arm64-v8a
-// with the NDK (BIONIC, not musl/zig), and stage the stripped .so into the
-// app's jniLibs so the externalNativeBuild JNI shim (libelizavoicejni.so) can
-// link it and the APK packages it.
-//
-// The build statically links ggml/llama/mtmd into libelizainference.so so the
-// resulting .so has NO external NEEDED deps beyond bionic libc/libm/libdl —
-// zero SONAME collision with the existing musl jniLibs (libeliza_bun.so etc).
-//
-// Two variants:
-//   --variant cpu     (default) static-fused libelizainference.so, CPU only.
-//   --variant vulkan  dynamic build: libelizainference.so + its ggml/llama/mtmd
-//                     shared backends incl. libggml-vulkan.so. The GPU backend
-//                     dlopens the device's libvulkan at runtime — the path the
-//                     bionic app process can take but the musl agent cannot.
-//                     Device-proven on Pixel 9a (Mali-G715), ~15 tok/s warm.
-//
-// Usage:
-//   node packages/app-core/scripts/stage-elizavoice-lib.mjs [--abi arm64-v8a] [--variant cpu|vulkan]
-//
-// Env:
-//   ANDROID_HOME / ANDROID_SDK_ROOT  Android SDK root (NDK under ndk/<version>)
-//   ELIZA_NDK_VERSION                NDK version dir (default: highest installed)
-//   (vulkan variant only — host shader tooling, auto-discovered, env overrides win)
-//   ELIZA_GLSLC                      glslc (default: NDK shader-tools)
-//   ELIZA_SPIRV_HEADERS_DIR          SPIRV-Headers lib/cmake/SPIRV-Headers dir
-//   ELIZA_VULKAN_INCLUDE_DIR         Vulkan-Headers include dir (vulkan/, vk_video/, spirv/)
-//
-// Output:
-//   packages/app-core/platforms/android/app/src/main/jniLibs/<abi>/libelizainference.so
-//   (+ the ggml/llama/mtmd sibling .so for --variant vulkan)
+/**
+ * Builds ABI-v15 fused inference for Android with the NDK and stages the
+ * bionic libraries consumed by the JNI bridge. CPU builds are self-contained;
+ * Vulkan builds stage the shared ggml/llama/mtmd dependency set and link
+ * against the device Vulkan loader. This is deliberately separate from the
+ * musl artifacts that the embedded Bun process loads from app assets.
+ */
 
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
@@ -73,6 +45,12 @@ function parseArgs(argv) {
 // locations (env overrides win) and fail loudly with what to provide.
 function resolveVulkanHostTooling(ndk) {
   const firstExisting = (cands) => cands.find((p) => p && existsSync(p));
+  const prebuiltRoot = path.join(ndk, "toolchains", "llvm", "prebuilt");
+  const prebuiltHosts = existsSync(prebuiltRoot)
+    ? readdirSync(prebuiltRoot)
+        .map((host) => path.join(prebuiltRoot, host))
+        .filter((host) => statSync(host).isDirectory())
+    : [];
 
   const glslc =
     process.env.ELIZA_GLSLC ||
@@ -87,26 +65,16 @@ function resolveVulkanHostTooling(ndk) {
     );
   }
 
-  const spirvHeadersDir =
-    process.env.ELIZA_SPIRV_HEADERS_DIR ||
-    firstExisting([
-      "/tmp/spirv-headers-install/lib/cmake/SPIRV-Headers",
-      "/home/shaw/aosp/external/shaderc/spirv-headers",
-    ]);
-  if (!spirvHeadersDir) {
-    die(
-      "SPIRV-Headers cmake dir not found (set ELIZA_SPIRV_HEADERS_DIR) — clone " +
-        "KhronosGroup/SPIRV-Headers and `cmake --install` it (need the " +
-        "lib/cmake/SPIRV-Headers config dir).",
-    );
-  }
-
   const vulkanIncludeDir =
     process.env.ELIZA_VULKAN_INCLUDE_DIR ||
     firstExisting([
       path.join(
         process.env.HOME || "",
         ".cache/eliza-android-agent/llama-cpp-v1.2.0-eliza/vulkan-headers",
+      ),
+      path.join(
+        ndk,
+        "sources/third_party/shaderc/third_party/spirv-tools/external/spirv-headers/include",
       ),
     ]);
   if (!vulkanIncludeDir) {
@@ -116,12 +84,34 @@ function resolveVulkanHostTooling(ndk) {
     );
   }
 
-  const vulkanLib = firstExisting([
-    path.join(
-      ndk,
-      "toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/31/libvulkan.so",
+  const spirvHeadersDir =
+    process.env.ELIZA_SPIRV_HEADERS_DIR ||
+    firstExisting([
+      path.join(vulkanIncludeDir, "cmake", "SPIRV-Headers"),
+      "/tmp/spirv-headers-install/lib/cmake/SPIRV-Headers",
+    ]);
+  if (!spirvHeadersDir) {
+    die(
+      "SPIRV-Headers CMake package not found (set ELIZA_SPIRV_HEADERS_DIR) — " +
+        "provide a directory containing SPIRV-HeadersConfig.cmake.",
+    );
+  }
+
+  const vulkanLib = firstExisting(
+    prebuiltHosts.flatMap((host) =>
+      ["31", "30", "29", "28", "27", "26", "24"].map((api) =>
+        path.join(
+          host,
+          "sysroot/usr/lib/aarch64-linux-android",
+          api,
+          "libvulkan.so",
+        ),
+      ),
     ),
-  ]);
+  );
+  if (!vulkanLib) {
+    die(`Android arm64 libvulkan.so stub not found under ${prebuiltRoot}`);
+  }
 
   return { glslc, spirvHeadersDir, vulkanIncludeDir, vulkanLib };
 }
@@ -217,15 +207,15 @@ if (arm64SimdFlags.length > 0) {
 // before tools/omnivoice configures (the fork's top-level CMakeLists orders
 // the mtmd embed hook before omnivoice so `if(TARGET mtmd)` is satisfied).
 //
-// LLAMA_BUILD_KOKORO=ON folds kokoro_lib (Kokoro-82M TTS, ABI v10) into the
+// LLAMA_BUILD_KOKORO=ON folds kokoro_lib (Kokoro-82M TTS, ABI v15) into the
 // fused libelizainference.so. With LLAMA_BUILD_TOOLS=OFF the fork's root
 // CMakeLists embed-as-library hook (`LLAMA_BUILD_KOKORO AND NOT (COMMON AND
 // TOOLS)`) adds tools/kokoro BEFORE tools/omnivoice, so the `if(TARGET
 // kokoro_lib)` fold in tools/omnivoice/CMakeLists.txt resolves and
 // elizainference exports the eliza_inference_kokoro_* surface. This is the
-// device-proven path: on a real Pixel (arm64/bionic) the staged .so reports
-// eliza_inference_abi_version()=="10", kokoro_supported()==1, and synthesizes
-// PCM on-device with only libc/libm/libdl NEEDED.
+// device-proven path synthesizes PCM on-device with only libc/libm/libdl
+// NEEDED. ABI v15 transfers exact-size PCM ownership to JNI, avoiding a fixed
+// utterance-duration allocation.
 const baseConfigure = [
   "-S",
   forkSrc,
@@ -247,18 +237,18 @@ const baseConfigure = [
   "-DLLAMA_BUILD_EXAMPLES=OFF",
   "-DLLAMA_BUILD_TESTS=OFF",
   "-DLLAMA_BUILD_SERVER=OFF",
+  "-DLLAMA_BUILD_WEBUI=OFF",
+  "-DLLAMA_BUILD_TOOLS=OFF",
+  "-DLLAMA_BUILD_MTMD=ON",
   "-DLLAMA_CURL=OFF",
+  "-DLLAMA_OPENSSL=OFF",
+  "-DKOKORO_ENABLE_ESPEAK=OFF",
 ];
 
 if (variant === "cpu") {
   // CPU-static-fused: ggml/llama/mtmd folded into the single shared
   // libelizainference.so (no external NEEDED beyond bionic libc/libm/libdl).
-  run("cmake", [
-    ...baseConfigure,
-    "-DBUILD_SHARED_LIBS=OFF",
-    "-DLLAMA_BUILD_MTMD=ON",
-    "-DLLAMA_BUILD_TOOLS=OFF",
-  ]);
+  run("cmake", [...baseConfigure, "-DBUILD_SHARED_LIBS=OFF"]);
 } else {
   // Dynamic-Vulkan: BUILD_SHARED_LIBS=ON keeps the GPU backend in its own
   // libggml-vulkan.so so it can dlopen the device's libvulkan at runtime — the

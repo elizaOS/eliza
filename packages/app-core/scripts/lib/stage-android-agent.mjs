@@ -1527,6 +1527,7 @@ export async function stageAndroidAgentRuntime({
     "vector.tar.gz",
     "fuzzystrmatch.tar.gz",
     "plugins-manifest.json",
+    "cmudict.tsv",
   ];
   for (const name of pgliteAssets) {
     const src = path.join(distMobileDir, name);

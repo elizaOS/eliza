@@ -248,8 +248,8 @@ function bunOnPath(): string | null {
 }
 
 describe("ffi-bindings — pure unit (no Bun, no dylib)", () => {
-	it("ELIZA_INFERENCE_ABI_VERSION is 14 (Kokoro IPA input + G2P-kind query)", () => {
-		expect(ELIZA_INFERENCE_ABI_VERSION).toBe(14);
+	it("ELIZA_INFERENCE_ABI_VERSION is 15 (exact-size Kokoro PCM ownership)", () => {
+		expect(ELIZA_INFERENCE_ABI_VERSION).toBe(15);
 	});
 
 	it("loadElizaInferenceFfi throws VoiceLifecycleError when FFI is unavailable", () => {

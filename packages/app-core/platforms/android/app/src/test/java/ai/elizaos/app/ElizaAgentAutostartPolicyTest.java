@@ -111,15 +111,13 @@ public class ElizaAgentAutostartPolicyTest {
     }
 
     /**
-     * Cold-boot-guard stamp trust: the stamp is only as alive as the child it
-     * describes. No journaled start yet = launcher's first second, trust it; a
-     * journaled child that is gone from /proc = the force-stop/LMK signature,
-     * relaunch instead of shepherding a corpse (#15189).
+     * A launch timestamp never proves liveness. Only a matching journaled child
+     * that remains alive may suppress a relaunch.
      */
     @Test
     public void coldBootStampTrustFollowsChildLiveness() {
-        assertTrue(ElizaAgentService.coldBootStampTrustworthy(false, false));
-        assertTrue(ElizaAgentService.coldBootStampTrustworthy(false, true));
+        assertFalse(ElizaAgentService.coldBootStampTrustworthy(false, false));
+        assertFalse(ElizaAgentService.coldBootStampTrustworthy(false, true));
         assertTrue(ElizaAgentService.coldBootStampTrustworthy(true, true));
         assertFalse(ElizaAgentService.coldBootStampTrustworthy(true, false));
     }
