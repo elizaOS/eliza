@@ -325,10 +325,26 @@ journey has been captured:
   call escaped the pre-dispatch batch check; that abort and the unfiltered
   manifest that provoked it are fixed, so a gated rerun can now measure the
   model rather than the mismatch;
-- **judge-model constraint.** Both G1 runs produced **zero valid judge
+- a third G1 diagnostic on 2026-07-29, after the `CALENDAR_SOURCES` surface was
+  corrected to name `select`/`deselect` as durable writes, **reaches the write
+  path**: the acting model issued `list` six times and `select` three times,
+  against the previous run's `list`-only behaviour and its claim that the tool
+  "won't act". The gap was a surface-description defect, not a model
+  limitation, and it is now empirically closed. The three `select` calls were
+  refused by the world with `external_source_selection_required` because that
+  run configured no trusted executor, so selection had no authenticated
+  external path to complete through — the write is *attempted and correctly
+  gated*, not yet *completed*. Score 0.0, terminated at `max_turns`, workload
+  hash `da825352819c98575c6f05fef17d875584845b7305ef6866409f1d01474b2c81`,
+  acting `lifeops-eliza-0_8b-64k:latest` via `hermes-direct`/ollama. G1 remains
+  unqualified: a passing case still needs the trusted-executor journey with
+  real receipts;
+- **judge-model constraint.** All three G1 runs produced **zero valid judge
   verdicts**: `gemma3:latest` wraps its JSON in Markdown fences and
   `_parse_judge_verdict` rejects fenced JSON by design, which is correct for
-  publishable evaluation and was deliberately not weakened. Neither run
+  publishable evaluation and was deliberately not weakened. Substituting
+  `llama3.2:3b` on the third run produced 21 invalid verdicts as well, so this
+  is not specific to one model family: small local judges fence. No run
   therefore carries a judge signal in either direction. The 0.0 in both is a
   real floor from criteria failing on inspection — on the 2026-07-29 run the
   raw judge body shows least-privilege scopes false, source-state
