@@ -227,10 +227,22 @@ function getLoader(runtime: IAgentRuntime): LocalInferenceLoader | null {
 async function ensureAssignedModelLoaded(
 	loader: LocalInferenceLoader | null,
 	slot: AgentModelSlot,
+	options: {
+		fallbackSlots?: readonly AgentModelSlot[];
+		requireAssignment?: boolean;
+	} = {},
 ): Promise<void> {
 	const assignments = await readEffectiveAssignments();
-	const assignedId = assignments[slot];
+	const selectedSlot = [slot, ...(options.fallbackSlots ?? [])].find(
+		(candidate) => assignments[candidate],
+	);
+	const assignedId = selectedSlot ? assignments[selectedSlot] : undefined;
 	if (!assignedId) {
+		if (options.requireAssignment) {
+			throw new Error(
+				`[local-inference] No model bundle assigned for slot ${slot}.`,
+			);
+		}
 		// Loud-failure guard: an unassigned chat slot must not silently
 		// dispatch to whatever model happens to be loaded — if that's an
 		// embedding model, completion emits reserved-token garbage.
@@ -273,7 +285,7 @@ async function ensureAssignedModelLoaded(
 	const target = installed.find((m) => m.id === assignedId);
 	if (!target) {
 		throw new Error(
-			`[local-inference] Slot ${slot} assigned to ${assignedId}, but that model is not installed.`,
+			`[local-inference] Slot ${selectedSlot ?? slot} assigned to ${assignedId}, but that model is not installed.`,
 		);
 	}
 
@@ -627,7 +639,13 @@ function makeEmbeddingHandler(): EmbeddingHandler {
 		// any, is loaded before we hit the loader.
 		await ensureAssignedModelLoaded(loader, "TEXT_EMBEDDING");
 		const text = extractEmbeddingText(params);
-		const result = await loader.embed({ input: text });
+		const result = await loader.embed({
+			input: text,
+			signal:
+				typeof params === "string" || params === null
+					? undefined
+					: params.signal,
+		});
 		return result.embedding;
 	};
 }
@@ -736,7 +754,8 @@ let fusedEmbedHandlePromise: Promise<{
 	embed: NonNullable<
 		import("../services/voice/ffi-bindings").ElizaInferenceFfi["embed"]
 	>;
-} | null> | null;
+} | null> | null = null;
+const fusedEmbedRuntimeOwners = new Set<IAgentRuntime>();
 
 // A null resolution is retried on the next embed rather than cached for the
 // process lifetime — the boot dimension-probe can call getFusedEmbeddingHandle
@@ -748,19 +767,15 @@ let fusedEmbedHandlePromise: Promise<{
 const FUSED_EMBED_RETRY_WINDOW_MS = 3 * 60_000;
 let fusedEmbedFirstFailureMs: number | null = null;
 
-async function getFusedEmbeddingHandle(cfg: DesktopEmbeddingConfig): Promise<{
+async function getFusedEmbeddingHandle(
+	runtime: IAgentRuntime,
+	cfg: DesktopEmbeddingConfig,
+): Promise<{
 	embed: (text: string) => Float32Array;
 } | null> {
+	fusedEmbedRuntimeOwners.add(runtime);
 	if (fusedEmbedHandlePromise === null) {
 		fusedEmbedHandlePromise = (async () => {
-			try {
-				require.resolve("bun:ffi");
-			} catch (e) {
-				logger.warn(
-					`[local-inference] fused embed unavailable: bun:ffi not resolvable (${String(e)})`,
-				);
-				return null;
-			}
 			const { resolveFusedLibraryPath } = await import(
 				"../services/desktop-fused-ffi-backend-runtime"
 			);
@@ -806,7 +821,9 @@ async function getFusedEmbeddingHandle(cfg: DesktopEmbeddingConfig): Promise<{
 		});
 	}
 	const handle = await fusedEmbedHandlePromise;
+	if (!fusedEmbedRuntimeOwners.has(runtime)) return null;
 	if (!handle) {
+		fusedEmbedRuntimeOwners.delete(runtime);
 		fusedEmbedFirstFailureMs ??= Date.now();
 		if (Date.now() - fusedEmbedFirstFailureMs < FUSED_EMBED_RETRY_WINDOW_MS) {
 			// Still within the staging window — clear the memo so the next embed
@@ -825,6 +842,48 @@ async function getFusedEmbeddingHandle(cfg: DesktopEmbeddingConfig): Promise<{
 	};
 }
 
+async function releaseFusedEmbeddingHandle(
+	runtime: IAgentRuntime,
+): Promise<void> {
+	fusedEmbedRuntimeOwners.delete(runtime);
+	if (fusedEmbedRuntimeOwners.size > 0) return;
+
+	const pendingHandle = fusedEmbedHandlePromise;
+	fusedEmbedHandlePromise = null;
+	fusedEmbedFirstFailureMs = null;
+	if (!pendingHandle) return;
+
+	const handle = await pendingHandle;
+	if (!handle) return;
+
+	let destroyError: unknown;
+	try {
+		handle.ffi.destroy(handle.ctx);
+	} catch (error) {
+		destroyError = error;
+	}
+	try {
+		handle.ffi.close();
+	} catch (error) {
+		if (destroyError) {
+			throw new AggregateError(
+				[destroyError, error],
+				"[local-inference] fused embedding context and library teardown both failed",
+			);
+		}
+		throw error;
+	}
+	if (destroyError) throw destroyError;
+}
+
+function registerFusedEmbeddingLifecycle(runtime: AgentRuntime): void {
+	runtime.registerServiceInstance("localInferenceEmbeddingLifecycle", {
+		capabilityDescription:
+			"Owns the process-shared fused embedding context for this runtime",
+		stop: () => releaseFusedEmbeddingHandle(runtime),
+	});
+}
+
 /**
  * Desktop TEXT_EMBEDDING handler over the FUSED `libelizainference`
  * (`eliza_inference_embed`, ABI v9). The dedicated embedding GGUF (gte-small,
@@ -837,7 +896,7 @@ async function getFusedEmbeddingHandle(cfg: DesktopEmbeddingConfig): Promise<{
  * zero-vector (Commandment 8).
  */
 function makeFusedEmbeddingHandler(): EmbeddingHandler {
-	return async (_runtime, params) => {
+	return async (runtime, params) => {
 		const text = extractEmbeddingText(params);
 		// When the probe fails, resolveDesktopEmbeddingConfig(undefined) uses the
 		// `performance` preset (gpuLayers: auto — inert on a CPU-only fused lib).
@@ -852,7 +911,7 @@ function makeFusedEmbeddingHandler(): EmbeddingHandler {
 			return undefined;
 		});
 		const cfg = resolveDesktopEmbeddingConfig(hardware);
-		const fused = await getFusedEmbeddingHandle(cfg);
+		const fused = await getFusedEmbeddingHandle(runtime, cfg);
 		if (!fused) {
 			throw new LocalInferenceUnavailableError(
 				ModelType.TEXT_EMBEDDING,
@@ -884,12 +943,20 @@ function extractSpeechSignal(
 }
 
 function makeTextToSpeechHandler(): TextToSpeechHandler {
-	return async (_runtime, params) => {
+	return async (runtime, params) => {
 		const text = extractSpeechText(params);
 		if (text.length === 0) {
 			throw new Error(
 				"[local-inference] TEXT_TO_SPEECH text must be non-empty",
 			);
+		}
+		const bionicHost = getBionicHostLoader(runtime);
+		if (bionicHost) {
+			await ensureAssignedModelLoaded(bionicHost, "TEXT_TO_SPEECH", {
+				fallbackSlots: ["TEXT_SMALL", "TEXT_LARGE"],
+				requireAssignment: true,
+			});
+			return bionicHost.synthesizeSpeech(text, extractSpeechSignal(params));
 		}
 		// Do not filter singing, emotion tags, or lyrical phrasing here. The
 		// local voice bundle advertises its expressive capability in the
@@ -1205,6 +1272,10 @@ function makeBionicTranscriptionHandler(): TranscriptionHandler {
 				"[local-inference] bionic-host TRANSCRIPTION requires the bionic-host loader (localInferenceLoader service)",
 			);
 		}
+		await ensureAssignedModelLoaded(loader, "TRANSCRIPTION", {
+			fallbackSlots: ["TEXT_SMALL", "TEXT_LARGE"],
+			requireAssignment: true,
+		});
 		const audio = extractTranscriptionAudio(params);
 		throwIfAborted(signal);
 		const transcript = await loader.transcribe({
@@ -1224,6 +1295,10 @@ function makeBionicImageDescriptionHandler(): ImageDescriptionHandler {
 				"[local-inference] bionic-host IMAGE_DESCRIPTION requires the bionic-host loader (localInferenceLoader service)",
 			);
 		}
+		await ensureAssignedModelLoaded(loader, "TEXT_SMALL", {
+			fallbackSlots: ["TEXT_LARGE"],
+			requireAssignment: true,
+		});
 		const request = paramsToVisionRequest(params);
 		const description = await loader.describeImage({
 			imageBase64: await imageRequestToBase64(request.image),
@@ -1241,10 +1316,6 @@ function makeBionicImageDescriptionHandler(): ImageDescriptionHandler {
  * handled inside `DeviceBridge.generate`.
  */
 function registerDeviceBridgeLoader(runtime: AgentRuntime): void {
-	const withRegistration = runtime as AgentRuntime & {
-		registerService?: (name: string, impl: unknown) => unknown;
-	};
-	if (typeof withRegistration.registerService !== "function") return;
 	const loader: LocalInferenceLoader = {
 		loadModel: (args) => deviceBridge.loadModel(args),
 		unloadModel: () => deviceBridge.unloadModel(),
@@ -1262,7 +1333,21 @@ function registerDeviceBridgeLoader(runtime: AgentRuntime): void {
 	const loaderWithArbiter = Object.assign(loader, {
 		getMemoryArbiter: () => tryGetMemoryArbiter(),
 	});
-	withRegistration.registerService("localInferenceLoader", loaderWithArbiter);
+	registerLocalInferenceLoader(runtime, loaderWithArbiter, "Device bridge");
+}
+
+function registerLocalInferenceLoader(
+	runtime: AgentRuntime,
+	loader: LocalInferenceLoader,
+	backend: string,
+): void {
+	runtime.registerServiceInstance(
+		"localInferenceLoader",
+		Object.assign(loader, {
+			capabilityDescription: `${backend} local inference backend`,
+			stop: () => loader.unloadModel(),
+		}),
+	);
 }
 
 /**
@@ -1326,15 +1411,15 @@ export function bionicInferenceSocketName(
 function tryRegisterBionicHostLoader(runtime: AgentRuntime): boolean {
 	const socketName = bionicInferenceSocketName();
 	if (!socketName) return false;
-	const withRegistration = runtime as AgentRuntime & {
-		registerService?: (name: string, impl: unknown) => unknown;
-	};
-	if (typeof withRegistration.registerService !== "function") return false;
 	const loader: LocalInferenceLoader = new BionicHostLoader(socketName);
 	const loaderWithArbiter = Object.assign(loader, {
 		getMemoryArbiter: () => tryGetMemoryArbiter(),
 	});
-	withRegistration.registerService("localInferenceLoader", loaderWithArbiter);
+	registerLocalInferenceLoader(
+		runtime,
+		loaderWithArbiter,
+		"Android bionic host",
+	);
 	logger.info(
 		`[local-inference] Registered bionic-host loader; text generation delegates to the in-process GPU host over UDS "${socketName}"`,
 	);
@@ -1637,6 +1722,9 @@ export async function ensureLocalInferenceHandler(
 				? makeFusedEmbeddingHandler()
 				: null;
 	if (embeddingHandler) {
+		if (provider === LOCAL_INFERENCE_PROVIDER && !loaderForEmbed) {
+			registerFusedEmbeddingLifecycle(runtime);
+		}
 		try {
 			runtimeWithRegistration.registerModel(
 				ModelType.TEXT_EMBEDDING,
