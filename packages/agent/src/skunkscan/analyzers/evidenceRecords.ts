@@ -84,7 +84,7 @@ export function analyzeWalletEvidenceRecords(
       funding.fundingWallet
         ? fundingSourceLabelName
           ? `Initial funding was attributed to ${fundingSourceLabelName} and classified as ${funding.fundingSourceType}.`
-          : `Initial funding was attributed to ${funding.fundingWallet} and classified as ${funding.fundingSourceType}.`
+          : `Initial funding was attributed to an unlabeled wallet and classified as ${funding.fundingSourceType}.`
         : "No initial incoming SOL funding transfer was identified in the first known transaction.",
     evidenceType:
       funding.fundingWallet
