@@ -1,4 +1,5 @@
 import {
+  SupportedChain,
   WalletActivitySummary,
   WalletAgeSummary,
   WalletComplianceScreeningSummary,
@@ -15,6 +16,28 @@ import {
   WalletWhaleSummary,
 } from "../types";
 
+// The chain's own data provider, cited as the evidence source for records
+// backed by directly-fetched chain data (activity, age, funding, portfolio).
+// Falls back to a generic, honest label for chains without a dedicated
+// provider wired up yet, rather than defaulting to another chain's provider.
+const EVIDENCE_SOURCE_BY_CHAIN: Partial<
+  Record<SupportedChain, { sourceId: string; sourceName: string }>
+> = {
+  solana: { sourceId: "helius-solana", sourceName: "Helius Solana API" },
+};
+
+const UNKNOWN_CHAIN_EVIDENCE_SOURCE = {
+  sourceId: "chain-data-provider",
+  sourceName: "Chain Data Provider",
+};
+
+function getEvidenceSource(chain: SupportedChain): {
+  sourceId: string;
+  sourceName: string;
+} {
+  return EVIDENCE_SOURCE_BY_CHAIN[chain] ?? UNKNOWN_CHAIN_EVIDENCE_SOURCE;
+}
+
 export function analyzeWalletEvidenceRecords(
   walletAddress: string,
   activity: WalletActivitySummary,
@@ -30,16 +53,19 @@ export function analyzeWalletEvidenceRecords(
   whale: WalletWhaleSummary,
   smartMoney: WalletSmartMoneySummary,
   transactionRisk: WalletTransactionRiskSummary,
+  chain: SupportedChain,
 ): WalletEvidenceRecord[] {
   const records: WalletEvidenceRecord[] = [];
+
+  const evidenceSource = getEvidenceSource(chain);
 
   records.push({
     id: "activity-summary",
     category: "activity",
     fact: `The analyzed sample contains ${activity.recentTransactionCount} recent transaction(s), with activity classified as ${activity.activityLevel}.`,
     evidenceType: "calculated_metric",
-    sourceId: "helius-solana",
-    sourceName: "Helius Solana API",
+    sourceId: evidenceSource.sourceId,
+    sourceName: evidenceSource.sourceName,
     confidence: "high",
     observedAt:
       typeof activity.lastActiveAt === "number"
@@ -56,8 +82,8 @@ export function analyzeWalletEvidenceRecords(
     category: "age",
     fact: `Wallet age is classified as ${age.classification}.`,
     evidenceType: "on_chain_fact",
-    sourceId: "helius-solana",
-    sourceName: "Helius Solana API",
+    sourceId: evidenceSource.sourceId,
+    sourceName: evidenceSource.sourceName,
     confidence:
       age.classification === "unknown" ? "low" : "high",
     observedAt:
@@ -85,13 +111,13 @@ export function analyzeWalletEvidenceRecords(
         ? fundingSourceLabelName
           ? `Initial funding was attributed to ${fundingSourceLabelName} and classified as ${funding.fundingSourceType}.`
           : `Initial funding was attributed to an unlabeled wallet and classified as ${funding.fundingSourceType}.`
-        : "No initial incoming SOL funding transfer was identified in the first known transaction.",
+        : "No initial incoming funding transfer was identified in the first known transaction.",
     evidenceType:
       funding.fundingWallet
         ? "on_chain_fact"
         : "analytical_inference",
-    sourceId: "helius-solana",
-    sourceName: "Helius Solana API",
+    sourceId: evidenceSource.sourceId,
+    sourceName: evidenceSource.sourceName,
     confidence: funding.evidenceConfidence,
     observedAt:
       typeof funding.firstFundingAt === "number"
@@ -109,8 +135,8 @@ export function analyzeWalletEvidenceRecords(
     category: "portfolio",
     fact: `Wallet holds ${portfolio.tokenCount} token(s) and has ${portfolio.diversityLevel} portfolio diversity.`,
     evidenceType: "calculated_metric",
-    sourceId: "helius-solana",
-    sourceName: "Helius Solana API",
+    sourceId: evidenceSource.sourceId,
+    sourceName: evidenceSource.sourceName,
     confidence:
       portfolio.tokenCount > 0 ? "high" : "medium",
     observedAt: null,
