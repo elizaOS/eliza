@@ -54,15 +54,19 @@ describe("parseNodeContainerList", () => {
     ).toEqual([{ name: "agent-live", id: "id-live" }]);
   });
 
-  test("rejects substring matches and malformed listing rows", () => {
-    const output = [
-      "my-agent-live|wrong-prefix|2026-07-07 16:45:01 +0000 UTC",
-      "agent-no-id||2026-07-07 16:45:01 +0000 UTC",
-      "agent-extra|id-extra|2026-07-07 16:45:01 +0000 UTC|extra",
-      "",
-    ].join("\n");
+  test("rejects substring matches without treating them as managed", () => {
+    expect(
+      parseNodeContainerList("my-agent-live|wrong-prefix|2026-07-07 16:45:01 +0000 UTC", "agent-"),
+    ).toEqual([]);
+  });
 
-    expect(parseNodeContainerList(output, "agent-")).toEqual([]);
+  test("surfaces malformed managed rows so the node is skipped", () => {
+    expect(() =>
+      parseNodeContainerList("agent-no-id||2026-07-07 16:45:01 +0000 UTC", "agent-"),
+    ).toThrow("invalid managed-container listing row");
+    expect(() =>
+      parseNodeContainerList("agent-extra|id-extra|2026-07-07 16:45:01 +0000 UTC|extra", "agent-"),
+    ).toThrow("invalid managed-container listing row");
   });
 });
 
@@ -172,6 +176,38 @@ describe("retention decision reasons", () => {
       { id: "live", action: "retain", reason: "live_db_row" },
       { id: "postgres", action: "retain", reason: "unmanaged_name" },
     ]);
+  });
+
+  test("retains rowless containers when any age input is non-finite", () => {
+    const decisions = classifyContainersForReconciliation(
+      [
+        { name: "agent-created-nan", id: "created-nan", createdAtMs: Number.NaN },
+        container("agent-clock-nan", "clock-nan"),
+      ],
+      [],
+      diff,
+      undefined,
+      Number.NaN,
+    );
+
+    expect(decisions.map(({ action, reason }) => ({ action, reason }))).toEqual([
+      { action: "retain", reason: "no_db_row_age_unknown" },
+      { action: "retain", reason: "no_db_row_age_unknown" },
+    ]);
+  });
+
+  test("rejects invalid grace configuration before classifying a container", () => {
+    for (const nodeMoveGraceMs of [Number.NaN, -1]) {
+      expect(() =>
+        classifyContainersForReconciliation(
+          [container("agent-live", "live")],
+          [live("live", "running")],
+          { ...diff, nodeMoveGraceMs },
+          undefined,
+          AGED_NOW_MS,
+        ),
+      ).toThrow("grace must be a non-negative duration");
+    }
   });
 });
 

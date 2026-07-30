@@ -4,8 +4,9 @@
  * canonical and cleanup-fenced physical container names because warm claims
  * and blue/green swaps can make either name differ from the sandbox row ID.
  */
+import { ElizaError } from "@elizaos/core";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
-import { dbRead } from "../../db/helpers";
+import { dbRead, dbWrite } from "../../db/helpers";
 import { agentSandboxes } from "../../db/schemas/agent-sandboxes";
 import { containers } from "../../db/schemas/containers";
 import {
@@ -20,13 +21,16 @@ import {
   reconcileOrphanContainersOnNodes as reconcileOrphanContainersOnNodesShared,
 } from "./orphan-container-reconciler";
 
-// Re-export the shared result type so existing importers (the daemon) keep
-// `OrphanReconcileResult` from this module.
 export type { OrphanReconcileResult } from "./orphan-container-reconciler";
 
 async function countRows(query: Promise<Array<{ count: number }>>): Promise<number> {
   const [row] = await query;
-  return row?.count ?? 0;
+  if (!row) {
+    throw new ElizaError("Workload count query returned no aggregate row", {
+      code: "DOCKER_NODE_WORKLOAD_COUNT_MISSING",
+    });
+  }
+  return row.count;
 }
 
 /**
@@ -52,10 +56,9 @@ const TERMINAL_SANDBOX_STATUS_SET = new Set<string>(TERMINAL_SANDBOX_STATUSES);
  *
  * The agent side excludes the same {@link TERMINAL_SANDBOX_STATUSES} the orphan
  * reconciler uses to decide a container "should NOT be running" — a row in one
- * of those states holds no live slot. Excluding only `('stopped','error')` here
- * (the previous behaviour) left `sleeping`/`deletion_failed` rows inflating
- * `allocated_count` above a node's real load, which made the autoscaler read
- * bare-metal robots as full and bill new Hetzner-cloud nodes instead (#15378).
+ * of those states holds no live slot. Including `sleeping` or
+ * `deletion_failed` would inflate `allocated_count`, make bare-metal nodes
+ * appear full, and trigger unnecessary Hetzner capacity (#15378).
  * `disconnected` is deliberately NOT excluded: it is non-terminal (the
  * container is up but unreachable) and still occupies the slot.
  */
@@ -106,7 +109,8 @@ export function agentIdFromContainerName(name: string): string | null {
  * deleted and the transient source ID is cleared. A cleanup-fenced container
  * likewise keeps its old physical name across a blue/green cutover. Each name
  * aliases only its own placement so unrelated containers on the other node do
- * not inherit protection.
+ * not inherit protection. This destructive ownership check reads the primary:
+ * replica lag must never turn a live row into an apparent orphan.
  */
 export async function loadSandboxStatusesByIds(
   agentIds: readonly string[],
@@ -115,7 +119,7 @@ export async function loadSandboxStatusesByIds(
   const queriedIds = new Set(agentIds);
   const queriedKeys = [...queriedIds];
   const queriedContainerNames = queriedKeys.map((id) => `${AGENT_CONTAINER_NAME_PREFIX}${id}`);
-  const rows = await dbRead
+  const rows = await dbWrite
     .select({
       key: agentSandboxes.id,
       containerName: agentSandboxes.container_name,

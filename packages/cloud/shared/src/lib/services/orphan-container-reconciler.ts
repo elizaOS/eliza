@@ -6,6 +6,7 @@
  * adapters supply their name parser, status vocabulary, and ownership query.
  */
 
+import { ElizaError } from "@elizaos/core";
 import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
 import { logger } from "../utils/logger";
 import { shellQuote } from "./docker-sandbox-utils";
@@ -238,6 +239,12 @@ export function classifyContainersForReconciliation(
 
   const nodeAware = config.nodeAware === true && nodeId !== undefined;
   const graceMs = config.nodeMoveGraceMs ?? DEFAULT_NODE_MOVE_GRACE_MS;
+  if (!Number.isFinite(graceMs) || graceMs < 0) {
+    throw new ElizaError("Orphan reconciliation grace must be a non-negative duration", {
+      code: "ORPHAN_RECONCILER_INVALID_GRACE",
+      context: { graceMs },
+    });
+  }
 
   const decisions: ContainerReconcileDecision[] = [];
   for (const container of containersOnNode) {
@@ -255,14 +262,15 @@ export function classifyContainersForReconciliation(
 
     const rows = rowsByKey.get(key);
     if (rows === undefined || rows.length === 0) {
-      // A key with no row is what an orphan looks like — and ALSO what an
-      // in-flight creation looks like from the wrong side of a commit, and
-      // what a key-resolution gap looks like from the wrong side of a rename.
-      // Same rule wrong_node learned from the prod dry-run below: the
-      // CONTAINER itself must be older than the grace window, and an unknown
-      // container age never reaps. An orphan is permanent; it can wait five
-      // minutes to be provably one.
-      if (container.createdAtMs === undefined || nowMs === undefined) {
+      // A missing row is also observable before an in-flight create commits.
+      // Requiring a finite container age gives that write time to become
+      // visible and makes malformed Docker timestamps non-destructive.
+      if (
+        container.createdAtMs === undefined ||
+        !Number.isFinite(container.createdAtMs) ||
+        nowMs === undefined ||
+        !Number.isFinite(nowMs)
+      ) {
         decisions.push({
           action: "retain",
           name: container.name,
@@ -345,7 +353,10 @@ export function classifyContainersForReconciliation(
       ): row is LiveContainerRef & {
         nodeId: string;
         updatedAtMs: number;
-      } => row.nodeId !== undefined && row.updatedAtMs !== undefined,
+      } =>
+        row.nodeId !== undefined &&
+        row.updatedAtMs !== undefined &&
+        Number.isFinite(row.updatedAtMs),
     );
     if (completePlacements.length !== liveRows_.length) {
       decisions.push({
@@ -357,7 +368,12 @@ export function classifyContainersForReconciliation(
       });
       continue;
     }
-    if (container.createdAtMs === undefined || nowMs === undefined) {
+    if (
+      container.createdAtMs === undefined ||
+      !Number.isFinite(container.createdAtMs) ||
+      nowMs === undefined ||
+      !Number.isFinite(nowMs)
+    ) {
       decisions.push({
         action: "retain",
         name: container.name,
@@ -532,8 +548,9 @@ export async function reconcileOrphanContainers(
           reason: orphan.reason,
         });
       } catch (error) {
-        // error-policy:J6 orphan cleanup is best-effort per container; the
-        // failed decision remains visible and the sweep continues to other IDs.
+        // error-policy:J1 each Docker removal is an independent transport
+        // boundary; return its explicit failure count after processing the
+        // remaining immutable IDs.
         result.reapFailed += 1;
         logger.warn(`[${config.logScope}] Failed to reap orphan container`, {
           nodeId: node.node_id,
@@ -623,11 +640,16 @@ export function parseNodeContainerList(output: string, prefix: string): NodeCont
     const line = rawLine.trim();
     if (!line) continue;
     const fields = line.split("|");
-    if (fields.length !== 3) continue;
     const [rawName = "", rawId = "", createdAtRaw = ""] = fields;
     const name = rawName.trim();
+    if (!name.startsWith(prefix)) continue;
     const id = rawId.trim();
-    if (!name.startsWith(prefix) || !name || !id) continue;
+    if (fields.length !== 3 || !id) {
+      throw new ElizaError("Docker returned an invalid managed-container listing row", {
+        code: "ORPHAN_RECONCILER_INVALID_LISTING",
+        context: { name, prefix, fieldCount: fields.length },
+      });
+    }
     const createdAtMs = parseDockerCreatedAt(createdAtRaw);
     containers.push({
       name,
