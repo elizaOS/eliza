@@ -4,7 +4,7 @@ import {
   WalletRelationship,
   WalletRelationshipSummary,
 } from "../types";
-import { SolanaParsedTransaction } from "../helius";
+import { ParsedWalletTransaction } from "../parsers/transaction";
 import { lookupWalletLabel } from "../labels/labelEngine";
 import {
   createConfidenceResponse,
@@ -51,7 +51,7 @@ function getOrCreateRelationship(
 
 function recordTransactionEvidence(
   relationship: RelationshipAccumulator,
-  transaction: SolanaParsedTransaction,
+  transaction: ParsedWalletTransaction,
 ): void {
   if (transaction.signature) {
     relationship.interactionSignatures.add(
@@ -69,7 +69,7 @@ function recordTransactionEvidence(
 export function analyzeWalletRelationships(
   funding: WalletFundingSummary,
   investigatedAddress: string,
-  parsedTransactions: SolanaParsedTransaction[],
+  parsedTransactions: ParsedWalletTransaction[],
   chain: SupportedChain,
 ): WalletRelationshipSummary {
   const normalizedInvestigatedAddress =
@@ -79,20 +79,15 @@ export function analyzeWalletRelationships(
     new Map<string, RelationshipAccumulator>();
 
   for (const transaction of parsedTransactions) {
-    for (const transfer of transaction.nativeTransfers ?? []) {
-      const fromAddress =
-        transfer.fromUserAccount?.trim();
+    for (const transfer of transaction.nativeTransfers) {
+      const fromAddress = transfer.from?.trim();
 
-      const toAddress =
-        transfer.toUserAccount?.trim();
+      const toAddress = transfer.to?.trim();
 
-      const amountLamports =
-        typeof transfer.amount === "number"
-          ? transfer.amount
-          : 0;
-
-      const amountSol =
-        amountLamports / 1_000_000_000;
+      // Already denominated in the native asset by the parser, which also
+      // yields null when the source transfer carried no usable amount.
+      // Fall back to zero so totals stay numeric rather than becoming NaN.
+      const amountSol = transfer.amountSol ?? 0;
 
       if (
         fromAddress === normalizedInvestigatedAddress &&
@@ -135,12 +130,10 @@ export function analyzeWalletRelationships(
       }
     }
 
-    for (const transfer of transaction.tokenTransfers ?? []) {
-      const fromAddress =
-        transfer.fromUserAccount?.trim();
+    for (const transfer of transaction.tokenTransfers) {
+      const fromAddress = transfer.from?.trim();
 
-      const toAddress =
-        transfer.toUserAccount?.trim();
+      const toAddress = transfer.to?.trim();
 
       if (
         fromAddress === normalizedInvestigatedAddress &&

@@ -98,8 +98,8 @@ const recentParsedTransactions =
     ),
   );
 
-// Normalized 1:1 from the exact same array analyzers previously
-// received raw — same elements, same order, same count.
+// Normalized 1:1 — same elements, same order, same count. Every
+// analyzer downstream consumes this chain-neutral shape.
 const normalizedRecentParsedTransactions =
   recentParsedTransactions.map(parseSolanaTransaction);
 
@@ -234,7 +234,6 @@ const tokenHoldings: WalletTokenHolding[] =
   oldestTransactionTimestamp:
     oldestKnownTransaction.timestamp,
   firstParsedTransaction,
-  recentParsedTransactions,
   normalizedRecentParsedTransactions,
   tokenPrices,
 });

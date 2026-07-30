@@ -112,7 +112,7 @@ export async function runWalletPipeline(
   const relationships = analyzeWalletRelationships(
     funding,
     input.address,
-    input.recentParsedTransactions,
+    input.normalizedRecentParsedTransactions,
     input.chain,
   );
 
