@@ -275,6 +275,7 @@ export async function runWalletPipeline(
       whale,
       smartMoney,
       transactionRisk,
+      input.chain,
     );
 
   const decision = analyzeWalletDecision(
