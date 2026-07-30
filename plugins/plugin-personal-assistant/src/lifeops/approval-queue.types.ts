@@ -344,7 +344,9 @@ export interface ApprovalEnqueueInput {
  * by the runtime store, so LifeOps re-exports that class rather than declaring
  * a look-alike `instanceof` would not match.
  */
-export { RuntimeApprovalIdempotencyConflictError as ApprovalIdempotencyConflictError };
+export {
+  RuntimeApprovalIdempotencyConflictError as ApprovalIdempotencyConflictError,
+};
 
 /** Filter for `list`. All fields combine with AND. */
 export interface ApprovalListFilter {

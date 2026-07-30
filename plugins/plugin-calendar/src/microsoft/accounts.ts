@@ -469,9 +469,7 @@ function parseTokenSet(
 function adapterForRuntime(
   runtime: IAgentRuntime,
 ): CredentialRefAdapter | null {
-  const candidate = record(
-    (runtime as { adapter?: unknown }).adapter,
-  );
+  const candidate = record((runtime as { adapter?: unknown }).adapter);
   if (!candidate) return null;
   const listRefs = candidate.listConnectorAccountCredentialRefs;
   const getRef = candidate.getConnectorAccountCredentialRef;
@@ -479,10 +477,11 @@ function adapterForRuntime(
   return {
     ...(typeof listRefs === "function"
       ? {
-          listConnectorAccountCredentialRefs:
-            listRefs.bind(candidate) as NonNullable<
-              CredentialRefAdapter["listConnectorAccountCredentialRefs"]
-            >,
+          listConnectorAccountCredentialRefs: listRefs.bind(
+            candidate,
+          ) as NonNullable<
+            CredentialRefAdapter["listConnectorAccountCredentialRefs"]
+          >,
         }
       : {}),
     ...(typeof getRef === "function"

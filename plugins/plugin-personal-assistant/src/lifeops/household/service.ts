@@ -1248,7 +1248,7 @@ export class HouseholdCoordinationService {
       );
     }
     const relationship = await this.deps.relationshipStore.get(relationshipId);
-    if (!relationship || relationship.status !== "active") {
+    if (relationship?.status !== "active") {
       throw new HouseholdCoordinationError(
         "Custody authority baseline is missing or already revoked",
         "HOUSEHOLD_ACCESS_DENIED",
