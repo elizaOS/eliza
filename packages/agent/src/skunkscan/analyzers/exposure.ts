@@ -1,5 +1,6 @@
-import { lookupStaticSolanaExposure } from "../exposure/staticRegistry";
+import { lookupStaticExposure } from "../exposure/staticRegistry";
 import {
+  SupportedChain,
   WalletExposureSummary,
   WalletFundingSummary,
 } from "../types";
@@ -10,10 +11,11 @@ import {
 export function analyzeWalletExposure(
   walletAddress: string,
   funding: WalletFundingSummary,
+  chain: SupportedChain,
 ): WalletExposureSummary {
   const matches: WalletExposureSummary["matches"] = [];
 
-  const selfMatch = lookupStaticSolanaExposure(walletAddress);
+  const selfMatch = lookupStaticExposure(chain, walletAddress);
 
   if (selfMatch) {
     matches.push({
@@ -23,7 +25,8 @@ export function analyzeWalletExposure(
   }
 
   if (funding.fundingWallet) {
-    const fundingMatch = lookupStaticSolanaExposure(
+    const fundingMatch = lookupStaticExposure(
+      chain,
       funding.fundingWallet,
     );
 

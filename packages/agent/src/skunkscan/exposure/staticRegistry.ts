@@ -1,16 +1,25 @@
-import { WalletExposureSummary } from "../types";
+import { SupportedChain, WalletExposureSummary } from "../types";
 
 export type ExposureRegistryEntry =
   WalletExposureSummary["matches"][number];
 
 const STATIC_SOLANA_EXPOSURE_REGISTRY: Record<string, ExposureRegistryEntry> = {};
 
-export function lookupStaticSolanaExposure(
+const CHAIN_EXPOSURE_REGISTRIES: Partial<
+  Record<SupportedChain, Readonly<Record<string, ExposureRegistryEntry>>>
+> = {
+  solana: STATIC_SOLANA_EXPOSURE_REGISTRY,
+};
+
+export function lookupStaticExposure(
+  chain: SupportedChain,
   address: string | null | undefined,
 ): ExposureRegistryEntry | null {
   if (!address) {
     return null;
   }
 
-  return STATIC_SOLANA_EXPOSURE_REGISTRY[address] ?? null;
+  const registry = CHAIN_EXPOSURE_REGISTRIES[chain];
+
+  return registry?.[address] ?? null;
 }
