@@ -13,7 +13,10 @@ import type {
   Memory,
   UUID,
 } from "@elizaos/core";
-import { executePlannedToolCall } from "@elizaos/core";
+import {
+  attestDeliveryAudienceFromCanonicalRoom,
+  executePlannedToolCall,
+} from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createApprovalQueue } from "../src/lifeops/approval-queue.js";
 import type {
@@ -65,13 +68,22 @@ async function invoke(
     id: crypto.randomUUID() as UUID,
     agentId: runtime.agentId,
     entityId: runtime.agentId,
-    roomId: crypto.randomUUID() as UUID,
+    // The runtime's SELF room (id = agentId, agent as sole participant) is
+    // provisioned at initialize, so it is the only room whose canonical
+    // membership this harness can attest against.
+    roomId: runtime.agentId,
     content: {
       source: "test",
       text: `${action} ${requestId}`,
     },
     createdAt: Date.now(),
   } as Memory;
+  // RESOLVE_REQUEST is stamped owner-private at plugin assembly
+  // (`ownerPrivateAction`), so the executor refuses any turn without an
+  // attested delivery audience. Production attests every inbound turn from
+  // canonical room state before the executor runs; mirror that seam rather
+  // than exercising the action through a weaker gate than it ships with.
+  await attestDeliveryAudienceFromCanonicalRoom(runtime, message);
   const result = await executePlannedToolCall(
     runtime,
     {
