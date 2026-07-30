@@ -487,6 +487,33 @@ describe("DocumentService.searchDocuments", () => {
 			});
 			expect(rt.adapter.queryDocumentFragments).not.toHaveBeenCalled();
 		});
+
+		it.each([
+			{ role: "ADMIN", isOwner: false },
+			{ role: "OWNER", isOwner: true },
+		] as const)(
+			"requires a world for an elevated $role context",
+			async ({ role, isOwner }) => {
+				const rt = buildRuntime({ hasEmbedding: false });
+				const svc = buildService(rt);
+
+				await expect(
+					svc.searchDocuments(
+						makeMessage("launch", rt.agentId),
+						{ roomId: "room-1" as UUID },
+						"keyword",
+						{
+							requesterEntityId: "elevated-1" as UUID,
+							role,
+							isOwner,
+						},
+					),
+				).rejects.toMatchObject({
+					code: "DOCUMENT_REQUESTER_WORLD_REQUIRED",
+				});
+				expect(rt.adapter.queryDocumentFragments).not.toHaveBeenCalled();
+			},
+		);
 	});
 
 	describe("hybrid mode", () => {

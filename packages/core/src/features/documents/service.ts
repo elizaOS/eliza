@@ -335,7 +335,32 @@ async function assertAccessContextWorld(
 	message: Memory,
 	scope?: { roomId?: UUID; worldId?: UUID },
 ): Promise<void> {
-	if (!accessContext.worldId) return;
+	const elevatedHuman =
+		accessContext.requesterEntityId !== runtime.agentId &&
+		(accessContext.isOwner ||
+			accessContext.role === "OWNER" ||
+			accessContext.role === "ADMIN");
+	if (!accessContext.worldId) {
+		if (!elevatedHuman) return;
+		const error = new ElizaError(
+			"Elevated document search context requires a world",
+			{
+				code: "DOCUMENT_REQUESTER_WORLD_REQUIRED",
+				context: {
+					agentId: runtime.agentId,
+					requesterEntityId: accessContext.requesterEntityId,
+					role: accessContext.role,
+				},
+				severity: "ephemeral",
+			},
+		);
+		runtime.reportError("DocumentService.searchRequesterWorld", error, {
+			agentId: runtime.agentId,
+			requesterEntityId: accessContext.requesterEntityId,
+			role: accessContext.role,
+		});
+		throw error;
+	}
 
 	const roomId = scope?.roomId ?? message.roomId;
 	let targetWorldId = scope?.worldId ?? message.worldId;
