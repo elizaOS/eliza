@@ -73,6 +73,7 @@ export async function runWalletPipeline(
   const risk = analyzeWalletRisk(
     input.balance.nativeAmount,
     activity,
+    input.balance.nativeSymbol,
   );
 
   const whale = analyzeWalletWhaleStatus(

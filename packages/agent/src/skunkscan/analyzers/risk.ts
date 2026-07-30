@@ -11,28 +11,46 @@ import {
 import { createInvestorInsight } from "../explainability/builder";
 import { InvestorEvidenceCollection } from "../explainability/evidenceCollection";
 
+/**
+ * Identifies each risk reason structurally instead of by matching its
+ * generated display text, so buildRiskExplanation() can't silently stop
+ * recognizing a reason if its wording ever changes.
+ */
+type RiskReasonCode =
+  | "zero_native_balance"
+  | "no_recent_activity"
+  | "has_recent_activity"
+  | "failed_transactions";
+
+type RiskReason = {
+  code: RiskReasonCode;
+  text: string;
+};
+
 export function analyzeWalletRisk(
-  solBalance: number,
+  nativeBalance: number,
   activity: WalletActivitySummary,
+  nativeSymbol: string,
 ): WalletRiskSummary {
-  const reasons: string[] = [];
+  const reasons: RiskReason[] = [];
   const limitations: string[] = [];
 
   let score = 0;
 
   /*
    * Risk signal 1:
-   * The wallet currently has no native SOL balance.
+   * The wallet currently has no native balance.
    *
    * This adds only a small amount of risk because a zero balance
    * can have many legitimate explanations.
    */
-  if (solBalance === 0) {
+  if (nativeBalance === 0) {
     score += 5;
 
-    reasons.push(
-      "Wallet currently has zero SOL balance.",
-    );
+    reasons.push({
+      code: "zero_native_balance",
+      text: `Wallet currently has zero ${nativeSymbol} balance.`,
+    });
   }
 
   /*
@@ -49,9 +67,10 @@ export function analyzeWalletRisk(
       30,
     );
 
-    reasons.push(
-      `${activity.failedTransactionCount} failed transaction(s) found in the recent sample.`,
-    );
+    reasons.push({
+      code: "failed_transactions",
+      text: `${activity.failedTransactionCount} failed transaction(s) found in the recent sample.`,
+    });
   }
 
   /*
@@ -64,17 +83,19 @@ export function analyzeWalletRisk(
   if (activity.recentTransactionCount === 0) {
     score += 10;
 
-    reasons.push(
-      "No recent transaction activity found.",
-    );
+    reasons.push({
+      code: "no_recent_activity",
+      text: "No recent transaction activity found.",
+    });
 
     limitations.push(
       "No recent transactions were available for evaluating current wallet behavior.",
     );
   } else {
-    reasons.push(
-      "Wallet has recent transaction activity.",
-    );
+    reasons.push({
+      code: "has_recent_activity",
+      text: "Wallet has recent transaction activity.",
+    });
   }
 
   /*
@@ -137,7 +158,7 @@ export function analyzeWalletRisk(
 
     {
       condition:
-        Number.isFinite(solBalance),
+        Number.isFinite(nativeBalance),
 
       score: 10,
 
@@ -356,7 +377,7 @@ export function analyzeWalletRisk(
   /*
    * Zero native balance insight.
    */
-  if (solBalance === 0) {
+  if (nativeBalance === 0) {
     investorInsights.neutral.push(
       createInvestorInsight({
         id: "zero-native-balance",
@@ -364,10 +385,10 @@ export function analyzeWalletRisk(
         title: "Zero Native Balance",
 
         finding:
-          "The wallet currently holds no native SOL balance.",
+          `The wallet currently holds no native ${nativeSymbol} balance.`,
 
         whyItMatters:
-          "A zero native balance may indicate inactivity, an emptied wallet, a temporary balance state, or limited ability to submit new transactions without receiving additional SOL.",
+          `A zero native balance may indicate inactivity, an emptied wallet, a temporary balance state, or limited ability to submit new transactions without receiving additional ${nativeSymbol}.`,
 
         impact: "neutral",
 
@@ -380,7 +401,7 @@ export function analyzeWalletRisk(
         ],
 
         limitations: [
-          "A zero SOL balance does not by itself indicate suspicious activity.",
+          `A zero ${nativeSymbol} balance does not by itself indicate suspicious activity.`,
           "The balance represents the wallet state at the time of investigation and may change later.",
         ],
       }),
@@ -399,7 +420,7 @@ export function analyzeWalletRisk(
 
     confidence,
 
-    reasons,
+    reasons: reasons.map((reason) => reason.text),
 
     limitations,
 
@@ -413,6 +434,7 @@ export function analyzeWalletRisk(
       whyThisAssessment:
         buildRiskExplanation(
           reasons,
+          nativeSymbol,
         ),
 
       whatReducedConfidence:
@@ -441,38 +463,25 @@ function buildInvestorRiskSummary(
 }
 
 function buildRiskExplanation(
-  reasons: string[],
+  reasons: RiskReason[],
+  nativeSymbol: string,
 ): string[] {
   return reasons.map((reason) => {
-    if (
-      reason ===
-      "Wallet currently has zero SOL balance."
-    ) {
-      return "The wallet currently has no native SOL balance, which adds a small amount of uncertainty but is not inherently suspicious.";
-    }
+    switch (reason.code) {
+      case "zero_native_balance":
+        return `The wallet currently has no native ${nativeSymbol} balance, which adds a small amount of uncertainty but is not inherently suspicious.`;
 
-    if (
-      reason ===
-      "No recent transaction activity found."
-    ) {
-      return "No recent transactions were available for evaluating the wallet's current behavior.";
-    }
+      case "no_recent_activity":
+        return "No recent transactions were available for evaluating the wallet's current behavior.";
 
-    if (
-      reason ===
-      "Wallet has recent transaction activity."
-    ) {
-      return "Recent transactions provided current behavioral evidence for the risk assessment.";
-    }
+      case "has_recent_activity":
+        return "Recent transactions provided current behavioral evidence for the risk assessment.";
 
-    if (
-      reason.includes(
-        "failed transaction(s)",
-      )
-    ) {
-      return "Failed transactions were identified in the recent sample and contributed to the calculated risk score.";
-    }
+      case "failed_transactions":
+        return "Failed transactions were identified in the recent sample and contributed to the calculated risk score.";
 
-    return reason;
+      default:
+        return reason.text;
+    }
   });
 }
