@@ -19,6 +19,43 @@ import {
   InvestorEvidenceCollection,
 } from "../explainability/evidenceCollection";
 
+/**
+ * Identifies each whale reason structurally instead of by matching its
+ * generated display text, so buildWhaleExplanation() can't silently stop
+ * recognizing a reason if its wording ever changes. Same fix as risk.ts's
+ * RiskReasonCode.
+ */
+type WhaleReasonCode =
+  | "usd_value_unavailable"
+  | "usd_value_at_least_1m"
+  | "usd_value_at_least_250k"
+  | "usd_value_at_least_50k"
+  | "usd_value_below_thresholds"
+  | "age_veteran"
+  | "age_established"
+  | "age_new"
+  | "age_unknown"
+  | "activity_high"
+  | "activity_medium"
+  | "activity_low"
+  | "activity_none"
+  | "diversity_high"
+  | "diversity_medium"
+  | "diversity_low"
+  | "diversity_none"
+  | "funded_by_exchange"
+  | "funded_by_bridge"
+  | "funded_by_wallet"
+  | "funding_source_unknown"
+  | "risk_low"
+  | "risk_medium"
+  | "risk_high";
+
+type WhaleReason = {
+  code: WhaleReasonCode;
+  text: string;
+};
+
 export function analyzeWalletWhaleStatus(
   portfolio: WalletPortfolioSummary,
   age: WalletAgeSummary,
@@ -32,7 +69,7 @@ export function analyzeWalletWhaleStatus(
       ? portfolio.estimatedTotalUsdValue
       : null;
 
-  const reasons: string[] = [];
+  const reasons: WhaleReason[] = [];
   const limitations: string[] = [];
 
   let whaleScore = 0;
@@ -46,9 +83,10 @@ export function analyzeWalletWhaleStatus(
    * entire whale classification by itself.
    */
   if (estimatedPortfolioUsdValue === null) {
-    reasons.push(
-      "USD portfolio value is unavailable, so wallet size confidence is limited.",
-    );
+    reasons.push({
+      code: "usd_value_unavailable",
+      text: "USD portfolio value is unavailable, so wallet size confidence is limited.",
+    });
 
     limitations.push(
       "The wallet's total USD portfolio value could not be determined.",
@@ -56,25 +94,29 @@ export function analyzeWalletWhaleStatus(
   } else if (estimatedPortfolioUsdValue >= 1_000_000) {
     whaleScore += 40;
 
-    reasons.push(
-      "Estimated portfolio value is at least $1,000,000.",
-    );
+    reasons.push({
+      code: "usd_value_at_least_1m",
+      text: "Estimated portfolio value is at least $1,000,000.",
+    });
   } else if (estimatedPortfolioUsdValue >= 250_000) {
     whaleScore += 30;
 
-    reasons.push(
-      "Estimated portfolio value is at least $250,000.",
-    );
+    reasons.push({
+      code: "usd_value_at_least_250k",
+      text: "Estimated portfolio value is at least $250,000.",
+    });
   } else if (estimatedPortfolioUsdValue >= 50_000) {
     whaleScore += 20;
 
-    reasons.push(
-      "Estimated portfolio value is at least $50,000.",
-    );
+    reasons.push({
+      code: "usd_value_at_least_50k",
+      text: "Estimated portfolio value is at least $50,000.",
+    });
   } else {
-    reasons.push(
-      "Estimated portfolio value is below whale thresholds.",
-    );
+    reasons.push({
+      code: "usd_value_below_thresholds",
+      text: "Estimated portfolio value is below whale thresholds.",
+    });
   }
 
   /*
@@ -88,25 +130,29 @@ export function analyzeWalletWhaleStatus(
   if (age.classification === "veteran") {
     whaleScore += 20;
 
-    reasons.push(
-      "Wallet has veteran age classification.",
-    );
+    reasons.push({
+      code: "age_veteran",
+      text: "Wallet has veteran age classification.",
+    });
   } else if (age.classification === "established") {
     whaleScore += 12;
 
-    reasons.push(
-      "Wallet has established age classification.",
-    );
+    reasons.push({
+      code: "age_established",
+      text: "Wallet has established age classification.",
+    });
   } else if (age.classification === "new") {
     whaleScore += 3;
 
-    reasons.push(
-      "Wallet is newly created or recently first observed.",
-    );
+    reasons.push({
+      code: "age_new",
+      text: "Wallet is newly created or recently first observed.",
+    });
   } else {
-    reasons.push(
-      "Wallet age is unknown.",
-    );
+    reasons.push({
+      code: "age_unknown",
+      text: "Wallet age is unknown.",
+    });
 
     limitations.push(
       "Wallet age could not be confidently determined.",
@@ -123,25 +169,29 @@ export function analyzeWalletWhaleStatus(
   if (activity.activityLevel === "high") {
     whaleScore += 15;
 
-    reasons.push(
-      "Wallet has high recent activity.",
-    );
+    reasons.push({
+      code: "activity_high",
+      text: "Wallet has high recent activity.",
+    });
   } else if (activity.activityLevel === "medium") {
     whaleScore += 10;
 
-    reasons.push(
-      "Wallet has medium recent activity.",
-    );
+    reasons.push({
+      code: "activity_medium",
+      text: "Wallet has medium recent activity.",
+    });
   } else if (activity.activityLevel === "low") {
     whaleScore += 5;
 
-    reasons.push(
-      "Wallet has low recent activity.",
-    );
+    reasons.push({
+      code: "activity_low",
+      text: "Wallet has low recent activity.",
+    });
   } else {
-    reasons.push(
-      "Wallet has no recent activity in the current sample.",
-    );
+    reasons.push({
+      code: "activity_none",
+      text: "Wallet has no recent activity in the current sample.",
+    });
 
     limitations.push(
       "No recent activity was identified in the analyzed transaction sample.",
@@ -159,25 +209,29 @@ export function analyzeWalletWhaleStatus(
   if (portfolio.diversityLevel === "high") {
     whaleScore += 10;
 
-    reasons.push(
-      "Wallet portfolio has high token diversity.",
-    );
+    reasons.push({
+      code: "diversity_high",
+      text: "Wallet portfolio has high token diversity.",
+    });
   } else if (portfolio.diversityLevel === "medium") {
     whaleScore += 6;
 
-    reasons.push(
-      "Wallet portfolio has medium token diversity.",
-    );
+    reasons.push({
+      code: "diversity_medium",
+      text: "Wallet portfolio has medium token diversity.",
+    });
   } else if (portfolio.diversityLevel === "low") {
     whaleScore += 2;
 
-    reasons.push(
-      "Wallet portfolio has low token diversity.",
-    );
+    reasons.push({
+      code: "diversity_low",
+      text: "Wallet portfolio has low token diversity.",
+    });
   } else {
-    reasons.push(
-      "Wallet has no detected token portfolio diversity.",
-    );
+    reasons.push({
+      code: "diversity_none",
+      text: "Wallet has no detected token portfolio diversity.",
+    });
   }
 
   /*
@@ -190,25 +244,29 @@ export function analyzeWalletWhaleStatus(
   if (funding.fundingSourceType === "exchange") {
     whaleScore += 10;
 
-    reasons.push(
-      "Wallet appears to have been funded by a centralized exchange.",
-    );
+    reasons.push({
+      code: "funded_by_exchange",
+      text: "Wallet appears to have been funded by a centralized exchange.",
+    });
   } else if (funding.fundingSourceType === "bridge") {
     whaleScore += 8;
 
-    reasons.push(
-      "Wallet appears to have been funded by a bridge.",
-    );
+    reasons.push({
+      code: "funded_by_bridge",
+      text: "Wallet appears to have been funded by a bridge.",
+    });
   } else if (funding.fundingSourceType === "wallet") {
     whaleScore += 5;
 
-    reasons.push(
-      "Wallet appears to have been funded by another wallet.",
-    );
+    reasons.push({
+      code: "funded_by_wallet",
+      text: "Wallet appears to have been funded by another wallet.",
+    });
   } else {
-    reasons.push(
-      "Funding source type is unknown.",
-    );
+    reasons.push({
+      code: "funding_source_unknown",
+      text: "Funding source type is unknown.",
+    });
 
     limitations.push(
       "The original funding source could not be identified.",
@@ -226,19 +284,22 @@ export function analyzeWalletWhaleStatus(
   if (risk.level === "low") {
     whaleScore += 5;
 
-    reasons.push(
-      "Current risk level is low.",
-    );
+    reasons.push({
+      code: "risk_low",
+      text: "Current risk level is low.",
+    });
   } else if (risk.level === "medium") {
     whaleScore += 2;
 
-    reasons.push(
-      "Current risk level is medium.",
-    );
+    reasons.push({
+      code: "risk_medium",
+      text: "Current risk level is medium.",
+    });
   } else {
-    reasons.push(
-      "Current risk level is high, reducing whale confidence.",
-    );
+    reasons.push({
+      code: "risk_high",
+      text: "Current risk level is high, reducing whale confidence.",
+    });
   }
 
   whaleScore = Math.max(
@@ -768,7 +829,7 @@ export function analyzeWalletWhaleStatus(
 
     confidence,
 
-    reasons,
+    reasons: reasons.map((reason) => reason.text),
 
     limitations,
 
@@ -822,178 +883,85 @@ function buildInvestorWhaleSummary(
 }
 
 function buildWhaleExplanation(
-  reasons: string[],
+  reasons: WhaleReason[],
 ): string[] {
   return reasons.map((reason) => {
-    if (
-      reason ===
-      "USD portfolio value is unavailable, so wallet size confidence is limited."
-    ) {
-      return "A reliable USD portfolio valuation was unavailable, so the model relied more heavily on wallet age, activity, portfolio diversity, funding context, and risk.";
-    }
+    switch (reason.code) {
+      case "usd_value_unavailable":
+        return "A reliable USD portfolio valuation was unavailable, so the model relied more heavily on wallet age, activity, portfolio diversity, funding context, and risk.";
 
-    if (
-      reason ===
-      "Estimated portfolio value is at least $1,000,000."
-    ) {
-      return "The available token prices indicate an estimated portfolio value of at least one million US dollars.";
-    }
+      case "usd_value_at_least_1m":
+        return "The available token prices indicate an estimated portfolio value of at least one million US dollars.";
 
-    if (
-      reason ===
-      "Estimated portfolio value is at least $250,000."
-    ) {
-      return "The available token prices indicate an estimated portfolio value of at least two hundred and fifty thousand US dollars.";
-    }
+      case "usd_value_at_least_250k":
+        return "The available token prices indicate an estimated portfolio value of at least two hundred and fifty thousand US dollars.";
 
-    if (
-      reason ===
-      "Estimated portfolio value is at least $50,000."
-    ) {
-      return "The available token prices indicate an estimated portfolio value of at least fifty thousand US dollars.";
-    }
+      case "usd_value_at_least_50k":
+        return "The available token prices indicate an estimated portfolio value of at least fifty thousand US dollars.";
 
-    if (
-      reason ===
-      "Estimated portfolio value is below whale thresholds."
-    ) {
-      return "The available USD valuation is below the model's direct whale-value thresholds.";
-    }
+      case "usd_value_below_thresholds":
+        return "The available USD valuation is below the model's direct whale-value thresholds.";
 
-    if (
-      reason ===
-      "Wallet has veteran age classification."
-    ) {
-      return "The wallet has a long blockchain history, providing stronger historical evidence for the assessment.";
-    }
+      case "age_veteran":
+        return "The wallet has a long blockchain history, providing stronger historical evidence for the assessment.";
 
-    if (
-      reason ===
-      "Wallet has established age classification."
-    ) {
-      return "The wallet has an established blockchain history, which supports interpretation of its current portfolio and activity.";
-    }
+      case "age_established":
+        return "The wallet has an established blockchain history, which supports interpretation of its current portfolio and activity.";
 
-    if (
-      reason ===
-      "Wallet is newly created or recently first observed."
-    ) {
-      return "The wallet has limited historical evidence because it was created or first observed relatively recently.";
-    }
+      case "age_new":
+        return "The wallet has limited historical evidence because it was created or first observed relatively recently.";
 
-    if (
-      reason ===
-      "Wallet age is unknown."
-    ) {
-      return "The wallet's first known activity could not be confidently determined.";
-    }
+      case "age_unknown":
+        return "The wallet's first known activity could not be confidently determined.";
 
-    if (
-      reason ===
-      "Wallet has high recent activity."
-    ) {
-      return "The wallet shows a high level of recent blockchain activity in the analyzed sample.";
-    }
+      case "activity_high":
+        return "The wallet shows a high level of recent blockchain activity in the analyzed sample.";
 
-    if (
-      reason ===
-      "Wallet has medium recent activity."
-    ) {
-      return "The wallet shows a moderate level of recent blockchain activity in the analyzed sample.";
-    }
+      case "activity_medium":
+        return "The wallet shows a moderate level of recent blockchain activity in the analyzed sample.";
 
-    if (
-      reason ===
-      "Wallet has low recent activity."
-    ) {
-      return "The wallet shows a limited level of recent blockchain activity in the analyzed sample.";
-    }
+      case "activity_low":
+        return "The wallet shows a limited level of recent blockchain activity in the analyzed sample.";
 
-    if (
-      reason ===
-      "Wallet has no recent activity in the current sample."
-    ) {
-      return "No recent transactions were available for evaluating the wallet's current activity profile.";
-    }
+      case "activity_none":
+        return "No recent transactions were available for evaluating the wallet's current activity profile.";
 
-    if (
-      reason ===
-      "Wallet portfolio has high token diversity."
-    ) {
-      return "The wallet holds a broadly diversified token portfolio, which contributes to its wallet-size profile.";
-    }
+      case "diversity_high":
+        return "The wallet holds a broadly diversified token portfolio, which contributes to its wallet-size profile.";
 
-    if (
-      reason ===
-      "Wallet portfolio has medium token diversity."
-    ) {
-      return "The wallet holds a moderately diversified token portfolio, which contributes to its wallet-size profile.";
-    }
+      case "diversity_medium":
+        return "The wallet holds a moderately diversified token portfolio, which contributes to its wallet-size profile.";
 
-    if (
-      reason ===
-      "Wallet portfolio has low token diversity."
-    ) {
-      return "The wallet has limited token diversity, providing only a small contribution to the whale assessment.";
-    }
+      case "diversity_low":
+        return "The wallet has limited token diversity, providing only a small contribution to the whale assessment.";
 
-    if (
-      reason ===
-      "Wallet has no detected token portfolio diversity."
-    ) {
-      return "No meaningful token portfolio diversity was detected.";
-    }
+      case "diversity_none":
+        return "No meaningful token portfolio diversity was detected.";
 
-    if (
-      reason ===
-      "Wallet appears to have been funded by a centralized exchange."
-    ) {
-      return "The available funding evidence suggests that the wallet originally received assets from a centralized exchange.";
-    }
+      case "funded_by_exchange":
+        return "The available funding evidence suggests that the wallet originally received assets from a centralized exchange.";
 
-    if (
-      reason ===
-      "Wallet appears to have been funded by a bridge."
-    ) {
-      return "The available funding evidence suggests that the wallet originally received assets through a blockchain bridge.";
-    }
+      case "funded_by_bridge":
+        return "The available funding evidence suggests that the wallet originally received assets through a blockchain bridge.";
 
-    if (
-      reason ===
-      "Wallet appears to have been funded by another wallet."
-    ) {
-      return "The available funding evidence suggests that another wallet provided the original funding.";
-    }
+      case "funded_by_wallet":
+        return "The available funding evidence suggests that another wallet provided the original funding.";
 
-    if (
-      reason ===
-      "Funding source type is unknown."
-    ) {
-      return "The wallet's original funding route could not be confidently identified.";
-    }
+      case "funding_source_unknown":
+        return "The wallet's original funding route could not be confidently identified.";
 
-    if (
-      reason ===
-      "Current risk level is low."
-    ) {
-      return "The current calculated wallet risk is low, which provides more reassuring context for the whale classification.";
-    }
+      case "risk_low":
+        return "The current calculated wallet risk is low, which provides more reassuring context for the whale classification.";
 
-    if (
-      reason ===
-      "Current risk level is medium."
-    ) {
-      return "The wallet has a medium calculated risk level, which adds some caution to interpretation of the whale classification.";
-    }
+      case "risk_medium":
+        return "The wallet has a medium calculated risk level, which adds some caution to interpretation of the whale classification.";
 
-    if (
-      reason ===
-      "Current risk level is high, reducing whale confidence."
-    ) {
-      return "The wallet has a high calculated risk level, which requires the whale classification to be interpreted cautiously.";
-    }
+      case "risk_high":
+        return "The wallet has a high calculated risk level, which requires the whale classification to be interpreted cautiously.";
 
-    return reason;
+      default:
+        return reason.text;
+    }
   });
 }
 
