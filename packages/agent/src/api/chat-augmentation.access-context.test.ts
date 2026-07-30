@@ -17,6 +17,7 @@ import {
 } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 
+import { queryDocumentFragmentsInMemory } from "../../../core/src/database/document-list-query.ts";
 import { maybeAugmentChatMessageWithDocuments } from "./chat-augmentation.ts";
 
 // ---------------------------------------------------------------------------
@@ -38,6 +39,32 @@ const USER_ENTITY = "00000000-0000-0000-0000-00000000dddd" as UUID;
 
 const SECRET_TEXT = "the denver launch codeword is mallard";
 const SECRET_QUERY = "denver launch codeword";
+
+/**
+ * The parent document the fragment belongs to.
+ *
+ * Fragment visibility is derived from its parent: the shared query resolves
+ * `metadata.documentId`, applies the scope/role decision to the parent, and
+ * requires the fragment's revision to match the parent's. A fragment without
+ * its document is invisible to everyone, owner included.
+ */
+function ownerPrivateDocument(): Memory {
+  return {
+    id: "00000000-0000-0000-0000-00000000d001" as UUID,
+    agentId: AGENT_ID,
+    entityId: OWNER_ENTITY,
+    roomId: ROOM_ID,
+    worldId: WORLD_ID,
+    content: { text: SECRET_TEXT },
+    metadata: {
+      type: MemoryType.DOCUMENT,
+      scope: "owner-private",
+      addedBy: OWNER_ENTITY,
+      addedByRole: "OWNER",
+      documentRevision: 0,
+    },
+  } as unknown as Memory;
+}
 
 /** A single owner-private document fragment carrying the secret. */
 function ownerPrivateFragment(): Memory {
@@ -64,6 +91,10 @@ function ownerPrivateFragment(): Memory {
  * (`buildAccessContext`) and the documents keyword-search path
  * (`DocumentService`). No embedding model is registered, so search falls back
  * to deterministic BM25 keyword recall — no embeddings to mock.
+ *
+ * `adapter.queryDocumentFragments` runs the real shared visibility query the
+ * database adapters delegate to, so the access check under test is the
+ * production one rather than a stand-in reimplementation.
  */
 function makeRuntime(fragments: Memory[]): {
   runtime: AgentRuntime;
@@ -83,10 +114,21 @@ function makeRuntime(fragments: Memory[]): {
     })),
     getEntityById: vi.fn(async () => null),
     getRelationships: vi.fn(async () => []),
+    // Both principals are participants in the room; visibility must therefore
+    // turn on role and document scope, not on room membership.
+    getRoomsForParticipants: vi.fn(async () => [ROOM_ID]),
     getSetting: vi.fn(() => undefined),
     // documents search backing
     getModel: vi.fn(() => undefined),
     getMemories: vi.fn(async () => fragments),
+    adapter: {
+      queryDocumentFragments: vi.fn(async (params) =>
+        queryDocumentFragmentsInMemory(
+          [ownerPrivateDocument(), ...fragments],
+          params,
+        ),
+      ),
+    },
     searchMemories: vi.fn(async () => fragments),
     countMemories: vi.fn(async () => fragments.length),
     getServiceLoadPromise: vi.fn(),
