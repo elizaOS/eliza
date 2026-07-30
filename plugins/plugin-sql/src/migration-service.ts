@@ -87,10 +87,34 @@ export class DatabaseMigrationService {
     force?: boolean;
     dryRun?: boolean;
   }): Promise<void> {
+    await this.runRegisteredPluginMigrations([...this.registeredSchemas.keys()], options);
+  }
+
+  /**
+   * Migrates only the named schemas while retaining the complete registry for
+   * later hot-plugin registrations. Replaying every previously registered
+   * schema on each hot registration adds redundant hash reads, search-index
+   * probes, and RLS work to the runtime path.
+   */
+  async runRegisteredPluginMigrations(
+    pluginNames: readonly string[],
+    options?: {
+      verbose?: boolean;
+      force?: boolean;
+      dryRun?: boolean;
+    }
+  ): Promise<void> {
     if (!this.db || !this.migrator) {
       throw new Error("Database or migrator not initialized in DatabaseMigrationService");
     }
 
+    const selectedSchemas = [...new Set(pluginNames)].map((pluginName) => {
+      const schema = this.registeredSchemas.get(pluginName);
+      if (!schema) {
+        throw new Error(`No registered schema for plugin ${pluginName}`);
+      }
+      return [pluginName, schema] as const;
+    });
     const isProduction = process.env.NODE_ENV === "production";
 
     const migrationOptions = {
@@ -103,7 +127,7 @@ export class DatabaseMigrationService {
       {
         src: "plugin:sql",
         environment: isProduction ? "PRODUCTION" : "DEVELOPMENT",
-        pluginCount: this.registeredSchemas.size,
+        pluginCount: selectedSchemas.length,
         dryRun: migrationOptions.dryRun,
       },
       "Starting migrations"
@@ -113,7 +137,7 @@ export class DatabaseMigrationService {
     let failureCount = 0;
     const errors: Array<{ pluginName: string; error: Error }> = [];
 
-    for (const [pluginName, schema] of this.registeredSchemas) {
+    for (const [pluginName, schema] of selectedSchemas) {
       try {
         await this.migrator.migrate(pluginName, schema, migrationOptions);
         successCount++;
@@ -141,23 +165,28 @@ export class DatabaseMigrationService {
       // Install the message full-text/trigram search objects on the migrated
       // `memories` table (#13534). Idempotent; runs after the table exists so the
       // GIN expression indexes can be created.
-      const shouldInstallSearchObjects = shouldApplyMessageSearchObjects(this.databaseBackend);
-      if (shouldInstallSearchObjects && (await messageSearchTableExists(this.db))) {
-        await applyMessageSearchObjects(this.db);
-      } else if (shouldInstallSearchObjects) {
-        logger.info(
-          { src: "plugin:sql", table: "memories" },
-          "[MessageSearch] deferring search-object install until the core SQL schema is migrated"
-        );
-      } else {
-        logger.warn(
-          {
-            src: "plugin:sql",
-            env: MESSAGE_SEARCH_OBJECTS_ENV,
-            databaseBackend: this.databaseBackend,
-          },
-          "[MessageSearch] skipping automatic search-object install in production Postgres; set ELIZA_APPLY_MESSAGE_SEARCH_OBJECTS=true after scheduling the generated-column/index DDL"
-        );
+      const includesCoreSchema = selectedSchemas.some(
+        ([pluginName]) => pluginName === "eliza" || pluginName === "@elizaos/plugin-sql"
+      );
+      if (includesCoreSchema) {
+        const shouldInstallSearchObjects = shouldApplyMessageSearchObjects(this.databaseBackend);
+        if (shouldInstallSearchObjects && (await messageSearchTableExists(this.db))) {
+          await applyMessageSearchObjects(this.db);
+        } else if (shouldInstallSearchObjects) {
+          logger.info(
+            { src: "plugin:sql", table: "memories" },
+            "[MessageSearch] deferring search-object install until the core SQL schema is migrated"
+          );
+        } else {
+          logger.warn(
+            {
+              src: "plugin:sql",
+              env: MESSAGE_SEARCH_OBJECTS_ENV,
+              databaseBackend: this.databaseBackend,
+            },
+            "[MessageSearch] skipping automatic search-object install in production Postgres; set ELIZA_APPLY_MESSAGE_SEARCH_OBJECTS=true after scheduling the generated-column/index DDL"
+          );
+        }
       }
 
       const dataIsolationEnabled = process.env.ENABLE_DATA_ISOLATION === "true";

@@ -116,7 +116,7 @@ describe("message-search production DDL guard", () => {
     expect(await messageSearchColumnExists()).toBe(false);
 
     migrationService.registerSchema(sqlPlugin.name, sqlPlugin.schema ?? {});
-    await migrationService.runAllPluginMigrations();
+    await migrationService.runRegisteredPluginMigrations([sqlPlugin.name]);
     expect(await messageSearchColumnExists()).toBe(true);
   });
 
