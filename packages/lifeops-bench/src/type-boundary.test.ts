@@ -31,6 +31,12 @@ describe("LifeOps bench type boundary", () => {
       "@elizaos/plugin-local-inference/runtime": [
         "../../plugins/plugin-local-inference/dist/runtime/index.d.ts",
       ],
+      "@elizaos/plugin-personal-assistant": [
+        "../../plugins/plugin-personal-assistant/dist/index.d.ts",
+      ],
+      "@elizaos/plugin-personal-assistant/lifeops/owner/fact-store": [
+        "../../plugins/plugin-personal-assistant/dist/lifeops/owner/fact-store.d.ts",
+      ],
     });
   });
 });
