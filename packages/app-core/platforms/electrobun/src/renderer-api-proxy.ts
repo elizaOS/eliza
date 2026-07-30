@@ -33,36 +33,10 @@ export function shouldProxyToApiBase(apiBase: string | undefined): boolean {
 
 const BUN_SERVE_MAX_IDLE_TIMEOUT_SECONDS = 255;
 
-function parsePositiveInteger(value: string | undefined): number | null {
-  if (!value) return null;
-  const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-}
-
-function clampBunServeIdleTimeout(seconds: number): number {
-  return Math.min(seconds, BUN_SERVE_MAX_IDLE_TIMEOUT_SECONDS);
-}
-
-export function resolveRendererProxyIdleTimeoutSeconds(
-  env: Record<string, string | undefined>,
-): number {
-  const explicit = parsePositiveInteger(
-    env.ELIZA_RENDERER_PROXY_IDLE_TIMEOUT_SECONDS,
-  );
-  if (explicit) return clampBunServeIdleTimeout(explicit);
-
-  const httpTimeoutMs = parsePositiveInteger(env.ELIZA_HTTP_REQUEST_TIMEOUT_MS);
-  if (httpTimeoutMs) {
-    return clampBunServeIdleTimeout(Math.ceil(httpTimeoutMs / 1000));
-  }
-
-  const chatTimeoutMs = parsePositiveInteger(
-    env.ELIZA_CHAT_GENERATION_TIMEOUT_MS,
-  );
-  if (chatTimeoutMs) {
-    return clampBunServeIdleTimeout(Math.ceil((chatTimeoutMs + 60_000) / 1000));
-  }
-
+export function resolveRendererProxyIdleTimeoutSeconds(): number {
+  // Bun requires an idle-timeout value and caps it at 255 seconds. Using the
+  // platform maximum keeps this transport independent from model/request
+  // deadlines; active response chunks reset Bun's idle clock.
   return BUN_SERVE_MAX_IDLE_TIMEOUT_SECONDS;
 }
 
