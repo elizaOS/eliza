@@ -2,14 +2,13 @@
  * View user journey scenario library.
  *
  * A curated collection of realistic user intents for the views system.
- * These scenarios are used for:
- *   1. Manual exploratory testing against a running agent.
- *   2. LLM-in-the-loop automated evaluation (see view-llm-eval.test.ts).
- *   3. Documentation of expected agent behaviors.
+ * These scenarios support manual exploration, deterministic coverage
+ * inventories, and documentation of expected agent behaviors. Executable
+ * behavior belongs in the real app-control and scenario-runner paths.
  *
  * Each entry is self-contained: it describes the user message, the expected
- * high-level behavior, and machine-checkable verification criteria that an
- * LLM judge or a deterministic assertion can evaluate.
+ * high-level behavior, and verification criteria that runtime suites can
+ * translate into assertions.
  */
 
 export interface ViewJourneyScenario {
