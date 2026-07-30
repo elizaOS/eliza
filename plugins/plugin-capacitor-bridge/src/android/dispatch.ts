@@ -39,6 +39,7 @@ export type AndroidDispatchRoute = (args: {
 	isAuthorized: () => true;
 	/** Incremental sink for legacy SSE handlers — set only for streaming. */
 	onChunk?: (chunk: Buffer) => void;
+	abortSignal?: AbortSignal;
 }) => Promise<RouteHandlerResult | null | undefined>;
 
 /** The `http_request` / `http_request_stream` payload the native side sends. */
@@ -324,6 +325,7 @@ function directAndroidCoreRoute(
 	method: string,
 	pathname: string,
 	coreRoutes?: AndroidCoreRouteDeps,
+	bridgePlatform: "android" | "desktop" = "android",
 ): AndroidBufferedResponse | null {
 	if (method === "GET" && pathname === "/api/health") {
 		return jsonResponse(200, {
@@ -341,7 +343,9 @@ function directAndroidCoreRoute(
 			agentName: runtimeAgentName(runtime),
 			startedAt: null,
 			uptime: 0,
-			androidBridge: "uds",
+			...(bridgePlatform === "android"
+				? { androidBridge: "uds" }
+				: { desktopBridge: "stdio" }),
 		});
 	}
 
@@ -362,7 +366,9 @@ function directAndroidCoreRoute(
 			},
 			pendingRestart: false,
 			pendingRestartReasons: [],
-			androidBridge: "uds",
+			...(bridgePlatform === "android"
+				? { androidBridge: "uds" }
+				: { desktopBridge: "stdio" }),
 		});
 	}
 
@@ -509,6 +515,8 @@ export async function dispatchBufferedRequest(
 	dispatchRoute: AndroidDispatchRoute,
 	payload: AndroidRequestPayload,
 	coreRoutes?: AndroidCoreRouteDeps,
+	abortSignal?: AbortSignal,
+	bridgePlatform: "android" | "desktop" = "android",
 ): Promise<AndroidBufferedResponse> {
 	const rawPath = typeof payload.path === "string" ? payload.path.trim() : "";
 	if (!rawPath || !isSafeLocalPath(rawPath)) {
@@ -520,7 +528,13 @@ export async function dispatchBufferedRequest(
 	const headers = normalizeHeaderRecord(payload.headers);
 	const { pathname, query } = splitPathAndQuery(rawPath);
 
-	const direct = directAndroidCoreRoute(runtime, method, pathname, coreRoutes);
+	const direct = directAndroidCoreRoute(
+		runtime,
+		method,
+		pathname,
+		coreRoutes,
+		bridgePlatform,
+	);
 	if (direct) return direct;
 
 	const notif = await directAndroidNotificationRoute(
@@ -540,6 +554,7 @@ export async function dispatchBufferedRequest(
 		body: payloadBody(payload),
 		inProcess: true,
 		isAuthorized: () => true,
+		abortSignal,
 	});
 
 	if (!result) return notFound(method, pathname);
@@ -569,6 +584,8 @@ export async function dispatchStreamingRequest(
 	payload: AndroidRequestPayload,
 	sink: StdioBridgeStreamSink,
 	coreRoutes?: AndroidCoreRouteDeps,
+	abortSignal?: AbortSignal,
+	bridgePlatform: "android" | "desktop" = "android",
 ): Promise<void> {
 	const rawPath = typeof payload.path === "string" ? payload.path.trim() : "";
 	if (!rawPath || !isSafeLocalPath(rawPath)) {
@@ -580,7 +597,13 @@ export async function dispatchStreamingRequest(
 	const headers = normalizeHeaderRecord(payload.headers);
 	const { pathname, query } = splitPathAndQuery(rawPath);
 
-	const direct = directAndroidCoreRoute(runtime, method, pathname, coreRoutes);
+	const direct = directAndroidCoreRoute(
+		runtime,
+		method,
+		pathname,
+		coreRoutes,
+		bridgePlatform,
+	);
 	if (direct) {
 		sink.emitResponse({
 			status: direct.status,
@@ -618,6 +641,7 @@ export async function dispatchStreamingRequest(
 			emitHead(200, { "content-type": "text/event-stream" });
 			sink.emitChunk(chunk.toString("base64"));
 		},
+		abortSignal,
 	});
 
 	if (!result) {

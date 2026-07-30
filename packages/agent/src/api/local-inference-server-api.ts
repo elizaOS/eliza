@@ -1,6 +1,11 @@
 /** Routes local inference server API requests between the agent backend and local model service. */
 import type http from "node:http";
-import type { AgentRuntime } from "@elizaos/core";
+import type {
+  AgentRuntime,
+  IAgentRuntime,
+  LegacyRouteHandler,
+  Route,
+} from "@elizaos/core";
 
 /**
  * Single owner of the `@elizaos/plugin-local-inference` subpath layout for the
@@ -80,6 +85,7 @@ export type LocalInferenceCommandIntent =
 
 let routeApiPromise: Promise<LocalInferenceRouteApi> | null = null;
 let voiceRouteApiPromise: Promise<LocalInferenceVoiceRouteApi> | null = null;
+const transportRouteRuntimes = new WeakSet<IAgentRuntime>();
 
 /**
  * Load the local-inference route + chat API from the always-real
@@ -115,4 +121,86 @@ export function loadLocalInferenceVoiceRouteApi(): Promise<LocalInferenceVoiceRo
     throw err;
   });
   return voiceRouteApiPromise;
+}
+
+/**
+ * Mount server-owned local-inference routes onto `runtime.routes` for
+ * transports that dispatch in-process without constructing the HTTP server.
+ * Android's abstract-UDS bridge uses the same handlers as desktop rather than
+ * maintaining a second route implementation.
+ */
+export function registerLocalInferenceTransportRoutes(
+  runtime: IAgentRuntime,
+): void {
+  if (transportRouteRuntimes.has(runtime)) return;
+
+  const handler: LegacyRouteHandler = async (req, res, activeRuntime) => {
+    const [routeApi, voiceApi] = await Promise.all([
+      loadLocalInferenceRouteApi(),
+      loadLocalInferenceVoiceRouteApi(),
+    ]);
+    if (await routeApi.handleLocalInferenceRoutes(req as never, res as never)) {
+      return;
+    }
+    if (
+      voiceApi.handleLocalInferenceAsrRoute &&
+      (await voiceApi.handleLocalInferenceAsrRoute(req as never, res as never, {
+        current: activeRuntime as AgentRuntime,
+      }))
+    ) {
+      return;
+    }
+    if (
+      voiceApi.handleLocalInferenceTtsRoute &&
+      (await voiceApi.handleLocalInferenceTtsRoute(req as never, res as never, {
+        current: activeRuntime as AgentRuntime,
+      }))
+    ) {
+      return;
+    }
+    if (
+      voiceApi.handleLiveDiarizationRoute &&
+      (await voiceApi.handleLiveDiarizationRoute(req as never, res as never, {
+        current: activeRuntime as AgentRuntime,
+      }))
+    ) {
+      return;
+    }
+    res.status(404).json({ error: "Local inference route not found" });
+  };
+
+  const routes: Route[] = [
+    ...(["GET", "POST", "DELETE"] as const).map((type) => ({
+      type,
+      path: "/api/local-inference/:path*",
+      handler,
+      public: false as const,
+    })),
+    {
+      type: "GET",
+      path: "/api/tts/local-inference/status",
+      handler,
+      public: false,
+    },
+    {
+      type: "POST",
+      path: "/api/tts/local-inference",
+      handler,
+      public: false,
+    },
+    {
+      type: "POST",
+      path: "/api/asr/local-inference",
+      handler,
+      public: false,
+    },
+    ...(["GET", "POST", "DELETE"] as const).map((type) => ({
+      type,
+      path: "/api/voice/:path*",
+      handler,
+      public: false as const,
+    })),
+  ];
+  runtime.routes.push(...routes);
+  transportRouteRuntimes.add(runtime);
 }
