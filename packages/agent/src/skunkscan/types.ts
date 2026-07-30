@@ -952,8 +952,8 @@ export type WalletFundingSummary = {
   firstFundingTransaction?: string | null;
   firstFundingAt?: number | null;
   fundingWallet?: string | null;
-  fundingAmountSol?: number | null;
-  fundingTokenMint?: string | null;
+  fundingAmountNative?: number | null;
+  fundingTokenId?: string | null;
   fundingAmountToken?: number | null;
   fundingTransferType: "native" | "token" | "unknown";
   fundingSourceType: "unknown" | "wallet" | "exchange" | "bridge" | "program";

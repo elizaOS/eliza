@@ -313,7 +313,7 @@ export function analyzeWalletRelationships(
         lastInteractionAt:
           funding.firstFundingAt ?? null,
         totalNativeAmountReceived:
-          funding.fundingAmountSol ?? 0,
+          funding.fundingAmountNative ?? 0,
         totalNativeAmountSent: 0,
         transactionSignatures:
           funding.firstFundingTransaction
