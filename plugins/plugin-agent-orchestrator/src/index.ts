@@ -76,10 +76,7 @@ import { activeWorkspaceContextProvider } from "./providers/active-workspace-con
 import { availableAgentsProvider } from "./providers/available-agents.js";
 import { codingSessionChangesProvider } from "./providers/coding-session-changes.js";
 import { AcpService } from "./services/acp-service.js";
-import {
-  createActiveSessionForwardHandler,
-  isSessionBusy,
-} from "./services/active-session-forward.js";
+import { createActiveSessionForwardHandler } from "./services/active-session-forward.js";
 import {
   appendAuditLine,
   defaultAuditLogPath,
@@ -89,6 +86,7 @@ import {
 import { OrchestratorTaskService } from "./services/orchestrator-task-service.js";
 import { resolveOriginRoomId } from "./services/session-room-binding.js";
 import { SubAgentInbox } from "./services/sub-agent-inbox.js";
+import { SubAgentInboxFlush } from "./services/sub-agent-inbox-flush.js";
 import { SubAgentRouter } from "./services/sub-agent-router.js";
 import { SwarmCoordinatorService } from "./services/swarm-coordinator-service.js";
 import { TaskSupervisorService } from "./services/task-supervisor-service.js";
@@ -207,12 +205,7 @@ export function createAgentOrchestratorPlugin(): Plugin {
       ) => Promise<void>)
     | undefined;
   let disposeProgressHook: (() => void) | undefined;
-  let disposeInboxFlush: (() => void) | undefined;
-  // In-flight inbox-flush poll timers + the set of sessions currently being
-  // polled — tracked at plugin scope so dispose() can clear them (an unref'd
-  // timer that fires post-dispose would touch a torn-down runtime/service).
-  const flushTimers = new Set<ReturnType<typeof setTimeout>>();
-  const flushPending = new Set<string>();
+  let inboxFlush: SubAgentInboxFlush | undefined;
   let activeSessionForwardHandler:
     | ((payload: { message: Memory }) => Promise<void>)
     | undefined;
@@ -379,91 +372,12 @@ export function createAgentOrchestratorPlugin(): Plugin {
           // hook's listener instead of being dropped on the floor.
           const acp = runtime.getService<AcpService>(AcpService.serviceType);
 
-          // Flush the interruption-decider inbox when a sub-agent finishes its
-          // turn: queued room messages are delivered to the now-idle session
-          // without ever having derailed the work mid-turn. A short settle poll
-          // bridges the gap between the `task_complete` event and the session
-          // status returning to a promptable state.
+          // Flush queued user input only after ACP publishes the authoritative
+          // ready transition. The service writes ready before emitting it, so
+          // there is no task_complete→store race to bridge with a polling loop.
           if (acp) {
-            // Poll bound for the task_complete→ready settle gap. This is NOT a
-            // delivery deadline: every subsequent ready/task_complete/reconnected
-            // event re-triggers a flush, so a queued message survives a turn far
-            // longer than the poll window. Giving up here only stops polling;
-            // it never clears a non-terminal session's inbox.
-            const MAX_FLUSH_POLLS = 120;
-            const scheduleFlush = (sessionId: string, tries = 0): void => {
-              if (subAgentInbox.size(sessionId) === 0) return;
-              // Coalesce: one in-flight poll chain per session. External
-              // re-triggers (tries===0) are dropped while a chain is active;
-              // self-rescheduling continuations (tries>0) pass through.
-              if (tries === 0 && flushPending.has(sessionId)) return;
-              flushPending.add(sessionId);
-              const timer = setTimeout(() => {
-                flushTimers.delete(timer);
-                void (async () => {
-                  const svc = runtime.getService<AcpService>(
-                    AcpService.serviceType,
-                  );
-                  // error-policy:J3 session lookup on a deferred flush timer; a
-                  // missing/failed lookup degrades to null and the guard below
-                  // treats it as "terminal", cancelling the flush cleanly.
-                  const session = svc
-                    ? await svc.getSession(sessionId).catch(() => null)
-                    : null;
-                  if (
-                    !session ||
-                    TERMINAL_SESSION_STATUSES.has(session.status)
-                  ) {
-                    flushPending.delete(sessionId);
-                    subAgentInbox.clear(sessionId);
-                    return;
-                  }
-                  // Still mid-turn (busy / tool_running / running / blocked /
-                  // authenticating) — wait for it to return to `ready`.
-                  if (isSessionBusy(session.status)) {
-                    if (tries < MAX_FLUSH_POLLS) {
-                      scheduleFlush(sessionId, tries + 1);
-                    } else {
-                      // Stop polling; the next session event re-arms a flush.
-                      flushPending.delete(sessionId);
-                    }
-                    return;
-                  }
-                  flushPending.delete(sessionId);
-                  const queued = subAgentInbox.drain(sessionId);
-                  if (!queued) return;
-                  try {
-                    await svc?.sendPrompt(sessionId, queued);
-                  } catch (err) {
-                    // error-policy:J7 inbox-flush loop must survive a transient
-                    // send failure; the message is requeued (never dropped) + warned.
-                    // Lost the race back to busy — requeue and re-arm rather
-                    // than drop the user's message.
-                    subAgentInbox.enqueue(sessionId, queued);
-                    scheduleFlush(sessionId);
-                    runtime.logger?.warn?.(
-                      {
-                        src: "@elizaos/plugin-agent-orchestrator",
-                        sessionId,
-                        err: err instanceof Error ? err.message : String(err),
-                      },
-                      "inbox flush failed; requeued",
-                    );
-                  }
-                })();
-              }, 1000);
-              timer.unref?.();
-              flushTimers.add(timer);
-            };
-            disposeInboxFlush = acp.onSessionEvent((sessionId, event) => {
-              if (
-                event === "task_complete" ||
-                event === "ready" ||
-                event === "reconnected"
-              ) {
-                scheduleFlush(sessionId);
-              }
-            });
+            inboxFlush = new SubAgentInboxFlush(runtime, acp, subAgentInbox);
+            inboxFlush.start();
           }
           // error-policy:J7 best-effort orphan-session recovery at boot; a failure
           // warns and does not abort the init chain.
@@ -509,24 +423,15 @@ export function createAgentOrchestratorPlugin(): Plugin {
         }
         disposeProgressHook = undefined;
       }
-      if (disposeInboxFlush) {
-        try {
-          disposeInboxFlush();
-        } catch {
-          // error-policy:J6 best-effort teardown; listener already detached.
-        }
-        disposeInboxFlush = undefined;
-      }
-      // Cancel any in-flight flush poll timers so none fire after teardown.
-      for (const timer of flushTimers) clearTimeout(timer);
-      flushTimers.clear();
-      flushPending.clear();
+      inboxFlush?.detach();
       subAgentInbox.clearAll();
       // Detach the runtime-bound overflow observer so a late enqueue after
       // hot-reload teardown cannot touch a torn-down runtime.
       subAgentInbox.setOverflowObserver(undefined);
       const acp = runtime.getService<AcpService>(AcpService.serviceType);
       await acp?.stop();
+      await inboxFlush?.drain();
+      inboxFlush = undefined;
       const taskService = runtime.getService<OrchestratorTaskService>(
         OrchestratorTaskService.serviceType,
       );

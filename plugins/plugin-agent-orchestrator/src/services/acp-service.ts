@@ -2140,6 +2140,10 @@ export class AcpService extends Service {
         status: "ready",
         lastActivityAt: new Date(),
       });
+      this.emitSessionEvent(sessionId, "ready", {
+        stopReason,
+        durationMs: promptResult.durationMs,
+      });
       return promptResult;
     }
 
@@ -2996,6 +3000,10 @@ export class AcpService extends Service {
         await this.store.update(session.id, {
           status: "ready",
           lastActivityAt: new Date(),
+        });
+        this.emitSessionEvent(session.id, "ready", {
+          stopReason: finalStopReason,
+          durationMs: promptResult.durationMs,
         });
       }
       return promptResult;
