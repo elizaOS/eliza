@@ -30,6 +30,10 @@ import {
 } from "@elizaos/shared/config/boot-config-store";
 import { buildBrandEnvAliases } from "@elizaos/shared/config/brand-env-aliases";
 import {
+	FIRST_RUN_DEFAULT_MODEL_ID,
+	findCatalogModel,
+} from "@elizaos/shared/local-inference";
+import {
 	summarizeTranscript,
 	type Transcript,
 	type TranscriptScope,
@@ -69,7 +73,6 @@ interface HostCallFrame {
 	id: string;
 	method: string;
 	payload?: unknown;
-	timeoutMs?: number;
 }
 
 interface HostResultFrame {
@@ -107,7 +110,6 @@ interface HttpRequestPayload {
 	body?: unknown;
 	bodyBase64?: unknown;
 	bodyEncoding?: unknown;
-	timeoutMs?: unknown;
 }
 
 interface HttpStreamRequestPayload extends HttpRequestPayload {
@@ -298,6 +300,7 @@ interface RuntimeMessageService {
 		onResponse: (
 			content: { text?: string } | null | undefined,
 		) => Promise<unknown[]> | unknown[],
+		options?: { abortSignal?: AbortSignal },
 	) => Promise<unknown> | unknown;
 }
 
@@ -318,19 +321,32 @@ type RuntimeWithModelRegistration = IAgentRuntime & {
 const IOS_NATIVE_LLAMA_PROVIDER = "capacitor-llama";
 const IOS_NATIVE_LLAMA_DEVICE_ID = "ios-native-llama";
 const IOS_NATIVE_LLAMA_PRIORITY = 0;
-const ELIZA_1_HF_REPO = "elizaos/eliza-1";
+const IOS_NATIVE_DEFAULT_CATALOG_MODEL = findCatalogModel(
+	FIRST_RUN_DEFAULT_MODEL_ID,
+);
+const IOS_NATIVE_DEFAULT_TEXT =
+	IOS_NATIVE_DEFAULT_CATALOG_MODEL?.sourceModel?.components?.text;
+if (
+	!IOS_NATIVE_DEFAULT_CATALOG_MODEL ||
+	!IOS_NATIVE_DEFAULT_TEXT?.file ||
+	!IOS_NATIVE_DEFAULT_CATALOG_MODEL.contextLength
+) {
+	throw new Error(
+		`[ios-bridge] Shared catalog default ${FIRST_RUN_DEFAULT_MODEL_ID} is missing its text artifact`,
+	);
+}
 const IOS_NATIVE_CATALOG_MODELS: NativeCatalogModelEntry[] = [
 	{
-		id: "eliza-1-2b",
+		id: FIRST_RUN_DEFAULT_MODEL_ID,
 		displayName: "eliza-1-2B",
-		hfRepo: ELIZA_1_HF_REPO,
-		hfPath: "bundles/2b/text/eliza-1-2b-128k.gguf",
-		ggufFile: "text/eliza-1-2b-128k.gguf",
-		sizeGb: 1.4,
-		minRamGb: 4,
+		hfRepo: IOS_NATIVE_DEFAULT_TEXT.repo,
+		hfPath: IOS_NATIVE_DEFAULT_TEXT.file,
+		ggufFile: `text/${path.basename(IOS_NATIVE_DEFAULT_TEXT.file)}`,
+		sizeGb: IOS_NATIVE_DEFAULT_CATALOG_MODEL.sizeGb,
+		minRamGb: IOS_NATIVE_DEFAULT_CATALOG_MODEL.minRamGb,
 		params: "2B",
 		bucket: "small",
-		contextLength: 131_072,
+		contextLength: IOS_NATIVE_DEFAULT_CATALOG_MODEL.contextLength,
 	},
 ];
 const IOS_NATIVE_ASSIGNMENT_SLOTS = new Set([
@@ -363,7 +379,8 @@ const pendingHostCalls = new Map<
 	{
 		resolve: (value: unknown) => void;
 		reject: (error: Error) => void;
-		timeout: ReturnType<typeof setTimeout>;
+		signal?: AbortSignal;
+		onAbort?: () => void;
 	}
 >();
 let hostProtocolWrite: ((frame: BridgeOutboundFrame) => void) | null = null;
@@ -699,8 +716,6 @@ function ensureIosBridgeBackendStarted(
 
 async function awaitIosBridgeBackend(
 	host: IosBridgeHost,
-	timeoutMs: number | undefined,
-	label: string,
 ): Promise<IosBridgeBackend> {
 	if (host.backend) return host.backend;
 	if (host.bootError) {
@@ -708,15 +723,7 @@ async function awaitIosBridgeBackend(
 			? host.bootError
 			: new Error(String(host.bootError));
 	}
-	const result = await timeoutAfter(
-		ensureIosBridgeBackendStarted(host),
-		timeoutMs,
-		`${label} backend startup`,
-	);
-	if (isTimeoutMarker(result)) {
-		throw new Error(`${result.label} timed out after ${result.timeoutMs}ms`);
-	}
-	return result;
+	return ensureIosBridgeBackendStarted(host);
 }
 
 function splitPathAndQuery(rawPath: string): {
@@ -786,73 +793,6 @@ function bridgeStatus(
 	};
 }
 
-function timeoutResponse(
-	label: string,
-	timeoutMs: number,
-): {
-	status: number;
-	statusText: string;
-	headers: Record<string, string>;
-	body: string;
-	bodyBase64: string;
-	bodyEncoding: "utf-8";
-} {
-	const body = JSON.stringify({
-		error: `${label} timed out after ${timeoutMs}ms`,
-		code: "timeout",
-		timeoutMs,
-	});
-	return {
-		status: 504,
-		statusText: statusTextForCode(504),
-		headers: { "content-type": "application/json; charset=utf-8" },
-		body,
-		bodyBase64: Buffer.from(body, "utf8").toString("base64"),
-		bodyEncoding: "utf-8",
-	};
-}
-
-function timeoutAfter<T>(
-	promise: Promise<T>,
-	timeoutMs: number | undefined,
-	label: string,
-): Promise<T | { __timeout: true; timeoutMs: number; label: string }> {
-	if (!timeoutMs || timeoutMs <= 0) return promise;
-	const jsTimeoutMs = Math.max(100, timeoutMs - 500);
-	return new Promise((resolve, reject) => {
-		const timer = setTimeout(() => {
-			resolve({ __timeout: true, timeoutMs: jsTimeoutMs, label });
-		}, jsTimeoutMs);
-		promise.then(
-			(value) => {
-				clearTimeout(timer);
-				resolve(value);
-			},
-			(error) => {
-				clearTimeout(timer);
-				reject(error);
-			},
-		);
-	});
-}
-
-function bridgeTimeoutMs(value: unknown): number | undefined {
-	return typeof value === "number" && value > 0
-		? Math.min(value, 30 * 60_000)
-		: undefined;
-}
-
-function isTimeoutMarker(
-	value: unknown,
-): value is { __timeout: true; timeoutMs: number; label: string } {
-	return Boolean(
-		value &&
-			typeof value === "object" &&
-			"__timeout" in value &&
-			(value as { __timeout?: unknown }).__timeout === true,
-	);
-}
-
 async function fetchBackend(
 	backend: IosBridgeBackend,
 	payload: HttpRequestPayload,
@@ -873,41 +813,25 @@ async function fetchBackend(
 
 	const method = normalizeMethod(payload.method);
 	const headers = normalizeHeaderRecord(payload.headers);
-	const timeoutMs = bridgeTimeoutMs(payload.timeoutMs);
 	const { pathname, query } = splitPathAndQuery(rawPath);
 
-	const direct = await timeoutAfter(
-		handleDirectCoreRoute(backend, method, rawPath, payload),
-		timeoutMs,
-		`${method} ${pathname}`,
-	);
-	if (isTimeoutMarker(direct)) {
-		return timeoutResponse(direct.label, direct.timeoutMs);
-	}
+	const direct = await handleDirectCoreRoute(backend, method, rawPath, payload);
 	if (direct) return direct;
 
 	// ── Canonical path: in-process dispatchRoute (no loopback hop) ──────────
 	// Treats every authenticated bridge call as authorized — the bridge is the
 	// local app talking to its own runtime via a sealed native bridge, no external
 	// attacker can inject frames here.
-	const result = await timeoutAfter(
-		backend.dispatchRoute({
-			runtime: backend.runtime,
-			method,
-			path: pathname,
-			headers,
-			query,
-			body: payloadBodyAsRaw(payload),
-			inProcess: true,
-			isAuthorized: () => true,
-		}),
-		timeoutMs,
-		`${method} ${pathname}`,
-	);
-
-	if (isTimeoutMarker(result)) {
-		return timeoutResponse(result.label, result.timeoutMs);
-	}
+	const result = await backend.dispatchRoute({
+		runtime: backend.runtime,
+		method,
+		path: pathname,
+		headers,
+		query,
+		body: payloadBodyAsRaw(payload),
+		inProcess: true,
+		isAuthorized: () => true,
+	});
 
 	if (result) {
 		const responseHeaders = result.headers ?? {};
@@ -948,6 +872,7 @@ async function fetchBackend(
 
 const CONVERSATION_STREAM_PATH =
 	/^\/api\/conversations\/([^/]+)\/messages\/stream$/;
+const activeConversationStreams = new Map<string, AbortController>();
 
 /**
  * Serve the chat token stream (`POST /api/conversations/:id/messages/stream`)
@@ -964,6 +889,7 @@ export async function fetchBackendStream(
 	payload: HttpStreamRequestPayload,
 	streamId: string,
 	emit: StreamEmitter,
+	signal?: AbortSignal,
 ): Promise<{ streamId: string; done: true }> {
 	const rawPath = typeof payload.path === "string" ? payload.path.trim() : "";
 	if (!rawPath || !isSafeLocalPath(rawPath)) {
@@ -1006,6 +932,7 @@ export async function fetchBackendStream(
 		body,
 		streamId,
 		emit,
+		signal,
 	);
 	return { streamId, done: true };
 }
@@ -1906,7 +1833,9 @@ function tryHandleHostResultLine(line: string): boolean {
 	const pending = pendingHostCalls.get(parsed.id);
 	if (!pending) return true;
 	pendingHostCalls.delete(parsed.id);
-	clearTimeout(pending.timeout);
+	if (pending.signal && pending.onAbort) {
+		pending.signal.removeEventListener("abort", pending.onAbort);
+	}
 	const envelope =
 		parsed.envelope && typeof parsed.envelope === "object"
 			? (parsed.envelope as Record<string, unknown>)
@@ -1928,7 +1857,7 @@ function tryHandleHostResultLine(line: string): boolean {
 function callIosHost(
 	method: string,
 	payload: unknown,
-	timeoutMs = 120_000,
+	signal?: AbortSignal,
 ): Promise<unknown> {
 	const writeHostMessage = hostProtocolWrite;
 	if (!writeHostMessage) {
@@ -1937,24 +1866,55 @@ function callIosHost(
 		);
 	}
 	const id = `host-${nextHostCallId++}`;
-	const boundedTimeout = Math.max(1_000, Math.min(timeoutMs, 30 * 60_000));
 	return new Promise((resolve, reject) => {
-		const timeout = setTimeout(() => {
+		const onAbort = () => {
 			pendingHostCalls.delete(id);
+			if (
+				method === "llama_generate" &&
+				payload &&
+				typeof payload === "object" &&
+				"context_id" in payload
+			) {
+				try {
+					writeHostMessage({
+						type: "host_call",
+						id: `host-${nextHostCallId++}`,
+						method: "llama_cancel",
+						payload: {
+							context_id: (payload as { context_id: unknown }).context_id,
+						},
+					});
+				} catch (error) {
+					// error-policy:J6 best-effort teardown: the owner-facing
+					// promise still rejects with AbortError; stderr preserves a
+					// failed native cancellation signal for diagnosis.
+					console.error("[ios-bridge] failed to signal llama cancellation", error);
+				}
+			}
 			reject(
-				new Error(
-					`Native iOS host call ${method} timed out after ${boundedTimeout}ms`,
-				),
+				signal?.reason instanceof Error
+					? signal.reason
+					: new DOMException("Native host call cancelled", "AbortError"),
 			);
-		}, boundedTimeout);
-		pendingHostCalls.set(id, { resolve, reject, timeout });
-		writeHostMessage({
-			type: "host_call",
-			id,
-			method,
-			payload,
-			timeoutMs: boundedTimeout,
-		});
+		};
+		if (signal?.aborted) {
+			onAbort();
+			return;
+		}
+		signal?.addEventListener("abort", onAbort, { once: true });
+		pendingHostCalls.set(id, { resolve, reject, signal, onAbort });
+		try {
+			writeHostMessage({
+				type: "host_call",
+				id,
+				method,
+				payload,
+			});
+		} catch (error) {
+			pendingHostCalls.delete(id);
+			signal?.removeEventListener("abort", onAbort);
+			reject(error);
+		}
 	});
 }
 
@@ -2390,6 +2350,7 @@ async function assertModelFitsDeviceMemory(
 async function loadNativeLlamaModel(
 	model: InstalledModelEntry,
 	useGpu: boolean,
+	signal?: AbortSignal,
 ): Promise<Record<string, unknown>> {
 	const result = await callIosHost(
 		"llama_load_model",
@@ -2399,7 +2360,7 @@ async function loadNativeLlamaModel(
 			context_size: nativeLlamaContextSize(),
 			use_gpu: useGpu,
 		},
-		10 * 60_000,
+		signal,
 	);
 	return result && typeof result === "object" && !Array.isArray(result)
 		? (result as Record<string, unknown>)
@@ -2408,6 +2369,7 @@ async function loadNativeLlamaModel(
 
 async function ensureNativeModelLoaded(
 	slot: string,
+	signal?: AbortSignal,
 ): Promise<NativeLlamaState> {
 	const model = resolveAssignedModel(slot);
 	if (!model) {
@@ -2437,11 +2399,11 @@ async function ensureNativeModelLoaded(
 		let requestedGpu = await shouldUseNativeLlamaGpu();
 		let record: Record<string, unknown>;
 		try {
-			record = await loadNativeLlamaModel(model, requestedGpu);
+			record = await loadNativeLlamaModel(model, requestedGpu, signal);
 		} catch (error) {
 			if (!requestedGpu || !isMetalLoadError(error)) throw error;
 			requestedGpu = false;
-			record = await loadNativeLlamaModel(model, false);
+			record = await loadNativeLlamaModel(model, false, signal);
 		}
 		const contextId =
 			positiveInteger(record.context_id) ?? positiveInteger(record.contextId);
@@ -2470,7 +2432,7 @@ async function unloadNativeLlamaModel(): Promise<void> {
 	if (contextId != null) {
 		// error-policy:J6 best-effort teardown — the local state is already reset
 		// above; a failed native free must not leave unload half-done.
-		await callIosHost("llama_free", { context_id: contextId }, 30_000).catch(
+		await callIosHost("llama_free", { context_id: contextId }).catch(
 			() => undefined,
 		);
 	}
@@ -2622,6 +2584,7 @@ async function maybeGenerateIosNativeConversationReply(
 	runtime: IAgentRuntime,
 	prompt: string,
 	onToken?: StreamChunkCallback,
+	signal?: AbortSignal,
 ): Promise<Record<string, unknown> | null> {
 	const installed = readInstalledModels().filter(
 		(model) => !isEmbeddingModel(model),
@@ -2642,6 +2605,7 @@ async function maybeGenerateIosNativeConversationReply(
 			maxTokens: 32,
 			temperature: 0,
 			stopSequences: ["<end_of_turn>", "<start_of_turn>"],
+			signal,
 			// When the caller is streaming, forward incremental model tokens so the
 			// hot chat stream renders progressively instead of one buffered frame.
 			...(onToken ? { onStreamChunk: onToken } : {}),
@@ -2683,7 +2647,7 @@ function mergeStopSequences(values: unknown): string[] {
 
 function makeIosNativeGenerateHandler(slot: string): GenerateTextHandler {
 	return async (_runtime, params) => {
-		const state = await ensureNativeModelLoaded(slot);
+		const state = await ensureNativeModelLoaded(slot, params.signal);
 		if (state.contextId == null) {
 			throw new Error(
 				"[ios-native-llama] model load did not produce a context",
@@ -2709,7 +2673,7 @@ function makeIosNativeGenerateHandler(slot: string): GenerateTextHandler {
 				top_k: positiveInteger(params.topK) ?? 40,
 				stop: mergeStopSequences(params.stopSequences),
 			},
-			Math.max(120_000, maxTokens * 2_000),
+			params.signal,
 		);
 		const record =
 			result && typeof result === "object" && !Array.isArray(result)
@@ -2775,11 +2739,11 @@ function installBackgroundDownloadBridge(): void {
 	g.__ELIZA_BRIDGE__ = g.__ELIZA_BRIDGE__ ?? {};
 	if (typeof g.__ELIZA_BRIDGE__.bg_download_start === "function") return;
 	g.__ELIZA_BRIDGE__.bg_download_start = (args: unknown): Promise<unknown> =>
-		callIosHost("bg_download_start", args, 60_000);
+		callIosHost("bg_download_start", args);
 	g.__ELIZA_BRIDGE__.bg_download_status = (args: unknown): Promise<unknown> =>
-		callIosHost("bg_download_status", args, 60_000);
+		callIosHost("bg_download_status", args);
 	g.__ELIZA_BRIDGE__.bg_download_cancel = (args: unknown): Promise<unknown> =>
-		callIosHost("bg_download_cancel", args, 60_000);
+		callIosHost("bg_download_cancel", args);
 }
 
 function installIosNativeLlamaHandlers(runtime: IAgentRuntime): void {
@@ -2802,7 +2766,7 @@ function installIosNativeLlamaHandlers(runtime: IAgentRuntime): void {
 
 async function nativeHardwareInfo(): Promise<Record<string, unknown>> {
 	try {
-		const result = await callIosHost("llama_hardware_info", {}, 10_000);
+		const result = await callIosHost("llama_hardware_info", {});
 		return result && typeof result === "object" && !Array.isArray(result)
 			? (result as Record<string, unknown>)
 			: {};
@@ -3400,18 +3364,14 @@ async function synthesizeNativeIosLocalTts(
 		throw new Error("No Eliza-1 voice bundle is installed");
 	}
 	const sampleRate = optionalPositiveNumber(request.sampleRate);
-	const result = await callIosHost(
-		"eliza_tts_synthesize",
-		{
-			bundleDir,
-			text: request.text,
-			...(request.voice || request.voiceId
-				? { speakerPresetId: request.voice ?? request.voiceId }
-				: {}),
-			maxSamples: sampleRate ? Math.round(sampleRate * 60) : 24_000 * 60,
-		},
-		180_000,
-	);
+	const result = await callIosHost("eliza_tts_synthesize", {
+		bundleDir,
+		text: request.text,
+		...(request.voice || request.voiceId
+			? { speakerPresetId: request.voice ?? request.voiceId }
+			: {}),
+		maxSamples: sampleRate ? Math.round(sampleRate * 60) : 24_000 * 60,
+	});
 	const record =
 		result && typeof result === "object" && !Array.isArray(result)
 			? (result as Record<string, unknown>)
@@ -3522,15 +3482,11 @@ async function transcribeNativeIosLocalAsr(
 	const sampleRate = optionalPositiveNumber(request.sampleRate) ?? 16_000;
 	// Send fp32 PCM as a JSON number array; `handleAsrTranscribe` in
 	// FullBunEngineHost.swift parses the same shape via `floatArrayValue`.
-	const result = await callIosHost(
-		"eliza_asr_transcribe",
-		{
-			bundleDir,
-			pcm: request.pcm,
-			sampleRate,
-		},
-		180_000,
-	);
+	const result = await callIosHost("eliza_asr_transcribe", {
+		bundleDir,
+		pcm: request.pcm,
+		sampleRate,
+	});
 	const record =
 		result && typeof result === "object" && !Array.isArray(result)
 			? (result as Record<string, unknown>)
@@ -3789,6 +3745,7 @@ async function handleDirectConversationMessage(
 	conversation: IosConversation,
 	input: Record<string, unknown>,
 	onToken?: (token: string, accumulated: string) => void,
+	signal?: AbortSignal,
 ): Promise<Record<string, unknown>> {
 	const prompt =
 		typeof input.text === "string"
@@ -3861,21 +3818,8 @@ async function handleDirectConversationMessage(
 		backend.runtime,
 		prompt,
 		emitToken ? (chunk) => emitToken(chunk) : undefined,
-	).catch((error) => ({
-		text:
-			error instanceof Error
-				? `The local Eliza-1 model is installed, but generation failed: ${error.message}`
-				: "The local Eliza-1 model is installed, but generation failed.",
-		reply:
-			error instanceof Error
-				? `The local Eliza-1 model is installed, but generation failed: ${error.message}`
-				: "The local Eliza-1 model is installed, but generation failed.",
-		localInference: {
-			provider: IOS_NATIVE_LLAMA_PROVIDER,
-			mode: "ios_native_conversation",
-			error: error instanceof Error ? error.message : String(error),
-		},
-	}));
+		signal,
+	);
 	if (nativeReply) {
 		const agentName = runtimeAgentName(backend.runtime);
 		conversation.updatedAt = new Date().toISOString();
@@ -3895,25 +3839,18 @@ async function handleDirectConversationMessage(
 	}
 
 	const chunks: string[] = [];
-	try {
-		await runtime.messageService.handleMessage(
-			runtime,
-			message,
-			async (content) => {
-				if (content?.text) {
-					chunks.push(content.text);
-					emitToken?.(content.text);
-				}
-				return [];
-			},
-		);
-	} catch (err) {
-		chunks.push(
-			err instanceof Error
-				? `The local agent started, but generation is unavailable: ${err.message}`
-				: "The local agent started, but generation is unavailable.",
-		);
-	}
+	await runtime.messageService.handleMessage(
+		runtime,
+		message,
+		async (content) => {
+			if (content?.text) {
+				chunks.push(content.text);
+				emitToken?.(content.text);
+			}
+			return [];
+		},
+		{ abortSignal: signal },
+	);
 
 	const text = stripReasoningBlocks(chunks.join("")).trim();
 	const agentName = runtimeAgentName(backend.runtime);
@@ -4028,7 +3965,9 @@ export async function streamConversationMessageResponse(
 	body: Record<string, unknown>,
 	streamId: string,
 	emit: StreamEmitter,
+	signal?: AbortSignal,
 ): Promise<void> {
+	signal?.throwIfAborted();
 	const conversation = backend.conversations.get(conversationId);
 	if (!conversation) {
 		await emit({
@@ -4096,9 +4035,15 @@ export async function streamConversationMessageResponse(
 					streamedAny = true;
 					enqueueChunk({ type: "token", text: token, fullText: accumulated });
 				},
+				signal,
 			);
 		}
 	} catch (error) {
+		if (signal?.aborted) {
+			throw signal.reason instanceof Error
+				? signal.reason
+				: new DOMException("Conversation stream cancelled", "AbortError");
+		}
 		await emitTail;
 		await emitSafely({
 			streamId,
@@ -4426,23 +4371,16 @@ async function sendMessage(
 	const conversation = backend.conversations.get(conversationId);
 	if (!conversation) throw new Error("Conversation not found");
 
-	const result = await timeoutAfter(
-		handleDirectConversationMessage(backend, conversation, {
-			text: message,
-			channelType:
-				typeof input.channelType === "string" ? input.channelType : "DM",
-			...(input.metadata &&
-			typeof input.metadata === "object" &&
-			!Array.isArray(input.metadata)
-				? { metadata: input.metadata }
-				: {}),
-		}),
-		bridgeTimeoutMs(input.timeoutMs),
-		"send_message",
-	);
-	if (isTimeoutMarker(result)) {
-		throw new Error(`${result.label} timed out after ${result.timeoutMs}ms`);
-	}
+	const result = await handleDirectConversationMessage(backend, conversation, {
+		text: message,
+		channelType:
+			typeof input.channelType === "string" ? input.channelType : "DM",
+		...(input.metadata &&
+		typeof input.metadata === "object" &&
+		!Array.isArray(input.metadata)
+			? { metadata: input.metadata }
+			: {}),
+	});
 	return { ...result, conversationId, response: result };
 }
 
@@ -4451,10 +4389,6 @@ async function dispatchBridgeRequest(
 	request: BridgeRequest,
 ): Promise<unknown> {
 	const method = typeof request.method === "string" ? request.method : "";
-	const payload =
-		request.payload && typeof request.payload === "object"
-			? (request.payload as Record<string, unknown>)
-			: {};
 	switch (method) {
 		case "status":
 			if (host.backend) {
@@ -4470,22 +4404,10 @@ async function dispatchBridgeRequest(
 							: String(host.bootError),
 				});
 			}
-			if (payload.timeoutMs !== undefined) {
-				await awaitIosBridgeBackend(
-					host,
-					bridgeTimeoutMs(payload.timeoutMs),
-					"status",
-				);
-				return bridgeStatus();
-			}
 			return bridgeStatus({ ready: false, phase: "starting" });
 		case "http_request":
 		case "http_fetch": {
-			const backendForFetch = await awaitIosBridgeBackend(
-				host,
-				bridgeTimeoutMs(payload.timeoutMs),
-				method,
-			);
+			const backendForFetch = await awaitIosBridgeBackend(host);
 			return fetchBackend(
 				backendForFetch,
 				(request.payload ?? {}) as HttpRequestPayload,
@@ -4498,29 +4420,46 @@ async function dispatchBridgeRequest(
 				streamPayload.streamId.trim()
 					? streamPayload.streamId.trim()
 					: `ios-stream-${crypto.randomUUID()}`;
-			const backendForStream = await awaitIosBridgeBackend(
-				host,
-				bridgeTimeoutMs(payload.timeoutMs),
-				method,
+			if (activeConversationStreams.has(streamId)) {
+				throw new Error(`iOS conversation stream id is already active: ${streamId}`);
+			}
+			const controller = new AbortController();
+			activeConversationStreams.set(streamId, controller);
+			try {
+				const backendForStream = await awaitIosBridgeBackend(host);
+				// Each frame reaches the WebView as a `stream_emit` host-call, which
+				// the native host translates into an `agentStream*` Capacitor event.
+				return await fetchBackendStream(
+					backendForStream,
+					streamPayload,
+					streamId,
+					(frame) => callIosHost("stream_emit", frame).then(() => {}),
+					controller.signal,
+				);
+			} finally {
+				if (activeConversationStreams.get(streamId) === controller) {
+					activeConversationStreams.delete(streamId);
+				}
+			}
+		}
+		case "http_request_stream_cancel": {
+			const payload =
+				request.payload &&
+				typeof request.payload === "object" &&
+				!Array.isArray(request.payload)
+					? (request.payload as Record<string, unknown>)
+					: {};
+			const streamId =
+				typeof payload.streamId === "string" ? payload.streamId.trim() : "";
+			const controller = activeConversationStreams.get(streamId);
+			if (!controller) return { streamId, cancelled: false };
+			controller.abort(
+				new DOMException("Conversation stream cancelled", "AbortError"),
 			);
-			// Each frame reaches the WebView as a `stream_emit` host-call, which the
-			// native host translates into an `agentStream*` Capacitor event. The
-			// call blocks until the stream finishes; tokens are already delivered by
-			// then, so the caller's pre-attached listeners saw them live.
-			return fetchBackendStream(
-				backendForStream,
-				streamPayload,
-				streamId,
-				(frame) =>
-					callIosHost("stream_emit", frame, 30 * 60_000).then(() => {}),
-			);
+			return { streamId, cancelled: true };
 		}
 		case "send_message": {
-			const backendForMessage = await awaitIosBridgeBackend(
-				host,
-				bridgeTimeoutMs(payload.timeoutMs),
-				method,
-			);
+			const backendForMessage = await awaitIosBridgeBackend(host);
 			return sendMessage(backendForMessage, request.payload);
 		}
 		default:

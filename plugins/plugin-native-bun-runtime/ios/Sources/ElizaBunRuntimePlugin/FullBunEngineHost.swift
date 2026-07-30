@@ -93,6 +93,10 @@ final class FullBunEngineHost {
     private var callFn: CallFn?
     private var freeFn: FreeFn?
     private var running = false
+    private let callStateLock = NSLock()
+    private var activeCallMethod: String?
+    private var activeGenerationContexts = Set<Int64>()
+    private var activeStreamCancellationRequested = false
 
     /// Delivers one `agentStream*` event to the WebView. Set by the plugin so
     /// the `stream_emit` host-call (fired per token while `http_request_stream`
@@ -179,6 +183,17 @@ final class FullBunEngineHost {
         guard let callFn else {
             throw makeError("ElizaBunEngine missing call symbol")
         }
+        callStateLock.lock()
+        activeCallMethod = method
+        activeStreamCancellationRequested = false
+        callStateLock.unlock()
+        defer {
+            callStateLock.lock()
+            activeCallMethod = nil
+            activeGenerationContexts.removeAll()
+            activeStreamCancellationRequested = false
+            callStateLock.unlock()
+        }
         let previousError = lastError()
         let payloadJson = try encodeJSON(payload ?? NSNull())
         let resultPtr = method.withCString { methodPtr in
@@ -216,6 +231,28 @@ final class FullBunEngineHost {
             return dict["result"] ?? NSNull()
         }
         return decoded
+    }
+
+    /**
+     * Interrupt the native decode owned by the active streaming engine call.
+     * The engine RPC itself is synchronous, so this method deliberately avoids
+     * the runtime's serial queue and only touches lock-protected cancellation
+     * state plus llama's thread-safe cancellation flag.
+     */
+    @discardableResult
+    func cancelActiveStream() -> Bool {
+        callStateLock.lock()
+        guard activeCallMethod == "http_request_stream" else {
+            callStateLock.unlock()
+            return false
+        }
+        activeStreamCancellationRequested = true
+        let contexts = Array(activeGenerationContexts)
+        callStateLock.unlock()
+        for contextId in contexts {
+            LlamaBridgeImpl.shared.cancel(contextId: contextId)
+        }
+        return true
     }
 
     private func load() throws {
@@ -516,6 +553,20 @@ final class FullBunEngineHost {
         let stopSequences = stringArrayValue(payload, "stop")
             ?? stringArrayValue(payload, "stopSequences")
             ?? []
+
+        LlamaBridgeImpl.shared.prepareGeneration(contextId: contextId)
+        callStateLock.lock()
+        if activeStreamCancellationRequested {
+            callStateLock.unlock()
+            return encodeHostEnvelope(ok: false, error: "llama_generate cancelled by stream owner")
+        }
+        activeGenerationContexts.insert(contextId)
+        callStateLock.unlock()
+        defer {
+            callStateLock.lock()
+            activeGenerationContexts.remove(contextId)
+            callStateLock.unlock()
+        }
 
         let generate = {
             LlamaBridgeImpl.shared.generate(
