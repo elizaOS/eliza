@@ -108,6 +108,7 @@ async function seedMessages(
 
 afterEach(() => {
 	vi.useRealTimers();
+	vi.restoreAllMocks();
 });
 
 describe("getRoom single-flight coalescing", () => {
@@ -176,12 +177,13 @@ describe("getRoom single-flight coalescing", () => {
 	});
 
 	it("re-queries after the TTL lapses (bounds cross-process staleness)", async () => {
-		vi.useFakeTimers({ toFake: ["Date"] });
+		const now = Date.now();
+		const dateNow = vi.spyOn(Date, "now").mockReturnValue(now);
 		const { runtime, counts } = await makeRuntime();
 		await runtime.getRoom(ROOM_ID);
 		await runtime.getRoom(ROOM_ID);
 		expect(counts.getRoomsByIds).toBe(1);
-		vi.setSystemTime(Date.now() + 1_001);
+		dateNow.mockReturnValue(now + 1_001);
 		await runtime.getRoom(ROOM_ID);
 		expect(counts.getRoomsByIds).toBe(2);
 	});
