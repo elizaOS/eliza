@@ -11,10 +11,10 @@
     "resolveJsonModule": true,
     "paths": {
       "@elizaos/plugin-personal-assistant": [
-        "../../plugins/plugin-personal-assistant/src/index.ts"
+        "../../plugins/plugin-personal-assistant/dist/index.d.ts"
       ],
       "@elizaos/plugin-personal-assistant/lifeops/owner/fact-store": [
-        "../../plugins/plugin-personal-assistant/src/lifeops/owner/fact-store.ts"
+        "../../plugins/plugin-personal-assistant/dist/lifeops/owner/fact-store.d.ts"
       ],
       "@elizaos/agent/runtime/core-plugins": [
         "../agent/dist/runtime/core-plugins.d.ts"
