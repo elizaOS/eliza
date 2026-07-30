@@ -9,6 +9,7 @@ export function analyzeWalletFunding(
   chain: SupportedChain,
   walletAddress: string,
   firstTransaction: ParsedWalletTransaction | null,
+  nativeSymbol: string,
 ): WalletFundingSummary {
   if (!firstTransaction) {
     const confidenceAnalysis = buildConfidenceAnalysis([]);
@@ -17,8 +18,8 @@ export function analyzeWalletFunding(
       firstFundingTransaction: null,
       firstFundingAt: null,
       fundingWallet: null,
-      fundingAmountSol: null,
-      fundingTokenMint: null,
+      fundingAmountNative: null,
+      fundingTokenId: null,
       fundingAmountToken: null,
       fundingTransferType: "unknown",
       fundingSourceType: "unknown",
@@ -100,8 +101,8 @@ export function analyzeWalletFunding(
       firstFundingTransaction: firstTransaction.signature,
       firstFundingAt: firstTransaction.timestamp,
       fundingWallet: incomingNativeFundingTransfer.from,
-      fundingAmountSol: incomingNativeFundingTransfer.amountSol,
-      fundingTokenMint: null,
+      fundingAmountNative: incomingNativeFundingTransfer.amountSol,
+      fundingTokenId: null,
       fundingAmountToken: null,
       fundingTransferType: "native",
       fundingSourceType,
@@ -117,7 +118,7 @@ export function analyzeWalletFunding(
       },
       confidence,
       notes: [
-        "Initial funding source was inferred from the first known incoming SOL transfer.",
+        `Initial funding source was inferred from the first known incoming ${nativeSymbol} transfer.`,
       ],
     };
   }
@@ -160,12 +161,12 @@ export function analyzeWalletFunding(
       {
         condition: Boolean(incomingTokenFundingTransfer.from),
         score: 25,
-        reason: "Funding wallet was identified via an SPL token transfer.",
+        reason: "Funding wallet was identified via a token transfer.",
       },
       {
         condition: incomingTokenFundingTransfer.amount !== null,
         score: 15,
-        reason: "Funding amount was identified via an SPL token transfer.",
+        reason: "Funding amount was identified via a token transfer.",
       },
       {
         condition: Boolean(fundingSourceLabel),
@@ -185,8 +186,8 @@ export function analyzeWalletFunding(
       firstFundingTransaction: firstTransaction.signature,
       firstFundingAt: firstTransaction.timestamp,
       fundingWallet: incomingTokenFundingTransfer.from,
-      fundingAmountSol: null,
-      fundingTokenMint: incomingTokenFundingTransfer.mint,
+      fundingAmountNative: null,
+      fundingTokenId: incomingTokenFundingTransfer.mint,
       fundingAmountToken: incomingTokenFundingTransfer.amount,
       fundingTransferType: "token",
       fundingSourceType,
@@ -202,8 +203,8 @@ export function analyzeWalletFunding(
       },
       confidence,
       notes: [
-        "No incoming native SOL transfer was found in the first known transaction.",
-        "Initial funding source was instead inferred from the first known incoming SPL token transfer.",
+        `No incoming native ${nativeSymbol} transfer was found in the first known transaction.`,
+        "Initial funding source was instead inferred from the first known incoming token transfer.",
       ],
     };
   }
@@ -232,8 +233,8 @@ export function analyzeWalletFunding(
     firstFundingTransaction: firstTransaction.signature,
     firstFundingAt: firstTransaction.timestamp,
     fundingWallet: null,
-    fundingAmountSol: null,
-    fundingTokenMint: null,
+    fundingAmountNative: null,
+    fundingTokenId: null,
     fundingAmountToken: null,
     fundingTransferType: "unknown",
     fundingSourceType: "unknown",
@@ -249,7 +250,7 @@ export function analyzeWalletFunding(
     },
     confidence: "low",
     notes: [
-      "No incoming SOL or SPL token funding transfer was detected in the first known transaction.",
+      `No incoming ${nativeSymbol} or token funding transfer was detected in the first known transaction.`,
     ],
   };
 }

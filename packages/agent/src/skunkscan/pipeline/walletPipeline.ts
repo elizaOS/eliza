@@ -56,6 +56,7 @@ export async function runWalletPipeline(
     input.chain,
     input.address,
     input.firstParsedTransaction,
+    input.balance.nativeSymbol,
   );
 
   const portfolio = analyzeWalletPortfolio(
