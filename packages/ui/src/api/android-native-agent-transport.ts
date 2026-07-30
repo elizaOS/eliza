@@ -68,6 +68,9 @@ type NativeAgentPlugin = {
   requestStream?: (
     options: NativeAgentRequestOptions,
   ) => Promise<{ streamId: string }>;
+  cancelRequestStream?: (options: {
+    streamId: string;
+  }) => Promise<{ cancelled: boolean }>;
   addListener?: (
     eventName: string,
     listener: (event: unknown) => void,
@@ -94,6 +97,7 @@ function toNativeAgentPlugin(
   const getLocalAgentBootState = plugin.getLocalAgentBootState?.bind(plugin);
   const request = plugin.request?.bind(plugin);
   const requestStream = plugin.requestStream?.bind(plugin);
+  const cancelRequestStream = plugin.cancelRequestStream?.bind(plugin);
   const addListener = plugin.addListener?.bind(plugin);
   if (!start && !stop && !getStatus && !request && !getLocalAgentBootState) {
     return null;
@@ -105,6 +109,7 @@ function toNativeAgentPlugin(
     getLocalAgentBootState,
     request,
     requestStream,
+    cancelRequestStream,
     addListener,
   };
 }
@@ -331,16 +336,24 @@ export function createAndroidNativeAgentTransport(
       ) {
         try {
           return await createNativeStreamingResponse(
-            agent as NativeStreamingAgentPlugin,
+            {
+              ...(agent as NativeStreamingAgentPlugin),
+              cancelStream: agent.cancelRequestStream
+                ? async (streamId) => {
+                    await agent.cancelRequestStream?.({ streamId });
+                  }
+                : undefined,
+            },
             {
               method,
               path: localAgentRequestPath(url),
               headers: headersToRecord(init.headers),
               body: methodAllowsBody(method) ? (body ?? null) : null,
-              timeoutMs: context?.timeoutMs,
             },
+            init.signal ?? undefined,
           );
-        } catch {
+        } catch (error) {
+          if (init.signal?.aborted) throw error;
           // Stream couldn't start — fall back to the buffered request path.
         }
       }

@@ -162,6 +162,27 @@ describe("createIosStreamingAgentPlugin", () => {
     expect(String(onError.mock.calls[0][0])).toContain("bridge exploded");
   });
 
+  it("forwards owner cancellation to the in-process stream", async () => {
+    const calls: Array<{ method: string; args?: unknown }> = [];
+    const runtime: IosStreamingRuntime = {
+      async call(options): Promise<{ result: unknown }> {
+        calls.push(options);
+        return { result: { cancelled: true } };
+      },
+      async addListener() {
+        return { remove: () => {} };
+      },
+    };
+    const plugin = createIosStreamingAgentPlugin(runtime);
+
+    await plugin.cancelStream?.("ios-stream-owned");
+
+    expect(calls).toContainEqual({
+      method: "http_request_stream_cancel",
+      args: { streamId: "ios-stream-owned" },
+    });
+  });
+
   it("rejects the response head when the native call rejects before emitting a head", async () => {
     const runtime: IosStreamingRuntime = {
       async call(): Promise<{ result: unknown }> {
