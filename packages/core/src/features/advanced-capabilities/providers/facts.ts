@@ -321,232 +321,223 @@ const factsProvider: Provider = {
 		message: Memory,
 		_state: State,
 	): Promise<ProviderResult> => {
-		try {
-			const recentMessages = await runtime.getMemories({
-				tableName: "messages",
-				roomId: message.roomId,
-				limit: 10,
-				unique: false,
-			});
+		const recentMessagesPromise = runtime.getMemories({
+			tableName: "messages",
+			roomId: message.roomId,
+			limit: 10,
+			unique: false,
+		});
+		const relatedEntityIdsPromise = getRelatedEntityIds(
+			runtime,
+			message.entityId,
+		);
+		const [recentMessages, relatedEntityIds] = await Promise.all([
+			recentMessagesPromise,
+			relatedEntityIdsPromise,
+		]);
 
-			// Build the lexical query from the current message and recent context.
-			const lastMessageLines: string[] = [];
-			for (
-				let i = recentMessages.length - 1;
-				i >= 0 && lastMessageLines.length < 5;
-				i -= 1
-			) {
-				lastMessageLines.push(recentMessages[i]?.content.text ?? "");
-			}
-			lastMessageLines.reverse();
-			const last5Messages = lastMessageLines.join("\n");
-			const queryText = buildFactQueryText(
-				message.content.text ?? "",
-				last5Messages,
-			);
+		// Build the lexical query from the current message and recent context.
+		const lastMessageLines: string[] = [];
+		for (
+			let i = recentMessages.length - 1;
+			i >= 0 && lastMessageLines.length < 5;
+			i -= 1
+		) {
+			lastMessageLines.push(recentMessages[i]?.content.text ?? "");
+		}
+		lastMessageLines.reverse();
+		const last5Messages = lastMessageLines.join("\n");
+		const queryText = buildFactQueryText(
+			message.content.text ?? "",
+			last5Messages,
+		);
 
-			if (!queryText) {
-				return {
-					values: { facts: "" },
-					data: {
-						facts: [],
-						durableFacts: [],
-						currentFacts: [],
-					},
-					text: "No facts available.",
-				};
-			}
-
-			// Two parallel candidate fetches, one room-scoped and one entity-scoped,
-			// both over the `facts` table. We intentionally use `getMemories`
-			// instead of vector search: relevance is computed locally from extracted
-			// fact keywords and the fact's own words.
-			//
-			// The room pool is fetched for every sender, automated or human: relay
-			// webhooks and bridge bots carry real human conversation, so dropping
-			// the room pool for them would zero out fact recall on exactly those
-			// turns. Misattribution is prevented at render time instead — facts
-			// are attributed by provenance, so room facts about other participants
-			// never render under the sender's header.
-			const relatedEntityIds = await getRelatedEntityIds(
-				runtime,
-				message.entityId,
-			);
-			const [roomFacts, ...entityFactPools] = await Promise.all([
-				runtime.getMemories({
-					tableName: "facts",
-					roomId: message.roomId,
-					worldId: message.worldId,
-					count: CANDIDATE_POOL_PER_SEARCH,
-					unique: false,
-				}),
-				...relatedEntityIds.map((entityId) =>
-					runtime.getMemories({
-						tableName: "facts",
-						entityId,
-						count: CANDIDATE_POOL_PER_SEARCH,
-						unique: false,
-					}),
-				),
-			]);
-			const entityFacts = entityFactPools.flat();
-
-			const minimizePrivateFacts = shouldMinimizePrivateFactsForTurn(message);
-			const dedupedPool = dedupeById([...roomFacts, ...entityFacts]).filter(
-				(memory) => !minimizePrivateFacts || !isMarkedPrivateFact(memory),
-			);
-			const { durable: durableCandidates, current: currentCandidates } =
-				partitionByKind(dedupedPool);
-
-			const nowMs = Date.now();
-			const senderEntityIds = new Set<string>(relatedEntityIds);
-			const isAboutSender = (memory: Memory): boolean =>
-				typeof memory.entityId === "string" &&
-				senderEntityIds.has(memory.entityId);
-			let durableFacts = rankByKeywordScore(
-				durableCandidates,
-				"durable",
-				queryText,
-				nowMs,
-			).slice(0, TOP_PER_KIND);
-			// Durable facts are identity-level claims ("my dog's name is Jeff",
-			// "my car is named Bertha") and few in number. Keyword/BM25 ranking
-			// against the current message drops them whenever the question does
-			// not lexically overlap the stored fact — e.g. "whats my cars name?"
-			// vs "my car's name is Bertha" (no stemming for cars->car, and the
-			// shared term "name" has ~0 IDF across a small pool), which scores 0
-			// and hides a fact the user is directly asking to recall. When
-			// relevance ranking surfaces no durable facts, fall back to the
-			// highest-prior durable facts (confidence × recency, via
-			// scoreFactPrior) so direct recall still works and a high-confidence
-			// identity fact is preferred over a newer low-confidence one. Bounded
-			// to TOP_PER_KIND, so this never floods the prompt.
-			if (durableFacts.length === 0 && durableCandidates.length > 0) {
-				durableFacts = [...durableCandidates]
-					.sort(
-						(left, right) =>
-							scoreFactPrior(right, "durable", nowMs) -
-							scoreFactPrior(left, "durable", nowMs),
-					)
-					.slice(0, TOP_PER_KIND);
-			}
-			const preferenceLane = topByPrior(
-				durableCandidates.filter(
-					(memory) => isAboutSender(memory) && isPreferenceFact(memory),
-				),
-				"durable",
-				nowMs,
-				PREFERENCE_LANE_LIMIT,
-			);
-			durableFacts = mergeAlwaysIncludedFacts(
-				preferenceLane,
-				durableFacts,
-				TOP_PER_KIND + PREFERENCE_LANE_LIMIT,
-			);
-			const currentFacts = rankByKeywordScore(
-				currentCandidates,
-				"current",
-				queryText,
-				nowMs,
-			).slice(0, TOP_PER_KIND);
-			const allFacts = [...durableFacts, ...currentFacts];
-
-			if (allFacts.length === 0) {
-				return {
-					values: { facts: "" },
-					data: {
-						facts: allFacts,
-						durableFacts,
-						currentFacts,
-					},
-					text: "No facts available.",
-				};
-			}
-
-			const agentName = runtime.character.name ?? "Agent";
-			const senderName =
-				(typeof message.content.senderName === "string" &&
-					message.content.senderName) ||
-				(typeof message.content.name === "string" && message.content.name) ||
-				"the speaker";
-
-			// Attribute by provenance: only facts stored against the sender's
-			// identity cluster are "about the speaker". The room pool also carries
-			// facts about OTHER participants — rendering those under the speaker
-			// header told the model that facts about other people described
-			// whoever happened to send the current message (worst on relay/webhook
-			// turns, where every room fact got attributed to the bridge bot).
-			const preferenceLaneIds = new Set(
-				preferenceLane.map((memory) => memory.id),
-			);
-			const senderPreferences = durableFacts.filter((memory) =>
-				preferenceLaneIds.has(memory.id),
-			);
-			const senderDurable = durableFacts.filter(
-				(memory) => isAboutSender(memory) && !preferenceLaneIds.has(memory.id),
-			);
-			const roomDurable = durableFacts.filter((m) => !isAboutSender(m));
-			const senderCurrent = currentFacts.filter(isAboutSender);
-			const roomCurrent = currentFacts.filter((m) => !isAboutSender(m));
-
-			const sections: string[] = [];
-			if (senderPreferences.length > 0) {
-				sections.push(
-					`Standing preferences ${senderName} has expressed (apply any that are relevant to this reply):\n${formatLines(senderPreferences, "durable")}`,
-				);
-			}
-			if (senderDurable.length > 0) {
-				const durableHeader = `Things ${agentName} knows about ${senderName}:`;
-				sections.push(
-					`${durableHeader}\n${formatLines(senderDurable, "durable")}`,
-				);
-			}
-			if (senderCurrent.length > 0) {
-				const currentHeader = `What's currently happening for ${senderName}:`;
-				sections.push(
-					`${currentHeader}\n${formatLines(senderCurrent, "current")}`,
-				);
-			}
-			if (roomDurable.length > 0) {
-				sections.push(
-					`Known facts in this room (about other participants):\n${formatLines(roomDurable, "durable")}`,
-				);
-			}
-			if (roomCurrent.length > 0) {
-				sections.push(
-					`What's currently happening in this room:\n${formatLines(roomCurrent, "current")}`,
-				);
-			}
-
-			const text = sections.join("\n\n");
-			const formattedFacts = [
-				formatLines(durableFacts, "durable"),
-				formatLines(currentFacts, "current"),
-			]
-				.filter((part) => part.length > 0)
-				.join("\n");
-
-			return {
-				values: { facts: formattedFacts },
-				data: {
-					facts: allFacts,
-					durableFacts,
-					currentFacts,
-				},
-				text,
-			};
-		} catch (error) {
+		if (!queryText) {
 			return {
 				values: { facts: "" },
 				data: {
 					facts: [],
 					durableFacts: [],
 					currentFacts: [],
-					error: error instanceof Error ? error.message : String(error),
 				},
 				text: "No facts available.",
 			};
 		}
+
+		// Two parallel candidate fetches, one room-scoped and one entity-scoped,
+		// both over the `facts` table. We intentionally use `getMemories`
+		// instead of vector search: relevance is computed locally from extracted
+		// fact keywords and the fact's own words.
+		//
+		// The room pool is fetched for every sender, automated or human: relay
+		// webhooks and bridge bots carry real human conversation, so dropping
+		// the room pool for them would zero out fact recall on exactly those
+		// turns. Misattribution is prevented at render time instead — facts
+		// are attributed by provenance, so room facts about other participants
+		// never render under the sender's header.
+		const [roomFacts, ...entityFactPools] = await Promise.all([
+			runtime.getMemories({
+				tableName: "facts",
+				roomId: message.roomId,
+				worldId: message.worldId,
+				count: CANDIDATE_POOL_PER_SEARCH,
+				unique: false,
+			}),
+			...relatedEntityIds.map((entityId) =>
+				runtime.getMemories({
+					tableName: "facts",
+					entityId,
+					count: CANDIDATE_POOL_PER_SEARCH,
+					unique: false,
+				}),
+			),
+		]);
+		const entityFacts = entityFactPools.flat();
+
+		const minimizePrivateFacts = shouldMinimizePrivateFactsForTurn(message);
+		const dedupedPool = dedupeById([...roomFacts, ...entityFacts]).filter(
+			(memory) => !minimizePrivateFacts || !isMarkedPrivateFact(memory),
+		);
+		const { durable: durableCandidates, current: currentCandidates } =
+			partitionByKind(dedupedPool);
+
+		const nowMs = Date.now();
+		const senderEntityIds = new Set<string>(relatedEntityIds);
+		const isAboutSender = (memory: Memory): boolean =>
+			typeof memory.entityId === "string" &&
+			senderEntityIds.has(memory.entityId);
+		let durableFacts = rankByKeywordScore(
+			durableCandidates,
+			"durable",
+			queryText,
+			nowMs,
+		).slice(0, TOP_PER_KIND);
+		// Durable facts are identity-level claims ("my dog's name is Jeff",
+		// "my car is named Bertha") and few in number. Keyword/BM25 ranking
+		// against the current message drops them whenever the question does
+		// not lexically overlap the stored fact — e.g. "whats my cars name?"
+		// vs "my car's name is Bertha" (no stemming for cars->car, and the
+		// shared term "name" has ~0 IDF across a small pool), which scores 0
+		// and hides a fact the user is directly asking to recall. When
+		// relevance ranking surfaces no durable facts, fall back to the
+		// highest-prior durable facts (confidence × recency, via
+		// scoreFactPrior) so direct recall still works and a high-confidence
+		// identity fact is preferred over a newer low-confidence one. Bounded
+		// to TOP_PER_KIND, so this never floods the prompt.
+		if (durableFacts.length === 0 && durableCandidates.length > 0) {
+			durableFacts = [...durableCandidates]
+				.sort(
+					(left, right) =>
+						scoreFactPrior(right, "durable", nowMs) -
+						scoreFactPrior(left, "durable", nowMs),
+				)
+				.slice(0, TOP_PER_KIND);
+		}
+		const preferenceLane = topByPrior(
+			durableCandidates.filter(
+				(memory) => isAboutSender(memory) && isPreferenceFact(memory),
+			),
+			"durable",
+			nowMs,
+			PREFERENCE_LANE_LIMIT,
+		);
+		durableFacts = mergeAlwaysIncludedFacts(
+			preferenceLane,
+			durableFacts,
+			TOP_PER_KIND + PREFERENCE_LANE_LIMIT,
+		);
+		const currentFacts = rankByKeywordScore(
+			currentCandidates,
+			"current",
+			queryText,
+			nowMs,
+		).slice(0, TOP_PER_KIND);
+		const allFacts = [...durableFacts, ...currentFacts];
+
+		if (allFacts.length === 0) {
+			return {
+				values: { facts: "" },
+				data: {
+					facts: allFacts,
+					durableFacts,
+					currentFacts,
+				},
+				text: "No facts available.",
+			};
+		}
+
+		const agentName = runtime.character.name ?? "Agent";
+		const senderName =
+			(typeof message.content.senderName === "string" &&
+				message.content.senderName) ||
+			(typeof message.content.name === "string" && message.content.name) ||
+			"the speaker";
+
+		// Attribute by provenance: only facts stored against the sender's
+		// identity cluster are "about the speaker". The room pool also carries
+		// facts about OTHER participants — rendering those under the speaker
+		// header told the model that facts about other people described
+		// whoever happened to send the current message (worst on relay/webhook
+		// turns, where every room fact got attributed to the bridge bot).
+		const preferenceLaneIds = new Set(
+			preferenceLane.map((memory) => memory.id),
+		);
+		const senderPreferences = durableFacts.filter((memory) =>
+			preferenceLaneIds.has(memory.id),
+		);
+		const senderDurable = durableFacts.filter(
+			(memory) => isAboutSender(memory) && !preferenceLaneIds.has(memory.id),
+		);
+		const roomDurable = durableFacts.filter((m) => !isAboutSender(m));
+		const senderCurrent = currentFacts.filter(isAboutSender);
+		const roomCurrent = currentFacts.filter((m) => !isAboutSender(m));
+
+		const sections: string[] = [];
+		if (senderPreferences.length > 0) {
+			sections.push(
+				`Standing preferences ${senderName} has expressed (apply any that are relevant to this reply):\n${formatLines(senderPreferences, "durable")}`,
+			);
+		}
+		if (senderDurable.length > 0) {
+			const durableHeader = `Things ${agentName} knows about ${senderName}:`;
+			sections.push(
+				`${durableHeader}\n${formatLines(senderDurable, "durable")}`,
+			);
+		}
+		if (senderCurrent.length > 0) {
+			const currentHeader = `What's currently happening for ${senderName}:`;
+			sections.push(
+				`${currentHeader}\n${formatLines(senderCurrent, "current")}`,
+			);
+		}
+		if (roomDurable.length > 0) {
+			sections.push(
+				`Known facts in this room (about other participants):\n${formatLines(roomDurable, "durable")}`,
+			);
+		}
+		if (roomCurrent.length > 0) {
+			sections.push(
+				`What's currently happening in this room:\n${formatLines(roomCurrent, "current")}`,
+			);
+		}
+
+		const text = sections.join("\n\n");
+		const formattedFacts = [
+			formatLines(durableFacts, "durable"),
+			formatLines(currentFacts, "current"),
+		]
+			.filter((part) => part.length > 0)
+			.join("\n");
+
+		return {
+			values: { facts: formattedFacts },
+			data: {
+				facts: allFacts,
+				durableFacts,
+				currentFacts,
+			},
+			text,
+		};
 	},
 };
 

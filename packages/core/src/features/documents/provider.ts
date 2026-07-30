@@ -73,7 +73,13 @@ export const documentsProvider: Provider = {
 			};
 		}
 
-		const relevantSnippets = (await service.searchDocuments(message))
+		const [relevantFragments, documents] = await Promise.all([
+			service.searchDocuments(message),
+			service.listDocuments(message, {
+				limit: MAX_AVAILABLE_DOCUMENTS,
+			}),
+		]);
+		const relevantSnippets = relevantFragments
 			.slice(0, MAX_RELEVANT_SNIPPETS)
 			.map((fragment, index) => {
 				const metadata = fragment.metadata as
@@ -95,9 +101,6 @@ export const documentsProvider: Provider = {
 				};
 			});
 
-		const documents = await service.listDocuments(message, {
-			limit: MAX_AVAILABLE_DOCUMENTS,
-		});
 		const summaries = documents
 			.filter((memory) => memory.metadata?.type === MemoryType.DOCUMENT)
 			.map(summarizeDocument);
