@@ -238,16 +238,63 @@ describe("iOS bridge — streamConversationMessageResponse", () => {
 			emit,
 		);
 
-		// The message-service path catches its own error and streams a graceful
-		// fallback sentence, so the turn still completes with a done frame.
+		// A failed model turn is an explicit SSE error, not fabricated assistant
+		// text that makes the pipeline look healthy.
 		expect(frames[0]).toMatchObject({ kind: "response", status: 200 });
-		const done = frames
+		const failure = frames
 			.filter((f) => f.kind === "chunk")
 			.map(decodeChunk)
-			.find((p) => p.type === "done");
-		expect(done).toBeDefined();
-		expect(String(done?.fullText)).toContain("unavailable");
+			.find((p) => p.type === "error");
+		expect(failure).toMatchObject({ type: "error", error: "boom" });
 		expect(frames.at(-1)).toMatchObject({ kind: "complete" });
+	});
+
+	it("propagates owner cancellation into message generation", async () => {
+		let generationStarted: () => void = () => {};
+		const started = new Promise<void>((resolve) => {
+			generationStarted = resolve;
+		});
+		const runtime = {
+			agentId: "00000000-0000-0000-0000-0000000000aa" as UUID,
+			character: { name: "Eliza" },
+			async ensureConnection(): Promise<void> {},
+			async createMemory(): Promise<UUID> {
+				return crypto.randomUUID() as UUID;
+			},
+			messageService: {
+				async handleMessage(
+					_runtime: IAgentRuntime,
+					_message: unknown,
+					_onResponse: unknown,
+					options: { abortSignal?: AbortSignal },
+				): Promise<void> {
+					generationStarted();
+					await new Promise<void>((_resolve, reject) => {
+						options.abortSignal?.addEventListener(
+							"abort",
+							() => reject(options.abortSignal?.reason),
+							{ once: true },
+						);
+					});
+				},
+			},
+		} as unknown as IAgentRuntime;
+		const backend = makeBackendWithConversation(runtime);
+		const { emit } = collector();
+		const owner = new AbortController();
+
+		const stream = streamConversationMessageResponse(
+			backend,
+			CONVERSATION_ID,
+			{ text: "hi" },
+			"stream-cancel",
+			emit,
+			owner.signal,
+		);
+		await started;
+		owner.abort(new DOMException("cancelled by owner", "AbortError"));
+
+		await expect(stream).rejects.toMatchObject({ name: "AbortError" });
 	});
 });
 

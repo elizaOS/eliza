@@ -846,6 +846,7 @@ function nativeResultToResponse(
  */
 async function tryFullBunStreamingResponse(
   options: IosLocalAgentNativeRequestOptions,
+  signal?: AbortSignal,
 ): Promise<Response | null> {
   const runtime = await getFullBunRuntime();
   if (!runtime?.addListener) return null;
@@ -858,13 +859,16 @@ async function tryFullBunStreamingResponse(
       });
     },
   );
-  const response = await createNativeStreamingResponse(plugin, {
-    method: options.method,
-    path: options.path,
-    headers: options.headers,
-    body: options.body ?? null,
-    timeoutMs: options.timeoutMs,
-  });
+  const response = await createNativeStreamingResponse(
+    plugin,
+    {
+      method: options.method,
+      path: options.path,
+      headers: options.headers,
+      body: options.body ?? null,
+    },
+    signal,
+  );
   // Any streamed head proves the in-process runtime is alive — feed the same
   // heartbeat the buffered path records so boot-time stalls don't burn the
   // startup poll's failure budget.
@@ -883,9 +887,13 @@ async function dispatchIosLocalAgentRequest(
   // render incrementally instead of the buffered single-frame fallback.
   if (isStreamingRequest(request.url, request.headers)) {
     try {
-      const streamed = await tryFullBunStreamingResponse(options);
+      const streamed = await tryFullBunStreamingResponse(
+        options,
+        request.signal,
+      );
       if (streamed) return streamed;
-    } catch {
+    } catch (error) {
+      if (request.signal.aborted) throw error;
       // Stream couldn't start — fall through to the buffered request path.
     }
   }

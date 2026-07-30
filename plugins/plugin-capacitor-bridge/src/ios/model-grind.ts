@@ -17,7 +17,7 @@ export interface ModelGrindDeps {
 	callIosHost: (
 		method: string,
 		payload: unknown,
-		timeoutMs?: number,
+		signal?: AbortSignal,
 	) => Promise<unknown>;
 	/** Load the GGUF for a slot ("TEXT_SMALL" | "TEXT_LARGE"); resolves when warm. */
 	ensureTextModelLoaded: (slot: string) => Promise<unknown>;
@@ -234,20 +234,16 @@ export async function runModelGrind(
 						: null,
 			};
 			const gt = now();
-			const res = (await deps.callIosHost(
-				"llama_generate",
-				{
-					context_id: contextId,
-					prompt:
-						"<start_of_turn>user\nSay hello in one short sentence.<end_of_turn>\n<start_of_turn>model\n",
-					max_tokens: 48,
-					temperature: 0.7,
-					top_p: 0.9,
-					top_k: 40,
-					stop: ["<end_of_turn>", "<start_of_turn>", "<endoftext>"],
-				},
-				120_000,
-			)) as Record<string, unknown>;
+			const res = (await deps.callIosHost("llama_generate", {
+				context_id: contextId,
+				prompt:
+					"<start_of_turn>user\nSay hello in one short sentence.<end_of_turn>\n<start_of_turn>model\n",
+				max_tokens: 48,
+				temperature: 0.7,
+				top_p: 0.9,
+				top_k: 40,
+				stop: ["<end_of_turn>", "<start_of_turn>", "<endoftext>"],
+			})) as Record<string, unknown>;
 			r.inferMs = Math.round(now() - gt);
 			const outTokens = Number(res.outputTokens ?? res.tokens ?? 0);
 			const text = String(res.text ?? "");

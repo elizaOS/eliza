@@ -384,6 +384,12 @@ public class ElizaBunRuntimePlugin: CAPPlugin, CAPBridgedPlugin {
             pluginCall.reject("call requires a method name")
             return
         }
+        if method == "http_request_stream_cancel" {
+            // Full-Bun calls occupy the runtime's serial queue until the engine
+            // returns. Signal the native decode out-of-band so the queued JS
+            // cancellation RPC can run and finish normal stream cleanup.
+            FullBunEngineHost.shared.cancelActiveStream()
+        }
         let args: Any? = pluginCall.getValue("args")
         runtime.dispatchHandler(method: method, args: args) { (result: Result<Any?, Error>) in
             DispatchQueue.main.async {
