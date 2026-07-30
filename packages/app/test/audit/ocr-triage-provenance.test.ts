@@ -120,6 +120,91 @@ describe("authorizedShots (report-authoritative selection)", () => {
   });
 });
 
+describe("audit directory resolution (#17128)", () => {
+  let root: string;
+  let isolated: string;
+  let staleDefault: string;
+  let previousCwd: string;
+  let previousEnv: string | undefined;
+
+  function seedCapture(dir: string, slug: string, text: string): void {
+    const rows: ReportEntry[] = [
+      { slug, viewport: "desktop-landscape", verdict: "good" },
+    ];
+    shot(dir, "desktop-landscape", slug);
+    writeFileSync(join(dir, "report.json"), JSON.stringify(rows));
+    writeFileSync(
+      join(dir, "ocr.ndjson"),
+      ocrLine("desktop-landscape", slug, text),
+    );
+  }
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), "ocr-dir-"));
+    isolated = join(root, "isolated-run");
+    staleDefault = join(root, "aesthetic-audit-output");
+    mkdirSync(isolated);
+    mkdirSync(staleDefault);
+    seedCapture(isolated, "builtin-chat", "Chat messages composer");
+    // A populated default directory from an earlier run. If resolution ever
+    // falls back here while ELIZA_AUDIT_APP_DIR is set, the assertions below
+    // catch the false evidence binding.
+    seedCapture(staleDefault, "builtin-phone", "Phone dialer keypad");
+    previousCwd = process.cwd();
+    previousEnv = process.env.ELIZA_AUDIT_APP_DIR;
+    process.chdir(root);
+  });
+
+  afterEach(() => {
+    process.chdir(previousCwd);
+    if (previousEnv === undefined) {
+      delete process.env.ELIZA_AUDIT_APP_DIR;
+    } else {
+      process.env.ELIZA_AUDIT_APP_DIR = previousEnv;
+    }
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it("reads ELIZA_AUDIT_APP_DIR when no --audit-dir is passed and leaves the stale default untouched", async () => {
+    process.env.ELIZA_AUDIT_APP_DIR = isolated;
+
+    const result = await runOcrTriage(["--ocr", join(isolated, "ocr.ndjson")]);
+
+    expect(result.entries.map((entry) => entry.slug)).toEqual(["builtin-chat"]);
+    expect(existsSync(join(isolated, "ocr-triage.json"))).toBe(true);
+    expect(existsSync(join(staleDefault, "ocr-triage.json"))).toBe(false);
+  });
+
+  it("keeps an explicit --audit-dir authoritative over ELIZA_AUDIT_APP_DIR", async () => {
+    process.env.ELIZA_AUDIT_APP_DIR = staleDefault;
+
+    const result = await runOcrTriage([
+      "--audit-dir",
+      isolated,
+      "--ocr",
+      join(isolated, "ocr.ndjson"),
+    ]);
+
+    expect(result.entries.map((entry) => entry.slug)).toEqual(["builtin-chat"]);
+    expect(existsSync(join(isolated, "ocr-triage.json"))).toBe(true);
+    expect(existsSync(join(staleDefault, "ocr-triage.json"))).toBe(false);
+  });
+
+  it("falls back to the default directory when neither source is set", async () => {
+    delete process.env.ELIZA_AUDIT_APP_DIR;
+
+    const result = await runOcrTriage([
+      "--ocr",
+      join(staleDefault, "ocr.ndjson"),
+    ]);
+
+    expect(result.entries.map((entry) => entry.slug)).toEqual([
+      "builtin-phone",
+    ]);
+    expect(existsSync(join(staleDefault, "ocr-triage.json"))).toBe(true);
+  });
+});
+
 describe("ocr-triage CLI (end-to-end provenance)", () => {
   let dir: string;
   beforeEach(() => {
