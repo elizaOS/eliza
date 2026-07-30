@@ -73,6 +73,14 @@ describe("AgentRuntime.ensureEmbeddingDimension provider failover", () => {
 
 		expect(brokenHandler).toHaveBeenCalledTimes(1);
 		expect(healthyHandler).toHaveBeenCalledTimes(1);
+		expect(brokenHandler).toHaveBeenCalledWith(
+			runtime,
+			"elizaOS embedding dimension probe",
+		);
+		expect(healthyHandler).toHaveBeenCalledWith(
+			runtime,
+			"elizaOS embedding dimension probe",
+		);
 		expect(ensureDim).toHaveBeenCalledWith(768);
 		expect(runtime.isEmbeddingGenerationDisabled()).toBe(false);
 
@@ -84,6 +92,46 @@ describe("AgentRuntime.ensureEmbeddingDimension provider failover", () => {
 		expect(memory.embedding).toHaveLength(768);
 		expect(brokenHandler).toHaveBeenCalledTimes(1);
 		expect(healthyHandler).toHaveBeenCalledTimes(2);
+	});
+
+	it("uses declared provider metadata without running inference at boot", async () => {
+		const runtime = makeRuntime();
+		const handler = vi.fn(async () => new Array(2048).fill(0.5));
+		runtime.registerModel(
+			ModelType.TEXT_EMBEDDING,
+			handler,
+			"capacitor-llama",
+			100,
+			{ embeddingDimension: 2048, local: true },
+		);
+		const ensureDim = vi.spyOn(runtime.adapter, "ensureEmbeddingDimension");
+
+		await expect(runtime.ensureEmbeddingDimension()).resolves.toBeUndefined();
+
+		expect(handler).not.toHaveBeenCalled();
+		expect(ensureDim).toHaveBeenCalledWith(2048);
+	});
+
+	it("resolves a declared embedding dimension from runtime settings", async () => {
+		const runtime = makeRuntime();
+		runtime.setSetting("EMBEDDING_DIMENSIONS", "768");
+		const handler = vi.fn(async () => new Array(768).fill(0.5));
+		runtime.registerModel(
+			ModelType.TEXT_EMBEDDING,
+			handler,
+			"configured-embedding",
+			100,
+			{
+				embeddingDimensionSettings: ["EMBEDDING_DIMENSIONS"],
+				embeddingDimensionDefault: 1536,
+			},
+		);
+		const ensureDim = vi.spyOn(runtime.adapter, "ensureEmbeddingDimension");
+
+		await expect(runtime.ensureEmbeddingDimension()).resolves.toBeUndefined();
+
+		expect(handler).not.toHaveBeenCalled();
+		expect(ensureDim).toHaveBeenCalledWith(768);
 	});
 
 	it("treats an invalid probe embedding as a failed attempt and advances", async () => {
