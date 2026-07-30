@@ -32,6 +32,7 @@
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import type { AccountsListResponse } from "@elizaos/ui/api/client-agent";
 import { expect, type Page, type Route, type TestInfo } from "@playwright/test";
 import {
   installDefaultAppRoutes,
@@ -42,6 +43,10 @@ import {
 } from "../helpers";
 
 export type Lane = "mock" | "live";
+
+export const WALKTHROUGH_ACCOUNTS_RESPONSE = {
+  providers: [],
+} satisfies AccountsListResponse;
 
 export interface ViewportProfile {
   id: "desktop" | "mobile";
@@ -616,7 +621,7 @@ async function installMockLaneWrites(page: Page): Promise<void> {
   });
   await page.route("**/api/accounts", async (route) => {
     if (route.request().method() === "GET") {
-      await fulfillJson(route, 200, { accounts: [] });
+      await fulfillJson(route, 200, WALKTHROUGH_ACCOUNTS_RESPONSE);
       return;
     }
     await route.fallback();
