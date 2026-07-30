@@ -38,6 +38,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -136,17 +137,14 @@ public class ElizaAgentService extends Service {
      * bionic host above uses it. Exported to the agent as
      * ELIZA_LOCAL_AGENT_SOCKET; Java reaches it via {@link LocalSocketAddress}
      * with {@code Namespace.ABSTRACT}.
-     */
+    */
     static final String LOCAL_AGENT_SOCKET_NAME = "eliza_local_agent_v1";
-    private static final int LOCAL_REQUEST_DEFAULT_TIMEOUT_MS = 10_000;
-    private static final int LOCAL_REQUEST_MAX_TIMEOUT_MS = 600_000;
-    // Read-timeout budget applied to slow on-device inference routes (ASR / TTS
-    // / transcription / chat generation) when the caller doesn't pin its own —
-    // matches LOCAL_REQUEST_MAX_TIMEOUT_MS and the agent's chat-generation
-    // budget so a cold model load never trips a spurious local_agent_unavailable.
-    private static final int LOCAL_INFERENCE_REQUEST_TIMEOUT_MS = 600_000;
     private static final int LOCAL_REQUEST_MAX_BODY_BYTES = 10 * 1024 * 1024;
     private static final int LOCAL_REQUEST_MAX_RESPONSE_BYTES = 10 * 1024 * 1024;
+    private static final ConcurrentHashMap<String, Boolean> ACTIVE_LOCAL_AGENT_STREAM_IDS =
+        new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, LocalSocket> ACTIVE_LOCAL_AGENT_STREAMS =
+        new ConcurrentHashMap<>();
 
     // The on-device boot path is heavy: PGlite extension extraction +
     // plugin resolution + libllama dlopen + first-time model load can
@@ -340,46 +338,31 @@ public class ElizaAgentService extends Service {
      * opening their own sockets. That keeps auth, header filtering, body caps,
      * and future Binder/stdio replacement behind one app-owned boundary.
      */
-    /**
-     * Routes whose on-device handler does a synchronous, multi-second (cold
-     * model load) or open-ended (token-by-token generation) llama call before
-     * the HTTP response completes — they need the long inference read-timeout
-     * budget, not the 10s default used for ordinary CRUD API calls.
-     */
-    private static boolean isLongRunningInferencePath(String path) {
-        if (path == null) return false;
-        String p = path.toLowerCase(Locale.US);
-        return p.contains("/asr")
-            || p.contains("/tts")
-            || p.contains("/transcription")
-            || p.contains("/speech")
-            || p.contains("/local-inference")
-            || p.contains("/messages/stream")
-            || p.contains("/messages")
-            || p.contains("/greeting")
-            || p.contains("/voice");
-    }
-
     public static String requestLocalAgent(String requestJson) throws IOException, JSONException {
         LocalAgentRequest req = parseLocalAgentRequest(requestJson);
         JSONObject payload = buildRequestPayload(req);
-        return dispatchBufferedOverSocket(payload, req.timeoutMs).toString();
+        return dispatchBufferedOverSocket(payload).toString();
     }
 
-    /** Parsed, validated, timeout-normalized local-agent request. */
+    /** Parsed and validated local-agent request. */
     private static final class LocalAgentRequest {
         final String method;
         final String path;
         final JSONObject headers;
         final String body;
-        final int timeoutMs;
+        final String requestId;
 
-        LocalAgentRequest(String method, String path, JSONObject headers, String body, int timeoutMs) {
+        LocalAgentRequest(
+                String method,
+                String path,
+                JSONObject headers,
+                String body,
+                String requestId) {
             this.method = method;
             this.path = path;
             this.headers = headers;
             this.body = body;
-            this.timeoutMs = timeoutMs;
+            this.requestId = requestId;
         }
     }
 
@@ -395,24 +378,16 @@ public class ElizaAgentService extends Service {
         if (!method.matches("^[A-Z]{1,16}$")) {
             throw new IllegalArgumentException("Unsupported HTTP method");
         }
-        int timeoutMs = request.optInt("timeoutMs", LOCAL_REQUEST_DEFAULT_TIMEOUT_MS);
-        // On-device inference is inherently slow: a cold model load alone — the
-        // ~1 GB ASR GGUF, the OmniVoice TTS GGUFs, or evicting + reloading the
-        // chat model — is a multi-second synchronous llama load before the agent
-        // emits a single byte, and transcription/synthesis/generation on
-        // emulated or low-end CPU runs well past 10 s. The WebView transport
-        // sends its generic 10 s fetch timeout for these calls too; FLOOR
-        // inference/voice routes at the inference budget so a cold load never
-        // trips a spurious local_agent_unavailable — raise a too-short caller
-        // timeout, never lower a longer one.
-        if (isLongRunningInferencePath(path)) {
-            timeoutMs = Math.max(timeoutMs, LOCAL_INFERENCE_REQUEST_TIMEOUT_MS);
-        }
-        timeoutMs = Math.max(1_000, Math.min(timeoutMs, LOCAL_REQUEST_MAX_TIMEOUT_MS));
+        String requestId = request.optString("requestId", "").trim();
         JSONObject headers = request.optJSONObject("headers");
         Object rawBody = request.opt("body");
         String body = rawBody == null || rawBody == JSONObject.NULL ? null : rawBody.toString();
-        return new LocalAgentRequest(method, path, headers == null ? new JSONObject() : headers, body, timeoutMs);
+        return new LocalAgentRequest(
+            method,
+            path,
+            headers == null ? new JSONObject() : headers,
+            body,
+            requestId);
     }
 
     /**
@@ -454,43 +429,87 @@ public class ElizaAgentService extends Service {
      *   {"type":"chunk","dataBase64":".."}                              (per frame)
      *   {"type":"complete"}  or  {"type":"complete","error":".."}        (terminal)
      *
-     * Single attempt by design: a connect failure emits a terminal error event
-     * and the WebView falls back to the buffered {@link #requestLocalAgent}
-     * (which carries the cold-load connect retry), so non-idempotent POSTs are
-     * never replayed here. Runs on the caller's thread (AgentPlugin spawns one).
+     * Single attempt by design: callers only stream after the agent has exposed
+     * the route, and replaying a non-idempotent POST after a connect failure is
+     * unsafe. Runs on the caller's thread (AgentPlugin spawns one).
      */
     public static void requestLocalAgentStream(String requestJson, java.util.function.Consumer<String> onEvent) {
+        String requestId = null;
         try {
             LocalAgentRequest req = parseLocalAgentRequest(requestJson);
+            requestId = req.requestId;
             JSONObject payload = buildRequestPayload(req);
-            streamOverSocket(payload, req.timeoutMs, onEvent);
+            streamOverSocket(payload, req.requestId, onEvent);
         } catch (Exception error) {
             emitStreamComplete(onEvent, error.getMessage() == null ? "Local agent stream failed" : error.getMessage());
+        } finally {
+            if (requestId != null && !requestId.isEmpty()) {
+                ACTIVE_LOCAL_AGENT_STREAM_IDS.remove(requestId);
+            }
         }
+    }
+
+    /** Reserve a stream id before the WebView can issue a cancellation call. */
+    public static boolean registerLocalAgentStream(String requestId) {
+        if (requestId == null || requestId.trim().isEmpty()) return false;
+        return ACTIVE_LOCAL_AGENT_STREAM_IDS.putIfAbsent(requestId.trim(), Boolean.TRUE) == null;
+    }
+
+    /**
+     * Cancel an in-flight streaming request by closing its UDS. Socket closure
+     * propagates through the agent's HTTP bridge to the route AbortSignal; no
+     * polling loop or timeout is involved.
+     */
+    public static boolean cancelLocalAgentStream(String requestId) {
+        if (requestId == null || requestId.trim().isEmpty()) return false;
+        String normalized = requestId.trim();
+        boolean registered = ACTIVE_LOCAL_AGENT_STREAM_IDS.remove(normalized) != null;
+        LocalSocket socket = ACTIVE_LOCAL_AGENT_STREAMS.remove(normalized);
+        if (socket != null) closeQuietly(socket);
+        return registered || socket != null;
     }
 
     /**
      * Send a streaming request over the abstract UDS and translate the agent's
      * NDJSON stream frames ({@code {stream:"response"|"chunk"|"complete"}}) into
-     * the AgentPlugin envelopes. The socket connect carries the cold-boot retry
-     * (the agent may not have bound the socket yet); once a frame arrives the
-     * request is in-flight, so a mid-stream failure surfaces as a terminal error
-     * and is never silently re-dialed.
+     * the AgentPlugin envelopes. A mid-stream failure surfaces as a terminal
+     * error and is never silently re-dialed.
      */
     private static void streamOverSocket(
         JSONObject payload,
-        int timeoutMs,
+        String requestedId,
         java.util.function.Consumer<String> onEvent
     ) throws IOException, JSONException {
+        final String requestId = requestedId == null || requestedId.isEmpty()
+            ? "local-stream-" + nextFrameId()
+            : requestedId;
+        if (requestedId == null || requestedId.isEmpty()) {
+            ACTIVE_LOCAL_AGENT_STREAM_IDS.put(requestId, Boolean.TRUE);
+        } else if (!ACTIVE_LOCAL_AGENT_STREAM_IDS.containsKey(requestId)) {
+            throw new IOException("Local agent stream was cancelled before it started");
+        }
         JSONObject frame = new JSONObject()
             .put("id", nextFrameId())
             .put("method", "http_request_stream")
             .put("stream", true)
             .put("payload", payload);
 
-        LocalSocket socket = connectLocalAgentSocket(timeoutMs);
+        LocalSocket socket = new LocalSocket();
         try {
-            socket.setSoTimeout(timeoutMs);
+            socket.connect(new LocalSocketAddress(
+                LOCAL_AGENT_SOCKET_NAME, LocalSocketAddress.Namespace.ABSTRACT));
+            LocalSocket previous = ACTIVE_LOCAL_AGENT_STREAMS.putIfAbsent(requestId, socket);
+            if (previous != null) {
+                throw new IllegalArgumentException(
+                    "Local agent stream requestId is already active: " + requestId);
+            }
+            if (!ACTIVE_LOCAL_AGENT_STREAM_IDS.containsKey(requestId)) {
+                throw new IOException("Local agent stream was cancelled before dispatch");
+            }
+            // A stream remains open while it is making progress and ends only
+            // with a terminal frame or explicit cancellation. A read deadline
+            // cannot distinguish slow inference from a dead operation.
+            socket.setSoTimeout(0);
             writeFrameLine(socket.getOutputStream(), frame);
             InputStream in = socket.getInputStream();
             for (String line = readFrameLine(in); line != null; line = readFrameLine(in)) {
@@ -520,22 +539,19 @@ public class ElizaAgentService extends Service {
                     return;
                 }
             }
-            // Socket closed without a terminal frame — treat as completion.
-            emitStreamComplete(onEvent, null);
+            throw new IOException(
+                "local agent stream closed without a terminal complete frame");
         } finally {
+            ACTIVE_LOCAL_AGENT_STREAM_IDS.remove(requestId);
+            ACTIVE_LOCAL_AGENT_STREAMS.remove(requestId, socket);
             closeQuietly(socket);
         }
     }
 
     private static void emitStreamComplete(java.util.function.Consumer<String> onEvent, String error) {
-        try {
-            JSONObject complete = new JSONObject().put("type", "complete");
-            if (error != null) complete.put("error", error);
-            onEvent.accept(complete.toString());
-        } catch (JSONException ignored) {
-            // A complete event with no error is the worst case if JSON fails.
-            onEvent.accept("{\"type\":\"complete\"}");
-        }
+        onEvent.accept(error == null
+            ? "{\"type\":\"complete\"}"
+            : "{\"type\":\"complete\",\"error\":" + JSONObject.quote(error) + "}");
     }
 
     private static boolean isSafeLocalAgentPath(String path) {
@@ -558,16 +574,29 @@ public class ElizaAgentService extends Service {
      * replay. The window must outlast the longest event-loop stall (~10-15 s
      * chat-model cold reload after a voice transcription).
      */
-    private static JSONObject dispatchBufferedOverSocket(JSONObject payload, int timeoutMs)
+    private static JSONObject dispatchBufferedOverSocket(JSONObject payload)
+        throws IOException, JSONException {
+        return dispatchBufferedOverSocket(payload, 0);
+    }
+
+    /**
+     * The watchdog uses a bounded read solely to classify a liveness probe as
+     * BUSY; user/model requests call the unbounded overload and remain
+     * owner-cancellable instead of being failed by elapsed wall time.
+     */
+    private static JSONObject dispatchBufferedOverSocket(JSONObject payload, int readTimeoutMs)
         throws IOException, JSONException {
         JSONObject frame = new JSONObject()
             .put("id", nextFrameId())
             .put("method", "http_request")
             .put("payload", payload);
 
-        LocalSocket socket = connectLocalAgentSocket(timeoutMs);
+        LocalSocket socket = connectLocalAgentSocket();
         try {
-            socket.setSoTimeout(timeoutMs);
+            // Buffered requests may include a complete model turn. Their
+            // lifecycle is owned by the caller closing the transport, not by a
+            // duration that cannot distinguish slow inference from a dead run.
+            socket.setSoTimeout(readTimeoutMs);
             writeFrameLine(socket.getOutputStream(), frame);
             String line = readFrameLine(socket.getInputStream());
             if (line == null || line.isEmpty()) {
@@ -593,7 +622,7 @@ public class ElizaAgentService extends Service {
      * the socket yet, or its accept loop is stalled mid-decode). Returns a
      * connected {@link LocalSocket}; the caller owns closing it.
      */
-    private static LocalSocket connectLocalAgentSocket(int timeoutMs) throws IOException {
+    private static LocalSocket connectLocalAgentSocket() throws IOException {
         final int connectRetries = 15;
         IOException lastError = null;
         for (int attempt = 0; attempt <= connectRetries; attempt++) {
