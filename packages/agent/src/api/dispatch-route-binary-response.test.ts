@@ -14,6 +14,7 @@ import {
   AgentRuntime,
   type Character,
   isElizaError,
+  type LegacyRouteHandler,
   type Route,
   type RouteResponse,
 } from "@elizaos/core";
@@ -31,18 +32,39 @@ import { dispatchRoute } from "./dispatch-route.ts";
 interface ShimResponse extends RouteResponse {
   setHeader(name: string, value: string | string[]): RouteResponse;
   write(chunk: unknown): boolean;
+  writeHead(
+    status: number,
+    headers?: Record<string, string>,
+  ): RouteResponse;
   end(chunk?: unknown): RouteResponse;
+  on(event: string, listener: () => void): RouteResponse;
+  destroyed: boolean;
+  writableEnded: boolean;
 }
 
 function isShimResponse(res: RouteResponse): res is ShimResponse {
   const candidate = res as Partial<
-    Record<"setHeader" | "write" | "end", unknown>
+    Record<"setHeader" | "writeHead" | "write" | "end" | "on", unknown>
   >;
   return (
     typeof candidate.setHeader === "function" &&
+    typeof candidate.writeHead === "function" &&
     typeof candidate.write === "function" &&
-    typeof candidate.end === "function"
+    typeof candidate.end === "function" &&
+    typeof candidate.on === "function" &&
+    typeof (res as { destroyed?: unknown }).destroyed === "boolean" &&
+    typeof (res as { writableEnded?: unknown }).writableEnded === "boolean"
   );
+}
+
+interface ShimRequest {
+  socket: { remoteAddress?: string };
+}
+
+function isShimRequest(req: unknown): req is ShimRequest {
+  if (!req || typeof req !== "object") return false;
+  const socket = (req as { socket?: unknown }).socket;
+  return Boolean(socket && typeof socket === "object");
 }
 
 const FIXTURE_PATH = "/api/response";
@@ -97,6 +119,44 @@ describe("dispatchRoute captured response finalization", () => {
     });
 
     expect(result.bodyEncoding).toBe("base64");
+    expect(Buffer.from(result.bodyBase64, "base64")).toEqual(bytes);
+  });
+
+  it("provides the loopback socket and ServerResponse lifecycle used by in-process legacy routes", async () => {
+    const bytes = Buffer.from([0x52, 0x49, 0x46, 0x46, 0x01, 0x02]);
+    const character: Character = { name: "legacy-http-contract-fixture" };
+    const runtime = new AgentRuntime({ character });
+    const handler: LegacyRouteHandler = async (req, res) => {
+      if (!isShimRequest(req) || !isShimResponse(res)) {
+        throw new Error("legacy shim no longer exposes the Node HTTP contract");
+      }
+      expect(req.socket.remoteAddress).toBe("127.0.0.1");
+      expect(res.destroyed).toBe(false);
+      expect(res.writableEnded).toBe(false);
+      res.on("close", () => {
+        throw new Error("captured responses must not fabricate socket closure");
+      });
+      res.writeHead(200, {
+        "Content-Type": "audio/wav",
+        "Content-Length": String(bytes.length),
+      });
+      res.end(bytes);
+      expect(res.writableEnded).toBe(true);
+    };
+    runtime.routes.push({
+      type: "GET",
+      path: FIXTURE_PATH,
+      public: false,
+      handler,
+    });
+
+    const result = await dispatchBufferedRequest(runtime, dispatchRoute, {
+      method: "GET",
+      path: FIXTURE_PATH,
+    });
+
+    expect(result.status).toBe(200);
+    expect(result.headers["content-type"]).toBe("audio/wav");
     expect(Buffer.from(result.bodyBase64, "base64")).toEqual(bytes);
   });
 

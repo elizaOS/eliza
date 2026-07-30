@@ -110,6 +110,8 @@ export interface RouteHandlerContext {
 	inProcess: boolean;
 	/** true when the HTTP transport has verified this request as loopback/local. */
 	isTrustedLocal?: boolean;
+	/** Owner cancellation propagated by in-process transports. */
+	abortSignal?: AbortSignal;
 	/**
 	 * Optional requester identity resolved by the authenticated boundary. Omitted
 	 * means the route is running under today's single-owner local boundary and
