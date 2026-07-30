@@ -73,7 +73,10 @@ jobs:
           no-vision-deps: "true"
 
       - name: Install Playwright Chromium + WebKit
-        run: .github/scripts/install-playwright-browsers.sh chromium webkit
+        # Resolve Playwright from the same workspace as the fixture runners so
+        # the installed browser revisions match their package-local import.
+        working-directory: packages/ui
+        run: ../../.github/scripts/install-playwright-browsers.sh chromium webkit
 
       # The permission-priming fixture pulls @elizaos/shared, whose i18n module
       # loads generated keyword data that is gitignored. Generate it so the
