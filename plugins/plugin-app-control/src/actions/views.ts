@@ -26,6 +26,7 @@ import {
 	STANDARD_CAPABILITIES,
 } from "@elizaos/shared";
 import { normalizeActionOptions, readStringOption } from "../params.js";
+import { matchViewCommand } from "./view-command-matcher.js";
 import {
 	createViewsClient,
 	parseViewInteractionResponse,
@@ -918,6 +919,15 @@ function isViewNavigationRequest(
 	) {
 		return true;
 	}
+	// "go home" / "home" / "show home" resolve to the chat/home surface in the
+	// rigid multilingual matcher. That surface is pure navigation (it exposes no
+	// capabilities), so a request that targets it can never be a foreground-view
+	// capability read (#17299).
+	if (matchViewCommand(viewRequestText(text)) === "chat") return true;
+	const explicitTarget = readViewTargetOption(options);
+	if (explicitTarget && matchViewCommand(explicitTarget) === "chat") {
+		return true;
+	}
 	if (
 		(mode === "show" || mode === "list") &&
 		/\b(view|views|app|apps|panel|panels|tab|tabs|window|windows)\b/i.test(
@@ -966,10 +976,14 @@ function resolveViewCapability({
 		!!explicitAction &&
 		(MODES as readonly string[]).includes(explicitAction.trim().toLowerCase());
 	const actionToken = actionIsMode ? null : explicitAction;
-	const requestedView = resolveViewTarget(readViewTargetOption(options), views);
+	const requestedTarget = readViewTargetOption(options);
+	const requestedView = resolveViewTarget(requestedTarget, views);
 	// A resolved planner target is authoritative. Foreground UI state is only a
-	// fallback for requests that do not identify a registered view.
-	const currentView = requestedView
+	// fallback for requests that name NO explicit target at all: a planner that
+	// names a target this deployment cannot resolve (e.g. show/home) must not
+	// have its request silently rebound to whatever view happens to be
+	// foregrounded (#17299).
+	const currentView = requestedTarget
 		? null
 		: (views.find((view) => view.id === currentViewId) ?? null);
 	const candidates = capabilityCandidates(views, viewType);
