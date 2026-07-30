@@ -5,14 +5,17 @@
  * or `advancedCapabilities: true` in plugin initialization.
  *
  * These provide additional agent features:
- * - Extended providers (facts, contacts, relationships, roles, settings, personality)
- * - Advanced actions (contacts management, room management, personality)
+ * - Extended providers (roles, settings, experience, personality)
+ * - Advanced actions (room management, roles, experience, personality)
  *   Note: todos are owned entirely by @elizaos/plugin-todos (the `TODO` action +
  *   `currentTodosProvider` + DB-backed TodosService) and app-lifeops
  *   (`OWNER_TODOS`). Core registers no todos provider, service, or action.
- * - Registered post-turn evaluators (experience, skills, facts, relationships,
- *   identities, task success)
+ * - Registered post-turn evaluators for experience extraction
  * - Additional services (experience, personality)
+ *
+ * Relationship, contact, follow-up, message/post, and social-memory surfaces
+ * belong to the independently toggleable native `relationships` feature.
+ * Keeping them out of this bundle gives every runtime component one owner.
  */
 
 import { withCanonicalActionDocs } from "../../action-docs.ts";
@@ -55,17 +58,8 @@ export * from "./providers/index.ts";
 // `ReferenceError: advancedContactsProvider is not defined` the first time
 // `advancedProviders` is touched. Importing directly from the leaf file
 // gives Bun a real per-file consumer it cannot prune.
-import { messageAction } from "./actions/message.ts";
-import { postAction } from "./actions/post.ts";
 import { updateRoleAction } from "./actions/role.ts";
 import { roomOpAction } from "./actions/room.ts";
-import { preferenceItems } from "./evaluators/preference-items.ts";
-import { reflectionItems } from "./evaluators/reflection-items.ts";
-import { skillItems } from "./evaluators/skill-items.ts";
-import { advancedContactsProvider } from "./providers/contacts.ts";
-import { factsProvider } from "./providers/facts.ts";
-import { followUpsProvider } from "./providers/followUps.ts";
-import { relationshipsProvider } from "./providers/relationships.ts";
 import { roleProvider } from "./providers/roles.ts";
 import { settingsProvider } from "./providers/settings.ts";
 
@@ -73,10 +67,6 @@ import { settingsProvider } from "./providers/settings.ts";
  * Advanced providers - extended context and state management
  */
 export const advancedProviders = [
-	advancedContactsProvider,
-	factsProvider,
-	followUpsProvider,
-	relationshipsProvider,
 	roleProvider,
 	settingsProvider,
 	experienceProvider,
@@ -94,20 +84,15 @@ export const advancedActions = [
 	withCanonicalActionDocs(updateRoleAction),
 	withCanonicalActionDocs(searchExperiencesAction),
 	withCanonicalActionDocs(manageExperienceAction),
-	...promoteSubactionsToActions(messageAction),
-	...promoteSubactionsToActions(postAction),
 	// Personality actions — keep CHARACTER (legacy) alongside the new
 	// PERSONALITY surface so existing callers continue to resolve.
 	...promoteSubactionsToActions(characterAction),
 	...promoteSubactionsToActions(withCanonicalActionDocs(personalityAction)),
 ];
 
-export const advancedEvaluators = [
-	...reflectionItems,
-	...preferenceItems,
-	...skillItems,
+export const advancedEvaluators: readonly RegisteredEvaluator[] = [
 	experiencePatternEvaluator,
-] satisfies readonly RegisteredEvaluator[];
+];
 
 /**
  * Advanced services - extended service infrastructure

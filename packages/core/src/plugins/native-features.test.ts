@@ -5,7 +5,11 @@
  * ON. Pure registry assertions — no runtime boot.
  */
 import { describe, expect, it } from "vitest";
-
+import {
+	advancedActions,
+	advancedEvaluators,
+	advancedProviders,
+} from "../features/advanced-capabilities/index.ts";
 import {
 	nativeRuntimeFeatureDefaults,
 	nativeRuntimeFeaturePluginNames,
@@ -41,5 +45,34 @@ describe("native runtime feature registry (#12092 item 32)", () => {
 			const name = nativeRuntimeFeaturePluginNames[feature];
 			expect(resolveNativeRuntimeFeatureFromPluginName(name)).toBe(feature);
 		}
+	});
+
+	it("gives relationship components one owner", () => {
+		const relationships = nativeRuntimeFeaturePlugins.relationships;
+		const relationshipActionNames = new Set(
+			relationships.actions?.map((action) => action.name) ?? [],
+		);
+		const relationshipProviderNames = new Set(
+			relationships.providers?.map((provider) => provider.name) ?? [],
+		);
+		const relationshipEvaluatorNames = new Set(
+			relationships.evaluators?.map((evaluator) => evaluator.name) ?? [],
+		);
+
+		expect(
+			advancedActions.filter((action) =>
+				relationshipActionNames.has(action.name),
+			),
+		).toEqual([]);
+		expect(
+			advancedProviders.filter((provider) =>
+				relationshipProviderNames.has(provider.name),
+			),
+		).toEqual([]);
+		expect(
+			advancedEvaluators.filter((evaluator) =>
+				relationshipEvaluatorNames.has(evaluator.name),
+			),
+		).toEqual([]);
 	});
 });
