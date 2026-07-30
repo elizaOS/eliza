@@ -223,6 +223,42 @@ export function sharedRestViewNavigate(viewId: string): {
 }
 
 /**
+ * POST .../api/conversations/:id/greeting — the opening agent line the chat view
+ * requests for an empty conversation.
+ *
+ * This tier does not generate one. Producing a greeting means running a billed
+ * model turn, and inventing static text would put words in the agent's mouth
+ * that its character never authored — so neither happens here. The empty-text,
+ * `generated: false` shape is NOT a fabricated success: it is the agent server's
+ * own representation of "no greeting available", returned verbatim by
+ * `ensureConversationGreetingStoredUnlocked()` when no runtime is attached
+ * (conversation-routes.ts). The client guards on `if (data.text)` before
+ * appending, so an empty greeting renders nothing rather than a blank bubble.
+ *
+ * Only the canonical conversation (id === agentId) answers; any other id is
+ * genuinely absent on this tier and stays a 404 rather than acking a
+ * conversation that does not exist.
+ */
+export function sharedRestGreeting(
+  agentId: string,
+  agentName: string,
+  conversationId: string,
+): {
+  text: "";
+  agentName: string;
+  generated: false;
+  persisted: false;
+} | null {
+  if (conversationId.trim() !== canonicalConversationId(agentId)) return null;
+  return {
+    text: "",
+    agentName: agentName || "Eliza",
+    generated: false,
+    persisted: false,
+  };
+}
+
+/**
  * GET .../api/runtime/mode — the client's runtime-mode snapshot
  * (ui/src/api/runtime-mode-client.ts → useRuntimeMode()). A Tier-0 agent runs
  * in-Worker in Eliza Cloud, so the honest answer is `cloud`, and it is not a

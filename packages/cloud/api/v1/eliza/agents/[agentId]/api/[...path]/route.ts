@@ -30,6 +30,7 @@ import {
   sharedRestFirstRun,
   sharedRestFirstRunStatus,
   sharedRestFirstRunSubmit,
+  sharedRestGreeting,
   sharedRestOverlayPresence,
   sharedRestRuntimeMode,
   sharedRestStatus,
@@ -67,6 +68,12 @@ function isWorkflowApiPath(path: string): boolean {
 /** `views/<viewId>/navigate` → `<viewId>`; null for any other shape. */
 function viewNavigateTarget(path: string): string | null {
   const m = /^views\/([^/]+)\/navigate$/.exec(path);
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
+/** `conversations/<id>/greeting` → `<id>`; null for any other shape. */
+function greetingConversationId(path: string): string | null {
+  const m = /^conversations\/([^/]+)\/greeting$/.exec(path);
   return m ? decodeURIComponent(m[1]) : null;
 }
 
@@ -249,6 +256,12 @@ app.post("/", async (c) => {
     const navigated = sharedRestViewNavigate(navigateTarget);
     // A view this tier does not serve stays a 404 — see sharedRestViewNavigate.
     if (navigated) return json(c, navigated);
+  }
+  const greetingConvId = greetingConversationId(path);
+  if (greetingConvId !== null) {
+    const greeting = sharedRestGreeting(r.agentId, r.agentName, greetingConvId);
+    // A non-canonical conversation stays a 404 — see sharedRestGreeting.
+    if (greeting) return json(c, greeting);
   }
   return json(
     c,

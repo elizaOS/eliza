@@ -146,6 +146,38 @@ describe("shared-agent shell startup probes", () => {
     });
   });
 
+  test("POST /api/conversations/:id/greeting reports no greeting without inventing text", async () => {
+    const response = await request(
+      `conversations/${AGENT_ID}/greeting?lang=en`,
+      "POST",
+    );
+
+    expect(response.status).toBe(200);
+    // Empty text + generated:false is the agent server's own "no greeting
+    // available" shape; the client guards on `if (data.text)` so nothing renders.
+    // This tier neither runs a billed turn nor invents character dialogue.
+    await expect(response.json()).resolves.toEqual({
+      text: "",
+      agentName: "Eliza",
+      generated: false,
+      persisted: false,
+    });
+  });
+
+  test("a greeting for a non-canonical conversation stays a 404", async () => {
+    const response = await request(
+      "conversations/11111111-2222-3333-4444-555555555555/greeting",
+      "POST",
+    );
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      error: "Not found",
+      code: "resource_not_found",
+    });
+  });
+
   test("every synthesized probe carries the app CORS origin", async () => {
     for (const [method, path] of [
       ["GET", "runtime/mode"],
@@ -156,6 +188,7 @@ describe("shared-agent shell startup probes", () => {
       ["POST", "apps/overlay-presence"],
       ["POST", "views/chat/navigate"],
       ["POST", "lifeops/activity-signals"],
+      ["POST", `conversations/${AGENT_ID}/greeting`],
     ] as const) {
       const response = await request(path, method);
       expect(response.headers.get("access-control-allow-origin")).toBe(
@@ -207,6 +240,7 @@ describe("shared-agent shell startup probes", () => {
       ["POST", "apps/overlay-presence"],
       ["POST", "views/chat/navigate"],
       ["POST", "lifeops/activity-signals"],
+      ["POST", `conversations/${AGENT_ID}/greeting`],
     ] as const) {
       const response = await request(path, method);
       expect(response.status).toBe(404);
