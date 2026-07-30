@@ -579,11 +579,10 @@ function createTextHandler(modelType: string) {
 		// The runtime loader services (bionic host / AOSP adapter / device
 		// bridge) decode one request at a time on a shared resident model, so
 		// route through the process-wide interactive-over-background lane
-		// (#11914): interactive turns dispatch first; background jobs wait a
-		// bounded time and take the device-class budget clamps.
+		// (#11914): interactive turns wait by owner; background jobs run only
+		// when idle and take the device-class budget clamps.
 		const args = textGenerationArgsFromParams(params);
 		const priority = params.priority ?? "interactive";
-		let lockWaitMs: number | undefined;
 		if (priority === "background") {
 			const budget = resolveBackgroundInferenceBudget(
 				inferenceRamClassFromEnv() ?? "standard",
@@ -599,13 +598,11 @@ function createTextHandler(modelType: string) {
 			}
 			args.prompt = clamped.prompt;
 			args.maxTokens = clamped.maxTokens;
-			lockWaitMs = budget.lockWaitMs;
 		}
 		return getInferencePriorityGate().runExclusive(
 			{
 				priority,
 				label: `${modelType} local-service (${args.prompt.length} chars)`,
-				...(lockWaitMs !== undefined ? { waitMs: lockWaitMs } : {}),
 				...(params.signal ? { signal: params.signal } : {}),
 			},
 			() => generate.call(service, args),

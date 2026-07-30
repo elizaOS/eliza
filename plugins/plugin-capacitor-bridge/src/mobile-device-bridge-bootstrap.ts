@@ -1781,15 +1781,15 @@ function bionicHostGenerateStream(
 }
 
 /**
- * Clamp a background-priority request to the device-class budget and resolve
- * its bounded lane wait (#11914). Interactive requests pass through untouched
- * with an unbounded lane wait; their owner signal governs operation lifetime.
+ * Clamp a background-priority request to the device-class budget (#11914).
+ * Interactive requests pass through untouched; the priority gate rejects
+ * overlapping background work immediately instead of maintaining a timed queue.
  */
 function resolveMobileLaneBudget(
 	priority: LocalInferencePriority,
 	prompt: string,
 	maxTokens: number | undefined,
-): { prompt: string; maxTokens: number | undefined; lockWaitMs?: number } {
+): { prompt: string; maxTokens: number | undefined } {
 	if (priority !== "background") {
 		return { prompt, maxTokens };
 	}
@@ -1805,7 +1805,6 @@ function resolveMobileLaneBudget(
 	return {
 		prompt: clamped.prompt,
 		maxTokens: clamped.maxTokens,
-		lockWaitMs: budget.lockWaitMs,
 	};
 }
 
@@ -1814,10 +1813,9 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
 		// The bionic host decodes ONE request at a time on its resident-model
 		// lock, and the device-bridge path shares one loaded model — so every
 		// generate goes through the process-wide interactive-over-background
-		// lane (#11914): interactive turns dispatch ahead of queued background
-		// jobs; background jobs run only when the lane is idle, wait a bounded
-		// time, and are clamped to the device-class budget. Without this, one
-		// long autonomous job self-queues on the host lock and starves chat.
+		// lane (#11914): interactive turns wait by owner while background jobs
+		// run only when the lane is idle, otherwise failing admission immediately.
+		// This keeps autonomous jobs from self-queueing on the host lock.
 		const priority = params.priority ?? "interactive";
 
 		// GPU delegation: run the whole decode in the bionic app process over the
@@ -1847,7 +1845,6 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
 				{
 					priority,
 					label: `${slot} bionic-host (${lane.prompt.length} chars, maxTokens=${baseRequest.maxTokens})`,
-					...(lane.lockWaitMs !== undefined ? { waitMs: lane.lockWaitMs } : {}),
 					...(params.signal ? { signal: params.signal } : {}),
 				},
 				async () => {
@@ -1937,7 +1934,6 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
 			{
 				priority,
 				label: `${slot} device-bridge (${lane.prompt.length} chars)`,
-				...(lane.lockWaitMs !== undefined ? { waitMs: lane.lockWaitMs } : {}),
 				...(params.signal ? { signal: params.signal } : {}),
 			},
 			() =>

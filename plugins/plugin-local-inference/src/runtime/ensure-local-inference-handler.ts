@@ -494,14 +494,13 @@ function makeHandler(slot: AgentModelSlot): GenerateTextHandler {
 		// the mobile / device-bridge path (bionic host / AOSP adapter / device
 		// bridge). Those backends decode ONE request at a time on a shared
 		// resident model, so route through the process-wide interactive-over-
-		// background lane (#11914): interactive turns dispatch ahead of queued
-		// background jobs; background jobs wait a bounded time and are clamped
-		// to the device-class budget. Desktop falls through to the standalone
+		// background lane (#11914): interactive turns wait by owner; background
+		// jobs run only while idle and otherwise fail admission immediately.
+		// Desktop falls through to the standalone
 		// engine, which owns its own session pool and is NOT gated.
 		if (loader?.generate) {
 			const generate = loader.generate.bind(loader);
 			const priority = params.priority ?? "interactive";
-			let lockWaitMs: number | undefined;
 			if (priority === "background") {
 				const budget = resolveBackgroundInferenceBudget(
 					inferenceRamClassFromEnv() ?? "standard",
@@ -517,13 +516,11 @@ function makeHandler(slot: AgentModelSlot): GenerateTextHandler {
 				}
 				engineArgs.prompt = clamped.prompt;
 				engineArgs.maxTokens = clamped.maxTokens;
-				lockWaitMs = budget.lockWaitMs;
 			}
 			return getInferencePriorityGate().runExclusive(
 				{
 					priority,
 					label: `${slot} local-loader (${engineArgs.prompt.length} chars)`,
-					...(lockWaitMs !== undefined ? { waitMs: lockWaitMs } : {}),
 					...(params.signal ? { signal: params.signal } : {}),
 				},
 				() => generate(engineArgs),

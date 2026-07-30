@@ -13,19 +13,14 @@
  *
  * The gate is the TS-side owner of that lane:
  *
- *   - **Two lanes, interactive first.** Requests acquire the gate before
- *     touching the native lane. When the lane frees, waiting interactive
- *     requests always dispatch before waiting background requests; within a
- *     lane order is FIFO.
- *   - **Background never queues in front of interactive.** A background
- *     acquisition only starts when the lane is idle AND no interactive request
- *     is waiting.
- *   - **Bounded background wait.** A background acquisition that cannot start
- *     within its wait budget fails with {@link InferenceBackgroundWaitTimeoutError}
- *     BEFORE any native/host work is enqueued. The scheduled-task layer's
- *     existing failure handling (backoff + blocking re-fire suppression in
- *     `TaskService`) then coalesces the job instead of stacking host-side work
- *     — the same structural rule the LifeOps scheduler follows.
+ *   - **Interactive FIFO.** Requests acquire the gate before touching the
+ *     native lane. Waiting interactive requests dispatch in arrival order.
+ *   - **Background never queues.** A background acquisition starts only when
+ *     the lane is idle. If another decode owns the lane, it fails immediately
+ *     with {@link InferenceLaneBusyError} before native/host work is enqueued.
+ *     The scheduled-task layer's existing failure handling (backoff + blocking
+ *     re-fire suppression in `TaskService`) coalesces the job instead of
+ *     stacking work or waiting for an arbitrary wall-clock deadline.
  *   - **No preemption.** An in-flight decode is never cancelled; interactive
  *     priority means jumping the queue, not yanking the lock.
  *
@@ -78,20 +73,16 @@ export interface BackgroundInferenceBudget {
 	maxTokens: number;
 	/** Cap on prompt length in characters (middle-truncated, ends preserved). */
 	maxPromptChars: number;
-	/** Bounded gate wait before the background request fails without running. */
-	lockWaitMs: number;
 }
 
 const CONSTRAINED_BACKGROUND_BUDGET: BackgroundInferenceBudget = {
 	maxTokens: 192,
 	maxPromptChars: 4_000,
-	lockWaitMs: 120_000,
 };
 
 const STANDARD_BACKGROUND_BUDGET: BackgroundInferenceBudget = {
 	maxTokens: 1_024,
 	maxPromptChars: 24_000,
-	lockWaitMs: 300_000,
 };
 
 /** Resolve the background generation budget for a device RAM class. */
@@ -155,29 +146,27 @@ export function applyBackgroundInferenceBudget(
 }
 
 /**
- * Thrown when a background acquisition cannot start within its wait budget.
- * The request never reached the native lane; the scheduled-task layer's
- * failure/backoff path handles the re-fire.
+ * Thrown when background inference finds the local lane already owned. The
+ * request never queues or reaches the native lane; the scheduled-task layer's
+ * failure/backoff path owns any later retry.
  */
-export class InferenceBackgroundWaitTimeoutError extends Error {
-	readonly code = "INFERENCE_BACKGROUND_WAIT_TIMEOUT";
-	constructor(waitedMs: number, holder: string | null) {
+export class InferenceLaneBusyError extends Error {
+	readonly code = "INFERENCE_LANE_BUSY";
+	constructor(holder: string | null) {
 		super(
-			`[InferencePriorityGate] background inference request timed out after ${waitedMs}ms waiting for the local model lane` +
+			"[InferencePriorityGate] local model lane is busy; background inference was not queued" +
 				(holder ? ` (held by ${holder})` : "") +
-				"; the job was not started and will be retried by its scheduler",
+				"; the scheduler owns any retry",
 		);
-		this.name = "InferenceBackgroundWaitTimeoutError";
+		this.name = "InferenceLaneBusyError";
 	}
 }
 
 interface GateWaiter {
-	priority: LocalInferencePriority;
 	label: string;
-	enqueuedAtMs: number;
 	grant: () => void;
 	fail: (err: Error) => void;
-	/** Cleanup for the waiter's timeout timer / abort listener. */
+	/** Cleanup for the waiter's abort listener. */
 	settle: () => void;
 }
 
@@ -200,11 +189,6 @@ export interface InferencePriorityGateSnapshot {
 
 export interface RunExclusiveOptions {
 	priority: LocalInferencePriority;
-	/**
-	 * Bounded wait for background requests, ms. Ignored for interactive
-	 * requests (their own transport timeout governs the total).
-	 */
-	waitMs?: number;
 	/** Abort while WAITING dequeues the request; in-flight work is not cancelled here. */
 	signal?: AbortSignal;
 	/** Short label for lock telemetry (e.g. "TEXT_LARGE", "bionic-generate"). */
@@ -212,7 +196,7 @@ export interface RunExclusiveOptions {
 }
 
 /**
- * Two-lane priority lock for the single local inference lane. See module doc.
+ * Ownership gate for the single local inference lane. See module doc.
  */
 export class InferencePriorityGate {
 	private readonly now: () => number;
@@ -224,7 +208,6 @@ export class InferencePriorityGate {
 		acquiredAtMs: number;
 	} | null = null;
 	private readonly interactiveQueue: GateWaiter[] = [];
-	private readonly backgroundQueue: GateWaiter[] = [];
 
 	constructor(opts: InferencePriorityGateOptions = {}) {
 		this.now = opts.now ?? (() => Date.now());
@@ -238,15 +221,16 @@ export class InferencePriorityGate {
 			holderLabel: this.holder?.label ?? null,
 			holderHeldMs: this.holder ? this.now() - this.holder.acquiredAtMs : 0,
 			interactiveWaiting: this.interactiveQueue.length,
-			backgroundWaiting: this.backgroundQueue.length,
+			// Retained in the snapshot contract for telemetry compatibility.
+			// Background work is admission-only and therefore never waits.
+			backgroundWaiting: 0,
 		};
 	}
 
 	/**
-	 * Run `fn` while holding the lane. Interactive requests wait indefinitely
-	 * (FIFO among themselves, always ahead of background); background requests
-	 * start only when the lane is idle with no interactive waiter, and fail
-	 * with {@link InferenceBackgroundWaitTimeoutError} after `waitMs`.
+	 * Run `fn` while holding the lane. Interactive requests wait FIFO and remain
+	 * owner-cancellable. Background requests run only when idle and otherwise
+	 * fail immediately with {@link InferenceLaneBusyError}.
 	 */
 	async runExclusive<T>(
 		opts: RunExclusiveOptions,
@@ -272,29 +256,29 @@ export class InferencePriorityGate {
 			);
 		}
 
-		const canStartNow =
-			this.holder === null &&
-			(priority === "interactive" || this.interactiveQueue.length === 0);
-		if (canStartNow) {
+		if (this.holder === null) {
 			this.holder = { priority, label, acquiredAtMs: this.now() };
 			return Promise.resolve();
 		}
 
-		if (priority === "interactive" && this.holder?.priority === "background") {
+		if (priority === "background") {
+			this.logger?.info(
+				`[InferencePriorityGate] background ${label} rejected because ${this.holder.label} owns the local model lane`,
+			);
+			return Promise.reject(new InferenceLaneBusyError(this.holder.label));
+		}
+
+		if (this.holder.priority === "background") {
 			this.logger?.warn(
-				`[InferencePriorityGate] interactive ${label} waiting on a background job (${this.holder.label}) that has held the local model lane for ${this.now() - this.holder.acquiredAtMs}ms; it will run next — ahead of ${this.backgroundQueue.length} queued background job(s)`,
+				`[InferencePriorityGate] interactive ${label} waiting on a background job (${this.holder.label}) that has held the local model lane for ${this.now() - this.holder.acquiredAtMs}ms; it will run next`,
 			);
 		}
 
 		return new Promise<void>((resolve, reject) => {
-			const enqueuedAtMs = this.now();
-			let timer: NodeJS.Timeout | null = null;
 			let abortListener: (() => void) | null = null;
 
 			const waiter: GateWaiter = {
-				priority,
 				label,
-				enqueuedAtMs,
 				grant: () => {
 					waiter.settle();
 					this.holder = { priority, label, acquiredAtMs: this.now() };
@@ -302,36 +286,17 @@ export class InferencePriorityGate {
 				},
 				fail: (err: Error) => {
 					waiter.settle();
-					this.removeWaiter(waiter);
+					const index = this.interactiveQueue.indexOf(waiter);
+					if (index >= 0) this.interactiveQueue.splice(index, 1);
 					reject(err);
 				},
 				settle: () => {
-					if (timer) {
-						clearTimeout(timer);
-						timer = null;
-					}
 					if (abortListener && opts.signal) {
 						opts.signal.removeEventListener("abort", abortListener);
 						abortListener = null;
 					}
 				},
 			};
-
-			if (priority === "background" && opts.waitMs !== undefined) {
-				const waitMs = Math.max(0, opts.waitMs);
-				timer = setTimeout(() => {
-					this.logger?.warn(
-						`[InferencePriorityGate] background ${label} gave up after ${this.now() - enqueuedAtMs}ms waiting for the local model lane (holder=${this.holder?.label ?? "none"}, interactiveWaiting=${this.interactiveQueue.length})`,
-					);
-					waiter.fail(
-						new InferenceBackgroundWaitTimeoutError(
-							this.now() - enqueuedAtMs,
-							this.holder ? this.holder.label : null,
-						),
-					);
-				}, waitMs);
-				timer.unref?.();
-			}
 
 			if (opts.signal) {
 				abortListener = () => {
@@ -344,25 +309,13 @@ export class InferencePriorityGate {
 				opts.signal.addEventListener("abort", abortListener, { once: true });
 			}
 
-			(priority === "interactive"
-				? this.interactiveQueue
-				: this.backgroundQueue
-			).push(waiter);
+			this.interactiveQueue.push(waiter);
 		});
-	}
-
-	private removeWaiter(waiter: GateWaiter): void {
-		const queue =
-			waiter.priority === "interactive"
-				? this.interactiveQueue
-				: this.backgroundQueue;
-		const index = queue.indexOf(waiter);
-		if (index >= 0) queue.splice(index, 1);
 	}
 
 	private release(): void {
 		this.holder = null;
-		const next = this.interactiveQueue.shift() ?? this.backgroundQueue.shift();
+		const next = this.interactiveQueue.shift();
 		next?.grant();
 	}
 }
