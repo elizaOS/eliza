@@ -58,6 +58,7 @@ const EXPECTED_COMMANDS = [
   "bun run --cwd plugins/plugin-app-control test",
   "bun run --cwd plugins/plugin-task-coordinator test",
   "bun run --cwd plugins/plugin-browser test",
+  "pwsh -NoLogo -NoProfile -File packages/scripts/__tests__/windows-ci-command-runner.test.ps1",
   "bun run --cwd plugins/plugin-coding-tools build",
   "node packages/scripts/run-turbo.mjs run build --filter=@elizaos/core --filter=@elizaos/shared --filter=@elizaos/agent --concurrency=1",
   "node packages/scripts/run-bash-linux-only.mjs scripts/verify-riscv64-buildpaths.sh",
@@ -105,6 +106,19 @@ describe("Windows CI workflow", () => {
     ]) {
       expect(workflowText).toContain(command);
     }
+  });
+
+  test("routes every matrix command through the bounded native-crash runner", () => {
+    expect(workflowText).toContain(
+      'Import-Module "$PWD/packages/scripts/windows-ci-command-runner.psm1" -Force',
+    );
+    expect(workflowText).toContain(
+      "$code = Invoke-WindowsCiCommand -Command $command",
+    );
+    expect(workflowText).toContain(
+      'Write-Error -ErrorAction Continue "Command failed with exit code $code`: $command"',
+    );
+    expect(workflowText).not.toContain("Invoke-Expression $command");
   });
 
   test("delegates the Windows PGlite quarantine to the package runner", () => {
