@@ -43,7 +43,6 @@ import {
   OPTIONAL_STATIC_PLUGIN_REGISTRATIONS,
   optionalPluginImportSpecifier,
 } from "./optional-plugins.ts";
-import { deduplicatePluginActions } from "./plugin-action-dedupe.ts";
 import {
   isWorkspacePluginSourceFallbackAllowed,
   type PluginResolutionPhase,
@@ -65,7 +64,6 @@ import {
   type RuntimeSettingsProjectionOptions,
 } from "./runtime-settings.ts";
 
-export { deduplicatePluginActions } from "./plugin-action-dedupe.ts";
 export {
   CHANNEL_PLUGIN_MAP,
   collectPluginNames,
@@ -112,7 +110,6 @@ import {
   addLogListener,
   ChannelType,
   type Component,
-  createBasicCapabilitiesPlugin,
   createMessageMemory,
   drainAppRoutePluginLoaders,
   E2B_SANDBOX_FACTORY_SERVICE_TYPE,
@@ -318,8 +315,9 @@ import {
   applyPluginRoleGating,
   installProviderRoleGatingChokepoint,
 } from "./plugin-role-gating.ts";
+import { planPluginRegistrationWaves } from "./plugin-registration-waves.ts";
 import { validateIntentActionMap } from "./prompt-compaction.ts";
-import rolesPlugin from "./roles.ts";
+import { createRolesPlugin } from "./roles.ts";
 import { shouldRegisterSubAgentCredentialsPlugin } from "./sub-agent-credentials-runtime-policy.ts";
 import {
   installDatabaseTrajectoryLogger,
@@ -395,27 +393,47 @@ function resolveWorkspacePluginSourceEntry(packageName: string): string | null {
 // generated importer. Plugins not in the map (e.g. desktop-only gitpathologist)
 // load through a bare dynamic import from a node_modules/desktop install.
 const loadOptionalPlugin = async (packageName: string): Promise<unknown> => {
+  let primaryError: unknown;
   try {
     const importer = OPTIONAL_PLUGIN_IMPORTERS[packageName];
     if (importer) return await importer();
     return await import(optionalPluginImportSpecifier(packageName));
-  } catch {
-    if (isWorkspacePluginSourceFallbackAllowed()) {
-      const sourceEntry = resolveWorkspacePluginSourceEntry(packageName);
-      if (sourceEntry) {
-        try {
-          logger.debug(
-            `[eliza] Loading ${packageName} from workspace source at ${sourceEntry}`,
-          );
-          return await import(pathToFileURL(sourceEntry).href);
-        } catch {
-          // Missing or unbuildable optional plugins are omitted from
-          // STATIC_ELIZA_PLUGINS.
-        }
-      }
-    }
-    return null;
+  } catch (error) {
+    primaryError = error;
   }
+
+  const sourceEntry = isWorkspacePluginSourceFallbackAllowed()
+    ? resolveWorkspacePluginSourceEntry(packageName)
+    : null;
+  if (sourceEntry) {
+    try {
+      logger.debug(
+        `[eliza] Loading ${packageName} from workspace source at ${sourceEntry}`,
+      );
+      return await import(pathToFileURL(sourceEntry).href);
+    } catch (fallbackError) {
+      throw new AggregateError(
+        [
+          primaryError instanceof Error
+            ? primaryError
+            : new Error(String(primaryError)),
+          fallbackError instanceof Error
+            ? fallbackError
+            : new Error(String(fallbackError)),
+        ],
+        `Failed to load optional plugin ${packageName} from its configured importer and workspace source fallback`,
+      );
+    }
+  }
+
+  if (primaryError instanceof Error) {
+    throw new Error(`Failed to load optional plugin ${packageName}`, {
+      cause: primaryError,
+    });
+  }
+  throw new Error(
+    `Failed to load optional plugin ${packageName}: ${String(primaryError)}`,
+  );
 };
 
 // IMPORTANT: Do NOT pull plugin modules in via top-level `await` at module scope.
@@ -582,82 +600,75 @@ function shouldBlockDeferredPluginImports(): boolean {
 async function registerStaticPluginPhase(
   phase: CoreStaticPluginPhase,
 ): Promise<void> {
-  const bootTimeoutMs = Number(
-    process.env.ELIZA_PLUGIN_BOOT_TIMEOUT_MS ?? 30_000,
-  );
   const registrations = CORE_STATIC_PLUGIN_REGISTRATIONS.filter(
     (registration) => registration.phase === phase,
   );
   logger.info(
-    `[boot] resolving ${phase} plugins (${registrations.length}, timeout=${bootTimeoutMs}ms)`,
+    `[boot] resolving ${phase} plugins in parallel (${registrations.length})`,
   );
 
-  const trackImport = async (
+  const loadPlugin = async (
     registration: CoreStaticPluginRegistration,
-  ): Promise<void> => {
+  ): Promise<
+    | {
+        registration: CoreStaticPluginRegistration;
+        mod: unknown;
+        elapsedMs: number;
+      }
+    | {
+        registration: CoreStaticPluginRegistration;
+        error: unknown;
+        elapsedMs: number;
+      }
+  > => {
     const startedAt = Date.now();
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const timeout = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => {
-        reject(
-          new Error(
-            `plugin ${registration.packageName} timed out after ${bootTimeoutMs}ms`,
-          ),
-        );
-      }, bootTimeoutMs);
-      if (typeof timer.unref === "function") timer.unref();
-    });
-
     try {
-      const mod = await Promise.race([registration.load(), timeout]);
-      if (!mod) {
-        if (registration.required) {
-          throw new Error(`${registration.packageName} resolved to null`);
-        }
-        logger.warn(
-          `[boot] ${registration.packageName} skipped after ${Date.now() - startedAt}ms: module unavailable`,
-        );
-        return;
-      }
-      STATIC_ELIZA_PLUGINS[
-        registration.registryName ?? registration.packageName
-      ] = mod;
-      logger.info(
-        `[boot] ${registration.packageName} loaded in ${Date.now() - startedAt}ms`,
-      );
-    } catch (err) {
-      const elapsed = Date.now() - startedAt;
-      if (registration.required) {
-        logger.error(
-          `[boot] ${registration.packageName} FAILED after ${elapsed}ms: ${formatError(err)}`,
-        );
-        throw err;
-      }
-      logger.warn(
-        `[boot] ${registration.packageName} skipped after ${elapsed}ms: ${formatError(err)}`,
-      );
-    } finally {
-      if (timer) clearTimeout(timer);
+      return {
+        registration,
+        mod: await registration.load(),
+        elapsedMs: Date.now() - startedAt,
+      };
+    } catch (error) {
+      return {
+        registration,
+        error,
+        elapsedMs: Date.now() - startedAt,
+      };
     }
   };
 
-  if (phase === "deferred") {
-    // Deferred plugins run in the background after the API server is already
-    // listening; they must not hold the ready gate. Importing them one at a
-    // time and yielding to the event loop (setImmediate) between each lets the
-    // bound HTTP server serve /api/health (and other I/O) between the CPU-bound
-    // module evaluations, instead of starving it until the whole batch finishes
-    // (observed ready was dominated by this on contended hosts). All plugins
-    // still register — only the scheduling changes.
-    for (const registration of registrations) {
-      await trackImport(registration);
-      await new Promise<void>((resolve) => {
-        setImmediate(resolve);
-      });
+  // Start every independent module resolution before awaiting any one of them.
+  // An elapsed-time race cannot cancel import() and only hides modules that
+  // finish later, so liveness comes from the import promise itself. Apply the
+  // completed results in descriptor order to keep the registry deterministic.
+  const results = await Promise.all(registrations.map(loadPlugin));
+  for (const result of results) {
+    const { registration, elapsedMs } = result;
+    if ("error" in result || !result.mod) {
+      const error =
+        "error" in result
+          ? result.error
+          : new Error(`${registration.packageName} resolved to null`);
+      if (registration.required) {
+        logger.error(
+          `[boot] ${registration.packageName} FAILED after ${elapsedMs}ms: ${formatError(error)}`,
+        );
+        throw error;
+      }
+      logger.warn(
+        `[boot] ${registration.packageName} skipped after ${elapsedMs}ms: ${formatError(error)}`,
+      );
+      continue;
     }
+    STATIC_ELIZA_PLUGINS[
+      registration.registryName ?? registration.packageName
+    ] = result.mod;
+    logger.info(`[boot] ${registration.packageName} loaded in ${elapsedMs}ms`);
+  }
+
+  if (phase === "deferred") {
     _deferredStaticPluginsRegistered = true;
   } else {
-    await Promise.all(registrations.map(trackImport));
     _blockingStaticPluginsRegistered = true;
   }
 }
@@ -1668,8 +1679,6 @@ type TrajectoryLoggerRuntimeLike = {
 
 async function waitForTrajectoriesService(
   runtime: AgentRuntime,
-  context: string,
-  timeoutMs = 3000,
 ): Promise<void> {
   if (!runtimeTrajectoriesEnabled(runtime)) {
     return;
@@ -1697,32 +1706,7 @@ async function waitForTrajectoriesService(
 
   if (typeof runtimeLike.getServiceLoadPromise !== "function") return;
 
-  let timedOut = false;
-  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
-  const timeoutPromise = new Promise<void>((resolve) => {
-    timeoutHandle = setTimeout(() => {
-      timedOut = true;
-      resolve();
-    }, timeoutMs);
-  });
-
-  try {
-    await Promise.race([
-      runtimeLike.getServiceLoadPromise("trajectories").then(() => {}),
-      timeoutPromise,
-    ]);
-    if (timedOut) {
-      logger.debug(
-        `[eliza] trajectories still ${registrationStatus} after ${timeoutMs}ms (${context})`,
-      );
-    }
-  } catch (err) {
-    logger.debug(
-      `[eliza] trajectories registration failed while waiting (${context}): ${formatError(err)}`,
-    );
-  } finally {
-    if (timeoutHandle) clearTimeout(timeoutHandle);
-  }
+  await runtimeLike.getServiceLoadPromise("trajectories");
 }
 
 function ensureTrajectoryLoggerEnabled(
@@ -1764,48 +1748,29 @@ function ensureTrajectoryLoggerEnabled(
 
 async function installPromptOptimizationLayer(
   runtime: AgentRuntime,
-  context: string,
+  _context: string,
   config?: ElizaConfig,
 ): Promise<void> {
-  try {
-    const { installPromptOptimizations } = await import(
-      "./prompt-optimization.ts"
-    );
-    installPromptOptimizations(runtime, config);
-  } catch (err) {
-    logger.warn(
-      `[eliza] Failed to install prompt optimizations (${context}): ${err instanceof Error ? err.message : err}`,
-    );
-  }
+  const { installPromptOptimizations } = await import(
+    "./prompt-optimization.ts"
+  );
+  installPromptOptimizations(runtime, config);
 }
 
 /**
- * The service-dependent half of trajectory-capture prep: wait (3s-capped) for
- * the async "trajectories" service registration, default its enabled state,
- * and bridge it to the SQL trajectory_steps tables that the viewer +
- * collection read. Without the bridge the core service captures LLM calls
- * only into its own trajectory_step_index store, so every platform without
- * the plugin-training log-backfill (mobile, cloud) shows a trajectory with
- * zero recorded LLM calls. Split out of {@link
- * prepareRuntimeForTrajectoryCapture} so the first boot can start it in the
- * background (joined by the deferred wave) instead of blocking
- * initializeCoreRuntime on the service wait; capture of any LLM call that
- * lands before this settles may be lost — the accepted trade for the faster
- * readiness gate.
+ * The service-dependent half of trajectory-capture prep waits for trajectory
+ * registration and bridges it to the SQL trajectory_steps tables consumed by
+ * the viewer and collection pipeline. The first boot starts this work beside
+ * runtime initialization, then the deferred wave joins it before loading
+ * plugins that can issue model calls.
  */
 async function wireTrajectoryCaptureService(
   runtime: AgentRuntime,
   context: string,
 ): Promise<void> {
-  await waitForTrajectoriesService(runtime, context);
+  await waitForTrajectoriesService(runtime);
   ensureTrajectoryLoggerEnabled(runtime, context);
-  try {
-    await installDatabaseTrajectoryLogger(runtime);
-  } catch (err) {
-    logger.warn(
-      `[eliza] Failed to install database trajectory logger (${context}): ${err instanceof Error ? err.message : err}`,
-    );
-  }
+  await installDatabaseTrajectoryLogger(runtime);
 }
 
 async function prepareRuntimeForTrajectoryCapture(
@@ -3282,13 +3247,105 @@ const CORE_PLUGIN_BOOT_DEPENDENCIES = new Map<string, readonly string[]>([
   ["@elizaos/plugin-agent-skills", ["@elizaos/plugin-shell"]],
 ]);
 
+async function registerPluginDependencyWaves(args: {
+  runtime: AgentRuntime;
+  resolvedPlugins: readonly RuntimeResolvedPlugin[];
+  alreadyRegistered: ReadonlySet<string>;
+  label: string;
+  additionalDependencies?: ReadonlyMap<string, readonly string[]>;
+}): Promise<void> {
+  const byName = new Map(
+    args.resolvedPlugins.map((resolved) => [resolved.name, resolved]),
+  );
+  const entries = args.resolvedPlugins.map((resolved) => ({
+    name: resolved.name,
+    dependencies: [
+      ...(resolved.plugin.dependencies ?? []),
+      ...(args.additionalDependencies?.get(resolved.name) ?? []),
+    ],
+  }));
+  const waves = planPluginRegistrationWaves(entries, args.alreadyRegistered);
+  const failed = new Map<string, Error>();
+
+  for (const wave of waves) {
+    const runnable = wave.filter((name) => {
+      const resolved = byName.get(name);
+      if (!resolved) {
+        throw new Error(`Missing resolved plugin descriptor for ${name}`);
+      }
+      const failedDependencies = (resolved.plugin.dependencies ?? []).filter(
+        (dependency) => failed.has(dependency),
+      );
+      failedDependencies.push(
+        ...(args.additionalDependencies?.get(name) ?? []).filter((dependency) =>
+          failed.has(dependency),
+        ),
+      );
+      if (failedDependencies.length === 0) return true;
+      failed.set(
+        name,
+        new Error(
+          `Plugin ${name} was not registered because dependencies failed: ${failedDependencies.join(", ")}`,
+        ),
+      );
+      return false;
+    });
+
+    const outcomes = await Promise.all(
+      runnable.map(async (name) => {
+        const resolved = byName.get(name);
+        if (!resolved) {
+          throw new Error(`Missing resolved plugin descriptor for ${name}`);
+        }
+        const startedAt = Date.now();
+        logger.info(`[eliza] ${args.label}: Registering plugin: ${name}...`);
+        try {
+          await args.runtime.registerPlugin(resolved.plugin);
+          logger.info(
+            `[eliza] ${args.label}: ✓ ${name} registered (${Date.now() - startedAt}ms)`,
+          );
+          return { name, error: null };
+        } catch (cause) {
+          const error =
+            cause instanceof Error ? cause : new Error(String(cause));
+          logger.warn(
+            `[eliza] ${args.label}: Plugin ${name} registration failed: ${formatError(error)}`,
+          );
+          return { name, error };
+        }
+      }),
+    );
+    for (const outcome of outcomes) {
+      if (outcome.error) failed.set(outcome.name, outcome.error);
+    }
+
+    if (waves.at(-1) !== wave) {
+      await new Promise<void>((resolve) => {
+        setImmediate(resolve);
+      });
+    }
+  }
+
+  if (failed.size > 0) {
+    throw new AggregateError(
+      [...failed].map(
+        ([name, error]) =>
+          new Error(`Plugin ${name} failed during ${args.label}`, {
+            cause: error,
+          }),
+      ),
+      `${args.label} plugin registration failed for ${[...failed.keys()].join(", ")}`,
+    );
+  }
+}
+
 async function preregisterCorePluginsInDependencyWaves(args: {
   runtime: AgentRuntime;
   resolvedPlugins: RuntimeResolvedPlugin[];
   alreadyPreRegistered: Set<string>;
   label?: string;
 }): Promise<void> {
-  const pending = new Map<string, RuntimeResolvedPlugin>();
+  const pluginsToRegister: RuntimeResolvedPlugin[] = [];
   for (const name of CORE_PLUGINS) {
     if (args.alreadyPreRegistered.has(name)) continue;
     const resolved = args.resolvedPlugins.find((p) => p.name === name);
@@ -3298,70 +3355,15 @@ async function preregisterCorePluginsInDependencyWaves(args: {
       );
       continue;
     }
-    pending.set(name, resolved);
+    pluginsToRegister.push(resolved);
   }
-
-  const registered = new Set(args.alreadyPreRegistered);
-  const timeoutMs = 30_000;
-  const context = args.label ? `${args.label}: ` : "";
-
-  const registerOne = async (
-    name: string,
-    resolved: RuntimeResolvedPlugin,
-  ): Promise<void> => {
-    try {
-      const regStart = Date.now();
-      logger.info(`[eliza] ${context}Pre-registering core plugin: ${name}...`);
-      await Promise.race([
-        args.runtime.registerPlugin(resolved.plugin),
-        new Promise<never>((_resolve, reject) =>
-          setTimeout(
-            () => reject(new Error(`Timed out after ${timeoutMs / 1000}s`)),
-            timeoutMs,
-          ),
-        ),
-      ]);
-      registered.add(name);
-      logger.info(
-        `[eliza] ${context}✓ ${name} pre-registered (${Date.now() - regStart}ms)`,
-      );
-    } catch (err) {
-      registered.add(name);
-      logger.warn(
-        `[eliza] ${context}Core plugin ${name} pre-registration failed: ${formatError(err)}`,
-      );
-    } finally {
-      pending.delete(name);
-    }
-  };
-
-  while (pending.size > 0) {
-    const ready: Array<[string, RuntimeResolvedPlugin]> = [];
-    for (const [name, resolved] of pending) {
-      const declaredDependencies = resolved.plugin.dependencies ?? [];
-      const bootDependencies = CORE_PLUGIN_BOOT_DEPENDENCIES.get(name) ?? [];
-      const dependencies = [...declaredDependencies, ...bootDependencies];
-      const hasPendingDependency = dependencies.some(
-        (dependency) => pending.has(dependency) && !registered.has(dependency),
-      );
-      if (!hasPendingDependency) {
-        ready.push([name, resolved]);
-      }
-    }
-
-    const wave = ready.length > 0 ? ready : Array.from(pending);
-    await Promise.all(
-      wave.map(([name, resolved]) => registerOne(name, resolved)),
-    );
-    // Yield to the event loop between waves so the bound HTTP server can serve
-    // /api/health and other I/O between CPU-bound wave registrations, instead
-    // of starving it until every wave finishes. Mirrors the deferred
-    // static-import yield above; pure scheduling, every plugin still registers
-    // in the same wave order.
-    await new Promise<void>((resolve) => {
-      setImmediate(resolve);
-    });
-  }
+  await registerPluginDependencyWaves({
+    runtime: args.runtime,
+    resolvedPlugins: pluginsToRegister,
+    alreadyRegistered: args.alreadyPreRegistered,
+    label: args.label ? `${args.label} core` : "core",
+    additionalDependencies: CORE_PLUGIN_BOOT_DEPENDENCIES,
+  });
 }
 
 export {
@@ -4329,35 +4331,20 @@ export async function startEliza(
     }
   }
 
-  // Deduplicate actions across all plugins to avoid "Action already registered"
-  // warnings from elizaOS core. basic-capabilities is registered first by the
-  // runtime, so include it in deduplication so its actions take precedence.
   const subAgentCredentialPlugins = shouldRegisterSubAgentCredentialsPlugin()
     ? [subAgentCredentialsPlugin]
     : [];
   const settings = character.settings ?? {};
-  const basicCapabilitiesPlugin = createBasicCapabilitiesPlugin({
-    disableBasic:
-      settings.DISABLE_BASIC_CAPABILITIES === true ||
-      settings.DISABLE_BASIC_CAPABILITIES === "true",
-    enableExtended:
-      settings.ENABLE_EXTENDED_CAPABILITIES === true ||
-      settings.ENABLE_EXTENDED_CAPABILITIES === "true" ||
-      settings.ADVANCED_CAPABILITIES === true ||
-      settings.ADVANCED_CAPABILITIES === "true",
-    skipCharacterProvider: false,
-    enableAutonomy:
-      settings.ENABLE_AUTONOMY === true || settings.ENABLE_AUTONOMY === "true",
-    // The app ships a Vault/Secrets settings section by default, so the
-    // matching chat action must be present in the default runtime as well.
-    enableSecretsManager: true,
+  const extendedCapabilitiesEnabled =
+    settings.ENABLE_EXTENDED_CAPABILITIES === true ||
+    settings.ENABLE_EXTENDED_CAPABILITIES === "true" ||
+    settings.ADVANCED_CAPABILITIES === true ||
+    settings.ADVANCED_CAPABILITIES === "true";
+  const rolesPlugin = createRolesPlugin({
+    // Core owns ROLE whenever its extended bundle is active. The roles plugin
+    // still owns the action for lean runtimes that intentionally disable it.
+    includeRoleAction: !extendedCapabilitiesEnabled,
   });
-  deduplicatePluginActions([
-    basicCapabilitiesPlugin,
-    ...subAgentCredentialPlugins,
-    elizaPlugin,
-    ...pluginsForRuntime,
-  ]);
 
   let runtime = new AgentRuntime({
     character,
@@ -4419,6 +4406,10 @@ export async function startEliza(
       );
     }
   }
+  const { registerLocalInferenceBoot } = await import(
+    /* @vite-ignore */ "@elizaos/plugin-local-inference/runtime"
+  );
+  await registerLocalInferenceBoot(runtime);
 
   // 7b. Pre-register plugin-sql so the adapter is ready before other plugins init.
   //     This is OPTIONAL — without it, some features (memory, todos) won't work.
@@ -4447,84 +4438,60 @@ export async function startEliza(
   //     shell, coding-tools, agent-skills, commands, google, lifeops, browser,
   //     video) are NOT essential to the chat path and are loaded in the
   //     background after the runtime is ready — see runDeferredBoot below.
-  try {
-    logger.info("[eliza] Pre-registering roles capability...");
-    await runtime.registerPlugin(rolesPlugin);
-    logger.info("[eliza] ✓ roles capability pre-registered");
-  } catch (err) {
-    logger.warn(
-      `[eliza] Roles capability pre-registration failed: ${formatError(err)}`,
-    );
-  }
+  logger.info("[eliza] Pre-registering roles capability...");
+  await runtime.registerPlugin(rolesPlugin);
+  logger.info("[eliza] ✓ roles capability pre-registered");
   bootTimer.lap("svc:roles-register");
 
   const warmAgentSkillsService = async (): Promise<void> => {
     // Let runtime startup complete first; this warm-up runs asynchronously
     // so API + agent come online immediately.
-    try {
-      const skillServicePromise = runtime.getServiceLoadPromise(
-        "AGENT_SKILLS_SERVICE",
+    await runtime.getServiceLoadPromise("AGENT_SKILLS_SERVICE");
+
+    const svc = runtime.getService("AGENT_SKILLS_SERVICE") as
+      | {
+          getCatalogStats?: () => {
+            loaded: number;
+            total: number;
+            storageType: string;
+          };
+        }
+      | null
+      | undefined;
+    if (svc?.getCatalogStats) {
+      const stats = svc.getCatalogStats();
+      logger.info(
+        `[eliza] AgentSkills ready — ${stats.loaded} skills loaded, ` +
+          `${stats.total} in catalog (storage: ${stats.storageType})`,
       );
-      const timeout = new Promise<never>((_resolve, reject) => {
-        setTimeout(() => {
-          reject(
-            new Error(
-              "AgentSkillsService warm-up timed out (10s) — non-blocking, agent will function without skills",
-            ),
-          );
-        }, 10_000);
-      });
-      await Promise.race([skillServicePromise, timeout]);
+    }
 
-      const svc = runtime.getService("AGENT_SKILLS_SERVICE") as
-        | {
-            getCatalogStats?: () => {
-              loaded: number;
-              total: number;
-              storageType: string;
-            };
+    // Guard against non-string skill.description values.
+    // The bundled YAML parser produces {} for multi-line descriptions, which
+    // crashes findBestLocalMatch / scoreSkillMatch (call .toLowerCase() on it).
+    // Instead of a one-shot sanitize (which misses skills loaded later by
+    // syncCatalog / autoRefresh), we monkey-patch getLoadedSkills to always
+    // return sanitized values.
+    const svcAny = svc as Record<string, unknown> | null | undefined;
+    const origGetLoaded = svcAny?.getLoadedSkills as
+      | ((...args: unknown[]) => Array<Record<string, unknown>>)
+      | undefined;
+    if (origGetLoaded && svcAny) {
+      (svcAny as Record<string, unknown>).getLoadedSkills = function (
+        ...args: unknown[]
+      ) {
+        const skills = origGetLoaded.apply(this, args);
+        for (const skill of skills) {
+          if (typeof skill.description !== "string") {
+            skill.description =
+              skill.description == null
+                ? ""
+                : JSON.stringify(skill.description);
           }
-        | null
-        | undefined;
-      if (svc?.getCatalogStats) {
-        const stats = svc.getCatalogStats();
-        logger.info(
-          `[eliza] AgentSkills ready — ${stats.loaded} skills loaded, ` +
-            `${stats.total} in catalog (storage: ${stats.storageType})`,
-        );
-      }
-
-      // Guard against non-string skill.description values.
-      // The bundled YAML parser produces {} for multi-line descriptions, which
-      // crashes findBestLocalMatch / scoreSkillMatch (call .toLowerCase() on it).
-      // Instead of a one-shot sanitize (which misses skills loaded later by
-      // syncCatalog / autoRefresh), we monkey-patch getLoadedSkills to always
-      // return sanitized values.
-      const svcAny = svc as Record<string, unknown> | null | undefined;
-      const origGetLoaded = svcAny?.getLoadedSkills as
-        | ((...args: unknown[]) => Array<Record<string, unknown>>)
-        | undefined;
-      if (origGetLoaded && svcAny) {
-        (svcAny as Record<string, unknown>).getLoadedSkills = function (
-          ...args: unknown[]
-        ) {
-          const skills = origGetLoaded.apply(this, args);
-          for (const skill of skills) {
-            if (typeof skill.description !== "string") {
-              skill.description =
-                skill.description == null
-                  ? ""
-                  : JSON.stringify(skill.description);
-            }
-          }
-          return skills;
-        };
-        logger.debug("[eliza] Patched getLoadedSkills to guard descriptions");
-      }
-    } catch (err) {
-      // Non-fatal — the agent can operate without skills. This warm-up runs
-      // async so it doesn't block startup.
-      logger.debug(`[eliza] AgentSkillsService warm-up: ${formatError(err)}`);
+        }
+        return skills;
+      };
+      logger.debug("[eliza] Patched getLoadedSkills to guard descriptions");
     }
   };
 
@@ -4903,7 +4870,9 @@ export async function startEliza(
 
   const startAgentSkillsWarmup = (): void => {
     void warmAgentSkillsService().catch((err) => {
-      logger.warn(`[eliza] Skills warm-up failed: ${formatError(err)}`);
+      runtime.reportError("eliza.agentSkillsWarmup", err, {
+        phase: "deferred-boot",
+      });
     });
   };
 
@@ -5095,16 +5064,26 @@ export async function startEliza(
         .map((plugin) => plugin.name)
         .filter((name): name is string => typeof name === "string"),
     );
+    const alreadyRegisteredPackageNames = new Set<string>([
+      "@elizaos/plugin-sql",
+      "@elizaos/plugin-local-inference",
+      ...deferredResolvedPlugins
+        .filter((resolved) =>
+          alreadyRegisteredPluginNames.has(resolved.plugin.name),
+        )
+        .map((resolved) => resolved.name),
+    ]);
     const deferredPluginsForRuntime = deferredResolvedPlugins
       .filter((p) => !PREREGISTER_PLUGINS.has(p.name))
-      .filter((p) => !alreadyRegisteredPluginNames.has(p.plugin.name ?? p.name))
-      .map((p) => p.plugin);
+      .filter(
+        (p) => !alreadyRegisteredPluginNames.has(p.plugin.name ?? p.name),
+      );
     if (deferredPluginsForRuntime.length === 0) {
       return;
     }
 
     if (preferredProviderPluginName) {
-      for (const plugin of deferredPluginsForRuntime) {
+      for (const { plugin } of deferredPluginsForRuntime) {
         if (plugin.name === preferredProviderPluginName) {
           plugin.priority = (plugin.priority ?? 0) + 10;
           logger.info(
@@ -5115,76 +5094,16 @@ export async function startEliza(
       }
     }
 
-    deduplicatePluginActions([
-      basicCapabilitiesPlugin,
-      ...subAgentCredentialPlugins,
-      elizaPlugin,
-      ...(runtime.plugins ?? []),
-      ...deferredPluginsForRuntime,
-    ]);
-
-    const timeoutMs = 30_000;
-    const registerDeferredPlugin = async (plugin: Plugin): Promise<void> => {
-      const startedAt = Date.now();
-      try {
-        logger.info(`[eliza] deferred: Registering plugin: ${plugin.name}...`);
-        await Promise.race([
-          runtime.registerPlugin(plugin),
-          new Promise<never>((_resolve, reject) =>
-            setTimeout(
-              () => reject(new Error(`Timed out after ${timeoutMs / 1000}s`)),
-              timeoutMs,
-            ),
-          ),
-        ]);
-        logger.info(
-          `[eliza] deferred: ✓ ${plugin.name} registered (${Date.now() - startedAt}ms)`,
-        );
-      } catch (err) {
-        // error-policy:#14415 — a deferred plugin that fails to register
-        // silently drops every capability it provides (its actions,
-        // providers, connectors). Report it so the failure is agent-visible
-        // via RECENT_ERRORS and escalates when a plugin fails repeatedly,
-        // rather than only landing in a boot-log warning the user never sees.
-        logger.warn(
-          `[eliza] deferred: Plugin ${plugin.name} registration failed: ${formatError(err)}`,
-        );
-        runtime.reportError("eliza.deferredPluginRegistration", err, {
-          plugin: plugin.name,
-          phase: "deferred-boot",
-        });
-      }
-    };
-    // Deferred registrations run behind an already-listening server. Launching
-    // every registerPlugin at once floods the event loop with CPU-bound init
-    // work and starves the bound HTTP server of I/O turns for the whole wave
-    // (loadperf F3). A small worker pool with a setImmediate yield between
-    // registrations lets /api/* interleave, while enough concurrency remains
-    // that one hung plugin (bounded by the 30s race above) cannot serialize
-    // the wave. Mirrors the yield-between-imports loop in the deferred static
-    // import phase.
-    const registrationConcurrency = 4;
-    let nextPluginIndex = 0;
-    await Promise.all(
-      Array.from(
-        {
-          length: Math.min(
-            registrationConcurrency,
-            deferredPluginsForRuntime.length,
-          ),
-        },
-        async () => {
-          while (nextPluginIndex < deferredPluginsForRuntime.length) {
-            const plugin = deferredPluginsForRuntime[nextPluginIndex];
-            nextPluginIndex += 1;
-            await registerDeferredPlugin(plugin);
-            await new Promise<void>((resolve) => {
-              setImmediate(resolve);
-            });
-          }
-        },
-      ),
-    );
+    // Dependency-free plugins share a wave and start together. A plugin enters
+    // a later wave only when one of its declared dependencies must finish
+    // first; cycles, missing dependencies, and failed prerequisites surface as
+    // one observable deferred-boot failure.
+    await registerPluginDependencyWaves({
+      runtime,
+      resolvedPlugins: deferredPluginsForRuntime,
+      alreadyRegistered: alreadyRegisteredPackageNames,
+      label: "deferred",
+    });
   };
 
   const resolveDeferredPluginsForBoot = async (): Promise<
@@ -5238,9 +5157,6 @@ export async function startEliza(
 
     if (!blockDeferredPluginImports) {
       const deferredResolvedPlugins = await resolveDeferredPluginsForBoot();
-      await registerDeferredRuntimePlugins(deferredResolvedPlugins);
-      bootTimer.lap("deferred:runtime-plugins");
-
       await preregisterCorePluginsInDependencyWaves({
         runtime,
         resolvedPlugins: deferredResolvedPlugins,
@@ -5251,6 +5167,9 @@ export async function startEliza(
         label: "deferred",
       });
       bootTimer.lap("deferred:core-plugin-waves");
+
+      await registerDeferredRuntimePlugins(deferredResolvedPlugins);
+      bootTimer.lap("deferred:runtime-plugins");
     }
 
     // Drain app-route plugin loaders into runtime.routes. App-route plugins
@@ -5575,44 +5494,10 @@ export async function startEliza(
       onRestart: async () => {
         logger.info("[eliza] Hot-reload: Restarting runtime...");
         try {
-          // Stop the old runtime to release resources (DB connections, timers, etc.)
-          //
-          // WHY the 2s timeout: some services — notably PTYService —
-          // shut down gracefully by awaiting each active session with a
-          // per-session timeout (up to ~5s). runtime.stop() awaits every
-          // service.stop() sequentially, so a single idle PTY session
-          // turns a provider switch into a multi-second block. During
-          // that window the runtime-operations active-op slot +
-          // agentState === "restarting" guard reject further clicks,
-          // which is why flipping through providers rapidly feels stuck.
-          //
-          // Cap the shutdown window at 2s; if it doesn't finish, log and
-          // bring the new runtime up anyway. Services that miss the
-          // window get GC'd when the process unwinds. This is fine for a
-          // user-initiated restart — the user asked for a new runtime;
-          // in-flight work on the old one is already obsolete.
-          try {
-            const SHUTDOWN_TIMEOUT_MS = 2000;
-            let shutdownTimedOut = false;
-            await Promise.race([
-              shutdownRuntime(runtime, "hot-reload cleanup"),
-              new Promise<void>((resolve) =>
-                setTimeout(() => {
-                  shutdownTimedOut = true;
-                  resolve();
-                }, SHUTDOWN_TIMEOUT_MS),
-              ),
-            ]);
-            if (shutdownTimedOut) {
-              logger.warn(
-                `[eliza] Hot-reload: old runtime shutdown exceeded ${SHUTDOWN_TIMEOUT_MS}ms; proceeding with new runtime`,
-              );
-            }
-          } catch (stopErr) {
-            logger.warn(
-              `[eliza] Hot-reload: old runtime stop failed: ${formatError(stopErr)}`,
-            );
-          }
+          // Stop the old runtime completely before constructing its
+          // replacement so no service, DB connection, or child process leaks
+          // across provider switches.
+          await shutdownRuntime(runtime, "hot-reload cleanup");
 
           // Reload config from disk (updated by API)
           const freshConfig = loadElizaConfig();
@@ -5710,11 +5595,15 @@ export async function startEliza(
               }
             }
           }
-          deduplicatePluginActions([
-            ...subAgentCredentialPlugins,
-            freshElizaPlugin,
-            ...freshPluginsForRuntime,
-          ]);
+          const freshSettings = freshCharacter.settings ?? {};
+          const freshExtendedCapabilitiesEnabled =
+            freshSettings.ENABLE_EXTENDED_CAPABILITIES === true ||
+            freshSettings.ENABLE_EXTENDED_CAPABILITIES === "true" ||
+            freshSettings.ADVANCED_CAPABILITIES === true ||
+            freshSettings.ADVANCED_CAPABILITIES === "true";
+          const freshRolesPlugin = createRolesPlugin({
+            includeRoleAction: !freshExtendedCapabilitiesEnabled,
+          });
           const newRuntime = new AgentRuntime({
             character: freshCharacter,
             enableSecretsManager: true,
@@ -5733,6 +5622,12 @@ export async function startEliza(
             }),
           });
           installRuntimeMethodBindings(newRuntime);
+          const {
+            registerLocalInferenceBoot: registerFreshLocalInferenceBoot,
+          } = await import(
+            /* @vite-ignore */ "@elizaos/plugin-local-inference/runtime"
+          );
+          await registerFreshLocalInferenceBoot(newRuntime);
 
           // Pre-register plugin-sql before initialize() so the adapter is ready,
           // matching initial startup. local-inference wires its handlers via the
@@ -5752,14 +5647,7 @@ export async function startEliza(
 
           // Pre-register remaining core plugins sequentially (same as startup)
           {
-            try {
-              await newRuntime.registerPlugin(rolesPlugin);
-            } catch (err) {
-              logger.warn(
-                `[eliza] Hot-reload: roles capability pre-registration failed: ${formatError(err)}`,
-              );
-            }
-
+            await newRuntime.registerPlugin(freshRolesPlugin);
             const alreadyPreRegistered = new Set<string>([
               "@elizaos/plugin-sql",
               "@elizaos/plugin-local-inference",

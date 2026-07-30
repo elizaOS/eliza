@@ -10,7 +10,9 @@ export const OPTIONAL_PLUGIN_IMPORTERS: Record<string, () => Promise<unknown>> =
     "@elizaos/plugin-agent-orchestrator": () =>
       import("@elizaos/plugin-agent-orchestrator"),
     "@elizaos/plugin-task-coordinator": () =>
-      import("@elizaos/plugin-task-coordinator"),
+      // biome-ignore lint/suspicious/noTsIgnore: optional literal imports may be unbuilt in sibling source typechecks.
+      // @ts-ignore: runtime-only subpath may be unbuilt during direct agent package typechecks.
+      import("@elizaos/plugin-task-coordinator/plugin"),
     "@elizaos/plugin-shell": () => import("@elizaos/plugin-shell"),
     "@elizaos/plugin-coding-tools": () =>
       import("@elizaos/plugin-coding-tools"),
@@ -23,14 +25,15 @@ export const OPTIONAL_PLUGIN_IMPORTERS: Record<string, () => Promise<unknown>> =
     "@elizaos/plugin-vision": () => import("@elizaos/plugin-vision"),
     "@elizaos/plugin-background-runner": () =>
       import("@elizaos/plugin-background-runner"),
-    // biome-ignore lint/suspicious/noTsIgnore: optional literal imports may be unbuilt in sibling source typechecks.
-    // @ts-ignore: optional mobile bundle plugin is outside sibling typecheck build graph; runtime import is guarded.
     "@elizaos/plugin-native-filesystem": () =>
+      // biome-ignore lint/suspicious/noTsIgnore: optional literal imports may be unbuilt in sibling source typechecks.
+      // @ts-ignore: optional mobile bundle plugin is outside sibling typecheck build graph; runtime import is guarded.
       import("@elizaos/plugin-native-filesystem"),
     "@elizaos/plugin-scheduling": () => import("@elizaos/plugin-scheduling"),
-    // biome-ignore lint/suspicious/noTsIgnore: optional literal imports may be unbuilt in sibling source typechecks.
-    // @ts-ignore: runtime subpath export is intentional; not every package tsconfig resolves its declaration condition.
-    "@elizaos/plugin-inbox": () => import("@elizaos/plugin-inbox/plugin"),
+    "@elizaos/plugin-inbox": () =>
+      // biome-ignore lint/suspicious/noTsIgnore: optional literal imports may be unbuilt in sibling source typechecks.
+      // @ts-ignore: runtime subpath export is intentional; not every package tsconfig resolves its declaration condition.
+      import("@elizaos/plugin-inbox/plugin"),
     "@elizaos/plugin-app-control": () => import("@elizaos/plugin-app-control"),
     "@elizaos/plugin-anthropic": () => import("@elizaos/plugin-anthropic"),
     "@elizaos/plugin-openai": () => import("@elizaos/plugin-openai"),

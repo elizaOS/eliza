@@ -116,8 +116,7 @@ export interface OptionalStaticPluginOverride {
   readonly registryName?: string;
   /**
    * When true, skip the import up front on android/ios instead of paying the
-   * full deferred-plugin boot timeout before it is dropped (desktop-only tools
-   * absent from the mobile bundle).
+   * resolution cost for a desktop-only tool absent from the mobile bundle.
    */
   readonly skipOnMobile?: boolean;
   /**
@@ -141,9 +140,16 @@ export const OPTIONAL_STATIC_PLUGIN_OVERRIDES: Readonly<
   Record<string, OptionalStaticPluginOverride>
 > = {
   "@elizaos/plugin-agent-orchestrator": { registryName: "agent-orchestrator" },
-  // Not in the mobile bundle — attempting the import there hangs the full
-  // deferred-plugin timeout before being skipped. Skip it up front on
-  // android/ios (it is a desktop dev tool, already gated in plugin-collector).
+  // The root barrel also exports React dashboard components. Mobile and
+  // headless runtimes need only the Plugin object and command action; using
+  // the runtime subpath avoids evaluating or bundling the entire UI graph.
+  "@elizaos/plugin-task-coordinator": {
+    importSubpath: "./plugin",
+    suppressTypeResolutionReason:
+      "runtime-only subpath may be unbuilt during direct agent package typechecks.",
+  },
+  // Not in the mobile bundle. Skip it up front on android/ios because it is a
+  // desktop dev tool already gated in plugin-collector.
   "@elizaos/plugin-gitpathologist": { skipOnMobile: true },
   // Root barrel exports the InboxView React components; the runtime plugin
   // object lives at the ./plugin subpath (src/plugin.ts). Bundling the root
@@ -191,10 +197,13 @@ export function renderOptionalPluginImportsModule(
       const specifier = optionalPluginImportSpecifier(pkg);
       const suppression =
         OPTIONAL_STATIC_PLUGIN_OVERRIDES[pkg]?.suppressTypeResolutionReason;
-      const comments = suppression
-        ? `  // biome-ignore lint/suspicious/noTsIgnore: optional literal imports may be unbuilt in sibling source typechecks.\n  // @ts-ignore: ${suppression}\n`
-        : "";
-      return `${comments}  "${pkg}": () => import("${specifier}"),`;
+      if (suppression) {
+        return `  "${pkg}": () =>
+    // biome-ignore lint/suspicious/noTsIgnore: optional literal imports may be unbuilt in sibling source typechecks.
+    // @ts-ignore: ${suppression}
+    import("${specifier}"),`;
+      }
+      return `  "${pkg}": () => import("${specifier}"),`;
     })
     .join("\n");
   return `// GENERATED FILE — DO NOT EDIT BY HAND.

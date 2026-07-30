@@ -187,29 +187,33 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
 
     init: async (_pluginConfig, runtime: IAgentRuntime) => {
       registerTriggerTaskWorker(runtime);
-      // One-time (#12177): fold legacy `schedule:<cron>` tag encoding on
-      // workbench tasks into a prompt-kind TriggerConfig. Idempotent; a
-      // failure must not block boot.
-      void migrateWorkbenchScheduleTags(runtime).catch((err) => {
-        runtime.logger.warn(
-          { src: "trigger-runtime", err: String(err) },
-          "Workbench schedule-tag migration failed",
-        );
-      });
       registerErrorEscalation(runtime);
       setCustomActionsRuntime(runtime);
       // Media store: persist inline data: URLs out of context/history, and
       // sweep orphaned files daily. The serving route is declared below.
       registerMediaPipelineHook(runtime);
-      registerMediaGcTask(runtime);
       // Attachment → knowledge ingest (#13593): mirror chat attachments into the
       // knowledge store, tagged by room/sender/role/media-format, with a
       // source-trust-derived scope (owner/DM → owner-private; public room →
       // user-private) so owner-only knowledge cannot spill into public rooms.
       registerAttachmentKnowledgeIngestHook(runtime);
-      // One-time (#13593): backfill room/media-format tags onto pre-existing
-      // transcript-mirror knowledge records. Idempotent; must not block boot.
-      registerAttachmentKnowledgeBackfillTask(runtime);
+      // Plugin init runs while AgentRuntime is still collecting schemas. Start
+      // DB-backed maintenance only after the one migration/provisioning pass.
+      void runtime.initPromise
+        .then(async () => {
+          if (!runtime.isInitialized()) {
+            throw new Error(
+              "Runtime initialization failed before maintenance setup",
+            );
+          }
+          await migrateWorkbenchScheduleTags(runtime);
+          registerMediaGcTask(runtime);
+          registerAttachmentKnowledgeBackfillTask(runtime);
+        })
+        .catch((error) => {
+          // error-policy:J1 background lifecycle boundary reports setup failure.
+          runtime.reportError("eliza.maintenanceBootstrap", error);
+        });
       const registerSkillsAsCommands = () => {
         const skillsService = runtime.getService("AGENT_SKILLS_SERVICE");
         if (!isAgentSkillsService(skillsService)) return false;
