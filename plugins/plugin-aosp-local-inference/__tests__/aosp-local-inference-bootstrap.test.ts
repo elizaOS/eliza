@@ -16,9 +16,9 @@ import {
 } from "../src/aosp-llama-paths";
 import {
   aospAsrAssetsPresent,
+  aospBundleSlugFromModelName,
   buildAospLoadModelArgs,
   buildGenerateArgsFromParams,
-  disabledAospEmbeddingVector,
   flattenGenerateTextParamsForAospPrompt,
   isAospLocalEmbeddingEnabled,
   makeAospTextToSpeechHandler,
@@ -28,6 +28,19 @@ import {
   shouldEvictChatForAvailMb,
   VOICE_COLOAD_KEEP_AVAIL_MB,
 } from "../src/aosp-local-inference-bootstrap";
+
+describe("aospBundleSlugFromModelName", () => {
+  it("maps stable product IDs and published filenames to architecture slugs", () => {
+    expect(aospBundleSlugFromModelName("eliza-1-2b")).toBe("e2b");
+    expect(aospBundleSlugFromModelName("eliza-1-e2b-128k.gguf")).toBe("e2b");
+    expect(aospBundleSlugFromModelName("eliza-1-4b")).toBe("e4b");
+    expect(aospBundleSlugFromModelName("eliza-1-e4b-128k.gguf")).toBe("e4b");
+  });
+
+  it("uses the published entry-tier slug when no model identity is available", () => {
+    expect(aospBundleSlugFromModelName("bundle")).toBe("e2b");
+  });
+});
 
 function withEnv<T>(
   overrides: Record<string, string | undefined>,
@@ -664,13 +677,6 @@ describe("AOSP embedding gate", () => {
     expect(
       isAospLocalEmbeddingEnabled({ ELIZA_LOCAL_EMBEDDING_ENABLED: "1" }),
     ).toBe(true);
-  });
-
-  it("returns a SQL-compatible zero vector while native embeddings are disabled", () => {
-    expect(disabledAospEmbeddingVector({})).toHaveLength(384);
-    expect(
-      disabledAospEmbeddingVector({ LOCAL_EMBEDDING_DIMENSIONS: "1024" }),
-    ).toHaveLength(1024);
   });
 });
 
