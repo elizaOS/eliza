@@ -274,12 +274,24 @@ function localAuthRequired(options: LoopbackTrustOptions): boolean {
  * policy gates; the host/origin/proxy classification is identical for all.
  */
 export function isTrustedLocalRequest(
-  req: Pick<http.IncomingMessage, "headers" | "socket">,
+  // `socket` is declared optional because it genuinely can be absent: Node nulls
+  // it once a connection is destroyed, and in-process route dispatch (tests, the
+  // embedded mobile transport) invokes handlers with a synthetic request that
+  // never had one. The type used to promise a socket, so the access below threw
+  // a TypeError instead of reaching a trust decision.
+  req: Pick<http.IncomingMessage, "headers"> & {
+    socket?: Pick<http.IncomingMessage["socket"], "remoteAddress"> | null;
+  },
   options: LoopbackTrustOptions,
 ): boolean {
   if (localAuthRequired(options)) return false;
   if (cloudBlocksLocalTrust(options.cloudCheck)) return false;
-  if (!isLoopbackRemoteAddress(req.socket.remoteAddress)) return false;
+  // No socket means the peer address cannot be established, so loopback cannot
+  // be PROVEN — fail closed and treat the request as untrusted. This is an
+  // explicit deny, not a defaulted success: isLoopbackRemoteAddress(undefined)
+  // is already false, and granting local trust on an unverifiable peer would
+  // hand out the no-password local bypass to any synthetic request.
+  if (!isLoopbackRemoteAddress(req.socket?.remoteAddress)) return false;
   if (proxyClientHeaderBlocksLocalTrust(req.headers)) return false;
 
   const host = firstHeaderValue(req.headers.host);
