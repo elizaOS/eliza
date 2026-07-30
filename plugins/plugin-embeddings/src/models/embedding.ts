@@ -266,9 +266,8 @@ async function requestEmbeddingsFromEndpoint(
 /**
  * `TEXT_EMBEDDING` handler. Returns one vector for the given text.
  *
- * The runtime boot dimension-probe calls this with `null` purely to learn the
- * vector length (it reads `.length`), so a correctly-sized marker vector is the
- * only legitimate synthetic return — every real failure throws.
+ * Output width is declared through model registration metadata, so every
+ * successful call returns an embedding produced by the configured provider.
  */
 export async function handleTextEmbedding(
   runtime: IAgentRuntime,
@@ -279,10 +278,9 @@ export async function handleTextEmbedding(
 
   const text = extractText(params);
   if (text === null) {
-    logger.debug("[Embeddings] Returning init-probe vector");
-    const probe = new Array(embeddingDimension).fill(0);
-    probe[0] = 0.1;
-    return probe;
+    throw new Error(
+      "TEXT_EMBEDDING requires real input; output width is declared in model registration metadata"
+    );
   }
 
   const trimmed = text.trim();
