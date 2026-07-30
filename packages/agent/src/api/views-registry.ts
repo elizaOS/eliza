@@ -89,6 +89,20 @@ export function pluginPackageNameCandidates(pluginName: string): string[] {
 }
 
 /**
+ * Bundled mobile agents have no package tree beside the single Bun artifact.
+ * Explicit or loader-bound directories still work, but name-based Node
+ * resolution can only fail and is especially expensive under Bun on Android.
+ */
+export function canResolveInstalledPluginPackage(
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  const platform = (env.ELIZA_PLATFORM ?? env.ELIZA_MOBILE_PLATFORM ?? "")
+    .trim()
+    .toLowerCase();
+  return platform !== "android" && platform !== "ios";
+}
+
+/**
  * Attempt to resolve the package root dir for a plugin by name using
  * `require.resolve`. Returns `undefined` when the package is not reachable
  * from the current module (e.g. workspace-linked but not installed).
@@ -310,7 +324,9 @@ export async function registerPluginViews(
   const resolvedDir =
     pluginDir ??
     boundPluginPackageDirectories.get(plugin) ??
-    (await resolvePluginPackageDir(plugin.packageName ?? plugin.name));
+    (canResolveInstalledPluginPackage()
+      ? await resolvePluginPackageDir(plugin.packageName ?? plugin.name)
+      : undefined);
 
   const registered: ViewRegistryEntry[] = [];
   for (const view of views) {

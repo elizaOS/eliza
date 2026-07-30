@@ -13,6 +13,7 @@ import type { Plugin } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   bindPluginPackageDirectory,
+  canResolveInstalledPluginPackage,
   listViews,
   pluginPackageNameCandidates,
   registerPluginViews,
@@ -131,5 +132,74 @@ describe("registerPluginViews directory binding", () => {
       (view) => view.id === "generated-view-resolution-fixture",
     );
     expect(entry?.pluginDir).toBe("/tmp/generated-plugin-fixture");
+  });
+});
+
+describe("registerPluginViews bundled-mobile resolution", () => {
+  const PLUGIN_NAME = "mobile-unpacked-view-fixture";
+  const originalMobilePlatform = process.env.ELIZA_MOBILE_PLATFORM;
+  const originalPlatform = process.env.ELIZA_PLATFORM;
+
+  afterEach(() => {
+    unregisterPluginViews(PLUGIN_NAME);
+    if (originalMobilePlatform === undefined) {
+      delete process.env.ELIZA_MOBILE_PLATFORM;
+    } else {
+      process.env.ELIZA_MOBILE_PLATFORM = originalMobilePlatform;
+    }
+    if (originalPlatform === undefined) {
+      delete process.env.ELIZA_PLATFORM;
+    } else {
+      process.env.ELIZA_PLATFORM = originalPlatform;
+    }
+  });
+
+  it("does not probe an installed package tree that the bundled agent cannot contain", async () => {
+    process.env.ELIZA_PLATFORM = "android";
+    expect(canResolveInstalledPluginPackage()).toBe(false);
+
+    const plugin: Plugin = {
+      name: PLUGIN_NAME,
+      description: "bundled mobile resolution fixture",
+      views: [
+        {
+          id: "mobile-unpacked-view-fixture",
+          label: "Mobile unpacked fixture",
+          bundlePath: "dist/views/bundle.js",
+        },
+      ],
+    } as Plugin;
+
+    await registerPluginViews(plugin);
+
+    const entry = listViews({ includeAllKinds: true }).find(
+      (view) => view.id === "mobile-unpacked-view-fixture",
+    );
+    expect(entry).toBeDefined();
+    expect(entry?.pluginDir).toBeUndefined();
+    expect(entry?.available).toBe(false);
+  });
+
+  it("still honors an explicitly bound directory on mobile", async () => {
+    process.env.ELIZA_PLATFORM = "ios";
+    const plugin: Plugin = {
+      name: PLUGIN_NAME,
+      description: "bound bundled mobile resolution fixture",
+      views: [
+        {
+          id: "mobile-bound-view-fixture",
+          label: "Mobile bound fixture",
+          bundlePath: "dist/views/bundle.js",
+        },
+      ],
+    } as Plugin;
+    bindPluginPackageDirectory(plugin, "/tmp/mobile-bound-plugin-fixture");
+
+    await registerPluginViews(plugin);
+
+    const entry = listViews({ includeAllKinds: true }).find(
+      (view) => view.id === "mobile-bound-view-fixture",
+    );
+    expect(entry?.pluginDir).toBe("/tmp/mobile-bound-plugin-fixture");
   });
 });
