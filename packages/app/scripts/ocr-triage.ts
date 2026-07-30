@@ -260,7 +260,15 @@ export function validateImportedOcrRecords(
 
 export async function runOcrTriage(argv: string[]): Promise<TriageResult> {
   const args = parseArgs(argv);
-  const auditDir = args["audit-dir"] ?? "aesthetic-audit-output";
+  // Directory precedence mirrors the capture stage exactly (#17128): an
+  // explicit CLI --audit-dir is authoritative, otherwise the same
+  // ELIZA_AUDIT_APP_DIR the Playwright capture honored, otherwise the default.
+  // Without the env tier, an isolated `audit:app` run captured into
+  // ELIZA_AUDIT_APP_DIR while OCR silently analyzed whatever stale artifacts
+  // sat in the default directory — a false evidence binding.
+  const auditDir =
+    args["audit-dir"] ??
+    (process.env.ELIZA_AUDIT_APP_DIR?.trim() || "aesthetic-audit-output");
   const outPath = args.out ?? join(auditDir, "ocr-triage.json");
 
   // Baseline = `slug::viewport` keys of regressions already tracked by an issue.
