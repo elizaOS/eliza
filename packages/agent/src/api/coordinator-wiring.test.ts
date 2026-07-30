@@ -59,8 +59,12 @@ describe("wireCoordinatorBridgesWhenReady", () => {
       resolveAllStarted = resolve;
     });
     let release: (() => void) | undefined;
+    let resolveAllStarted: (() => void) | undefined;
     const gate = new Promise<void>((resolve) => {
       release = resolve;
+    });
+    const allStarted = new Promise<void>((resolve) => {
+      resolveAllStarted = resolve;
     });
     const bridge = (name: string) => async () => {
       started.push(name);
