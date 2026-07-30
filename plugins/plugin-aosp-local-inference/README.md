@@ -57,8 +57,8 @@ Models are resolved from `$ELIZA_STATE_DIR/local-inference/models/` in priority 
 3. Glob fallback scan for `*.gguf` matching expected name patterns
 
 Default models auto-downloaded from `elizaos/eliza-1` on HuggingFace when not staged:
-- **Chat:** `bundles/2b/text/eliza-1-2b-128k.gguf`
-- **Embedding:** `bundles/4b/embedding/eliza-1-embedding.gguf`
+- **Chat:** resolved from the shared catalog (`bundles/e2b/text/eliza-1-e2b-128k.gguf`)
+- **Embedding:** resolved from the shared catalog (`bundles/e4b/embedding/eliza-1-embedding.gguf`)
 
 ## Key environment variables
 
@@ -68,7 +68,8 @@ Default models auto-downloaded from `elizaos/eliza-1` on HuggingFace when not st
 | `ELIZA_DISABLE_FFI_LLAMA` | — | Set `"1"` to force opt-out |
 | `ELIZA_LLAMA_THREADS` | `os.cpus().length` | CPU thread count |
 | `ELIZA_LLAMA_N_CTX` | `4096` | Chat context window |
-| `ELIZA_LOCAL_EMBEDDING_ENABLED` | `"0"` | Set `"1"` to load embedding GGUF |
+| `ELIZA_LOCAL_EMBEDDING_ENABLED` | `"0"` | Set `"1"` to load and register the embedding GGUF; disabled means no local handler |
+| `ELIZA_LOCAL_EMBEDDING_DIMENSIONS` | `1024` | Override the published embedding output width |
 | `ELIZA_LLAMA_KV_TYPE_K` / `_V` | `q8_0` / `f16` | KV-cache quant type |
 | `ELIZA_MTP` | — | Set `"1"` for MTP speculative decoding |
 | `ELIZA_AOSP_TTS_PREWARM` | — | Set `"true"` to pre-warm TTS at boot |

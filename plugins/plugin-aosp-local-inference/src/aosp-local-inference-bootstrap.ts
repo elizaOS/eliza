@@ -54,6 +54,7 @@ import {
   type IAgentRuntime,
   InferenceLaneBusyError,
   logger,
+  type ModelRegistrationMetadata,
   ModelType,
   resolveBackgroundInferenceBudget,
   resolveStateDir,
@@ -61,10 +62,13 @@ import {
   type TextToSpeechParams,
   type TranscriptionParams,
 } from "@elizaos/core";
-// @elizaos/shared/local-inference is intentionally not imported here: every
-// AOSP TTS path flows through `makeAospFusedKokoroTextToSpeechHandler` below,
-// which dlopens `libelizainference.so` via bun:ffi and synthesizes Kokoro
-// TTS in-process through the fused `eliza_inference_kokoro_*` ABI.
+import {
+  ELIZA_1_BUNDLE_SLUGS,
+  type Eliza1TierId,
+  FIRST_RUN_DEFAULT_MODEL_ID,
+  findCatalogModel,
+  tierBundleSlug,
+} from "@elizaos/shared/local-inference";
 import { writeAospLlamaDebugLog } from "./aosp-debug-log.js";
 import {
   isAospEnabled,
@@ -123,7 +127,7 @@ export interface AospLoader {
   }): Promise<string>;
   embed(args: { input: string }): Promise<{
     embedding: number[];
-    tokens: number;
+    tokens?: number;
   }>;
 }
 
@@ -309,7 +313,7 @@ export async function activateAospLocalInferenceModel(args: {
     // (no-op if tts/kokoro/ exists or ELIZA_DISABLE_VOICE_AUTO_DOWNLOAD=1).
     ensureKokoroTtsAssetsInBackground(
       resolveBundleRootFromModelPath(args.modelPath),
-      tierSlugFromModelName(path.basename(args.modelPath)),
+      aospBundleSlugFromModelName(path.basename(args.modelPath)),
     );
     return activeSnapshotFromLoadArgs(args.modelId, loadedAt, args.loadArgs);
   } catch (err) {
@@ -575,27 +579,6 @@ export function isAospLocalEmbeddingEnabled(
   return env.ELIZA_LOCAL_EMBEDDING_ENABLED?.trim() === "1";
 }
 
-export function disabledAospEmbeddingVector(
-  env: NodeJS.ProcessEnv = process.env,
-): number[] {
-  const dimensions =
-    readPositiveIntEnvFrom(env, "ELIZA_LOCAL_EMBEDDING_DIMENSIONS", 0) ||
-    readPositiveIntEnvFrom(env, "LOCAL_EMBEDDING_DIMENSIONS", 0) ||
-    readPositiveIntEnvFrom(env, "EMBEDDING_DIMENSION", 384);
-  return Array.from({ length: dimensions }, () => 0);
-}
-
-function readPositiveIntEnvFrom(
-  env: NodeJS.ProcessEnv,
-  name: string,
-  fallback: number,
-): number {
-  const raw = env[name]?.trim();
-  if (!raw) return fallback;
-  const parsed = Number.parseInt(raw, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-}
-
 function readBooleanEnv(name: string): boolean | null {
   const raw = process.env[name]?.trim().toLowerCase();
   if (!raw) return null;
@@ -826,6 +809,7 @@ type RuntimeWithModelRegistration = AgentRuntime & {
       | TranscriptionHandler,
     provider: string,
     priority?: number,
+    metadata?: ModelRegistrationMetadata,
   ) => void;
 };
 
@@ -951,8 +935,14 @@ function findCloudCandidate(
   return null;
 }
 
-interface RuntimeWithRegisterService {
-  registerService?: (name: string, impl: unknown) => unknown;
+interface RuntimeWithRegisterServiceInstance {
+  registerServiceInstance?: (
+    name: string,
+    impl: {
+      capabilityDescription: string;
+      stop(): Promise<void> | void;
+    },
+  ) => unknown;
 }
 
 /**
@@ -972,10 +962,10 @@ interface RuntimeWithRegisterService {
  * dynamically import it to wire the `localInferenceLoader` service.
  */
 export async function registerAospLlamaLoader(
-  runtime: RuntimeWithRegisterService,
+  runtime: RuntimeWithRegisterServiceInstance,
 ): Promise<boolean> {
   if (!isAospEnabled()) return false;
-  if (typeof runtime.registerService !== "function") return false;
+  if (typeof runtime.registerServiceInstance !== "function") return false;
   const loader = await tryBuildAospFusedTextLoader();
   if (!loader) {
     logger.error(
@@ -983,7 +973,13 @@ export async function registerAospLlamaLoader(
     );
     return false;
   }
-  runtime.registerService(SERVICE_NAME, loader);
+  runtime.registerServiceInstance(
+    SERVICE_NAME,
+    Object.assign(loader, {
+      capabilityDescription: "AOSP fused local inference backend",
+      stop: () => loader.unloadModel(),
+    }),
+  );
   logger.info(
     "[aosp-local-inference] Registered fused libelizainference localInferenceLoader (ELIZA_LOCAL_LLAMA=1)",
   );
@@ -1228,24 +1224,33 @@ type AospRecommendedModel = {
   expectedSizeBytes?: number;
 };
 
+function requireAospCatalogComponent(
+  modelId: Eliza1TierId,
+  role: "text" | "embedding",
+): AospRecommendedModel {
+  const model = findCatalogModel(modelId);
+  const component = model?.sourceModel?.components?.[role];
+  if (!component?.file) {
+    throw new Error(
+      `[aosp-local-inference] Catalog model ${modelId} has no ${role} component`,
+    );
+  }
+  return {
+    id: modelId,
+    hfRepo: component.repo,
+    ggufFile: component.file,
+  };
+}
+
 const AOSP_RECOMMENDED_MODELS: Record<
   "chat" | "embedding",
   AospRecommendedModel
 > = {
-  chat: {
-    // The quantized 2B is the shipped mobile default chat model: entry tier,
-    // fits 8 GB-class phones, downloads fast, and is the model bundled into the
-    // AOSP image. Mirrors the capacitor bridge and the catalog
-    // FIRST_RUN_DEFAULT_MODEL_ID.
-    id: "eliza-1-2b",
-    hfRepo: "elizaos/eliza-1",
-    ggufFile: "bundles/2b/text/eliza-1-2b-128k.gguf",
-  },
-  embedding: {
-    id: "eliza-1-embedding",
-    hfRepo: "elizaos/eliza-1",
-    ggufFile: "bundles/4b/embedding/eliza-1-embedding.gguf",
-  },
+  // Resolve remote artifact paths from the same catalog used by the UI
+  // downloader. Product tier IDs intentionally differ from the repository's
+  // architecture slugs after the Gemma-4 cutover.
+  chat: requireAospCatalogComponent(FIRST_RUN_DEFAULT_MODEL_ID, "text"),
+  embedding: requireAospCatalogComponent("eliza-1-4b", "embedding"),
 };
 
 const aospInflightDownloads = new Map<string, Promise<string>>();
@@ -1334,9 +1339,10 @@ function resolveBundledModelsDir(): string {
 // voice"), so unlike the general recommended-model auto-download it fetches by
 // default; opt out with ELIZA_DISABLE_VOICE_AUTO_DOWNLOAD=1 (offline/kiosk).
 // `af_sam.bin` lives under voice/kokoro/voices/, not the per-tier bundle.
-// The published eliza-1 bundle ships the F16 GGUF under this name (no
-// separate Q4 is published; llama-quantize does not support the kokoro arch).
-// The engine discovery also accepts this name — keep them in sync.
+// The canonical mixed-F16 GGUF is preferred on Android because the Kokoro
+// runtime dequantizes all tensors to its F32 working context at load time;
+// the separately published Q4_K_M artifact reduces transfer precision without
+// reducing steady-state inference memory or compute.
 const KOKORO_GGUF_FILE = "kokoro-82m-v1_0.gguf";
 const KOKORO_VOICE_FILE = "af_sam.bin";
 // Kokoro style-embedding dimension (matches the shared voice/ffi-bindings loader
@@ -1344,21 +1350,25 @@ const KOKORO_VOICE_FILE = "af_sam.bin";
 const KOKORO_STYLE_DIM = 256;
 let kokoroTtsDownloadInflight: Promise<void> | null = null;
 
-// HF bundle tier slugs, longest-first so "27b-256k" matches before "27b".
-const ELIZA1_TIER_SLUGS = ["27b-256k", "27b", "9b", "4b", "2b"] as const;
-
-// Derive the HF bundle tier slug (e.g. "2b") from a chat model id or GGUF
-// filename like "eliza-1-2b-128k.gguf". The Kokoro voice URL is
+// Derive the HF architecture slug (for example "e2b") from either a stable
+// product model id or a published GGUF filename. The Kokoro voice URL is
 // `bundles/<tier>/tts/kokoro/...`; the old `path.basename(bundleRoot)`
 // derivation yielded "bundle" for the on-device `<files>/eliza-1/bundle`
 // layout and 404'd every Kokoro download (the device fell back to the platform
-// "android voice"). Defaults to the entry tier "2b" so the URL stays valid.
-function tierSlugFromModelName(modelNameOrId: string): string {
+// "android voice"). Defaults to the catalog's published entry-tier slug.
+export function aospBundleSlugFromModelName(modelNameOrId: string): string {
   const lower = modelNameOrId.toLowerCase();
-  for (const slug of ELIZA1_TIER_SLUGS) {
-    if (lower.includes(`eliza-1-${slug}`)) return slug;
+  const entries = Object.entries(ELIZA_1_BUNDLE_SLUGS) as Array<
+    [Eliza1TierId, string]
+  >;
+  for (const [id, bundleSlug] of entries.sort(
+    (left, right) => right[0].length - left[0].length,
+  )) {
+    if (lower.includes(id) || lower.includes(`eliza-1-${bundleSlug}`)) {
+      return bundleSlug;
+    }
   }
-  return "2b";
+  return tierBundleSlug(FIRST_RUN_DEFAULT_MODEL_ID);
 }
 
 // Tier slug of the currently-assigned chat bundle, for the Kokoro voice URL.
@@ -1369,12 +1379,14 @@ function resolveAssignedChatTierSlug(): string {
     const manifest = readBundledModelManifest(modelsDir);
     const fallback = fallbackFindBundledModels(modelsDir);
     const chatModel = assigned.chat ?? manifest.chat ?? fallback.chat;
-    return chatModel ? tierSlugFromModelName(path.basename(chatModel)) : "2b";
+    return chatModel
+      ? aospBundleSlugFromModelName(path.basename(chatModel))
+      : tierBundleSlug(FIRST_RUN_DEFAULT_MODEL_ID);
   } catch {
     // error-policy:J4 explicit degrade — tier slug only picks the Kokoro voice
     // URL; if discovery throws we default to the "2b" voice tier rather than
     // failing chat load. Cosmetic fallback, not a model source.
-    return "2b";
+    return tierBundleSlug(FIRST_RUN_DEFAULT_MODEL_ID);
   }
 }
 
@@ -1814,33 +1826,31 @@ function makeCloudFallbackHandler(
 /**
  * Normalize the runtime's TEXT_EMBEDDING input shape — `params` may be the
  * structured `TextEmbeddingParams` (when called from a typed plugin), a
- * raw string (when called from action runners), or `null` (an internal
- * warmup probe used to size the shipped embedding vector).
+ * raw string (when called from action runners), or invalid null input.
  *
  * Mirrors `ensure-local-inference-handler.ts:extractEmbeddingText`.
  */
 function extractEmbeddingText(
   params: TextEmbeddingParams | string | null,
 ): string {
-  if (params === null) return "";
-  if (typeof params === "string") return params;
-  return params.text;
+  const text = typeof params === "string" ? params : params?.text;
+  if (typeof text !== "string" || text.trim().length === 0) {
+    throw new Error(
+      "[aosp-local-inference] TEXT_EMBEDDING requires non-empty real input",
+    );
+  }
+  return text;
 }
 
 function makeEmbeddingHandler(
   loader: AospLoader,
   lifecycle: ReturnType<typeof makeLoaderLifecycle>,
 ): EmbeddingHandler {
-  let loggedDisabled = false;
   return async (_runtime, params) => {
     if (!isAospLocalEmbeddingEnabled()) {
-      if (!loggedDisabled) {
-        loggedDisabled = true;
-        logger.info(
-          "[aosp-local-inference] Local embeddings disabled; serving zero-vector TEXT_EMBEDDING results (set ELIZA_LOCAL_EMBEDDING_ENABLED=1 to load the embedding GGUF)",
-        );
-      }
-      return disabledAospEmbeddingVector();
+      throw new Error(
+        "[aosp-local-inference] Local embeddings are disabled; set ELIZA_LOCAL_EMBEDDING_ENABLED=1 to load the embedding GGUF",
+      );
     }
     await lifecycle.ensureEmbeddingLoaded();
     const text = extractEmbeddingText(params);
@@ -2845,7 +2855,7 @@ function tokenizeFused(
 function embedFused(
   state: AospFusedTextLoaderState,
   input: string,
-): { embedding: number[]; tokens: number } {
+): { embedding: number[]; tokens?: number } {
   const { symbols, helpers } = state;
   const embed = symbols.eliza_inference_embed;
   if (typeof embed !== "function") {
@@ -2880,7 +2890,7 @@ function embedFused(
       `[aosp-local-inference] fused embed returned out-of-range n_embd=${dim}`,
     );
   }
-  return { embedding: Array.from(outEmbedding.subarray(0, dim)), tokens: 0 };
+  return { embedding: Array.from(outEmbedding.subarray(0, dim)) };
 }
 
 /**
@@ -3167,7 +3177,7 @@ export async function tryBuildAospFusedTextLoader(): Promise<AospLoader | null> 
       }
     },
 
-    async embed(args): Promise<{ embedding: number[]; tokens: number }> {
+    async embed(args): Promise<{ embedding: number[]; tokens?: number }> {
       const active = state;
       if (!active) {
         throw new Error(
@@ -3197,18 +3207,13 @@ export async function tryBuildAospFusedTextLoader(): Promise<AospLoader | null> 
 export async function ensureAospLocalInferenceHandlers(
   runtime: AgentRuntime,
 ): Promise<boolean> {
-  // console.log because logger.info routing in the mobile agent process
-  // sometimes hides early bootstrap output behind the pino transport,
-  // and we need a visible signal that the post-startEliza hook ran.
-  console.log("[aosp-local-inference] bootstrap entered");
+  logger.debug("[aosp-local-inference] Bootstrap entered");
   if (process.env.ELIZA_LOCAL_LLAMA?.trim() !== "1") {
-    console.log(
-      "[aosp-local-inference] ELIZA_LOCAL_LLAMA != '1', returning early",
-    );
+    logger.debug("[aosp-local-inference] ELIZA_LOCAL_LLAMA is not enabled");
     return false;
   }
   if (registeredRuntimes.has(runtime)) {
-    console.log("[aosp-local-inference] handlers already registered");
+    logger.debug("[aosp-local-inference] Handlers already registered");
     return true;
   }
 
@@ -3217,16 +3222,11 @@ export async function ensureAospLocalInferenceHandlers(
     typeof runtimeWithRegistration.getModel !== "function" ||
     typeof runtimeWithRegistration.registerModel !== "function"
   ) {
-    console.error(
-      "[aosp-local-inference] runtime missing getModel/registerModel",
-    );
     logger.error(
       "[aosp-local-inference] Runtime is missing getModel/registerModel; cannot wire handlers.",
     );
     return false;
   }
-  console.log("[aosp-local-inference] runtime has model-registration surface");
-
   // Build the fused libelizainference text loader (ABI-v9 streaming-LLM + MTP
   // + KV-quant). This is the SOLE text backend on AOSP: it runs on the SAME
   // libelizainference handle the bun agent uses for voice, so text + TTS + ASR
@@ -3235,13 +3235,12 @@ export async function ensureAospLocalInferenceHandlers(
   // operator opt-in, so a missing local backend must surface clearly (the
   // cloud-fallback handler at priority -1 then routes recoverable failures to
   // a cloud provider via the local-unavailable classifier).
-  console.log("[aosp-local-inference] building fused text loader…");
+  logger.debug("[aosp-local-inference] Building fused text loader");
   const fusedTextLoader = await tryBuildAospFusedTextLoader();
-  console.log(
+  logger.debug(
     `[aosp-local-inference] fused text loader ${fusedTextLoader ? "ready" : "unavailable"}`,
   );
   if (!fusedTextLoader) {
-    console.error("[aosp-local-inference] fused text loader unavailable");
     logger.error(
       "[aosp-local-inference] fused libelizainference text loader unavailable (lib absent or pre-ABI-v9); TEXT_* handlers NOT wired. Local text inference is unavailable.",
     );
@@ -3289,16 +3288,21 @@ export async function ensureAospLocalInferenceHandlers(
   logger.info(
     `[aosp-local-inference] inference memory policy: ramClass=${inferenceRamClass} idleUnloadMs=${idleUnloadMs} (#11760)`,
   );
-  // TEXT_EMBEDDING is wired unconditionally: chat + embedding loads share one
-  // fused EliInferenceContext, and the C side resolves the text vs embedding
-  // region per call (`llm_stream_*` vs `embed`), so there is no cross-mode
-  // state bleed to gate against.
+  const localEmbeddingEnabled = isAospLocalEmbeddingEnabled();
   const slots: Array<(typeof ModelType)[keyof typeof ModelType]> = [
     ModelType.TEXT_SMALL,
     ModelType.TEXT_LARGE,
-    ModelType.TEXT_EMBEDDING,
     ModelType.TEXT_TO_SPEECH,
   ];
+  if (localEmbeddingEnabled) {
+    // Chat + embedding share one fused context; the native side selects the
+    // dedicated 1024-dim embedding region without reloading text weights.
+    slots.push(ModelType.TEXT_EMBEDDING);
+  } else {
+    logger.info(
+      "[aosp-local-inference] Local embeddings disabled; TEXT_EMBEDDING remains unregistered instead of fabricating vectors",
+    );
+  }
   // TRANSCRIPTION is registered ONLY when the ASR assets are actually on disk.
   // Registering it unconditionally made the readiness probe report local
   // transcription as available while every invocation threw "requires ASR
@@ -3336,6 +3340,17 @@ export async function ensureAospLocalInferenceHandlers(
       handler,
       PROVIDER,
       LOCAL_INFERENCE_PRIORITY,
+      modelType === ModelType.TEXT_EMBEDDING
+        ? {
+            embeddingDimensionSettings: [
+              "ELIZA_LOCAL_EMBEDDING_DIMENSIONS",
+              "LOCAL_EMBEDDING_DIMENSIONS",
+              "EMBEDDING_DIMENSION",
+            ],
+            embeddingDimensionDefault: 1024,
+            local: true,
+          }
+        : undefined,
     );
   }
 
@@ -3378,12 +3393,9 @@ export async function ensureAospLocalInferenceHandlers(
     shouldSkip: () => foregroundKokoroTextToSpeechUsed,
   });
 
-  const registeredList = `TEXT_SMALL / TEXT_LARGE / TEXT_EMBEDDING / TEXT_TO_SPEECH${
-    asrAssetsPresent ? " / TRANSCRIPTION" : ""
-  }`;
-  console.log(
-    `[aosp-local-inference] registered ${PROVIDER} handlers for ${registeredList} (priority ${LOCAL_INFERENCE_PRIORITY}, text backend fused-libelizainference)`,
-  );
+  const registeredList = `TEXT_SMALL / TEXT_LARGE / TEXT_TO_SPEECH${
+    localEmbeddingEnabled ? " / TEXT_EMBEDDING" : ""
+  }${asrAssetsPresent ? " / TRANSCRIPTION" : ""}`;
   logger.info(
     `[aosp-local-inference] Registered ${PROVIDER} handlers for ${registeredList} at priority ${LOCAL_INFERENCE_PRIORITY} (text backend fused-libelizainference)`,
   );
