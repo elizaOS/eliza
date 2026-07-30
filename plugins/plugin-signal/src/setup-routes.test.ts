@@ -1,19 +1,10 @@
 /**
  * Tests the `/api/setup/signal/*` status/start/cancel route handlers against a
- * mocked runtime and pairing layer (no live signal-cli); each case re-imports
- * the route module under a fresh mock graph.
+ * mocked runtime and pairing layer (no live signal-cli). The route module is
+ * loaded once so test timeouts measure handler behavior rather than transforms.
  */
 import type { IAgentRuntime, RouteRequest, RouteResponse } from "@elizaos/core";
-import { afterEach, describe, expect, it, vi } from "vitest";
-
-// Every case re-imports the route module under a fresh mock graph
-// (`vi.resetModules()` + `await import("./setup-routes")` in loadSetupRoutes).
-// The handlers themselves are synchronous, but that per-test re-transform can
-// exceed the 5s default when the Plugin Tests lane runs the workspace at full
-// concurrency on a saturated runner — which intermittently timed out the last
-// cases in the suite. Give the re-import generous headroom; the assertions stay
-// strict so a genuine handler hang would still fail fast against this ceiling.
-vi.setConfig({ testTimeout: 20_000 });
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 type PairingStatus =
   | "idle"
@@ -85,6 +76,18 @@ function sanitizeAccountId(raw: string): string {
   return cleaned;
 }
 
+const signalAuthExists = vi.fn(() => false);
+const signalLogout = vi.fn();
+
+vi.doMock("./pairing-service", () => ({
+  SignalPairingSession: FakePairingSession,
+  sanitizeAccountId,
+  signalAuthExists,
+  signalLogout,
+}));
+
+const { signalSetupRoutes } = await import("./setup-routes");
+
 function createResponse() {
   const response = {
     statusCode: 0,
@@ -116,29 +119,15 @@ function createRuntime(setupService: unknown, signalService: unknown = null) {
   } as unknown as IAgentRuntime;
 }
 
-async function loadSetupRoutes(overrides: { signalLogout?: ReturnType<typeof vi.fn> } = {}) {
-  vi.resetModules();
-  FakePairingSession.instances = [];
-  const signalAuthExists = vi.fn(() => false);
-  const signalLogout = overrides.signalLogout ?? vi.fn();
-  vi.doMock("./pairing-service", () => ({
-    SignalPairingSession: FakePairingSession,
-    sanitizeAccountId,
-    signalAuthExists,
-    signalLogout,
-  }));
-  const mod = await import("./setup-routes");
-  return { ...mod, signalAuthExists, signalLogout };
-}
-
 describe("Signal setup routes", () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
-    vi.resetModules();
+  beforeEach(() => {
+    FakePairingSession.instances = [];
+    signalAuthExists.mockReset();
+    signalAuthExists.mockReturnValue(false);
+    signalLogout.mockReset();
   });
 
   it("rejects hostile account ids before touching auth state", async () => {
-    const { signalSetupRoutes, signalAuthExists } = await loadSetupRoutes();
     const response = createResponse();
 
     await signalSetupRoutes[0].handler(
@@ -159,7 +148,6 @@ describe("Signal setup routes", () => {
   });
 
   it("starts account-scoped pairing and persists connected accounts", async () => {
-    const { signalSetupRoutes } = await loadSetupRoutes();
     const config = {
       connectors: {
         signal: {
@@ -238,7 +226,6 @@ describe("Signal setup routes", () => {
   });
 
   it("cancels pairing, logs out, and removes only the requested account config", async () => {
-    const { signalSetupRoutes, signalLogout } = await loadSetupRoutes();
     const config = {
       connectors: {
         signal: {
@@ -290,10 +277,9 @@ describe("Signal setup routes", () => {
   });
 
   it("returns structured errors when cancel cannot log out", async () => {
-    const signalLogout = vi.fn(() => {
+    signalLogout.mockImplementation(() => {
       throw new Error("auth locked");
     });
-    const { signalSetupRoutes } = await loadSetupRoutes({ signalLogout });
     const setupService = {
       getConfig: vi.fn(() => ({})),
       persistConfig: vi.fn(),
@@ -322,7 +308,6 @@ describe("Signal setup routes", () => {
   });
 
   it("returns structured errors when cancel config persistence fails", async () => {
-    const { signalSetupRoutes, signalLogout } = await loadSetupRoutes();
     const setupService = {
       getConfig: vi.fn(() => ({})),
       persistConfig: vi.fn(),
