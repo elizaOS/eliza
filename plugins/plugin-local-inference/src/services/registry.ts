@@ -8,11 +8,18 @@
  * first-run, setup, or normal Settings surfaces.
  */
 
+import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { logger } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
+import {
+	ELIZA_1_BUNDLE_SLUGS,
+	ELIZA_1_PUBLISHED_TIER_IDS,
+	MODEL_CATALOG,
+} from "./catalog";
 import { scanExternalModels } from "./external-scanner";
 import {
+	elizaModelsDir,
 	isWithinElizaRoot,
 	localInferenceRoot,
 	registryPath,
@@ -42,6 +49,30 @@ let externalScanCache: {
 	models: InstalledModel[];
 } | null = null;
 let externalScanPromise: Promise<InstalledModel[]> | null = null;
+let registryMutationTail: Promise<void> = Promise.resolve();
+
+function errnoCode(error: unknown): string | undefined {
+	if (
+		typeof error !== "object" ||
+		error === null ||
+		!("code" in error) ||
+		typeof error.code !== "string"
+	) {
+		return undefined;
+	}
+	return error.code;
+}
+
+async function withRegistryMutation<T>(
+	operation: () => Promise<T>,
+): Promise<T> {
+	const result = registryMutationTail.then(operation);
+	registryMutationTail = result.then(
+		() => undefined,
+		() => undefined,
+	);
+	return result;
+}
 
 async function ensureRootDir(): Promise<void> {
 	await fs.mkdir(localInferenceRoot(), { recursive: true });
@@ -60,7 +91,14 @@ async function readElizaOwnedDetailed(): Promise<{
 		const raw = await fs.readFile(registryPath(), "utf8");
 		const parsed = JSON.parse(raw) as RegistryFile;
 		if (parsed?.version !== 1 || !Array.isArray(parsed.models)) {
-			return { models: [], needsRewrite: false };
+			throw new ElizaError(
+				"[LocalInferenceRegistry] registry.json has an unsupported shape",
+				{
+					code: "LOCAL_INFERENCE_REGISTRY_INVALID",
+					context: { path: registryPath() },
+					severity: "fatal",
+				},
+			);
 		}
 		let needsRewrite = false;
 		const models: InstalledModel[] = [];
@@ -74,8 +112,21 @@ async function readElizaOwnedDetailed(): Promise<{
 			models.push(hydrated);
 		}
 		return { models, needsRewrite };
-	} catch {
-		return { models: [], needsRewrite: false };
+	} catch (error) {
+		if (errnoCode(error) === "ENOENT") {
+			// error-policy:J4 A missing registry is the designed first-run state.
+			return { models: [], needsRewrite: false };
+		}
+		if (error instanceof ElizaError) throw error;
+		throw new ElizaError(
+			"[LocalInferenceRegistry] Could not read registry.json",
+			{
+				code: "LOCAL_INFERENCE_REGISTRY_READ_FAILED",
+				context: { path: registryPath() },
+				cause: error,
+				severity: "fatal",
+			},
+		);
 	}
 }
 
@@ -100,28 +151,111 @@ async function readElizaOwnedHealed(): Promise<InstalledModel[]> {
 			);
 		}
 	}
-	if (needsRewrite || dropped) {
-		try {
-			await writeElizaOwned(present);
-			logger.info(
-				`[LocalInferenceRegistry] Healed registry.json: ${present.length} model(s) persisted with container-relative paths`,
-			);
-		} catch (error) {
-			logger.warn(
-				`[LocalInferenceRegistry] Could not rewrite healed registry.json: ${
-					error instanceof Error ? error.message : String(error)
-				}`,
-			);
+	const recovered = await discoverOrphanedOwnedModels(present);
+	const healed = [...present, ...recovered];
+	if (needsRewrite || dropped || recovered.length > 0) {
+		await writeElizaOwned(healed);
+		logger.info(
+			`[LocalInferenceRegistry] Healed registry.json: ${healed.length} model(s) persisted with container-relative paths`,
+		);
+	}
+	return healed;
+}
+
+function ownedFlatFileNames(modelId: string, catalogFile: string): Set<string> {
+	const names = new Set([path.basename(catalogFile).toLowerCase()]);
+	const stableSlug = modelId.replace(/^eliza-1-/, "");
+	const publishedSlug =
+		ELIZA_1_BUNDLE_SLUGS[modelId as keyof typeof ELIZA_1_BUNDLE_SLUGS];
+	for (const slug of [stableSlug, publishedSlug]) {
+		if (!slug) continue;
+		for (const context of ["32k", "64k", "128k", "256k"]) {
+			names.add(`eliza-1-${slug}-${context}.gguf`.toLowerCase());
 		}
 	}
-	return present;
+	return names;
+}
+
+async function hasGgufHeader(filePath: string): Promise<boolean> {
+	let handle: Awaited<ReturnType<typeof fs.open>> | null = null;
+	try {
+		handle = await fs.open(filePath, "r");
+		const header = Buffer.allocUnsafe(4);
+		const { bytesRead } = await handle.read(header, 0, header.length, 0);
+		return bytesRead === header.length && header.toString("ascii") === "GGUF";
+	} catch (error) {
+		if (errnoCode(error) === "ENOENT") {
+			// error-policy:J3 A disappeared candidate is explicitly invalid.
+			return false;
+		}
+		throw error;
+	} finally {
+		if (handle) await handle.close();
+	}
+}
+
+/**
+ * Recover first-party mobile downloads that reached the app-owned model
+ * directory before the registry write completed. Only exact curated Eliza-1
+ * filenames with a real GGUF header qualify; arbitrary blobs remain outside
+ * the product registry and require the explicit external-scan developer path.
+ */
+async function discoverOrphanedOwnedModels(
+	registered: InstalledModel[],
+): Promise<InstalledModel[]> {
+	let entries: import("node:fs").Dirent[];
+	try {
+		entries = await fs.readdir(elizaModelsDir(), { withFileTypes: true });
+	} catch (error) {
+		if (errnoCode(error) === "ENOENT") {
+			// error-policy:J4 No model directory is the designed pre-download state.
+			return [];
+		}
+		throw error;
+	}
+	const registeredIds = new Set(registered.map((model) => model.id));
+	const publishedIds = new Set<string>(ELIZA_1_PUBLISHED_TIER_IDS);
+	const recovered: InstalledModel[] = [];
+	for (const catalogModel of MODEL_CATALOG) {
+		if (!publishedIds.has(catalogModel.id)) continue;
+		if (registeredIds.has(catalogModel.id)) continue;
+		const acceptedNames = ownedFlatFileNames(
+			catalogModel.id,
+			catalogModel.ggufFile,
+		);
+		const entry = entries.find(
+			(candidate) =>
+				candidate.isFile() && acceptedNames.has(candidate.name.toLowerCase()),
+		);
+		if (!entry) continue;
+		const modelPath = path.join(elizaModelsDir(), entry.name);
+		if (!(await hasGgufHeader(modelPath))) continue;
+		const stat = await fs.stat(modelPath);
+		const timestampMs = stat.birthtimeMs > 0 ? stat.birthtimeMs : stat.mtimeMs;
+		recovered.push({
+			id: catalogModel.id,
+			displayName: catalogModel.displayName,
+			path: modelPath,
+			sizeBytes: stat.size,
+			hfRepo: catalogModel.hfRepo,
+			installedAt: new Date(timestampMs).toISOString(),
+			lastUsedAt: null,
+			runtimeClass: catalogModel.runtimeClass,
+			source: "eliza-download",
+		});
+	}
+	return recovered;
 }
 
 async function modelArtifactPresent(modelPath: string): Promise<boolean> {
 	try {
 		return (await fs.stat(modelPath)).isFile();
-	} catch {
-		return false;
+	} catch (error) {
+		if (errnoCode(error) === "ENOENT") {
+			// error-policy:J3 A missing artifact is an explicit invalid registry row.
+			return false;
+		}
+		throw error;
 	}
 }
 
@@ -159,13 +293,37 @@ function storedRowIsCanonical(
 
 async function writeElizaOwned(models: InstalledModel[]): Promise<void> {
 	await ensureRootDir();
-	const tmp = `${registryPath()}.tmp`;
+	const tmp = `${registryPath()}.tmp-${process.pid}-${randomUUID()}`;
 	const payload: RegistryFile = {
 		version: 1,
 		models: models.map(serializeElizaOwnedModel),
 	};
-	await fs.writeFile(tmp, JSON.stringify(payload, null, 2), "utf8");
-	await fs.rename(tmp, registryPath());
+	try {
+		await fs.writeFile(tmp, JSON.stringify(payload, null, 2), "utf8");
+		await fs.rename(tmp, registryPath());
+	} catch (error) {
+		try {
+			await fs.rm(tmp, { force: true });
+		} catch (cleanupError) {
+			// error-policy:J6 A failed scratch-file cleanup must not replace the registry error.
+			logger.warn(
+				`[LocalInferenceRegistry] Could not remove temporary registry file ${tmp}: ${
+					cleanupError instanceof Error
+						? cleanupError.message
+						: String(cleanupError)
+				}`,
+			);
+		}
+		throw new ElizaError(
+			"[LocalInferenceRegistry] Could not persist registry.json",
+			{
+				code: "LOCAL_INFERENCE_REGISTRY_WRITE_FAILED",
+				context: { path: registryPath() },
+				cause: error,
+				severity: "fatal",
+			},
+		);
+	}
 }
 
 function hydrateStoredElizaModel(
@@ -262,8 +420,12 @@ async function resolveRemovableElizaPath(
 	let rootRealPath: string;
 	try {
 		rootRealPath = await fs.realpath(localInferenceRoot());
-	} catch {
-		return { status: "missing" };
+	} catch (error) {
+		if (errnoCode(error) === "ENOENT") {
+			// error-policy:J3 A missing root makes the removal target explicitly absent.
+			return { status: "missing" };
+		}
+		throw error;
 	}
 
 	try {
@@ -309,7 +471,9 @@ async function scanExternalModelsCached(): Promise<InstalledModel[]> {
  * arrive in bursts during active downloads.
  */
 export async function listInstalledModels(): Promise<InstalledModel[]> {
-	const owned = await readElizaOwnedHealed();
+	const owned = (await withRegistryMutation(() => readElizaOwnedHealed())).map(
+		withRuntimeClass,
+	);
 	if (!externalScanEnabled()) return owned;
 
 	// Filter out Eliza-owned files that also survived a reboot of the local
@@ -349,19 +513,23 @@ export async function upsertElizaModel(model: InstalledModel): Promise<void> {
 			"[local-inference] Eliza-owned manifests must live under the local-inference root",
 		);
 	}
-	const owned = await readElizaOwned();
-	const withoutCurrent = owned.filter((m) => m.id !== model.id);
-	withoutCurrent.push(model);
-	await writeElizaOwned(withoutCurrent);
+	await withRegistryMutation(async () => {
+		const owned = await readElizaOwned();
+		const withoutCurrent = owned.filter((m) => m.id !== model.id);
+		withoutCurrent.push(model);
+		await writeElizaOwned(withoutCurrent);
+	});
 }
 
 /** Mark an existing Eliza-owned model as most-recently-used. */
 export async function touchElizaModel(id: string): Promise<void> {
-	const owned = await readElizaOwned();
-	const target = owned.find((m) => m.id === id);
-	if (!target) return;
-	target.lastUsedAt = new Date().toISOString();
-	await writeElizaOwned(owned);
+	await withRegistryMutation(async () => {
+		const owned = await readElizaOwned();
+		const target = owned.find((m) => m.id === id);
+		if (!target) return;
+		target.lastUsedAt = new Date().toISOString();
+		await writeElizaOwned(owned);
+	});
 }
 
 /**
@@ -374,38 +542,36 @@ export async function removeElizaModel(id: string): Promise<{
 	removed: boolean;
 	reason?: "external" | "not-found";
 }> {
-	const owned = await readElizaOwned();
-	const target = owned.find((m) => m.id === id);
-	if (!target) {
-		// Check whether it's a known external entry so we can return a
-		// helpful error message instead of 404.
-		const external = await scanExternalModels();
-		if (external.some((m) => m.id === id)) {
+	return withRegistryMutation(async () => {
+		const owned = await readElizaOwned();
+		const target = owned.find((m) => m.id === id);
+		if (!target) {
+			// Check whether it's a known external entry so we can return a
+			// helpful error message instead of 404.
+			const external = await scanExternalModels();
+			if (external.some((m) => m.id === id)) {
+				return { removed: false, reason: "external" };
+			}
+			return { removed: false, reason: "not-found" };
+		}
+
+		if (!isWithinElizaRoot(target.path)) {
 			return { removed: false, reason: "external" };
 		}
-		return { removed: false, reason: "not-found" };
-	}
 
-	if (!isWithinElizaRoot(target.path)) {
-		return { removed: false, reason: "external" };
-	}
-
-	const removePath =
-		target.bundleRoot && isWithinElizaRoot(target.bundleRoot)
-			? target.bundleRoot
-			: target.path;
-	const removable = await resolveRemovableElizaPath(removePath);
-	if (removable.status === "unsafe") {
-		return { removed: false, reason: "external" };
-	}
-	try {
+		const removePath =
+			target.bundleRoot && isWithinElizaRoot(target.bundleRoot)
+				? target.bundleRoot
+				: target.path;
+		const removable = await resolveRemovableElizaPath(removePath);
+		if (removable.status === "unsafe") {
+			return { removed: false, reason: "external" };
+		}
 		if (removable.status === "safe") {
 			await fs.rm(removable.path, { recursive: true, force: true });
 		}
-	} catch {
-		// If the file was already gone we still want to clear the registry entry.
-	}
 
-	await writeElizaOwned(owned.filter((m) => m.id !== id));
-	return { removed: true };
+		await writeElizaOwned(owned.filter((m) => m.id !== id));
+		return { removed: true };
+	});
 }
