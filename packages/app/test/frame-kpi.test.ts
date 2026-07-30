@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   FRAME_BUDGET_60_MS,
   type FrameKpiSummary,
-  summarizePairedFrameKpis,
+  summarizeRepeatedFrameKpis,
 } from "./ui-smoke/lib/frame-kpi";
 
 function frameSummary(p95FrameMs: number): FrameKpiSummary {
@@ -16,49 +16,47 @@ function frameSummary(p95FrameMs: number): FrameKpiSummary {
     p95FrameMs,
     worstFrameMs: p95FrameMs,
     droppedFrames: 0,
+    longTasks: 0,
     budgetMs: FRAME_BUDGET_60_MS,
   };
 }
 
-describe("paired frame KPI sampling", () => {
-  it("preserves the absolute interaction p95 on a healthy runner", () => {
-    const summary = summarizePairedFrameKpis([
+describe("repeated frame KPI sampling", () => {
+  it("reports the absolute interaction p95 on a healthy runner", () => {
+    const summary = summarizeRepeatedFrameKpis([
       {
         idle: frameSummary(FRAME_BUDGET_60_MS),
         interaction: frameSummary(49),
       },
     ]);
 
-    expect(summary.medianEffectiveP95FrameMs).toBe(49);
+    expect(summary.medianInteractionP95FrameMs).toBe(49);
   });
 
-  it("removes only delay already measured above one idle frame budget", () => {
-    const summary = summarizePairedFrameKpis([
+  it("does not subtract an idle-host delay from the interaction result", () => {
+    const summary = summarizeRepeatedFrameKpis([
       {
         idle: frameSummary(83.4),
         interaction: frameSummary(83.4),
       },
     ]);
 
-    expect(summary.medianEffectiveP95FrameMs).toBeCloseTo(
-      FRAME_BUDGET_60_MS,
-      5,
-    );
+    expect(summary.medianInteractionP95FrameMs).toBe(83.4);
   });
 
-  it("still exposes interaction delay added on a throttled runner", () => {
-    const summary = summarizePairedFrameKpis([
+  it("exposes interaction delay on a throttled runner", () => {
+    const summary = summarizeRepeatedFrameKpis([
       {
         idle: frameSummary(83.4),
         interaction: frameSummary(150),
       },
     ]);
 
-    expect(summary.medianEffectiveP95FrameMs).toBeGreaterThan(80);
+    expect(summary.medianInteractionP95FrameMs).toBe(150);
   });
 
   it("uses the median so one noisy window cannot pass or fail the gate", () => {
-    const summary = summarizePairedFrameKpis([
+    const summary = summarizeRepeatedFrameKpis([
       {
         idle: frameSummary(16),
         interaction: frameSummary(110),
@@ -73,12 +71,12 @@ describe("paired frame KPI sampling", () => {
       },
     ]);
 
-    expect(summary.medianEffectiveP95FrameMs).toBe(31);
-    expect(summary.worstEffectiveP95FrameMs).toBe(110);
+    expect(summary.medianInteractionP95FrameMs).toBe(31);
+    expect(summary.worstInteractionP95FrameMs).toBe(110);
   });
 
   it("keeps a sustained interaction regression above the existing ceiling", () => {
-    const summary = summarizePairedFrameKpis([
+    const summary = summarizeRepeatedFrameKpis([
       {
         idle: frameSummary(16),
         interaction: frameSummary(90),
@@ -93,10 +91,10 @@ describe("paired frame KPI sampling", () => {
       },
     ]);
 
-    expect(summary.medianEffectiveP95FrameMs).toBeGreaterThan(50);
+    expect(summary.medianInteractionP95FrameMs).toBeGreaterThan(50);
   });
 
   it("rejects an empty window set instead of fabricating a healthy result", () => {
-    expect(() => summarizePairedFrameKpis([])).toThrow(RangeError);
+    expect(() => summarizeRepeatedFrameKpis([])).toThrow(RangeError);
   });
 });

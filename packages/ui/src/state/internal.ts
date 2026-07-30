@@ -90,6 +90,7 @@ export {
 export { AppContext, useApp } from "./useApp";
 export {
   applyStreamingTextModification,
+  applyStreamingTextModifications,
   type StreamingTextModification,
   type StreamingTextSetter,
 } from "./useStreamingText";

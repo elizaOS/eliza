@@ -9,8 +9,9 @@
 // the same math as the live HUD (`summarizeFrameSamples`), so the numbers are the
 // 60/120fps signal the issue asked to stop flying blind on.
 //
-// Streaming uses paired idle/interaction windows because shared CI runners can
-// throttle rAF globally; the median gate isolates delay added by streaming.
+// Streaming uses repeated idle/interaction windows so the report distinguishes
+// host-wide throttling from stream work. The gate remains the raw stream p95:
+// idle delay is diagnostic context and is never subtracted.
 //
 // Budgets are SOFT and generous (headless Chromium caps rAF at ~60fps and CI is
 // noisy) so the spec is a measurement + coarse jank regression guard, not a
@@ -30,8 +31,8 @@ import {
   formatFrameSummary,
   installFrameSampler,
   measureFrames,
-  type PairedFrameKpiWindow,
-  summarizePairedFrameKpis,
+  type RepeatedFrameKpiWindow,
+  summarizeRepeatedFrameKpis,
 } from "./lib/frame-kpi";
 
 // A long thread so scroll hits the transcript windowing (MAX_RENDERED_SHELL_MESSAGES
@@ -116,9 +117,9 @@ function assertFrameKpi(
   ).toBeLessThan(P95_JANK_CEILING_MS);
 }
 
-function assertPairedStreamFrameKpi(
+function assertRepeatedStreamFrameKpi(
   testInfo: ReturnType<typeof test.info>,
-  windows: readonly PairedFrameKpiWindow[],
+  windows: readonly RepeatedFrameKpiWindow[],
 ): void {
   for (const [index, window] of windows.entries()) {
     const idleLine = formatFrameSummary(
@@ -149,20 +150,19 @@ function assertPairedStreamFrameKpi(
     ).toBeGreaterThanOrEqual(MIN_STREAM_FRAME_SAMPLES);
   }
 
-  const summary = summarizePairedFrameKpis(windows);
-  const normalizedLine =
-    `live-token-stream paired median: idle p95 ${summary.medianIdleP95FrameMs.toFixed(1)}ms, ` +
-    `stream p95 ${summary.medianInteractionP95FrameMs.toFixed(1)}ms, ` +
-    `effective p95 ${summary.medianEffectiveP95FrameMs.toFixed(1)}ms ` +
-    `(worst window ${summary.worstEffectiveP95FrameMs.toFixed(1)}ms)`;
+  const summary = summarizeRepeatedFrameKpis(windows);
+  const repeatedLine =
+    `live-token-stream repeated median: idle p95 ${summary.medianIdleP95FrameMs.toFixed(1)}ms, ` +
+    `raw stream p95 ${summary.medianInteractionP95FrameMs.toFixed(1)}ms ` +
+    `(worst raw window ${summary.worstInteractionP95FrameMs.toFixed(1)}ms)`;
   testInfo.annotations.push({
     type: "frame-kpi",
-    description: normalizedLine,
+    description: repeatedLine,
   });
-  console.log(`[perf-interaction-kpi] ${normalizedLine}`);
+  console.log(`[perf-interaction-kpi] ${repeatedLine}`);
   expect(
-    summary.medianEffectiveP95FrameMs,
-    `live-token-stream: baseline-adjusted median p95 ${summary.medianEffectiveP95FrameMs.toFixed(1)}ms exceeds jank ceiling ${P95_JANK_CEILING_MS.toFixed(1)}ms (raw idle ${summary.medianIdleP95FrameMs.toFixed(1)}ms, raw stream ${summary.medianInteractionP95FrameMs.toFixed(1)}ms)`,
+    summary.medianInteractionP95FrameMs,
+    `live-token-stream: raw median p95 ${summary.medianInteractionP95FrameMs.toFixed(1)}ms exceeds jank ceiling ${P95_JANK_CEILING_MS.toFixed(1)}ms (idle median ${summary.medianIdleP95FrameMs.toFixed(1)}ms)`,
   ).toBeLessThan(P95_JANK_CEILING_MS);
 }
 
@@ -323,7 +323,7 @@ test.describe("dashboard shell interaction framerate", () => {
     // Sending opens the sheet and streams a real incremental ReadableStream
     // through the production SSE parser + React streaming path.
     const composer = page.getByTestId("chat-composer-textarea");
-    const streamWindows: PairedFrameKpiWindow[] = [];
+    const streamWindows: RepeatedFrameKpiWindow[] = [];
     for (let index = 0; index < STREAM_SAMPLE_WINDOW_COUNT; index++) {
       const idle = await measureFrames(page, async () => {
         await page.waitForTimeout(IDLE_STREAM_WINDOW_MS);
@@ -344,7 +344,7 @@ test.describe("dashboard shell interaction framerate", () => {
       });
       streamWindows.push({ idle, interaction });
     }
-    assertPairedStreamFrameKpi(testInfo, streamWindows);
+    assertRepeatedStreamFrameKpi(testInfo, streamWindows);
     await expect(
       page.getByText(/Streaming frame budget probe complete/).last(),
     ).toBeVisible({ timeout: 20_000 });
