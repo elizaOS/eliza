@@ -59,7 +59,7 @@ describe("PostgreSQL Adapter Integration Tests", () => {
     });
 
     it("should close connection gracefully", async () => {
-      await expect(adapter.close()).resolves.not.toThrow();
+      await expect(adapter.close()).resolves.toBeUndefined();
     });
 
     it("should handle isReady when adapter is closed", async () => {

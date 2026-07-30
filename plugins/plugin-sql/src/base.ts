@@ -463,6 +463,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   protected embeddingDimension: EmbeddingDimensionColumn = DIMENSION_MAP[384];
   protected readonly databaseBackend: DatabaseBackend = "unknown";
   protected migrationService?: DatabaseMigrationService;
+  private migrationServiceInitPromise: Promise<DatabaseMigrationService> | null = null;
   private migrationRunPromise: Promise<void> | null = null;
   private _connectorAccountStore?: ConnectorAccountStore;
   private messageSearchTrigramAvailable: boolean | null = null;
@@ -510,34 +511,57 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       dryRun?: boolean;
     }
   ): Promise<void> {
-    if (!this.migrationService) {
-      const { DatabaseMigrationService } = await import("./migration-service");
-      this.migrationService = new DatabaseMigrationService({
-        databaseBackend: this.databaseBackend,
-      });
-      await this.migrationService.initializeWithDatabase(this.db as DrizzleDatabase);
-    }
-
-    for (const plugin of plugins) {
-      if (plugin.schema) {
-        this.migrationService.registerSchema(plugin.name, plugin.schema);
-      }
-    }
-
-    if (this.migrationRunPromise) {
-      logger.info(
-        { src: "plugin:sql", pluginCount: plugins.length },
-        "Plugin migrations already running in this process; joining active run"
-      );
-      await this.migrationRunPromise;
+    const pluginsWithSchemas = plugins.filter(
+      (plugin): plugin is { name: string; schema: Record<string, unknown> } =>
+        plugin.schema !== undefined
+    );
+    if (pluginsWithSchemas.length === 0) {
       return;
     }
 
-    this.migrationRunPromise = this.migrationService.runAllPluginMigrations(options);
+    let migrationService = this.migrationService;
+    if (!migrationService) {
+      let initPromise = this.migrationServiceInitPromise;
+      if (!initPromise) {
+        initPromise = (async () => {
+          const { DatabaseMigrationService } = await import("./migration-service");
+          const service = new DatabaseMigrationService({
+            databaseBackend: this.databaseBackend,
+          });
+          await service.initializeWithDatabase(this.db as DrizzleDatabase);
+          return service;
+        })();
+        this.migrationServiceInitPromise = initPromise;
+      }
+      try {
+        migrationService = await initPromise;
+        this.migrationService ??= migrationService;
+      } finally {
+        if (this.migrationServiceInitPromise === initPromise) {
+          this.migrationServiceInitPromise = null;
+        }
+      }
+    }
+
+    for (const plugin of pluginsWithSchemas) {
+      migrationService.registerSchema(plugin.name, plugin.schema);
+    }
+
+    const pluginNames = pluginsWithSchemas.map((plugin) => plugin.name);
+    const previousRun = this.migrationRunPromise;
+    // Schema registration can race during deferred plugin boot. Queue each
+    // requested set behind the current run so a caller never "joins" a run
+    // that started before its schema was requested and then falsely returns.
+    const queuedRun = (previousRun ? previousRun.catch(() => undefined) : Promise.resolve()).then(
+      () => migrationService.runRegisteredPluginMigrations(pluginNames, options)
+    );
+    this.migrationRunPromise = queuedRun;
     try {
-      await this.migrationRunPromise;
+      await queuedRun;
     } finally {
-      this.migrationRunPromise = null;
+      if (this.migrationRunPromise === queuedRun) {
+        this.migrationRunPromise = null;
+      }
     }
   }
 
