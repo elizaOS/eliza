@@ -171,6 +171,7 @@ function createRuntime(
     updateWorld: vi.fn(async () => undefined),
     getWorld: vi.fn(async () => null),
     getRoom: vi.fn(async () => null),
+    getParticipantsForRoom: vi.fn(async () => []),
     getService: vi.fn(() => null),
     getServiceLoadPromise: vi.fn(async () => undefined),
     // The route's J7 diagnostic paths (inference-timing persistence, recovery
