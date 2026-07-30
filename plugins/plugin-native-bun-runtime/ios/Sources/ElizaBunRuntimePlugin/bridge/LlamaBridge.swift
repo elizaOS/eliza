@@ -164,6 +164,7 @@ public final class LlamaBridge {
         let managedResolve = resolver.flatMap { ManagedCallback(value: $0) }
         let streamCallback = streamToken.flatMap { self.streamCallbacks[$0] }
 
+        LlamaBridgeImpl.shared.prepareGeneration(contextId: Int64(state.id))
         let queue = LlamaBridgeImpl.shared.workQueue(for: Int64(contextId)) ?? inferenceQueue
         queue.async {
             let started = Date()

@@ -449,7 +449,8 @@ private final class LlamaSession {
     let workQueue: DispatchQueue
     let nCtx: UInt32
     let nBatch: UInt32
-    var cancelled: Bool = false
+    private let cancellationLock = NSLock()
+    private var cancellationRequested = false
 
     // MTP drafter state. Non-nil iff the user passed a `draftModelPath`
     // at load time AND the slice supports speculative decode (the
@@ -482,6 +483,25 @@ private final class LlamaSession {
         self.draftMinDefault = draftMinDefault
         self.draftMaxDefault = draftMaxDefault
         self.workQueue = DispatchQueue(label: "ai.eliza.bun.llama.session.\(id)")
+    }
+
+    func resetCancellation() {
+        cancellationLock.lock()
+        cancellationRequested = false
+        cancellationLock.unlock()
+    }
+
+    func requestCancellation() {
+        cancellationLock.lock()
+        cancellationRequested = true
+        cancellationLock.unlock()
+    }
+
+    func isCancellationRequested() -> Bool {
+        cancellationLock.lock()
+        let requested = cancellationRequested
+        cancellationLock.unlock()
+        return requested
     }
 
     func free() {
@@ -933,7 +953,6 @@ public final class LlamaBridgeImpl {
         guard let session = SessionRegistry.shared.get(contextId) else {
             return .failure("llama_generate: unknown context_id \(contextId)")
         }
-        session.cancelled = false
         let start = DispatchTime.now()
 
         // 1. Tokenize prompt.
@@ -1042,7 +1061,7 @@ public final class LlamaBridgeImpl {
         var stoppedByStopSeq = false
 
         while generatedTokens < maxTokens {
-            if session.cancelled { break }
+            if session.isCancellationRequested() { break }
 
             // First, sample one token from the target's current distribution.
             // This is the verified token that the target accepts unconditionally.
@@ -1174,6 +1193,10 @@ public final class LlamaBridgeImpl {
             }
         }
 
+        if session.isCancellationRequested() {
+            onToken?("", true)
+            return .failure("llama_generate cancelled by stream owner")
+        }
         onToken?("", true)
 
         // Strip stop sequence from the bulk text (streaming consumer already saw it).
@@ -1196,8 +1219,12 @@ public final class LlamaBridgeImpl {
 
     /// Marks the in-flight generation on `contextId` for cancellation. The
     /// generation loop polls this flag between sampled tokens.
+    public func prepareGeneration(contextId: Int64) {
+        SessionRegistry.shared.get(contextId)?.resetCancellation()
+    }
+
     public func cancel(contextId: Int64) {
-        SessionRegistry.shared.get(contextId)?.cancelled = true
+        SessionRegistry.shared.get(contextId)?.requestCancellation()
     }
 
     public func synthesizeSpeech(
@@ -1963,6 +1990,8 @@ public final class LlamaBridgeImpl {
         onToken?("", true)
         return .failure("llama.cpp is not bundled in this iOS build")
     }
+
+    public func prepareGeneration(contextId: Int64) {}
 
     public func cancel(contextId: Int64) {}
 
