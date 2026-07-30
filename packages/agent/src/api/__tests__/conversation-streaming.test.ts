@@ -13,6 +13,7 @@ import {
   ChannelType,
   type Content,
   createMessageMemory,
+  INSUFFICIENT_CREDITS_REPLY,
   type Memory,
   stringToUuid,
 } from "@elizaos/core";
@@ -464,6 +465,30 @@ describe("chat route helper coverage", () => {
     expect(
       classifyChatFailure(new Error("local inference unavailable"), []),
     ).toBe("local_inference");
+  });
+
+  it("uses provider-neutral credit copy for direct Cerebras and Eliza Cloud 402s", () => {
+    const directCerebrasError = Object.assign(
+      new Error("Cerebras API error: 402 Payment Required"),
+      { statusCode: 402 },
+    );
+    const elizaCloudError = Object.assign(
+      new Error("Insufficient credits. Required: $0.0014, Available: $0.0000"),
+      {
+        status: 402,
+        error: { code: "insufficient_credits" },
+      },
+    );
+
+    expect(getChatFailureReply(directCerebrasError, [])).toBe(
+      INSUFFICIENT_CREDITS_REPLY,
+    );
+    expect(getChatFailureReply(elizaCloudError, [])).toBe(
+      INSUFFICIENT_CREDITS_REPLY,
+    );
+    expect(INSUFFICIENT_CREDITS_REPLY).not.toMatch(
+      /Eliza Cloud|cloud balance/i,
+    );
   });
 
   it("persists assistant memory with source, channel, synthetic metadata, and dedupe", async () => {
