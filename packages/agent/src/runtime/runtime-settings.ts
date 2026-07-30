@@ -8,6 +8,7 @@ import {
   collectConfigEnvVars,
   collectConnectorEnvVars,
 } from "../config/env-vars.ts";
+import { isVaultRef } from "./operations/vault-bridge.ts";
 
 export interface RuntimeSettingsProjectionOptions {
   preferredProviderId?: string;
@@ -17,6 +18,13 @@ export interface RuntimeSettingsProjectionOptions {
   workspaceSkillsDir?: string | null;
   walletSettings?: Record<string, string>;
   env?: NodeJS.ProcessEnv;
+  /**
+   * Connector secrets resolved from `vault://` refs at boot
+   * (see `resolveConnectorVaultOverlay` in eliza.ts). Delivered ONLY into the
+   * runtime settings map — never process.env — so `runtime.getSetting()` hands
+   * plugins the plaintext while the environment stays clean.
+   */
+  connectorSecretsOverlay?: Record<string, string>;
 }
 
 /**
@@ -67,7 +75,15 @@ export function buildRuntimeSettingsProjection(
         isEnvKeyAllowedForForwarding(key),
       ),
     ),
-    ...collectConnectorEnvVars(config),
+    // Drop unresolved `vault://` sentinels so a plugin never receives the ref
+    // literal as a credential; the resolved overlay below supplies the real
+    // value for refs the vault could serve (fail-closed for the rest).
+    ...Object.fromEntries(
+      Object.entries(collectConnectorEnvVars(config)).filter(
+        ([, value]) => !isVaultRef(value),
+      ),
+    ),
+    ...(options.connectorSecretsOverlay ?? {}),
     ...(options.preferredProviderId
       ? { MODEL_PROVIDER: options.preferredProviderId }
       : {}),

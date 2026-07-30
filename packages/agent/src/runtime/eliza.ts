@@ -36,7 +36,11 @@ import { BootTimer } from "./boot-timer.ts";
 import { maybeInjectFault } from "./crash-injection.ts";
 import { runFirstTimeSetup } from "./first-time-setup.ts";
 import { startMemoryWatchdog } from "./memory-watchdog.ts";
-import { resolveConfigEnvForProcess } from "./operations/vault-bridge.ts";
+import {
+  isVaultRef,
+  resolveConfigEnvForProcess,
+  resolveConnectorSecretSettings,
+} from "./operations/vault-bridge.ts";
 import { OPTIONAL_PLUGIN_IMPORTERS } from "./optional-plugin-imports.generated.ts";
 import {
   OPTIONAL_STATIC_PLUGIN_OVERRIDES,
@@ -266,7 +270,10 @@ import {
   type ElizaConfig,
   loadElizaConfig,
 } from "../config/config.ts";
-import { CONNECTOR_ENV_MAP } from "../config/env-vars.ts";
+import {
+  CONNECTOR_ENV_MAP,
+  collectConnectorEnvVars,
+} from "../config/env-vars.ts";
 import { resolveStateDir, resolveUserPath } from "../config/paths.ts";
 import {
   createHookEvent,
@@ -1893,6 +1900,11 @@ function isElizaCloudManagedProcessEnvKey(key: string): boolean {
 /**
  * Propagate channel credentials from Eliza config into process.env so
  * that elizaOS plugins can find them.
+ *
+ * `vault://` refs are NEVER mirrored: the plaintext for a ref is resolved by
+ * {@link resolveConnectorSecretsOverlayForBoot} into the in-memory runtime
+ * settings map only, so a vault-held connector secret does not leak into the
+ * process environment (child processes, co-tenant agents, `/proc` readers).
  */
 /** @internal Exported for testing. */
 export function applyConnectorSecretsToEnv(config: ElizaConfig): void {
@@ -1911,7 +1923,7 @@ export function applyConnectorSecretsToEnv(config: ElizaConfig): void {
         (typeof configObj.token === "string" && configObj.token.trim()) ||
         (typeof configObj.botToken === "string" && configObj.botToken.trim()) ||
         "";
-      if (tokenValue) {
+      if (tokenValue && !isVaultRef(tokenValue)) {
         process.env.DISCORD_API_TOKEN = tokenValue;
         process.env.DISCORD_BOT_TOKEN = tokenValue;
       }
@@ -1924,7 +1936,11 @@ export function applyConnectorSecretsToEnv(config: ElizaConfig): void {
       const value = configObj[configField];
       if (typeof value === "boolean" || typeof value === "number") {
         process.env[envKey] = String(value);
-      } else if (typeof value === "string" && value.trim()) {
+      } else if (
+        typeof value === "string" &&
+        value.trim() &&
+        !isVaultRef(value)
+      ) {
         process.env[envKey] = value;
       }
     }
@@ -1985,15 +2001,65 @@ export function applyConnectorSecretsToEnv(config: ElizaConfig): void {
 }
 
 /**
- * Auto-resolve Discord Application ID from the bot token via Discord API.
- * Called during async runtime init so that users only need a bot token.
+ * Resolve `vault://` connector refs into a settings-only overlay for boot.
+ *
+ * Runs on the same self-gating pattern as the config.env sentinel hydration:
+ * zero vault calls when no refs are present, so plain-value configs pay
+ * nothing. Skipped on mobile (no libsecret) and cloud-provisioned containers
+ * (daemon-injected env; vault-pglite init has hung the health check there) —
+ * refs in those environments fail closed with a key-name-only error.
+ *
+ * The returned overlay feeds ONLY `buildRuntimeSettings` — by design nothing
+ * here or downstream writes these values into `process.env`.
  */
 /** @internal Exported for testing. */
-export async function autoResolveDiscordAppId(): Promise<void> {
+export async function resolveConnectorSecretsOverlayForBoot(
+  config: ElizaConfig,
+): Promise<Record<string, string>> {
+  const connectorEnvVars = collectConnectorEnvVars(config);
+  const refKeys = Object.entries(connectorEnvVars)
+    .filter(([, value]) => isVaultRef(value))
+    .map(([key]) => key);
+  if (refKeys.length === 0) return {};
+
+  if (isMobilePlatform() || readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1") {
+    logger.error(
+      `[vault-bootstrap] connector vault ref(s) present but the vault is unavailable on this platform (fail-closed): ${refKeys.join(", ")}`,
+    );
+    return {};
+  }
+
+  const { sharedVault } = importAppCoreRuntime();
+  const { resolved, failures } = await resolveConnectorSecretSettings(
+    connectorEnvVars,
+    sharedVault(),
+  );
+  if (failures.length > 0) {
+    // Key names only — never values, never the underlying vault error.
+    logger.error(
+      `[vault-bootstrap] connector vault ref(s) failed to resolve (fail-closed): ${failures.join(", ")}`,
+    );
+  }
+  return resolved;
+}
+
+/**
+ * Auto-resolve Discord Application ID from the bot token via Discord API.
+ * Called during async runtime init so that users only need a bot token.
+ *
+ * `tokenOverride` carries a vault-resolved token that deliberately lives
+ * outside `process.env` (see resolveConnectorSecretsOverlayForBoot).
+ */
+/** @internal Exported for testing. */
+export async function autoResolveDiscordAppId(
+  tokenOverride?: string,
+): Promise<void> {
   if (process.env.DISCORD_APPLICATION_ID) return;
 
   const discordToken =
-    process.env.DISCORD_API_TOKEN || process.env.DISCORD_BOT_TOKEN;
+    tokenOverride ||
+    process.env.DISCORD_API_TOKEN ||
+    process.env.DISCORD_BOT_TOKEN;
   if (!discordToken) return;
 
   try {
@@ -3669,7 +3735,16 @@ export async function startEliza(
   // autoFetchCloudGithubToken needs the cloud agent id. config.cloud?.agentId
   // is available now; the function falls back to its own skip guards (no cloud
   // key / no managed namespace) when the id is absent this early.
-  const discordAppIdPromise = autoResolveDiscordAppId();
+  //
+  // Connector secrets configured as `vault://` refs resolve here into a
+  // settings-only overlay (never process.env). Self-gating: zero vault calls
+  // when no refs are present. Resolved before the Discord app-id prefetch so
+  // a vault-held token still feeds the lookup.
+  const connectorSecretsOverlay =
+    await resolveConnectorSecretsOverlayForBoot(config);
+  const discordAppIdPromise = autoResolveDiscordAppId(
+    connectorSecretsOverlay.DISCORD_API_TOKEN,
+  );
   const cloudGithubTokenPromise = autoFetchCloudGithubToken(
     config.cloud?.agentId?.trim(),
   );
@@ -4382,6 +4457,7 @@ export async function startEliza(
       managedSkillsDir,
       bundledSkillsDir,
       workspaceSkillsDir,
+      connectorSecretsOverlay,
     }),
   });
   installRuntimeMethodBindings(runtime);
@@ -5617,7 +5693,11 @@ export async function startEliza(
           // because the config may have changed (e.g. cloud enabled during
           // first-run setup).
           applyConnectorSecretsToEnv(freshConfig);
-          await autoResolveDiscordAppId();
+          const freshConnectorSecretsOverlay =
+            await resolveConnectorSecretsOverlayForBoot(freshConfig);
+          await autoResolveDiscordAppId(
+            freshConnectorSecretsOverlay.DISCORD_API_TOKEN,
+          );
           applyCloudConfigToEnv(freshConfig);
           applyX402ConfigToEnv(freshConfig);
           applyDatabaseConfigToEnv(freshConfig);
@@ -5724,6 +5804,7 @@ export async function startEliza(
               managedSkillsDir,
               bundledSkillsDir,
               workspaceSkillsDir: freshWorkspaceSkillsDir,
+              connectorSecretsOverlay: freshConnectorSecretsOverlay,
             }),
           });
           installRuntimeMethodBindings(newRuntime);
