@@ -8,7 +8,11 @@
  * Deterministic: in-memory runtime/state stubs with real temp-dir files for the
  * artifact cases.
  */
+<<<<<<< HEAD
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+=======
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+>>>>>>> b6aa11746fa (fix(agent): swarm synthesis relays lifecycle only for non-completed tasks)
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -69,6 +73,7 @@ describe("handleSwarmSynthesis", () => {
   // A stopped Claude session's newest jsonl ends mid-turn: its last assistant
   // text is inner monologue, not a result. Seed the REAL reader path
   // (~/.claude/projects/<sanitized-workdir>/) with such a transcript and prove
+<<<<<<< HEAD
   // the non-completed status gate keeps it out of the routed text. Seeded dirs
   // live in the developer's real ~/.claude/projects, so track and remove them.
   const seededProjectDirs: string[] = [];
@@ -78,6 +83,9 @@ describe("handleSwarmSynthesis", () => {
       if (dir) await rm(dir, { recursive: true, force: true });
     }
   });
+=======
+  // the non-completed status gate keeps it out of the routed text.
+>>>>>>> b6aa11746fa (fix(agent): swarm synthesis relays lifecycle only for non-completed tasks)
   async function seedClaudeTranscript(narration: string): Promise<string> {
     const workdir = await mkdtemp(path.join(tmpdir(), "swarm-stop-"));
     const projectDir = path.join(
@@ -86,15 +94,22 @@ describe("handleSwarmSynthesis", () => {
       "projects",
       workdir.replace(/[/.]/g, "-"),
     );
+<<<<<<< HEAD
     seededProjectDirs.push(projectDir);
+=======
+>>>>>>> b6aa11746fa (fix(agent): swarm synthesis relays lifecycle only for non-completed tasks)
     await mkdir(projectDir, { recursive: true });
     await writeFile(
       path.join(projectDir, "session.jsonl"),
       `${JSON.stringify({
+<<<<<<< HEAD
         message: {
           role: "assistant",
           content: [{ type: "text", text: narration }],
         },
+=======
+        message: { role: "assistant", content: [{ type: "text", text: narration }] },
+>>>>>>> b6aa11746fa (fix(agent): swarm synthesis relays lifecycle only for non-completed tasks)
       })}\n`,
       "utf8",
     );
@@ -132,7 +147,13 @@ describe("handleSwarmSynthesis", () => {
       },
     );
 
+<<<<<<< HEAD
     expect(routed).toEqual(["verification failed: launch check did not pass"]);
+=======
+    expect(routed).toEqual([
+      "verification failed: launch check did not pass",
+    ]);
+>>>>>>> b6aa11746fa (fix(agent): swarm synthesis relays lifecycle only for non-completed tasks)
   });
 
   it("falls back to a lifecycle line for a stopped Claude task with no verdict", async () => {
