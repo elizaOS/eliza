@@ -905,9 +905,9 @@ export function createCalendarSourcesAction(
       "MANAGE_CALENDAR_SOURCES",
     ],
     description:
-      "List and administer exact owner calendar sources across Google, Microsoft, Apple, and ICS. Use list before select/deselect; echo provider, grantId, connectorAccountId, calendarId, and version exactly. Connect/reconnect returns OAuth, device-permission, configuration, or verified ICS states and never implies authorization is complete. New ICS/webcal subscriptions are added by the owner in the source-manager UI; subscription URLs never pass through this action.",
+      "Read and change which calendar sources feed the owner's calendar, across Google, Microsoft, Apple, and ICS. select and deselect are writes: they durably include or exclude a source from the combined feed, and are the way to act on a source. Call list before select/deselect; echo provider, grantId, connectorAccountId, calendarId, and version exactly. Connect/reconnect returns OAuth, device-permission, configuration, or verified ICS states and never implies authorization is complete. New ICS/webcal subscriptions are added by the owner in the source-manager UI; subscription URLs never pass through this action.",
     descriptionCompressed:
-      "calendar source list|select|deselect|connect|reconnect exact identity versioned; ics create=owner UI only",
+      "calendar sources: list reads; select|deselect WRITE feed inclusion; connect|reconnect start owner auth; exact identity + version; ics create=owner UI only",
     tags: [
       "domain:calendar",
       "capability:read",
@@ -919,7 +919,7 @@ export function createCalendarSourcesAction(
     roleGate: { minRole: "OWNER" },
     subActions: [...SOURCE_OPERATIONS],
     routingHint:
-      "calendar provider/account/source connection, reconnection, health, or feed selection -> CALENDAR_SOURCES; calendar event reads/writes -> CALENDAR",
+      "calendar source connection, reconnection, health, or including/excluding a calendar from the feed (a durable write, not just a report) -> CALENDAR_SOURCES; calendar event reads/writes -> CALENDAR",
     suppressPostActionContinuation: true,
     validate: authorize,
     handler: async (runtime, message, _state, options, callback) => {
@@ -1079,7 +1079,7 @@ export function createCalendarSourcesAction(
       {
         name: "operation",
         description:
-          "Calendar source operation. Always list before select/deselect so the exact identity and current version are available.",
+          "Calendar source operation. list reads the sources; select and deselect write feed inclusion; connect and reconnect start owner authorization. Always list before select/deselect so the exact identity and current version are available.",
         required: true,
         schema: { type: "string", enum: [...SOURCE_OPERATIONS] },
       },
