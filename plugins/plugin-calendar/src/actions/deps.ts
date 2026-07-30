@@ -95,10 +95,19 @@ export interface CalendarTravelBufferDep {
 export interface CalendarMutationApprovalResult {
   readonly requestId: string;
   readonly action: "schedule_event" | "modify_event" | "cancel_event";
+  /**
+   * Mirrors the host approval queue's state, including the execution-protocol
+   * states a dispatch can settle into. A calendar mutation that failed
+   * retryably, or whose provider outcome is unknown and needs reconciliation,
+   * is a real row state — narrowing it here would report a row as something it
+   * is not.
+   */
   readonly state:
     | "pending"
     | "approved"
     | "executing"
+    | "retryable"
+    | "reconciliation_required"
     | "done"
     | "rejected"
     | "expired";
