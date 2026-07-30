@@ -15,6 +15,7 @@
  * also migrates the legacy `knowledge` partition into the document partitions.
  */
 import { existsSync, statSync } from "node:fs";
+import { filterByAccessContext } from "../../access-control/filter";
 import {
 	canRequesterMutateDocument,
 	DOCUMENT_LIST_MAX_LIMIT,
@@ -25,7 +26,6 @@ import {
 	readDocumentMutationSnapshot,
 } from "../../database/document-list-query";
 import { createUniqueUuid } from "../../entities";
-import { filterByAccessContext } from "../../access-control/filter";
 import { ElizaError } from "../../errors";
 import { logger } from "../../logger";
 import { checkSenderRole } from "../../roles";
@@ -1116,11 +1116,7 @@ export class DocumentService extends Service {
 		// the deny side of scoped reads (fail closed). Pinned by
 		// packages/agent/src/api/chat-augmentation.access-context.test.ts.
 		if (!accessContext) return results;
-		return filterByAccessContext(
-			results as unknown as Memory[],
-			accessContext,
-			this.runtime.agentId,
-		) as unknown as StoredDocument[];
+		return filterByAccessContext(results, accessContext, this.runtime.agentId);
 	}
 
 	/** Pure vector (cosine-similarity) search. */
@@ -1159,6 +1155,7 @@ export class DocumentService extends Service {
 			.filter((fragment) => fragment.id !== undefined)
 			.map((fragment) => ({
 				id: fragment.id as UUID,
+				entityId: fragment.entityId,
 				content: fragment.content as Content,
 				similarity: fragment.similarity,
 				metadata: fragment.metadata,
@@ -1200,6 +1197,7 @@ export class DocumentService extends Service {
 		return valid
 			.map((fragment) => ({
 				id: fragment.id as UUID,
+				entityId: fragment.entityId,
 				content: fragment.content as Content,
 				similarity: scoreMap.get(fragment.id as string) ?? 0,
 				metadata: fragment.metadata,
@@ -1286,6 +1284,7 @@ export class DocumentService extends Service {
 					HYBRID_VECTOR_WEIGHT * vectorNorm + HYBRID_BM25_WEIGHT * bm25Norm;
 				return {
 					id: fragment.id as UUID,
+					entityId: fragment.entityId,
 					content: fragment.content as Content,
 					similarity: combined,
 					metadata: fragment.metadata,

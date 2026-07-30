@@ -29,6 +29,7 @@ export type StoredDocumentMetadata = Record<string, unknown>;
  */
 export interface StoredDocument {
 	id: UUID;
+	entityId?: UUID;
 	content: Content;
 	metadata?: StoredDocumentMetadata;
 	worldId?: UUID;
