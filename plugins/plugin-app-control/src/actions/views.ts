@@ -2701,15 +2701,28 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							!viewId && !forcedResolvedCapability
 								? await getCurrentView()
 								: null;
+						// Only INFER a target from the message text when the caller did not
+						// name both a view and a capability. An explicit `view` +
+						// `capability` is a structured planner decision, and
+						// resolveViewCapability is a text heuristic that overwrites both on
+						// a match — so `interact view=scenario-active-ledger
+						// capability=agent-click` was being dispatched onto an unrelated
+						// surface (task-coordinator's "list-sessions"), which then rejected
+						// the caller's own params. Skipping the heuristic here leaves the
+						// explicit view to the `matches`/alias resolution below, which is
+						// already scoped to that one view.
+						const shouldInferTarget = !viewId || !capability;
 						let resolvedCapability =
 							forcedResolvedCapability ??
-							resolveViewCapability({
-								views,
-								text,
-								options: actionOptions,
-								viewType,
-								currentViewId: viewId ?? currentViewForResolution?.viewId,
-							});
+							(shouldInferTarget
+								? resolveViewCapability({
+										views,
+										text,
+										options: actionOptions,
+										viewType,
+										currentViewId: viewId ?? currentViewForResolution?.viewId,
+									})
+								: null);
 						if (!resolvedCapability && (!viewId || !capability)) {
 							const currentView = await getCurrentView();
 							resolvedCapability = resolveViewCapability({
