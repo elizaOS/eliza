@@ -49,6 +49,62 @@ function isCallable(value: unknown): value is (...args: unknown[]) => unknown {
   return typeof value === "function";
 }
 
+/**
+ * Snapshot a handler's options as pure JSON data.
+ *
+ * The captured trace is serialized into the scenario report, and the
+ * provider-qualified manifest rejects anything executable or non-JSON — so
+ * recording the LIVE options object fails the run: `actionContext` carries
+ * `getPreviousResult`, a closure over the planner's result list, and the
+ * manifest aborts with "contains executable or non-JSON data (function)".
+ * Holding that closure would also pin the planner's state alive for the whole
+ * report.
+ *
+ * Functions, symbols, and undefined are dropped rather than stringified —
+ * substituting a placeholder would put a value in the trace that the action was
+ * never called with. Cycles resolve to null (the options graph is data, so a
+ * cycle means runtime plumbing leaked in), and depth is capped so a deeply
+ * self-referential object cannot stall serialization.
+ */
+const MAX_CAPTURED_PARAM_DEPTH = 12;
+
+function toJsonSafe(
+  value: unknown,
+  seen: WeakSet<object> = new WeakSet(),
+  depth = 0,
+): unknown {
+  if (value === null) return null;
+  const kind = typeof value;
+  if (kind === "function" || kind === "symbol" || kind === "undefined") {
+    return undefined;
+  }
+  if (kind === "bigint") return (value as bigint).toString();
+  if (kind !== "object") return value;
+  if (depth >= MAX_CAPTURED_PARAM_DEPTH) return null;
+
+  const obj = value as object;
+  if (seen.has(obj)) return null;
+  seen.add(obj);
+  try {
+    if (value instanceof Date) return value.toISOString();
+    if (Array.isArray(value)) {
+      // A dropped element must not shift the surrounding indices, so holes
+      // become null instead of collapsing the array.
+      return value.map((item) => toJsonSafe(item, seen, depth + 1) ?? null);
+    }
+    const out: Record<string, unknown> = {};
+    for (const [key, item] of Object.entries(
+      value as Record<string, unknown>,
+    )) {
+      const safe = toJsonSafe(item, seen, depth + 1);
+      if (safe !== undefined) out[key] = safe;
+    }
+    return out;
+  } finally {
+    seen.delete(obj);
+  }
+}
+
 function errorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
   return String(err);
@@ -352,7 +408,8 @@ export function attachInterceptor(runtime: IAgentRuntime): ActionInterceptor {
       ];
       const entry: CapturedAction = {
         actionName: action.name,
-        parameters: options,
+        // Snapshot, never the live object — see toJsonSafe.
+        parameters: toJsonSafe(options) as Record<string, unknown> | undefined,
       };
       const wrappedArgs = [...args];
       if (isCallable(callback)) {
@@ -380,7 +437,11 @@ export function attachInterceptor(runtime: IAgentRuntime): ActionInterceptor {
           const resultForReport = suppressResult
             ? { ...r, data: redactedResult, values: redactedResult }
             : r;
-          entry.result = {
+          // Same JSON contract as `parameters`: the ternaries below assign
+          // `undefined` to absent fields, and `raw` is the live result object,
+          // so this is snapshotted too — an explicit `error: undefined` key is
+          // rejected by the manifest just as a function is.
+          entry.result = toJsonSafe({
             success: typeof r.success === "boolean" ? r.success : undefined,
             data: suppressResult ? redactedResult : r.data,
             values: suppressResult ? redactedResult : r.values,
@@ -396,7 +457,7 @@ export function attachInterceptor(runtime: IAgentRuntime): ActionInterceptor {
             path: typeof r.path === "string" ? r.path : undefined,
             exists: typeof r.exists === "boolean" ? r.exists : undefined,
             raw: resultForReport,
-          };
+          }) as CapturedAction["result"];
           captureArtifactsFromValue(
             artifacts,
             action.name,
