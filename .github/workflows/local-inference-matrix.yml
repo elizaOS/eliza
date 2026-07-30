@@ -1,8 +1,8 @@
 name: Local Inference Matrix
 
-# Runs the local-inference smoke and ablation variant suite, and gates
-# regressions against per-(backend, variant) tok/s floors in
-# packages/scripts/local-inference-thresholds.json.
+# Runs the local-inference smoke and ablation variant suite and publishes the
+# raw measurements for comparison. Hardware-dependent throughput is telemetry,
+# not a merge gate.
 #
 # Triggers:
 #   - workflow_dispatch (always; needed for macOS/CUDA cost control)
@@ -40,7 +40,6 @@ on:
       - "packages/app-core/src/services/local-inference/**"
       - "packages/scripts/local-inference-ablation.mjs"
       - "packages/scripts/local-inference-ablation.config.json"
-      - "packages/scripts/local-inference-thresholds.json"
       - "packages/scripts/local-inference-smoke.mjs"
       - ".github/workflows/local-inference-matrix.yml"
 
@@ -213,7 +212,7 @@ jobs:
             --local-dir "$MODEL_DIR"
           ls -lh "$MODEL_DIR/${SMOKE_MODEL_FILE}"
 
-      - name: Run ablation (--quick, gated)
+      - name: Run ablation (--quick)
         run: |
           set -euo pipefail
           MODEL_PATH="${ELIZA_STATE_DIR}/local-inference/models/${SMOKE_MODEL_FILE}"
@@ -221,7 +220,6 @@ jobs:
             --backend ${{ matrix.backend }} \
             --model "$MODEL_PATH" \
             --quick \
-            --gate packages/scripts/local-inference-thresholds.json \
             --out-dir artifacts/local-inference-ablation
 
       - name: Upload ablation artifact
