@@ -1,26 +1,11 @@
 /**
- * Real-DB proof that the orphan reaper's key resolution protects warm-claimed
- * containers (#17253 §1).
- *
- * A container claimed from the warm pool keeps the name it was born with —
- * `agent-<pool id>` — for its WHOLE life, while the pool row it points at is
- * deleted at claim time and `warm_claim_source_pool_id` is NULLed once the
- * credential handoff finalizes. The durable link is `container_name`, persisted
- * on the claimed row at claim time. Resolving node-side keys against `id`
- * alone maps every claimed customer container to a deleted row, and the sweep
- * reaps it as `no_db_row` while the customer is talking to it — including the
- * steady state every SUCCESSFULLY claimed agent settles into.
- *
- * Drives the REAL loadSandboxStatusesByIds against in-process PGlite (real
- * Drizzle schema via pushSchema) with NOTHING mocked. Fails LOUDLY if
- * PGlite/pushSchema is unavailable (never silently passes).
+ * Exercises warm-claim and cleanup-fence name resolution against an in-process
+ * PGlite schema so physical container ownership cannot be mistaken for absence.
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 const AMBIENT_DATABASE_URL = process.env.DATABASE_URL ?? "";
-const CAN_USE_ISOLATED_PGLITE =
-  AMBIENT_DATABASE_URL === "" || AMBIENT_DATABASE_URL.startsWith("pglite");
 process.env.DATABASE_URL ||= "pglite://memory";
 process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS = "1";
@@ -33,7 +18,6 @@ import { users } from "../../../db/schemas/users";
 
 const PGLITE_TIMEOUT = 60_000;
 
-let pgliteReady = true;
 let dbWrite: typeof import("../../../db/client").dbWrite;
 let closeDb: typeof import("../../../db/client").closeDatabaseConnectionsForTests | undefined;
 let loadSandboxStatusesByIds: typeof import("../docker-node-workloads").loadSandboxStatusesByIds;
@@ -57,24 +41,14 @@ async function seedOwner(): Promise<{ orgId: string; userId: string }> {
 }
 
 beforeAll(async () => {
-  if (!CAN_USE_ISOLATED_PGLITE) {
-    pgliteReady = false;
-    console.warn("[orphan-reaper-warm-claim-keys.test] non-PGlite DATABASE_URL; failing.");
-    return;
+  if (AMBIENT_DATABASE_URL !== "" && !AMBIENT_DATABASE_URL.startsWith("pglite")) {
+    throw new Error("This suite requires an isolated PGlite DATABASE_URL");
   }
-  try {
-    ({ closeDatabaseConnectionsForTests: closeDb, dbWrite } = await import("../../../db/client"));
-    ({ loadSandboxStatusesByIds } = await import("../docker-node-workloads"));
-    const schema = { organizations, users, userCharacters, agentSandboxes };
-    const { apply } = await pushSchema(schema as never, dbWrite as never);
-    await apply();
-  } catch (error) {
-    pgliteReady = false;
-    console.error(
-      "[orphan-reaper-warm-claim-keys.test] PGlite/pushSchema unavailable — failing.",
-      error,
-    );
-  }
+  ({ closeDatabaseConnectionsForTests: closeDb, dbWrite } = await import("../../../db/client"));
+  ({ loadSandboxStatusesByIds } = await import("../docker-node-workloads"));
+  const schema = { organizations, users, userCharacters, agentSandboxes };
+  const { apply } = await pushSchema(schema as never, dbWrite as never);
+  await apply();
 }, PGLITE_TIMEOUT);
 
 afterAll(async () => {
@@ -85,11 +59,8 @@ describe("orphan reaper key resolution for warm-claimed containers", () => {
   test(
     "a pool key resolves to the live claimed row, on the row's node",
     async () => {
-      expect(pgliteReady).toBe(true);
       const { orgId, userId } = await seedOwner();
       const poolId = crypto.randomUUID();
-      // The claimed USER row: its own id differs from the pool id its
-      // container is named after; the pool row itself no longer exists.
       const [row] = await dbWrite
         .insert(agentSandboxes)
         .values({
@@ -104,28 +75,22 @@ describe("orphan reaper key resolution for warm-claimed containers", () => {
         })
         .returning();
 
-      // The reaper resolves the key it parsed from `agent-<pool id>`.
       const placements = await loadSandboxStatusesByIds([poolId]);
 
       const forPoolKey = placements.filter((p) => p.key === poolId);
       expect(forPoolKey.length).toBeGreaterThanOrEqual(1);
       expect(forPoolKey[0]?.status).toBe("running");
       expect(forPoolKey[0]?.nodeId).toBe("node-7");
-      // The row's own key is still protected too.
       expect(placements.some((p) => p.key === row.id)).toBe(true);
     },
     PGLITE_TIMEOUT,
   );
 
   test(
-    "the FINALIZED steady state stays protected: pool id NULLed, name alone links the container",
+    "the finalized steady state resolves by physical name after the source id is cleared",
     async () => {
-      expect(pgliteReady).toBe(true);
       const { orgId, userId } = await seedOwner();
       const poolId = crypto.randomUUID();
-      // What finalizeWarmClaimCredentialHandoff leaves behind for every
-      // successfully claimed agent, for the rest of its life: container still
-      // named agent-<poolId>, warm_claim_source_pool_id NULL.
       const [row] = await dbWrite
         .insert(agentSandboxes)
         .values({
@@ -152,9 +117,8 @@ describe("orphan reaper key resolution for warm-claimed containers", () => {
   );
 
   test(
-    "a pool id claimed by NO row yields no placement (a true orphan still reaps)",
+    "an unclaimed pool id yields no placement",
     async () => {
-      expect(pgliteReady).toBe(true);
       const placements = await loadSandboxStatusesByIds([crypto.randomUUID()]);
       expect(placements).toEqual([]);
     },
@@ -162,38 +126,41 @@ describe("orphan reaper key resolution for warm-claimed containers", () => {
   );
 
   test(
-    "a replacement placement is mirrored onto the pool key as well",
+    "a cleanup-fenced physical name protects only its own placement",
     async () => {
-      expect(pgliteReady).toBe(true);
       const { orgId, userId } = await seedOwner();
-      const poolId = crypto.randomUUID();
+      const rowId = crypto.randomUUID();
+      const cleanupNameId = crypto.randomUUID();
       await dbWrite
         .insert(agentSandboxes)
         .values({
+          id: rowId,
           organization_id: orgId,
           user_id: userId,
           agent_name: uniq("claimed"),
           status: "running",
           execution_tier: "dedicated-always",
           node_id: "node-7",
-          warm_claim_source_pool_id: poolId,
-          container_name: `agent-${poolId}`,
-          // Full locator: the pair CHECK requires the whole tuple or none.
+          container_name: `agent-${rowId}`,
           replacement_cleanup_sandbox_id: crypto.randomUUID(),
           replacement_cleanup_node_id: "node-8",
-          replacement_cleanup_container_name: "agent-old-twin",
+          replacement_cleanup_container_name: `agent-${cleanupNameId}`,
           replacement_cleanup_attempt_id: crypto.randomUUID(),
           replacement_cleanup_allocation_counted: true,
           replacement_cleanup_created_at: new Date(),
         })
         .returning();
 
-      const placements = await loadSandboxStatusesByIds([poolId]);
-      const replacementForPool = placements.filter(
-        (p) => p.key === poolId && p.status === "replacement_cleanup_owned",
-      );
-      expect(replacementForPool).toHaveLength(1);
-      expect(replacementForPool[0]?.nodeId).toBe("node-8");
+      const placements = await loadSandboxStatusesByIds([cleanupNameId]);
+      const forCleanupName = placements.filter((placement) => placement.key === cleanupNameId);
+      expect(forCleanupName).toEqual([
+        {
+          key: cleanupNameId,
+          status: "replacement_cleanup_owned",
+          nodeId: "node-8",
+          updatedAtMs: expect.any(Number),
+        },
+      ]);
     },
     PGLITE_TIMEOUT,
   );

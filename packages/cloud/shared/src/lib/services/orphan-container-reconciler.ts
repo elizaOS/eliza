@@ -1,38 +1,9 @@
 /**
- * Shared orphan-container reconciler for the shared Hetzner-Docker pool.
- *
- * ONE generic sweep used by BOTH workload kinds that run on the pool:
- *   - AGENT containers (`agent-<id>`, backed by `agent_sandboxes`) — wired in
- *     `docker-node-workloads.ts`.
- *   - APP containers (`app-<slug>`, backed by `containers`) — wired in
- *     `app-container-orphan-reconciler.ts`.
- *
- * THE GAP THIS CLOSES
- * A managed container on a node whose DB row has been deleted (or moved to a
- * terminal state) is an orphan: it holds a compute slot and host volume forever
- * because nothing in the provisioner / deploy lifecycle will ever reap it again.
- * The delete job removes the container as part of deletion, but if that SSH step
- * fails terminally or the row is hard-deleted out from under a still-running
- * container, the leak goes unnoticed. This reconciler closes that gap with a
- * low-cadence sweep over HEALTHY nodes.
- *
- * SAFETY INVARIANTS (a wrong reaper kills a live customer workload):
- *   1. Only `status === "healthy"` nodes are touched.
- *   2. If the SSH container listing returns null (listing failed) → SKIP the
- *      node, never reap (a misread empty list must not reap live containers).
- *   3. Reap by the IMMUTABLE container ID captured in the same listing — NEVER
- *      by name (avoids the delete+recreate race where the name resolves to the
- *      new live container).
- *   4. Hard per-call SSH timeouts on both the list and the rm.
- *   5. Every reap, skip, and failure is logged.
- *   6. When unsure whether a container is an orphan → DO NOT reap.
- *
- * THE ONLY THINGS THAT DIFFER between the agent and app paths are injected via
- * `OrphanReconcilerConfig`: the container-name `prefix`, the `keyOf` that maps a
- * name to its DB diff key (agents parse the id out of `agent-<id>`; apps use the
- * name itself), the `terminalStatuses` vocab, the `loadStatuses` DB query, and a
- * `logScope` tag. Everything else — the orchestration loop, the SSH wiring, the
- * timeouts, the reap-by-id rm — is identical and lives here once.
+ * Reconciles managed agent and app containers against their durable database
+ * ownership on the shared Docker pool. The sweep fails closed whenever age,
+ * placement, health, or SSH evidence is incomplete, and removes only the
+ * immutable container ID captured by the same listing it classified. Workload
+ * adapters supply their name parser, status vocabulary, and ownership query.
  */
 
 import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
@@ -96,6 +67,36 @@ export interface OrphanContainer {
    */
   reason: "no_db_row" | "terminal_db_row" | "wrong_node";
 }
+
+/** Why a managed container was deliberately retained during this sweep. */
+export type RetainedContainerReason =
+  | "unmanaged_name"
+  | "no_db_row_age_unknown"
+  | "no_db_row_within_grace"
+  | "live_db_row"
+  | "node_context_unavailable"
+  | "live_on_node"
+  | "wrong_node_evidence_incomplete"
+  | "wrong_node_age_unknown"
+  | "wrong_node_container_within_grace"
+  | "wrong_node_row_within_grace";
+
+/** Complete, observable classification for one container in a node listing. */
+export type ContainerReconcileDecision =
+  | {
+      action: "retain";
+      name: string;
+      id: string;
+      key: string | null;
+      reason: RetainedContainerReason;
+    }
+  | {
+      action: "reap";
+      name: string;
+      id: string;
+      key: string;
+      reason: OrphanContainer["reason"];
+    };
 
 /** Per-node SSH surface the reconciler needs. Lets tests inject a fake node. */
 export interface OrphanReconcilerNode {
@@ -178,8 +179,7 @@ export interface OrphanReconcilerConfig {
 export const DEFAULT_NODE_MOVE_GRACE_MS = 5 * 60_000;
 
 /**
- * Pure diff: given the containers present on a node and the DB rows that exist
- * for those container keys, decide which containers to reap.
+ * Classify every listed container as retained or reapable.
  *
  * A container is an orphan when EITHER:
  *   - no DB row exists for its key (`no_db_row`), OR
@@ -213,10 +213,10 @@ export const DEFAULT_NODE_MOVE_GRACE_MS = 5 * 60_000;
  * When any live row points at THIS node, the container is the canonical one and
  * is kept.
  *
- * `nowMs` is injected (not read from the clock) so this function performs NO I/O
- * and can be unit-tested exhaustively.
+ * `nowMs` is injected so classification remains deterministic. Missing time is
+ * treated as incomplete evidence and therefore retains the container.
  */
-export function computeOrphanContainersToReap(
+export function classifyContainersForReconciliation(
   containersOnNode: readonly NodeContainerRef[],
   liveRows: readonly LiveContainerRef[],
   config: Pick<
@@ -225,7 +225,7 @@ export function computeOrphanContainersToReap(
   >,
   nodeId?: string,
   nowMs?: number,
-): OrphanContainer[] {
+): ContainerReconcileDecision[] {
   // Group the full row objects per key (a key can have >1 DB rows for apps —
   // there is no unique constraint on containers.name; for agents the key is a PK
   // so the list is always a singleton).
@@ -239,10 +239,19 @@ export function computeOrphanContainersToReap(
   const nodeAware = config.nodeAware === true && nodeId !== undefined;
   const graceMs = config.nodeMoveGraceMs ?? DEFAULT_NODE_MOVE_GRACE_MS;
 
-  const orphans: OrphanContainer[] = [];
+  const decisions: ContainerReconcileDecision[] = [];
   for (const container of containersOnNode) {
     const key = config.keyOf(container.name);
-    if (key === null) continue;
+    if (key === null) {
+      decisions.push({
+        action: "retain",
+        name: container.name,
+        id: container.id,
+        key: null,
+        reason: "unmanaged_name",
+      });
+      continue;
+    }
 
     const rows = rowsByKey.get(key);
     if (rows === undefined || rows.length === 0) {
@@ -253,14 +262,44 @@ export function computeOrphanContainersToReap(
       // CONTAINER itself must be older than the grace window, and an unknown
       // container age never reaps. An orphan is permanent; it can wait five
       // minutes to be provably one.
-      if (container.createdAtMs === undefined) continue;
-      if (nowMs === undefined || nowMs - container.createdAtMs < graceMs) continue;
-      orphans.push({ name: container.name, id: container.id, key, reason: "no_db_row" });
+      if (container.createdAtMs === undefined || nowMs === undefined) {
+        decisions.push({
+          action: "retain",
+          name: container.name,
+          id: container.id,
+          key,
+          reason: "no_db_row_age_unknown",
+        });
+        continue;
+      }
+      if (nowMs - container.createdAtMs < graceMs) {
+        decisions.push({
+          action: "retain",
+          name: container.name,
+          id: container.id,
+          key,
+          reason: "no_db_row_within_grace",
+        });
+        continue;
+      }
+      decisions.push({
+        action: "reap",
+        name: container.name,
+        id: container.id,
+        key,
+        reason: "no_db_row",
+      });
       continue;
     }
     if (rows.every((r) => config.terminalStatuses.has(r.status))) {
       // Reap ONLY when EVERY row is terminal — any live row protects the key.
-      orphans.push({ name: container.name, id: container.id, key, reason: "terminal_db_row" });
+      decisions.push({
+        action: "reap",
+        name: container.name,
+        id: container.id,
+        key,
+        reason: "terminal_db_row",
+      });
       continue;
     }
 
@@ -268,33 +307,131 @@ export function computeOrphanContainersToReap(
     // stale twin iff NONE of the live rows point at this node — the canonical
     // container lives elsewhere. Require the newest such mismatching row to have
     // been stable past the grace window before reaping.
-    if (nodeAware) {
-      const liveRows_ = rows.filter((r) => !config.terminalStatuses.has(r.status));
-      const anyOnThisNode = liveRows_.some((r) => r.nodeId === nodeId);
-      if (anyOnThisNode) continue;
-      // Only reap if every live row carries a node (else we can't prove
-      // elsewhere) and the freshest is older than the grace window.
-      const stamps = liveRows_.map((r) => r.updatedAtMs);
-      const allHaveNodeAndStamp = liveRows_.every(
-        (r) => r.nodeId !== undefined && r.updatedAtMs !== undefined,
-      );
-      if (!allHaveNodeAndStamp) continue;
-      // The CONTAINER must also be older than the grace window. A row's age
-      // alone cannot protect an in-flight re-placement: the worker creates the
-      // container on the new node BEFORE updating the row, so mid-provision the
-      // stale row (old timestamp, old node) makes a seconds-old container look
-      // reapable — the row-age check would even pass MORE easily. Caught live
-      // in the prod dry-run: a 29-second-old container drew a wrong_node
-      // verdict against a 12-day-old row. Unknown container age → never reap.
-      if (container.createdAtMs === undefined) continue;
-      if (nowMs !== undefined && nowMs - container.createdAtMs < graceMs) continue;
-      const newest = Math.max(...(stamps as number[]));
-      if (nowMs !== undefined && nowMs - newest >= graceMs) {
-        orphans.push({ name: container.name, id: container.id, key, reason: "wrong_node" });
-      }
+    if (!config.nodeAware) {
+      decisions.push({
+        action: "retain",
+        name: container.name,
+        id: container.id,
+        key,
+        reason: "live_db_row",
+      });
+      continue;
     }
+    if (!nodeAware) {
+      decisions.push({
+        action: "retain",
+        name: container.name,
+        id: container.id,
+        key,
+        reason: "node_context_unavailable",
+      });
+      continue;
+    }
+
+    const liveRows_ = rows.filter((r) => !config.terminalStatuses.has(r.status));
+    if (liveRows_.some((r) => r.nodeId === nodeId)) {
+      decisions.push({
+        action: "retain",
+        name: container.name,
+        id: container.id,
+        key,
+        reason: "live_on_node",
+      });
+      continue;
+    }
+    const completePlacements = liveRows_.filter(
+      (
+        row,
+      ): row is LiveContainerRef & {
+        nodeId: string;
+        updatedAtMs: number;
+      } => row.nodeId !== undefined && row.updatedAtMs !== undefined,
+    );
+    if (completePlacements.length !== liveRows_.length) {
+      decisions.push({
+        action: "retain",
+        name: container.name,
+        id: container.id,
+        key,
+        reason: "wrong_node_evidence_incomplete",
+      });
+      continue;
+    }
+    if (container.createdAtMs === undefined || nowMs === undefined) {
+      decisions.push({
+        action: "retain",
+        name: container.name,
+        id: container.id,
+        key,
+        reason: "wrong_node_age_unknown",
+      });
+      continue;
+    }
+    if (nowMs - container.createdAtMs < graceMs) {
+      decisions.push({
+        action: "retain",
+        name: container.name,
+        id: container.id,
+        key,
+        reason: "wrong_node_container_within_grace",
+      });
+      continue;
+    }
+    const newest = Math.max(...completePlacements.map((row) => row.updatedAtMs));
+    if (nowMs - newest < graceMs) {
+      decisions.push({
+        action: "retain",
+        name: container.name,
+        id: container.id,
+        key,
+        reason: "wrong_node_row_within_grace",
+      });
+      continue;
+    }
+    decisions.push({
+      action: "reap",
+      name: container.name,
+      id: container.id,
+      key,
+      reason: "wrong_node",
+    });
   }
-  return orphans;
+  return decisions;
+}
+
+/**
+ * Compatibility view for callers that only need containers approved for
+ * removal. Reconciliation uses the full decision set so retained workloads
+ * remain observable.
+ */
+export function computeOrphanContainersToReap(
+  containersOnNode: readonly NodeContainerRef[],
+  liveRows: readonly LiveContainerRef[],
+  config: Pick<
+    OrphanReconcilerConfig,
+    "keyOf" | "terminalStatuses" | "nodeAware" | "nodeMoveGraceMs"
+  >,
+  nodeId?: string,
+  nowMs?: number,
+): OrphanContainer[] {
+  return classifyContainersForReconciliation(
+    containersOnNode,
+    liveRows,
+    config,
+    nodeId,
+    nowMs,
+  ).flatMap((decision) =>
+    decision.action === "reap"
+      ? [
+          {
+            name: decision.name,
+            id: decision.id,
+            key: decision.key,
+            reason: decision.reason,
+          },
+        ]
+      : [],
+  );
 }
 
 /**
@@ -324,6 +461,11 @@ export async function reconcileOrphanContainers(
       // Defensive: callers should already filter, but never reap on a node we
       // have not confirmed reachable.
       result.nodesSkipped += 1;
+      logger.warn(`[${config.logScope}] Skipping unhealthy node`, {
+        nodeId: node.node_id,
+        hostname: node.hostname,
+        nodeStatus: node.status,
+      });
       continue;
     }
 
@@ -340,21 +482,34 @@ export async function reconcileOrphanContainers(
     }
     result.nodesScanned += 1;
 
-    const keys = containersOnNode
-      .map((c) => config.keyOf(c.name))
-      .filter((key): key is string => key !== null);
-    if (keys.length === 0) continue;
-
-    const liveRows = await config.loadStatuses(keys);
-    const orphans = computeOrphanContainersToReap(
+    const keys = [
+      ...new Set(
+        containersOnNode
+          .map((container) => config.keyOf(container.name))
+          .filter((key): key is string => key !== null),
+      ),
+    ];
+    const liveRows = keys.length === 0 ? [] : await config.loadStatuses(keys);
+    const decisions = classifyContainersForReconciliation(
       containersOnNode,
       liveRows,
       config,
       node.node_id,
       Date.now(),
     );
+    for (const retained of decisions.filter((decision) => decision.action === "retain")) {
+      logger.debug(`[${config.logScope}] Retained container`, {
+        nodeId: node.node_id,
+        hostname: node.hostname,
+        containerName: retained.name,
+        containerId: retained.id,
+        key: retained.key,
+        decision: retained.action,
+        reason: retained.reason,
+      });
+    }
 
-    for (const orphan of orphans) {
+    for (const orphan of decisions.filter((decision) => decision.action === "reap")) {
       try {
         // Reap by the IMMUTABLE container ID (`orphan.id`), never the name. The
         // id was captured in the same SSH listing that found the orphan, so it
@@ -371,16 +526,23 @@ export async function reconcileOrphanContainers(
           nodeId: node.node_id,
           hostname: node.hostname,
           containerName: orphan.name,
+          containerId: orphan.id,
           key: orphan.key,
+          decision: orphan.action,
           reason: orphan.reason,
         });
       } catch (error) {
+        // error-policy:J6 orphan cleanup is best-effort per container; the
+        // failed decision remains visible and the sweep continues to other IDs.
         result.reapFailed += 1;
         logger.warn(`[${config.logScope}] Failed to reap orphan container`, {
           nodeId: node.node_id,
           hostname: node.hostname,
           containerName: orphan.name,
+          containerId: orphan.id,
           key: orphan.key,
+          decision: orphan.action,
+          reason: orphan.reason,
           error: error instanceof Error ? error.message : String(error),
         });
       }
@@ -393,6 +555,88 @@ export async function reconcileOrphanContainers(
 /** Hard per-call SSH budgets so a hung node can never wedge the reconciler. */
 const ORPHAN_LIST_TIMEOUT_MS = 15_000;
 const ORPHAN_RM_TIMEOUT_MS = 30_000;
+
+const DOCKER_CREATED_AT_PATTERN =
+  /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?\s+([+-])(\d{2})(\d{2})(?:\s+\S+)?$/;
+
+function parseDockerCreatedAt(raw: string): number | undefined {
+  const match = DOCKER_CREATED_AT_PATTERN.exec(raw.trim());
+  if (!match) return undefined;
+  const [
+    ,
+    yearRaw,
+    monthRaw,
+    dayRaw,
+    hourRaw,
+    minuteRaw,
+    secondRaw,
+    fraction = "",
+    sign,
+    offsetHourRaw,
+    offsetMinuteRaw,
+  ] = match;
+  const year = Number(yearRaw);
+  const month = Number(monthRaw);
+  const day = Number(dayRaw);
+  const hour = Number(hourRaw);
+  const minute = Number(minuteRaw);
+  const second = Number(secondRaw);
+  const millisecond = Number(fraction.padEnd(3, "0").slice(0, 3));
+  const offsetHour = Number(offsetHourRaw);
+  const offsetMinute = Number(offsetMinuteRaw);
+  if (
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    day > 31 ||
+    hour > 23 ||
+    minute > 59 ||
+    second > 59 ||
+    offsetHour > 23 ||
+    offsetMinute > 59
+  ) {
+    return undefined;
+  }
+
+  const local = new Date(0);
+  local.setUTCFullYear(year, month - 1, day);
+  local.setUTCHours(hour, minute, second, millisecond);
+  if (
+    local.getUTCFullYear() !== year ||
+    local.getUTCMonth() !== month - 1 ||
+    local.getUTCDate() !== day
+  ) {
+    return undefined;
+  }
+  const offsetMs = (offsetHour * 60 + offsetMinute) * 60_000;
+  return local.getTime() - (sign === "+" ? offsetMs : -offsetMs);
+}
+
+/**
+ * Parses the exact Docker listing consumed by the reconciler. Malformed ages
+ * remain represented without `createdAtMs`, which makes destructive decisions
+ * fail closed instead of silently treating an unparseable timestamp as old.
+ */
+export function parseNodeContainerList(output: string, prefix: string): NodeContainerRef[] {
+  const containers: NodeContainerRef[] = [];
+  for (const rawLine of output.split("\n")) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    const fields = line.split("|");
+    if (fields.length !== 3) continue;
+    const [rawName = "", rawId = "", createdAtRaw = ""] = fields;
+    const name = rawName.trim();
+    const id = rawId.trim();
+    if (!name.startsWith(prefix) || !name || !id) continue;
+    const createdAtMs = parseDockerCreatedAt(createdAtRaw);
+    containers.push({
+      name,
+      id,
+      ...(createdAtMs === undefined ? {} : { createdAtMs }),
+    });
+  }
+  return containers;
+}
 
 /**
  * Production wiring for the orphan-container reconciler: enumerate enabled,
@@ -431,28 +675,10 @@ export async function reconcileOrphanContainersOnNodes(
             `docker ps -a --format '{{.Names}}|{{.ID}}|{{.CreatedAt}}' --filter name=${shellQuote(config.prefix)}`,
             ORPHAN_LIST_TIMEOUT_MS,
           );
-          return (
-            output
-              .split("\n")
-              .map((line) => line.trim())
-              .filter(Boolean)
-              // `--filter name=` is a substring match, so re-check the prefix to
-              // exclude any container that merely contains the prefix mid-name.
-              .filter((line) => line.startsWith(config.prefix))
-              .map((line) => {
-                const [name = "", id = "", createdAtRaw = ""] = line.split("|");
-                // docker's CreatedAt: "2026-07-07 16:45:01 +0000 UTC" — Date
-                // rejects the trailing " UTC" but parses the "+0000" offset.
-                const createdAt = Date.parse(createdAtRaw.replace(" UTC", "").trim());
-                return {
-                  name,
-                  id,
-                  ...(Number.isFinite(createdAt) ? { createdAtMs: createdAt } : {}),
-                };
-              })
-              .filter((c) => c.name && c.id)
-          );
+          return parseNodeContainerList(output, config.prefix);
         } catch (error) {
+          // error-policy:J1 the SSH adapter translates a transport failure into
+          // the explicit null signal that makes the sweep skip the whole node.
           logger.warn(`[${config.logScope}] Container listing failed over SSH`, {
             nodeId: node.node_id,
             hostname: node.hostname,

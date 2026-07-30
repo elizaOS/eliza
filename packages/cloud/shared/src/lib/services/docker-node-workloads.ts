@@ -1,4 +1,9 @@
-// Coordinates cloud service docker node workloads behavior behind route handlers.
+/**
+ * Supplies workload accounting and agent-specific ownership resolution for the
+ * shared Docker-node control plane. The orphan-reaper adapter preserves both
+ * canonical and cleanup-fenced physical container names because warm claims
+ * and blue/green swaps can make either name differ from the sandbox row ID.
+ */
 import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { dbRead } from "../../db/helpers";
 import { agentSandboxes } from "../../db/schemas/agent-sandboxes";
@@ -96,25 +101,20 @@ export function agentIdFromContainerName(name: string): string | null {
  * retirement and capacity release complete, so both primary and replacement
  * nodes must protect that key from the orphan reaper.
  *
- * A key seen on a node is matched against `warm_claim_source_pool_id` as well
- * as the primary key: a container claimed from the warm pool keeps the name it
- * was born with — `agent-<pool id>` — for its WHOLE life, while the pool row
- * that id points at is deleted at claim time. Matching only `id` maps every
- * claimed customer container to a deleted row, and the sweep reaps it as
- * `no_db_row` while the customer is talking to it.
- *
- * The durable match is `container_name`: `claimWarmContainer` persists it on
- * the claimed row in the same write as `warm_claim_source_pool_id`, and unlike
- * the pool id — which `finalizeWarmClaimCredentialHandoff` NULLs once the
- * credential handoff completes — the name stays for the row's lifetime, so it
- * covers the steady state every successfully claimed agent settles into, not
- * just the transient handoff window. It strictly subsumes a pool-id match.
+ * Physical names are durable ownership keys in addition to the sandbox row ID.
+ * A warm-claimed container keeps `agent-<pool id>` after the pool row is
+ * deleted and the transient source ID is cleared. A cleanup-fenced container
+ * likewise keeps its old physical name across a blue/green cutover. Each name
+ * aliases only its own placement so unrelated containers on the other node do
+ * not inherit protection.
  */
 export async function loadSandboxStatusesByIds(
   agentIds: readonly string[],
 ): Promise<LiveContainerRef[]> {
   if (agentIds.length === 0) return [];
   const queriedIds = new Set(agentIds);
+  const queriedKeys = [...queriedIds];
+  const queriedContainerNames = queriedKeys.map((id) => `${AGENT_CONTAINER_NAME_PREFIX}${id}`);
   const rows = await dbRead
     .select({
       key: agentSandboxes.id,
@@ -123,47 +123,53 @@ export async function loadSandboxStatusesByIds(
       nodeId: agentSandboxes.node_id,
       updatedAt: agentSandboxes.updated_at,
       replacementNodeId: agentSandboxes.replacement_cleanup_node_id,
+      replacementContainerName: agentSandboxes.replacement_cleanup_container_name,
       replacementCreatedAt: agentSandboxes.replacement_cleanup_created_at,
     })
     .from(agentSandboxes)
     .where(
       or(
-        inArray(agentSandboxes.id, agentIds as string[]),
-        inArray(
-          agentSandboxes.container_name,
-          agentIds.map((id) => `${AGENT_CONTAINER_NAME_PREFIX}${id}`),
-        ),
+        inArray(agentSandboxes.id, queriedKeys),
+        inArray(agentSandboxes.container_name, queriedContainerNames),
+        inArray(agentSandboxes.replacement_cleanup_container_name, queriedContainerNames),
       ),
     );
   return rows.flatMap((row) => {
-    const placements: LiveContainerRef[] = [
+    const placements: LiveContainerRef[] = [];
+    const appendPlacement = (
+      placement: LiveContainerRef,
+      physicalContainerName: string | null,
+    ): void => {
+      placements.push(placement);
+      const nameKey = physicalContainerName
+        ? agentIdFromContainerName(physicalContainerName)
+        : null;
+      if (nameKey && nameKey !== row.key && queriedIds.has(nameKey)) {
+        placements.push({ ...placement, key: nameKey });
+      }
+    };
+
+    appendPlacement(
       {
         key: row.key,
         status: row.status,
         nodeId: row.nodeId ?? undefined,
         updatedAtMs: row.updatedAt ? new Date(row.updatedAt).getTime() : undefined,
       },
-    ];
+      row.containerName,
+    );
     if (row.replacementNodeId) {
-      placements.push({
-        key: row.key,
-        status: "replacement_cleanup_owned",
-        nodeId: row.replacementNodeId,
-        updatedAtMs: row.replacementCreatedAt
-          ? new Date(row.replacementCreatedAt).getTime()
-          : undefined,
-      });
-    }
-    const nameKey = row.containerName?.startsWith(AGENT_CONTAINER_NAME_PREFIX)
-      ? row.containerName.slice(AGENT_CONTAINER_NAME_PREFIX.length)
-      : null;
-    if (nameKey && nameKey !== row.key && queriedIds.has(nameKey)) {
-      // The physical container carries the id embedded in its NAME — for a
-      // warm-claimed row that is the birth pool's id, forever. Every placement
-      // protecting this row must protect that key too.
-      for (const placement of [...placements]) {
-        placements.push({ ...placement, key: nameKey });
-      }
+      appendPlacement(
+        {
+          key: row.key,
+          status: "replacement_cleanup_owned",
+          nodeId: row.replacementNodeId,
+          updatedAtMs: row.replacementCreatedAt
+            ? new Date(row.replacementCreatedAt).getTime()
+            : undefined,
+        },
+        row.replacementContainerName,
+      );
     }
     return placements;
   });
