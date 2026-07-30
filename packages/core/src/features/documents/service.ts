@@ -29,6 +29,7 @@ import { createUniqueUuid } from "../../entities";
 import { ElizaError } from "../../errors";
 import { logger } from "../../logger";
 import { checkSenderRole } from "../../roles";
+import { memoizeTurnWork } from "../../trajectory-context";
 import {
 	type AccessContext,
 	type Content,
@@ -248,35 +249,46 @@ export async function resolveDocumentRequester(
 	runtime: IAgentRuntime,
 	message?: Memory,
 ): Promise<DocumentRequester> {
-	const requester = await resolveDocumentRequesterRole(runtime, message);
-	if (documentRoleHasGlobalVisibility(requester.role)) {
-		return { ...requester, roomIds: [] };
-	}
-	try {
-		const roomIds = await runtime.getRoomsForParticipants([requester.entityId]);
-		return {
-			...requester,
-			roomIds: [...new Set(roomIds)],
-		};
-	} catch (cause) {
-		// error-policy:J2 Preserve room-resolution context and fail the read.
-		const error = new ElizaError("Document requester room lookup failed", {
-			code: "DOCUMENT_ROOM_LOOKUP_FAILED",
-			cause,
-			context: {
+	const requesterKey = [
+		"documents:requester",
+		runtime.agentId,
+		message?.id ?? "no-message",
+		message?.entityId ?? runtime.agentId,
+		message?.roomId ?? "no-room",
+	].join(":");
+	return memoizeTurnWork(requesterKey, async () => {
+		const requester = await resolveDocumentRequesterRole(runtime, message);
+		if (documentRoleHasGlobalVisibility(requester.role)) {
+			return { ...requester, roomIds: [] };
+		}
+		try {
+			const roomIds = await runtime.getRoomsForParticipants([
+				requester.entityId,
+			]);
+			return {
+				...requester,
+				roomIds: [...new Set(roomIds)],
+			};
+		} catch (cause) {
+			// error-policy:J2 Preserve room-resolution context and fail the read.
+			const error = new ElizaError("Document requester room lookup failed", {
+				code: "DOCUMENT_ROOM_LOOKUP_FAILED",
+				cause,
+				context: {
+					agentId: runtime.agentId,
+					entityId: requester.entityId,
+					roomId: message?.roomId,
+				},
+				severity: "ephemeral",
+			});
+			runtime.reportError("DocumentService.resolveRequesterRooms", error, {
 				agentId: runtime.agentId,
 				entityId: requester.entityId,
 				roomId: message?.roomId,
-			},
-			severity: "ephemeral",
-		});
-		runtime.reportError("DocumentService.resolveRequesterRooms", error, {
-			agentId: runtime.agentId,
-			entityId: requester.entityId,
-			roomId: message?.roomId,
-		});
-		throw error;
-	}
+			});
+			throw error;
+		}
+	});
 }
 
 function normalizeDocumentScope(

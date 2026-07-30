@@ -3,6 +3,7 @@
  * start, without wall-clock thresholds or substituted provider implementations.
  */
 import { describe, expect, it, vi } from "vitest";
+import { runWithTrajectoryContext } from "../trajectory-context.ts";
 import type {
 	Entity,
 	IAgentRuntime,
@@ -16,7 +17,10 @@ import { factsProvider } from "./advanced-capabilities/providers/facts.ts";
 import { relationshipsProvider } from "./advanced-capabilities/providers/relationships.ts";
 import { worldProvider } from "./basic-capabilities/providers/world.ts";
 import { documentsProvider } from "./documents/provider.ts";
-import { DocumentService } from "./documents/service.ts";
+import {
+	DocumentService,
+	resolveDocumentRequester,
+} from "./documents/service.ts";
 
 const agentId = "10000000-0000-0000-0000-000000000001" as UUID;
 const entityId = "10000000-0000-0000-0000-000000000002" as UUID;
@@ -48,6 +52,39 @@ function deferred<T>() {
 }
 
 describe("provider database I/O concurrency", () => {
+	it("coalesces concurrent document authorization reads within one turn", async () => {
+		const getRoom = vi.fn(async () => ({ id: roomId, worldId }));
+		const getWorld = vi.fn(async () => ({
+			id: worldId,
+			name: "test world",
+			metadata: {},
+		}));
+		const getRoomsForParticipants = vi.fn(async () => [roomId, roomId]);
+		const runtime = {
+			agentId,
+			getRoom,
+			getWorld,
+			getRoomsForParticipants,
+			getSetting: vi.fn(() => undefined),
+			reportError: vi.fn(),
+		} as unknown as IAgentRuntime;
+
+		const [first, second] = await runWithTrajectoryContext(
+			{ turnMemo: new Map<string, Promise<unknown>>() },
+			() =>
+				Promise.all([
+					resolveDocumentRequester(runtime, message),
+					resolveDocumentRequester(runtime, message),
+				]),
+		);
+
+		expect(first).toEqual(second);
+		expect(first.roomIds).toEqual([roomId]);
+		expect(getRoom).toHaveBeenCalledOnce();
+		expect(getWorld).toHaveBeenCalledOnce();
+		expect(getRoomsForParticipants).toHaveBeenCalledOnce();
+	});
+
 	it("starts FACTS history and identity reads together, then starts every candidate pool together", async () => {
 		const history = deferred<Memory[]>();
 		const identities = deferred<UUID[]>();
