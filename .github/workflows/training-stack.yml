@@ -81,7 +81,10 @@ jobs:
           tags: eliza-training-cpu:ci
           load: true
           cache-from: type=gha,scope=training-cpu
-          cache-to: type=gha,scope=training-cpu,mode=max
+          # Pull-request caches are isolated to refs/pull/*/merge, so exporting
+          # this multi-gigabyte image cannot warm develop or another PR. Trusted
+          # runs refresh the shared cache within a bounded best-effort budget.
+          cache-to: ${{ github.event_name != 'pull_request' && 'type=gha,scope=training-cpu,mode=max,timeout=12m,ignore-error=true' || '' }}
 
       - name: Install ruff (host)
         # ruff lint is fast on the host and gives a clean GitHub
