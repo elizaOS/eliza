@@ -6,7 +6,7 @@
  */
 
 import type { ProviderStatus } from "@elizaos/shared";
-import type { DeviceBridgeStatus } from "../services/local-inference/device-bridge";
+import type { DeviceBridgeStatus } from "../services/local-inference/device-bridge-status";
 import type { PublicRegistration } from "../services/local-inference/handler-registry";
 import type {
   RoutingPolicy,
@@ -187,8 +187,6 @@ ElizaClient.prototype.getLocalInferenceHub = async function (
 ) {
   localInferenceHubRequest ??= this.fetch<ModelHubSnapshot>(
     "/api/local-inference/hub",
-    undefined,
-    { timeoutMs: 30_000 },
   ).finally(() => {
     localInferenceHubRequest = null;
   });

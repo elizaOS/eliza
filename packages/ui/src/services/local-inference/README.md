@@ -59,10 +59,12 @@ into the UI bundle or cripple the server, so they remain split:
   server adds same-file MTP metadata and `optimizations.requiresKernel`.
 - `recommendation.ts` — UI omits the server-only kernel-availability
   filter.
-- `active-model.ts`, `device-bridge.ts`, `ffi-streaming-backend.ts`,
+- `active-model.ts`, `device-bridge-status.ts`, `ffi-streaming-backend.ts`,
   `mtp-doctor.ts`, `engine.ts`, `handler-registry.ts`, `hardware.ts`,
   `index.ts`, `providers.ts`, `router-handler.ts`, `service.ts` — UI
   keeps a slimmer surface for type-only / catalog-only consumers.
+  `device-bridge-status.ts` contains only the browser-safe status DTO; bridge
+  ownership and RPC execution live in `plugin-local-inference`.
 
 If a twin pair becomes byte-identical with identical semantics, extract
 it to `packages/shared/src/local-inference/` and replace both copies
