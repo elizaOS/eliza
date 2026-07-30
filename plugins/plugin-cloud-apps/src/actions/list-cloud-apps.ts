@@ -105,6 +105,10 @@ export const listCloudAppsAction: Action = {
         text: `Listed ${apps.length} Eliza Cloud app(s).`,
         userFacingText: reply,
         verifiedUserFacing: true,
+        // A single-operation read whose reply IS the complete answer: opting
+        // into the gated evaluator skip keeps a small planner model from
+        // re-rendering the already-delivered list as a second message.
+        turnComplete: true,
         data: {
           count: apps.length,
           apps: apps.map((a) => ({
