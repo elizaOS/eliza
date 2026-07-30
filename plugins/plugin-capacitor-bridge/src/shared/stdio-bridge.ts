@@ -6,9 +6,8 @@
  * the bridge's stdin and reads response frames from stdout, with no TCP port
  * (`inProcess: true`, `isAuthorized: () => true`). This module extracts the
  * reusable half of that loop — the line reader, JSON frame parse, request
- * dispatch, and response serialization — so iOS today and a future Android /
- * desktop stdio bridge can all construct one from the same code instead of each
- * re-implementing the buffering + framing.
+ * dispatch, and response serialization — so iOS, Android, and desktop use the
+ * same framing and concurrency semantics.
  *
  * Supports both buffered request/response and incremental streaming: a frame
  * whose `stream === true` is routed to the optional `requestStream` handler,
@@ -120,8 +119,7 @@ export interface StdioBridge {
 	 */
 	handleLine: (line: string) => Promise<void>;
 	/**
-	 * Serialized tail of all in-flight `handleLine` dispatches — await before
-	 * teardown so no response is dropped.
+	 * Await every in-flight dispatch before teardown so no response is dropped.
 	 */
 	drain: () => Promise<void>;
 }
@@ -129,7 +127,7 @@ export interface StdioBridge {
 /**
  * Construct a buffered NDJSON stdio bridge around a request handler. The caller
  * drives it by feeding input lines (from its own stdin reader) and supplies the
- * frame writer; the kernel handles JSON framing, per-line dispatch ordering, and
+ * frame writer; the kernel handles JSON framing, concurrent dispatch, and
  * error-to-frame translation.
  */
 export function createStdioBridge(
@@ -212,23 +210,30 @@ export function createStdioBridge(
 		}
 	};
 
-	// Serialize dispatches so responses are written in request order and teardown
-	// can await the tail. A single failing dispatch never breaks the chain.
-	let pending: Promise<void> = Promise.resolve();
+	// Request ids provide correlation, so independent calls run concurrently.
+	// This is load-bearing for cancellation: a long model stream must not block
+	// the control frame that aborts it, nor unrelated health/config requests.
+	const inFlight = new Set<Promise<void>>();
 
 	const handleLine = (line: string): Promise<void> => {
 		if (interceptLine?.(line)) return Promise.resolve();
-		const next = pending
-			.then(() => dispatchLine(line))
-			.catch((err) => {
-				writeError(null, err);
-			});
-		pending = next;
-		return next;
+		const current = dispatchLine(line).catch((err) => {
+			writeError(null, err);
+		});
+		inFlight.add(current);
+		const release = () => {
+			inFlight.delete(current);
+		};
+		void current.then(release, release);
+		return current;
 	};
 
 	return {
 		handleLine,
-		drain: () => pending.catch(() => undefined),
+		drain: async () => {
+			while (inFlight.size > 0) {
+				await Promise.all([...inFlight]);
+			}
+		},
 	};
 }
