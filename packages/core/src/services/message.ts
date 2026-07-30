@@ -11487,20 +11487,6 @@ export class DefaultMessageService implements IMessageService {
 					},
 					"v5 message runtime failed",
 				);
-				// Mirror to process.stderr so bench / orchestrator runs can see
-				// the underlying cause when runtime.logger output is buffered or
-				// silenced. The previous behavior swallowed the stack and only
-				// the user-facing "something flaked" template appeared in
-				// trajectories — making the cold-start failure-fallback issue
-				// invisible in bench server logs.
-				try {
-					process.stderr.write(
-						`[v5-runtime-failed] agentId=${runtime.agentId} ` +
-							`error=${errMsg}\n${errStack ?? ""}\n`,
-					);
-				} catch {
-					// stderr write must never throw the runtime.
-				}
 				// Rate limits and provider outages throw from the Stage 1 model
 				// call itself — before any RESPOND/IGNORE decision exists. For
 				// ambiguous group traffic the pre-failure outcome would have been
