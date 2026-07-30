@@ -790,7 +790,11 @@ export const lifeOpsProvider: Provider = {
       });
       return {
         text: "LifeOps overview unavailable.",
-        values: { ownerOpenOccurrences: 0, ownerActiveGoals: 0 },
+        // No counts: a failed read that reports zero open occurrences and zero
+        // active goals is indistinguishable from a genuinely empty day, and the
+        // model would state it as fact. The marker lets a consumer tell the
+        // three states apart.
+        values: { lifeOpsOverviewUnavailable: true },
         data: {
           error: error instanceof Error ? error.message : String(error),
         },
