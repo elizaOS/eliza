@@ -353,11 +353,8 @@ export function createAgentOrchestratorPlugin(): Plugin {
         // Registered unconditionally but behavior-neutral unless its explicit
         // default-OFF setting is enabled.
         WaveSupervisor.serviceType,
-        // Eager-start the coordinator adapter so it subscribes to the ACP
-        // event stream at boot (rather than waiting for a getService() that
-        // only the server's bridge-wiring poll issues). This makes
-        // wireCoordinatorBridgesWhenReady succeed on its first attempt and the
-        // verification-room-bridge attach without burning its retry budget.
+        // Start the coordinator adapter so its runtime-owned ACP dependency is
+        // resolved before API and verification consumers attach.
         SwarmCoordinatorService.serviceType,
       ];
       setTimeout(() => {

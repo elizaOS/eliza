@@ -299,7 +299,6 @@ export class SwarmCoordinatorService
 
   private unsubscribeAcp: (() => void) | null = null;
   private acpBindAttempts = 0;
-  private acpBindTimer: ReturnType<typeof setTimeout> | null = null;
   private stopped = false;
 
   /**
@@ -309,16 +308,13 @@ export class SwarmCoordinatorService
    * healthy one (the service object exists either way). Consumers read
    * {@link acpBindState} instead of inferring liveness from `getService()`.
    *
-   *  - `pending`   : bind in flight (event-driven wait + polling fallback).
+   *  - `pending`   : the runtime is starting the registered ACP dependency.
    *  - `bound`     : subscribed to the ACP session-event stream; events flow.
    *  - `unbound`   : ACP service failed to start / rejected; stream inactive.
    */
   private acpBindStatus: "pending" | "bound" | "unbound" = "pending";
   /** Last actionable reason the bind is not `bound` (for the readiness probe). */
   private acpBindReason: string | null = null;
-  /** Set once the event-driven load-promise wait has been armed (arm-once). */
-  private acpLoadWaitArmed = false;
-
   /**
    * The room id that out-of-band synthesis routing falls back to. Declared on
    * the interface the bridges read; the orchestrator routes per-task room ids
@@ -348,16 +344,12 @@ export class SwarmCoordinatorService
 
   static async start(runtime: IAgentRuntime): Promise<SwarmCoordinatorService> {
     const service = new SwarmCoordinatorService(runtime);
-    service.bindToAcp();
+    await service.bindToAcp();
     return service;
   }
 
   override async stop(): Promise<void> {
     this.stopped = true;
-    if (this.acpBindTimer) {
-      clearTimeout(this.acpBindTimer);
-      this.acpBindTimer = null;
-    }
     const unsub = this.unsubscribeAcp;
     this.unsubscribeAcp = null;
     if (typeof unsub === "function") {
@@ -387,10 +379,6 @@ export class SwarmCoordinatorService
     }
     this.legacyTaskEvictionTimers.clear();
     this.tasks.clear();
-    // The event-driven load-promise wait can't be cancelled, but `stopped`
-    // guards its continuation; reset the arm flag so a restarted instance
-    // re-arms cleanly.
-    this.acpLoadWaitArmed = false;
     if (this.acpBindStatus === "pending") {
       this.acpBindStatus = "unbound";
       this.acpBindReason = "service stopped before ACP bind completed";
@@ -514,91 +502,51 @@ export class SwarmCoordinatorService
   /**
    * Subscribe to the AcpService session-event stream.
    *
-   * Service start order at boot is not deterministic and ACP startup can take
-   * well over a minute on a heavy boot (big character, many plugins, embedding
-   * warmup). Binding therefore uses two complementary mechanisms:
-   *
-   *   1. **Event-driven** — `runtime.getServiceLoadPromise(ACP)` resolves the
-   *      instant ACP finishes starting, however long that takes. This is the
-   *      primary path: no fixed deadline, so it can't "give up" before a slow
-   *      boot finishes. It resolves/rejects exactly once.
-   *   2. **Polling fallback** — a short interval re-checks `getService(ACP)` in
-   *      case the load-promise is unavailable or the service was registered by
-   *      a path that doesn't drive it. Unlike the old bounded 60s loop, this
-   *      fallback is UNBOUNDED but backs off and ESCALATES log severity, so a
-   *      genuinely stuck bind is loud (error) instead of silent.
-   *
-   * The prior implementation polled for a fixed 60s then gave up with a single
-   * warn, leaving `acpBindTimer=null` and never re-arming. On a boot where ACP
-   * registered at, say, 70s, the coordinator went permanently inert while the
-   * service object still existed — so the 90s wiring probe "succeeded" and set
-   * its callbacks, but no ACP events ever reached them (supervision degraded,
-   * silently). This fix closes that race.
+   * AcpService and this coordinator are declared by the same plugin. The
+   * runtime registers both service classes before either starts, so its load
+   * promise is the single dependency owner: it resolves when ACP is usable and
+   * rejects when ACP cannot start. No polling interval or elapsed-time guess is
+   * involved.
    */
-  private bindToAcp(): void {
+  private async bindToAcp(): Promise<void> {
     if (this.stopped || this.unsubscribeAcp) return;
-
-    // Arm the event-driven wait exactly once. This is the real fix: it can't
-    // time out before ACP starts, however slow the boot.
-    this.armAcpLoadWait();
-
-    const acp = this.acp();
-    if (!acp) {
-      // ACP not registered yet — keep the polling fallback ticking. The
-      // load-promise above will normally win the race, but the poll survives
-      // the case where it isn't wired.
-      this.scheduleAcpBindRetry();
-      return;
+    this.acpBindAttempts = 1;
+    let loaded: unknown;
+    try {
+      loaded = await this.runtime.getServiceLoadPromise(AcpService.serviceType);
+    } catch (error) {
+      const reason = `AcpService failed to start: ${
+        error instanceof Error ? error.message : String(error)
+      }`;
+      this.markUnbound(reason);
+      // error-policy:J2 preserve the runtime-owned dependency failure while
+      // adding the coordinator contract that could not be established.
+      throw new ElizaError("Swarm coordinator could not bind AcpService", {
+        code: "SWARM_COORDINATOR_ACP_START_FAILED",
+        cause: error,
+        context: { serviceType: AcpService.serviceType },
+        severity: "fatal",
+      });
     }
-    this.completeBind(acp);
-  }
-
-  /**
-   * Event-driven bind: await the ACP service load-promise, which resolves as
-   * soon as ACP finishes starting (no fixed deadline). Armed once; the polling
-   * fallback races it and whichever wins calls {@link completeBind} (guarded by
-   * `unsubscribeAcp` so the second is a no-op).
-   */
-  private armAcpLoadWait(): void {
-    if (this.acpLoadWaitArmed || this.stopped) return;
-    const loadPromise = this.runtime.getServiceLoadPromise?.(
-      AcpService.serviceType,
-    );
-    if (!loadPromise || typeof loadPromise.then !== "function") {
-      // Runtime doesn't expose the load-promise — rely on the polling fallback.
-      return;
+    if (
+      !loaded ||
+      typeof (loaded as Partial<AcpService>).onSessionEvent !== "function"
+    ) {
+      const reason =
+        "AcpService started without exposing the session-event subscription surface";
+      this.markUnbound(reason);
+      throw new ElizaError(reason, {
+        code: "SWARM_COORDINATOR_ACP_CONTRACT_INVALID",
+        context: { serviceType: AcpService.serviceType },
+        severity: "fatal",
+      });
     }
-    this.acpLoadWaitArmed = true;
-    void loadPromise.then(
-      (svc) => {
-        if (this.stopped || this.unsubscribeAcp) return;
-        const acp =
-          (svc as AcpService | undefined) &&
-          typeof (svc as AcpService).onSessionEvent === "function"
-            ? (svc as AcpService)
-            : this.acp();
-        if (acp) this.completeBind(acp);
-      },
-      (err: unknown) => {
-        // ACP failed to start. This is terminal: the polling fallback would
-        // spin forever, so mark unbound LOUDLY with the actionable reason.
-        if (this.stopped || this.unsubscribeAcp) return;
-        this.markUnbound(
-          `AcpService failed to start: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        );
-      },
-    );
+    this.completeBind(loaded as AcpService);
   }
 
   /** Subscribe to the resolved ACP instance. Idempotent via `unsubscribeAcp`. */
   private completeBind(acp: AcpService): void {
     if (this.stopped || this.unsubscribeAcp) return;
-    if (this.acpBindTimer) {
-      clearTimeout(this.acpBindTimer);
-      this.acpBindTimer = null;
-    }
     this.unsubscribeAcp = acp.onSessionEvent((sessionId, event, data) => {
       void this.handleAcpEvent(sessionId, String(event), data).catch((err) => {
         // error-policy:J7 ACP event fan-out is asynchronous; report a rejected
@@ -617,23 +565,11 @@ export class SwarmCoordinatorService
     });
     this.acpBindStatus = "bound";
     this.acpBindReason = null;
-    logger.info(
-      `[SwarmCoordinator] subscribed to ACP session-event stream${
-        this.acpBindAttempts > 0
-          ? ` (after ${this.acpBindAttempts} retr${
-              this.acpBindAttempts === 1 ? "y" : "ies"
-            })`
-          : ""
-      }`,
-    );
+    logger.info("[SwarmCoordinator] subscribed to ACP session-event stream");
   }
 
   /** Record a terminal bind failure and log at error level (LOUD). */
   private markUnbound(reason: string): void {
-    if (this.acpBindTimer) {
-      clearTimeout(this.acpBindTimer);
-      this.acpBindTimer = null;
-    }
     this.acpBindStatus = "unbound";
     this.acpBindReason = reason;
     logger.error(
@@ -642,53 +578,6 @@ export class SwarmCoordinatorService
         `Verify the AcpService started (check for its start log / ` +
         `ACP_SUBPROCESS_SERVICE errors above).`,
     );
-  }
-
-  /**
-   * Polling fallback: re-check for the ACP service on a short interval. Unlike
-   * the old bounded loop this never gives up, but it backs off and escalates
-   * log severity so a stuck bind is impossible to miss. The event-driven
-   * load-promise normally binds first (making this loop a no-op via the
-   * `unsubscribeAcp` guard); the poll exists for runtimes that don't drive the
-   * load-promise.
-   */
-  private scheduleAcpBindRetry(): void {
-    if (this.stopped || this.unsubscribeAcp) return;
-    // Attempt count at which the bind is "clearly wrong, not just slow". At
-    // 500ms base this is ~60s — the old give-up point, now the START of loud
-    // logging rather than the end of trying.
-    const ESCALATE_AT = 120;
-    const BASE_INTERVAL_MS = 500;
-    const MAX_INTERVAL_MS = 5_000;
-    this.acpBindAttempts += 1;
-
-    // Backoff: hold the base cadence until the escalation point (so a normal
-    // slow boot binds promptly), then grow to a coarse steady-state so an
-    // indefinite wait doesn't burn a tight timer.
-    const interval =
-      this.acpBindAttempts < ESCALATE_AT
-        ? BASE_INTERVAL_MS
-        : Math.min(
-            MAX_INTERVAL_MS,
-            BASE_INTERVAL_MS * 2 ** (this.acpBindAttempts - ESCALATE_AT),
-          );
-
-    // Escalate severity once we cross the "this is taking too long" threshold.
-    // First crossing is a warn; keep it grep-able but not spammy afterward.
-    if (this.acpBindAttempts === ESCALATE_AT) {
-      this.acpBindReason = `AcpService still unavailable after ${this.acpBindAttempts} attempts (~${Math.round(
-        (BASE_INTERVAL_MS * this.acpBindAttempts) / 1000,
-      )}s); still retrying`;
-      logger.warn(
-        `[SwarmCoordinator] ${this.acpBindReason}. If this persists, ` +
-          `coding-agent supervision is degraded — check AcpService startup.`,
-      );
-    }
-
-    this.acpBindTimer = setTimeout(() => {
-      this.acpBindTimer = null;
-      this.bindToAcp();
-    }, interval);
   }
 
   /**

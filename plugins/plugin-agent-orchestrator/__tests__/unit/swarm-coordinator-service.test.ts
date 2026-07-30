@@ -58,6 +58,11 @@ function makeAcpStub(session?: Record<string, unknown>) {
 function makeRuntime(services: Record<string, unknown>): IAgentRuntime {
   return {
     getService: vi.fn((key: string) => services[key] ?? null),
+    getServiceLoadPromise: vi.fn(async (key: string) => {
+      const service = services[key];
+      if (!service) throw new Error(`Service ${key} is not registered`);
+      return service;
+    }),
     reportError: vi.fn(),
   } as unknown as IAgentRuntime;
 }
@@ -1254,28 +1259,37 @@ describe("SwarmCoordinatorService", () => {
     }
   });
 
-  it("retries ACP binding when ACP is not yet registered, then binds", async () => {
-    vi.useFakeTimers();
-    try {
-      const acp = makeAcpStub();
-      // Start with NO acp service registered.
-      const services: Record<string, unknown> = {};
-      const runtime = makeRuntime(services);
-      const coordinator = await SwarmCoordinatorService.start(runtime);
+  it("awaits the runtime-owned ACP startup without polling", async () => {
+    const acp = makeAcpStub();
+    let resolveAcp: ((service: unknown) => void) | undefined;
+    const runtime = makeRuntime({});
+    vi.mocked(runtime.getServiceLoadPromise).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveAcp = resolve;
+        }) as ReturnType<IAgentRuntime["getServiceLoadPromise"]>,
+    );
 
-      // No handler yet — ACP absent.
-      expect(acp.onSessionEvent).not.toHaveBeenCalled();
+    const startPromise = SwarmCoordinatorService.start(runtime);
+    await Promise.resolve();
+    expect(acp.onSessionEvent).not.toHaveBeenCalled();
 
-      // ACP comes online; the retry timer should pick it up.
-      services[AcpService.serviceType] = acp;
-      vi.advanceTimersByTime(600);
-      await Promise.resolve();
+    resolveAcp?.(acp);
+    const coordinator = await startPromise;
+    expect(runtime.getServiceLoadPromise).toHaveBeenCalledTimes(1);
+    expect(acp.onSessionEvent).toHaveBeenCalledTimes(1);
+    await coordinator.stop();
+  });
 
-      expect(acp.onSessionEvent).toHaveBeenCalledTimes(1);
-      await coordinator.stop();
-    } finally {
-      vi.useRealTimers();
-    }
+  it("fails startup when the registered ACP dependency cannot start", async () => {
+    const runtime = makeRuntime({});
+
+    await expect(SwarmCoordinatorService.start(runtime)).rejects.toMatchObject({
+      code: "SWARM_COORDINATOR_ACP_START_FAILED",
+      cause: expect.objectContaining({
+        message: expect.stringContaining("is not registered"),
+      }),
+    });
   });
 
   // Ownership rule (#11634): the sub-agent-router owns the completion→chat post
