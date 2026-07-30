@@ -65,9 +65,15 @@ Key environment variables (all optional unless noted):
 | `ELIZA_DISABLE_LOCAL_EMBEDDINGS` | Set `1` to disable local `TEXT_EMBEDDING` registration entirely |
 | `ELIZA_IMAGEGEN_ACCELERATOR` | Force image-gen backend: `coreml`, `mflux`, `sd-cpp`, `tensorrt` |
 | `ELIZA_DEVICE_BRIDGE_ENABLED` | Enable iOS/AOSP physical device bridge |
+| `ELIZA_DEVICE_PAIRING_TOKEN` | Authenticate the physical device bridge |
 | `SD_CPP_BIN` | Absolute path to sd.cpp binary |
 | `MFLUX_BIN` | Absolute path to mflux binary |
 | `ELIZA_KOKORO_DEFAULT_VOICE_ID` | Default Kokoro TTS voice |
+
+Device-bridge inference has no bridge-owned wall-clock deadline. Calls finish
+when the device replies, disconnects, or the owning runtime signal aborts.
+Pending requests are memory-only because a restarted process has no caller left
+to receive a replayed result.
 
 ## Per-target local inference recommendations
 
@@ -79,8 +85,6 @@ reading code. The source of truth is:
   classification and the mobile context clamp.
 - `src/services/recommendation.ts` for text-model slot ladders.
 - `src/runtime/embedding-presets.ts` for local embedding defaults.
-- `scripts/local-inference-thresholds.json` for backend tok/s floors used by
-  ablation gates.
 
 | Target | Local mode | Text model policy | Context policy | Embeddings | Notes |
 |---|---|---|---|---|---|

@@ -28,6 +28,7 @@ The plugin owns the `VoiceProfileStore` (speaker centroids); a merge-engine plug
 - `LocalInferenceService` / `localInferenceService` (`src/services/service.ts`) — singleton facade for download orchestration, active-model coordination, hardware probe, catalog, and routing preferences.
 - `LocalInferenceEngine` / `localInferenceEngine` (`src/services/engine.ts`) — fronts the in-process FFI llama.cpp backend (fused `libelizainference`, or the libllama + eliza-llama-shim fallback) via the `BackendDispatcher`; one model loaded at a time (unload-then-load for model swaps).
 - `MemoryArbiter` (`src/services/memory-arbiter.ts`) — single arbiter that cross-plugin consumers (vision, image-gen, ASR, TTS) call to acquire a model handle without double-allocating RAM.
+- Image-description context augmentation discovers plugin-vision through the runtime-scoped `VISION_CONTEXT_AUGMENTER` service. Do not replace this with a process-global registry or a dynamic cross-package import; separately bundled package entrypoints do not share module-local singleton state.
 
 ### HTTP routes (mounted by app-core)
 Import from `@elizaos/plugin-local-inference/routes` (except `handleLocalInferenceRoutes`, which is exported from the root `@elizaos/plugin-local-inference`):
@@ -149,7 +150,6 @@ bun run --cwd plugins/plugin-local-inference clean        # rm dist .turbo node_
 | `ELIZA_IMAGEGEN_ACCELERATOR` | No | Accelerator for image-gen backend (`coreml`, `tensorrt`, `mflux`, `sd-cpp`) |
 | `ELIZA_DEVICE_BRIDGE_ENABLED` | No | Enable iOS/AOSP device-bridge mode |
 | `ELIZA_DEVICE_PAIRING_TOKEN` | No | Pairing token for device bridge |
-| `ELIZA_DEVICE_GENERATE_TIMEOUT_MS` | No | Timeout in ms for device-bridge inference calls |
 | `ELIZA_KOKORO_DEFAULT_VOICE_ID` | No | Default Kokoro TTS voice id |
 | `ELIZA_LOCAL_IDLE_UNLOAD_MS` | No | Idle timeout (ms) before an inactive model is unloaded to free memory |
 | `ELIZA_LOCAL_SESSION_POOL_SIZE` | No | Number of parallel inference sessions to maintain in the session pool |
@@ -200,6 +200,7 @@ Call `arbiter.registerCapability({ capability, residentRole, load, unload, run }
 - **`TEXT_EMBEDDING` is NOT in the static plugin `models` map.** It is wired by `ensureLocalInferenceHandler()` at boot to avoid claiming the embedding slot before an Eliza-1 bundle is active. Do not add it to the static plugin object.
 - **Native binary deps** (sd.cpp, mflux, Kokoro GGUF/fused `libelizainference`) must be present on the host or downloaded separately. The plugin does not bundle them; `probe:sd-cpp` checks for sd.cpp.
 - **MemoryArbiter (WS1)** is the coordination point for all modalities on memory-constrained devices. Cross-plugin consumers (vision, image-gen, ASR, TTS) must go through the arbiter — never load models independently.
+- **Device-bridge calls are owner-cancellable, not deadline-driven.** Disconnects reroute generation/embedding only to a device that is already connected; without one they fail immediately. Never persist pending generation promises to disk: after process restart there is no caller left to receive the result.
 - **Catalog source of truth** lives in `@elizaos/shared` (`MODEL_CATALOG`, tier ids, HuggingFace URL builders). `src/services/catalog.ts` is a thin re-export shim.
 - **Type source of truth** for `CatalogModel`, `InstalledModel`, `AgentModelSlot`, etc. also lives in `@elizaos/shared`. `src/services/types.ts` re-exports them.
 - **Plugin priority is `−100`.** This is below cloud providers so the routing-policy layer (not raw priority) decides which provider fires per request.

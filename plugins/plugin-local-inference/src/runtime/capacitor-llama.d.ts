@@ -20,6 +20,12 @@ declare module "@elizaos/capacitor-llama" {
 	): DeviceBridgeClient;
 
 	export function registerCapacitorLlamaLoader(runtime: {
-		registerService?: (name: string, impl: unknown) => unknown;
+		registerServiceInstance?: <T extends {
+			capabilityDescription: string;
+			stop(): Promise<void> | void;
+		}>(
+			name: string,
+			impl: T,
+		) => unknown;
 	}): void;
 }

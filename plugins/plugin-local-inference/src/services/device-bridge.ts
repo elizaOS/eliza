@@ -14,25 +14,14 @@
  *   - per GB of VRAM:       +5 (dedicated GPU wins big)
  *   - has loaded the right model already: +50 (avoid a swap)
  *
- * Disconnect tolerance
- * --------------------
- * A pending request stays in `pendingGenerates` until either (a) a device
- * (same or different) returns a matching correlation-id, or (b) the
- * timeout fires. On any device (re)connect we re-route orphaned
- * generates to the new best device.
- *
- * Durability
- * ----------
- * Pending requests are best-effort persisted to a JSON log under
- * `$ELIZA_STATE_DIR/local-inference/pending-requests.json` so a brief
- * agent restart doesn't lose the queue. Persistence is async and
- * non-blocking — failures fall back to in-memory only.
+ * In-flight generation and embedding requests move to another already-connected
+ * device when their device disconnects. Without a surviving device they fail
+ * immediately: replaying after reconnect or process restart cannot deliver a
+ * useful answer to the original caller and only wastes inference work.
  */
 
 import { randomUUID } from "node:crypto";
-import fs from "node:fs/promises";
 import type { Server as HttpServer, IncomingMessage } from "node:http";
-import path from "node:path";
 import type { Duplex } from "node:stream";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
@@ -44,12 +33,8 @@ import type {
 	LocalInferenceLoadArgs,
 	LocalInferenceLoader,
 } from "./active-model";
-import { localInferenceRoot } from "./paths";
 
-const DEFAULT_CALL_TIMEOUT_MS = 60_000;
-const DEFAULT_LOAD_TIMEOUT_MS = 120_000;
 const HEARTBEAT_INTERVAL_MS = 15_000;
-const PENDING_LOG_FILENAME = "pending-requests.json";
 
 interface DeviceCapabilities {
 	platform: "ios" | "android" | "web" | "electrobun" | "desktop";
@@ -114,8 +99,232 @@ type DeviceOutbound =
 	| { type: "embedResult"; correlationId: string; ok: false; error: string }
 	| { type: "pong"; at: number };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function requireOptionalType(
+	value: unknown,
+	type: "string" | "number" | "boolean",
+	field: string,
+): void {
+	if (value !== undefined && typeof value !== type) {
+		throw new TypeError(`${field} must be ${type}`);
+	}
+}
+
+function parseRegistration(value: Record<string, unknown>): DeviceRegistration {
+	if (
+		typeof value.deviceId !== "string" ||
+		(value.pairingToken !== undefined &&
+			typeof value.pairingToken !== "string") ||
+		!isRecord(value.capabilities)
+	) {
+		throw new TypeError("register frame has invalid payload");
+	}
+	const cap = value.capabilities;
+	if (
+		(cap.platform !== "ios" &&
+			cap.platform !== "android" &&
+			cap.platform !== "web" &&
+			cap.platform !== "electrobun" &&
+			cap.platform !== "desktop") ||
+		typeof cap.deviceModel !== "string" ||
+		typeof cap.totalRamGb !== "number" ||
+		typeof cap.cpuCores !== "number" ||
+		(value.loadedPath !== null && typeof value.loadedPath !== "string")
+	) {
+		throw new TypeError("register frame has invalid capabilities");
+	}
+	requireOptionalType(cap.machineId, "string", "machineId");
+	requireOptionalType(cap.osVersion, "string", "osVersion");
+	requireOptionalType(cap.isSimulator, "boolean", "isSimulator");
+	if (cap.availableRamGb !== null) {
+		requireOptionalType(cap.availableRamGb, "number", "availableRamGb");
+	}
+	if (cap.freeStorageGb !== null) {
+		requireOptionalType(cap.freeStorageGb, "number", "freeStorageGb");
+	}
+	requireOptionalType(cap.gpuSupported, "boolean", "gpuSupported");
+	requireOptionalType(cap.lowPowerMode, "boolean", "lowPowerMode");
+	requireOptionalType(cap.mtpSupported, "boolean", "mtpSupported");
+	requireOptionalType(cap.mtpReason, "string", "mtpReason");
+	if (
+		cap.thermalState !== undefined &&
+		cap.thermalState !== "nominal" &&
+		cap.thermalState !== "fair" &&
+		cap.thermalState !== "serious" &&
+		cap.thermalState !== "critical" &&
+		cap.thermalState !== "unknown"
+	) {
+		throw new TypeError("thermalState is invalid");
+	}
+	let gpu: DeviceCapabilities["gpu"] = null;
+	if (cap.gpu !== null) {
+		if (
+			!isRecord(cap.gpu) ||
+			(cap.gpu.backend !== "metal" &&
+				cap.gpu.backend !== "vulkan" &&
+				cap.gpu.backend !== "gpu-delegate" &&
+				cap.gpu.backend !== "cuda") ||
+			typeof cap.gpu.available !== "boolean" ||
+			(cap.gpu.totalVramGb !== undefined &&
+				typeof cap.gpu.totalVramGb !== "number")
+		) {
+			throw new TypeError("gpu capabilities are invalid");
+		}
+		gpu = {
+			backend: cap.gpu.backend,
+			available: cap.gpu.available,
+			...(typeof cap.gpu.totalVramGb === "number"
+				? { totalVramGb: cap.gpu.totalVramGb }
+				: {}),
+		};
+	}
+	return {
+		deviceId: value.deviceId,
+		...(typeof value.pairingToken === "string"
+			? { pairingToken: value.pairingToken }
+			: {}),
+		capabilities: {
+			platform: cap.platform,
+			deviceModel: cap.deviceModel,
+			...(typeof cap.machineId === "string"
+				? { machineId: cap.machineId }
+				: {}),
+			...(typeof cap.osVersion === "string"
+				? { osVersion: cap.osVersion }
+				: {}),
+			...(typeof cap.isSimulator === "boolean"
+				? { isSimulator: cap.isSimulator }
+				: {}),
+			totalRamGb: cap.totalRamGb,
+			...(typeof cap.availableRamGb === "number" || cap.availableRamGb === null
+				? { availableRamGb: cap.availableRamGb }
+				: {}),
+			...(typeof cap.freeStorageGb === "number" || cap.freeStorageGb === null
+				? { freeStorageGb: cap.freeStorageGb }
+				: {}),
+			cpuCores: cap.cpuCores,
+			gpu,
+			...(typeof cap.gpuSupported === "boolean"
+				? { gpuSupported: cap.gpuSupported }
+				: {}),
+			...(typeof cap.lowPowerMode === "boolean"
+				? { lowPowerMode: cap.lowPowerMode }
+				: {}),
+			...(typeof cap.thermalState === "string"
+				? { thermalState: cap.thermalState }
+				: {}),
+			...(typeof cap.mtpSupported === "boolean"
+				? { mtpSupported: cap.mtpSupported }
+				: {}),
+			...(typeof cap.mtpReason === "string"
+				? { mtpReason: cap.mtpReason }
+				: {}),
+		},
+		loadedPath: value.loadedPath,
+	};
+}
+
+function parseDeviceOutbound(text: string): DeviceOutbound {
+	const value: unknown = JSON.parse(text);
+	if (!isRecord(value) || typeof value.type !== "string") {
+		throw new TypeError("frame must be an object with a string type");
+	}
+	if (value.type === "register") {
+		if (!isRecord(value.payload)) {
+			throw new TypeError("register frame requires payload");
+		}
+		return { type: "register", payload: parseRegistration(value.payload) };
+	}
+	if (value.type === "pong") {
+		if (typeof value.at !== "number") {
+			throw new TypeError("pong frame requires numeric at");
+		}
+		return { type: "pong", at: value.at };
+	}
+	if (
+		typeof value.correlationId !== "string" ||
+		typeof value.ok !== "boolean"
+	) {
+		throw new TypeError("result frame requires correlationId and ok");
+	}
+	if (!value.ok) {
+		if (typeof value.error !== "string") {
+			throw new TypeError("failed result frame requires error");
+		}
+		if (
+			value.type !== "loadResult" &&
+			value.type !== "unloadResult" &&
+			value.type !== "generateResult" &&
+			value.type !== "embedResult"
+		) {
+			throw new TypeError(`unknown result frame type ${value.type}`);
+		}
+		return {
+			type: value.type,
+			correlationId: value.correlationId,
+			ok: false,
+			error: value.error,
+		};
+	}
+	if (value.type === "loadResult" && typeof value.loadedPath === "string") {
+		return {
+			type: "loadResult",
+			correlationId: value.correlationId,
+			ok: true,
+			loadedPath: value.loadedPath,
+		};
+	}
+	if (value.type === "unloadResult") {
+		return {
+			type: "unloadResult",
+			correlationId: value.correlationId,
+			ok: true,
+		};
+	}
+	if (
+		value.type === "generateResult" &&
+		typeof value.text === "string" &&
+		typeof value.promptTokens === "number" &&
+		typeof value.outputTokens === "number" &&
+		typeof value.durationMs === "number" &&
+		(value.ttftMs === undefined || typeof value.ttftMs === "number")
+	) {
+		return {
+			type: "generateResult",
+			correlationId: value.correlationId,
+			ok: true,
+			text: value.text,
+			promptTokens: value.promptTokens,
+			outputTokens: value.outputTokens,
+			durationMs: value.durationMs,
+			...(typeof value.ttftMs === "number" ? { ttftMs: value.ttftMs } : {}),
+		};
+	}
+	if (
+		value.type === "embedResult" &&
+		Array.isArray(value.embedding) &&
+		value.embedding.every((entry) => typeof entry === "number") &&
+		typeof value.tokens === "number"
+	) {
+		return {
+			type: "embedResult",
+			correlationId: value.correlationId,
+			ok: true,
+			embedding: value.embedding,
+			tokens: value.tokens,
+		};
+	}
+	throw new TypeError(`invalid successful result frame ${value.type}`);
+}
+
 type AgentOutbound =
-	| ({ type: "load"; correlationId: string } & LocalInferenceLoadArgs)
+	| ({
+			type: "load";
+			correlationId: string;
+	  } & Omit<LocalInferenceLoadArgs, "signal">)
 	| { type: "unload"; correlationId: string }
 	| {
 			type: "generate";
@@ -134,7 +343,14 @@ type AgentOutbound =
 			cacheKey?: string;
 	  }
 	| { type: "embed"; correlationId: string; input: string }
+	| { type: "cancel"; correlationId: string }
 	| { type: "ping"; at: number };
+
+function abortError(signal: AbortSignal): Error {
+	return signal.reason instanceof Error
+		? signal.reason
+		: new DOMException("The operation was aborted", "AbortError");
+}
 
 interface MinimalWebSocket {
 	readyState: number;
@@ -199,7 +415,7 @@ interface PendingLoad {
 	modelPath: string;
 	resolve: () => void;
 	reject: (err: Error) => void;
-	timeout: ReturnType<typeof setTimeout>;
+	cleanup: () => void;
 	routedDeviceId: string;
 }
 
@@ -207,7 +423,7 @@ interface PendingUnload {
 	correlationId: string;
 	resolve: () => void;
 	reject: (err: Error) => void;
-	timeout: ReturnType<typeof setTimeout>;
+	cleanup: () => void;
 	routedDeviceId: string;
 }
 
@@ -215,15 +431,11 @@ interface PendingGenerate {
 	correlationId: string;
 	resolve: (text: string) => void;
 	reject: (err: Error) => void;
-	timeout: ReturnType<typeof setTimeout>;
+	cleanup: () => void;
 	request: AgentOutbound;
-	/**
-	 * Device the request was routed to most recently. On device disconnect
-	 * this is cleared; the request sits orphaned until another device
-	 * connects, at which point it's re-routed.
-	 */
+	/** Device the request is currently owned by after any live reroute. */
 	routedDeviceId: string | null;
-	/** ISO timestamp captured on first submission; used to purge stale entries on restart. */
+	/** ISO timestamp captured on first submission for status and diagnostics. */
 	submittedAt: string;
 }
 
@@ -231,17 +443,11 @@ interface PendingEmbed {
 	correlationId: string;
 	resolve: (result: { embedding: number[]; tokens: number }) => void;
 	reject: (err: Error) => void;
-	timeout: ReturnType<typeof setTimeout>;
+	cleanup: () => void;
 	request: AgentOutbound;
-	/** Same disconnect semantics as PendingGenerate — null when orphaned. */
+	/** Device the request is currently owned by after any live reroute. */
 	routedDeviceId: string | null;
-	/**
-	 * ISO timestamp captured on first submission. Mirrors PendingGenerate
-	 * for symmetry; embeds are NOT persisted to disk (they're short-lived
-	 * and the caller's process holding the result promise has to be alive
-	 * for the answer to mean anything), so this field is purely
-	 * observational (status snapshots, debugging) today.
-	 */
+	/** ISO timestamp captured on first submission for status and diagnostics. */
 	submittedAt: string;
 }
 
@@ -279,12 +485,6 @@ export interface DeviceBridgeStatus {
 	capabilities: DeviceCapabilities | null;
 	loadedPath: string | null;
 	connectedSince: string | null;
-}
-
-interface PersistedGenerateRequest {
-	correlationId: string;
-	request: AgentOutbound;
-	submittedAt: string;
 }
 
 /**
@@ -348,7 +548,6 @@ function scoreDevice(
 export class DeviceBridge {
 	private readonly devices = new Map<string, ConnectedDevice>();
 	private wss: WssInstance | null = null;
-	private restored = false;
 
 	private readonly pendingLoads = new Map<string, PendingLoad>();
 	private readonly pendingUnloads = new Map<string, PendingUnload>();
@@ -438,7 +637,12 @@ export class DeviceBridge {
 		for (const listener of this.statusListeners) {
 			try {
 				listener(snapshot);
-			} catch {
+			} catch (error) {
+				// error-policy:J7 one diagnostic subscriber must not suppress
+				// bridge status for every other subscriber.
+				logger.warn(
+					`[device-bridge] Removing failed status listener: ${error instanceof Error ? error.message : String(error)}`,
+				);
 				this.statusListeners.delete(listener);
 			}
 		}
@@ -478,7 +682,12 @@ export class DeviceBridge {
 		for (const listener of this.generationMetricsListeners) {
 			try {
 				listener(metrics);
-			} catch {
+			} catch (error) {
+				// error-policy:J7 metrics are diagnostics; report and remove a
+				// broken subscriber without failing the completed generation.
+				logger.warn(
+					`[device-bridge] Removing failed metrics listener: ${error instanceof Error ? error.message : String(error)}`,
+				);
 				this.generationMetricsListeners.delete(listener);
 			}
 		}
@@ -504,14 +713,6 @@ export class DeviceBridge {
 				this.handleConnection(client, ws.WebSocket, url);
 			});
 		});
-
-		// Restore persisted pending generates the first time a server attaches.
-		// We only restore once per process — avoids double-resubmit on repeated
-		// server restarts inside the same worker.
-		if (!this.restored) {
-			this.restored = true;
-			await this.restorePendingGenerates();
-		}
 	}
 
 	private handleConnection(
@@ -533,9 +734,14 @@ export class DeviceBridge {
 			let msg: DeviceOutbound;
 			try {
 				const text = typeof raw === "string" ? raw : raw.toString("utf8");
-				msg = JSON.parse(text) as DeviceOutbound;
-			} catch {
-				logger.warn("[device-bridge] Ignoring non-JSON frame");
+				msg = parseDeviceOutbound(text);
+			} catch (error) {
+				// error-policy:J3 untrusted websocket input is explicitly invalid
+				// rather than a healthy empty result.
+				logger.warn(
+					`[device-bridge] Rejecting invalid device frame: ${error instanceof Error ? error.message : String(error)}`,
+				);
+				socket.close(4004, "invalid-frame");
 				return;
 			}
 
@@ -589,8 +795,12 @@ export class DeviceBridge {
 		if (existing) {
 			try {
 				existing.socket.close(4003, "superseded");
-			} catch {
-				/* best effort */
+			} catch (error) {
+				// error-policy:J6 the replacement socket already owns this device;
+				// warn if the superseded transport cannot be closed.
+				logger.warn(
+					`[device-bridge] Failed to close superseded socket: ${error instanceof Error ? error.message : String(error)}`,
+				);
 			}
 			clearInterval(existing.heartbeatTimer);
 		}
@@ -606,8 +816,13 @@ export class DeviceBridge {
 				if (socket.readyState !== WsCtor.OPEN) return;
 				try {
 					this.sendToDevice(device.deviceId, { type: "ping", at: Date.now() });
-				} catch {
-					/* ignore after close */
+				} catch (error) {
+					// error-policy:J6 socket close owns pending-request rejection;
+					// heartbeat failure only stops this best-effort timer.
+					logger.warn(
+						`[device-bridge] Heartbeat send failed: ${error instanceof Error ? error.message : String(error)}`,
+					);
+					clearInterval(device.heartbeatTimer);
 				}
 			}, HEARTBEAT_INTERVAL_MS),
 		};
@@ -624,67 +839,6 @@ export class DeviceBridge {
 			`[device-bridge] Device connected: ${device.deviceId} (${device.capabilities.platform}, score=${scoreDevice(device)})`,
 		);
 
-		// Re-route any orphaned generates (the ones whose prior routed device
-		// disconnected). Load/unload orphans reject — device-specific state.
-		for (const pending of this.pendingLoads.values()) {
-			if (pending.routedDeviceId === device.deviceId) continue;
-			if (!this.devices.has(pending.routedDeviceId)) {
-				clearTimeout(pending.timeout);
-				this.pendingLoads.delete(pending.correlationId);
-				pending.reject(
-					new Error("DEVICE_RECONNECTED: retry model load after reconnect"),
-				);
-			}
-		}
-		for (const pending of this.pendingUnloads.values()) {
-			if (!this.devices.has(pending.routedDeviceId)) {
-				clearTimeout(pending.timeout);
-				this.pendingUnloads.delete(pending.correlationId);
-				pending.reject(
-					new Error("DEVICE_RECONNECTED: retry model unload after reconnect"),
-				);
-			}
-		}
-
-		for (const pending of this.pendingGenerates.values()) {
-			if (pending.routedDeviceId === null) {
-				const best = this.pickBestDevice();
-				if (best) {
-					pending.routedDeviceId = best.deviceId;
-					try {
-						this.sendToDevice(best.deviceId, pending.request);
-					} catch (err) {
-						pending.reject(
-							err instanceof Error
-								? err
-								: new Error("Failed to re-route after reconnect"),
-						);
-					}
-				}
-			}
-		}
-
-		// Same re-route logic for orphaned embeds. Embeds are short-lived and
-		// idempotent (the device just runs llama_get_embeddings), so we can
-		// safely retarget them on reconnect.
-		for (const pending of this.pendingEmbeds.values()) {
-			if (pending.routedDeviceId === null) {
-				const best = this.pickBestDevice();
-				if (best) {
-					pending.routedDeviceId = best.deviceId;
-					try {
-						this.sendToDevice(best.deviceId, pending.request);
-					} catch (err) {
-						pending.reject(
-							err instanceof Error
-								? err
-								: new Error("Failed to re-route after reconnect"),
-						);
-					}
-				}
-			}
-		}
-
 		this.emitStatus();
 	}
 
@@ -694,55 +848,78 @@ export class DeviceBridge {
 		clearInterval(device.heartbeatTimer);
 		this.devices.delete(deviceId);
 
-		// Orphan any generates / embeds routed to this device so they can be
-		// re-routed to a surviving device (or await a reconnect).
-		let orphaned = 0;
-		for (const pending of this.pendingGenerates.values()) {
-			if (pending.routedDeviceId === deviceId) {
-				pending.routedDeviceId = null;
-				orphaned += 1;
-			}
+		for (const [correlationId, pending] of this.pendingLoads) {
+			if (pending.routedDeviceId !== deviceId) continue;
+			this.pendingLoads.delete(correlationId);
+			pending.cleanup();
+			pending.reject(
+				new Error(`DEVICE_DISCONNECTED: ${deviceId} during model load`),
+			);
 		}
-		for (const pending of this.pendingEmbeds.values()) {
-			if (pending.routedDeviceId === deviceId) {
-				pending.routedDeviceId = null;
-				orphaned += 1;
+		for (const [correlationId, pending] of this.pendingUnloads) {
+			if (pending.routedDeviceId !== deviceId) continue;
+			this.pendingUnloads.delete(correlationId);
+			pending.cleanup();
+			pending.reject(
+				new Error(`DEVICE_DISCONNECTED: ${deviceId} during model unload`),
+			);
+		}
+
+		const replacement = this.pickBestDevice();
+		let rerouted = 0;
+		let rejected = 0;
+		for (const [correlationId, pending] of this.pendingGenerates) {
+			if (pending.routedDeviceId !== deviceId) continue;
+			if (replacement) {
+				try {
+					this.sendToDevice(replacement.deviceId, pending.request);
+					pending.routedDeviceId = replacement.deviceId;
+					rerouted += 1;
+					continue;
+				} catch (err) {
+					// error-policy:J1 reroute boundary rejects the owning call.
+					this.pendingGenerates.delete(correlationId);
+					pending.cleanup();
+					pending.reject(err instanceof Error ? err : new Error(String(err)));
+					rejected += 1;
+					continue;
+				}
 			}
+			this.pendingGenerates.delete(correlationId);
+			pending.cleanup();
+			pending.reject(
+				new Error(`DEVICE_DISCONNECTED: ${deviceId} during generation`),
+			);
+			rejected += 1;
+		}
+		for (const [correlationId, pending] of this.pendingEmbeds) {
+			if (pending.routedDeviceId !== deviceId) continue;
+			if (replacement) {
+				try {
+					this.sendToDevice(replacement.deviceId, pending.request);
+					pending.routedDeviceId = replacement.deviceId;
+					rerouted += 1;
+					continue;
+				} catch (err) {
+					// error-policy:J1 reroute boundary rejects the owning call.
+					this.pendingEmbeds.delete(correlationId);
+					pending.cleanup();
+					pending.reject(err instanceof Error ? err : new Error(String(err)));
+					rejected += 1;
+					continue;
+				}
+			}
+			this.pendingEmbeds.delete(correlationId);
+			pending.cleanup();
+			pending.reject(
+				new Error(`DEVICE_DISCONNECTED: ${deviceId} during embedding`),
+			);
+			rejected += 1;
 		}
 
 		logger.info(
-			`[device-bridge] Device disconnected: ${deviceId}; ${orphaned} request(s) orphaned`,
+			`[device-bridge] Device disconnected: ${deviceId}; rerouted=${rerouted} rejected=${rejected}`,
 		);
-
-		// Fast-path: if there are other connected devices, re-route now.
-		if (this.devices.size > 0) {
-			for (const pending of this.pendingGenerates.values()) {
-				if (pending.routedDeviceId === null) {
-					const best = this.pickBestDevice();
-					if (best) {
-						pending.routedDeviceId = best.deviceId;
-						try {
-							this.sendToDevice(best.deviceId, pending.request);
-						} catch {
-							/* will be retried on the next reconnect */
-						}
-					}
-				}
-			}
-			for (const pending of this.pendingEmbeds.values()) {
-				if (pending.routedDeviceId === null) {
-					const best = this.pickBestDevice();
-					if (best) {
-						pending.routedDeviceId = best.deviceId;
-						try {
-							this.sendToDevice(best.deviceId, pending.request);
-						} catch {
-							/* will be retried on the next reconnect */
-						}
-					}
-				}
-			}
-		}
 
 		this.emitStatus();
 	}
@@ -757,8 +934,8 @@ export class DeviceBridge {
 		if (msg.type === "loadResult") {
 			const pending = this.pendingLoads.get(msg.correlationId);
 			if (!pending) return;
-			clearTimeout(pending.timeout);
 			this.pendingLoads.delete(msg.correlationId);
+			pending.cleanup();
 			if (msg.ok === false) {
 				pending.reject(new Error(msg.error));
 			} else {
@@ -773,8 +950,8 @@ export class DeviceBridge {
 		if (msg.type === "unloadResult") {
 			const pending = this.pendingUnloads.get(msg.correlationId);
 			if (!pending) return;
-			clearTimeout(pending.timeout);
 			this.pendingUnloads.delete(msg.correlationId);
+			pending.cleanup();
 			if (msg.ok === false) {
 				pending.reject(new Error(msg.error));
 			} else {
@@ -789,10 +966,8 @@ export class DeviceBridge {
 		if (msg.type === "generateResult") {
 			const pending = this.pendingGenerates.get(msg.correlationId);
 			if (!pending) return;
-			clearTimeout(pending.timeout);
 			this.pendingGenerates.delete(msg.correlationId);
-			// Best-effort purge the persisted copy.
-			void this.persistPendingGenerates();
+			pending.cleanup();
 			if (msg.ok === false) {
 				pending.reject(new Error(msg.error));
 			} else {
@@ -827,8 +1002,8 @@ export class DeviceBridge {
 		if (msg.type === "embedResult") {
 			const pending = this.pendingEmbeds.get(msg.correlationId);
 			if (!pending) return;
-			clearTimeout(pending.timeout);
 			this.pendingEmbeds.delete(msg.correlationId);
+			pending.cleanup();
 			if (msg.ok === false) {
 				pending.reject(new Error(msg.error));
 			} else {
@@ -863,80 +1038,95 @@ export class DeviceBridge {
 	// ── LocalInferenceLoader surface ──────────────────────────────────────
 
 	async loadModel(args: LocalInferenceLoadArgs): Promise<void> {
+		args.signal?.throwIfAborted();
 		const best = this.pickBestDevice({ preferLoadedPath: args.modelPath });
 		if (!best) {
 			throw new Error(
 				"DEVICE_DISCONNECTED: no mobile / desktop bridge device attached",
 			);
 		}
+		const { signal, ...wireArgs } = args;
 		const correlationId = randomUUID();
 		return new Promise<void>((resolve, reject) => {
-			const timeout = setTimeout(() => {
-				this.pendingLoads.delete(correlationId);
-				reject(new Error("DEVICE_TIMEOUT: model load exceeded deadline"));
-			}, DEFAULT_LOAD_TIMEOUT_MS);
-			if (typeof timeout === "object" && timeout && "unref" in timeout) {
-				(timeout as { unref(): void }).unref();
-			}
+			let abort = () => {};
+			const cleanup = () => signal?.removeEventListener("abort", abort);
+			abort = () => {
+				if (!this.pendingLoads.delete(correlationId)) return;
+				cleanup();
+				reject(abortError(signal as AbortSignal));
+			};
 			this.pendingLoads.set(correlationId, {
 				correlationId,
 				modelPath: args.modelPath,
 				resolve,
 				reject,
-				timeout,
+				cleanup,
 				routedDeviceId: best.deviceId,
 			});
+			signal?.addEventListener("abort", abort, { once: true });
+			if (signal?.aborted) {
+				abort();
+				return;
+			}
 			try {
 				this.sendToDevice(best.deviceId, {
 					type: "load",
 					correlationId,
-					...args,
+					...wireArgs,
 				});
 			} catch (err) {
-				clearTimeout(timeout);
+				// error-policy:J1 transport boundary rejects the owning load.
 				this.pendingLoads.delete(correlationId);
+				cleanup();
 				reject(err instanceof Error ? err : new Error(String(err)));
 			}
 		});
 	}
 
-	async unloadModel(): Promise<void> {
-		// Unload every device that currently has a model loaded. Best-effort —
-		// individual failures don't block the others.
+	async unloadModel(signal?: AbortSignal): Promise<void> {
+		signal?.throwIfAborted();
+		// Unload every device concurrently while preserving any failure.
 		const targets = [...this.devices.values()].filter((d) => d.loadedPath);
 		if (targets.length === 0) return;
-		await Promise.allSettled(
+		await Promise.all(
 			targets.map(
 				(device) =>
 					new Promise<void>((resolve, reject) => {
 						const correlationId = randomUUID();
-						const timeout = setTimeout(() => {
-							this.pendingUnloads.delete(correlationId);
-							reject(new Error("DEVICE_TIMEOUT: unload exceeded deadline"));
-						}, DEFAULT_CALL_TIMEOUT_MS);
-						if (typeof timeout === "object" && timeout && "unref" in timeout) {
-							(timeout as { unref(): void }).unref();
-						}
+						let abort = () => {};
+						const cleanup = () => signal?.removeEventListener("abort", abort);
+						abort = () => {
+							if (!this.pendingUnloads.delete(correlationId)) return;
+							cleanup();
+							reject(abortError(signal as AbortSignal));
+						};
 						this.pendingUnloads.set(correlationId, {
 							correlationId,
 							resolve,
 							reject,
-							timeout,
+							cleanup,
 							routedDeviceId: device.deviceId,
 						});
+						signal?.addEventListener("abort", abort, { once: true });
+						if (signal?.aborted) {
+							abort();
+							return;
+						}
 						try {
 							this.sendToDevice(device.deviceId, {
 								type: "unload",
 								correlationId,
 							});
 						} catch (err) {
-							clearTimeout(timeout);
+							// error-policy:J1 transport boundary rejects the owning unload.
 							this.pendingUnloads.delete(correlationId);
+							cleanup();
 							reject(err instanceof Error ? err : new Error(String(err)));
 						}
 					}),
 			),
 		);
+		signal?.throwIfAborted();
 	}
 
 	currentModelPath(): string | null {
@@ -948,16 +1138,9 @@ export class DeviceBridge {
 
 	async embed(args: {
 		input: string;
+		signal?: AbortSignal;
 	}): Promise<{ embedding: number[]; tokens: number }> {
-		const envTimeout = Number.parseInt(
-			process.env.ELIZA_DEVICE_GENERATE_TIMEOUT_MS?.trim() ?? "",
-			10,
-		);
-		const timeoutMs =
-			Number.isFinite(envTimeout) && envTimeout > 0
-				? envTimeout
-				: DEFAULT_CALL_TIMEOUT_MS;
-
+		args.signal?.throwIfAborted();
 		const correlationId = randomUUID();
 		const request: AgentOutbound = {
 			type: "embed",
@@ -966,44 +1149,44 @@ export class DeviceBridge {
 		};
 
 		const best = this.pickBestDevice();
+		if (!best) {
+			throw new Error(
+				"DEVICE_DISCONNECTED: no mobile / desktop bridge device attached",
+			);
+		}
 
 		return new Promise<{ embedding: number[]; tokens: number }>(
 			(resolve, reject) => {
-				const timeout = setTimeout(() => {
-					this.pendingEmbeds.delete(correlationId);
-					reject(
-						new Error(
-							`DEVICE_TIMEOUT: no device responded to embed within ${timeoutMs}ms`,
-						),
-					);
-				}, timeoutMs);
-				if (typeof timeout === "object" && timeout && "unref" in timeout) {
-					(timeout as { unref(): void }).unref();
-				}
+				let abort = () => {};
+				const cleanup = () => args.signal?.removeEventListener("abort", abort);
+				abort = () => {
+					if (!this.pendingEmbeds.delete(correlationId)) return;
+					cleanup();
+					reject(abortError(args.signal as AbortSignal));
+				};
 				const pending: PendingEmbed = {
 					correlationId,
 					resolve,
 					reject,
-					timeout,
+					cleanup,
 					request,
-					routedDeviceId: best?.deviceId ?? null,
+					routedDeviceId: best.deviceId,
 					submittedAt: new Date().toISOString(),
 				};
 				this.pendingEmbeds.set(correlationId, pending);
+				args.signal?.addEventListener("abort", abort, { once: true });
+				if (args.signal?.aborted) {
+					abort();
+					return;
+				}
 
-				if (best) {
-					try {
-						this.sendToDevice(best.deviceId, request);
-					} catch {
-						// Routed device went away between pickBestDevice and send.
-						// Mark as orphaned; reroute logic will pick it up on the next
-						// device (re)connect.
-						pending.routedDeviceId = null;
-					}
-				} else {
-					logger.debug(
-						`[device-bridge] No device available; parking embed ${correlationId} pending connection`,
-					);
+				try {
+					this.sendToDevice(best.deviceId, request);
+				} catch (err) {
+					// error-policy:J1 transport boundary rejects the owning embedding.
+					this.pendingEmbeds.delete(correlationId);
+					cleanup();
+					reject(err instanceof Error ? err : new Error(String(err)));
 				}
 			},
 		);
@@ -1014,17 +1197,10 @@ export class DeviceBridge {
 		stopSequences?: string[];
 		maxTokens?: number;
 		temperature?: number;
+		signal?: AbortSignal;
 		cacheKey?: string;
 	}): Promise<string> {
-		const envTimeout = Number.parseInt(
-			process.env.ELIZA_DEVICE_GENERATE_TIMEOUT_MS?.trim() ?? "",
-			10,
-		);
-		const timeoutMs =
-			Number.isFinite(envTimeout) && envTimeout > 0
-				? envTimeout
-				: DEFAULT_CALL_TIMEOUT_MS;
-
+		args.signal?.throwIfAborted();
 		const correlationId = randomUUID();
 		const request: AgentOutbound = {
 			type: "generate",
@@ -1037,146 +1213,58 @@ export class DeviceBridge {
 		};
 
 		const best = this.pickBestDevice();
+		if (!best) {
+			throw new Error(
+				"DEVICE_DISCONNECTED: no mobile / desktop bridge device attached",
+			);
+		}
 
 		return new Promise<string>((resolve, reject) => {
-			const timeout = setTimeout(() => {
+			let abort = () => {};
+			const cleanup = () => args.signal?.removeEventListener("abort", abort);
+			abort = () => {
+				const active = this.pendingGenerates.get(correlationId);
+				if (!active) return;
 				this.pendingGenerates.delete(correlationId);
-				void this.persistPendingGenerates();
-				reject(
-					new Error(
-						`DEVICE_TIMEOUT: no device responded within ${timeoutMs}ms`,
-					),
-				);
-			}, timeoutMs);
-			if (typeof timeout === "object" && timeout && "unref" in timeout) {
-				(timeout as { unref(): void }).unref();
-			}
+				cleanup();
+				if (active.routedDeviceId) {
+					try {
+						this.sendToDevice(active.routedDeviceId, {
+							type: "cancel",
+							correlationId,
+						});
+					} catch {
+						// error-policy:J5 the caller observes cancellation; socket
+						// failure is independently observed by the close/error handlers.
+					}
+				}
+				reject(abortError(args.signal as AbortSignal));
+			};
 			const pending: PendingGenerate = {
 				correlationId,
 				resolve,
 				reject,
-				timeout,
+				cleanup,
 				request,
-				routedDeviceId: best?.deviceId ?? null,
+				routedDeviceId: best.deviceId,
 				submittedAt: new Date().toISOString(),
 			};
 			this.pendingGenerates.set(correlationId, pending);
-			void this.persistPendingGenerates();
+			args.signal?.addEventListener("abort", abort, { once: true });
+			if (args.signal?.aborted) {
+				abort();
+				return;
+			}
 
-			if (best) {
-				try {
-					this.sendToDevice(best.deviceId, request);
-				} catch {
-					pending.routedDeviceId = null;
-				}
-			} else {
-				logger.debug(
-					`[device-bridge] No device available; parking generate ${correlationId} pending connection`,
-				);
+			try {
+				this.sendToDevice(best.deviceId, request);
+			} catch (err) {
+				// error-policy:J1 transport boundary rejects the owning generation.
+				this.pendingGenerates.delete(correlationId);
+				cleanup();
+				reject(err instanceof Error ? err : new Error(String(err)));
 			}
 		});
-	}
-
-	// ── Durability ────────────────────────────────────────────────────────
-
-	private pendingLogPath(): string {
-		return path.join(localInferenceRoot(), PENDING_LOG_FILENAME);
-	}
-
-	/**
-	 * Rewrite the pending-generate log. Called after every mutation to the
-	 * pendingGenerates map. We only persist `generate` — loads/unloads are
-	 * bound to a specific device's current state and aren't safely replayable
-	 * across restart.
-	 */
-	private async persistPendingGenerates(): Promise<void> {
-		try {
-			await fs.mkdir(localInferenceRoot(), { recursive: true });
-			const payload: PersistedGenerateRequest[] = [
-				...this.pendingGenerates.values(),
-			].map((p) => ({
-				correlationId: p.correlationId,
-				request: p.request,
-				submittedAt: p.submittedAt,
-			}));
-			const tmp = `${this.pendingLogPath()}.tmp`;
-			await fs.writeFile(tmp, JSON.stringify(payload, null, 2), "utf8");
-			await fs.rename(tmp, this.pendingLogPath());
-		} catch (err) {
-			logger.debug(
-				"[device-bridge] Failed to persist pending generates:",
-				err instanceof Error ? err.message : String(err),
-			);
-		}
-	}
-
-	/**
-	 * On startup, read persisted pending requests back into memory. Their
-	 * promises are gone (the original caller's process is dead) so they can
-	 * only be resolved externally, so we re-queue them with a fresh timeout.
-	 * The first connected device that can handle generation will process them.
-	 * If nothing consumes them within the timeout they reject quietly.
-	 *
-	 * Stale entries older than 24h are purged rather than resurrected.
-	 */
-	private async restorePendingGenerates(): Promise<void> {
-		let raw: string;
-		try {
-			raw = await fs.readFile(this.pendingLogPath(), "utf8");
-		} catch {
-			return;
-		}
-		let items: PersistedGenerateRequest[];
-		try {
-			items = JSON.parse(raw) as PersistedGenerateRequest[];
-			if (!Array.isArray(items)) return;
-		} catch {
-			return;
-		}
-		const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-		let restored = 0;
-		for (const item of items) {
-			if (
-				!item.correlationId ||
-				!item.request ||
-				item.request.type !== "generate"
-			) {
-				continue;
-			}
-			const submittedAt = Date.parse(item.submittedAt);
-			if (!Number.isFinite(submittedAt) || submittedAt < cutoff) continue;
-			if (this.pendingGenerates.has(item.correlationId)) continue;
-
-			// The original caller's promise is gone. Queue the request so the
-			// first connecting device processes it; if nobody picks it up within
-			// the default timeout, drop it.
-			const timeout = setTimeout(() => {
-				this.pendingGenerates.delete(item.correlationId);
-				void this.persistPendingGenerates();
-			}, DEFAULT_CALL_TIMEOUT_MS);
-			if (typeof timeout === "object" && timeout && "unref" in timeout) {
-				(timeout as { unref(): void }).unref();
-			}
-			this.pendingGenerates.set(item.correlationId, {
-				correlationId: item.correlationId,
-				request: item.request,
-				submittedAt: item.submittedAt,
-				routedDeviceId: null,
-				timeout,
-				resolve: () => {
-					/* no caller to resolve */
-				},
-				reject: () => {
-					/* no caller to reject */
-				},
-			});
-			restored += 1;
-		}
-		if (restored > 0) {
-			logger.info(
-				`[device-bridge] Restored ${restored} pending generate(s) from persistent log`,
-			);
-		}
 	}
 }
 
@@ -1207,12 +1295,7 @@ export function buildDeviceResourceMetricsDevPayload(
 	};
 }
 
-export function registerDeviceBridgeLoader(
-	runtime: AgentRuntime & {
-		registerService?: (name: string, impl: unknown) => unknown;
-	},
-): void {
-	if (typeof runtime.registerService !== "function") return;
+export function registerDeviceBridgeLoader(runtime: AgentRuntime): void {
 	const loader: LocalInferenceLoader = {
 		async loadModel(args: LocalInferenceLoadArgs) {
 			await deviceBridge.loadModel(args);
@@ -1230,7 +1313,13 @@ export function registerDeviceBridgeLoader(
 			return deviceBridge.embed(args);
 		},
 	};
-	runtime.registerService("localInferenceLoader", loader);
+	runtime.registerServiceInstance(
+		"localInferenceLoader",
+		Object.assign(loader, {
+			capabilityDescription: "Remote device local inference backend",
+			stop: () => loader.unloadModel(),
+		}),
+	);
 	logger.info(
 		"[device-bridge] Registered device-bridge loader for remote on-device inference",
 	);
