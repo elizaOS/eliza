@@ -1244,9 +1244,17 @@ function looksLikeEmbeddingModelPath(modelPath: string): boolean {
 }
 
 export function registerCapacitorLlamaLoader(runtime: {
-  registerService?: (name: string, impl: unknown) => unknown;
+  registerServiceInstance?: <
+    T extends {
+      capabilityDescription: string;
+      stop(): Promise<void> | void;
+    },
+  >(
+    name: string,
+    impl: T,
+  ) => unknown;
 }): void {
-  if (typeof runtime.registerService !== "function") return;
+  if (typeof runtime.registerServiceInstance !== "function") return;
 
   // Two distinct adapter instances so the chat LLM and embedding model
   // each allocate their own native context id. This is the fix for
@@ -1264,7 +1272,11 @@ export function registerCapacitorLlamaLoader(runtime: {
       : chatAdapter;
   }
 
-  runtime.registerService("localInferenceLoader", {
+  runtime.registerServiceInstance("localInferenceLoader", {
+    capabilityDescription: "Capacitor llama.cpp local inference backend",
+    async stop(): Promise<void> {
+      await Promise.all([chatAdapter.unload(), embeddingAdapter.unload()]);
+    },
     async loadModel(args: LoadOptions): Promise<void> {
       await adapterFor(args.modelPath).load(args);
     },
