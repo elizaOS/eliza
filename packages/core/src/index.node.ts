@@ -105,6 +105,10 @@ export * from "./features/basic-capabilities/index";
 export * from "./features/credential-proxy/index.ts";
 export * from "./features/documents/index";
 export type {
+	DeferredMessageScheduleCommit,
+	DeferredMessageScheduleRequest,
+	DeferredMessageScheduleResult,
+	DeferredMessageScheduler,
 	DraftRecord,
 	DraftRequest,
 	ListOptions,
@@ -133,6 +137,7 @@ export {
 	draftReplyAction,
 	getDefaultMessageRefStore,
 	getDefaultTriageService,
+	getDeferredMessageScheduler,
 	getSendPolicy,
 	listInboxAction,
 	MessageRefStore,
@@ -140,6 +145,7 @@ export {
 	messagingTriageActions,
 	NotYetImplementedError,
 	rankScored,
+	registerDeferredMessageScheduler,
 	registerSendPolicy,
 	resetMissingServiceWarning,
 	resolveContactWeight,
@@ -161,6 +167,7 @@ export {
 export { paymentsPlugin } from "./features/payments/index.ts";
 export { PluginManagerService } from "./features/plugin-manager/services/pluginManagerService.ts";
 export {
+	isSerializedSecretHandle,
 	SECRETS_SERVICE_TYPE,
 	type SecretsManagerPluginConfig,
 	secretsManagerPlugin,

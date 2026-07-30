@@ -63,16 +63,17 @@ import { MEETING_TRANSCRIPT_FINALIZED_EVENT } from "@elizaos/shared";
 import { blockAction } from "./actions/block.js";
 import { briefAction } from "./actions/brief.js";
 import { calendarAction } from "./actions/calendar.js";
+import { registerPersonalAssistantCalendarSourcesHost } from "./actions/calendar-sources.js";
 import {
   conflictDetectAction,
-  createCalendarFeedConflictLoader,
-  setConflictDetectLoader,
+  registerPersonalAssistantConflictDetectHost,
 } from "./actions/conflict-detect.js";
 import { connectorAction } from "./actions/connector.js";
 import { creativeDraftAction } from "./actions/creative-draft.js";
 import { credentialsAction } from "./actions/credentials.js";
 import { ownerDocumentsAction } from "./actions/document.js";
 import { entityAction } from "./actions/entity.js";
+import { householdCoordinationAction } from "./actions/household-coordination.js";
 import {
   ownerAlarmsAction,
   ownerFinancesAction,
@@ -104,10 +105,16 @@ import {
   FOLLOWUP_TRACKER_TASK_NAME,
   registerFollowupTrackerWorker,
 } from "./followup/index.js";
+import {
+  hasLifeOpsAccess,
+  ownerPrivateAction,
+  ownerPrivateProvider,
+} from "./lifeops/access.js";
 import { anticipationFeedbackEvaluator } from "./lifeops/anticipation/evaluator.js";
 import { createApprovalQueue } from "./lifeops/approval-queue.js";
 import { createTrackedWorkRecapDirectRoutingRule } from "./lifeops/briefing/direct-routing.js";
 import { registerLifeOpsCalendarGate } from "./lifeops/calendar-gate.js";
+import { OwnerCalendarMutationGatewayService } from "./lifeops/calendar-mutations/index.js";
 import {
   createChannelRegistry,
   registerChannelRegistry,
@@ -122,10 +129,28 @@ import { applyMockoonEnvOverrides } from "./lifeops/connectors/mockoon-redirect.
 import { createDelegationInboundMessageHandler } from "./lifeops/delegation-contracts/inbound-event.js";
 import { processDelegationInboundTurn } from "./lifeops/delegation-contracts/index.js";
 import { handleVoiceTurnObserved } from "./lifeops/entities/voice-observer-bridge.js";
+import {
+  AuthenticatedRuntimeSpeakerVerifierService,
+  createFamilyCommunicationsAction,
+  FamilyCommunicationsRuntimeService,
+  issueAuthenticatedMessageSpeakerAttestation,
+  resolveAuthenticatedFamilyPrincipal,
+  resolveTrustedChildWeekItems,
+} from "./lifeops/family-communications/index.js";
 import { installFirstRunChannelInspector } from "./lifeops/first-run/channel-inspector.js";
 import { setRuntimeChannelInspector } from "./lifeops/first-run/questions.js";
 import { FirstRunService } from "./lifeops/first-run/service.js";
+import {
+  createFoodDomainAction,
+  FoodDomainRuntimeService,
+} from "./lifeops/food/index.js";
 import { ftuGoalDiscoveryEvaluator } from "./lifeops/ftu-goal/evaluator.js";
+import { createHouseholdInboundApprovalMessageHandler } from "./lifeops/household/inbound-approval.js";
+import { HouseholdCoordinationRuntimeService } from "./lifeops/household/service.js";
+import {
+  createHouseholdOperationsAction,
+  HouseholdOperationsRuntimeService,
+} from "./lifeops/household-operations/index.js";
 import { createOwnerLocaleExamplesProvider } from "./lifeops/i18n/localized-examples-provider.js";
 import {
   createMultilingualPromptRegistry,
@@ -137,12 +162,22 @@ import {
   createOwnerSendPolicy,
   registerOwnerSendApprovalWorker,
 } from "./lifeops/messaging/owner-send-policy.js";
+import {
+  createDefaultOraclePack,
+  createLocalConditionsAction,
+  registerExternalOracleRegistry,
+  registerLocalActivityAdapterRegistry,
+} from "./lifeops/oracles/index.js";
 import { registerCoreFactMemoryBridge } from "./lifeops/owner/core-fact-memory-bridge.js";
 import {
   createOwnerFactStore,
   registerOwnerFactStore,
 } from "./lifeops/owner/fact-store.js";
 import { ownerProfileExtractionEvaluator } from "./lifeops/owner/profile-extraction-evaluator.js";
+import {
+  createParentingGuidanceAction,
+  ParentingGuidanceRuntimeService,
+} from "./lifeops/parenting/index.js";
 import {
   createAnchorRegistry,
   createEventKindRegistry,
@@ -163,6 +198,10 @@ import {
   registerWorkflowStepRegistry,
 } from "./lifeops/registries/index.js";
 import { LifeOpsRepository } from "./lifeops/repository.js";
+import {
+  createResourceCapacityAction,
+  ResourceCapacityRuntimeService,
+} from "./lifeops/resource-capacity/index.js";
 // LifeOps runtime (scheduler task worker + registration)
 import {
   ensureLifeOpsSchedulerTask,
@@ -172,6 +211,11 @@ import {
 import { createScheduledTaskCandidateBackstopRule } from "./lifeops/scheduled-task/candidate-backstop.js";
 import { detachInboundScan } from "./lifeops/scheduled-task/deferred-inbound-scans.js";
 import { completeFiredTasksOnOwnerReply } from "./lifeops/scheduled-task/inbound-reply-completion.js";
+import {
+  reconcileInterruptedMessageDraftDispatches,
+  registerMessageDraftScheduledTaskBridge,
+  unregisterMessageDraftScheduledTaskBridge,
+} from "./lifeops/scheduled-task/message-draft-dispatch.js";
 import {
   installLifeOpsScheduledTaskEventBridge,
   registerLifeOpsScheduledTaskRunnerDeps,
@@ -183,6 +227,10 @@ import {
   handleOwnerMessageForQuestionFollowup,
 } from "./lifeops/scheduled-task/unanswered-question-followup.js";
 import { lifeOpsSchema } from "./lifeops/schema.js";
+import {
+  createSchoolSourceFactAction,
+  SchoolSourceFactRuntimeService,
+} from "./lifeops/school/index.js";
 import {
   createSendPolicyRegistry,
   registerSendPolicyRegistry,
@@ -221,6 +269,31 @@ const handleDelegationInboundMessage = createDelegationInboundMessageHandler({
   createApprovalQueue: (runtime) =>
     createApprovalQueue(runtime, { agentId: runtime.agentId }),
   processTurn: processDelegationInboundTurn,
+});
+const handleHouseholdInboundApproval =
+  createHouseholdInboundApprovalMessageHandler();
+const schoolSourceFactAction = createSchoolSourceFactAction({
+  authorize: hasLifeOpsAccess,
+});
+const householdOperationsAction = createHouseholdOperationsAction({
+  authorize: hasLifeOpsAccess,
+});
+const resourceCapacityAction = createResourceCapacityAction({
+  authorize: hasLifeOpsAccess,
+});
+const familyCommunicationsAction = createFamilyCommunicationsAction({
+  resolveAuthenticatedPrincipal: resolveAuthenticatedFamilyPrincipal,
+  issueSpeakerAttestation: issueAuthenticatedMessageSpeakerAttestation,
+  resolveWeekItems: resolveTrustedChildWeekItems,
+});
+const parentingGuidanceAction = createParentingGuidanceAction({
+  resolveAuthenticatedPrincipal: resolveAuthenticatedFamilyPrincipal,
+});
+const foodDomainAction = createFoodDomainAction({
+  authorize: hasLifeOpsAccess,
+});
+const localConditionsAction = createLocalConditionsAction({
+  authorize: hasLifeOpsAccess,
 });
 
 const GOOGLE_CONNECTOR_PLUGIN_PACKAGE = "@elizaos/plugin-google";
@@ -444,16 +517,35 @@ export async function ensureLifeOpsGooglePluginRegistered(
  * the calendar `CalendarService` (which LifeOps delegates every calendar call
  * to) is available. The calendar plugin is a hard LifeOps dependency, so a
  * static import is sufficient.
+ *
+ * PA composes its own CALENDAR and CONFLICT_DETECT actions with LifeOps deps
+ * (travel buffers, approval gateway, host adapter), so only those two names
+ * are withheld from the standalone plugin. Every other calendar action — the
+ * typed CALENDAR_SOURCES source-administration surface in particular — must
+ * stay reachable: this init runs before PA's own actions register, so passing
+ * a colliding action here would silently win first-wins and shadow the
+ * LifeOps-composed version.
  */
 export async function ensureLifeOpsCalendarPluginRegistered(
   runtime: IAgentRuntime,
 ): Promise<void> {
+  // CALENDAR_SOURCES stays registered by the calendar plugin rather than being
+  // composed here, so PA's hasLifeOpsAccess gate reaches it through the
+  // runtime-keyed host adapter — bound before the already-registered early
+  // return so the substitution holds either way.
+  registerPersonalAssistantCalendarSourcesHost(runtime);
   if (runtime.plugins.some((plugin) => plugin.name === calendarPlugin.name)) {
     return;
   }
+  const composedByPersonalAssistant = new Set([
+    calendarAction.name,
+    conflictDetectAction.name,
+  ]);
   await runtime.registerPlugin({
     ...calendarPlugin,
-    actions: [],
+    actions: (calendarPlugin.actions ?? []).filter(
+      (action) => !composedByPersonalAssistant.has(action.name),
+    ),
   });
 }
 
@@ -660,6 +752,14 @@ const rawPersonalAssistantPlugin: Plugin = {
     ...promoteSubactionsToActions(ownerFinancesAction),
     ...promoteSubactionsToActions(credentialsAction),
     ...promoteSubactionsToActions(calendarAction),
+    ...promoteSubactionsToActions(householdCoordinationAction),
+    ...promoteSubactionsToActions(householdOperationsAction),
+    ...promoteSubactionsToActions(resourceCapacityAction),
+    ...promoteSubactionsToActions(familyCommunicationsAction),
+    parentingGuidanceAction,
+    ...promoteSubactionsToActions(foodDomainAction),
+    ...promoteSubactionsToActions(localConditionsAction),
+    ...promoteSubactionsToActions(schoolSourceFactAction),
     ...promoteSubactionsToActions(resolveRequestAction),
     ...promoteSubactionsToActions(ownerRemindersAction),
     ...promoteSubactionsToActions(ownerAlarmsAction),
@@ -699,7 +799,7 @@ const rawPersonalAssistantPlugin: Plugin = {
     }),
     ...promoteSubactionsToActions(connectorAction),
     ...messagingTriageActions,
-  ],
+  ].map(ownerPrivateAction),
   providers: [
     browserBridgeProvider,
     firstRunProvider,
@@ -718,11 +818,20 @@ const rawPersonalAssistantPlugin: Plugin = {
     // duplicate the runtime silently skipped.
     crossChannelContextProvider,
     activityProfileProvider,
-  ],
+  ].map(ownerPrivateProvider),
   services: [
     BrowserBridgePluginService,
     ActivityTrackerService,
     PresenceSignalBridgeService,
+    HouseholdCoordinationRuntimeService,
+    AuthenticatedRuntimeSpeakerVerifierService,
+    FamilyCommunicationsRuntimeService,
+    ParentingGuidanceRuntimeService,
+    HouseholdOperationsRuntimeService,
+    OwnerCalendarMutationGatewayService,
+    ResourceCapacityRuntimeService,
+    SchoolSourceFactRuntimeService,
+    FoodDomainRuntimeService,
     // The ScheduledTaskRunnerService is now registered by the always-loaded
     // @elizaos/plugin-scheduling. PA injects its production deps via
     // registerLifeOpsScheduledTaskRunnerDeps(runtime) in init() instead, so
@@ -775,6 +884,10 @@ const rawPersonalAssistantPlugin: Plugin = {
         "delegation-contract-inbound",
         handleDelegationInboundMessage,
       ),
+      detachInboundScan(
+        "household-approval-inbound",
+        handleHouseholdInboundApproval,
+      ),
     ],
     // Agent reply ends with a question the owner never answers → seed a
     // once-fired follow-up whose fire-time admission is the model moment
@@ -789,6 +902,7 @@ const rawPersonalAssistantPlugin: Plugin = {
     _pluginConfig: Record<string, unknown>,
     runtime: IAgentRuntime,
   ) => {
+    registerPersonalAssistantConflictDetectHost(runtime);
     runtime.registerEvent(MEETING_TRANSCRIPT_FINALIZED_EVENT, async (payload) =>
       handleMeetingTranscriptFinalized(
         payload as EventPayload & MeetingTranscriptFinalizedPayload,
@@ -810,10 +924,6 @@ const rawPersonalAssistantPlugin: Plugin = {
     await ensureLifeOpsGooglePluginRegistered(runtime);
     await ensureLifeOpsCalendarPluginRegistered(runtime);
 
-    // CONFLICT_DETECT scans read the live calendar feed through this loader.
-    // Without it the action has no data source and honestly reports the
-    // calendar as unavailable instead of "No conflicts detected".
-    setConflictDetectLoader(createCalendarFeedConflictLoader());
     await ensureLifeOpsFinancesPluginRegistered(runtime);
     await ensureLifeOpsRemindersPluginRegistered(runtime);
     await ensureLifeOpsGoalsPluginRegistered(runtime);
@@ -850,6 +960,10 @@ const rawPersonalAssistantPlugin: Plugin = {
         connectorRegistry?: typeof connectorRegistry;
       }
     ).connectorRegistry = connectorRegistry;
+
+    const oraclePack = createDefaultOraclePack(runtime);
+    registerExternalOracleRegistry(runtime, oraclePack.external);
+    registerLocalActivityAdapterRegistry(runtime, oraclePack.localActivities);
 
     const channelRegistry = createChannelRegistry();
     registerDefaultChannelPack(channelRegistry, runtime);
@@ -1062,6 +1176,15 @@ const rawPersonalAssistantPlugin: Plugin = {
     // the process-level kill switch.
     registerLifeOpsTaskWorker(runtime, { disabled: lifeOpsSchedulerDisabled });
     if (!lifeOpsSchedulerDisabled) {
+      registerMessageDraftScheduledTaskBridge(runtime);
+      scheduleTaskEnsureAfterRuntimeInit({
+        runtime,
+        prefix: "[lifeops]",
+        label: "deferred message reconciliation",
+        ensure: async () => {
+          await reconcileInterruptedMessageDraftDispatches(runtime);
+        },
+      });
       scheduleTaskEnsureAfterRuntimeInit({
         runtime,
         prefix: "[lifeops]",
@@ -1117,6 +1240,7 @@ const rawPersonalAssistantPlugin: Plugin = {
    */
   dispose: async (runtime: IAgentRuntime) => {
     setRuntimeChannelInspector(runtime, null);
+    unregisterMessageDraftScheduledTaskBridge(runtime);
 
     const taskNames: readonly string[] = [
       PROACTIVE_TASK_NAME,

@@ -10,6 +10,7 @@ import {
   type AgentRuntime,
   getSwarmCoordinatorService,
   type ISwarmCoordinatorService,
+  requireConfirmedSendHandlerDelivery,
   type UUID,
 } from "@elizaos/core";
 
@@ -99,17 +100,19 @@ export async function routeTaskAgentTextToConnector(
   const room = await runtime.getRoom(roomId as UUID).catch(() => null);
   if (!room?.source) return false;
 
-  await runtime.sendMessageToTarget(
-    {
-      source: room.source,
-      roomId: room.id,
-      channelId: room.channelId ?? room.id,
-      serverId: room.serverId ?? undefined,
-    } as Parameters<RoutingRuntime["sendMessageToTarget"]>[0],
-    // voice-policy:V3 `text` is a sub-agent's already model-composed message
-    // being routed to the origin room; it is the agent's voice already, so the
-    // voice gate must pass it through untouched.
-    { text, source, agentVoiced: true },
+  requireConfirmedSendHandlerDelivery(
+    await runtime.sendMessageToTarget(
+      {
+        source: room.source,
+        roomId: room.id,
+        channelId: room.channelId ?? room.id,
+        serverId: room.serverId ?? undefined,
+      } as Parameters<RoutingRuntime["sendMessageToTarget"]>[0],
+      // voice-policy:V3 `text` is a sub-agent's already model-composed message
+      // being routed to the origin room; it is the agent's voice already, so the
+      // voice gate must pass it through untouched.
+      { text, source, agentVoiced: true },
+    ),
   );
   return true;
 }

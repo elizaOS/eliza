@@ -9,6 +9,7 @@
 export {
   BUILT_IN_ENTITY_TYPES,
   type BuiltInEntityType,
+  DEFAULT_CONNECTOR_ACCOUNT_ID,
   defaultEntityTypeRegistry,
   type Entity,
   type EntityAttribute,
@@ -19,5 +20,6 @@ export {
   type EntityState,
   EntityTypeRegistry,
   type EntityVisibility,
+  normalizeEntityConnectorAccountId,
   SELF_ENTITY_ID,
 } from "@elizaos/shared";

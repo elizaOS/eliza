@@ -15,7 +15,7 @@
  * action/channel enums (Commandment 7).
  */
 import { sql } from "drizzle-orm";
-import { index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { agentTable } from "./agent";
 
 export const approvalRequestTable = pgTable(
@@ -36,6 +36,12 @@ export const approvalRequestTable = pgTable(
     channel: text("channel").notNull(),
     /** Required justification for the request. */
     reason: text("reason").notNull(),
+    /**
+     * Stable logical-operation key. Callers reuse the existing row when a
+     * retried enqueue presents the same key, so concurrent draft creation
+     * cannot produce two independently approvable copies of one side effect.
+     */
+    idempotencyKey: text("idempotency_key"),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     /** Null until the request leaves `pending`. */
     resolvedAt: timestamp("resolved_at", { withTimezone: true }),
@@ -72,5 +78,8 @@ export const approvalRequestTable = pgTable(
     index("approval_requests_agent_state_idx").on(table.agentId, table.state),
     index("approval_requests_subject_id_idx").on(table.agentId, table.subjectUserId, table.id),
     index("approval_requests_state_expires_idx").on(table.state, table.expiresAt),
+    uniqueIndex("approval_requests_agent_idempotency_uidx")
+      .on(table.agentId, table.idempotencyKey)
+      .where(sql`${table.idempotencyKey} IS NOT NULL`),
   ]
 );

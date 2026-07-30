@@ -64,6 +64,10 @@ function ownerPrivateFragment(): Memory {
  * (`buildAccessContext`) and the documents keyword-search path
  * (`DocumentService`). No embedding model is registered, so search falls back
  * to deterministic BM25 keyword recall — no embeddings to mock.
+ *
+ * `adapter.queryDocumentFragments` runs the real shared visibility query the
+ * database adapters delegate to, so the access check under test is the
+ * production one rather than a stand-in reimplementation.
  */
 function makeRuntime(fragments: Memory[]): {
   runtime: AgentRuntime;
@@ -83,6 +87,9 @@ function makeRuntime(fragments: Memory[]): {
     })),
     getEntityById: vi.fn(async () => null),
     getRelationships: vi.fn(async () => []),
+    // Both principals are participants in the room; visibility must therefore
+    // turn on role and document scope, not on room membership.
+    getRoomsForParticipants: vi.fn(async () => [ROOM_ID]),
     getSetting: vi.fn(() => undefined),
     // documents search backing. The service's keyword path reads fragments
     // through the adapter contract (runtime.adapter.queryDocumentFragments);

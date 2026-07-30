@@ -8,8 +8,9 @@ export class CalendarServiceError extends Error {
     public readonly status: number,
     message: string,
     public readonly code?: string,
+    options?: ErrorOptions,
   ) {
-    super(message);
+    super(message, options);
     this.name = "CalendarServiceError";
   }
 }

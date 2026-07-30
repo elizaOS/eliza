@@ -116,6 +116,12 @@ src/lifeops/
   connectors/            ConnectorRegistry + per-connector contributions
                          (calendly, discord, duffel, google, imessage,
                          signal, telegram, twilio, whatsapp, x).
+  oracles/               Typed weather, route-matrix, and local-activity
+                         observations with provenance and source health.
+  food/                  Constraint-safe meals, inventory confidence, and
+                         approval-bound shopping-list handoffs.
+  household-operations/  Vendor/service history, seasonal windows, child-item
+                         evidence, C/P/E/M ownership, and weekly briefs.
   send-policy/           Per-connector send-policy contract + registry.
   owner/                 OwnerFactStore.
   first-run/             FirstRunService, state store, customize
@@ -174,6 +180,21 @@ registers them when a health connector pairs.
 
 The runtime never seeds packs by name string-match; everything goes through
 `getAllDefaultPacks()`.
+
+## Optional household-source credentials
+
+- `GOOGLE_MAPS_API_KEY` enables Google Routes v2 travel matrices. The key is
+  sent in the required request header, never in a URL or persisted result.
+- `TICKETMASTER_API_KEY` enables Ticketmaster local-activity discovery.
+- `INSTACART_API_KEY` enables an approved Instacart products-link handoff.
+- `INSTACART_ENVIRONMENT=development|production` selects the documented
+  Instacart endpoint and defaults to `production`.
+
+Weather uses the public US National Weather Service API and therefore has
+explicit US-only coverage. Missing credentials or source outages produce
+`unavailable` observations rather than healthy empty results. An Instacart
+products link is only a review handoff: it is not evidence of cart contents,
+checkout, an order, payment, delivery, or a substitution decision.
 
 ## Knowledge graph
 

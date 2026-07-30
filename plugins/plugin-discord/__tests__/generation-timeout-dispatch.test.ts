@@ -42,6 +42,18 @@ interface HandleMessageOptions {
 }
 
 /**
+ * Canonical-room collaborators for the delivery-audience attestation that
+ * runs between inbound persistence and dispatch. Static because these tests
+ * exercise timeout mechanics, not audience mechanics: a resolvable DM room
+ * keeps the attestation on its healthy path.
+ */
+const canonicalRoomMethods = {
+	getRoom: async () => ({ id: INBOUND_MEMORY.roomId, type: ChannelType.DM }),
+	getParticipantsForRoom: async () => [INBOUND_MEMORY.entityId, AGENT_ID],
+	reportError: noop,
+};
+
+/**
  * Runtime whose messageService HANGS (never resolves) and records the
  * abortSignal it was handed. Lets the test assert the timeout aborts it.
  */
@@ -71,6 +83,7 @@ function makeHangingRuntime(settings: Record<string, string> = {}): {
 				: (settings[key] ?? undefined),
 		getService: () => null,
 		ensureConnection: async () => {},
+		...canonicalRoomMethods,
 		getMemoryById: async () => null,
 		createMemory: async (memory: Memory) => memory.id,
 		messageService: {
@@ -213,6 +226,7 @@ describe("Discord generation timeout aborts the underlying run (dispatch path)",
 						: undefined,
 			getService: () => null,
 			ensureConnection: async () => {},
+			...canonicalRoomMethods,
 			getMemoryById: async () => null,
 			createMemory: async (memory: Memory) => memory.id,
 			messageService: {
@@ -265,6 +279,7 @@ describe("Discord generation timeout aborts the underlying run (dispatch path)",
 						: undefined,
 			getService: () => null,
 			ensureConnection: async () => {},
+			...canonicalRoomMethods,
 			getMemoryById: async () => null,
 			createMemory: async (memory: Memory) => memory.id,
 			messageService: {
@@ -331,6 +346,7 @@ describe("Discord generation timeout aborts the underlying run (dispatch path)",
 						: undefined,
 			getService: () => null,
 			ensureConnection: async () => {},
+			...canonicalRoomMethods,
 			getMemoryById: async () => null,
 			createMemory: async (memory: Memory) => memory.id,
 			messageService: {
@@ -403,6 +419,7 @@ describe("Discord generation timeout aborts the underlying run (dispatch path)",
 			getService: (serviceType: string) =>
 				serviceType === "SWARM_COORDINATOR" ? { tasks } : null,
 			ensureConnection: async () => {},
+			...canonicalRoomMethods,
 			getMemoryById: async () => null,
 			createMemory: async (memory: Memory) => memory.id,
 			messageService: {

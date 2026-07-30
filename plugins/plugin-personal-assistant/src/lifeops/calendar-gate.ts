@@ -21,6 +21,7 @@ import type {
   LifeOpsGoogleConnectorStatus,
   LifeOpsReminderPlan,
 } from "@elizaos/shared";
+import { resolveCalendarGuestAvailabilityGrants } from "./guest-availability-grants.js";
 import { LifeOpsService } from "./service.js";
 
 /** Structural view of the LifeOps methods the gate forwards to. */
@@ -62,6 +63,8 @@ export function buildLifeOpsCalendarGate(
   return {
     getGoogleConnectorAccounts: (requestUrl, side) =>
       host.getGoogleConnectorAccounts(requestUrl, side),
+    resolveGuestAvailabilityGrants: (request) =>
+      resolveCalendarGuestAvailabilityGrants(runtime, request),
     requireGoogleCalendarGrant: (requestUrl, mode, side, grantId) =>
       host.requireGoogleCalendarGrant(requestUrl, mode, side, grantId),
     requireGoogleCalendarWriteGrant: (requestUrl, mode, side, grantId) =>

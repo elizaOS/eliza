@@ -62,6 +62,7 @@ describe("createTwilioConnectorContribution", () => {
     ).resolves.toMatchObject({
       ok: false,
       reason: "unknown_recipient",
+      acceptance: "not_accepted",
       userActionable: true,
       message: "Twilio target is empty.",
     });
@@ -83,6 +84,7 @@ describe("createTwilioConnectorContribution", () => {
     ).resolves.toMatchObject({
       ok: false,
       reason: "rate_limited",
+      acceptance: "not_accepted",
       retryAfterMinutes: 5,
       userActionable: false,
     });
@@ -98,6 +100,31 @@ describe("createTwilioConnectorContribution", () => {
     });
   });
 
+  it("returns the Twilio SID as a durable receipt bound to the logical send", async () => {
+    twilioMocks.sendTwilioSms.mockResolvedValue({
+      ok: true,
+      status: 201,
+      sid: "SM-scheduling-123",
+    });
+    const connector = createTwilioConnectorContribution({} as IAgentRuntime);
+
+    await expect(
+      connector.send?.({
+        target: "sms:+15551234567",
+        message: "School pickup moved to 4.",
+        idempotencyKey: "scheduling-message:v1:abc",
+      }),
+    ).resolves.toMatchObject({
+      ok: true,
+      messageId: "SM-scheduling-123",
+      receipt: {
+        provider: "twilio",
+        providerMessageId: "SM-scheduling-123",
+        idempotencyKey: "scheduling-message:v1:abc",
+      },
+    });
+  });
+
   it("returns disconnected instead of throwing when credentials are absent", async () => {
     delete process.env.TWILIO_ACCOUNT_SID;
     delete process.env.TWILIO_AUTH_TOKEN;
@@ -109,6 +136,7 @@ describe("createTwilioConnectorContribution", () => {
     ).resolves.toMatchObject({
       ok: false,
       reason: "disconnected",
+      acceptance: "not_accepted",
       userActionable: true,
     });
   });

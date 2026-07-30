@@ -370,6 +370,11 @@ export const PERMISSION_BADGE_LABELS: Record<
     labelKey: "permissionssection.badge.granted",
     defaultLabel: "Granted",
   },
+  limited: {
+    tone: "warning",
+    labelKey: "permissionssection.badge.limited",
+    defaultLabel: "Limited",
+  },
   denied: {
     tone: "danger",
     labelKey: "permissionssection.badge.denied",
@@ -423,6 +428,21 @@ export function getPermissionAction(
 } | null {
   if (status === "not-applicable") {
     return null;
+  }
+
+  if (status === "limited") {
+    const label = canRequest
+      ? translateWithFallback(
+          t,
+          "permissionssection.UpgradeAccess",
+          "Upgrade access",
+        )
+      : translateWithFallback(t, "permissionssection.Manage", "Manage");
+    return {
+      ariaLabelPrefix: label,
+      label,
+      type: canRequest ? "request" : "settings",
+    };
   }
 
   if (status === "granted" && id !== "shell") {

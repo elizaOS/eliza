@@ -135,6 +135,73 @@ describe("subPlannerResultToPlannerToolResult", () => {
 		expect(result.success).toBe(true);
 	});
 
+	it("preserves an exact applied receipt binding through the umbrella result", () => {
+		const text = "Done — the pickup reminder was scheduled.";
+		const observedAt = "2026-07-27T18:00:00.000Z";
+		const result = subPlannerResultToPlannerToolResult(
+			subResult(
+				{
+					success: true,
+					text,
+					userFacingText: text,
+					verifiedUserFacing: true,
+					effectReceipts: [
+						{
+							receiptId: "receipt-reminder-1",
+							operation: "lifeops.reminder.create",
+							resource: {
+								kind: "lifeops.reminder",
+								id: "reminder-1",
+							},
+							artifacts: [],
+							idempotency: {
+								key: "pickup-reminder-request",
+								replayed: false,
+							},
+							observedAt,
+							outcome: "applied",
+							commit: {
+								kind: "durable",
+								id: "transaction-1",
+								committedAt: observedAt,
+							},
+						},
+					],
+					userFacingEffectReceiptIds: ["receipt-reminder-1"],
+				},
+				text,
+			),
+		);
+
+		expect(result.userFacingText).toBe(text);
+		expect(result.verifiedUserFacing).toBe(true);
+		expect(result.userFacingEffectReceiptIds).toEqual(["receipt-reminder-1"]);
+		expect(result.effectReceipts).toEqual([
+			expect.objectContaining({
+				receiptId: "receipt-reminder-1",
+				outcome: "applied",
+			}),
+		]);
+	});
+
+	it("does not transfer verified receipt provenance to a distinct summary", () => {
+		const result = subPlannerResultToPlannerToolResult(
+			subResult(
+				{
+					success: true,
+					userFacingText: "The exact action-owned text.",
+					verifiedUserFacing: true,
+					userFacingEffectReceiptIds: ["receipt-1"],
+				},
+				"A synthesized umbrella summary.",
+			),
+		);
+
+		expect(result.userFacingText).toBe("A synthesized umbrella summary.");
+		expect(result.verifiedUserFacing).toBeUndefined();
+		expect(result.userFacingEffectReceiptIds).toBeUndefined();
+	});
+
 	it("leaves continueChain undefined when the sub-action did not set it", () => {
 		const result = subPlannerResultToPlannerToolResult(
 			subResult({ success: true, text: "done" }, "done"),

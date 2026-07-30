@@ -15,6 +15,16 @@ export { searchMessagesAction } from "./actions/searchMessages.ts";
 export { sendDraftAction } from "./actions/sendDraft.ts";
 export { triageMessagesAction } from "./actions/triageMessages.ts";
 export { BaseMessageAdapter, filterInMemory } from "./adapters/base.ts";
+export type {
+	DeferredMessageScheduleCommit,
+	DeferredMessageScheduleRequest,
+	DeferredMessageScheduleResult,
+	DeferredMessageScheduler,
+} from "./deferred-send-scheduler.ts";
+export {
+	getDeferredMessageScheduler,
+	registerDeferredMessageScheduler,
+} from "./deferred-send-scheduler.ts";
 export {
 	__resetDefaultMessageRefStoreForTests,
 	getDefaultMessageRefStore,

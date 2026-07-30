@@ -1,7 +1,9 @@
 /**
  * Normalises a raw Discord message into the runtime's inbound envelope: formats
- * the message content and classifies the chat surface (dm / channel / thread /
- * forum) plus reply context, before `DiscordService` builds the `Memory`.
+ * the message content and classifies the chat surface (dm / group / channel /
+ * thread / forum) plus reply context, before `DiscordService` builds the
+ * `Memory`. Group DMs are deliberately distinct from 1:1 DMs: only a true DM
+ * may attest as an owner-only delivery audience downstream.
  */
 import {
 	ChannelType as DiscordChannelType,
@@ -10,7 +12,7 @@ import {
 	type ThreadChannel,
 } from "discord.js";
 
-export type ChatType = "dm" | "channel" | "thread" | "forum";
+export type ChatType = "dm" | "group" | "channel" | "thread" | "forum";
 
 export interface EnvelopeResult {
 	formattedContent: string;
@@ -55,11 +57,11 @@ function formatTimestamp(timestamp: number | Date): string {
 
 function detectChatType(message: DiscordMessage): ChatType {
 	const channelType = message.channel.type;
-	if (
-		channelType === DiscordChannelType.DM ||
-		channelType === DiscordChannelType.GroupDM
-	) {
+	if (channelType === DiscordChannelType.DM) {
 		return "dm";
+	}
+	if (channelType === DiscordChannelType.GroupDM) {
+		return "group";
 	}
 
 	if (
@@ -93,6 +95,9 @@ function buildChannelLabel(
 ): string {
 	if (chatType === "dm") {
 		return "DM";
+	}
+	if (chatType === "group") {
+		return "Group DM";
 	}
 
 	const guildName = message.guild?.name;

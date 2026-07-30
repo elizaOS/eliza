@@ -16,6 +16,7 @@ from ._openai_compat import OpenAICompatAgent
 from .adapter_paths import ensure_benchmark_adapter_importable
 from .cerebras_direct import build_cerebras_direct_agent
 from .hermes import build_hermes_agent
+from .hermes_direct import build_hermes_direct_agent
 from .openclaw import OpenClawAgent, build_openclaw_agent
 from .perfect import PerfectAgent
 from .wrong import WrongAgent, WrongMode
@@ -76,6 +77,7 @@ __all__ = [
     "build_cerebras_direct_agent",
     "build_eliza_agent",
     "build_hermes_agent",
+    "build_hermes_direct_agent",
     "build_openclaw_agent",
     "ensure_benchmark_adapter_importable",
 ]

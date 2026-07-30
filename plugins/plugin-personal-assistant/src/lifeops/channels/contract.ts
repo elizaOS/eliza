@@ -32,6 +32,9 @@ export interface ChannelContribution {
   /** Connector kind that backs this channel, when delivery leaves the app. */
   connectorKind?: string | null;
 
+  /** Stable provider receipt guaranteed for every successful send. */
+  receiptContract?: "provider_receipt_id";
+
   /**
    * Outbound dispatch verb. Only required when `capabilities.send` is true.
    * The payload shape is channel-specific; the registry does not validate it.

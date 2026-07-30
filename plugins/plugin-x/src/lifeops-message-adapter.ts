@@ -231,7 +231,7 @@ export class XDmAdapter extends BaseMessageAdapter {
     _sendAtMs: number,
   ): Promise<{ scheduledId: string }> {
     throw new NotYetImplementedError(
-      "x_dm adapter: native scheduleSend (use core's local timer fallback)",
+      "x_dm adapter does not support provider-native deferred delivery",
     );
   }
 }

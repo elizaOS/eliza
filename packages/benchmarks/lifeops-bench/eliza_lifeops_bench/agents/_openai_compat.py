@@ -217,4 +217,6 @@ class OpenAICompatAgent:
             self.total_cost_usd += float(response.cost_usd)
         self.total_input_tokens += int(response.usage.prompt_tokens)
         self.total_output_tokens += int(response.usage.completion_tokens)
-        return client_response_to_message_turn(response)
+        turn = client_response_to_message_turn(response)
+        turn.model_name = self.client.model_name
+        return turn

@@ -261,6 +261,7 @@ function runSearch(
       req: {
         url: `/api/conversations/messages/search?${qs}`,
         headers: { host: "localhost" },
+        socket: { remoteAddress: "127.0.0.1" },
       },
       res: {},
       method: "GET",

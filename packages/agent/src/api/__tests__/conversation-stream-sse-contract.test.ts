@@ -163,6 +163,7 @@ function createMockSocket(): MockSocket {
   return Object.assign(new EventEmitter(), {
     destroyed: false,
     writable: true,
+    remoteAddress: "127.0.0.1",
   });
 }
 
@@ -604,6 +605,7 @@ function createState(
     updateWorld: vi.fn(async () => undefined),
     getWorld: vi.fn(async (worldId: UUID) => worlds.get(worldId) ?? null),
     getRoom: vi.fn(async () => null),
+    getParticipantsForRoom: vi.fn(async () => [USER_ID, AGENT_ID]),
     getService: vi.fn(() => null),
     getServicesByType: vi.fn(() => []),
     getSetting: vi.fn(() => null),

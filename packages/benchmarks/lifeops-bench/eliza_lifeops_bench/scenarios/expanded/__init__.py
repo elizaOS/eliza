@@ -4,16 +4,10 @@ This module broadens LifeOpsBench beyond the original mostly single-action
 static corpus. It adds 10 capability areas, each with 10 primary scenario
 families and two similar-but-different variants per family.
 
-Coverage gaps intentionally surfaced by these scenarios:
-- true heartbeat/time-advance execution is not modeled; the benchmark can
-  express scheduled-task records and reminder disruptions, but cannot tick a
-  real ScheduledTaskRunner through a day/week.
-- LifeWorld folds `SCHEDULED_TASK_CREATE` into reminders, so escalation,
-  output, subject, global-pause, and pipeline semantics are scored through
-  action structure and final prose rather than independent state entities.
-- connector auth/status, remote sessions, owner facts, handoff, memory,
-  budget/account state, document portals, approvals, and focus-block sessions
-  do not have first-class LifeWorld entities yet.
+Coverage gaps intentionally surfaced by these scenarios include heartbeat
+execution across real elapsed time and provider-owned connector, notification,
+document, and booking effects. LifeWorld models scheduled tasks as first-class
+state, including create-receipt identity lineage for subsequent mutations.
 """
 
 from __future__ import annotations
@@ -23,13 +17,20 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from ...types import Action, Disruption, Domain, FirstQuestionFallback, Scenario, ScenarioMode
+from ...action_lineage import scheduled_task_create_receipt_id
+from ...types import (
+    Action,
+    Disruption,
+    Domain,
+    FirstQuestionFallback,
+    Scenario,
+    ScenarioMode,
+)
 from .._personas import (
     PERSONA_ALEX_ENG,
     PERSONA_DEV_FREELANCER,
     PERSONA_KAI_STUDENT,
     PERSONA_LIN_OPS,
-    PERSONA_MAYA_PARENT,
     PERSONA_NORA_CONSULTANT,
     PERSONA_OWEN_RETIREE,
     PERSONA_RIA_PM,
@@ -194,7 +195,7 @@ _AREA_SPECS: tuple[AreaSpec, ...] = (
             "group notification before focus session",
         ),
         output_terms=("focus", "block"),
-        missing_semantics="BLOCK actions are no-op in LifeWorld until a FocusBlock entity exists.",
+        missing_semantics="LifeWorld models focus-rule and permission lifecycles; physical device enforcement telemetry remains external.",
     ),
     AreaSpec(
         slug="finance_subscriptions",
@@ -234,7 +235,7 @@ _AREA_SPECS: tuple[AreaSpec, ...] = (
             "multi-city trip preference reuse",
         ),
         output_terms=("approval", "itinerary"),
-        missing_semantics="Document portals, approvals, and real travel booking state are represented as tasks/messages only.",
+        missing_semantics="Travel offers and approval-gated holds are modeled; ticket purchase and cancellation remain external provider operations.",
     ),
     AreaSpec(
         slug="multilocale_settings_privacy",
@@ -276,23 +277,31 @@ def _task(
     subject: dict[str, str] | None = None,
     output: dict[str, Any] | None = None,
     pipeline: dict[str, Any] | None = None,
+    after_task_id: str | None = None,
+    event_kind: str = "lifeops.message.received",
 ) -> Action:
     day = variant + 1
     trigger: dict[str, Any] = {"kind": trigger_kind, "atIso": _iso(day, 9 + variant)}
     if trigger_kind == "cron":
         trigger.update({"cron": "0 9 * * 1-5", "tz": "America/Los_Angeles"})
     elif trigger_kind == "interval":
-        trigger.update({"everyMinutes": 90, "window": {"start": "13:00", "end": "18:00"}})
+        trigger.update(
+            {"everyMinutes": 90, "window": {"start": "13:00", "end": "18:00"}}
+        )
     elif trigger_kind == "relative_to_anchor":
         trigger.update({"anchorKey": "wake.confirmed", "offsetMinutes": 30})
     elif trigger_kind == "during_window":
-        trigger.update({"window": {"start": "09:00", "end": "17:00"}, "tz": "America/Los_Angeles"})
+        trigger.update(
+            {"window": {"start": "09:00", "end": "17:00"}, "tz": "America/Los_Angeles"}
+        )
     elif trigger_kind == "event":
-        trigger.update({"eventKind": "lifeops.message.received"})
+        trigger.update({"eventKind": event_kind})
     elif trigger_kind == "manual":
         trigger.pop("atIso", None)
     elif trigger_kind == "after_task":
-        trigger.update({"taskId": f"task_{area.slug}_{case_slug}_{variant}_parent"})
+        if after_task_id is None:
+            raise ValueError("after_task triggers require a create-receipt task id")
+        trigger.update({"taskId": after_task_id})
 
     kwargs: dict[str, Any] = {
         "subaction": "create",
@@ -328,7 +337,16 @@ def _task(
     return Action(name="SCHEDULED_TASK_CREATE", kwargs=kwargs)
 
 
-def _calendar_create(title: str, variant: int, *, calendar_id: str = "cal_work") -> Action:
+def _created_task_id(action: Action) -> str:
+    """Read the deterministic create receipt identity for a dependent turn."""
+    if action.name != "SCHEDULED_TASK_CREATE":
+        raise ValueError("scheduled-task lineage requires a create action")
+    return scheduled_task_create_receipt_id(action.kwargs)
+
+
+def _calendar_create(
+    title: str, variant: int, *, calendar_id: str = "cal_work"
+) -> Action:
     return Action(
         name="CALENDAR",
         kwargs={
@@ -413,14 +431,21 @@ def _static_actions(
         "during_window",
         "event",
         "manual",
-        "after_task",
     )
     stable_seed = hashlib.sha1(f"{area.slug}:{case_slug}".encode("utf-8")).digest()
     trigger_kind = trigger_cycle[(stable_seed[0] + variant) % len(trigger_cycle)]
 
     if area.slug == "temporal_triggers":
+        primary_task = _task(
+            area=area,
+            case_slug=case_slug,
+            variant=variant,
+            prompt=prompt,
+            trigger_kind=trigger_kind,
+        )
+        primary_task_id = _created_task_id(primary_task)
         return [
-            _task(area=area, case_slug=case_slug, variant=variant, prompt=prompt, trigger_kind=trigger_kind),
+            primary_task,
             _task(
                 area=area,
                 case_slug=f"{case_slug}_child",
@@ -429,224 +454,880 @@ def _static_actions(
                 kind="followup",
                 trigger_kind="after_task",
                 priority="low",
-                pipeline={"onComplete": [f"task_{area.slug}_{case_slug}_recap"]},
+                after_task_id=primary_task_id,
             ),
-            Action(name="SCHEDULED_TASK_UPDATE", kwargs={"subaction": "update", "taskId": f"task_{area.slug}_{case_slug}_{variant}", "updates": {"priority": "medium"}}),
-            Action(name="SCHEDULED_TASK_SNOOZE", kwargs={"subaction": "snooze", "taskId": f"task_{area.slug}_{case_slug}_{variant}", "minutes": 30}),
+            Action(
+                name="SCHEDULED_TASK_UPDATE",
+                kwargs={
+                    "subaction": "update",
+                    "taskId": primary_task_id,
+                    "updates": {"priority": "medium"},
+                },
+            ),
+            Action(
+                name="SCHEDULED_TASK_SNOOZE",
+                kwargs={
+                    "subaction": "snooze",
+                    "taskId": primary_task_id,
+                    "minutes": 30,
+                },
+            ),
         ]
     if area.slug == "cross_domain_day_week":
         return [
             _calendar_create(title, variant),
-            _message(operation="draft_reply", body=f"Draft confirmation for {topic}.", variant=variant),
-            _task(area=area, case_slug=case_slug, variant=variant, prompt=f"Remind before {topic}", trigger_kind="relative_to_anchor"),
-            Action(name="BLOCK", kwargs={"subaction": "block", "hostnames": ["x.com", "youtube.com"], "durationMinutes": 90}),
+            _message(
+                operation="draft_reply",
+                body=f"Draft confirmation for {topic}.",
+                variant=variant,
+            ),
+            _task(
+                area=area,
+                case_slug=case_slug,
+                variant=variant,
+                prompt=f"Remind before {topic}",
+                trigger_kind="relative_to_anchor",
+            ),
+            Action(
+                name="BLOCK",
+                kwargs={
+                    "subaction": "block",
+                    "hostnames": ["x.com", "youtube.com"],
+                    "durationMinutes": 90,
+                },
+            ),
         ]
     if area.slug == "escalation_push_remote":
+        task = _task(
+            area=area,
+            case_slug=case_slug,
+            variant=variant,
+            prompt=prompt,
+            trigger_kind="once",
+            priority="high",
+            output={"destination": "channel", "target": "sms:owner"},
+        )
         return [
-            _task(area=area, case_slug=case_slug, variant=variant, prompt=prompt, trigger_kind="once", priority="high", output={"destination": "channel", "target": "sms:owner"}),
-            _message(source="sms", body=f"Escalation fallback for {topic}.", variant=variant),
-            Action(name="SCHEDULED_TASK_UPDATE", kwargs={"subaction": "update", "taskId": f"task_{area.slug}_{case_slug}_{variant}", "updates": {"escalationCursor": 1}}),
+            task,
+            _message(
+                source="sms", body=f"Escalation fallback for {topic}.", variant=variant
+            ),
+            Action(
+                name="SCHEDULED_TASK_UPDATE",
+                kwargs={
+                    "subaction": "update",
+                    "taskId": _created_task_id(task),
+                    "updates": {"escalationCursor": 1},
+                },
+            ),
         ]
     if area.slug == "connector_degradation":
         trigger_kinds = ("event", "manual", "once")
         priorities = ("high", "medium", "low")
         return [
-            _message(operation="search_inbox", body=f"{topic} reconnect degraded", variant=variant),
-            _task(area=area, case_slug=case_slug, variant=variant, prompt=f"Reconnect or degrade gracefully for {topic}", priority=priorities[variant], trigger_kind=trigger_kinds[variant]),
-            _message(operation="draft_reply", body=f"Draft while connector is degraded: {topic}.", variant=variant),
-            _message(source="sms", body=f"Fallback route for {topic}.", variant=variant),
+            _message(
+                operation="search_inbox",
+                body=f"{topic} reconnect degraded",
+                variant=variant,
+            ),
+            _task(
+                area=area,
+                case_slug=case_slug,
+                variant=variant,
+                prompt=f"Reconnect or degrade gracefully for {topic}",
+                priority=priorities[variant],
+                trigger_kind=trigger_kinds[variant],
+            ),
+            _message(
+                operation="draft_reply",
+                body=f"Draft while connector is degraded: {topic}.",
+                variant=variant,
+            ),
+            _message(
+                source="sms", body=f"Fallback route for {topic}.", variant=variant
+            ),
         ]
     if area.slug == "identity_followup":
         return [
-            Action(name="ENTITY", kwargs={"subaction": "set_identity", "entityId": "contact_00003", "platform": "telegram", "handle": f"@expanded_{case_slug}_{variant}"}),
-            Action(name="ENTITY", kwargs={"subaction": "log_interaction", "entityId": "contact_00003", "notes": f"Logged interaction for {topic}."}),
-            Action(name="MESSAGE", kwargs={"operation": "read_with_contact", "source": "signal", "contact": "contact_00003", "limit": 8}),
-            _task(area=area, case_slug=case_slug, variant=variant, prompt=f"Follow up with canonical contact about {topic}", kind="followup", subject={"kind": "entity", "id": "contact_00003"}),
+            Action(
+                name="ENTITY",
+                kwargs={
+                    "subaction": "set_identity",
+                    "entityId": "contact_00003",
+                    "platform": "telegram",
+                    "handle": f"@expanded_{case_slug}_{variant}",
+                },
+            ),
+            Action(
+                name="ENTITY",
+                kwargs={
+                    "subaction": "log_interaction",
+                    "entityId": "contact_00003",
+                    "notes": f"Logged interaction for {topic}.",
+                },
+            ),
+            Action(
+                name="MESSAGE",
+                kwargs={
+                    "operation": "read_with_contact",
+                    "source": "signal",
+                    "contact": "contact_00003",
+                    "limit": 8,
+                },
+            ),
+            _task(
+                area=area,
+                case_slug=case_slug,
+                variant=variant,
+                prompt=f"Follow up with canonical contact about {topic}",
+                kind="followup",
+                subject={"kind": "entity", "id": "contact_00003"},
+            ),
         ]
     if area.slug == "health_sleep_circadian":
+        recap_task = _task(
+            area=area,
+            case_slug=case_slug,
+            variant=variant,
+            prompt=prompt,
+            kind="recap",
+            trigger_kind="relative_to_anchor",
+            subject={"kind": "self", "id": "self"},
+        )
         return [
-            Action(name="HEALTH", kwargs={"subaction": "by_metric", "metric": "sleep_hours", "days": 7}),
-            Action(name="LIFE_CREATE", kwargs={"subaction": "create", "title": f"Health log {case_slug}", "details": {"kind": "health_metric", "metric": "sleep_hours", "value": 4.8 + variant, "occurredAtIso": _iso(0, 7)}}),
-            _task(area=area, case_slug=case_slug, variant=variant, prompt=prompt, kind="recap", trigger_kind="relative_to_anchor", subject={"kind": "self", "id": "self"}),
-            Action(name="LIFE_UPDATE", kwargs={"subaction": "update", "target": f"health-routine-{case_slug}", "updates": {"priority": "low"}}),
+            Action(
+                name="HEALTH",
+                kwargs={"subaction": "by_metric", "metric": "sleep_hours", "days": 7},
+            ),
+            Action(
+                name="LIFE_CREATE",
+                kwargs={
+                    "subaction": "create",
+                    "title": f"Health log {case_slug}",
+                    "details": {
+                        "kind": "health_metric",
+                        "metric": "sleep_hours",
+                        "value": 4.8 + variant,
+                        "occurredAtIso": _iso(0, 7),
+                    },
+                },
+            ),
+            recap_task,
+            Action(
+                name="LIFE_UPDATE",
+                kwargs={
+                    "subaction": "update",
+                    "target": _created_task_id(recap_task),
+                    "updates": {"priority": "low"},
+                },
+            ),
         ]
     if area.slug == "focus_blockers":
         block_targets = (
-            {"hostnames": ["x.com", "reddit.com"], "packageNames": ["com.apple.MobileSafari"]},
-            {"hostnames": ["youtube.com", "tiktok.com"], "packageNames": ["com.apple.AppStore"]},
-            {"hostnames": ["news.ycombinator.com", "discord.com"], "packageNames": ["com.apple.MobileSMS"]},
+            {
+                "hostnames": ["x.com", "reddit.com"],
+                "packageNames": ["com.apple.MobileSafari"],
+            },
+            {
+                "hostnames": ["youtube.com", "tiktok.com"],
+                "packageNames": ["com.apple.AppStore"],
+            },
+            {
+                "hostnames": ["news.ycombinator.com", "discord.com"],
+                "packageNames": ["com.apple.MobileSMS"],
+            },
         )[variant]
         if family_index == 0:
             return [
-                Action(name="BLOCK_REQUEST_PERMISSION", kwargs={"subaction": "request_permission", **block_targets, "reason": topic, "confirmationRequired": True}),
+                Action(
+                    name="BLOCK_REQUEST_PERMISSION",
+                    kwargs={
+                        "subaction": "request_permission",
+                        **block_targets,
+                        "reason": topic,
+                        "confirmationRequired": True,
+                    },
+                ),
                 _calendar_create(f"Protected focus: {topic}", variant),
-                Action(name="BLOCK_BLOCK", kwargs={"subaction": "block", **block_targets, "durationMinutes": 90 + variant * 30, "confirmed": True}),
-                _task(area=area, case_slug=case_slug, variant=variant, prompt=f"Check whether focus block held: {topic}", trigger_kind="after_task"),
+                Action(
+                    name="BLOCK_BLOCK",
+                    kwargs={
+                        "subaction": "block",
+                        **block_targets,
+                        "durationMinutes": 90 + variant * 30,
+                        "confirmed": True,
+                    },
+                ),
+                _task(
+                    area=area,
+                    case_slug=case_slug,
+                    variant=variant,
+                    prompt=f"Check whether focus block held: {topic}",
+                    trigger_kind="event",
+                    event_kind="lifeops.focus.completed",
+                ),
             ]
         if family_index == 1:
             return [
-                Action(name="BLOCK_REQUEST_PERMISSION", kwargs={"subaction": "request_permission", **block_targets, "mode": "harsh", "noBypass": True, "reason": topic}),
-                Action(name="BLOCK_BLOCK", kwargs={"subaction": "block", **block_targets, "durationMinutes": 120, "mode": "harsh", "confirmed": True}),
-                _task(area=area, case_slug=case_slug, variant=variant, prompt=f"Confirm harsh-mode block is still appropriate: {topic}", trigger_kind="during_window"),
+                Action(
+                    name="BLOCK_REQUEST_PERMISSION",
+                    kwargs={
+                        "subaction": "request_permission",
+                        **block_targets,
+                        "mode": "harsh",
+                        "noBypass": True,
+                        "reason": topic,
+                    },
+                ),
+                Action(
+                    name="BLOCK_BLOCK",
+                    kwargs={
+                        "subaction": "block",
+                        **block_targets,
+                        "durationMinutes": 120,
+                        "mode": "harsh",
+                        "confirmed": True,
+                    },
+                ),
+                _task(
+                    area=area,
+                    case_slug=case_slug,
+                    variant=variant,
+                    prompt=f"Confirm harsh-mode block is still appropriate: {topic}",
+                    trigger_kind="during_window",
+                ),
             ]
         if family_index == 2:
             return [
-                Action(name="BLOCK_STATUS", kwargs={"subaction": "status", "ruleId": f"focus_{case_slug}_{variant}"}),
-                Action(name="BLOCK_RELEASE", kwargs={"subaction": "release", "ruleId": f"focus_{case_slug}_{variant}", "reason": "emergency override", "confirmed": True}),
-                _task(area=area, case_slug=case_slug, variant=variant, prompt=f"Log release reason and restart later: {topic}", trigger_kind="after_task"),
+                Action(
+                    name="BLOCK_STATUS",
+                    kwargs={
+                        "subaction": "status",
+                        "ruleId": f"focus_seed_emergency_{variant}",
+                    },
+                ),
+                Action(
+                    name="BLOCK_RELEASE",
+                    kwargs={
+                        "subaction": "release",
+                        "ruleId": f"focus_seed_emergency_{variant}",
+                        "reason": "emergency override",
+                        "confirmed": True,
+                    },
+                ),
+                _task(
+                    area=area,
+                    case_slug=case_slug,
+                    variant=variant,
+                    prompt=f"Log release reason and restart later: {topic}",
+                    trigger_kind="event",
+                    event_kind="lifeops.focus.released",
+                ),
             ]
         if family_index == 3:
             return [
-                Action(name="BLOCK_STATUS", kwargs={"subaction": "status", "scope": "active_focus"}),
-                Action(name="LIFE_SNOOZE", kwargs={"subaction": "snooze", "target": "reminder_00005", "minutes": 30 + 15 * variant}),
-                _task(area=area, case_slug=case_slug, variant=variant, prompt=f"Auto-snooze noncritical reminders during focus: {topic}", trigger_kind="during_window"),
+                Action(
+                    name="BLOCK_STATUS",
+                    kwargs={"subaction": "status", "scope": "active_focus"},
+                ),
+                Action(
+                    name="LIFE_SNOOZE",
+                    kwargs={
+                        "subaction": "snooze",
+                        "target": "reminder_00005",
+                        "minutes": 30 + 15 * variant,
+                    },
+                ),
+                _task(
+                    area=area,
+                    case_slug=case_slug,
+                    variant=variant,
+                    prompt=f"Auto-snooze noncritical reminders during focus: {topic}",
+                    trigger_kind="during_window",
+                ),
             ]
         if family_index == 4:
             return [
-                Action(name="BLOCK_BLOCK", kwargs={"subaction": "block", **block_targets, "schedule": {"weekdays": [1, 2, 3, 4, 5], "start": "09:00", "end": "17:00"}, "exceptions": [{"weekday": 6, "window": "evening"}]}),
-                Action(name="BLOCK_LIST_ACTIVE", kwargs={"subaction": "list_active", "includeScheduled": True}),
-                _task(area=area, case_slug=case_slug, variant=variant, prompt=f"Review weekend exception for {topic}", trigger_kind="cron"),
+                Action(
+                    name="BLOCK_BLOCK",
+                    kwargs={
+                        "subaction": "block",
+                        **block_targets,
+                        "schedule": {
+                            "weekdays": [1, 2, 3, 4, 5],
+                            "start": "09:00",
+                            "end": "17:00",
+                        },
+                        "exceptions": [{"weekday": 6, "window": "evening"}],
+                    },
+                ),
+                Action(
+                    name="BLOCK_LIST_ACTIVE",
+                    kwargs={"subaction": "list_active", "includeScheduled": True},
+                ),
+                _task(
+                    area=area,
+                    case_slug=case_slug,
+                    variant=variant,
+                    prompt=f"Review weekend exception for {topic}",
+                    trigger_kind="cron",
+                ),
             ]
         return [
             _calendar_create(f"Exam focus: {topic}", variant),
-            Action(name="BLOCK_BLOCK", kwargs={"subaction": "block", **block_targets, "durationMinutes": 180, "policy": "until_task_complete", "confirmed": True}),
-            Action(name="MESSAGE", kwargs={"operation": "send", "source": "telegram", "targetKind": "group", "roomId": "conv_0006", "message": f"Focus block started for {topic}."}),
-            _task(area=area, case_slug=case_slug, variant=variant, prompt=f"End-of-session focus recap: {topic}", trigger_kind="after_task"),
+            Action(
+                name="BLOCK_BLOCK",
+                kwargs={
+                    "subaction": "block",
+                    **block_targets,
+                    "durationMinutes": 180,
+                    "policy": "until_task_complete",
+                    "confirmed": True,
+                },
+            ),
+            Action(
+                name="MESSAGE",
+                kwargs={
+                    "operation": "send",
+                    "source": "telegram",
+                    "targetKind": "group",
+                    "roomId": "conv_0006",
+                    "message": f"Focus block started for {topic}.",
+                },
+            ),
+            _task(
+                area=area,
+                case_slug=case_slug,
+                variant=variant,
+                prompt=f"End-of-session focus recap: {topic}",
+                trigger_kind="event",
+                event_kind="lifeops.focus.completed",
+            ),
         ]
     if area.slug == "finance_subscriptions":
         services = ("Netflix", "Spotify", "Disney+")
         service = services[variant]
         if family_index == 0:
             return [
-                Action(name="MONEY_SUBSCRIPTION_STATUS", kwargs={"subaction": "subscription_status", "serviceName": service}),
-                Action(name="MONEY_SUBSCRIPTION_CANCEL", kwargs={"subaction": "cancel", "serviceName": service, "confirmed": True, "candidateId": f"cancel_{case_slug}_{variant}"}),
-                _task(area=area, case_slug=case_slug, variant=variant, prompt=f"Check cancellation status for {service}", trigger_kind="once"),
+                Action(
+                    name="MONEY_SUBSCRIPTION_STATUS",
+                    kwargs={"subaction": "subscription_status", "serviceName": service},
+                ),
+                Action(
+                    name="MONEY_SUBSCRIPTION_CANCEL",
+                    kwargs={
+                        "subaction": "cancel",
+                        "serviceName": service,
+                        "confirmed": True,
+                        "candidateId": f"cancel_{case_slug}_{variant}",
+                    },
+                ),
+                _task(
+                    area=area,
+                    case_slug=case_slug,
+                    variant=variant,
+                    prompt=f"Check cancellation status for {service}",
+                    trigger_kind="once",
+                ),
             ]
         if family_index == 1:
             group_bys = ("category", "merchant", "account")
             trigger_kinds = ("cron", "manual", "once")
             return [
-                Action(name="MONEY_DASHBOARD", kwargs={"subaction": "dashboard", "windowDays": 7 + 7 * variant}),
-                Action(name="MONEY_SPENDING_SUMMARY", kwargs={"subaction": "spending_summary", "windowDays": 7 + 7 * variant, "groupBy": group_bys[variant]}),
-                _task(area=area, case_slug=case_slug, variant=variant, prompt=f"Send weekly budget report: {topic}", trigger_kind=trigger_kinds[variant]),
+                Action(
+                    name="MONEY_DASHBOARD",
+                    kwargs={"subaction": "dashboard", "windowDays": 7 + 7 * variant},
+                ),
+                Action(
+                    name="MONEY_SPENDING_SUMMARY",
+                    kwargs={
+                        "subaction": "spending_summary",
+                        "windowDays": 7 + 7 * variant,
+                        "groupBy": group_bys[variant],
+                    },
+                ),
+                _task(
+                    area=area,
+                    case_slug=case_slug,
+                    variant=variant,
+                    prompt=f"Send weekly budget report: {topic}",
+                    trigger_kind=trigger_kinds[variant],
+                ),
             ]
         if family_index == 2:
             return [
-                Action(name="MONEY_LIST_TRANSACTIONS", kwargs={"subaction": "list_transactions", "merchantContains": ("Delta", "United", "Lyft")[variant], "windowDays": 120, "onlyDebits": True}),
-                _task(area=area, case_slug=case_slug, variant=variant, prompt=f"Follow up on possible duplicate charge: {topic}", trigger_kind="once", priority="high"),
+                Action(
+                    name="MONEY_LIST_TRANSACTIONS",
+                    kwargs={
+                        "subaction": "list_transactions",
+                        "merchantContains": ("Delta", "United", "Lyft")[variant],
+                        "windowDays": 120,
+                        "onlyDebits": True,
+                    },
+                ),
+                _task(
+                    area=area,
+                    case_slug=case_slug,
+                    variant=variant,
+                    prompt=f"Follow up on possible duplicate charge: {topic}",
+                    trigger_kind="once",
+                    priority="high",
+                ),
             ]
         if family_index == 3:
             return [
-                Action(name="MONEY_SUBSCRIPTION_STATUS", kwargs={"subaction": "subscription_status", "serviceName": ("Apple iCloud", "YouTube Premium", "Github Pro")[variant]}),
-                _task(area=area, case_slug=case_slug, variant=variant, prompt=f"Warn before trial or renewal: {topic}", trigger_kind="once", priority="high"),
-                _message(operation="draft_reply", body=f"Draft renewal decision note for {topic}.", variant=variant),
+                Action(
+                    name="MONEY_SUBSCRIPTION_STATUS",
+                    kwargs={
+                        "subaction": "subscription_status",
+                        "serviceName": (
+                            "Apple iCloud",
+                            "YouTube Premium",
+                            "Github Pro",
+                        )[variant],
+                    },
+                ),
+                _task(
+                    area=area,
+                    case_slug=case_slug,
+                    variant=variant,
+                    prompt=f"Warn before trial or renewal: {topic}",
+                    trigger_kind="once",
+                    priority="high",
+                ),
+                _message(
+                    operation="draft_reply",
+                    body=f"Draft renewal decision note for {topic}.",
+                    variant=variant,
+                ),
             ]
         if family_index == 4:
             categories = ("entertainment", "travel", "utilities")
             windows = (180, 120, 365)
             return [
-                Action(name="MONEY_SUBSCRIPTION_AUDIT", kwargs={"subaction": "audit", "queryWindowDays": windows[variant], "category": categories[variant]}),
-                Action(name="MONEY_RECURRING_CHARGES", kwargs={"subaction": "recurring_charges", "windowDays": windows[variant]}),
-                _message(source=("imessage", "sms", "gmail")[variant], body=f"Subscription digest for {topic}: {categories[variant]}.", variant=variant),
+                Action(
+                    name="MONEY_SUBSCRIPTION_AUDIT",
+                    kwargs={
+                        "subaction": "audit",
+                        "queryWindowDays": windows[variant],
+                        "category": categories[variant],
+                    },
+                ),
+                Action(
+                    name="MONEY_RECURRING_CHARGES",
+                    kwargs={
+                        "subaction": "recurring_charges",
+                        "windowDays": windows[variant],
+                    },
+                ),
+                _message(
+                    source=("imessage", "sms", "gmail")[variant],
+                    body=f"Subscription digest for {topic}: {categories[variant]}.",
+                    variant=variant,
+                ),
             ]
         if variant == 0:
             return [
-                Action(name="MONEY_RECURRING_CHARGES", kwargs={"subaction": "recurring_charges", "windowDays": 180}),
-                Action(name="MONEY_DASHBOARD", kwargs={"subaction": "dashboard", "windowDays": 30}),
-                _task(area=area, case_slug=case_slug, variant=variant, prompt=f"Cash-flow reminder and budget follow-up: {topic}", trigger_kind="cron"),
+                Action(
+                    name="MONEY_RECURRING_CHARGES",
+                    kwargs={"subaction": "recurring_charges", "windowDays": 180},
+                ),
+                Action(
+                    name="MONEY_DASHBOARD",
+                    kwargs={"subaction": "dashboard", "windowDays": 30},
+                ),
+                _task(
+                    area=area,
+                    case_slug=case_slug,
+                    variant=variant,
+                    prompt=f"Cash-flow reminder and budget follow-up: {topic}",
+                    trigger_kind="cron",
+                ),
             ]
         if variant == 1:
             return [
-                Action(name="MONEY_LIST_TRANSACTIONS", kwargs={"subaction": "list_transactions", "merchantContains": "Spotify", "windowDays": 180, "onlyDebits": True}),
-                Action(name="MONEY_RECURRING_CHARGES", kwargs={"subaction": "recurring_charges", "windowDays": 180}),
-                _task(area=area, case_slug=case_slug, variant=variant, prompt=f"Scan recurring debits and flag duplicates: {topic}", trigger_kind="once"),
+                Action(
+                    name="MONEY_LIST_TRANSACTIONS",
+                    kwargs={
+                        "subaction": "list_transactions",
+                        "merchantContains": "Spotify",
+                        "windowDays": 180,
+                        "onlyDebits": True,
+                    },
+                ),
+                Action(
+                    name="MONEY_RECURRING_CHARGES",
+                    kwargs={"subaction": "recurring_charges", "windowDays": 180},
+                ),
+                _task(
+                    area=area,
+                    case_slug=case_slug,
+                    variant=variant,
+                    prompt=f"Scan recurring debits and flag duplicates: {topic}",
+                    trigger_kind="once",
+                ),
             ]
         return [
-            Action(name="MONEY_SUBSCRIPTION_AUDIT", kwargs={"subaction": "audit", "queryWindowDays": 365}),
-            Action(name="MONEY_RECURRING_CHARGES", kwargs={"subaction": "recurring_charges", "windowDays": 365}),
-            _task(area=area, case_slug=case_slug, variant=variant, prompt=f"Long-horizon recurring-charge review: {topic}", trigger_kind="interval"),
+            Action(
+                name="MONEY_SUBSCRIPTION_AUDIT",
+                kwargs={"subaction": "audit", "queryWindowDays": 365},
+            ),
+            Action(
+                name="MONEY_RECURRING_CHARGES",
+                kwargs={"subaction": "recurring_charges", "windowDays": 365},
+            ),
+            _task(
+                area=area,
+                case_slug=case_slug,
+                variant=variant,
+                prompt=f"Long-horizon recurring-charge review: {topic}",
+                trigger_kind="interval",
+            ),
         ]
     if area.slug == "travel_docs_approvals":
         if family_index == 0:
             return [
-                Action(name="BOOK_TRAVEL", kwargs={"origin": "SFO", "destination": "JFK", "departureDate": "2026-05-15", "returnDate": "2026-05-18", "passengers": 1, "calendarSync": True, "approval": {"required": True, "queue": "owner"}}),
-                _calendar_create(f"Travel hold: {topic}", variant, calendar_id="cal_primary"),
-                _task(area=area, case_slug=case_slug, variant=variant, prompt=f"Approval request for flight booking: {topic}", kind="approval", trigger_kind="manual", priority="high", output={"destination": "channel", "target": "in_app:owner"}),
+                Action(
+                    name="BOOK_TRAVEL",
+                    kwargs={
+                        "subaction": "prepare",
+                        "origin": "SFO",
+                        "destination": "JFK",
+                        "departureDate": "2026-05-15",
+                        "returnDate": "2026-05-18",
+                        "passengers": 1,
+                        "calendarSync": True,
+                        "approval": {"required": True, "queue": "owner"},
+                    },
+                ),
+                _calendar_create(
+                    f"Travel hold: {topic}", variant, calendar_id="cal_primary"
+                ),
+                _task(
+                    area=area,
+                    case_slug=case_slug,
+                    variant=variant,
+                    prompt=f"Approval request for flight booking: {topic}",
+                    kind="approval",
+                    trigger_kind="manual",
+                    priority="high",
+                    output={"destination": "channel", "target": "in_app:owner"},
+                ),
             ]
         if family_index == 1:
             return [
-                _calendar_create(f"Airport transfer buffer: {topic}", variant, calendar_id="cal_primary"),
-                Action(name="LIFE_CREATE", kwargs={"subaction": "create", "title": f"Airport transfer: {topic}", "details": {"kind": "reminder", "listId": "list_personal", "due": _iso(variant + 1, 9)}}),
-                _message(source="imessage", body=f"Itinerary and transfer details for {topic}.", variant=variant),
+                _calendar_create(
+                    f"Airport transfer buffer: {topic}",
+                    variant,
+                    calendar_id="cal_primary",
+                ),
+                Action(
+                    name="LIFE_CREATE",
+                    kwargs={
+                        "subaction": "create",
+                        "title": f"Airport transfer: {topic}",
+                        "details": {
+                            "kind": "reminder",
+                            "listId": "list_personal",
+                            "due": _iso(variant + 1, 9),
+                        },
+                    },
+                ),
+                _message(
+                    source="imessage",
+                    body=f"Itinerary and transfer details for {topic}.",
+                    variant=variant,
+                ),
             ]
         if family_index == 2:
             return [
-                _task(area=area, case_slug=case_slug, variant=variant, prompt=f"Request signature before appointment: {topic}", kind="approval", trigger_kind="once", priority="high", output={"destination": "channel", "target": "email:owner"}, pipeline={"documentRequest": {"type": "signature", "documentId": f"doc_{case_slug}_{variant}", "deadline": _iso(variant + 1, 17), "signatureUrl": "https://portal.example.test/sign"}}),
-                _message(operation="draft_reply", body=f"Draft signature reminder for {topic}.", variant=variant),
+                _task(
+                    area=area,
+                    case_slug=case_slug,
+                    variant=variant,
+                    prompt=f"Request signature before appointment: {topic}",
+                    kind="approval",
+                    trigger_kind="once",
+                    priority="high",
+                    output={"destination": "channel", "target": "email:owner"},
+                    pipeline={
+                        "documentRequest": {
+                            "type": "signature",
+                            "documentId": f"doc_{case_slug}_{variant}",
+                            "deadline": _iso(variant + 1, 17),
+                            "signatureUrl": "https://portal.example.test/sign",
+                        }
+                    },
+                ),
+                _message(
+                    operation="draft_reply",
+                    body=f"Draft signature reminder for {topic}.",
+                    variant=variant,
+                ),
             ]
         if family_index == 3:
             trigger_kinds = ("once", "manual", "event")
             return [
-                _task(area=area, case_slug=case_slug, variant=variant, prompt=f"Track portal upload deadline: {topic}", kind="watcher", trigger_kind=trigger_kinds[variant], priority="high", output={"destination": "channel", "target": "in_app:owner"}, pipeline={"portal": {"portalUrl": "https://portal.example.test/upload", "assetUri": f"drive://assets/{case_slug}.pdf", "blockedResume": True}}),
-                _message(operation="draft_reply", body=f"Ask owner for missing portal asset for {topic}.", variant=variant),
+                _task(
+                    area=area,
+                    case_slug=case_slug,
+                    variant=variant,
+                    prompt=f"Track portal upload deadline: {topic}",
+                    kind="watcher",
+                    trigger_kind=trigger_kinds[variant],
+                    priority="high",
+                    output={"destination": "channel", "target": "in_app:owner"},
+                    pipeline={
+                        "portal": {
+                            "portalUrl": "https://portal.example.test/upload",
+                            "assetUri": f"drive://assets/{case_slug}.pdf",
+                            "blockedResume": True,
+                        }
+                    },
+                ),
+                _message(
+                    operation="draft_reply",
+                    body=f"Ask owner for missing portal asset for {topic}.",
+                    variant=variant,
+                ),
             ]
         if family_index == 4:
             departure_dates = ("2026-05-15", "2026-05-16", "2026-05-17")
             return_dates = ("2026-05-18", "2026-05-19", "2026-05-20")
             reasons = ("weather", "strike", "timing")
             return [
-                Action(name="BOOK_TRAVEL", kwargs={"origin": "SFO", "destination": "JFK", "departureDate": departure_dates[variant], "returnDate": return_dates[variant], "rebookReason": reasons[variant], "approval": {"required": True}}),
-                _task(area=area, case_slug=case_slug, variant=variant, prompt=f"Propose rebook options and ask before changing: {topic}", kind="approval", trigger_kind="event", priority="high"),
-                _message(source="sms", body=f"Weather rebook proposal for {topic}.", variant=variant),
+                Action(
+                    name="BOOK_TRAVEL",
+                    kwargs={
+                        "subaction": "prepare",
+                        "origin": "SFO",
+                        "destination": "JFK",
+                        "departureDate": departure_dates[variant],
+                        "returnDate": return_dates[variant],
+                        "rebookReason": reasons[variant],
+                        "approval": {"required": True},
+                    },
+                ),
+                _task(
+                    area=area,
+                    case_slug=case_slug,
+                    variant=variant,
+                    prompt=f"Propose rebook options and ask before changing: {topic}",
+                    kind="approval",
+                    trigger_kind="event",
+                    priority="high",
+                ),
+                _message(
+                    source="sms",
+                    body=f"Weather rebook proposal for {topic}.",
+                    variant=variant,
+                ),
             ]
         return [
-            Action(name="BOOK_TRAVEL", kwargs={"destination": ("NYC", "BOS", "CHI")[variant], "hotelCheckIn": ("2026-05-15", "2026-05-16", "2026-05-17")[variant], "approval": {"required": True}}),
-            _calendar_create(f"Family trip block: {topic}", variant, calendar_id="cal_family"),
-            Action(name="LIFE_CREATE", kwargs={"subaction": "create", "title": f"Hotel check-in: {topic}", "details": {"kind": "reminder", "listId": "list_personal", "due": _iso(variant + 2, 15)}}),
-            _message(source="imessage", body=f"Hotel and family calendar update for {topic}.", variant=variant),
+            Action(
+                name="BOOK_TRAVEL",
+                kwargs={
+                    "subaction": "search",
+                    "destination": ("NYC", "BOS", "CHI")[variant],
+                    "hotelCheckIn": ("2026-05-15", "2026-05-16", "2026-05-17")[variant],
+                    "approval": {"required": True},
+                },
+            ),
+            _calendar_create(
+                f"Family trip block: {topic}", variant, calendar_id="cal_family"
+            ),
+            Action(
+                name="LIFE_CREATE",
+                kwargs={
+                    "subaction": "create",
+                    "title": f"Hotel check-in: {topic}",
+                    "details": {
+                        "kind": "reminder",
+                        "listId": "list_personal",
+                        "due": _iso(variant + 2, 15),
+                    },
+                },
+            ),
+            _message(
+                source="imessage",
+                body=f"Hotel and family calendar update for {topic}.",
+                variant=variant,
+            ),
         ]
     if area.slug == "multilocale_settings_privacy":
         if family_index == 0:
             trigger_kinds = ("once", "manual", "event")
             return [
-                _task(area=area, case_slug=case_slug, variant=variant, prompt=f"Recuérdame to call mom at 8pm: {topic}", trigger_kind=trigger_kinds[variant], subject={"kind": "self", "id": "self"}),
-                _message(source="telegram", body=f"Recordatorio creado en modo bilingüe for {topic}.", variant=variant, target="contact_00009"),
+                _task(
+                    area=area,
+                    case_slug=case_slug,
+                    variant=variant,
+                    prompt=f"Recuérdame to call mom at 8pm: {topic}",
+                    trigger_kind=trigger_kinds[variant],
+                    subject={"kind": "self", "id": "self"},
+                ),
+                _message(
+                    source="telegram",
+                    body=f"Recordatorio creado en modo bilingüe for {topic}.",
+                    variant=variant,
+                    target="contact_00009",
+                ),
             ]
         if family_index == 1:
             trigger_kinds = ("manual", "once", "event")
+            task = _task(
+                area=area,
+                case_slug=case_slug,
+                variant=variant,
+                prompt=f"Switch locale from English to Japanese and keep timezone America/Los_Angeles: {topic}",
+                trigger_kind=trigger_kinds[variant],
+                subject={"kind": "self", "id": "self"},
+                output={
+                    "destination": "channel",
+                    "target": "in_app:owner",
+                    "locale": "ja-JP",
+                },
+            )
             return [
-                _task(area=area, case_slug=case_slug, variant=variant, prompt=f"Switch locale from English to Japanese and keep timezone America/Los_Angeles: {topic}", trigger_kind=trigger_kinds[variant], subject={"kind": "self", "id": "self"}, output={"destination": "channel", "target": "in_app:owner", "locale": "ja-JP"}),
-                Action(name="SCHEDULED_TASK_UPDATE", kwargs={"subaction": "update", "taskId": f"task_{area.slug}_{case_slug}_{variant}", "updates": {"metadata": {"localeSequence": ["en-US", "ja-JP"], "ownerFact": {"timezone": "America/Los_Angeles"}}}}),
+                task,
+                Action(
+                    name="SCHEDULED_TASK_UPDATE",
+                    kwargs={
+                        "subaction": "update",
+                        "taskId": _created_task_id(task),
+                        "updates": {
+                            "metadata": {
+                                "localeSequence": ["en-US", "ja-JP"],
+                                "ownerFact": {"timezone": "America/Los_Angeles"},
+                            }
+                        },
+                    },
+                ),
             ]
         if family_index == 2:
             trigger_kinds = ("once", "manual", "event")
+            task = _task(
+                area=area,
+                case_slug=case_slug,
+                variant=variant,
+                prompt=f"Urgent medication while global pause is on: {topic}",
+                trigger_kind=trigger_kinds[variant],
+                priority="high",
+                subject={"kind": "self", "id": "self"},
+                output={"destination": "channel", "target": "sms:owner"},
+            )
             return [
-                _task(area=area, case_slug=case_slug, variant=variant, prompt=f"Urgent medication while global pause is on: {topic}", trigger_kind=trigger_kinds[variant], priority="high", subject={"kind": "self", "id": "self"}, output={"destination": "channel", "target": "sms:owner"}),
-                Action(name="LIFE_SKIP", kwargs={"subaction": "skip", "target": f"paused-nonurgent-{case_slug}", "reason": "global_pause"}),
+                task,
+                Action(
+                    name="LIFE_SKIP",
+                    kwargs={
+                        "subaction": "skip",
+                        "target": _created_task_id(task),
+                        "reason": "global_pause",
+                    },
+                ),
             ]
         if family_index == 3:
             trigger_kinds = ("manual", "event", "once")
+            task = _task(
+                area=area,
+                case_slug=case_slug,
+                variant=variant,
+                prompt=f"Document watcher with privacy revocation: {topic}",
+                kind="watcher",
+                trigger_kind=trigger_kinds[variant],
+                subject={"kind": "document", "id": f"doc_{case_slug}_{variant}"},
+                pipeline={
+                    "privacy": {
+                        "scope": "explicit_only",
+                        "revoked": True,
+                        "auditReason": "owner_revoked_access",
+                    }
+                },
+            )
             return [
-                _task(area=area, case_slug=case_slug, variant=variant, prompt=f"Document watcher with privacy revocation: {topic}", kind="watcher", trigger_kind=trigger_kinds[variant], subject={"kind": "document", "id": f"doc_{case_slug}_{variant}"}, pipeline={"privacy": {"scope": "explicit_only", "revoked": True, "auditReason": "owner_revoked_access"}}),
-                Action(name="LIFE_SKIP", kwargs={"subaction": "skip", "target": f"private-occurrence-{case_slug}", "reason": "privacy_revoked"}),
-                Action(name="SCHEDULED_TASK_UPDATE", kwargs={"subaction": "update", "taskId": f"task_{area.slug}_{case_slug}_{variant}", "updates": {"state": "skipped", "privacyRevoked": True}}),
+                task,
+                Action(
+                    name="LIFE_SKIP",
+                    kwargs={
+                        "subaction": "skip",
+                        "target": _created_task_id(task),
+                        "reason": "privacy_revoked",
+                    },
+                ),
+                Action(
+                    name="SCHEDULED_TASK_UPDATE",
+                    kwargs={
+                        "subaction": "update",
+                        "taskId": _created_task_id(task),
+                        "updates": {"state": "skipped", "privacyRevoked": True},
+                    },
+                ),
             ]
         if family_index == 4:
             trigger_kinds = ("event", "manual", "once")
             return [
-                _task(area=area, case_slug=case_slug, variant=variant, prompt=f"Group chat handoff active until explicit resume: {topic}", trigger_kind=trigger_kinds[variant], subject={"kind": "thread", "id": "conv_0006"}, output={"destination": "channel", "target": "slack:conv_0006"}),
-                _message(source="slack", body=f"I'll let you take it from here for {topic}.", variant=variant, target="contact_00009"),
-                _message(source="slack", body=f"Explicit resume acknowledged for {topic}.", variant=variant, target="contact_00009"),
+                _task(
+                    area=area,
+                    case_slug=case_slug,
+                    variant=variant,
+                    prompt=f"Group chat handoff active until explicit resume: {topic}",
+                    trigger_kind=trigger_kinds[variant],
+                    subject={"kind": "thread", "id": "conv_0006"},
+                    output={"destination": "channel", "target": "slack:conv_0006"},
+                ),
+                _message(
+                    source="slack",
+                    body=f"I'll let you take it from here for {topic}.",
+                    variant=variant,
+                    target="contact_00009",
+                ),
+                _message(
+                    source="slack",
+                    body=f"Explicit resume acknowledged for {topic}.",
+                    variant=variant,
+                    target="contact_00009",
+                ),
             ]
         return [
-            _task(area=area, case_slug=case_slug, variant=variant, prompt=f"REST-like overview and memory-safe recall: {topic}", trigger_kind=("manual", "event", "once")[variant], subject={"kind": "self", "id": "self"}, pipeline={"memory": {"storeAllowed": False, "recallAllowed": True}, "rest": {"method": "GET", "path": "/api/lifeops/overview", "redactPrivate": True}}),
-            Action(name="ENTITY", kwargs={"subaction": "log_interaction", "entityId": "contact_00009", "notes": f"Memory-safe/no-store note for {topic}.", "storeAllowed": False}),
-            _message(source="telegram", body=f"Privacy-safe overview returned for {topic}.", variant=variant, target="contact_00009"),
+            _task(
+                area=area,
+                case_slug=case_slug,
+                variant=variant,
+                prompt=f"REST-like overview and memory-safe recall: {topic}",
+                trigger_kind=("manual", "event", "once")[variant],
+                subject={"kind": "self", "id": "self"},
+                pipeline={
+                    "memory": {"storeAllowed": False, "recallAllowed": True},
+                    "rest": {
+                        "method": "GET",
+                        "path": "/api/lifeops/overview",
+                        "redactPrivate": True,
+                    },
+                },
+            ),
+            Action(
+                name="ENTITY",
+                kwargs={
+                    "subaction": "log_interaction",
+                    "entityId": "contact_00009",
+                    "notes": f"Memory-safe/no-store note for {topic}.",
+                    "storeAllowed": False,
+                },
+            ),
+            _message(
+                source="telegram",
+                body=f"Privacy-safe overview returned for {topic}.",
+                variant=variant,
+                target="contact_00009",
+            ),
         ]
     raise AssertionError(f"unhandled area {area.slug}")
 
 
-def _fallback(area: AreaSpec, topic: str, family_index: int) -> FirstQuestionFallback | None:
+def _fallback(
+    area: AreaSpec, topic: str, family_index: int
+) -> FirstQuestionFallback | None:
     if family_index >= 4:
         return None
     area_answers = {
@@ -667,8 +1348,16 @@ def _fallback(area: AreaSpec, topic: str, family_index: int) -> FirstQuestionFal
     )
 
 
-def _live_disruption(area: AreaSpec, case_slug: str, topic: str, variant: int) -> Disruption:
-    if area.slug in {"cross_domain_day_week", "connector_degradation", "identity_followup", "travel_docs_approvals", "multilocale_settings_privacy"}:
+def _live_disruption(
+    area: AreaSpec, case_slug: str, topic: str, variant: int
+) -> Disruption:
+    if area.slug in {
+        "cross_domain_day_week",
+        "connector_degradation",
+        "identity_followup",
+        "travel_docs_approvals",
+        "multilocale_settings_privacy",
+    }:
         return Disruption(
             at_turn=2 + variant,
             kind="new_message",
@@ -681,7 +1370,13 @@ def _live_disruption(area: AreaSpec, case_slug: str, topic: str, variant: int) -
             },
             note_for_user=f"New inbound arrived about {topic}; please account for it.",
         )
-    if area.slug in {"temporal_triggers", "escalation_push_remote", "health_sleep_circadian", "focus_blockers", "finance_subscriptions"}:
+    if area.slug in {
+        "temporal_triggers",
+        "escalation_push_remote",
+        "health_sleep_circadian",
+        "focus_blockers",
+        "finance_subscriptions",
+    }:
         return Disruption(
             at_turn=2 + variant,
             kind="reminder_due",

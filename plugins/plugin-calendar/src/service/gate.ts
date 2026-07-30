@@ -25,11 +25,44 @@ import {
   resolveGoogleConnectorAccount,
 } from "../internal/google-delegates.js";
 
+export const CALENDAR_GUEST_AVAILABILITY_PURPOSE = "conflict_check" as const;
+
+export type CalendarGuestAvailabilityProvider = "google" | "microsoft";
+
+/**
+ * Host-authorized binding for one guest's free/busy source. Callers hold only
+ * the opaque `grantId`; provider/account/calendar coordinates never come from
+ * planner parameters.
+ */
+export interface CalendarGuestAvailabilityGrant {
+  grantId: string;
+  principalEntityId: string;
+  guestEntityId: string;
+  provider: CalendarGuestAvailabilityProvider;
+  side: "owner";
+  connectorAccountId: string;
+  providerGrantId: string;
+  calendarId: string;
+  purpose: typeof CALENDAR_GUEST_AVAILABILITY_PURPOSE;
+  consentRecordedAt: string;
+  expiresAt: string;
+}
+
+export interface CalendarGuestAvailabilityGrantRequest {
+  principalEntityId: string;
+  grantIds: readonly string[];
+  purpose: typeof CALENDAR_GUEST_AVAILABILITY_PURPOSE;
+  at: string;
+}
+
 export interface CalendarHostGate {
   getGoogleConnectorAccounts(
     requestUrl: URL,
     side?: LifeOpsConnectorSide,
   ): Promise<LifeOpsGoogleConnectorStatus[]>;
+  resolveGuestAvailabilityGrants(
+    request: CalendarGuestAvailabilityGrantRequest,
+  ): Promise<readonly CalendarGuestAvailabilityGrant[]>;
   requireGoogleCalendarGrant(
     requestUrl: URL,
     mode?: LifeOpsConnectorMode,
@@ -141,6 +174,13 @@ export function createDefaultCalendarHostGate(
       }
       return accounts.map((account) =>
         googleAccountStatus({ account, agentId }),
+      );
+    },
+    async resolveGuestAvailabilityGrants() {
+      fail(
+        503,
+        "Guest free/busy authorization is unavailable.",
+        "CALENDAR_GUEST_AVAILABILITY_AUTHORIZATION_UNAVAILABLE",
       );
     },
     requireGoogleCalendarGrant(_requestUrl, mode, side, grantId) {

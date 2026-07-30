@@ -20,7 +20,10 @@ import {
   scenario,
 } from "@elizaos/scenario-runner/schema";
 import { afterEach, describe, expect, it } from "vitest";
-import { skippedFinalCheckFailure } from "./executor.ts";
+import {
+  providerQualifiedScenarioProblems,
+  skippedFinalCheckFailure,
+} from "./executor.ts";
 import { runFinalCheck } from "./final-checks/index.ts";
 import { loadScenarioFile } from "./loader.ts";
 
@@ -210,6 +213,95 @@ describe("skipped finalChecks (dependency missing)", () => {
         detail: "1 matching approval request(s)",
       }),
     ).toBeNull();
+  });
+
+  it("fails a provider-qualified run when any trusted check is skipped", () => {
+    expect(
+      skippedFinalCheckFailure(
+        "live-only",
+        {
+          status: "skipped",
+          label: "provider readback",
+          detail: "trusted observer evidence is unavailable",
+        },
+        "provider-qualified",
+      ),
+    ).toContain("failure in provider-qualified execution");
+  });
+});
+
+describe("provider-qualified data boundary", () => {
+  const trustedScenario = {
+    id: "fixture.provider-qualified",
+    title: "Provider-qualified fixture",
+    domain: "fixture",
+    lane: "live-only",
+    executionProfile: "provider-qualified",
+    isolation: "per-scenario",
+    requires: { plugins: ["@elizaos/plugin-personal-assistant"] },
+    turns: [
+      {
+        kind: "message",
+        name: "ask",
+        text: "Create the approved event.",
+        responseJudge: {
+          rubric: "The response reports only evidence-backed outcomes.",
+        },
+      },
+    ],
+    finalChecks: [
+      {
+        type: "providerEffectObserved",
+        name: "provider readback",
+        provider: "google-calendar",
+        operation: "create",
+      },
+      {
+        type: "judgeRubric",
+        name: "semantic quality",
+        rubric: "The response is precise and truthful.",
+      },
+    ],
+  } satisfies ScenarioDefinition;
+
+  it("accepts only isolated message-and-observer definitions", () => {
+    expect(providerQualifiedScenarioProblems(trustedScenario)).toEqual([]);
+  });
+
+  it("rejects executable harness paths and simulated state", () => {
+    const unsafe = {
+      ...trustedScenario,
+      isolation: "shared-runtime",
+      rooms: [{ id: "forged-owner", account: "admin" }],
+      mockoon: ["google"],
+      seed: [{ type: "advanceClock", by: "PT1H" }],
+      cleanup: [{ type: "gmailDeleteDrafts" }],
+      turns: [
+        {
+          kind: "api",
+          name: "bypass",
+          path: "/api/lifeops/calendar",
+          assertResponse: () => undefined,
+        },
+      ],
+      finalChecks: [
+        {
+          type: "custom",
+          name: "self asserted",
+          predicate: () => undefined,
+        },
+      ],
+    } as unknown as ScenarioDefinition;
+
+    const problems = providerQualifiedScenarioProblems(unsafe).join("\n");
+    expect(problems).toContain("seed steps");
+    expect(problems).toContain("isolation=per-scenario");
+    expect(problems).toContain("Mockoon");
+    expect(problems).toContain("operator-signed run manifest");
+    expect(problems).toContain("only explicit message turns");
+    expect(problems).toContain("data-only ingress contract");
+    expect(problems).toContain("external operator");
+    expect(problems).toContain("trusted-observer checks");
   });
 });
 

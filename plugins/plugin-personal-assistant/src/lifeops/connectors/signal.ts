@@ -6,9 +6,11 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { formatError } from "@elizaos/core";
 import { LifeOpsService } from "../service.js";
 import {
+  dispatchReceipt,
   errorToDispatchResult,
   isConnectorSendPayload,
   legacyStatusToConnectorStatus,
+  missingProviderReceipt,
   rejectInvalidPayload,
 } from "./_helpers.js";
 import type {
@@ -26,6 +28,7 @@ export function createSignalConnectorContribution(
     capabilities: ["signal.read", "signal.send"],
     modes: ["local"],
     describe: { label: "Signal" },
+    receiptContract: "provider_receipt_id",
     async start() {},
     async disconnect() {},
     async verify(): Promise<boolean> {
@@ -52,10 +55,17 @@ export function createSignalConnectorContribution(
           recipient: payload.target,
           text: payload.message,
         });
+        const providerMessageId = String(result.timestamp);
+        const receipt = dispatchReceipt({
+          provider: "signal",
+          providerMessageId,
+          payload,
+        });
+        if (!receipt) return missingProviderReceipt("Signal");
         return {
           ok: true,
-          messageId:
-            (result as { messageId?: string | null }).messageId ?? undefined,
+          messageId: providerMessageId,
+          receipt,
         };
       } catch (error) {
         return errorToDispatchResult(error);

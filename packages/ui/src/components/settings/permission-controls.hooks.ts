@@ -41,6 +41,7 @@ const RENDERER_PERMISSION_IDS: readonly RendererPermissionId[] = [
 ];
 const PERMISSION_STATUSES: readonly PermissionStatus[] = [
   "granted",
+  "limited",
   "denied",
   "not-determined",
   "restricted",

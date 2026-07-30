@@ -1342,6 +1342,22 @@ static NSString *elizaEventStatusString(EKEventStatus status) {
 	return @"unknown";
 }
 
+static NSString *elizaEventAvailabilityString(EKEventAvailability availability) {
+	switch (availability) {
+		case EKEventAvailabilityNotSupported:
+			return @"not_supported";
+		case EKEventAvailabilityBusy:
+			return @"busy";
+		case EKEventAvailabilityFree:
+			return @"free";
+		case EKEventAvailabilityTentative:
+			return @"tentative";
+		case EKEventAvailabilityUnavailable:
+			return @"unavailable";
+	}
+	return @"unknown";
+}
+
 static NSString *elizaParticipantStatusString(EKParticipantStatus status) {
 	switch (status) {
 		case EKParticipantStatusUnknown:
@@ -1483,6 +1499,7 @@ static NSDictionary *elizaEventJson(EKEvent *event) {
 		@"description" : [event notes] ?: @"",
 		@"location" : [event location] ?: @"",
 		@"status" : elizaEventStatusString([event status]),
+		@"availability" : elizaEventAvailabilityString([event availability]),
 		@"startAt" : elizaISO8601StringFromDate([event startDate]),
 		@"endAt" : elizaISO8601StringFromDate([event endDate]),
 		@"isAllDay" : @([event isAllDay]),

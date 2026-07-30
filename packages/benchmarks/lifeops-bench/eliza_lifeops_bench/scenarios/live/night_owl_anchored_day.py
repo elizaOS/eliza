@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
-from ...types import Disruption, Domain, Scenario, ScenarioMode
+from ...types import (
+    Disruption,
+    Domain,
+    ExpectedWorldMutation,
+    Scenario,
+    ScenarioMode,
+)
 from .._personas import PERSONA_NOOR_NIGHT
 
 
@@ -16,7 +22,7 @@ def _live(
     world_assertions: list[str],
     max_turns: int = 18,
     disruptions: list[Disruption] | None = None,
-    expected_world_mutation: str = "auto",
+    expected_world_mutation: ExpectedWorldMutation = "changed",
 ) -> Scenario:
     return Scenario(
         id=scenario_id,
@@ -34,7 +40,7 @@ def _live(
         success_criteria=success_criteria,
         world_assertions=world_assertions,
         disruptions=disruptions or [],
-        expected_world_mutation=expected_world_mutation,  # type: ignore[arg-type]
+        expected_world_mutation=expected_world_mutation,
     )
 
 

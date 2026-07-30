@@ -38,6 +38,32 @@ node --import tsx src/server.ts
 
 The server prints `ELIZA_BENCH_READY port=<port>` when ready.
 
+## Trusted action runtime provenance
+
+`trusted-runtime:server` is a separate loopback-only process used by the
+authenticated evidence executor. Its default evidence tier is
+`local_nonpublishable`; production plugins running against synthetic fixtures,
+local databases, or PGlite therefore return `release_evidence: false`.
+
+A runtime intended to use a provider must pin a complete, validated
+configuration:
+
+```bash
+export ELIZA_BENCH_TRUSTED_RUNTIME_EVIDENCE_TIER=provider_backed
+export ELIZA_BENCH_TRUSTED_RUNTIME_EVIDENCE_PROVIDER=google-calendar
+export ELIZA_BENCH_TRUSTED_RUNTIME_EVIDENCE_BOUNDARY=sandbox_connector
+export ELIZA_BENCH_TRUSTED_RUNTIME_EVIDENCE_ACCOUNT_SHA256=replace-with-64-hex-account-identity-digest
+```
+
+The response records the exact provider identifier, connector boundary, and
+account-identity digest. Operator configuration is metadata, not evidence:
+while `provider_readback` is `not_verified`, the response remains
+`release_evidence: false`. No environment assertion can substitute for a
+server-owned provider readback artifact or prove exactly-once delivery.
+Unknown tiers, invalid boundaries, malformed identifiers, incomplete provider
+configuration, and provider fields attached to the local tier stop server
+startup.
+
 ## Testing
 
 ```bash

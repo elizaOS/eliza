@@ -67,6 +67,33 @@ vi.mock("../lifeops/service.js", () => {
     }
   }
   class LifeOpsService {
+    repository = {
+      listAuditEvents: async (
+        _agentId: string,
+        ownerType: string,
+        ownerId: string,
+      ) => {
+        const deleted =
+          ownerType === "goal"
+            ? serviceState.deleteGoalCalls.includes(ownerId)
+            : serviceState.deleteDefinitionCalls.includes(ownerId);
+        return [
+          {
+            id: `audit-${ownerType}-${ownerId}`,
+            eventType: deleted
+              ? `${ownerType}_deleted`
+              : ownerType === "goal"
+                ? "goal_created"
+                : "definition_created",
+            ownerType,
+            ownerId,
+            decision: {},
+            createdAt: "2026-07-01T18:00:00.000Z",
+          },
+        ];
+      },
+    };
+
     async getOverview() {
       return {
         owner: {

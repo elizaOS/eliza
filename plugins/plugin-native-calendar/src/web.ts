@@ -7,11 +7,13 @@
 import { WebPlugin } from "@capacitor/core";
 import type {
   AppleCalendarBaseResult,
+  AppleCalendarCreateResult,
   AppleCalendarEventInput,
   AppleCalendarEventResult,
   AppleCalendarEventsResult,
   AppleCalendarListEventsOptions,
   AppleCalendarListResult,
+  AppleCalendarPermissionRequest,
   AppleCalendarPermissionStatus,
   AppleCalendarPlugin,
   AppleCalendarUpdateEventInput,
@@ -33,7 +35,9 @@ export class AppleCalendarWeb extends WebPlugin implements AppleCalendarPlugin {
     };
   }
 
-  async requestPermissions(): Promise<AppleCalendarPermissionStatus> {
+  async requestPermissions(
+    _options?: AppleCalendarPermissionRequest,
+  ): Promise<AppleCalendarPermissionStatus> {
     return this.checkPermissions();
   }
 
@@ -49,7 +53,7 @@ export class AppleCalendarWeb extends WebPlugin implements AppleCalendarPlugin {
 
   async createEvent(
     _input: AppleCalendarEventInput,
-  ): Promise<AppleCalendarEventResult> {
+  ): Promise<AppleCalendarCreateResult> {
     return { ...unsupported };
   }
 

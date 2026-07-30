@@ -16,6 +16,11 @@ import { requireActionSpec } from "../../../generated/spec-helpers.ts";
 import { logger } from "../../../logger.ts";
 import { replyTemplate } from "../../../prompts.ts";
 import { replyClaimsCompletedSideEffect } from "../../../services/message/side-effect-claims.ts";
+import {
+	mergeEffectReceipts,
+	resolveUserFacingEffectReceipts,
+	tagsRequireEffectReceipts,
+} from "../../../types/effects.ts";
 import type {
 	Action,
 	ActionExample,
@@ -406,15 +411,52 @@ export const replyAction = {
 		// BEFORE the callback keeps the fabricated text off the wire and feeds the
 		// violation back into the planner loop, where the model can run the real
 		// action or rephrase honestly.
-		const sideEffectGrounded = previousResults.some(
-			(prev) =>
-				prev?.success === true &&
-				(prev.data as { actionName?: string } | undefined)?.actionName !==
-					"REPLY",
+		const allTurnEffectReceipts = mergeEffectReceipts(
+			...previousResults.map((result) => result.effectReceipts),
 		);
-		if (!sideEffectGrounded && replyClaimsCompletedSideEffect(text)) {
+		const mutationResults = previousResults.filter((result) => {
+			const actionName =
+				typeof result.data?.actionName === "string"
+					? result.data.actionName.trim()
+					: "";
+			if (actionName.toUpperCase() === "REPLY") return false;
+			const registeredAction = runtime.actions.find(
+				(action) => action.name.toUpperCase() === actionName.toUpperCase(),
+			);
+			return (
+				result.effectReceipts !== undefined ||
+				result.userFacingEffectReceiptIds !== undefined ||
+				tagsRequireEffectReceipts(registeredAction?.tags)
+			);
+		});
+		let groundedEffectReceiptIds: readonly string[] | undefined;
+		for (const previousResult of previousResults) {
+			if (
+				(previousResult.data as { actionName?: string } | undefined)
+					?.actionName === "REPLY" ||
+				previousResult.userFacingText?.trim() !== text
+			) {
+				continue;
+			}
+			const boundReceipts = resolveUserFacingEffectReceipts(
+				previousResult,
+				allTurnEffectReceipts,
+			);
+			if (boundReceipts) {
+				groundedEffectReceiptIds = boundReceipts.map(
+					(receipt) => receipt.receiptId,
+				);
+				break;
+			}
+		}
+		if (
+			!groundedEffectReceiptIds &&
+			(mutationResults.length > 0 || replyClaimsCompletedSideEffect(text))
+		) {
 			const guidance =
-				"REPLY text claims a completed save/schedule side effect, but no tool ran this turn. Call the action that actually performs it, or rephrase the reply without claiming it is done.";
+				mutationResults.length > 0
+					? "A mutation-capable action ran this turn, but REPLY text is not the action-owned canonical outcome bound to its effect receipts. Use the exact userFacingText from that action result."
+					: "REPLY text claims a completed save/schedule side effect, but no tool ran this turn. Call the action that actually performs it, or rephrase the reply without claiming it is done.";
 			return {
 				success: false,
 				text: guidance,
@@ -464,6 +506,14 @@ export const replyAction = {
 				messageGenerated: true,
 			},
 			success: true,
+			...(groundedEffectReceiptIds
+				? {
+						userFacingText: text,
+						verifiedUserFacing: true,
+						effectReceipts: allTurnEffectReceipts,
+						userFacingEffectReceiptIds: groundedEffectReceiptIds,
+					}
+				: {}),
 		};
 	},
 	examples: (spec.examples ?? []) as ActionExample[][],

@@ -203,6 +203,47 @@ export async function resolveDocumentRequesterRole(
 	}
 }
 
+/**
+ * Build the document requester from a caller-supplied {@link AccessContext}.
+ *
+ * The read runs for the entity the caller named, not the message author, so a
+ * privileged sender cannot widen a request the caller deliberately scoped. An
+ * absent role is treated as an unprivileged USER rather than inherited from
+ * the sender: the safe reading of "unspecified" is the least privilege.
+ */
+export async function resolveDocumentRequesterFromAccessContext(
+	runtime: IAgentRuntime,
+	accessContext: AccessContext,
+): Promise<DocumentRequester> {
+	const role: DocumentListRequesterRole =
+		accessContext.role === "OWNER" || accessContext.role === "ADMIN"
+			? accessContext.role
+			: "USER";
+	if (documentRoleHasGlobalVisibility(role)) {
+		return { entityId: accessContext.requesterEntityId, roomIds: [], role };
+	}
+	try {
+		const roomIds = await runtime.getRoomsForParticipants([
+			accessContext.requesterEntityId,
+		]);
+		return {
+			entityId: accessContext.requesterEntityId,
+			roomIds: [...new Set(roomIds)],
+			role,
+		};
+	} catch (cause) {
+		// error-policy:J2 Preserve room-resolution context and fail the read.
+		throw new ElizaError("Document requester room lookup failed", {
+			code: "DOCUMENT_ROOM_LOOKUP_FAILED",
+			cause,
+			context: {
+				agentId: runtime.agentId,
+				entityId: accessContext.requesterEntityId,
+			},
+		});
+	}
+}
+
 export async function resolveDocumentRequester(
 	runtime: IAgentRuntime,
 	message?: Memory,
@@ -1067,7 +1108,17 @@ export class DocumentService extends Service {
 		}
 
 		const queryText = message.content.text;
-		const requester = await resolveDocumentRequester(this.runtime, message);
+		// The caller's AccessContext governs the read when supplied. Deriving the
+		// requester from the message sender alone is wrong whenever the two
+		// differ — an agent-authored search carries the AGENT role, which has
+		// global document visibility, so an owner-private document would reach a
+		// requester the caller explicitly scoped down to a plain user.
+		const requester = accessContext
+			? await resolveDocumentRequesterFromAccessContext(
+					this.runtime,
+					accessContext,
+				)
+			: await resolveDocumentRequester(this.runtime, message);
 		const filterScope: { roomId?: UUID; worldId?: UUID; entityId?: UUID } = {};
 		if (scope?.roomId) filterScope.roomId = scope.roomId;
 		if (scope?.worldId) filterScope.worldId = scope.worldId;

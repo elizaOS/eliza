@@ -14,8 +14,10 @@ export {
   MONEY_PARAMETERS,
   MONEY_TAGS,
   OWNER_FINANCE_SIMILES,
+  runChildcareWorkScenarioJson,
   runPaymentsHandler,
 } from "./actions/finances.ts";
+export * from "./childcare-work-scenario.ts";
 export {
   EMPTY_FINANCES_SNAPSHOT,
   type FinanceBalanceCard,

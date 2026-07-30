@@ -1,9 +1,8 @@
 /**
- * Identity-merge engine. Matching is case-insensitive on (platform, handle);
- * the observe decision is create / merge (>= auto threshold) / conflict (low
- * confidence or multiple candidates); and folding an identity must dedupe
- * evidence and keep the higher-confidence claim — losing provenance here
- * silently corrupts the knowledge graph.
+ * Identity-merge engine. Platform and handle matching is case-insensitive,
+ * connector-account partitions are exact, and omitted accounts mean only the
+ * legacy default. Folding must retain account-specific reachability and
+ * provenance.
  */
 import { describe, expect, it } from "vitest";
 import type { Entity, EntityIdentity } from "./entity-types";
@@ -55,6 +54,37 @@ describe("findIdentityMatches", () => {
       findIdentityMatches(ents, {
         platform: "discord",
         handle: "alice",
+        confidence: 0.9,
+      }),
+    ).toEqual([]);
+  });
+
+  it("matches only the exact connector account and defaults omissions", () => {
+    const ents = [
+      entity("legacy", [ident({})]),
+      entity("family", [ident({ connectorAccountId: "family" })]),
+    ];
+
+    expect(
+      findIdentityMatches(ents, {
+        platform: "discord",
+        handle: "bob",
+        confidence: 0.9,
+      }).map((match) => match.entityId),
+    ).toEqual(["legacy"]);
+    expect(
+      findIdentityMatches(ents, {
+        platform: "discord",
+        handle: "bob",
+        connectorAccountId: "family",
+        confidence: 0.9,
+      }).map((match) => match.entityId),
+    ).toEqual(["family"]);
+    expect(
+      findIdentityMatches(ents, {
+        platform: "discord",
+        handle: "bob",
+        connectorAccountId: "Family",
         confidence: 0.9,
       }),
     ).toEqual([]);
@@ -113,6 +143,18 @@ describe("foldIdentity", () => {
     expect(out).toHaveLength(2);
   });
 
+  it("keeps the same platform and handle distinct across connector accounts", () => {
+    const out = foldIdentity(
+      [ident({ connectorAccountId: "family", evidence: ["family"] })],
+      ident({ connectorAccountId: "work", evidence: ["work"] }),
+    );
+    expect(out).toHaveLength(2);
+    expect(out.map((identity) => identity.connectorAccountId)).toEqual([
+      "family",
+      "work",
+    ]);
+  });
+
   it("merges a colliding identity: max confidence, deduped evidence union", () => {
     const out = foldIdentity(
       [ident({ handle: "bob", confidence: 0.5, evidence: ["a"] })],
@@ -121,6 +163,7 @@ describe("foldIdentity", () => {
     expect(out).toHaveLength(1);
     expect(out[0].confidence).toBe(0.9);
     expect([...out[0].evidence].sort()).toEqual(["a", "b"]);
+    expect(out[0].connectorAccountId).toBe("default");
   });
 
   it("prefers a verified claim on a confidence tie", () => {

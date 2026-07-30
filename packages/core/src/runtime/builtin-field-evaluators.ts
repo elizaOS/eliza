@@ -224,6 +224,35 @@ export const replyTextFieldEvaluator: ResponseHandlerFieldEvaluator<string> = {
 };
 
 // ---------------------------------------------------------------------------
+// replyEffectStatus — priority 25.
+// Semantic safety signal for indirect, vague, or non-English completion text.
+// ---------------------------------------------------------------------------
+
+export const replyEffectStatusFieldEvaluator: ResponseHandlerFieldEvaluator<
+	"none" | "applied" | "non_applied"
+> = {
+	name: "replyEffectStatus",
+	description:
+		'Classify what replyText says about an external change (save, send, schedule, create, update, delete, payment, booking, device action, delegated task). "applied" when it says or clearly implies the change already happened, including vague/indirect/non-English wording such as "it is ready", "on the books", "you will get a nudge", or "quedó listo". "non_applied" when it explicitly says previewed, pending, failed, cancelled, unavailable, or not done. "none" when it makes no claim about an external change. A future promise or brief work-in-progress acknowledgement is non_applied.',
+	descriptionCompressed:
+		"Semantic status of external change claimed by replyText: applied, non_applied, or none; classify vague and non-English implications.",
+	priority: 25,
+	schema: {
+		type: "string",
+		enum: ["none", "applied", "non_applied"],
+		description:
+			"Whether replyText claims an external change already happened, explicitly says it did not, or makes no such claim.",
+	},
+	parse(value) {
+		const normalized =
+			typeof value === "string" ? value.trim().toLowerCase() : "";
+		return normalized === "applied" || normalized === "non_applied"
+			? normalized
+			: "none";
+	},
+};
+
+// ---------------------------------------------------------------------------
 // facts — priority 80. Memory pipeline.
 // ---------------------------------------------------------------------------
 
@@ -462,6 +491,7 @@ export const BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS: ReadonlyArray<ResponseHa
 		contextsFieldEvaluator,
 		intentsFieldEvaluator,
 		replyTextFieldEvaluator,
+		replyEffectStatusFieldEvaluator,
 		candidateActionNamesFieldEvaluator,
 		factsFieldEvaluator,
 		relationshipsFieldEvaluator,

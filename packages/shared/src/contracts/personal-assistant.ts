@@ -267,6 +267,7 @@ export interface LifeOpsSchedulingProposal {
 
 export const LIFEOPS_CONNECTOR_PROVIDERS = [
   "google",
+  "microsoft",
   "x",
   "telegram",
   "discord",
@@ -315,6 +316,16 @@ export const LIFEOPS_GOOGLE_CAPABILITIES = [
 ] as const;
 export type LifeOpsGoogleCapability =
   (typeof LIFEOPS_GOOGLE_CAPABILITIES)[number];
+
+export const LIFEOPS_MICROSOFT_CAPABILITIES = [
+  "microsoft.basic_identity",
+  "microsoft.calendar.read_basic",
+  "microsoft.calendar.read",
+  "microsoft.calendar.freebusy",
+  "microsoft.calendar.write",
+] as const;
+export type LifeOpsMicrosoftCapability =
+  (typeof LIFEOPS_MICROSOFT_CAPABILITIES)[number];
 
 export const LIFEOPS_X_CAPABILITIES = [
   "x.read",
@@ -503,6 +514,11 @@ export const LIFEOPS_OWNER_TYPES = [
   "channel_policy",
   "browser_session",
   "circadian_state",
+  "household_role",
+  "household_grant",
+  "household_proposal",
+  "household_agreement",
+  "household_export",
 ] as const;
 export type LifeOpsOwnerType = (typeof LIFEOPS_OWNER_TYPES)[number];
 
@@ -541,6 +557,15 @@ export const LIFEOPS_AUDIT_EVENT_TYPES = [
   "seeding_offered",
   "circadian_event_emitted",
   "manual_override_accepted",
+  "household_role_bound",
+  "household_grant_issued",
+  "household_grant_revoked",
+  "household_proposal_created",
+  "household_proposal_revised",
+  "household_proposal_approved",
+  "household_proposal_invalidated",
+  "household_agreement_activated",
+  "household_export_read",
 ] as const;
 export type LifeOpsAuditEventType = (typeof LIFEOPS_AUDIT_EVENT_TYPES)[number];
 
@@ -2987,7 +3012,9 @@ export interface LifeOpsTelegramDialogSummary {
 export interface VerifyLifeOpsTelegramConnectorRequest {
   side?: LifeOpsConnectorSide;
   recentLimit?: number;
+  /** @deprecated Verification is read-only; outbound probes require a draft and owner approval. */
   sendTarget?: string;
+  /** @deprecated Verification is read-only; outbound probes require a draft and owner approval. */
   sendMessage?: string;
 }
 
@@ -3002,6 +3029,7 @@ export interface VerifyLifeOpsTelegramConnectorResponse {
     dialogs: LifeOpsTelegramDialogSummary[];
   };
   send: {
+    attempted: boolean;
     ok: boolean;
     error: string | null;
     target: string;
@@ -3054,7 +3082,9 @@ export interface SendLifeOpsDiscordMessageResponse {
 
 export interface VerifyLifeOpsDiscordConnectorRequest {
   side?: LifeOpsConnectorSide;
+  /** @deprecated Verification is read-only; outbound probes require a draft and owner approval. */
   channelId?: string;
+  /** @deprecated Verification is read-only; outbound probes require a draft and owner approval. */
   sendMessage?: string;
 }
 
@@ -3064,6 +3094,7 @@ export interface VerifyLifeOpsDiscordConnectorResponse {
   verifiedAt: string;
   status: LifeOpsDiscordConnectorStatus;
   send: {
+    attempted: boolean;
     ok: boolean;
     error: string | null;
     channelId: string | null;

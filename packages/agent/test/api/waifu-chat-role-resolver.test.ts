@@ -403,9 +403,12 @@ describe("grep guard: waifu role scheme is gone from the trunk auth helper", () 
     "WaifuChatRole",
     "WaifuChatWorldRole",
     "eliza-cloud-chat",
-  ])("trunk server-helpers-auth.ts no longer references the waifu role identifier %s", (identifier) => {
-    expect(trunkSource).not.toContain(identifier);
-  });
+  ])(
+    "trunk server-helpers-auth.ts no longer references the waifu role identifier %s",
+    (identifier) => {
+      expect(trunkSource).not.toContain(identifier);
+    },
+  );
 
   it("trunk no longer maps the admin/user/guest role literals to world roles", () => {
     // The mapping ladder (admin→OWNER etc.) must not exist in the trunk source.

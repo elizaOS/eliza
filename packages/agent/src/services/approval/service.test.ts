@@ -196,7 +196,9 @@ function createApprovalTableRuntime(
 
     if (/^INSERT\s+INTO\s+approval_requests/i.test(trimmed)) {
       const colsMatch = trimmed.match(/\(([\s\S]+?)\)\s*VALUES/i);
-      const valsMatch = trimmed.match(/VALUES\s*\(([\s\S]+?)\)\s*RETURNING/i);
+      const valsMatch = trimmed.match(
+        /VALUES\s*\(([\s\S]+?)\)\s*(?:ON\s+CONFLICT[\s\S]+?)?RETURNING/i,
+      );
       if (!colsMatch || !valsMatch) throw new Error("bad INSERT in mock");
       const columns = colsMatch[1].split(",").map((s) => s.trim());
       const values = splitValues(valsMatch[1]);
@@ -204,6 +206,16 @@ function createApprovalTableRuntime(
       columns.forEach((col, idx) => {
         row[col] = unquote(values[idx] ?? "NULL");
       });
+      if (
+        /\bON\s+CONFLICT\b/i.test(trimmed) &&
+        Array.from(rows.values()).some(
+          (existing) =>
+            existing.agent_id === row.agent_id &&
+            existing.idempotency_key === row.idempotency_key,
+        )
+      ) {
+        return { rows: [] };
+      }
       rows.set(String(row.id), row);
       return { rows: [projectSelect(row)] };
     }
@@ -365,6 +377,189 @@ describe("ApprovalService", () => {
     expect(arg.category).toBe("approval");
     expect(arg.priority).toBe("high"); // interrupt tier (§C.1)
     expect(arg.groupKey).toBe(`approval:${enqueued.id}`);
+  });
+
+  it("persists an authenticated confirmed gesture without a redundant prompt", async () => {
+    const notifier = createNotifierSpy();
+    const runtime = createApprovalTableRuntime("agent-confirmed", notifier);
+    const queue = (await ApprovalService.start(runtime)).getQueue();
+    const input = messageInput({
+      idempotencyKey: "confirmed-owner-gesture-1",
+    });
+
+    const confirmed = await queue.enqueueConfirmed(input, {
+      resolvedBy: "owner-123",
+      resolutionReason: "Authenticated owner editor gesture",
+    });
+    const replay = await queue.enqueueConfirmed(input, {
+      resolvedBy: "owner-123",
+      resolutionReason: "Authenticated owner editor gesture",
+    });
+
+    expect(confirmed.state).toBe("approved");
+    expect(replay.id).toBe(confirmed.id);
+    expect(
+      await queue.byIdempotencyKey("confirmed-owner-gesture-1", "owner-123"),
+    ).toEqual(replay);
+    expect(notifier.notify).not.toHaveBeenCalled();
+  });
+
+  it("preserves structured calendar invitees and conditional-write fields", async () => {
+    const runtime = createApprovalTableRuntime("agent-calendar-approval");
+    const queue = (await ApprovalService.start(runtime)).getQueue();
+    const confirmed = await queue.enqueueConfirmed(
+      {
+        requestedBy: "OWNER_CALENDAR_EDITOR",
+        subjectUserId: "owner-123",
+        action: "modify_event",
+        payload: {
+          action: "modify_event",
+          side: "owner",
+          grantId: "google-owner-grant",
+          calendarId: "primary",
+          eventId: "series-occurrence-4",
+          expectedProvider: "google",
+          expectedProviderVersion: '"occurrence-etag-4"',
+          expectedEventUpdatedAt: "2027-10-01T00:00:00.000Z",
+          expectedEventStartAtMs: Date.parse("2027-10-15T16:00:00.000Z"),
+          seriesMaster: {
+            externalId: "series-master-1",
+            startAtMs: Date.parse("2027-01-15T17:00:00.000Z"),
+            updatedAt: "2027-10-01T00:00:00.000Z",
+            etag: '"master-etag-4"',
+          },
+          recurrenceScope: "this_and_following",
+          notifyAttendees: true,
+          editorRequestSha256: "request-sha",
+          patch: {
+            title: "Pickup",
+            startsAtMs: null,
+            endsAtMs: null,
+            attendees: [
+              {
+                email: "helper@example.com",
+                displayName: "Helper",
+                optional: true,
+              },
+            ],
+            location: null,
+            description: null,
+            timeZone: "America/Los_Angeles",
+            recurrence: ["RRULE:FREQ=WEEKLY;BYDAY=FR"],
+          },
+        },
+        channel: "internal",
+        reason: "Authenticated owner editor gesture",
+        idempotencyKey: "calendar-editor-structured-1",
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      },
+      {
+        resolvedBy: "owner-123",
+        resolutionReason: "Authenticated owner editor gesture",
+      },
+    );
+
+    expect(confirmed).toMatchObject({
+      state: "approved",
+      payload: {
+        expectedProviderVersion: '"occurrence-etag-4"',
+        recurrenceScope: "this_and_following",
+        seriesMaster: {
+          externalId: "series-master-1",
+          etag: '"master-etag-4"',
+        },
+        patch: {
+          timeZone: "America/Los_Angeles",
+          attendees: [
+            {
+              email: "helper@example.com",
+              displayName: "Helper",
+              optional: true,
+            },
+          ],
+        },
+      },
+    });
+
+    const cancelled = await queue.enqueueConfirmed(
+      {
+        requestedBy: "OWNER_CALENDAR_EDITOR",
+        subjectUserId: "owner-123",
+        action: "cancel_event",
+        payload: {
+          action: "cancel_event",
+          side: "owner",
+          grantId: "google-owner-grant",
+          calendarId: "primary",
+          eventId: "series-occurrence-4",
+          expectedProvider: "google",
+          expectedProviderVersion: '"occurrence-etag-4"',
+          expectedEventUpdatedAt: "2027-10-01T00:00:00.000Z",
+          expectedEventStartAtMs: Date.parse("2027-10-15T16:00:00.000Z"),
+          seriesMaster: {
+            externalId: "series-master-1",
+            startAtMs: Date.parse("2027-01-15T17:00:00.000Z"),
+            updatedAt: "2027-10-01T00:00:00.000Z",
+            etag: '"master-etag-4"',
+          },
+          recurrenceScope: "this_and_following",
+          cancellationMode: "organizer_cancel",
+          notifyAttendees: false,
+        },
+        channel: "internal",
+        reason: "Authenticated owner editor gesture",
+        idempotencyKey: "calendar-editor-following-cancel-1",
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      },
+      {
+        resolvedBy: "owner-123",
+        resolutionReason: "Authenticated owner editor gesture",
+      },
+    );
+    expect(cancelled.payload).toMatchObject({
+      action: "cancel_event",
+      recurrenceScope: "this_and_following",
+      seriesMaster: {
+        externalId: "series-master-1",
+        etag: '"master-etag-4"',
+      },
+    });
+
+    const scheduled = await queue.enqueueConfirmed(
+      {
+        requestedBy: "OWNER_CALENDAR_EDITOR",
+        subjectUserId: "owner-123",
+        action: "schedule_event",
+        payload: {
+          action: "schedule_event",
+          side: "owner",
+          grantId: "google-owner-grant",
+          calendarId: "primary",
+          title: "Tomorrow",
+          startsAtMs: Date.parse("2027-10-16T16:00:00.000Z"),
+          endsAtMs: Date.parse("2027-10-16T16:45:00.000Z"),
+          attendees: [],
+          location: null,
+          description: null,
+          timeZone: "America/Los_Angeles",
+          durationMinutes: 45,
+          windowPreset: "tomorrow_morning",
+        },
+        channel: "internal",
+        reason: "Authenticated owner editor gesture",
+        idempotencyKey: "calendar-editor-preset-1",
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+      },
+      {
+        resolvedBy: "owner-123",
+        resolutionReason: "Authenticated owner editor gesture",
+      },
+    );
+    expect(scheduled.payload).toMatchObject({
+      timeZone: "America/Los_Angeles",
+      durationMinutes: 45,
+      windowPreset: "tomorrow_morning",
+    });
   });
 
   it("approving an approval auto-reads its notification by groupKey (§C.5)", async () => {

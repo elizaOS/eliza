@@ -6,7 +6,7 @@ The MVP (GitHub project 15) is: **chat, onboarding, the current views, and centr
 
 The guiding constraint is **minimize additional scope**: turn what exists into an MVP by fixing, testing, verifying and validating the important stuff; prefer deleting/simplifying over adding.
 
-**Decision this doc lands:** the feature surface is already sufficient for the MVP. The persona *machinery* is also already built — a base eight-pack, 212-scenario persona corpus with a tier rubric and a coverage gate, now extended by planned G-K relationship/corpus ledgers before those scenario files land. What is missing is (a) **verification** — the base catalog still has authored-but-unverified scenarios concentrated exactly in the neurodivergent packs (ADHD capture, ADHD follow-through, shift-rotation); (b) **two persona voices with zero coverage** — a child as the user, and a student's "report due for class" deadline; (c) **the onboarding journey itself has no live scenario at all**; and (d) goals coverage is sleep-only. The plan below is verification-first and adds only scenario tests, never features.
+**Decision this doc lands:** the feature surface is already sufficient for the MVP. The persona *machinery* is also already built — a base eight-pack, now extended by Jordan's J1 co-parent pack and Maya's exact 48-case M1 world-traveling-parent contract, all using the same tier rubric and coverage gate. The catalog currently reports 348 authored scenarios against a 344 target, with 162 verified; J1 and M1 are fully authored but have zero live verification. What is missing is (a) **verification** — the base catalog still has authored-but-unverified scenarios concentrated exactly in the neurodivergent packs (ADHD capture, ADHD follow-through, shift-rotation); (b) **two persona voices with zero coverage** — a child as the user, and a student's "report due for class" deadline; (c) **the onboarding journey itself has no live scenario at all**; and (d) goals coverage is sleep-only. The plan below remains verification-first and adds behavior only when a real journey proves a primitive is absent.
 
 ## Current state (verified in code)
 
@@ -62,7 +62,7 @@ The guiding constraint is **minimize additional scope**: turn what exists into a
 - **Children and elderly need the same interface, gentler defaults.** The elderly persona scenario proves rambling non-technical phrasing works for one appointment; children need the same proof for their real life (homework, morning routine) in child-plain language. In-app + push are the child-safe channels (no email/finance surface needed).
 - **Verification is the scarce resource.** A live-verified scenario with a hand-read trajectory is worth more to the MVP than any new capability. The catalog `status` field + coverage gate already give us a mechanical definition of done.
 
-## Personas (8)
+## Personas (9)
 
 Each: context → journey (first-open → onboarding → first win → week 2) → loves / struggles → intuitiveness fix. Struggles are grounded in the current UX, not hypotheticals. Where a bench persona already exists, reuse its name for continuity with `packages/benchmarks/lifeops-bench/eliza_lifeops_bench/scenarios/_personas.py`.
 
@@ -122,13 +122,21 @@ Each: context → journey (first-open → onboarding → first win → week 2) �
 - *Struggles:* nothing structural — she is the best-covered persona. Her risk is regression while the neurodivergent packs get attention, which is F1's whole job (24/32 verified).
 - *More intuitive:* keep F1 green; no changes.
 
-**P8 — Jordan, 39, separated co-parent** (iPhone + desktop; iMessage/Calendar; maps to planned pack J1 and bench persona `jordan_coparent`).
+**P8 — Jordan, 39, separated co-parent** (iPhone + desktop; iMessage/Calendar; maps to pack J1 and bench persona `jordan_coparent`).
 - *First-open → onboarding:* fast-start, then connects calendar and messages once the custody cadence becomes the immediate pain.
 - *First win:* "Can you keep me from missing swap days?" → recurring exchange reminders and a neutral calendar view of the custody rhythm.
 - *Week 2:* a last-minute swap request becomes an owner-approved, civil logistics draft; kid details stay private and no legal/therapy advice appears.
 - *Loves:* factual language, neutral tone, no extra emotional interpretation, and reminders that keep both households coordinated.
 - *Struggles:* co-parenting work blends scheduling, money, messaging, and child privacy; without a dedicated scenario ledger it is too easy to test each domain separately and miss the real cross-domain handoff.
-- *More intuitive:* author J1 scenarios from the planned catalog, asserting custody rhythm, swap approvals, expense splits, and kid-privacy firebreaks as structural outcomes.
+- *More intuitive:* verify the authored J1 scenarios end to end, asserting custody rhythm, swap approvals, expense splits, and kid-privacy firebreaks as structural outcomes.
+
+**P9 — Maya, 41, world-traveling working parent and co-parent** (phone + desktop; voice-first; Google/Microsoft/Apple Calendar, school sources, travel, and household messaging; maps to pack M1 and bench persona `maya_traveling_coparent`).
+- *First-open → onboarding:* fast-start, then chooses the exact work, personal, family, school, and co-parent sources that may affect availability; confidential titles stay private.
+- *First win:* a three-week impact preview expands a tentative London trip door-to-door and catches a custody handoff, early school release, travel buffer, and uncovered activity before she accepts.
+- *Week 2:* a school correction and airline delay invalidate only the materially affected approvals, recompute caregiver coverage, and expire the grandmother's child/logistics access after the trip.
+- *Loves:* anticipation instead of clerical reminders; source/freshness truth; privacy-minimized proposals; responsibility that does not silently bounce back to her; monitoring through closure.
+- *Struggles:* pack M1 maps all 48 required calendar, voice, school, food, household, finance, privacy, and safety cases, but none has yet passed the required live-provider plus live-model journey with human-reviewed artifacts.
+- *More intuitive:* make M1 the composite regression journey for shared capabilities. Maya is persona data and an acceptance contract, never a “mom mode,” demographic branch, or parallel scheduler.
 
 ## Open questions → answers
 

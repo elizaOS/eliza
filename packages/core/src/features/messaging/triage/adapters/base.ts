@@ -117,7 +117,7 @@ export abstract class BaseMessageAdapter implements MessageAdapter {
 	): Promise<{ draftId: string; preview: string }> {
 		if (!this.isAvailable(runtime)) {
 			throw new NotYetImplementedError(
-				`waiting on T5X: ${this.source} adapter (createDraft)`,
+				`${this.source} adapter is unavailable for createDraft`,
 			);
 		}
 		return this.createDraftImpl(runtime, draft);
@@ -129,7 +129,7 @@ export abstract class BaseMessageAdapter implements MessageAdapter {
 	): Promise<{ externalId: string }> {
 		if (!this.isAvailable(runtime)) {
 			throw new NotYetImplementedError(
-				`waiting on T5X: ${this.source} adapter (sendDraft)`,
+				`${this.source} adapter is unavailable for sendDraft`,
 			);
 		}
 		return this.sendDraftImpl(runtime, draftId);
@@ -142,7 +142,7 @@ export abstract class BaseMessageAdapter implements MessageAdapter {
 	): Promise<{ scheduledId: string }> {
 		if (!this.isAvailable(runtime)) {
 			throw new NotYetImplementedError(
-				`waiting on T5X: ${this.source} adapter (scheduleSend)`,
+				`${this.source} adapter is unavailable for scheduleSend`,
 			);
 		}
 		return this.scheduleSendImpl(runtime, draftId, sendAtMs);
@@ -154,7 +154,7 @@ export abstract class BaseMessageAdapter implements MessageAdapter {
 		_opts: ListOptions,
 	): Promise<MessageRef[]> {
 		throw new NotYetImplementedError(
-			`waiting on T5X: ${this.source} adapter (listMessagesImpl)`,
+			`${this.source} adapter does not implement listMessages`,
 		);
 	}
 
@@ -163,7 +163,7 @@ export abstract class BaseMessageAdapter implements MessageAdapter {
 		_id: string,
 	): Promise<MessageRef | null> {
 		throw new NotYetImplementedError(
-			`waiting on T5X: ${this.source} adapter (getMessageImpl)`,
+			`${this.source} adapter does not implement getMessage`,
 		);
 	}
 
@@ -172,7 +172,7 @@ export abstract class BaseMessageAdapter implements MessageAdapter {
 		_filters: SearchMessagesFilters,
 	): Promise<MessageRef[]> {
 		throw new NotYetImplementedError(
-			`waiting on T5X: ${this.source} adapter (searchMessagesImpl)`,
+			`${this.source} adapter does not implement native searchMessages`,
 		);
 	}
 
@@ -192,7 +192,7 @@ export abstract class BaseMessageAdapter implements MessageAdapter {
 		_draft: DraftRequest,
 	): Promise<{ draftId: string; preview: string }> {
 		throw new NotYetImplementedError(
-			`waiting on T5X: ${this.source} adapter (createDraftImpl)`,
+			`${this.source} adapter does not support draft creation`,
 		);
 	}
 
@@ -201,7 +201,7 @@ export abstract class BaseMessageAdapter implements MessageAdapter {
 		_draftId: string,
 	): Promise<{ externalId: string }> {
 		throw new NotYetImplementedError(
-			`waiting on T5X: ${this.source} adapter (sendDraftImpl)`,
+			`${this.source} adapter does not support draft delivery`,
 		);
 	}
 
@@ -211,7 +211,7 @@ export abstract class BaseMessageAdapter implements MessageAdapter {
 		_sendAtMs: number,
 	): Promise<{ scheduledId: string }> {
 		throw new NotYetImplementedError(
-			`waiting on T5X: ${this.source} adapter (scheduleSendImpl)`,
+			`${this.source} adapter does not support provider-native deferred delivery`,
 		);
 	}
 }

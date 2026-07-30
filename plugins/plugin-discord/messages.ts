@@ -5,7 +5,8 @@
  */
 import { createHash } from "node:crypto";
 import {
-	ChannelType,
+	attestDeliveryAudienceFromCanonicalRoom,
+	type ChannelType,
 	type Content,
 	ContentType,
 	createUniqueUuid,
@@ -20,6 +21,8 @@ import {
 	type Media,
 	type Memory,
 	MemoryType,
+	type SendHandlerPersistenceFailure,
+	type SendHandlerReceipt,
 	type Service,
 	ServiceType,
 	stringToUuid,
@@ -277,7 +280,31 @@ const ACTIVE_TASK_AGENT_STATUSES = new Set([
 const DISCORD_OUTBOUND_DEDUPE_WINDOW_MS = 2000;
 const DISCORD_OUTBOUND_DEDUPE_MAX_KEYS = 512;
 
-const recentOutboundDiscordDeliveries = new Map<string, number>();
+export type DiscordOutboundSettledDelivery =
+	| {
+			kind: "settled";
+			delivery: "delivered" | "partially_delivered";
+			receipt: SendHandlerReceipt;
+	  }
+	| { kind: "released" };
+
+export type DiscordOutboundDeliveryState =
+	| {
+			status: "in_flight";
+			startedAt: number;
+			settlement: Promise<DiscordOutboundSettledDelivery>;
+	  }
+	| {
+			status: "settled";
+			settledAt: number;
+			delivery: "delivered" | "partially_delivered";
+			receipt: SendHandlerReceipt;
+	  };
+
+const recentOutboundDiscordDeliveries = new Map<
+	string,
+	DiscordOutboundDeliveryState
+>();
 
 function asRecord(value: unknown): Record<string, unknown> | null {
 	return value && typeof value === "object" && !Array.isArray(value)
@@ -335,12 +362,24 @@ export function shouldSuppressTimeoutForInFlightDispatchForTests({
 }
 
 export interface DiscordOutboundDeliveryReservation {
-	commit(): void;
+	commit(
+		delivery: "delivered" | "partially_delivered",
+		receipt: SendHandlerReceipt,
+		settledAt?: number,
+	): void;
 	release(): void;
 }
 
 export type BeginDiscordOutboundDeliveryResult =
-	| { kind: "duplicate" }
+	| {
+			kind: "in_flight";
+			settlement: Promise<DiscordOutboundSettledDelivery>;
+	  }
+	| {
+			kind: "duplicate";
+			priorDelivery: "delivered" | "partially_delivered";
+			receipt: SendHandlerReceipt;
+	  }
 	| { kind: "deliver"; reservation: DiscordOutboundDeliveryReservation };
 
 export interface DiscordOutboundDeliveryParams {
@@ -351,7 +390,7 @@ export interface DiscordOutboundDeliveryParams {
 	attachmentUrls?: readonly string[];
 	now?: number;
 	windowMs?: number;
-	state?: Map<string, number>;
+	state?: Map<string, DiscordOutboundDeliveryState>;
 }
 
 function normalizeOutboundText(text: string | undefined): string {
@@ -367,30 +406,43 @@ function outboundAttachmentIdentity(
 }
 
 function pruneOutboundDedupeState(
-	state: Map<string, number>,
+	state: Map<string, DiscordOutboundDeliveryState>,
 	now: number,
 	windowMs: number,
 ): void {
-	for (const [key, timestamp] of state) {
-		if (now - Math.abs(timestamp) > windowMs) {
+	for (const [key, delivery] of state) {
+		if (delivery.status === "settled" && now - delivery.settledAt > windowMs) {
 			state.delete(key);
 		}
 	}
 	if (state.size <= DISCORD_OUTBOUND_DEDUPE_MAX_KEYS) return;
-	const overflow = state.size - DISCORD_OUTBOUND_DEDUPE_MAX_KEYS;
-	let removed = 0;
-	for (const key of state.keys()) {
-		if (removed >= overflow) break;
+	const settled = [...state.entries()]
+		.filter(
+			(
+				entry,
+			): entry is [
+				string,
+				Extract<
+					DiscordOutboundDeliveryState,
+					{
+						status: "settled";
+					}
+				>,
+			] => entry[1].status === "settled",
+		)
+		.sort((left, right) => left[1].settledAt - right[1].settledAt);
+	const overflow = Math.max(0, state.size - DISCORD_OUTBOUND_DEDUPE_MAX_KEYS);
+	for (const [key] of settled.slice(0, overflow)) {
 		state.delete(key);
-		removed += 1;
 	}
 }
 
 /**
  * Reserve one outbound Discord delivery. Discord can receive the same logical
  * tool-backed answer through the inbound response callback and the generic
- * message-connector send path in the same event-loop burst; this guard shares a
- * short process-local window across both paths so the first REST send wins.
+ * message-connector send path in the same event-loop burst. Callers join the
+ * active attempt, then replay its exact receipt; only settled entries expire,
+ * because aging out an active provider call would permit a concurrent resend.
  */
 export function beginDiscordOutboundDelivery(
 	params: DiscordOutboundDeliveryParams,
@@ -400,7 +452,13 @@ export function beginDiscordOutboundDelivery(
 	if (!text && !attachments) {
 		return {
 			kind: "deliver",
-			reservation: { commit() {}, release() {} },
+			reservation: {
+				commit(
+					_delivery: "delivered" | "partially_delivered",
+					_receipt: SendHandlerReceipt,
+				) {},
+				release() {},
+			},
 		};
 	}
 
@@ -417,31 +475,110 @@ export function beginDiscordOutboundDelivery(
 
 	pruneOutboundDedupeState(state, now, windowMs);
 	const previous = state.get(key);
-	if (
-		previous !== undefined &&
-		Math.abs(now - Math.abs(previous)) <= windowMs
-	) {
-		return { kind: "duplicate" };
+	if (previous?.status === "in_flight") {
+		return { kind: "in_flight", settlement: previous.settlement };
+	}
+	if (previous?.status === "settled") {
+		return {
+			kind: "duplicate",
+			priorDelivery: previous.delivery,
+			receipt: previous.receipt,
+		};
 	}
 
-	state.set(key, -now);
+	let resolveSettlement!: (value: DiscordOutboundSettledDelivery) => void;
+	const settlement = new Promise<DiscordOutboundSettledDelivery>((resolve) => {
+		resolveSettlement = resolve;
+	});
+	const reservationState: Extract<
+		DiscordOutboundDeliveryState,
+		{ status: "in_flight" }
+	> = {
+		status: "in_flight",
+		startedAt: now,
+		settlement,
+	};
+	state.set(key, reservationState);
 	let settled = false;
 	return {
 		kind: "deliver",
 		reservation: {
-			commit() {
+			commit(delivery, receipt, settledAt = Date.now()) {
 				if (settled) return;
 				settled = true;
-				state.set(key, now);
+				if (state.get(key) === reservationState) {
+					state.delete(key);
+					state.set(key, {
+						status: "settled",
+						settledAt,
+						delivery,
+						receipt,
+					});
+				}
+				resolveSettlement({ kind: "settled", delivery, receipt });
 			},
 			release() {
 				if (settled) return;
 				settled = true;
-				if (state.get(key) === -now) {
+				if (state.get(key) === reservationState) {
 					state.delete(key);
 				}
+				resolveSettlement({ kind: "released" });
 			},
 		},
+	};
+}
+
+function callbackPersistenceFailure(
+	message: DiscordMessage,
+	error: unknown,
+): SendHandlerPersistenceFailure {
+	const code =
+		typeof error === "object" &&
+		error !== null &&
+		"code" in error &&
+		typeof error.code === "string"
+			? error.code
+			: "DISCORD_CALLBACK_MEMORY_PERSISTENCE_FAILED";
+	return {
+		providerMessageId: message.id,
+		stage: "memory",
+		code,
+		message: error instanceof Error ? error.message : String(error),
+	};
+}
+
+function callbackDeliveryReceipt(input: {
+	messages: readonly DiscordMessage[];
+	memories: readonly Memory[];
+	failures: readonly SendHandlerPersistenceFailure[];
+}): SendHandlerReceipt {
+	const ids = input.messages.map((message) => message.id);
+	const first = ids[0];
+	if (!first) {
+		throw new Error(
+			"Discord callback cannot build a receipt without a provider message.",
+		);
+	}
+	const memoryIds = input.memories.flatMap((memory) =>
+		memory.id ? [memory.id] : [],
+	);
+	return {
+		providerMessageIds: [first, ...ids.slice(1)],
+		acceptedAt:
+			input.messages.find((message) =>
+				Number.isFinite(message.createdTimestamp),
+			)?.createdTimestamp ?? Date.now(),
+		persistence:
+			input.failures.length === 0
+				? { status: "persisted", memoryIds }
+				: memoryIds.length > 0
+					? {
+							status: "partial",
+							memoryIds,
+							failures: input.failures,
+						}
+					: { status: "failed", failures: input.failures },
 	};
 }
 
@@ -1038,7 +1175,7 @@ export class MessageManager {
 			}
 			messageServerId = guild.id;
 		} else {
-			type = ChannelType.DM;
+			type = await this.getChannelType(message.channel as Channel);
 			messageServerId = message.channel.id;
 		}
 		const worldId = createUniqueUuid(this.runtime, messageServerId ?? roomId);
@@ -1170,6 +1307,17 @@ export class MessageManager {
 					accountId: this.accountId,
 				},
 			});
+			try {
+				await attestDeliveryAudienceFromCanonicalRoom(this.runtime, newMessage);
+			} catch (error) {
+				// error-policy:J4 ordinary chat remains available, while every
+				// owner-private component fails closed without this evidence.
+				this.runtime.reportError(
+					"DiscordMessageManager.deliveryAudience",
+					error,
+					{ roomId, messageId: newMessage.id },
+				);
+			}
 
 			// Durable turn / outbox state machine (charter rows D4/D5).
 			//
@@ -1459,6 +1607,10 @@ export class MessageManager {
 
 			const callback: HandlerCallback = async (content: Content) => {
 				let outboundReservation: DiscordOutboundDeliveryReservation | undefined;
+				let acceptedMessages: DiscordMessage[] = [];
+				let providerSendFailure: unknown;
+				let deliveredReplyDedupKey: string | undefined;
+				let deliveredFactSignature: Set<string> | null = null;
 				try {
 					const pendingAttachmentCount = Array.isArray(content.attachments)
 						? content.attachments.filter((media) => Boolean(media?.url)).length
@@ -1606,13 +1758,11 @@ export class MessageManager {
 							);
 							return [];
 						}
-						callbackDedup._elizaSentReplyKeys.add(dedupKey);
-						if (factSignature !== null) {
-							callbackDedup._elizaSentFactSignatures.push(factSignature);
-						}
+						deliveredReplyDedupKey = dedupKey;
+						deliveredFactSignature = factSignature;
 					}
 
-					const outboundDedupe = beginDiscordOutboundDelivery({
+					const dedupeParams = {
 						accountId: this.accountId,
 						channelId: channel.id,
 						replyToMessageId:
@@ -1624,7 +1774,15 @@ export class MessageManager {
 						attachmentUrls: content.attachments
 							?.map((media) => media.url)
 							.filter((url): url is string => typeof url === "string"),
-					});
+					};
+					let outboundDedupe = beginDiscordOutboundDelivery(dedupeParams);
+					while (outboundDedupe.kind === "in_flight") {
+						const settlement = await outboundDedupe.settlement;
+						if (settlement.kind === "settled") {
+							return [];
+						}
+						outboundDedupe = beginDiscordOutboundDelivery(dedupeParams);
+					}
 					if (outboundDedupe.kind === "duplicate") {
 						this.runtime.logger.debug(
 							{
@@ -1695,14 +1853,16 @@ export class MessageManager {
 								);
 								messages.push(attachmentMessage);
 							} catch (error) {
-								this.runtime.logger.warn(
+								// error-policy:J1 provider boundary retains the
+								// finalized draft receipt while exposing attachment failure.
+								providerSendFailure = error;
+								this.runtime.reportError(
+									"discord:callback-partial-attachment",
+									error,
 									{
-										src: "plugin:discord",
-										agentId: this.runtime.agentId,
-										error:
-											error instanceof Error ? error.message : String(error),
+										channelId: channel.id,
+										providerMessageIds: messages.map((message) => message.id),
 									},
-									"Failed to send Discord attachments after draft finalize",
 								);
 							}
 						}
@@ -1717,6 +1877,8 @@ export class MessageManager {
 								},
 								"User not found for DM",
 							);
+							outboundReservation.release();
+							outboundReservation = undefined;
 							return [];
 						}
 
@@ -1733,6 +1895,8 @@ export class MessageManager {
 								{ src: "plugin:discord", agentId: this.runtime.agentId },
 								"Cannot send message: message.id is missing",
 							);
+							outboundReservation.release();
+							outboundReservation = undefined;
 							return [];
 						}
 						messages = await runResponseDispatch(() =>
@@ -1744,9 +1908,13 @@ export class MessageManager {
 								hasComponents ? rendered.components : undefined,
 								this.runtime,
 								replyToMode,
+								(outcome) => {
+									providerSendFailure = outcome.failure;
+								},
 							),
 						);
 					}
+					acceptedMessages = [...messages];
 
 					const attemptedSend = hasText || attachmentCount > 0;
 					if (attemptedSend && messages.length === 0) {
@@ -1754,11 +1922,6 @@ export class MessageManager {
 							"Discord response callback completed without sending any messages",
 						);
 					}
-					if (messages.length > 0) {
-						outboundReservation.commit();
-						outboundReservation = undefined;
-					}
-
 					const memories: Memory[] = [];
 					for (const m of messages) {
 						const actions = content.actions;
@@ -1794,21 +1957,75 @@ export class MessageManager {
 						memories.push(memory);
 					}
 
-					for (const m of memories) {
-						await createDiscordMessageMemoryOnce(this.runtime, m, {
-							operation: "discord-response-callback",
-							platformMessageId:
-								typeof m.metadata?.platformMessageId === "string"
-									? m.metadata.platformMessageId
-									: undefined,
-						});
+					const persistedMemories: Memory[] = [];
+					const persistenceFailures: SendHandlerPersistenceFailure[] = [];
+					for (let index = 0; index < memories.length; index += 1) {
+						const candidate = memories[index];
+						const providerMessage = messages[index];
+						if (!candidate || !providerMessage) continue;
+						try {
+							const persisted = await createDiscordMessageMemoryOnce(
+								this.runtime,
+								candidate,
+								{
+									operation: "discord-response-callback",
+									platformMessageId: providerMessage.id,
+								},
+							);
+							if (!persisted) {
+								throw new Error(
+									"Discord callback persistence returned no stored record.",
+								);
+							}
+							persistedMemories.push(persisted);
+						} catch (error) {
+							// error-policy:J1 local persistence boundary binds the
+							// failure to the provider receipt and keeps delivery truthful.
+							persistenceFailures.push(
+								callbackPersistenceFailure(providerMessage, error),
+							);
+							this.runtime.reportError(
+								"discord:callback-memory-persistence",
+								error,
+								{
+									channelId: channel.id,
+									providerMessageId: providerMessage.id,
+								},
+							);
+						}
 					}
 
-					if (memories.length > 0) {
+					const receipt = callbackDeliveryReceipt({
+						messages,
+						memories: persistedMemories,
+						failures: persistenceFailures,
+					});
+					const deliveryKind = providerSendFailure
+						? "partially_delivered"
+						: "delivered";
+					outboundReservation?.commit(deliveryKind, receipt);
+					outboundReservation = undefined;
+
+					if (messages.length > 0) {
 						responseEmitted = true;
+						if (deliveredReplyDedupKey && !providerSendFailure) {
+							const callbackDedup = message as DiscordMessage & {
+								_elizaSentReplyKeys?: Set<string>;
+								_elizaSentFactSignatures?: Array<Set<string>>;
+							};
+							callbackDedup._elizaSentReplyKeys ??= new Set();
+							callbackDedup._elizaSentReplyKeys.add(deliveredReplyDedupKey);
+							if (deliveredFactSignature) {
+								callbackDedup._elizaSentFactSignatures ??= [];
+								callbackDedup._elizaSentFactSignatures.push(
+									deliveredFactSignature,
+								);
+							}
+						}
 					}
 					if (
 						messages.length > 0 &&
+						!providerSendFailure &&
 						content.attachments?.length &&
 						content.inReplyTo
 					) {
@@ -1823,10 +2040,40 @@ export class MessageManager {
 						}
 					}
 					typingController.stop();
-					statusReactions?.setDone();
+					if (providerSendFailure || persistenceFailures.length > 0) {
+						statusReactions?.setError();
+					} else {
+						statusReactions?.setDone();
+					}
 
-					return memories;
+					return persistedMemories;
 				} catch (error) {
+					// error-policy:J1 callback delivery boundary never releases a
+					// reservation after provider acceptance, which would duplicate it.
+					if (outboundReservation && acceptedMessages.length > 0) {
+						const failures = acceptedMessages.map((message) =>
+							callbackPersistenceFailure(message, error),
+						);
+						const receipt = callbackDeliveryReceipt({
+							messages: acceptedMessages,
+							memories: [],
+							failures,
+						});
+						outboundReservation.commit(
+							providerSendFailure ? "partially_delivered" : "delivered",
+							receipt,
+						);
+						outboundReservation = undefined;
+						responseEmitted = true;
+						this.runtime.reportError("discord:callback-finalization", error, {
+							channelId: channel.id,
+							providerMessageIds: receipt.providerMessageIds,
+						});
+						typingController.stop();
+						statusReactions?.setError();
+						await abortPendingDraft();
+						return [];
+					}
 					outboundReservation?.release();
 					this.runtime.logger.error(
 						{

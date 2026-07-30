@@ -43,7 +43,7 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
-  useMemo,
+  useRef,
   useState,
 } from "react";
 import "../api/client-calendar.js";
@@ -51,6 +51,7 @@ import type { CalendarClientMethods } from "../api/client-calendar.js";
 import { basicEmailValid } from "../internal/email.js";
 
 const calendarClient = client as typeof client & CalendarClientMethods;
+let editorOperationSequence = 0;
 
 type EditorMode = "edit" | "create";
 
@@ -63,6 +64,7 @@ function EventEditorInput({
   value,
   placeholder,
   ariaLabel,
+  disabled,
   onChange,
 }: {
   mode: EditorMode;
@@ -73,6 +75,7 @@ function EventEditorInput({
   value: string;
   placeholder?: string;
   ariaLabel?: string;
+  disabled?: boolean;
   onChange: (value: string) => void;
 }) {
   const { ref, agentProps } = useAgentElement<HTMLInputElement>({
@@ -93,6 +96,7 @@ function EventEditorInput({
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
       aria-label={ariaLabel}
+      disabled={disabled}
       {...agentProps}
     />
   );
@@ -102,11 +106,13 @@ function EventEditorNotes({
   mode,
   value,
   placeholder,
+  disabled,
   onChange,
 }: {
   mode: EditorMode;
   value: string;
   placeholder: string;
+  disabled?: boolean;
   onChange: (value: string) => void;
 }) {
   const { ref, agentProps } = useAgentElement<HTMLTextAreaElement>({
@@ -126,6 +132,7 @@ function EventEditorNotes({
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
       className="min-h-20"
+      disabled={disabled}
       {...agentProps}
     />
   );
@@ -158,8 +165,6 @@ function EventEditorActionButton({
 }
 
 const TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-const APPLE_CALENDAR_GRANT_ID = "apple-calendar";
-const APPLE_CALENDAR_PROVIDER = "apple_calendar";
 
 function toLocalInputValue(isoString: string | null): string {
   if (!isoString) {
@@ -292,6 +297,7 @@ function EventEditorCalendarSelect({
   value,
   placeholder,
   ariaLabel,
+  disabled,
   onSelect,
 }: {
   mode: EditorMode;
@@ -299,6 +305,7 @@ function EventEditorCalendarSelect({
   value: string;
   placeholder: string;
   ariaLabel: string;
+  disabled: boolean;
   onSelect: (value: string) => void;
 }) {
   const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
@@ -312,11 +319,12 @@ function EventEditorCalendarSelect({
     onFill: onSelect,
   });
   return (
-    <Select value={value} onValueChange={onSelect}>
+    <Select value={value} onValueChange={onSelect} disabled={disabled}>
       <SelectTrigger
         ref={ref}
         id="event-editor-calendar"
         aria-label={ariaLabel}
+        disabled={disabled}
         {...agentProps}
       >
         <SelectValue placeholder={placeholder} />
@@ -384,6 +392,80 @@ function didAttendeesChange(
   return JSON.stringify(previous) !== JSON.stringify(next);
 }
 
+function createEditorOperationKey(): string {
+  if (typeof globalThis.crypto?.randomUUID === "function") {
+    return `event-editor:${globalThis.crypto.randomUUID()}`;
+  }
+  editorOperationSequence += 1;
+  return `event-editor:${Date.now()}-${editorOperationSequence}`;
+}
+
+export type EventEditorReadOnlyReason =
+  | "provider_version_missing"
+  | "microsoft_read_only"
+  | "ics_subscription"
+  | "apple_read_only";
+
+export type EventEditorMutability =
+  | { readonly kind: "editable"; readonly providerVersion: string }
+  | { readonly kind: "read_only"; readonly reason: EventEditorReadOnlyReason };
+
+/**
+ * Which edit affordances the owner-editor mutation pipeline can actually
+ * honor for this event. The pipeline (client → route → owner-editor gateway →
+ * trusted executor) performs etag-conditional writes and supports them only
+ * for Google events; Microsoft mutations, ICS subscription feeds, and the
+ * Apple native bridge are all rejected server-side. Rendering a Save/Delete
+ * button for those events would dead-end on every click, so the drawer
+ * derives its affordances from this capability instead.
+ */
+export function eventEditorMutability(
+  event: LifeOpsCalendarEvent,
+): EventEditorMutability {
+  switch (event.provider) {
+    case "google": {
+      const etag = event.metadata.etag;
+      return typeof etag === "string" && etag.trim().length > 0
+        ? { kind: "editable", providerVersion: etag.trim() }
+        : { kind: "read_only", reason: "provider_version_missing" };
+    }
+    case "microsoft":
+      return { kind: "read_only", reason: "microsoft_read_only" };
+    case "ics":
+      return { kind: "read_only", reason: "ics_subscription" };
+    case "apple_calendar":
+      return { kind: "read_only", reason: "apple_read_only" };
+  }
+}
+
+/**
+ * Mirrors the approval executor's organizer-disposition rules
+ * (plugin-personal-assistant lifeops-port `eventOrganizerDisposition`): the
+ * drawer must never offer a cancellation mode the executor would reject.
+ * Organizer identity may also arrive only as the organizer email matching the
+ * owning account email, so that comparison is part of the contract.
+ * `remove_private_copy` is executor-gated to invitee disposition; the drawer's
+ * single delete affordance maps invitees to `decline_invitation`.
+ */
+export function cancellationModeForEditorEvent(
+  event: LifeOpsCalendarEvent,
+): "organizer_cancel" | "decline_invitation" | null {
+  if (event.organizer?.self === true) return "organizer_cancel";
+  const selfAttendee = event.attendees.find((attendee) => attendee.self);
+  if (selfAttendee) {
+    return selfAttendee.organizer ? "organizer_cancel" : "decline_invitation";
+  }
+  const organizerEmail =
+    typeof event.organizer?.email === "string"
+      ? event.organizer.email.trim().toLowerCase()
+      : null;
+  const accountEmail = event.accountEmail?.trim().toLowerCase() || null;
+  if (organizerEmail && accountEmail && organizerEmail === accountEmail) {
+    return "organizer_cancel";
+  }
+  return null;
+}
+
 export function EventEditorDrawer({
   open,
   mode = "edit",
@@ -407,29 +489,70 @@ export function EventEditorDrawer({
   const [deleting, setDeleting] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const createOperationKey = useRef<string | null>(null);
+  const updateOperationKey = useRef<string | null>(null);
+  const deleteOperationKey = useRef<string | null>(null);
 
   const isCreate = mode === "create";
   const calendarRequestSide = isCreate
     ? (createDefaults?.side ?? "owner")
     : (event?.side ?? "owner");
+  const mutability = !isCreate && event ? eventEditorMutability(event) : null;
+  const readOnly = mutability?.kind === "read_only";
+  const cancellationMode = event ? cancellationModeForEditorEvent(event) : null;
+  const declinesInvitation = cancellationMode === "decline_invitation";
+  const deleteCapable =
+    mutability?.kind === "editable" && cancellationMode !== null;
+  const readOnlyReason =
+    mutability?.kind === "read_only"
+      ? {
+          provider_version_missing: t("eventEditor.readOnlyVersionMissing", {
+            defaultValue:
+              "Editing is paused until this event's current provider version is available. Refresh the calendar to edit it.",
+          }),
+          microsoft_read_only: t("eventEditor.readOnlyMicrosoft", {
+            defaultValue:
+              "Microsoft Outlook events are view-only here. Edit this event in Outlook.",
+          }),
+          ics_subscription: t("eventEditor.readOnlyIcsSubscription", {
+            defaultValue:
+              "This event comes from a read-only calendar subscription. To stop seeing its events, remove the subscription in calendar sources.",
+          }),
+          apple_read_only: t("eventEditor.readOnlyApple", {
+            defaultValue:
+              "Apple Calendar events are view-only here. Edit this event in Apple Calendar.",
+          }),
+        }[mutability.reason]
+      : null;
+  const deleteUnavailableReason = readOnly
+    ? readOnlyReason
+    : !isCreate && event && cancellationMode === null
+      ? t("eventEditor.deleteRoleUnknown", {
+          defaultValue:
+            "Deleting is unavailable because your organizer or invitee role on this event is unknown.",
+        })
+      : null;
 
-  // Seed form when the event changes (edit) or drawer opens in create mode.
   useEffect(() => {
     if (!open) return;
     if (isCreate) {
       setForm(blankFormState(createDefaults));
+      createOperationKey.current = createEditorOperationKey();
     } else if (event) {
       setForm(formStateFromEvent(event));
+      updateOperationKey.current = createEditorOperationKey();
+      deleteOperationKey.current = createEditorOperationKey();
     }
     setError(null);
   }, [open, isCreate, event, createDefaults]);
 
-  // Load calendar list when drawer opens. The selector is sourced from
-  // `calendarClient.getLifeOpsCalendars()`; if the call fails we fall back to a
-  // single "Primary" pseudo-row so the UI still renders.
+  // An old drawer's source list must never remain selectable while a different
+  // side or account is loading. A failed source read leaves the editor visibly
+  // unavailable instead of fabricating a writable "Primary" calendar.
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
+    setCalendars([]);
     setCalendarsLoading(true);
     setCalendarsError(null);
     void calendarClient
@@ -464,6 +587,8 @@ export function EventEditorDrawer({
         });
       })
       .catch((cause) => {
+        // error-policy:J4 Source discovery failure is rendered as unavailable
+        // and disables every save path so no stale or fabricated target wins.
         if (cancelled) return;
         setCalendars([]);
         setCalendarsError(
@@ -480,42 +605,21 @@ export function EventEditorDrawer({
     };
   }, [open, calendarRequestSide]);
 
-  const calendarOptions = useMemo(() => {
-    if (calendars.length > 0) return calendars;
-    // Fallback row so the Select still renders something while the list is
-    // loading or after a failed fetch. The ID matches what the backend uses
-    // when no calendar is supplied on create/update.
-    return [
-      {
-        provider:
-          form.grantId === APPLE_CALENDAR_GRANT_ID
-            ? APPLE_CALENDAR_PROVIDER
-            : "google",
-        side: form.side,
-        grantId: form.grantId,
-        accountEmail: null,
-        calendarId: form.calendarId || "primary",
-        summary:
-          form.calendarId && form.calendarId !== "primary"
-            ? form.calendarId
-            : "Primary",
-        description: null,
-        primary: true,
-        accessRole: "owner",
-        backgroundColor: null,
-        foregroundColor: null,
-        timeZone: null,
-        selected: true,
-        includeInFeed: true,
-      },
-    ] satisfies LifeOpsCalendarSummary[];
-  }, [calendars, form.calendarId, form.grantId, form.side]);
+  const calendarOptions = calendars;
+  const calendarReady = calendarOptions.some((calendar) =>
+    sameCalendarIdentity(calendar, form),
+  );
 
   const updateForm = useCallback(
     <K extends keyof FormState>(key: K, value: FormState[K]) => {
+      if (isCreate) {
+        createOperationKey.current = createEditorOperationKey();
+      } else {
+        updateOperationKey.current = createEditorOperationKey();
+      }
       setForm((prev) => ({ ...prev, [key]: value }));
     },
-    [],
+    [isCreate],
   );
 
   const handleSave = useCallback(
@@ -523,6 +627,15 @@ export function EventEditorDrawer({
       setError(null);
       const titleTrimmed = form.title.trim();
       if (!titleTrimmed) return;
+      if (!calendarReady) {
+        setError(
+          t("eventEditor.calendarUnavailable", {
+            defaultValue:
+              "Choose a currently available calendar before saving.",
+          }),
+        );
+        return;
+      }
       const startIso = fromLocalInputValue(form.startAt);
       const endIso = fromLocalInputValue(form.endAt);
       if (!startIso || !endIso) {
@@ -538,7 +651,10 @@ export function EventEditorDrawer({
       try {
         if (isCreate) {
           const attendees = attendeesToContract(form.attendees);
-          const request: CreateLifeOpsCalendarEventRequest = {
+          const createIdempotencyKey =
+            createOperationKey.current ?? createEditorOperationKey();
+          createOperationKey.current = createIdempotencyKey;
+          const request = {
             side: form.side,
             grantId: form.grantId || undefined,
             calendarId: form.calendarId || undefined,
@@ -549,11 +665,34 @@ export function EventEditorDrawer({
             endAt: endIso,
             timeZone: TIME_ZONE,
             attendees: attendees.length > 0 ? attendees : undefined,
-          };
+            idempotencyKey: createIdempotencyKey,
+            notifyAttendees: false,
+          } satisfies CreateLifeOpsCalendarEventRequest;
           const result =
             await calendarClient.createLifeOpsCalendarEvent(request);
-          if (!result.event) {
-            throw new Error("Calendar create returned no event.");
+          if (result.outcome === "accepted_without_readback") {
+            setActionNotice(
+              t("eventEditor.createdWriteOnly", {
+                defaultValue:
+                  "Event added to Apple Calendar. Add-only access means availability and readback remain unknown.",
+              }),
+              "success",
+              4200,
+            );
+            if (options.keepOpen) {
+              createOperationKey.current = createEditorOperationKey();
+              setForm(
+                blankFormState({
+                  ...createDefaults,
+                  side: form.side,
+                  grantId: form.grantId,
+                  calendarId: form.calendarId,
+                }),
+              );
+            } else {
+              onClose();
+            }
+            return;
           }
           setActionNotice(
             t("eventEditor.created", {
@@ -564,6 +703,7 @@ export function EventEditorDrawer({
           );
           onCreated?.(result.event);
           if (options.keepOpen) {
+            createOperationKey.current = createEditorOperationKey();
             setForm(
               blankFormState({
                 ...createDefaults,
@@ -576,12 +716,21 @@ export function EventEditorDrawer({
             onClose();
           }
         } else {
-          if (!event) return;
-          const patch: LifeOpsCalendarEventUpdate = {
+          if (!event || mutability?.kind !== "editable") return;
+          const updateIdempotencyKey =
+            updateOperationKey.current ?? createEditorOperationKey();
+          updateOperationKey.current = updateIdempotencyKey;
+          const patch: LifeOpsCalendarEventUpdate & {
+            expectedProviderVersion: string;
+            idempotencyKey: string;
+          } = {
             side: form.side,
             grantId: form.grantId || event.grantId,
             calendarId: form.calendarId || event.calendarId,
             timeZone: event.timezone ?? TIME_ZONE,
+            expectedProviderVersion: mutability.providerVersion,
+            idempotencyKey: updateIdempotencyKey,
+            notifyAttendees: false,
           };
           if (titleTrimmed !== event.title) patch.title = titleTrimmed;
           if (startIso !== event.startAt) patch.startAt = startIso;
@@ -606,12 +755,15 @@ export function EventEditorDrawer({
           );
           onSaved?.(result.event);
           if (options.keepOpen) {
+            updateOperationKey.current = createEditorOperationKey();
             setForm(formStateFromEvent(result.event));
           } else {
             onClose();
           }
         }
       } catch (cause) {
+        // error-policy:J4 The exact draft remains visible while the provider
+        // or approval error tells the owner whether a retry is appropriate.
         setError(
           cause instanceof Error && cause.message.trim().length > 0
             ? cause.message.trim()
@@ -624,10 +776,12 @@ export function EventEditorDrawer({
       }
     },
     [
+      calendarReady,
       createDefaults,
       event,
       form,
       isCreate,
+      mutability,
       onClose,
       onCreated,
       onSaved,
@@ -638,22 +792,57 @@ export function EventEditorDrawer({
 
   const handleDelete = useCallback(async () => {
     if (!event) return;
+    if (mutability?.kind !== "editable" || !cancellationMode) {
+      // The delete affordance renders disabled with a visible reason in these
+      // states; reaching here means an unexpected path, so restate the reason.
+      setError(
+        deleteUnavailableReason ??
+          t("eventEditor.deleteRoleUnknown", {
+            defaultValue:
+              "Deleting is unavailable because your organizer or invitee role on this event is unknown.",
+          }),
+      );
+      return;
+    }
     setDeleting(true);
     setError(null);
     try {
-      await calendarClient.deleteLifeOpsCalendarEvent(event.externalId, {
-        side: event.side,
-        grantId: event.grantId,
-        calendarId: event.calendarId,
-      });
-      setActionNotice(
-        t("eventEditor.deleted", { defaultValue: "Event deleted." }),
-        "success",
-        2400,
+      const deleteIdempotencyKey =
+        deleteOperationKey.current ?? createEditorOperationKey();
+      deleteOperationKey.current = deleteIdempotencyKey;
+      const result = await calendarClient.deleteLifeOpsCalendarEvent(
+        event.externalId,
+        {
+          side: event.side,
+          grantId: event.grantId,
+          calendarId: event.calendarId,
+          expectedProviderVersion: mutability.providerVersion,
+          idempotencyKey: deleteIdempotencyKey,
+          notifyAttendees: false,
+          cancellationMode,
+        },
       );
-      onDeleted?.(event.id);
+      if (result.outcome === "invitation_declined") {
+        setActionNotice(
+          t("eventEditor.invitationDeclined", {
+            defaultValue: "Invitation declined.",
+          }),
+          "success",
+          2400,
+        );
+        onSaved?.(result.event);
+      } else {
+        setActionNotice(
+          t("eventEditor.deleted", { defaultValue: "Event deleted." }),
+          "success",
+          2400,
+        );
+        onDeleted?.(event.id);
+      }
       onClose();
     } catch (cause) {
+      // error-policy:J4 A failed decline/delete remains visibly unresolved;
+      // success callbacks only run after a typed provider receipt.
       setError(
         cause instanceof Error && cause.message.trim().length > 0
           ? cause.message.trim()
@@ -665,7 +854,17 @@ export function EventEditorDrawer({
       setDeleting(false);
       setConfirmDeleteOpen(false);
     }
-  }, [event, onClose, onDeleted, setActionNotice, t]);
+  }, [
+    cancellationMode,
+    deleteUnavailableReason,
+    event,
+    mutability,
+    onClose,
+    onDeleted,
+    onSaved,
+    setActionNotice,
+    t,
+  ]);
 
   if (!isCreate && !event) {
     return null;
@@ -716,6 +915,16 @@ export function EventEditorDrawer({
               <div className="px-1 py-1 text-xs text-danger">{error}</div>
             ) : null}
 
+            {readOnlyReason ? (
+              <p
+                className="px-1 py-1 text-xs leading-5 text-muted"
+                role="note"
+                data-testid="event-editor-read-only-reason"
+              >
+                {readOnlyReason}
+              </p>
+            ) : null}
+
             <div className="space-y-1.5">
               <label
                 htmlFor="event-editor-title"
@@ -729,6 +938,7 @@ export function EventEditorDrawer({
                 label="Event title"
                 description="Title of the calendar event"
                 value={form.title}
+                disabled={readOnly}
                 onChange={(value) => updateForm("title", value)}
                 placeholder={t("eventEditor.titlePlaceholder", {
                   defaultValue: "Event title",
@@ -754,6 +964,7 @@ export function EventEditorDrawer({
                   description="Start date and time of the event"
                   inputType="datetime-local"
                   value={form.startAt}
+                  disabled={readOnly}
                   onChange={(value) => updateForm("startAt", value)}
                   ariaLabel={t("eventEditor.startAtAria", {
                     defaultValue: "Start time",
@@ -774,6 +985,7 @@ export function EventEditorDrawer({
                   description="End date and time of the event"
                   inputType="datetime-local"
                   value={form.endAt}
+                  disabled={readOnly}
                   onChange={(value) => updateForm("endAt", value)}
                   ariaLabel={t("eventEditor.endAtAria", {
                     defaultValue: "End time",
@@ -795,6 +1007,7 @@ export function EventEditorDrawer({
                 label="Event location"
                 description="Location of the calendar event"
                 value={form.location}
+                disabled={readOnly}
                 onChange={(value) => updateForm("location", value)}
                 placeholder={t("eventEditor.locationPlaceholder", {
                   defaultValue: "Location (optional)",
@@ -809,24 +1022,50 @@ export function EventEditorDrawer({
               <span className="block text-xs font-medium text-muted">
                 {t("eventEditor.attendees", { defaultValue: "Attendees" })}
               </span>
-              <TagEditor
-                items={form.attendees}
-                onChange={(next) =>
-                  updateForm(
-                    "attendees",
-                    next.filter((value) => basicEmailValid(value)),
-                  )
-                }
-                placeholder={t("eventEditor.attendeePlaceholder", {
-                  defaultValue: "Add email and press Enter",
-                })}
-                addLabel={t("eventEditor.attendeeAdd", {
-                  defaultValue: "Add attendee",
-                })}
-                removeLabel={t("eventEditor.attendeeRemove", {
-                  defaultValue: "Remove",
-                })}
-              />
+              {readOnly ? (
+                // TagEditor has no disabled mode; a read-only event renders its
+                // attendee list as plain text so no add/remove affordance exists.
+                <div
+                  className="flex flex-wrap gap-1.5"
+                  data-testid="event-editor-attendees-read-only"
+                >
+                  {form.attendees.length > 0 ? (
+                    form.attendees.map((attendee) => (
+                      <span
+                        key={attendee}
+                        className="rounded bg-bg-muted/40 px-1.5 py-0.5 text-xs text-txt"
+                      >
+                        {attendee}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-xs text-muted">
+                      {t("eventEditor.noAttendees", {
+                        defaultValue: "No attendees",
+                      })}
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <TagEditor
+                  items={form.attendees}
+                  onChange={(next) =>
+                    updateForm(
+                      "attendees",
+                      next.filter((value) => basicEmailValid(value)),
+                    )
+                  }
+                  placeholder={t("eventEditor.attendeePlaceholder", {
+                    defaultValue: "Add email and press Enter",
+                  })}
+                  addLabel={t("eventEditor.attendeeAdd", {
+                    defaultValue: "Add attendee",
+                  })}
+                  removeLabel={t("eventEditor.attendeeRemove", {
+                    defaultValue: "Remove",
+                  })}
+                />
+              )}
             </div>
 
             <div className="space-y-1.5">
@@ -852,11 +1091,19 @@ export function EventEditorDrawer({
                 ariaLabel={t("eventEditor.calendarAria", {
                   defaultValue: "Calendar of record",
                 })}
+                disabled={
+                  calendarsLoading || Boolean(calendarsError) || readOnly
+                }
                 onSelect={(value) => {
                   const match = calendarOptions.find(
                     (calendar) => calendarOptionValue(calendar) === value,
                   );
                   if (!match) return;
+                  if (isCreate) {
+                    createOperationKey.current = createEditorOperationKey();
+                  } else {
+                    updateOperationKey.current = createEditorOperationKey();
+                  }
                   setForm((prev) => ({
                     ...prev,
                     calendarId: match.calendarId,
@@ -880,6 +1127,7 @@ export function EventEditorDrawer({
               <EventEditorNotes
                 mode={mode}
                 value={form.notes}
+                disabled={readOnly}
                 onChange={(value) => updateForm("notes", value)}
                 placeholder={t("eventEditor.notesPlaceholder", {
                   defaultValue: "Notes",
@@ -887,6 +1135,16 @@ export function EventEditorDrawer({
               />
             </div>
           </div>
+
+          {!isCreate && !readOnly && deleteUnavailableReason ? (
+            <p
+              className="px-5 pb-1 text-xs leading-5 text-muted"
+              role="note"
+              data-testid="event-editor-delete-unavailable"
+            >
+              {deleteUnavailableReason}
+            </p>
+          ) : null}
 
           <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
             <div className="flex flex-wrap items-center gap-2">
@@ -909,21 +1167,33 @@ export function EventEditorDrawer({
               {!isCreate ? (
                 <EventEditorActionButton
                   agentId={`event-${mode}-delete`}
-                  label="Delete event"
-                  description="Delete this calendar event"
+                  label={
+                    declinesInvitation ? "Decline invitation" : "Delete event"
+                  }
+                  description={
+                    declinesInvitation
+                      ? "Decline this calendar invitation"
+                      : "Delete this calendar event"
+                  }
                   variant="surfaceDestructive"
                   size="sm"
                   className="h-8 w-8 p-0"
-                  disabled={deleting || saving}
+                  disabled={deleting || saving || !deleteCapable}
                   onClick={() => setConfirmDeleteOpen(true)}
                 >
                   {deleting ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                  ) : declinesInvitation ? (
+                    <X className="h-3.5 w-3.5" aria-hidden />
                   ) : (
                     <Trash2 className="h-3.5 w-3.5" aria-hidden />
                   )}
                   <span className="sr-only">
-                    {t("common.delete", { defaultValue: "Delete" })}
+                    {declinesInvitation
+                      ? t("eventEditor.declineInvitation", {
+                          defaultValue: "Decline invitation",
+                        })
+                      : t("common.delete", { defaultValue: "Delete" })}
                   </span>
                 </EventEditorActionButton>
               ) : null}
@@ -944,49 +1214,59 @@ export function EventEditorDrawer({
                   {t("common.cancel", { defaultValue: "Cancel" })}
                 </span>
               </EventEditorActionButton>
-              <EventEditorActionButton
-                agentId={`event-${mode}-save-continue`}
-                label="Save and continue"
-                description="Save the event and keep the editor open"
-                variant="outline"
-                size="sm"
-                className="h-8 w-8 p-0"
-                disabled={saving || !form.title.trim()}
-                onClick={() => void handleSave({ keepOpen: true })}
-              >
-                {saving ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-                ) : (
-                  <Save className="h-3.5 w-3.5" aria-hidden />
-                )}
-                <span className="sr-only">
-                  {saving
-                    ? primaryActionLoadingLabel
-                    : t("eventEditor.saveAndContinue", {
-                        defaultValue: "Save and continue",
-                      })}
-                </span>
-              </EventEditorActionButton>
-              <EventEditorActionButton
-                agentId={`event-${mode}-save`}
-                label={isCreate ? "Create event" : "Save event"}
-                description="Save the calendar event and close the editor"
-                size="sm"
-                className="h-8 w-8 p-0"
-                disabled={saving || !form.title.trim()}
-                onClick={() => void handleSave()}
-              >
-                {saving ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-                ) : isCreate ? (
-                  <Plus className="h-3.5 w-3.5" aria-hidden />
-                ) : (
-                  <Check className="h-3.5 w-3.5" aria-hidden />
-                )}
-                <span className="sr-only">
-                  {saving ? primaryActionLoadingLabel : primaryActionLabel}
-                </span>
-              </EventEditorActionButton>
+              {!readOnly ? (
+                <>
+                  <EventEditorActionButton
+                    agentId={`event-${mode}-save-continue`}
+                    label="Save and continue"
+                    description="Save the event and keep the editor open"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 w-8 p-0"
+                    disabled={saving || !form.title.trim() || !calendarReady}
+                    onClick={() => void handleSave({ keepOpen: true })}
+                  >
+                    {saving ? (
+                      <Loader2
+                        className="h-3.5 w-3.5 animate-spin"
+                        aria-hidden
+                      />
+                    ) : (
+                      <Save className="h-3.5 w-3.5" aria-hidden />
+                    )}
+                    <span className="sr-only">
+                      {saving
+                        ? primaryActionLoadingLabel
+                        : t("eventEditor.saveAndContinue", {
+                            defaultValue: "Save and continue",
+                          })}
+                    </span>
+                  </EventEditorActionButton>
+                  <EventEditorActionButton
+                    agentId={`event-${mode}-save`}
+                    label={isCreate ? "Create event" : "Save event"}
+                    description="Save the calendar event and close the editor"
+                    size="sm"
+                    className="h-8 w-8 p-0"
+                    disabled={saving || !form.title.trim() || !calendarReady}
+                    onClick={() => void handleSave()}
+                  >
+                    {saving ? (
+                      <Loader2
+                        className="h-3.5 w-3.5 animate-spin"
+                        aria-hidden
+                      />
+                    ) : isCreate ? (
+                      <Plus className="h-3.5 w-3.5" aria-hidden />
+                    ) : (
+                      <Check className="h-3.5 w-3.5" aria-hidden />
+                    )}
+                    <span className="sr-only">
+                      {saving ? primaryActionLoadingLabel : primaryActionLabel}
+                    </span>
+                  </EventEditorActionButton>
+                </>
+              ) : null}
             </div>
           </div>
         </DialogContent>
@@ -994,16 +1274,35 @@ export function EventEditorDrawer({
 
       <ConfirmDialog
         open={confirmDeleteOpen}
-        title={t("eventEditor.confirmDeleteTitle", {
-          defaultValue: "Delete event?",
-        })}
-        message={t("eventEditor.confirmDeleteDescription", {
-          defaultValue:
-            "This will delete the event from your calendar. This cannot be undone.",
-        })}
-        confirmLabel={t("common.delete", { defaultValue: "Delete" })}
+        title={
+          declinesInvitation
+            ? t("eventEditor.confirmDeclineTitle", {
+                defaultValue: "Decline invitation?",
+              })
+            : t("eventEditor.confirmDeleteTitle", {
+                defaultValue: "Delete event?",
+              })
+        }
+        message={
+          declinesInvitation
+            ? t("eventEditor.confirmDeclineDescription", {
+                defaultValue:
+                  "Your response will change to declined. This does not delete the organizer's event.",
+              })
+            : t("eventEditor.confirmDeleteDescription", {
+                defaultValue:
+                  "This will delete the event from your calendar. This cannot be undone.",
+              })
+        }
+        confirmLabel={
+          declinesInvitation
+            ? t("eventEditor.declineInvitation", {
+                defaultValue: "Decline invitation",
+              })
+            : t("common.delete", { defaultValue: "Delete" })
+        }
         cancelLabel={t("common.cancel", { defaultValue: "Cancel" })}
-        variant="danger"
+        variant={declinesInvitation ? "warn" : "danger"}
         onConfirm={() => void handleDelete()}
         onCancel={() => setConfirmDeleteOpen(false)}
       />

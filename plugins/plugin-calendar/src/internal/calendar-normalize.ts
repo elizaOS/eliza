@@ -354,7 +354,10 @@ export function buildNextCalendarEventContext(
   linkedMail: LifeOpsGmailMessageSummary[] = [],
   linkedMailState: "unavailable" | "cache" | "synced" | "error" = "unavailable",
   linkedMailError: string | null = null,
-): LifeOpsNextCalendarEventContext {
+): Omit<
+  LifeOpsNextCalendarEventContext,
+  "calendarFeedState" | "calendarSources"
+> {
   if (!event) {
     return {
       event: null,

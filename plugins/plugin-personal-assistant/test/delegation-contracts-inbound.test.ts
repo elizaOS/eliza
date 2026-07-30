@@ -67,6 +67,7 @@ class TestApprovalQueue implements ApprovalQueue {
       payload: input.payload,
       channel: input.channel,
       reason: input.reason,
+      idempotencyKey: input.idempotencyKey ?? null,
       expiresAt: input.expiresAt,
       resolvedAt: null,
       resolvedBy: null,
@@ -75,6 +76,10 @@ class TestApprovalQueue implements ApprovalQueue {
     };
     this.requests.push(request);
     return request;
+  }
+
+  async enqueueWithResult(input: ApprovalEnqueueInput) {
+    return { request: await this.enqueue(input), reused: false };
   }
 
   async list(

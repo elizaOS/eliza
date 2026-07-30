@@ -49,6 +49,7 @@ const EXPECTED_CATALOGS = [
   ["third-party-support.catalog.json", "K1", 10],
   ["child-student-deadlines.catalog.json", "L1", 6],
   ["first-run-onboarding.catalog.json", "FR1", 4],
+  ["world-traveling-coparent.catalog.json", "M1", 48],
 ];
 
 // Packs verified under the row-evidence contract (#16941): every `verified`
@@ -57,7 +58,7 @@ const EXPECTED_CATALOGS = [
 // receipt — so a flip to verified is mechanically auditable. Packs verified
 // before the contract keep their prose notes; new verification work joins
 // this set.
-const STRICT_EVIDENCE_PACKS = new Set(["L1", "FR1"]);
+const STRICT_EVIDENCE_PACKS = new Set(["L1", "FR1", "M1"]);
 const STRICT_EVIDENCE_STRING_FIELDS = [
   "model",
   "judge",
@@ -198,6 +199,23 @@ function validateCatalogShape(
   }
   if (!Array.isArray(catalog.scenarios)) {
     errors.push(`${where}: scenarios must be an array`);
+  } else if (expectedPack === "M1") {
+    if (catalog.source?.persona !== "maya_traveling_coparent") {
+      errors.push(`${where}: source.persona must be maya_traveling_coparent`);
+    }
+    if (catalog.scenarios.length !== expectedTarget) {
+      errors.push(
+        `${where}: M1 must contain exactly ${expectedTarget} scenarios`,
+      );
+    }
+    for (let index = 0; index < expectedTarget; index += 1) {
+      const expectedCapabilityId = `G${index + 1}`;
+      if (catalog.scenarios[index]?.capabilityId !== expectedCapabilityId) {
+        errors.push(
+          `${where}: scenarios[${index}].capabilityId=${catalog.scenarios[index]?.capabilityId} expected ${expectedCapabilityId}`,
+        );
+      }
+    }
   }
   return errors;
 }

@@ -162,7 +162,8 @@ type PromptLikePermissionState =
 function statusFromPromptLike(
   value: PromptLikePermissionState,
 ): PermissionStatus {
-  if (value === "granted" || value === "limited") return "granted";
+  if (value === "granted") return "granted";
+  if (value === "limited") return "limited";
   if (value === "denied") return "denied";
   if (value === "not_supported") return "not-applicable";
   return "not-determined";
@@ -436,11 +437,19 @@ function stateFromPushNotifications(
 function stateFromAppleCalendar(
   permissions: AppleCalendarPermissionStatus,
 ): PermissionState {
-  const status =
-    permissions.calendar === "prompt" ? "not-determined" : permissions.calendar;
+  const status: PermissionStatus =
+    permissions.calendar === "prompt"
+      ? "not-determined"
+      : permissions.calendar === "write_only"
+        ? "limited"
+        : permissions.calendar;
   return defaultMobileState("calendar", status, {
     canRequest: permissions.canRequest,
-    reason: permissions.reason ?? undefined,
+    reason:
+      permissions.reason ??
+      (permissions.calendar === "write_only"
+        ? "Add-only access can create events on the default calendar, but cannot read or change existing events."
+        : undefined),
     restrictedReason: status === "restricted" ? "os_policy" : undefined,
   });
 }

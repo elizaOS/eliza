@@ -43,15 +43,31 @@ export type EntityVisibility =
   | "agent_and_admin"
   | "owner_agent_admin";
 
+/** Account partition used by connector identities created before multi-account support. */
+export const DEFAULT_CONNECTOR_ACCOUNT_ID = "default";
+
+/**
+ * Canonical connector-account partition for entity identities. Account ids are
+ * opaque and therefore case-sensitive; only surrounding whitespace is removed.
+ */
+export function normalizeEntityConnectorAccountId(
+  value: string | null | undefined,
+): string {
+  const normalized = value?.trim();
+  return normalized ? normalized : DEFAULT_CONNECTOR_ACCOUNT_ID;
+}
+
 /**
  * Per-connector identity claim. An Entity carries N of these — one per
- * platform handle the runtime has observed or imported. Identity merge
- * collapses two entities when (platform, handle) match and confidence
- * thresholds align.
+ * account-bound platform handle the runtime has observed or imported. Identity
+ * merge collapses two entities only when (platform, connector account, handle)
+ * match and confidence thresholds align.
  */
 export interface EntityIdentity {
   platform: string;
   handle: string;
+  /** Connector account that established and should reuse this reachability. */
+  connectorAccountId?: string;
   displayName?: string;
   /** Operator-confirmed (true) vs auto-merged / observed (false). */
   verified: boolean;
@@ -117,6 +133,8 @@ export interface EntityFilter {
   nameContains?: string;
   /** Match entities that have an identity on this platform. */
   hasPlatform?: string;
+  /** Match identities reachable through this exact connector account. */
+  hasConnectorAccountId?: string;
   limit?: number;
 }
 

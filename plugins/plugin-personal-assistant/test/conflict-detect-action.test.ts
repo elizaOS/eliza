@@ -23,11 +23,10 @@ vi.mock("@elizaos/agent", () => ({
 }));
 
 import {
-  __resetConflictDetectLoaderForTests,
   type ConflictDetectEvent,
+  type ConflictDetectHostAdapter,
   conflictDetectAction,
-  createCalendarFeedConflictLoader,
-  setConflictDetectLoader,
+  registerConflictDetectHostAdapter,
 } from "../src/actions/conflict-detect.js";
 
 function makeRuntime(): IAgentRuntime {
@@ -40,6 +39,16 @@ function makeRuntime(): IAgentRuntime {
       debug: () => undefined,
     },
   } as unknown as IAgentRuntime;
+}
+
+// Loader injection is runtime-scoped: each test binds its stub feed to a fresh
+// runtime via the host-adapter registry, never via process-global state.
+function runtimeWithLoader(
+  loader: ConflictDetectHostAdapter["loader"],
+): IAgentRuntime {
+  const runtime = makeRuntime();
+  registerConflictDetectHostAdapter(runtime, { loader });
+  return runtime;
 }
 
 function makeMessage(text = "any conflicts today?"): Memory {
@@ -91,7 +100,6 @@ const FEED_WITH_OVERLAP: readonly ConflictDetectEvent[] = [
 
 describe("CONFLICT_DETECT umbrella action — proactive calendar scans", () => {
   beforeEach(() => {
-    __resetConflictDetectLoaderForTests();
     mocks.hasOwnerAccess.mockReset().mockResolvedValue(true);
   });
 
@@ -127,11 +135,15 @@ describe("CONFLICT_DETECT umbrella action — proactive calendar scans", () => {
 
   describe("scan_today", () => {
     it("finds overlapping events and marks shared-attendee overlaps as hard", async () => {
-      setConflictDetectLoader({
+      const runtime = runtimeWithLoader({
         loadFeed: async () => FEED_WITH_OVERLAP,
       });
-      const result = await callConflict(makeRuntime(), makeMessage(), {
+      const result = await callConflict(runtime, makeMessage(), {
         subaction: "scan_today",
+        range: {
+          start: "2026-05-11T00:00:00.000Z",
+          end: "2026-05-12T00:00:00.000Z",
+        },
       });
       expect(result.success).toBe(true);
       const data = result.data as {
@@ -152,8 +164,8 @@ describe("CONFLICT_DETECT umbrella action — proactive calendar scans", () => {
     });
 
     it("returns no conflicts when the feed is empty", async () => {
-      setConflictDetectLoader({ loadFeed: async () => [] });
-      const result = await callConflict(makeRuntime(), makeMessage(), {
+      const runtime = runtimeWithLoader({ loadFeed: async () => [] });
+      const result = await callConflict(runtime, makeMessage(), {
         subaction: "scan_today",
       });
       expect(result.success).toBe(true);
@@ -166,13 +178,13 @@ describe("CONFLICT_DETECT umbrella action — proactive calendar scans", () => {
   describe("scan_week", () => {
     it("uses a 7-day range by default", async () => {
       const seen: Array<{ start: string; end: string }> = [];
-      setConflictDetectLoader({
+      const runtime = runtimeWithLoader({
         loadFeed: async ({ range }) => {
           seen.push(range);
           return [];
         },
       });
-      const result = await callConflict(makeRuntime(), makeMessage(), {
+      const result = await callConflict(runtime, makeMessage(), {
         subaction: "scan_week",
       });
       expect(result.success).toBe(true);
@@ -189,8 +201,8 @@ describe("CONFLICT_DETECT umbrella action — proactive calendar scans", () => {
       expect(days).toBeLessThanOrEqual(8.1);
     });
 
-    it("flags warning-only severity for overlap without shared attendees", async () => {
-      setConflictDetectLoader({
+    it("treats confirmed overlap as hard even when provider attendees are absent", async () => {
+      const runtime = runtimeWithLoader({
         loadFeed: async () => [
           {
             id: "evt-1",
@@ -208,19 +220,25 @@ describe("CONFLICT_DETECT umbrella action — proactive calendar scans", () => {
           },
         ],
       });
-      const result = await callConflict(makeRuntime(), makeMessage(), {
+      const result = await callConflict(runtime, makeMessage(), {
         subaction: "scan_week",
+        range: {
+          start: "2026-05-12T00:00:00.000Z",
+          end: "2026-05-13T00:00:00.000Z",
+        },
       });
       const data = result.data as { conflicts: { severity: string }[] };
       expect(data.conflicts).toHaveLength(1);
-      expect(data.conflicts[0]?.severity).toBe("warning");
+      expect(data.conflicts[0]?.severity).toBe("hard");
     });
   });
 
   describe("scan_event_proposal", () => {
     it("compares a proposal against the feed and flags overlaps", async () => {
-      setConflictDetectLoader({ loadFeed: async () => FEED_WITH_OVERLAP });
-      const result = await callConflict(makeRuntime(), makeMessage(), {
+      const runtime = runtimeWithLoader({
+        loadFeed: async () => FEED_WITH_OVERLAP,
+      });
+      const result = await callConflict(runtime, makeMessage(), {
         subaction: "scan_event_proposal",
         proposal: {
           startISO: "2026-05-11T09:15:00.000Z",
@@ -238,8 +256,8 @@ describe("CONFLICT_DETECT umbrella action — proactive calendar scans", () => {
       );
     });
 
-    it("includes attendee free/busy windows in proposal scans", async () => {
-      setConflictDetectLoader({
+    it("includes granted guest free/busy windows in proposal scans", async () => {
+      const runtime = runtimeWithLoader({
         loadFeed: async () => [],
         loadFreeBusy: async () => [
           {
@@ -251,12 +269,13 @@ describe("CONFLICT_DETECT umbrella action — proactive calendar scans", () => {
           },
         ],
       });
-      const result = await callConflict(makeRuntime(), makeMessage(), {
+      const result = await callConflict(runtime, makeMessage(), {
         subaction: "scan_event_proposal",
         proposal: {
           startISO: "2026-05-11T09:00:00.000Z",
           endISO: "2026-05-11T10:00:00.000Z",
           attendees: ["alice@example.com"],
+          guestAvailabilityGrantIds: ["gav_2f4d1f3f6f0b4bd7a2f4f0d9c1b7e3aa"],
         },
       });
       expect(result.success).toBe(true);
@@ -267,7 +286,7 @@ describe("CONFLICT_DETECT umbrella action — proactive calendar scans", () => {
       expect(data.checkedEvents).toBe(1);
       expect(data.conflicts).toHaveLength(1);
       expect(data.conflicts[0]).toMatchObject({
-        eventB: { id: "freebusy-alice-1" },
+        eventB: { id: "private-busy-1", title: "Busy", attendees: [] },
         severity: "hard",
       });
     });
@@ -281,8 +300,10 @@ describe("CONFLICT_DETECT umbrella action — proactive calendar scans", () => {
     });
 
     it("returns no conflicts when the proposal does not overlap anything", async () => {
-      setConflictDetectLoader({ loadFeed: async () => FEED_WITH_OVERLAP });
-      const result = await callConflict(makeRuntime(), makeMessage(), {
+      const runtime = runtimeWithLoader({
+        loadFeed: async () => FEED_WITH_OVERLAP,
+      });
+      const result = await callConflict(runtime, makeMessage(), {
         subaction: "scan_event_proposal",
         proposal: {
           startISO: "2026-05-11T22:00:00.000Z",
@@ -323,7 +344,7 @@ describe("CONFLICT_DETECT umbrella action — proactive calendar scans", () => {
 
   describe("overlap semantics", () => {
     it("reports every pair of a 3-way overlap", async () => {
-      setConflictDetectLoader({
+      const runtime = runtimeWithLoader({
         loadFeed: async () => [
           {
             id: "evt-1",
@@ -348,7 +369,7 @@ describe("CONFLICT_DETECT umbrella action — proactive calendar scans", () => {
           },
         ],
       });
-      const result = await callConflict(makeRuntime(), makeMessage(), {
+      const result = await callConflict(runtime, makeMessage(), {
         subaction: "scan_today",
         range: {
           start: "2026-05-13T00:00:00.000Z",
@@ -372,7 +393,7 @@ describe("CONFLICT_DETECT umbrella action — proactive calendar scans", () => {
     });
 
     it("treats back-to-back events as non-conflicting", async () => {
-      setConflictDetectLoader({
+      const runtime = runtimeWithLoader({
         loadFeed: async () => [
           {
             id: "evt-morning",
@@ -390,7 +411,7 @@ describe("CONFLICT_DETECT umbrella action — proactive calendar scans", () => {
           },
         ],
       });
-      const result = await callConflict(makeRuntime(), makeMessage(), {
+      const result = await callConflict(runtime, makeMessage(), {
         subaction: "scan_today",
         range: {
           start: "2026-05-13T00:00:00.000Z",
@@ -404,7 +425,9 @@ describe("CONFLICT_DETECT umbrella action — proactive calendar scans", () => {
     });
   });
 
-  describe("createCalendarFeedConflictLoader (real CalendarService feed)", () => {
+  // No loader is registered for these runtimes, so the action falls through to
+  // its production tier: the CalendarService-backed feed loader.
+  describe("production CalendarService feed loader (default tier)", () => {
     type StubEvent = {
       id: string;
       title: string;
@@ -412,11 +435,12 @@ describe("CONFLICT_DETECT umbrella action — proactive calendar scans", () => {
       endAt: string;
       isAllDay: boolean;
       attendees: { email: string | null }[];
+      metadata?: Record<string, unknown>;
     };
 
     function makeRuntimeWithFeed(
       events: readonly StubEvent[],
-      calls: { timeMin?: string; timeMax?: string }[] = [],
+      calls: { side?: string; timeMin?: string; timeMax?: string }[] = [],
     ): IAgentRuntime {
       return {
         agentId: "agent-conflict-test" as UUID,
@@ -429,17 +453,32 @@ describe("CONFLICT_DETECT umbrella action — proactive calendar scans", () => {
         getService: () => ({
           getCalendarFeed: async (
             _url: URL,
-            request: { timeMin?: string; timeMax?: string },
+            request: {
+              side?: string;
+              timeMin?: string;
+              timeMax?: string;
+            },
           ) => {
             calls.push(request);
-            return { events };
+            return {
+              events: events.map((event) => ({
+                ...event,
+                metadata: event.metadata ?? {},
+              })),
+              source: "synced",
+              syncedAt: "2026-05-20T00:00:00.000Z",
+            };
           },
         }),
       } as unknown as IAgentRuntime;
     }
 
     it("detects a seeded 2-event overlap end-to-end through the handler", async () => {
-      const calls: { timeMin?: string; timeMax?: string }[] = [];
+      const calls: {
+        side?: string;
+        timeMin?: string;
+        timeMax?: string;
+      }[] = [];
       const runtime = makeRuntimeWithFeed(
         [
           {
@@ -461,7 +500,6 @@ describe("CONFLICT_DETECT umbrella action — proactive calendar scans", () => {
         ],
         calls,
       );
-      setConflictDetectLoader(createCalendarFeedConflictLoader());
       const range = {
         start: "2026-05-20T00:00:00.000Z",
         end: "2026-05-20T23:59:59.999Z",
@@ -472,7 +510,9 @@ describe("CONFLICT_DETECT umbrella action — proactive calendar scans", () => {
       });
       expect(result.success).toBe(true);
       // The scan window is forwarded to the calendar read.
-      expect(calls).toEqual([{ timeMin: range.start, timeMax: range.end }]);
+      expect(calls).toEqual([
+        { side: "owner", timeMin: range.start, timeMax: range.end },
+      ]);
       const data = result.data as {
         conflicts: {
           eventA: { id: string };
@@ -490,7 +530,7 @@ describe("CONFLICT_DETECT umbrella action — proactive calendar scans", () => {
       expect(data.conflicts[0]?.severity).toBe("hard");
     });
 
-    it("excludes all-day events so they never fabricate conflicts", async () => {
+    it("ignores transparent all-day annotations without discarding opaque all-day commitments", async () => {
       const runtime = makeRuntimeWithFeed([
         {
           id: "evt-holiday",
@@ -499,6 +539,7 @@ describe("CONFLICT_DETECT umbrella action — proactive calendar scans", () => {
           endAt: "2026-05-21T00:00:00.000Z",
           isAllDay: true,
           attendees: [],
+          metadata: { transparency: "transparent" },
         },
         {
           id: "evt-call",
@@ -509,9 +550,12 @@ describe("CONFLICT_DETECT umbrella action — proactive calendar scans", () => {
           attendees: [],
         },
       ]);
-      setConflictDetectLoader(createCalendarFeedConflictLoader());
       const result = await callConflict(runtime, makeMessage(), {
         subaction: "scan_today",
+        range: {
+          start: "2026-05-20T00:00:00.000Z",
+          end: "2026-05-21T00:00:00.000Z",
+        },
       });
       expect(result.success).toBe(true);
       const data = result.data as {
@@ -533,7 +577,6 @@ describe("CONFLICT_DETECT umbrella action — proactive calendar scans", () => {
         },
         getService: () => null,
       } as unknown as IAgentRuntime;
-      setConflictDetectLoader(createCalendarFeedConflictLoader());
       const result = await callConflict(runtime, makeMessage(), {
         subaction: "scan_today",
       });
@@ -557,7 +600,6 @@ describe("CONFLICT_DETECT umbrella action — proactive calendar scans", () => {
           },
         }),
       } as unknown as IAgentRuntime;
-      setConflictDetectLoader(createCalendarFeedConflictLoader());
       const result = await callConflict(runtime, makeMessage(), {
         subaction: "scan_week",
       });

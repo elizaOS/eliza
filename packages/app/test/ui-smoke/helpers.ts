@@ -3246,6 +3246,129 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     });
   });
 
+  let calendarSourceSummaries = [
+    {
+      provider: "google",
+      side: "owner",
+      grantId: "smoke-google-owner",
+      connectorAccountId: "smoke-google-account",
+      accountEmail: "owner@example.com",
+      calendarId: "primary",
+      summary: "Primary",
+      description: null,
+      primary: true,
+      accessRole: "owner",
+      backgroundColor: null,
+      foregroundColor: null,
+      timeZone: "America/Los_Angeles",
+      selected: true,
+      includeInFeed: true,
+    },
+    {
+      provider: "google",
+      side: "owner",
+      grantId: "smoke-google-owner",
+      connectorAccountId: "smoke-google-account",
+      accountEmail: "owner@example.com",
+      calendarId: "family",
+      summary: "Family",
+      description: null,
+      primary: false,
+      accessRole: "writer",
+      backgroundColor: null,
+      foregroundColor: null,
+      timeZone: "America/Los_Angeles",
+      selected: true,
+      includeInFeed: false,
+    },
+    {
+      provider: "microsoft",
+      side: "owner",
+      grantId: "smoke-microsoft-owner",
+      connectorAccountId: "smoke-microsoft-account",
+      accountEmail: "travel@example.com",
+      calendarId: "travel",
+      summary: "Travel",
+      description: null,
+      primary: false,
+      accessRole: "reader",
+      backgroundColor: null,
+      foregroundColor: null,
+      timeZone: "America/Los_Angeles",
+      selected: true,
+      includeInFeed: true,
+    },
+  ];
+
+  await page.route("**/api/lifeops/calendar/calendars**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (
+      request.method() === "GET" &&
+      url.pathname === "/api/lifeops/calendar/calendars"
+    ) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ calendars: calendarSourceSummaries }),
+      });
+      return;
+    }
+
+    const includeMatch = url.pathname.match(
+      /^\/api\/lifeops\/calendar\/calendars\/([^/]+)\/include$/,
+    );
+    if (request.method() === "PUT" && includeMatch) {
+      const body: unknown = request.postDataJSON();
+      if (
+        typeof body !== "object" ||
+        body === null ||
+        !("calendarId" in body) ||
+        !("grantId" in body) ||
+        !("includeInFeed" in body) ||
+        typeof body.calendarId !== "string" ||
+        typeof body.grantId !== "string" ||
+        typeof body.includeInFeed !== "boolean"
+      ) {
+        await route.fulfill({
+          status: 400,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Invalid calendar source request" }),
+        });
+        return;
+      }
+      const index = calendarSourceSummaries.findIndex(
+        (calendar) =>
+          calendar.calendarId === body.calendarId &&
+          calendar.grantId === body.grantId,
+      );
+      if (index < 0) {
+        await route.fulfill({
+          status: 404,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Calendar source not found" }),
+        });
+        return;
+      }
+      const updated = {
+        ...calendarSourceSummaries[index],
+        includeInFeed: body.includeInFeed,
+      };
+      calendarSourceSummaries = calendarSourceSummaries.map(
+        (calendar, calendarIndex) =>
+          calendarIndex === index ? updated : calendar,
+      );
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ calendar: updated }),
+      });
+      return;
+    }
+
+    await route.fallback();
+  });
+
   await page.route("**/api/lifeops/calendar/feed**", async (route) => {
     const request = route.request();
     if (request.method() !== "GET") {
@@ -3260,6 +3383,7 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     // Place the first event at 09:00 local on the window's first day; the helper
     // is reused across desktop + mobile (agenda) layouts.
     const windowStart = new Date(timeMin);
+    const syncedAt = new Date().toISOString();
     const at = (dayOffset: number, hour: number) => {
       const d = new Date(windowStart);
       d.setDate(d.getDate() + dayOffset);
@@ -3305,6 +3429,24 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
           smokeEvent("smoke-evt-2", "Standup", at(1, 11), at(1, 12)),
         ],
         source: "cache",
+        state: "complete",
+        sources: [
+          {
+            key: {
+              provider: "google",
+              side: "owner",
+              grantId: "smoke-google-owner",
+              connectorAccountId: "smoke-google-account",
+              calendarId: "primary",
+            },
+            summary: "Primary",
+            accessRole: "owner",
+            visibility: "details",
+            status: "fresh",
+            syncedAt,
+            error: null,
+          },
+        ],
         timeMin,
         timeMax,
         syncedAt: null,

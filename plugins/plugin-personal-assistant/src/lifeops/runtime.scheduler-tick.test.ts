@@ -16,6 +16,20 @@ const scheduledWorkFixture = vi.hoisted(() => ({
   scheduledTaskCompletionTimeouts: [],
   subsystemFailures: [{ subsystem: "reminders", error: "reminders down" }],
 }));
+const householdFixture = vi.hoisted(() => ({
+  reconcileGrantExpiryWarnings: vi.fn(async () => [
+    {
+      outcome: "ready" as const,
+      grantId: "grant-1",
+      scheduledTaskId: "task-1",
+      taskState: "scheduled" as const,
+      warningAt: "2026-07-02T12:00:00.000Z",
+      expiresAt: "2026-07-03T12:00:00.000Z",
+      deduplicated: true,
+      autoExtend: false as const,
+    },
+  ]),
+}));
 
 vi.mock("./scheduler-task.js", () => ({
   ensureLifeOpsSchedulerTask: vi.fn(),
@@ -39,6 +53,11 @@ vi.mock("./service.js", () => ({
 
 vi.mock("./intent-sync.js", () => ({
   escalateUnacknowledgedIntents: vi.fn(async () => ({ escalated: 0 })),
+}));
+
+vi.mock("./household/service.js", () => ({
+  createHouseholdCoordinationService: vi.fn(() => householdFixture),
+  getHouseholdCoordinationService: vi.fn(() => householdFixture),
 }));
 
 const AGENT_ID = "00000000-0000-0000-0000-0000000000ee" as UUID;
@@ -77,6 +96,9 @@ describe("executeLifeOpsSchedulerTask", () => {
     const result = await executeLifeOpsSchedulerTask(runtime);
     expect(result.subsystemFailures).toEqual([
       { subsystem: "reminders", error: "reminders down" },
+    ]);
+    expect(result.householdGrantWarningReceipts).toEqual([
+      expect.objectContaining({ outcome: "ready", grantId: "grant-1" }),
     ]);
     expect(result.nextInterval).toBe(resolveLifeOpsTaskIntervalMs(AGENT_ID));
     expect(result.now).toBe(scheduledWorkFixture.now);

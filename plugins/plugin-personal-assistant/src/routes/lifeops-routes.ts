@@ -27,6 +27,10 @@ import {
   requireConfirmation,
   type UUID,
 } from "@elizaos/core";
+import {
+  CALENDAR_OWNER_MUTATION_GATEWAY_SERVICE,
+  type CalendarOwnerMutationGateway,
+} from "@elizaos/plugin-calendar";
 import { handleCalendarRoutes } from "@elizaos/plugin-calendar/routes/calendar-routes";
 import {
   LIFEOPS_SCHEDULE_STATE_SCOPES,
@@ -997,6 +1001,29 @@ export async function handleLifeOpsRoutes(
   ctx: LifeOpsRouteContext,
 ): Promise<boolean> {
   const { req, res, method, pathname, url, json, readJsonBody } = ctx;
+  const isMutationGateway = (
+    value: unknown,
+  ): value is CalendarOwnerMutationGateway =>
+    typeof value === "object" &&
+    value !== null &&
+    "create" in value &&
+    typeof value.create === "function" &&
+    "update" in value &&
+    typeof value.update === "function" &&
+    "cancel" in value &&
+    typeof value.cancel === "function";
+  const mutationGateway = (): CalendarOwnerMutationGateway => {
+    const gateway = ctx.state.runtime?.getService(
+      CALENDAR_OWNER_MUTATION_GATEWAY_SERVICE,
+    );
+    if (!isMutationGateway(gateway)) {
+      throw new LifeOpsServiceError(
+        503,
+        "Calendar writes require the owner approval and durable mutation gateway.",
+      );
+    }
+    return gateway;
+  };
 
   // Calendar routes are owned by @elizaos/plugin-calendar; the path -> service
   // mapping lives there. We inject LifeOps' HTTP plumbing so the calendar plugin
@@ -1022,6 +1049,14 @@ export async function handleLifeOpsRoutes(
       parseBoolean: (value, field) => parseBooleanQuery(value, field),
       serviceError: (status, message) =>
         new LifeOpsServiceError(status, message),
+      mutationGateway: {
+        create: (requestUrl, request) =>
+          mutationGateway().create(requestUrl, request),
+        update: (requestUrl, request) =>
+          mutationGateway().update(requestUrl, request),
+        cancel: (requestUrl, request) =>
+          mutationGateway().cancel(requestUrl, request),
+      },
     })
   ) {
     return true;

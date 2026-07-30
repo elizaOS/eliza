@@ -15,6 +15,10 @@ import {
 function bridge(overrides = {}) {
   return {
     platform: "darwin",
+    checkPermissions: vi.fn(async () => ({
+      calendar: "granted",
+      canRequest: false,
+    })),
     listCalendars: vi.fn(async () => ({ ok: true, calendars: [] })),
     listEvents: vi.fn(async () => ({ ok: true, events: [] })),
     createEvent: vi.fn(async () => ({
@@ -94,6 +98,7 @@ describe("listNativeAppleCalendars", () => {
       calendarId: "cal-1",
       summary: "Home",
       includeInFeed: true,
+      selectionVersion: 0,
     });
   });
 });
@@ -111,6 +116,7 @@ describe("getNativeAppleCalendarFeed", () => {
               calendarId: "cal-1",
               calendarSummary: "Home",
               title: "Dentist",
+              availability: "free",
               startAt: "2026-05-12T17:00:00.000Z",
               endAt: "2026-05-12T18:00:00.000Z",
               attendees: [],
@@ -135,11 +141,113 @@ describe("getNativeAppleCalendarFeed", () => {
       externalId: "event-1",
       calendarId: "cal-1",
       title: "Dentist",
+      metadata: {
+        appleCalendar: true,
+        appleAvailability: "free",
+        transparency: "transparent",
+      },
+    });
+    expect(result.data.sources[0]).toMatchObject({
+      accessRole: "writer",
+      visibility: "details",
     });
   });
 });
 
 describe("createNativeAppleCalendarEvent", () => {
+  it("preserves the exact writable calendar id through a full-access create receipt", async () => {
+    const createEvent = vi.fn(async () => ({
+      ok: true,
+      event: {
+        id: "event-1",
+        externalId: "event-1",
+        calendarId: "eventkit-default-calendar-id",
+        title: "Dentist",
+        startAt: "2026-05-12T17:00:00.000Z",
+        endAt: "2026-05-12T18:00:00.000Z",
+        attendees: [],
+      },
+      receipt: {
+        accessLevel: "full_access",
+        destination: "resolved_calendar",
+        eventId: "event-1",
+        readBackAvailable: true,
+      },
+    }));
+    __testing.setNativeCalendarBridgeForTest(bridge({ createEvent }) as never);
+
+    const result = await createNativeAppleCalendarEvent({
+      agentId: "agent-1",
+      request: {
+        calendarId: "eventkit-default-calendar-id",
+        title: "Dentist",
+        startAt: "2026-05-12T17:00:00.000Z",
+        endAt: "2026-05-12T18:00:00.000Z",
+      },
+    });
+
+    expect(createEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        calendarId: "eventkit-default-calendar-id",
+      }),
+    );
+    expect(result).toMatchObject({
+      ok: true,
+      data: {
+        kind: "event",
+        event: {
+          provider: "apple_calendar",
+          calendarId: "eventkit-default-calendar-id",
+          externalId: "event-1",
+        },
+      },
+    });
+  });
+
+  it("returns an explicit non-readable receipt for add-only access", async () => {
+    __testing.setNativeCalendarBridgeForTest(
+      bridge({
+        checkPermissions: vi.fn(async () => ({
+          calendar: "write_only",
+          canRequest: false,
+        })),
+        createEvent: vi.fn(async () => ({
+          ok: true,
+          receipt: {
+            accessLevel: "write_only",
+            destination: "default_calendar",
+            eventId: null,
+            readBackAvailable: false,
+          },
+        })),
+      }) as never,
+    );
+
+    const result = await createNativeAppleCalendarEvent({
+      agentId: "agent-1",
+      request: {
+        calendarId: "primary",
+        title: "Dentist",
+        startAt: "2026-05-12T17:00:00.000Z",
+        endAt: "2026-05-12T18:00:00.000Z",
+      },
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      data: {
+        kind: "accepted_without_readback",
+        receipt: {
+          provider: "apple_calendar",
+          calendarId: "primary",
+          accessLevel: "write_only",
+          providerEventId: null,
+          readBackAvailable: false,
+        },
+      },
+    });
+  });
+
   it("records a calendar permission block on native permission denial", async () => {
     __testing.setNativeCalendarBridgeForTest(
       bridge({

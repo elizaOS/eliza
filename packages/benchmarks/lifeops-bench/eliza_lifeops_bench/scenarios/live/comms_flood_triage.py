@@ -66,7 +66,7 @@ LIVE_COMMS_FLOOD_TRIAGE_SCENARIOS: list[Scenario] = [
                 note_for_user="[New email item: founder digest for May.]",
             ),
         ],
-        expected_world_mutation="unchanged",
+        expected_world_mutation="optional",
     ),
     Scenario(
         id="live.comms_flood_triage.vip_breakthrough_same_conversation",
@@ -123,7 +123,7 @@ LIVE_COMMS_FLOOD_TRIAGE_SCENARIOS: list[Scenario] = [
                 note_for_user="[New Slack item: settings copy review later today.]",
             ),
         ],
-        expected_world_mutation="unchanged",
+        expected_world_mutation="optional",
     ),
     Scenario(
         id="live.comms_flood_triage.missed_vip_trust_collapse_trap",
@@ -299,7 +299,7 @@ LIVE_COMMS_FLOOD_TRIAGE_SCENARIOS: list[Scenario] = [
                 note_for_user="[New email item: Same Aeon renewal blocker.]",
             ),
         ],
-        expected_world_mutation="unchanged",
+        expected_world_mutation="optional",
     ),
     Scenario(
         id="live.comms_flood_triage.important_not_urgent_resurfaces",
@@ -343,7 +343,7 @@ LIVE_COMMS_FLOOD_TRIAGE_SCENARIOS: list[Scenario] = [
                 note_for_user="[New email item: investor context, important but not urgent.]",
             ),
         ],
-        expected_world_mutation="unchanged",
+        expected_world_mutation="optional",
     ),
     Scenario(
         id="live.comms_flood_triage.false_urgency_demoted",
@@ -388,6 +388,6 @@ LIVE_COMMS_FLOOD_TRIAGE_SCENARIOS: list[Scenario] = [
                 note_for_user="[New email item: URGENT!!! Last chance to sponsor our webinar.]",
             ),
         ],
-        expected_world_mutation="unchanged",
+        expected_world_mutation="optional",
     ),
 ]

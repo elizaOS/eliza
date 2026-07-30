@@ -29,6 +29,7 @@ function createJudgedRuntime(scoreByRubricMarker: Record<string, number>) {
   });
   return {
     actions: [],
+    plugins: [],
     routes: [],
     ensureConnection: vi.fn(async () => undefined),
     getService: vi.fn(() => null),

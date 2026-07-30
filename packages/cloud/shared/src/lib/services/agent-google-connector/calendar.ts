@@ -1,4 +1,8 @@
-// Coordinates cloud service calendar behavior behind route handlers.
+/**
+ * Coordinates managed Google Calendar reads and mutations behind cloud route
+ * handlers, including compatible IANA local-time normalization at the service
+ * boundary.
+ */
 import { applyTimeZone } from "../../utils/google-mcp-shared";
 import type { OAuthConnectionRole } from "../oauth/types";
 import {
@@ -66,17 +70,20 @@ type GoogleCalendarListApiEntry = {
   hidden?: boolean;
 };
 
-function getZonedDateParts(
-  date: Date,
-  timeZone: string,
-): {
+type LocalDateTimeParts = {
   year: number;
   month: number;
   day: number;
   hour: number;
   minute: number;
   second: number;
-} {
+};
+
+const MINUTE_MS = 60_000;
+const HOUR_MS = 60 * MINUTE_MS;
+const OFFSET_SAMPLE_HOURS = [-48, -36, -24, -12, 0, 12, 24, 36, 48];
+
+function getZonedDateParts(date: Date, timeZone: string): LocalDateTimeParts {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone,
     hour12: false,
@@ -125,43 +132,60 @@ function getTimeZoneOffsetMinutes(date: Date, timeZone: string): number {
   return sign * (Number(match[2]) * 60 + Number(match[3] ?? "0"));
 }
 
-function localPartsToEpochMs(parts: {
-  year: number;
-  month: number;
-  day: number;
-  hour: number;
-  minute: number;
-  second: number;
-}): number {
+function localPartsToEpochMs(parts: LocalDateTimeParts): number {
   return Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);
 }
 
-function buildUtcDateFromLocalParts(
-  timeZone: string,
-  parts: {
-    year: number;
-    month: number;
-    day: number;
-    hour: number;
-    minute: number;
-    second: number;
-  },
-): Date {
+function sameZonedParts(left: LocalDateTimeParts, right: LocalDateTimeParts): boolean {
+  return (
+    left.year === right.year &&
+    left.month === right.month &&
+    left.day === right.day &&
+    left.hour === right.hour &&
+    left.minute === right.minute &&
+    left.second === right.second
+  );
+}
+
+/**
+ * Resolves local calendar parts with Temporal-compatible disambiguation.
+ */
+export function buildUtcDateFromLocalParts(timeZone: string, parts: LocalDateTimeParts): Date {
   const baseUtcMs = localPartsToEpochMs(parts);
-  let candidate = new Date(baseUtcMs);
-  for (let index = 0; index < 6; index += 1) {
-    const offsetMinutes = getTimeZoneOffsetMinutes(candidate, timeZone);
-    const adjusted = new Date(baseUtcMs - offsetMinutes * 60_000);
-    const actualParts = getZonedDateParts(adjusted, timeZone);
-    const deltaMinutes = Math.round(
-      (localPartsToEpochMs(parts) - localPartsToEpochMs(actualParts)) / 60_000,
-    );
-    if (deltaMinutes === 0) {
-      return adjusted;
-    }
-    candidate = new Date(adjusted.getTime() + deltaMinutes * 60_000);
+  const offsets = new Set(
+    OFFSET_SAMPLE_HOURS.map((hours) =>
+      getTimeZoneOffsetMinutes(new Date(baseUtcMs + hours * HOUR_MS), timeZone),
+    ),
+  );
+  const candidates = [...offsets].map(
+    (offsetMinutes) => new Date(baseUtcMs - offsetMinutes * MINUTE_MS),
+  );
+  const exact = candidates
+    .filter((candidate) => sameZonedParts(getZonedDateParts(candidate, timeZone), parts))
+    .sort((left, right) => left.getTime() - right.getTime());
+  if (exact[0]) {
+    // Compatible disambiguation selects the earlier instant during a repeat.
+    return exact[0];
   }
-  return candidate;
+
+  const shiftedForward = candidates
+    .map((candidate) => ({
+      candidate,
+      wallDeltaMs: localPartsToEpochMs(getZonedDateParts(candidate, timeZone)) - baseUtcMs,
+    }))
+    .filter(({ wallDeltaMs }) => wallDeltaMs > 0)
+    .sort(
+      (left, right) =>
+        left.wallDeltaMs - right.wallDeltaMs ||
+        left.candidate.getTime() - right.candidate.getTime(),
+    );
+  if (shiftedForward[0]) {
+    // Compatible disambiguation advances a nonexistent wall time by the gap,
+    // including jurisdictions that skip an entire local calendar date.
+    return shiftedForward[0].candidate;
+  }
+
+  throw new RangeError(`Local date-time cannot be resolved in timezone ${timeZone}`);
 }
 
 function normalizeGoogleDateOnly(

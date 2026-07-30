@@ -6,14 +6,25 @@
  */
 export type AppleCalendarPermissionState =
   | "granted"
+  | "write_only"
   | "denied"
   | "prompt"
   | "restricted";
+
+export type AppleCalendarRequestedAccess = "full_access" | "write_only";
 
 export interface AppleCalendarPermissionStatus {
   calendar: AppleCalendarPermissionState;
   canRequest: boolean;
   reason?: string | null;
+}
+
+export interface AppleCalendarPermissionRequest {
+  /**
+   * Defaults to full access for compatibility. iOS versions before 17 use the
+   * legacy request API, which grants full access when approved.
+   */
+  access?: AppleCalendarRequestedAccess;
 }
 
 export interface AppleCalendarSummary {
@@ -37,6 +48,14 @@ export interface AppleCalendarAttendee {
   optional: boolean;
 }
 
+export type AppleCalendarAvailability =
+  | "not_supported"
+  | "busy"
+  | "free"
+  | "tentative"
+  | "unavailable"
+  | "unknown";
+
 export interface AppleCalendarEvent {
   id: string;
   externalId: string;
@@ -46,6 +65,7 @@ export interface AppleCalendarEvent {
   description: string;
   location: string;
   status: string;
+  availability: AppleCalendarAvailability;
   startAt: string;
   endAt: string;
   isAllDay: boolean;
@@ -74,6 +94,28 @@ export interface AppleCalendarEventResult extends AppleCalendarBaseResult {
   event?: AppleCalendarEvent;
 }
 
+export type AppleCalendarCreateReceipt =
+  | {
+      accessLevel: "write_only";
+      destination: "default_calendar";
+      /**
+       * EventKit cannot read back even an event this app just saved under
+       * write-only authorization.
+       */
+      eventId: null;
+      readBackAvailable: false;
+    }
+  | {
+      accessLevel: "full_access";
+      destination: "resolved_calendar";
+      eventId: string;
+      readBackAvailable: true;
+    };
+
+export interface AppleCalendarCreateResult extends AppleCalendarEventResult {
+  receipt?: AppleCalendarCreateReceipt;
+}
+
 export interface AppleCalendarListEventsOptions {
   calendarId?: string | null;
   timeMin: string;
@@ -81,6 +123,23 @@ export interface AppleCalendarListEventsOptions {
 }
 
 export interface AppleCalendarEventInput {
+  calendarId?: string;
+  title: string;
+  description?: string;
+  location?: string;
+  startAt: string;
+  endAt: string;
+  timeZone?: string;
+  isAllDay?: boolean;
+  attendees?: Array<{
+    email: string;
+    displayName?: string;
+    optional?: boolean;
+  }>;
+}
+
+export interface AppleCalendarUpdateEventInput {
+  eventId: string;
   calendarId?: string;
   title?: string;
   description?: string;
@@ -96,24 +155,22 @@ export interface AppleCalendarEventInput {
   }>;
 }
 
-export interface AppleCalendarUpdateEventInput extends AppleCalendarEventInput {
-  eventId: string;
-}
-
 export interface AppleCalendarDeleteEventInput {
   eventId: string;
 }
 
 export interface AppleCalendarPlugin {
   checkPermissions(): Promise<AppleCalendarPermissionStatus>;
-  requestPermissions(): Promise<AppleCalendarPermissionStatus>;
+  requestPermissions(
+    options?: AppleCalendarPermissionRequest,
+  ): Promise<AppleCalendarPermissionStatus>;
   listCalendars(): Promise<AppleCalendarListResult>;
   listEvents(
     options: AppleCalendarListEventsOptions,
   ): Promise<AppleCalendarEventsResult>;
   createEvent(
     input: AppleCalendarEventInput,
-  ): Promise<AppleCalendarEventResult>;
+  ): Promise<AppleCalendarCreateResult>;
   updateEvent(
     input: AppleCalendarUpdateEventInput,
   ): Promise<AppleCalendarEventResult>;

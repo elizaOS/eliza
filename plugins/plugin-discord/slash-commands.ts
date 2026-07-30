@@ -4,6 +4,7 @@
  * matching command's `execute` handler after role-access checks.
  */
 import {
+	attestDeliveryAudienceFromCanonicalRoom,
 	ChannelType,
 	type Content,
 	createUniqueUuid,
@@ -17,7 +18,11 @@ import type {
 	AutocompleteInteraction,
 	ChatInputCommandInteraction,
 } from "discord.js";
-import { ApplicationCommandOptionType, PermissionFlagsBits } from "discord.js";
+import {
+	ApplicationCommandOptionType,
+	ChannelType as DiscordChannelType,
+	PermissionFlagsBits,
+} from "discord.js";
 import { getPreset, listPresets } from "./actions/setup-credentials";
 import { checkDiscordDmAccess } from "./dm-access";
 import { getDiscordSettings } from "./environment";
@@ -640,9 +645,11 @@ const askCommand: SlashCommand = {
 		// core's ChannelType has no guild-text variant; DiscordService.getChannelType
 		// (service.ts) maps every guild text/news/thread/forum channel to GROUP, so
 		// this matches that convention rather than inventing a guild-only value.
-		const channelType = interaction.inGuild()
-			? ChannelType.GROUP
-			: ChannelType.DM;
+		const channelType =
+			interaction.inGuild() ||
+			interaction.channel?.type === DiscordChannelType.GroupDM
+				? ChannelType.GROUP
+				: ChannelType.DM;
 
 		await runtime.ensureConnection({
 			entityId,
@@ -672,6 +679,16 @@ const askCommand: SlashCommand = {
 			},
 			createdAt: Date.now(),
 		};
+		try {
+			await attestDeliveryAudienceFromCanonicalRoom(runtime, message);
+		} catch (error) {
+			// error-policy:J4 the command can still use public actions, while
+			// owner-private components fail closed without canonical evidence.
+			runtime.reportError("DiscordAsk.deliveryAudience", error, {
+				roomId,
+				messageId: message.id,
+			});
+		}
 
 		const replies: string[] = [];
 		const callback: HandlerCallback = async (response: Content) => {

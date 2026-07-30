@@ -50,25 +50,48 @@ describe("calendar client methods", () => {
     expect(path).toContain("grantId=g1");
   });
 
-  it("getLifeOpsCalendars hits the calendars path", async () => {
-    await client.getLifeOpsCalendars();
-    expect(client.fetch.mock.calls[0][0]).toContain(
-      "/api/lifeops/calendar/calendars",
+  it("getLifeOpsCalendars preserves owner, mode, and grant selection in the query", async () => {
+    await client.getLifeOpsCalendars({
+      side: "owner",
+      mode: "cloud_managed",
+      grantId: "grant family/one",
+    });
+    expect(client.fetch.mock.calls[0][0]).toBe(
+      "/api/lifeops/calendar/calendars?mode=cloud_managed&side=owner&grantId=grant+family%2Fone",
     );
   });
 
-  it("setLifeOpsCalendarIncluded PUTs to the include path", async () => {
+  it("setLifeOpsCalendarIncluded preserves multi-account identity in path and body", async () => {
     await client.setLifeOpsCalendarIncluded({
+      provider: "google",
       calendarId: "work@x",
       includeInFeed: false,
+      side: "owner",
+      mode: "remote",
+      grantId: "grant-family",
+      connectorAccountId: "account-family",
+      expectedVersion: 6,
     });
     const [path, init] = client.fetch.mock.calls[0] as [string, RequestInit];
-    expect(path).toContain("/api/lifeops/calendar/calendars/work%40x/include");
+    expect(path).toBe("/api/lifeops/calendar/calendars/work%40x/include");
     expect(init.method).toBe("PUT");
+    expect(JSON.parse(String(init.body))).toEqual({
+      provider: "google",
+      calendarId: "work@x",
+      includeInFeed: false,
+      side: "owner",
+      mode: "remote",
+      grantId: "grant-family",
+      connectorAccountId: "account-family",
+      expectedVersion: 6,
+    });
   });
 
   it("createLifeOpsCalendarEvent POSTs the body", async () => {
-    await client.createLifeOpsCalendarEvent({ title: "Dentist" });
+    await client.createLifeOpsCalendarEvent({
+      title: "Dentist",
+      idempotencyKey: "editor-create-1",
+    });
     const [path, init] = client.fetch.mock.calls[0] as [string, RequestInit];
     expect(path).toBe("/api/lifeops/calendar/events");
     expect(init.method).toBe("POST");
@@ -76,16 +99,38 @@ describe("calendar client methods", () => {
   });
 
   it("updateLifeOpsCalendarEvent PATCHes the encoded event path", async () => {
-    await client.updateLifeOpsCalendarEvent("evt/1", { title: "x" });
+    await client.updateLifeOpsCalendarEvent("evt/1", {
+      title: "x",
+      expectedProviderVersion: '"etag-1"',
+      idempotencyKey: "editor-update-1",
+    });
     const [path, init] = client.fetch.mock.calls[0] as [string, RequestInit];
     expect(path).toBe("/api/lifeops/calendar/events/evt%2F1");
     expect(init.method).toBe("PATCH");
   });
 
   it("deleteLifeOpsCalendarEvent DELETEs with the side query", async () => {
-    await client.deleteLifeOpsCalendarEvent("evt-1", { side: "owner" });
+    await client.deleteLifeOpsCalendarEvent("evt-1", {
+      side: "owner",
+      expectedProviderVersion: '"etag-1"',
+      idempotencyKey: "editor-delete-1",
+      cancellationMode: "organizer_cancel",
+    });
     const [path, init] = client.fetch.mock.calls[0] as [string, RequestInit];
     expect(path).toContain("/api/lifeops/calendar/events/evt-1?side=owner");
     expect(init.method).toBe("DELETE");
+  });
+
+  it("refuses unsafe mutation requests without stable/conditional tokens", async () => {
+    await expect(
+      client.createLifeOpsCalendarEvent({ title: "Dentist" }),
+    ).rejects.toThrow(/idempotencyKey/);
+    await expect(
+      client.updateLifeOpsCalendarEvent("evt-1", { title: "x" }),
+    ).rejects.toThrow(/expectedProviderVersion/);
+    await expect(
+      client.deleteLifeOpsCalendarEvent("evt-1", { side: "owner" }),
+    ).rejects.toThrow(/expectedProviderVersion/);
+    expect(client.fetch).not.toHaveBeenCalled();
   });
 });

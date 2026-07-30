@@ -278,6 +278,10 @@ const LIFEOPS_STATIC_ROUTES: RouteSpec[] = [
   { type: "PUT", path: "/api/lifeops/app-state" },
   { type: "GET", path: "/api/lifeops/capabilities" },
   { type: "GET", path: "/api/lifeops/calendar/feed" },
+  { type: "GET", path: "/api/lifeops/calendar/sources" },
+  { type: "POST", path: "/api/lifeops/calendar/sources" },
+  { type: "GET", path: "/api/lifeops/calendar/meeting-auto-join" },
+  { type: "PUT", path: "/api/lifeops/calendar/meeting-auto-join" },
   { type: "GET", path: "/api/lifeops/calendar/calendars" },
   { type: "PUT", path: "/api/lifeops/calendar/calendars/:id/include" },
   { type: "GET", path: "/api/lifeops/calendar/next-context" },
@@ -415,6 +419,10 @@ const LIFEOPS_DYNAMIC_ROUTES: RouteSpec[] = [
   // /api/lifeops/calendar/events/:eventId
   { type: "PATCH", path: "/api/lifeops/calendar/events/:eventId" },
   { type: "DELETE", path: "/api/lifeops/calendar/events/:eventId" },
+  // /api/lifeops/calendar/sources/:sourceId
+  { type: "PATCH", path: "/api/lifeops/calendar/sources/:sourceId" },
+  { type: "DELETE", path: "/api/lifeops/calendar/sources/:sourceId" },
+  { type: "POST", path: "/api/lifeops/calendar/sources/:sourceId/sync" },
   // /api/lifeops/gmail/spam-review/:itemId
   { type: "PATCH", path: "/api/lifeops/gmail/spam-review/:itemId" },
   // /api/lifeops/definitions/:id

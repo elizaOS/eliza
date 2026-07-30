@@ -33,6 +33,7 @@ def test_manifest_has_in_tree_generator_metadata() -> None:
     assert manifest["generator"] == "scripts/lifeops-bench/export-action-manifest.ts"
     assert manifest["sourcePlugins"] == [
         "@elizaos/plugin-contacts",
+        "@elizaos/plugin-calendar",
         "@elizaos/plugin-personal-assistant",
         "@elizaos/plugin-phone",
         "bluebubbles",
@@ -54,6 +55,7 @@ def test_manifest_actions_are_unique_sorted_and_augmented() -> None:
     names = [entry["function"]["name"] for entry in actions]
     assert names == sorted(names)
     assert len(names) == len(set(names))
+    assert "CALENDAR_SOURCES" in names
 
     bench_names = {
         entry["function"]["name"]

@@ -3,7 +3,7 @@
  * behaviour against a mocked `CalendarService` (no live DB or connector).
  */
 import type http from "node:http";
-import type { IAgentRuntime, LegacyRouteHandler, Route } from "@elizaos/core";
+import type { IAgentRuntime, LegacyRouteHandler } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 
 const MockCalendarService = vi.hoisted(() =>
@@ -27,7 +27,10 @@ vi.mock("../src/service/migration.js", () => ({
 }));
 
 import { calendarPlugin } from "../src/plugin.js";
-import { calendarHttpRoutes } from "../src/routes/plugin-routes.js";
+import {
+  calendarHttpRoutes,
+  calendarRouteHandler,
+} from "../src/routes/plugin-routes.js";
 
 type MockResponse = http.ServerResponse & {
   body: string;
@@ -95,6 +98,15 @@ function makeCalendarService() {
     createCalendarEvent: vi.fn(async () => ({ id: "evt-1" })),
     updateCalendarEvent: vi.fn(async () => ({ id: "evt-1" })),
     deleteCalendarEvent: vi.fn(async () => undefined),
+    respondToCalendarEvent: vi.fn(async () => ({ id: "evt-1" })),
+    listIcsCalendarSources: vi.fn(async () => []),
+    createIcsCalendarSource: vi.fn(async () => ({ id: "source-1" })),
+    updateIcsCalendarSource: vi.fn(async () => ({ id: "source-1" })),
+    deleteIcsCalendarSource: vi.fn(async () => undefined),
+    syncIcsCalendarSource: vi.fn(async () => ({
+      source: { id: "source-1" },
+      outcome: "complete",
+    })),
   };
 }
 
@@ -106,36 +118,23 @@ function makeRuntime(service: ReturnType<typeof makeCalendarService>) {
   } as unknown as IAgentRuntime;
 }
 
-function findRoute(type: Route["type"], path: string): LegacyRouteHandler {
-  const route = calendarHttpRoutes.find(
-    (candidate) => candidate.type === type && candidate.path === path,
-  );
-  if (!route?.handler) {
-    throw new Error(`Missing route ${type} ${path}`);
-  }
-  return route.handler;
-}
-
 describe("calendar plugin HTTP routes", () => {
-  it("registers the LifeOps calendar feed route with the calendar plugin", () => {
+  it("registers only the provider-authenticated webhook directly", () => {
     expect(calendarPlugin.routes).toEqual(calendarHttpRoutes);
-    expect(calendarPlugin.routes).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          type: "GET",
-          path: "/api/lifeops/calendar/feed",
-          rawPath: true,
-          handler: expect.any(Function),
-        }),
-      ]),
-    );
+    expect(calendarHttpRoutes).toHaveLength(1);
+    expect(calendarHttpRoutes[0]).toMatchObject({
+      type: "POST",
+      public: true,
+      rawPath: true,
+      handler: expect.any(Function),
+    });
   });
 
-  it("serves GET /api/lifeops/calendar/feed?side=owner through CalendarService", async () => {
+  it("keeps the host adapter available for the owner-gated LifeOps route", async () => {
     const service = makeCalendarService();
     const runtime = makeRuntime(service);
     const res = makeResponse();
-    const handler = findRoute("GET", "/api/lifeops/calendar/feed");
+    const handler: LegacyRouteHandler = calendarRouteHandler();
 
     await handler(
       makeRequest({

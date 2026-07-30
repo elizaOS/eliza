@@ -32,6 +32,10 @@ const EMPTY: ProviderResult = {
 
 const APPROVALS_MAX_DISPLAYED = 5;
 const APPROVALS_QUERY_LIMIT = 20;
+export const PENDING_APPROVALS_UNAVAILABLE_TEXT = [
+  "# Pending Approvals unavailable",
+  "The approval queue could not be read for this turn. Do not say that nothing is pending and do not approve, reject, or dispatch a queued action from memory. Ask the owner to retry after the queue is available.",
+].join("\n");
 
 // Renders id + action + reason but never the queued payload: the reason is
 // authored for owner-facing display, while payloads carry full message/email
@@ -125,12 +129,20 @@ export const pendingApprovalsProvider: Provider = {
       });
     } catch (error) {
       // error-policy:J4 explicit user-facing degrade — a queue-read failure
-      // omits the approvals block (empty, never a fabricated "no approvals
-      // pending"); reportError surfaces it in RECENT_ERRORS so a broken queue
-      // cannot silently reintroduce the stuck-pending failure this provider
-      // exists to prevent.
-      runtime.reportError?.("pending-approvals.provider", error);
-      return EMPTY;
+      // renders a distinguishable "unavailable" result, never the designed
+      // empty (a fabricated pendingApprovalCount of 0 would read as "no
+      // approvals pending"); reportError surfaces it in RECENT_ERRORS so a
+      // broken queue cannot silently reintroduce the stuck-pending failure
+      // this provider exists to prevent.
+      runtime.reportError("pending-approvals.provider", error, {
+        roomId: message.roomId,
+        entityId: message.entityId,
+      });
+      return {
+        text: PENDING_APPROVALS_UNAVAILABLE_TEXT,
+        values: { pendingApprovalsUnavailable: true },
+        data: { pendingApprovalsError: true },
+      };
     }
     if (pending.length === 0) return EMPTY;
 

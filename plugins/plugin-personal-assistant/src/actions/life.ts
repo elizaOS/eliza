@@ -16,13 +16,20 @@ import {
 import type {
   ActionResult,
   AgentContext,
+  EffectReceipt,
   HandlerCallback,
   HandlerOptions,
   IAgentRuntime,
   Memory,
   State,
 } from "@elizaos/core";
-import { logger, resolveActionArgs, type SubactionsMap } from "@elizaos/core";
+import {
+  ElizaError,
+  logger,
+  normalizeEffectReceipt,
+  resolveActionArgs,
+  type SubactionsMap,
+} from "@elizaos/core";
 import type {
   CreateLifeOpsDefinitionRequest,
   CreateLifeOpsGoalRequest,
@@ -41,6 +48,12 @@ import {
   gmailReadUnavailableMessage,
   INTERNAL_URL,
 } from "../lifeops/access.js";
+import {
+  completeLifeOpsEffect,
+  lifeOpsAppliedEffect,
+  lifeOpsFailedEffect,
+  lifeOpsNoopEffect,
+} from "../lifeops/action-effect-result.js";
 import {
   buildNativeAppleReminderMetadata,
   type NativeAppleReminderLikeKind,
@@ -3003,6 +3016,7 @@ export const OWNER_OPERATION_TAGS: string[] = [
   "capability:update",
   "capability:delete",
   "capability:schedule",
+  "effect:receipt-required",
   "surface:internal",
 ];
 
@@ -3047,12 +3061,453 @@ function ownerSurfaceActionNameFromOptions(
     : "OWNER_TODOS";
 }
 
-export async function runLifeOperationHandler(
+function lifeEffectRequestId(message: Memory): string {
+  return message.id ?? `room:${message.roomId}`;
+}
+
+function lifeEffectReceiptId(
+  message: Memory,
+  operation: string,
+  resourceId: string,
+): string {
+  return `OWNER_LIFE:${operation}:${lifeEffectRequestId(message)}:${resourceId}`;
+}
+
+function lifeEffectRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function lifeEffectString(value: unknown, field: string): string | null {
+  const record = lifeEffectRecord(value);
+  const candidate = record?.[field];
+  return typeof candidate === "string" && candidate.trim().length > 0
+    ? candidate.trim()
+    : null;
+}
+
+function lifeEffectPreview(message: Memory, operation: string): EffectReceipt {
+  const id = lifeEffectRequestId(message);
+  return normalizeEffectReceipt({
+    receiptId: lifeEffectReceiptId(message, operation, id),
+    operation,
+    resource: {
+      kind: "lifeops.owner_draft",
+      id,
+    },
+    artifacts: [],
+    idempotency: { key: null, replayed: false },
+    observedAt: new Date().toISOString(),
+    outcome: "preview",
+  });
+}
+
+function lifeRequestedOperation(options: HandlerOptions | undefined): string {
+  const params = lifeEffectRecord(options?.parameters);
+  const raw =
+    lifeEffectString(params, "subaction") ??
+    lifeEffectString(params, "action") ??
+    "resolve";
+  return raw.toLowerCase().replace(/[^a-z0-9]+/g, "_");
+}
+
+async function latestLifeAudit(args: {
+  runtime: IAgentRuntime;
+  ownerType: "definition" | "goal" | "occurrence";
+  ownerId: string;
+  eventTypes: readonly string[];
+}) {
+  const service = new LifeOpsService(args.runtime);
+  const audits = await service.repository.listAuditEvents(
+    args.runtime.agentId,
+    args.ownerType,
+    args.ownerId,
+  );
+  const audit = audits.find((candidate) =>
+    args.eventTypes.includes(candidate.eventType),
+  );
+  if (!audit) {
+    throw new ElizaError(
+      `LifeOps ${args.ownerType} mutation committed without matching audit proof`,
+      {
+        code: "LIFEOPS_EFFECT_AUDIT_REQUIRED",
+        context: {
+          ownerId: args.ownerId,
+          ownerType: args.ownerType,
+          eventTypes: args.eventTypes,
+        },
+        severity: "fatal",
+      },
+    );
+  }
+  return audit;
+}
+
+function lifeFailureCode(result: ActionResult): string {
+  const data = lifeEffectRecord(result.data);
+  const values = lifeEffectRecord(result.values);
+  return (
+    lifeEffectString(data, "error") ??
+    lifeEffectString(values, "error") ??
+    (data?.missingField ? "LIFEOPS_MISSING_FIELD" : null) ??
+    "LIFEOPS_OPERATION_REJECTED"
+  );
+}
+
+async function lifeEffectReceiptForResult(args: {
+  runtime: IAgentRuntime;
+  message: Memory;
+  options: HandlerOptions | undefined;
+  result: ActionResult;
+}): Promise<EffectReceipt> {
+  const data = lifeEffectRecord(args.result.data);
+  const operationHint = lifeRequestedOperation(args.options);
+  const operation = `lifeops.owner.${operationHint}`;
+  const requestId = lifeEffectRequestId(args.message);
+
+  if (
+    data?.deferred === true ||
+    data?.saved === false ||
+    data?.requiresConfirmation === true
+  ) {
+    return lifeEffectPreview(args.message, `${operation}.preview`);
+  }
+
+  if (args.result.success === false) {
+    return lifeOpsFailedEffect({
+      receiptId: lifeEffectReceiptId(args.message, operation, requestId),
+      operation,
+      resource: { kind: "runtime.message", id: requestId },
+      artifacts: [],
+      idempotency: { key: null, replayed: false },
+      observedAt: new Date().toISOString(),
+      failure: {
+        code: lifeFailureCode(args.result),
+        retryable: false,
+        acceptance: "rejected",
+      },
+    });
+  }
+
+  const readOnlyOperation =
+    operationHint === "review" ||
+    operationHint === "overview" ||
+    operationHint === "calendar" ||
+    operationHint === "email" ||
+    operationHint.startsWith("query_");
+  if (
+    (data?.noop === true || readOnlyOperation) &&
+    lifeEffectRecord(data?.deleted) === null
+  ) {
+    const readGoal = lifeEffectRecord(data?.goal);
+    const readGoalId = lifeEffectString(readGoal, "id");
+    const resourceId = readGoalId ?? requestId;
+    return lifeOpsNoopEffect({
+      receiptId: lifeEffectReceiptId(args.message, operation, resourceId),
+      operation,
+      resource: readGoalId
+        ? {
+            kind: "lifeops.goal",
+            id: readGoalId,
+            ...(lifeEffectString(readGoal, "updatedAt")
+              ? { version: lifeEffectString(readGoal, "updatedAt") as string }
+              : {}),
+          }
+        : { kind: "runtime.message", id: requestId },
+      artifacts: [],
+      idempotency: { key: null, replayed: false },
+      observedAt: new Date().toISOString(),
+      reason:
+        "The operation only read, evaluated, clarified, or intentionally left state unchanged.",
+    });
+  }
+
+  const deleted = lifeEffectRecord(data?.deleted);
+  const deletedId = lifeEffectString(deleted, "id");
+  const deletedType = lifeEffectString(deleted, "kind");
+  if (deletedId && (deletedType === "definition" || deletedType === "goal")) {
+    const audit = await latestLifeAudit({
+      runtime: args.runtime,
+      ownerType: deletedType,
+      ownerId: deletedId,
+      eventTypes:
+        deletedType === "definition"
+          ? ["definition_deleted"]
+          : ["goal_deleted"],
+    });
+    return lifeOpsAppliedEffect({
+      receiptId: lifeEffectReceiptId(args.message, operation, deletedId),
+      operation:
+        deletedType === "definition"
+          ? "lifeops.definition.delete"
+          : "lifeops.goal.delete",
+      resource: {
+        kind: `lifeops.${deletedType}`,
+        id: deletedId,
+        version: audit.id,
+      },
+      artifacts: [],
+      idempotency: { key: null, replayed: false },
+      observedAt: audit.createdAt,
+      commit: {
+        kind: "durable",
+        id: audit.id,
+        committedAt: audit.createdAt,
+      },
+    });
+  }
+
+  const definition =
+    lifeEffectRecord(data?.definition) ??
+    lifeEffectRecord(lifeEffectRecord(data?.updated)?.definition);
+  const definitionId = lifeEffectString(definition, "id");
+  const definitionUpdatedAt = lifeEffectString(definition, "updatedAt");
+  if (definitionId && data?.deduplicated === true) {
+    return lifeOpsNoopEffect({
+      receiptId: lifeEffectReceiptId(args.message, operation, definitionId),
+      operation: "lifeops.definition.create",
+      resource: {
+        kind: "lifeops.definition",
+        id: definitionId,
+        ...(definitionUpdatedAt ? { version: definitionUpdatedAt } : {}),
+      },
+      artifacts: [],
+      idempotency: { key: definitionId, replayed: true },
+      observedAt: new Date().toISOString(),
+      reason: "An equivalent active definition already exists.",
+    });
+  }
+  if (definitionId && definitionUpdatedAt) {
+    const audit = await latestLifeAudit({
+      runtime: args.runtime,
+      ownerType: "definition",
+      ownerId: definitionId,
+      eventTypes: ["definition_updated", "definition_created"],
+    });
+    return lifeOpsAppliedEffect({
+      receiptId: lifeEffectReceiptId(args.message, operation, definitionId),
+      operation:
+        audit.eventType === "definition_created"
+          ? "lifeops.definition.create"
+          : "lifeops.definition.update",
+      resource: {
+        kind: "lifeops.definition",
+        id: definitionId,
+        version: definitionUpdatedAt,
+      },
+      artifacts: [],
+      idempotency:
+        audit.eventType === "definition_created"
+          ? { key: definitionId, replayed: false }
+          : { key: null, replayed: false },
+      observedAt: audit.createdAt,
+      commit: {
+        kind: "durable",
+        id: audit.id,
+        committedAt: audit.createdAt,
+      },
+    });
+  }
+
+  const goal = lifeEffectRecord(data?.goal);
+  const goalId = lifeEffectString(goal, "id");
+  const goalUpdatedAt = lifeEffectString(goal, "updatedAt");
+  if (goalId && data?.deduplicated === true) {
+    return lifeOpsNoopEffect({
+      receiptId: lifeEffectReceiptId(args.message, operation, goalId),
+      operation: "lifeops.goal.create",
+      resource: {
+        kind: "lifeops.goal",
+        id: goalId,
+        ...(goalUpdatedAt ? { version: goalUpdatedAt } : {}),
+      },
+      artifacts: [],
+      idempotency: { key: goalId, replayed: true },
+      observedAt: new Date().toISOString(),
+      reason: "An equivalent active goal already exists.",
+    });
+  }
+  if (goalId && goalUpdatedAt) {
+    const audit = await latestLifeAudit({
+      runtime: args.runtime,
+      ownerType: "goal",
+      ownerId: goalId,
+      eventTypes: ["goal_updated", "goal_created"],
+    });
+    return lifeOpsAppliedEffect({
+      receiptId: lifeEffectReceiptId(args.message, operation, goalId),
+      operation:
+        audit.eventType === "goal_created"
+          ? "lifeops.goal.create"
+          : "lifeops.goal.update",
+      resource: {
+        kind: "lifeops.goal",
+        id: goalId,
+        version: goalUpdatedAt,
+      },
+      artifacts: [],
+      idempotency:
+        audit.eventType === "goal_created"
+          ? { key: goalId, replayed: false }
+          : { key: null, replayed: false },
+      observedAt: audit.createdAt,
+      commit: {
+        kind: "durable",
+        id: audit.id,
+        committedAt: audit.createdAt,
+      },
+    });
+  }
+
+  const occurrenceId = lifeEffectString(data, "id");
+  const occurrenceUpdatedAt = lifeEffectString(data, "updatedAt");
+  const occurrenceState = lifeEffectString(data, "state");
+  const definitionIdForOccurrence = lifeEffectString(data, "definitionId");
+  if (
+    occurrenceId &&
+    occurrenceUpdatedAt &&
+    occurrenceState &&
+    definitionIdForOccurrence
+  ) {
+    const audit = await latestLifeAudit({
+      runtime: args.runtime,
+      ownerType: "occurrence",
+      ownerId: occurrenceId,
+      eventTypes: [
+        "occurrence_completed",
+        "occurrence_skipped",
+        "occurrence_snoozed",
+      ],
+    });
+    const replayed = data?.effectReplayed === true;
+    if (replayed) {
+      return lifeOpsNoopEffect({
+        receiptId: lifeEffectReceiptId(args.message, operation, occurrenceId),
+        operation: `lifeops.occurrence.${occurrenceState}`,
+        resource: {
+          kind: "lifeops.occurrence",
+          id: occurrenceId,
+          version: occurrenceUpdatedAt,
+        },
+        artifacts: [
+          {
+            kind: "lifeops.definition",
+            id: definitionIdForOccurrence,
+          },
+        ],
+        idempotency: { key: occurrenceId, replayed: true },
+        observedAt: new Date().toISOString(),
+        reason: `The occurrence was already ${occurrenceState}.`,
+      });
+    }
+    return lifeOpsAppliedEffect({
+      receiptId: lifeEffectReceiptId(args.message, operation, occurrenceId),
+      operation: `lifeops.occurrence.${occurrenceState}`,
+      resource: {
+        kind: "lifeops.occurrence",
+        id: occurrenceId,
+        version: occurrenceUpdatedAt,
+      },
+      artifacts: [
+        {
+          kind: "lifeops.definition",
+          id: definitionIdForOccurrence,
+        },
+      ],
+      idempotency:
+        occurrenceState === "completed" || occurrenceState === "skipped"
+          ? { key: occurrenceId, replayed: false }
+          : { key: null, replayed: false },
+      observedAt: audit.createdAt,
+      commit: {
+        kind: "durable",
+        id: audit.id,
+        committedAt: audit.createdAt,
+      },
+    });
+  }
+
+  const preference = lifeEffectRecord(data?.preference);
+  const effectivePreference = lifeEffectRecord(preference?.effective);
+  const preferenceUpdatedAt = lifeEffectString(
+    effectivePreference,
+    "updatedAt",
+  );
+  if (preference && preferenceUpdatedAt) {
+    const preferenceDefinitionId = lifeEffectString(preference, "definitionId");
+    const resourceId = preferenceDefinitionId ?? "global";
+    return lifeOpsAppliedEffect({
+      receiptId: lifeEffectReceiptId(args.message, operation, resourceId),
+      operation: "lifeops.reminder_policy.update",
+      resource: {
+        kind: "lifeops.reminder_policy",
+        id: resourceId,
+        version: preferenceUpdatedAt,
+      },
+      artifacts: [],
+      idempotency: { key: null, replayed: false },
+      observedAt: preferenceUpdatedAt,
+      commit: {
+        kind: "durable",
+        id: `lifeops.reminder_policy:${resourceId}:${preferenceUpdatedAt}`,
+        committedAt: preferenceUpdatedAt,
+      },
+    });
+  }
+
+  const facts = lifeEffectRecord(data?.facts);
+  const escalationRules = lifeEffectRecord(facts?.escalationRules);
+  const escalationProvenance = lifeEffectRecord(escalationRules?.provenance);
+  const escalationUpdatedAt = lifeEffectString(
+    escalationProvenance,
+    "recordedAt",
+  );
+  if (escalationUpdatedAt) {
+    return lifeOpsAppliedEffect({
+      receiptId: lifeEffectReceiptId(args.message, operation, "global"),
+      operation: "lifeops.escalation_policy.update",
+      resource: {
+        kind: "lifeops.escalation_policy",
+        id: "global",
+        version: escalationUpdatedAt,
+      },
+      artifacts: [],
+      idempotency: { key: null, replayed: false },
+      observedAt: escalationUpdatedAt,
+      commit: {
+        kind: "durable",
+        id: `lifeops.escalation_policy:global:${escalationUpdatedAt}`,
+        committedAt: escalationUpdatedAt,
+      },
+    });
+  }
+
+  return lifeOpsNoopEffect({
+    receiptId: lifeEffectReceiptId(args.message, operation, requestId),
+    operation,
+    resource: { kind: "runtime.message", id: requestId },
+    artifacts: [],
+    idempotency: {
+      key:
+        data?.deduplicated === true
+          ? (lifeEffectString(data, "id") ?? requestId)
+          : null,
+      replayed: data?.deduplicated === true,
+    },
+    observedAt: new Date().toISOString(),
+    reason:
+      data?.deduplicated === true
+        ? "The requested resource already exists."
+        : "The operation only read, evaluated, clarified, or intentionally left state unchanged.",
+  });
+}
+
+async function runLifeOperationHandlerInner(
   runtime: IAgentRuntime,
   message: Memory,
   state: State | undefined,
   options: HandlerOptions | undefined,
-  _callback?: HandlerCallback,
 ): Promise<ActionResult> {
   const ownerSurfaceActionName = ownerSurfaceActionNameFromOptions(options);
   // Defense-in-depth: validate() excludes owner-operation candidates on
@@ -3061,7 +3516,7 @@ export async function runLifeOperationHandler(
   if (await isForeignPageScope(runtime, message)) {
     return {
       success: false,
-      text: "",
+      text: "Owner life actions are unavailable from this page.",
       data: {
         actionName: ownerSurfaceActionName,
         reason: "foreign_page_scope",
@@ -3214,6 +3669,7 @@ export async function runLifeOperationHandler(
               actionName: ownerSurfaceActionName,
               retractedRecentSave: true,
               deleted: {
+                kind: "definition",
                 id: retracted.definition.id,
                 title: retracted.definition.title,
               },
@@ -4309,6 +4765,25 @@ export async function runLifeOperationHandler(
         },
       });
       await clearDeferredLifeDraftCache(runtime, message);
+      const createAudit = await latestLifeAudit({
+        runtime,
+        ownerType: "goal",
+        ownerId: created.goal.id,
+        eventTypes: ["goal_created"],
+      });
+      if (createAudit.decision.dedup === true) {
+        const text = `"${created.goal.title}" is already saved as a goal — nothing new was created.`;
+        return {
+          success: true,
+          text,
+          userFacingText: text,
+          verifiedUserFacing: true,
+          data: toActionData({
+            ...created,
+            deduplicated: true,
+          }),
+        };
+      }
       const createdExperienceLoop = await service.buildGoalExperienceLoop({
         goalId: created.goal.id,
         title: created.goal.title,
@@ -4585,6 +5060,14 @@ export async function runLifeOperationHandler(
             },
           },
         }),
+        data: {
+          actionName: ownerSurfaceActionName,
+          deleted: {
+            kind: "definition",
+            id: target.definition.id,
+            title: target.definition.title,
+          },
+        },
       };
     }
 
@@ -4636,6 +5119,14 @@ export async function runLifeOperationHandler(
             },
           },
         }),
+        data: {
+          actionName: ownerSurfaceActionName,
+          deleted: {
+            kind: "goal",
+            id: target.goal.id,
+            title: target.goal.title,
+          },
+        },
       };
     }
 
@@ -4669,27 +5160,39 @@ export async function runLifeOperationHandler(
         }
         resolvedTargetId = target.id;
       }
+      const priorOccurrence = await service.repository.getOccurrence(
+        runtime.agentId,
+        resolvedTargetId,
+      );
       const completed = await service.completeOccurrence(resolvedTargetId, {
         note: detailString(details, "note"),
       });
-      const fallback = `Marked "${completed.title}" done.`;
+      const effectReplayed = priorOccurrence?.state === "completed";
+      const fallback = effectReplayed
+        ? `"${completed.title}" was already marked done — nothing changed.`
+        : `Marked "${completed.title}" done.`;
       return {
         success: true,
-        text: await renderLifeActionReply({
-          runtime,
-          message,
-          state,
-          intent,
-          scenario: "completed_occurrence",
-          fallback,
-          context: {
-            completed: {
-              title: completed.title,
-            },
-            note: detailString(details, "note"),
-          },
+        text: effectReplayed
+          ? fallback
+          : await renderLifeActionReply({
+              runtime,
+              message,
+              state,
+              intent,
+              scenario: "completed_occurrence",
+              fallback,
+              context: {
+                completed: {
+                  title: completed.title,
+                },
+                note: detailString(details, "note"),
+              },
+            }),
+        data: toActionData({
+          ...completed,
+          effectReplayed,
         }),
-        data: toActionData(completed),
       };
     }
 
@@ -4731,7 +5234,10 @@ export async function runLifeOperationHandler(
             },
           },
         }),
-        data: toActionData(skipped),
+        data: toActionData({
+          ...skipped,
+          effectReplayed: target.state === "skipped",
+        }),
       };
     }
 
@@ -4902,7 +5408,17 @@ export async function runLifeOperationHandler(
       text: "I didn't understand that life management request.",
     };
   } catch (err) {
+    // error-policy:J1 The action boundary translates typed domain failures into a rejected user-visible operation.
     if (err instanceof LifeOpsServiceError) {
+      logger.error(
+        {
+          boundary: "lifeops-owner-action",
+          operation,
+          status: err.status,
+          err,
+        },
+        `[LifeAction] ${operation ?? "unknown"} failed: ${err.message}`,
+      );
       const fallback = buildLifeServiceErrorFallback(err, intent);
       return {
         success: false,
@@ -4918,8 +5434,38 @@ export async function runLifeOperationHandler(
             operation,
           },
         }),
+        data: {
+          actionName: ownerSurfaceActionName,
+          error: "LIFEOPS_SERVICE_ERROR",
+          status: err.status,
+        },
       };
     }
     throw err;
   }
+}
+
+export async function runLifeOperationHandler(
+  runtime: IAgentRuntime,
+  message: Memory,
+  state: State | undefined,
+  options: HandlerOptions | undefined,
+  callback?: HandlerCallback,
+): Promise<ActionResult> {
+  const result = await runLifeOperationHandlerInner(
+    runtime,
+    message,
+    state,
+    options,
+  );
+  return completeLifeOpsEffect(
+    callback,
+    result,
+    await lifeEffectReceiptForResult({
+      runtime,
+      message,
+      options,
+      result,
+    }),
+  );
 }

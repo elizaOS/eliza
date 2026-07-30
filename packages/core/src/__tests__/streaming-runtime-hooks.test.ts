@@ -39,6 +39,7 @@ function makeRuntime(responses: unknown[], actions: Action[]): IAgentRuntime {
 	const queue = [...responses];
 	return {
 		actions,
+		getRoom: vi.fn(async () => null),
 		useModel: vi.fn(async () => {
 			if (queue.length === 0) {
 				throw new Error("Unexpected useModel call");

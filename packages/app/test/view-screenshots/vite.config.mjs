@@ -9,9 +9,9 @@ import { defineConfig } from "vite";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const elizaRoot = path.resolve(here, "../../../..");
-const plugins = path.join(elizaRoot, "plugins");
 
 const calendarHookStub = path.join(here, "stubs/useCalendarWeek.ts");
+const calendarSourcesHookStub = path.join(here, "stubs/useCalendarSources.ts");
 const calendarDrawerStub = path.join(here, "stubs/EventEditorDrawer.tsx");
 
 /**
@@ -30,6 +30,9 @@ function calendarSeamStubPlugin() {
     resolveId(source) {
       if (source.endsWith("/hooks/useCalendarWeek.js")) {
         return calendarHookStub;
+      }
+      if (source.endsWith("/hooks/useCalendarSources.js")) {
+        return calendarSourcesHookStub;
       }
       if (source.endsWith("/EventEditorDrawer.js")) {
         return calendarDrawerStub;
@@ -54,6 +57,10 @@ export default defineConfig({
       {
         find: "@elizaos/ui/agent-surface",
         replacement: path.join(here, "stubs/elizaos-ui-agent-surface.ts"),
+      },
+      {
+        find: "@elizaos/ui/events",
+        replacement: path.join(here, "stubs/elizaos-ui-events.ts"),
       },
       // The spatial primitives are pure React (no network, no renderer
       // barrel) — resolve them for real so spatial views (Inbox, Focus)

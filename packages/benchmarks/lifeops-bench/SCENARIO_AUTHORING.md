@@ -11,6 +11,7 @@ and update the owning pack catalog.
 ## Table of contents
 
 - [Static vs Live mode](#static-vs-live-mode)
+- [Static semantic expectations](#static-semantic-expectations)
 - [Persona design](#persona-design)
 - [Ground-truth actions: umbrella vs fine-grained](#ground-truth-actions-umbrella-vs-fine-grained)
 - [First-question fallback](#first-question-fallback)
@@ -25,19 +26,50 @@ and update the owning pack catalog.
 | ------------------------------------------------------ | --------------------------------------------------------- |
 | The task is fully specified by the instruction         | The task naturally needs back-and-forth (negotiation)     |
 | You can predict ground-truth actions deterministically | The world should mutate mid-run (REALM-style disruptions) |
-| You want cheap, fast, large-scale eval                 | You're testing satisfaction-of-intent, not just correctness |
+| One terminal response can be judged after execution   | You're testing satisfaction across a continuing dialogue    |
 | The fallback can answer the most likely clarifier      | Neither side can be canned without breaking realism       |
 
-STATIC scenarios are cheap (no per-turn LLM calls on the user side
-once the agent commits to a plan; one optional fallback turn). LIVE
-scenarios are slower and more expensive — every agent turn triggers a
-simulated-user turn, plus a judge call from the configured
-`live_judge_min_turn` onward.
+Publishable STATIC runs generate a simulated opening when
+`opening_mode="simulated"` and make one semantic judge call after execution.
+LIVE runs generate a user turn after every executor turn and may judge
+satisfaction repeatedly from `live_judge_min_turn` onward. The explicit
+`--offline-conformance` lane instead uses authored STATIC openings and literal
+output canaries; its artifacts cannot be published as benchmark results.
+
+Whenever `opening_mode="simulated"`, `instruction` is a hidden user goal. The
+independent persona model renders the opening and continuations in its own
+words. Edge-expanded runs also supply `opening_challenge`, which asks the model
+for vague referents, corrections, colloquial/noisy language, code switching,
+underspecification, stress, relative time, or a fragmented handoff without
+changing the goal. The executor never receives the authored goal verbatim, and
+near-verbatim generated openings fail before execution.
+
+Success criteria, world assertions, required outputs, and static rubrics are
+judge-only data. They must never be copied into the simulated-user prompt; the
+persona receives only its profile, hidden user goal, optional language
+challenge, and current world snapshot.
+
+## Static semantic expectations
+
+Use `required_outputs` for facts or outcomes the terminal response must
+communicate, not keywords it must contain. Publishable runs grade each item by
+meaning, so an accurate paraphrase passes and a sentence that repeats the right
+token with the wrong date, person, quantity, or status fails.
+
+Use `static_rubric` for response qualities such as a consent explanation,
+grounded uncertainty, or appropriate tone. Keep machine-verifiable details in
+`ground_truth_actions`: IDs, subactions, timestamps, recurrence, approval
+flags, and other structural parameters do not belong in prose criteria.
+
+The judge returns every `output_N` and `rubric_N` ID exactly once. A positive
+grade must cite a meaningful verbatim fragment from an eligible executor or
+tool transcript line. User text, invented line IDs, tiny common-word quotes,
+missing criteria, duplicates, and extra criteria fail closed.
 
 ## Persona design
 
 Personas live in `eliza_lifeops_bench/scenarios/_personas.py`. There
-are 10 today; add a new one only if existing personas don't fit. Each
+are 32 registered personas; add a new one only if existing personas don't fit. Each
 persona carries:
 
 - `id` — snake_case lowercase, used for cross-references (`PERSONA_RIA_PM` → `ria_pm`).
@@ -80,12 +112,18 @@ Supported (action, subaction) pairs at time of writing:
 | `ENTITY`               | `add`, `set_identity`, `log_interaction`, `list`                                                                              |
 | `LIFE_CREATE`          | `create` with `details.kind` ∈ `{reminder, alarm, workout, health_metric}`                                                    |
 | `LIFE_COMPLETE` / `LIFE_SNOOZE` | reminder targets only                                                                                                |
-| `LIFE_REVIEW`          | read-only no-op                                                                                                               |
-| `HEALTH`, `PAYMENTS`, `SUBSCRIPTIONS_AUDIT` | read-only no-op (state hash matches trivially)                                                           |
+| `LIFE_REVIEW`          | modeled review that stamps list review metadata                                                                               |
+| `HEALTH`               | `by_metric` is modeled; other projections fail explicitly until implemented                                                   |
+| `MONEY`                | `list_transactions` is modeled; other projections fail explicitly until implemented                                          |
 | `SUBSCRIPTIONS_CANCEL` | resolves by `serviceSlug` first, then `serviceName` (case-insensitive)                                                        |
-| `BOOK_TRAVEL`          | offer-return, no booking                                                                                                      |
-| `APP_BLOCK`, `WEBSITE_BLOCK` | focus blocks; not modeled in LifeWorld; no-op for state                                                                 |
-| `SCHEDULED_TASK_CREATE` | folded into reminders on `list_personal`                                                                                     |
+| `BOOK_TRAVEL`          | `search` / `prepare` project provider offers; `hold` persists an approval-gated reservation; purchase/cancellation remain external |
+| `BLOCK` / `BLOCK_*`    | `block`, `request_permission`, `unblock`, and `release` persist rule state; `status` / `list_active` are projections          |
+| `SCHEDULED_TASK_CREATE` / `UPDATE` / `SNOOZE` and `SCHEDULED_TASKS/*` | first-class scheduled-task state; mutations require a seeded or earlier-created target |
+
+Scheduled-task create actions must omit `taskId`, which is server-owned.
+Create-then-mutate scenarios must take the later target from the create tool
+receipt; the deterministic executor exposes the same lineage through its
+stable receipt ID. Corpus validation rejects invented mutation targets.
 
 ### Fine-grained (legacy / inline conformance)
 
@@ -94,9 +132,11 @@ Domain-prefixed verbs (`CALENDAR.create`, `MAIL.archive`,
 adapters that emit explicit tool ids. Prefer umbrella for new
 scenarios.
 
-The full list of supported names is the keys of `_ACTION_HANDLERS` in
-`runner.py`; `runner.supported_actions()` is the programmatic entry
-point.
+The full list of recognized names is the keys of `_ACTION_HANDLERS` in
+`runner.py`; `runner.supported_actions()` is the programmatic entry point.
+Recognition does not imply modeled semantics. Consult `corpus-audit.json`:
+unmodeled dispatches return `ok=false`, `status=unsupported`, and
+`noEffect=true`.
 
 ## First-question fallback
 
@@ -121,13 +161,21 @@ If the instruction is fully specified and no realistic clarifier
 exists, leave `first_question_fallback=None`. At least 30% of static
 scenarios should carry one (see [The fallback-ratio rule](#the-fallback-ratio-rule)).
 
+With evaluator models configured, the persona model applies the
+natural-language `applies_when` contract and renders the fallback facts in
+character. Static-only offline runs retain a deterministic punctuation check
+and canned answer so schema conformance does not require network inference.
+
 ## Live-mode extras: success_criteria, world_assertions, disruptions
 
-Live scenarios use three extra fields to drive judging:
+Live scenarios use four extra fields to drive judging:
 
 - `success_criteria: list[str]` — natural-language predicates the judge model evaluates against the running history. Keep them concrete: `"the assistant proposed a Friday 9-10am slot"` beats `"the assistant did the right thing"`.
 - `world_assertions: list[str]` — explicit world-state predicates (used by the scorer in addition to the state hash). E.g. `"there exists a calendar event titled 'Dentist' starting Friday 10:00 UTC"`.
 - `disruptions: list[Disruption]` — REALM-style mid-run perturbations. Each fires `at_turn=N` and carries a `kind` ∈ `{new_message, calendar_change, reminder_due, rule_change}`. Disruption payload shapes are documented in `types.py::Disruption`.
+- `expected_world_mutation` — explicit `changed`, `unchanged`, or `optional`.
+  Never derive it from words in an assertion; the scorer does not route by
+  scanning natural-language criteria.
 
 Example disruption:
 
@@ -193,7 +241,8 @@ existing scenarios; duplicate ids abort the whole batch.
 Before committing a hand-edited scenario, run the corpus tests:
 
 ```bash
-python3 -m pytest tests/test_scenarios_corpus.py -v
+python3 -m pytest tests/test_scenarios_corpus.py tests/test_corpus_audit.py -v
+python3 -m eliza_lifeops_bench.corpus_audit --output corpus-audit.json
 ```
 
 These tests check:
@@ -202,6 +251,14 @@ These tests check:
 - Every entity id referenced in `ground_truth_actions` resolves in the corresponding snapshot.
 - Personas referenced are in `_personas.py`.
 - The static fallback ratio stays above the corpus threshold.
+- Every LIVE opening is model-generated and every scenario id is a stable
+  `[a-z0-9_.-]` identifier.
+- Edge variants preserve the exact hidden goal and structural contracts while
+  using a model-generated language challenge rather than a fixed prefix.
+- Scheduled-task updates, snoozes, and state changes target seeded state or a
+  task created earlier in the same authored action sequence.
+- Every unmodeled LifeWorld operation returns explicit non-success, while
+  modeled read/terminal no-mutation exceptions are inventoried separately.
 
 ## The fallback-ratio rule
 

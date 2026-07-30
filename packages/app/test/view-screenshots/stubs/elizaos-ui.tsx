@@ -14,6 +14,10 @@
 
 import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from "react";
 
+export class ElizaClient {
+  fetch = async (): Promise<Record<string, never>> => ({});
+}
+
 export const client = {
   getBaseUrl: () => "http://test.local",
   sendChatMessage: (..._args: unknown[]) => {},

@@ -197,9 +197,13 @@ export interface MobileSignalsRequestPermissionsOptions {
 }
 
 export interface AppleCalendarPermissionStatus {
-  calendar: "granted" | "denied" | "prompt" | "restricted";
+  calendar: "granted" | "write_only" | "denied" | "prompt" | "restricted";
   canRequest: boolean;
   reason?: string | null;
+}
+
+export interface AppleCalendarPermissionRequest {
+  access?: "full_access" | "write_only";
 }
 
 export type PushNotificationPermissionState =
@@ -630,7 +634,9 @@ export interface MobileSignalsPluginLike extends NativePlugin {
 
 export interface AppleCalendarPluginLike extends NativePlugin {
   checkPermissions?(): Promise<AppleCalendarPermissionStatus>;
-  requestPermissions?(): Promise<AppleCalendarPermissionStatus>;
+  requestPermissions?(
+    options?: AppleCalendarPermissionRequest,
+  ): Promise<AppleCalendarPermissionStatus>;
 }
 
 export interface TalkModePermissionStatus {

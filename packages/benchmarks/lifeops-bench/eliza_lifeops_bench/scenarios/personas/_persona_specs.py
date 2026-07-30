@@ -303,7 +303,7 @@ class FamilySpec:
     # LIVE scoring: suppression / defer families expect the world to end
     # UNCHANGED, so leave this "unchanged" (not the auto-inferred "changed",
     # which would invert the score and penalize a correctly-suppressing agent).
-    expected_world_mutation: ExpectedWorldMutation = "auto"
+    expected_world_mutation: ExpectedWorldMutation = "changed"
 
 
 @dataclass(frozen=True)
@@ -1295,6 +1295,7 @@ def _live_scenario(area: PersonaAreaSpec, family: FamilySpec, variant: int) -> S
         world_assertions=list(family.world_assertions),
         disruptions=disruptions,
         expected_world_mutation=family.expected_world_mutation,
+        opening_mode="simulated",
     )
 
 

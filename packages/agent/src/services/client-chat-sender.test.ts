@@ -198,7 +198,10 @@ describe("registerClientChatSendHandler — delivery", () => {
         { source: "my_custom_source", roomId: "room-1" as UUID },
         { text: "relayed result" },
       ),
-    ).resolves.toBeUndefined();
+    ).resolves.toMatchObject({
+      roomId: "room-1",
+      content: { text: "relayed result", source: "client_chat" },
+    });
 
     expect(created).toHaveLength(1);
     expect(created[0]?.roomId).toBe("room-1");

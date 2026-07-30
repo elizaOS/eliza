@@ -20,8 +20,17 @@
  * can surface both.
  */
 
-import type { Content, IAgentRuntime, UUID } from "@elizaos/core";
-import { logger, Service } from "@elizaos/core";
+import type {
+  Content,
+  IAgentRuntime,
+  SendHandlerResult,
+  UUID,
+} from "@elizaos/core";
+import {
+  logger,
+  requireConfirmedSendHandlerDelivery,
+  Service,
+} from "@elizaos/core";
 import { getSessionSpendUsd, readSpendCapUsd } from "./spend-allowance.js";
 import { TERMINAL_SESSION_STATUSES } from "./types.js";
 
@@ -192,7 +201,7 @@ type RuntimeWithSendTarget = IAgentRuntime & {
   sendMessageToTarget?: (
     target: { source: string; roomId?: UUID; accountId?: string },
     content: Content,
-  ) => Promise<unknown>;
+  ) => SendHandlerResult;
 };
 
 export class TaskWatchdogService extends Service {
@@ -378,9 +387,11 @@ export class TaskWatchdogService extends Service {
     const origin = resolveOrigin(metadata);
     if (!origin) return; // no chat origin — nothing to warn into
     const text = composeCapWarning(warning, sessionLabel(metadata));
-    await send(
-      { source: origin.source, roomId: origin.roomId },
-      { text, source: origin.source },
+    requireConfirmedSendHandlerDelivery(
+      await send(
+        { source: origin.source, roomId: origin.roomId },
+        { text, source: origin.source },
+      ),
     );
     logger.info(
       `[TaskWatchdogService] session ${warning.id} approaching ${warning.kind} cap (${warning.count}/${warning.limit}, ${Math.round(

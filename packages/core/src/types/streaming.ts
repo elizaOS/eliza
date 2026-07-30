@@ -125,9 +125,8 @@ export interface IStreamExtractor {
  *    field value.
  *
  * Consumers:
- *  - W9 (TTS handoff): subscribes to `onFieldStart("replyText")` to begin the
- *    first-chunk-to-TTS path the instant the reply value opens, and
- *    `onFieldDone("replyText", ...)` to flush the tail.
+ *  - User-visible reply fields may be held until routing and effect validation
+ *    complete; field events still let non-visible consumers track boundaries.
  *  - W8 (forced-skeleton emitter): uses field boundaries to drive the next
  *    forced span on a real engine.
  */

@@ -28,6 +28,7 @@ test = [
 
 [project.scripts]
 lifeops-bench = "eliza_lifeops_bench.__main__:main"
+lifeops-trusted-executor = "eliza_lifeops_bench.trusted_executor_cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["eliza_lifeops_bench"]

@@ -1,11 +1,15 @@
 /**
- * useCalendarWeek — fetches calendar events for a date window.
+ * Fetches an owner calendar window while preserving the feed's source truth.
  *
- * Defaults to the current week (7 days from today). The caller can
- * switch to day or month views by passing windowDays.
+ * Consumers receive events and the authoritative complete/partial/unavailable
+ * state together, so a failed source can never render as a healthy empty week.
  */
 
-import type { LifeOpsCalendarEvent } from "@elizaos/shared";
+import type {
+  LifeOpsCalendarEvent,
+  LifeOpsCalendarFeedState,
+  LifeOpsCalendarSourceHealth,
+} from "@elizaos/shared";
 import { client } from "@elizaos/ui/api";
 import { useAppSelector } from "@elizaos/ui/state";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -15,6 +19,13 @@ import type { CalendarClientMethods } from "../api/client-calendar.js";
 const calendarClient = client as typeof client & CalendarClientMethods;
 
 export type CalendarViewMode = "day" | "week" | "month";
+export type CalendarSurfaceStatus =
+  | "loading"
+  | "empty"
+  | "ready"
+  | "partial"
+  | "unavailable"
+  | "error";
 
 export interface UseCalendarWeekOptions {
   viewMode?: CalendarViewMode;
@@ -24,7 +35,11 @@ export interface UseCalendarWeekOptions {
 
 export interface UseCalendarWeekResult {
   events: LifeOpsCalendarEvent[];
+  feedState: LifeOpsCalendarFeedState | null;
+  sources: LifeOpsCalendarSourceHealth[];
+  status: CalendarSurfaceStatus;
   loading: boolean;
+  refreshing: boolean;
   error: string | null;
   viewMode: CalendarViewMode;
   setViewMode: (mode: CalendarViewMode) => void;
@@ -78,7 +93,11 @@ export function useCalendarWeek(
     () => opts.baseDate ?? new Date(),
   );
   const [events, setEvents] = useState<LifeOpsCalendarEvent[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [feedState, setFeedState] = useState<LifeOpsCalendarFeedState | null>(
+    null,
+  );
+  const [sources, setSources] = useState<LifeOpsCalendarSourceHealth[]>([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const windowStart = useMemo(() => {
@@ -116,6 +135,7 @@ export function useCalendarWeek(
   const goNext = useCallback(() => shiftBase(1), [shiftBase]);
 
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
       mountedRef.current = false;
       activeRequestId.current += 1;
@@ -142,7 +162,10 @@ export function useCalendarWeek(
       );
       if (!isCurrentRequest()) return;
       setEvents(sorted);
+      setFeedState(feed.state);
+      setSources([...feed.sources]);
     } catch (cause) {
+      // error-policy:J4 The calendar renders transport failure separately from an authoritative empty feed.
       if (!isCurrentRequest()) return;
       setError(
         cause instanceof Error && cause.message.trim().length > 0
@@ -160,9 +183,23 @@ export function useCalendarWeek(
     void fetch();
   }, [fetch]);
 
+  const status = useMemo<CalendarSurfaceStatus>(() => {
+    if (error) return "error";
+    if (feedState === "unavailable") return "unavailable";
+    if (feedState === "partial") return "partial";
+    if (loading && feedState === null) return "loading";
+    if (feedState === "complete" && events.length === 0) return "empty";
+    if (feedState === "complete") return "ready";
+    return "loading";
+  }, [error, events.length, feedState, loading]);
+
   return {
     events,
+    feedState,
+    sources,
+    status,
     loading,
+    refreshing: loading && feedState !== null,
     error,
     viewMode,
     setViewMode,

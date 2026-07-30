@@ -9,7 +9,11 @@
  * to the escalation order in eliza.json.
  */
 import type { IAgentRuntime, UUID } from "@elizaos/core";
-import { logger, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core";
+import {
+  logger,
+  MESSAGE_SOURCE_CLIENT_CHAT,
+  requireConfirmedSendHandlerDelivery,
+} from "@elizaos/core";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import {
   loadOwnerContactRoutingHints,
@@ -243,30 +247,34 @@ async function sendToChannel(
       return false;
     }
 
-    await runtime.sendMessageToTarget(
-      {
-        source: targetSource,
-        entityId: contact.entityId as UUID | undefined,
-        channelId: contact.channelId,
-        roomId: contact.roomId as UUID | undefined,
-      } as Parameters<typeof runtime.sendMessageToTarget>[0],
-      {
-        text,
-        source: targetSource,
-        metadata: {
-          urgency: "urgent",
-          escalation: true,
-          routeSource: targetSource,
-          routeResolution: hint?.resolvedFrom,
-          routeEndpoint:
-            contact.channelId ?? contact.roomId ?? contact.entityId ?? null,
-          routeLastResponseAt: hint?.lastResponseAt ?? null,
-          routeLastResponseChannel: hint?.lastResponseChannel ?? null,
+    requireConfirmedSendHandlerDelivery(
+      await runtime.sendMessageToTarget(
+        {
+          source: targetSource,
+          entityId: contact.entityId as UUID | undefined,
+          channelId: contact.channelId,
+          roomId: contact.roomId as UUID | undefined,
+        } as Parameters<typeof runtime.sendMessageToTarget>[0],
+        {
+          text,
+          source: targetSource,
+          metadata: {
+            urgency: "urgent",
+            escalation: true,
+            routeSource: targetSource,
+            routeResolution: hint?.resolvedFrom,
+            routeEndpoint:
+              contact.channelId ?? contact.roomId ?? contact.entityId ?? null,
+            routeLastResponseAt: hint?.lastResponseAt ?? null,
+            routeLastResponseChannel: hint?.lastResponseChannel ?? null,
+          },
         },
-      },
+      ),
     );
     return true;
   } catch (err) {
+    // error-policy:J1 escalation delivery boundary returns an explicit false
+    // when transport or delivery evidence is unavailable.
     logger.warn(
       `[escalation] Failed to send to channel "${channel}"`,
       err instanceof Error ? err.message : String(err),

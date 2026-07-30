@@ -8,9 +8,11 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { formatError } from "@elizaos/core";
 import { LifeOpsService } from "../service.js";
 import {
+  dispatchReceipt,
   errorToDispatchResult,
   isConnectorSendPayload,
   legacyStatusToConnectorStatus,
+  missingProviderReceipt,
   rejectInvalidPayload,
 } from "./_helpers.js";
 import type {
@@ -28,6 +30,7 @@ export function createWhatsAppConnectorContribution(
     capabilities: ["whatsapp.read", "whatsapp.send"],
     modes: ["local"],
     describe: { label: "WhatsApp" },
+    receiptContract: "provider_receipt_id",
     async start() {},
     async disconnect() {
       // WhatsApp account auth is owned by @elizaos/plugin-whatsapp; LifeOps
@@ -56,7 +59,17 @@ export function createWhatsAppConnectorContribution(
           to: payload.target,
           text: payload.message,
         });
-        return { ok: true, messageId: result.messageId };
+        const receipt = dispatchReceipt({
+          provider: "whatsapp",
+          providerMessageId: result.messageId,
+          payload,
+        });
+        if (!receipt) return missingProviderReceipt("WhatsApp");
+        return {
+          ok: true,
+          messageId: result.messageId,
+          receipt,
+        };
       } catch (error) {
         return errorToDispatchResult(error);
       }

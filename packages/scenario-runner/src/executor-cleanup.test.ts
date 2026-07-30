@@ -18,6 +18,7 @@ import { runScenario } from "./executor";
 function createRuntime(): AgentRuntime {
   return {
     actions: [],
+    plugins: [],
     routes: [],
     ensureConnection: vi.fn(async () => undefined),
     getService: vi.fn(() => null),

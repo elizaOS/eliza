@@ -1,8 +1,8 @@
 /**
  * Runtime schema module for `@elizaos/scenario-runner/schema`: the final-check key
- * table (FINAL_CHECK_KEYS) and the `scenario` / `scenarioLane` / `scenarioDeferral`
- * validators that scenario files import to declare and validate their definitions.
- * Types live in the paired index.d.ts.
+ * table (FINAL_CHECK_KEYS) and the scenario metadata validators for lanes,
+ * execution profiles, tiers, and platform deferrals. Scenario files import
+ * these at authoring/load boundaries; types live in the paired index.d.ts.
  */
 export const FINAL_CHECK_KEYS = new Map(
   Object.entries({
@@ -43,6 +43,62 @@ export const FINAL_CHECK_KEYS = new Map(
       "name",
       "channel",
       "actionName",
+      "minCount",
+    ],
+    durableApprovalObserved: [
+      "type",
+      "name",
+      "observerId",
+      "provider",
+      "accountId",
+      "operation",
+      "resourceId",
+      "state",
+      "minCount",
+    ],
+    durableDraftObserved: [
+      "type",
+      "name",
+      "observerId",
+      "provider",
+      "accountId",
+      "operation",
+      "resourceId",
+      "state",
+      "minCount",
+    ],
+    providerEffectObserved: [
+      "type",
+      "name",
+      "observerId",
+      "provider",
+      "accountId",
+      "operation",
+      "resourceId",
+      "state",
+      "minCount",
+    ],
+    providerNoEffectObserved: [
+      "type",
+      "name",
+      "observerId",
+      "provider",
+      "accountId",
+      "operation",
+      "resourceId",
+      "state",
+      "minCount",
+      "intervalCoversScenario",
+    ],
+    scheduledTaskObserved: [
+      "type",
+      "name",
+      "observerId",
+      "provider",
+      "accountId",
+      "operation",
+      "resourceId",
+      "state",
       "minCount",
     ],
     memoryWriteOccurred: ["type", "name", "table", "minCount"],
@@ -141,7 +197,17 @@ function validateStrictFinalCheck(check, index) {
 /** Lane assumed for any scenario that does not declare one. */
 export const DEFAULT_SCENARIO_LANE = "live-only";
 
+/**
+ * Execution profile assumed for legacy scenario definitions. Simulated runs
+ * exercise the runtime but are never provider-evidence publishable.
+ */
+export const DEFAULT_SCENARIO_EXECUTION_PROFILE = "simulated";
+
 const SCENARIO_LANES = new Set(["pr-deterministic", "live-only"]);
+const SCENARIO_EXECUTION_PROFILES = new Set([
+  "simulated",
+  "provider-qualified",
+]);
 const SCENARIO_TIERS = new Set(["T1", "T2", "T3", "T4"]);
 const SCENARIO_STATUSES = new Set(["active", "pending"]);
 
@@ -157,6 +223,36 @@ export function scenarioLane(value) {
     );
   }
   return lane;
+}
+
+/** Return whether a value is a supported scenario execution profile. */
+export function isScenarioExecutionProfile(value) {
+  return typeof value === "string" && SCENARIO_EXECUTION_PROFILES.has(value);
+}
+
+/**
+ * Resolve a scenario's execution profile. Provider-qualified scenarios are
+ * live-only because deterministic lanes cannot produce provider evidence.
+ */
+export function scenarioExecutionProfile(value) {
+  const executionProfile = value?.executionProfile;
+  if (executionProfile === undefined) {
+    return DEFAULT_SCENARIO_EXECUTION_PROFILE;
+  }
+  if (!isScenarioExecutionProfile(executionProfile)) {
+    throw new Error(
+      `scenario "${value?.id ?? "<unknown>"}" has invalid executionProfile "${executionProfile}"; expected one of ${[...SCENARIO_EXECUTION_PROFILES].join(", ")}`,
+    );
+  }
+  if (
+    executionProfile === "provider-qualified" &&
+    scenarioLane(value) !== "live-only"
+  ) {
+    throw new Error(
+      `scenario "${value?.id ?? "<unknown>"}" declares executionProfile "provider-qualified" but lane "${scenarioLane(value)}"; provider-qualified scenarios must be live-only`,
+    );
+  }
+  return executionProfile;
 }
 
 /** Resolve and validate the optional persona-scenario complexity tier. */
@@ -229,6 +325,8 @@ export function scenario(value) {
     }
     // Validate the lane eagerly so a typo fails at definition time, not in CI.
     scenarioLane(value);
+    // Provider evidence cannot be claimed by a deterministic execution profile.
+    scenarioExecutionProfile(value);
     // Validate optional LifeOps/persona tier metadata when authored.
     scenarioTier(value);
     // Validate pending/active inventory status before loader filtering relies on it.

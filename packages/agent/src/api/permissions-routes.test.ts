@@ -56,6 +56,7 @@ function makeContext(
   pathname: string,
   options: {
     method?: string;
+    body?: Record<string, unknown>;
     state?: Partial<PermissionRouteState>;
     registry?: IPermissionsRegistry | null;
   } = {},
@@ -81,7 +82,8 @@ function makeContext(
     state,
     saveConfig: vi.fn(),
     scheduleRuntimeRestart: vi.fn(),
-    readJsonBody: vi.fn(async () => null),
+    readJsonBody: async <T extends object>() =>
+      options.body ? (options.body as T) : null,
     json: vi.fn((_res, data, status) => {
       captured.data = data;
       captured.status = status;
@@ -233,5 +235,41 @@ describe("permission routes", () => {
 
     expect(ctx.captured.status).toBe(400);
     expect(ctx.captured.data).toEqual({ error: "Invalid permission ID" });
+  });
+
+  it("accepts limited status without changing legacy granted payloads", async () => {
+    const ctx = makeContext("/api/permissions/state", {
+      method: "PUT",
+      body: {
+        permissions: {
+          calendar: {
+            id: "calendar",
+            status: "limited",
+            canRequest: true,
+            lastChecked: 10,
+            platform: "ios",
+            reason: "Add-only access.",
+          },
+          contacts: {
+            id: "contacts",
+            status: "granted",
+            canRequest: false,
+            lastChecked: 9,
+            platform: "ios",
+          },
+        },
+      },
+    });
+
+    await expect(handlePermissionRoutes(ctx)).resolves.toBe(true);
+
+    expect(ctx.captured.status).toBeUndefined();
+    expect(ctx.captured.data).toMatchObject({
+      updated: true,
+      permissions: {
+        calendar: { status: "limited" },
+        contacts: { status: "granted" },
+      },
+    });
   });
 });

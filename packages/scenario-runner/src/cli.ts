@@ -17,7 +17,10 @@ import { fileURLToPath } from "node:url";
 import { logger } from "@elizaos/core";
 import {
   DEFAULT_SCENARIO_LANE,
+  type ScenarioDefinition,
+  type ScenarioExecutionProfile,
   type ScenarioLane,
+  scenarioExecutionProfile,
 } from "@elizaos/scenario-runner/schema";
 import {
   countScenarioCorpus,
@@ -25,7 +28,9 @@ import {
   loadAllScenarios,
   validateScenarioCorpus,
 } from "./loader.ts";
+import { canonicalJsonValue } from "./provider-qualified/manifest.ts";
 import { redactForScenarioReport } from "./redaction.ts";
+import { resolveRequiredPluginPackages } from "./required-plugins.ts";
 import { shouldOptInScenarioTrajectoryLogging } from "./trajectory-opt-in.ts";
 import type { AggregateReport, ScenarioReport } from "./types.ts";
 
@@ -36,6 +41,92 @@ const SCENARIO_LANES: readonly ScenarioLane[] = [
 
 function isScenarioLane(value: string): value is ScenarioLane {
   return (SCENARIO_LANES as readonly string[]).includes(value);
+}
+
+export function resolveRunExecutionProfile(
+  scenarios: readonly ScenarioDefinition[],
+): ScenarioExecutionProfile {
+  const profiles = new Set(scenarios.map(scenarioExecutionProfile));
+  if (profiles.size !== 1) {
+    throw new CliUsageError(
+      "a scenario run cannot mix simulated and provider-qualified execution; select one profile per invocation",
+      2,
+    );
+  }
+  const profile = profiles.values().next().value;
+  if (profile === undefined) {
+    throw new CliUsageError("a scenario run requires at least one scenario", 2);
+  }
+  if (profile === "provider-qualified" && scenarios.length !== 1) {
+    throw new CliUsageError(
+      "provider-qualified execution requires exactly one scenario per process so runtime, database, observer interval, and trajectories are isolated",
+      2,
+    );
+  }
+  return profile;
+}
+
+/**
+ * Provider execution remains nonpublishable until an out-of-process controller
+ * verifies the signed manifest, observer evidence, and retained artifacts. A
+ * scenario report is runner-authored data and cannot serve as that decision.
+ */
+export function providerQualifiedRunFailure(
+  reports: readonly ScenarioReport[],
+): string | null {
+  if (reports.length !== 1) {
+    return `provider-qualified execution must finish with exactly one report; received ${reports.length}`;
+  }
+  const report = reports[0];
+  if (report?.status !== "passed") {
+    return "provider-qualified execution did not finish with a passed scenario";
+  }
+  return "provider-qualified execution has no external controller decision; scenario-authored reports cannot establish publishability";
+}
+
+const CLI_EXTERNAL_QUALIFICATION_REASON =
+  "external-controller-decision:missing" as const;
+
+function snapshotScenarioReport(report: ScenarioReport): ScenarioReport {
+  return canonicalJsonValue(
+    report,
+    "scenarioReport",
+  ) as unknown as ScenarioReport;
+}
+
+function normalizeOrdinaryCliProviderEvidence(
+  report: ScenarioReport,
+): ScenarioReport {
+  const snapshot = snapshotScenarioReport(report);
+  const evidence = snapshot.evidence;
+  if (evidence?.executionProfile !== "provider-qualified") {
+    return snapshot;
+  }
+  if (
+    evidence.qualification.status === "unqualified" &&
+    evidence.qualification.reasons.includes(CLI_EXTERNAL_QUALIFICATION_REASON)
+  ) {
+    return snapshot;
+  }
+  const reasons: readonly [string, ...string[]] = [
+    CLI_EXTERNAL_QUALIFICATION_REASON,
+    ...(evidence.qualification.status === "unqualified"
+      ? evidence.qualification.reasons.filter(
+          (reason) => reason !== CLI_EXTERNAL_QUALIFICATION_REASON,
+        )
+      : []),
+  ];
+  return {
+    ...snapshot,
+    evidence: {
+      ...evidence,
+      qualification: {
+        status: "unqualified",
+        publishable: false,
+        reasons,
+      },
+    },
+  };
 }
 
 type ExecutorModule = typeof import("./executor.ts");
@@ -152,7 +243,7 @@ function writeScenarioEvidence(params: {
 }): void {
   const { aggregate, reports, paths, finalize, dependencies } = params;
   const persistedAggregate = redactForScenarioReport(
-    aggregate,
+    canonicalJsonValue(aggregate, "aggregateReport"),
   ) as AggregateReport;
 
   // Checkpoints deliberately write only the bounded evidence needed for crash
@@ -457,6 +548,19 @@ export async function runCli(
     );
     return 2;
   }
+  let executionProfile: ScenarioExecutionProfile;
+  try {
+    executionProfile = resolveRunExecutionProfile(
+      loaded.map(({ scenario }) => scenario),
+    );
+  } catch (error) {
+    // error-policy:J1 CLI usage boundary maps profile conflicts to exit codes.
+    if (error instanceof CliUsageError) {
+      process.stderr.write(`[eliza-scenarios] ${error.message}\n`);
+      return error.exitCode;
+    }
+    throw error;
+  }
 
   logger.info(
     `[eliza-scenarios] discovered ${loaded.length} scenario(s) under ${parsed.dir}`,
@@ -481,6 +585,12 @@ export async function runCli(
           `scenario-run-${effectiveRunId}`,
         )
       : undefined);
+  if (executionProfile === "provider-qualified" && !effectiveRunDir) {
+    process.stderr.write(
+      "[eliza-scenarios] provider-qualified execution requires --run-dir or --export-native so immutable trajectory artifacts can be hashed and retained.\n",
+    );
+    return 2;
+  }
   // Opt the recorder in for the whole run (see the helper's rationale) — this
   // is hoisted out of the `effectiveRunDir` branch so a bare run under
   // NODE_ENV=test|production still captures the per-turn traces it aggregates.
@@ -499,13 +609,27 @@ export async function runCli(
     );
   }
 
-  // Note: a single bun process can only instantiate PGLite once reliably —
-  // attempting to tear down and recreate the native binding segfaults. So the
-  // CLI always uses a single shared runtime. For true per-scenario isolation
-  // (required when testing cross-scenario state leakage), invoke the CLI
-  // once per scenario from a shell loop (see scripts/run-scenarios-isolated.mjs).
-  const { runtime, providerName, cleanup } = await createScenarioRuntime();
-  logger.info(`[eliza-scenarios] provider: ${providerName}`);
+  // PGLite is process-scoped. Simulated compatibility runs may share one
+  // runtime, while provider-qualified runs are constrained above to a single
+  // scenario so the observer interval and database cannot cross-contaminate.
+  const requiredPlugins =
+    executionProfile === "provider-qualified"
+      ? resolveRequiredPluginPackages(loaded[0].scenario)
+      : [];
+  const runtimeResult = await createScenarioRuntime({
+    executionProfile,
+    requiredPlugins,
+  });
+  const { runtime, providerName, cleanup } = runtimeResult;
+  if (runtimeResult.executionProfile !== executionProfile) {
+    await cleanup();
+    throw new Error(
+      `[eliza-scenarios] runtime factory returned execution profile ${runtimeResult.executionProfile} for a ${executionProfile} run`,
+    );
+  }
+  logger.info(
+    `[eliza-scenarios] provider: ${providerName}; execution profile: ${executionProfile}`,
+  );
 
   // Per-turn timeout. Defaults to 120s (fast hosted providers), but a real
   // local model on a CPU backend needs a larger budget; expose it via env so
@@ -570,11 +694,17 @@ export async function runCli(
       // Surface scenario id to the recorder via env so trajectories are
       // tagged with the right scenarioId without changing internal APIs.
       process.env.ELIZA_LIFEOPS_SCENARIO_ID = scenario.id;
-      const report = await runScenario(scenario, runtime, {
+      const rawReport = await runScenario(scenario, runtime, {
         providerName,
         minJudgeScore,
         turnTimeoutMs,
+        executionProfile,
+        runDir: effectiveRunDir,
       });
+      const report =
+        executionProfile === "provider-qualified"
+          ? normalizeOrdinaryCliProviderEvidence(rawReport)
+          : snapshotScenarioReport(rawReport);
       reports.push(report);
       logger.info(
         `[eliza-scenarios] ${report.status === "passed" ? "✓" : report.status === "skipped" ? "∼" : "✗"} ${scenario.id} ${report.status} (${report.durationMs}ms)${report.skipReason ? ` — ${report.skipReason}` : ""}`,
@@ -599,10 +729,18 @@ export async function runCli(
       // matrix.json's totalCostUsd reflects the run instead of a hardcoded 0.
       effectiveRunDir,
     );
+  const qualificationFailure =
+    executionProfile === "provider-qualified"
+      ? providerQualifiedRunFailure(reports)
+      : null;
+  const finalEvidencePaths =
+    qualificationFailure === null
+      ? evidencePaths
+      : { ...evidencePaths, nativeJsonlPath: undefined };
   writeScenarioEvidence({
     aggregate,
     reports,
-    paths: evidencePaths,
+    paths: finalEvidencePaths,
     finalize: true,
     dependencies: {
       exportScenarioNativeJsonl,
@@ -616,6 +754,12 @@ export async function runCli(
   if (interruptedSignal) {
     process.stderr.write(
       `[eliza-scenarios] stopped after ${reports.length}/${loaded.length} completed scenario(s) because ${interruptedSignal} was received; checkpoint evidence reflects exactly the completed scenarios.\n`,
+    );
+    return 1;
+  }
+  if (qualificationFailure) {
+    process.stderr.write(
+      `[eliza-scenarios] ${qualificationFailure}; native export is withheld and the run is nonpublishable.\n`,
     );
     return 1;
   }

@@ -11,6 +11,8 @@
  * to this contract when enqueuing through the runtime {@link ApprovalQueue}.
  */
 
+import type { TransactionalDb } from "./sql.ts";
+
 export type ApprovalRequestState =
   | "pending"
   | "approved"
@@ -52,12 +54,17 @@ export type ApprovalAction =
 export type ApprovalChannel =
   | "telegram"
   | "discord"
+  | "signal"
+  | "whatsapp"
   | "slack"
   | "imessage"
   | "sms"
   | "x_dm"
   | "email"
   | "google_calendar"
+  | "microsoft_calendar"
+  | "apple_calendar"
+  | "ics_calendar"
   | "browser"
   | "phone"
   | "internal";
@@ -84,6 +91,21 @@ export interface ApprovalTravelCalendarSync {
   readonly timeZone?: string | null;
 }
 
+/** Calendar invitee metadata preserved from the authenticated editor. */
+export interface ApprovalCalendarAttendee {
+  readonly email: string;
+  readonly displayName?: string | null;
+  readonly optional?: boolean;
+}
+
+/** String entries remain readable for approvals persisted before metadata support. */
+export type ApprovalCalendarAttendeeInput = string | ApprovalCalendarAttendee;
+
+type ApprovalCalendarSourceBinding = {
+  readonly grantId?: string | null;
+  readonly side?: "owner" | "agent" | null;
+};
+
 export type ApprovalPayload =
   | {
       action: "send_message";
@@ -101,35 +123,87 @@ export type ApprovalPayload =
       threadId: string | null;
       replyToMessageId?: string | null;
     }
-  | {
+  | ({
       action: "schedule_event";
       calendarId: string;
       title: string;
       startsAtMs: number;
       endsAtMs: number;
-      attendees: ReadonlyArray<string>;
+      attendees: ReadonlyArray<ApprovalCalendarAttendeeInput>;
       location: string | null;
       description: string | null;
-    }
-  | {
+      timeZone?: string | null;
+      durationMinutes?: number | null;
+      windowPreset?:
+        | "tomorrow_morning"
+        | "tomorrow_afternoon"
+        | "tomorrow_evening"
+        | null;
+      recurrence?: ReadonlyArray<string> | null;
+      notifyAttendees?: boolean;
+      editorRequestSha256?: string;
+    } & ApprovalCalendarSourceBinding)
+  | ({
       action: "modify_event";
       calendarId: string;
       eventId: string;
+      expectedProvider?:
+        | "google"
+        | "microsoft"
+        | "apple_calendar"
+        | "ics"
+        | null;
+      expectedProviderVersion?: string | null;
+      expectedEventUpdatedAt?: string | null;
+      expectedEventStartAtMs?: number | null;
+      seriesMaster?: {
+        readonly externalId: string;
+        readonly startAtMs: number;
+        readonly updatedAt: string;
+        readonly etag: string;
+      } | null;
+      recurrenceScope?: "instance" | "this_and_following" | "series" | null;
+      notifyAttendees?: boolean;
+      editorRequestSha256?: string;
       patch: {
         title: string | null;
         startsAtMs: number | null;
         endsAtMs: number | null;
-        attendees: ReadonlyArray<string> | null;
+        attendees: ReadonlyArray<ApprovalCalendarAttendeeInput> | null;
         location: string | null;
         description: string | null;
+        timeZone?: string | null;
+        recurrence?: ReadonlyArray<string> | null;
       };
-    }
-  | {
+    } & ApprovalCalendarSourceBinding)
+  | ({
       action: "cancel_event";
       calendarId: string;
       eventId: string;
       notifyAttendees: boolean;
-    }
+      expectedProvider?:
+        | "google"
+        | "microsoft"
+        | "apple_calendar"
+        | "ics"
+        | null;
+      expectedProviderVersion?: string | null;
+      expectedEventUpdatedAt?: string | null;
+      expectedEventStartAtMs?: number | null;
+      seriesMaster?: {
+        readonly externalId: string;
+        readonly startAtMs: number;
+        readonly updatedAt: string;
+        readonly etag: string;
+      } | null;
+      recurrenceScope?: "instance" | "this_and_following" | "series" | null;
+      cancellationMode?:
+        | "organizer_cancel"
+        | "decline_invitation"
+        | "remove_private_copy"
+        | null;
+      editorRequestSha256?: string;
+    } & ApprovalCalendarSourceBinding)
   | {
       action: "book_travel";
       kind: "flight" | "hotel" | "ground";
@@ -206,11 +280,22 @@ export interface ApprovalRequest {
   readonly payload: ApprovalPayload;
   readonly channel: ApprovalChannel;
   readonly reason: string;
+  readonly idempotencyKey: string | null;
   readonly expiresAt: Date;
   readonly resolvedAt: Date | null;
   readonly resolvedBy: string | null;
   readonly resolutionReason: string | null;
   readonly execution: ApprovalExecution | null;
+}
+
+/**
+ * Atomic enqueue outcome. `reused` is decided by the same insert that owns the
+ * idempotency constraint, so callers never infer replay from request state or
+ * timestamps.
+ */
+export interface ApprovalEnqueueResult {
+  readonly request: ApprovalRequest;
+  readonly reused: boolean;
 }
 
 /** Input to `enqueue` — server fills in id, timestamps, and initial state. */
@@ -221,7 +306,26 @@ export interface ApprovalEnqueueInput {
   readonly payload: ApprovalPayload;
   readonly channel: ApprovalChannel;
   readonly reason: string;
+  /**
+   * Permanently binds one caller-defined intent to its immutable request,
+   * including terminal rejection. Reconsideration requires an explicit fresh
+   * revision/nonce key; implementations never resurrect a rejected row.
+   */
+  readonly idempotencyKey?: string | null;
   readonly expiresAt: Date;
+}
+
+/** A reused idempotency key must describe the same immutable approval. */
+export class ApprovalIdempotencyConflictError extends Error {
+  public readonly idempotencyKey: string;
+
+  constructor(idempotencyKey: string) {
+    super(
+      `[ApprovalQueue] idempotency key ${idempotencyKey} already identifies a different approval request`,
+    );
+    this.name = "ApprovalIdempotencyConflictError";
+    this.idempotencyKey = idempotencyKey;
+  }
 }
 
 /** Filter for `list`. All fields combine with AND. */
@@ -311,8 +415,32 @@ export interface ApprovalQueue {
   readonly capability: typeof APPROVAL_EXECUTION_CAPABILITY;
   readonly protocolVersion: typeof APPROVAL_EXECUTION_PROTOCOL_VERSION;
   enqueue(input: ApprovalEnqueueInput): Promise<ApprovalRequest>;
+  enqueueWithResult(
+    input: ApprovalEnqueueInput,
+  ): Promise<ApprovalEnqueueResult>;
+  /**
+   * Persist an owner gesture that is already confirmed at an authenticated
+   * boundary. Implementations must not emit a redundant approval prompt.
+   */
+  enqueueConfirmed(
+    input: ApprovalEnqueueInput,
+    resolution: ApprovalResolution,
+  ): Promise<ApprovalRequest>;
+  /**
+   * Insert (or reuse, under an idempotency key) inside the caller's
+   * transaction so a domain mutation and its owner gate commit together.
+   * Owner-facing side channels must run only after that commit.
+   */
+  enqueueTransactional(
+    input: ApprovalEnqueueInput,
+    tx: TransactionalDb,
+  ): Promise<ApprovalEnqueueResult>;
   list(filter: ApprovalListFilter): Promise<ReadonlyArray<ApprovalRequest>>;
   byId(id: string, subjectUserId: string): Promise<ApprovalRequest | null>;
+  byIdempotencyKey(
+    idempotencyKey: string,
+    subjectUserId: string,
+  ): Promise<ApprovalRequest | null>;
   approve(
     id: string,
     subjectUserId: string,
@@ -340,6 +468,7 @@ export interface ApprovalQueue {
   reconcileExecution(
     reconciliation: ApprovalExecutionReconciliation,
   ): Promise<ApprovalRequest>;
+  /** Terminally invalidate a pending or approved request without dispatch. */
   markExpired(id: string, subjectUserId: string): Promise<ApprovalRequest>;
   removePending(id: string, subjectUserId: string): Promise<void>;
   purgeExpired(now: Date): Promise<ReadonlyArray<string>>;

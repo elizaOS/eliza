@@ -1,3 +1,5 @@
+/** Dependency-free authoring contract for scenario definitions, turns, and final checks. */
+
 export type CapturedAction = {
   actionName: string;
   parameters?: unknown;
@@ -213,6 +215,15 @@ type CheckBase<Type extends string> = {
 
 type StringMatcher = string | string[];
 type TurnMatcher = string | RegExp;
+type TrustedObservationFilters = {
+  observerId?: StringMatcher;
+  provider?: StringMatcher;
+  accountId?: StringMatcher;
+  operation?: StringMatcher;
+  resourceId?: StringMatcher;
+  state?: StringMatcher;
+  minCount?: number;
+};
 type DefinitionCountRequiredSlot = {
   label?: string;
   minuteOfDay?: number;
@@ -369,6 +380,15 @@ export type ScenarioFinalCheck =
       actionName?: StringMatcher;
       minCount?: number;
     })
+  | (CheckBase<"durableApprovalObserved"> & TrustedObservationFilters)
+  | (CheckBase<"durableDraftObserved"> & TrustedObservationFilters)
+  | (CheckBase<"providerEffectObserved"> & TrustedObservationFilters)
+  | (CheckBase<"providerNoEffectObserved"> &
+      TrustedObservationFilters & {
+        /** Require the observation window to cover the full scenario. Defaults to true. */
+        intervalCoversScenario?: boolean;
+      })
+  | (CheckBase<"scheduledTaskObserved"> & TrustedObservationFilters)
   | (CheckBase<"memoryWriteOccurred"> & {
       table: StringMatcher;
       minCount?: number;
@@ -471,6 +491,12 @@ export type ScenarioFinalCheck =
  *   for any scenario that does not declare a lane.
  */
 export type ScenarioLane = "pr-deterministic" | "live-only";
+/**
+ * `simulated` runs may use fixtures, mocks, or deterministic services and are
+ * never publishable as provider evidence. `provider-qualified` runs must be
+ * backed by trusted durable/provider observers and hashed trajectories.
+ */
+export type ScenarioExecutionProfile = "simulated" | "provider-qualified";
 export type ScenarioTier = "T1" | "T2" | "T3" | "T4";
 
 /**
@@ -532,6 +558,12 @@ export type ScenarioDefinition = {
    */
   lane?: ScenarioLane;
   /**
+   * Evidence trust boundary for this scenario. Absent preserves existing
+   * scenarios by resolving to `simulated`; simulated results are never
+   * publishable as provider evidence.
+   */
+  executionProfile?: ScenarioExecutionProfile;
+  /**
    * Platform-gated deferral. Present only on `live-only` scenarios that cannot
    * run in any current lane because the platform/runner they need does not exist
    * yet (e.g. a macOS SelfControl shard awaiting an `eliza-e2e-macos` runner).
@@ -570,8 +602,25 @@ export declare const FINAL_CHECK_KEYS: ReadonlyMap<string, ReadonlySet<string>>;
 /** Lane assumed for any scenario that does not declare one. */
 export declare const DEFAULT_SCENARIO_LANE: ScenarioLane;
 
+/** Execution profile assumed for legacy scenario definitions. */
+export declare const DEFAULT_SCENARIO_EXECUTION_PROFILE: "simulated";
+
 /** Resolve a scenario's effective lane, applying {@link DEFAULT_SCENARIO_LANE}. */
 export declare function scenarioLane(value: ScenarioDefinition): ScenarioLane;
+
+/** Return whether a value is a supported scenario execution profile. */
+export declare function isScenarioExecutionProfile(
+  value: unknown,
+): value is ScenarioExecutionProfile;
+
+/**
+ * Resolve a scenario's execution profile, applying
+ * {@link DEFAULT_SCENARIO_EXECUTION_PROFILE}. Provider-qualified scenarios
+ * must use the `live-only` lane.
+ */
+export declare function scenarioExecutionProfile(
+  value: ScenarioDefinition,
+): ScenarioExecutionProfile;
 
 /** Resolve and validate the optional persona-scenario complexity tier. */
 export declare function scenarioTier(

@@ -25,7 +25,10 @@ import type {
 	World,
 	WorldMetadata,
 } from "../../../types/index.ts";
-import { Service } from "../../../types/index.ts";
+import {
+	requireConfirmedSendHandlerDelivery,
+	Service,
+} from "../../../types/index.ts";
 import type { SecretsService } from "../services/secrets.ts";
 import type { SecretContext } from "../types.ts";
 import {
@@ -361,15 +364,17 @@ export class SetupService extends Service {
 			`Please click this link to start chatting with me: https://t.me/${botUsername}?start=setup`,
 		].join(" ");
 
-		await this.runtime.sendMessageToTarget(
-			{
-				source: "telegram",
-				channelId: String(chat.id),
-			},
-			{
-				text: deepLinkMessage,
-				source: "telegram",
-			},
+		requireConfirmedSendHandlerDelivery(
+			await this.runtime.sendMessageToTarget(
+				{
+					source: "telegram",
+					channelId: String(chat.id),
+				},
+				{
+					text: deepLinkMessage,
+					source: "telegram",
+				},
+			),
 		);
 		logger.info(
 			`[SetupService] Sent Telegram deep link - chatId: ${chat.id}, ownerId: ${ownerId}`,

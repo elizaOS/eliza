@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import base64
+import binascii
 import logging
 import os
 import sys
@@ -23,6 +25,7 @@ from .eliza_1_bundle import (
     bundle_is_pre_release,
     read_eliza_one_bundle,
 )
+from .evidence import HttpTrustedToolExecutor, HmacSha256ReceiptVerifier
 from .model_tiers import DEFAULT_TIERS, TierSpec, resolve_tier
 from .runner import LifeOpsBenchRunner
 from .scenarios import (
@@ -33,7 +36,7 @@ from .scenarios import (
     validate_lifeops_scenarios,
 )
 from .suites import SUITES, resolve_suite
-from .types import Domain, MessageTurn, ScenarioMode
+from .types import Domain, MessageTurn, Scenario, ScenarioMode, StaticGradingMode
 
 _AGENT_CHOICES = (
     "perfect",
@@ -41,6 +44,7 @@ _AGENT_CHOICES = (
     "eliza",
     "openclaw",
     "hermes",
+    "hermes-direct",
     "smithers",
     "cerebras-direct",
 )
@@ -48,6 +52,12 @@ _DOMAIN_CHOICES = tuple(d.value for d in Domain)
 _MODE_CHOICES = tuple(m.value for m in ScenarioMode)
 _MODEL_TIER_CHOICES = tuple(DEFAULT_TIERS.keys())
 _SUITE_CHOICES = tuple(SUITES.keys())
+_EVALUATOR_PROVIDER_CHOICES = (
+    "cerebras",
+    "anthropic",
+    "hermes",
+    "claude-subscription",
+)
 
 
 def _load_env_file(path: Path) -> None:
@@ -69,11 +79,7 @@ def _load_env_file(path: Path) -> None:
         if not key or key in os.environ:
             continue
         value = value.strip()
-        if (
-            len(value) >= 2
-            and value[0] == value[-1]
-            and value[0] in {"'", '"'}
-        ):
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
             value = value[1:-1]
         os.environ[key] = value
 
@@ -118,8 +124,21 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--agent",
         choices=_AGENT_CHOICES,
-        default="perfect",
-        help="Backend agent under test (default: perfect)",
+        default="eliza",
+        help=(
+            "Backend agent under test (default: eliza). The perfect and wrong "
+            "oracles are explicit harness-conformance choices, never benchmark defaults."
+        ),
+    )
+    parser.add_argument(
+        "--evaluator-provider",
+        choices=_EVALUATOR_PROVIDER_CHOICES,
+        default=None,
+        help=(
+            "Provider used to simulate the live user. CLI wins over "
+            "LIFEOPS_BENCH_EVALUATOR_PROVIDER; default is Cerebras, or the "
+            "Claude subscription gateway during a subscription campaign."
+        ),
     )
     parser.add_argument(
         "--evaluator-model",
@@ -130,10 +149,26 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--judge-provider",
+        choices=_EVALUATOR_PROVIDER_CHOICES,
+        default=None,
+        help=(
+            "Provider used for live satisfaction judgments. CLI wins over "
+            "LIFEOPS_BENCH_JUDGE_PROVIDER; default is Anthropic, or the "
+            "Claude subscription gateway during a subscription campaign."
+        ),
+    )
+    parser.add_argument(
         "--judge-model",
-        default="claude-opus-4-7",
-        help="LLM model used as live-mode satisfaction judge (default: claude-opus-4-7). "
-        "Intentionally different from --evaluator-model to avoid self-agreement bias.",
+        default=None,
+        help=(
+            "LLM model used as live-mode satisfaction judge. Defaults to "
+            "claude-opus-4-7 for Anthropic/subscription or gpt-oss-120b for "
+            "Cerebras. It must differ from --evaluator-model. The judge must "
+            "emit bare JSON: fenced ```json output is rejected by design, so a "
+            "model that fences (for example gemma3) yields an invalid verdict "
+            "on every turn."
+        ),
     )
     parser.add_argument(
         "--model-tier",
@@ -150,6 +185,16 @@ def _build_parser() -> argparse.ArgumentParser:
         help=(
             "Resolve config + selected scenarios and print a summary, but "
             "skip actual scenario execution."
+        ),
+    )
+    parser.add_argument(
+        "--offline-conformance",
+        action="store_true",
+        help=(
+            "Run STATIC scenarios with deterministic authored openings and "
+            "literal protocol-output checks. This is an explicitly "
+            "non-publishable harness/oracle lane; ordinary benchmark runs "
+            "require live persona and judge models."
         ),
     )
     parser.add_argument(
@@ -189,6 +234,28 @@ def _build_parser() -> argparse.ArgumentParser:
         type=int,
         default=300,
         help="Per-scenario wall-clock timeout in seconds (default: 300)",
+    )
+    parser.add_argument(
+        "--hermes-request-timeout-s",
+        type=float,
+        default=None,
+        help=(
+            "Per-request timeout for hermes-direct and Hermes evaluator/judge "
+            "HTTP calls. CLI wins over "
+            "LIFEOPS_BENCH_HERMES_REQUEST_TIMEOUT_S; default: 300 seconds. "
+            "The per-scenario timeout remains the outer wall-clock limit."
+        ),
+    )
+    parser.add_argument(
+        "--trusted-executor-url",
+        default=None,
+        help=(
+            "Authenticated production/sandbox execution endpoint for "
+            "evidence-gated LIVE scenarios. CLI wins over "
+            "LIFEOPS_BENCH_TRUSTED_EXECUTOR_URL. Request and receipt keys, "
+            "key IDs, and provider/boundary allowlists come from the "
+            "LIFEOPS_BENCH_TRUSTED_EXECUTOR_* environment variables."
+        ),
     )
     parser.add_argument(
         "--abort-on-budget-exceeded",
@@ -238,7 +305,8 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Validate base and expanded LifeOpsBench scenario definitions and exit",
     )
     parser.add_argument(
-        "--verbose", "-v",
+        "--verbose",
+        "-v",
         action="store_true",
         help="Enable verbose logging",
     )
@@ -249,21 +317,21 @@ def _list_scenarios() -> None:
     print("\nAvailable LifeOpsBench scenarios:")
     print("-" * 78)
     for s in ALL_SCENARIOS:
-        print(
-            f"  {s.id:<40} {s.domain.value:<10} {s.mode.value:<7} {s.name}"
-        )
+        print(f"  {s.id:<40} {s.domain.value:<10} {s.mode.value:<7} {s.name}")
     counts = count_lifeops_scenarios()
     print(
         f"\n{counts['base']} base scenarios; "
-        f"{counts['variantsPerBase']}x prompt-prefix robustness variants "
+        f"{counts['variantsPerBase']}x model-generated language challenges "
         f"= {counts['totalRuns']} runs total\n"
     )
     print(
-        "  (an edge variant re-frames a base scenario's prompt only; "
-        "ground-truth actions, required outputs and world seed are identical)\n"
+        "  (an edge variant gives the persona model a language challenge; "
+        "the hidden goal, ground truth, required outputs, and seed are identical)\n"
     )
     print("By domain (run counts, including edge variants):")
-    for domain, scenarios in sorted(SCENARIOS_BY_DOMAIN.items(), key=lambda kv: kv[0].value):
+    for domain, scenarios in sorted(
+        SCENARIOS_BY_DOMAIN.items(), key=lambda kv: kv[0].value
+    ):
         print(f"  {domain.value:<12} {len(scenarios)} scenarios")
     print()
 
@@ -277,18 +345,25 @@ def _build_agent_factory(name: str):
     """
     if name == "perfect":
         from .agents import PerfectAgent
+
         return lambda scenario: PerfectAgent(scenario)
     if name == "wrong":
         from .agents import WrongAgent
+
         return lambda scenario: WrongAgent(scenario)
     return None
 
 
-def _build_agent_fn(name: str, *, model_override: str | None = None, base_url_override: str | None = None):
+def _build_agent_fn(
+    name: str,
+    *,
+    model_override: str | None = None,
+    base_url_override: str | None = None,
+    hermes_request_timeout_s: float | None = None,
+):
     if name in {"perfect", "wrong"}:
-        # Caller should use _build_agent_factory for these. Returning a
-        # placeholder keeps the CLI surface uniform; the runner prefers
-        # agent_factory when both are set.
+        # These stateful oracles are constructed per scenario by
+        # _build_agent_factory; there is intentionally no singleton function.
         return None
     if name == "eliza":
         try:
@@ -297,9 +372,7 @@ def _build_agent_fn(name: str, *, model_override: str | None = None, base_url_ov
             ensure_benchmark_adapter_importable("eliza")
             from .agents import build_eliza_agent  # type: ignore[attr-defined]
         except ImportError as exc:
-            raise SystemExit(
-                f"Eliza adapter unavailable: {exc}"
-            ) from exc
+            raise SystemExit(f"Eliza adapter unavailable: {exc}") from exc
         # Spawn the TS bench server when the operator hasn't pointed us at
         # a live one. The ServerManager registers an atexit hook to stop the
         # subprocess, so the CLI doesn't need explicit teardown.
@@ -330,14 +403,16 @@ def _build_agent_fn(name: str, *, model_override: str | None = None, base_url_ov
                 build_lifeops_bench_agent_fn,
             )
         except ImportError as exc:
-            raise SystemExit(
-                f"OpenClaw adapter unavailable: {exc}"
-            ) from exc
+            raise SystemExit(f"OpenClaw adapter unavailable: {exc}") from exc
         provider = (
-            os.environ.get("BENCHMARK_MODEL_PROVIDER")
-            or os.environ.get("ELIZA_PROVIDER")
-            or "cerebras"
-        ).strip().lower()
+            (
+                os.environ.get("BENCHMARK_MODEL_PROVIDER")
+                or os.environ.get("ELIZA_PROVIDER")
+                or "cerebras"
+            )
+            .strip()
+            .lower()
+        )
         model = (
             model_override
             or os.environ.get("BENCHMARK_MODEL_NAME")
@@ -369,18 +444,35 @@ def _build_agent_fn(name: str, *, model_override: str | None = None, base_url_ov
         try:
             from .agents import build_hermes_agent  # type: ignore[attr-defined]
         except ImportError as exc:
-            raise SystemExit(
-                f"Hermes adapter unavailable: {exc}"
-            ) from exc
-        return build_hermes_agent(model=model_override, base_url=base_url_override)
+            raise SystemExit(f"Hermes adapter unavailable: {exc}") from exc
+        hermes_base_url = (
+            os.environ.get("HERMES_BASE_URL", "").strip() or base_url_override
+        )
+        return build_hermes_agent(
+            model=model_override,
+            base_url=hermes_base_url,
+        )
+    if name == "hermes-direct":
+        try:
+            from .agents import build_hermes_direct_agent
+        except ImportError as exc:
+            raise SystemExit(f"hermes-direct agent unavailable: {exc}") from exc
+        hermes_base_url = (
+            os.environ.get("HERMES_BASE_URL", "").strip() or base_url_override
+        )
+        return build_hermes_direct_agent(
+            model=model_override,
+            base_url=hermes_base_url,
+            request_timeout_s=hermes_request_timeout_s,
+        )
     if name == "cerebras-direct":
         try:
             from .agents import build_cerebras_direct_agent  # type: ignore[attr-defined]
         except ImportError as exc:
-            raise SystemExit(
-                f"cerebras-direct agent unavailable: {exc}"
-            ) from exc
-        return build_cerebras_direct_agent(model=model_override, base_url=base_url_override)
+            raise SystemExit(f"cerebras-direct agent unavailable: {exc}") from exc
+        return build_cerebras_direct_agent(
+            model=model_override, base_url=base_url_override
+        )
     raise SystemExit(f"Unknown agent: {name}")
 
 
@@ -457,9 +549,8 @@ def _spawn_mtp_server_for_bundle(
     if os.environ.get("ELIZA_OPENCODE_BASE_URL"):
         # Operator already pointed us at a running server — don't double-spawn.
         return os.environ["ELIZA_OPENCODE_BASE_URL"]
-    mtp_root = (
-        os.environ.get("ELIZA_MTP_LLAMA_DIR")
-        or os.path.expanduser("~/.cache/eliza-mtp/eliza-llama-cpp")
+    mtp_root = os.environ.get("ELIZA_MTP_LLAMA_DIR") or os.path.expanduser(
+        "~/.cache/eliza-mtp/eliza-llama-cpp"
     )
     binary = os.path.join(mtp_root, "build", "bin", "llama-server")
     if not os.path.exists(binary):
@@ -526,19 +617,109 @@ def _build_world_factory():
     return factory
 
 
-def _needs_live_evaluator(
+def _needs_evaluator(
     scenarios,
     *,
     domain: Domain | None,
     mode: ScenarioMode | None,
+    static_grading_mode: str,
 ) -> bool:
-    """Whether the post-filter scenario set contains LIVE cases."""
+    """Whether the post-filter workload needs persona or judge inference."""
     return any(
         s.mode is ScenarioMode.LIVE
+        or (
+            s.mode is ScenarioMode.STATIC
+            and static_grading_mode == "semantic"
+            and (
+                s.opening_mode == "simulated"
+                or bool(s.required_outputs or s.static_rubric)
+            )
+        )
         for s in scenarios
-        if (domain is None or s.domain == domain)
-        and (mode is None or s.mode == mode)
+        if (domain is None or s.domain == domain) and (mode is None or s.mode == mode)
     )
+
+
+def _build_trusted_execution(
+    args: argparse.Namespace,
+    scenarios: list[Scenario],
+):
+    """Resolve the opt-in real execution boundary without exposing its secrets."""
+    url = (
+        args.trusted_executor_url
+        or os.environ.get("LIFEOPS_BENCH_TRUSTED_EXECUTOR_URL", "").strip()
+    )
+    if not url:
+        return None, None
+    contract_ids = {
+        scenario.trusted_evidence_requirement.contract_id
+        for scenario in scenarios
+        if scenario.trusted_evidence_requirement is not None
+    }
+    if not contract_ids:
+        return None, None
+
+    def decode_key(name: str) -> bytes:
+        encoded = os.environ.pop(name, "").strip()
+        if not encoded:
+            raise SystemExit(f"A trusted executor URL requires {name}.")
+        try:
+            return base64.b64decode(encoded, validate=True)
+        except (ValueError, binascii.Error) as exc:
+            raise SystemExit(f"{name} is not valid base64.") from exc
+
+    request_key = decode_key("LIFEOPS_BENCH_TRUSTED_EXECUTOR_REQUEST_HMAC_KEY_B64")
+    receipt_key = decode_key("LIFEOPS_BENCH_TRUSTED_EXECUTOR_RECEIPT_HMAC_KEY_B64")
+    request_key_id = os.environ.pop(
+        "LIFEOPS_BENCH_TRUSTED_EXECUTOR_REQUEST_KEY_ID",
+        "",
+    ).strip()
+    receipt_key_id = os.environ.pop(
+        "LIFEOPS_BENCH_TRUSTED_EXECUTOR_RECEIPT_KEY_ID",
+        "",
+    ).strip()
+    providers = {
+        item.strip()
+        for item in os.environ.pop(
+            "LIFEOPS_BENCH_TRUSTED_EXECUTOR_ALLOWED_PROVIDERS",
+            "",
+        ).split(",")
+        if item.strip()
+    }
+    boundaries = {
+        item.strip()
+        for item in os.environ.pop(
+            "LIFEOPS_BENCH_TRUSTED_EXECUTOR_ALLOWED_BOUNDARIES",
+            "sandbox_connector",
+        ).split(",")
+        if item.strip()
+    }
+    if not request_key_id or not receipt_key_id or not providers:
+        raise SystemExit(
+            "Trusted executor configuration requires request/receipt key IDs "
+            "and LIFEOPS_BENCH_TRUSTED_EXECUTOR_ALLOWED_PROVIDERS."
+        )
+    bearer_token = os.environ.pop(
+        "LIFEOPS_BENCH_TRUSTED_EXECUTOR_BEARER_TOKEN",
+        "",
+    ).strip()
+    try:
+        executor = HttpTrustedToolExecutor(
+            url,
+            request_key,
+            request_key_id=request_key_id,
+            bearer_token=bearer_token or None,
+        )
+        verifier = HmacSha256ReceiptVerifier(
+            receipt_key,
+            signing_key_id=receipt_key_id,
+            allowed_providers=providers,
+            allowed_boundaries=boundaries,
+            allowed_contract_ids=contract_ids,
+        )
+    except ValueError as exc:
+        raise SystemExit(f"Trusted executor configuration is invalid: {exc}") from exc
+    return executor, verifier
 
 
 async def _run(args: argparse.Namespace) -> None:
@@ -563,6 +744,10 @@ async def _run(args: argparse.Namespace) -> None:
 
     tier_spec = resolve_tier()
     campaign_provider = os.environ.get("BENCHMARK_MODEL_PROVIDER", "").strip().lower()
+    adapter_provider = (
+        "hermes" if args.agent in {"hermes", "hermes-direct"} else tier_spec.provider
+    )
+    agent_provider = campaign_provider or adapter_provider
     subscription_transport = campaign_provider == "claude-subscription"
     if subscription_transport:
         gateway_base_url = (
@@ -590,9 +775,63 @@ async def _run(args: argparse.Namespace) -> None:
     # `preRelease: true` on every emitted RunMetrics + report.json.
     eliza_one_manifest, tier_spec = _apply_eliza_one_bundle_override(tier_spec)
     evaluator_model = args.evaluator_model or tier_spec.model_name
+    evaluator_provider = (
+        args.evaluator_provider
+        or os.environ.get("LIFEOPS_BENCH_EVALUATOR_PROVIDER", "").strip().lower()
+        or ("claude-subscription" if subscription_transport else "cerebras")
+    )
+    judge_provider = (
+        args.judge_provider
+        or os.environ.get("LIFEOPS_BENCH_JUDGE_PROVIDER", "").strip().lower()
+        or ("claude-subscription" if subscription_transport else "anthropic")
+    )
+    if evaluator_provider not in _EVALUATOR_PROVIDER_CHOICES:
+        raise SystemExit(
+            "Unsupported live evaluator provider "
+            f"{evaluator_provider!r}; choose one of "
+            f"{', '.join(_EVALUATOR_PROVIDER_CHOICES)}."
+        )
+    if judge_provider not in _EVALUATOR_PROVIDER_CHOICES:
+        raise SystemExit(
+            "Unsupported live judge provider "
+            f"{judge_provider!r}; choose one of "
+            f"{', '.join(_EVALUATOR_PROVIDER_CHOICES)}."
+        )
+    uses_hermes_http_client = (
+        args.agent == "hermes-direct"
+        or evaluator_provider == "hermes"
+        or judge_provider == "hermes"
+    )
+    if args.hermes_request_timeout_s is not None and not uses_hermes_http_client:
+        raise SystemExit(
+            "--hermes-request-timeout-s applies only to hermes-direct or a "
+            "Hermes evaluator/judge provider."
+        )
+    hermes_request_timeout_s: float | None = None
+    if uses_hermes_http_client:
+        try:
+            from .clients.hermes import resolve_hermes_request_timeout_s
+
+            hermes_request_timeout_s = resolve_hermes_request_timeout_s(
+                args.hermes_request_timeout_s
+            )
+        # error-policy:J1 The CLI boundary translates invalid config into a clean exit.
+        except ValueError as exc:
+            raise SystemExit(f"Invalid Hermes request timeout: {exc}") from exc
+    judge_model = args.judge_model or (
+        "gpt-oss-120b" if judge_provider == "cerebras" else "claude-opus-4-7"
+    )
+    if evaluator_model == judge_model:
+        raise SystemExit(
+            "Evaluator and judge model identifiers must differ to prevent "
+            f"self-agreement bias; both resolved to {evaluator_model!r}."
+        )
 
     domain = Domain(args.domain) if args.domain else None
     mode = ScenarioMode(args.mode) if args.mode else None
+    static_grading_mode: StaticGradingMode = (
+        "offline_conformance" if args.offline_conformance else "semantic"
+    )
 
     # Apply --limit after --scenario/--domain/--mode resolution so the cap
     # lands on the post-filter set. We have to mirror the runner's domain+mode
@@ -612,22 +851,34 @@ async def _run(args: argparse.Namespace) -> None:
         else:
             scenarios = filtered
 
+    trusted_tool_executor, trusted_evidence_verifier = _build_trusted_execution(
+        args,
+        scenarios,
+    )
     agent_factory = _build_agent_factory(args.agent)
     agent_fn = (
         _build_agent_fn(
             args.agent,
             model_override=tier_spec.model_name,
             base_url_override=tier_spec.base_url,
+            hermes_request_timeout_s=hermes_request_timeout_s,
         )
         if agent_factory is None
         else None
     )
+    gated_scenario_count = sum(
+        scenario.trusted_evidence_requirement is not None for scenario in scenarios
+    )
 
-    print(f"\nStarting LifeOpsBench with {len(scenarios)} scenarios x {args.seeds} seeds...")
+    print(
+        f"\nStarting LifeOpsBench with {len(scenarios)} scenarios x {args.seeds} seeds..."
+    )
     if args.suite:
         print(f"Suite:           {args.suite}")
     print(f"Agent:           {args.agent}")
-    print(f"Model tier:      {tier_spec.tier} ({tier_spec.provider} → {tier_spec.model_name})")
+    print(
+        f"Model tier:      {tier_spec.tier} ({agent_provider} → {tier_spec.model_name})"
+    )
     if eliza_one_manifest is not None:
         print(
             f"Eliza-1 bundle:  {eliza_one_manifest.bundle_id} "
@@ -636,8 +887,18 @@ async def _run(args: argparse.Namespace) -> None:
             f"final.weights={eliza_one_manifest.final.weights}, "
             f"preRelease={bundle_is_pre_release(eliza_one_manifest)})"
         )
-    print(f"Evaluator model: {evaluator_model}")
-    print(f"Judge model:     {args.judge_model}")
+    print(f"Evaluator:       {evaluator_provider} → {evaluator_model}")
+    print(f"Judge:           {judge_provider} → {judge_model}")
+    if hermes_request_timeout_s is not None:
+        print(f"Hermes request:  {hermes_request_timeout_s:g}s maximum")
+    print(f"STATIC grading:  {static_grading_mode}")
+    if gated_scenario_count:
+        trusted_executor_status = (
+            "configured"
+            if trusted_tool_executor is not None
+            else "disabled (gated scenarios cannot earn evidence credit)"
+        )
+        print(f"Trusted executor: {trusted_executor_status}")
     print(f"Concurrency:     {args.concurrency}")
     print(f"Cost cap:        ${args.max_cost_usd:.2f}\n")
 
@@ -647,38 +908,37 @@ async def _run(args: argparse.Namespace) -> None:
 
     simulated_user_client = None
     judge_client = None
-    if _needs_live_evaluator(scenarios, domain=domain, mode=mode):
+    if _needs_evaluator(
+        scenarios,
+        domain=domain,
+        mode=mode,
+        static_grading_mode=static_grading_mode,
+    ):
         try:
             from .clients.base import ProviderError
             from .clients.factory import make_client
         except ImportError as exc:
             raise SystemExit(
-                "LIVE mode requires LifeOpsBench client providers; failed to "
+                "Selected semantic scenarios require LifeOpsBench client "
+                "providers; failed to "
                 f"import client factory: {exc}"
             ) from exc
         try:
-            evaluator_provider = (
-                "claude-subscription" if subscription_transport else "cerebras"
-            )
-            judge_provider = (
-                "claude-subscription" if subscription_transport else "anthropic"
-            )
             simulated_user_client = make_client(
-                evaluator_provider, model=evaluator_model
+                evaluator_provider,
+                model=evaluator_model,
+                hermes_request_timeout_s=hermes_request_timeout_s,
             )
-            judge_client = make_client(judge_provider, model=args.judge_model)
+            judge_client = make_client(
+                judge_provider,
+                model=judge_model,
+                hermes_request_timeout_s=hermes_request_timeout_s,
+            )
         except ProviderError as exc:
-            if subscription_transport:
-                raise SystemExit(
-                    "LIVE mode under the subscription campaign requires "
-                    "CLAUDE_SUBSCRIPTION_GATEWAY_URL and "
-                    "CLAUDE_SUBSCRIPTION_GATEWAY_TOKEN. "
-                    f"Client setup failed: {exc}"
-                ) from exc
             raise SystemExit(
-                "LIVE mode requires CEREBRAS_API_KEY for the simulated user "
-                "and ANTHROPIC_API_KEY for the judge. "
-                f"Client setup failed: {exc}"
+                "Semantic evaluator setup failed for "
+                f"{evaluator_provider}/{evaluator_model} and "
+                f"{judge_provider}/{judge_model}: {exc}"
             ) from exc
 
     runner = LifeOpsBenchRunner(
@@ -686,7 +946,12 @@ async def _run(args: argparse.Namespace) -> None:
         agent_factory=agent_factory,
         world_factory=_build_world_factory(),
         evaluator_model=evaluator_model,
-        judge_model=args.judge_model,
+        judge_model=judge_model,
+        evaluator_provider=evaluator_provider,
+        judge_provider=judge_provider,
+        agent_model_name=tier_spec.model_name,
+        agent_adapter=args.agent,
+        agent_provider=agent_provider,
         scenarios=scenarios,
         concurrency=args.concurrency,
         seeds=args.seeds,
@@ -695,12 +960,33 @@ async def _run(args: argparse.Namespace) -> None:
         abort_on_budget_exceeded=args.abort_on_budget_exceeded,
         simulated_user_client=simulated_user_client,
         judge_client=judge_client,
+        trusted_tool_executor=trusted_tool_executor,
+        trusted_evidence_verifier=trusted_evidence_verifier,
+        static_grading_mode=static_grading_mode,
     )
 
     result = await runner.run_filtered(domain=domain, mode=mode)
-    path = LifeOpsBenchRunner.save_results(result, output_dir=args.output_dir)
+    if not result.complete:
+        path = LifeOpsBenchRunner.save_diagnostic_results(
+            result,
+            output_dir=args.output_dir,
+        )
+        label = "Non-publishable diagnostic artifact"
+    elif static_grading_mode == "offline_conformance":
+        path = LifeOpsBenchRunner.save_conformance_results(
+            result,
+            output_dir=args.output_dir,
+        )
+        label = "Non-publishable conformance artifact"
+    else:
+        path = LifeOpsBenchRunner.save_results(result, output_dir=args.output_dir)
+        label = "Full results"
     LifeOpsBenchRunner.print_summary(result)
-    print(f"Full results saved to: {path}")
+    print(f"{label} saved to: {path}")
+    if not result.complete:
+        raise SystemExit(
+            "LifeOpsBench run was incomplete; diagnostic evidence was retained"
+        )
 
 
 def main() -> None:

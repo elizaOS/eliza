@@ -82,6 +82,13 @@ export interface ConnectorContribution {
   send?(payload: unknown): Promise<DispatchResult>;
 
   /**
+   * Declares that every successful send returns a stable provider receipt.
+   * Approval executors refuse delivery when this is absent; `{ ok: true }`
+   * alone cannot prove an external mutation.
+   */
+  receiptContract?: "provider_receipt_id";
+
+  /**
    * Optional read verb. The query and return shape are connector-specific.
    */
   read?(query: unknown): Promise<unknown>;
